@@ -160,6 +160,8 @@ public sealed class ShortcutGridView : Component
     readonly Signal<float> _width = new(0f);
     readonly Signal<bool> _hover = new(false);
     readonly Action<RectF> _onBounds;
+    readonly Action<NodeHandle> _onRoot;
+    NodeHandle _root;
     readonly Action<Point2> _enter;
     readonly Action _exit;
     ShortcutGridProps? _p;
@@ -181,7 +183,15 @@ public sealed class ShortcutGridView : Component
 
     public ShortcutGridView()
     {
-        _onBounds = r => { if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W; };
+        _onBounds = r =>
+        {
+            if (r.W <= 0f || MathF.Abs(r.W - _width.Peek()) <= 0.25f) return;
+            // A width that changes the columns is a step of the grid's structure (its rows, its height): the board's row around it eases the step
+            // through a window drag too, while a width that keeps them only re-sizes the cells.
+            if (_p is { } p && !_root.IsNull && p.Spec.Columns(r.W) != p.Spec.Columns(Width)) Context.Scene?.NoteStructureChanged(_root);
+            _width.Value = r.W;
+        };
+        _onRoot = h => _root = h;
         _enter = _ => { if (!_hover.Peek()) _hover.Value = true; };
         _exit = () => { if (_hover.Peek()) _hover.Value = false; };
         _panDown = lp => Track?.PanDown(lp);
@@ -252,7 +262,8 @@ public sealed class ShortcutGridView : Component
             kids.Add(new BoxEl { Direction = 0, Height = spec.BelowH, MinWidth = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Children = [below(pager)] });
         return new BoxEl
         {
-            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = spec.Gap, OnBoundsChanged = _onBounds, Children = kids.ToArray(),
+            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = spec.Gap, OnBoundsChanged = _onBounds, OnRealized = _onRoot,
+            Children = kids.ToArray(),
         };
     }
 

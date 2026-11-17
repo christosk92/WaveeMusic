@@ -82,8 +82,9 @@ internal static class WinUiHomePage
         {
             Key = "home:head", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
             Padding = new Edges4(0f, 0f, 0f, layout.GreetingGap),
-            // The greeting's rung (40/52 or 28/36) follows the content tier a docking pane or a resize changes: the head's height eases, the page rides it.
-            Layout = Design.Reduced ? null : WinUiDiscoveryMotion.HeightReflow,
+            // The greeting's rung (40/52 or 28/36) follows the content tier a docking pane or a resize changes, and its words wrap to a second line as
+            // the row narrows: the head's height eases, through a window drag too (HeadReflow), and the page rides it.
+            Layout = Design.Reduced ? null : WinUiDiscoveryMotion.HeadReflow,
             Children =
             [
                 WinUiDiscoveryMotion.AirH("home:head:lead", inset),

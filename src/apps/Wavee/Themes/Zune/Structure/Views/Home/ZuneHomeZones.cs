@@ -204,7 +204,10 @@ internal static partial class ZuneHomeZones
         return new BoxEl
         {
             Key = c.IsBlank ? "zune-release-blank:" + index.ToString(CultureInfo.InvariantCulture) : "zune-release:" + k.Uri,
-            Direction = 1, MinWidth = 0f, Margin = ZuneListRules.OnColumn(in shape), Children = [Controls.Surface(data, shape)],
+            Direction = 1, MinWidth = 0f, Margin = ZuneListRules.OnColumn(in shape),
+            // The row's height steps with the tier (64, 56 at Compact, 52 at Small): it eases there, so the rows under it ride it.
+            Layout = ZuneMotion.HeightResize,
+            Children = [Controls.Surface(data, shape)],
         };
     }
 

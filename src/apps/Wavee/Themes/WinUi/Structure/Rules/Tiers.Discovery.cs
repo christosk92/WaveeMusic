@@ -445,6 +445,22 @@ public static class WinUiDiscoveryMotion
     public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
+    /// <summary>A Home body whose rows the width decides (a grid that gains or loses a row as its columns change, a shelf whose cards step a size):
+    /// its height eases through real layout and keeps easing while the window is dragged, so each step glides and the rows under it ride it. A
+    /// critically damped spring on the reflow's clock, not the tween: a drag re-aims it every frame, and a spring carries its speed into each new
+    /// target where a re-started ease-out would leap at its steep start every time.</summary>
+    public static readonly LayoutTransition RowsReflow = HeightReflow with
+    {
+        Dynamics = TransitionDynamics.Spring(ReflowMs / 1000f, RowsDamping), AnimateDuringResize = true,
+    };
+
+    /// <summary><see cref="RowsReflow"/>'s damping: critical, so the height never overshoots its rows.</summary>
+    const float RowsDamping = 1f;
+
+    /// <summary>A head whose height a WRAP decides (Home's greeting, which takes a second line as the row narrows): <see cref="HeightReflow"/> that keeps
+    /// easing while the window is dragged, so the line it gains or drops glides and the page under it rides it instead of stepping by a line.</summary>
+    public static readonly LayoutTransition HeadReflow = HeightReflow with { AnimateDuringResize = true };
+
     /// <summary>A part whose WIDTH steps with the tier (a page inset): it eases through real layout, so what follows it rides it.</summary>
     public static readonly LayoutTransition WidthReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);

@@ -20,6 +20,7 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Signals;
 
 namespace Wavee;
 
@@ -50,24 +51,46 @@ public static class GridFill
     public static float LastWidth(float width, int rest, float gap) => rest <= 1 ? width : (width - (rest - 1) * gap) / rest;
 
     /// <summary>A grid that lays its cards out at the width it measures: <paramref name="fit"/> maps the width to the columns that fit it,
-    /// <paramref name="build"/> builds the cards at (fit, width) with <see cref="Build"/>. Rebuilt for every width it is laid out at (the
-    /// cards' widths are the width's), every card keeping its node: a resize re-flows the same cards.</summary>
-    public static Element Of(string key, Func<float, int> fit, Func<int, float, Element> build, float fallback)
-        => FluentGpu.Controls.Responsive.Of(key, w => build(fit(w), w), fallback: fallback);
+    /// <paramref name="build"/> builds the cards at (fit, width) with <see cref="Build"/>, every card keeping its node: a column change re-flows
+    /// the same cards.
+    /// <para>The fit is chosen at the grid's STRUCTURE width (the width it lands at while a width reflow eases it: a tier commit's margins), so the
+    /// columns change once per slide, never mid-reflow, and the cards are rebuilt only when the fit changes. Every other width (each frame of a
+    /// window drag) reaches the cards through their bound widths (<see cref="Across.Live"/>): the cells re-lay out at their share of the live
+    /// width, at once, and nothing re-renders. A new fit is a structure step of the grid (Responsive.Of: on a drag frame the body around it eases
+    /// the rows it gains or loses, and its cards slide to their new cells).</para></summary>
+    public static Element Of(string key, Func<float, int> fit, Func<int, Across, Element> build, float fallback)
+        => FluentGpu.Controls.Responsive.Of<int>(key, (structure, _) => fit(structure), (f, live) => build(f, new Across(live.Peek(), live)),
+            fallback: fallback);
+
+    /// <summary>The width a grid's cards share: a number (a page of a paged grid, built at its width), or the grid's live width, which the cells
+    /// bind (<see cref="Live"/>) so a width that keeps the columns re-lays them out without a rebuild.</summary>
+    public readonly record struct Across(float Width, IReadSignal<float>? Live = null)
+    {
+        public static implicit operator Across(float width) => new(width);
+    }
 
     /// <summary>A grid of <paramref name="count"/> cards at the columns <see cref="Columns"/> picks from the fit.</summary>
-    public static Element Responsive(string key, int count, Func<float, int> fit, Func<int, float, Element> build, float fallback)
+    public static Element Responsive(string key, int count, Func<float, int> fit, Func<int, Across, Element> build, float fallback)
         => Of(key, fit, (f, w) => build(Columns(count, f), w), fallback);
 
     /// <summary>The cards at <paramref name="cols"/> columns across <paramref name="width"/>, in ONE wrapping row (so a card keeps its parent,
     /// and its node, whatever the column count): the full rows' cards a column wide, the last row's cards sharing its width (grow-only;
     /// <paramref name="lone"/>, when given, draws a lone last card in its wide form). <paramref name="rowH"/> is the rows' fixed height
     /// (NaN: each row its tallest card); <paramref name="rowGap"/> the step between rows, <paramref name="colGap"/> between columns.</summary>
-    public static Element Build(Element[] cells, int cols, float width, float colGap, float rowGap, float rowH = float.NaN, Func<Element>? lone = null)
+    public static Element Build(Element[] cells, int cols, Across width, float colGap, float rowGap, float rowH = float.NaN, Func<Element>? lone = null)
     {
         cols = Math.Max(1, cols);
         int n = cells.Length, rest = Remainder(n, cols), full = n - rest;
-        float cell = CellWidth(width, cols, colGap), last = LastWidth(width, rest, colGap);
+        float w = width.Live is { } l0 && l0.Peek() > 0f ? l0.Peek() : width.Width;
+        float cell = CellWidth(w, cols, colGap), last = LastWidth(w, rest, colGap);
+        // Bound to the live width: one thunk for the full rows' cells, one for the last row's (the grid rebuilds only for new columns).
+        Prop<float> cellW = MathF.Max(0f, cell - Slack), lastW = MathF.Max(0f, last - Slack);
+        if (width.Live is { } live)
+        {
+            int c = cols, r = rest;
+            cellW = Prop.Of(() => MathF.Max(0f, CellWidth(live.Value, c, colGap) - Slack));
+            lastW = Prop.Of(() => MathF.Max(0f, LastWidth(live.Value, r, colGap) - Slack));
+        }
         var kids = new Element[n];
         for (int i = 0; i < n; i++)
         {
@@ -77,8 +100,11 @@ public static class GridFill
             {
                 Key = c.Key is { Length: > 0 } k ? "fill:" + k : null,
                 Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Height = rowH,
+                // The cell moves to its new place when the columns change, on the card's own clock (the theme's motion; none under reduced motion):
+                // the card stands still inside its cell, so the cell carries the move, through a window drag too.
+                Layout = MoveOf(c.Layout),
                 // The cell's width less a hair, then grown: rounding never pushes a full row's last card onto the next line.
-                Width = MathF.Max(0f, (inLast ? last : cell) - Slack), Grow = 1f, Shrink = 0f,
+                Width = inLast ? lastW : cellW, Grow = 1f, Shrink = 0f,
                 // The wrap's gap is the column gap; a row after the first steps by the row gap instead.
                 Margin = i >= cols ? new Edges4(0f, rowGap - colGap, 0f, 0f) : default,
                 Children = [c],
@@ -89,6 +115,12 @@ public static class GridFill
 
     /// <summary>What a card's basis gives back to rounding (it grows into it).</summary>
     const float Slack = 1f;
+
+    /// <summary>The move of a cell whose card animates with <paramref name="card"/>: its position on the card's dynamics, through a window drag too
+    /// (<see cref="LayoutTransition.AnimateDuringResize"/>: the drag starts it only when the grid's columns change). Null for a card that does
+    /// not animate.</summary>
+    static LayoutTransition? MoveOf(LayoutTransition? card)
+        => card is { } t ? new LayoutTransition(TransitionChannels.Position, t.Dynamics, AnimateDuringResize: true) : null;
 
     // ── pages of tall cards ─────────────────────────────────────────────────────────────────────────────────────────────
 

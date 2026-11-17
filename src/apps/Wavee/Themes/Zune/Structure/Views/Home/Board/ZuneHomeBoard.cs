@@ -169,11 +169,12 @@ internal static class ZuneHomeBoard
     /// <summary>The board: its width, the measured bands, the items memo, the reorder, the turned tiles, the keys.</summary>
     internal sealed class BoardView : Component
     {
-        readonly Signal<float> _width = new(0f);
+        Memo<PackMetrics>? _metrics;
+        IReadSignal<float> _width = s_noWidth;
+        static readonly IReadSignal<float> s_noWidth = new Signal<float>(0f);
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
         readonly Dictionary<string, Signal<bool>> _turned = new(StringComparer.Ordinal);
         readonly Signal<bool> _titleHover = new(false);
-        readonly Action<RectF> _onBounds;
         readonly Action _reveal;
         BoardProps? _p;
         PackReorder<ZuneBoardItem>? _reorder;
@@ -188,8 +189,25 @@ internal static class ZuneHomeBoard
 
         public BoardView()
         {
-            _onBounds = r => { if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W; };
             _reveal = () => { if (_p?.Board.View.RingId.Peek() is { } id) _p.Board.Grid.BringIntoView(HomeBoardKeys.Tile(id)); };
+        }
+
+        // A measured body's height lands on its box in the frame that laid it out (Measured): the box follows its body with no frame between, so
+        // the body never draws past its box (or short of it) while a window drag re-lays it out. A body whose height eases (RowsResize) is first
+        // laid out at its new height and then put back at the ease's start in the same frame; the host lays the board out again after that
+        // (the bounds passes after the reflows' start), so the box ends the frame at the height the body presents.
+        // The rows whose box follows their body: a body's FIRST height re-packs the board with its re-flow (the estimate it mounted at was
+        // the rules' guess); every later one is the body's own (eased) height, which the box follows frame by frame.
+        readonly HashSet<string> _follows = new(StringComparer.Ordinal);
+
+        void Measured(Signal<float> extent, string id, float h)
+        {
+            if (h <= 0f) return;
+            float was = extent.Peek();
+            if (was <= 0f) { extent.Value = h; return; }   // the first measure: at once (the row re-flows from the rules' estimate)
+            if (MathF.Abs(h - was) <= 0.5f) return;
+            extent.Value = h;
+            _follows.Add(id);
         }
 
         Signal<float> ExtentOf(string id)
@@ -208,6 +226,13 @@ internal static class ZuneHomeBoard
         {
             var p = UseProps<BoardProps>();
             _p = p;
+            // The board's STRUCTURE width (the columns, the forms, the shortcuts' grid): the width the board lands at while a width reflow (the page's
+            // margins easing at a tier commit) resizes it, so every choice is made once per slide instead of re-made at each width the slide
+            // passes (a column count flipping mid-ease re-flowed the whole board under the slide). Sizes follow the live width: the grid measures its own.
+            _width = UseStructureWidth();
+            // The pack's metrics are discrete (the columns): read through a computed, so a width that changes no column (every frame of a drag)
+            // does not re-render the grid; the grid packs to its own measured width.
+            _metrics = UseComputed(() => _p!.Lay.Metrics(_width.Value));
             var board = p.Board;
             var view = board.View;
             view.NoEditMode = null;
@@ -255,7 +280,7 @@ internal static class ZuneHomeBoard
             {
                 KeyOf = static it => it.Key,
                 EntryOf = it => EntryOf(it),
-                Metrics = () => _p!.Lay.Metrics(_width.Value),
+                Metrics = () => _metrics!.Value,
                 Controller = board.Grid,
                 Scroll = board.Scroll,
                 Reorder = _reorder,
@@ -277,7 +302,6 @@ internal static class ZuneHomeBoard
             return new BoxEl
             {
                 Key = "home:board-col", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                OnBoundsChanged = _onBounds,
                 OnKeyDown = OnKey,
                 Children = [TitleRow(board, p.Lay, editing, all), section],
             };
@@ -395,16 +419,22 @@ internal static class ZuneHomeBoard
             if (HomeShortcuts.IsGrid(e))
             {
                 float grid = ExtentOf(e.Id).Value;
-                return new PackEntry(PackEntryKind.Row, Extent: grid > 0f ? grid : ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), _width.Value));
+                return grid > 0f
+                    ? new PackEntry(PackEntryKind.Row, Flags: _follows.Contains(e.Id) ? PackFlags.Follows : PackFlags.None, Extent: grid)
+                    : new PackEntry(PackEntryKind.Row, Extent: ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), _width.Value));
             }
             float open = _p.Board.View.OpenId.Value == e.Id ? ZuneHomeBoardRules.OpenExtent(e.Source) : 0f;
             float full = 0f;
+            bool measured = false;
             if (ZuneHomeBoardRules.SizeOf(e) == HomeSize.Full)
             {
                 full = ExtentOf(e.Id).Value;
-                if (full <= 0f) full = FullEstimate(e, _p.Home);
+                measured = full > 0f;
+                if (!measured) full = FullEstimate(e, _p.Home);
             }
-            return ZuneHomeBoardRules.EntryOf(e, lay, full, open);
+            var entry = ZuneHomeBoardRules.EntryOf(e, lay, full, open);
+            // A measured band's extent is its body's height, which eases itself (RowsResize): the bands follow it frame by frame.
+            return measured && _follows.Contains(e.Id) && open <= 0f && entry.Kind == PackEntryKind.Band ? entry with { Flags = entry.Flags | PackFlags.Follows } : entry;
         }
 
         /// <summary>A band's height before its body has laid out: the Home tier record's own numbers for the bodies it knows.</summary>
@@ -438,6 +468,7 @@ internal static class ZuneHomeBoard
             }
             // A band: its body lays out at its own height inside the packed box, and that height becomes the box (by the re-flow).
             var extent = ExtentOf(e.Id);
+            string id = e.Id;
             var tile = grid ? ShortcutGrid.Create(board, Shortcuts(), _width.Peek()) : board.Tile(e, cell, s_full);
             return new BoxEl
             {
@@ -447,7 +478,11 @@ internal static class ZuneHomeBoard
                     new BoxEl
                     {
                         Direction = 1, MinWidth = 0f, Grow = 0f, Shrink = 0f, AlignItems = FlexAlign.Stretch,
-                        OnBoundsChanged = r => { if (r.H > 0f && MathF.Abs(r.H - extent.Peek()) > 0.5f) extent.Value = r.H; },
+                        // A body whose rows change with the width (a grid gaining or losing a column, a shelf's tiles stepping a size, the shortcuts'
+                        // page) eases to its new height through real layout, so the box measured here, the packed band and every band under it ride
+                        // the ease instead of stepping by the difference on the frame the columns change.
+                        Layout = ZuneMotion.RowsResize,
+                        OnBoundsChanged = r => Measured(extent, id, r.H),
                         Children = [tile],
                     },
                 ],

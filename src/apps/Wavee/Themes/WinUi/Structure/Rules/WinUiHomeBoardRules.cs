@@ -203,11 +203,8 @@ public static class WinUiHomeBoardRules
     /// <summary>The now-playing card's progress bar (3) and its transport buttons (32).</summary>
     public const float ProgressH = 3f, TransportBox = 32f;
 
-    /// <summary>A full row's measured height applies once the board's width has held for a settle tick and the bodies report the same height two
-    /// ticks running (ticked every 50 ms while one differs or the width moves), and only when it differs from the packed height by more than half a
-    /// DIP; a body still flapping after <see cref="ExtentFlapTicks"/> still ticks lands at the taller height it reported.</summary>
-    public const float ExtentSettleTickMs = 50f, ExtentSlop = 0.5f;
-    public const int ExtentFlapTicks = 4;
+    /// <summary>A full row's measured height moves its box only when it differs from the packed height by more than half a DIP.</summary>
+    public const float ExtentSlop = 0.5f;
 
     /// <summary>The blank cards of a loading shelf's placeholder.</summary>
     public const int SeedCards = 6;
