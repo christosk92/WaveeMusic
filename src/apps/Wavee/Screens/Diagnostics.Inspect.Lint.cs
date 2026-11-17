@@ -1814,20 +1814,22 @@ public static partial class Diagnostics
 
         /// <summary>Is the run's visible box inside the feather of its nearest scroller's edge fade, on an edge that fades now (content beyond it): a
         /// run sliding under the fade is on its way out of view and is read once it is scrolled in (audit B8: WinUI's concert "Buy tickets" read
-        /// 1.05 : 1 half-dissolved under the list's foot fade). A scroller with no recorded band is never skipped.</summary>
+        /// 1.05 : 1 half-dissolved under the list's foot fade). Every scroller up the chain is asked, not only the nearest: a run in a horizontal
+        /// shelf strip (no band of its own) can slide under the PAGE's top fade (Zune Home's Spine Shelf Play disc read 1.72 : 1 half under it).
+        /// A scroller with no recorded band excuses nothing.</summary>
         static bool UnderScrollFade(Snapshot s, Node n)
         {
             for (int a = n.Parent; a >= 0; a = s.Nodes[a].Parent)
             {
                 Node up = s.Nodes[a];
-                if (up.ScrollAxis == 0) continue;
-                if (up.FadeBand <= 0f || up.Visible.IsEmpty) return false;
+                if (up.ScrollAxis == 0 || up.FadeBand <= 0f || up.Visible.IsEmpty) continue;
                 RectF v = n.Visible, sv = up.Visible;
-                if (up.ScrollAxis == 2)
-                    return (Fades(up, EdgeMask.Bottom) && up.ScrollOffset < up.ScrollMax - Slack && v.Bottom > sv.Bottom - up.FadeBand)
-                        || (Fades(up, EdgeMask.Top) && up.ScrollOffset > Slack && v.Y < sv.Y + up.FadeBand);
-                return (Fades(up, EdgeMask.Right) && up.ScrollOffset < up.ScrollMax - Slack && v.Right > sv.Right - up.FadeBand)
-                    || (Fades(up, EdgeMask.Left) && up.ScrollOffset > Slack && v.X < sv.X + up.FadeBand);
+                bool under = up.ScrollAxis == 2
+                    ? (Fades(up, EdgeMask.Bottom) && up.ScrollOffset < up.ScrollMax - Slack && v.Bottom > sv.Bottom - up.FadeBand)
+                        || (Fades(up, EdgeMask.Top) && up.ScrollOffset > Slack && v.Y < sv.Y + up.FadeBand)
+                    : (Fades(up, EdgeMask.Right) && up.ScrollOffset < up.ScrollMax - Slack && v.Right > sv.Right - up.FadeBand)
+                        || (Fades(up, EdgeMask.Left) && up.ScrollOffset > Slack && v.X < sv.X + up.FadeBand);
+                if (under) return true;
             }
             return false;
         }

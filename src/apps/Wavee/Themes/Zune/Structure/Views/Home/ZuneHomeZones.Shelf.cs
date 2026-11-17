@@ -56,10 +56,18 @@ internal static partial class ZuneHomeZones
 
     // ── the spine ──
 
-    static ColorF SpineColour(ShelfItem item) => item.Accent != 0u ? ColorScience.ToColor(item.Accent) : Tok.FillSolidBase;
+    /// <summary>The cover's own colour as a flat block, a shade deeper or lighter where its ink would not reach AA on it (a mid-tone purple gave
+    /// white 4.47 : 1 on spine 07): the hue stays, the number and the title read.</summary>
+    static ColorF SpineColour(ShelfItem item)
+    {
+        var c = CoverColour(item);
+        return ColorContrast.EnsureContrast(c, ColorContrast.PickContrast(c));
+    }
+
+    static ColorF CoverColour(ShelfItem item) => item.Accent != 0u ? ColorScience.ToColor(item.Accent) : Tok.FillSolidBase;
 
     /// <summary>The block's ink: whichever of the near-black and the white reads better on its colour (the concept's luminance flip, by contrast).</summary>
-    static ColorF SpineInk(ShelfItem item) => ColorContrast.PickContrast(SpineColour(item));
+    static ColorF SpineInk(ShelfItem item) => ColorContrast.PickContrast(CoverColour(item));
 
     static TextEl SpineTitle(ShelfItem item, ColorF ink) => R.Type.Heading(item.Title) with
     {
@@ -194,7 +202,7 @@ internal static partial class ZuneHomeZones
 
     static GradientSpec ShelfSpineHoverWash(ShelfItem item)
     {
-        var c = ColorF.Lerp(SpineColour(item), R.OnMedia.Ink, Z.HoverMix);
+        var c = ColorContrast.EnsureContrast(ColorF.Lerp(SpineColour(item), R.OnMedia.Ink, Z.HoverMix), SpineInk(item));   // the hover holds the ink too
         return new GradientSpec(GradientShape.Linear, 0f, [new GradientStop(0f, c), new GradientStop(1f, c)]);
     }
 
