@@ -956,7 +956,50 @@ public static partial class Controls
             }
         }
         Flush();
+        FoldBreaks(spans);
         return spans;
+    }
+
+    /// <summary>Line breaks as a reader expects them, whatever the markup did: no break before the first word or after the last, and at most
+    /// one blank line between two blocks. Publishers paste runs of four &lt;br /&gt; between paragraphs and wrap blocks in &lt;p&gt; AND &lt;br&gt;;
+    /// drawn verbatim that was a screen of empty lines (owner 2026-11-18, audiobook About). Whitespace between breaks goes with them. Spans that
+    /// end up empty are removed. The run is carried across spans (a break is often a span of its own between two styled runs).</summary>
+    static void FoldBreaks(List<TextSpan> spans)
+    {
+        var sb = new StringBuilder();
+        int pending = 0;          // breaks seen since the last visible character, not yet written
+        bool seenText = false;
+        for (int k = 0; k < spans.Count; k++)
+        {
+            string t = spans[k].Text;
+            if (t.IndexOf('\n') < 0 && pending == 0)
+            {
+                if (!seenText && t.Trim().Length > 0) seenText = true;
+                continue;
+            }
+            sb.Clear();
+            for (int c = 0; c < t.Length; c++)
+            {
+                char ch = t[c];
+                if (ch == '\n') { pending++; continue; }
+                if (ch is ' ' or '\t' or '\r')
+                {
+                    if (pending > 0) continue;               // whitespace inside a break run goes with it
+                    sb.Append(ch);
+                    continue;
+                }
+                if (pending > 0)
+                {
+                    if (seenText) sb.Append('\n', Math.Min(pending, 2));
+                    pending = 0;
+                }
+                seenText = true;
+                sb.Append(ch);
+            }
+            spans[k] = spans[k] with { Text = sb.ToString() };
+        }
+        // breaks still pending at the end are dropped (no blank lines after the last word); empty spans go
+        spans.RemoveAll(static sp => sp.Text.Length == 0);
     }
 
     // The href value from an anchor tag body (quoted or unquoted). Null if absent.
