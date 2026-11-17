@@ -153,6 +153,9 @@ public static partial class Platform
         // is a fixed constant and the secondary line is session state the two lyrics globe toggles own. Neither carries a
         // key any more, so a value persisted by an older build can never resurrect either.
         public static readonly SettingKey<int> LyricsBlurStrength = new("appearance.lyrics.blurStrength", 100);   // 0 = off, 1-100; a legacy stored -1 (the removed Auto) reads as 100, see Prefs.Lyrics.FromStored
+        // The seek rail's lyric tip: while the pointer hovers or scrubs a song's rail, the tip shows the line sung at that time
+        // (PlayerBarFacts.Seek.LyricRail). On by default; the switch is Settings > Appearance > Lyrics.
+        public static readonly SettingKey<bool> LyricsSeekTip = new("lyrics.seekTip", true);
         // On-device AI lyrics (AiLyrics, plan docs/plans/wavee/ai-lyrics-sync-implementation.md §4.1). Off by default:
         // nothing downloads until the user turns the master switch on and confirms the size.
         public static readonly SettingKey<bool> AiLyricsEnabled = new("lyrics.ai.enabled", false);

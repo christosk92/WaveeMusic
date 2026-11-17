@@ -669,6 +669,44 @@ public static partial class Diagnostics
         /// (`TrackFlags.HasVideo`), so the play bar offers the video split and its placement menu.</summary>
         public const string VideoTrackUri = "spotify:track:tr26";
 
+        const string SeekPreviewKey = "inspect:seek-preview";
+
+        /// <summary>The source a `seekManifest=` mount publishes: the seek sheets a captured manifest names, with their real urls. The
+        /// sheet store is lent a plain HTTP client for it (the inspector's wire refuses everything), so the sheets are fetched from the
+        /// network into the scratch profile's cache exactly as the app would fetch them. Null when the file has no usable block.</summary>
+        public static Playback.Video.VideoSource? SeekManifestSource(string path)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(path));
+                if (Playback.Video.SeekPanels.Parse(doc.RootElement, SeekPreviewKey) is not { } panels) return null;
+                Playback.Video.SeekSheets.Fetcher = new FluentGpu.Media.DefaultImageFetcher();
+                return new Playback.Video.VideoSource(SeekPreviewKey, NaturalWidth: 1920, NaturalHeight: 1080) { SeekPanels = panels };
+            }
+            catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException or UnauthorizedAccessException)
+            {
+                Log.Warn("inspect", "seekManifest could not be read", ex);
+                return null;
+            }
+        }
+
+        /// <summary>The episode a `seekPreview=episode` mount plays: one with chapters (the serial show's ninth), so the merged tip shows.</summary>
+        public const string ChapterEpisodeUri = "spotify:episode:sh0e9";
+
+        /// <summary>The source a `seekPreview=on` mount publishes: no stream, only seek sheets in the two sizes the wire carries (6 x 6 cells
+        /// of 180 x 100 and 3 x 3 of 452 x 254, one frame a second for 245 s, as the measured music video). The sheets are FILES,
+        /// <c>&lt;exe&gt;/assets/seekpanels/&lt;variant&gt;/&lt;panel&gt;.jpg</c>, written beside a run copy by <c>tools/seekpanels.py</c> (every frame
+        /// carries its own time, so a render shows whether the picture and the tip's time agree); none are bundled.</summary>
+        public static Playback.Video.VideoSource SeekPreviewSource()
+        {
+            string template = Path.Combine(AppContext.BaseDirectory, "assets", "seekpanels", "{{variant_id}}", "{{panel_id}}.jpg");
+            return new Playback.Video.VideoSource(SeekPreviewKey, NaturalWidth: 1920, NaturalHeight: 1080)
+            {
+                SeekPanels = Playback.Video.SeekPanels.Uniform(SeekPreviewKey, template, durationSec: 245, stepSec: 1,
+                    [("0", 180, 100, 6, 6), ("1", 452, 254, 3, 3)]),
+            };
+        }
+
         static ManualResetEventSlim s_videoJoin = new(false);
 
         /// <summary>Offline there is no video manifest: the app's resolver would answer "no video" at once, the reducer would demote the
@@ -702,6 +740,7 @@ public static partial class Diagnostics
         {
             if (!Video.State.Surface.Peek().Equals(s_bootVideo)) Video.State.Commit(in s_bootVideo);
             if (Playback.Video.Phase.Peek() != s_bootPhase) Playback.Video.Phase.Value = s_bootPhase;   // a `join=` mount's phase
+            if (Playback.Video.Source.Peek() is { Key: SeekPreviewKey }) Playback.Video.Source.Value = null;   // a `seekPreview=on` or `seekManifest=` mount's source
             if (fakePlayer is null) return;
             if (ReferenceEquals(Playback.Video.Player.Peek().Player, fakePlayer)) Playback.Video.Player.Value = s_bootPlayer;
             _ = fakePlayer.DisposeAsync().AsTask();

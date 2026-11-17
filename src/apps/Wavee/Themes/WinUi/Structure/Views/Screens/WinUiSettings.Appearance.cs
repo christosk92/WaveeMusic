@@ -112,6 +112,7 @@ internal static partial class WinUiSettings
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Lyrics.Title), SectionGlyph(Tab.Appearance, "Lyrics"),
             Loc.Get(Strings.Settings.Lyrics.Subtitle)));
         kids.Add(DocRow(D(Tab.Appearance, "lyricsBlur"), LyricsBlurControl()));
+        kids.Add(DocRow(D(Tab.Appearance, "lyricsSeekTip"), RowToggle(D(Tab.Appearance, "lyricsSeekTip"))));
         kids.Add(AiLyricsCard());
 
         // ── the fullscreen stage: the gallery's four settings, mirrored here with the rest of Appearance ──
