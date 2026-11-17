@@ -140,8 +140,8 @@ internal static class WinUiTransport
             OnDrag = enabled ? host.DragMove : null,
             OnClick = enabled ? host.Commit : null,
             OnDragCanceled = enabled ? host.Cancel : null,
-            OnHoverMove = props.ChapterRail && enabled ? host.HoverMove : null,
-            OnPointerExit = props.ChapterRail ? host.PointerExit : null,
+            OnHoverMove = props.HoverTip && enabled ? host.HoverMove : null,
+            OnPointerExit = props.HoverTip ? host.PointerExit : null,
             Children = [stack],
         };
     }
@@ -257,6 +257,146 @@ internal static class WinUiTransport
         Padding = WinUiTransportLayout.ReadoutPadding,
         Children = [new TextEl(Prop.Of(props.Text)) { Size = WinUiTransportLayout.ReadoutSize, Color = Tok.TextPrimary }],
     };
+
+    // ══ THE SEEK PREVIEW ════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.SeekPreview"/>: a thumbnail flyout. The acrylic card of every WinUI
+    /// flyout (the overlay radius, the flyout ring and elevation), the picture inset by 4 so its control radius sits concentric in the
+    /// card's, and one caption line: the time, and on an episode the chapter beside it. The picture is the core host's; the plate under
+    /// it is what shows until its sheet decodes.</summary>
+    public static Element SeekPreview(SeekPreviewProps props, in ViewContext ctx)
+    {
+        float width = WinUiTransportLayout.PreviewWidth;
+        var has = props.HasLabel;
+        var card = new BoxEl
+        {
+            Direction = 1, Gap = WinUiTransportLayout.PreviewGap, Padding = WinUiTransportLayout.PreviewPadding, AlignItems = FlexAlign.Center,
+            Acrylic = Tok.AcrylicFlyout, BorderColor = Tok.StrokeFlyoutDefault, BorderWidth = 1,
+            Corners = Radii.OverlayAll, Shadow = Elevation.Flyout, HitTestVisible = false,
+            Enter = WinUiTransportLayout.PreviewEnter,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "winui-seek-preview-picture", Width = width, Height = width / props.Aspect, Shrink = 0,
+                    Fill = Tok.MediaLetterbox, Corners = Radii.ControlAll, HitTestVisible = false,
+                    Children = [props.Frame(width, Radii.ControlAll)],
+                },
+                new BoxEl
+                {
+                    Direction = 0, Gap = WinUiTransportLayout.PreviewCaptionGap, AlignItems = FlexAlign.Center, MaxWidth = width, HitTestVisible = false,
+                    Children =
+                    [
+                        new TextEl(Prop.Of(props.Time))
+                        {
+                            Size = WinUiTransportLayout.PreviewTimeSize, Weight = WinUiTransportLayout.PreviewTimeWeight, Color = Tok.TextPrimary,
+                            FontFeatures = FontFeatures.TabularFigures,
+                        },
+                        new TextEl(Prop.Of(props.Label))
+                        {
+                            Size = WinUiTransportLayout.PreviewLabelSize, Color = Tok.TextSecondary, Shrink = 1, MinWidth = 0,
+                            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Visible = Prop.Of(has),
+                        },
+                    ],
+                },
+            ],
+        };
+        bool overButtons = props.Surface == SeekRailSurface.Bar;
+        return new BoxEl
+        {
+            Padding = overButtons ? WinUiTransportLayout.PreviewLiftBar : WinUiTransportLayout.PreviewLift, HitTestVisible = false,
+            Children = [card],
+        };
+    }
+
+    // ══ THE LYRIC TIP ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.SeekLyric"/>: the chapter tip's acrylic card (the ToolTip's padding and
+    /// ring) with the time over the lyric line, the line wrapped to two lines at most. The card keeps the seek preview's air: clear of the
+    /// thumb, and on the player bar above the whole bar so the transport buttons stay in view.</summary>
+    public static Element SeekLyric(SeekLyricProps props, in ViewContext ctx)
+    {
+        var card = new BoxEl
+        {
+            Direction = 1, Gap = WinUiTransportLayout.ChapterTipGap, Width = WinUiTransportLayout.ChapterTipWidth,
+            // A SOLID card, as the engine's teaching tip is: a frosted body cannot be carried into the turned pointer, and a pointer of
+            // another colour than its card reads as a separate thing.
+            Fill = Tok.FillSolidTertiary, BorderColor = Tok.StrokeSurfaceDefault, BorderWidth = 1,
+            Corners = Radii.ControlAll, Shadow = Elevation.Tooltip, Padding = WinUiTransportLayout.ChapterTipPadding,
+            HitTestVisible = false,
+            Children =
+            [
+                new TextEl(Prop.Of(props.Time))
+                {
+                    Size = WinUiTransportLayout.ChapterTipTimeSize, Weight = WinUiTransportLayout.ChapterTipWeight, Color = Tok.TextSecondary,
+                    FontFeatures = FontFeatures.TabularFigures,
+                },
+                new TextEl(Prop.Of(props.Line))
+                {
+                    Size = WinUiTransportLayout.ChapterTipTitleSize, Weight = WinUiTransportLayout.ChapterTipWeight,
+                    MaxLines = WinUiTransportLayout.ChapterTipTitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+                    Color = Tok.TextPrimary, MinWidth = 0, Visible = Prop.Of(props.HasLine),
+                },
+            ],
+        };
+        // Close to the rail, and tied to the pointer: a small wedge on the card's foot that stays on the POINTER (the core host moves it when
+        // the window pushes the card sideways). It paints after the card and laps its edge by one pixel, so the edge does not cut its base.
+        return new BoxEl
+        {
+            Direction = 1, HitTestVisible = false, Enter = WinUiTransportLayout.PreviewEnter,
+            Children =
+            [
+                new BoxEl
+                {
+                    ZStack = true, HitTestVisible = false,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Padding = WinUiTransportLayout.LyricTipSides, HitTestVisible = false,
+                            Children = [card, new BoxEl { Height = WinUiTransportLayout.LyricBeakShort, HitTestVisible = false }],
+                        },
+                        new BoxEl
+                        {
+                            Key = "seek-lyric-pointer", AlignSelf = FlexAlign.End, Height = WinUiTransportLayout.LyricBeakBand, ClipToBounds = true, ZStack = true,
+                            HitTestVisible = false,
+                            Children =
+                            [
+                                new BoxEl
+                                {
+                                    OffsetY = WinUiTransportLayout.LyricBeakRise, HitTestVisible = false,
+                                    Children =
+                                    [
+                                        props.Pointer(WinUiTransportLayout.LyricBeakHalf, WinUiTransportLayout.LyricBeakKeepClear, static at => new BoxEl
+                                        {
+                                            Width = WinUiTransportLayout.LyricBeakLong, Height = WinUiTransportLayout.LyricBeakLong, Shrink = 0, ZStack = true,
+                                            Transform = at, HitTestVisible = false,
+                                            Children =
+                                            [
+                                                new BoxEl
+                                                {
+                                                    Width = WinUiTransportLayout.LyricBeakFill, Height = WinUiTransportLayout.LyricBeakFill,
+                                                    OffsetX = WinUiTransportLayout.LyricBeakFillInset, OffsetY = WinUiTransportLayout.LyricBeakFillInset,
+                                                    Rotation = WinUiTransportLayout.LyricBeakTurn, Fill = Tok.FillSolidTertiary, HitTestVisible = false,
+                                                },
+                                                new PolylineStrokeEl
+                                                {
+                                                    Width = WinUiTransportLayout.LyricBeakLong, Height = WinUiTransportLayout.LyricBeakLong,
+                                                    P0 = WinUiTransportLayout.LyricBeakP0, P1 = WinUiTransportLayout.LyricBeakP1, P2 = WinUiTransportLayout.LyricBeakP2,
+                                                    PointCount = WinUiTransportLayout.LyricBeakPoints, Color = Tok.StrokeSurfaceDefault, Thickness = 1, RoundCaps = false,
+                                                },
+                                            ],
+                                        }),
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                new BoxEl { Height = WinUiTransportLayout.LyricTipGap, HitTestVisible = false },
+            ],
+        };
+    }
 
     // ══ THE TIME LABELS ═════════════════════════════════════════════════════════════════════════════════════════════════
 

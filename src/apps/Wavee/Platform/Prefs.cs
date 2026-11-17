@@ -191,6 +191,21 @@ public static partial class Prefs
             Bump();
         }
 
+        /// <summary>Reactive read of the seek rail's lyric tip switch (on by default): may a song's seek rail show the line sung under
+        /// the pointer while it hovers or scrubs.</summary>
+        public static bool SeekTip()
+        {
+            _ = Epoch.Value;
+            return Platform.Settings.Get(Platform.Keys.LyricsSeekTip);
+        }
+
+        /// <summary>Persist the lyric tip switch and bump, so every seek rail re-reads it on the same frame.</summary>
+        public static void SetSeekTip(bool on)
+        {
+            Platform.Settings.Set(Platform.Keys.LyricsSeekTip, on);
+            Bump();
+        }
+
         /// <summary>Persist the blur strength clamped to 0-100 (0 = off) and bump. There is no Auto value to write.</summary>
         public static void SetBlurStrength(int value)
         {
