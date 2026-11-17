@@ -85,6 +85,8 @@ public static class SpineShelfRules
     public const float ClipMs = 30_000f;
     /// <summary>A live tile's share of the tile row against 1 for each other tile.</summary>
     public const float LiveShare = 1.7f;
+    /// <summary>A song tile's cover (a song without a canvas) takes at most this share of the tile's width (the concept's min(70 %, …)).</summary>
+    public const float CoverShare = 0.7f;
     /// <summary>The clip's volume against the user's own.</summary>
     public const float ClipVolume = 0.4f;
 

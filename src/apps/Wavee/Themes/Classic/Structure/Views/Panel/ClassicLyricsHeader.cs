@@ -16,6 +16,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -28,14 +29,15 @@ internal static class ClassicLyricsHeader
     {
         var begin = ctx.Hooks.UseContext(SharedTransition.Begin);   // the stage's art flight is captured before the mount (null headless)
         var facts = props.Read();
+        float box = ClassicPanelTiers.HeaderButtonBox(ctx.WindowTier());   // the sheet's 40 target at Compact
         var kids = new List<Element>(6) { ClassicPanel.TitleText(facts.Title) };
         if (facts.HasSecondLine)
-            kids.Add(ClassicPanel.HeaderButton(Icons.Globe, facts.SecondLineTip, props.ToggleSecondLine, active: facts.SecondLineActive));
+            kids.Add(ClassicPanel.HeaderButton(Icons.Globe, facts.SecondLineTip, box, props.ToggleSecondLine, active: facts.SecondLineActive));
         // The on-device AI sparkle: its own component (only it subscribes the AI status), hidden while the feature is off.
         kids.Add(Embed.Comp(props, static () => new ClassicLyricsSparkle()) with { Key = "ai-lyrics-header" });
-        kids.Add(ClassicPanel.HeaderButton(Icons.FullScreen, facts.ExpandTip, () => props.Expand(begin)));
+        kids.Add(ClassicPanel.HeaderButton(Icons.FullScreen, facts.ExpandTip, box, () => props.Expand(begin)));
         kids.Add(Embed.Comp(props, static () => new ClassicLyricsInspectorButton()));
-        kids.Add(ClassicPanel.CloseButton(props.Close));
+        kids.Add(ClassicPanel.CloseButton(props.Close, box));
         return ClassicPanel.HeaderBox(kids.ToArray());
     }
 }
@@ -64,6 +66,7 @@ internal sealed class ClassicLyricsSparkle : Component
     {
         var props = _props = UseProps<PanelLyricsHeaderProps>();
         var facts = _facts = props.Sparkle();
+        float box = ClassicPanelTiers.HeaderButtonBox(TierContext.WindowOf(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers));
         // Reduced motion is a VALUE folded into the verdict: the glyph simply stays at rest.
         _pulse = facts.Visible && facts.Working && !Design.Reduced;
         // Keyed on the verdict only: a progressive publish (LinesReady moves) re-renders the tooltip, never re-seeds
@@ -74,7 +77,7 @@ internal sealed class ClassicLyricsSparkle : Component
         return new BoxEl
         {
             Shrink = 0f,
-            Children = [ClassicPanel.HeaderButton(Icons.RefineSparkle, facts.Tip, _click, active: facts.Active)],
+            Children = [ClassicPanel.HeaderButton(Icons.RefineSparkle, facts.Tip, box, _click, active: facts.Active)],
         };
     }
 
@@ -105,6 +108,7 @@ internal sealed class ClassicLyricsInspectorButton : Component
         var overlay = UseContext(Overlay.Service);
         // subscribes to the setting and to presentation mode → a flip of either composes the glyph in/out live
         if (!props.InspectorShown()) return new BoxEl { Visible = false };
-        return ClassicPanel.HeaderButton(Icons.Code, Loc.Get(Strings.Player.InspectLyrics), () => props.OpenInspector(overlay));
+        float box = ClassicPanelTiers.HeaderButtonBox(TierContext.WindowOf(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers));
+        return ClassicPanel.HeaderButton(Icons.Code, Loc.Get(Strings.Player.InspectLyrics), box, () => props.OpenInspector(overlay));
     }
 }
