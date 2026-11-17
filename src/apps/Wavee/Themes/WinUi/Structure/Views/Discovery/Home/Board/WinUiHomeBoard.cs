@@ -72,7 +72,7 @@ internal static class WinUiHomeBoard
 
         public BoardView()
         {
-            _onBounds = r => { if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W; };
+            _onBounds = r => { if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) { _width.Value = r.W; WidthMoved(); } };
             _onBand = r => _bandH = r.H;
         }
 
@@ -89,19 +89,24 @@ internal static class WinUiHomeBoard
 
         float PackedOf(string id) => _packed.TryGetValue(id, out var h) ? h : 0f;
 
-        readonly Dictionary<string, float> _seen = new(StringComparer.Ordinal);   // a body's latest laid-out height, not yet applied
+        readonly Dictionary<string, float> _seen = new(StringComparer.Ordinal);    // a body's latest laid-out height, not yet applied
+        readonly Dictionary<string, float> _last = new(StringComparer.Ordinal);    // the same at the previous settle tick
+        readonly Dictionary<string, float> _most = new(StringComparer.Ordinal);    // the tallest a still-flapping body reported while the width held
         readonly Signal<bool> _settling = new(false);
-        long _lastSeenMs;
+        float _widthAtTick = -1f;
+        bool _widthMoving;
+        int _flapTicks;
         Action? _settle;
 
-        /// <summary>A full row's body laid out at <paramref name="h"/>: remember it; the settle tick applies it once the bodies hold still.</summary>
+        /// <summary>A full row's body laid out at <paramref name="h"/>: remember it; the settle tick applies it once the board's width and the bodies
+        /// hold still. A body that outgrew its box while the width holds (data arriving, a form change at a tier step) takes its height at once, so
+        /// its content is never cut. While the width eases (the nav pane collapsing and the column widening over its slide) nothing applies: a body
+        /// re-measured at every in-between width would balloon to the narrowest width's height and then wait to shrink.</summary>
         void Measured(string id, float h)
         {
             if (h <= 0f) return;
             if (MathF.Abs(h - PackedOf(id)) <= WinUiHomeBoardRules.ExtentSlop) { _seen.Remove(id); return; }
-            // A body that outgrew its box (a form change at a tier crossing: the daylist card stacking at Compact) takes its height at once, so its
-            // content is never cut while it waits; only a shrink (or a body's transient first pass) waits for the bodies to settle.
-            if (h > PackedOf(id))
+            if (h > PackedOf(id) && !_widthMoving && !_settling.Peek())
             {
                 _seen.Remove(id);
                 _packed[id] = h;
@@ -109,18 +114,50 @@ internal static class WinUiHomeBoard
                 return;
             }
             _seen[id] = h;
-            _lastSeenMs = Environment.TickCount64;
-            _settling.Value = true;
+            if (!_settling.Peek()) _settling.Value = true;
         }
 
-        /// <summary>The settle tick (only while a body differs from its box): when no body has changed for the settle time, every pending height is
-        /// written at once, so the board re-packs ONE time (and slides) instead of following each pass of a body's own layout.</summary>
+        /// <summary>The board's width moved (a resize step, a column easing): the settle tick watches it until it holds.</summary>
+        void WidthMoved()
+        {
+            _widthMoving = true;
+            if (!_settling.Peek()) _settling.Value = true;
+        }
+
+        /// <summary>The settle tick (every 50 ms while a body differs from its box or the width moves): once the width has held for a tick and every
+        /// pending body reported the same height two ticks running, all pending heights are written at once, so the board re-packs ONE time and the
+        /// re-flow slides it to the true height. A body that keeps flapping between two heights (a layout that settles in two passes) lands at the
+        /// taller of them after a few still ticks, never waits on a wall clock that each pass restarts.</summary>
         void Settle()
         {
-            if (Environment.TickCount64 - _lastSeenMs < WinUiHomeBoardRules.ExtentSettleMs) return;
-            foreach (var (id, h) in _seen) ExtentOf(id).Value = h;
+            float w = _width.Peek();
+            bool widthHeld = MathF.Abs(w - _widthAtTick) <= 0.25f;
+            _widthAtTick = w;
+            if (!widthHeld) { _widthMoving = true; Snapshot(); return; }
+            _widthMoving = false;
+            bool still = _seen.Count == _last.Count;
+            if (still)
+                foreach (var (id, h) in _seen)
+                    if (!_last.TryGetValue(id, out float was) || MathF.Abs(was - h) > WinUiHomeBoardRules.ExtentSlop) { still = false; break; }
+            foreach (var (id, h) in _seen) _most[id] = _most.TryGetValue(id, out float m) ? MathF.Max(m, h) : h;
+            if (!still && ++_flapTicks < WinUiHomeBoardRules.ExtentFlapTicks) { Snapshot(); return; }
+            foreach (var (id, h) in _seen)
+            {
+                float land = still ? h : _most[id];
+                _packed[id] = land;
+                ExtentOf(id).Value = land;
+            }
             _seen.Clear();
+            _last.Clear();
+            _most.Clear();
+            _flapTicks = 0;
             _settling.Value = false;
+        }
+
+        void Snapshot()
+        {
+            _last.Clear();
+            foreach (var (id, h) in _seen) _last[id] = h;
         }
 
         public override Element Render()
