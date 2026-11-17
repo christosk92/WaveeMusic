@@ -93,6 +93,10 @@ internal static class ClassicPlayerBarLayout
     /// <summary>The title line's weight.</summary>
     public const int TitleWeight = 700;
 
+    /// <summary>The plain (non-scrolling) title's trailing pad in the full bar: one step of the trim tip's 4-DIP measuring grid, so a title that fits its
+    /// hugging slot is never read as cut.</summary>
+    public const float TitleTrimPad = 4f;
+
     /// <summary>The gap between the title and the artist line.</summary>
     public const float MetaGap = 2f;
 

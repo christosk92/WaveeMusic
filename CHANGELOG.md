@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.10] - unreleased
+
+### Fixed
+
+- **Player bar title.** In Classic the title is a link only over its text: the empty space beside a short title no longer lights it up or opens the album. (#225)
+- **Heart beside the title.** In a wide window the heart in Classic's player bar sits right after the title instead of at the far end of its area. (#226)
+
 ## [0.3.9] - 2026-11-14
 
 ### Added
