@@ -126,8 +126,9 @@ internal static class WinUiPodcastEpisode
                         Shrink = 1f, MinWidth = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = p.OpenShow,
                         Children = [BodyStrong(v.ShowTitle) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
                     },
-                    Icon(Icons.ChevronRight, P.CrumbChevron, Tok.TextTertiary),
-                    Body(v.Crumb) with { Color = Tok.TextSecondary, Shrink = 0f, Wrap = TextWrap.NoWrap },
+                    // No episode number on the wire: the show's link stands alone (no chevron leading to nothing).
+                    Icon(Icons.ChevronRight, P.CrumbChevron, Tok.TextTertiary) with { Visible = v.Crumb.Length > 0 },
+                    Body(v.Crumb) with { Color = Tok.TextSecondary, Shrink = 0f, Wrap = TextWrap.NoWrap, Visible = v.Crumb.Length > 0 },
                 ],
             };
             TextEl title = (lay.Stacked ? Subtitle(e.Title) : Title(e.Title)) with
@@ -156,11 +157,16 @@ internal static class WinUiPodcastEpisode
             var kids = new List<Element>(2);
             if (glyph is not null) kids.Add(Icon(glyph, P.CrumbChevron, Tok.OnMediaPrimary));
             kids.Add(Caption(text) with { Color = Tok.OnMediaPrimary });
-            return new BoxEl
+            // A Start layer fills the still: the tag hugs its words inside a full layer that places it (top-left, or bottom-right).
+            var tag = new BoxEl
             {
                 Direction = 0, Gap = P.BarGap, AlignItems = FlexAlign.Center, Height = P.StillTagH, Padding = new Edges4(P.StillTagPadX, 0f, P.StillTagPadX, 0f),
-                Margin = Edges4.All(P.StillTagInset), AlignSelf = v, JustifySelf = h, Corners = Radii.ControlAll, Fill = Tok.MediaScrim, HitTestVisible = false,
-                Children = kids.ToArray(),
+                Corners = Radii.ControlAll, Fill = Tok.MediaScrim, Children = kids.ToArray(),
+            };
+            return new BoxEl
+            {
+                Direction = 1, Padding = Edges4.All(P.StillTagInset), HitTestVisible = false, Justify = v == FlexAlign.End ? FlexJustify.End : FlexJustify.Start,
+                AlignItems = h, Children = [tag],
             };
         }
 
