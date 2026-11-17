@@ -301,6 +301,11 @@ public static class WinUiTransportLayout
     /// page gutter (16) to either side, so a tip the window clamps stops on the gutter and not on the glass.</summary>
     public static readonly Edges4 PreviewLift = new(16f, 0f, 16f, 14f);
 
+    /// <summary>The same on the PLAYER BAR, where the transport buttons sit over the rail: the tip rises above the whole bar (the bar's
+    /// top edge is 50 above the tip's anchor, and 4 of air), so play, skip and shuffle stay in view and in reach while the pointer is on
+    /// the rail.</summary>
+    public static readonly Edges4 PreviewLiftBar = new(16f, 0f, 16f, 54f);
+
     /// <summary>The card arrives from 6 below and 3 % small while the host's tip fade runs: it rises out of the rail it belongs to.</summary>
     public static readonly EnterExit PreviewEnter = new(Dy: 6f, Sx: 0.97f, Sy: 0.97f, Active: true);
 

@@ -26,7 +26,7 @@ public static partial class Shell
     /// this component; only resource / duration / width changes rebuild its marker array.</summary>
     [CoreHost]
     sealed class BarRailTip(ChapterResources.Identity identity, bool chapterRail, Playback.Video.SeekPanels? sheets, ScrubController scrub,
-        IReadSignal<float> hoverFraction, IReadSignal<bool> hovering) : Component
+        IReadSignal<float> hoverFraction, IReadSignal<bool> hovering, SeekRailSurface surface, IReadSignal<int> precise) : Component
     {
         static readonly float[] s_noMarkers = [];
 
@@ -100,6 +100,18 @@ public static partial class Shell
             return title.Length > 0 ? title : Loc.Get(Strings.Podcast.Reader.Chapters);
         }
 
+        /// <summary>The seek preview's second line. While a scrub is slowed (precise seeking) it names the speed; otherwise an episode shows
+        /// the chapter under the pointer, and a track, while it is being scrubbed, says how to slow the scrub.</summary>
+        string PreviewLabel()
+        {
+            int step = precise.Value;
+            if (step > 0) return Loc.Get(step == 1 ? Strings.Player.SeekHalfSpeed : Strings.Player.SeekQuarterSpeed);
+            if (chapterRail) return ChapterTitle();
+            return scrub.Scrubbing.Value ? Loc.Get(Strings.Player.SeekPreciseHint) : "";
+        }
+
+        bool PreviewHasLabel() => precise.Value > 0 || (chapterRail ? HoverChapter >= 0 : scrub.Scrubbing.Value);
+
         /// <summary>The chapter tip's content: the time under the pointer, the chapter's title and its range, as live text (built once).</summary>
         Func<Element> ChapterContent()
         {
@@ -131,9 +143,10 @@ public static partial class Shell
                 Time = () => chapterRail
                     ? PodcastReaderRules.Timestamp(HoverTime)
                     : s_clockText.Get(TipMs / 1000L, static sec => Playback.TimeFormat.Clock(sec * 1000L)),
-                Label = ChapterTitle,
-                HasLabel = () => chapterRail && HoverChapter >= 0,
+                Label = PreviewLabel,
+                HasLabel = PreviewHasLabel,
                 Scrubbing = scrub.Scrubbing,
+                Surface = surface,
             };
             return () => ViewSlots.View(ViewKeys.SeekPreview, props);
         }
@@ -155,8 +168,8 @@ public static partial class Shell
         readonly Signal<int> _coarse = new(0);       // the frame the coarse layer shows
         readonly Signal<int> _fineWanted = new(0);   // the frame under the pointer, in the fine variant
         readonly Signal<int> _fine = new(-1);        // the frame the fine layer settled on (−1: none yet)
-        readonly Dictionary<int, (Prop<Affine2D> Transform, Prop<float> Opacity)> _coarseBinds = [];
-        readonly Dictionary<int, (Prop<Affine2D> Transform, Prop<float> Opacity)> _fineBinds = [];
+        readonly Dictionary<int, (Prop<Affine2D> Transform, Prop<float> Opacity, Prop<string> Source)> _coarseBinds = [];
+        readonly Dictionary<int, (Prop<Affine2D> Transform, Prop<float> Opacity, Prop<string> Source)> _fineBinds = [];
         int _fineSeen = -1;
         Action? _follow, _sharpen;
         Func<int>? _coarsePanel, _finePanel;
@@ -176,6 +189,13 @@ public static partial class Shell
                 _coarse.SetIfChanged(coarse.FrameAt(ms));
                 _fineWanted.SetIfChanged(fine.FrameAt(ms));
             });
+            // A remote set: ask for every coarse sheet as the tip opens (the pointer's first, then outwards), so by the time the pointer
+            // travels the sheets are files. They are 50-100 KB each; a three-hour podcast is about 40.
+            UseEffect(() =>
+            {
+                Playback.Video.SeekSheets.Prefetch(sheets, coarse, coarse.FrameAt(timeMs()) / coarse.PerPanel);
+                return static () => { };
+            }, DepKey.Empty);
             // The sharpen dwell: armed only while the fine layer is behind the pointer, so a resting tip runs no timer.
             bool sharpening = twoLayers && UseComputed(_sharpening ??= () => _fine.Value != _fineWanted.Value).Value;
             UseInterval(_sharpen ??= () =>
@@ -204,7 +224,7 @@ public static partial class Shell
         /// transform that scales one cell to the window and moves the cell under the pointer into it. The binds are kept per panel, so a
         /// re-render (the window of sheets moved) hands a sheet that stays the SAME thunks and rebinds nothing.</summary>
         Element Sheet(Playback.Video.SeekPanels.Variant v, int panel, Signal<int> frame, Signal<int>? gate,
-            Dictionary<int, (Prop<Affine2D> Transform, Prop<float> Opacity)> binds, float scale, float height, bool fine)
+            Dictionary<int, (Prop<Affine2D> Transform, Prop<float> Opacity, Prop<string> Source)> binds, float scale, float height, bool fine)
         {
             float unit = scale > 0f ? 1f / scale : 1f;                       // DIP per sheet pixel: the image box is the file's size
             float cellW = v.FrameW * unit, cellH = v.FrameH * unit;
@@ -226,10 +246,12 @@ public static partial class Shell
                     {
                         int f = frame.Value;
                         return f >= 0 && f / per == panel && (gate is null || gate.Value == f) ? 1f : 0f;
-                    }));
+                    }),
+                    // A remote sheet's source is its FILE once it is on disk (Playback.Video.SeekSheets); a local template is itself.
+                    Playback.Video.SeekSheets.Source(sheets.Url(v, panel)));
                 binds[panel] = bind;
             }
-            return SeekFrameBoxes.Sheet((fine ? "seek-fine:" : "seek-coarse:") + panel, sheets.Url(v, panel),
+            return SeekFrameBoxes.Sheet((fine ? "seek-fine:" : "seek-coarse:") + panel, bind.Source,
                 v.Columns * cellW, v.Rows * cellH, bind.Transform, bind.Opacity, fine);
         }
     }
@@ -248,7 +270,7 @@ public static partial class Shell
             HitTestVisible = false, Children = sheets,
         };
 
-        public static Element Sheet(string key, string source, float width, float height, Prop<Affine2D> transform, Prop<float> opacity, bool fine) => new BoxEl
+        public static Element Sheet(string key, Prop<string> source, float width, float height, Prop<Affine2D> transform, Prop<float> opacity, bool fine) => new BoxEl
         {
             Key = key, Width = width, Height = height, Shrink = 0f, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
             TransformOriginX = 0f, TransformOriginY = 0f, Transform = transform, Opacity = opacity, HitTestVisible = false,

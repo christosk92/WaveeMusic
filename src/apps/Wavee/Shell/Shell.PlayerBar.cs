@@ -543,6 +543,22 @@ public static partial class Shell
         /// card) always may: its tip covers nothing the picture repeats.</summary>
         public static bool PreviewFits(bool onMedia, float railPx) => !onMedia || railPx >= PreviewMinRailPx;
 
+        /// <summary>PRECISE SEEKING: while a scrub over a seek preview lasts, the pointer's distance from the rail (up or down) slows
+        /// the scrub: within <see cref="PreciseNearDip"/> the rail follows the pointer as always, to <see cref="PreciseFarDip"/> it moves at
+        /// half the pointer's speed, beyond that at a quarter. At a quarter a 1400 DIP rail over a four-minute video moves one
+        /// second (one preview frame) per 23 DIP of travel.</summary>
+        public const float PreciseNearDip = 48f, PreciseFarDip = 128f;
+
+        /// <summary>The precise-seeking step for a pointer <paramref name="dyFromRail"/> DIP off the rail's line: 0 full, 1 half, 2 quarter.</summary>
+        public static int PreciseStep(float dyFromRail)
+        {
+            float d = MathF.Abs(dyFromRail);
+            return d <= PreciseNearDip ? 0 : d <= PreciseFarDip ? 1 : 2;
+        }
+
+        /// <summary>How much of the pointer's travel a step passes on.</summary>
+        public static float PreciseRate(int step) => step switch { 1 => 0.5f, 2 => 0.25f, _ => 1f };
+
         /// <summary>How long the pointer rests before the tip's picture sharpens to the fine sheet: a sweep across the rail
         /// then fetches no fine sheet at all.</summary>
         public const float PreviewSharpenMs = 120f;

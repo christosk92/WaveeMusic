@@ -301,7 +301,12 @@ internal static class WinUiTransport
                 },
             ],
         };
-        return new BoxEl { Padding = WinUiTransportLayout.PreviewLift, HitTestVisible = false, Children = [card] };
+        bool overButtons = props.Surface == SeekRailSurface.Bar;
+        return new BoxEl
+        {
+            Padding = overButtons ? WinUiTransportLayout.PreviewLiftBar : WinUiTransportLayout.PreviewLift, HitTestVisible = false,
+            Children = [card],
+        };
     }
 
     // ══ THE TIME LABELS ═════════════════════════════════════════════════════════════════════════════════════════════════

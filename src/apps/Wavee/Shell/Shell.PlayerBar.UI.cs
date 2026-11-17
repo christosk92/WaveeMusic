@@ -514,6 +514,18 @@ public static partial class Shell
         readonly Func<bool> _previewFitsNow;
         bool _previewRail;
 
+        // PRECISE SEEKING (only where there is a picture to be precise about): pulling the pointer away from the rail during a scrub slows
+        // it (SeekRail.PreciseStep). Until the pointer first leaves the near band the rail follows it ABSOLUTELY, exactly as a rail without
+        // a preview does; from then on the gesture is relative (the travel since the last move, times the step's rate), so coming back to
+        // the rail does not jump the playhead to the pointer.
+        readonly Signal<int> _precise = new(0);   // 0 full, 1 half, 2 quarter: the tip names it
+        float _railH, _dragLastX;
+        bool _preciseUsed;
+
+        /// <summary>Which surface this rail sits on, from how it was built: only the on-media strip has a chrome feed, only the stage hands a
+        /// scrub seam; everything else is the player bar's rail.</summary>
+        SeekRailSurface Surface => _chromeFeed is not null ? SeekRailSurface.OnMedia : _onScrubbing is not null ? SeekRailSurface.Stage : SeekRailSurface.Bar;
+
         public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null, bool hairline = false,
             bool drawn = false)
         {
@@ -540,8 +552,8 @@ public static partial class Shell
             _onDrag = OnDragMove;
             _onHover = local => { _chapterHovering.Value = true; _chapterHover.SetIfChanged(_scrub.FractionAt(local.X)); };
             _onExit = () => _chapterHovering.Value = false;
-            _onBounds = b => _scrub.SetRailWidth(b.W);
-            _previewFitsNow = () => SeekRail.PreviewFits(onMedia: _chromeFeed is not null, _scrub.RailPx.Value);   // only the on-media strip has a chrome feed
+            _onBounds = b => { _railH = b.H; _scrub.SetRailWidth(b.W); };
+            _previewFitsNow = () => SeekRail.PreviewFits(onMedia: Surface == SeekRailSurface.OnMedia, _scrub.RailPx.Value);
         }
 
         /// <summary>What the last render drew: what a CONCEALED rail answers (see <see cref="Render"/>).</summary>
@@ -611,7 +623,7 @@ public static partial class Shell
             var chapterIdentity = new ChapterResources.Identity(chapterEpoch, Entities.Current.Key.Account, chapterId);
             // ONE tip host per rail: an episode's chapters, a video's seek preview, or both in one bubble. Keyed on everything it froze at mount.
             Element? chapters = chapterRail || previewRail
-                ? Embed.Comp(() => new BarRailTip(chapterIdentity, chapterRail, preview, _scrub, _chapterHover, _chapterHovering))
+                ? Embed.Comp(() => new BarRailTip(chapterIdentity, chapterRail, preview, _scrub, _chapterHover, _chapterHovering, Surface, _precise))
                     with { Key = "player-rail-tip:" + chapterEpoch + ":" + chapterId.Text + (chapterRail ? ":chapters" : "") + (preview is null ? "" : ":" + preview.Key) }
                 : null;
             return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps
@@ -685,6 +697,9 @@ public static partial class Shell
             float fraction = _scrub.FractionAt(local.X);
             if (!_scrub.Begin(fraction)) return;   // jump to the press point; the reducer decides grains or a visual-only scrub
             _chapterHover.SetIfChanged(fraction);    // the tip's hover point travels with the gesture (see OnDragMove)
+            _dragLastX = local.X;
+            _preciseUsed = false;
+            _precise.SetIfChanged(0);
             OpenReadout();
         }
 
@@ -693,7 +708,13 @@ public static partial class Shell
         /// moment's picture) until the mouse next moved.</summary>
         void OnDragMove(Point2 local)
         {
-            float fraction = _scrub.FractionAt(local.X);
+            int step = _previewRail ? SeekRail.PreciseStep(local.Y - _railH * 0.5f) : 0;
+            if (step > 0) _preciseUsed = true;
+            float fraction = !_preciseUsed
+                ? _scrub.FractionAt(local.X)
+                : Math.Clamp(_scrub.Fraction.Peek() + (local.X - _dragLastX) / MathF.Max(1f, _scrub.RailPx.Peek()) * SeekRail.PreciseRate(step), 0f, 1f);
+            _dragLastX = local.X;
+            _precise.SetIfChanged(step);
             _scrub.Update(fraction);
             _chapterHover.SetIfChanged(fraction);
         }
@@ -703,12 +724,14 @@ public static partial class Shell
         void OnCommit()
         {
             _scrub.Commit();
+            _precise.SetIfChanged(0);
             CloseReadout();
         }
 
         void OnCancel()
         {
             _scrub.Cancel();
+            _precise.SetIfChanged(0);
             CloseReadout();
         }
 

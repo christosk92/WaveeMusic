@@ -132,6 +132,18 @@ public sealed record SeekReadoutProps
     public required Func<string> Text { get; init; }
 }
 
+/// <summary>Where a seek rail sits. What its tip must stay clear of is the surface's own (the player bar's transport buttons sit over
+/// its rail in one theme and beside it in another), and a theme knows its surfaces.</summary>
+public enum SeekRailSurface : byte
+{
+    /// <summary>The player bar (and the surfaces that borrow its rail).</summary>
+    Bar,
+    /// <summary>The fullscreen stage's transport.</summary>
+    Stage,
+    /// <summary>The strip over a video.</summary>
+    OnMedia,
+}
+
 /// <summary>The props of <see cref="ViewKeys.SeekPreview"/>: the picture under the pointer and what is written beside it. Built once per
 /// rail tip: everything that moves is a bind, so the bubble never re-renders per move.</summary>
 public sealed record SeekPreviewProps
@@ -154,6 +166,9 @@ public sealed record SeekPreviewProps
 
     /// <summary>A pointer gesture is live (a scrub) rather than a hover: a theme may mark the difference.</summary>
     public required IReadSignal<bool> Scrubbing { get; init; }
+
+    /// <summary>The surface the rail sits on: a theme lifts the tip clear of what that surface draws above its rail.</summary>
+    public SeekRailSurface Surface { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.TimeLabel"/>: one render of a time label's core host. The digits are a BOUND text channel
