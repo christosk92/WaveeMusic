@@ -113,6 +113,8 @@
     "listeningHistory": "재생 기록",
     "plays": "재생 {n}회",
     "save": "저장",
+    "previewSoundOn": "미리 듣기 소리 켜기",
+    "previewSoundOff": "미리 듣기 소리 끄기",
     "more": "더 보기",
     "couldntLoad": "{what}을(를) 불러올 수 없어요",
     "couldntLoadHome": "홈을 불러올 수 없어요",

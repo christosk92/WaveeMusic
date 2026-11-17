@@ -454,6 +454,18 @@ public static partial class Playback
         static bool s_crossfadeEnabled;
         static int s_crossfadeMs;
         static float s_volume = 1f;
+        // The preview duck (Home/SpineShelf/PreviewAudio.cs): a SEPARATE gain stage multiplied onto the user's amplitude at the player, never
+        // written into s_volume, the slider or the saved setting. 1 = none. A new session (a track change, a silent session) opens at the
+        // product, so a track that starts mid-duck is ducked like the one before it, and the product follows a volume change made mid-duck.
+        static float s_duck = 1f;
+
+        /// <summary>The amplitude the player applies: the user's (tapered) times the preview duck. Lock-free read for diagnostics.</summary>
+        public static float AppliedAmplitude => Volatile.Read(ref s_volume) * Volatile.Read(ref s_duck);
+
+        /// <summary>The preview duck's current gain (1 = none).</summary>
+        public static float DuckGain => Volatile.Read(ref s_duck);
+
+        static float Applied() => s_volume * s_duck;
 
         static int EffectiveFadeMs => EffectiveFadeMsFor(s_crossfadeEnabled, s_crossfadeMs);
 
@@ -795,13 +807,30 @@ public static partial class Playback
             // A volume change needs no device: the amplitude is applied to whatever session is live and seeded into the
             // next one at open.
             SeedOnce();
-            float amplitude = VolumeTaper.Amplitude(position);
-            lock (s_gate) s_volume = amplitude;
+            float amplitude = VolumeTaper.Amplitude(position), applied;
+            lock (s_gate) { s_volume = amplitude; applied = Applied(); }
             MediaPlayer? p = Volatile.Read(ref s_player);
-            try { p?.SetVolume(amplitude); } catch { }
-            try { LiveSilentSession()?.SetVolume(amplitude); } catch { }
+            try { p?.SetVolume(applied); } catch { }
+            try { LiveSilentSession()?.SetVolume(applied); } catch { }
             // The PERSIST is `Playback.Host`'s (it already writes `SavedVolume` on the volume effect); doing it here
             // too would be two writers of one key disagreeing about whether it holds a position or an amplitude.
+        }
+
+        /// <summary>Set the preview duck (<paramref name="gain"/> 0..1, 1 = none): the player plays at the user's amplitude times it. The
+        /// engine's master gain ramps every change over its own few-ms ramp, so a caller stepping it per frame is heard as a smooth curve. UI
+        /// thread or any: the write is under the gate. Never persisted, never published, never sent to a Connect device.</summary>
+        public static void SetDuck(float gain)
+        {
+            float g = Math.Clamp(gain, 0f, 1f), applied;
+            lock (s_gate)
+            {
+                if (s_duck == g) return;
+                s_duck = g;
+                applied = Applied();
+            }
+            MediaPlayer? p = Volatile.Read(ref s_player);
+            try { p?.SetVolume(applied); } catch { }
+            try { LiveSilentSession()?.SetVolume(applied); } catch { }
         }
 
         public static void SetCrossfade(bool enabled, int durationMs)
@@ -1046,7 +1075,7 @@ public static partial class Playback
                 }
             }
 
-            try { player.SetVolume(s_volume); player.SetMuted(Muted.Peek()); player.SetRate(RateFor(s_id)); } catch { }
+            try { player.SetVolume(Applied()); player.SetMuted(Muted.Peek()); player.SetRate(RateFor(s_id)); } catch { }
 
             // The label and the real duration are facts about the OPENED file, so they are published from here rather
             // than guessed from the catalogue.
@@ -1097,7 +1126,7 @@ public static partial class Playback
             long durMs = row.Kind == EntityKind.Track && row.Slot > 0 ? new Track(row.Slot).DurationMs : 0;
             if (durMs <= 0) durMs = 180_000;
             SilentStart start = SilentStart.For(durMs, fromMs);
-            PcmAudioSession session = OpenSilentSession(SilentFormat, start.VoiceMs, s_effects, s_volume);
+            PcmAudioSession session = OpenSilentSession(SilentFormat, start.VoiceMs, s_effects, Applied());
             if (IsStale(chain)) { await session.DisposeAsync().ConfigureAwait(false); return; }
 
             lock (s_gate)
@@ -3644,7 +3673,7 @@ public static partial class Playback
             bool play;
             lock (s_gate) { durMs = s_activeDurMs; play = s_playIntent; }
             SilentStart start = SilentStart.For(durMs, ms);
-            PcmAudioSession fresh = OpenSilentSession(SilentFormat, start.VoiceMs, s_effects, s_volume);
+            PcmAudioSession fresh = OpenSilentSession(SilentFormat, start.VoiceMs, s_effects, Applied());
             bool adopted;
             GlitchLedger.Snapshot summary = default;
             EntityId summaryTrack = default;

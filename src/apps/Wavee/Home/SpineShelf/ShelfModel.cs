@@ -104,8 +104,27 @@ public static class SpineShelfRules
     public const float StillDecodePx = 512f;
     /// <summary>A song tile's cover (a song without a canvas) takes at most this share of the tile's width (the concept's min(70 %, …)).</summary>
     public const float CoverShare = 0.7f;
-    /// <summary>The clip's volume against the user's own.</summary>
-    public const float ClipVolume = 0.4f;
+
+    // ── the song preview's sound (PreviewAudio.cs; owner spec 2026-11-17) ──
+    /// <summary>While a preview is heard, the user's music on THIS device is ducked by this much: clearly under the preview, never silent
+    /// (-15 dB, an amplitude of 0.18). A separate gain stage (Playback.SetPreviewDuck): the user's volume is never written.</summary>
+    public const float DuckDb = -15f;
+    /// <summary>The duck easing down (on dB, linear in time: the ear's own scale) and back up when the preview ends.</summary>
+    public const float DuckDownMs = 400f, DuckUpMs = 700f;
+    /// <summary>A preview fading in on hover, out on leave, and two previews crossing when the pointer moves to the next tile. Every fade
+    /// is linear in time on its position p and heard as sin(p·π/2) (an equal-power pair when two cross). A fade that turns back mid-way
+    /// starts from where it is, over its share of the full time: no step, ever.</summary>
+    public const float FadeInMs = 350f, FadeOutMs = 300f, CrossMs = 400f;
+    /// <summary>The sound button: the previews' sound easing on or off.</summary>
+    public const float SoundMs = 250f;
+    /// <summary>Moving to the next tile: the old preview holds this long at most for the next one to start (its tile widens, then its clip
+    /// opens), so the two cross instead of leaving a gap; past it the old one fades out alone.</summary>
+    public const float HandoverMs = 900f;
+    /// <summary>The hard bound: a preview voice never plays longer than its 30 s clip and a margin, whatever else holds it.</summary>
+    public const float VoiceMaxMs = 32_000f;
+    /// <summary>The watchdog's cadence while anything sounds or eases: it runs the ownership check and the fades when no frame does (a
+    /// minimized or idle window renders none).</summary>
+    public const int WatchdogMs = 20;
 
     public static readonly FluentGpu.Foundation.EasingSpec Curve = FluentGpu.Foundation.EasingSpec.CubicBezier(0.22f, 0.9f, 0.24f, 1f);
 }

@@ -421,7 +421,7 @@ public static partial class Diagnostics
                         w.WriteString("form", hit.Standing ? "standing" : "row");
                         w.WriteString("live", ShelfPreview.Live.Peek());
                         w.WriteString("showing", ShelfPreview.Showing.Peek());
-                        w.WriteBoolean("clip", ShelfPreview.ClipPlaying.Peek());
+                        w.WriteString("clip", PreviewAudio.ClaimTile);
                         w.WriteStartArray("songs");
                         if (hit.OpenItem is { } oi)
                             foreach (var song in oi.Songs)
@@ -431,6 +431,27 @@ public static partial class Diagnostics
                         foreach (var s in ShelfRegistry.Live) if (s.Shown) w.WriteStringValue(s.Key);
                         w.WriteEndArray();
                     });
+                }
+                case "preview":
+                {
+                    // The Spine Shelf's song preview (Home/SpineShelf/PreviewAudio.cs): act (`sound=on|off|toggle`, `volume=0..1` as the slider,
+                    // `music=pause|play|stop`), then read the claim, both voices, the gain stages and the counters; `samples=true` lists the
+                    // per-tick levels since the last read with each curve's largest one-tick change (`maxStep`). Runs no frames: `frames N` does.
+                    if (a.Has("sound"))
+                    {
+                        string want = a.Str("sound").ToLowerInvariant();
+                        bool on = PreviewAudio.Sound.Peek();
+                        if (want == "toggle" || want == "on" && !on || want == "off" && on) PreviewAudio.ToggleSound();
+                    }
+                    if (a.Has("volume")) Playback.SetVolume(Math.Clamp(a.Float("volume", 1f), 0f, 1f));
+                    switch (a.Str("music", "").ToLowerInvariant())
+                    {
+                        case "pause": Playback.Pause("inspect"); break;
+                        case "play": Playback.Resume("inspect"); break;
+                        case "stop": Playback.Stop(); break;
+                    }
+                    bool samples = a.Bool("samples", false);
+                    return Inspect.Reply.Ok(id, name, w => WritePreview(w, samples));
                 }
                 case "explain":   // Diagnostics.Inspect.Home.Explain.cs
                     return Inspect.Reply.Ok(id, name, w => WriteExplain(w, a.Str("facet", ""), store, board));

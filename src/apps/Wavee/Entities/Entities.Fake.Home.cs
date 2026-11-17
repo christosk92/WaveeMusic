@@ -1448,6 +1448,79 @@ public static partial class Entities
         return true;
     }
 
+    // ── a daylist rollover as the live feed serves it (`state kind=daylist-generic`, then `daylist-land`): the feed answer carries the
+    // daylist in its GENERIC pre-title state (the name "daylist", the generic blurb, no localized_terms / recsplanation, a provisional
+    // window), then the playlist's own header read lands the edition (its name, a description with tag anchors, its terms, basis and a
+    // window a few minutes later than the feed's). Direct writes to the rows a live answer writes, so the card's row gate is what shows
+    // the edition (Home.Host.cs asks for that header on a live scope; the fake has no provider, so the land is its own step). --
+
+    static string? s_genericPretitle;
+
+    /// <summary>The All answer's daylist card (its playlist slot and section), or false.</summary>
+    static bool DaylistOfFeed(out int slot, out int section)
+    {
+        slot = section = Table.None;
+        var all = HomeFeed();
+        if (!all.IsValid) return false;
+        var found = HomeUi.DaylistSource.Find(HomeUi.SectionReader.Read(all));
+        if (found is not { } f || f.Card.Target.Kind is not (EntityKind.Playlist or EntityKind.Collection)) return false;
+        slot = f.Card.Target.Slot;
+        section = f.Card.SectionSlot;
+        return true;
+    }
+
+    static void SetDaylistRow(int slot, string title, string description, string terms, string links, string basis, long expiresUnixS, long createdUnixS)
+    {
+        var t = Current.Playlists;
+        t.SetText(ref t.Title, slot, Strings.Intern(title));
+        t.SetText(ref t.Description, slot, Strings.Intern(description));
+        t.SetText(ref t.DaylistTerms, slot, Strings.Intern(terms));
+        t.SetText(ref t.DaylistLinks, slot, Strings.Intern(links));
+        t.SetText(ref t.DaylistBasis, slot, Strings.Intern(basis));
+        t.DaylistExpiresAt[slot] = (int)expiresUnixS;
+        t.DaylistCreatedAt[slot] = (int)createdUnixS;
+        t.Bump(slot, (uint)(PlaylistFields.Identity | PlaylistFields.Daylist));
+    }
+
+    /// <summary>`state kind=daylist-generic`: the feed's answer serves the daylist in its generic pre-title state.</summary>
+    public static bool StageDaylistGeneric()
+    {
+        if (!DaylistOfFeed(out int slot, out int section)) return false;
+        var t = Current.Playlists;
+        s_genericPretitle = t.GenericTitle[slot].IsEmpty ? "daylist" : Strings.Resolve(t.GenericTitle[slot]);
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        SetDaylistRow(slot, s_genericPretitle, "Your daylist changes throughout the day.", "", "", "", now + 2 * 3600 + 52 * 60, now - 8 * 60);
+        // The feed card's own facts say nothing either: no seeds, no links, no basis.
+        var sections = Current.Sections;
+        int fact = sections.FactIndexOf(section, t.Kind, slot);
+        if (fact >= 0)
+        {
+            for (int k = 0; k < sections.FactSeedCount[fact]; k++) ReleaseText(ref sections.Seeds[sections.FactSeedAt[fact] + k]);
+            sections.FactSeedCount[fact] = 0;
+            ReleaseText(ref sections.FactLinks[fact]);
+            ReleaseText(ref sections.FactBasis[fact]);
+            sections.MarkDirty();
+        }
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>`state kind=daylist-land`: the playlist's own header read lands the edition (8 minutes later than the feed's window).</summary>
+    public static bool StageDaylistLand()
+    {
+        if (!DaylistOfFeed(out int slot, out _)) return false;
+        var t = Current.Playlists;
+        long expires = t.DaylistExpiresAt[slot] > 0 ? t.DaylistExpiresAt[slot] + 8 * 60 : DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3 * 3600;
+        const string a = "<a href=\"spotify:playlist:37i9dQZF1EIfakeTagA0000\">", b = "<a href=\"spotify:playlist:37i9dQZF1EIfakeTagB0000\">";
+        SetDaylistRow(slot, "sunlit bedroom pop daydream tuesday afternoon",
+            "Here's some " + a + "sunlit</a>, " + b + "bedroom pop</a>, daydream, lo-fi, mellow — inspired by your listening on Tuesdays in the afternoon",
+            "sunlit, bedroom pop, daydream, lo-fi, mellow",
+            a + "sunlit</a>, " + b + "bedroom pop</a>",
+            "indie, chill", expires, expires - 3 * 3600);
+        Current.PublishAll();
+        return true;
+    }
+
     // ── the live open, one step per command (`state kind=home-cold`, then `home-land`, `home-following` and `home-previews` in any
     // order): what a launch with no Home on disk shows while the answers arrive (a live log: the board first, the All answer
     // ~0.7 s later, then the Following answer and the baseline lookup). Cold forgets the three answers the page holds (the rows

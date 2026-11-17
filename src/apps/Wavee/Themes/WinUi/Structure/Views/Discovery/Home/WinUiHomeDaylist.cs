@@ -291,14 +291,16 @@ internal static class WinUiHomeDaylist
                     },
                 ],
             },
-            new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [p.Tags, BasisLine(p.Basis)] },
+            new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [Opening("daylist-tags", p.Tags), BasisLine(p.Basis)] },
             p.Actions,
             p.Clock,
         ],
     };
 
-    /// <summary>The copy column of Standard, Huge and Small: eyebrow (the clock line trailing it at Small) · title · tags · meta (the tags carry it at Small)
-    /// · a spacer · the actions.</summary>
+    /// <summary>The copy column of Standard, Huge and Small: eyebrow (the clock line trailing it at Small) · title · tags · basis · meta (the tags carry it at
+    /// Small) · a spacer · the actions. The card keeps the height of its tallest copy (<see cref="Inner"/>); a shorter one (a one-line name, an edition
+    /// with no tags or no basis) centres its words in the room above the actions, which stay at the cover's foot, so what is missing leaves no hole
+    /// between the words and the buttons. The tags and the basis open and close their lines as they come and go, so the words never step.</summary>
     static BoxEl Copy(Parts p, WinUiDaylistLayout dl, Element? eyebrowTrail)
     {
         bool pair = dl.Form == WinUiDaylistForm.Pair;
@@ -307,8 +309,9 @@ internal static class WinUiHomeDaylist
         // KEYED children, one row for the eyebrow in every form: a Triple <-> Pair crossing drops the meta line and moves the clock, and position-matched
         // children would remount the actions (and the save heart).
         var eyebrow = Eyebrow() with { Key = "daylist-eyebrow", Grow = 1f, Shrink = 1f };
-        var kids = new List<Element>(8)
+        var kids = new List<Element>(10)
         {
+            new BoxEl { Key = "daylist-lead", Grow = 1f, MinWidth = 0f, MinHeight = 0f },
             new BoxEl
             {
                 Key = "daylist-eyebrow-row", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
@@ -319,14 +322,22 @@ internal static class WinUiHomeDaylist
             WinUiDiscoveryMotion.AirV("daylist-gap:eyebrow", gap),
             TitleSlot(p.Title, dl),
             WinUiDiscoveryMotion.AirV("daylist-gap:title", gap),
-            p.Tags with { Key = "daylist-tags" },
-            BasisLine(p.Basis),
+            Opening("daylist-tags", p.Tags),
+            Opening("daylist-basis", BasisText(p.Basis)),
         };
         if (!pair) kids.Add(MetaSlot(p.Meta, gap));
         kids.Add(new BoxEl { Key = "daylist-spacer", Grow = 1f, MinWidth = 0f, MinHeight = gap });
         kids.Add(p.Actions with { Key = "daylist-actions" });
         return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
     }
+
+    /// <summary>A line that opens its height while it comes and closes it while it goes (a tag line or a basis an edition has, or has not).</summary>
+    static Element Opening(string key, Element line) => new BoxEl
+    {
+        Key = key, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
+        Layout = Design.Reduced ? null : WinUiDiscoveryMotion.HeightReflow,
+        Children = [line],
+    };
 
     /// <summary>The title's slot: its height eases through real layout (one line of 20/28 at Small, up to three of 40/52 at Standard), so the lines under it
     /// ride it; the two rungs are keyed alternatives that cross-fade inside it (a run's size cannot ease).</summary>
@@ -396,39 +407,33 @@ internal static class WinUiHomeDaylist
     /// indices, separators at the odd ones.</summary>
     static Element Tags(HomeCard card, WinUiDaylistLayout dl)
     {
-        int seedCount = Math.Min(card.SeedCount, WinUiHomeRules.DaylistMaxTags);
-        var tags = new List<string>(seedCount);
-        for (int i = 0; i < seedCount; i++)
-        {
-            string tag = card.SeedAt(i);
-            if (tag.Length > 0) tags.Add(tag);
-        }
+        var (tags, links) = SectionCopy.DaylistTags(in card, WinUiHomeRules.DaylistMaxTags);
         bool trailMeta = dl.Form == WinUiDaylistForm.Pair;
         string meta = trailMeta ? Strings.Home.DaylistMeta(card.TrackCount) : "";
-        if (tags.Count == 0 && meta.Length == 0) return new BoxEl();
+        if (tags.Length == 0 && meta.Length == 0) return new BoxEl();
 
-        var spans = new List<TextSpan>(tags.Count * 2 + 1);
-        for (int i = 0; i < tags.Count; i++)
+        var spans = new List<TextSpan>(tags.Length * 2 + 1);
+        for (int i = 0; i < tags.Length; i++)
         {
             if (i > 0) spans.Add(new TextSpan(" · ", Color: Tok.TextPrimary));
             spans.Add(new TextSpan(tags[i], Color: Tok.AccentTextPrimary, IsLink: true));
         }
-        if (meta.Length > 0) spans.Add(new TextSpan((tags.Count > 0 ? " · " : "") + meta, Color: Tok.TextSecondary));
-        int tagCount = tags.Count;
-        var links = new string?[tags.Count];
-        for (int i = 0, t = 0; i < seedCount && t < links.Length; i++)
-            if (card.SeedAt(i).Length > 0) links[t++] = SectionCopy.TagLink(in card, i);
+        if (meta.Length > 0) spans.Add(new TextSpan((tags.Length > 0 ? " · " : "") + meta, Color: Tok.TextSecondary));
+        int tagCount = tags.Length;
         return TagLine(spans.ToArray(), i => { if ((i & 1) == 0 && (i >> 1) < tagCount) HomeVerbs.OpenTag(tags[i >> 1], links[i >> 1]); }, dl);
     }
 
-    /// <summary>What the pick is based on ("Based on pop and western"), caption 12/16 tertiary, under the tags. The line is reserved whether or
-    /// not the card says it, so nothing under it moves when it arrives.</summary>
+    /// <summary>What the pick is based on ("Based on pop and western"), caption 12/16 tertiary, under the tags. Compact's stack reserves the line whether
+    /// or not the card says it (nothing under it moves when it arrives); the row forms open it (<see cref="Opening"/>).</summary>
     static Element BasisLine(string basis)
     {
-        var line = Ui.Caption(basis.Length > 0 ? basis : " ") with
-            { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
-        return new BoxEl { Key = "daylist-basis", Direction = 1, MinWidth = 0f, MinHeight = line.LineHeight, Children = [line] };
+        var line = BasisText(basis.Length > 0 ? basis : " ");
+        return new BoxEl { Key = "daylist-basis", Direction = 1, MinWidth = 0f, MinHeight = Ui.Caption("").LineHeight, Children = [line] };
     }
+
+    /// <summary>The basis line itself, nothing when the edition names no basis.</summary>
+    static Element BasisText(string basis) => basis.Length == 0 ? new BoxEl() : Ui.Caption(basis) with
+        { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
     /// <summary>The tag line's paragraph: the body rung's metrics (never a hand size), primary base.</summary>
     static SpanTextEl TagLine(TextSpan[] spans, Action<int>? onSpanClick, WinUiDaylistLayout dl)

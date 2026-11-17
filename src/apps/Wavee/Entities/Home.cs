@@ -1626,6 +1626,22 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
 
     public string? GenericTitle => PlaylistText(static (t, slot) => t.GenericTitle[slot]);
 
+    /// <summary>The daylist edition's tags as the playlist row holds them (<c>localized_terms</c>, a comma list), written with its window by
+    /// whichever answer last spoke for it (the feed card or the header read); null when none.</summary>
+    public string? DaylistTermsText => PlaylistText(static (t, slot) => t.DaylistTerms[slot]);
+
+    /// <summary>The edition's tag playlists (<c>nicheMixLinks</c>, anchors), as the row holds them; null when none.</summary>
+    public string? DaylistLinksText => PlaylistText(static (t, slot) => t.DaylistLinks[slot]);
+
+    /// <summary>What the edition's pick is based on (<c>recsplanation_localized_terms</c>), as the row holds it; null when none.</summary>
+    public string? DaylistBasisText => PlaylistText(static (t, slot) => t.DaylistBasis[slot]);
+
+    /// <summary>The playlist row's own description, raw (anchors kept); null for another kind or none.</summary>
+    public string? PlaylistDescription => PlaylistText(static (t, slot) => t.Description[slot]);
+
+    /// <summary>The playlist row's version (0 for another kind): a host that draws the row's words gates on it.</summary>
+    public uint PlaylistVersion => IsPlaylist ? S.Playlists.Version[Target.Slot] : 0;
+
     /// <summary>Unix ms the daylist's window rolls over; 0 = unknown.</summary>
     public long ExpiresAtMs => IsPlaylist ? S.Playlists.DaylistExpiresAt[Target.Slot] * 1000L : 0;
 

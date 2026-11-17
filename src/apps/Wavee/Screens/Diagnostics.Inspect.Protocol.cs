@@ -271,6 +271,7 @@ public static partial class Diagnostics
             IntArg("mediaOpenMs", "media=fake: an open's latency to its first frame on the 16 ms clock (metadata at half)", "120", 0, 60_000),
             Arg("mediaStartCostMs", ArgType.Float, "media=fake: a synchronous UI-thread stall inside each open (a real engine's creation): the start hiccup", "0") with { Min = 0, Max = 2000 },
             Arg("mediaFrameCostMs", ArgType.Float, "media=fake: UI-thread work in each video pump while it plays: a per-frame cost", "0") with { Min = 0, Max = 500 },
+            Arg("mediaFailMs", ArgType.Int, "media=fake: every session fails this long after its first frame (0: never), a crashed engine", "0") with { Min = 0, Max = 600000 },
             Arg("dt", ArgType.Float, "the fixed frame step in ms (default 16; 8.333 samples motion at 120 Hz: `frames 1` + `render` per frame)", "16"),
         ];
 
@@ -340,7 +341,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "home-cold", "home-land", "home-following", "home-previews", "head", "head-land", "ai", "runtime", "hdcp", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "home-cold", "home-land", "home-following", "home-previews", "daylist-generic", "daylist-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -602,7 +603,7 @@ public static partial class Diagnostics
             new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); acting ones settle", "home do=pin uri=spotify:album:al2")
             {
                 Positional = ["do"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|doc|plan|explain|verify|edit|pin|unpin|add|remove|size|move|open|close|option|surface|search|undo|redo|reset|page|shelf"),
+                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|doc|plan|explain|verify|edit|pin|unpin|add|remove|size|move|open|close|option|surface|search|undo|redo|reset|page|shelf|preview"),
                              Arg("path", ArgType.Path, "doc: also write the document's JSON to this file"),
                              Arg("facet", ArgType.String, "plan / explain: the facet (empty: All)", ""),
                              Arg("on", ArgType.Bool, "edit: on or off", "true"),
@@ -631,7 +632,11 @@ public static partial class Diagnostics
                              Arg("dwell", ArgType.Int, "shelf: rest on spine n (from 1): the meter fills, then it opens"),
                              Arg("tile", ArgType.Int, "shelf: point at song n (from 1) of the open card; 0 leaves the tile"),
                              Arg("leave", ArgType.Bool, "shelf: the pointer leaves the shelf (a dwell cancels, a live tile stops)", "false"),
-                             Arg("press", ArgType.Enum, "shelf: a key on the focused spine", null, "left|right|up|down|home|end|enter")], s_settleArgs),
+                             Arg("press", ArgType.Enum, "shelf: a key on the focused spine", null, "left|right|up|down|home|end|enter"),
+                             Arg("sound", ArgType.Enum, "preview: the shelf's sound button (toggle flips it)", null, "on|off|toggle"),
+                             Arg("volume", ArgType.Float, "preview: set the user's volume (0..1, the slider's linear position) as the volume slider does"),
+                             Arg("music", ArgType.Enum, "preview: pause, resume or stop the user's music", null, "pause|play|stop"),
+                             Arg("samples", ArgType.Bool, "preview: list the per-tick levels recorded since the last read (and clear them)", "false")], s_settleArgs),
             },
             new(Verb.Hold, "hold", "Press and hold: the button stays down ms on the frame clock (on a node's visible centre or a point), then a release there or a drag of dx,dy; then settle", "hold key=home:tile:d-recents ms=600 pointer=touch")
             {
