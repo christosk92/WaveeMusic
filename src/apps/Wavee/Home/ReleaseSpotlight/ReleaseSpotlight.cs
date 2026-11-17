@@ -202,6 +202,8 @@ public sealed class SpotlightCard : Component, IPreviewOwner
     bool _armed;
     NodeHandle _root, _progress;
     NodeHandle[] _layer = [], _still = [], _row = [];
+    HomeTileMenuSlot? _tile;      // the board tile the spotlight stands in (null outside the pinned board)
+    IOverlayService? _overlay;
 
     /// <summary>The card's loading proxy: its own tree over the facts on hand, nothing wired (the skeleton derives it flat at its real size).</summary>
     internal static Element Proxy(string key, SpotlightItem item, ReleaseSpotlightGeometry g, ReleaseSpotlightSkin skin)
@@ -267,10 +269,68 @@ public sealed class SpotlightCard : Component, IPreviewOwner
         // The album's own menu joined to the Home tile's rows it stands in (right-click on the card): one menu, the album's verbs first.
         var overlay = UseContext(Overlay.Service);
         var tile = UseContext(HomeTileMenus.Current);
+        _tile = tile;
+        _overlay = overlay is not null && !Controls.IsNullOverlay(overlay) ? overlay : null;
+        // The tile's own ⋯ (the chapter header's) and its keys (the Menu key, Shift+F10) open the merged menu of the card ON SCREEN: the cards
+        // page, so the slot resolves the shown one when the menu opens (every mounted card of the tile names the same resolver).
+        UseEffect(() =>
+        {
+            if (_tile is not { } slot) return null;
+            slot.Item = () => OnScreen(slot)?.ItemMenu();
+            slot.Open = () => OnScreen(slot)?.OpenMenu();
+            return () =>
+            {
+                foreach (var other in SpotlightRegistry.Live)
+                    if (!ReferenceEquals(other, this) && ReferenceEquals(other._tile, slot)) return;
+                slot.Item = null;
+                slot.Open = null;
+            };
+        }, DepKey.Empty);
         var tree = Tree(p, facts, this);
-        var card = item.Card;
-        var menu = item.IsBlank ? null : HomeTileMenus.Merge(HomeCardNav.MenuOf(in card), tile);
-        return menu is not null && overlay is not null && !Controls.IsNullOverlay(overlay) ? tree.WithContextMenu(overlay, menu) : tree;
+        var menu = item.IsBlank ? null : HomeTileMenus.Merge(ItemMenu, tile);
+        if (menu is null || _overlay is not { } o) return tree;
+        // A right-click opens at the pointer; the Menu key or Shift+F10 on a focused song or button opens at THAT control (the whole card is
+        // too tall an anchor: a long merged menu fits neither under nor over it and lands in the window's corner).
+        var pointer = ContextMenu.Handler(null, o, menu);
+        return tree with
+        {
+            OnContextRequested = e =>
+            {
+                if (e.Trigger == ContextRequestTrigger.Keyboard && !e.Source.IsNull && e.Source != _root) HomeTileMenus.OpenAt(o, e.Source, menu);
+                else pointer(e);
+            },
+        };
+    }
+
+    /// <summary>The album's own menu (null: none, a blank card).</summary>
+    ContextMenuModel? ItemMenu()
+    {
+        if (_item.IsBlank) return null;
+        var card = _item.Card;
+        return HomeCardNav.MenuOf(in card)?.Invoke();
+    }
+
+    /// <summary>Open the album's menu with the tile's rows at the card (the board's keys): the keyboard's open, its first row focused.</summary>
+    void OpenMenu()
+    {
+        if (_overlay is not { } overlay || _root.IsNull || HomeTileMenus.Merge(ItemMenu, _tile) is not { } menu) return;
+        HomeTileMenus.OpenAt(overlay, _root, menu);
+    }
+
+    /// <summary>The card of <paramref name="slot"/>'s spotlight the window shows most of (a paged spotlight keeps its neighbours mounted off the
+    /// page); the first of them when none shows.</summary>
+    static SpotlightCard? OnScreen(HomeTileMenuSlot slot)
+    {
+        SpotlightCard? best = null, first = null;
+        float most = 0f;
+        foreach (var c in SpotlightRegistry.Live)
+        {
+            if (!ReferenceEquals(c._tile, slot)) continue;
+            first ??= c;
+            float area = c.VisibleArea;
+            if (area > most) { most = area; best = c; }
+        }
+        return best ?? first;
     }
 
     /// <summary>The card's tree: what the mounted card renders (<paramref name="card"/> its instance: the pointer's handlers, the nodes it

@@ -303,6 +303,7 @@ internal static class ZuneHomeBoard
             {
                 Key = "home:board-col", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                 OnKeyDown = OnKey,
+                OnContextRequested = OnContext,
                 Children = [TitleRow(board, p.Lay, editing, all), section],
             };
         }
@@ -563,6 +564,19 @@ internal static class ZuneHomeBoard
             var e = it.Entry;
             return new PackAutomation(it.EmptyRow ? Loc.Get(Strings.Theme.Zune.Home.EmptyTitle) : e.Title,
                                       e.Kind == BoardEntryKind.GroupHead || it.EmptyRow ? AutomationRole.Text : AutomationRole.Button, 0, 0);
+        }
+
+        /// <summary>The Menu key or Shift+F10 on the focused tile (a pointer's request is the tile's own, which customizes): at rest, the merged menu of
+        /// content that carries one (the release spotlight's card on screen, its last row the way into customize); otherwise customize with the tile
+        /// selected, as a right-click on it does.</summary>
+        void OnContext(ContextRequestEventArgs e)
+        {
+            if (_p is null || e.Trigger != ContextRequestTrigger.Keyboard) return;
+            var board = _p.Board;
+            if (board.Grid.FocusedKey is not { } k || IdOf(k) is not { Length: > 0 } id) return;
+            if (board.View.Editing.Peek()) return;
+            if (HomeTileMenus.TryOpen(id)) return;
+            Customize(board.View, board.Verbs, board.Model.Peek(), id);
         }
 
         /// <summary>The board's keys while focus is inside it (single keys stand aside for a text editor).</summary>

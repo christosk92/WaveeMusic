@@ -110,7 +110,10 @@ public static class GridFill
                 Children = [c],
             };
         }
-        return new BoxEl { Direction = 0, Wrap = true, Gap = colGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids };
+        // The columns were chosen at the structure width and the cells are shares of the live width: the row breaks its lines at the live width
+        // too (WrapLive). Broken at the structure width while a tier commit's gutter eased, a 968 grid landing at 920 broke four 233 cells after
+        // three for a frame (Zune's mood plates two rows taller, the page's scroll anchor thrown 204 down and back).
+        return new BoxEl { Direction = 0, Wrap = true, WrapLive = true, Gap = colGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids };
     }
 
     /// <summary>What a card's basis gives back to rounding (it grows into it).</summary>

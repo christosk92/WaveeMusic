@@ -208,7 +208,16 @@ internal static class ZuneHomeTiles
 
     /// <summary>A tile around <paramref name="face"/>: the plate (none on a band), the tilt, the hold, the customize state.</summary>
     static Element Tile(HomeTileFrame f, Element face, bool plate = true)
-        => Embed.Comp(new ChromeProps(f, face, plate), static () => new TileChrome());
+        // The content's own menu (the release spotlight's album) carries the tile's way into customize: one menu on a right-click on it, and on
+        // the Menu key (a candidate's preview outside the grid has no tile to customize).
+        => Embed.Comp(new ChromeProps(f, f.Cell is not null ? HomeTileMenus.Host(f, s_rows, face) : face, plate), static () => new TileChrome());
+
+    /// <summary>Zune's tile rows under a content's menu: the way into customize with this tile selected (Zune edits its board there, never in a
+    /// menu); none while customizing.</summary>
+    static readonly Func<HomeTileFrame, IReadOnlyList<MenuFlyoutItem>> s_rows = static f => f.View.Editing.Peek()
+        ? []
+        : [new MenuFlyoutItem(Loc.Get(Strings.Home.Customize), Icons.Edit,
+            Invoke: () => ZuneHomeBoard.Customize(f.View, f.Verbs, Shown?.Invoke() ?? new BoardModel([f.Entry], 0), f.Entry.Id))];
 
     internal sealed record ChromeProps(HomeTileFrame Frame, Element Face, bool Plate);
 

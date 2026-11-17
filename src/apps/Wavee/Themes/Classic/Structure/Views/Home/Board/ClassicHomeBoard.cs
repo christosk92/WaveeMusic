@@ -227,6 +227,7 @@ internal static class ClassicHomeBoard
                 Key = "home:board-col", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                 OnBoundsChanged = _onBounds,
                 OnKeyDown = OnKey,
+                OnContextRequested = OnContext,
                 Children =
                 [
                     ClassicHomeFind.Strip(board, p.Lay),
@@ -548,6 +549,17 @@ internal static class ClassicHomeBoard
                 board.Grid.Focus(HomeBoardKeys.Tile(id));
                 e.Handled = true;
             }
+        }
+
+        /// <summary>The Menu key or Shift+F10 on the focused tile (a pointer's request is the tile's own, ClassicHomeTiles.Frame; focus inside a tile's
+        /// content reaches the content's own menu first, the release spotlight's merged one): the merged menu of content that carries one (the
+        /// spotlight's card on screen) at rest; otherwise, and in Edit Home where the content is out of play, the tile's own rows at the tile.</summary>
+        void OnContext(ContextRequestEventArgs e)
+        {
+            if (_p is null || e.Trigger != ContextRequestTrigger.Keyboard) return;
+            if (_p.Board.Grid.FocusedKey is not { } k || IdOf(k) is not { Length: > 0 } id) return;
+            if (!_p.Board.View.Editing.Peek() && HomeTileMenus.TryOpen(id)) return;
+            HomeTileMenus.OpenRows(id, e.Source.IsNull ? e.Node : e.Source);
         }
 
         /// <summary>One Escape: the open tile, then the reset question, then an add row or the find strip, then the mode.</summary>

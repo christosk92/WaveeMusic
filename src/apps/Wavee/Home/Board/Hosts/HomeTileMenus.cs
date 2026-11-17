@@ -3,7 +3,9 @@
 // A board tile whose content already carries a ⋯ of its own (the daylist card's action row, a section header) shows ONE menu: the content's rows
 // (the playlist's, the album's ...), a separator, then the tile's Home rows (sizes, move, remove ...) that the theme's tile menu builds. The theme's tile
 // chrome hands the tile down through `Current` (`Host`); content that carries a ⋯ reads it and opens `Merge(...)` from that ⋯ and from a right-click.
-// The board's own keys (the Menu key or Shift+F10 on a focused tile) reach the same menu through `TryOpen`, which the content's ⋯ registers.
+// The board's own keys (the Menu key or Shift+F10 on a focused tile) reach the same menu through `TryOpen`, which the content's ⋯ registers; a
+// tile's own ⋯ (a chapter header's) opens the content's menu that `Item` names over the tile's rows. Every theme's tile chrome hosts it (WinUI's
+// card, Classic's frame, Zune's tile), each with its own rows: WinUI's and Classic's tile menus, Zune's way into customize.
 
 using System.Collections.Generic;
 using FluentGpu.Controls;
@@ -26,8 +28,13 @@ public sealed class HomeTileMenuSlot
     /// <summary>The theme's tile menu rows for a frame.</summary>
     public Func<HomeTileFrame, IReadOnlyList<MenuFlyoutItem>> Rows { get; internal set; }
 
-    /// <summary>Opens the merged menu at the content's ⋯ (set by the content that carries it; null: none mounted).</summary>
+    /// <summary>Opens the merged menu at the content's ⋯ (set by the content that carries it; null: none mounted). A paged body (the release
+    /// spotlight) sets it to open the menu of the card on screen.</summary>
     public Action? Open { get; set; }
+
+    /// <summary>The content's own menu (the album of the card on screen, read when the menu opens; null: none), which the tile's own ⋯ (a chapter
+    /// header's) opens with the tile's rows after it.</summary>
+    public Func<ContextMenuModel?>? Item { get; set; }
 
     /// <summary>The tile's Home rows now.</summary>
     public IReadOnlyList<MenuFlyoutItem> TileRows() => Rows(Frame);
@@ -52,6 +59,15 @@ public static class HomeTileMenus
     {
         if (!s_live.TryGetValue(id, out var slot) || slot.Open is not { } open) return false;
         open();
+        return true;
+    }
+
+    /// <summary>Open the tile <paramref name="id"/>'s own rows at <paramref name="anchor"/> (the board's Menu key on a tile whose content carries no
+    /// menu of its own, Classic's). False: no tile of that id is hosted.</summary>
+    public static bool OpenRows(string id, NodeHandle anchor)
+    {
+        if (!s_live.TryGetValue(id, out var slot) || slot.Frame.Overlay is not { } overlay || anchor.IsNull) return false;
+        OpenAt(overlay, anchor, () => slot.TileRows() is { Count: > 0 } rows ? new ContextMenuModel([], rows) : null);
         return true;
     }
 

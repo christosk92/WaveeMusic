@@ -223,7 +223,8 @@ internal static class ClassicHomeTiles
         {
             Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
             HitTestVisible = Prop.Of(() => !view.Editing.Value),
-            Children = [content],
+            // The content's own menu (the release spotlight's album) joins the tile's rows: one menu on a right-click on it, and on the Menu key.
+            Children = [f.Cell is not null ? HomeTileMenus.Host(f, s_rows, content) : content],
         };
         Element face = cellForm
             ? new BoxEl
@@ -274,10 +275,14 @@ internal static class ClassicHomeTiles
             Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
             Children = cellForm ? [plate] : [Strip(f, lay), plate],
         };
+        // The board's keys (the Menu key, Shift+F10 on the focused tile) open the same rows, or the content's merged menu (ClassicHomeBoard).
         return f.Overlay is { } overlay && f.Cell is not null
             ? tile.WithContextMenu(overlay, () => new ContextMenuModel([], ClassicHomeChips.MenuRows(f)))
             : tile;
     }
+
+    /// <summary>The tile's menu rows (Classic's tile menu), handed to content that carries its own menu.</summary>
+    static readonly Func<HomeTileFrame, IReadOnlyList<MenuFlyoutItem>> s_rows = ClassicHomeChips.MenuRows;
 
     /// <summary>A card's padded column.</summary>
     static BoxEl Pad(params Element[] kids) => new()
