@@ -57,11 +57,13 @@ internal static class ClassicHomeBoard
     public static Element Template(HomeBoardProps props, in ViewContext ctx)
     {
         var facts = ctx.Tier();
-        return Embed.Comp(new BoardProps(props, ClassicHomeBoardTiers.Of(facts), ClassicHomeTiers.Of(facts)), static () => new BoardView())
+        // The region's own estimate of the board's width: a full row's estimate (the daylist's height follows its width) reads it until the board has measured.
+        float firstWidth = ClassicRegion.EstimateHomePage(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width);
+        return Embed.Comp(new BoardProps(props, ClassicHomeBoardTiers.Of(facts), ClassicHomeTiers.Of(facts), firstWidth), static () => new BoardView())
             with { Key = "home:board-root" };
     }
 
-    internal sealed record BoardProps(HomeBoardProps Board, ClassicHomeBoardLayout Lay, ClassicHomeLayout Home);
+    internal sealed record BoardProps(HomeBoardProps Board, ClassicHomeBoardLayout Lay, ClassicHomeLayout Home, float FirstWidth);
 
     static readonly Signal<float> s_width = new(0f);
 
@@ -335,21 +337,22 @@ internal static class ClassicHomeBoard
             {
                 full = ExtentOf(e.Id).Value;
                 measured = full > 0f;
-                if (!measured) full = FullEstimate(e, _p.Home);
+                if (!measured) full = FullEstimate(e, _p.Home, _width.Value > 0f ? _width.Value : _p.FirstWidth);
             }
             var entry = ClassicHomeBoardRules.EntryOf(e, lay, full, open2);
             // A measured row's extent is its body's height, which eases itself (RowsReflow): the rows follow it frame by frame.
             return measured && _follows.Contains(e.Id) && open2 <= 0f && entry.Kind == PackEntryKind.Band ? entry with { Flags = entry.Flags | PackFlags.Follows } : entry;
         }
 
-        /// <summary>A shelf's height before its chapter has laid out: the Home tier record's own numbers for the bodies it knows.</summary>
-        static float FullEstimate(BoardEntry e, ClassicHomeLayout home)
+        /// <summary>A shelf's height before its chapter has laid out: the Home tier record's own numbers for the bodies it knows; the daylist's is its card's
+        /// exact height at the row's width <paramref name="rowW"/>.</summary>
+        static float FullEstimate(BoardEntry e, ClassicHomeLayout home, float rowW)
         {
             float head = ClassicHomeRules.HeaderH + ClassicHomeRules.HeaderGap;
             if (e.Raw is WidgetSource w)
                 switch (w.Widget)
                 {
-                    case "daylist": return float.IsNaN(home.Daylist.CardH) ? ClassicHomeRules.DaylistCardMinHeight : home.Daylist.CardH;
+                    case "daylist": return ClassicHomeDaylist.Extent(home.Daylist, rowW);
                     case "recents": return head + 2f * home.RecentsRowH + Spacing.S;
                     case "releases": return head + ClassicHomeBoardRules.ReleaseRowsEstimate * ClassicHomeRules.RowH;
                 }

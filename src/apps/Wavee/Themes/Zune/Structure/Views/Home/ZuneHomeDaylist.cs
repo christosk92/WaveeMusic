@@ -147,6 +147,31 @@ internal static class ZuneHomeDaylist
         return Prop.Of(() => lay.DaylistArtWidthAt(stripH.Value));
     }
 
+    /// <summary>The strip's height at its TALLEST (the title at its full line count, the tags, the basis, the meta, the countdown and the rings row): the strip
+    /// never lays out shorter (its floor where it grows), so the skeleton and the landed strip are one height and the board's row, packed at this before the
+    /// answer lands, never moves when it does. The one-row form is its fixed height. Compact's bled title takes the lines the name needs (never cut), so
+    /// there the floor counts one line and a longer name still grows the strip.</summary>
+    internal static float Extent(ZuneHomeLayout lay)
+    {
+        if (!lay.DaylistGrows) return lay.DaylistH;
+        bool parked = lay.DaylistBleed && lay.DaylistRingsParked;
+        float target = MathF.Max(lay.RingSize, lay.RingTarget);
+        float meta = R.Type.DenseMeta("").LineHeight, micro = R.Type.MicroMeta("").LineHeight;
+        float gap = H.DaylistCopyGap;
+        // The text block: the eyebrow's row, the title's lines, the tags, the basis and the meta line, the inline countdown's row, the copy's gap between each.
+        float text = (parked ? MathF.Max(target, meta) : meta) + gap + MathF.Max(1, lay.DaylistTitleLines) * TitleText("", lay).LineHeight;
+        if (lay.DaylistMeta) text += 3f * (gap + meta);
+        if (lay.ClockInline) text += gap + (parked ? MathF.Max(target, micro) : micro);
+        // The rings row under it, the copy's gap and its own top margin above it (parked rings stand over the text block's rows instead): the disc or its
+        // target, beside its word where the tier has words.
+        float rings = MathF.Max(target, lay.RingLabels ? R.Type.TrackTitle("").LineHeight : 0f);
+        float copy = parked || lay.PlayAtEnd ? MathF.Max(text, rings) : text + gap + H.DaylistActionsTop + rings;
+        if (lay.DaylistBleed) copy += 2f * lay.DaylistPadY;
+        // The clock column (the strip's): the count line, the bars, the dayparts (two lines at most in the column); shorter than the copy in every tier.
+        float clock = lay.ClockW > 0f ? micro + H.ClockGap + H.BarLitH + H.ClockGap + 2f * micro : 0f;
+        return MathF.Max(lay.DaylistH, MathF.Max(copy, clock));
+    }
+
     /// <summary>The save ring: the shared heart (it subscribes to the saved set on its own) inside the outlined ring, with its word where the tier
     /// has words.</summary>
     internal static Element SaveRing(string uri, string title, ZuneHomeLayout lay, string key = "zune-daylist-save")
@@ -230,13 +255,7 @@ internal static class ZuneHomeDaylist
     /// left edge when the role changes across a crossing (the panorama's recipe).</summary>
     static Element TitleBox(string title, ZuneHomeLayout lay)
     {
-        TextEl text = lay.DaylistTitle switch
-        {
-            ZuneDaylistTitle.Group => R.Type.QuickplayHead(title),
-            ZuneDaylistTitle.Heading => R.Type.Heading(title),
-            ZuneDaylistTitle.Hero => R.Type.Hero(title),
-            _ => R.Type.HeroTitle(title),
-        };
+        var text = TitleText(title, lay);
         bool one = lay.DaylistTitleLines == 1;   // 0 = no cap (the bled form)
         return new BoxEl
         {
@@ -246,10 +265,21 @@ internal static class ZuneHomeDaylist
                 text with
                 {
                     MaxLines = lay.DaylistTitleLines, Wrap = one ? TextWrap.NoWrap : TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    // Each line exactly the role's line height: the strip's height (Extent) counts the role's lines.
+                    LineStacking = LineStacking.BlockLineHeight,
                 },
             ],
         };
     }
+
+    /// <summary>The title's role in the tier.</summary>
+    static TextEl TitleText(string title, ZuneHomeLayout lay) => lay.DaylistTitle switch
+    {
+        ZuneDaylistTitle.Group => R.Type.QuickplayHead(title),
+        ZuneDaylistTitle.Heading => R.Type.Heading(title),
+        ZuneDaylistTitle.Hero => R.Type.Hero(title),
+        _ => R.Type.HeroTitle(title),
+    };
 
     /// <summary>The strip in the tier's form: ONE tree (art, copy, clock, and the play ring at the end where the tier puts it) whose direction
     /// and sizes are live props. <paramref name="wordsIn"/>: the enter of the copy and the clock column when this form mounts by a crossing (the words
@@ -386,7 +416,8 @@ internal static class ZuneHomeDaylist
         return new BoxEl
         {
             Key = H.DaylistKey, Direction = 0, ZStack = bleed, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true, OnBoundsChanged = onBounds,
-            Height = lay.DaylistGrows ? float.NaN : lay.DaylistH, MinHeight = lay.DaylistGrows ? lay.DaylistH : 0f,
+            // Where it grows, its floor is its height at its tallest (Extent): a short title or a card with no tags lays out at the skeleton's height.
+            Height = lay.DaylistGrows ? float.NaN : lay.DaylistH, MinHeight = lay.DaylistGrows ? Extent(lay) : 0f,
             // The strip's own height (176 / 160 / 112 / 56 across the tiers and the height rung) lands at once: its HOST (`Swap`) glides it on a SIZE channel,
             // so it holds a track on the crossing frame whatever the chapter around it does (a position-only slide would snap beside a live reflow), and one
             // track carries both a crossing inside a form and the cross-fade between forms (a second track here left the host short of the new height).
@@ -450,6 +481,8 @@ internal static class ZuneHomeDaylist
         {
             Color = strong ? Tok.TextPrimary : Tok.TextSecondary, MaxLines = strong ? 0 : 1, Wrap = strong ? TextWrap.Wrap : TextWrap.NoWrap,
             Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            // Each line exactly the role's line height: the strip's height (Extent) counts the inline countdown's row at it.
+            LineStacking = LineStacking.BlockLineHeight,
         };
 
     static Element StaticLine(string s, bool strong = false) => LineText(s, strong) with { Case = R.Case.For(LabelKind.Label) };
