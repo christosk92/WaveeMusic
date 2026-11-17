@@ -35,9 +35,10 @@ public sealed record WidgetSource(string Widget, string? Args) : HomeSource("wid
 public sealed record UnknownSource(string RawKind, string RawJson) : HomeSource(RawKind);
 
 /// <summary>What one Spotify section drew as when its answer was last on hand: its key, the template its tile took (after the fold and the
-/// rhythm), how many items it showed, and whether it was a member of a fold (a one-card baseline section the projection gathers into one shelf).
+/// rhythm), how many items it showed, whether it was a member of a fold (a one-card baseline section the projection gathers into one shelf), and
+/// whether its header named an entity (the taller header: the entity's cover beside the lead words and its name).
 /// A launch draws a section whose answer is on its way as a flat skeleton of this shape, at its place and its loaded size.</summary>
-public readonly record struct SeedShape(string Key, SectionTemplate Template, int Count, bool Fold);
+public readonly record struct SeedShape(string Key, SectionTemplate Template, int Count, bool Fold, bool Head = false);
 
 /// <summary>One item. <see cref="Options"/>: "live" = "0" | "1"; unknown keys are kept.</summary>
 public sealed record HomeItem(string Id, HomeSource Source, HomeSize Size,
