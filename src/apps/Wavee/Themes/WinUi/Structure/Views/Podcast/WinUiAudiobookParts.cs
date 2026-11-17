@@ -65,7 +65,7 @@ internal static class WinUiAudiobookParts
             : Caption(v.LineRight) with { Color = Tok.TextSecondary, Shrink = 0f };
         var head = new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Baseline, Gap = AB.RowGap, MinWidth = 0f,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = AB.RowGap, MinWidth = 0f,
             Children =
             [
                 new SpanTextEl(new TextSpan[] { new(v.LineTitle, Weight: AB.Strong, Color: Tok.TextPrimary), new(" " + v.LineSub, Color: Tok.TextTertiary) })
@@ -132,14 +132,14 @@ internal static class WinUiAudiobookParts
         kids[n] = new BoxEl
         {
             Width = AB.ThumbOuter, Height = AB.ThumbOuter, HitTestVisible = false, AlignSelf = FlexAlign.Center,
-            Corners = CornerRadius4.All(AB.ThumbOuter / 2f), Fill = Tok.FillSolidTertiary, BorderWidth = 1f, BorderColor = Tok.ControlElevationBorder,
+            Corners = CornerRadius4.All(AB.ThumbOuter / 2f), Fill = Tok.FillControlStrong, BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
             Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Visible = Prop.Of(() => progress && place.Value.Current >= 0),
-            OffsetX = Prop.Of(() =>
+            Transform = Prop.Of(() =>
             {
                 var pl = place.Value;
                 int c = Math.Clamp(pl.Current, 0, n - 1);
-                return starts[c] + widths[c] * pl.CurrentFill - AB.ThumbOuter / 2f;
+                return Affine2D.Translation(starts[c] + widths[c] * pl.CurrentFill - AB.ThumbOuter / 2f, 0f);
             }),
             Children = [new BoxEl { Width = AB.ThumbInner, Height = AB.ThumbInner, Corners = CornerRadius4.All(AB.ThumbInner / 2f), Fill = Tok.AccentDefault }],
         };
@@ -153,7 +153,7 @@ internal static class WinUiAudiobookParts
     {
         var head = new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Baseline, Gap = AB.RowGap, MinWidth = 0f,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = AB.RowGap, MinWidth = 0f,
             Padding = new Edges4(0f, AB.ContentsHeadPad, AB.ContentsHeadPad, AB.ContentsHeadBottom),
             Children =
             [
@@ -192,12 +192,12 @@ internal static class WinUiAudiobookParts
         };
         var starts = Body(c.StartsAt) with
         {
-            Width = AB.StartWidth, Shrink = 0f, Wrap = TextWrap.NoWrap, TextAlign = TextAlign.Right,
+            Width = AB.StartWidth, Shrink = 0f, Wrap = TextWrap.NoWrap, TextAlign = TextAlign.End,
             Color = cur ? Tok.TextPrimary : done ? Tok.TextTertiary : Tok.TextSecondary,
         };
         var number = Body(c.Number) with
         {
-            Width = AB.NumberWidth, Shrink = 0f, Wrap = TextWrap.NoWrap, TextAlign = TextAlign.Right, Color = cur ? Tok.AccentTextPrimary : Tok.TextTertiary,
+            Width = AB.NumberWidth, Shrink = 0f, Wrap = TextWrap.NoWrap, TextAlign = TextAlign.End, Color = cur ? Tok.AccentTextPrimary : Tok.TextTertiary,
         };
         var line = new BoxEl
         {
