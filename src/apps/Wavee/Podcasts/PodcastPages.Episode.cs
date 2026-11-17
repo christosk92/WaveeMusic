@@ -552,7 +552,6 @@ public sealed class PodcastEpisodeScreen : Component
         if (state != PodcastRowState.Unplayed)
             b.Add(new PodcastMenuItem(Loc.Get(Strings.Podcast.Pages.StartOver), null, Icons.Undo, false,
                 () => Episode.StartAt(Current, Playback.EpisodeStartKind.Beginning)));
-        b.Add(new PodcastMenuItem(Loc.Get(Strings.Podcast.Pages.PlayNext), null, Icons.Queue, false, () => Episode.Enqueue(Current, true)));
         var show = e.Show;
         if (show.IsValid)
         {

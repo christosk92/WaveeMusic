@@ -841,7 +841,7 @@ public static partial class Controls
     // A description that may be an HTML FRAGMENT — a playlist/album blurb carries anchors to artists and playlists and
     // <b> bold — rendered as ONE wrapped rich-text paragraph (a span paragraph shapes all runs as a single flow).
     // Anchors become accent HYPERLINKS that navigate through the route seam; <b>/<strong> → bold; HTML entities are
-    // decoded; unknown tags are DROPPED and their text KEPT. The shaper has no italic axis, so <i>/<em> render upright.
+    // decoded; unknown tags are DROPPED and their text KEPT. <i>/<em> are italic runs (TextSpan.Italic).
     // Plain text with no markup → a single run, identical to a plain text node.
 
     /// <summary>A rich paragraph at an EXPLICIT width.</summary>
@@ -899,7 +899,7 @@ public static partial class Controls
     {
         var spans = new List<TextSpan>(4);
         var buf = new StringBuilder(s.Length);
-        int bold = 0;
+        int bold = 0, italic = 0;
         string? href = null;
 
         void Flush()
@@ -908,14 +908,15 @@ public static partial class Controls
             string t = buf.ToString();
             buf.Clear();
             ushort w = (ushort)(bold > 0 ? 700 : 0);
+            bool it = italic > 0;
             if (href is { } h && onNavRoute is not null && RouteForUri?.Invoke(h) is { } key)
-                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: () => onNavRoute(key)));
+                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: () => onNavRoute(key), Italic: it));
             else if (href is { } url && LinkOpener?.Invoke(url) is { } open)
-                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: open));   // the link door: a track plays, a web page opens
+                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: open, Italic: it));   // the link door: a track plays, a web page opens
             else if (href is not null)
-                spans.Add(new TextSpan(t, Weight: w, Color: linkColor));   // a reference we cannot route → styled, inert
+                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, Italic: it));   // a reference we cannot route → styled, inert
             else
-                spans.Add(new TextSpan(t, Weight: w));
+                spans.Add(new TextSpan(t, Weight: w, Italic: it));
         }
 
         int i = 0;
@@ -930,8 +931,10 @@ public static partial class Controls
                 string lower = tag.ToLowerInvariant();
                 if (lower == "/a") href = null;
                 else if (lower == "a" || lower.StartsWith("a ", StringComparison.Ordinal)) href = ExtractHref(tag);
-                else if (lower is "b" or "strong" or "em" or "i") bold++;
-                else if (lower is "/b" or "/strong" or "/em" or "/i") bold = Math.Max(0, bold - 1);
+                else if (lower is "b" or "strong") bold++;
+                else if (lower is "/b" or "/strong") bold = Math.Max(0, bold - 1);
+                else if (lower is "em" or "i") italic++;
+                else if (lower is "/em" or "/i") italic = Math.Max(0, italic - 1);
                 else if (lower is "h1" or "h2" or "h3" or "h4" or "h5" or "h6") bold++;
                 else if (lower is "br" or "br/" or "br /" or "/li") buf.Append('\n');
                 else if (lower is "/p" or "/div" or "/ul" or "/ol"
