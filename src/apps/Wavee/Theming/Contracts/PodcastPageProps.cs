@@ -244,7 +244,7 @@ public sealed record AudiobookPageProps
     public required Action CheckHours { get; init; }
     public required Action TopUp { get; init; }
     public required Action? Buy { get; init; }
-    public required Action Download { get; init; }
+    public required Action? Download { get; init; }
     /// <summary>Open a uri (an author, a similar book).</summary>
     public required Action<string> OpenUri { get; init; }
     public required Func<ContextMenuModel?> Menu { get; init; }

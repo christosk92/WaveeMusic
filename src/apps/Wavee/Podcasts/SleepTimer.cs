@@ -3,7 +3,7 @@
 // Wavee had none (the audiobook page asks for one beside Continue: a hidden sleep timer goes unfound, concept note "Library, sample, speed, sleep
 // timer, hours"). One app-wide timer, owned by no page (it keeps running when the page closes): `Set(minutes)`, `SetEndOfItem()`, `Off()`. A one-second
 // thread-pool tick marshals onto the UI thread (`Store.Post`): it refreshes `MinutesLeft` and pauses once the time is up, or, in the end-of-item mode,
-// when the item that was on the deck when it was armed has (nearly) run out or the deck moved on to the next one. A pause also disarms it.
+// when the item that was on the deck when it was armed has (nearly) run out or the deck moved on to the next one. 
 
 using FluentGpu.Signals;
 
