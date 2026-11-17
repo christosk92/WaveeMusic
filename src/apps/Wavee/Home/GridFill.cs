@@ -167,7 +167,7 @@ public static class GridFill
             cardHeight: float.IsNaN(height) ? null : _ => height, measured: true,
             pager: pages.Length > 1 ? pager : ShelfPager.None,
             controller: controller,
-            minCardW: PageMinW, maxCardW: PageMaxW, maxColumns: 1, gap: colGap, edgeFade: 0f, snap: ShelfSnap.Page,
+            minCardW: PageMinW, maxCardW: PageMaxW, maxColumns: 1, gap: colGap, edgeFade: 0f, snap: ShelfSnap.Page, offPageDim: HomeModuleLayout.OffPageDim, pageMemoryKey: "grid-pages:" + key,
             prevGlyph: prevGlyph, nextGlyph: nextGlyph, parts: parts, lift: ShelfLift.None,
             keyOf: static (pg, i) => "grid-page:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture))
             with { Key = "grid-pages:" + key };

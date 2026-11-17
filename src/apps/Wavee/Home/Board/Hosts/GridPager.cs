@@ -38,18 +38,40 @@ public sealed class GridPager : IPager
 {
     readonly Signal<int> _page = new(0), _count = new(1);
     readonly Signal<bool> _canPrev = new(false), _canNext = new(false);
+    readonly string? _memoryKey;
+    int _wanted = -1;   // the remembered page, applied once the grid has that many pages
+
+    /// <summary>The pages grids built with a memory key were left on (in memory, for the process).</summary>
+    static readonly Dictionary<string, int> s_memory = new(StringComparer.Ordinal);
+
+    /// <summary>A pager; with <paramref name="memoryKey"/> it remembers its page under that key, and a pager made under the same key starts on it
+    /// (the shortcuts grid comes back on the page it was left on).</summary>
+    public GridPager(string? memoryKey = null)
+    {
+        _memoryKey = memoryKey;
+        if (memoryKey is not null && s_memory.TryGetValue(memoryKey, out int page) && page > 0) _wanted = page;
+    }
 
     public IReadSignal<int> Page => _page;
     public IReadSignal<int> PageCount => _count;
     public IReadSignal<bool> CanPrev => _canPrev;
     public IReadSignal<bool> CanNext => _canNext;
 
-    public void GoTo(int page) => Set(Math.Clamp(page, 0, Math.Max(0, _count.Peek() - 1)), _count.Peek());
+    /// <summary>The page a grid of <paramref name="count"/> pages shows first: the remembered one while it is pending, else the current one.</summary>
+    public int FirstPage(int count) => _wanted >= 0 && _wanted < count ? _wanted : Math.Clamp(_page.Peek(), 0, Math.Max(0, count - 1));
+
+    public void GoTo(int page) { _wanted = -1; Set(Math.Clamp(page, 0, Math.Max(0, _count.Peek() - 1)), _count.Peek()); }
     public void Prev() => GoTo(_page.Peek() - 1);
     public void Next() => GoTo(_page.Peek() + 1);
 
-    /// <summary>The grid's page count changed (a width or the cells): the page stays where it is, within the new count.</summary>
-    public void Publish(int count) => Set(Math.Clamp(_page.Peek(), 0, Math.Max(0, count - 1)), Math.Max(1, count));
+    /// <summary>The grid's page count changed (a width or the cells): the page stays where it is, within the new count (a remembered page lands
+    /// as soon as the grid has it).</summary>
+    public void Publish(int count)
+    {
+        count = Math.Max(1, count);
+        if (_wanted >= 0 && _wanted < count) { int w = _wanted; _wanted = -1; Set(w, count); return; }
+        Set(Math.Clamp(_page.Peek(), 0, count - 1), count);
+    }
 
     void Set(int page, int count)
     {
@@ -57,5 +79,7 @@ public sealed class GridPager : IPager
         _page.SetIfChanged(page);
         _canPrev.SetIfChanged(page > 0);
         _canNext.SetIfChanged(page < count - 1);
+        // Only while it pages at all, and not while a remembered page waits: a one-page fit never writes over the memory.
+        if (_memoryKey is not null && count > 1 && _wanted < 0) s_memory[_memoryKey] = page;
     }
 }

@@ -30,6 +30,9 @@ public static class HomeModuleLayout
     public static float ShelfCardMin => R.Space.ShelfCardMin;
     public static float ShelfCardMax => R.Space.ShelfCardMax;
     public static float ShelfEdgeFade => R.Space.FadeShelf;
+
+    /// <summary>A paged Home shelf's off-page dim (owner pager spec 2026-11-16): the page sliding off stands at 0.8, the page sliding in eases to 1.</summary>
+    public const float OffPageDim = 0.2f;
     /// <summary>The gap BETWEEN shelf cards: zero, because the shared card already insets its cover by its plate padding
     /// (8 each side), so two covers sit 16 apart — the prototype's gutter. A 12 gap on top read as 28 between covers.</summary>
     public const float ShelfGap = 0f;

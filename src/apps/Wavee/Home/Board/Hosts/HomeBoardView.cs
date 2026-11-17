@@ -73,7 +73,7 @@ public sealed class HomeBoardView
 
     /// <summary>The shortcuts grid's pager (owner 2026-11-16, "one grid, edit inside it"): the grid's paged strip binds it, the Pinned group's head
     /// draws the theme's pager over it. In memory only: a remount starts at the first page.</summary>
-    public GridPager ShortcutsPager { get; } = new();
+    public GridPager ShortcutsPager { get; } = new("home:shortcuts");
 
     /// <summary>Classic's reset question in the edit bar.</summary>
     public Signal<bool> ConfirmingReset { get; } = new(false);

@@ -32,8 +32,8 @@
 //              visible move, so neither snapped nor jumped.
 //   weights    `counts.excessOffscreen`: of the excess, the moves wholly off the screen (below the fold, scrolled out of their viewport) on both
 //              frames; `counts.late` / `late`: parts whose laid-out rect changed in the first LateFrames settle frames after the commit with nothing
-//              easing them (a part landing late, which the commit-frame compare misses). Both are reported; `--gate` keeps counting the excess as
-//              before and `--gate-todo` adds the late reflows.
+//              easing them (a part landing late, which the commit-frame compare misses). Both are reported; `--gate` counts the excess seen on
+//              the screen (excess - excessOffscreen) and `--gate-todo` adds the off-screen excess and the late reflows.
 //   committed  the window or height tier or a rung changed by the commit frame; the CONTENT tier is reported apart, in `contentCommitted`
 //              (where it first left its band: resized / commit / settle / none) and `tierSettled` (the tiers after the settle).
 // The lists hold only the topmost snapped or jumped node of a subtree, with `under` (the flagged nodes under it, itself included) and

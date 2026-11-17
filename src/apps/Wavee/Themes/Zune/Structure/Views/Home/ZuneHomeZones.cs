@@ -102,7 +102,7 @@ internal static partial class ZuneHomeZones
             // (one node at every tier: these are live props of the shelf).
             minCardW: lay.ShelfMinW, maxCardW: band2.MaxCardW, fixedCardW: lay.ShelfCols > 0 ? 0f : lay.ShelfCardW,
             maxColumns: band2.MaxColumns, gap: H.ShelfGap, headerGap: H.HeadGap,
-            edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
+            edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page, offPageDim: HomeModuleLayout.OffPageDim, pageMemoryKey: zone.Key,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
             lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank
@@ -131,7 +131,7 @@ internal static partial class ZuneHomeZones
             header: Heading(zone, lay) with { Grow = H.HeadFillGrow },
             pager: ShelfPager.Chevrons | ShelfPager.WhenPaged,
             minCardW: lay.WideMinW, maxCardW: band2.MaxCardW, maxColumns: band2.MaxColumns, gap: H.WideGap, headerGap: H.HeadGap,
-            edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
+            edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page, offPageDim: HomeModuleLayout.OffPageDim, pageMemoryKey: zone.Key,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, parts: K.ChevronTargets,
             lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank
