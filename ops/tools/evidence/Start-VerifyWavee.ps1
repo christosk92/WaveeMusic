@@ -30,6 +30,11 @@ param(
     [string]$Exe,
     [switch]$CopyLibrary,
     [switch]$RefreshStore,
+    # Owner rule 2026-11-17: the verify window goes on the SECONDARY monitor and never takes the foreground (the app's
+    # --window-monitor / --window-rect, Screens/Diagnostics.Probe.TestWindow.cs). -WindowDip is the client size in DIP at that
+    # screen's scale. -Monitor '' keeps the old placement (-X/-Y/-Width/-Height px through MoveWindow, still never activated).
+    [string]$Monitor = 'secondary',
+    [string]$WindowDip = '1600x1000',
     [int]$X = 0, [int]$Y = 0, [int]$Width = 1600, [int]$Height = 1000,
     [string]$FgSwitches = 'gpu-timing'
 )
@@ -79,8 +84,10 @@ else { $settings | Add-Member -NotePropertyName 'diag.developerMode' -NoteProper
 
 $launchArgs = @('--profile', $ProfileDir)
 if ($FgSwitches) { $launchArgs += @('--fg', $FgSwitches) }
+if ($Monitor) { $wd = $WindowDip.ToLowerInvariant().Split('x'); $launchArgs += @('--window-monitor', $Monitor, '--window-rect', "0,0,$($wd[0]),$($wd[1])") }
+else { $launchArgs += @('--no-activate') }
 $p = Start-Process -FilePath $Exe -ArgumentList $launchArgs -WorkingDirectory (Split-Path $Exe) -PassThru
 $h = Wait-WindowByPid -ProcessId $p.Id -TimeoutSec 60
-[void][EvidenceWin32]::MoveWindow($h, $X, $Y, $Width, $Height, $true)
+if (-not $Monitor) { [void][EvidenceWin32]::MoveWindow($h, $X, $Y, $Width, $Height, $true) }
 $logs = Join-Path $ProfileDir 'logs'
 [pscustomobject]@{ Pid = $p.Id; Hwnd = $h; Profile = $ProfileDir; LogFolder = $logs; EvidenceRoot = (Join-Path $logs 'evidence'); Reused = $false }

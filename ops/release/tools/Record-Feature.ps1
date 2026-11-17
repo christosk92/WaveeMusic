@@ -8,10 +8,14 @@
   Dev-box tool; run it from Windows PowerShell OUTSIDE any sandbox (the GPU, the window capture and ffmpeg are not visible
   inside one), and hold the GPU lock: bash C:/WAVEE/scratch/gpulock.sh powershell -File Record-Feature.ps1 ...
 
-  1. Picks the monitor: the highest refresh rate whose work area holds the window (-Width x -Height DIP at its scale).
+  1. Picks the monitor: -Monitor, the SECONDARY by default (owner rule 2026-11-17: a real-window test run goes on the secondary
+     screen, never takes the foreground or the keyboard, and is never topmost). The app is launched with --window-monitor and
+     --window-rect (Screens/Diagnostics.Probe.TestWindow.cs: placed there before its first frame, shown without activation,
+     WS_EX_NOACTIVATE, no SetForegroundWindow on any verb). The take runs at that screen's refresh rate.
   2. Starts a VERIFY Wavee with ops\tools\evidence\Start-VerifyWavee.ps1 on -ProfileDir (its own profile, signed in from a
      copy of store.json minus the Connect device id; the owner's playplay folder copied in so previews can play locally).
-     A verify Wavee already running from -Exe is reused and left running; one this script started is closed at the end.
+     A verify Wavee already running from -Exe on that profile is reused and left running; one this script started is closed at
+     the end. -Fake rehearses instead on the offline --fake demo (-FakeProfile, no account).
      It NEVER sends cmd=here (a Connect takeover would steal the owner's playback) and never plays or pauses anything.
   3. Sets the theme (in the profile's settings, before the launch), presentation mode (no account name or picture), the client
      size and the route, then plays the script's
@@ -19,10 +23,10 @@
   4. Records the window (ffmpeg gfxcapture = Windows.Graphics.Capture of THIS window only: nothing that covers it, nothing
      beside it, no OS cursor; a window that shrinks keeps the frame size with black bars) at -Fps (default 60 from a 120 Hz panel: every other presented frame) into a
      lossless intermediate while the script's TAKE part (after `#rec`) plays through wavee://diag?cmd=drive (the app's own
-     input queue: no SendInput, the owner's pointer never moves; the app draws the driver's pointer). The window is topmost
-     (no activation) for the take. -Audio adds the verify process's own output (WASAPI process loopback, Record-AppAudio.cs):
+     input queue: no SendInput, the owner's pointer never moves; the app draws the driver's pointer). Never topmost: the
+     capture films the window itself. -Encoder x264rgb (default) or mf (the GPU's H.264 encoder). -Audio adds the verify process's own output (WASAPI process loopback, Record-AppAudio.cs):
      nothing else on the machine is heard.
-  5. Writes <Out>\take.mkv (lossless), take-<fps>.mp4 (H.264 High, full rate, CFR), share-60.mp4 (60 fps, <= 50 MB),
+  5. Writes <Out>\take.mkv (lossless), take-<fps>.mp4 (H.264 High, full rate, CFR), share-<n>.mp4 (60 fps from 120, 50 from 100: <= 50 MB),
      sheet.png (a contact sheet), frames.tsv (every captured frame's time), drive\ (the app's steps.tsv / frames.tsv /
      summary.txt) and report.txt: the frame accounting (frames missing inside continuous motion, counted on the capture's
      own timestamps and on the app's presents).
@@ -59,7 +63,20 @@ param(
     # Discovery instead of a take: after the setup, list the keyed nodes whose key starts with this prefix (key, rect) and stop.
     [string]$ListKeys,
     # The scroller -ListKeys seeks along (a scroll-key prefix; Home's page is home:).
-    [string]$ListVp = 'home:'
+    [string]$ListVp = 'home:',
+    # Owner rule 2026-11-17: a real-window test run goes on the SECONDARY monitor and never takes the foreground (the app's
+    # --window-monitor / --window-rect; Screens/Diagnostics.Probe.TestWindow.cs). secondary | primary | <EnumDisplayMonitors index>.
+    [string]$Monitor = 'secondary',
+    # A rehearsal: the offline --fake demo on a scratch profile (no account, settings in memory) instead of a verify Wavee.
+    [switch]$Fake,
+    [string]$FakeProfile = 'C:/WAVEE/scratch/rec/fakeprof',
+    # Extra engine switches for the run (--fg), e.g. a frame-cost probe.
+    [string]$Fg = '',
+    # The lossless intermediate's encoder: x264rgb (BGRA, libx264rgb qp 0, CPU) or mf (Media Foundation's H.264 encoder at 120 Mb/s:
+    # near-lossless, NV12; it refuses a stream declared above 120 fps, so its capture is declared at 120 at most).
+    [ValidateSet('x264rgb', 'mf')][string]$Encoder = 'x264rgb',
+    # Play the take without filming it (a frame-cost run): the drive's own summary is the report.
+    [switch]$NoCapture
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
@@ -82,12 +99,10 @@ public delegate bool MonitorEnumProc(IntPtr m, IntPtr dc, ref RECT r, IntPtr l);
 [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool EnumDisplaySettingsW(string dev, int mode, ref DEVMODE dm);
 [DllImport("shcore.dll")] public static extern int GetDpiForMonitor(IntPtr m, int type, out uint x, out uint y);
 [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
-[DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int hh, bool r);
-[DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);
 [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
 '@ -ErrorAction SilentlyContinue
 
-# ── the monitor: highest refresh that holds the window ────────────────────────────────────────────────────────────────
+# ── the monitor: -Monitor (the secondary by default: test runs stay off the person's work screen) ───────────────────────
 $monitors = New-Object System.Collections.Generic.List[object]
 $cb = [RecFeature.Win+MonitorEnumProc]{ param($m, $dc, [ref]$r, $l)
     $i = New-Object RecFeature.Win+MONITORINFOEX; $i.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($i)
@@ -95,43 +110,64 @@ $cb = [RecFeature.Win+MonitorEnumProc]{ param($m, $dc, [ref]$r, $l)
     $d = New-Object RecFeature.Win+DEVMODE; $d.dmSize = [Runtime.InteropServices.Marshal]::SizeOf($d)
     [void][RecFeature.Win]::EnumDisplaySettingsW($i.szDevice, -1, [ref]$d)
     $dx = 96; $dy = 96; [void][RecFeature.Win]::GetDpiForMonitor($m, 0, [ref]$dx, [ref]$dy)
-    $monitors.Add([pscustomobject]@{ Device = $i.szDevice; Work = $i.rcWork; Hz = $d.dmDisplayFrequency; Scale = $dx / 96.0 })
+    $monitors.Add([pscustomobject]@{ Device = $i.szDevice; Work = $i.rcWork; Hz = $d.dmDisplayFrequency; Scale = $dx / 96.0; Primary = ($i.dwFlags -band 1) -ne 0 })
     $true }
 [void][RecFeature.Win]::EnumDisplayMonitors([IntPtr]::Zero, [IntPtr]::Zero, $cb, [IntPtr]::Zero)
-$fits = @($monitors | Where-Object { ($_.Work.R - $_.Work.L) -ge [int]($Width * $_.Scale) -and ($_.Work.B - $_.Work.T) -ge [int]($Height * $_.Scale) } | Sort-Object Hz -Descending)
-if ($fits.Count -eq 0) { throw "no monitor holds a ${Width}x${Height} DIP window: $(($monitors | ForEach-Object { "$($_.Device) $($_.Hz) Hz x$($_.Scale)" }) -join '; ')" }
-$mon = $fits[0]
-if ($Fps -le 0) { $Fps = if ($mon.Hz -gt 60 -and $mon.Hz % 2 -eq 0) { $mon.Hz / 2 } else { $mon.Hz } }
+# EnumDisplayMonitors order, as the app's --window-monitor counts them
+$mon = switch ($Monitor) {
+    'secondary' { $monitors | Where-Object { -not $_.Primary } | Select-Object -First 1 }
+    'primary' { $monitors | Where-Object { $_.Primary } | Select-Object -First 1 }
+    default { $monitors[[int]$Monitor] }
+}
+if (-not $mon) { throw "no monitor '$Monitor': $(($monitors | ForEach-Object { "$($_.Device) $($_.Hz) Hz x$($_.Scale)$(if ($_.Primary) { ' primary' })" }) -join '; ')" }
+if (($mon.Work.R - $mon.Work.L) -lt [int]($Width * $mon.Scale) -or ($mon.Work.B - $mon.Work.T) -lt [int]($Height * $mon.Scale)) {
+    throw "monitor $($mon.Device) does not hold a ${Width}x${Height} DIP window at x$($mon.Scale)" }
+# Default: 60 fps from a 120 Hz screen (every other presented frame, picked on the GPU: loss-free where measured); a screen at
+# 100 Hz or less is filmed at its own rate (the 100 Hz secondary: 100 fps), and the share copy is 60 either way.
+if ($Fps -le 0) { $Fps = if ($mon.Hz -ge 120 -and $mon.Hz % 2 -eq 0) { $mon.Hz / 2 } else { $mon.Hz } }
 if ($mon.Hz % $Fps -ne 0) { throw "-Fps $Fps does not divide the panel's $($mon.Hz) Hz (every frame of the take must be a presented one)" }
 $step = $mon.Hz / $Fps
-Say "monitor $($mon.Device) $($mon.Hz) Hz scale $($mon.Scale); recording at $Fps fps"
+Say "monitor $($mon.Device) ($Monitor) $($mon.Hz) Hz scale $($mon.Scale); recording at $Fps fps"
 
-# ── the verify Wavee ───────────────────────────────────────────────────────────────────────────────────────────────────
-New-Item -ItemType Directory -Force $ProfileDir | Out-Null
-$ownerDir = Join-Path $env:LOCALAPPDATA 'Wavee'
-$pp = Join-Path $ProfileDir 'playplay'
-if (-not (Test-Path $pp) -and (Test-Path (Join-Path $ownerDir 'playplay'))) {
-    Copy-Item -Recurse (Join-Path $ownerDir 'playplay') $pp   # local playback (the previews) needs it
+# ── the Wavee: a verify instance on the account, or (-Fake) the offline demo ──────────────────────────────────────────────
+$placeArgs = @('--window-monitor', $Monitor, '--window-rect', "0,0,$Width,$Height") + $(if ($Fg) { @('--fg', $Fg) } else { @() })
+if ($Fake) {
+    New-Item -ItemType Directory -Force $FakeProfile | Out-Null
+    # --fake keeps its settings in memory: the theme comes as --theme (honoured by a --fake run), never switched at run time
+    $p = Start-Process -FilePath $Exe -ArgumentList (@('--fake', '--profile', $FakeProfile, '--theme', $Theme) + $placeArgs) -WorkingDirectory (Split-Path $Exe) -PassThru
+    $hwnd = Wait-WindowByPid -ProcessId $p.Id -TimeoutSec 60
+    $ev = Join-Path $FakeProfile 'logs\evidence'
+    $v = [pscustomobject]@{ Pid = $p.Id; Hwnd = $hwnd; Reused = $false }
+    Start-Sleep -Seconds 4
 }
-$firstRun = -not (Test-Path (Join-Path $ProfileDir 'store.json'))
-# Settings the take must not show: Home's first-run teaching tip ("Make Home yours") counts as seen in every theme.
-$settingsPath = Join-Path $ProfileDir 'settings.json'
-$settings = if (Test-Path $settingsPath) { Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }
-function Set-Setting([string]$k, [string]$val) {
-    if ($settings.PSObject.Properties.Name -contains $k) { $settings.$k = $val } else { $settings | Add-Member -NotePropertyName $k -NotePropertyValue $val }
+else {
+    New-Item -ItemType Directory -Force $ProfileDir | Out-Null
+    $ownerDir = Join-Path $env:LOCALAPPDATA 'Wavee'
+    $pp = Join-Path $ProfileDir 'playplay'
+    if (-not (Test-Path $pp) -and (Test-Path (Join-Path $ownerDir 'playplay'))) {
+        Copy-Item -Recurse (Join-Path $ownerDir 'playplay') $pp   # local playback (the previews) needs it
+    }
+    $firstRun = -not (Test-Path (Join-Path $ProfileDir 'store.json'))
+    # Settings the take must not show: Home's first-run teaching tip ("Make Home yours") counts as seen in every theme.
+    $settingsPath = Join-Path $ProfileDir 'settings.json'
+    $settings = if (Test-Path $settingsPath) { Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }
+    function Set-Setting([string]$k, [string]$val) {
+        if ($settings.PSObject.Properties.Name -contains $k) { $settings.$k = $val } else { $settings | Add-Member -NotePropertyName $k -NotePropertyValue $val }
+    }
+    foreach ($t in 'classic', 'winui', 'zune') { Set-Setting "theme.$t.state.homeTipSeen" 'true' }
+    # The theme is set before the launch, not switched at run time (a runtime switch remounts the frame; a verb that arrived while
+    # a covered window held that remount went unanswered until 0846691d8, and a switch is a needless remount on camera anyway).
+    Set-Setting 'theme.id' $Theme
+    [IO.File]::WriteAllText($settingsPath, ($settings | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
+    $startArgs = @{ ProfileDir = $ProfileDir; Exe = $Exe; Monitor = $Monitor; WindowDip = "${Width}x${Height}"; FgSwitches = $(if ($Fg) { "gpu-timing,$Fg" } else { 'gpu-timing' }) }
+    if ($firstRun) { $startArgs.CopyLibrary = $true }
+    $v = & (Join-Path $repo 'ops\tools\evidence\Start-VerifyWavee.ps1') @startArgs
+    $hwnd = [IntPtr]$v.Hwnd
+    $ev = $v.EvidenceRoot
 }
-foreach ($t in 'classic', 'winui', 'zune') { Set-Setting "theme.$t.state.homeTipSeen" 'true' }
-# The theme is set before the launch, not switched at run time: on 2026-11-17 a diag verb that arrived during a runtime theme
-# switch went unanswered, and so did every later one (the --fake rehearsals, 2 runs of 3).
-Set-Setting 'theme.id' $Theme
-[IO.File]::WriteAllText($settingsPath, ($settings | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
-$startArgs = @{ ProfileDir = $ProfileDir; Exe = $Exe; X = $mon.Work.L; Y = $mon.Work.T; Width = [int]($Width * $mon.Scale); Height = [int]($Height * $mon.Scale) }
-if ($firstRun) { $startArgs.CopyLibrary = $true }
-$v = & (Join-Path $repo 'ops\tools\evidence\Start-VerifyWavee.ps1') @startArgs
-$hwnd = [IntPtr]$v.Hwnd
-$ev = $v.EvidenceRoot
+$hwnd = [IntPtr]$hwnd
 $startedPid = if ($v.Reused) { 0 } else { $v.Pid }
-Say "verify Wavee pid $($v.Pid) $(if ($v.Reused) { '(reused: left running)' } else { '(started here: closed at the end)' })"
+Say "$(if ($Fake) { 'fake demo' } else { 'verify Wavee' }) pid $($v.Pid) on $Monitor, never activated $(if ($v.Reused) { '(reused: left running)' } else { '(started here: closed at the end)' })"
 
 function Diag([string]$q, [int]$timeoutMs = 20000) {
     $r = Invoke-WaveeDiag -Hwnd $hwnd -Uri ('wavee://diag?' + $q) -EvidenceRoot $ev -TimeoutMs $timeoutMs
@@ -165,7 +201,7 @@ $cut = [Array]::IndexOf([string[]]$all, ($all | Where-Object { $_.Trim() -eq '#r
 $setup = if ($cut -gt 0) { $all[0..($cut - 1)] } else { @() }
 $take = if ($cut -ge 0) { $all[($cut + 1)..($all.Count - 1)] } else { $all }
 
-$ff = $null; $aud = $null; $d = $null; $takeError = $null
+$ff = $null; $ffErr = $null; $aud = $null; $d = $null; $takeError = $null
 try {
     if ($Audio) {
         # built first (a file-based app compiles on its first run), started before the setup: it keeps its file on the wall
@@ -178,9 +214,7 @@ try {
         $aud = [System.Diagnostics.Process]::Start($apsi)
     }
     Diag 'cmd=present&on=1' | Out-Null
-    Drive @("resize $Width $Height") 'size' 10000 | Out-Null
-    $r = New-Object RecFeature.Win+RECT; [void][RecFeature.Win]::GetWindowRect($hwnd, [ref]$r)
-    [void][RecFeature.Win]::MoveWindow($hwnd, $mon.Work.L, $mon.Work.T, $r.R - $r.L, $r.B - $r.T, $true)
+    Drive @("resize $Width $Height") 'size' 10000 | Out-Null   # the client size exactly (--window-rect sized it at the launch's DPI)
     if ($Route) { Send-WaveeUri -Hwnd $hwnd -Uri "wavee://open?route=$Route"; Start-Sleep -Milliseconds 2500 }
     if ($setup.Count -gt 0) { Say 'setup'; Drive (@($setup | Where-Object { $_ -notmatch '\{[A-Z0-9_]+\}' })) 'setup' (Script-Ms $setup) | Out-Null }
     if ($ListKeys) {
@@ -196,43 +230,51 @@ try {
     }
 
     # ── the take ───────────────────────────────────────────────────────────────────────────────────────────────────────
-    [void][RecFeature.Win]::SetWindowPos($hwnd, [IntPtr](-1), 0, 0, 0, 0, 0x0013)   # topmost, no move/size/activation
-    Start-Sleep -Milliseconds 400
+    # Never topmost (owner rule 2026-11-17): Windows.Graphics.Capture films the window itself, so what covers it is not filmed. A
+    # COVERED window does park its frames, though: the secondary screen keeps it in the open.
     $mkv = Join-Path $Out 'take.mkv'
     # Windows.Graphics.Capture of this window (ffmpeg gfxcapture) as an INPUT with a deep queue: the capture runs on its own thread
     # and the read-back and encode cannot stall it (in a filter graph they did: frames were lost). Unthrottled (a cap at the
     # refresh rate drops frames that arrive a hair early); `framestep` keeps every Nth frame while it is still on the GPU, so
     # only the kept ones are read back. Lossless BGRA (libx264rgb, qp 0), each frame with its own capture time.
-    $src = "gfxcapture=hwnd=$([int64]$hwnd):capture_cursor=0:capture_border=0:max_framerate=$(2 * $mon.Hz):resize_mode=crop" + $(if ($step -gt 1) { ",framestep=$step" } else { '' })
-    $ffArgs = @('-hide_banner', '-loglevel', 'error', '-y', '-thread_queue_size', '256', '-f', 'lavfi', '-i', $src,
-        '-vf', 'hwdownload,format=bgra', '-fps_mode', 'passthrough', '-c:v', 'libx264rgb', '-preset', 'ultrafast', '-qp', '0', $mkv)
+    $src = "gfxcapture=hwnd=$([int64]$hwnd):capture_cursor=0:capture_border=0:max_framerate=$(if ($Encoder -eq 'mf') { [Math]::Min(2 * $mon.Hz, 120) } else { 2 * $mon.Hz }):resize_mode=crop" + $(if ($step -gt 1) { ",framestep=$step" } else { '' })
+    $enc = if ($Encoder -eq 'mf') { @('-vf', 'hwdownload,format=bgra,format=nv12', '-c:v', 'h264_mf', '-b:v', '120M') }
+           else { @('-vf', 'hwdownload,format=bgra', '-c:v', 'libx264rgb', '-preset', 'ultrafast', '-qp', '0') }
+    $ffArgs = @('-hide_banner', '-loglevel', 'error', '-y', '-thread_queue_size', '256', '-f', 'lavfi', '-i', $src) + $enc + @('-fps_mode', 'passthrough', $mkv)
     $psi = New-Object System.Diagnostics.ProcessStartInfo 'ffmpeg', ([string]::Join(' ', ($ffArgs | ForEach-Object { if ($_ -match '[\s;,]') { '"' + $_ + '"' } else { $_ } })))
     $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardError = $true; $psi.CreateNoWindow = $true
-    $ff = [System.Diagnostics.Process]::Start($psi)
-    try { $ff.PriorityClass = 'High' } catch { }   # a capture that falls behind loses frames from Windows.Graphics.Capture's small pool
-    $ffErr = $ff.StandardError.ReadToEndAsync()
-    Start-Sleep -Milliseconds 900   # the capture's first frames: a still lead-in
-    if ($ff.HasExited) { throw "ffmpeg stopped at once: $($ffErr.Result)" }
+    if (-not $NoCapture) { $ff = [System.Diagnostics.Process]::Start($psi) }
+    if ($ff) { try { $ff.PriorityClass = 'High' } catch { } }   # a capture that falls behind loses frames from Windows.Graphics.Capture's small pool
+    if ($ff) {
+        $ffErr = $ff.StandardError.ReadToEndAsync()
+        Start-Sleep -Milliseconds 900   # the capture's first frames: a still lead-in
+        if ($ff.HasExited) { throw "ffmpeg stopped at once: $($ffErr.Result)" }
+    }
     Say "take ($($take.Count) lines)"
     try { $d = Drive $take 'take' (Script-Ms $take) } catch { $takeError = $_.Exception.Message }
     Start-Sleep -Milliseconds $TailMs
 }
 finally {
     if ($ff -and -not $ff.HasExited) { $ff.StandardInput.Write('q'); $ff.StandardInput.Close(); if (-not $ff.WaitForExit(30000)) { Write-Warning 'ffmpeg did not stop' } }
+    if ($ffErr -and $ffErr.Wait(5000)) { [IO.File]::WriteAllText((Join-Path $Out 'ffmpeg.log'), $ffErr.Result) }   # the capture's own errors, kept with the take
     if ($aud -and -not $aud.HasExited) { $aud.StandardInput.WriteLine('q'); $aud.StandardInput.Close(); [void]$aud.WaitForExit(15000) }
-    [void][RecFeature.Win]::SetWindowPos($hwnd, [IntPtr](-2), 0, 0, 0, 0, 0x0013)
     try { Diag 'cmd=present&on=0' 5000 | Out-Null } catch { }
     if ($startedPid -and -not $KeepOpen) {
         [void][RecFeature.Win]::PostMessageW($hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)   # WM_CLOSE: the app's own exit
         $p = Get-Process -Id $startedPid -ErrorAction SilentlyContinue
-        if ($p -and -not $p.WaitForExit(20000)) { Write-Warning "verify Wavee $startedPid did not exit on close; stopping it (it is ours)"; Stop-Process -Id $startedPid -Force }
-        Say "closed verify Wavee $startedPid"
+        if ($p -and -not $p.WaitForExit(20000)) { Write-Warning "Wavee $startedPid did not exit on close; stopping it (it is ours)"; Stop-Process -Id $startedPid -Force }
+        Say "closed Wavee $startedPid"
     }
 }
 
 # ── the files (also for a take whose script failed: its frames show where) ─────────────────────────────────────────────
 $driveDir = if ($d) { $d.Path } else { (Get-ChildItem (Join-Path $ev 'drive') -Directory | Where-Object Name -like '*-take' | Sort-Object Name | Select-Object -Last 1).FullName }
 if ($driveDir -and (Test-Path $driveDir)) { Copy-Item -Recurse -Force $driveDir (Join-Path $Out 'drive') }
+if ($NoCapture) {
+    Get-Content (Join-Path $Out 'drive\summary.txt')
+    if ($takeError) { throw "the take's script failed: $takeError" }
+    return
+}
 & python -I (Join-Path $PSScriptRoot 'record_feature_post.py') --out $Out --fps $Fps --panel $mon.Hz --scale $mon.Scale --width $Width --height $Height
 if ($LASTEXITCODE -ne 0) { throw "post-processing failed ($LASTEXITCODE)" }
 Get-Content (Join-Path $Out 'report.txt')

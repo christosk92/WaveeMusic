@@ -367,6 +367,8 @@ public static partial class Tray
             FluentApp.SetWindowVisible(true);
             nint hwnd = FluentApp.WindowHandle;
             if (hwnd == 0) return;
+            // A test run's window (FluentApp.NeverActivates: --window-monitor / --no-activate) is shown, never activated.
+            if (FluentApp.NeverActivates) { if (IsIconic(hwnd)) NativeShowWindow(hwnd, 4 /*SW_SHOWNOACTIVATE*/); return; }
             if (IsIconic(hwnd)) NativeShowWindow(hwnd, SwRestore);   // a window hidden while minimized comes back minimized
             SetForegroundWindow(hwnd);
         }

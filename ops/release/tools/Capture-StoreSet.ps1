@@ -13,7 +13,7 @@
 
   Stills: wavee://diag?cmd=shot (Screens/StoreShot.cs): presentation mode on, the frame read back with its alpha, shot.json
   with every shown keyed element's rect. The mini player is its own window: it is copied off the screen by its DWM frame.
-  Clips (-Clips): ffmpeg ddagrab of the window's rectangle on its monitor, 60 fps, no pointer, lossless-ish x264, while the
+  Clips (-Clips): ffmpeg gfxcapture (Windows.Graphics.Capture) of the window itself, 60 fps, no pointer, lossless-ish x264, while the
   scene's verbs play; each clip writes <name>.mp4 and <name>.json (its rect on the screen and the verb times, for the edit).
 
   The scenes play real tracks on the signed-in account (the verify instance becomes its active Spotify Connect device while
@@ -146,52 +146,33 @@ function Monitor([IntPtr]$h) {
     [pscustomobject]@{ Rect = $i.rcMonitor; Work = $i.rcWork; Output = $idx; Scale = [StoreSet.Dpi]::GetDpiForWindow($h) / 96.0 }
 }
 
-# ── clips: ddagrab of a window's rectangle while a scene plays ─────────────────────────────────────────────────────────
-# A clip records the SCREEN: the window goes topmost for the recording (no activation, the owner's focus stays where it is), so
-# nothing the owner has open on that monitor is ever in the picture; Stop-Clip puts it back.
-function Set-Topmost([IntPtr]$h, [bool]$on) {
-    [void][StoreSet.Win]::SetWindowPos($h, [IntPtr]$(if ($on) { -1 } else { -2 }), 0, 0, 0, 0, 0x0013)   # NOSIZE|NOMOVE|NOACTIVATE
-}
+# ── clips: Windows.Graphics.Capture of a window while a scene plays ─────────────────────────────────────────────────────
+# A clip films the WINDOW (ffmpeg gfxcapture by its handle): nothing that covers it or sits beside it is in the picture, so the
+# window is never made topmost (owner rule 2026-11-17: test windows on the secondary screen, never focused, never topmost) and the
+# owner's pointer is never waited out. A window that resizes keeps the clip's frame size (black bars). The clip's rect in the
+# json is the window's frame on its screen, for the trailer's edit.
 function Start-Clip([string]$name, [IntPtr]$h = $main, [int]$pad = 0) {
     if (-not $Clips) { return }
     Verb 'wavee://diag?cmd=present&on=1' | Out-Null   # presentation mode: no account name, picture or badge in the picture
-    Set-Topmost $h $true; Start-Sleep -Milliseconds 900
-    if ($h -eq $main) {
-        # a clip needs the whole window on its monitor: put it back at the work area's corner and WAIT for the owner's
-        # pointer to leave it (moving the window aside would push it off the screen)
-        $mon = Monitor $h; $r = New-Object StoreSet.Win+RECT; [void][StoreSet.Win]::GetWindowRect($h, [ref]$r)
-        [void][StoreSet.Win]::MoveWindow($h, $mon.Work.L, $mon.Work.T, $r.R - $r.L, $r.B - $r.T, $true)
-        $deadline = (Get-Date).AddMinutes(5); $said = $false
-        while ((Get-Date) -lt $deadline) {
-            $p = New-Object StoreSet.Win+POINT; [void][StoreSet.Win]::GetCursorPos([ref]$p)
-            [void][StoreSet.Win]::GetWindowRect($h, [ref]$r)
-            if ($p.X -lt $r.L -or $p.X -ge $r.R -or $p.Y -lt $r.T -or $p.Y -ge $r.B) { break }
-            if (-not $said) { Write-Host '  waiting for the pointer to leave the window...'; $said = $true }
-            Start-Sleep -Milliseconds 300
-        }
-        Start-Sleep -Milliseconds 600
-    } else { Clear-Hover $h }
+    Clear-Hover $h
     $mon = Monitor $h; $f = Frame $h
-    $x = [Math]::Max(0, $f.L - $mon.Rect.L - $pad); $y = [Math]::Max(0, $f.T - $mon.Rect.T - $pad)
-    $w = [Math]::Min($mon.Rect.R - $mon.Rect.L - $x, $f.R - $f.L + 2 * $pad); $hh = [Math]::Min($mon.Rect.B - $mon.Rect.T - $y, $f.B - $f.T + 2 * $pad)
-    $w -= $w % 2; $hh -= $hh % 2
+    $w = $f.R - $f.L; $hh = $f.B - $f.T
     $file = Join-Path $clipDir "$name.mp4"
-    $args = @('-y', '-loglevel', 'error', '-filter_complex',
-        "ddagrab=output_idx=$($mon.Output):draw_mouse=0:framerate=60:offset_x=${x}:offset_y=${y}:video_size=${w}x${hh},hwdownload,format=bgra",
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '10', '-pix_fmt', 'yuv444p', $file)
-    $psi = New-Object System.Diagnostics.ProcessStartInfo 'ffmpeg', ([string]::Join(' ', ($args | ForEach-Object { if ($_ -match '[\s;]') { '"' + $_ + '"' } else { $_ } })))
+    $args = @('-y', '-loglevel', 'error', '-thread_queue_size', '256', '-f', 'lavfi', '-i',
+        "gfxcapture=hwnd=$([int64]$h):capture_cursor=0:capture_border=0:max_framerate=120:resize_mode=crop",
+        '-vf', 'hwdownload,format=bgra', '-r', '60', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '10', '-pix_fmt', 'yuv444p', $file)
+    $psi = New-Object System.Diagnostics.ProcessStartInfo 'ffmpeg', ([string]::Join(' ', ($args | ForEach-Object { if ($_ -match '[\s;,]') { '"' + $_ + '"' } else { $_ } })))
     $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.CreateNoWindow = $true
     $ff = [System.Diagnostics.Process]::Start($psi)
-    Start-Sleep -Milliseconds 700   # ddagrab's first frame
+    Start-Sleep -Milliseconds 700   # the capture's first frame
     $script:clip = [pscustomobject]@{ Name = $name; Ff = $ff; Hwnd = $h; File = $file; Watch = [Diagnostics.Stopwatch]::StartNew(); Marks = New-Object System.Collections.Generic.List[string]
-        Rect = "$x,$y,$w,$hh"; Scale = $mon.Scale }
-    Write-Host "  clip $name  rec ${w}x${hh} @ $x,$y output $($mon.Output)"
+        Rect = "$($f.L - $mon.Rect.L),$($f.T - $mon.Rect.T),$w,$hh"; Scale = $mon.Scale }
+    Write-Host "  clip $name  rec ${w}x${hh} window $h"
 }
 function Stop-Clip {
     if (-not $script:clip) { return }
     $c = $script:clip; $script:clip = $null
     $c.Ff.StandardInput.Write('q'); $c.Ff.StandardInput.Close()
-    if ($c.Hwnd -eq $main) { Set-Topmost $main $false }
     if (-not $c.Ff.WaitForExit(15000)) { Write-Warning "ffmpeg for $($c.Name) did not stop" }
     $marks = ($c.Marks | ForEach-Object { '"' + ($_ -replace '\\', '\\' -replace '"', '\"' -replace "`t", '\u0009') + '"' }) -join ', '
     $json = '{ "name": "' + $c.Name + '", "rect": [' + $c.Rect + '], "scale": ' + $c.Scale + ', "lead": 0.7, "marks": [' + $marks + '] }'

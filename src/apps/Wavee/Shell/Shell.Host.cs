@@ -167,7 +167,7 @@ public static partial class Shell
     /// the screenshot), never a deep link or a file the shell handed over. Without this, `--profile C:\p` read as a file
     /// activation and every profile launch logged `deeplink.refused: C:\p`.</summary>
     internal static readonly string[] ValueOptions =
-        ["--profile", "--fg", "--theme", "--fake-video", "--whatsnew", "--screenshot", "--frames", "--width", "--height"];
+        ["--profile", "--fg", "--theme", "--fake-video", "--whatsnew", "--screenshot", "--frames", "--width", "--height", "--window-monitor", "--window-rect"];
 
     public static bool AcquireInstance()
     {
@@ -224,7 +224,8 @@ public static partial class Shell
         // Where the user left the main window (Shell.Host.Placement.cs). The harness, capture and explicit-size launches keep
         // their own size and never read or write it. Restored, the first frame's size (and the zoom seeded from it) is the
         // restored client at the target monitor's DPI, so nothing re-lays out once the window is shown.
-        bool followPlacement = frames < 0 && screenshot is null && !capture.Offscreen && !HasExplicitSize(args);
+        bool followPlacement = frames < 0 && screenshot is null && !capture.Offscreen && !HasExplicitSize(args)
+            && Array.IndexOf(args, "--window-monitor") < 0;   // a test run's window is placed by its own args (PlaceTestWindow)
         var restore = followPlacement ? WindowPlacementStore.ResolveForLaunch() : null;
         var zoomMonitor = ZoomService.PrimaryMonitor();
         if (restore is { Plan: var plan })
@@ -281,7 +282,7 @@ public static partial class Shell
             FluentAppHarness.Run(
                 // The factory runs after the engine created the window and before the first frame. The engine installed the OS accent as a
                 // `Tok.SetAccent` override there, which would win over the active theme's accent: release it (Appearance, THE OS ACCENT).
-                static () => { Appearance.OnWindowCreated(); Diagnostics.Probe.PlaceProbeWindow(); return new RootHost(); },
+                static () => { Appearance.OnWindowCreated(); Diagnostics.Probe.PlaceProbeWindow(); Diagnostics.Probe.PlaceTestWindow(); return new RootHost(); },
                 new AppOptions
                 {
                     // MinWidth 300 (DIP): the shell is verified sound below 360 — the detail surface is in vertical
@@ -324,6 +325,9 @@ public static partial class Shell
                     // The sign-in launch into the tray: the window exists, the tree mounts, nothing paints until the icon
                     // (or a second launch) shows it.
                     StartHidden = startHidden,
+                    // A real-window test run (`--window-monitor`, `--no-activate`; Diagnostics.Probe.TestWindow.cs) never takes the
+                    // foreground: owner rule 2026-11-17, test runs go on the secondary screen and never interrupt the person's work.
+                    NoActivate = Diagnostics.Probe.NoActivateArg(args),
                     // The first frame the user sees is final (Classic tuning F9): the window stays hidden until a frame has
                     // presented (no bare Mica first) with the setup plate already up when a first run or a re-auth is due, and
                     // every later show-from-hidden (the tray) repaints first the same way. Entrances seeded on the hidden
