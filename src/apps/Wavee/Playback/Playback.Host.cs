@@ -1461,12 +1461,19 @@ public static partial class Playback
             Input.ExplicitPositionBit, nowMs: FrameNowMs()));
     }
 
-    public static void Next() => Post(Input.Next(FrameNowMs()));
-    public static void Previous()
+    /// <summary>Next and Previous take a <c>cause</c> like play/pause (below): the UI entry that pressed it. ALWAYS-ON
+    /// attribution, one line per press. A skip is the one transport change a log could not otherwise tell from a natural end or a
+    /// fault: on 2026-11-17 two audiobook chapter changes right after a seek read as "a seek advanced the chapter", and only the
+    /// reducer's end position (the playhead, where a natural end reports the duration) said a skip had run.</summary>
+    public static void Next(string cause) { LogSkip(cause, "next"); Post(Input.Next(FrameNowMs())); }
+    public static void Previous(string cause)
     {
+        LogSkip(cause, "previous");
         s_previousPressedMs = Environment.TickCount64;
         Post(Input.Prev(FrameNowMs()));
     }
+
+    static void LogSkip(string cause, string action) => Log.Info("playback", "skip cause=" + cause + " action=" + action);
 
     static long s_previousPressedMs = long.MinValue / 2;
 
