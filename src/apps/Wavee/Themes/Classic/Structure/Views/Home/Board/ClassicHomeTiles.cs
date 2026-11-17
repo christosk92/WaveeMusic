@@ -620,8 +620,19 @@ internal static class ClassicHomeTiles
     {
         var f = p.Frame;
         var lay = ClassicHomeBoardTiers.Of(ctx.Tier());
+        // The art placeholder's ground, as Zune's: FillSubtleSecondary drew nothing a user could see on the dark page (a live open read the
+        // daylist and the release list as empty bands, 2026-11-17).
+        // A full row has no height of its own to grow into (the board measures its body): the plate stands at the box the row was packed at (its
+        // tool strip aside), or it draws nothing.
         if (p.Reason == HomeTileVacancy.Loading)
-            return new BoxEl { Grow = 1f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary };
+        {
+            var cell = f.Cell;
+            return new BoxEl
+            {
+                Grow = 1f, Corners = Radii.CardAll, Fill = R.Layer.ArtPlaceholder,
+                Height = f.Form == HomeTileForm.Full && cell is not null ? Prop.Of(() => cell.Box.Value.Height - cell.Box.Value.ToolStrip) : float.NaN,
+            };
+        }
         string line = Loc.Get(p.Reason switch
         {
             HomeTileVacancy.Unavailable => Strings.Theme.Classic.Home.Board.Unavailable,

@@ -59,6 +59,9 @@ public static class HomeProjection
     /// <summary>How many placeholder sections the feed slot holds while its answer is still coming (a failed or offline answer is one).</summary>
     public const int FeedPlaceholders = 4;
 
+    /// <summary>The id part of a shortcut fill cell that holds a place while the answer naming the shortcuts is on its way.</summary>
+    public const string PendingFill = "pending:";
+
     /// <summary>The inspector's override of the feed's state (`state kind=loading|error|offline` on the Home route); null: the tables decide.</summary>
     public static readonly Signal<HomeFeedState?> FeedOverride = new(null);
 
@@ -101,8 +104,10 @@ public static class HomeProjection
                 var template = choice.Template == SectionTemplate.SpineShelf && zone.Kind == ZoneKind.CoverShelf ? SectionTemplate.CoverShelf : choice.Template;
                 feed.Add(new FeedCandidate(RefOf(s), zone.Title ?? "", template, s.Slot, zone, oneCardBaseline, s, choice.Alternates));
             }
-            // Synthetic: the Following release list (the music-following-chip answer), at its place after the editorial shelf.
-            if (FollowingReleases(followingReleases, titles) is { } releases)
+            // Synthetic: the Following release list (the music-following-chip answer), at its place after the editorial shelf. Not while
+            // the board holds the New releases widget: that IS the Following list (HomeBoardZones), and one list drawn twice is one verb
+            // in two homes (a live open, 2026-11-17, once the Following answer was asked). A placed entry of it then takes no room.
+            if (!HasWidget(doc, "releases") && FollowingReleases(followingReleases, titles) is { } releases)
                 feed.Insert(wideAt >= 0 ? wideAt + 1 : Math.Min(1, feed.Count),
                     new FeedCandidate(new SectionRef(FollowingReleasesKey, Fnv(FollowingReleasesKey), FollowingReleasesKey), releases.Title ?? "",
                         SectionTemplate.ReleaseList, releases.SectionSlot, releases, false, null, []));
@@ -180,6 +185,13 @@ public static class HomeProjection
                     case FillSource fill:
                         Flush(entries, run, titles);
                         int n = 0, max = HomeShortcuts.ClosedByHistory(g) ? Math.Max(0, fill.Max - 1) : fill.Max;
+                        // The answer that names the shortcuts is on its way: the fill's cells stand as flat placeholders, so the grid has its
+                        // loaded rows from the first frame and the board under it never moves when they land (a live open, 2026-11-17).
+                        if (feedState == HomeFeedState.Loading)
+                            for (int k = 0; k < max; k++)
+                                entries.Add(new BoardEntry(HomeCommands.FillPrefix + PendingFill + k.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                                    BoardEntryKind.FillCell, g.Id, def, new PinSource("", "", ""), HomeSize.Auto, SectionTemplate.ShortcutFill, "",
+                                    false, false, false, false, true, -1) { Parent = it.Id, Feed = feedState });
                         while (n < max && fillCursor < shortcuts.Count)
                         {
                             var p = shortcuts[fillCursor++];
@@ -269,6 +281,15 @@ public static class HomeProjection
             ? new Zone(ZoneKind.ReleaseList, "home:releases", titles.FromArtistsYouFollow, null, releaseCards, SectionSlot: releaseSlot, TotalCount: releaseCards.Count)
             : null;
         return (daylist, recents, releases);
+    }
+
+    /// <summary>Does the document place the widget <paramref name="name"/> anywhere (hidden or not)?</summary>
+    static bool HasWidget(HomeDoc doc, string name)
+    {
+        foreach (var g in doc.Groups)
+            foreach (var it in g.Items)
+                if (it.Source is WidgetSource w && w.Widget == name) return true;
+        return false;
     }
 
     /// <summary>The Following release list: every album card of the music-following-chip answer, deduped, as one release list.</summary>
