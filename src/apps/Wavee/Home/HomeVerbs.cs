@@ -75,7 +75,8 @@ public static class HomeVerbs
     /// zone with no single backing section) — the header's tools then carry no "See all" link.</summary>
     public static Action? SeeAll(Zone zone)
     {
-        if (zone.SectionSlot < 0) return null;
+        // A followed release's section holds its one album, which the Release Spotlight already shows whole: nothing more to see.
+        if (zone.SectionSlot < 0 || zone.Kind == ZoneKind.ReleaseSpotlight) return null;
         int slot = zone.SectionSlot;
         return () =>
         {

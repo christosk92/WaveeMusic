@@ -59,6 +59,7 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.HomeZoneCompactGrid, WinUiHomeZones.BodyTemplate, "winui.home.zone.compact-grid");
         views.Add(ViewKeys.HomeZoneArtistCircles, WinUiHomeZones.BodyTemplate, "winui.home.zone.artist-circles");
         views.Add(ViewKeys.HomeZoneCappedShelf, WinUiHomeZones.BodyTemplate, "winui.home.zone.capped-shelf");
+        views.Add(ViewKeys.HomeZoneReleaseSpotlight, WinUiHomeZones.BodyTemplate, "winui.home.zone.release-spotlight");
         views.Add(ViewKeys.HomeSection, WinUiHomeSection.Template, "winui.home.section");
 
         // Browse.

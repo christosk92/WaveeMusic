@@ -5,7 +5,7 @@
 // placed and not hidden (by ref or by family) and has a drawable template, in Spotify's order, as FeedSection entries
 // "feed:<key>". The Fill item expands to the shortcut section's cards that are not pinned (or removed from the fill), up
 // to Max, as FillCell entries "fill:<pin id>". The fold gathers a run's one-card baseline sections (two or more, wherever they
-// stand in it) into ONE Spine Shelf at the first one's place, then the rhythm pass (SectionRhythm) moves a section whose neighbour draws its template to an
+// stand in it) into ONE Spine Shelf at the first one's place (and a run's followed releases into ONE Release Spotlight at theirs), then the rhythm pass (SectionRhythm) moves a section whose neighbour draws its template to an
 // alternate; nothing else is reordered. Two synthetic sections keep what All shows today: the Following release
 // list (wavee:following-releases, after the editorial shelf) and the Charts block (wavee:charts), last.
 //
@@ -104,7 +104,8 @@ public static class HomeProjection
                 var choice = SectionChooser.Choose(s, nowMs);
                 if (choice.Template is SectionTemplate.None or SectionTemplate.ShortcutFill or SectionTemplate.RecentsData or SectionTemplate.DaylistHero) continue;
                 var zone = Drawable(SectionChooser.ToZone(s, choice, titles));
-                bool oneCardBaseline = choice.Template == SectionTemplate.SpineShelf && zone.Items.Count == 1;   // folds whether or not its preview landed
+                // Folds whether or not its preview landed: a one-card baseline into the Spine Shelf, a followed release into the Release Spotlight.
+                bool oneCardBaseline = choice.Template is SectionTemplate.SpineShelf or SectionTemplate.ReleaseSpotlight && zone.Items.Count == 1;
                 if (choice.Template == SectionTemplate.WideTiles && wideAt < 0) wideAt = feed.Count;
                 // A shelf stands before its preview songs land (its tiles are flat placeholders at their size); only a card the
                 // fold cannot draw at all falls back to a cover shelf (Drawable).
@@ -376,12 +377,19 @@ public static class HomeProjection
         // Every one-card baseline section of the run is ONE family ("Because you like": For fans of / More like / Made for you / Based on
         // your recent listening), whatever Spotify put between them (an episode section split live1's 19 into runs of 8 and 11, which drew
         // two chapters under one title). So the run's foldable sections gather into ONE shelf at the first one's place; the shelf pages
-        // them when they are more than one page holds (SpineShelfRules.MaxItems). Everything else keeps its order.
-        int foldable = 0, at = -1;
-        for (int k = 0; k < run.Count; k++)
-            if (Foldable(run[k])) { foldable++; if (at < 0) at = k; }
+        // them when they are more than one page holds (SpineShelfRules.MaxItems). A followed artist's new releases are a second family:
+        // they gather into ONE Release Spotlight at the first one's place, its pages in Spotify's order. Everything else keeps its order.
+        int shelf = 0, shelfAt = -1, spot = 0, spotAt = -1;
         for (int k = 0; k < run.Count; k++)
         {
+            if (!Foldable(run[k])) continue;
+            if (run[k].Template == SectionTemplate.ReleaseSpotlight) { spot++; if (spotAt < 0) spotAt = k; }
+            else { shelf++; if (shelfAt < 0) shelfAt = k; }
+        }
+        for (int k = 0; k < run.Count; k++)
+        {
+            bool releases = run[k].Template == SectionTemplate.ReleaseSpotlight;
+            int foldable = releases ? spot : shelf, at = releases ? spotAt : shelfAt;
             if (foldable >= 2 && Foldable(run[k]))
             {
                 if (k != at) continue;
@@ -390,17 +398,19 @@ public static class HomeProjection
                 var inputs = new List<SectionInput>(foldable);
                 for (int m = k; m < run.Count; m++)
                 {
-                    if (!Foldable(run[m])) continue;
+                    if (!Foldable(run[m]) || (run[m].Template == SectionTemplate.ReleaseSpotlight) != releases) continue;
                     var r = ((SpotifySectionSource)run[m].Raw!).Ref;
                     members.Add(r);
                     if (t_inputs is not null && t_inputs.TryGetValue(r.Key, out var input)) inputs.Add(input);
                 }
-                Zone? zone = titles is not null && inputs.Count == foldable ? FoldZone(members[0].Key, inputs, titles)
-                    : first.Feed == HomeFeedState.Loading ? SeedFold(members[0].Key, foldable) : first.Zone;
+                var foldTemplate = releases ? SectionTemplate.ReleaseSpotlight : SectionTemplate.SpineShelf;
+                Zone? zone = titles is not null && inputs.Count == foldable
+                    ? releases ? ReleaseZone(members[0].Key, inputs, titles) : FoldZone(members[0].Key, inputs, titles)
+                    : first.Feed == HomeFeedState.Loading ? SeedFold(members[0].Key, foldable, foldTemplate) : first.Zone;
                 into.Add(first with
                 {
                     Id = HomeCommands.FoldPrefix + members[0].Key, Kind = BoardEntryKind.Fold,
-                    Template = zone?.Kind == ZoneKind.CoverShelf ? SectionTemplate.CoverShelf : SectionTemplate.SpineShelf,
+                    Template = !releases && zone?.Kind == ZoneKind.CoverShelf ? SectionTemplate.CoverShelf : foldTemplate,
                     OnlyHide = true, Members = members.ToImmutable(), Zone = zone, Title = zone?.Title ?? first.Title,
                 });
                 continue;
@@ -408,6 +418,11 @@ public static class HomeProjection
             into.Add(run[k] with { Members = [] });
         }
     }
+
+    /// <summary>The release fold's one zone: one Release Spotlight page per followed release, in Spotify's order.</summary>
+    static Zone ReleaseZone(string firstKey, List<SectionInput> inputs, ZoneTitles titles)
+        => new(ZoneKind.ReleaseSpotlight, "home:fold:" + firstKey, titles.FromArtistsYouFollow, null, [],
+            Clusters: ClusterFold.Releases(inputs), SectionSlot: inputs[0].Slot, TotalCount: inputs.Count);
 
     /// <summary>The fold's one zone: the members' shelf items ("Because you like"), each its card and its preview songs (flat placeholders
     /// until they land), in Spotify's order. Only members with no drawable card at all leave a plain cover shelf.</summary>
@@ -430,7 +445,8 @@ public static class HomeProjection
         ImmutableSortedDictionary<string, string> options)
     {
         var r = new SectionRef(sh.Key, 0, "");
-        var template = sh.Fold ? SectionTemplate.SpineShelf : sh.Template;
+        // A fold member drew as its fold's template (the shelf's, or the spotlight's for a followed release).
+        var template = sh.Fold ? FoldShape(sh.Template) : sh.Template;
         return new BoardEntry(id, kind, groupId, def, new SpotifySectionSource(r, title), size, template, title,
             false, false, false, false, kind == BoardEntryKind.FeedSection, -1)
         {
@@ -440,7 +456,7 @@ public static class HomeProjection
     }
 
     /// <summary>The seed of a fold whose members' answer is on its way: one blank item per member.</summary>
-    static Zone SeedFold(string firstKey, int members) => SeedZone(SectionTemplate.SpineShelf, members, "home:fold:" + firstKey, "");
+    static Zone SeedFold(string firstKey, int members, SectionTemplate template) => SeedZone(template, members, "home:fold:" + firstKey, "");
 
     /// <summary>A zone of <paramref name="template"/>'s kind over <paramref name="count"/> blank cards of the kind it draws (a Spine Shelf's items are
     /// blank cards with no preview songs yet: flat placeholders at their size).</summary>
@@ -452,7 +468,7 @@ public static class HomeProjection
             SectionTemplate.ShowGrid => HomeCardKind.Podcast,
             SectionTemplate.BookShelf => HomeCardKind.Audiobook,
             SectionTemplate.VideoTiles or SectionTemplate.EpisodeRows => HomeCardKind.Episode,
-            SectionTemplate.ReleaseList => HomeCardKind.Album,
+            SectionTemplate.ReleaseList or SectionTemplate.ReleaseSpotlight => HomeCardKind.Album,
             _ => HomeCardKind.Playlist,
         };
         int n = Math.Max(1, count);
@@ -461,11 +477,11 @@ public static class HomeProjection
         // A title the deriver draws as its bar (an empty one would draw no header, and the loaded section has one).
         string heading = title.Length > 0 ? title : " ";
         var zoneKind = SectionChooser.KindOf(template);
-        if (zoneKind == ZoneKind.SpineShelf)
+        if (zoneKind is ZoneKind.SpineShelf or ZoneKind.ReleaseSpotlight)
         {
             var clusters = new ZoneCluster[n];
             for (int i = 0; i < n; i++) clusters[i] = new ZoneCluster(" ", " ", [], Header: cards[i]);
-            return new Zone(ZoneKind.SpineShelf, key, heading, null, [], Clusters: clusters, TotalCount: n);
+            return new Zone(zoneKind, key, heading, null, [], Clusters: clusters, TotalCount: n);
         }
         // A header that named an entity: the same header over blank words and no cover (its cover slot and two lines derive at their size).
         return new Zone(zoneKind, key, heading, sub ? " " : null, cards, TotalCount: n) { Header = head ? new HeaderEntity("", " ", null, " ") : null };
@@ -476,12 +492,12 @@ public static class HomeProjection
     public static HomeDoc WithShapes(HomeDoc doc, BoardModel shown)
     {
         var byId = new Dictionary<string, BoardEntry>(StringComparer.Ordinal);
-        var folded = new HashSet<string>(StringComparer.Ordinal);
+        var folded = new Dictionary<string, SectionTemplate>(StringComparer.Ordinal);   // a fold member's key: its fold's template
         foreach (var e in shown.Entries)
         {
             if (e.Kind == BoardEntryKind.Placeholder || e.Feed != HomeFeedState.Ready) return doc;
             byId[e.Id] = e;
-            if (e.Kind == BoardEntryKind.Fold) foreach (var m in e.Members) folded.Add(m.Key);
+            if (e.Kind == BoardEntryKind.Fold) foreach (var m in e.Members) folded[m.Key] = e.Template;
         }
         var placed = new HashSet<string>(StringComparer.Ordinal);
         foreach (var g in doc.Groups) foreach (var it in g.Items) if (it.Source is SpotifySectionSource ps) placed.Add(ps.Ref.Key);
@@ -501,8 +517,8 @@ public static class HomeProjection
                     case SpotifySectionSource ss when byId.TryGetValue(it.Id, out var e) && !e.Hidden:
                         shape = [new SeedShape(ss.Ref.Key, e.Template, CountOf(e.Zone), false, e.Zone?.Header is not null, e.Zone?.Subtitle is { Length: > 0 })];
                         break;
-                    case SpotifySectionSource ss when folded.Contains(ss.Ref.Key):
-                        shape = [new SeedShape(ss.Ref.Key, SectionTemplate.SpineShelf, 1, true)];
+                    case SpotifySectionSource ss when folded.TryGetValue(ss.Ref.Key, out var ft):
+                        shape = [new SeedShape(ss.Ref.Key, FoldShape(ft), 1, true)];
                         break;
                     case SpotifyFeedSource:
                     {
@@ -514,7 +530,7 @@ public static class HomeProjection
                                 b.Add(new SeedShape(fs.Ref.Key, e.Template, CountOf(e.Zone), false, e.Zone?.Header is not null, e.Zone?.Subtitle is { Length: > 0 }));
                             else if (e.Kind == BoardEntryKind.Fold)
                                 foreach (var m in e.Members)
-                                    if (!placed.Contains(m.Key)) b.Add(new SeedShape(m.Key, SectionTemplate.SpineShelf, 1, true));
+                                    if (!placed.Contains(m.Key)) b.Add(new SeedShape(m.Key, FoldShape(e.Template), 1, true));
                         }
                         shape = b.ToImmutable();
                         break;
@@ -527,6 +543,10 @@ public static class HomeProjection
         }
         return changed ? doc with { Groups = groups } : doc;
     }
+
+    /// <summary>The template a fold member's shape records and seeds as: the spotlight's for a followed release, else the Spine Shelf's (a
+    /// fold drawn as a cover shelf still seeds as the shelf it is).</summary>
+    static SectionTemplate FoldShape(SectionTemplate fold) => fold == SectionTemplate.ReleaseSpotlight ? SectionTemplate.ReleaseSpotlight : SectionTemplate.SpineShelf;
 
     static int CountOf(Zone? z) => z is null ? 0 : z.Clusters is { Count: > 0 } c ? c.Count : z.Items.Count;
 

@@ -129,6 +129,9 @@ internal static class ClassicHomeShelf
 
     sealed record SoundProps(float Box);
 
+    /// <summary>The previews' sound button at <paramref name="box"/> (the Release Spotlight's too: one sound, one button design).</summary>
+    internal static Element Sound(float box, string key) => Embed.Comp(new SoundProps(box), static () => new PreviewSound()) with { Key = key };
+
     /// <summary>The song previews' sound (PreviewAudio.Sound, a setting; off by default): Classic's round glyph button beside the heart, as its
     /// player bar draws the speaker: the speaker in the accent while on, the struck speaker in the secondary ink while off (its state at rest).</summary>
     sealed class PreviewSound : Component

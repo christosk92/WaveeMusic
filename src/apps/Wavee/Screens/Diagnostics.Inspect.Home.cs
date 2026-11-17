@@ -432,6 +432,53 @@ public static partial class Diagnostics
                         w.WriteEndArray();
                     });
                 }
+                case "spotlight":
+                {
+                    // A Release Spotlight card (Home/ReleaseSpotlight): `key=` any unique part of its key (the zone key, the album uri; the first shown
+                    // otherwise), then one act through the handlers the pointer calls: `song=<n>` (point at song n, 1-based; 0 the card's face song),
+                    // `leave=true` (the pointer leaves the card). Settles (or traces with `trace=N`). Reads the card's release, facts, songs and the claim.
+                    // Without a key: the card the window shows most of.
+                    string want = a.Str("key", "");
+                    SpotlightCard? card = null;
+                    foreach (var c in SpotlightRegistry.Live)
+                    {
+                        if (!c.Shown || want.Length > 0 && !(c.Key + "|" + c.Item.Key).Contains(want, StringComparison.Ordinal)) continue;
+                        if (card is null || c.VisibleArea > card.VisibleArea) card = c;   // the page on screen (a paged spotlight keeps its neighbours mounted)
+                    }
+                    if (card is null) return Fail(SpotlightRegistry.Live.Count == 0 ? "no spotlight is mounted" : "no shown spotlight card's key holds '" + want + "'");
+                    if (a.Has("song")) card.HoverSong(a.Int("song", 0) - 1);
+                    if (a.Bool("leave", false)) card.HoverSong(-2);
+                    var hit = card;
+                    return Settled(id, name, a, w =>
+                    {
+                        var item = hit.Item;
+                        var f = hit.Facts;
+                        w.WriteString("key", hit.Key);
+                        w.WriteString("release", item.Key);
+                        w.WriteString("title", item.Title);
+                        w.WriteString("kind", item.Kind?.ToString() ?? "");
+                        w.WriteString("eyebrow", f.Lead + f.Artist + f.Tail);
+                        w.WriteString("artistUri", f.ArtistUri);
+                        w.WriteBoolean("avatar", f.ArtistImage is not null);
+                        w.WriteString("meta", f.Meta);
+                        w.WriteBoolean("listsSongs", item.ListsSongs);
+                        w.WriteNumber("song", hit.LiveSong + 1);
+                        w.WriteString("live", ShelfPreview.Live.Peek());
+                        w.WriteString("showing", ShelfPreview.Showing.Peek());
+                        w.WriteString("clip", PreviewAudio.ClaimTile);
+                        w.WriteStartArray("songs");
+                        for (int i = 0; i < item.Songs.Length; i++)
+                        {
+                            var song = item.Songs[i];
+                            string d = i < f.Durations.Length ? f.Durations[i] : "";
+                            w.WriteStringValue(song.IsBlank ? "" : song.Title + (d.Length > 0 ? " " + d : "") + (song.HasCanvas ? " [canvas]" : "") + (song.Clip is null ? "" : " [clip]"));
+                        }
+                        w.WriteEndArray();
+                        w.WriteStartArray("cards");
+                        foreach (var c in SpotlightRegistry.Live) if (c.Shown) w.WriteStringValue(c.Key + "|" + c.Item.Key);
+                        w.WriteEndArray();
+                    });
+                }
                 case "preview":
                 {
                     // The Spine Shelf's song preview (Home/SpineShelf/PreviewAudio.cs): act (`sound=on|off|toggle`, `volume=0..1` as the slider,

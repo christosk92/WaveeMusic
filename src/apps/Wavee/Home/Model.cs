@@ -38,6 +38,9 @@ public enum ZoneKind : byte
     ArtistCircles,
     /// <summary>One capped row of cards, two title lines, "See all N" instead of a sideways scroll (Home rhythm A: long mixed lists, shows).</summary>
     CappedShelf,
+    /// <summary>A followed artist's new release as one spotlight card (cover, words, canvas, song previews), a run of them as its pages
+    /// (Home/ReleaseSpotlight). <see cref="Zone.Clusters"/> carries one cluster per release: its album card and its preview songs.</summary>
+    ReleaseSpotlight,
 }
 
 /// <summary>One server band, read straight off <see cref="SectionTable"/> by <see cref="SectionReader"/>. Never

@@ -33,6 +33,7 @@
 //   BrowseTiles                               GridEl of SettingsCard tiles + the Charts sub-block (Home.Charts)
 //   LeadGrid/CompactGrid/ArtistCircles/
 //   CappedShelf                               the Home rhythm templates (WinUiHomeZones.Rhythm.cs)                           tools: See all N
+//   ReleaseSpotlight                          the Release Spotlight (WinUiHomeSpotlight over Home/ReleaseSpotlight): one release card, pages ‹ pips ›
 //   EpisodeLead/EpisodeRows                   GridEl of Surface(Episode.RowData, EpisodeRow)
 //   ContinueEpisodes                          GridEl of the same row + the resume rung (CardData.Below)
 //   EmptyFacet                                Controls.Vacancy(Empty, ... -> Browse)                                         no header
@@ -192,10 +193,11 @@ internal static partial class WinUiHomeZones
     internal static bool HasHeader(ZoneKind kind) => kind is not (ZoneKind.Daylist or ZoneKind.EmptyFacet);
 
     static bool IsShelf(ZoneKind kind) => kind is ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf
-        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf or ZoneKind.SpineShelf or ZoneKind.PodcastGroups;
+        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf or ZoneKind.SpineShelf or ZoneKind.PodcastGroups
+        or ZoneKind.ReleaseSpotlight;
 
     /// <summary>A body that pages its tall items (the Spine Shelf's pages, the podcast groups): its header carries the previous and next buttons at every tier.</summary>
-    static bool IsPagedGrid(ZoneKind kind) => kind is ZoneKind.SpineShelf or ZoneKind.PodcastGroups;
+    static bool IsPagedGrid(ZoneKind kind) => kind is ZoneKind.SpineShelf or ZoneKind.PodcastGroups or ZoneKind.ReleaseSpotlight;
 
     /// <summary>Header + body, or the bare body for a headerless zone.</summary>
     internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, WinUiHomeLayout layout, Element? headerTail = null)
@@ -229,7 +231,10 @@ internal static partial class WinUiHomeZones
                                     sub ? zone.Subtitle ?? Loc.Get(Strings.Home.ReleasedThisWeek) : null,
                                     ShelfHeaderTools(HomeVerbs.SeeAll(zone), null, HomeVerbs.SeeAllLabel(zone)), layout, tail);
             default:
-                var tools = ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller, HomeVerbs.SeeAllLabel(zone), pips: !IsPagedGrid(zone.Kind),
+                // The spotlight's pages are releases: its pager shows their dots (the concept's) where the header has the room (not at Compact, where
+                // they took the title's words), a paged grid's only the chevrons.
+                var tools = ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller, HomeVerbs.SeeAllLabel(zone),
+                                             pips: !IsPagedGrid(zone.Kind) || zone.Kind == ZoneKind.ReleaseSpotlight && layout.Tier != WidthTier.Compact,
                                              divider: layout.Tier != WidthTier.Compact);
                 return zone.Header is { } entity
                     ? EntityHeader(entity, tools, layout, tail)
@@ -315,6 +320,7 @@ internal static partial class WinUiHomeZones
         ZoneKind.CappedShelf => CappedShelf(zone, overlay, layout),
         ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
         ZoneKind.SpineShelf => WinUiHomeShelf.Body(zone, layout, controller),
+        ZoneKind.ReleaseSpotlight => WinUiHomeSpotlight.Body(zone, layout, controller),
         ZoneKind.PodcastGroups => ClusterGrid(zone, layout, controller),
         ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),
         ZoneKind.EpisodeLead or ZoneKind.EpisodeRows => EpisodeGrid(zone, layout.Episodes, WinUiHomeRules.CardGap),
@@ -438,6 +444,14 @@ internal static partial class WinUiHomeZones
                 // A paging shelf's header carries its previous and next buttons.
                 if (zone.Clusters is { } cs && SpineShelfRules.Pages(cs.Count) > 1)
                     head = MathF.Max(head - layout.HeaderGap, WinUiHomeRules.PagerToolsH) + layout.HeaderGap;
+                return head + g;
+            }
+            case ZoneKind.ReleaseSpotlight:
+            {
+                float g = WinUiHomeSpotlight.Extent(zone, layout);
+                if (g <= 0f) return 0f;
+                // A paging spotlight's header carries its previous and next buttons.
+                if (ReleaseSpotlightView.Pages(zone)) head = MathF.Max(head - layout.HeaderGap, WinUiHomeRules.PagerToolsH) + layout.HeaderGap;
                 return head + g;
             }
             case ZoneKind.LeadGrid or ZoneKind.CompactGrid or ZoneKind.ArtistCircles or ZoneKind.CappedShelf:

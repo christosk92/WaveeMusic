@@ -1400,7 +1400,7 @@ public static partial class Entities
     // was edited). `state kind=home-refresh` lands `home.all.second.json` over All: the next answer, for identity.
 
     /// <summary>The fixture names <see cref="StageHomeFixture"/> takes.</summary>
-    public static readonly string[] HomeFixtures = ["mock", "capture", "new", "free", "podcast", "region", "synthetic", "second", "live1", "live2"];
+    public static readonly string[] HomeFixtures = ["mock", "capture", "new", "free", "podcast", "region", "synthetic", "second", "live1", "live2", "releases"];
 
     /// <summary>The Home fixture the tables hold now.</summary>
     public static string HomeFixture { get; private set; } = "mock";

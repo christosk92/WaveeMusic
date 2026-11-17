@@ -26,6 +26,9 @@ public enum SectionTemplate : byte
     ArtistCircles,
     /// <summary>Home rhythm: one capped row of cards with two title lines and "See all N" instead of a sideways scroll.</summary>
     CappedShelf,
+    /// <summary>A followed artist's new release (an untitled one-album baseline section): one spotlight card, the cover, the release's words,
+    /// its canvas and its songs' previews; a run of them folds into one spotlight with pages (Home/ReleaseSpotlight).</summary>
+    ReleaseSpotlight,
 }
 
 /// <summary>What one board entry is. <see cref="GroupHead"/> heads a group; <see cref="Item"/> is a document item

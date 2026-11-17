@@ -33,6 +33,7 @@
 //   • A card counts as usable when it is not blank and <c>IsPlayable</c> (A6's decode flag folds UnknownType /
 //     unresolved / paywalled cards into "not playable", so this one check covers all three).
 
+using FluentGpu.Localization;
 using Wavee;
 
 namespace Wavee.HomeUi;
@@ -196,6 +197,24 @@ public static class ClusterFold
         foreach (var c in cards)
             if (SectionRoles.IsUsable(c)) return c;
         return null;
+    }
+
+    /// <summary>Is <paramref name="s"/> a followed artist's new release (the Release Spotlight's structure)? An untitled baseline section whose
+    /// card is an album: the music-following-chip shape (live2: 36 of them). Structure only, never a title's words.</summary>
+    public static bool IsRelease(SectionInput s)
+        => s.Kind == SectionKind.HomeBaseline && string.IsNullOrEmpty(s.Title) && HeaderCard(s.Cards) is { Kind: HomeCardKind.Album };
+
+    /// <summary>The Release Spotlight's pages: one cluster per release section, its album card as <see cref="ZoneCluster.Header"/> and its
+    /// preview songs (the baseline lookup's, flat placeholders until they land) as <see cref="ZoneCluster.Rows"/>, in Spotify's order.</summary>
+    public static IReadOnlyList<ZoneCluster> Releases(IReadOnlyList<SectionInput> releaseSections)
+    {
+        var result = new List<ZoneCluster>(releaseSections.Count);
+        foreach (var s in releaseSections)
+        {
+            if (HeaderCard(s.Cards) is not { } header) continue;
+            result.Add(new ZoneCluster("", header.Title, PreviewRows(s.Preview, MaxRows), FooterSectionSlot: s.Slot, Header: header));
+        }
+        return result;
     }
 
     static List<HomeCard> PreviewRows(IReadOnlyList<HomeCard> preview, int cap)
@@ -372,12 +391,26 @@ public static class ZonePlanner
     {
         var clusters = ClusterFold.Fold(clusterSections, titles, out var following);
 
-        // D2 (F32): the Following facet's untitled one-album baseline sections are a release list, not clusters.
+        // D2 (F32): the Following facet's untitled one-album baseline sections are its new releases, not clusters: the first
+        // ReleaseSpotlightRules.MaxPages of them (Spotify's order) as the Release Spotlight's pages, the rest as the release list under it.
         if (following.Count > 0)
         {
-            var releaseRows = PageDedupe.Place(placed, following, 0);
-            if (releaseRows.Count > 0)
-                zones.Add(new Zone(ZoneKind.ReleaseList, key + ":following", titles.FromArtistsYouFollow, null, releaseRows));
+            var releaseSections = new List<SectionInput>();
+            var rest = new List<HomeCard>();
+            foreach (var s in clusterSections)
+            {
+                if (!ClusterFold.IsRelease(s)) continue;
+                HomeCard card = default;
+                foreach (var c in s.Cards) if (SectionRoles.IsUsable(c)) { card = c; break; }
+                if (!placed.Add(card.DedupeKey)) continue;
+                if (releaseSections.Count < ReleaseSpotlightRules.MaxPages) releaseSections.Add(s);
+                else rest.Add(card);
+            }
+            if (releaseSections.Count > 0)
+                zones.Add(new Zone(ZoneKind.ReleaseSpotlight, key + ":spotlight", titles.FromArtistsYouFollow, null, [],
+                    Clusters: ClusterFold.Releases(releaseSections), SectionSlot: releaseSections[0].Slot, TotalCount: releaseSections.Count));
+            if (rest.Count > 0)
+                zones.Add(new Zone(ZoneKind.ReleaseList, key + ":following", Loc.Get(Strings.Home.Spotlight.MoreReleases), null, rest));
         }
 
         if (clusters.Count == 0) return;

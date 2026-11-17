@@ -187,6 +187,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.HomeZoneCompactGrid, ClassicHomeZones.BodyTemplate, "classic.home.zone.compact-grid");
         views.Add(ViewKeys.HomeZoneArtistCircles, ClassicHomeZones.BodyTemplate, "classic.home.zone.artist-circles");
         views.Add(ViewKeys.HomeZoneCappedShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.capped-shelf");
+        views.Add(ViewKeys.HomeZoneReleaseSpotlight, ClassicHomeZones.BodyTemplate, "classic.home.zone.release-spotlight");
         views.Add(ViewKeys.HomeSection, ClassicHomeSection.Template, "classic.home.section");
         // The pinned Home board (contract 1.117; spec 8.3): Edit Home on the tiles, the sidebar's edit bar in the facet row's end.
         views.Add(ViewKeys.HomeBoard, ClassicHomeBoard.Template, "classic.home.board");

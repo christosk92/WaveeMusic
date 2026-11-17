@@ -77,6 +77,8 @@ public static partial class ViewKeys
     public static readonly ViewKey<HomeZoneProps> HomeZoneArtistCircles = new("Home.Zone.ArtistCircles");
     /// <summary>One capped row of two-line cards, "See all N" instead of paging (Home rhythm A). Props: <see cref="HomeZoneProps"/>.</summary>
     public static readonly ViewKey<HomeZoneProps> HomeZoneCappedShelf = new("Home.Zone.CappedShelf");
+    /// <summary>A followed artist's new release (a run of them as pages): the Release Spotlight (Home/ReleaseSpotlight) in the theme's own skin.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneReleaseSpotlight = new("Home.Zone.ReleaseSpotlight");
 
     /// <summary>The "See all" / charts drill page: the "N items" line over the bound card grid in a skeleton region. Mounted by `SectionScreen`. Props: <see cref="HomeSectionProps"/>.</summary>
     public static readonly ViewKey<HomeSectionProps> HomeSection = new("Pages.HomeSection");
@@ -112,6 +114,7 @@ public static class HomeZoneKeys
             case ZoneKind.CompactGrid: key = ViewKeys.HomeZoneCompactGrid; return true;
             case ZoneKind.ArtistCircles: key = ViewKeys.HomeZoneArtistCircles; return true;
             case ZoneKind.CappedShelf: key = ViewKeys.HomeZoneCappedShelf; return true;
+            case ZoneKind.ReleaseSpotlight: key = ViewKeys.HomeZoneReleaseSpotlight; return true;
             default: key = default; return false;
         }
     }
