@@ -165,6 +165,11 @@ public static partial class Entities
                 ep.TranscriptUrl = Text(s, "fake:transcript:serial-resume");
                 ep.TranscriptLanguage = Text(s, "en");
                 ep.TranscriptReadAlong = true;
+                // The show notes as the wire sends them: HTML paragraphs, a link, bold, italic and a list (the episode page's About renders them).
+                ep.HtmlDescription = Text(s, "<p>Why do names vanish ten seconds after you hear them? We go through what a memory <b>physically</b> is, "
+                    + "how it gets in, and how it gets lost.</p><p>The <i>Baker-baker paradox</i>, sleep, and what to do by Monday. "
+                    + "More in <a href=\"spotify:show:sh1\">our sister show</a>.</p><ul><li>Encoding and attention</li><li>Sleep and consolidation</li>"
+                    + "<li>False memories &amp; confident mistakes</li></ul>");
             }
 
             static void Played(ref StagedEpisode row, long at)
