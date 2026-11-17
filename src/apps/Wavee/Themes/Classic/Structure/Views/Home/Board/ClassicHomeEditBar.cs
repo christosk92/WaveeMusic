@@ -20,6 +20,7 @@ using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.HomeUi;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
@@ -73,6 +74,9 @@ internal static class ClassicHomeEditBar
 
             if (!editing)
             {
+                // Home's ⋯ holds Edit Home and Show on Home: with both switched off (HomeCustomize, owner 2026-11-18) it has nothing to offer, and the
+                // facet row ends at its words.
+                if (!HomeVerbs.CanCustomize) return new BoxEl { Key = "home:tools:rest", Shrink = 0f };
                 var more = ToolTip.Wrap(
                     ClassicDrawerButtons.Glyph(Icons.More, Menu) with { Key = "home:tools:more", OnRealized = h => _more = h, Role = AutomationRole.Button },
                     Loc.Get(Strings.Theme.Classic.Home.Board.HomeOptions));
@@ -105,7 +109,7 @@ internal static class ClassicHomeEditBar
                 // swap, and the buttons beside them glide to their new places, so a width that crosses `InlineFrom` moves nothing at once.
                 var kids = new List<Element>(8) { Glide("home:edit:pencil", ClassicEditBarParts.Pencil()) };
                 if (inline) kids.Add(Swap("home:edit:caption", ClassicEditBarParts.Caption(Loc.Get(Strings.Theme.Classic.Home.Board.EditHome))));
-                if (inline) kids.Add(Swap("home:edit:find-slot", FindField(board, p.Lay.FindW, field) with { Key = "home:edit:find" }));
+                if (inline && HomeCustomize.AddSurface) kids.Add(Swap("home:edit:find-slot", FindField(board, p.Lay.FindW, field) with { Key = "home:edit:find" }));
                 kids.Add(Glide("home:edit:undo-slot", ClassicEditBarParts.Undo(board.Verbs.Undo, undo.CanUndo)));
                 kids.Add(Glide("home:edit:redo-slot", ClassicEditBarParts.Redo(board.Verbs.Redo, undo.CanRedo)));
                 kids.Add(Glide("home:edit:reset-slot", ResetButton(board, ControlSize.Small)));
@@ -162,11 +166,12 @@ internal static class ClassicHomeEditBar
                 show.Add(new MenuFlyoutItem(c.Title, Invoke: () => board.Verbs.Add(cand)));
             }
             if (show.Count == 0) show.Add(new MenuFlyoutItem(Loc.Get("sidebar.menu.nothingHidden"), default, false));
-            var items = new List<MenuFlyoutItem>
-            {
-                new(Loc.Get(Strings.Theme.Classic.Home.Board.EditHome), Icons.Edit, !board.ReadOnly, () => ClassicHomeBoard.Live?.SetEditing(true)),
-                MenuFlyoutItem.SubMenu(Loc.Get(Strings.Theme.Classic.Home.Board.ShowOnHome), show, enabled: !board.ReadOnly),
-            };
+            // Each row only while its part is on (HomeCustomize): Edit Home is the edit mode, Show on Home adds from the catalogue.
+            var items = new List<MenuFlyoutItem>(2);
+            if (HomeCustomize.EditMode)
+                items.Add(new(Loc.Get(Strings.Theme.Classic.Home.Board.EditHome), Icons.Edit, !board.ReadOnly, () => ClassicHomeBoard.Live?.SetEditing(true)));
+            if (HomeCustomize.AddSurface)
+                items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Theme.Classic.Home.Board.ShowOnHome), show, enabled: !board.ReadOnly));
             ToolTip.CloseOpen();
             _menu = overlay.Open(() => _more, () => MenuFlyout.Create(items, () => _menu?.Close()), FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss));

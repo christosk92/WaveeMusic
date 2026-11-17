@@ -127,6 +127,7 @@ internal sealed class HomeBoardInspector : IHomeBoardInspect
     public string? Edit(bool on, string? itemId)
     {
         if (View.NoEditMode is { } refusal) return refusal;
+        if (on && !HomeCustomize.EditMode) return Wavee.HomeUi.HomeVerbs.EditOff;
         View.Editing.Value = on;
         View.SelectedId.Value = on ? itemId : null;
         return null;
@@ -135,6 +136,7 @@ internal sealed class HomeBoardInspector : IHomeBoardInspect
     public string? Surface(bool open, string kind, string? arg)
     {
         if (!open) { View.Add.Value = HomeAddSurface.Closed; View.Query.Value = ""; return null; }
+        if (!HomeCustomize.AddSurface) return Wavee.HomeUi.HomeVerbs.AddOff;
         var k = kind switch
         {
             "band" => HomeAddSurfaceKind.Band, "allitems" => HomeAddSurfaceKind.AllItems, "addrow" or "row" => HomeAddSurfaceKind.Row,
@@ -147,6 +149,7 @@ internal sealed class HomeBoardInspector : IHomeBoardInspect
 
     public (IReadOnlyList<HomeCandidate> Hits, string Spoken) Search(string query)
     {
+        if (!HomeCustomize.AddSurface) return ([], Wavee.HomeUi.HomeVerbs.AddOff);
         View.Query.Value = query;
         var hits = Results;
         // The board's add surface speaks the count itself once typing pauses (each theme words it): the inspector only reports the sentence.

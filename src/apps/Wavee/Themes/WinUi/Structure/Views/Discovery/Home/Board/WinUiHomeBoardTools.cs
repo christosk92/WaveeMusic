@@ -2,7 +2,8 @@
 //
 // The head row's end on All: "+ Add widgets" (a toggle: it opens and folds the band under the header) and the page's ⋯ ("Undo last change" with its
 // Ctrl+Z accelerator, "Reset Home": at once, with Undo on the info bar; nothing asks first). On the first visit a TeachingTip points at Add widgets
-// (light dismiss off, it never blocks; closing it or opening the band remembers it, `theme.winui.state.homeTipSeen`).
+// (light dismiss off, it never blocks; closing it or opening the band remembers it, `theme.winui.state.homeTipSeen`). With the add surface switched off
+// (`HomeCustomize.AddSurface`, owner 2026-11-18) the row ends with the ⋯ alone: no button, no tip, no tip clock.
 
 using System.Collections.Generic;
 using FluentGpu.Animation;
@@ -71,7 +72,9 @@ internal static class WinUiHomeBoardTools
             var hooks = UseContext(InputHooks.Current);
             var overlay = board.Overlay;
             bool open = board.View.Add.Value.Kind == HomeAddSurfaceKind.Band;
-            bool seen = board.View.TipSeen.Value;
+            bool adds = HomeCustomize.AddSurface;
+            // Without the add surface the tip has nothing to point at: it counts as seen (the tip and its clock never mount).
+            bool seen = !adds || board.View.TipSeen.Value;
             int focusAsk = s_focusAdd.Value;
             // The tip points at the button: while the page is scrolled past the head it waits (it never hangs over the title bar).
             var scroll = UseScroll(board.Scroll);
@@ -104,7 +107,7 @@ internal static class WinUiHomeBoardTools
                 _tip.ClosedAction = () => { if (!_closingQuietly && !board.View.TipSeen.Peek()) board.View.MarkTipSeen(); _tip = null; };
             }, DepKey.From(seen ? 1 : 0, open ? 1 : 0, (atHead ? 1 : 0) | (vacancy ? 2 : 0), settled ? 1 : 0));
 
-            var add = Button.Create(Loc.Get(Strings.Theme.Winui.Home.Board.AddWidgets), () => WinUiHomeAddBand.Toggle(board),
+            Element? add = !adds ? null : Button.Create(Loc.Get(Strings.Theme.Winui.Home.Board.AddWidgets), () => WinUiHomeAddBand.Toggle(board),
                     open ? ButtonAppearance.Accent : ButtonAppearance.Standard, ControlSize.Medium, Icons.Add)
                 with { Key = "home:tools:add", OnRealized = h => _add = h, Shrink = 0f };
             var more = ToolTip.Wrap(Controls.IconAction(Icons.More, Menu) with { Key = "home:tools:more", OnRealized = h => _more = h },
@@ -114,7 +117,8 @@ internal static class WinUiHomeBoardTools
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, Shrink = 0f,
                 OnKeyDown = e => WinUiHomeBoard.BoardView.HandleKey(e, board),
                 // The tip's clock: a leaf that counts the entrance out in presented frames, gone once it has.
-                Children = seen || settled ? [add, more] : [add, more, Embed.Comp(new TipClockProps(_settled), static () => new TipClock()) with { Key = "home:tools:tip-clock" }],
+                Children = add is null ? [more]
+                    : seen || settled ? [add, more] : [add, more, Embed.Comp(new TipClockProps(_settled), static () => new TipClock()) with { Key = "home:tools:tip-clock" }],
             };
         }
 

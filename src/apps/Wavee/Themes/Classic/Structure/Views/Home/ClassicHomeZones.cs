@@ -106,7 +106,8 @@ internal static partial class ClassicHomeZones
             }
             kids.Add(Chapter(zones[i], i, overlay, layout));
         }
-        if (all)
+        // Only while this build offers a way to change Home (HomeCustomize, owner 2026-11-18: off for the release).
+        if (all && HomeVerbs.CanCustomize)
             kids.Add(new BoxEl
             {
                 Key = "customize", Direction = 0, MinWidth = 0f, Animate = Design.Entrance.Row(zones.Count),

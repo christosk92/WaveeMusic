@@ -56,6 +56,7 @@ internal static class ZuneHomeAllItems
     /// <summary>Slide all items in (on the widgets pivot unless one is open).</summary>
     public static void Open(HomeBoardProps board)
     {
+        if (!HomeCustomize.AddSurface) return;   // all items is switched off for the release (HomeCustomize): the arrow, the bar's add, "/"
         var view = board.View;
         if (view.Add.Peek().Kind == HomeAddSurfaceKind.AllItems) return;
         if (view.OpenId.Peek() is not null) board.Verbs.Close(refocus: false);

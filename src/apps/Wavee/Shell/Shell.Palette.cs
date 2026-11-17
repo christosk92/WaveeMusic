@@ -125,6 +125,8 @@ public static partial class Shell
             var builtins = Builtins();
 
             if (caps is { } c && (!c.NavTree || !c.Tabs)) builtins = Array.FindAll(builtins, r => !HiddenBy(r.Id, c));
+            // "Customize Home" only while this build offers a way to change Home (HomeCustomize, owner 2026-11-18: off for the release).
+            if (!HomeUi.HomeVerbs.CanCustomize) builtins = Array.FindAll(builtins, static r => r.Id != "home.customize");
             int themeCount = themeCommands?.Count ?? 0;
             int extra = 0;
             if (registryActions is not null)

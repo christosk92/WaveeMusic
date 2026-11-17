@@ -64,6 +64,7 @@ internal static class ZuneHomeBoard
     /// <summary>Enter customize with <paramref name="id"/> selected (the first tile when null).</summary>
     internal static void Customize(HomeBoardView view, IHomeBoardVerbs verbs, BoardModel model, string? id)
     {
+        if (!HomeCustomize.EditMode) return;   // customize is switched off for the release (HomeCustomize): the word, a hold, a right-click, Enter
         id ??= FirstTile(model);
         bool was = view.Editing.Peek();
         view.Editing.Value = true;
@@ -235,7 +236,7 @@ internal static class ZuneHomeBoard
             _metrics = UseComputed(() => _p!.Lay.Metrics(_width.Value));
             var board = p.Board;
             var view = board.View;
-            view.NoEditMode = null;
+            view.NoEditMode = HomeCustomize.EditMode ? null : HomeVerbs.EditOff;
             var model = board.Model;
             ZuneHomeTiles.Shown = () => model.Peek();
             var items = UseComputed(() => ItemsOf(_p!.Board.Model.Value));
@@ -338,7 +339,8 @@ internal static class ZuneHomeBoard
                 },
                 ZuneHomeUndoWord.Word(board, "page", _titleHover),
                 new BoxEl { Grow = 1f, MinWidth = 0f },
-                EditWord(board, editing, all),
+                // The "edit" word only while customize is on (HomeCustomize, owner 2026-11-18); the title's line ends at its spacer then.
+                .. HomeCustomize.EditMode ? [EditWord(board, editing, all)] : Array.Empty<Element>(),
             ],
         };
 
@@ -391,7 +393,8 @@ internal static class ZuneHomeBoard
                         Key = "home:board-pack", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                         Layout = Design.Reduced ? null : ZuneHomeRules.ChapterResize, Children = [grid],
                     },
-                    ZuneHomeAllItems.EndRow(board, lay),
+                    // The round arrow to all items only while the add surface is on (HomeCustomize, owner 2026-11-18).
+                    .. HomeCustomize.AddSurface ? [ZuneHomeAllItems.EndRow(board, lay)] : Array.Empty<Element>(),
                     new BoxEl { Height = lay.FootReserve, Shrink = 0f, HitTestVisible = false },
                 ],
             };
@@ -603,7 +606,7 @@ internal static class ZuneHomeBoard
             if (!view.Editing.Peek())
             {
                 // Enter on a focused tile: customize with it selected (spec 8.2: "focus a tile, Enter").
-                if (e.KeyCode == Keys.Enter && e.Mods == KeyModifiers.None && focused.Length > 0)
+                if (e.KeyCode == Keys.Enter && e.Mods == KeyModifiers.None && focused.Length > 0 && HomeCustomize.EditMode)
                 {
                     Customize(view, verbs, model, focused);
                     e.Handled = true;

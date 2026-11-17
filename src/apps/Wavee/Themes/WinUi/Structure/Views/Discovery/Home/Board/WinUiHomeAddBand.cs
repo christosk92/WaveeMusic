@@ -55,6 +55,7 @@ internal static class WinUiHomeAddBand
     /// <summary>Open the band.</summary>
     public static void Open(HomeBoardProps board)
     {
+        if (!HomeCustomize.AddSurface) return;   // switched off for the release (HomeCustomize): "/" and every other way in do nothing
         if (board.View.Add.Peek().Kind == HomeAddSurfaceKind.Band) return;
         board.View.Add.Value = new HomeAddSurface(HomeAddSurfaceKind.Band, KindId(s_kind.Peek()));
         board.View.MarkTipSeen();
