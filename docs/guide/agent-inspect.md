@@ -215,8 +215,18 @@ the next one from a `cmd=homecap` folder (the procedure, with its safety rules: 
 `media=fake` builds every media player over a fake backend (`Diagnostics.Inspect.Media.cs`): the Spotify Canvas player and any
 `MediaPlayer` built without its own backend (an audio preview, a tile's video). `mediaOpenMs` (default 120: the open's latency to
 its first frame on the 16 ms clock, metadata at half), `mediaStartCostMs` (a synchronous UI-thread stall inside each open: the start
-hiccup), `mediaFrameCostMs` (UI-thread work in every video pump while it plays). Each open logs `[inspect.media] open #n`
-(`status log=inspect.media`); the next mount ends it.
+hiccup), `mediaFrameCostMs` (UI-thread work in every video pump while it plays), `mediaFailMs` (every session fails that long
+after its first frame: a crashed engine). Each open logs `[inspect.media] open #n` (`status log=inspect.media`); the next mount ends it.
+
+`home do=preview` reads the Spine Shelf's song preview (`Home/SpineShelf/PreviewAudio.cs`): the claim (the tile that owns the
+preview), both voices (tile, heard gain, player state), the sound button (`sound`, `soundGain`), the duck on the user's music
+(`duck`, and `playerDuck` as the local player has it), the user's own volume and amplitude, what the local player applies
+(`applied` = the user's amplitude × the duck), the saved volume, and why the last claim ended (`lastRelease`: `leave`, or
+`lost:<why>` when the ownership check ended it: `pointer-off-tile`, `pointer-left-window`, `window-inactive`, `minimized`,
+`unmounted`, ...). It acts first when asked: `sound=on|off|toggle` (the button), `volume=0..1` (the slider), `music=pause|play|stop`.
+`samples=true` lists the per-tick levels since the last read (`[ms, voice0 fade, voice1 fade, sound, duck, userAmp, applied]`) and
+each curve's largest one-tick change (`maxStep`). It runs no frames (`frames N` does). `home do=shelf tile=N` stands for a pointer
+resting on the tile (the ownership check counts it as held until `tile=0`); `hover key=` and `pointer path=` drive the real pointer.
 
 Mounts the whole app at `w` × `h` DIP. Any mount that is already up is replaced, and a mount after the first does not
 inherit what the last one changed. It puts back:

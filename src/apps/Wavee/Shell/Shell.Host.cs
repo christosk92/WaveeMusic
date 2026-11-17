@@ -548,6 +548,7 @@ public static partial class Shell
         Lyrics.Requests.AfterPublish();
         Wavee.Palette.Tick();
         Store.FlushPalette();
+        Wavee.HomeUi.PreviewAudio.FrameTick();   // the shelf's song preview: its ownership check and fades (one bool when idle)
         ArmFetchWake();
     }
 

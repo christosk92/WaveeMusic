@@ -7,7 +7,8 @@
 // THE KNOBS (mount args): mediaOpenMs (the open's latency to its first frame, on the 16 ms frame clock; metadata at half of it),
 // mediaStartCostMs (a synchronous UI-thread stall inside the open call, where a real engine's creation blocks: the start hiccup),
 // mediaFrameCostMs (UI-thread work in every pump while it plays: a per-frame cost). The costs are real busy time on the calling thread, so
-// `perf` measures them in whatever phase the app opened or pumped from. Each open logs `[inspect.media] open #n`: `status log=inspect.media`.
+// `perf` measures them in whatever phase the app opened or pumped from. mediaFailMs (0: never) makes every session fail that long after its
+// first frame (a crashed engine: the player reports Failed with an error), for the shelf preview's player-error path. Each open logs `[inspect.media] open #n`: `status log=inspect.media`.
 //
 // Role: SHELL (UI thread; the inspect host's frame clock)
 // Spec: docs/guide/agent-inspect.md "media=fake"; the skill's verify/debug-home.md.
@@ -32,13 +33,15 @@ public static partial class Diagnostics
             readonly List<Session> _live = [];
             public readonly int OpenMs;
             public readonly float StartCostMs, FrameCostMs;
+            public readonly int FailMs;
             public int Opens;
             long _nowMs;
 
             public MediaCapabilities Capabilities { get; } = new(true, false, false);
 
-            public FakeMedia(FluentGpu.Hosting.AppHost host, int openMs, float startCostMs, float frameCostMs)
+            public FakeMedia(FluentGpu.Hosting.AppHost host, int openMs, float startCostMs, float frameCostMs, int failMs)
             {
+                FailMs = Math.Clamp(failMs, 0, 600_000);
                 _host = host;
                 OpenMs = Math.Clamp(openMs, 0, 60_000);
                 StartCostMs = Math.Clamp(startCostMs, 0f, 2_000f);
@@ -92,7 +95,7 @@ public static partial class Diagnostics
                 static readonly SizeI Natural = new(288, 512);   // the canvas's portrait loop
                 MediaSignalSink? _sink;
                 long _startMs = -1;
-                bool _meta, _framed, _paused = true;
+                bool _meta, _framed, _failed, _paused = true;
                 public bool Disposed;
                 public event Action? PumpRequested;
 
@@ -121,6 +124,14 @@ public static partial class Diagnostics
                         sink.VideoSurface(new FluentGpu.Pal.VideoSurfaceId(1));
                         sink.State(_paused ? PlaybackState.Paused : PlaybackState.Playing);
                     }
+                    if (_framed && !_failed && owner.FailMs > 0 && t >= owner.OpenMs + owner.FailMs)
+                    {
+                        _failed = true;
+                        sink.Error(new MediaError(MediaErrorCategory.Decode, "inspect: mediaFailMs"));
+                        sink.State(PlaybackState.Failed);
+                        return;
+                    }
+                    if (_failed) return;
                     if (_meta) PumpRequested?.Invoke();   // one pump per frame while it lives: the per-frame cost lands in it
                 }
 

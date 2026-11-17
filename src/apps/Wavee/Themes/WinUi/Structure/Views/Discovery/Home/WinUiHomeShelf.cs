@@ -109,6 +109,8 @@ internal static class WinUiHomeShelf
             [
                 Button.Create(Loc.Get(Strings.Home.Play), () => HomeCardNav.Play(in h), ButtonAppearance.Accent, ControlSize.Medium, Icons.Play) with { Shrink = 0f, Height = X.ActionH(g) },
                 Controls.Named(Embed.Comp(() => new Controls.SaveButton { Uri = h.Uri, Name = h.Title, Box = X.ActionH(g) }) with { Key = "save:" + h.Uri }, Loc.Get(Strings.Home.Save)),
+                // The previews' sound, on a card that has songs to preview.
+                item.NoSongs ? new BoxEl { Visible = false } : Embed.Comp(new SoundProps(X.ActionH(g)), static () => new PreviewSound()) with { Key = "shelf:sound:" + h.Uri },
             ],
         };
         var art = new BoxEl
@@ -123,6 +125,25 @@ internal static class WinUiHomeShelf
                 Children = [new BoxEl { Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [art, words] }, actions],
             };
         return new BoxEl { Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, MinWidth = 0f, Grow = 1f, Children = [art, words, actions] };
+    }
+
+    sealed record SoundProps(float Box);
+
+    /// <summary>The song previews' sound (PreviewAudio.Sound, a setting; off by default): WinUI's subtle square glyph button beside the heart,
+    /// the speaker in the accent ink while on and the struck speaker in the secondary ink while off, so its state shows at rest.</summary>
+    sealed class PreviewSound : Component
+    {
+        public override Element Render()
+        {
+            float box = UseProps<SoundProps>().Box;
+            bool on = PreviewAudio.Sound.Value;
+            return Controls.Named(new BoxEl
+            {
+                Width = box, Height = box, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+                Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = PreviewAudio.ToggleSound,
+                Children = [Ui.Icon(on ? Icons.Volume : Icons.Mute, X.SoundGlyph, on ? Tok.AccentTextPrimary : Tok.TextSecondary)],
+            }.Interactive(Interaction.Subtle), Loc.Get(on ? Strings.Home.PreviewSoundOff : Strings.Home.PreviewSoundOn));
+        }
     }
 
     /// <summary>Why the item is here: the artist's avatar, the lead words and the artist as an accent link; or the reason alone.</summary>

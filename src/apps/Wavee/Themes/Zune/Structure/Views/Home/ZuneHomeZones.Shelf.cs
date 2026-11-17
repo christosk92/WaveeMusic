@@ -96,6 +96,21 @@ internal static partial class ZuneHomeZones
 
     // ── the open card's head ──
 
+    sealed record ShelfSoundProps(ZuneHomeLayout Layout);
+
+    /// <summary>The song previews' sound (PreviewAudio.Sound, a setting; off by default): a third ring beside play and save, the speaker while on,
+    /// the struck speaker while off (its state at rest), at the rings' size and Compact target.</summary>
+    sealed class ShelfSound : Component
+    {
+        public override Element Render()
+        {
+            var lay = UseProps<ShelfSoundProps>().Layout;
+            bool on = PreviewAudio.Sound.Value;
+            return K.Ring("zune-shelf-sound", on ? Icons.Volume : Icons.Mute, Loc.Get(on ? Strings.Home.PreviewSoundOff : Strings.Home.PreviewSoundOn),
+                          showLabel: false, primary: false, PreviewAudio.ToggleSound, lay.RingSize, lay.RingTarget);
+        }
+    }
+
     static Element ShelfHead(ShelfItem item, SpineShelfGeometry g)
     {
         var h = item.Header;
@@ -144,6 +159,8 @@ internal static partial class ZuneHomeZones
                 K.Ring("zune-shelf-play:" + h.Uri, Icons.Play, Loc.Get(Strings.Home.Play), showLabel: false, primary: true,
                        () => HomeCardNav.Play(in h), lay.RingSize, lay.RingTarget),
                 ZuneHomeDaylist.SaveRing(h.Uri, h.Title, lay with { RingLabels = false }, "zune-shelf-save:" + h.Uri),
+                // The previews' sound, on a card that has songs to preview.
+                item.NoSongs ? new BoxEl { Visible = false } : Embed.Comp(new ShelfSoundProps(lay), static () => new ShelfSound()) with { Key = "zune-shelf-sound:" + h.Uri },
             ],
         };
         var art = new BoxEl

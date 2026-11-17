@@ -113,6 +113,8 @@
     "listeningHistory": "Luistergeschiedenis",
     "plays": "{n} keer beluisterd",
     "save": "Bewaren",
+    "previewSoundOn": "Previewgeluid aanzetten",
+    "previewSoundOff": "Previewgeluid uitzetten",
     "more": "Meer",
     "couldntLoad": "Kon {what} niet laden",
     "couldntLoadHome": "Kon Start niet laden",

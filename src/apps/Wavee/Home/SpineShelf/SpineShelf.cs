@@ -294,13 +294,14 @@ public sealed class SpineShelf : Component
         UseEffect(() =>
         {
             ShelfRegistry.Live.Add(this);
-            ShelfPreview.ClipStarted += OnClipStarted;
+            PreviewAudio.ClipStarted += OnClipStarted;
             if (_open.Peek() < _items.Length) ShelfPreview.Prepare(_items[_open.Peek()]);
             return () =>
             {
                 ShelfRegistry.Live.Remove(this);
-                ShelfPreview.ClipStarted -= OnClipStarted;
+                PreviewAudio.ClipStarted -= OnClipStarted;
                 if (ShelfPreview.Live.Peek().StartsWith(key + "|", StringComparison.Ordinal)) ShelfPreview.Leave();
+                PreviewAudio.Disown(this);   // its preview ends now (the ownership check would end it on the next tick anyway)
             };
         }, DepKey.Empty);
 
@@ -525,7 +526,8 @@ public sealed class SpineShelf : Component
             Key = "shelf:tile:" + item.Key + ":" + j.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(g.TileRadius), Shrink = 0f, MinWidth = 0f,
             Width = Prop.Of(TileW), Layout = s_tileMotion,
-            Focusable = true, Cursor = CursorId.Hand, Role = AutomationRole.Button,
+            // A click plays (it never takes focus: a clicked tile kept focused would hold its preview after the pointer left it).
+            Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, Role = AutomationRole.Button,
             OnClick = () => PlayFrom(i, s),
             OnHoverMove = _ => TileEnter(code, tile, in s),
             OnPointerExit = () => TileLeave(code),
@@ -638,6 +640,8 @@ public sealed class SpineShelf : Component
     public void TileEnter(int code, string tile, in ShelfSong song)
     {
         if (code / S != _open.Peek() || code == _live.Peek() || song.IsBlank) return;
+        // The claim moves first, so the old tile's leave below hands its preview over (the two cross) instead of releasing it.
+        if (song.Clip is not null) PreviewAudio.Claim(this, code, tile);
         TileLeave(_live.Peek());
         _live.Value = code;
         _settling = code;
@@ -658,6 +662,7 @@ public sealed class SpineShelf : Component
     public void TileLeave(int code)
     {
         if (code < 0 || code != _live.Peek()) return;
+        if (_inspectorHold == code) _inspectorHold = -1;
         _tileTimer.Cancel();
         _settling = -1;
         _settled = -1;
@@ -694,14 +699,45 @@ public sealed class SpineShelf : Component
 
     string TileKey(int code) => _key + "|" + _items[code / S].Key + "#" + (code % S).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-    /// <summary>The inspector's tile hover: tile <paramref name="j"/> of the open card (-1 leaves).</summary>
+    /// <summary>The inspector's tile hover: tile <paramref name="j"/> of the open card (-1 leaves). It stands for a pointer resting on the
+    /// tile, so the preview's ownership check counts it as held (<see cref="HoldFails"/>) until it leaves; `hover key=` and `pointer path=`
+    /// drive the real pointer instead.</summary>
     public void HoverTile(int j)
     {
         int open = _open.Peek();
         if (j < 0) { TileLeave(_live.Peek()); return; }
         if ((uint)open >= (uint)_items.Length || (uint)j >= (uint)_items[open].Songs.Length) return;
         var song = _items[open].Songs[j];
+        _inspectorHold = open * S + j;
         TileEnter(open * S + j, TileKey(open * S + j), in song);
+    }
+
+    int _inspectorHold = -1;
+
+    /// <summary>The preview's ownership check (PreviewAudio, every tick): "" while this shelf still holds tile <paramref name="code"/>, else
+    /// why not. Held = mounted and shown, the tile live and in the scene, the window active and not minimized, and the pointer inside the
+    /// tile's visible rect or keyboard focus on it. Never trusts that a leave event arrived. Allocation-free.</summary>
+    internal string HoldFails(int code)
+    {
+        if (!ShelfRegistry.Live.Contains(this)) return "unmounted";
+        if (!Shown) return "hidden";
+        if (_live.Peek() != code) return "not-live";
+        if ((uint)code >= (uint)_tile.Length || _tile[code].IsNull || Context.Scene is not { } scene || !scene.IsLive(_tile[code])) return "tile-gone";
+        var hooks = _hooks;
+        if (hooks?.GetWindowState is { } state && state() == FluentGpu.Pal.WindowState.Minimized) return "minimized";
+        if (hooks?.IsWindowActive is { } active && !active()) return "window-inactive";
+        if (_inspectorHold == code) return "";
+        if (hooks?.GetFocus is { } focus && focus() == _tile[code]) return "";
+        if (hooks?.IsPointerInWindow is { } inWindow && !inWindow()) return "pointer-left-window";
+        if (hooks?.GetPointerPosition?.Invoke() is not { } point) return "no-pointer";
+        return scene.VisibleWindowRect(_tile[code]).Contains(point) ? "" : "pointer-off-tile";
+    }
+
+    /// <summary>The ownership check found tile <paramref name="code"/> no longer held (a missed leave): the tile narrows as if the pointer had
+    /// left. The preview is already released.</summary>
+    internal void HoldLost(int code)
+    {
+        if (code >= 0 && code == _live.Peek()) TileLeave(code);
     }
 
     /// <summary>Play the item's playlist from <paramref name="song"/>.</summary>
@@ -744,7 +780,8 @@ public sealed class SpineShelf : Component
             var shelf = UseProps<EpochProps>().Shelf;
             int epoch = CanvasVideo.Files.Epoch.Value;
             UseEffect(() => shelf.FileLanded(), DepKey.From(epoch));
-            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+            // The song preview's frame clock rides here (a zero box, no gap of its own): it ticks the mixer every frame while it is active.
+            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Children = [Embed.Comp(static () => new PreviewAudio.Clock())] };
         }
     }
 

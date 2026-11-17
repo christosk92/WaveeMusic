@@ -41,6 +41,8 @@ public static class WinUiShelfRules
     public const float HeadCover = 56f, HeadCoverStanding = 48f, ReasonAvatar = 16f;
     /// <summary>Play's and the heart's height: the Compact 40 target standing, the 32 floor above it.</summary>
     public static float ActionH(SpineShelfGeometry g) => g.Standing ? 40f : 32f;
+    /// <summary>The previews' sound button's glyph (the button is ActionH square, beside the heart).</summary>
+    public const float SoundGlyph = 16f;
 
     // ── the washes: the cover's colour over the card fill ──
     /// <summary>How much of the cover's colour a closed spine carries at its head (fading to the card at 70 %), the hover's, and the open card's.</summary>
