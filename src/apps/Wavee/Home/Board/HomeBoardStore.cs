@@ -308,6 +308,17 @@ public sealed class HomeBoardStore
     /// <summary>Block until the pending write landed (shutdown, the inspector between processes).</summary>
     public bool WaitForWrites(int timeoutMs = 5000) => _file?.WaitForWrites(timeoutMs) ?? true;
 
+    /// <summary>The answer is on hand: write down the shape every placed section and the feed drew as (<see cref="HomeItem.Shape"/>), so the next
+    /// launch draws each one's skeleton at its place and loaded size before the answer lands. No undo step, no revision: what the user arranged
+    /// is untouched. A no-op when nothing changed.</summary>
+    public void RecordShapes(BoardModel shown)
+    {
+        if (ReadOnly) return;
+        var doc = _doc.Peek();
+        var next = HomeProjection.WithShapes(doc, shown);
+        if (!ReferenceEquals(next, doc)) Publish(next);
+    }
+
     /// <summary>The first answer arrived: resolve v2 hidden zones into hidden families (migration step 3), once.</summary>
     public void ResolveLegacy(IReadOnlyList<HomeUi.SectionInput> sections)
     {

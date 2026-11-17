@@ -344,7 +344,7 @@ internal static partial class WinUiHomeZones
             bool circular = c.Kind == HomeCardKind.Artist;
             items[i] = wide
                 ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.VideoThumbUrl ?? c.HeaderImageUrl ?? c.ImageUrl,
-                                        meta: CardMeta.Of(c.OwnerName, c.TrackCount))
+                                        meta: c.IsBlank ? " " : CardMeta.Of(c.OwnerName, c.TrackCount))
                 : leadWide && i == 0
                     ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.HeaderImageUrl, captionLines: 2,
                                             meta: CardMeta.Of(null, c.TrackCount), metaInline: true)
@@ -477,7 +477,7 @@ internal static partial class WinUiHomeZones
             var c = cards[i];
             string second = HomeCards.PlainText(c.Subtitle);
             items[i] = wide
-                ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.HeaderImageUrl ?? c.ImageUrl, meta: CardMeta.Of(c.OwnerName, c.TrackCount))
+                ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.HeaderImageUrl ?? c.ImageUrl, meta: c.IsBlank ? " " : CardMeta.Of(c.OwnerName, c.TrackCount))
                 : HomeCards.ShelfItemOf(in c, second, c.Kind == HomeCardKind.Artist);
         }
         return items;

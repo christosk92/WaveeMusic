@@ -17,6 +17,8 @@ public static class RhythmCards
     /// overlay can host it), its second line as the theme built it.</summary>
     public static Controls.CardData Data(in HomeCard c, Element? second, IOverlayService? host, bool circular)
     {
+        // A blank seed card is the surface's seed face: the shape's own lines at their line boxes, so the loaded card lands at its height.
+        if (c.IsBlank) return Controls.CardData.Seed with { Circular = circular };
         var cc = c;
         var menu = HomeCardNav.MenuOf(in c);
         bool hasMenu = menu is not null && host is not null && !Controls.IsNullOverlay(host);
@@ -36,11 +38,7 @@ public static class RhythmCards
         return tracks;
     }
 
-    /// <summary>The cards a rhythm template draws: the usable ones, in order (a blank seed card is left out; a feed section has none).</summary>
-    public static List<HomeCard> Usable(IReadOnlyList<HomeCard> items)
-    {
-        var list = new List<HomeCard>(items.Count);
-        foreach (var c in items) if (!c.IsBlank) list.Add(c);
-        return list;
-    }
+    /// <summary>A card's node key in a rhythm template: its uri, or a blank seed card's own code (blanks share the empty uri). A rhythm template draws
+    /// its zone's every card, a blank one too: a section whose answer is on its way is its template over blank cards, derived flat.</summary>
+    public static string KeyOf(in HomeCard c) => c.IsBlank ? "blank" + c.DedupeKey.ToString(System.Globalization.CultureInfo.InvariantCulture) : c.Uri;
 }

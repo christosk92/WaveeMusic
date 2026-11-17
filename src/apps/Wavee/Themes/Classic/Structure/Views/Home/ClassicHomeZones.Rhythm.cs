@@ -40,7 +40,7 @@ internal static partial class ClassicHomeZones
         var data = RhythmCards.Data(in c, sub.Length > 0 ? Meta(sub) : null, host, circular);
         return new BoxEl
         {
-            Key = prefix + c.Uri, Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.Refit,
+            Key = prefix + RhythmCards.KeyOf(c), Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.Refit,
             Children = [Controls.Surface(data, shape)],
         };
     }
@@ -50,7 +50,7 @@ internal static partial class ClassicHomeZones
     /// <summary>"Made For": the first card as the lead (its header art, name, line and Play) beside (or over) a grid of the next ones.</summary>
     static Element LeadGrid(Zone zone, IOverlayService? overlay, ClassicHomeLayout layout)
     {
-        var cards = RhythmCards.Usable(zone.Items);
+        var cards = zone.Items;
         if (cards.Count == 0) return new BoxEl();
         var band = layout.LeadGrid;
         bool beside = band.Beside;
@@ -108,7 +108,7 @@ internal static partial class ClassicHomeZones
         };
         return new BoxEl
         {
-            Key = "lead-card:" + c.Uri, Direction = 1, MinWidth = 0f, ClipToBounds = true, Corners = Radii.CardAll,
+            Key = "lead-card:" + RhythmCards.KeyOf(c), Direction = 1, MinWidth = 0f, ClipToBounds = true, Corners = Radii.CardAll,
             Fill = Tok.FillCardDefault,
             Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN, Layout = ClassicTierMotion.Refit,
             // Its edges meet the covers beside it: a fluid cover card stands its plate inset above the cover and under the labels
@@ -126,7 +126,7 @@ internal static partial class ClassicHomeZones
     /// responsive box: a width inside the same count rebuilds nothing), the cards are star tracks.</summary>
     static Element CappedGrid(Zone zone, ClassicCappedBand band, float gap, float rowH, Func<HomeCard, Element> cell)
     {
-        var cards = RhythmCards.Usable(zone.Items);
+        var cards = zone.Items;
         if (cards.Count == 0) return new BoxEl();
         var cols = band.Columns;
         float first = MathF.Max(cols.MinCol, 1f) * cols.MaxCols + gap * (cols.MaxCols - 1);
@@ -149,7 +149,7 @@ internal static partial class ClassicHomeZones
             var data = RhythmCards.Data(in c, sub.Length > 0 ? Meta(sub) : null, host, circular: c.Kind == HomeCardKind.Artist);
             return new BoxEl
             {
-                Key = "compact-tile:" + c.Uri, Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.Refit,
+                Key = "compact-tile:" + RhythmCards.KeyOf(c), Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.Refit,
                 Children = [Controls.Surface(data, shape)],
             };
         });

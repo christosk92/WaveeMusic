@@ -92,7 +92,7 @@ public sealed class HomeBoardHost
         if (fh.Knows(HomeFields.Sections)) following = SectionReader.Read(fh);
         long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         return HomeProjection.Project(doc, answer, following, charts: null, HomeSourceRegistry.Default, HomeZoneTitles.Localized(), now,
-            HomeProjection.FeedStateOf(h));
+            HomeProjection.FeedStateOf(h), followingLoading: fh.IsValid && !fh.Knows(HomeFields.Sections) && !fh.LiveAttemptConcluded);
     }
 
     /// <summary>Once the All answer is known, hand it to the store so a v2 document's hidden zones resolve to section families.</summary>
