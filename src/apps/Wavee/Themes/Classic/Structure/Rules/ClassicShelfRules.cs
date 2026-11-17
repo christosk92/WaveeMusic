@@ -15,7 +15,13 @@ namespace Wavee.Themes.Classic;
 public static class ClassicShelfRules
 {
     /// <summary>The geometry of content tier <paramref name="tier"/>.</summary>
-    public static SpineShelfGeometry Of(WidthTier tier) => tier switch
+    public static SpineShelfGeometry Of(WidthTier tier, bool stackedHead = false)
+    {
+        var g = Row(tier);
+        return stackedHead && !g.Standing ? g with { HeadH = StackedHeadH } : g;
+    }
+
+    static SpineShelfGeometry Row(WidthTier tier) => tier switch
     {
         WidthTier.Compact => new(Standing: true, Height: 0f, SpineW: 0f, RowH: 56f, OpenH: 440f, Gap: 6f, Radius: 8f,
             FacePad: 12f, HeadH: 112f, HeadGap: 12f, TileGap: 6f, TileRadius: 6f, TileCover: 72f, MeterW: 3f, ProgressH: 3f),
@@ -42,6 +48,14 @@ public static class ClassicShelfRules
     public const float HeadCover = 56f, HeadCoverStanding = 48f, ReasonAvatar = 16f;
     /// <summary>Play's and the heart's height: the Compact 40 target standing, the 32 floor above it.</summary>
     public static float ActionH(SpineShelfGeometry g) => g.Standing ? 40f : 32f;
+    /// <summary>The head title's floor: Classic fits a title by size before it trims it (the title shrinks toward this to keep one line, then
+    /// ellipsises), so the card beside Play, the heart and the sound button keeps its name whole on a narrow face ("Warm Fuzzy Feeli…" at 1000).</summary>
+    public const float HeadTitleMin = 15f;
+    /// <summary>A stacked head (Small, and Standard's narrow end: ClassicHomeLayout.ShelfHeadStacked): the cover and the words on one row,
+    /// Play, the heart and the sound under them (the 56 cover, 8, the 32 actions).</summary>
+    public const float StackedHeadH = 96f;
+    /// <summary>Whether the head stacks its actions under the cover and the words (standing, or a stacked row head).</summary>
+    public static bool StackHead(SpineShelfGeometry g) => g.Standing || g.HeadH >= StackedHeadH;
     /// <summary>The previews' sound button's glyph (the button is ActionH square, beside the heart).</summary>
     public const float SoundGlyph = 16f;
 

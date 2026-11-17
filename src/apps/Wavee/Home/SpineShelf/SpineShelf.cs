@@ -103,7 +103,10 @@ public static class SpineShelfView
         Element form = Form(zone, g, skin, controller, prevGlyph, nextGlyph);
         var keyed = new BoxEl
         {
-            Key = (g.Standing ? "shelf-standing:" : "shelf-row:") + zone.Key, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            // The row form's key names its head's height: a theme whose head stacks at a rung (Classic) swaps the two heads under the same fade,
+            // never re-lays the open card's tiles out at once.
+            Key = (g.Standing ? "shelf-standing:" : "shelf-row:" + g.HeadH.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":") + zone.Key,
+            Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
             Enter = skin.FormSwap, Exit = skin.FormSwap, Transition = skin.FormSwapMotion,
             Children = [form],
         };

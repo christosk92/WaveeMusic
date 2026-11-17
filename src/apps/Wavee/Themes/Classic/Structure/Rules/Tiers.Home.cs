@@ -199,6 +199,10 @@ public sealed record ClassicHomeLayout
     /// <summary>The first cover of a shelf may span two cells (E21) while the shelf has at least three columns; false where the cards are a fixed strip.</summary>
     public required bool ShelfLead { get; init; }
 
+    /// <summary>The Spine Shelf's open card stacks its head (Play, the heart and the sound under the cover and the words): Small, and Standard
+    /// under the <see cref="ClassicHomeTiers.ShelfHeadRung"/> rung, where the actions beside the words left the title a few letters.</summary>
+    public bool ShelfHeadStacked { get; init; }
+
     /// <summary>A wide shelf (the 16:9 tiles).</summary>
     public required ClassicShelfBand WideShelf { get; init; }
 
@@ -274,8 +278,21 @@ public static class ClassicHomeTiers
         bool shortWindow = facts.Height == HeightTier.Short;
         // The strip is only for a window too short for the hero's own height (the `page.hero.full` rung: under 480 tall); a window of 480-679 keeps it.
         bool strip = shortWindow && facts.Policy.IndexOfRung(ClassicTiers.HeroFullRung) >= 0 && !facts.Rung(ClassicTiers.HeroFullRung);
-        return For(facts.Content, shortWindow, strip);
+        var layout = For(facts.Content, shortWindow, strip);
+        // Standard's narrow end (content under ShelfHeadBesideFrom) stacks the shelf's head, as Small always does.
+        if (layout.Tier == WidthTier.Standard && facts.Policy.IndexOfRung(ShelfHeadRung) >= 0 && !facts.Rung(ShelfHeadRung))
+            layout = layout with { ShelfHeadStacked = true };
+        return layout;
     }
+
+    /// <summary>The named content rung from which the Spine Shelf's open card keeps Play, the heart and the sound beside its words (C-Home at
+    /// 1000: "Warm Fuzzy Feeli…", the title 7 DIP short beside the three actions). Under it the head stacks (a declared swap: the shelf's form key
+    /// names the head's height).</summary>
+    public const string ShelfHeadRung = "classic.home.shelf.head.beside";
+
+    /// <summary>The content width the shelf head's actions sit beside the words from (eight items: the face's head row then holds about 250 DIP
+    /// of title), and the hold on narrowing.</summary>
+    public const float ShelfHeadBesideFrom = 1100f, ShelfHeadHold = 24f;
 
     /// <summary>The record for content tier <paramref name="content"/> (Huge 4K reads Huge's: Classic draws no 4K band). <paramref name="strip"/>: the window is too
     /// short for a hero at its own height, so the daylist is the 126 strip.</summary>
@@ -364,7 +381,7 @@ public static class ClassicHomeTiers
             Buttons = ControlSize.Medium, IconBox = 32f, Clock = ClassicClockForm.Line, Details = true,
         },
         DaylistBeside = false,
-        Shelf = new ClassicShelfBand(R.Space.ShelfCardMin, R.Space.ShelfCardMax, 0, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true), ShelfLead = true,
+        Shelf = new ClassicShelfBand(R.Space.ShelfCardMin, R.Space.ShelfCardMax, 0, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true), ShelfLead = true, ShelfHeadStacked = true,
         WideShelf = new ClassicShelfBand(R.Space.WideTileMin, R.Space.WideTileMax, 0, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true),
         Recents = new ClassicGridBand(ClassicHomeRules.RecentsMinCol, 3), RecentsArt = Design.Size.Thumb48, RecentsRowH = ClassicHomeRules.RowH,
         Releases = new ClassicGridBand(ClassicHomeRules.ListMinCol, ClassicHomeRules.ListMaxCols),

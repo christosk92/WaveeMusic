@@ -24,10 +24,10 @@ internal static class ClassicHomeShelf
 {
     /// <summary>The shelf body of a SpineShelf zone at the tier of <paramref name="layout"/>.</summary>
     public static Element Body(Zone zone, ClassicHomeLayout layout, ShelfController? controller)
-        => SpineShelfView.Of(zone, X.Of(layout.Tier), Skin, controller, Icons.ChevronLeft, Icons.ChevronRight);
+        => SpineShelfView.Of(zone, X.Of(layout.Tier, layout.ShelfHeadStacked), Skin, controller, Icons.ChevronLeft, Icons.ChevronRight);
 
     /// <summary>The body's height (the chapter's extent under its header).</summary>
-    public static float Extent(Zone zone, ClassicHomeLayout layout) => SpineShelfView.Extent(zone, X.Of(layout.Tier));
+    public static float Extent(Zone zone, ClassicHomeLayout layout) => SpineShelfView.Extent(zone, X.Of(layout.Tier, layout.ShelfHeadStacked));
 
     static readonly SpineShelfSkin Skin = new(Spine, Head, Caption, SpineWash, SpineHoverWash, FaceWash,
         static () => Tok.AccentDefault, static () => R.OnMedia.Ink, static () => Tok.FillSubtleSecondary, static () => R.OnMedia.ScrimRest,
@@ -97,7 +97,7 @@ internal static class ClassicHomeShelf
                 {
                     Direction = 0, MinWidth = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true,
                     OnClick = () => HomeCardNav.Open(in h),
-                    Children = [R.Type.ModuleHeader(item.Title) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
+                    Children = [R.Type.ModuleHeader(item.Title) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinSize = X.HeadTitleMin, MinWidth = 0f, Shrink = 1f }],
                 },
                 Ui.Caption(item.Meta) with { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
             ],
@@ -118,7 +118,7 @@ internal static class ClassicHomeShelf
             Shrink = 0f, Cursor = CursorId.Hand, OnClick = () => HomeCardNav.Open(in h),
             Children = [Controls.Artwork(h.ImageUrl, cover, cover, Radii.Control)],
         };
-        if (g.Standing)
+        if (X.StackHead(g))
             return new BoxEl
             {
                 Direction = 1, Gap = Spacing.S, MinWidth = 0f, Grow = 1f,
