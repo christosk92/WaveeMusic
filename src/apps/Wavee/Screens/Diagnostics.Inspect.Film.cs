@@ -202,8 +202,19 @@ public static partial class Diagnostics
             var sheet = new ContactSheet(cellFrames.Count, cols, scale, src.Right - src.Left, src.Bottom - src.Top, gr, gg, gb);
             byte[]? capture = null;
             int kept = 0;
+            // The video surfaces' published placement per frame (the first visible one): a composited video is not in the captured pixels, so
+            // its rect and viewport are what show where it went (`videos` in the reply). Preallocated: no allocation per frame.
+            var vRect = new RectF[frames];
+            var vPort = new RectF[frames];
+            var vSeen = new bool[frames];
+            var registry = shell.Host.VideoSurfaces;
             _traceAfterFrameHook = f =>
             {
+                if ((uint)f < (uint)frames)
+                {
+                    Span<RectF> r1 = stackalloc RectF[1], p1 = stackalloc RectF[1];
+                    if (registry.DescribeVisible(r1, p1) > 0) { vRect[f] = r1[0]; vPort[f] = p1[0]; vSeen[f] = true; }
+                }
                 if (f % every != 0 && f != frames - 1) return;
                 surface.CaptureBgraInto(ref capture, out int w, out int h);
                 sheet.Cell(kept++, capture!, w, h, in src);
@@ -227,6 +238,17 @@ public static partial class Diagnostics
                 foreach (int cf in cellFrames) w.WriteNumberValue(cf);
                 w.WriteEndArray();
                 if (framesDir.Length > 0) w.WriteString("framesDir", Path.GetFullPath(framesDir));
+                w.WriteStartArray("videos");
+                for (int f = 0; f < frames; f++)
+                {
+                    if (!vSeen[f]) continue;
+                    w.WriteStartObject();
+                    w.WriteNumber("frame", f);
+                    Inspect.Reply.Rect(w, "rect", vRect[f]);
+                    Inspect.Reply.Rect(w, "viewport", vPort[f]);
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
                 w.WriteStartArray("watch");
                 foreach (string k in result.Watch) w.WriteStringValue(k);
                 w.WriteEndArray();

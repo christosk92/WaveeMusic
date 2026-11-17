@@ -771,6 +771,7 @@ public sealed class SpineShelf : Component
     {
         int code = _live.Peek();
         if (code < 0 || tile != TileKey(code) || _releasing == code) return;
+        Log.Info("home", "shelf.canvas presented " + tile + " (the still fades out)");   // cold: once per hover
         HideStill(code);
     }
 
