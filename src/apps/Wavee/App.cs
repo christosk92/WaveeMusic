@@ -107,7 +107,10 @@ public static class App
         // full-screen stage on real hardware in a given theme): --fake keeps the setting in memory.
         bool fakeBench = Array.IndexOf(argv, "--fake") >= 0
             && Array.Exists(argv, static a => a == "--frame-bench" || a == "--stage-demo" || a.StartsWith("--frame-bench=", StringComparison.Ordinal));
-        if (themeAt >= 0 && themeAt + 1 < argv.Length && (Array.IndexOf(argv, "--screenshot") >= 0 || fakeBench))
+        // Any other `--fake` demo takes it as well (a recorder rehearsal, Record-Feature.ps1 -Fake): its settings live in memory, so the
+        // theme is the run's from its first frame and never switched at run time.
+        bool fakeDemo = Array.IndexOf(argv, "--fake") >= 0;
+        if (themeAt >= 0 && themeAt + 1 < argv.Length && (Array.IndexOf(argv, "--screenshot") >= 0 || fakeBench || fakeDemo))
         {
             Wavee.Theming.ThemeHost.SelectForRun(argv[themeAt + 1]);
         }
