@@ -211,6 +211,9 @@ public sealed record PlayerBarProps
     public required Func<bool> DeviceIsRemote { get; init; }
     /// <summary>The name of the device playback is on, or null when it is this one.</summary>
     public required Func<string?> RemoteDeviceName { get; init; }
+    /// <summary>The playing stream's format badge ("FLAC 24/96") when it is LOSSLESS and plays on this device; null otherwise (a lossy
+    /// stream, nothing published yet, or another device owns playback: we cannot know a phone's format).</summary>
+    public required Func<string?> LosslessFormat { get; init; }
     /// <summary>Bumped when something (a toast's "Choose device") asks for the picker.</summary>
     public required IReadSignal<int> DevicePickerRequest { get; init; }
     /// <summary>The player is muted.</summary>

@@ -404,7 +404,8 @@ public static partial class Diagnostics
                              Arg("ago", ArgType.Int, "backdate the play in the play log by this many minutes", "0"),
                              Arg("context", ArgType.String, "play the rows in this context (a spotify:playlist: or spotify:album: uri, as a row click on its page does)"),
                              IntArg("at", "with context=: start at this row of the rows (0 = the uri's own), as a click on a row further down the page does", "0", 0, 64),
-                             Arg("remote", ArgType.String, "turn the output remote under this name on the live mount (off: local again)")], s_settleArgs),
+                             Arg("remote", ArgType.String, "turn the output remote under this name on the live mount (off: local again)"),
+                             Arg("format", ArgType.String, "the deck's load reports this format badge after it lands (\"FLAC 24/96\": a lossless stream; the fake loads report \"OGG 320\")")], s_settleArgs),
             },
             new(Verb.Option, "option", "List the active theme's user options, or set one (id, value) the way Settings does", "option style.density Compact")
             {

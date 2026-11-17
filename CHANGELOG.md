@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.10] - unreleased
+
+### Added
+
+- **Lossless in the player bar.** While a lossless stream plays, Classic's artist line ends with "· Lossless"; hover it for the exact format, such as FLAC 24/96. (#227)
+
 ## [0.3.9] - 2026-11-14
 
 ### Added

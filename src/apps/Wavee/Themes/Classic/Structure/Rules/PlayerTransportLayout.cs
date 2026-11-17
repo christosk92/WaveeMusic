@@ -104,4 +104,12 @@ internal static class ClassicTransportLayout
 
     /// <summary>The "+N" chip's weight.</summary>
     public const int CreditChipWeight = 600;
+
+    // ── the lossless mark (after the credits line) ──
+
+    /// <summary>The mark's separator from the names (the credits line's own type, in its secondary ink): " · ".</summary>
+    public const string LosslessSeparator = " · ";
+
+    /// <summary>The word's weight: the credits line's regular, so the mark reads as part of the line and only its accent ink sets it apart.</summary>
+    public const int LosslessTextWeight = 400;
 }

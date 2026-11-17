@@ -81,6 +81,17 @@ public static partial class Shell
                 int slot = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
                 return slot < 0 ? null : rows[slot].Name ?? "";
             },
+            // the stage's format chip rule (Stage.Transport.ShowsQualityBadge), narrowed to a lossless badge; held under the stage like the title
+            LosslessFormat = HeldUnderStage(static () =>
+            {
+                var fmt = Playback.StreamFormat.Value;
+                if (fmt.IsEmpty || Theming.InspectSwitches.RemoteDevice is not null) return null;
+                _ = Playback.Devices.Changed.Value;
+                bool remote = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows) >= 0;
+                if (!Stage.Transport.ShowsQualityBadge(true, remote)) return null;
+                string label = Entities.Strings.Resolve(fmt);
+                return Playback.Audio.IsLosslessLabel(label) ? label : null;
+            }),
             DevicePickerRequest = Playback.DevicePickerRequest,
             Muted = Playback.Muted,
             EpisodeSpeed = Playback.EpisodeSpeed,

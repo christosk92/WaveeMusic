@@ -176,17 +176,30 @@ internal static partial class ClassicPlayerBar
                 });
             metaKids.Add(titleSlot);
             if (v.ShowArtistLine)
-                metaKids.Add(v.Marquee
+            {
+                // The names hug their own width (Grow 0, shrinking) so the lossless mark sits right after them; a long line still
+                // shrinks to the column and scrolls, the mark held at the end.
+                BoxEl names = v.Marquee
                     ? Marquee.Content(Embed.Comp(() => new Credits(props, compact: false)), Prop.Of(() => props.Credits().Line(ClassicTransportLayout.CreditSeparator)),
                         new Marquee.Style
                         {
                             FontSize = ClassicTransportLayout.CreditSize, Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
-                        }, marquees.Value, order: 1, identity: face) with { Key = artistsKey }
+                        }, marquees.Value, order: 1, identity: face)
                     : new BoxEl
                     {
-                        Key = artistsKey, ClipToBounds = true, MinWidth = 0f,
+                        ClipToBounds = true, MinWidth = 0f,
                         Children = [Embed.Comp(() => new Credits(props, compact: true))],
-                    });
+                    };
+                metaKids.Add(new BoxEl
+                {
+                    Key = artistsKey, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
+                    Children =
+                    [
+                        names with { Key = "np-artists-line", Grow = 0f, Shrink = 1f },
+                        Embed.Comp(() => new LosslessMark(props)) with { Key = "np-lossless" },
+                    ],
+                });
+            }
         }
 
         var metaCol = new BoxEl
@@ -661,6 +674,35 @@ internal static partial class ClassicPlayerBar
             var names = new List<string>(artists.Length);
             foreach (var a in artists) if (a.Text.Length > 0) names.Add(a.Text);
             return string.Join(", ", names);
+        }
+    }
+
+    /// <summary>The "· Lossless" mark after the credits line: plain text on the line's own type, the separator in its secondary ink and the word
+    /// in the accent text ink, while a lossless stream plays on this device; its tooltip the stream's own badge ("FLAC 24/96"); nothing at all
+    /// otherwise. Its own component, so a format change re-renders the mark and not the bar.</summary>
+    private sealed class LosslessMark(PlayerBarProps props) : Component
+    {
+        public override Element Render()
+        {
+            string? format = props.LosslessFormat();
+            if (format is null) return new BoxEl { HitTestVisible = false };
+            var mark = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Children =
+                [
+                    new TextEl(ClassicTransportLayout.LosslessSeparator)
+                    {
+                        Size = ClassicTransportLayout.CreditSize, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap,
+                    },
+                    new TextEl(Loc.Get(Strings.Settings.Playback.QualityLossless))
+                    {
+                        Size = ClassicTransportLayout.CreditSize, Weight = ClassicTransportLayout.LosslessTextWeight,
+                        Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap,
+                    },
+                ],
+            };
+            return ToolTip.Wrap(mark, format);
         }
     }
 

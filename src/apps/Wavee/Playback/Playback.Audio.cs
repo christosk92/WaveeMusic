@@ -4920,6 +4920,10 @@ public static partial class Playback
             };
         }
 
+        /// <summary>Does a <see cref="LabelFor"/> label name a lossless source? Every lossless label this file prints is a FLAC one, so
+        /// the play bar's lossless pill reads the published badge rather than a second fact beside it.</summary>
+        public static bool IsLosslessLabel(string label) => label.StartsWith("FLAC", StringComparison.Ordinal);
+
         // ── 19. ICY: the radio framing ───────────────────────────────────────────────────────────────────────────────
 
         /// <summary>What a SHOUTcast/ICY response head says. Parsed rather than handed to `HttpClient` because
