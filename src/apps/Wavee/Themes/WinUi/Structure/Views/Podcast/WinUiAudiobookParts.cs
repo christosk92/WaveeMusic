@@ -78,12 +78,13 @@ internal static class WinUiAudiobookParts
         var chapters = v.Chapters;
         var playChapter = p.PlayChapter;
         bool finished = v.State == AudiobookState.Finished;
-        Element segments = Responsive.Of(w => Segments(w, chapters, place, playChapter, progress, finished));
+        bool seek = !lay.Stacked;   // Compact: the line shows your place; the contents rows (44 tall) are the targets, a 6-DIP segment cannot be one
+        Element segments = Responsive.Of(w => Segments(w, chapters, place, playChapter, progress, finished, seek));
         return Card(AB.LineKey, new Edges4(AB.LinePadX, AB.LinePadTop, AB.LinePadX, AB.LinePadBottom), AB.LineGap, [head, segments]);
     }
 
     static Element Segments(float width, ImmutableArray<AudiobookChapterVm> chapters, IReadSignal<AudiobookPlace> place, Action<int> play,
-        bool progress, bool finished)
+        bool progress, bool finished, bool seek)
     {
         int n = chapters.Length;
         if (n == 0 || width <= 0f) return new BoxEl { Height = AB.SegBand };
@@ -121,12 +122,14 @@ internal static class WinUiAudiobookParts
                 Width = segW, Height = AB.SegHeight, ZStack = true, Corners = CornerRadius4.All(AB.SegRadius), ClipToBounds = true,
                 Fill = Tok.TextPrimary with { A = AB.SegTrackAlpha }, Children = [fill],
             };
-            kids[i] = ToolTip.Wrap(new BoxEl
+            var seg = new BoxEl
             {
-                Key = AB.SegKey + i, Width = segW, Height = AB.SegBand, Shrink = 0f, Direction = 1, Justify = FlexJustify.Center,
-                Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = () => play(index),
-                Children = [pill],
-            }, chapters[i].Label);
+                Key = AB.SegKey + i, Width = segW, Height = AB.SegBand, Shrink = 0f, Direction = 1, Justify = FlexJustify.Center, Children = [pill],
+            };
+            // One tree at every tier (a crossing keeps the segments): only the verb comes and goes.
+            kids[i] = ToolTip.Wrap(seek
+                ? seg with { Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = () => play(index) }
+                : seg with { HitTestVisible = false }, chapters[i].Label);
         }
         // the thumb: one node over the row, placed at your place on the current chapter's segment
         kids[n] = new BoxEl
@@ -197,7 +200,7 @@ internal static class WinUiAudiobookParts
         };
         var number = Body(c.Number) with
         {
-            Width = AB.NumberWidth, Shrink = 0f, Wrap = TextWrap.NoWrap, TextAlign = TextAlign.End, Color = cur ? Tok.AccentTextPrimary : Tok.TextTertiary,
+            Width = AB.NumberWidth, Shrink = 0f, Wrap = TextWrap.NoWrap, TextAlign = TextAlign.End, Color = cur ? Tok.AccentTextPrimary : Tok.TextSecondary,
         };
         var line = new BoxEl
         {
@@ -205,14 +208,14 @@ internal static class WinUiAudiobookParts
             Padding = new Edges4(AB.RowPadLeft, 0f, AB.RowPadX, 0f),
             Children = [number, name, leader, left, starts],
         };
-        return ToolTip.Wrap(new BoxEl
+        return new BoxEl
         {
             Key = AB.RowKey + c.Index, Direction = 0, MinHeight = lay.RowMin, MinWidth = 0f,
             Corners = new CornerRadius4(0f, Radii.Control, Radii.Control, 0f),
             Fill = cur ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
             Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = () => p.PlayChapter(index),
             Children = [new BoxEl { Width = AB.Margin, AlignSelf = FlexAlign.Stretch, Fill = margin, Shrink = 0f }, line],
-        }, c.Length);
+        };
     }
 
     // ══ THE ABOUT CARD ══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -307,7 +310,7 @@ internal static class WinUiAudiobookParts
     /// <summary>A WinUI card: the card fill, its 1-DIP stroke, the card radius, no shadow.</summary>
     public static BoxEl Card(string key, Edges4 padding, float gap, Element[] kids) => new()
     {
-        Key = key, Direction = 1, Gap = gap, Padding = padding, MinWidth = 0f,
+        Key = key, Layout = AB.Block, Direction = 1, Gap = gap, Padding = padding, MinWidth = 0f,
         Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
         Children = kids,
     };

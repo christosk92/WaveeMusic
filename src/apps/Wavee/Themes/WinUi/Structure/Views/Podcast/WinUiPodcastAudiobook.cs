@@ -76,7 +76,7 @@ internal static class WinUiPodcastAudiobook
         {
             kids.Add(new BoxEl
             {
-                Key = AB.MoreKey, Direction = 1, Gap = AB.SectionBottom, Margin = new Edges4(0f, AB.SectionTop, 0f, 0f), MinWidth = 0f,
+                Key = AB.MoreKey, Layout = AB.Block, Direction = 1, Gap = AB.SectionBottom, Margin = new Edges4(0f, AB.SectionTop, 0f, 0f), MinWidth = 0f,
                 Children = [WinUiPodcastKit.SectionHeader(v.SimilarTitle), WinUiPodcastKit.MoreLikeThis(v.Similar, p.OpenUri, rows: lay.Stacked)],
             });
         }
@@ -87,19 +87,22 @@ internal static class WinUiPodcastAudiobook
 
     static Element Hero(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, bool playing)
     {
+        // The frame's lint guide reads the page's leading edge from the page-title key: the book's leading edge is its cover (the title sits beside
+        // it, as on every detail page), so the cover carries the key.
         Element cover = new BoxEl
         {
-            Width = lay.Cover, Height = lay.Cover, Shrink = 0f, AlignSelf = FlexAlign.Start, Corners = CornerRadius4.All(AB.CoverRadius), ClipToBounds = true,
+            Key = WinUiFrameLayout.PageTitleKey, Width = lay.Cover, Height = lay.Cover, Shrink = 0f, AlignSelf = FlexAlign.Start, Corners = CornerRadius4.All(AB.CoverRadius), ClipToBounds = true,
             Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, AB.CoverRadius, decodePx: AB.CoverDecode)],
         };
         BoxEl id = Identity(v, p, lay);
         Element cmds = Commands(v, p, lay);
         Element up = Up(v, p, lay, playing);
+        BoxEl form;
         if (lay.Stacked)
         {
-            return new BoxEl
+            form = new BoxEl
             {
-                Key = AB.HeroKey, Direction = 1, Gap = lay.RowGap, MinWidth = 0f, Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
+                Key = AB.HeroKey + ":stack", Direction = 1, Gap = lay.RowGap, MinWidth = 0f, Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
                 Children =
                 [
                     new BoxEl { Direction = 0, Gap = lay.ColGap, MinWidth = 0f, Children = [cover, id with { Grow = 1f, Shrink = 1f, Basis = 0f }] },
@@ -107,6 +110,8 @@ internal static class WinUiPodcastAudiobook
                 ],
             };
         }
+        else
+        {
         var right = new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = lay.Cover, Gap = lay.RowGap, Justify = FlexJustify.SpaceBetween,
@@ -116,10 +121,18 @@ internal static class WinUiPodcastAudiobook
                 up,
             ],
         };
+        form = new BoxEl
+        {
+            Key = AB.HeroKey + ":row", Direction = 0, Gap = lay.ColGap, MinWidth = 0f, Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
+            Children = [cover, right],
+        };
+        }
+        // The two arrangements are different trees: keyed per form under a plain anchor (a slot's lone child ignores its key), they cross-fade on a
+        // declared swap family while the anchor eases its height.
         return new BoxEl
         {
-            Key = AB.HeroKey, Direction = 0, Gap = lay.ColGap, MinWidth = 0f, Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
-            Children = [cover, right],
+            Key = AB.HeroKey, Direction = 1, MinWidth = 0f, Layout = AB.Block,
+            Children = [form with { Enter = AB.HeroSwap, Exit = AB.HeroSwap, Transition = AB.HeroSwapMotion }],
         };
     }
 
@@ -128,7 +141,7 @@ internal static class WinUiPodcastAudiobook
         var kids = new List<Element>(6) { Eyebrow(v) };
         kids.Add(TitleLarge(v.Title) with
         {
-            Key = WinUiFrameLayout.PageTitleKey, Size = lay.TitleSize, LineHeight = lay.TitleLine, Wrap = TextWrap.Wrap, MinWidth = 0f,
+            Size = lay.TitleSize, LineHeight = lay.TitleLine, Wrap = TextWrap.Wrap, MinWidth = 0f,
         });
         if (v.Subtitle.Length > 0)
             kids.Add(new TextEl(v.Subtitle) { Size = lay.SubtitleSize, LineHeight = lay.SubtitleLine, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f });
@@ -336,7 +349,7 @@ internal static class WinUiPodcastAudiobook
         }
         return new BoxEl
         {
-            Key = AB.PremiumKey, Direction = 0, Wrap = true, Gap = AB.PremiumGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Key = AB.PremiumKey, Layout = AB.Block, Direction = 0, Wrap = true, Gap = AB.PremiumGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
             Margin = new Edges4(0f, 0f, 0f, kids.Count > 0 ? AB.PremiumBottom : 0f), Children = [.. kids],
         };
     }
@@ -347,15 +360,15 @@ internal static class WinUiPodcastAudiobook
     {
         Element chapters = new BoxEl
         {
-            Key = AB.ChaptersKey, Direction = 1, Gap = AB.CardGap, Grow = lay.TwoColumns ? 1f : 0f, Shrink = 1f, Basis = lay.TwoColumns ? 0f : float.NaN,
+            Key = AB.ChaptersKey, Layout = AB.Block, Direction = 1, Gap = AB.CardGap, Grow = lay.TwoColumns ? 1f : 0f, Shrink = 1f, Basis = lay.TwoColumns ? 0f : float.NaN,
             MinWidth = 0f,
             Children = [WinUiAudiobookParts.Line(v, p, lay), WinUiAudiobookParts.Contents(v, p, lay)],
         };
-        Element about = WinUiAudiobookParts.About(v, p, lay);
+        Element about = WinUiAudiobookParts.About(v, p, lay) with { Layout = AB.Block };
         bool aboutFirst = !lay.TwoColumns && v.State == AudiobookState.NotStarted;
         return new BoxEl
         {
-            Key = AB.ColumnsKey, Direction = (byte)(lay.TwoColumns ? 0 : 1), Gap = lay.ColumnGap, MinWidth = 0f,
+            Key = AB.ColumnsKey, Layout = AB.Block, Direction = (byte)(lay.TwoColumns ? 0 : 1), Gap = lay.ColumnGap, MinWidth = 0f,
             AlignItems = lay.TwoColumns ? FlexAlign.Start : FlexAlign.Stretch,
             Children = aboutFirst ? [about, chapters] : [chapters, about],
         };

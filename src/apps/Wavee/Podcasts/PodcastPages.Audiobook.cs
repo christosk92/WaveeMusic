@@ -208,7 +208,7 @@ public sealed class AudiobookScreen : Component
             string? sampleId = sample.IsValid ? sample.Uri.Text : sampleUri.Length > 0 ? sampleUri : null;
 
             // ── about and facts ──
-            var about = AudiobookRules.Paragraphs(book.About);
+            var about = AudiobookRules.Paragraphs(book.AboutHtml.Length > 0 ? AudiobookRules.FromHtml(book.AboutHtml) : book.About);
             var authors = book.Authors;
             string authorLine = string.Join(", ", authors.Select(static a => a.Name));
             var factRows = ImmutableArray.CreateBuilder<PodcastFact>(8);
@@ -482,14 +482,37 @@ public static partial class AudiobookRules
             : m.ToString(CultureInfo.InvariantCulture) + ":" + x.ToString("00", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Paragraphs (blank-line separated), at most four.</summary>
+    /// <summary>Paragraphs (blank-line separated), at most two: the card is a summary beside the contents, not the whole blurb.</summary>
     public static ImmutableArray<string> Paragraphs(string text)
-        => string.IsNullOrWhiteSpace(text) ? [] : [.. text.Replace("\r", "").Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(4)];
+        => string.IsNullOrWhiteSpace(text) ? [] : [.. text.Replace("\r", "").Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(2)];
+
+    /// <summary>HTML_DESCRIPTION's paragraphs as plain text: a blank line per &lt;/p&gt; or &lt;br&gt;, the tags dropped, the entities decoded (the wire
+    /// doubles its quotes: "" reads ").</summary>
+    public static string FromHtml(string html)
+    {
+        string text = Tags().Replace(Breaks().Replace(html, "\n\n"), "");
+        return System.Net.WebUtility.HtmlDecode(text).Replace("\"\"", "\"").Trim();
+    }
+
+    [GeneratedRegex(@"</p\s*>|<br\s*/?>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex Breaks();
+
+    [GeneratedRegex(@"<[^>]+>", RegexOptions.CultureInvariant)]
+    private static partial Regex Tags();
 
     /// <summary>The ISO 639-1 code SHOW_V4 states ("en") as the listener's language names it ("English"); the code itself when unknown.</summary>
     public static string LanguageName(string code)
     {
-        try { return CultureInfo.GetCultureInfo(code).DisplayName; }
-        catch (CultureNotFoundException) { return code; }
+        string name;
+        try { name = CultureInfo.GetCultureInfo(code).DisplayName; }
+        catch (CultureNotFoundException) { name = code; }
+        // The app runs with invariant globalization (no culture names): the catalogue's common book languages by their English names.
+        if (name != code) return name;
+        return code.ToLowerInvariant() switch
+        {
+            "en" => "English", "es" => "Spanish", "de" => "German", "fr" => "French", "it" => "Italian", "nl" => "Dutch", "pt" => "Portuguese",
+            "sv" => "Swedish", "da" => "Danish", "no" or "nb" => "Norwegian", "fi" => "Finnish", "pl" => "Polish", "ja" => "Japanese",
+            "ko" => "Korean", "zh" => "Chinese", "hi" => "Hindi", "tr" => "Turkish", "ar" => "Arabic", _ => code,
+        };
     }
 }

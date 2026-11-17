@@ -4,6 +4,9 @@
 // .bline/.segsb/.seg, .contents/.cl, .babout/.facts/.rate, .bgrid, .compact, .wash, .allow). Tiers: Compact < 641 (the concept's 500 window, .w-s),
 // Small 641-1007 (900, .w-m), Standard >= 1008 (1400, .w-l). The page gutter is the frame's (`WinUiTiers.InsetOf`).
 
+using FluentGpu.Animation;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.WinUi;
@@ -17,11 +20,24 @@ internal static class WinUiPodcastAudiobookRules
         RowKey = "ab-row:", SegKey = "ab-seg:", PrimaryKey = "ab-primary", SampleKey = "ab-sample", SpeedKey = "ab-speed", SleepKey = "ab-sleep",
         LibraryKey = "ab-library", CmdsKey = "ab-cmds", UpKey = "ab-up", ColumnsKey = "ab-columns", ChaptersKey = "ab-chapters";
 
+    // ── motion across a tier crossing ──
+
+    /// <summary>The hero's two arrangements (cover beside the words, Small and up; the Compact stack): a DECLARED swap family, cross-faded.</summary>
+    public static readonly EnterExit HeroSwap = SwapFamilies.Declare("WinUi.Audiobook.HeroSwap", new EnterExit(Opacity: 0f, Active: true));
+
+    /// <summary>The cross-fade's timing.</summary>
+    public static MotionTokenDef HeroSwapMotion => MotionTok.ControlFast;
+
+    /// <summary>A block of the page (the Premium line, the columns, a card, the cards' column): it moves and resizes with a crossing, laid out at once and
+    /// revealed, so nothing under it jumps.</summary>
+    public static readonly LayoutTransition Block = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(WinUiDiscoveryMotion.ReflowMs, Easing.SmoothOut), SizeMode.Reveal);
+
     // ── the hero ──
     public const float CoverRadius = 4f, HeroColGap = 24f, HeroColGapCompact = 16f, HeroRowGap = 12f, HeroRowGapCompact = 16f;
     public const float IdGap = 4f, EyebrowGap = 6f, BylineGap = 20f, BylineTop = 6f, MetaGap = 6f, StarGlyph = 14f, CmdGap = 8f;
     public const float SubtitleSize = 18f, SubtitleLine = 24f, SubtitleSizeCompact = 14f, SubtitleLineCompact = 20f;
-    public const float TagHeight = 16f, TagPadX = 5f, TagSize = 10f, TagLine = 14f, TagRadius = 3f;
+    public const float TagHeight = 16f, TagPadX = 5f, TagSize = 11f, TagLine = 14f, TagRadius = 3f;
     public const float UpGap = 16f, UpGapCompact = 10f, UpMinHeight = 40f, PrimaryMinWidth = 132f, LabelGap = 2f, LabelBarGap = 10f;
     public const float BarHeight = 3f, BarTrack = 1f, BarRadius = 1.5f, Control = 32f, ControlCompact = 40f;
     public const int CoverDecode = 400;
