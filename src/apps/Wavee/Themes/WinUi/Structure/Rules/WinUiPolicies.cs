@@ -51,6 +51,8 @@ public static partial class WinUiPolicies
         Tabs: true, NavTree: true, FriendsPanel: true, ForwardButton: true, HistoryMenu: true, MaxBandPins: 0, ContinuousPageSwap: true)
     {
         CyclesTabs = true,
+        // The podcast show, episode and audiobook pages are WinUI's own (podcast pages v2, the concept winui-podcast-v2).
+        PodcastPages = true,
         // W-Library: "Library" and the kinds' SelectorBar stand over the page; a kind switch moves only the body under them (winui library family).
         LibraryFamily = true,
     };

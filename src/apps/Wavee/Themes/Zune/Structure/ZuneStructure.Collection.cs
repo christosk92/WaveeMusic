@@ -15,6 +15,7 @@
 // Common: Module (`CommonBlocks`, registered by `ZuneStructure.RegisterOwn`).
 
 using FluentGpu.Theming;
+using Wavee.Themes.Common;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Zune;
@@ -33,6 +34,11 @@ public sealed partial class ZuneStructure
 
         // Recents.
         views.Add(ViewKeys.RecentsPage, ZuneRecents.Template, "zune.recents.page");
+
+        // The podcast pages v2: not drawn by Zune yet (ShellCapabilities.PodcastPages false keeps the older reader pages).
+        CommonNothing.Register(views, ViewKeys.PodcastShowPage);
+        CommonNothing.Register(views, ViewKeys.PodcastEpisodePage);
+        CommonNothing.Register(views, ViewKeys.AudiobookPage);
 
         // Profile.
         views.Add(ViewKeys.ProfilePage, ZuneProfile.Template, "zune.profile.page");

@@ -63,7 +63,10 @@ public readonly partial struct Show
     /// <summary><see cref="Shell.RouteKind.Show"/>: the shared frame with the episode reader in the right column. The
     /// page is keyed by its route, so the subject is a constructor fact of its host (the persisted-view seed needs it
     /// before the first render).</summary>
-    public static Element Page(in Shell.Route route)
+    public static Element Page(in Shell.Route route) => PodcastPages.ShowRoute(in route);
+
+    /// <summary>The older reader page, kept for the structures that do not draw the podcast pages (<c>ShellCapabilities.PodcastPages</c> false).</summary>
+    internal static Element LegacyPage(in Shell.Route route)
     {
         string routeKey = Shell.NameOf(route);
         var subject = route.Subject;
