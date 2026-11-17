@@ -40,14 +40,14 @@ internal static partial class ZuneHomeZones
     {
         string sub = caption ? HomeCards.PlainText(c.Subtitle) : "";
         var data = RhythmCards.Data(in c, sub.Length > 0 ? K.Sub(sub) : null, host, circular);
-        return Resizes(new BoxEl { Key = prefix + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, shape)] });
+        return Resizes(new BoxEl { Key = prefix + RhythmCards.KeyOf(c), Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, shape)] });
     }
 
     // ── LeadGrid ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     static Element LeadGrid(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay)
     {
-        var cards = RhythmCards.Usable(zone.Items);
+        var cards = zone.Items;
         if (cards.Count == 0) return K.Section(Heading(zone, lay), new BoxEl());
         bool beside = lay.LeadBeside;
         var host = HostOf(overlay);
@@ -105,14 +105,14 @@ internal static partial class ZuneHomeZones
                 new BoxEl
                 {
                     Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, H.LeadRingTop - H.LeadCopyGap, 0f, 0f),
-                    Children = [K.Ring("zune-lead-play:" + c.Uri, Icons.Play, Loc.Get(Strings.Home.Play), showLabel: true, primary: true,
+                    Children = [K.Ring("zune-lead-play:" + RhythmCards.KeyOf(c), Icons.Play, Loc.Get(Strings.Home.Play), showLabel: true, primary: true,
                                        () => HomeCardNav.Play(in cc), lay.RingSize, lay.RingTarget)],
                 },
             ],
         };
         return Resizes(new BoxEl
         {
-            Key = "zune-lead:" + c.Uri, Direction = 1, MinWidth = 0f,
+            Key = "zune-lead:" + RhythmCards.KeyOf(c), Direction = 1, MinWidth = 0f,
             Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN,
             // Its art's top meets the covers' beside it (a grid cover card stands its plate inset above the cover), its foot their labels' foot.
             Margin = new Edges4(0f, SurfaceGeometry.ShelfPlatePad, 0f, SurfaceGeometry.ShelfPlatePad),
@@ -124,7 +124,7 @@ internal static partial class ZuneHomeZones
 
     static Element CappedGrid(Zone zone, ZuneHomeLayout lay, ZuneCappedBand band, float gap, float rowH, Func<HomeCard, Element> cell)
     {
-        var cards = RhythmCards.Usable(zone.Items);
+        var cards = zone.Items;
         if (cards.Count == 0) return K.Section(Heading(zone, lay), new BoxEl());
         float first = band.MinCol * band.MaxCols + gap * (band.MaxCols - 1);
         Element grid = GridFill.Of("zune-rhythm:" + zone.Key, w => band.Columns(w, gap), (c, width) =>
@@ -145,7 +145,7 @@ internal static partial class ZuneHomeZones
         {
             string sub = HomeCards.PlainText(c.Subtitle);
             var data = RhythmCards.Data(in c, sub.Length > 0 ? K.Sub(sub) : null, host, circular: c.Kind == HomeCardKind.Artist);
-            return Resizes(new BoxEl { Key = "zune-compact:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, shape)] });
+            return Resizes(new BoxEl { Key = "zune-compact:" + RhythmCards.KeyOf(c), Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, shape)] });
         });
     }
 

@@ -132,6 +132,9 @@ public sealed class HomeScreen : Component
         _board.Bind(boardModel, overlay);
         // The v2 layout's hidden zones resolve against the first answer (pinned-home-tech.md 1.2.4): once, when it lands.
         UseEffect(() => HomeBoardHost.ResolveLegacyOnAnswer(), DepKey.From(model.Value is null ? 0 : 1));
+        // Each answer on hand writes down the shape every section drew as (HomeItem.Shape): the next launch draws their skeletons at their places and
+        // loaded sizes. A signal effect over the board's memo (it writes the document, never in a render); a no-op when nothing changed.
+        UseSignalEffect(() => HomeBoardStore.Instance.RecordShapes(boardModel.Value));
         return Slots.View(ViewKeys.HomePage, new HomePageProps
         {
             Facet = facet,

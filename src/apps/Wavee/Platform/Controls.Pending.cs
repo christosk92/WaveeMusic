@@ -20,6 +20,7 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 
 namespace Wavee;
 
@@ -56,4 +57,12 @@ public static partial class Controls
         };
         return reserve.Skel(reserve);
     }
+
+    /// <summary>A view whose data is on its way, as the app's loading pattern draws it: <paramref name="view"/> (the real template over a blank
+    /// seed: empty names, no covers, blank cards) derived flat, chrome and nested components included (<c>SkeletonStyle.DeriveComponents</c>), so
+    /// its title lines, cover squares and rows stand at the loaded view's size and the swap to the loaded view moves nothing. Never a pulse.
+    /// The caller swaps it for the loaded view when the data lands. <paramref name="view"/> must be pure for its props (draw only).</summary>
+    public static Element Shimmer(Func<Element> view, object? group = null) => new SkelRegionEl(
+        Pending: static () => true, Failed: static () => false, Content: static () => new BoxEl(), ShimmerSource: view, OnFailed: null,
+        Reveal: SkelReveal.None, Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: group, SmoothResize: false);
 }

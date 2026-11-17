@@ -207,9 +207,6 @@ public static class WinUiHomeBoardRules
     /// <summary>A full row's measured height moves its box only when it differs from the packed height by more than half a DIP.</summary>
     public const float ExtentSlop = 0.5f;
 
-    /// <summary>The blank cards of a loading shelf's placeholder.</summary>
-    public const int SeedCards = 6;
-
     /// <summary>A full-row tile's estimate where nothing better is known (a shelf's header and one row of covers).</summary>
     public const float FullFallback = 320f;
 

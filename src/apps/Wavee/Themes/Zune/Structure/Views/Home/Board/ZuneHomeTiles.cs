@@ -393,9 +393,10 @@ internal static class ZuneHomeTiles
                 Children = [d(edge)],
             };
         }
-        return url is { Length: > 0 }
-            ? Controls.CoverFill(url, 0f, B.ArtDecodePx)
-            : new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Stretch, Fill = R.Layer.ArtPlaceholder };
+        if (url is { Length: > 0 }) return Controls.CoverFill(url, 0f, B.ArtDecodePx);
+        // No art: the plate fills the tile. Derived, a sizeless box is a 14 bar; its loading shape is the cover it stands for, the tile's whole art.
+        var plate = new BoxEl { Grow = 1f, AlignSelf = FlexAlign.Stretch, Fill = R.Layer.ArtPlaceholder };
+        return plate.Skel(plate with { Fill = SkeletonStyle.Default.BarColor, IsEnabled = false, HitTestVisible = false });
     }
 
     /// <summary>The wide form's square art: as wide as the tile is tall (a bound width, so a re-pack that changes the height follows it with no render).</summary>
@@ -824,22 +825,17 @@ internal static class ZuneHomeTiles
 
     // ══ Home.Tile.Vacant ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The registered template of <see cref="ViewKeys.HomeTileVacant"/>: a flat plate at the box while loading (never a pulse, owner rule
-    /// 11-15); its glyph and a quiet word when the thing is gone, paused, offline or unknown.</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.HomeTileVacant"/>: the tile's own skeleton while loading (flat, never a pulse, owner
+    /// rule 11-15); its glyph and a quiet word when the thing is gone, paused, offline or unknown.</summary>
     public static Element Vacant(HomeTileVacantProps p, in ViewContext ctx)
     {
         var f = p.Frame;
-        // A full band has no height of its own to grow into (the board measures its body): the plate stands at the box the band was packed at (its
-        // tool strip aside), or it draws nothing.
-        if (p.Reason == HomeTileVacancy.Loading)
-        {
-            var cell = f.Cell;
-            return Tile(f, new BoxEl
-            {
-                Grow = 1f, Fill = R.Layer.ArtPlaceholder,
-                Height = f.Form == HomeTileForm.Full && cell is not null ? Prop.Of(() => cell.Box.Value.Height - cell.Box.Value.ToolStrip) : float.NaN,
-            });
-        }
+        // Loading: the tile's own view over its seed, shimmered flat (the app's loading pattern): its title lines, cover squares and rows at the
+        // loaded tile's size, so the swap to the loaded tile moves nothing.
+        if (p.Reason == HomeTileVacancy.Loading && p.Skeleton is { } skeleton)
+            // In the tile's chrome (a hold still customizes it), filling the packed cell as the loaded face does; no plate under it (the derived
+            // view draws none either: its art is a bar).
+            return Tile(f, new BoxEl { Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [Controls.Shimmer(skeleton, f.Entry)] }, plate: false);
         string word = Loc.Get(p.Reason switch
         {
             HomeTileVacancy.Unavailable => Strings.Theme.Zune.Home.Unavailable,

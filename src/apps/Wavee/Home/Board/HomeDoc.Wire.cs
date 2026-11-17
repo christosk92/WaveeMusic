@@ -23,7 +23,7 @@ public static class HomeDocWire
 
     static readonly HashSet<string> s_docMembers = new(StringComparer.Ordinal)
         { "version", "rev", "updatedAtMs", "groups", "hidden", "seen", "legacyHidden", "seededFromSidebar" };
-    static readonly HashSet<string> s_itemMembers = new(StringComparer.Ordinal) { "id", "source", "size", "options" };
+    static readonly HashSet<string> s_itemMembers = new(StringComparer.Ordinal) { "id", "source", "size", "options", "shape" };
 
     // ── read ──
 
@@ -93,7 +93,23 @@ public static class HomeDocWire
         if (it.TryGetProperty("options", out var o) && o.ValueKind == JsonValueKind.Object)
             foreach (var p in o.EnumerateObject())
                 if (p.Value.ValueKind == JsonValueKind.String) opts[p.Name] = p.Value.GetString() ?? "";
-        return new HomeItem(id, source, size, opts.ToImmutable()) { Extra = ExtraOf(it, s_itemMembers) };
+        return new HomeItem(id, source, size, opts.ToImmutable()) { Extra = ExtraOf(it, s_itemMembers), Shape = ReadShape(it) };
+    }
+
+    /// <summary>An item's <c>shape</c>: an array of {key, t (the template's name), n, fold}; a member this build cannot read is dropped (the next answer
+    /// writes it again).</summary>
+    static ImmutableArray<SeedShape> ReadShape(JsonElement it)
+    {
+        if (!it.TryGetProperty("shape", out var a) || a.ValueKind != JsonValueKind.Array) return ImmutableArray<SeedShape>.Empty;
+        var b = ImmutableArray.CreateBuilder<SeedShape>();
+        foreach (var e in a.EnumerateArray())
+        {
+            if (e.ValueKind != JsonValueKind.Object || Str(e, "key") is not { } key || !Enum.TryParse(Str(e, "t"), out SectionTemplate t)) continue;
+            int n = e.TryGetProperty("n", out var nv) && nv.TryGetInt32(out int nn) ? Math.Clamp(nn, 0, 64) : 0;
+            bool fold = e.TryGetProperty("fold", out var fv) && fv.ValueKind == JsonValueKind.True;
+            b.Add(new SeedShape(key, t, n, fold));
+        }
+        return b.ToImmutable();
     }
 
     static HomeSource? ReadSource(JsonElement src)
@@ -214,6 +230,20 @@ public static class HomeDocWire
             w.WriteStartObject("options");
             foreach (var (k, v) in it.Options) w.WriteString(k, v);
             w.WriteEndObject();
+        }
+        if (it.Shape.Length > 0)
+        {
+            w.WriteStartArray("shape");
+            foreach (var sh in it.Shape)
+            {
+                w.WriteStartObject();
+                w.WriteString("key", sh.Key);
+                w.WriteString("t", sh.Template.ToString());
+                w.WriteNumber("n", sh.Count);
+                if (sh.Fold) w.WriteBoolean("fold", true);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
         }
         foreach (var (name, raw) in it.Extra) { w.WritePropertyName(name); w.WriteRawValue(raw, skipInputValidation: true); }
         w.WriteEndObject();
