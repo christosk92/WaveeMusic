@@ -48,6 +48,8 @@ public sealed record PodcastEpisodeVm(
     public string Eyebrow { get; init; } = "";
     /// <summary>The date with its year ("12 Nov 2026"), for the pane's meta line.</summary>
     public string LongDate { get; init; } = "";
+    /// <summary>The description as HTML when the provider sent it ("" = only <see cref="Description"/>); render it with the house rich text.</summary>
+    public string DescriptionHtml { get; init; } = "";
 }
 
 /// <summary>One item of the smart action's menu ("Other ways to play").</summary>
