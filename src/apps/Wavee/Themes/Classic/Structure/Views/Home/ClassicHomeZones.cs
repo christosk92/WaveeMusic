@@ -64,12 +64,14 @@
 // places carries a `SkeletonProxy` that is the SAME static builder its template runs (`BodyTree`, `ClassicHomeRecents.Skeleton`,
 // `ClassicHomeDaylist.Skeleton`, the charts tree over its fallback model): the cold load shimmers as the header + the real cards.
 
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scroll.Effects;
+using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
 using Wavee.Theming;
@@ -204,28 +206,69 @@ internal static partial class ClassicHomeZones
         if (header is null) return body;
         // A header with an entity (its cover over two lines) is taller; the body's clip follows it.
         float headerH = HasEntityHeader(zone) ? ClassicHomeRules.EntityHeaderH : ClassicHomeRules.HeaderH;
-        return new BoxEl
+        // The body cuts itself at the header's lower edge, feathered exactly while the cut is engaged.
+        var clipped = new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children =
-            [
-                // The header paints NOTHING: a fixed-height box pinned under the facet row, releasing at the zone's end.
-                new BoxEl
-                {
-                    Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f,
-                    Height = headerH + ClassicHomeRules.HeaderGap,
-                    Padding = new Edges4(0f, 0f, 0f, ClassicHomeRules.HeaderGap),
-                    Children = [header.Value],
-                }.Sticky(ClassicHomeRules.StuckBottom, scope: zone.Key),
-                // The body cuts itself at the header's lower edge, feathered exactly while the cut is engaged.
-                new BoxEl
-                {
-                    Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                    EdgeFade = new EdgeFadeSpec(EdgeMask.Top, ClassicHomeRules.ClipFadeBand) { WhileStuck = true },
-                    Children = [body],
-                }.StickyClip(ClassicHomeRules.BodyClipInset + headerH - ClassicHomeRules.HeaderH),
-            ],
-        };
+            EdgeFade = new EdgeFadeSpec(EdgeMask.Top, ClassicHomeRules.ClipFadeBand, ClassicHomeRules.ClipFadeFalloff) { WhileStuck = true },
+            Children = [body],
+        }.StickyClip(ClassicHomeRules.BodyClipInset + headerH - ClassicHomeRules.HeaderH);
+        return Embed.Comp(new ChapterProps(zone.Key, header.Value, clipped, headerH + ClassicHomeRules.HeaderGap), static () => new PinnedChapter());
+    }
+
+    sealed record ChapterProps(string Scope, Element Header, Element Body, float HeaderBoxH);
+
+    /// <summary>A chapter: the header pinned under the facet row (it paints NOTHING), releasing at the zone's end, over the clipped body.
+    /// <para>The page cuts its content at the facet row's lower edge (StuckBottom). A header the next zone pushes out slides up across that cut, and
+    /// a header sliced there left a line of glyph feet under the transparent facet row, faint through the page's feather but never gone (C-Home at
+    /// 1440, "Popular radio" over "From artists you follow"). So the header fades out while it is being pushed, and back in when it pins again. Pushed
+    /// is a geometric fact the scroll effects know: a marker the header's height tall at the zone's END, its sticky clip at the same line, is cut
+    /// exactly while the zone's end lies within one header of the line, which is exactly while the header straddles it.</para></summary>
+    sealed class PinnedChapter : Component
+    {
+        readonly Signal<bool> _pushed = new(false);
+        readonly Action<NodeHandle> _onHead;
+        NodeHandle _head;
+
+        public PinnedChapter() => _onHead = h => _head = h;
+
+        public override Element Render()
+        {
+            var p = UseProps<ChapterProps>();
+            UseEffect(() =>
+            {
+                bool pushed = _pushed.Value;
+                if (Context.Anim is { } anim && !_head.IsNull)
+                    anim.SeedValue(_head, AnimChannel.Opacity, pushed ? 0f : 1f, ClassicHomeRules.HeaderPushFade);
+            });
+            var column = new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f,
+                        Height = p.HeaderBoxH,
+                        Padding = new Edges4(0f, 0f, 0f, ClassicHomeRules.HeaderGap),
+                        OnRealized = _onHead,
+                        Children = [p.Header],
+                    }.Sticky(ClassicHomeRules.StuckBottom, scope: p.Scope),
+                    p.Body,
+                ],
+            };
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ZStack = true,
+                Children =
+                [
+                    column,
+                    // The push marker: the header's height at the zone's foot, drawing nothing, cut by the facet row's line while the header is pushed.
+                    new BoxEl { Height = p.HeaderBoxH, AlignSelf = FlexAlign.End, HitTestVisible = false }
+                        .StickyClip(ClassicHomeRules.StuckBottom, engaged: _pushed),
+                ],
+            };
+        }
     }
 
     /// <summary>The chapter header: `HomeModules.ModuleHeader` with the zone's title/subtitle as a plain label (no

@@ -9,6 +9,7 @@
 //
 // Public, because the Recents grid's fact (632 DIP fits three columns, 836 four) is pinned by `ControlsTests` over `RecentsMinCol`.
 
+using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 
@@ -63,6 +64,14 @@ public static class ClassicHomeRules
 
     /// <summary>The feather the body dissolves through while its clip is engaged (the shelf fade rung, as Browse).</summary>
     public static float ClipFadeBand => R.Space.FadeShelf;
+
+    /// <summary>The curve of a chapter body's feather under its pinned header: cubic, so a line of words the cut slices (a card's subtitle just
+    /// under the header, at rest) is all but gone where it is sliced (5 % at 9 DIP into the 24 band; the smoothstep left it at 32 %, a faint
+    /// sliced line of glyph feet under the header), and the content comes up to full only at the band's foot.</summary>
+    public const FadeFalloff ClipFadeFalloff = FadeFalloff.Cubic;
+
+    /// <summary>A pinned chapter header's fade out while the next zone pushes it across the facet row's cut (and back in when it pins again).</summary>
+    public static MotionTokenDef HeaderPushFade => MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
 
     /// <summary>The viewport line a zone body is cut at while its header is pinned.</summary>
     public static float BodyClipInset => StuckBottom + HeaderH + HeaderGap;
