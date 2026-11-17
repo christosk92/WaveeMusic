@@ -20,6 +20,8 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.SeekChapters, ZuneTransport.SeekChapters, "zune.player.seek-chapters");
         views.Add(ViewKeys.ChapterTip, ZuneTransport.ChapterTip, "zune.player.chapter-tip");
         views.Add(ViewKeys.SeekReadout, ZuneTransport.SeekReadout, "zune.player.seek-readout");
+        views.Add(ViewKeys.SeekPreview, ZuneTransport.SeekPreview, "zune.player.seek-preview");
+        views.Add(ViewKeys.SeekLyric, ZuneTransport.SeekLyric, "zune.player.seek-lyric");
         views.Add(ViewKeys.TimeLabel, ZuneTransport.TimeLabel, "zune.player.time-label");
         views.Add(ViewKeys.DevicePicker, ZuneDevicePicker.Template, "zune.player.device-picker");
         views.Add(ViewKeys.OnMediaTransport, ZuneOnMedia.Template, "zune.player.on-media-transport");

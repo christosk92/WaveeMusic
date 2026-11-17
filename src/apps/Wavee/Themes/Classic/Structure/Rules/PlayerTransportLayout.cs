@@ -64,6 +64,52 @@ internal static class ClassicTransportLayout
     /// <summary>The readout's text size.</summary>
     public const float ReadoutSize = 15f;
 
+    // ── the seek preview (the picture under the pointer) ──
+
+    /// <summary>The picture's width; its height follows the video's aspect.</summary>
+    public const float PreviewWidth = 224f;
+
+    /// <summary>The picture to the time bubble under it, and the time to the chapter inside the bubble.</summary>
+    public const float PreviewGap = 6f, PreviewCaptionGap = 6f;
+
+    /// <summary>The bubble's digits (the readout's 15 would outweigh the picture: 13, semibold) and the chapter (12).</summary>
+    public const float PreviewTimeSize = 13f, PreviewLabelSize = 12f;
+
+    public const int PreviewTimeWeight = 600;
+
+    /// <summary>The bubble's padding: the readout's, a little wider for a pill.</summary>
+    public static readonly Edges4 PreviewBubblePadding = new(10f, 3f, 10f, 5f);
+
+    /// <summary>The air the tip keeps: 10 above the rail's line it points at (clear of the thumb), and 12 to either side, so a picture the
+    /// window clamps stops short of the glass.</summary>
+    public static readonly Edges4 PreviewLift = new(12f, 0f, 12f, 10f);
+
+    // ── the lyric tip: close to the rail, with a pointer ──
+
+    /// <summary>The lyric tip keeps to the rail: 2 between the pointer's point and the tip's anchor (the point rests just over the thumb), and 12 of air to either side,
+    /// so a card the window clamps stops short of the glass.</summary>
+    public const float LyricTipGap = 2f;
+
+    public static readonly Edges4 LyricTipSides = new(12f, 0f, 12f, 0f);
+
+    /// <summary>The pointer: a 16-wide, 8-tall wedge on the card's foot that stays on the POINTER (the teaching tip's beak: a square of side
+    /// 16 / sqrt 2 turned 45 degrees, its lower half showing), drawn in a 16 x 16 slot whose centre sits on the card's bottom edge. The band
+    /// it shows through is the wedge's 8 plus 1 over the card's edge, so the edge does not strike through the wedge's base; the slot is
+    /// raised 7 into it.</summary>
+    public const float LyricBeakLong = 16f, LyricBeakShort = 8f, LyricBeakHalf = 8f, LyricBeakBand = 9f, LyricBeakRise = -7f;
+
+    public const float LyricBeakFill = 11.3137f, LyricBeakFillInset = 2.3431f, LyricBeakTurn = 45f;
+
+    public const int LyricBeakPoints = 3;
+
+    public static readonly Point2 LyricBeakP0 = new(0f, 8f), LyricBeakP1 = new(8f, 16f), LyricBeakP2 = new(16f, 8f);
+
+    /// <summary>How close to either end of the tip the pointer's centre may come: the side air (12), the card's corner (4) and half the pointer (8).</summary>
+    public const float LyricBeakKeepClear = 24f;
+
+    /// <summary>The pair arrives from 6 below and 4 % small while the host's tip fade runs.</summary>
+    public static readonly EnterExit PreviewEnter = new(Dy: 6f, Sx: 0.96f, Sy: 0.96f, Active: true);
+
     // ── the time labels ──
 
     /// <summary>The track slot: wide enough for "-59:59", so 0:09 → 0:10 moves nothing (a reservation at rest, a FLOOR while live).</summary>

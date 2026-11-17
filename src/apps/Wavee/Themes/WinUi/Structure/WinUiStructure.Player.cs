@@ -21,6 +21,8 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.SeekChapters, WinUiTransport.SeekChapters, "winui.player.seek-chapters");
         views.Add(ViewKeys.ChapterTip, WinUiTransport.ChapterTip, "winui.player.chapter-tip");
         views.Add(ViewKeys.SeekReadout, WinUiTransport.SeekReadout, "winui.player.seek-readout");
+        views.Add(ViewKeys.SeekPreview, WinUiTransport.SeekPreview, "winui.player.seek-preview");
+        views.Add(ViewKeys.SeekLyric, WinUiTransport.SeekLyric, "winui.player.seek-lyric");
         views.Add(ViewKeys.TimeLabel, WinUiTransport.TimeLabel, "winui.player.time-label");
         views.Add(ViewKeys.DevicePicker, WinUiDevicePicker.Template, "winui.player.device-picker");
         views.Add(ViewKeys.OnMediaTransport, WinUiOnMedia.Template, "winui.player.on-media-transport");

@@ -13,6 +13,10 @@
 //   `Player.SeekChapters` an episode's chapter ticks and the invisible node the chapter tip is anchored to
 //   `Player.ChapterTip`   the chapter tip's bubble (mounted by the host inside its overlay)
 //   `Player.SeekReadout`  the scrub readout's bubble (mounted by the host inside its overlay)
+//   `Player.SeekPreview`  the seek preview's bubble (mounted by the host inside its overlay): the picture under the pointer, cut out of
+//                         the playing video's seek sheets by a core host the theme sizes and frames, with the time and the chapter
+//   `Player.SeekLyric`    the lyric tip's bubble (mounted by the host inside its overlay): the time under the pointer and the song's
+//                         lyric line at that time (a song's rail with timed lyrics and no picture)
 //   `Player.TimeLabel`    one time label: the digits' slot (a bound text channel), or the live slot (LIVE or GO LIVE)
 //
 // The player bar's credits line is not a key: only the bar draws it, so `PlayerBarProps` carries its facts (`PlayerCredits`).
@@ -43,9 +47,9 @@ public interface ISeekRailHost
     Action Commit { get; }
     /// <summary>A cancelled drag.</summary>
     Action Cancel { get; }
-    /// <summary>The hover over a chapter rail (the tip follows it).</summary>
+    /// <summary>The hover over a rail with a pointer tip (the tip follows it).</summary>
     Action<Point2> HoverMove { get; }
-    /// <summary>The pointer leaving a chapter rail.</summary>
+    /// <summary>The pointer leaving a rail with a pointer tip.</summary>
     Action PointerExit { get; }
     /// <summary>The hit box's bounds: the rail's width in pixels.</summary>
     Action<RectF> BoundsChanged { get; }
@@ -79,8 +83,9 @@ public sealed record SeekRailProps
     /// <summary>A broadcast with NOTHING TO REWIND: no rail at all, the live line instead (no hit test, no role).</summary>
     public bool Line { get; init; }
 
-    /// <summary>An episode's chapter rail: the hover handlers are wired (when enabled) and the pointer-exit always.</summary>
-    public bool ChapterRail { get; init; }
+    /// <summary>The rail has a tip that follows the POINTER (an episode's chapter tip, a video's seek preview): the hover handlers are
+    /// wired (when enabled) and the pointer-exit always.</summary>
+    public bool HoverTip { get; init; }
 
     /// <summary>The progress HAIRLINE of the Compact mini player bar (contract 1.15, TC2): the played fraction as a thin line across the
     /// bar's top edge, no thumb, no hit test (the mini bar is a door to the now-playing sheet, where the rail seeks).</summary>
@@ -127,6 +132,72 @@ public sealed record SeekReadoutProps
 {
     /// <summary>The rail's own scrub target, live from the pointer fraction (bound).</summary>
     public required Func<string> Text { get; init; }
+}
+
+/// <summary>Where a seek rail sits. What its tip must stay clear of is the surface's own (the player bar's transport buttons sit over
+/// its rail in one theme and beside it in another), and a theme knows its surfaces.</summary>
+public enum SeekRailSurface : byte
+{
+    /// <summary>The player bar (and the surfaces that borrow its rail).</summary>
+    Bar,
+    /// <summary>The fullscreen stage's transport.</summary>
+    Stage,
+    /// <summary>The strip over a video.</summary>
+    OnMedia,
+}
+
+/// <summary>The props of <see cref="ViewKeys.SeekPreview"/>: the picture under the pointer and what is written beside it. Built once per
+/// rail tip: everything that moves is a bind, so the bubble never re-renders per move.</summary>
+public sealed record SeekPreviewProps
+{
+    /// <summary>The picture's core host at the width and corners the theme gives it: exactly that wide and <c>width / Aspect</c> tall,
+    /// clipped to the corners, transparent until its sheet has decoded (the theme's plate under it shows). Call it once.</summary>
+    public required Func<float, CornerRadius4, Element> Frame { get; init; }
+
+    /// <summary>The picture's width divided by its height (the playing video's; fixed while the tip lives).</summary>
+    public required float Aspect { get; init; }
+
+    /// <summary>The time under the pointer (bound).</summary>
+    public required Func<string> Time { get; init; }
+
+    /// <summary>What the time is called: an episode's chapter under the pointer (bound); empty on a track.</summary>
+    public required Func<string> Label { get; init; }
+
+    /// <summary>Is there a label to show (the label's line shows only then).</summary>
+    public required Func<bool> HasLabel { get; init; }
+
+    /// <summary>A pointer gesture is live (a scrub) rather than a hover: a theme may mark the difference.</summary>
+    public required IReadSignal<bool> Scrubbing { get; init; }
+
+    /// <summary>The surface the rail sits on: a theme lifts the tip clear of what that surface draws above its rail.</summary>
+    public SeekRailSurface Surface { get; init; }
+}
+
+/// <summary>The props of <see cref="ViewKeys.SeekLyric"/>: the time under the pointer and the lyric line sung at that time. Built once per
+/// rail tip: everything that moves is a bind, so the bubble never re-renders per move.</summary>
+public sealed record SeekLyricProps
+{
+    /// <summary>The time under the pointer: what a release seeks to (bound).</summary>
+    public required Func<string> Time { get; init; }
+
+    /// <summary>The lyric line at that time (bound); empty before the first line, across an instrumental break and while the song's
+    /// lyrics are still on their way.</summary>
+    public required Func<string> Line { get; init; }
+
+    /// <summary>Is there a line to show (the line shows only then; the bubble is the time alone otherwise).</summary>
+    public required Func<bool> HasLine { get; init; }
+
+    /// <summary>The POINTER MARK's core host. The tip is centred on the pointer until the window's edge pushes it sideways; this knows
+    /// where the pointer really is under the tip and hands the theme's drawing a transform that moves a mark laid out at the tip's LEFT
+    /// edge so that its centre sits on the pointer. Arguments: half the mark's width; how close to either end of the tip its centre may
+    /// come (the theme's side air, corner and half the mark); the drawing of the mark under that transform.</summary>
+    public required Func<float, float, Func<Prop<Affine2D>, Element>, Element> Pointer { get; init; }
+
+    /// <summary>A pointer gesture is live (a scrub) rather than a hover: a theme may mark the difference.</summary>
+    public required IReadSignal<bool> Scrubbing { get; init; }
+
+    /// <summary>The surface the rail sits on: a theme lifts the tip clear of what that surface draws above its rail.</summary>
+    public SeekRailSurface Surface { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.TimeLabel"/>: one render of a time label's core host. The digits are a BOUND text channel
