@@ -196,6 +196,9 @@ internal static class ZuneHomeBoard
         // presents. A body whose height eases (RowsResize) is first laid out at its new height and only then put back at the ease's start, so
         // a height written at once would pack every row under it at the far height for one frame and then pull them back.
         readonly Dictionary<string, float> _measured = new(StringComparer.Ordinal);
+        // The rows whose box follows their body: a body's FIRST height re-packs the board with its re-flow (the estimate it mounted at was
+        // the rules' guess); every later one is the body's own (eased) height, which the box follows frame by frame.
+        readonly HashSet<string> _follows = new(StringComparer.Ordinal);
         Action<Action>? _post;
         Action? _applyMeasured;
         bool _measurePosted;
@@ -216,7 +219,7 @@ internal static class ZuneHomeBoard
             foreach (var (id, h) in _measured)
             {
                 var s = ExtentOf(id);
-                if (MathF.Abs(h - s.Peek()) > 0.5f) s.Value = h;
+                if (MathF.Abs(h - s.Peek()) > 0.5f) { s.Value = h; _follows.Add(id); }
             }
             _measured.Clear();
         }
@@ -426,7 +429,7 @@ internal static class ZuneHomeBoard
             {
                 float grid = ExtentOf(e.Id).Value;
                 return grid > 0f
-                    ? new PackEntry(PackEntryKind.Row, Flags: PackFlags.Follows, Extent: grid)
+                    ? new PackEntry(PackEntryKind.Row, Flags: _follows.Contains(e.Id) ? PackFlags.Follows : PackFlags.None, Extent: grid)
                     : new PackEntry(PackEntryKind.Row, Extent: ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), _width.Value));
             }
             float open = _p.Board.View.OpenId.Value == e.Id ? ZuneHomeBoardRules.OpenExtent(e.Source) : 0f;
@@ -440,7 +443,7 @@ internal static class ZuneHomeBoard
             }
             var entry = ZuneHomeBoardRules.EntryOf(e, lay, full, open);
             // A measured band's extent is its body's height, which eases itself (RowsResize): the bands follow it frame by frame.
-            return measured && open <= 0f && entry.Kind == PackEntryKind.Band ? entry with { Flags = entry.Flags | PackFlags.Follows } : entry;
+            return measured && _follows.Contains(e.Id) && open <= 0f && entry.Kind == PackEntryKind.Band ? entry with { Flags = entry.Flags | PackFlags.Follows } : entry;
         }
 
         /// <summary>A band's height before its body has laid out: the Home tier record's own numbers for the bodies it knows.</summary>

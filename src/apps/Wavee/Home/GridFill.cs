@@ -67,7 +67,7 @@ public static class GridFill
     {
         cols = Math.Max(1, cols);
         int n = cells.Length, rest = Remainder(n, cols), full = n - rest;
-        float cell = Basis(width, cols, colGap), last = Basis(width, Math.Max(1, rest), colGap);
+        float cell = CellWidth(width, cols, colGap), last = LastWidth(width, rest, colGap);
         var kids = new Element[n];
         for (int i = 0; i < n; i++)
         {
@@ -77,9 +77,8 @@ public static class GridFill
             {
                 Key = c.Key is { Length: > 0 } k ? "fill:" + k : null,
                 Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Height = rowH,
-                // The basis decides the line, the grow the width (Basis): every card on a line grows by the same share, so a full row's cards are
-                // each a column wide and the last row's share its width, at whatever width the row is laid out.
-                Width = inLast ? last : cell, Grow = 1f, Shrink = 0f,
+                // The cell's width less a hair, then grown: rounding never pushes a full row's last card onto the next line.
+                Width = MathF.Max(0f, (inLast ? last : cell) - Slack), Grow = 1f, Shrink = 0f,
                 // The wrap's gap is the column gap; a row after the first steps by the row gap instead.
                 Margin = i >= cols ? new Edges4(0f, rowGap - colGap, 0f, 0f) : default,
                 Children = [c],
@@ -88,12 +87,8 @@ public static class GridFill
         return new BoxEl { Direction = 0, Wrap = true, Gap = colGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids };
     }
 
-    /// <summary>A card's flex basis on a line of <paramref name="cols"/>: its share of the width <c>cols + ½</c> cards would take. The basis only
-    /// breaks the lines (each card then grows to its share of the line), and this one keeps <paramref name="cols"/> cards on a line, never one
-    /// more, for any width within about <c>width / (2 cols + 1)</c> of the one the cards were built at. A build that trails the width (a window
-    /// drag: the grid measures its width, then rebuilds for it) breaks its lines where it was built to, instead of wrapping a full row's last
-    /// card onto a line of its own (a full width basis did: the row's other cards grew into its place and the grid stood a row taller).</summary>
-    static float Basis(float width, int cols, float gap) => MathF.Max(0f, (width - (cols - 1) * gap) / (cols + 0.5f));
+    /// <summary>What a card's basis gives back to rounding (it grows into it).</summary>
+    const float Slack = 1f;
 
     // ── pages of tall cards ─────────────────────────────────────────────────────────────────────────────────────────────
 

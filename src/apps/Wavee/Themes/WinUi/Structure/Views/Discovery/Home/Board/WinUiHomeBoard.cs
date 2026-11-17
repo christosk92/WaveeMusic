@@ -90,6 +90,9 @@ internal static class WinUiHomeBoard
         // presents. A body whose height eases (RowsReflow) is first laid out at its new height and only then put back at the ease's start, so
         // a height written at once would pack every row under it at the far height for one frame and then pull them back.
         readonly Dictionary<string, float> _measured = new(StringComparer.Ordinal);
+        // The rows whose box follows their body: a body's FIRST height re-packs the board with its re-flow (the estimate it mounted at was
+        // the rules' guess); every later one is the body's own (eased) height, which the box follows frame by frame.
+        readonly HashSet<string> _follows = new(StringComparer.Ordinal);
         Action<Action>? _post;
         Action? _applyMeasured;
         bool _measurePosted;
@@ -130,7 +133,7 @@ internal static class WinUiHomeBoard
             foreach (var (id, h) in _measured)
             {
                 var s = ExtentOf(id);
-                if (MathF.Abs(h - s.Peek()) > WinUiHomeBoardRules.ExtentSlop) s.Value = h;
+                if (MathF.Abs(h - s.Peek()) > WinUiHomeBoardRules.ExtentSlop) { s.Value = h; _follows.Add(id); }
             }
             _measured.Clear();
         }
@@ -237,7 +240,7 @@ internal static class WinUiHomeBoard
                 // rows under it follow it frame by frame.
                 var head = WinUiHomeBoardRules.EntryOf(e, lay, 0f, 0f, false);
                 float eased = ExtentOf(HeadId(e)).Value;
-                return eased > 0f ? head with { Extent = eased, Flags = head.Flags | PackFlags.Follows } : head;
+                return eased > 0f && _follows.Contains(HeadId(e)) ? head with { Extent = eased, Flags = head.Flags | PackFlags.Follows } : head;
             }
             float open = _p.Board.View.OpenId.Value == e.Id ? WinUiHomeBoardRules.OpenExtent(e, e.Source, lay) : 0f;
             float full = 0f;
@@ -254,7 +257,7 @@ internal static class WinUiHomeBoard
                         : FullEstimate(e, _p.Home, WidthNow(_width.Value), lay);
             }
             var entry = WinUiHomeBoardRules.EntryOf(e, lay, full, open, false);
-            return measured && open <= 0f && entry.Kind == PackEntryKind.Band ? entry with { Flags = entry.Flags | PackFlags.Follows } : entry;
+            return measured && _follows.Contains(e.Id) && open <= 0f && entry.Kind == PackEntryKind.Band ? entry with { Flags = entry.Flags | PackFlags.Follows } : entry;
         }
 
         /// <summary>A full row's height before its body has laid out: its chapter's own extent at the row's content width (the ⋯ lane aside), else

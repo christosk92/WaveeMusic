@@ -108,6 +108,9 @@ internal static class ClassicHomeBoard
         // presents. A body whose height eases (RowsReflow) is first laid out at its new height and only then put back at the ease's start, so
         // a height written at once would pack every row under it at the far height for one frame and then pull them back.
         readonly Dictionary<string, float> _measured = new(StringComparer.Ordinal);
+        // The rows whose box follows their body: a body's FIRST height re-packs the board with its re-flow (the estimate it mounted at was
+        // the rules' guess); every later one is the body's own (eased) height, which the box follows frame by frame.
+        readonly HashSet<string> _follows = new(StringComparer.Ordinal);
         Action<Action>? _post;
         Action? _applyMeasured;
         bool _measurePosted;
@@ -128,7 +131,7 @@ internal static class ClassicHomeBoard
             foreach (var (id, h) in _measured)
             {
                 var s = ExtentOf(id);
-                if (MathF.Abs(h - s.Peek()) > 0.5f) s.Value = h;
+                if (MathF.Abs(h - s.Peek()) > 0.5f) { s.Value = h; _follows.Add(id); }
             }
             _measured.Clear();
         }
@@ -306,14 +309,14 @@ internal static class ClassicHomeBoard
                 // eases there (EasedHead) and the rows under it follow it frame by frame.
                 var head = ClassicHomeBoardRules.EntryOf(e, lay, 0f, 0f);
                 float eased = ExtentOf(HeadId(e)).Value;
-                return eased > 0f ? head with { Extent = eased, Flags = head.Flags | PackFlags.Follows } : head;
+                return eased > 0f && _follows.Contains(HeadId(e)) ? head with { Extent = eased, Flags = head.Flags | PackFlags.Follows } : head;
             }
             // The shortcuts grid: a band at its own height (its tallest page), no chip strip (its cells carry their own chips).
             if (HomeShortcuts.IsGrid(e))
             {
                 float grid = ExtentOf(e.Id).Value;
                 return grid > 0f
-                    ? new PackEntry(PackEntryKind.Row, Flags: PackFlags.Follows, Extent: grid)
+                    ? new PackEntry(PackEntryKind.Row, Flags: _follows.Contains(e.Id) ? PackFlags.Follows : PackFlags.None, Extent: grid)
                     : new PackEntry(PackEntryKind.Row, Extent: ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), _width.Value));
             }
             float open2 = _p.Board.View.OpenId.Value == e.Id ? ClassicHomeBoardRules.OpenExtent(e.Source, lay) : 0f;
@@ -327,7 +330,7 @@ internal static class ClassicHomeBoard
             }
             var entry = ClassicHomeBoardRules.EntryOf(e, lay, full, open2);
             // A measured row's extent is its body's height, which eases itself (RowsReflow): the rows follow it frame by frame.
-            return measured && open2 <= 0f && entry.Kind == PackEntryKind.Band ? entry with { Flags = entry.Flags | PackFlags.Follows } : entry;
+            return measured && _follows.Contains(e.Id) && open2 <= 0f && entry.Kind == PackEntryKind.Band ? entry with { Flags = entry.Flags | PackFlags.Follows } : entry;
         }
 
         /// <summary>A shelf's height before its chapter has laid out: the Home tier record's own numbers for the bodies it knows.</summary>
