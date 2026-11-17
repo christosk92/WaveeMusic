@@ -1,8 +1,9 @@
-# Video seek preview: the picture under the pointer on the seek rail (spike)
+# Video seek preview: the picture under the pointer on the seek rail
 
-Status: **spike**. The code on this branch compiles clean, renders in all three themes and is traced in the headless
-inspector, against generated sheets and against the REAL sheets of a captured manifest (fetched from the CDN through the app's
-own sheet store). It has **not** been run inside a real playing session. Section 10 lists what is open.
+Status: **merged as a first version** (PRs #223 and #224, CHANGELOG 0.3.10). It began as a spike. The code compiles
+clean, renders in all three themes and is traced in the headless inspector, against generated sheets and against the REAL
+sheets of a captured manifest (fetched from the CDN through the app's own sheet store). The checks behind the merge did
+**not** include a real playing session: the owner tried a NativeAOT build by hand. Section 10 lists what is still open.
 
 What it is: while the pointer hovers or scrubs the seek rail of a video, the rail's tip shows the frame at that time, the
 time, and on an episode the chapter. YouTube calls it the seek preview.
