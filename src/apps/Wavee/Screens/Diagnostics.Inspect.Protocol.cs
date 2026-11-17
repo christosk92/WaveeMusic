@@ -265,7 +265,7 @@ public static partial class Diagnostics
             Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
             Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),
             Arg("panelW", ArgType.Float, "the side panel's stored width (DIP; clamped to the theme's drag range)"),
-            Arg("media", ArgType.Enum, "fake: every media player (the canvas, a player built without its own backend: audio previews) opens a fake source whose costs the media* args set (Diagnostics.Inspect.Media.cs)", null, "fake"),
+            Arg("media", ArgType.Enum, "fake: every media player (the canvas, a player built without its own backend: audio previews) opens a fake source whose costs the media* args set (Diagnostics.Inspect.Media.cs); real: the Spine Shelf's canvas and clip players open through the real Media Foundation path (it touches the hardware adapter: run it through C:/WAVEE/scratch/gpulock.sh)", null, "fake|real"),
             IntArg("mediaOpenMs", "media=fake: an open's latency to its first frame on the 16 ms clock (metadata at half)", "120", 0, 60_000),
             Arg("mediaStartCostMs", ArgType.Float, "media=fake: a synchronous UI-thread stall inside each open (a real engine's creation): the start hiccup", "0") with { Min = 0, Max = 2000 },
             Arg("mediaFrameCostMs", ArgType.Float, "media=fake: UI-thread work in each video pump while it plays: a per-frame cost", "0") with { Min = 0, Max = 500 },

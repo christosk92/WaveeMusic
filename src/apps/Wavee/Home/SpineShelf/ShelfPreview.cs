@@ -38,6 +38,9 @@ public static class ShelfPreview
     static ShelfSong s_song;
     static bool s_media, s_fake;
 
+    /// <summary>The inspector's `mount media=real`: the headless test host may build real players (otherwise only the fake backend's).</summary>
+    public static bool RealInTestHost { get; set; }
+
     /// <summary>The canvas player (null in a window that composites no video).</summary>
     public static MediaPlayer? Video => s_video;
 
@@ -48,7 +51,8 @@ public static class ShelfPreview
     {
         var fake = CanvasVideo.InspectBackend;
         if (s_media && ReferenceEquals(s_builtOver, fake)) return;
-        if (fake is null && !composites) return;
+        // The headless inspector builds real Media Foundation players only when a mount asked for them (`media=real`: the hardware lane).
+        if (fake is null && (!composites || Shell.IsTestHost && !RealInTestHost)) return;
         Leave();
         if (s_video is { } oldV) _ = oldV.DisposeAsync();
         if (s_clip is { } oldC) _ = oldC.DisposeAsync();
