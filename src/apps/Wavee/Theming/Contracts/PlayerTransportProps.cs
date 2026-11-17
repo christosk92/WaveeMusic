@@ -15,6 +15,8 @@
 //   `Player.SeekReadout`  the scrub readout's bubble (mounted by the host inside its overlay)
 //   `Player.SeekPreview`  the seek preview's bubble (mounted by the host inside its overlay): the picture under the pointer, cut out of
 //                         the playing video's seek sheets by a core host the theme sizes and frames, with the time and the chapter
+//   `Player.SeekLyric`    the lyric tip's bubble (mounted by the host inside its overlay): the time under the pointer and the song's
+//                         lyric line at that time (a song's rail with timed lyrics and no picture)
 //   `Player.TimeLabel`    one time label: the digits' slot (a bound text channel), or the live slot (LIVE or GO LIVE)
 //
 // The player bar's credits line is not a key: only the bar draws it, so `PlayerBarProps` carries its facts (`PlayerCredits`).
@@ -163,6 +165,33 @@ public sealed record SeekPreviewProps
 
     /// <summary>Is there a label to show (the label's line shows only then).</summary>
     public required Func<bool> HasLabel { get; init; }
+
+    /// <summary>A pointer gesture is live (a scrub) rather than a hover: a theme may mark the difference.</summary>
+    public required IReadSignal<bool> Scrubbing { get; init; }
+
+    /// <summary>The surface the rail sits on: a theme lifts the tip clear of what that surface draws above its rail.</summary>
+    public SeekRailSurface Surface { get; init; }
+}
+
+/// <summary>The props of <see cref="ViewKeys.SeekLyric"/>: the time under the pointer and the lyric line sung at that time. Built once per
+/// rail tip: everything that moves is a bind, so the bubble never re-renders per move.</summary>
+public sealed record SeekLyricProps
+{
+    /// <summary>The time under the pointer: what a release seeks to (bound).</summary>
+    public required Func<string> Time { get; init; }
+
+    /// <summary>The lyric line at that time (bound); empty before the first line, across an instrumental break and while the song's
+    /// lyrics are still on their way.</summary>
+    public required Func<string> Line { get; init; }
+
+    /// <summary>Is there a line to show (the line shows only then; the bubble is the time alone otherwise).</summary>
+    public required Func<bool> HasLine { get; init; }
+
+    /// <summary>The POINTER MARK's core host. The tip is centred on the pointer until the window's edge pushes it sideways; this knows
+    /// where the pointer really is under the tip and hands the theme's drawing a transform that moves a mark laid out at the tip's LEFT
+    /// edge so that its centre sits on the pointer. Arguments: half the mark's width; how close to either end of the tip its centre may
+    /// come (the theme's side air, corner and half the mark); the drawing of the mark under that transform.</summary>
+    public required Func<float, float, Func<Prop<Affine2D>, Element>, Element> Pointer { get; init; }
 
     /// <summary>A pointer gesture is live (a scrub) rather than a hover: a theme may mark the difference.</summary>
     public required IReadSignal<bool> Scrubbing { get; init; }

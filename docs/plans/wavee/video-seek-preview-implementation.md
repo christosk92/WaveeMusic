@@ -359,3 +359,54 @@ python -I tools/inspect.py --exe C:/WAVEE/scratch/<lane>/run/Wavee.exe \
 | `Themes/{WinUi,Zune,Classic}/Structure/...` | the template, its `Rules` numbers, the registration, the renamed hover fact |
 | `assets/loc/en-US.json` | the precise-seeking strings |
 | `Screens/Diagnostics.Inspect*.cs`, `tools/seekpanels.py` | `seekPreview=on|episode`, `seekManifest=`, the generated sheets |
+
+## 12. The same tip for songs: the lyric line
+
+A song has no pictures, but it often has timed lyrics. On a song's rail the same tip host shows the time and the line sung at
+that time (`Player.SeekLyric`). Settings > Appearance > Lyrics > "Show lyrics when seeking" turns it off (`lyrics.seekTip`, on
+by default).
+
+![The lyric tip in WinUI, Zune and Classic, dark and light, and at the window's edges](video-seek-preview/lyrics-tip-themes.jpg)
+
+```
+the tip shows the lyric line when ALL of these hold        (PlayerBarFacts.Seek.LyricRail)
+the setting is on
+the playable is a track                                    an episode keeps its chapter tip
+the rail scrubs a fixed span                               not a DVR window, not the live line
+the rail has no seek preview                               pictures win
+the song's own clock is playing                            a music video is a different edit: its times would name the wrong lines
+the track's lyrics are timed, or not answered yet
+```
+
+- **Which line.** The last line that started at or before the time. The time stands alone before the first line, on a line
+  with no text, and after a line's end when a real break follows (5 s or more, `Lyrics.InterludeGapMs`) or it was the last
+  line. A short gap between two lines keeps the line, so a sweep does not blink.
+- **Which time.** The rail's own commit target: the number a release seeks to.
+- **Loading.** Nothing fetches the playing track's lyrics unless a lyrics surface is open, so the tip asks for them when it
+  first opens (`Lyrics.Store.Ensure`, the playing track only) and shows the time alone until they land. When they turn out
+  to have no timing, the open tip stays the time alone until the pointer leaves; after that the rail is as it was.
+- **One tip per rail.** While the lyric tip applies, the plain time readout stays shut, as it does for the picture.
+- **Looks.** The time in the secondary ink, the line in the primary, two lines at most with an ellipsis, in the chapter tip's
+  type and width. The tip keeps to the rail (2 DIP between its pointer and its anchor, on every surface: it does not rise above
+  WinUI's player bar) and carries a POINTER on its foot: a 16 x 8 wedge, the teaching tip's beak, that stays on the mouse.
+  A tip the window pushes sideways keeps its pointer on the mouse: the core host `RailTipPointer` reads where the anchor sits
+  under the popup (`Overlay.Placement`) and hands the theme a bound transform, so a move repaints the wedge and re-renders
+  nothing. In WinUI and Classic the card is SOLID (`Tok.FillSolidTertiary`, as the teaching tip is): a frosted body cannot be
+  carried into the turned wedge, and a wedge of another colour than its card reads as a separate thing. Zune's plate is
+  solid already.
+
+Checked in the inspector on the fixture's word-timed track (`play uri=spotify:track:tr3 fromMs=30000`, then hover the player
+bar's rail), 1440 x 960, WinUI, Zune and Classic, dark and light: at 1:30 the tip shows the line the fixture times at
+88.43-92.49 s, wrapped to two lines; in a 6 s break and after the last line it shows the time alone; after a drag it stays on
+the release point. With the setting off, on a track without timed lyrics, on an episode with chapters and over a video with
+sheets, the rail does what it did before. `lint min=warn` with the tip open, `--gate error`: exit 0 in all three (Zune's two
+contrast warnings are the Home page's search hint and "Pinned" label, there without the tip too). A drag trace: 0 snaps.
+
+Not run: lyrics from the network, and a line long enough to need the ellipsis (no fixture line is).
+
+| File | What |
+|---|---|
+| `Shell/Shell.PlayerBar.cs` | `Seek.LyricRail`, `Seek.LyricDoc`, `Seek.LyricAt` (pure) |
+| `Shell/Shell.PlayerBar.UI.cs`, `Shell.PlayerBar.Chapters.UI.cs` | the rail's lyric decision; `BarRailTip` rides the lyric line and asks for the lyrics |
+| `Theming/Contracts/*`, `Themes/{WinUi,Zune,Classic}/...` | `Player.SeekLyric`, `SeekLyricProps`, the three templates and registrations |
+| `Platform/Platform.cs`, `Platform/Prefs.cs`, `Screens/Settings*.cs`, the themes' Appearance pages, `assets/loc/en-US.json` | the setting, its row and its strings |

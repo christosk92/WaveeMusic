@@ -179,6 +179,29 @@ public static class ZuneTransportLayout
     /// window clamps stops short of the glass.</summary>
     public static readonly Edges4 PreviewLift = new(24f, 0f, 24f, 10f);
 
+    // ── the lyric tip: close to the rail, with a pointer ──
+
+    /// <summary>The lyric tip keeps to the rail: 2 between the pointer's point and the tip's anchor (the point rests just over the thumb), and 24 of air to either side,
+    /// so a card the window clamps stops short of the glass.</summary>
+    public const float LyricTipGap = 2f;
+
+    public static readonly Edges4 LyricTipSides = new(24f, 0f, 24f, 0f);
+
+    /// <summary>The pointer: a 16-wide, 8-tall wedge on the card's foot that stays on the POINTER (the teaching tip's beak: a square of side
+    /// 16 / sqrt 2 turned 45 degrees, its lower half showing), drawn in a 16 x 16 slot whose centre sits on the card's bottom edge. The band
+    /// it shows through is the wedge's 8 plus 1 over the card's edge, so the edge does not strike through the wedge's base; the slot is
+    /// raised 7 into it.</summary>
+    public const float LyricBeakLong = 16f, LyricBeakShort = 8f, LyricBeakHalf = 8f, LyricBeakBand = 9f, LyricBeakRise = -7f;
+
+    public const float LyricBeakFill = 11.3137f, LyricBeakFillInset = 2.3431f, LyricBeakTurn = 45f;
+
+    public const int LyricBeakPoints = 3;
+
+    public static readonly Point2 LyricBeakP0 = new(0f, 8f), LyricBeakP1 = new(8f, 16f), LyricBeakP2 = new(16f, 8f);
+
+    /// <summary>How close to either end of the tip the pointer's centre may come: the side air (24) and half the pointer (8): the plate is square.</summary>
+    public const float LyricBeakKeepClear = 32f;
+
     /// <summary>The plate arrives from 8 below while the host's tip fade runs (no scale: a square plate keeps its edges).</summary>
     public static readonly EnterExit PreviewEnter = new(Dy: 8f, Active: true);
 

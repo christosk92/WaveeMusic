@@ -215,6 +215,83 @@ internal static class ZuneTransport
         return new BoxEl { Padding = T.PreviewLift, HitTestVisible = false, Children = [plate] };
     }
 
+    // ══ THE LYRIC TIP ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.SeekLyric"/>: the chapter tip's square raised plate, the time over the lyric
+    /// line in the tip's own type (the line wraps to two lines at most), left like every Zune caption. The plate keeps the seek preview's
+    /// air over the rail and arrives as it does.</summary>
+    public static Element SeekLyric(SeekLyricProps props, in ViewContext ctx)
+    {
+        var plate = new BoxEl
+        {
+            Direction = 1, Gap = T.TipGap, Width = T.TipW, Padding = T.TipPadding,
+            Fill = R.Layer.FloatingChrome, Corners = R.Shape.All(ShapeRole.Overlay), Shadow = Elevation.Tooltip, HitTestVisible = false,
+            Children =
+            [
+                new TextEl(Prop.Of(props.Time))
+                {
+                    Size = T.TipTimeSize, LineHeight = T.TipTimeLine, Color = Tok.TextSecondary, FontFeatures = FontFeatures.TabularFigures,
+                },
+                new TextEl(Prop.Of(props.Line))
+                {
+                    Size = T.TipTitleSize, LineHeight = T.TipTitleLine, MaxLines = T.TipTitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+                    Color = Tok.TextPrimary, MinWidth = 0f, Visible = Prop.Of(props.HasLine),
+                },
+            ],
+        };
+        // Close to the rail, and tied to the pointer: a small wedge on the card's foot that stays on the POINTER (the core host moves it when
+        // the window pushes the card sideways). It paints after the card and laps its edge by one pixel, so the edge does not cut its base.
+        return new BoxEl
+        {
+            Direction = 1, HitTestVisible = false, Enter = T.PreviewEnter,
+            Children =
+            [
+                new BoxEl
+                {
+                    ZStack = true, HitTestVisible = false,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Padding = T.LyricTipSides, HitTestVisible = false,
+                            Children = [plate, new BoxEl { Height = T.LyricBeakShort, HitTestVisible = false }],
+                        },
+                        new BoxEl
+                        {
+                            Key = "seek-lyric-pointer", AlignSelf = FlexAlign.End, Height = T.LyricBeakBand, ClipToBounds = true, ZStack = true,
+                            HitTestVisible = false,
+                            Children =
+                            [
+                                new BoxEl
+                                {
+                                    OffsetY = T.LyricBeakRise, HitTestVisible = false,
+                                    Children =
+                                    [
+                                        props.Pointer(T.LyricBeakHalf, T.LyricBeakKeepClear, static at => new BoxEl
+                                        {
+                                            Width = T.LyricBeakLong, Height = T.LyricBeakLong, Shrink = 0, ZStack = true,
+                                            Transform = at, HitTestVisible = false,
+                                            Children =
+                                            [
+                                                new BoxEl
+                                                {
+                                                    Width = T.LyricBeakFill, Height = T.LyricBeakFill,
+                                                    OffsetX = T.LyricBeakFillInset, OffsetY = T.LyricBeakFillInset,
+                                                    Rotation = T.LyricBeakTurn, Fill = R.Layer.FloatingChrome, HitTestVisible = false,
+                                                },
+                                            ],
+                                        }),
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                new BoxEl { Height = T.LyricTipGap, HitTestVisible = false },
+            ],
+        };
+    }
+
     // ══ THE TIME LABELS ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The registered template of <see cref="ViewKeys.TimeLabel"/>: the digits' slot (the elapsed one hugs what follows it, the

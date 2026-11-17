@@ -19,14 +19,20 @@ public static partial class Shell
     /// <item>an episode's CHAPTERS (<paramref name="chapterRail"/>): the chapter lease, the markers' arithmetic and the chapter under the
     /// pointer. The ticks and the tip's anchor are <see cref="ViewKeys.SeekChapters"/>;</item>
     /// <item>a video's SEEK PREVIEW (<paramref name="sheets"/>): the picture under the pointer, cut out of the source's seek sheets
-    /// (<see cref="SeekFrame"/>), with the time and, on an episode, the chapter's title.</item>
+    /// (<see cref="SeekFrame"/>), with the time and, on an episode, the chapter's title;</item>
+    /// <item>a song's LYRIC line (<paramref name="lyricTrack"/>, the playing song's lyrics-store id; empty on any other rail): the line
+    /// sung at the time under the pointer (<see cref="PlayerBarFacts.Seek.LyricAt"/>). The tip's first opening asks the store for the
+    /// document (<see cref="Lyrics.Store.Ensure(string)"/>, idempotent: a lyrics surface that already asked joined the same fetch), and
+    /// until it lands the tip is the time alone.</item>
     /// </list>
-    /// The bubble is <see cref="ViewKeys.SeekPreview"/> when there are sheets and <see cref="ViewKeys.ChapterTip"/> otherwise: ONE tip
-    /// per rail, never a picture beside a second bubble. Neither the ticks nor the moving tip receive input. Clock ticks never render
-    /// this component; only resource / duration / width changes rebuild its marker array.</summary>
+    /// The bubble is <see cref="ViewKeys.SeekPreview"/> when there are sheets, <see cref="ViewKeys.SeekLyric"/> on a lyric rail and
+    /// <see cref="ViewKeys.ChapterTip"/> otherwise: ONE tip per rail, never a picture beside a second bubble. Neither the ticks nor the
+    /// moving tip receive input. Clock ticks never render this component; only resource / duration / width changes rebuild its marker
+    /// array.</summary>
     [CoreHost]
-    sealed class BarRailTip(ChapterResources.Identity identity, bool chapterRail, Playback.Video.SeekPanels? sheets, ScrubController scrub,
-        IReadSignal<float> hoverFraction, IReadSignal<bool> hovering, SeekRailSurface surface, IReadSignal<int> precise) : Component
+    sealed class BarRailTip(ChapterResources.Identity identity, bool chapterRail, Playback.Video.SeekPanels? sheets, string lyricTrack,
+        ScrubController scrub, IReadSignal<float> hoverFraction, IReadSignal<bool> hovering, SeekRailSurface surface, IReadSignal<int> precise)
+        : Component
     {
         static readonly float[] s_noMarkers = [];
 
@@ -39,6 +45,12 @@ public static partial class Shell
         Func<Element>? _tipContent;
         Action<NodeHandle>? _onAnchor;
         Func<float>? _fraction;
+        // The lyric rail's document (timed, or null until it lands) and the line under the pointer (-1: the time alone), so the bubble's
+        // text and visibility rebind only when the LINE changes, not on every move.
+        readonly Signal<Lyrics.Doc?> _lyrics = new(null);
+        readonly Signal<int> _lyricLine = new(-1);
+        Action? _followLyrics, _followLine;
+        bool LyricRail => lyricTrack.Length > 0;
         float Fraction => scrub.Scrubbing.Value ? scrub.Fraction.Value : hoverFraction.Value;
         int HoverTime => PodcastChapterTimeline.HoverTime(Fraction, _duration.Value);
         int HoverChapter => PodcastChapterTimeline.At(_chapters.Value, HoverTime);
@@ -65,17 +77,33 @@ public static partial class Shell
                     _chapters.Value = chapters;
                 });
             }
+            if (LyricRail)
+            {
+                // The store's publication counter beside the document read (the store's UI contract): the tip follows the document's
+                // arrival and its upgrades. Only a timed document is kept; anything else is the time alone.
+                UseSignalEffect(_followLyrics ??= () =>
+                {
+                    _ = Lyrics.Store.Changed.Value;
+                    var doc = Lyrics.Store.Doc(lyricTrack);
+                    _lyrics.Value = PlayerBarFacts.Seek.LyricDoc(true, doc) == LyricTipDoc.Timed ? doc : null;
+                });
+                UseSignalEffect(_followLine ??= () => _lyricLine.SetIfChanged(PlayerBarFacts.Seek.LyricAt(_lyrics.Value, TipMs)));
+            }
             UseEffect(() => () => { CloseTip(); _lease?.Dispose(); }, DepKey.Empty);
             UseSignalEffect(() =>
             {
-                bool show = (hovering.Value || scrub.Scrubbing.Value) && (sheets is not null || _chapters.Value.Length > 0)
+                bool show = (hovering.Value || scrub.Scrubbing.Value) && (sheets is not null || _chapters.Value.Length > 0 || LyricRail)
                     && Playback.CurrentId.Value.Equals(identity.Episode)
                     && Entities.ScopeEpoch.Value == identity.Epoch;
                 if (!show) { CloseTip(); return; }
                 if (_tip is { IsOpen: true } || _overlay is null) return;
-                // A picture fades in and out as the Slider's own tip does (Raw); the text-only chapter tip stays the instant popup it was.
-                _tip = _overlay.Open(() => _anchor, _tipContent ??= sheets is not null ? PreviewContent(sheets) : ChapterContent(), FlyoutPlacement.Top,
-                    new PopupOptions(FocusTrap: false, DismissBehavior: DismissBehavior.None, Chrome: sheets is not null ? PopupChrome.Raw : PopupChrome.Static));
+                // The playing song's lyrics, asked for on the tip's first opening (a no-op once asked: one fetch per song, never another's).
+                if (LyricRail) Lyrics.Store.Ensure(lyricTrack);
+                // A picture or a lyric fades in and out as the Slider's own tip does (Raw: the theme lifts it clear of the thumb); the
+                // text-only chapter tip stays the instant popup it was.
+                bool raw = sheets is not null || LyricRail;
+                _tip = _overlay.Open(() => _anchor, _tipContent ??= sheets is not null ? PreviewContent(sheets) : LyricRail ? LyricContent() : ChapterContent(),
+                    FlyoutPlacement.Top, new PopupOptions(FocusTrap: false, DismissBehavior: DismissBehavior.None, Chrome: raw ? PopupChrome.Raw : PopupChrome.Static));
             });
             var width = scrub.RailPx;
             float[] fractions = chapterRail ? PodcastChapterTimeline.MarkerFractions(_chapters.Value, _duration.Value, width.Value) : s_noMarkers;
@@ -131,6 +159,26 @@ public static partial class Shell
             return () => ViewSlots.View(ViewKeys.ChapterTip, props);
         }
 
+        /// <summary>The lyric tip's content: the time under the pointer (the rail's own commit target) and the line sung then, as live text
+        /// (built once).</summary>
+        Func<Element> LyricContent()
+        {
+            var props = new SeekLyricProps
+            {
+                Time = () => s_clockText.Get(TipMs / 1000L, static sec => Playback.TimeFormat.Clock(sec * 1000L)),
+                Line = () =>
+                {
+                    int index = _lyricLine.Value;
+                    return index >= 0 && _lyrics.Value is { } doc && index < doc.Lines.Count ? doc.Lines[index].Text : "";
+                },
+                HasLine = () => _lyricLine.Value >= 0,
+                Pointer = static (half, keepClear, draw) => Embed.Comp(() => new RailTipPointer(half, keepClear, draw)),
+                Scrubbing = scrub.Scrubbing,
+                Surface = surface,
+            };
+            return () => ViewSlots.View(ViewKeys.SeekLyric, props);
+        }
+
         /// <summary>The seek preview's content: the picture's core host (the theme says how wide and which corners), the time, and on an
         /// episode the chapter's title. Built once: everything that moves is a bind.</summary>
         Func<Element> PreviewContent(Playback.Video.SeekPanels panels)
@@ -149,6 +197,32 @@ public static partial class Shell
                 Surface = surface,
             };
             return () => ViewSlots.View(ViewKeys.SeekPreview, props);
+        }
+    }
+
+    /// <summary>Where the pointer is under a rail tip, as a bind. A tip opens centred on its anchor (the pointer on the rail) and the overlay
+    /// host pushes it sideways when the window's edge is in the way, so a mark drawn at the tip's centre would then point beside the pointer.
+    /// The host publishes where the anchor sits under the popup (<see cref="Overlay.Placement"/>); this turns it into a transform that moves
+    /// a mark laid out at the tip's left edge onto the pointer, and keeps it <paramref name="keepClear"/> off either end. A bind, so a
+    /// move repaints the mark and re-renders nothing; a tip that is not clamped does not even write it (the anchor stays at its centre).
+    /// The drawing is the theme's.</summary>
+    [CoreHost]
+    sealed class RailTipPointer(float half, float keepClear, Func<Prop<Affine2D>, Element> draw) : Component
+    {
+        Prop<Affine2D>? _at;
+
+        public override Element Render()
+        {
+            Signal<OverlayPlacementInfo>? placement = UseContext(Overlay.Placement);
+            _at ??= Prop.Of(() =>
+            {
+                OverlayPlacementInfo p = placement?.Value ?? default;
+                float width = p.PopupWidth;
+                float centre = p.AnchorCenterX > 0f ? p.AnchorCenterX : width * 0.5f;
+                if (width > 0f) centre = Math.Clamp(centre, keepClear, MathF.Max(keepClear, width - keepClear));
+                return Affine2D.Translation(centre - half, 0f);
+            });
+            return draw(_at.Value);
         }
     }
 
