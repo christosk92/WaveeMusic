@@ -163,6 +163,12 @@ public static partial class Shell
     /// <para>Returns false when a running instance took the launch — it already has this process's activation payload
     /// through the gate, so the caller's whole job is to shut down at once: no <c>RegisterShapes</c>, no
     /// <c>Store.Use</c>, no <c>Entities.Boot</c>, no setting written.</para></summary>
+    /// <summary>The launch switches that take a value: each value is the switch's (a profile folder, a theme id, a file for
+    /// the screenshot), never a deep link or a file the shell handed over. Without this, `--profile C:\p` read as a file
+    /// activation and every profile launch logged `deeplink.refused: C:\p`.</summary>
+    internal static readonly string[] ValueOptions =
+        ["--profile", "--fg", "--theme", "--fake-video", "--whatsnew", "--screenshot", "--frames", "--width", "--height"];
+
     public static bool AcquireInstance()
     {
         var args = Platform.Args.Argv;
@@ -171,7 +177,7 @@ public static partial class Shell
         if (screenshot is not null || frames >= 0) return true;   // the harness arms: no gate, same as always
 
         s_gate = new SingleInstanceGate();
-        s_activation = ActivationArgs.FromCurrentProcess("wavee");
+        s_activation = ActivationArgs.FromCurrentProcess("wavee", ValueOptions);
         // A sign-in StartupTask carries its task id, not a deep link: to a running instance it is a bare relaunch.
         string payload = s_activation.Kind is ActivationKind.Launch or ActivationKind.StartupTask ? "" : s_activation.Argument;
         // The instance is PROFILE-scoped (InstanceIdRules): a --profile run is its own instance beside the user's Wavee
