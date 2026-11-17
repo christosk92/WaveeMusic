@@ -451,6 +451,7 @@ internal static class ZuneHomeTiles
     static Element Head(string glyph, string title, Func<string>? line = null) => new BoxEl
     {
         Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S, Padding = new Edges4(0f, 0f, B.BadgeLane - B.TilePad, 0f),
+        Height = B.WidgetHeadH, Shrink = 0f,
         Children =
         [
             Ui.Icon(glyph, B.HeadGlyph, Tok.AccentTextPrimary) with { Shrink = 0f },
@@ -476,29 +477,50 @@ internal static class ZuneHomeTiles
         Direction = 1, Grow = 1f, MinWidth = 0f, Gap = B.ListGap, Padding = new Edges4(B.TilePad, B.SmallPad, B.TilePad, B.TilePad), Children = kids,
     };
 
-    /// <summary>The rows a widget lists: two in a medium tile, four in a wide one (two columns of two).</summary>
-    static int Rows(HomeTileForm form) => form == HomeTileForm.M ? B.ListRowsM : B.ListRowsL;
+    /// <summary>A widget's head over as many rows as its tile holds (<see cref="FitList"/>): <paramref name="rows"/> builds at most the count
+    /// it is given (call the subscribing reads inside it: they land on the list, not the template).</summary>
+    static Element Listed(HomeTileFrame f, Element head, Func<int, List<Element>> rows)
+        => Embed.Comp(new FitListProps(f, head, rows), static () => new FitList());
 
-    /// <summary>A widget's head over its rows: one column in a medium tile, two columns in a wide one.</summary>
-    static Element[] Listed(List<Element> kids, HomeTileForm form)
+    internal sealed record FitListProps(HomeTileFrame Frame, Element Head, Func<int, List<Element>> Rows);
+
+    /// <summary>A widget's padded column: its head over the rows its tile's height holds, one column in a medium tile or a band, two in a wide
+    /// one (the first column the longer). The count follows the packed box only when it crosses a whole row (a memo with an equality cut-off),
+    /// so a resize re-renders the list at a row's edge, not per frame.</summary>
+    internal sealed class FitList : Component
     {
-        if (form != HomeTileForm.L || kids.Count <= 1 + B.ListRowsM) return kids.ToArray();
-        var left = new List<Element>(B.ListRowsM);
-        var right = new List<Element>(B.ListRowsM);
-        for (int i = 1; i < kids.Count; i++) (i <= B.ListRowsM ? left : right).Add(kids[i]);
-        return
-        [
-            kids[0],
-            new BoxEl
-            {
-                Direction = 0, MinWidth = 0f, Gap = B.ListColGap, AlignItems = FlexAlign.Start,
-                Children =
-                [
-                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, Gap = B.ListGap, Children = left.ToArray() },
-                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, Gap = B.ListGap, Children = right.ToArray() },
-                ],
-            },
-        ];
+        FitListProps? _p;
+
+        public override Element Render()
+        {
+            var p = UseProps<FitListProps>();
+            _p = p;
+            int perColumn = UseComputed(() => PerColumn(_p!.Frame)).Value;
+            int columns = p.Frame.Form == HomeTileForm.L ? 2 : 1;
+            var rows = p.Rows(perColumn * columns);
+            if (columns == 1 || rows.Count <= 1) return Pad([p.Head, .. rows]);
+            int split = (rows.Count + 1) / 2;
+            return Pad(
+                p.Head,
+                new BoxEl
+                {
+                    Direction = 0, MinWidth = 0f, Gap = B.ListColGap, AlignItems = FlexAlign.Start,
+                    Children =
+                    [
+                        new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, Gap = B.ListGap, Children = rows.GetRange(0, split).ToArray() },
+                        new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, Gap = B.ListGap, Children = rows.GetRange(split, rows.Count - split).ToArray() },
+                    ],
+                });
+        }
+
+        /// <summary>The rows one column holds: the packed box's height (a band grows to its rows: the wide form's count; a live preview
+        /// outside the grid has no box: the form's count).</summary>
+        static int PerColumn(HomeTileFrame f)
+        {
+            if (f.Form == HomeTileForm.Full) return B.ListRowsL;
+            if (f.Cell is not { } cell) return B.ListRowsM;
+            return B.ListRowsFit(cell.Box.Value.Height);
+        }
     }
 
     static SurfaceShape ListShape => Shape.Row(B.ListArt) with { MinHeight = B.ListRowH };
@@ -624,7 +646,8 @@ internal static class ZuneHomeTiles
                             Grow = 1f, Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                             Children =
                             [
-                                Clickable(new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, Children = [Square(f, Art(f, p.Cover()))] }, p.Open),
+                                // A row, so the square's stretch is the tile's height (in a column it stretched the width: the art had no height).
+                                Clickable(new BoxEl { Direction = 0, AlignSelf = FlexAlign.Stretch, Children = [Square(f, Art(f, p.Cover()))] }, p.Open),
                                 Panel(name, p.Line, foot, p.HasTrack() ? TextCase.AsWritten : R.Case.For(LabelKind.Label)),
                             ],
                         },
@@ -655,20 +678,25 @@ internal static class ZuneHomeTiles
     public static Element UpNext(HomeUpNextTileProps p, in ViewContext ctx)
     {
         var f = p.Frame;
-        var rows = p.Rows();
-        string title = Loc.Get(Strings.Theme.Zune.Home.UpNext);
-        string count = Strings.Theme.Zune.Home.InQueue(n: rows.Length);
+        var count = p.Count;
         if (f.Form == HomeTileForm.S)
+            return Tile(f, Clickable(new BoxEl { Grow = 1f, Direction = 1, Children = [SmallWidget(Icons.List, () => count().ToString(CultureInfo.CurrentCulture))] }, p.OpenQueue));
+        string title = Loc.Get(Strings.Theme.Zune.Home.UpNext);
+        var rowsOf = p.Rows;
+        return Tile(f, Listed(f, Head(Icons.List, title, () => Strings.Theme.Zune.Home.InQueue(n: count())), max =>
         {
-            string n = rows.Length.ToString(CultureInfo.CurrentCulture);
-            return Tile(f, Clickable(new BoxEl { Grow = 1f, Direction = 1, Children = [SmallWidget(Icons.List, () => n)] }, p.OpenQueue));
-        }
-        int max = Rows(f.Form);
-        var kids = new List<Element> { Head(Icons.List, title, () => count) };
-        for (int i = 0; i < rows.Length && i < max; i++)
-            kids.Add(Controls.Surface(rows[i].Data, ListShape) with { Key = "upnext:" + rows[i].Key });
-        if (rows.Length == 0) kids.Add(R.Type.DenseMeta(Loc.Get(Strings.Theme.Zune.Home.QueueEmpty)) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label) });
-        return Tile(f, Pad(Listed(kids, f.Form)));
+            var rows = rowsOf(max);
+            var kids = new List<Element>(Math.Max(1, rows.Length));
+            for (int i = 0; i < rows.Length; i++)
+            {
+                // A row not known yet is the seed, pinned to the loaded row's height (the shared seed keeps the full row inset, this row trims it).
+                var data = rows[i].Data;
+                if (data.IsSeed) data = data with { Height = B.ListRowOuterH };
+                kids.Add(Controls.Surface(data, ListShape) with { Key = "upnext:" + rows[i].Key });
+            }
+            if (rows.Length == 0) kids.Add(R.Type.DenseMeta(Loc.Get(Strings.Theme.Zune.Home.QueueEmpty)) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label) });
+            return kids;
+        }));
     }
 
     // ══ Home.Tile.Recents ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -691,17 +719,19 @@ internal static class ZuneHomeTiles
             }
             default:
             {
-                int max = Rows(f.Form);
-                var kids = new List<Element> { Head(Icons.History, title, () => week) };
-                for (int i = 0; i < r.Cells.Count && i < max; i++)
+                return Tile(f, Listed(f, Head(Icons.History, title, () => week), max =>
                 {
-                    var cell = r.Cells[i];
-                    var c = cell.Card;
-                    var data = new Controls.CardData(c.Uri, cell.Title, K.Sub(cell.When.Length > 0 ? cell.When : cell.Detail), c.ImageUrl,
-                        () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c), Circular: cell.Round) { Menu = HomeCardNav.MenuOf(in c) };
-                    kids.Add(Controls.Surface(data, ListShape) with { Key = "recents:" + (c.IsBlank ? i.ToString(CultureInfo.InvariantCulture) : c.Uri) });
-                }
-                return Tile(f, Pad(Listed(kids, f.Form)));
+                    var kids = new List<Element>(Math.Min(max, r.Cells.Count));
+                    for (int i = 0; i < r.Cells.Count && i < max; i++)
+                    {
+                        var cell = r.Cells[i];
+                        var c = cell.Card;
+                        var data = new Controls.CardData(c.Uri, cell.Title, K.Sub(cell.When.Length > 0 ? cell.When : cell.Detail), c.ImageUrl,
+                            () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c), Circular: cell.Round) { Menu = HomeCardNav.MenuOf(in c) };
+                        kids.Add(Controls.Surface(data, ListShape) with { Key = "recents:" + (c.IsBlank ? i.ToString(CultureInfo.InvariantCulture) : c.Uri) });
+                    }
+                    return kids;
+                }));
             }
         }
     }
@@ -716,10 +746,12 @@ internal static class ZuneHomeTiles
         if (f.Form == HomeTileForm.Full)
             return Tile(f, ZuneHomePage.Body(zone, f.Overlay, ZuneHomeTiers.Of(ctx.Tier())), plate: false);
         string title = zone.Title ?? Loc.Get(Strings.Home.Zone.FromArtistsYouFollow);
-        int max = Rows(f.Form);
-        var kids = new List<Element> { Head(Icons.RefineSparkle, title) };
-        for (int i = 0; i < zone.Items.Count && i < max; i++) kids.Add(CardRow(zone.Items[i], i));
-        return Tile(f, Pad(Listed(kids, f.Form)));
+        return Tile(f, Listed(f, Head(Icons.RefineSparkle, title), max =>
+        {
+            var kids = new List<Element>(Math.Min(max, zone.Items.Count));
+            for (int i = 0; i < zone.Items.Count && i < max; i++) kids.Add(CardRow(zone.Items[i], i));
+            return kids;
+        }));
     }
 
     static Element CardRow(HomeCard card, int i)

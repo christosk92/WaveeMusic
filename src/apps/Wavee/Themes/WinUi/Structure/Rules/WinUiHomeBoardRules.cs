@@ -137,8 +137,9 @@ public static class WinUiHomeBoardRules
     /// <summary>A card's cover (96) and a double card's (the card's height less its padding: 216).</summary>
     public const float CardArt = 96f, WideArt = 216f;
 
-    /// <summary>The list rows a card (3) and a double card (4) show under their head.</summary>
-    public const int CardRows = 3, WideRows = 4;
+    /// <summary>The list rows a card and a double card show under their head (3: the card's height holds three; a fourth stood clipped under
+    /// its foot), and a band (4: it grows to its rows).</summary>
+    public const int CardRows = 3, WideRows = 3, BandRows = 4;
 
     /// <summary>A dashed outline's runs (the empty row, the drop slot).</summary>
     public const float DashOn = 4f, DashOff = 4f;
