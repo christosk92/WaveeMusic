@@ -52,7 +52,12 @@ public sealed class PodcastShowScreen : Component
         Controls.Library ??= User.LibrarySeam;
         _computeChapters ??= ComputeChapters;
         _syncLease ??= SyncChapterLease;
-        _dispose ??= () => { _lease?.Dispose(); _lease = null; };
+        _dispose ??= () =>
+        {
+            _lease?.Dispose();
+            _lease = null;
+            if (_m is { Subject.IsValid: true } model) PodcastPages.Leave(Entities.Show(model.Subject));
+        };
         _cleanup ??= () => _dispose;
         string subject = m.SubjectText;
         var similar = UseResource(ct => PodcastReaderUI.RecommendationsOf(subject, show: true, ct), s_similarSeed, DepKey.From((int)epoch));
@@ -291,6 +296,7 @@ sealed class ShowModel
         {
             var show = ShowOf();
             if (!show.IsValid) return;
+            PodcastPages.Open(show);
             Entities.Ensure(show, ShowFields.All);
             Reopen();
         };
@@ -347,11 +353,8 @@ sealed class ShowModel
     {
         var show = ShowOf();
         if (!show.IsValid) return;
-        var edge = Entities.Current.Edges.ShowEpisodes;
-        int n = edge.Targets(show.Slot).Length;
-        if (edge.State(show.Slot) != EdgeState.Partial || n >= edge.Total(show.Slot) || edge.WasAsked(show.Slot, n)) return;
-        _askedFrom.Value = n;
-        Entities.EnsureEdge(FetchEdge.ShowEpisodes, show.Slot, n);
+        _askedFrom.Value = _askedFrom.Peek() + 1;
+        PodcastPages.LoadMore(show);
     }
 
     /// <summary>What the verbs read from the last snapshot.</summary>
@@ -375,8 +378,7 @@ sealed class ShowModel
         bool oldestCell = _oldest.Value;
         _ = _askedFrom.Value;
         EntityId playingId = Playback.CurrentId.Value;
-        bool settled = Spotify.Telemetry.ProgressSettled.Value, progressFailed = Spotify.Telemetry.ProgressFailed.Value;
-        var similarState = Similar?.State.Value ?? (byte)LoadState.Pending;
+                var similarState = Similar?.State.Value ?? (byte)LoadState.Pending;
         var similar = similarState == (byte)LoadState.Ready ? Similar?.Value.Value : null;
         if (!Subject.IsValid) return PodcastShowView.Empty with { Load = PodcastLoad.Failed };
 
@@ -388,47 +390,48 @@ sealed class ShowModel
         bool following = lib is not null && lib.IsSaved(SubjectText);
         bool known = show.IsValid && show.Knows(ShowFields.Title);
 
-        // ── the rows' raw facts, NEWEST FIRST (the edge order) ──
-        int[] slots = edge.Targets(slot).ToArray();
-        int n = slots.Length;
-        int total = Math.Max(edge.Total(slot), n);
+        // ── the rows: the data door's page (state at rest, "new since your last visit"), NEWEST FIRST (the membership's order) ──
+        var page = PodcastPages.ShowOf(show);
+        var rows = page.Episodes;
+        int n = rows.Length;
+        var slots = new int[n];
+        int total = Math.Max(page.TotalEpisodes, n);
         var pcts = new float[n];
         var published = new int[n];
         var playedAt = new int[n];
         for (int i = 0; i < n; i++)
         {
-            var e = new Episode(slots[i]);
-            if (!e.IsValid) continue;
-            pcts[i] = Episode.ReaderPctOf(e);
-            published[i] = e.Knows(EpisodeFields.Published) ? e.PublishedAt : 0;
-            playedAt[i] = e.Knows(EpisodeFields.Progress) ? e.PlayedAt : 0;
+            var e = rows[i].Episode;
+            slots[i] = e.Slot;
+            pcts[i] = rows[i].State == PlayState.Played ? 1f : rows[i].Pct;
+            published[i] = (int)(rows[i].PublishedUnixMs / 1000);
+            playedAt[i] = e.IsValid && e.Knows(EpisodeFields.Progress) ? e.PlayedAt : 0;
         }
-        bool serial = show.IsValid && show.Knows(ShowFields.Facts) && show.Order == ConsumptionOrder.Sequential;
+        bool serial = page.Order == ShowOrder.Serial;
         // The order follows the show until the reader picks one: a serial reads oldest first.
         if (!_orderChosen) oldestCell = serial;
-        int lastPlayed = ShowLedger.LastPlayed(playedAt);
-        bool trusted = (settled && !progressFailed) || Platform.Args.Fake;
-        var fresh = new bool[n];
-        ShowReaderRules.FreshMask(pcts, published, lastPlayed, trusted, fresh);
         var (cadence, _) = ShowCadence.Of(published);
+        following = page.Saved == SaveState.Saved || following;
 
-        // ── the rows ──
         var vms = new PodcastEpisodeVm[n];
         int unplayed = 0, inProgress = 0, saved = 0;
         bool anyProgress = false;
         for (int i = 0; i < n; i++)
         {
-            var e = new Episode(slots[i]);
-            float pct = pcts[i];
-            var state = Episode.Rules.Played(pct) ? PodcastRowState.Played
-                : Episode.Rules.InProgress(pct) ? PodcastRowState.InProgress
-                : fresh[i] ? PodcastRowState.New : PodcastRowState.Unplayed;
+            var e = rows[i].Episode;
+            var state = rows[i].State switch
+            {
+                PlayState.Played => PodcastRowState.Played,
+                PlayState.InProgress => PodcastRowState.InProgress,
+                PlayState.New => PodcastRowState.New,
+                _ => rows[i].IsNew ? PodcastRowState.New : PodcastRowState.Unplayed,
+            };
             if (state is PodcastRowState.InProgress) inProgress++;
             else if (state is not PodcastRowState.Played) unplayed++;
             if (state is PodcastRowState.Played or PodcastRowState.InProgress) anyProgress = true;
             bool isSaved = e.IsValid && Spotify.Podcasts.IsSaved(e);
             if (isSaved) saved++;
-            vms[i] = RowOf(e, i, total, serial, state, pct, isSaved);
+            vms[i] = RowOf(e, i, total, serial, state, pcts[i], isSaved);
         }
 
         // ── the smart action ──
@@ -447,8 +450,8 @@ sealed class ShowModel
             if (vms[i].State == PodcastRowState.New) freshCount++;
             if (newest < 0 && !Episode.Rules.Played(pcts[i]) && !vms[i].Trailer) newest = i;
         }
-        string? trailerId = show.IsValid && show.Knows(ShowFields.Facts) && !show.TrailerId.IsEmpty ? Entities.Strings.Resolve(show.TrailerId) : null;
-        var trailer = trailerId is null ? default : EpisodeOf(trailerId);
+        string? trailerId = page.TrailerUri.Length > 0 ? page.TrailerUri : null;
+        var trailer = page.Trailer;
         PodcastSmart? smart = null;
         if (n > 0 && readiness is EdgeState.Partial or EdgeState.Complete)
         {
@@ -523,15 +526,15 @@ sealed class ShowModel
             new PodcastFilterVm(PodcastFilter.InProgress, Loc.Get(Strings.Podcast.Pages.FilterInProgress), inProgress),
             new PodcastFilterVm(PodcastFilter.Saved, Loc.Get(Strings.Podcast.Pages.FilterSaved), saved));
 
-        var head = HeadOf(show, known, following, serial, total, cadence, published, trailer, trailerId);
-        bool hasMore = edge.State(slot) == EdgeState.Partial && n < edge.Total(slot) && filter == PodcastFilter.All && q.IsEmpty;
+        var head = HeadOf(show, page, known, following, serial, total, cadence, published, trailer, trailerId);
+        bool hasMore = page.CanLoadMore && filter == PodcastFilter.All && q.IsEmpty;
         var freshSlots = new List<int>();
         for (int i = 0; i < n; i++) if (vms[i].State == PodcastRowState.New) freshSlots.Add(slots[i]);
         _facts = new Facts(head.Title, trailer.IsValid ? trailerId : null, smart?.EpisodeId, smart?.Kind ?? PodcastSmartKind.CaughtUp, freshSlots.ToArray(),
             anyProgress);
 
         var load = readiness == EdgeState.Failed && n == 0 ? PodcastLoad.Failed
-            : !known || readiness == EdgeState.Unknown ? PodcastLoad.Pending
+            : !known || !page.Loaded || readiness == EdgeState.Unknown ? PodcastLoad.Pending
             : PodcastLoad.Ready;
         return new PodcastShowView(load, head, smart, episodes.MoveToImmutable(), groups, filters, years, hasMore,
             filter != PodcastFilter.All || !q.IsEmpty, SimilarOf(similar));
@@ -675,25 +678,25 @@ sealed class ShowModel
         }
     }
 
-    PodcastShowHead HeadOf(Show show, bool known, bool following, bool serial, int total, ShowCadence.Kind cadence, int[] published, Episode trailer,
+    PodcastShowHead HeadOf(Show show, ShowPage page, bool known, bool following, bool serial, int total, ShowCadence.Kind cadence, int[] published, Episode trailer,
         string? trailerId)
     {
         if (!known) return PodcastShowView.Empty.Head with { Uri = SubjectText, Following = following };
         string title = show.Title;
         string? art = show.Knows(ShowFields.Image) ? Controls.ArtUrl(show.ImageId) : null;
         uint tone = show.Knows(ShowFields.Appearance) ? show.Tone : 0u;
-        var topics = ImmutableArray<string>.Empty;
-        if (show.Knows(ShowFields.Topics) && !show.TopicsId.IsEmpty)
-            topics = [.. Entities.Strings.Resolve(show.TopicsId).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(TopicMax)];
-        var flags = show.Knows(ShowFields.Facts) ? show.Flags : ShowFlags.None;
-        bool video = (flags & ShowFlags.Video) != 0;
-        string publisher = show.Knows(ShowFields.Publisher) && !show.PublisherId.IsEmpty ? Entities.Strings.Resolve(show.PublisherId) : "";
-        bool rated = show.Knows(ShowFields.Rating) && show.RatingX100 > 0;
-        string rating = rated ? (show.RatingX100 / 100f).ToString("0.0", CultureInfo.CurrentCulture) : "";
-        string count = rated ? show.RatingCount.ToString("N0", CultureInfo.CurrentCulture) : "";
+        ImmutableArray<string> topics = [.. page.Categories.Take(TopicMax)];
+        bool video = page.Video;
+        string publisher = page.Publisher;
+        var r = page.Rating;
+        bool rated = r is { Average: > 0f };
+        int ratingX100 = rated ? (int)MathF.Round(r!.Value.Average * 100f) : 0;
+        int ratingCount = rated ? r!.Value.Count : 0;
+        string rating = rated ? r!.Value.Average.ToString("0.0", CultureInfo.CurrentCulture) : "";
+        string count = rated ? ratingCount.ToString("N0", CultureInfo.CurrentCulture) : "";
         string cadenceWord = Show.CadenceWord(cadence);
         string countLine = serial ? Strings.Podcast.Pages.PartsCount(total) : Strings.Podcast.Pages.EpisodesCount(total);
-        string about = show.Knows(ShowFields.About) && !show.DescriptionId.IsEmpty ? Entities.Strings.Resolve(show.DescriptionId) : "";
+        string about = page.About;
         int oldestYear = 0;
         for (int i = published.Length - 1; i >= 0; i--)
             if (published[i] > 0) { oldestYear = DateTimeOffset.FromUnixTimeSeconds(published[i]).LocalDateTime.Year; break; }
@@ -708,8 +711,8 @@ sealed class ShowModel
         string trailerSub = trailer.IsValid && trailer.Knows(EpisodeFields.Duration)
             ? Strings.Podcast.Pages.TrailerSub(Episode.DurationLabel(trailer.DurationMs)) : "";
         return new PodcastShowHead(SubjectText, title, art, tone, Loc.Get(Strings.Podcast.Pages.KindPodcast), topics, video, serial, publisher,
-            rated ? show.RatingX100 : 0, rating, rated ? "(" + count + ")" : "", rated ? Strings.Podcast.Pages.RatingsCount(show.RatingCount) : "",
-            (flags & ShowFlags.CanRate) != 0, cadenceWord, countLine, about, following, trailer.IsValid ? trailerId : null, trailerSub, facts.ToImmutable());
+            ratingX100, rating, rated ? "(" + count + ")" : "", rated ? Strings.Podcast.Pages.RatingsCount(ratingCount) : "",
+            r is { CanRate: true }, cadenceWord, countLine, about, following, trailer.IsValid ? trailerId : null, trailerSub, facts.ToImmutable());
     }
 
     ImmutableArray<PodcastCardVm> SimilarOf(Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>? page)
