@@ -98,7 +98,7 @@ public sealed class PodcastEpisodeScreen : Component
         UseEffect(() =>
         {
             var ep = Entities.Episode(subject);
-            if (ep.IsValid) Entities.Ensure(ep, EpisodeFields.All);
+            PodcastPages.Open(ep);
         }, DepKey.From((int)epoch, 0));
         UseEffect(_demandShow);
         UseLayoutEffect(() =>
@@ -302,7 +302,8 @@ public sealed class PodcastEpisodeScreen : Component
         _ = Spotify.Podcasts.SavedChanged.Value;
         var e = Current;
         if (!e.IsValid) return PodcastEpisodeView.Empty;
-        if (!e.Knows(EpisodeFields.Title))
+        var page = PodcastPages.EpisodeOf(e);
+        if (!page.Loaded || !e.Knows(EpisodeFields.Title))
             return scope.Episodes.IsFailed(e.Slot, (uint)EpisodeFields.All) ? PodcastEpisodeView.Empty with { Load = PodcastLoad.Failed } : PodcastEpisodeView.Empty;
 
         var state = _stateMemo?.Value ?? StateOf();
@@ -394,16 +395,18 @@ public sealed class PodcastEpisodeScreen : Component
         string moreSub = "";
         if (show.IsValid)
         {
-            var slots = scope.Edges.ShowEpisodes.Targets(show.Slot);
-            int self = -1;
-            for (int i = 0; i < slots.Length; i++) if (slots[i] == e.Slot) { self = i; break; }
+            // The show's rows (the data layer's `ShowOf`, its own list order), split around this episode by publish date: the newer unplayed ones
+            // nearest first, the older (the archive) newest first.
+            var rowsOf = PodcastPages.ShowOf(show).Episodes;
+            long at = page.PublishedUnixMs;
             var newer = new List<Episode>(NextRows + 1);
             var older = new List<Episode>(NextRows + 1);
-            // Newest first: the newer ones sit above this one, the nearest first.
-            for (int i = (self < 0 ? slots.Length : self) - 1; i >= 0 && newer.Count < NextRows + 1; i--)
-                if (Unplayed(new Episode(slots[i]))) newer.Add(new Episode(slots[i]));
-            for (int i = self + 1; self >= 0 && i < slots.Length && older.Count < NextRows + 1; i++)
-                if (Unplayed(new Episode(slots[i]))) older.Add(new Episode(slots[i]));
+            var byDate = new List<EpisodeRow>(rowsOf.Length);
+            foreach (var r in rowsOf)
+                if (r.Episode.Slot != e.Slot && r.Kind != EpisodeKind.Trailer && r.State != PlayState.Played && r.Episode.IsValid) byDate.Add(r);
+            byDate.Sort(static (a, b) => a.PublishedUnixMs.CompareTo(b.PublishedUnixMs));
+            foreach (var r in byDate) if (r.PublishedUnixMs > at && newer.Count < NextRows + 1) newer.Add(r.Episode);
+            for (int i = byDate.Count - 1; i >= 0 && older.Count < NextRows + 1; i--) if (byDate[i].PublishedUnixMs <= at) older.Add(byDate[i].Episode);
             List<Episode> rows;
             bool archive;
             if (state == PodcastRowState.Played)
@@ -453,8 +456,6 @@ public sealed class PodcastEpisodeScreen : Component
     }
 
     static string Clock(int ms) => ms > 0 ? Playback.TimeFormat.Clock(ms) : "";
-
-    static bool Unplayed(Episode x) => x.IsValid && x.Knows(EpisodeFields.Title) && x.Kind != EpisodeKind.Trailer && !Episode.Rules.Played(Episode.ReaderPctOf(x));
 
     static PodcastRowState RestState(Episode x)
     {

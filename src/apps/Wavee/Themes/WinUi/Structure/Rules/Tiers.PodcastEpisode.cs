@@ -9,6 +9,7 @@
 
 using FluentGpu.Foundation;
 using Wavee.Theming;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.WinUi;
 
