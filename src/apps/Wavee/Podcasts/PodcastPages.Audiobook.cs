@@ -468,7 +468,7 @@ public static partial class AudiobookRules
     /// <summary>Front and back matter, set quieter on the contents page (by name).</summary>
     public static bool IsMatter(string raw) => MatterName().IsMatch(raw.Trim());
 
-    [GeneratedRegex(@"^(opening credits|end credits|credits|introduction|prologue|foreword|preface|epilogue|afterword|acknowledg)",
+    [GeneratedRegex(@"^(opening credits|end credits|ending credits|closing credits|credits|introduction|prologue|foreword|preface|epilogue|afterword|acknowledg)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex MatterName();
 
