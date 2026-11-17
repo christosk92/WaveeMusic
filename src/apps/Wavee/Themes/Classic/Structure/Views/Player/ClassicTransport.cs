@@ -336,9 +336,11 @@ internal static class ClassicTransport
         var card = new BoxEl
         {
             Direction = 1, Gap = ClassicTransportLayout.ChapterTipGap, Width = ClassicTransportLayout.ChapterTipWidth,
-            Acrylic = Tok.AcrylicFlyout, BorderColor = Tok.StrokeFlyoutDefault, BorderWidth = 1,
+            // A SOLID card, as the engine's teaching tip is: a frosted body cannot be carried into the turned pointer, and a pointer of
+            // another colour than its card reads as a separate thing.
+            Fill = Tok.FillSolidTertiary, BorderColor = Tok.StrokeSurfaceDefault, BorderWidth = 1,
             Corners = Radii.ControlAll, Shadow = Elevation.Tooltip, Padding = ClassicTransportLayout.ChapterTipPadding,
-            HitTestVisible = false, Enter = ClassicTransportLayout.PreviewEnter,
+            HitTestVisible = false,
             Children =
             [
                 new TextEl(Prop.Of(props.Time))
@@ -354,7 +356,63 @@ internal static class ClassicTransport
                 },
             ],
         };
-        return new BoxEl { Padding = ClassicTransportLayout.PreviewLift, HitTestVisible = false, Children = [card] };
+        // Close to the rail, and tied to the pointer: a small wedge on the card's foot that stays on the POINTER (the core host moves it when
+        // the window pushes the card sideways). It paints after the card and laps its edge by one pixel, so the edge does not cut its base.
+        return new BoxEl
+        {
+            Direction = 1, HitTestVisible = false, Enter = ClassicTransportLayout.PreviewEnter,
+            Children =
+            [
+                new BoxEl
+                {
+                    ZStack = true, HitTestVisible = false,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Padding = ClassicTransportLayout.LyricTipSides, HitTestVisible = false,
+                            Children = [card, new BoxEl { Height = ClassicTransportLayout.LyricBeakShort, HitTestVisible = false }],
+                        },
+                        new BoxEl
+                        {
+                            Key = "seek-lyric-pointer", AlignSelf = FlexAlign.End, Height = ClassicTransportLayout.LyricBeakBand, ClipToBounds = true, ZStack = true,
+                            HitTestVisible = false,
+                            Children =
+                            [
+                                new BoxEl
+                                {
+                                    OffsetY = ClassicTransportLayout.LyricBeakRise, HitTestVisible = false,
+                                    Children =
+                                    [
+                                        props.Pointer(ClassicTransportLayout.LyricBeakHalf, ClassicTransportLayout.LyricBeakKeepClear, static at => new BoxEl
+                                        {
+                                            Width = ClassicTransportLayout.LyricBeakLong, Height = ClassicTransportLayout.LyricBeakLong, Shrink = 0, ZStack = true,
+                                            Transform = at, HitTestVisible = false,
+                                            Children =
+                                            [
+                                                new BoxEl
+                                                {
+                                                    Width = ClassicTransportLayout.LyricBeakFill, Height = ClassicTransportLayout.LyricBeakFill,
+                                                    OffsetX = ClassicTransportLayout.LyricBeakFillInset, OffsetY = ClassicTransportLayout.LyricBeakFillInset,
+                                                    Rotation = ClassicTransportLayout.LyricBeakTurn, Fill = Tok.FillSolidTertiary, HitTestVisible = false,
+                                                },
+                                                new PolylineStrokeEl
+                                                {
+                                                    Width = ClassicTransportLayout.LyricBeakLong, Height = ClassicTransportLayout.LyricBeakLong,
+                                                    P0 = ClassicTransportLayout.LyricBeakP0, P1 = ClassicTransportLayout.LyricBeakP1, P2 = ClassicTransportLayout.LyricBeakP2,
+                                                    PointCount = ClassicTransportLayout.LyricBeakPoints, Color = Tok.StrokeSurfaceDefault, Thickness = 1, RoundCaps = false,
+                                                },
+                                            ],
+                                        }),
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                new BoxEl { Height = ClassicTransportLayout.LyricTipGap, HitTestVisible = false },
+            ],
+        };
     }
 
     // ══ THE TIME LABELS ═════════════════════════════════════════════════════════════════════════════════════════════════

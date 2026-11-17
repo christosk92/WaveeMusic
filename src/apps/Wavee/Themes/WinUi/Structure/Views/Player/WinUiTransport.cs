@@ -319,9 +319,11 @@ internal static class WinUiTransport
         var card = new BoxEl
         {
             Direction = 1, Gap = WinUiTransportLayout.ChapterTipGap, Width = WinUiTransportLayout.ChapterTipWidth,
-            Acrylic = Tok.AcrylicFlyout, BorderColor = Tok.StrokeFlyoutDefault, BorderWidth = 1,
+            // A SOLID card, as the engine's teaching tip is: a frosted body cannot be carried into the turned pointer, and a pointer of
+            // another colour than its card reads as a separate thing.
+            Fill = Tok.FillSolidTertiary, BorderColor = Tok.StrokeSurfaceDefault, BorderWidth = 1,
             Corners = Radii.ControlAll, Shadow = Elevation.Tooltip, Padding = WinUiTransportLayout.ChapterTipPadding,
-            HitTestVisible = false, Enter = WinUiTransportLayout.PreviewEnter,
+            HitTestVisible = false,
             Children =
             [
                 new TextEl(Prop.Of(props.Time))
@@ -337,11 +339,62 @@ internal static class WinUiTransport
                 },
             ],
         };
-        bool overButtons = props.Surface == SeekRailSurface.Bar;
+        // Close to the rail, and tied to the pointer: a small wedge on the card's foot that stays on the POINTER (the core host moves it when
+        // the window pushes the card sideways). It paints after the card and laps its edge by one pixel, so the edge does not cut its base.
         return new BoxEl
         {
-            Padding = overButtons ? WinUiTransportLayout.PreviewLiftBar : WinUiTransportLayout.PreviewLift, HitTestVisible = false,
-            Children = [card],
+            Direction = 1, HitTestVisible = false, Enter = WinUiTransportLayout.PreviewEnter,
+            Children =
+            [
+                new BoxEl
+                {
+                    ZStack = true, HitTestVisible = false,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Padding = WinUiTransportLayout.LyricTipSides, HitTestVisible = false,
+                            Children = [card, new BoxEl { Height = WinUiTransportLayout.LyricBeakShort, HitTestVisible = false }],
+                        },
+                        new BoxEl
+                        {
+                            Key = "seek-lyric-pointer", AlignSelf = FlexAlign.End, Height = WinUiTransportLayout.LyricBeakBand, ClipToBounds = true, ZStack = true,
+                            HitTestVisible = false,
+                            Children =
+                            [
+                                new BoxEl
+                                {
+                                    OffsetY = WinUiTransportLayout.LyricBeakRise, HitTestVisible = false,
+                                    Children =
+                                    [
+                                        props.Pointer(WinUiTransportLayout.LyricBeakHalf, WinUiTransportLayout.LyricBeakKeepClear, static at => new BoxEl
+                                        {
+                                            Width = WinUiTransportLayout.LyricBeakLong, Height = WinUiTransportLayout.LyricBeakLong, Shrink = 0, ZStack = true,
+                                            Transform = at, HitTestVisible = false,
+                                            Children =
+                                            [
+                                                new BoxEl
+                                                {
+                                                    Width = WinUiTransportLayout.LyricBeakFill, Height = WinUiTransportLayout.LyricBeakFill,
+                                                    OffsetX = WinUiTransportLayout.LyricBeakFillInset, OffsetY = WinUiTransportLayout.LyricBeakFillInset,
+                                                    Rotation = WinUiTransportLayout.LyricBeakTurn, Fill = Tok.FillSolidTertiary, HitTestVisible = false,
+                                                },
+                                                new PolylineStrokeEl
+                                                {
+                                                    Width = WinUiTransportLayout.LyricBeakLong, Height = WinUiTransportLayout.LyricBeakLong,
+                                                    P0 = WinUiTransportLayout.LyricBeakP0, P1 = WinUiTransportLayout.LyricBeakP1, P2 = WinUiTransportLayout.LyricBeakP2,
+                                                    PointCount = WinUiTransportLayout.LyricBeakPoints, Color = Tok.StrokeSurfaceDefault, Thickness = 1, RoundCaps = false,
+                                                },
+                                            ],
+                                        }),
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                new BoxEl { Height = WinUiTransportLayout.LyricTipGap, HitTestVisible = false },
+            ],
         };
     }
 

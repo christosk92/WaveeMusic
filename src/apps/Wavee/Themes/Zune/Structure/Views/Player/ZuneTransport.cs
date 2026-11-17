@@ -226,7 +226,6 @@ internal static class ZuneTransport
         {
             Direction = 1, Gap = T.TipGap, Width = T.TipW, Padding = T.TipPadding,
             Fill = R.Layer.FloatingChrome, Corners = R.Shape.All(ShapeRole.Overlay), Shadow = Elevation.Tooltip, HitTestVisible = false,
-            Enter = T.PreviewEnter,
             Children =
             [
                 new TextEl(Prop.Of(props.Time))
@@ -240,7 +239,57 @@ internal static class ZuneTransport
                 },
             ],
         };
-        return new BoxEl { Padding = T.PreviewLift, HitTestVisible = false, Children = [plate] };
+        // Close to the rail, and tied to the pointer: a small wedge on the card's foot that stays on the POINTER (the core host moves it when
+        // the window pushes the card sideways). It paints after the card and laps its edge by one pixel, so the edge does not cut its base.
+        return new BoxEl
+        {
+            Direction = 1, HitTestVisible = false, Enter = T.PreviewEnter,
+            Children =
+            [
+                new BoxEl
+                {
+                    ZStack = true, HitTestVisible = false,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Padding = T.LyricTipSides, HitTestVisible = false,
+                            Children = [plate, new BoxEl { Height = T.LyricBeakShort, HitTestVisible = false }],
+                        },
+                        new BoxEl
+                        {
+                            Key = "seek-lyric-pointer", AlignSelf = FlexAlign.End, Height = T.LyricBeakBand, ClipToBounds = true, ZStack = true,
+                            HitTestVisible = false,
+                            Children =
+                            [
+                                new BoxEl
+                                {
+                                    OffsetY = T.LyricBeakRise, HitTestVisible = false,
+                                    Children =
+                                    [
+                                        props.Pointer(T.LyricBeakHalf, T.LyricBeakKeepClear, static at => new BoxEl
+                                        {
+                                            Width = T.LyricBeakLong, Height = T.LyricBeakLong, Shrink = 0, ZStack = true,
+                                            Transform = at, HitTestVisible = false,
+                                            Children =
+                                            [
+                                                new BoxEl
+                                                {
+                                                    Width = T.LyricBeakFill, Height = T.LyricBeakFill,
+                                                    OffsetX = T.LyricBeakFillInset, OffsetY = T.LyricBeakFillInset,
+                                                    Rotation = T.LyricBeakTurn, Fill = R.Layer.FloatingChrome, HitTestVisible = false,
+                                                },
+                                            ],
+                                        }),
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                new BoxEl { Height = T.LyricTipGap, HitTestVisible = false },
+            ],
+        };
     }
 
     // ══ THE TIME LABELS ═════════════════════════════════════════════════════════════════════════════════════════════════

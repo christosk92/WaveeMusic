@@ -366,7 +366,7 @@ A song has no pictures, but it often has timed lyrics. On a song's rail the same
 that time (`Player.SeekLyric`). Settings > Appearance > Lyrics > "Show lyrics when seeking" turns it off (`lyrics.seekTip`, on
 by default).
 
-![The lyric tip in WinUI, Zune and Classic, dark and light](video-seek-preview/lyrics-tip-themes.jpg)
+![The lyric tip in WinUI, Zune and Classic, dark and light, and at the window's edges](video-seek-preview/lyrics-tip-themes.jpg)
 
 ```
 the tip shows the lyric line when ALL of these hold        (PlayerBarFacts.Seek.LyricRail)
@@ -386,9 +386,14 @@ the track's lyrics are timed, or not answered yet
   first opens (`Lyrics.Store.Ensure`, the playing track only) and shows the time alone until they land. When they turn out
   to have no timing, the open tip stays the time alone until the pointer leaves; after that the rail is as it was.
 - **One tip per rail.** While the lyric tip applies, the plain time readout stays shut, as it does for the picture.
-- **Looks.** Each theme's chapter tip: the time in the secondary ink, the line in the primary, two lines at most with an
-  ellipsis. No new numbers: the chapter tip's and the preview's constants. On WinUI's player bar it rises above the bar, as
-  the picture does.
+- **Looks.** The time in the secondary ink, the line in the primary, two lines at most with an ellipsis, in the chapter tip's
+  type and width. The tip keeps to the rail (2 DIP between its pointer and its anchor, on every surface: it does not rise above
+  WinUI's player bar) and carries a POINTER on its foot: a 16 x 8 wedge, the teaching tip's beak, that stays on the mouse.
+  A tip the window pushes sideways keeps its pointer on the mouse: the core host `RailTipPointer` reads where the anchor sits
+  under the popup (`Overlay.Placement`) and hands the theme a bound transform, so a move repaints the wedge and re-renders
+  nothing. In WinUI and Classic the card is SOLID (`Tok.FillSolidTertiary`, as the teaching tip is): a frosted body cannot be
+  carried into the turned wedge, and a wedge of another colour than its card reads as a separate thing. Zune's plate is
+  solid already.
 
 Checked in the inspector on the fixture's word-timed track (`play uri=spotify:track:tr3 fromMs=30000`, then hover the player
 bar's rail), 1440 x 960, WinUI, Zune and Classic, dark and light: at 1:30 the tip shows the line the fixture times at

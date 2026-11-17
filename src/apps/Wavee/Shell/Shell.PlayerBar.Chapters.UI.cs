@@ -172,6 +172,7 @@ public static partial class Shell
                     return index >= 0 && _lyrics.Value is { } doc && index < doc.Lines.Count ? doc.Lines[index].Text : "";
                 },
                 HasLine = () => _lyricLine.Value >= 0,
+                Pointer = static (half, keepClear, draw) => Embed.Comp(() => new RailTipPointer(half, keepClear, draw)),
                 Scrubbing = scrub.Scrubbing,
                 Surface = surface,
             };
@@ -196,6 +197,32 @@ public static partial class Shell
                 Surface = surface,
             };
             return () => ViewSlots.View(ViewKeys.SeekPreview, props);
+        }
+    }
+
+    /// <summary>Where the pointer is under a rail tip, as a bind. A tip opens centred on its anchor (the pointer on the rail) and the overlay
+    /// host pushes it sideways when the window's edge is in the way, so a mark drawn at the tip's centre would then point beside the pointer.
+    /// The host publishes where the anchor sits under the popup (<see cref="Overlay.Placement"/>); this turns it into a transform that moves
+    /// a mark laid out at the tip's left edge onto the pointer, and keeps it <paramref name="keepClear"/> off either end. A bind, so a
+    /// move repaints the mark and re-renders nothing; a tip that is not clamped does not even write it (the anchor stays at its centre).
+    /// The drawing is the theme's.</summary>
+    [CoreHost]
+    sealed class RailTipPointer(float half, float keepClear, Func<Prop<Affine2D>, Element> draw) : Component
+    {
+        Prop<Affine2D>? _at;
+
+        public override Element Render()
+        {
+            Signal<OverlayPlacementInfo>? placement = UseContext(Overlay.Placement);
+            _at ??= Prop.Of(() =>
+            {
+                OverlayPlacementInfo p = placement?.Value ?? default;
+                float width = p.PopupWidth;
+                float centre = p.AnchorCenterX > 0f ? p.AnchorCenterX : width * 0.5f;
+                if (width > 0f) centre = Math.Clamp(centre, keepClear, MathF.Max(keepClear, width - keepClear));
+                return Affine2D.Translation(centre - half, 0f);
+            });
+            return draw(_at.Value);
         }
     }
 
