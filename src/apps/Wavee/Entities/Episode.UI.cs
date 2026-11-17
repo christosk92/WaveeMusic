@@ -63,9 +63,10 @@ public readonly partial struct Episode
     /// <summary>What one bound row slot binds: the handle, its row version and the host's marks — so a data change to
     /// THIS episode (or its marks) re-fires the slot's binds and a publish of any other row does not (the slot item is
     /// equality-gated).</summary>
-    /// <param name="Number">A number the HOST states for this row, 0 = "the episode's own". An audiobook's chapters
-    /// carry no <c>number</c> on the wire (<see cref="AudiobookOrder"/>), so the reader numbers them by POSITION and
-    /// hands the number down here — the row never recomputes an order it cannot see.</param>
+    /// <param name="Number">A number the HOST states for this row, 0 = "the episode's own". An audiobook's chapter
+    /// number comes from the wire (field 65) or, for a row cached without it, from POSITION
+    /// (<see cref="AudiobookOrder.ChapterNumber(Episode,int,int)"/>); the host hands it down here — the row never
+    /// recomputes an order it cannot see.</param>
     public readonly record struct RowItem(Episode Episode, uint Version, RowMarks Marks = RowMarks.None, int Number = 0)
     {
         public static RowItem Of(Episode e, RowMarks marks = RowMarks.None, int number = 0)

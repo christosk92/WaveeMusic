@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, Quit,
+            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -576,6 +576,12 @@ public static partial class Diagnostics
                     Arg("mods", ArgType.String, "modifiers held: ctrl+shift (ctrl, shift, alt, win)"),
                 ], s_settleArgs),
             },
+            new(Verb.PodcastPages, "podcastpages", "The podcast/audiobook pages' data: load a redacted fixture (assets/spotify/fixtures/podcast-pages, fake mode) into the scope and dump its view model (ShowPage + the first EpisodePage, or AudiobookPage) and the hours allowance; `goto uri=<show>` then opens the page", "podcastpages fixture=book-titled")
+            {
+                Positional = ["fixture"], NeedsMount = true,
+                Args = [Arg("fixture", ArgType.Enum, "the fixture", "book-titled", "show-episodic|show-serial|book-titled|book-tracks|book-inprogress|book-finished"),
+                        Arg("path", ArgType.Path, "also write the dump's JSON to this file")],
+            },
             new(Verb.Setting, "setting", "List the app's Settings rows (tab, section, id, kind, value, writer), or set one through the row's own writer as a Settings view does (the theme's options are `option`)", "setting id=lyricsBlur value=40")
             {
                 Positional = ["id", "value"],
@@ -725,7 +731,7 @@ public static partial class Diagnostics
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
             "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag, "window" => Verb.Window,
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
-            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer,
+            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };

@@ -46,6 +46,30 @@ public enum ShowFields : uint
     Topics = 1 << 12,
     Html = 1 << 13,
     All = Identity | About | Facts | Rating | Appearance | Topics | Html,
+
+    // ── the podcast/audiobook pages' groups (lane podcast-pages-data, 2026-11-17). NOT in All and NOT persisted
+    //    (ShowShape.PersistedFields): the pages ask them once a session through PodcastPages.Open, so a cached row never
+    //    claims a fact an older build could not read. ──
+    /// <summary><c>Show.language</c> (ShowV4 field 67, ISO 639-1).</summary>
+    Language = 1 << 14,
+    /// <summary><c>AUDIOBOOK_SPECIFICS</c> (kind 52): title/subtitle split, publisher, authors, narrators, edition,
+    /// total length, release date.</summary>
+    Credits = 1 << 15,
+    /// <summary><c>IDENTITY_TRAIT</c> (kind 178): the authors with their <c>spotify:author:</c> uris.</summary>
+    Authors = 1 << 16,
+    /// <summary><c>AUDIOBOOK_PRICE</c> (kind 64): finalPrice / finalListPrice.</summary>
+    Price = 1 << 17,
+    /// <summary><c>SHOW_ACCESS</c> (kind 31): the signifier ("Included in Premium").</summary>
+    Access = 1 << 18,
+    /// <summary><c>PREVIEW_PLAYBACK_TRAIT</c> (kind 181): the sample mp3 and the sample chapter.</summary>
+    Preview = 1 << 19,
+    /// <summary><c>AUDIOBOOK_DIRECT_SALES</c> (kind 253): the "Buy audiobook" label.</summary>
+    Sales = 1 << 20,
+    /// <summary><c>AUDIOBOOK_GENRE</c> (kind 83): the genre tree with levels (the same answer also fills
+    /// <see cref="Topics"/>).</summary>
+    Genres = 1 << 21,
+    /// <summary>Everything the audiobook page asks beyond the show page.</summary>
+    Book = Credits | Authors | Price | Access | Preview | Sales | Genres,
 }
 
 /// <summary>Show booleans as bits (P3). TWO groups write the one column, each only its own mask, so a <c>ShowV4</c>
@@ -126,6 +150,18 @@ public sealed class ShowTable : Table
     // ── authority, per column GROUP (D16) ──
     public Column<byte> IdentityAuthority, AboutAuthority, FactsAuthority, RatingAuthority, AppearanceAuthority, TopicsAuthority, HtmlAuthority;
 
+    // ── the pages' groups (ShowFields.Language … Genres; not persisted) ──
+    /// <summary>Language: ISO 639-1. Credits: the clean title, subtitle, the REAL publisher (ShowV4.66 is the AUTHOR on a
+    /// book), authors and narrators one per line, the edition. Authors: "name\turi" lines. Price: "amount\tcurrency\tformatted"
+    /// (final, list). Access: the signifier. Preview: mp3 url, sample chapter uri. Sales: the buy label. Genres:
+    /// "level\tname" lines, level 1 first.</summary>
+    public Column<StringId> Language, BookTitle, BookSubtitle, BookPublisher, BookAuthors, Narrators, Edition, AuthorLinks,
+        PriceFinal, PriceList, Signifier, PreviewUrl, SampleUri, BuyLabel, Genres;
+    /// <summary>Credits: the book's total length (ms) and its release (unix seconds; 0 = unstated).</summary>
+    public Column<int> BookDurationMs, ReleasedAt;
+    public Column<byte> LanguageAuthority, CreditsAuthority, AuthorsAuthority, PriceAuthority, AccessAuthority,
+        PreviewAuthority, SalesAuthority, GenresAuthority;
+
     public override EntityKind Kind => EntityKind.Show;
 
     protected override void GrowColumns(int capacity)
@@ -152,6 +188,16 @@ public sealed class ShowTable : Table
         AboutAuthority.EnsureCapacity(capacity);
         FactsAuthority.EnsureCapacity(capacity);
         RatingAuthority.EnsureCapacity(capacity);
+        Language.EnsureCapacity(capacity); BookTitle.EnsureCapacity(capacity); BookSubtitle.EnsureCapacity(capacity);
+        BookPublisher.EnsureCapacity(capacity); BookAuthors.EnsureCapacity(capacity); Narrators.EnsureCapacity(capacity);
+        Edition.EnsureCapacity(capacity); AuthorLinks.EnsureCapacity(capacity); PriceFinal.EnsureCapacity(capacity);
+        PriceList.EnsureCapacity(capacity); Signifier.EnsureCapacity(capacity); PreviewUrl.EnsureCapacity(capacity);
+        SampleUri.EnsureCapacity(capacity); BuyLabel.EnsureCapacity(capacity); Genres.EnsureCapacity(capacity);
+        BookDurationMs.EnsureCapacity(capacity); ReleasedAt.EnsureCapacity(capacity);
+        LanguageAuthority.EnsureCapacity(capacity); CreditsAuthority.EnsureCapacity(capacity);
+        AuthorsAuthority.EnsureCapacity(capacity); PriceAuthority.EnsureCapacity(capacity);
+        AccessAuthority.EnsureCapacity(capacity); PreviewAuthority.EnsureCapacity(capacity);
+        SalesAuthority.EnsureCapacity(capacity); GenresAuthority.EnsureCapacity(capacity);
     }
 
     /// <summary>Give back every string a show row owns (defect 1; the REF-COUNTING block on <see cref="Table"/>). One
@@ -168,6 +214,11 @@ public sealed class ShowTable : Table
         ClearText(ref Publisher, slot);
         ClearText(ref Description, slot);
         ClearText(ref Trailer, slot);
+        ClearText(ref Language, slot); ClearText(ref BookTitle, slot); ClearText(ref BookSubtitle, slot);
+        ClearText(ref BookPublisher, slot); ClearText(ref BookAuthors, slot); ClearText(ref Narrators, slot);
+        ClearText(ref Edition, slot); ClearText(ref AuthorLinks, slot); ClearText(ref PriceFinal, slot);
+        ClearText(ref PriceList, slot); ClearText(ref Signifier, slot); ClearText(ref PreviewUrl, slot);
+        ClearText(ref SampleUri, slot); ClearText(ref BuyLabel, slot); ClearText(ref Genres, slot);
     }
 }
 
@@ -230,6 +281,27 @@ public readonly partial struct Show(int slot) : IEquatable<Show>
     /// <inheritdoc cref="ShowTable.Tone"/>
     public uint Tone => T.Tone[Slot];
 
+    // ── the pages' groups (raw text; PodcastPages parses it) ──
+    public string Language => Entities.Strings.Resolve(T.Language[Slot]);
+    public string BookTitle => Entities.Strings.Resolve(T.BookTitle[Slot]);
+    public string BookSubtitle => Entities.Strings.Resolve(T.BookSubtitle[Slot]);
+    /// <summary>The audiobook's REAL publisher (<c>AUDIOBOOK_SPECIFICS</c>). On a book <see cref="PublisherId"/> holds
+    /// ShowV4 field 66, which is the AUTHOR there.</summary>
+    public string BookPublisher => Entities.Strings.Resolve(T.BookPublisher[Slot]);
+    public string BookAuthors => Entities.Strings.Resolve(T.BookAuthors[Slot]);
+    public string Narrators => Entities.Strings.Resolve(T.Narrators[Slot]);
+    public string Edition => Entities.Strings.Resolve(T.Edition[Slot]);
+    public string AuthorLinks => Entities.Strings.Resolve(T.AuthorLinks[Slot]);
+    public string PriceFinal => Entities.Strings.Resolve(T.PriceFinal[Slot]);
+    public string PriceList => Entities.Strings.Resolve(T.PriceList[Slot]);
+    public string Signifier => Entities.Strings.Resolve(T.Signifier[Slot]);
+    public string PreviewUrl => Entities.Strings.Resolve(T.PreviewUrl[Slot]);
+    public string SampleUri => Entities.Strings.Resolve(T.SampleUri[Slot]);
+    public string BuyLabel => Entities.Strings.Resolve(T.BuyLabel[Slot]);
+    public string Genres => Entities.Strings.Resolve(T.Genres[Slot]);
+    public int BookDurationMs => T.BookDurationMs[Slot];
+    public int ReleasedAt => T.ReleasedAt[Slot];
+
     /// <summary>How many episodes the membership baseline has, resident or not — the "N episodes" line and the
     /// shimmer count while the list is partial.</summary>
     public int TotalEpisodes => Entities.Current.Edges.ShowEpisodes.Total(Slot);
@@ -267,6 +339,10 @@ public struct StagedShow : IStagedRow
     public int RatingCount;
     public byte MyRating;
     public uint Tone;
+    /// <summary>The pages' groups (<see cref="ShowTable.Language"/> … <see cref="ShowTable.Genres"/>).</summary>
+    public TextRef Language, BookTitle, BookSubtitle, BookPublisher, BookAuthors, Narrators, Edition, AuthorLinks,
+        PriceFinal, PriceList, Signifier, PreviewUrl, SampleUri, BuyLabel, Genres;
+    public int BookDurationMs, ReleasedAt;
     /// <summary>Classification bits the wire stated OUTSIDE any <c>ShowV4</c> field group — today only
     /// <see cref="ShowFlags.Audiobook"/> / <see cref="ShowFlags.NoAutoplay"/> from the show's OWN list-header
     /// attributes (<c>Spotify.Decode.Show.cs</c>'s <c>ShowHeaderAttributes</c>). The commit ORs this straight onto
@@ -413,6 +489,7 @@ public static partial class Entities
                 t.SetText(ref t.HtmlDescription, slot, s.Intern(row.HtmlDescription));
                 t.Applied(slot, (uint)ShowFields.Html, auth, ref t.HtmlAuthority);
             }
+            CommitPagesGroups(s, t, slot, known, auth, ref row);
             // The cursor only ever moves FORWARD, and outside the authority ladder: it is not a fact about the show,
             // it is how far this session has asked, and an out-of-order answer must not rewind it.
             if (row.EpisodesAsked > t.EpisodesAsked[slot])
@@ -429,6 +506,63 @@ public static partial class Entities
                 uint after = before | row.HeaderFacts;
                 if (after != before) { t.Flags[slot] = after; t.Bump(slot); }
             }
+        }
+    }
+}
+
+public static partial class Entities
+{
+    /// <summary>The pages' groups, each under its own authority column (the shape of every arm above).</summary>
+    static void CommitPagesGroups(Staging s, ShowTable t, int slot, uint known, Authority auth, ref StagedShow row)
+    {
+        if ((known & (uint)ShowFields.Language) != 0 && t.Accepts(slot, (uint)ShowFields.Language, auth, in t.LanguageAuthority))
+        {
+            t.SetText(ref t.Language, slot, s.Intern(row.Language));
+            t.Applied(slot, (uint)ShowFields.Language, auth, ref t.LanguageAuthority);
+        }
+        if ((known & (uint)ShowFields.Credits) != 0 && t.Accepts(slot, (uint)ShowFields.Credits, auth, in t.CreditsAuthority))
+        {
+            t.SetText(ref t.BookTitle, slot, s.Intern(row.BookTitle));
+            t.SetText(ref t.BookSubtitle, slot, s.Intern(row.BookSubtitle));
+            t.SetText(ref t.BookPublisher, slot, s.Intern(row.BookPublisher));
+            t.SetText(ref t.BookAuthors, slot, s.Intern(row.BookAuthors));
+            t.SetText(ref t.Narrators, slot, s.Intern(row.Narrators));
+            t.SetText(ref t.Edition, slot, s.Intern(row.Edition));
+            t.BookDurationMs[slot] = row.BookDurationMs;
+            t.ReleasedAt[slot] = row.ReleasedAt;
+            t.Applied(slot, (uint)ShowFields.Credits, auth, ref t.CreditsAuthority);
+        }
+        if ((known & (uint)ShowFields.Authors) != 0 && t.Accepts(slot, (uint)ShowFields.Authors, auth, in t.AuthorsAuthority))
+        {
+            t.SetText(ref t.AuthorLinks, slot, s.Intern(row.AuthorLinks));
+            t.Applied(slot, (uint)ShowFields.Authors, auth, ref t.AuthorsAuthority);
+        }
+        if ((known & (uint)ShowFields.Price) != 0 && t.Accepts(slot, (uint)ShowFields.Price, auth, in t.PriceAuthority))
+        {
+            t.SetText(ref t.PriceFinal, slot, s.Intern(row.PriceFinal));
+            t.SetText(ref t.PriceList, slot, s.Intern(row.PriceList));
+            t.Applied(slot, (uint)ShowFields.Price, auth, ref t.PriceAuthority);
+        }
+        if ((known & (uint)ShowFields.Access) != 0 && t.Accepts(slot, (uint)ShowFields.Access, auth, in t.AccessAuthority))
+        {
+            t.SetText(ref t.Signifier, slot, s.Intern(row.Signifier));
+            t.Applied(slot, (uint)ShowFields.Access, auth, ref t.AccessAuthority);
+        }
+        if ((known & (uint)ShowFields.Preview) != 0 && t.Accepts(slot, (uint)ShowFields.Preview, auth, in t.PreviewAuthority))
+        {
+            t.SetText(ref t.PreviewUrl, slot, s.Intern(row.PreviewUrl));
+            t.SetText(ref t.SampleUri, slot, s.Intern(row.SampleUri));
+            t.Applied(slot, (uint)ShowFields.Preview, auth, ref t.PreviewAuthority);
+        }
+        if ((known & (uint)ShowFields.Sales) != 0 && t.Accepts(slot, (uint)ShowFields.Sales, auth, in t.SalesAuthority))
+        {
+            t.SetText(ref t.BuyLabel, slot, s.Intern(row.BuyLabel));
+            t.Applied(slot, (uint)ShowFields.Sales, auth, ref t.SalesAuthority);
+        }
+        if ((known & (uint)ShowFields.Genres) != 0 && t.Accepts(slot, (uint)ShowFields.Genres, auth, in t.GenresAuthority))
+        {
+            t.SetText(ref t.Genres, slot, s.Intern(row.Genres));
+            t.Applied(slot, (uint)ShowFields.Genres, auth, ref t.GenresAuthority);
         }
     }
 }
@@ -490,6 +624,8 @@ public sealed class ShowShape : KindShape
         new("html_auth", StoreType.Int, StoreColumnFlags.Authority),
     ];
 
+    /// <summary>The persisted groups. <see cref="ShowFields.All"/> deliberately excludes the pages' groups
+    /// (<see cref="ShowFields.Language"/> … <see cref="ShowFields.Genres"/>), which re-ask once a session.</summary>
     const uint PersistedFields = (uint)ShowFields.All;
 
     public override EntityKind Kind => EntityKind.Show;

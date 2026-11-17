@@ -183,6 +183,8 @@ public static partial class Platform
         /// recent first, <see cref="ShowViewPrefs.Cap"/> shows), never a key per uri (podcast plan D-6). Read and written
         /// ONLY through <see cref="ShowViewPrefs"/>, which owns the format.</summary>
         public static readonly SettingKey<string> PodcastViews = new("podcast.views", "");
+        /// <summary>Per-show "last visit" stamps for "new since last visit" (PodcastPages, VisitStamps).</summary>
+        public static readonly SettingKey<string> PodcastVisits = new("podcast.visits", "");
 
         // ── video surfaces ──
         public static readonly SettingKey<string> VideoPreferredPlacement = new("video.placement", "");
