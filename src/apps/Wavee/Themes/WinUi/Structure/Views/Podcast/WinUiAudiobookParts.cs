@@ -125,10 +125,15 @@ internal static class WinUiAudiobookParts
             var seg = new BoxEl
             {
                 Key = AB.SegKey + i, Width = segW, Height = AB.SegBand, Shrink = 0f, Direction = 1, Justify = FlexJustify.Center, Children = [pill],
+                Corners = CornerRadius4.All(AB.SegRadius),
             };
             // One tree at every tier (a crossing keeps the segments): only the verb comes and goes.
             kids[i] = ToolTip.Wrap(seek
-                ? seg with { Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = () => play(index) }
+                ? seg with
+                {
+                    Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = () => play(index),
+                    Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+                }
                 : seg with { HitTestVisible = false }, chapters[i].Label);
         }
         // the thumb: one node over the row, placed at your place on the current chapter's segment
@@ -183,10 +188,12 @@ internal static class WinUiAudiobookParts
             Size = c.Matter ? AB.MatterSize : AB.NameSize, LineHeight = AB.NameLine, Weight = cur ? AB.Strong : (ushort)0, Color = nameInk,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
         };
+        // Dot leaders, as a book's contents page sets them: a dotted rule (a dashed stroke of 1-DIP dots) toward the start time.
         var leader = new BoxEl
         {
             Height = AB.LeaderHeight, Grow = 1f, MinWidth = AB.LeaderMin, AlignSelf = FlexAlign.Center, OffsetY = AB.LeaderLift / 2f,
-            Fill = Tok.TextPrimary with { A = done ? AB.LeaderDoneAlpha : AB.LeaderAlpha },
+            BorderWidth = AB.LeaderHeight, BorderDashOn = AB.LeaderDot, BorderDashOff = AB.LeaderGap,
+            BorderColor = Tok.TextPrimary with { A = done ? AB.LeaderDoneAlpha : AB.LeaderAlpha },
         };
         var left = new TextEl("")
         {
@@ -223,12 +230,10 @@ internal static class WinUiAudiobookParts
     public static Element About(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
     {
         var kids = new List<Element>(6) { BodyStrong(v.AboutTitle) };
-        if (v.About.Length > 0)
-        {
-            var paragraphs = new Element[v.About.Length];
-            for (int i = 0; i < paragraphs.Length; i++) paragraphs[i] = Body(v.About[i]) with { Color = Tok.TextSecondary, MinWidth = 0f };
-            kids.Add(new BoxEl { Direction = 1, Gap = AB.ParagraphGap, MinWidth = 0f, Children = paragraphs });
-        }
+        // The provider's HTML through the house rich-text renderer (paragraphs, bold, lists, links through the route seam, entities decoded), clamped
+        // with the house "Read more".
+        if (v.AboutHtml.Length > 0)
+            kids.Add(Controls.ExpandableRichTextFlex(v.AboutHtml, Body("").Size, Tok.TextSecondary, Tok.AccentTextPrimary, AB.AboutLines, AB.AboutKey + ":" + v.Uri, p.OpenRoute));
         if (v.SampleId is not null) kids.Add(SampleRow(v, p));
         if (v.Facts.Length > 0) kids.Add(Facts(v.Facts));
         if (RatingCard(v, p) is { } rating) kids.Add(rating);

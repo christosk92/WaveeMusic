@@ -49,6 +49,10 @@ public sealed class AudiobookScreen : Component
         UseEffect(() => m.Leave, DepKey.Empty);
         var snap = UseComputed(m.Compute);
         m.Snap = snap;
+        // The window tab and the history rows read the page's own title (`PageChromeChannel.PublishedTitle`), not the route's "Podcast".
+        m.Sink = UseContext(PageChromeSink.Context);
+        UseEffect(m.PublishTitle);
+        UseEffect(() => m.WithdrawTitle, DepKey.Empty);
         var view = UseComputed(m.ViewOf);
         var place = UseComputed(m.PlaceOf);
         var playing = UseComputed(m.PlayingOf);
@@ -73,6 +77,20 @@ public sealed class AudiobookScreen : Component
         public AudiobookPageProps? Props;
 
         Snapshot Peek() => Snap?.Peek() ?? Snapshot.Empty;
+
+        public PageChromeSink Sink = PageChromeSink.None;
+        string _published = "";
+
+        /// <summary>Auto-tracked on the snapshot: publishes the book's title once it is known and whenever it changes.</summary>
+        public void PublishTitle()
+        {
+            string title = Snap?.Value.View.Title ?? "";
+            if (title.Length == 0 || title == _published) return;
+            _published = title;
+            Sink.Publish(new PageChromeRow([], [], Title: title));
+        }
+
+        public void WithdrawTitle() => Sink.Publish(null);
 
         // ══ DEMAND ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -258,7 +276,12 @@ public sealed class AudiobookScreen : Component
                 FinishedTitle: Loc.Get(PP.YouFinished),
                 FinishedSub: rating.Length > 0 ? PP.HowWasIt(rating, count) : "",
                 Similar: similar, SimilarTitle: firstAuthor.Length > 0 ? PP.MoreByAuthor(firstAuthor) : Loc.Get(PP.SimilarBooks),
-                SeeAllLabel: Loc.Get(PP.SeeAll)) { Current = current };
+                SeeAllLabel: Loc.Get(PP.SeeAll))
+            {
+                Current = current,
+                KindRoute = Shell.RouteKeyOfLink(AudiobookRules.AudiobooksCategory),
+                AboutHtml = book.AboutHtml.Length > 0 ? book.AboutHtml : book.About,
+            };
             return new Snapshot(view, show, chapters.ToImmutable(), rest, lengths, total, current, state, sample);
         }
 
@@ -356,6 +379,7 @@ public sealed class AudiobookScreen : Component
             CheckHours = static () => Shell.OpenBrowser(PodcastPages.HoursLeftUrl),
             TopUp = static () => Shell.OpenBrowser(PodcastPages.TopUpUrl),
             Buy = Buy, Download = null, OpenUri = static uri => Shell.OpenLink(uri), Menu = Menu, Share = Share,
+            OpenRoute = static key => Shell.GoTo(Shell.Parse(key)),
             Rate = Platform.Args.Fake ? null : Rate,
         };
 
@@ -454,6 +478,10 @@ public sealed class AudiobookScreen : Component
 /// <summary>The audiobook page's pure rules: the title split, the description's credit header, the chapter-name rule, matter, the clock.</summary>
 public static partial class AudiobookRules
 {
+    /// <summary>Spotify's Browse category of audiobooks (the official client's "Audiobooks" tile, `spotify:genre:0JQ5DAqbMKFETqK4t8f1n3` in its
+    /// own logs): the hub the kind word opens. A book's genres (AUDIOBOOK_GENRE ids, 32 hex) name no Browse page, so they are not linked.</summary>
+    public const string AudiobooksCategory = "spotify:page:0JQ5DAqbMKFETqK4t8f1n3";
+
     /// <summary>The speed menu's rates.</summary>
     public static ReadOnlySpan<float> Speeds => [0.8f, 1f, 1.2f, 1.5f, 2f];
 

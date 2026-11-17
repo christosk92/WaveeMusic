@@ -284,6 +284,13 @@ public sealed record AudiobookView(
     /// <summary>The chapter the primary continues (in progress), else -1.</summary>
     public int Current { get; init; } = -1;
 
+    /// <summary>The route key the kind word ("Audiobook") opens (the Browse category of audiobooks), or null when Wavee routes none: the word is then
+    /// drawn, not linked.</summary>
+    public string? KindRoute { get; init; }
+
+    /// <summary>About this book as the provider's HTML (paragraphs, bold, links), or plain text; rendered by the house rich-text renderer.</summary>
+    public string AboutHtml { get; init; } = "";
+
     /// <summary>A representative book the loading state is derived from (its words are never shown: the skeleton fills them).</summary>
     public static AudiobookView Placeholder { get; } = Empty with
     {
@@ -333,6 +340,8 @@ public sealed record AudiobookPageProps
     public required Action<string> OpenUri { get; init; }
     public required Func<ContextMenuModel?> Menu { get; init; }
     public required Action? Share { get; init; }
+    /// <summary>Navigate to an in-app route key (the kind word's hub, a link inside About).</summary>
+    public required Action<string> OpenRoute { get; init; }
     /// <summary>Rate the book (1..5 stars), null when the account cannot rate it.</summary>
     public required Action<int>? Rate { get; init; }
 }
