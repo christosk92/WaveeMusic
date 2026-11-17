@@ -36,7 +36,9 @@ internal static class WinUiPodcastEpisode
     sealed class Page : Component
     {
         readonly ScrollHandle _scroll = new();
-        readonly Signal<float> _heroH = new(0f);
+        readonly Signal<bool> _barOn = new(false);
+        PodcastRowVerbs? _verbs;
+        Func<uint>? _toneOf;
 
         public override Element Render()
         {
@@ -44,77 +46,50 @@ internal static class WinUiPodcastEpisode
             var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
             var lay = WinUiPodcastEpisodeTiers.Of(in facts);
             float inset = WinUiTiers.InsetOf(in facts);
+            _toneOf ??= () => p.View.Value.Tone;
+            uint tone = UseComputed(_toneOf).Value;
+            _verbs ??= new PodcastRowVerbs
+            {
+                Selected = s_none, Expanded = s_none, Playing = p.OnDeck, Play = p.PlayEpisode, Open = p.Open, ToggleSaved = p.ToggleSavedEpisode,
+                PlayNext = p.PlayNext, Select = static _ => { }, Expand = static _ => { }, Menu = p.RowMenu,
+            };
             var seed = p with { View = s_seed };
-            var heroH = _heroH;
+            var verbs = _verbs;
+            var barOn = _barOn;
             var region = new SkelRegionEl(
                 Pending: () => p.View.Value.Load == PodcastLoad.Pending, Failed: () => p.View.Value.Load == PodcastLoad.Failed,
-                Content: () => Column(p, lay, inset, heroH), ShimmerSource: () => Column(seed, lay, inset, heroH),
+                Content: () => Column(p, lay, inset, barOn, verbs), ShimmerSource: () => Column(seed, lay, inset, barOn, verbs),
                 OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error), Reveal: SkelReveal.Soft,
                 Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: null, SmoothResize: false);
-            Element scroll = ScrollView(new BoxEl { Direction = 1, Children = [new BoxEl { Key = "pe-body", Direction = 1, Children = [region] }] }) with
-            {
-                Key = P.ScrollKeyPrefix + p.RouteKey, Grow = 1f, ScrollKey = p.ScrollKey, Handle = _scroll, EdgeCues = ScrollEdgeCues.None,
-            };
-            var handle = _scroll;
-            // The 48 bar: revealed over the last BarReveal of the hero's travel under the page top.
-            Func<float> reveal = () =>
-            {
-                float travel = heroH.Value - P.BarH;
-                if (travel <= 0f) return 0f;
-                return Math.Clamp(((float)handle.Offset.Value - (travel - P.BarReveal)) / P.BarReveal, 0f, 1f);
-            };
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, MinHeight = 0f, ZStack = true,
-                Children = [scroll, Embed.Comp(new BarArgs(p, inset, reveal), static () => new Bar()) with { Key = P.BarKey }],
-            };
+            Element content = new BoxEl { Key = "pe-body", Direction = 1, MinWidth = 0f, Children = [region] };
+            Element bar = Embed.Comp(new BarArgs(p, inset), static () => new Bar()) with { Key = P.BarKey };
+            return WinUiPodcastKit.Page(p.RouteKey, tone, _barOn, content, bar, _scroll);
         }
     }
 
+    static readonly IReadSignal<string?> s_none = new Signal<string?>(null);
+
     // ══ THE COLUMN ══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Column(PodcastEpisodePageProps p, WinUiPodcastEpisodeLayout lay, float inset, Signal<float> heroH)
+    static Element Column(PodcastEpisodePageProps p, WinUiPodcastEpisodeLayout lay, float inset, Signal<bool> barOn, PodcastRowVerbs verbs)
     {
-        var lr = new HeroArgs(p, lay, inset, heroH);
+        var lr = new HeroArgs(p, lay, inset, verbs);
         return new BoxEl
         {
-            Direction = 1, MinWidth = 0f, ZStack = true,
+            Direction = 1, MinWidth = 0f, Padding = new Edges4(inset, 0f, inset, P.SectionTop),
             Children =
             [
-                Embed.Comp(p, static () => new Wash()) with { Key = "pe-wash" },
-                new BoxEl
-                {
-                    Direction = 1, MinWidth = 0f, Padding = new Edges4(inset, 0f, inset, P.SectionTop),
-                    Children =
-                    [
-                        Embed.Comp(lr, static () => new Hero()) with { Key = P.HeroKey },
-                        WinUiPodcastEpisodeParts.Map(p),
-                        Embed.Comp(lr, static () => new NextUp()) with { Key = P.NextUpKey },
-                        Embed.Comp(lr, static () => new Cards()) with { Key = P.ColsKey },
-                        Embed.Comp(lr, static () => new More()) with { Key = P.MoreKey },
-                    ],
-                },
+                Embed.Comp(lr, static () => new Hero()) with { Key = P.HeroKey },
+                WinUiPodcastKit.BarSentinel(barOn),
+                WinUiPodcastEpisodeParts.Map(p),
+                Embed.Comp(lr, static () => new NextUp()) with { Key = P.NextUpKey },
+                Embed.Comp(lr, static () => new Cards()) with { Key = P.ColsKey },
+                Embed.Comp(lr, static () => new More()) with { Key = P.MoreKey },
             ],
         };
     }
 
-    sealed record HeroArgs(PodcastEpisodePageProps P, WinUiPodcastEpisodeLayout Lay, float Inset, Signal<float> HeroH);
-
-    /// <summary>The cover tone at the page top: a plate that fades out before the cards (a layer, never in the flow).</summary>
-    sealed class Wash : Component
-    {
-        public override Element Render()
-        {
-            var v = UseProps<PodcastEpisodePageProps>().View.Value;
-            if (P.ToneOf(v.Tone) is not { } tone) return new BoxEl { Height = P.WashH, AlignSelf = FlexAlign.Start, HitTestVisible = false };
-            return new BoxEl
-            {
-                Height = P.WashH, AlignSelf = FlexAlign.Start, HitTestVisible = false,
-                Gradient = GradientDown(new GradientStop(0f, tone with { A = P.WashTop }), new GradientStop(P.WashMidAt, tone with { A = P.WashMid }),
-                    new GradientStop(1f, tone with { A = 0f })),
-            };
-        }
-    }
+    sealed record HeroArgs(PodcastEpisodePageProps P, WinUiPodcastEpisodeLayout Lay, float Inset, PodcastRowVerbs Verbs);
 
     // ══ THE HERO ════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -164,12 +139,10 @@ internal static class WinUiPodcastEpisode
                 Direction = 1, Gap = P.MainGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
                 Children = [crumb, title, meta, Actions(p, v, lay)],
             };
-            var heroH = a.HeroH;
             return new BoxEl
             {
                 Direction = lay.Stacked ? (byte)1 : (byte)0, Gap = lay.HeroGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
                 Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
-                OnBoundsChanged = r => heroH.Value = r.H,
                 Children = [still, words],
             };
         }
@@ -193,8 +166,8 @@ internal static class WinUiPodcastEpisode
             float h = lay.Target;
             var kids = new List<Element>(8)
             {
-                WinUiPodcastEpisodeParts.Split(new WinUiPodcastEpisodeParts.SplitArgs(v.PrimaryLabel, v.PrimaryAccent, v.PrimaryLabel == Loc.Get(Strings.Podcast.Pages.Pause),
-                    h, lay.SplitFills, v.Menu, p.Play)),
+                WinUiPodcastKit.SmartSplit("pe-split", v.PrimaryLabel, v.PrimaryAccent, v.PrimaryLabel == Loc.Get(Strings.Podcast.Pages.Pause), p.Play, v.Menu, h,
+                    lay.SplitFills),
             };
             if (e.State == PodcastRowState.InProgress)
             {
@@ -234,7 +207,7 @@ internal static class WinUiPodcastEpisode
     static BoxEl Bordered(string glyph, Action onClick, float size) => Controls.IconAction(glyph, onClick, size: size) with
     {
         Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
-        BorderWidth = 1f, BorderColor = Tok.ControlElevationBorder,
+        BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
     };
 
     static string Join(string a, string b) => a.Length == 0 ? b : b.Length == 0 ? a : a + P.Dot + b;
@@ -360,156 +333,43 @@ internal static class WinUiPodcastEpisode
             var p = a.P;
             var lay = a.Lay;
             var v = p.View.Value;
+            bool compact = lay.Tier == WidthTier.Compact;
             var kids = new List<Element>(4);
             if (!v.More.IsDefaultOrEmpty)
             {
-                kids.Add(SectionHead(Loc.Get(Strings.Podcast.Pages.NextInShow), v.MoreSub, Loc.Get(Strings.Podcast.Pages.AllEpisodes), p.OpenShow));
+                kids.Add(Head(WinUiPodcastKit.SectionHeader(Loc.Get(Strings.Podcast.Pages.NextInShow), v.MoreSub, Loc.Get(Strings.Podcast.Pages.AllEpisodes), p.OpenShow)));
                 var rows = new Element[v.More.Length];
-                for (int i = 0; i < rows.Length; i++) rows[i] = Row(p, v.More[i], lay);
+                for (int i = 0; i < rows.Length; i++) rows[i] = WinUiPodcastKit.EpisodeRow(v.More[i], PodcastRowMode.Open, false, compact, a.Verbs);
                 kids.Add(new BoxEl { Direction = 1, MinWidth = 0f, Children = rows });
             }
             if (!v.Similar.IsDefaultOrEmpty)
             {
-                kids.Add(SectionHead(Loc.Get(Strings.Podcast.Pages.MoreLikeThis), "", null, null));
-                kids.Add(Grid(p, v.Similar, lay));
+                kids.Add(Head(WinUiPodcastKit.SectionHeader(Loc.Get(Strings.Podcast.Pages.MoreLikeThis))));
+                kids.Add(WinUiPodcastKit.MoreLikeThis(v.Similar, p.OpenUri, compact));
             }
             return new BoxEl { Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
         }
 
-        static Element SectionHead(string title, string sub, string? link, Action? open)
-        {
-            var kids = new List<Element>(3)
-            {
-                Subtitle(title) with { Color = Tok.TextPrimary, Shrink = 0f },
-                Caption(sub) with { Color = Tok.TextSecondary, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            };
-            if (link is not null && open is not null) kids.Add(HyperlinkButton.Create(link, open));
-            return new BoxEl
-            {
-                Direction = 0, Gap = P.CardGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Margin = new Edges4(0f, P.SectionTop, 0f, P.SectionBottom),
-                Children = kids.ToArray(),
-            };
-        }
-
-        static Element Row(PodcastEpisodePageProps p, PodcastEpisodeVm e, WinUiPodcastEpisodeLayout lay)
-        {
-            string id = e.Id;
-            string meta = Join(e.Date, e.State == PodcastRowState.InProgress ? e.Left : e.Length);
-            var title = (e.State == PodcastRowState.Played ? Ui.Body(e.Title) : BodyStrong(e.Title)) with
-            {
-                Color = e.State == PodcastRowState.Played ? Tok.TextSecondary : Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            };
-            var words = new BoxEl
-            {
-                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                Children =
-                [
-                    title,
-                    Caption(meta) with
-                    {
-                        Color = e.State == PodcastRowState.InProgress ? Tok.AccentTextPrimary : Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    },
-                ],
-            };
-            var kids = new List<Element>(3)
-            {
-                Controls.Named(Bordered(WinUiDetailRules.PlaySolid, () => p.PlayEpisode(id), lay.Target), Loc.Get(Strings.Podcast.Pages.Play)),
-                words,
-                lay.SavedWord
-                    ? Button.Create(Loc.Get(Strings.Podcast.Pages.PlayNext), () => p.PlayNext(id), ButtonAppearance.Standard, glyph: Icons.Queue) with { Shrink = 0f, MinWidth = 0f }
-                    : Controls.Named(Bordered(Icons.Queue, () => p.PlayNext(id), lay.Target), Loc.Get(Strings.Podcast.Pages.PlayNext)),
-            };
-            return new BoxEl
-            {
-                Key = "pe-row:" + id, Direction = 0, Gap = P.RowGap, AlignItems = FlexAlign.Center, MinHeight = P.RowMinH, MinWidth = 0f,
-                Padding = new Edges4(P.ChPadX, P.ChPadY, P.ChPadX, P.ChPadY), Corners = Radii.ControlAll,
-                Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-                Role = AutomationRole.ListItem, Focusable = true, Cursor = CursorId.Hand, OnClick = () => p.Open(id),
-                Children = kids.ToArray(),
-            };
-        }
-
-        static Element Grid(PodcastEpisodePageProps p, ImmutableArray<PodcastCardVm> cards, WinUiPodcastEpisodeLayout lay)
-        {
-            int columns = lay.GridColumns;
-            int count = columns > 0 ? Math.Min(columns, cards.Length) : cards.Length;
-            var kids = new Element[columns > 0 ? columns : count];
-            for (int i = 0; i < kids.Length; i++)
-            {
-                if (i >= count) { kids[i] = new BoxEl { Grow = 1f, Basis = 0f }; continue; }
-                var c = cards[i];
-                string uri = c.Uri;
-                kids[i] = new BoxEl
-                {
-                    Key = "pe-card:" + uri, Direction = 1, MinWidth = 0f, Padding = Edges4.All(P.GridCardPad),
-                    Grow = columns > 0 ? 1f : 0f, Basis = columns > 0 ? 0f : float.NaN, Width = columns > 0 ? float.NaN : P.GridSmallCard, Shrink = 0f,
-                    Corners = Radii.CardAll, Fill = Tok.FillCardSecondary, HoverFill = Tok.FillCardDefault, PressedFill = Tok.FillCardSecondary,
-                    BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true,
-                    OnClick = () => p.OpenUri(uri),
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Margin = new Edges4(0f, 0f, 0f, P.GridCardArtGap), Corners = Radii.ControlAll, ClipToBounds = true,
-                            Children = [Image(c.ArtUrl ?? "", ImageFit.Cover, aspect: 1f, decodePx: P.GridDecode, corners: Radii.Control)],
-                        },
-                        Ui.Body(c.Title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Wrap = TextWrap.NoWrap },
-                        Caption(c.Subtitle) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                    ],
-                };
-            }
-            Element row = new BoxEl { Direction = 0, Gap = P.GridGap, MinWidth = 0f, Children = kids };
-            return columns > 0 ? row : ScrollView(row, horizontal: true) with { MinWidth = 0f };
-        }
+        static Element Head(Element header) => new BoxEl { Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, P.SectionTop, 0f, P.SectionBottom), Children = [header] };
     }
 
     // ══ THE 48 BAR ══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    sealed record BarArgs(PodcastEpisodePageProps P, float Inset, Func<float> Reveal);
+    sealed record BarArgs(PodcastEpisodePageProps P, float Inset);
 
+    /// <summary>The kit's 48 bar over the page: the still, the title over the time left (or the length), the primary.</summary>
     sealed class Bar : Component
     {
-        Func<bool>? _engagedOf;
-
         public override Element Render()
         {
             var a = UseProps<BarArgs>();
             var p = a.P;
             var v = p.View.Value;
-            var reveal = a.Reveal;
-            _engagedOf ??= () => a.Reveal() > 0.5f;
-            bool on = UseComputed(_engagedOf).Value;
-            return new BoxEl
-            {
-                Height = P.BarH, AlignSelf = FlexAlign.Start, ZStack = true, HitTestVisible = on, Opacity = Prop.Of(reveal), Fill = Tok.FillCardDefault,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 0, Height = P.BarH, Gap = P.BarGapX, AlignItems = FlexAlign.Center, Padding = new Edges4(a.Inset, 0f, a.Inset, 0f),
-                        Children =
-                        [
-                            Controls.Artwork(v.Episode.ArtUrl ?? v.ShowArtUrl, P.BarCover, P.BarCover, P.BarCoverRadius),
-                            new BoxEl
-                            {
-                                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                                Children =
-                                [
-                                    BodyStrong(v.Episode.Title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                                    new TextEl("")
-                                    {
-                                        Text = Prop.Of(() => p.Left.Value.Length > 0 ? p.Left.Value : p.View.Value.Episode.Length),
-                                        Size = Caption("").Size, LineHeight = Caption("").LineHeight, Color = Tok.TextSecondary, MaxLines = 1,
-                                    },
-                                ],
-                            },
-                            Button.Create(v.PrimaryLabel, p.Play, v.PrimaryAccent ? ButtonAppearance.Accent : ButtonAppearance.Standard,
-                                glyph: WinUiDetailRules.PlaySolid) with { Key = "pe-bar:play", Shrink = 0f, MinWidth = 0f },
-                        ],
-                    },
-                    new BoxEl { Height = 1f, AlignSelf = FlexAlign.End, Fill = Tok.StrokeDividerDefault, HitTestVisible = false },
-                ],
-            };
+            string left = p.Left.Value;
+            var primary = Button.Create(v.PrimaryLabel, p.Play, v.PrimaryAccent ? ButtonAppearance.Accent : ButtonAppearance.Standard,
+                glyph: v.PrimaryLabel == Loc.Get(Strings.Podcast.Pages.Pause) ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid)
+                with { Key = "pe-bar:play", Shrink = 0f, MinWidth = 0f };
+            return WinUiPodcastKit.Bar(v.Episode.ArtUrl ?? v.ShowArtUrl, v.Episode.Title, left.Length > 0 ? left : v.Episode.Length, primary, a.Inset);
         }
     }
 }

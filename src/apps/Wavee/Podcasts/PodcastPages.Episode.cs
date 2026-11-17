@@ -66,6 +66,17 @@ public sealed class PodcastEpisodeScreen : Component
     readonly Action<PodcastEpisodeTab> _setTab;
     readonly Action<string> _open, _playOther, _playNext;
     readonly Func<Signal<string>> _findCell;
+    readonly Func<string?> _onDeckOf = static () =>
+    {
+        var id = Playback.CurrentId.Value;
+        return !id.IsEmpty && Playback.IsPlaying.Value ? id.Text : null;
+    };
+    readonly Action<string> _toggleSavedOther = static uri => { var x = Other(uri); if (x.IsValid) Spotify.Podcasts.ToggleSaved(x); };
+    readonly Func<string, ContextMenuModel?> _rowMenu = static uri =>
+    {
+        var x = Other(uri);
+        return x.IsValid ? Episode.Menu(x, new Episode.MenuOptions(ShowGoToShow: false)) : null;
+    };
 
     public PodcastEpisodeScreen()
     {
@@ -143,6 +154,7 @@ public sealed class PodcastEpisodeScreen : Component
         var left = UseComputed(_leftOf);
         var chapterLeft = UseComputed(_chapterLeftOf);
         var playing = _playingMemo;
+        var onDeck = UseComputed(_onDeckOf);
 
         _props ??= new PodcastEpisodePageProps
         {
@@ -155,6 +167,7 @@ public sealed class PodcastEpisodeScreen : Component
             Play = _play, SeekTo = _seek, ToggleSaved = _toggleSaved, ToggleCompleted = _toggleCompleted, OpenShow = _openShow,
             Open = _open, PlayEpisode = _playOther, PlayNext = _playNext, OpenUri = DetailVerbs.NavigateKey,
             Menu = _menu, Share = _share, Comments = _commentsView,
+            OnDeck = onDeck, ToggleSavedEpisode = _toggleSavedOther, RowMenu = _rowMenu,
         };
         return Slots.View(ViewKeys.PodcastEpisodePage, _props);
     }

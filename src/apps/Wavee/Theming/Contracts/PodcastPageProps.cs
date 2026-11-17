@@ -224,6 +224,11 @@ public sealed record PodcastEpisodePageProps
     public required Action? Share { get; init; }
     /// <summary>The comments section, mounted by the host (null: none). The view places it.</summary>
     public required Func<FluentGpu.Dsl.Element>? Comments { get; init; }
+    /// <summary>The episode on the deck and playing (any episode; the rows' Pause), else null.</summary>
+    public required IReadSignal<string?> OnDeck { get; init; }
+    /// <summary>Save or unsave another episode (a row's glyph) and that row's menu.</summary>
+    public required Action<string> ToggleSavedEpisode { get; init; }
+    public required Func<string, ContextMenuModel?> RowMenu { get; init; }
 }
 
 /// <summary>One chapter of a book's contents. <see cref="Name"/> is "Chapter N" when the publisher's title is empty or generic ("Track 5", "01");

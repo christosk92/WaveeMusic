@@ -47,7 +47,7 @@ internal static class WinUiPodcastEpisodeParts
                 Trim = TextTrim.CharacterEllipsis };
             var words = new BoxEl
             {
-                Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Baseline,
+                Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
                 Children = v.MapQuietFirst ? [quiet, strong] : [strong, quiet],
             };
             head.Add(words);
@@ -194,7 +194,7 @@ internal static class WinUiPodcastEpisodeParts
                 new BoxEl
                 {
                     Width = P.ChCheck, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [Icon(Icons.Check, P.ChCheckGlyph, Tok.TextTertiary) with { Opacity = c.Played ? 1f : 0f }],
+                    Opacity = c.Played ? 1f : 0f, Children = [Icon(Icons.Check, P.ChCheckGlyph, Tok.TextTertiary)],
                 },
             ],
         };
@@ -214,7 +214,6 @@ internal static class WinUiPodcastEpisodeParts
         ImmutableArray<PodcastLineVm> _lines;
         string[] _headingAt = [];
         TranscriptArgs _a = null!;
-        bool _ours;
 
         public override Element Render()
         {
@@ -241,7 +240,6 @@ internal static class WinUiPodcastEpisodeParts
                 double vh = _scroll.ViewportSignal.Value;
                 if (!follow || line < 0 || vh <= 0 || layout.ItemCount < 0 && lines.Length == 0) return;
                 double target = layout.OffsetOf(line, 0f) - vh / 2 + P.TrLineEstimate / 2;
-                _ours = true;
                 _scroll.ScrollTo(Math.Max(0, target), ScrollMove.Follow);
             });
             UseEffect(() =>
@@ -327,10 +325,10 @@ internal static class WinUiPodcastEpisodeParts
         {
             var follow = p.Follow;
             string on = Loc.Get(Strings.Podcast.Pages.FollowingPlayback), off = Loc.Get(Strings.Podcast.Pages.BackToLine);
-            Element Word(string w, bool shownWhenOn) => new TextEl(w)
+            Element Word(string w, bool shownWhenOn) => new BoxEl
             {
-                Size = Body("").Size, LineHeight = Body("").LineHeight, Color = Tok.TextPrimary, AlignSelf = FlexAlign.Center,
-                Opacity = Prop.Of(() => follow.Value == shownWhenOn ? 1f : 0f),
+                AlignSelf = FlexAlign.Center, Opacity = Prop.Of(() => follow.Value == shownWhenOn ? 1f : 0f),
+                Children = [new TextEl(w) { Size = Body("").Size, LineHeight = Body("").LineHeight, Color = Tok.TextPrimary }],
             };
             return Controls.Named(new BoxEl
             {
@@ -338,7 +336,7 @@ internal static class WinUiPodcastEpisodeParts
                 Padding = new Edges4(P.ChPadX + P.TrTextPadY, 0f, P.ChPadX + P.TrTextPadY, 0f), Corners = Radii.ControlAll,
                 Fill = Prop.Of(() => follow.Value ? Tok.FillSubtleTransparent : Tok.FillControlDefault),
                 HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-                BorderWidth = 1f, BorderColor = Prop.Of(() => follow.Value ? Tok.FillSubtleTransparent : Tok.ControlElevationBorder),
+                BorderWidth = 1f, BorderColor = Prop.Of<ColorF>(() => follow.Value ? Tok.FillSubtleTransparent : Tok.StrokeControlDefault),
                 Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => p.SetFollow(!follow.Peek()),
                 Children =
                 [
@@ -357,7 +355,7 @@ internal static class WinUiPodcastEpisodeParts
                 : new TextEl(l.Text)
                 {
                     Wrap = TextWrap.Wrap, Size = P.TrTextSize, LineHeight = P.TrTextLine, MinWidth = 0f,
-                    Color = Prop.Of(() => isCur() ? Tok.TextPrimary : cur.Value > index ? Tok.TextSecondary : Tok.TextTertiary),
+                    Color = Prop.Of<ColorF>(() => isCur() ? Tok.TextPrimary : cur.Value > index ? Tok.TextSecondary : Tok.TextTertiary),
                 };
             var textBox = new BoxEl
             {
@@ -411,56 +409,7 @@ internal static class WinUiPodcastEpisodeParts
                 spans.Add(new TextSpan(text.Substring(hit, find.Length), Color: Tok.TextPrimary, Background: P.FindMark));
                 at = hit + find.Length;
             }
-            return new TextSpans(spans.ToArray());
-        }
-    }
-
-    // ══ 4. THE SMART SPLIT ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-    public sealed record SplitArgs(string Label, bool Accent, bool Playing, float Height, bool Fill, ImmutableArray<PodcastMenuItem> Menu, Action Play);
-
-    public static Element Split(SplitArgs a) => Embed.Comp(a, static () => new SplitHost()) with { Key = "pe-split" };
-
-    sealed class SplitHost : Component
-    {
-        IOverlayService? _overlay;
-        NodeHandle _anchor;
-        OverlayHandle? _menu;
-        SplitArgs _a = null!;
-
-        public override Element Render()
-        {
-            _a = UseProps<SplitArgs>();
-            _overlay = UseContext(Overlay.Service);
-            var appearance = _a.Accent ? ButtonAppearance.Accent : ButtonAppearance.Standard;
-            float h = _a.Height, r = Radii.Control;
-            BoxEl main = Button.Create(_a.Label, _a.Play, appearance, glyph: _a.Playing ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid) with
-            {
-                Key = "pe-split:play", Height = h, MinWidth = 0f, Shrink = 0f, Grow = _a.Fill ? 1f : 0f, Corners = new CornerRadius4(r, 0f, 0f, r),
-            };
-            BoxEl chevron = Button.Create("", ToggleMenu, appearance) with
-            {
-                Key = "pe-split:menu", Width = h, Height = h, MinWidth = 0f, Shrink = 0f, Padding = default, Justify = FlexJustify.Center,
-                Corners = new CornerRadius4(0f, r, r, 0f), Margin = new Edges4(1f, 0f, 0f, 0f),
-                Children = [Icon(Icons.ChevronDown, WinUiDetailRules.SplitChevronGlyph, _a.Accent ? Tok.TextOnAccentPrimary : Tok.TextPrimary)],
-            };
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Grow = _a.Fill ? 1f : 0f, Height = h, OnRealized = h2 => _anchor = h2,
-                Children = [main, ToolTip.Wrap(chevron, Loc.Get(Strings.Podcast.Pages.OtherWays))],
-            };
-        }
-
-        void ToggleMenu()
-        {
-            if (_menu is { IsOpen: true } shown) { shown.Close(); return; }
-            if (_overlay is null || Controls.IsNullOverlay(_overlay)) return;
-            var items = new List<MenuFlyoutItem>(_a.Menu.Length);
-            foreach (var m in _a.Menu)
-                items.Add(new MenuFlyoutItem(m.Sub is { Length: > 0 } sub ? m.Label + P.Dot + sub : m.Label, m.Glyph, true, m.Invoke));
-            OverlayHandle? opened = null;
-            opened = _overlay.Open(() => _anchor, () => MenuFlyout.Create(items, () => opened?.Close(), size: OverlayFit.MenuSize), FlyoutPlacement.BottomLeft);
-            _menu = opened;
+            return new TextSpans(spans.ToArray(), spans.Count);
         }
     }
 
