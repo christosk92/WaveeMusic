@@ -2,8 +2,9 @@
 //
 // The Widgets board's card: a Fluent card plate (CardBackground, CardStroke, r8) with a ⋯ in a RESERVED corner in every form, so the menu never sits on
 // content. A row tile (S) is the Recently played tile's shape: a 48 cover, the name, one line. A card (M) and a double card (L) stack a head (cover or
-// glyph, title, line) over the widget's body. A FULL row is today's chapter (the shelf, the release list, the Recents grid, the daylist card) with the ⋯
-// in a lane of its own at the header's end.
+// glyph, title, line) over the widget's body. A FULL row is today's chapter (the shelf, the release list, the Recents grid, the daylist card): the ⋯
+// ends its header row, or, on the daylist card, the card's own ⋯ in its action row carries the tile's rows too. One ⋯ per card, never one outside it;
+// a card's ⋯ opens ONE menu: the item's rows (a pin's album or playlist, the daylist's playlist), a separator, then the tile's Home rows.
 //
 // EVERY CARD ALWAYS DRAGS (the grid's reorder lifts it: a 6 DIP mouse move; touch: hold, then drag, or release for the menu), and takes focus:
 // Alt+Shift+arrows move it (Start's chord), the Menu key or Shift+F10 opens its menu. The menu (spec 8.1): the sizes as radio rows (the pill mark),
@@ -171,27 +172,27 @@ internal static class WinUiHomeTiles
     // ══ the card chrome ══════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A card around <paramref name="content"/>: the plate, the reserved ⋯ corner, focus, the keys and the context request. A full row has no
-    /// plate (it is a chapter on the page, as today): its ⋯ stands in a lane at its header's end.</summary>
+    /// plate (it is a chapter on the page, as today) and no ⋯ of its own: its header ends with the tile's ⋯ (<paramref name="moreInContent"/>), or the
+    /// content's own ⋯ carries the tile's rows (the daylist card, through <see cref="HomeTileMenus"/>). <paramref name="item"/> is the card's item menu (a
+    /// pin's album, the daylist's playlist): its ⋯ opens the item's rows over the tile's.</summary>
     static Element Card(in ViewContext ctx, HomeTileFrame f, Element content, string? key = null, bool moreInContent = false,
-                        MoreMenu menu = MoreMenu.Full, bool outline = false)
+                        MoreMenu menu = MoreMenu.Full, bool outline = false, Func<ContextMenuModel?>? item = null)
     {
         bool full = f.Form == HomeTileForm.Full;
-        // A full row whose chapter has a header carries the menu button at the header's end (passed in by the template): the body keeps the
-        // chapter's full width, so it lays out exactly as the page's chapter does (its first-frame estimates hold, nothing re-lays next frame).
-        if (full && moreInContent)
-            return new BoxEl { Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [content] };
-        Element more = menu == MoreMenu.None ? new BoxEl() : More(ctx, f, menu);
-        string id = f.Entry.Id;
-        var verbs = f.Verbs;
-        // The card carries no context handler of its own: a touch hold is the grid wrapper's (it gates the lift, so the hold can become a
-        // drag), and a right-click or the Menu key reaches the board, which opens the menu of the tile under the pointer or in focus
-        // (`WinUiHomeBoard`).
+        // A full row: the body keeps the chapter's full width, so it lays out exactly as the page's chapter does (its first-frame estimates hold,
+        // nothing re-lays next frame). A chapter with a header carries the menu button at the header's end (passed in by the template); a headerless
+        // one (the daylist card) is handed the tile, and its own ⋯ opens the merged menu.
         if (full)
             return new BoxEl
             {
-                Key = key, Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Start, Gap = Spacing.XS,
-                Children = [new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [content] }, more],
+                Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Children = [moreInContent ? content : HomeTileMenus.Host(f, s_rows, content)],
             };
+        Element more = menu == MoreMenu.None ? new BoxEl() : More(ctx, f, menu, item);
+        string id = f.Entry.Id;
+        // The card carries no context handler of its own: a touch hold is the grid wrapper's (it gates the lift, so the hold can become a
+        // drag), and a right-click or the Menu key reaches the board, which opens the menu of the tile under the pointer or in focus
+        // (`WinUiHomeBoard`): the same merged menu as the ⋯.
         var plate = outline ? SurfacePlate.For(PlateKind.Outline) : default;
         return new BoxEl
         {
@@ -223,18 +224,34 @@ internal static class WinUiHomeTiles
     /// Spotify's feed: nothing on it can be acted on).</summary>
     internal enum MoreMenu : byte { Full, RemoveOnly, None }
 
+    /// <summary>The tile's menu rows (the theme's tile menu), handed to content that carries its own ⋯.</summary>
+    static readonly Func<HomeTileFrame, IReadOnlyList<MenuFlyoutItem>> s_rows = WinUiHomeTileMenu.MergedItems;
+
     /// <summary>The card's menu button (its tools key).</summary>
-    static Element More(in ViewContext ctx, HomeTileFrame f, MoreMenu menu = MoreMenu.Full)
-        => Embed.Comp(new MoreProps(f, WinUiHomeBoardTiers.Of(ctx.Tier()).MoreBox) { Menu = menu }, static () => new TileMore())
+    static Element More(in ViewContext ctx, HomeTileFrame f, MoreMenu menu = MoreMenu.Full, Func<ContextMenuModel?>? item = null)
+        => Embed.Comp(new MoreProps(f, WinUiHomeBoardTiers.Of(ctx.Tier()).MoreBox) { Menu = menu, Item = item }, static () => new TileMore())
             // Laid out by alignment inside the tile: the grid's re-flow re-lays the tile's content at its gliding size, so the button rides the
             // card's edge with it (a FLIP of its own here fought that and stepped).
             with { Key = HomeBoardKeys.Tools(f.Entry.Id) };
 
-    /// <summary>A full row that is today's chapter: the menu button ends its header row (a headerless chapter keeps the lane).</summary>
+    /// <summary>A full row that is today's chapter: the menu button ends its header row. A headerless chapter is the daylist card (its own ⋯ carries
+    /// the tile's rows) or the empty facet's vacancy, whose ⋯ stands in the chapter's own top end corner (the vacancy is centred under it).</summary>
     static Element FullChapter(in ViewContext ctx, HomeTileFrame f, Zone zone, WinUiHomeLayout home)
-        => WinUiHomeZones.HasHeader(zone.Kind)
-            ? Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home, More(ctx, f)), moreInContent: true)
-            : Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
+    {
+        if (WinUiHomeZones.HasHeader(zone.Kind))
+            return Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home, More(ctx, f)), moreInContent: true);
+        if (zone.Kind == ZoneKind.Daylist) return Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
+        var corner = new BoxEl
+        {
+            Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true,
+            Children =
+            [
+                WinUiHomeZones.ChapterContent(zone, f.Overlay, home),
+                new BoxEl { Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Start, Children = [More(ctx, f)] },
+            ],
+        };
+        return Card(ctx, f, corner, moreInContent: true);
+    }
 
     /// <summary>A card's padded column.</summary>
     static BoxEl Pad(params Element[] kids) => new()
@@ -317,7 +334,7 @@ internal static class WinUiHomeTiles
         switch (f.Form)
         {
             case HomeTileForm.S:
-                return Card(ctx, f, Clickable(RowFace(Art(WinUiHomeBoardRules.RowArt), p.Name, p.Line, pinned: p.UserPin), p.Open));
+                return Card(ctx, f, Clickable(RowFace(Art(WinUiHomeBoardRules.RowArt), p.Name, p.Line, pinned: p.UserPin), p.Open), item: p.Card?.Menu);
             default:
             {
                 bool wide = f.Form != HomeTileForm.M;
@@ -345,7 +362,7 @@ internal static class WinUiHomeTiles
                         },
                     ],
                 };
-                return Card(ctx, f, Clickable(Pad(head), p.Open));
+                return Card(ctx, f, Clickable(Pad(head), p.Open), item: p.Card?.Menu);
             }
         }
     }
@@ -550,7 +567,7 @@ internal static class WinUiHomeTiles
             ],
         };
         var row = new BoxEl { Direction = (byte)(wide ? 0 : 1), Gap = Spacing.M, Grow = 1f, MinWidth = 0f, Children = [Cover(card.ImageUrl, art, false), text] };
-        return Card(ctx, f, Pad(row));
+        return Card(ctx, f, Pad(row), item: HomeCardNav.MenuOf(in card));
     }
 
     // ══ Home.Tile.Section ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -613,12 +630,15 @@ internal static class WinUiHomeTiles
         /// <summary>Which rows the menu holds.</summary>
         public MoreMenu Menu { get; init; }
 
+        /// <summary>The card's item menu (a pin's album, the daylist's playlist), its rows first; null: the tile's rows alone.</summary>
+        public Func<ContextMenuModel?>? Item { get; init; }
+
         public bool Equals(MoreProps? o) => o is not null && Frame.Entry.Equals(o.Frame.Entry) && Frame.Form == o.Frame.Form && ReferenceEquals(Frame.Verbs, o.Frame.Verbs)
-            && Box == o.Box && Menu == o.Menu;
+            && Box == o.Box && Menu == o.Menu && (Item is null) == (o.Item is null);
         public override int GetHashCode() => Frame.Entry.GetHashCode();
     }
 
-    /// <summary>The card's ⋯: the menu (spec 8.1) anchored to it.</summary>
+    /// <summary>The card's ⋯: the menu (spec 8.1) anchored to it; with an item menu, the item's rows then the tile's, as one context menu.</summary>
     internal sealed class TileMore : Component
     {
         static readonly Dictionary<string, TileMore> s_live = new(StringComparer.Ordinal);
@@ -626,15 +646,17 @@ internal static class WinUiHomeTiles
         OverlayHandle? _menu;
         HomeTileFrame? _f;
         MoreMenu _menuKind;
+        Func<ContextMenuModel?>? _item;
 
         /// <summary>Open the menu of <paramref name="f"/>'s card (a context request).</summary>
         public static void OpenFor(HomeTileFrame f) => OpenFor(f.Entry.Id);
 
-        /// <summary>Open the menu of the card of entry <paramref name="id"/> (the Menu key, Shift+F10 on the focused tile).</summary>
+        /// <summary>Open the menu of the card of entry <paramref name="id"/> (the Menu key, Shift+F10 on the focused tile, a right-click on the board): its
+        /// ⋯, or the ⋯ of the content that carries the tile's rows (the daylist card).</summary>
         public static bool OpenFor(string id)
         {
-            if (!s_live.TryGetValue(id, out var m)) return false;
-            m.Toggle();
+            if (!s_live.TryGetValue(id, out var m)) return HomeTileMenus.TryOpen(id);
+            m.Toggle(keyboard: true);
             return true;
         }
 
@@ -643,13 +665,14 @@ internal static class WinUiHomeTiles
             var p = UseProps<MoreProps>();
             _f = p.Frame;
             _menuKind = p.Menu;
+            _item = p.Item;
             string id = p.Frame.Entry.Id;
             UseLayoutEffect(() =>
             {
                 s_live[id] = this;
                 return () => { if (s_live.TryGetValue(id, out var x) && ReferenceEquals(x, this)) s_live.Remove(id); };
             }, DepKey.From(id.GetHashCode()));
-            return ToolTip.Wrap(Controls.IconAction(Icons.More, Toggle, requestsContext: false, size: p.Box) with
+            return ToolTip.Wrap(Controls.IconAction(Icons.More, () => Toggle(keyboard: false), requestsContext: false, size: p.Box) with
             {
                 OnRealized = h => _anchor = h, Role = AutomationRole.Button,
                 // The box steps with the tier (32, 40 at Compact): it eases through real layout, so the card's header beside it rides it.
@@ -657,11 +680,17 @@ internal static class WinUiHomeTiles
             }, Loc.Get(Strings.Theme.Winui.Home.Board.More));
         }
 
-        void Toggle()
+        void Toggle(bool keyboard)
         {
             if (_menu is { IsOpen: true } open) { open.Close(); return; }
             if (_f is not { } f || f.Overlay is not { } overlay) return;
             ToolTip.CloseOpen();
+            if (_item is { } item && _menuKind == MoreMenu.Full)
+            {
+                // The item's rows (its own strip and rows, as its right-click elsewhere shows them), then the tile's: one context menu at the ⋯.
+                HomeTileMenus.OpenAt(overlay, _anchor, () => HomeTileMenus.Merged(item(), WinUiHomeTileMenu.MergedItems(f)), keyboard);
+                return;
+            }
             var items = _menuKind == MoreMenu.RemoveOnly ? WinUiHomeTileMenu.RemoveOnly(f) : WinUiHomeTileMenu.Items(f);
             _menu = overlay.Open(() => _anchor, () => MenuFlyout.Create(items, () => _menu?.Close()), FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss));

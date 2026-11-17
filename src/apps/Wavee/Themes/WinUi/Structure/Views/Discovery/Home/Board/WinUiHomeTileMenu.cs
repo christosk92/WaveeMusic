@@ -2,7 +2,8 @@
 //
 // Windows 11's widget menu: the sizes the source declares as radio rows (the stock pill mark, `MenuRadioMark.Pill`, WinUI's menu style), then
 // "Customize widget" when the source has options, "Pause live updates" for a live source, then Start's "Move to front" / "Move left" / "Move right"
-// (with the Alt+Shift chord as their accelerator text), then the remove row named for what it does. Every row is one verb.
+// (with the Alt+Shift chord as their accelerator text), then the remove row named for what it does. Every row is one verb. Merged under an item's own
+// rows (a pin's album, the daylist's playlist: one menu per card), the sizes fold into a "Size" submenu so the joined menu stays one screen tall.
 
 using System.Collections.Generic;
 using FluentGpu.Controls;
@@ -15,7 +16,12 @@ namespace Wavee.Themes.WinUi;
 internal static class WinUiHomeTileMenu
 {
     /// <summary>The menu of <paramref name="f"/>'s card.</summary>
-    public static IReadOnlyList<MenuFlyoutItem> Items(HomeTileFrame f)
+    public static IReadOnlyList<MenuFlyoutItem> Items(HomeTileFrame f) => Items(f, sizeSubmenu: false);
+
+    /// <summary>The card's rows under its item's own (<see cref="HomeTileMenus"/>): the sizes in a "Size" submenu.</summary>
+    public static IReadOnlyList<MenuFlyoutItem> MergedItems(HomeTileFrame f) => Items(f, sizeSubmenu: true);
+
+    static IReadOnlyList<MenuFlyoutItem> Items(HomeTileFrame f, bool sizeSubmenu)
     {
         var e = f.Entry;
         var verbs = f.Verbs;
@@ -24,12 +30,14 @@ internal static class WinUiHomeTileMenu
         var cur = WinUiHomeBoardRules.SizeOf(e);
         if (e.Source is { } src && src.Sizes.Length > 1 && !e.OnlyHide)
         {
+            var sizes = sizeSubmenu ? new List<MenuFlyoutItem>(src.Sizes.Length) : items;
             foreach (var size in src.Sizes)
             {
                 var s = size;
-                items.Add(MenuFlyoutItem.RadioItem(SizeLabel(s), s == cur, () => verbs.SetSize(id, s)));
+                sizes.Add(MenuFlyoutItem.RadioItem(SizeLabel(s), s == cur, () => verbs.SetSize(id, s)));
             }
-            items.Add(MenuFlyoutItem.Separator);
+            if (sizeSubmenu) items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Theme.Winui.Home.Board.Size), sizes));
+            else items.Add(MenuFlyoutItem.Separator);
         }
         bool tail = false;
         if (e.HasOptions)

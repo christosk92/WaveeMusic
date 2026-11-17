@@ -3284,6 +3284,7 @@
           "moveRight": "Move right",
           "moveLeftKeys": "Alt+Shift+Left",
           "moveRightKeys": "Alt+Shift+Right",
+          "size": "Size",
           "sizeS": "Small",
           "sizeM": "Medium",
           "sizeL": "Large",
