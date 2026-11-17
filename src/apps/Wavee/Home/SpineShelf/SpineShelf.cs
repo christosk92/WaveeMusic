@@ -120,7 +120,7 @@ public static class SpineShelfView
         float height = g.Extent(SpineShelfRules.PageSize(items.Length, pages, 0));
         return PagedShelf.Create<SpineShelfProps>(parts,
             static (part, _, _) => Embed.Comp(part, static () => new SpineShelf()) with { SkeletonProxy = () => Skeleton(part.Items.Length, part.Geo) },
-            cardHeight: _ => height, measured: true, pager: ShelfPager.None, controller: controller,
+            cardHeight: _ => height, measured: false, pager: ShelfPager.None, controller: controller,
             minCardW: 1f, maxCardW: 1_000_000f, maxColumns: 1, gap: g.Gap, edgeFade: 0f, snap: ShelfSnap.Page, offPageDim: HomeModuleLayout.OffPageDim, pageMemoryKey: zone.Key,
             prevGlyph: prevGlyph, nextGlyph: nextGlyph, lift: ShelfLift.None,
             keyOf: static (part, _) => "shelf-page:" + part.Key)
