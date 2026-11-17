@@ -884,7 +884,9 @@ public static partial class Shell
         // trims it the same way for the raw echo.
         int nul = raw.IndexOf('\0');
         if (nul >= 0) raw = raw[..nul];
-        var verb = DeepLink(raw, Platform.Settings.Get(Platform.Keys.DeveloperMode));
+        // The diag verbs are developer-only; an offline `--fake` demo (no account, memory-only settings) takes them too, so the
+        // feature recorder can be proven on a demo window before it films a real profile.
+        var verb = DeepLink(raw, Platform.Settings.Get(Platform.Keys.DeveloperMode) || Platform.Args.Fake);
         if (Tray.WakeFor(verb.Kind)) Tray.Host.ShowWindow();
         switch (verb.Kind)
         {
