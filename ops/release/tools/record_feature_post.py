@@ -7,7 +7,8 @@ Reads <out>/take.mkv (the lossless, variable-rate capture: one frame per window 
 
   frames.tsv       every captured frame: index, time (s), gap (ms), gap in display periods
   take-<fps>.mp4   H.264 High, constant <fps>, near-transparent quality (crf 14), the audio as AAC when present
-  share-60.mp4     60 fps (when the take is faster), at most 1920 wide, two-pass to fit 50 MB
+  share-<n>.mp4    the take's rate up to 60; a faster take at a whole fraction of it (120 -> 60, 100 -> 50: every frame shown
+                   for the same time, no 3:2-style judder), at most 1920 wide, two-pass to fit 50 MB
   sheet.png        a contact sheet: 12 stills spread over the take, each labelled with its time
   report.txt       the accounting below
 
@@ -142,8 +143,12 @@ def main():
          "-c:v", "libx264", "-profile:v", "high", "-preset", "slow", "-crf", "14", "-pix_fmt", "yuv420p",
          "-movflags", "+faststart", *audio_out, full])
 
-    share = os.path.join(out, "share-60.mp4")
-    share_fps = min(60, a.fps)
+    share_fps = a.fps
+    while share_fps > 60 and share_fps % 2 == 0:
+        share_fps //= 2
+    if share_fps > 60:
+        share_fps = 60   # no whole fraction lands at 60 or under (an odd rate): resample
+    share = os.path.join(out, f"share-{share_fps}.mp4")
     budget_bits = 50 * 1000 * 1000 * 8 * 0.93
     audio_bits = 160_000 if has_audio else 0
     kbps = int(min(16_000_000, budget_bits / max(1.0, duration) - audio_bits) / 1000)
@@ -172,7 +177,7 @@ def main():
          "-frames:v", "1", "-update", "1", sheet])
 
     # ── the report ──────────────────────────────────────────────────────────────────────────────────────────────────
-    sizes = {p: os.path.getsize(os.path.join(out, p)) for p in (os.path.basename(full), "share-60.mp4")}
+    sizes = {p: os.path.getsize(os.path.join(out, p)) for p in (os.path.basename(full), os.path.basename(share))}
     lines = [
         f"take            {duration:.2f} s, {len(times)} captured frames at up to {a.fps} fps (one per window update; the panel runs at {a.panel or a.fps} Hz)",
         f"window          {a.width}x{a.height} DIP at x{a.scale} = {int(a.width * a.scale)}x{int(a.height * a.scale)} px",

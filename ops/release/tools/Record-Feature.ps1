@@ -26,7 +26,7 @@
      input queue: no SendInput, the owner's pointer never moves; the app draws the driver's pointer). Never topmost: the
      capture films the window itself. -Encoder x264rgb (default) or mf (the GPU's H.264 encoder). -Audio adds the verify process's own output (WASAPI process loopback, Record-AppAudio.cs):
      nothing else on the machine is heard.
-  5. Writes <Out>\take.mkv (lossless), take-<fps>.mp4 (H.264 High, full rate, CFR), share-60.mp4 (60 fps, <= 50 MB),
+  5. Writes <Out>\take.mkv (lossless), take-<fps>.mp4 (H.264 High, full rate, CFR), share-<n>.mp4 (60 fps from 120, 50 from 100: <= 50 MB),
      sheet.png (a contact sheet), frames.tsv (every captured frame's time), drive\ (the app's steps.tsv / frames.tsv /
      summary.txt) and report.txt: the frame accounting (frames missing inside continuous motion, counted on the capture's
      own timestamps and on the app's presents).
@@ -72,8 +72,8 @@ param(
     [string]$FakeProfile = 'C:/WAVEE/scratch/rec/fakeprof',
     # Extra engine switches for the run (--fg), e.g. a frame-cost probe.
     [string]$Fg = '',
-    # The lossless intermediate's encoder: x264rgb (BGRA, libx264rgb qp 0, CPU) or mf (H.264 on the GPU's Media Foundation encoder at
-    # 120 Mb/s: near-lossless, NV12).
+    # The lossless intermediate's encoder: x264rgb (BGRA, libx264rgb qp 0, CPU) or mf (Media Foundation's H.264 encoder at 120 Mb/s:
+    # near-lossless, NV12; it refuses a stream declared above 120 fps, so its capture is declared at 120 at most).
     [ValidateSet('x264rgb', 'mf')][string]$Encoder = 'x264rgb',
     # Play the take without filming it (a frame-cost run): the drive's own summary is the report.
     [switch]$NoCapture
@@ -201,7 +201,7 @@ $cut = [Array]::IndexOf([string[]]$all, ($all | Where-Object { $_.Trim() -eq '#r
 $setup = if ($cut -gt 0) { $all[0..($cut - 1)] } else { @() }
 $take = if ($cut -ge 0) { $all[($cut + 1)..($all.Count - 1)] } else { $all }
 
-$ff = $null; $aud = $null; $d = $null; $takeError = $null
+$ff = $null; $ffErr = $null; $aud = $null; $d = $null; $takeError = $null
 try {
     if ($Audio) {
         # built first (a file-based app compiles on its first run), started before the setup: it keeps its file on the wall
@@ -237,8 +237,8 @@ try {
     # and the read-back and encode cannot stall it (in a filter graph they did: frames were lost). Unthrottled (a cap at the
     # refresh rate drops frames that arrive a hair early); `framestep` keeps every Nth frame while it is still on the GPU, so
     # only the kept ones are read back. Lossless BGRA (libx264rgb, qp 0), each frame with its own capture time.
-    $src = "gfxcapture=hwnd=$([int64]$hwnd):capture_cursor=0:capture_border=0:max_framerate=$(2 * $mon.Hz):resize_mode=crop" + $(if ($step -gt 1) { ",framestep=$step" } else { '' })
-    $enc = if ($Encoder -eq 'mf') { @('-vf', 'hwdownload,format=bgra,format=nv12', '-c:v', 'h264_mf', '-hw_encoding', '1', '-b:v', '120M') }
+    $src = "gfxcapture=hwnd=$([int64]$hwnd):capture_cursor=0:capture_border=0:max_framerate=$(if ($Encoder -eq 'mf') { [Math]::Min(2 * $mon.Hz, 120) } else { 2 * $mon.Hz }):resize_mode=crop" + $(if ($step -gt 1) { ",framestep=$step" } else { '' })
+    $enc = if ($Encoder -eq 'mf') { @('-vf', 'hwdownload,format=bgra,format=nv12', '-c:v', 'h264_mf', '-b:v', '120M') }
            else { @('-vf', 'hwdownload,format=bgra', '-c:v', 'libx264rgb', '-preset', 'ultrafast', '-qp', '0') }
     $ffArgs = @('-hide_banner', '-loglevel', 'error', '-y', '-thread_queue_size', '256', '-f', 'lavfi', '-i', $src) + $enc + @('-fps_mode', 'passthrough', $mkv)
     $psi = New-Object System.Diagnostics.ProcessStartInfo 'ffmpeg', ([string]::Join(' ', ($ffArgs | ForEach-Object { if ($_ -match '[\s;,]') { '"' + $_ + '"' } else { $_ } })))
@@ -256,6 +256,7 @@ try {
 }
 finally {
     if ($ff -and -not $ff.HasExited) { $ff.StandardInput.Write('q'); $ff.StandardInput.Close(); if (-not $ff.WaitForExit(30000)) { Write-Warning 'ffmpeg did not stop' } }
+    if ($ffErr -and $ffErr.Wait(5000)) { [IO.File]::WriteAllText((Join-Path $Out 'ffmpeg.log'), $ffErr.Result) }   # the capture's own errors, kept with the take
     if ($aud -and -not $aud.HasExited) { $aud.StandardInput.WriteLine('q'); $aud.StandardInput.Close(); [void]$aud.WaitForExit(15000) }
     try { Diag 'cmd=present&on=0' 5000 | Out-Null } catch { }
     if ($startedPid -and -not $KeepOpen) {
