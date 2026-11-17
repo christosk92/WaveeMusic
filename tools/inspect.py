@@ -350,7 +350,8 @@ class Gate:
     - a lint (or a crossing's lint) has a fail of a gate-level rule at or above the gate severity, counted from the reply's `fails`
       (every fail of the rules that ran, listed or not: `min`, `outcomes` and `limit` choose only what is listed; with --gate-todo the
       todo-level rules count too). A review, a suppressed finding and a report never count;
-    - a crossing moved more than --max-moved nodes (default 0) past its control step (`counts.excessSnapped + excessJumped`), or
+    - a crossing moved more than --max-moved nodes (default 0) past its control step on the screen (`counts.excessSnapped + excessJumped -
+      excessOffscreen`; the off-screen ones count with --gate-todo), or
       remounted a key outside a swap family (`counts.remountedOutside`);
     - a trace (`trace` or `trace=N` on an acting verb) moved more than --max-moved watched keys at once (`counts.movedAtOnce`: a snap
       with no track, or an instant run of tracked moves one frame carried), or remounted a watched key outside a swap family.
@@ -409,8 +410,15 @@ class Gate:
     def _crossing(self, obj, where):
         c = obj.get("counts", {})
         moved = c.get("excessSnapped", c.get("snapped", 0)) + c.get("excessJumped", c.get("jumped", 0))
-        if moved > self.max_moved:
-            self.motion.append("%s moved %d node%s at once past its control (max %d)" % (where, moved, "" if moved == 1 else "s", self.max_moved))
+        # A move off the screen on both frames is a weight, like a late reflow: nobody saw it, and the same part moved on screen is explained
+        # by the plain resize (2026-11-17: Zune's feed sections follow a 16 DIP width step at once whether or not a tier edge is crossed; on
+        # screen the control step explains them, off screen the control's classification of the same nodes differs). --gate-todo counts it.
+        offscreen = c.get("excessOffscreen", 0)
+        seen = moved - offscreen
+        if seen > self.max_moved:
+            self.motion.append("%s moved %d node%s at once past its control (max %d)" % (where, seen, "" if seen == 1 else "s", self.max_moved))
+        if self.todo and offscreen > self.max_moved:
+            self.motion.append("%s moved %d node%s at once past its control off the screen (todo)" % (where, offscreen, "" if offscreen == 1 else "s"))
         outside = c.get("remountedOutside", c.get("remounted", 0))
         if outside > 0:
             keys = [r["key"] for r in obj.get("remounted", []) if r.get("family") is None][:4]

@@ -172,7 +172,7 @@ internal static partial class ClassicHomeZones
             pager: controller is null ? (band.Pager ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None) : ShelfPager.None,
             controller: controller,
             minCardW: band.MinCardW, maxCardW: band2.MaxCardW, maxColumns: band2.MaxColumns, fixedCardW: band.FixedCardW,
-            gap: band.Gap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
+            gap: band.Gap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page, offPageDim: HomeModuleLayout.OffPageDim,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight, lift: ShelfLift.None,
             keyOf: static (item, i) => item.Card.IsBlank ? "home-book-blank:" + i.ToString(CultureInfo.InvariantCulture) : "home-book:" + item.Card.Uri)
             with { Key = "home-books:" + zone.Key });
