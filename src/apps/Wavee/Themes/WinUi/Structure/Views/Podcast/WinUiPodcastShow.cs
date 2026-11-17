@@ -159,7 +159,7 @@ internal static class WinUiPodcastShow
                 Eyebrow(h),
                 (lay.TitleLarge ? TitleLarge(h.Title) : Title(h.Title)) with
                 {
-                    Key = WinUiFrameLayout.PageTitleKey, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
                 Meta(h),
             };
@@ -169,7 +169,7 @@ internal static class WinUiPodcastShow
             if (lay.Stacked)
                 return new BoxEl
                 {
-                    Key = "show-hero", Direction = 1, Gap = lay.CoverGap, MinWidth = 0f, Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
+                    Key = WinUiFrameLayout.PageTitleKey, Direction = 1, Gap = lay.CoverGap, MinWidth = 0f, Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
                     Children =
                     [
                         new BoxEl { Direction = 0, Gap = lay.CoverGap, AlignItems = FlexAlign.Start, MinWidth = 0f, Children = [cover, id] },
@@ -179,7 +179,7 @@ internal static class WinUiPodcastShow
                 };
             return new BoxEl
             {
-                Key = "show-hero", Direction = 0, Gap = lay.CoverGap, AlignItems = FlexAlign.Stretch, MinWidth = 0f,
+                Key = WinUiFrameLayout.PageTitleKey, Direction = 0, Gap = lay.CoverGap, AlignItems = FlexAlign.Stretch, MinWidth = 0f,
                 Padding = new Edges4(0f, lay.HeroTop, 0f, lay.HeroBottom),
                 Children =
                 [
@@ -249,7 +249,12 @@ internal static class WinUiPodcastShow
             var size = lay.Target > WinUiChoiceRules.ControlH ? ControlSize.Large : ControlSize.Medium;
             var kids = new List<Element>(4)
             {
-                new BoxEl { Key = "cmd:follow", Shrink = 0f, Children = [WinUiDetailKit.Follow(live ? h.Uri : "", h.Title, size)] },
+                new BoxEl
+                {
+                    Key = "cmd:follow", Shrink = 0f,
+                    Children = [ToggleButton.Controlled(Loc.Get(Strings.Podcast.Pages.Follow), h.Following, _ => _p.ToggleFollow(),
+                        checkedLabel: Loc.Get(Strings.Podcast.Pages.Following), style: WinUiDetailKit.NeutralToggle(size))],
+                },
             };
             if (h.Following)
                 kids.Add(Controls.Named(Controls.IconAction(Icons.Bell, null, size: lay.Target, isEnabled: false) with { Key = "cmd:bell" },
@@ -277,7 +282,7 @@ internal static class WinUiPodcastShow
                     { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
                 : BodyStrong(s.EpisodeTitle) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
             var sub = new List<Element>(2);
-            if (s.Progress >= 0f) sub.Add(new BoxEl { Width = lay.UpBar, Shrink = 0f, Children = [ProgressBar.Determinate(s.Progress * 100f, lay.UpBar)] });
+            if (s.Progress >= 0f) sub.Add(new BoxEl { Width = lay.UpBar, Shrink = 0f, Children = [ProgressBar.Determinate(s.Progress, lay.UpBar)] });
             sub.Add(Caption(s.Sub) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
             Element label = new BoxEl
             {
@@ -479,7 +484,7 @@ internal static class WinUiPodcastShow
             var years = v.Years;
             headKids.Add(new BoxEl
             {
-                Key = "gh:jump", Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, Height = S.GroupButtonH, Shrink = 0f,
+                Key = "gh:jump:" + g.Key, Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, Height = S.GroupButtonH, Shrink = 0f,
                 Padding = new Edges4(S.GroupButtonPad, 0f, S.GroupButtonPad, 0f), Margin = new Edges4(-S.GroupButtonPad, 0f, 0f, 0f),
                 Corners = Radii.ControlAll, Fill = Tok.FillSubtleTransparent, HoverFill = jumps ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                 PressedFill = jumps ? Tok.FillSubtleTertiary : Tok.FillSubtleTransparent, Role = AutomationRole.Button, Focusable = jumps,
@@ -566,11 +571,11 @@ internal static class WinUiPodcastShow
                 [
                     WinUiChoice.Pivot(labels, _paneIx, WinUiChoiceRules.PivotItemH, i => _p.SetPaneTab((PodcastPaneTab)i)),
                     new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
-                    ScrollView(new BoxEl
+                    new BoxEl
                     {
-                        Key = "pane:" + (tab == PodcastPaneTab.About ? "about" : "ep"), Direction = 1, MinWidth = 0f,
+                        Key = "pane:" + (tab == PodcastPaneTab.About ? "about" : "ep"), Direction = 1, MinWidth = 0f, Shrink = 1f, ClipToBounds = true,
                         Padding = new Edges4(0f, K.SectionBottom, 0f, S.PanePad), Children = [body],
-                    }) with { Key = "pane-scroll", Shrink = 1f, EdgeCues = ScrollEdgeCues.None },
+                    },
                 ],
             }.Sticky(S.PaneTop);
         }

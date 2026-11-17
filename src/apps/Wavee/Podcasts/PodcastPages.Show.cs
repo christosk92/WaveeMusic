@@ -694,7 +694,7 @@ sealed class ShowModel
         int ratingCount = rated ? r!.Value.Count : 0;
         string rating = rated ? r!.Value.Average.ToString("0.0", CultureInfo.CurrentCulture) : "";
         string count = rated ? ratingCount.ToString("N0", CultureInfo.CurrentCulture) : "";
-        string cadenceWord = Show.CadenceWord(cadence);
+        string cadenceWord = Sentence(Show.CadenceWord(cadence));
         string countLine = serial ? Strings.Podcast.Pages.PartsCount(total) : Strings.Podcast.Pages.EpisodesCount(total);
         string about = page.About;
         int oldestYear = 0;
@@ -740,7 +740,7 @@ sealed class ShowModel
         var next = DateTimeOffset.FromUnixTimeSeconds(newest).AddDays(days).LocalDateTime;
         var now = DateTime.Now;
         while (next < now) next = next.AddDays(days);
-        return Joined(Show.CadenceWord(cadence), Strings.Podcast.Pages.CaughtUpNext(next.ToString("d MMM", CultureInfo.CurrentCulture)));
+        return Joined(Sentence(Show.CadenceWord(cadence)), Strings.Podcast.Pages.CaughtUpNext(next.ToString("d MMM", CultureInfo.CurrentCulture)));
     }
 
     /// <summary>"1:02:03" / "4:05": a chapter's start.</summary>
@@ -750,6 +750,9 @@ sealed class ShowModel
         int h = s / 3600, m = s / 60 % 60, sec = s % 60;
         return h > 0 ? string.Create(CultureInfo.InvariantCulture, $"{h}:{m:00}:{sec:00}") : string.Create(CultureInfo.InvariantCulture, $"{m}:{sec:00}");
     }
+
+    /// <summary>The cadence word as a sentence ("Weekly"): the shared word is lower case for the old meta line.</summary>
+    static string Sentence(string word) => word.Length == 0 ? word : CultureInfo.CurrentCulture.TextInfo.ToUpper(word[0]) + word[1..];
 
     static string Joined(string a, string b) => a.Length == 0 ? b : b.Length == 0 ? a : a + " · " + b;
 

@@ -359,7 +359,8 @@ internal static class WinUiPodcastKit
             layers.Add(new BoxEl
             {
                 Width = size, Height = size, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false,
-                Children = [ProgressRing.Determinate(vm.Progress * 100f, size, foreground: Tok.AccentDefault, track: Tok.StrokeControlStrongDefault with { A = K.RingTrackAlpha })],
+                // The determinate ring keeps its mount value: a new resting position mounts a new ring.
+                Children = [ProgressRing.Determinate(vm.Progress, size, foreground: Tok.AccentDefault, track: Tok.StrokeControlStrongDefault with { A = K.RingTrackAlpha }) with { Key = "ring:" + vm.Progress.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) }],
             });
         layers.Add(new BoxEl
         {
@@ -391,10 +392,11 @@ internal static class WinUiPodcastKit
                     Caption(Loc.Get(Strings.Podcast.Pages.Fresh)) with { Color = Tok.AccentTextPrimary, Weight = 600 },
                 ],
             });
+        void Dot() { if (kids.Count > 0) kids.Add(MetaWord("·")); }
         if (vm.Date.Length > 0) kids.Add(MetaWord(vm.Date));
-        if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) kids.Add(MetaWord(vm.Left) with { Color = Tok.AccentTextPrimary });
-        else if (vm.Length.Length > 0) kids.Add(MetaWord(vm.Length));
-        if (vm.State == PodcastRowState.Played) kids.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Played)));
+        if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) { Dot(); kids.Add(MetaWord(vm.Left) with { Color = Tok.AccentTextPrimary }); }
+        else if (vm.Length.Length > 0) { Dot(); kids.Add(MetaWord(vm.Length)); }
+        if (vm.State == PodcastRowState.Played) { Dot(); kids.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Played))); }
         if (vm.Video)
             kids.Add(new BoxEl
             {
