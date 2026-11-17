@@ -62,7 +62,7 @@ public static partial class Diagnostics
                     if (s.Count < 2) continue;
                     double min = s[0], max = s[0];
                     foreach (double v in s) { min = Math.Min(min, v); max = Math.Max(max, v); }
-                    if (max - min <= Scale(c).Still) continue;   // the channel never moved
+                    if (max - min <= Scale(c).Still) { w.WriteNumber(Channels[c] + "Still", Math.Round(s[0], c == 4 ? 3 : 1)); continue; }   // never moved: its one value
                     w.WriteStartObject(Channels[c]);
                     w.WriteStartArray("v");
                     foreach (double v in s) w.WriteNumberValue(Math.Round(v, c == 4 ? 3 : 1));
