@@ -314,7 +314,7 @@ public static partial class Entities
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/artist/3WGpXCj9YhhfX11TToZcXP/en", 50, PlaylistFormat.Radio);
             MockArtist(s, troyeArtistUri, "Troye Sivan", Cover(35));
             StageSectionIds(s, "spotify:section:wavee-mockup-cluster-troye", "More like Troye Sivan", SectionKind.HomeBaseline,
-                [troyeRadio], total: 1, nextOffset: SectionPaging.Complete, firstPreviewTrack: 3);
+                [troyeRadio], total: 1, nextOffset: SectionPaging.Complete, firstPreviewTrack: 3, previewTracks: 5);
 
             var roseRadio = MockPlaylist(s, "spotify:playlist:37i9dQZF1E4vmmujp8nGFY", "ROSÉ Radio",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/artist/3eVa5w3URK5duf6eyVDbu9/en", 50, PlaylistFormat.Radio);
@@ -546,7 +546,7 @@ public static partial class Entities
     /// batch as `StagedId` values -- every mockup card is a real entity `Mock*` already minted, so re-encoding its uri
     /// as text a second time (what `StageSection`'s `string[]` overload does) would just waste arena bytes.</summary>
     static StagedId StageSectionIds(Staging s, string sectionUri, string title, SectionKind kind,
-        ReadOnlySpan<StagedId> cardIds, int total, int nextOffset, int firstPreviewTrack = -1)
+        ReadOnlySpan<StagedId> cardIds, int total, int nextOffset, int firstPreviewTrack = -1, int previewTracks = 3)
     {
         var id = new StagedId(s.AddText(Utf8(sectionUri)));
         ref var row = ref s.Sections.RowFor(id, Authority.Seed, SeededSection);
@@ -562,11 +562,12 @@ public static partial class Entities
         s.Edges.Close(Relation.SectionCards, in id, mark);
 
         // A baseline ("because you like") band's rows are its PREVIEW TRACKS (ClusterFold reads `Edges.SectionPreviewTracks`; a live feed fills them
-        // from feedBaselineLookup). Without them every cluster folds to nothing and the "because you like" zone never stands. Three catalogue tracks.
+        // from feedBaselineLookup). Without them every cluster folds to nothing and the "because you like" zone never stands. Three catalogue tracks (a
+        // short answer), or the five Spotify usually sends (Troye's: three of them with a canvas, the hover's real-media path).
         if (firstPreviewTrack >= 0)
         {
             int pm = s.Edges.PendingMark;
-            for (int i = 0; i < 3; i++) s.Edges.Push().Target = new StagedId(s.AddText(Utf8(TrackUri(firstPreviewTrack + i))));
+            for (int i = 0; i < previewTracks; i++) s.Edges.Push().Target = new StagedId(s.AddText(Utf8(TrackUri(firstPreviewTrack + i))));
             s.Edges.Close(Relation.SectionPreviewTracks, in id, pm);
         }
         return id;
