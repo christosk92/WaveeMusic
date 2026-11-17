@@ -30,7 +30,7 @@ internal static class WinUiHomeShelf
     public static float Extent(Zone zone, WinUiHomeLayout layout) => SpineShelfView.Extent(zone, X.Of(layout.Tier));
 
     static readonly SpineShelfSkin Skin = new(Spine, Head, Caption, SpineWash, SpineHoverWash, FaceWash,
-        static () => Tok.AccentDefault, static () => R.OnMedia.Ink, static () => Tok.FillSubtleSecondary,
+        static () => Tok.AccentDefault, static () => R.OnMedia.Ink, static () => Tok.FillSubtleSecondary, static () => R.OnMedia.ScrimRest,
         WinUiDiscoveryMotion.SwapFade, WinUiDiscoveryMotion.SwapFadeMotion);
 
     // ── the spine ──
