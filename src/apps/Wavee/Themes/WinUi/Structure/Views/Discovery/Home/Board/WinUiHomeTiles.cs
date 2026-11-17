@@ -648,6 +648,7 @@ internal static class WinUiHomeTiles
         HomeTileFrame? _f;
         MoreMenu _menuKind;
         Func<ContextMenuModel?>? _item;
+        HomeTileMenuSlot? _slot;   // the tile a full row's header ⋯ stands in: its content's menu (the spotlight's card on screen) opens over the rows
 
         /// <summary>Open the menu of <paramref name="f"/>'s card (a context request).</summary>
         public static void OpenFor(HomeTileFrame f) => OpenFor(f.Entry.Id);
@@ -667,6 +668,7 @@ internal static class WinUiHomeTiles
             _f = p.Frame;
             _menuKind = p.Menu;
             _item = p.Item;
+            _slot = UseContext(HomeTileMenus.Current);
             string id = p.Frame.Entry.Id;
             UseLayoutEffect(() =>
             {
@@ -686,7 +688,7 @@ internal static class WinUiHomeTiles
             if (_menu is { IsOpen: true } open) { open.Close(); return; }
             if (_f is not { } f || f.Overlay is not { } overlay) return;
             ToolTip.CloseOpen();
-            if (_item is { } item && _menuKind == MoreMenu.Full)
+            if ((_item ?? _slot?.Item) is { } item && _menuKind == MoreMenu.Full)
             {
                 // The item's rows (its own strip and rows, as its right-click elsewhere shows them), then the tile's: one context menu at the ⋯.
                 HomeTileMenus.OpenAt(overlay, _anchor, () => HomeTileMenus.Merged(item(), WinUiHomeTileMenu.MergedItems(f)), keyboard);
