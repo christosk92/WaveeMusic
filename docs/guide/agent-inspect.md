@@ -111,13 +111,13 @@ is a loop (`AnimFlags.Loop`: a marquee title scrolling, a looping indicator; the
 is 0), the settle does not wait for them, nor for the `Anim` wake they raise. The replies report `frames` and `settled`,
 `ambient:[...]` when the settle saw any of those ambient reasons (motion they drive, a frame-clock ticker, was not waited
 for), and `loops:[keys]` when it ended on looping tracks: the nodes they run on (the nearest keyed ancestor), still moving
-when the reply was written. Loading indicators are the exception (below): a skeleton's shimmer, an indeterminate
-progress bar or a progress ring still holds the settle. A `render` after a settle catches a loop at whatever phase it has
+when the reply was written. Loading indicators are the exception (below): a region still on its placeholder, an indeterminate
+progress bar (the page's loading bar `page-busy:bar` among them) or a progress ring still holds the settle. A `render` after a settle catches a loop at whatever phase it has
 reached. A settle that hit its cap adds `busy`, what still moved:
 
 - `{"key","kind":"anim"}`: a node with live tracks (named by its nearest keyed ancestor). Beside the array, `tracks` is the
   engine's census of the live rows: `anim=N:Channel*k,...`, then `done=`, `parked=` and `loop=` counts when there are any.
-- `{"key","kind":"loading"}`: a loading indicator still running (a skeleton's shimmer, a progress bar or ring, until the data or its error lands), with a
+- `{"key","kind":"loading"}`: a loading indicator still up (a region on its placeholder, a progress bar or ring, until the data or its error lands), with a
   `loading` sentence beside `busy` that names them (see Looping animations below).
 - `{"key","kind":"scroll","motion":"Wheel"}`: a scroller in motion.
 - `{"kind":"wake","reason":"ImageReady"}`: a wake reason with no node. `FrameNeeded` adds `terms`, the parts of it the
@@ -146,9 +146,11 @@ that never ends but is not a loop row (a frame-clock ticker is ambient already; 
 and `busy` names it: use `settle=false` with `frames N` there, or a small `max`.
 Anything else that moves beside a loop (a fade, a FLIP, a glide, a wake reason) is still waited for.
 
-Loading indicators are not ignored: a **loading skeleton's** shimmer (the pulse the engine puts on what a `Skel.Region` shows
-while its data is pending), an **indeterminate progress bar** (a looping node under the `ProgressBar` role: WinUI and Classic
-search's `omni-progress` while a query is pending) and a **progress ring** (its arc's trim loops). A page that still shows one
+Loading indicators are not ignored: a **region still on its placeholder** (a `Skel.Region` whose data is pending: the
+placeholder is flat and carries no track, so the settle reads the region's state, `AppHost.IsSkeletonPending`, and only on
+frames that would otherwise count as quiet), an **indeterminate progress bar** (a looping node under the `ProgressBar` role:
+WinUI and Classic search's `omni-progress` while a query is pending, the page's loading bar `page-busy:bar`) and a **progress
+ring** (its arc's trim loops). Under `motion=reduced` a settle now waits for data there too (the old pulse never ran there). A page that still shows one
 has not landed, so the settle waits for the data or its error (WinUI search `type text=ab` settles in about 30 frames on its
 suggestion rows `omni-row:0:spotify:artist:ar5` "Sable & Sun" and "Coffee Table Jazz", not after 4 on the progress rows), and a
 settle that hits `max` there says `loading` (above): `type text=zzqx` keeps its progress row and runs to `max`. The fake catalogue answers on the wall clock, so a slow page can take
@@ -158,9 +160,23 @@ Every settling verb, and `settle`, takes `loops`:
 
 | `loops=` | A loop holds the settle |
 |---|---|
-| `ignore` (default) | Only a loading indicator: a skeleton's shimmer, an indeterminate progress bar or ring. |
+| `ignore` (default) | Only a loading indicator: a region on its placeholder, an indeterminate progress bar or ring. |
 | `wait` | Every loop (the settle before P2): a page with a playing row runs to `max`. |
-| `skeletons` | None, the loading indicators included, so the settle can end on a skeleton or a spinner. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture (`help verb=state` gives their `loops` no single default for this reason). A loading indicator the settle did not wait for is then listed in `loops` like a loop row (`state kind=loading` replies `loops:["facet-body:0"]`). |
+| `skeletons` | None, the loading indicators included, so the settle can end on a skeleton or a spinner. `state kind=loading` and `kind=cold-*` take this when `loops` is not given: their skeleton is the picture (`help verb=state` gives their `loops` no single default for this reason). A loading indicator the settle did not wait for is then listed in `loops` like a loop row, a region on its placeholder by its placeholder's key (`state kind=loading` replies `loops:["facet-body:0"]`). |
+
+**The WinUI library family.** Under WinUI the four library kinds (albums, artists, podcasts, audiobooks) share ONE keep-alive slot
+and ONE body box, `page:library` (Classic and Zune keep `page:albums`, `page:artists`, ...): the head (`lib:head`, the kinds
+`lib:kind:0`..`4`) is drawn once, and each kind is a page inside it keyed `library:<kind>` (`find prefix=library:` lists the
+visited ones; parked kinds are `shown:false`). A kind switch is no page swap: trace `prefix=library:` with
+`keys=lib:head,lib:kinds` to see the body slide under a head that never moves. The route still names the kind (`after.route`).
+
+**The page loading bar.** Each page's body box (`page:<route>`) carries one thin bar on its top edge, `page-busy:bar` in the
+fixed slot `page-busy` (3 DIP in Classic and WinUI, 2 in Zune). It shows once the page's placeholders (or, in Zune, its deferred
+mount) have been pending 1 s and stays at least 0.4 s, fading in and out (about 11 frames each way); a load shorter than 1 s
+never shows it, and nothing moves when it comes or goes. The inspect host's frames are a fixed 16 ms clock while the fake
+catalogue answers on the wall clock, so an ordinary `goto` can show the bar (32 virtual frames pass in a few real
+milliseconds) and its settle then also waits out the 0.4 s minimum and the fade. For timing proofs use held answers only
+(`state kind=head uri=... answer=hold settle=false`, then `frames N`).
 
 **What changed (`after`).** The verbs that act (`goto`, `click`, `hover`, `key`, `type`, `scroll`, `play`, `option`,
 `theme`, `state`, `dialog`) end their reply, when something is mounted, with `after:{route, focused, overlays, hit}`. That
@@ -339,7 +355,8 @@ Home, and makes Classic dark the active theme.
   generation and the total GC pause), the theme and kind, the route, the text backend and the network leaks. When something is
   mounted, it adds `overlays[{key, first}]` (the open overlay layers, top first, as `after` lists them), the mount facts,
   `animating` and `trimSource`. `status log=<text>` adds `log[...]`: the app log lines (the in-memory ring; the headless boot
-  writes no log file) that contain the text, written since the last `status log=` (the newest 64). `status log="stage.chrome"`
+  writes no log file) that contain the text, written since the last `status log=` (the newest 64). A structured event with no message is
+  matched and listed in its one-line form (`status log="list."` reads the `list.open`, `list.meta` and `list.settle` lines). `status log="stage.chrome"`
   (quoted: a bare `[...]` parses as a list) after a `hover`, `window active=false` or `frames` reads back the fullscreen stage's chrome edges (`exit as=left src=...`,
   `hold OverControls=0`, `hide cause=leave`).
 - `help` lists the verbs with their summaries; `help verb=<name>` and `help schema=json` describe the args (see Protocol).
@@ -553,7 +570,22 @@ the meta line loads, the rows shimmer), then `goto uri=spotify:playlist:pl6`, th
 and 4 know their face, the rest in flight: the hero arm (Compact, and Classic/Zune's vertical page) paints rows 1 and 4 over the
 others' placeholders; the two-column arm keeps the whole first page on its shimmer until the first page's faces are in,
 `TableRules.RowsPending`'s hot-row gate, by design) or `state cold-warm` (the membership lands with every row restored from disk: faces known,
-credits in flight, as a warm open), then `state cold-faces` (the rows' fields land). `state cold-head` instead of `cold-list` also takes the
+credits in flight, as a warm open), then `state cold-faces` (the rows' fields land). **A regenerated Mix** (the stale head and list a
+first open holds, then the fresh answer): `goto uri=spotify:playlist:pl6 settle=false` (the seeded list is held on the open's revalidation,
+which the fake never answers: the cover and description wait on their skeletons with the rows), a few `frames`, then `state kind=regen` lands a
+new revision with other rows and another cover and description (a second `regen` on the settled page changes the cover in place: its
+hand-over crossfade; the description alternates per `regen` between a short line and one that wraps to three lines in a 216 DIP rail, so
+each one exercises the description's hand-over and its height). The rows narrate the change one by one (leave, close up, arrive:
+`Design.Membership`): a re-cut has most rows leave and most arrive, the list keeps its key and its scroll. **A small remote edit**: `state
+kind=regen-edit` on the settled pl6 page removes display rows 2, 5 and 6, moves row 9 to row 3 and inserts new tracks at rows 1, 4 and 30
+(`tr70`..`tr130`), with a new cover, the alternating description and a new revision; it is a pure function of the shown membership and an
+epoch, so it repeats. Trace either with `trace=90 keys=row,art:handover,hero-description,rail:desc prefix=list:,top:`; after `scroll key=row
+dy=8` the edit is above the window and the first visible row keeps its place (the anchor). **A login's scope switch under the page**: `state kind=rescope` puts a new, empty table set in (another market, the
+old set's stamps forgotten, the deck re-bound: the welcome's `Entities.Switch`, minus handing the old set's text back, which a Debug build
+asserts on while the page still draws it), and `state kind=rescope-land` a few frames later lands the seed in it, the shown list Complete and
+never revalidated, as the disk warm-up does. The owner's case (2026-11-15) ran under a covered window: `window state=minimized` first, then
+`rescope`, `frames 30`, `rescope-land`, `frames 200`, `window state=restored`: the page's open runs on the restore and its hold settles.
+`state cold-head` instead of `cold-list` also takes the
 HEADER away (title, description and owner unknown, Identity not known; the cover stays: a deep link's first frames), so the page shows its
 pending head; `cold-rows` or `cold-warm` lands the header with the membership (one answer). **Any detail page's header**: `state kind=head
 uri=<album|playlist|show|episode uri>` takes that page's title and every field it knows away and opens it (a cold open's head: no title, publisher,
@@ -567,7 +599,10 @@ flight (the reply's `held`); `state kind=head-land answer=fill|omit|unfilled|fai
 (the fetch layer's miss retries are omitted too, then the group is Failed), `unfilled` answers it as a route that did not answer, `fail` is a terminal
 404, `cancel` a transport failure the fetch layer re-queues (still in flight; the retry is held again). The page turns into its error vacancy on the
 settle's own publication (no timer), its Retry re-asks through the same door (held again), and `head-land answer=fill` (or the next `mount`) puts
-the original transport back. A `state` with `trace=N` (or `settle=false`) runs no frames before its
+the original transport back. An artist's hold also stages its release cards (the latest release and the discography's releases) asked and in
+flight, so `head-land answer=fill part=overview`, `frames 3`, `head-land part=cards` lands the page in the real client's order (the overview and
+chart first, the side column's cards a few frames later); `part=overview cards=3 trace=70 ...` lands the cards on frame 3 of the overview's own trace,
+so one trace sees both; without `part` both land at once. A `state` with `trace=N` (or `settle=false`) runs no frames before its
 trace, so the trace starts on the frame the state lands. Its verdict judges that landing frame too: the watched nodes are sampled once
 before it (the reply's `baseline` row, frame -1) and f0 is compared with them, so a jump in the landing frame counts as moved at once.
 `baseline=false` turns that off; `baseline=true` turns it on for another verb's `trace=N`. Pass `trace=N` on a `state` command to trace its
@@ -1052,6 +1087,7 @@ frame clock: frames are not real time, and the `ms` fields are the CPU cost of e
 | `every` | Emit every Nth row; the summary always covers every frame. `rows=false` leaves only the summary. |
 | `jump`, `snap` | Thresholds in DIP: 2 and 0.5. |
 | `census` | `true` turns the host's render census on: a slow frame's row then carries `census`, the components that made it slow. Off by default (it costs frame time). |
+| `flights` | `true`: each row carries the connected navigation flights (a card's cover flying into its page's hero, and back) and the summary their take-off and hand-off (`flight`, below). Off by default. |
 | `wheel`, `wheelEvery`, `wheelCount`, `wheelKey`, `wheelX`, `wheelY` | Mouse-wheel input during the trace: notches (a number, or a list that cycles: `3,3,-6` or `[3,3,-6]`), one event every `wheelEvery` frames, `wheelCount` events, aimed at `wheelKey`, a point, or the traced scroller. |
 | `pan`, `panFrames`, `panStart`, `panEvery`, `panCount`, `panKind` | A touchpad (or `panKind=touch`) contact: DIP per frame (cycled; a number or a list) for `panFrames` frames from `panStart`, then the lift (fling or edge spring). `panEvery`/`panCount` repeat it. The wheel clamps hard at the bounds; only a contact stream rubber-bands. |
 | `drag`, `dragFrames`, `dragStart`, `dragKey`, `dragX`, `dragY`, `dragDy` | A mouse drag (a splitter, a slider): the button goes down at `dragStart` on `dragKey`'s centre (or `dragX`,`dragY`), the pointer moves `drag` DIP per frame along x (cycled list) and `dragDy` down for `dragFrames` frames, then the button comes up. WinUI's pane seam: `drag=4 dragFrames=14 dragX=<pane x - 8> dragY=500` narrows the pane by 56. |
@@ -1066,7 +1102,9 @@ Each **row**: `f` (frame in the trace), `abs`, `animating`, `ms` (`wall`, `cpu` 
 `fullLayoutInferred`, `components`, `reactiveUnits`, `bindingFires`, `bindingWrites`, `textShapes`, `textShapeMisses`, `nodesVisited`,
 `drawNodes`, `imageApplied`, `gc0/1/2`), `nodes` (`w` = index into `watch`, `lay` and `pres` = `[x,y,w,h]` laid-out and presented rects,
 `track` = a track is live on the node or an ancestor, `shown`, `op` = opacity multiplied up the chain) and `scroll` (`offset`,
-`lastShown`, `velocity`, `max`, `content`, `viewport`, `motion`, `user`).
+`lastShown`, `velocity`, `max`, `content`, `viewport`, `motion`, `user`). With `flights=true`, `flights[{key, phase, back, pres, dest, shadow, srcHidden, destHidden, img}]`:
+the flight's key (the album uri), `pending|flying|landed|abandoned`, Back or forward, the flyer's presented rect, the dest's rest rect,
+the shadow's opacity, whether each end's slot is hidden, and the texture the flyer draws (it cuts to the dest's own rendition once ready).
 
 The **summary**: `settledAt`, `rootSolveFrames`, `escapeFrames`, `fullLayoutFramesInferred` (measures with no dirty marks), measure and component
 totals, the `max` frame for layout/cpu/wall/record/flush/submit, `cpuOver8ms/16ms`, `snaps` (laid-out and presented rect changed with no track),
@@ -1080,6 +1118,15 @@ next, with the swap family fading it in (as `crossing` names it) or null. `inspe
 `movedAtOnce` (snapped or instant keys) is above `--max-moved` or that remounted a key outside a family, and warns on a trace
 that watched nothing (pass `prefix=`/`keys=`, and `max=` above 20 for a page). `python -I tools/inspect.py --trace ...`
 prints the summary as text: the motion counts, the remounts, the snaps, instants and jumps (30 each), `after`.
+
+With `flights=true` the reply also carries `flight{flights, startedAt, landedAt, handedOffAt, takeoffDelta, handoffDelta,
+maxStepDip, abandoned, unfinished}`: the frame the flyer first showed, landed and handed off (the flyer gone, the real cover shown),
+the largest edge difference between the flyer and its source on the first frame that drew it (the engine's record) and its dest on its
+last frame, the largest edge step between two frames, and whether a flight was abandoned (a new navigation mid-flight) or never
+ended. `inspect.py --gate` fails a flight whose `takeoffDelta` or `handoffDelta` is over 0.5 DIP, or that is `unfinished`. `status`
+carries `connected{flights, pending}`. A forward flight: `click key=lazy-cell:8 trace=60 keys=hero-cover flights=true` on
+`disco:0:spotify:artist:ar3`; Back: `key alt+left trace=45 keys=hero-cover,lazy-cell:8 flights=true`. Click a card on its label, not its
+centre: the centre of a WinUI card's cover is its play button.
 
 ## Typical workflows
 

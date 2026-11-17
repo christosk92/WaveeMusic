@@ -23,7 +23,7 @@ internal static class ClassicFrameBitsRules
     public static Edges4 MastheadPadding(float gutter) => new(gutter, MastheadFrameTop, gutter, 0f);
 
     /// <summary>The band's swap (tuning F7), on the page swap's own clock: a leaving head EXITS on the exit leg (90 ms, accelerate,
-    /// from the commit) with the leaving body; an arriving head waits that leg out and ENTERS on the enter leg (210 ms, decelerate),
+    /// from the commit) with the leaving body; an arriving head ENTERS on the enter leg (210 ms, decelerate) as that leg starts,
     /// with the new body. Opacity only: the head sits on the page's column and never travels.</summary>
     public static LayoutTransition MastheadSwap => new(
         TransitionChannels.Opacity,
@@ -31,7 +31,7 @@ internal static class ClassicFrameBitsRules
         Enter: new EnterExit(Opacity: 0f, Active: true),
         Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(Design.Nav.ExitDurationMs, Easing.FluentAccelerate),
-        DelayMs: Design.Nav.EnterDelayMs, ExitDelayMs: 0f);
+        DelayMs: Design.Nav.HandOverDelayMs, ExitDelayMs: 0f);
 
     // ── the narrow drawer ───────────────────────────────────────────────────────────────────────────────────────────
 

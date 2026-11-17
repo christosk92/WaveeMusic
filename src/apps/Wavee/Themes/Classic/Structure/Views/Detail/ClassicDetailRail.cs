@@ -72,7 +72,7 @@ internal static partial class ClassicDetailFrame
             Pending: p.Pending, Failed: s_false,
             Content: () => RailColumn(spec, p.Actions, p.RailWidth, rail, p.TitleSize, p.DescriptionLines, p.Accent, p.Play, p.Shown),
             ShimmerSource: () => RailSkeletonColumn(spec.Identity, spec.Config, spec.Slots, p.Actions, p.RailWidth, rail, p.TitleSize, p.DescriptionLines),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false));
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false));
     }
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailCompactRail"/>: the collapsed strip's identity (cover + title) behind the same
@@ -84,7 +84,7 @@ internal static partial class ClassicDetailFrame
             Pending: p.Pending, Failed: s_false,
             Content: () => CompactRailIdentity(p.Spec.Identity, p.Spec.Slots, cover, p.Expand),
             ShimmerSource: () => CompactRailSkeleton(p.Spec.Identity.CoverUrl, cover),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false));
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false));
     }
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailShowHeader"/>.</summary>
@@ -592,22 +592,27 @@ internal static partial class ClassicDetailFrame
 
     /// <summary>The meta caption: ONE TrackMeta run ("2 songs · 6 min"), whole-word wrapped to
     /// <paramref name="maxLines"/> — or its loading shimmer. An album's year is not on it (the eyebrow and the release
-    /// panel carry it).</summary>
+    /// panel carry it).
+    /// <para>The line FILLS ONCE (the owner's recording, 2026-11-15: "50 songs · 293.7K saves", then "· 2 hr 42 min" appended a frame later): while
+    /// a part of it is still on its way (the count held with the list, <c>MetaLoading</c>; the duration or the owner, <c>MetaSettling</c>) it stays on
+    /// its shimmer, then the whole line crossfades in over it. ONE region in both states, so the swap is the region's cross-dissolve, never a cut.</para></summary>
     static Element MetaLine(Identity id, float width, float maxWidth, int maxLines)
     {
-        if (!id.MetaLoading && id.Meta is { Length: > 0 } meta)
+        bool ready = !id.MetaLoading && !id.MetaSettling && id.Meta is { Length: > 0 };
+        Func<Element> content = s_metaShimmer;
+        if (ready)
         {
-            var line = R.Type.TrackMeta(meta) with
+            var line = R.Type.TrackMeta(id.Meta!) with
             {
                 MaxLines = maxLines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
             };
             if (!float.IsNaN(width)) line = line with { Width = width };
             if (!float.IsNaN(maxWidth)) line = line with { MaxWidth = maxWidth };
-            return line;
+            content = () => line;
         }
         return new SkelRegionEl(
-            Pending: s_true, Failed: s_false, Content: s_metaShimmer, ShimmerSource: null, OnFailed: null,
-            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+            Pending: ready ? s_false : s_true, Failed: s_false, Content: content, ShimmerSource: s_metaShimmer, OnFailed: null,
+            Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: true);
     }
 
     static readonly Func<bool> s_true = static () => true;

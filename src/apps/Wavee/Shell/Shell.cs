@@ -1060,9 +1060,35 @@ public static partial class Shell
     /// part of it — direction decides how a swap animates, not which page is cached. Folding it in made a motion-only
     /// write on the already-active key look like an activation change, which re-seeded the entrance and re-faded the
     /// whole page with no content change at all.</summary>
-    public static string SlotKey(in Route r)
-        => r.Tab.ToString(CultureInfo.InvariantCulture) + "" + NameOf(r) + ""
+    public static string SlotKey(in Route r) => SlotKeyNamed(r, SlotNameOf(r));
+
+    static string SlotKeyNamed(in Route r, string name)
+        => r.Tab.ToString(CultureInfo.InvariantCulture) + "" + name + ""
          + (Row(r.Kind).KeyedByArg ? Entities.Strings.Resolve(r.Arg) : "");
+
+    /// <summary>The slot NAME of a route: its <see cref="NameOf"/>, except the library family's kinds under a structure that hosts them as one
+    /// (<see cref="InLibraryFamily"/>), which share <see cref="LibraryFamilyName"/>. Only the keep-alive slot and the content key read it:
+    /// <see cref="SameSlot"/>, history, the tab's route and every title keep following the route itself.</summary>
+    public static string SlotNameOf(in Route r) => InLibraryFamily(r) ? LibraryFamilyName : NameOf(r);
+
+    /// <summary>The library family's slot name (<see cref="SlotNameOf"/>; its content key is <c>page:library</c>).</summary>
+    public const string LibraryFamilyName = "library";
+
+    /// <summary>One of the library's four master-detail kinds (albums, artists, podcasts, audiobooks): the pages <c>User.LibraryPageFor</c> draws.
+    /// Not Liked Songs (another page type) and not the playlists list.</summary>
+    public static bool IsLibraryFamily(RouteKind kind)
+        => kind is RouteKind.LibraryAlbums or RouteKind.LibraryArtists or RouteKind.LibraryPodcasts or RouteKind.LibraryAudiobooks;
+
+    /// <summary>The route is a library kind AND the active structure hosts the kinds as one family
+    /// (<see cref="Theming.ShellCapabilities.LibraryFamily"/>): one slot, one head, the body switching under it.</summary>
+    public static bool InLibraryFamily(in Route r) => IsLibraryFamily(r.Kind) && ShellCaps.Now.LibraryFamily;
+
+    /// <summary>Two routes the library family swaps inside its one slot: both in the family, in the same tab.</summary>
+    public static bool SameLibraryFamily(in Route a, in Route b) => a.Tab == b.Tab && InLibraryFamily(a) && InLibraryFamily(b);
+
+    /// <summary>The keyed-measurement scope of ONE library kind inside the family's shared slot: what <see cref="MeasureScopeOf"/> answered
+    /// when each kind was its own slot, so four pages whose regions use the same role keys keep four sizes.</summary>
+    public static string KindMeasureScopeOf(in Route r) => SlotKeyNamed(r, NameOf(r)) + "/";
 
     /// <summary>The page's keyed-measurement SCOPE (<c>MeasureMemory.Scope</c>, E17c): the keep-alive slot's identity (tab,
     /// destination and the argument a keyed destination carries), so a region keyed by its role inside a page finds its size
@@ -1089,7 +1115,7 @@ public static partial class Shell
     /// <summary>The recipe for a page swap (<see cref="Design.Nav.RecipeFor"/>): the one fade-through for every pair of
     /// pages, a plain fade for Neutral.</summary>
     public static LayoutTransition RecipeFor(NavTransitionKind motion)
-        => Design.Nav.RecipeFor(MapMotion(motion), ShellCaps.Now.ContinuousPageSwap);
+        => Design.Nav.RecipeFor(MapMotion(motion), ShellCaps.Now.ContinuousPageSwap, sequenced: ShellCaps.Now.DefersPageMount);
 
     public static LayoutTransition? RecipeForVideoSafe(NavTransitionKind motion)
         => Design.Nav.RecipeForVideoSafe(MapMotion(motion));
@@ -1122,7 +1148,7 @@ public static partial class Shell
 
     /// <summary>The library's kinds in the order its pivot lists them (WinUI's Compact library head: Playlists, Albums, Artists,
     /// Podcasts, Audiobooks); -1 for a route outside it.</summary>
-    static int SiblingOrder(RouteKind kind) => kind switch
+    internal static int SiblingOrder(RouteKind kind) => kind switch
     {
         RouteKind.LibraryPlaylists => 0,
         RouteKind.LibraryAlbums => 1,

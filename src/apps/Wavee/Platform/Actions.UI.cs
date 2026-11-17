@@ -9,7 +9,7 @@
 //
 // WHAT THIS FILE IS — AND IS NOT. It is the VOCABULARY every context menu in the app is spelled in: the one icon
 // table, the three projections of an action (menu row / command-bar button / swipe), the grammar's shared shapes (the
-// header tile, groups, Share ▸, the ONE deposit submenu, Organize ▸, Access ▸, the absolute pin pair, the
+// header tile, groups, Share ▸, the ONE deposit submenu, Organize ▸, the absolute pin pair, the
 // layout-extras splice), and the modal destination picker. It is NOT the per-kind compositions: the track menu is owner
 // M's `Entities/Track.UI.cs`, the card and sidebar arms are the page/sidebar owners', and the VERBS are the entity
 // files' `AppActions.Register` calls (ch 29 §9.10) — which is why a verb is looked up here by `ActionId` and a row for a
@@ -20,7 +20,7 @@
 //           → navigation (Open · Go to album · Go to artist) → Share → surface extras → destructive LAST (behind a
 //           separator);
 //   shape   header tile → a labeled command strip of the transport verbs → short separator-delimited groups, where a
-//           group of low-frequency related verbs collapses into ONE named submenu (Organize ▸, Access ▸).
+//           group of low-frequency related verbs collapses into ONE named submenu (Organize ▸).
 // A core verb may be omitted only where its seam genuinely does not exist for that kind, and then with a comment.
 //
 // Every builder here runs at MENU-OPEN time (a human-rate thunk), never per frame, so it allocates freely.
@@ -299,7 +299,7 @@ public static partial class Actions
             return MenuFlyoutItem.SubMenu(title, items, icon, enabled: canAdd);
         }
 
-        // ── Organize ▸ / Access ▸ / the pin pair ────────────────────────────────────────────────────────────────────
+        // ── Organize ▸ / the pin pair ───────────────────────────────────────────────────────────────────────────────
 
         /// <summary><b>Organize ▸</b> — every verb that changes where a sidebar row LIVES in its list: the pane's positional moves,
         /// then "Move out of {parent}". The pin pair is NOT in it: "Pin to sidebar / Unpin" is a top-level row (tuned item S5).
@@ -325,25 +325,6 @@ public static partial class Actions
                 rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Menu.MoveUp), Icons.ChevronUp, true, moveUp));
             if (moveDown is not null)
                 rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Menu.MoveDown), Icons.ChevronDown, true, moveDown));
-        }
-
-        /// <summary><b>Access ▸</b> — who may see and who may edit: Public · Private (an ABSOLUTE radio pair, each SETS
-        /// what it names) · — · Collaborative (a toggle) · — · Invite collaborators. With the header unknown both radios
-        /// render unchecked, because inventing a checked state would invert the user's intent.</summary>
-        public static MenuFlyoutItem Access(bool known, bool isPublic, bool collaborative, Action<bool> setPublic,
-                                            Action<bool> setCollaborative, MenuFlyoutItem invite)
-        {
-            var items = new List<MenuFlyoutItem>(6)
-            {
-                MenuFlyoutItem.RadioItem(Loc.Get(Strings.Menu.MakePublic), known && isPublic, () => setPublic(true)),
-                MenuFlyoutItem.RadioItem(Loc.Get(Strings.Menu.MakePrivate), known && !isPublic, () => setPublic(false)),
-                Separator,
-                MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.Edit.Collaborative), collaborative,
-                    () => setCollaborative(!collaborative)),
-                Separator,
-                invite,
-            };
-            return SubMenu(Loc.Get(Strings.Menu.Access), items, ActionIcons.Globe);
         }
 
         /// <summary>The pin pair — ABSOLUTE state, not a toggle: exactly one of "Pin to sidebar" / "Unpin from sidebar",

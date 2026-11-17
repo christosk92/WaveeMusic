@@ -539,7 +539,7 @@ internal static class ZuneDetailHero
             Pending: pending, Failed: K.Never,
             Content: () => new BoxEl { Direction = 1, MinWidth = 0f, Children = [column] },
             ShimmerSource: columns ? () => ColumnSkeleton(spec, lay, lay.RailW) : () => HeroFormSkeleton(spec, lay, g),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: true);
         // The slot: the record's width laid out 0 tall at the columns form (the column hangs beside the rows), the full width on the gutter at the hero form.
         return new BoxEl
         {

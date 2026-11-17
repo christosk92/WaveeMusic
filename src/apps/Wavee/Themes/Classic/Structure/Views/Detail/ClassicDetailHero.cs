@@ -558,7 +558,7 @@ internal static partial class ClassicDetailFrame
             ShimmerSource: railForm
                 ? () => RailSkeletonColumn(id, cfg, slots, acts, railW, railRec, titleCap, railDescLines)
                 : () => HeroIdentitySkeleton(spec, availW, rowFlow, tiers),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: true);
 
         // The rail's own scroller (the last resort once its text has given): as tall as the list's viewport at the columns form, so what the rail holds past
         // the fold stays reachable; at the hero form it sizes to the column (never scrolls: the list carries the hero). The collapsed strip stands in its
@@ -572,7 +572,7 @@ internal static partial class ClassicDetailFrame
                 Pending: tc.CompactRail?.Pending ?? s_false, Failed: s_false,
                 Content: () => CompactRailIdentity(id, slots, stripCover, expand),
                 ShimmerSource: () => CompactRailSkeleton(id.CoverUrl, stripCover),
-                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false), fill: false)
+                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false), fill: false)
                 with { Key = "hero:strip", Enter = swapIn, Exit = ClassicTierMotion.SwapFade };
         }
         else

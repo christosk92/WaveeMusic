@@ -76,6 +76,16 @@ public readonly partial struct User
 
     static readonly string[] s_anchorScratch = new string[LikedCoverRules.MaxTiles];
 
+    /// <summary>The newest liked cover's url (the first distinct tile), or null: Liked Songs' art where a slot holds one image of no known size (a fill
+    /// cell collapses a cover-less container to its first tile, <c>Controls.ArtworkFill</c>). Subscribes the calling render to the liked relation, so
+    /// the cell follows a new like. UI thread.</summary>
+    public static string? LikedNewestTileUrl()
+    {
+        _ = Entities.ScopeEpoch.Value;
+        _ = Entities.Current.Edges.Liked.Changed.Value;
+        return FillLikedTiles(s_anchorScratch) > 0 ? s_anchorScratch[0] : null;
+    }
+
     /// <summary>The newest-first distinct liked cover urls, written into <paramref name="into"/>. UI thread.</summary>
     static int FillLikedTiles(string[] into)
     {

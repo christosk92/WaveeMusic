@@ -495,13 +495,8 @@ public static partial class Lyrics
             int secondary = M.SyncSecondLine();
             // The structure's lines style may ask for the depth blur on the stage too (P6 WK, `LyricsLinesStyle.StageDepthBlur`; bound above).
             int strength = Prefs.BlurStrength(OnStage, _linesStyle?.StageDepthBlur == true);
-            // The structure's rail form (P6 fix, `LyricsLinesStyle.Rail`): its band, and a crisp pane never depth-blurs.
-            if (OnRail && _linesStyle?.Rail is { } railForm)
-            {
-                _band = Math.Clamp(railForm.Band, 0.05f, 0.95f);
-                if (railForm.Crisp) strength = 0;
-            }
-            else if (OnRail) _band = Surface.FocalBand(Large);
+            // The structure's rail form (P6 fix, `LyricsLinesStyle.Rail`): its band. Every rail follows the user's blur strength.
+            if (OnRail) _band = _linesStyle?.Rail is { } railForm ? Math.Clamp(railForm.Band, 0.05f, 0.95f) : Surface.FocalBand(Large);
             if (_bandOverride >= 0f) _band = Math.Clamp(_bandOverride, 0.05f, 0.95f);   // the layout's own clamp: a different band re-made it every read
             // A mini mount (#197) is a picture of the song (ILyricsHost.FlatRows): its other lines are one calm ink, never depth-blurred; the
             // active line's halo still follows the setting.

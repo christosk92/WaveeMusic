@@ -286,6 +286,25 @@
 // the mini player's mount) and `ILyricsHost.FlatRows` (the mini player's mount reads as a picture: every line but the active one at
 // `Lyrics.MiniRows.Ink`, no ladder, no depth blur); both default to the old behaviour. `MiniPlayerStyle.LyricScale` takes the window's width
 // (the mini player is unreleased: its three styles moved with it).
+// 1.109 (the WinUI library family): `ShellCapabilities.LibraryFamily` (the four library kinds share one keep-alive slot, `page:library`, under
+// one head the core host draws once, `User.LibraryFamily`), `PageMotionPolicy.LibraryPivot` (the body's slide under that head),
+// `LibraryPageProps.HeadHosted` (the borrowed page leaves the head to the host) and `LibraryControlsStyle.Nav` with `LibraryNavMetrics`
+// (the navigator column's leads: every left edge of the page on the head's own lead, the panes' right edge on its trail).
+// 1.110 (the artist page's tabs scroll): `PageMotionPolicy.SectionJump` (`SectionJump`: a tab glides to a near section and arrives at a far one
+// from a lead short of it, fading what shows in) replaces 1.87's `PageMotionPolicy.Pivot` (the jump and the sideways slide of the sections;
+// removed before any external theme existed, as 1.2 did). A structure that declares none keeps the full glide.
+// 1.111 (the WinUI pane's lyrics follow the blur setting): `LyricsRailForm.Crisp` is gone (the pane's "never depth-blur, whatever the
+// setting says"; removed before any external theme existed, as 1.2 did): every rail follows the user's blur strength.
+// 1.112 (WinUI's Your Episodes on the library column): `LibraryPageProps.SavedCountText` (the listen-later list's episode count, which a borrowing
+// structure's count row shows over Your Episodes instead of the followed shows' count) and `LibraryNavMetrics.EpisodeArtLead` (where the
+// structure's episode row stands its art in from its plate, so Your Episodes' rows hang their plates and stand their art on the column G).
+// 1.113 (Podcasts' counts word its modes): `LibraryModesArgs.FollowedCount` and `LibraryModesArgs.EpisodesCount` (each mode's count, live, for a
+// structure that words its modes "Followed shows · 7", "Your Episodes · 8", as the show page words its filter); a borrowing structure's
+// Podcasts page draws no count row under them. `LibraryPageProps.SavedCountText` now feeds the Your Episodes word. The track table's header
+// args say when every row is an episode row (`TrackHeaderArgs.EpisodeRows`, `NarrowEpisode`), so a header can stand over that row's own layout.
+// 1.114 (the connected navigation flight): `PageMotionPolicy.Connected` (the structure's `ConnectedNavSpec`: an album card's cover flies into
+// the album page's hero and back; null flies nothing) and `PageMotionPolicy.ConnectedQuietPage` (the page under a flight swaps with the
+// recipe's opacity legs only, `Design.Nav.Quiet`).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -301,7 +320,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 108;
+    public const int Minor = 114;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

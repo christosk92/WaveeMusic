@@ -632,16 +632,33 @@ public static partial class Diagnostics
                             string word = a.Has("answer") ? a.Str("answer").ToLowerInvariant() : "fill";
                             if (Entities.ScriptedAnswerOf(word) is not { } answer)
                                 return Inspect.Reply.Fail(id, name, "state kind=head-land answer= wants fill|omit|unfilled|fail|cancel, not '" + word + "'");
-                            int settled = Entities.LandScripted(answer);
-                            if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
-                            return Settled(id, name, a, w =>
+                            string partWord = a.Has("part") ? a.Str("part").ToLowerInvariant() : "";
+                            if (Entities.HeadPartOf(partWord) is not { } part)
+                                return Inspect.Reply.Fail(id, name, "state kind=head-land part= wants all|overview|cards, not '" + partWord + "'");
+                            // cards=N (with part=overview): the release cards land N frames after the overview, inside this verb's trace (or before its settle).
+                            int cardsAfter = part == Entities.HeadPart.Overview && a.Has("cards") ? a.Int("cards", 3) : -1;
+                            int settled = Entities.LandScripted(answer, part);
+                            if (cardsAfter >= 0 && !a.Has("trace"))
                             {
-                                w.WriteString("kind", kind);
-                                w.WriteString("answer", word);
-                                w.WriteNumber("settled", settled);
-                                w.WriteNumber("held", Entities.ScriptedHeld);
-                                AfterState(w, shell, kind);
-                            });
+                                RunFrames(cardsAfter);
+                                Entities.LandScripted(answer, Entities.HeadPart.Cards);
+                                cardsAfter = -1;
+                            }
+                            if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
+                            if (cardsAfter >= 0) _traceFrameHook = f => { if (f == cardsAfter) Entities.LandScripted(answer, Entities.HeadPart.Cards); };
+                            try
+                            {
+                                return Settled(id, name, a, w =>
+                                {
+                                    w.WriteString("kind", kind);
+                                    w.WriteString("answer", word);
+                                    if (partWord.Length > 0) w.WriteString("part", partWord);
+                                    w.WriteNumber("settled", settled);
+                                    w.WriteNumber("held", Entities.ScriptedHeld);
+                                    AfterState(w, shell, kind);
+                                });
+                            }
+                            finally { _traceFrameHook = null; }
                         }
                         if (!Shell.SetInspectState(kind)) return Inspect.Reply.Fail(id, name, "state wants kind=" + string.Join("|", Inspect.StateKinds) + ", not '" + kind + "'");
                         if (kind.StartsWith("cold-", StringComparison.Ordinal)) InspectKit.ColdStaged = true;   // the next mount puts the cold playlist back
@@ -1703,7 +1720,8 @@ public static partial class Diagnostics
         long _logSeen;   // the last log sequence a `status log=` listed
 
         /// <summary>`log:[...]`: the app log lines (Log.Snapshot, the in-memory ring) that contain <paramref name="text"/>, written since the
-        /// last `status log=` (the newest 64), so a verb's `[stage.chrome]` lines can be read back after it.</summary>
+        /// last `status log=` (the newest 64), so a verb's `[stage.chrome]` lines can be read back after it. A structured event without a
+        /// message is matched and listed in its one-line form (<see cref="WaveeLogEntry.Format"/>).</summary>
         void WriteLogSince(Utf8JsonWriter w, string text)
         {
             var lines = new List<string>();
@@ -1712,7 +1730,9 @@ public static partial class Diagnostics
             {
                 if (entry.Sequence <= seen) continue;
                 _logSeen = Math.Max(_logSeen, entry.Sequence);
-                if (entry.Message.Contains(text, StringComparison.Ordinal)) lines.Add(entry.Message);
+                // A structured event with no message (`list.open`, `list.meta`, `list.settle`) is read as its one-line form: its name and fields.
+                string line = entry.Message.Length == 0 && entry.EventId.Length > 0 ? entry.Format() : entry.Message;
+                if (line.Contains(text, StringComparison.Ordinal)) lines.Add(line);
             }
             w.WriteStartArray("log");
             for (int i = Math.Max(0, lines.Count - 64); i < lines.Count; i++) w.WriteStringValue(lines[i]);
@@ -1732,6 +1752,7 @@ public static partial class Diagnostics
             {
                 WriteMountFacts(w);   // size, route, text, devices, render, tiers, theme, kind (and networkLeaks when any)
                 w.WriteBoolean("animating", shell.Host.Animation.HasActive);
+                WriteConnectedFacts(w, shell);   // the connected navigation flights (Diagnostics.Inspect.Trace.cs)
                 w.WriteString("trimSource", InspectDump.TrimSource(shell));
                 return;
             }

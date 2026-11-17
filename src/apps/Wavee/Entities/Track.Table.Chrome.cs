@@ -198,7 +198,7 @@ public readonly partial struct Track
         /// its real commands.</summary>
         Element Toolbar() => new SkelRegionEl(
             Pending: _barPending, Failed: s_barNeverFails, Content: _barLive, ShimmerSource: null, OnFailed: null,
-            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+            Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false);
 
         Element LiveToolbar() => Responsive.Of("detail-track-commandbar", _buildToolbar, fallback: _lastW > 0f ? _lastW : 760f);
 
@@ -750,6 +750,7 @@ public readonly partial struct Track
                 Set = shape.Set, Tracks = shape.Tracks, Sort = _sort.Value, SortSignal = _sort,
                 Checks = _checksVisible?.Value ?? false, Vertical = HeroFormLive,
                 OnSort = SortBy,
+                EpisodeRows = Cfg.Content == DetailContent.Episodes, NarrowEpisode = shape.NarrowEpisode,
             });
         }
 

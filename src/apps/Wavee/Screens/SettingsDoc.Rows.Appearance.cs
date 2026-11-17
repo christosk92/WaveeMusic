@@ -55,7 +55,10 @@ public static partial class SettingsDoc
                 captionKey: Strings.Settings.Appearance.ZoomSub, value: _ => SettingsVerbs.ZoomIndex()),
             Make(T.Appearance, "Display", "marquee", K.Toggle, Strings.Settings.Appearance.Marquee,
                 SettingsWriter.OfToggle("appearance.marquee", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.MarqueeEnabled, on)),
-                captionKey: Strings.Settings.Appearance.MarqueeSub, value: BoolOf(Platform.Keys.MarqueeEnabled))),
+                captionKey: Strings.Settings.Appearance.MarqueeSub, value: BoolOf(Platform.Keys.MarqueeEnabled)),
+            Make(T.Appearance, "Display", "fastNavigation", K.Toggle, Strings.Settings.Appearance.FastNavigation,
+                SettingsWriter.OfToggle("appearance.fastNavigation", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.FastNavigation, on)),
+                captionKey: Strings.Settings.Appearance.FastNavigationSub, value: BoolOf(Platform.Keys.FastNavigation))),
 
         Sect(T.Appearance, "Lyrics", Strings.Settings.Lyrics.Title, Strings.Settings.Lyrics.Subtitle,
             // The 0..100 slider (0 turns the blur off); there is no Auto choice.

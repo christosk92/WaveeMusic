@@ -84,6 +84,10 @@ public static class WinUiFrameRules
     /// <summary>The offline lane's inset in the card: the tier's inset either side and on top, nothing below.</summary>
     public static Edges4 OfflineLanePadding(float insetX, float insetTop) => new(insetX, insetTop, insetX, 0f);
 
+    /// <summary>The page loading bar's height on the content card's top edge (<c>CommonPageBusy</c>): WinUI's busy-bar height, the
+    /// same as Home's facet bar.</summary>
+    public const float PageBusyH = WinUiHomeRules.BarH;
+
     // ── the title bar (Shell-Top) ────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A toolbar button: 40 wide, 36 tall, the control radius (Shell-Top `tool`).</summary>
@@ -251,7 +255,7 @@ public static class WinUiFrameRules
         Enter: new EnterExit(Opacity: 0f, Active: true),
         Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(Design.Nav.ExitDurationMs, Easing.FluentAccelerate),
-        DelayMs: Design.Nav.EnterDelayMs, ExitDelayMs: 0f);
+        DelayMs: Design.Nav.HandOverDelayMs, ExitDelayMs: 0f);
 
     // ── node keys ────────────────────────────────────────────────────────────────────────────────────────────────────────
 

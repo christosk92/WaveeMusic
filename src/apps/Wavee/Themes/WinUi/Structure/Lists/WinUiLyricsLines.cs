@@ -4,7 +4,7 @@
 // decides which face the document gets and calls these pictures, handing itself as the `ILyricsHost`:
 //
 //   Message    a centred one-line state ("No lyrics available", "Nothing playing", "No transcript")
-//   Shimmer    the loading bars, at the exact side pad the first lines will take (the breath is the engine's skeleton pulse)
+//   Shimmer    the loading bars, at the exact side pad the first lines will take (flat: nothing on them moves)
 //   Skeleton   the skeleton region's style
 //   Unsynced   an untimed (or suppressed) document: a reading block at reading type, left-aligned, wrapped, never ellipsised - no
 //              highlight, no follow, no wipe, no blur ladder
@@ -82,8 +82,8 @@ internal static class WinUiLyricsLines
         ],
     };
 
-    /// <summary>The loading bars, at the exact side pad the first lines will take. They animate nothing themselves: the breath is
-    /// the engine's skeleton pulse on the region's first child.</summary>
+    /// <summary>The loading bars, at the exact side pad the first lines will take. They are flat: nothing on them
+    /// animates, and the engine adds no motion to a placeholder.</summary>
     static Element Shimmer(ILyricsHost host)
     {
         bool large = host.Large;

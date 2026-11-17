@@ -323,6 +323,9 @@ public static class ZuneFrameRules
     /// <summary>The offline lane's inset: the page <paramref name="gutter"/> either side, 16 from the top, nothing below.</summary>
     public static Edges4 OfflineLanePadding(float gutter) => new(gutter, 16f, gutter, 0f);
 
+    /// <summary>The page loading bar's height under the band (<c>CommonPageBusy</c>): Zune's busy line, the same as Home's status bar.</summary>
+    public const float PageBusyH = ZuneHomeRules.BusyH;
+
     // ── the page column (the T1 audit's A1: ONE column for every page and the band) ──────────────────────────────────────
 
     /// <summary>The widest a page's content grows (P5 decision 2): 2400, centred in the content column once the window passes it.</summary>

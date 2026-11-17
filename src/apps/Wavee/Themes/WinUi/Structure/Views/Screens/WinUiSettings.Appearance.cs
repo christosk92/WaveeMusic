@@ -103,6 +103,7 @@ internal static partial class WinUiSettings
             IconRow(Loc.Get(D(Tab.Appearance, "zoom").TitleKey), DescriptionOf(D(Tab.Appearance, "zoom")), RowGlyph(Tab.Appearance, "zoom"),
                 Embed.Comp(static () => new ZoomPicker())),
             DocRow(D(Tab.Appearance, "marquee"), RowToggle(D(Tab.Appearance, "marquee"))),
+            DocRow(D(Tab.Appearance, "fastNavigation"), RowToggle(D(Tab.Appearance, "fastNavigation"))),
         };
 
         // The blur dial, then the on-device AI lyrics card (its own component: setup progress re-renders only the card).

@@ -12,6 +12,9 @@
 //        unfilled  Answer naming the groups as a route that did not answer: Failed at once (never a silent un-ask);
 //        fail      a terminal 404: Failed at once;
 //        cancel    a transport failure (status 0): the fetch layer re-queues it behind its backoff, still in flight, and the retry is held again.
+//   An artist's hold also stages its release cards in flight (Entities.Fake.Cold.cs, StageArtistCards); `part=` lands it in the real client's order:
+//        overview  the overview and chart only (fill), the cards still in flight;   cards  the cards' fields alone, a few frames later;
+//        all       (unset) both in one publication, as before.
 //
 // No page timer takes part in any of it: the page resolves on the publication the settle makes, and its Retry re-asks through the same door (the
 // re-ask is held here again, ready for the next `head-land`). The next mount (InspectKit.RestoreColdPlaylist) puts the transport and gate back too.
@@ -24,6 +27,18 @@ public static partial class Entities
 {
     /// <summary>How the scripted transport settles the held head ask (file header).</summary>
     public enum ScriptedAnswer : byte { Hold, Fill, Omit, Unfilled, Fail, Cancel }
+
+    /// <summary>What a `head-land` lands of an artist's staged head (file header): all of it, the overview alone, or the release cards alone.</summary>
+    public enum HeadPart : byte { All, Overview, Cards }
+
+    /// <summary>The word `part=` takes, or null for another one.</summary>
+    public static HeadPart? HeadPartOf(string word) => word switch
+    {
+        "" or "all" => HeadPart.All,
+        "overview" => HeadPart.Overview,
+        "cards" => HeadPart.Cards,
+        _ => null,
+    };
 
     /// <summary>The word `answer=` takes, or null for another one.</summary>
     public static ScriptedAnswer? ScriptedAnswerOf(string word) => word switch
@@ -85,15 +100,26 @@ public static partial class Entities
 
     /// <summary>Settle the held head ask (file header). Returns how many asks for the head it settled (0 when none was held: the page has not asked,
     /// or a Retry is still to come).</summary>
-    public static int LandScripted(ScriptedAnswer mode)
+    public static int LandScripted(ScriptedAnswer mode, HeadPart part = HeadPart.All)
     {
+        if (part == HeadPart.Cards)
+        {
+            RestoreArtistCards();   // the release rows' own answers: no held ask of the head's takes part
+            return 0;
+        }
         if (s_scripted is not { } s)
         {
-            RestoreHead();
+            if (part == HeadPart.Overview) RestoreArtistOverview();
+            else RestoreHead();
             return 0;
         }
         s.Mode = mode;
-        if (mode == ScriptedAnswer.Fill) RestoreHead();   // the fields first: the answer then finds the group known (no miss to retry)
+        // The fields first: the answer then finds the group known (no miss to retry).
+        if (mode == ScriptedAnswer.Fill)
+        {
+            if (part == HeadPart.Overview) RestoreArtistOverview();
+            else RestoreHead();
+        }
         int settled = 0;
         for (int i = s.Held.Count - 1; i >= 0; i--)
         {

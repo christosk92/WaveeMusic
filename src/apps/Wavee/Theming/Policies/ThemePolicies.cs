@@ -121,6 +121,12 @@ public sealed record ShellCapabilities(bool Tabs, bool NavTree, bool FriendsPane
     /// and the album props carry no credits. Appended (contract 1.84, album credits).</summary>
     public bool AlbumCredits { get; init; }
 
+    /// <summary>The library's four master-detail kinds (albums, artists, podcasts, audiobooks) are ONE family under one head: they share one keep-alive
+    /// slot, the head (the title and the kinds' pivot) is drawn once over them, and a switch between two of them slides only the body under the head by
+    /// the pivot's order (`User.LibraryFamily`, <see cref="PageMotionPolicy.LibraryPivot"/>). Each kind stays a place: history, Back, deep links and
+    /// the tab's route follow the route as before. Default false: each kind is its own page (Classic, Zune). Appended (winui library family).</summary>
+    public bool LibraryFamily { get; init; }
+
     /// <summary>The title row draws the tab strip: tabs are offered and the strip is not hidden.</summary>
     public bool ShowsTabStrip => Tabs && !HiddenTabStrip;
 

@@ -286,9 +286,10 @@ public static partial class Design
     // The neutral tile itself (an OPAQUE explicit neutral, never a translucent theme brush) is the style's `R.Layer.ArtPlaceholder`, and
     // the blend toward the cover's own colour is `ColorScience.Placeholder` at `ColorScience.TintStrength`.
 
-    /// <summary>Below this edge the breathe is imperceptible, so a slot takes a cheap STATIC tile: no component, no hook
-    /// cells, no image-epoch subscription — a 50k-row virtualized list pays nothing per item.</summary>
-    public const float ShimmerMinEdge = 80f;
+    /// <summary>At or above this edge a cover tile is KEYED (<c>"shim"</c>) and opts out of the derived skeleton, so a
+    /// pending region leaves the slot to the image's own placeholder tile instead of drawing a second bar over it. Below it
+    /// the tile is an anonymous box the skeleton deriver may replace.</summary>
+    public const float CoverTileKeyedEdge = 80f;
 
     /// <summary>THE art placeholder resolver, for the ACTIVE theme's polarity. Light theme only accepts a LIGHT grading;
     /// a dark-only entry keeps the neutral tile rather than dropping a dark slab onto a pale page.</summary>
@@ -313,7 +314,7 @@ public static partial class Design
     /// <para>A raw <see cref="PlaceholderFor(ReadOnlySpan{char})"/> VALUE is computed once, at the render that first
     /// mounted the slot, and then FROZEN into the record — component factory fields freeze at mount. The
     /// enqueue-on-miss is real, but nothing then repaints the slot when that grading LANDS a moment later: every
-    /// sidebar/pin thumb (always under <see cref="ShimmerMinEdge"/>) and every fill-grid cell took exactly this frozen
+    /// sidebar/pin thumb (always under <see cref="CoverTileKeyedEdge"/>) and every fill-grid cell took exactly this frozen
     /// path, which is why they stayed grey forever despite the plane correctly grading their covers in the
     /// background.</para>
     ///
@@ -524,10 +525,82 @@ public static partial class Design
         /// <summary>The exit leg's duration of the page swap — Material's
         /// fade-through, verified to have zero overlap.</summary>
         public const float ExitDurationMs = 90f;
-        /// <summary>The enter leg's start delay. Equal to <see cref="ExitDurationMs"/> EXACTLY — never less, or the two
-        /// legs are briefly both on screen, which is the regression this file exists to fix (two full-bleed pages
-        /// summing to 1.83 opacity for ~130ms when both legs started at t=0).</summary>
+        /// <summary>The enter leg's start delay in the SEQUENCED swap (a structure that asks for a continuous one: Zune). Equal to
+        /// <see cref="ExitDurationMs"/> exactly: the two legs never share the screen (two full-bleed 300 ms legs from t=0 summed to 1.83
+        /// opacity for ~130 ms).</summary>
         public const float EnterDelayMs = ExitDurationMs;
+        /// <summary>The enter leg's start delay in the HAND-OVER swap (every other structure, Classic and WinUI's top-level swaps): the incoming
+        /// page starts as the outgoing one starts to leave. The sequenced swap left the card nearly empty between its legs (the owner's
+        /// recording, 2026-11-15: the old page faded to a washed-out, near-blank card for 100-150 ms before the new header faded in; traced,
+        /// the two pages' summed cover fell to 0.06 for two frames). Overlapped, the short exit (90 ms) and the decelerating enter (210 ms)
+        /// keep at least ~85 % of the card covered on every frame, and the new header is on screen from the first one; the legs share the
+        /// screen for the 90 ms exit only, the old page already past half gone when the new one is.</summary>
+        public const float HandOverDelayMs = 0f;
+        /// <summary>The hand-over's incoming leg: 167 ms (WinUI ControlFast) on the Fluent decelerate, which brings the new page most of the way
+        /// up in its first frames while the outgoing one leaves on its own 90 ms exit leg. The two pages' summed cover never drops below ~84 %
+        /// (the sequenced legs fell to 6 %), they share the screen for the exit leg only, and the swap settles sooner.</summary>
+        public const float HandOverEnterMs = 167f;
+
+        /// <summary>A swap between two pages of the SAME kind (playlist to playlist, album to album, artist to artist): the outgoing page leaves
+        /// on the click frame and the incoming one fades in over this, with no travel and no stagger (<see cref="SameKindSwap"/>). The owner's
+        /// recording, 2026-11-15: the hand-over between two playlists printed two dense track lists over each other ("very heavy"). The two
+        /// pages share one layout, so a crossfade reads as one list turning into an unrelated one (Heer and Robertson's false relation),
+        /// its text unreadable mid-fade (Material: a fade exposes "overlapping and partially transparent frames"), and the 8-DIP travel
+        /// moves a layout that does not change. It is frequent, productive navigation: Microsoft's ~100 ms for frequent operations, Carbon's
+        /// productive range (70-150 ms), Apple's "avoid adding motion to interactions that happen frequently".</summary>
+        public const float SameKindEnterMs = 100f;
+
+        /// <summary>The same-kind swap (<see cref="SameKindEnterMs"/>): an opacity-only enter on the Fluent decelerate from
+        /// <see cref="SameKindEnterFrom"/>, and NO exit, so the keep-alive host deactivates the outgoing page on the swap's own frame and the
+        /// two pages never share the card.</summary>
+        public static readonly LayoutTransition SameKindSwap = new(TransitionChannels.Opacity,
+            TransitionDynamics.Tween(SameKindEnterMs, Easing.FluentDecelerate),
+            Enter: new EnterExit(Opacity: SameKindEnterFrom, Active: true));
+
+        /// <summary>Where the same-kind fade starts. From nothing, its first frame was a near-empty card (the washed-out frame the owner
+        /// rejected in the sequenced swap); from 40 % the new page is readable on its first frame and still never shares the card.</summary>
+        public const float SameKindEnterFrom = 0.4f;
+
+        /// <summary>Fast navigation (<c>Platform.Keys.FastNavigation</c>, off by default): every page-to-page swap, not only a same-kind one, never
+        /// shows two pages at once (the owner, 2026-11-15, after the arrive-whole
+        /// fix exposed the hand-over: the old and the new page printed over each other for ~3 frames). The recipe keeps its own cue on the incoming
+        /// page (Classic's 8-DIP slide, WinUI's zoom or rise), loses its exit leg (the keep-alive host deactivates the outgoing page on the swap's
+        /// frame) and its wait for that leg, and starts from <see cref="SameKindEnterFrom"/>, so no frame is an empty card.</summary>
+        public static LayoutTransition NoOverlap(in LayoutTransition r) => r with
+        {
+            Exit = default,
+            DelayMs = 0f,
+            Enter = r.Enter with { Opacity = MathF.Max(r.Enter.Opacity, SameKindEnterFrom) },
+            Dynamics = GentleStart(r.Dynamics),
+        };
+
+        /// <summary>The incoming leg alone on screen: the Fluent decelerate carried 57 % of Classic's 8-DIP travel on its first frame (traced:
+        /// 4.57 DIP at once), which the overlapping exit used to hide. The quadratic ease-out a continuous swap already uses
+        /// (<see cref="ContinuousEnterEasing"/>) starts at a quarter of that rate and settles in the same time.</summary>
+        static TransitionDynamics GentleStart(in TransitionDynamics d)
+            => d.Kind == DynamicsKind.Tween && d.Easing.Equals(s_fluentDecelerate) ? TransitionDynamics.Tween(d.DurationMs, ContinuousEnterEasing) : d;
+
+        static readonly EasingSpec s_fluentDecelerate = TransitionDynamics.Tween(1f, Easing.FluentDecelerate).Easing;
+
+        /// <summary>The page swap under a connected navigation flight (a card's cover flying into its page's hero): the recipe's own opacity legs,
+        /// delays and dynamics, with no slide, no zoom and no rise on either page, so the cover is the only thing that travels. Microsoft: a
+        /// connected animation "does not work well" with a page transition that translates; Material's container transform fades the incoming
+        /// page in and holds the outgoing one still. An opacity-only leg is a composite parameter, so the page is not re-recorded under the
+        /// flight (a zoom re-records it every frame). <see cref="NoOverlap(in LayoutTransition)"/> still applies on top under Fast navigation.</summary>
+        public static LayoutTransition Quiet(in LayoutTransition r) => r with
+        {
+            Channels = TransitionChannels.Opacity,
+            Enter = r.Enter with { Dx = 0f, Dy = 0f, Sx = 1f, Sy = 1f },
+            Exit = r.Exit with { Dx = 0f, Dy = 0f, Sx = 1f, Sy = 1f },
+        };
+
+        /// <summary>The incoming page's staggered units under <see cref="NoOverlap(in LayoutTransition)"/>: no wait for an exit leg that no longer
+        /// plays, and the units start from <see cref="SameKindEnterFrom"/> (from nothing, the page's first frames were an empty card).</summary>
+        public static EntranceCascade NoOverlap(in EntranceCascade c) => c with
+        {
+            DelayMs = 0f,
+            Enter = c.Enter with { Opacity = MathF.Max(c.Enter.Opacity, SameKindEnterFrom) },
+        };
         /// <summary>The enter leg's own duration. <see cref="ExitDurationMs"/> + this = 300ms total.</summary>
         public const float EnterDurationMs = 210f;
 
@@ -548,26 +621,31 @@ public static partial class Design
         static TransitionDynamics SeqEnter(bool continuous) => TransitionDynamics.Tween(EnterDurationMs, continuous ? ContinuousEnterEasing : Easing.FluentDecelerate);
         static TransitionDynamics SeqExit(bool continuous) => TransitionDynamics.Tween(ExitDurationMs, continuous ? ContinuousExitEasing : Easing.FluentAccelerate);
 
-        /// <summary>A sequenced translate + fade — the enter and exit legs each on their own horizontal travel.</summary>
-        static LayoutTransition SeqTranslate(float enterDx, float exitDx, bool continuous) => new(
-            TransitionChannels.Position | TransitionChannels.Opacity, SeqEnter(continuous),
+        /// <summary>A translate + fade — the enter and exit legs each on their own horizontal travel: sequenced (the enter waits out the exit)
+        /// for a structure that mounts its incoming page at the end of the exit leg, else the hand-over (<see cref="HandOverDelayMs"/>).</summary>
+        static LayoutTransition SeqTranslate(float enterDx, float exitDx, bool continuous, bool sequenced) => new(
+            TransitionChannels.Position | TransitionChannels.Opacity,
+            sequenced ? SeqEnter(continuous) : TransitionDynamics.Tween(HandOverEnterMs, Easing.FluentDecelerate),
             Enter: new EnterExit(Dx: enterDx, Opacity: 0f, Active: true),
             Exit: new EnterExit(Dx: exitDx, Opacity: 0f, Active: true),
-            ExitDynamics: SeqExit(continuous), DelayMs: EnterDelayMs, ExitDelayMs: 0f);
+            ExitDynamics: SeqExit(continuous),
+            DelayMs: sequenced ? EnterDelayMs : HandOverDelayMs, ExitDelayMs: 0f);
 
         /// <summary>The recipe for a page swap, WITH its Exit half. Both halves are load-bearing: the reconciler only
         /// overlaps the outgoing page (ZStacked on the boundary, hit-test invisible, parked once its tracks settle) when
         /// <c>Exit.Active</c> is true — with a stripped Exit the outgoing page is detached in the same frame and the card
         /// flashes EMPTY before the incoming page arrives. Neutral is a plain fade; Forward/Back are the 0.2.x
-        /// fade-through (a sequenced 8-DIP translate + fade), the same for every pair of pages.
+        /// fade-through's 8-DIP translate + fade, the same for every pair of pages, its legs overlapped into a hand-over
+        /// (<see cref="HandOverDelayMs"/>; <paramref name="sequenced"/> keeps the legs apart for a structure that mounts the incoming page at the
+        /// end of the exit leg (<c>ShellCapabilities.DefersPageMount</c>: Zune) and for the wizards' own page swaps (the default).
         /// <para>CRITICAL: the translate passes <c>ExitDelayMs: 0f</c> EXPLICITLY. It is <c>float?</c> and null means
         /// "inherit <c>DelayMs</c>" — omitting it would push the exit out by <see cref="EnterDelayMs"/> too and flash the
         /// content card empty for that whole window (the bug a naive port reintroduces).</para></summary>
-        public static LayoutTransition RecipeFor(NavTransitionKind motion, bool continuous = false) => motion switch
+        public static LayoutTransition RecipeFor(NavTransitionKind motion, bool continuous = false, bool sequenced = true) => motion switch
         {
             NavTransitionKind.Neutral => MotionRecipes.PageFade,
-            NavTransitionKind.Back => SeqTranslate(-ClassicDx, ClassicDx, continuous),
-            _ => SeqTranslate(ClassicDx, -ClassicDx, continuous),
+            NavTransitionKind.Back => SeqTranslate(-ClassicDx, ClassicDx, continuous, sequenced),
+            _ => SeqTranslate(ClassicDx, -ClassicDx, continuous, sequenced),
         };
 
         // ── the VIDEO-SAFE pair ──────────────────────────────────────────────────────────────────────────────────────
@@ -623,6 +701,36 @@ public static partial class Design
             ExitDynamics: VideoSafeDynamics);
     }
 
+    // ══ 10b. A LIST'S MEMBERSHIP CHANGE ═════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>A list's membership change the page narrates (a remote answer, another device, a local edit), row by row in three steps from the
+    /// frame that commits it: LEAVE (a live row that is gone, or that leaves the live rows, fades out where it stands and rises
+    /// <c>Spacing.XS</c>, top-down), CLOSE UP (a survivor glides from its old place to its new one, starting <see cref="GlideLeadBackMs"/>
+    /// before the last leaver is gone) and ARRIVE (an added row, or one that comes from outside the live rows, rises <see cref="EnterRise"/>
+    /// and fades in, staggered, once its place is free: the row that left it gone, a glide past it gone by). Text never crosses text. With
+    /// no leaver the glide and the arrivals keep their old timing. The rules are <c>Track.MembershipWindow</c>'s; these are the numbers (owner, 2026-11-15: "a clean but not abrupt
+    /// transition to new content individually").</summary>
+    public static class Membership
+    {
+        /// <summary>Each leaver starts this long after the one above it.</summary>
+        public const float ExitStaggerMs = 16f;
+        /// <summary>The leavers' stagger stops growing after this many rows (a re-cut's screen leaves within 246 ms).</summary>
+        public const int ExitStaggerCap = 6;
+        /// <summary>The gliders start this long before the last leaver is gone.</summary>
+        public const float GlideLeadBackMs = 50f;
+        /// <summary>How long after its start a glide has gone by a place it passes (the placement spring is three quarters there at 150 ms):
+        /// an arrival in that place waits for it.</summary>
+        public const float GlideClearMs = 150f;
+        /// <summary>An arriving row's rise (DIP).</summary>
+        public const float EnterRise = 6f;
+        /// <summary>Each arrival starts this long after the one above it.</summary>
+        public const float EnterStaggerMs = 20f;
+        /// <summary>The arrivals' stagger stops growing after this many rows.</summary>
+        public const int EnterStaggerCap = 8;
+        /// <summary>The leave's own length: the removal recipe's token (<c>MotionTokenId.ControlFast</c>), never a second literal.</summary>
+        public static float ExitMs => MotionTok.Get(MotionTokenId.ControlFast).DurationMs;
+    }
+
     // ══ 11. THE DETAIL REVEAL RAMP ═══════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Pure progression math for a cold list's progressive shimmer→real reveal. BCL-only, so it is
@@ -659,7 +767,79 @@ public static partial class Design
         /// <summary>Is the row at this display position a REAL row yet (vs a shimmer placeholder)? True once the ramp
         /// count passes it; always true at <see cref="Done"/>, so a fully-revealed list pays nothing.</summary>
         public static bool Revealed(int displayIndex, int reveal) => displayIndex < reveal;
+
+        /// <summary>The FIRST step of a cold reveal: every row the list's viewport can show, plus one, so the rows on screen all turn real
+        /// on the same frame (the owner's recording, 2026-11-15: rows 1-12 landed, then 13-15 a frame later through a grey placeholder, half
+        /// faded while the rows above stood solid). Only the overscan past the screen steps on by <see cref="Chunk"/> after it.
+        /// <paramref name="viewportH"/> is the list column's measured height (0 before the first measure: a 1080-DIP screen's worth).</summary>
+        public static int FirstBand(float viewportH, float rowH)
+        {
+            float h = viewportH > 1f ? viewportH : FallbackViewportH;
+            int rows = rowH > 1f ? (int)MathF.Ceiling(h / rowH) + 1 : Chunk;
+            return Math.Clamp(rows, Chunk, Cap);
+        }
+
+        /// <summary>The list height <see cref="FirstBand"/> assumes before the column has measured.</summary>
+        const float FallbackViewportH = 1080f;
+
+        // ── the cold reveal's row entrance (the owner's recording, 2026-11-15: the whole list cut in at once) ──
+        // Each row of the first band crossfades from its skeleton to its content IN PLACE (opacity only: nothing moves, no layout), one row a
+        // step behind the one above, the whole band settled inside RowSpanMs + RowFadeMs. The skeleton under the band dissolves on the region's
+        // own exit (SkelReveal.None floors it at Expressive.Slow), so a row never stands blank between the two.
+
+        /// <summary>Each row's crossfade.</summary>
+        public const float RowFadeMs = 150f;
+        /// <summary>The gap between two rows' crossfades.</summary>
+        public const float RowStepMs = 8f;
+        /// <summary>The last row starts at most this long after the first: the band settles within 250 ms however tall the window is.</summary>
+        public const float RowSpanMs = 100f;
+
+        static readonly LayoutTransition[] s_rowEnter = BuildRowEnter();
+
+        static LayoutTransition[] BuildRowEnter()
+        {
+            int n = (int)(RowSpanMs / RowStepMs) + 1;
+            var a = new LayoutTransition[n];
+            for (int i = 0; i < n; i++)
+                a[i] = new LayoutTransition(TransitionChannels.Opacity, TransitionDynamics.Tween(RowFadeMs, Easing.EaseOut),
+                    Enter: new EnterExit(Opacity: 0f, Active: true), DelayMs: MathF.Min(i * RowStepMs, RowSpanMs));
+            return a;
+        }
+
+        /// <summary>The entrance of the row at <paramref name="displayIndex"/> when a cold reveal mounts it (null under reduced motion: the swap
+        /// snaps, as the skeleton's own exit does). Preallocated: a reveal allocates nothing per row.</summary>
+        public static LayoutTransition? RowEnter(int displayIndex)
+            => Reduced ? null : s_rowEnter[Math.Clamp(displayIndex, 0, s_rowEnter.Length - 1)];
     }
+
+    // ══ 11b. THE LOADING SKELETON ════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The detail pages' skeleton (the playlist / album / show list and its head): the row's own shapes in a bar that reads as LOADING.
+    /// The engine's default bar is the subtle hover fill (3.5 % black in light): the owner's recording (2026-11-15) read the loading list
+    /// as an empty page. The bar is the text ink at <see cref="SkeletonBarAlpha"/> over whatever ground the page has (light and dark
+    /// alike), flat: it never moves or pulses (the owner, 2026-11-15); a page that takes a while says so once with its loading bar
+    /// (<see cref="LoadingBarShowAfterMs"/>). A property: the ink is read where the element is built, so a theme flip re-reads it.</summary>
+    public static SkeletonStyle Skeleton => new(SkeletonBar);
+
+    /// <summary>The skeleton's bar colour: the active text ink at <see cref="SkeletonBarAlpha"/>.</summary>
+    public static ColorF SkeletonBar
+    {
+        get
+        {
+            var ink = Tok.TextPrimary;
+            return new ColorF(ink.R, ink.G, ink.B, SkeletonBarAlpha);
+        }
+    }
+
+    /// <summary>The bar's opacity over the page (WinUI's loading placeholders sit near the control fills, 6-10 %).</summary>
+    public const float SkeletonBarAlpha = 0.085f;
+
+    /// <summary>The page loading bar's timing (the owner, 2026-11-15): a page whose placeholders are still up after
+    /// <see cref="LoadingBarShowAfterMs"/> shows one thin bar on its top edge, and once shown the bar stays at least
+    /// <see cref="LoadingBarMinVisibleMs"/> so it never blinks. A load shorter than the delay shows nothing: under a second
+    /// the flow of thought holds and no indicator is needed (Nielsen's 1 s limit; Primer, "less than 1 second: don't show a
+    /// loading state"), so the bar first marks a wait the user would otherwise wonder about.</summary>
+    public const float LoadingBarShowAfterMs = 1000f, LoadingBarMinVisibleMs = 400f;
 
     // ══ 12. IMAGE DECODE SCALE ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -700,28 +880,25 @@ public static partial class Design
         public static int Bucket(int px) => px <= 0 ? BucketPx : ((px + BucketPx - 1) / BucketPx) * BucketPx;
     }
 
-    // ══ 13. THE SHARED-ELEMENT (HERO) KEY CONVENTION — DORMANT ═══════════════════════════════════════════════════════
+    // ══ 13. THE SHARED-ELEMENT (HERO) KEY CONVENTION ═══════════════════════════════════════════════════════════════
 
-    /// <summary>The connected-animation (shared-element / Hero) key for a cover IS the route key the card navigates
-    /// with — already unique and already present on both the card and the detail page, so source and destination agree
-    /// with zero extra plumbing. One place for the convention so the two sides never drift. Null ⇒ no Hero (the liked
-    /// collection has no uri; artist covers are circular and were deferred) ⇒ today's instant swap.
+    /// <summary>The connected navigation flight's key (<c>SharedTransition.BeginNav</c>, a card's cover flying into its page's hero
+    /// and back): the album uri ITSELF (<c>spotify:album:…</c>), no prefix, so the card, the hero and the shell agree with nothing
+    /// built per card. The card passes its data's uri, the hero its identity's subject, the shell the route's subject.
     ///
-    /// <para><b>NOTHING FLIES TODAY, AND THE CONVENTION STILL PORTS.</b> The forward CAPTURE seam was removed in the
-    /// same commit that made the detail rail's cover pass a null key, so re-arming it means restoring the whole capture
-    /// seam AND deciding how a cover fly composes with the page slide (the page's own absolute rect moves every frame of
-    /// the slide, so the flight would chase a fading page). Dropping the key parameters is not a simplification; it is
-    /// the deletion of the only agreement the two halves have — and the nav probe ASSERTS the source half is still
-    /// minted, so the dormancy is a measured state rather than a hope.</para>
+    /// <para>A key may repeat down a page (the same album on two shelves): the engine flies from the tagged cover INSIDE the card
+    /// the user activated and to the one on the page it opens, never "every node with the key", and hides only those two slots.</para>
+    ///
+    /// <para><see cref="For"/> is the older prefixed convention (<c>album:</c>, <c>pl:</c>) still minted by Recents and the Liked
+    /// covers. Its keys can never equal a raw uri, so they stay inert; they go in the slice that brings the flight to Classic.</para>
     ///
     /// <para>NOT to be folded together with the content card's stable-frame FLIP anchor. That rides the same
-    /// <c>MorphId</c> column and has nothing to do with connected animation.</para>
-    ///
-    /// <para>ONE TAG PER URI. Uris repeat down a recents list (~1,388 times on a real account), the engine's tagged
-    /// registry is last-writer-wins, and hiding a flying key hides EVERY node carrying it — so a second tagged row would
-    /// blank itself mid-fly. A minting surface tags only the FIRST occurrence of each uri.</para></summary>
+    /// <c>MorphId</c> column and has nothing to do with connected animation.</para></summary>
     public static class MorphKeys
     {
+        /// <summary>The flight key for a cover showing <paramref name="uri"/>: the uri when it is an album's, else null (slice 1 flies albums only).</summary>
+        public static string? ForUri(string? uri) => uri is { Length: > 14 } && uri.StartsWith("spotify:album:", StringComparison.Ordinal) ? uri : null;
+
         /// <inheritdoc cref="MorphKeys"/>
         public static string? For(EntityKind kind, string? id) => id is { Length: > 0 }
             ? kind switch

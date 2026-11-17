@@ -12,6 +12,20 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Added
 
+- **Album covers fly into their page (WinUI).** Clicking an album card on Home, an artist's discography, search or
+  "More by" lifts its cover out of the card and flies it into the album page's header while the page fades in quietly
+  underneath; Back flies it home into the same card. Press Back mid-flight and the cover turns around where it is; go
+  somewhere else and it steps aside. With Windows animations off, or from a card that is mostly out of view, nothing
+  flies.
+
+- **Fast navigation (Classic and WinUI).** A new switch in Settings > Appearance swaps pages without the cross-fade: the
+  new page replaces the old one at once and settles in from 40 %. It is off by default, which keeps the calm hand-over
+  between two pages.
+
+- **Save and Follow in every ⋯ menu.** An album's or playlist's ⋯ menu offers Save, an artist's or show's offers Follow,
+  wherever the menu opens, and both write exactly what the page's own heart does. Your own playlists, Liked Songs and
+  Your Episodes are never offered a Save or a Follow.
+
 - **See the picture where you are seeking (every theme).** Moving the pointer along the seek bar of a music video or a
   video podcast shows the frame at that moment above the bar, with the time and, on an episode, the chapter; it follows
   the pointer while you drag too. It shows on the player bar, in full screen and on the video's own controls when they
@@ -25,8 +39,49 @@ versions separately under `v*` and is not tracked in this file.)
   line sung at that moment, on a small card that points at your mouse. Settings > Appearance > Lyrics > "Show lyrics
   when seeking" turns it off.
 
+### Changed
+
+- **Playlists open at once.** A playlist you have opened before shows its saved copy the moment you click, Mixes
+  included, and checks for changes behind it; only the daylist waits for its fresh answer. No more placeholder rows for
+  a split second.
+
+- **A changed playlist changes row by row.** When the fresh copy differs, each change plays on its own: a removed song
+  leaves where it stands and the rows below close up, a new song arrives in its place, a moved song travels to its new
+  spot, and a new cover or description hands over in place instead of the whole list repainting.
+
+- **Calmer loading everywhere.** Placeholders are flat and still, with no pulse and no breathing cover tile. When a page
+  takes longer than a second, one thin bar at its top says it is still loading.
+
+- **Page switches are cleaner.** The incoming page is complete on its first frame instead of its parts fading in one by
+  one, and two pages never wash into each other. Going from one album to another (or one playlist, artist or show to
+  the next) is a short 100 ms fade instead of the full page transition.
+
+- **The WinUI library switches like Windows 11.** Choosing Playlists, Albums, Artists or Podcasts keeps "Library" and
+  the tabs where they are and slides only the content below them, left or right. Sort, filter, count and rows line up
+  on one column under the header and end on its right edge; Liked Songs still opens as its own page.
+
+- **The WinUI artist page lands whole.** Popular arrives at its final rows instead of growing into place, the right
+  column comes in with the page, and the blur-rise of the header stays. The section tabs now scroll smoothly to their
+  section; a far section arrives from a short lead-in instead of jumping.
+
+- **Pick-one menus mark their choice as Windows 11 does (Classic and WinUI).** Sort orders, qualities and every other
+  menu where you pick one option show the chosen one with the combo box's accent pill; WinUI's menu rows also take the
+  combo box's spacing.
+
+- **WinUI lyrics pane follows the blur setting,** and the active line and the words being sung stand clearly apart
+  from the rest.
+
 ### Fixed
 
+- **Your Episodes (WinUI) showed a stray "7", a dead band and a header out of line.** It stands on the library's column
+  now, its header sits over the episodes, and its count counts episodes; Podcasts' counts say which mode they count.
+- **A menu over the Canvas showed the panel's buttons through it.** A menu over a playing video or Canvas is frosted
+  through and through.
+- **Liked Songs drew an empty tile** in the WinUI sticky bar and in search results; it shows its own cover.
+- **Your own Liked Songs, Your Episodes and playlists offered Follow** in search results.
+- **Saving an upcoming album** from a heart or a ⋯ menu pre-saves it, and every heart on that album shows it saved.
+- **A hidden Wavee window kept waking up.** While another window covered it, Wavee woke for every event on the
+  desktop; it now stays asleep until it shows again.
 - **Video podcasts that are not copy-protected play their video.** Such an episode played as audio only, as if it had no
   video; it now plays its picture the way a music video does.
 

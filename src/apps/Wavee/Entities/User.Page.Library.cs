@@ -124,14 +124,19 @@ public readonly partial struct User
 
     /// <summary>RouteKind.LibraryAlbums / LibraryArtists / LibraryPodcasts / LibraryAudiobooks (A2 plan §3.6) → the
     /// master-detail browser. ONE component keyed by the route's name, so each kind keeps its own keep-alive instance
-    /// (the kind freezes at mount).</summary>
+    /// (the kind freezes at mount). Under a structure that hosts the kinds as one family (<c>ShellCapabilities.LibraryFamily</c>) the route's
+    /// slot is the family's and this answers its host (<see cref="LibraryFamily"/>, keyed "library"), which keeps one page per kind itself.</summary>
     // MOUNT POINT (stage B contract)
     public static Element LibraryPageFor(in Shell.Route route)
     {
-        var kind = route.Kind is Shell.RouteKind.LibraryArtists or Shell.RouteKind.LibraryPodcasts
-            or Shell.RouteKind.LibraryAudiobooks ? route.Kind : Shell.RouteKind.LibraryAlbums;
+        var kind = LibraryKindOf(route.Kind);
+        if (Shell.InLibraryFamily(route)) return LibraryFamilyFor(kind, route.Tab);
         return Embed.Comp(() => new LibraryPage(kind)) with { Key = "library:" + Shell.NameOf(route) };
     }
+
+    /// <summary>The library page kind a route draws (albums for anything that is not one of the other three).</summary>
+    static Shell.RouteKind LibraryKindOf(Shell.RouteKind kind)
+        => kind is Shell.RouteKind.LibraryArtists or Shell.RouteKind.LibraryPodcasts or Shell.RouteKind.LibraryAudiobooks ? kind : Shell.RouteKind.LibraryAlbums;
 
     // ── the library's row 2 (P5 ZK, contract 1.26): route-level page-chrome views ────────────────────────────────────────
     //
@@ -226,6 +231,8 @@ public readonly partial struct User
         // alone drifted every letter offset by 4 DIP a row, which is why nothing here re-derives it.
 
         readonly Shell.RouteKind _route;
+        /// <summary>The library family's host draws the head over this page (<see cref="LibraryPageProps.HeadHosted"/>).</summary>
+        readonly bool _headHosted;
         readonly string _kind;                 // "albums" | "artists" | "podcasts" — the persisted key segment
         readonly EntityKind _entity;
         readonly LibraryEdgeKind _relation;
@@ -402,21 +409,6 @@ public readonly partial struct User
         /// a verb decides, never from a render (a render reads the tier signal itself).</summary>
         bool Collapsed => _layoutTier is { } tier && Theming.LibraryLadders.IsSingleColumn(tier.Peek());
 
-        static readonly Shell.RouteKind[] s_kindRoutes =
-            [Shell.RouteKind.LibraryAlbums, Shell.RouteKind.LibraryArtists, Shell.RouteKind.LibraryPodcasts, Shell.RouteKind.LibraryAudiobooks, Shell.RouteKind.Liked];
-
-        /// <summary>The one-column head's kind chips: the library's kinds in the nav's order, this page's selected. Built when the structure's view asks (only the Compact head
-        /// draws them), so a split page allocates nothing for them.</summary>
-        IReadOnlyList<LibraryKindChip> KindChips()
-        {
-            var chips = new LibraryKindChip[s_kindRoutes.Length];
-            for (int i = 0; i < chips.Length; i++)
-            {
-                var kind = s_kindRoutes[i];
-                chips[i] = new LibraryKindChip(Shell.Dest(new Shell.Route(kind)).Title, kind == _route, () => Shell.GoTo(new Shell.Route(kind)));
-            }
-            return chips;
-        }
 
         /// <summary>The layout ladder's seed before the first measure: the content region the frame resolved the window tiers on, else the viewport less a sidebar;
         /// unknown seeds the split layout, as the page always did.</summary>
@@ -437,9 +429,10 @@ public readonly partial struct User
         bool IsPodcasts => _route == Shell.RouteKind.LibraryPodcasts;
         bool IsAudiobooks => _route == Shell.RouteKind.LibraryAudiobooks;
 
-        public LibraryPage(Shell.RouteKind route)
+        public LibraryPage(Shell.RouteKind route, bool headHosted = false)
         {
             _route = route;
+            _headHosted = headHosted;
             (_kind, _entity, _relation, _fetch) = route switch
             {
                 Shell.RouteKind.LibraryArtists => ("artists", EntityKind.Artist, LibraryEdgeKind.FollowedArtists, FetchEdge.FollowedArtists),
@@ -500,7 +493,7 @@ public readonly partial struct User
             _restLeft = RestLeft;
             _commitMid = () => LibraryViewPrefs.SetMidW(_kind, MidW.Peek());
             _setPageWidth = w => { if (w > 0f && w != _pageW.Peek()) _pageW.Value = w; };
-            _kinds = KindChips;
+            _kinds = () => LibraryKinds.For(_route);
             _pickDepth = i => _depth.Value = i;
             _jump = Jump;
             _onAlsoBy = Select;                       // the ONE library-internal jump that stays: select in place
@@ -661,7 +654,7 @@ public readonly partial struct User
             {
                 Title = Shell.Dest(new Shell.Route(_route)).Title, Entity = _entity, IsPodcasts = IsPodcasts,
                 Collapsed = collapsed, PaneBeside = paneBeside, SavedEpisodesMode = savedMode, FullSearch = fullSearch, Shimmer = shimmer, Awaiting = awaiting,
-                RailOpen = railOpen, HasSelection = sel.Length > 0, Depth = depth, Crumbs = crumbs,
+                RailOpen = railOpen, HasSelection = sel.Length > 0, Depth = depth, Crumbs = crumbs, HeadHosted = _headHosted,
                 SetPageWidth = _setPageWidth, Kinds = _kinds, PickDepth = _pickDepth,
                 LeftW = _leftW, MidW = _midW, Sort = _sort, Desc = _desc, View = _view, Size = _size, Filter = _filter, PodcastsMode = _podcastsMode,
                 CommitLeft = _commitLeft, CommitMid = _commitMid, CountText = _countText, Count = _count, CountKnown = _countKnown,
@@ -671,6 +664,7 @@ public readonly partial struct User
                 Search = fullSearch ? SearchPropsOf() : null,
                 Groups = !collapsed && GroupingOn ? GroupsProps() : null,
                 Episodes = !collapsed && EpisodesFirst ? EpisodesProps() : null,
+                SavedCountText = IsPodcasts ? SavedCountText() : (Prop<string>?)null,
             });
         }
 

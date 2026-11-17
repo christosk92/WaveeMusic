@@ -96,11 +96,13 @@ internal static partial class ClassicLibraryPage
         if (!headed) rows.Add(titleRow with { Layout = ClassicTierMotion.Shove });
         rows.Add(picker);
         if (filter is not null) rows.Add(filter.Value with { Layout = ClassicTierMotion.Shove });
-        if (headed) rows.Add(new TextEl(p.CountText) { Size = ClassicLibraryRules.CountSize, LineHeight = ClassicLibraryRules.CountLine, Color = Tok.TextTertiary, Layout = ClassicTierMotion.Shove });
+        // The headed count stands under the kind's sort and filter, as the list's caption. Podcasts' counts word its modes instead ("Followed shows · 7", "Your
+        // Episodes · 8", contract 1.113): a count under the modes stood alone on its line, with no control beside it, over a body it did not always count.
+        if (headed && !p.IsPodcasts) rows.Add(new TextEl(p.CountText) { Key = "lib:count", Size = ClassicLibraryRules.CountSize, LineHeight = ClassicLibraryRules.CountLine, Color = Tok.TextTertiary, Layout = ClassicTierMotion.Shove });
         return new BoxEl
         {
             Key = "lib:toolbar",
-            Direction = 1, Gap = layout.HeadGap, Shrink = 0f, Padding = layout.HeadPad,
+            Direction = 1, Gap = layout.HeadGap, Shrink = 0f, Padding = c.Nav is { } nav ? layout.HeadPad with { Left = nav.ItemLead } : layout.HeadPad,
             Children = rows.ToArray(),
         };
     }
@@ -119,7 +121,7 @@ internal static partial class ClassicLibraryPage
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
         Children = p.IsPodcasts
-            ? [style.Modes(new LibraryModesArgs(p.PodcastsMode(), layout.ControlH))]
+            ? [style.Modes(new LibraryModesArgs(p.PodcastsMode(), layout.ControlH) { FollowedCount = p.CountText, EpisodesCount = p.SavedCountText })]
             :
             [
                 style.Sort(new LibrarySortArgs(p.Entity, p.Sort(), p.Desc(), layout.ControlH)),

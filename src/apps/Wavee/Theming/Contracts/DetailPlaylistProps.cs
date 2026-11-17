@@ -25,6 +25,10 @@ namespace Wavee.Theming.Contracts;
 /// <param name="Single">The one image to paint when there is no mosaic (null: the neutral placeholder).</param>
 public sealed record PlaylistCoverArtProps(float Size, int DecodePx, string[]? Mosaic, string? Single)
 {
+    /// <summary>The page's head: a change of the single image hands over (<c>Controls.ArtworkHandOver</c>: the shown cover stays until the new one
+    /// crossfades in over it) instead of blanking to the placeholder. False for a card or a row, whose art never changes in place.</summary>
+    public bool HandOver { get; init; }
+
     /// <inheritdoc />
     public bool Equals(PlaylistCoverArtProps? other) => ReferenceEquals(this, other);
 

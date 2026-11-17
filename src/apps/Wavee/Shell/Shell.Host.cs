@@ -962,6 +962,7 @@ public static partial class Shell
         var normalized = Redirected(route) with { Tab = Tabs.ActiveId };
         if (!Go(ref s_nav, normalized)) return;
 
+        ArmForward(normalized);                   // the connected flight (Shell.Connected.cs): the card's cover into the page's hero, before the route
         Motion.Value = motion;                    // BEFORE the route, in the same flush
         Origins.Write(normalized, origin);        // every Go writes; null OVERWRITES — latest arrival wins
         Current.Value = normalized;
@@ -1003,6 +1004,7 @@ public static partial class Shell
         var normalized = route with { Tab = Tabs.ActiveId };
         if (SameSlot(normalized, s_nav.Current)) return;
         Restore(ref s_nav, normalized);
+        ArmNone(normalized);
         Motion.Value = NavTransitionKind.Neutral;
         Current.Value = normalized;
         RouteCommitted();
@@ -1024,6 +1026,7 @@ public static partial class Shell
     {
         if (!BackStep(ref s_nav)) return;
         RedirectCurrent();
+        ArmBack(Current.Peek(), s_nav.Current);   // the hero of the page being left flies back into its card (Shell.Connected.cs)
         Motion.Value = NavTransitionKind.Back;
         Current.Value = s_nav.Current;
         RouteCommitted();
@@ -1039,6 +1042,7 @@ public static partial class Shell
     {
         if (!ForwardStep(ref s_nav)) return;
         RedirectCurrent();
+        ArmNone(s_nav.Current);
         Motion.Value = NavTransitionKind.Forward;
         Current.Value = s_nav.Current;
         RouteCommitted();
@@ -1055,6 +1059,7 @@ public static partial class Shell
     {
         var to = Redirected(route);
         Restore(ref s_nav, to);
+        ArmNone(to);
         Motion.Value = NavTransitionKind.Neutral;
         Current.Value = to;
         if (!SameSlot(to, route)) SyncActiveTab(to);   // the tab's stored route follows the redirect

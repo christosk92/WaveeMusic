@@ -104,9 +104,13 @@ public readonly partial struct User
             // The cover slot: the dynamic treatment WITH its style picker on the vertical hero (ch 03 item 23). The wide arm has no rail and
             // no collapsed strip, so no cover (tuned Classic D16: the head is the title and the meta over the page bar).
             Func<float, Element> cover = static size => LikedCover(size, Radii.Card, picker: true);
+            // The small cover (WinUI's sticky bar, a collapsed strip): the same treatment, no picker. Liked Songs has no image url, so a small
+            // cover that fell back to the identity's url was an empty placeholder tile (the owner, 2026-11-15: "liked songs here in winui is
+            // empty blob"). Square: every host clips the slot to its own corners.
+            Func<float, Element> compactCover = static size => LikedCover(size, 0f, picker: false);
             Func<float, Element> facts = width => _source is { } src ? FactsPanel(src, DetailKind.Liked, _lens, width, false) : new BoxEl();
-            _slotsWithFacts = new Detail.FrameSlots { Cover = cover, LikedFacts = facts };
-            _slotsWithoutFacts = new Detail.FrameSlots { Cover = cover };
+            _slotsWithFacts = new Detail.FrameSlots { Cover = cover, CompactCover = compactCover, LikedFacts = facts };
+            _slotsWithoutFacts = new Detail.FrameSlots { Cover = cover, CompactCover = compactCover };
             _actions = new Detail.FrameActions { Shuffle = Shuffle, CoverDrag = CoverDragPayload };
         }
 

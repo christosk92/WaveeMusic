@@ -72,8 +72,8 @@ public static partial class Diagnostics
             /// <summary>The keyed nodes whose tracks were all LOOPS when the settle ended on them (<see cref="LoopsOnly"/>): motion that
             /// never ends by design (a marquee title, a looping indicator), not waited for. Null when the settle saw none.</summary>
             public IReadOnlyList<string>? Loops { get; init; }
-            /// <summary>The keyed skeletons still loading when a settle that did not settle stopped: their shimmer is a loop, but a
-            /// page that shows one has not landed (<see cref="ShimmerKeys"/>). Null when none held the settle.</summary>
+            /// <summary>The keyed loading indicators still up when a settle that did not settle stopped: a region still on its placeholder
+            /// or a looping progress bar or ring. A page that shows one has not landed (<see cref="LoadingKeys"/>). Null when none held the settle.</summary>
             public IReadOnlyList<string>? Loading { get; init; }
 
             /// <summary>The settle's old shape, `var (frames, settled) = Settle(...)`.</summary>
@@ -115,7 +115,7 @@ public static partial class Diagnostics
         public enum LoopMode : byte
         {
             /// <summary>`ignore` (the default): a loop does not hold the settle (a playing row's indicator, a marquee, the stage's art),
-            /// except a loading indicator (a skeleton's shimmer, an indeterminate progress bar or ring: <see cref="ShimmerKeys"/>): a page that still shows one has not landed, so the settle waits for its data
+            /// except a loading indicator (a region still on its placeholder, an indeterminate progress bar or ring: <see cref="LoadingKeys"/>): a page that still shows one has not landed, so the settle waits for its data
             /// (or its error) as it waits for any other motion.</summary>
             Ignore,
             /// <summary>`wait`: every loop holds the settle (the P1 settle): a page that shows one runs to the cap.</summary>
@@ -134,20 +134,27 @@ public static partial class Diagnostics
             _ => fallback,
         };
 
-        /// <summary>The keys of the SHOWN loading indicators still running: a looping track on the shimmer a <c>Skel.Region</c> (a
-        /// SkeletonRegion node) mounts while its data is pending (the engine pulses the shimmer's root, <c>SkeletonPulse</c>), on an
-        /// indeterminate progress bar (a node under an <see cref="AutomationRole.ProgressBar"/> role: its indicators sweep on loop
-        /// rows; WinUI and Classic search's <c>omni-progress</c> while a query is pending) or on a progress ring's arc (an SDF arc
-        /// whose trim loops). Each says the page has not landed. Null when none.</summary>
-        public static List<string>? ShimmerKeys(Shell.HeadlessShell shell, int max = 12)
+        /// <summary>The keys of the SHOWN loading indicators: a <c>Skel.Region</c> (a SkeletonRegion node) still on its placeholder branch
+        /// (<c>AppHost.IsSkeletonPending</c>; the placeholder is flat and carries no track, so the region's STATE is the test, and the key is
+        /// its placeholder root's), and, unless <paramref name="regionsOnly"/>, a looping track on an indeterminate progress bar (a node under
+        /// an <see cref="AutomationRole.ProgressBar"/> role: its indicators sweep on loop rows; the page's loading bar <c>page-busy:bar</c>,
+        /// WinUI and Classic search's <c>omni-progress</c> while a query is pending) or on a progress ring's arc (an SDF arc whose trim loops).
+        /// Each says the page has not landed. Null when none.</summary>
+        public static List<string>? LoadingKeys(Shell.HeadlessShell shell, int max = 12, bool regionsOnly = false)
         {
             SceneStore scene = shell.Host.Scene;
             List<string>? keys = null;
             foreach (NodeHandle n in Subtree(scene, scene.Root))
             {
-                if (!shell.Host.Animation.HasTracks(n) || !scene.IsShown(n)) continue;
-                if (!IsLoadingIndicator(scene, n)) continue;
-                string key = KeyOf(scene, n);
+                string? key = null;
+                if (NodeDescriber.ElementTypeName(scene.ElementTypeId(n)) == "SkeletonRegion")
+                {
+                    NodeHandle root = scene.FirstChild(n);
+                    if (shell.Host.IsSkeletonPending(n) && !root.IsNull && scene.IsShown(root)) key = KeyOf(scene, root);
+                }
+                else if (!regionsOnly && shell.Host.Animation.HasTracks(n) && scene.IsShown(n) && IsProgressIndicator(scene, n))
+                    key = KeyOf(scene, n);
+                if (key is null) continue;
                 keys ??= [];
                 if (!keys.Contains(key)) keys.Add(key);
                 if (keys.Count >= max) break;
@@ -155,12 +162,10 @@ public static partial class Diagnostics
             return keys;
         }
 
-        /// <summary>A node whose looping track means "still loading" (<see cref="ShimmerKeys"/>): a skeleton's shimmer root, a
-        /// progress ring's arc, or a node inside a progress bar (its role sits at most four levels up, on the bar's root).</summary>
-        static bool IsLoadingIndicator(SceneStore scene, NodeHandle n)
+        /// <summary>A node whose looping track means "still loading" (<see cref="LoadingKeys"/>): a progress ring's arc, or a node inside a
+        /// progress bar (its role sits at most four levels up, on the bar's root).</summary>
+        static bool IsProgressIndicator(SceneStore scene, NodeHandle n)
         {
-            NodeHandle parent = scene.Parent(n);
-            if (!parent.IsNull && NodeDescriber.ElementTypeName(scene.ElementTypeId(parent)) == "SkeletonRegion") return true;
             if (scene.TryGetArc(n, out _)) return true;
             NodeHandle up = n;
             for (int i = 0; i < 5 && !up.IsNull; i++, up = scene.Parent(up))
@@ -168,10 +173,22 @@ public static partial class Diagnostics
             return false;
         }
 
+        /// <summary>The settle's <c>loops</c> list: the keys whose tracks were all loops, and under <c>loops=skeletons</c> the regions it ended on
+        /// while they were still on their placeholder (a flat placeholder has no track, but scripts read <c>loops:["facet-body:0"]</c>).</summary>
+        static IReadOnlyList<string>? SettleLoops(Shell.HeadlessShell shell, bool looping, LoopMode loops)
+        {
+            List<string>? keys = looping ? LoopKeys(shell) : null;
+            if (loops != LoopMode.Skeletons || LoadingKeys(shell, regionsOnly: true) is not { } pending) return keys;
+            keys ??= [];
+            foreach (string k in pending) if (!keys.Contains(k)) keys.Add(k);
+            return keys;
+        }
+
         /// <summary>Run frames until nothing moves for two frames in a row (no animation track, no scroller in user motion, no
         /// wake reason but the ambient ones: <see cref="BusyWake"/>), at most <paramref name="maxFrames"/>. Tracks that are all loops
         /// (<see cref="LoopsOnly"/>) count as quiet, with the Anim wake they raise, and the reply names their nodes (`loops`), unless
-        /// <paramref name="loops"/> says otherwise (<see cref="LoopMode"/>: by default a loading skeleton's shimmer still holds it).</summary>
+        /// <paramref name="loops"/> says otherwise (<see cref="LoopMode"/>: by default a region still on its placeholder holds it, and so does
+        /// a looping progress indicator; the region test runs only on frames that would otherwise count as quiet, so a busy frame walks nothing).</summary>
         public static SettleResult Settle(Shell.HeadlessShell shell, int maxFrames = 600, LoopMode loops = LoopMode.Ignore)
         {
             int quiet = 0, ran = 0;
@@ -190,20 +207,22 @@ public static partial class Diagnostics
                 wake = all & ~AmbientWake;
                 ambient |= all & AmbientWake;
                 looping = tracks && loops != LoopMode.Wait && LoopsOnly(shell);
-                loading = looping && loops == LoopMode.Ignore ? ShimmerKeys(shell) : null;
-                if (loading is not null) looping = false;   // a skeleton still loading: the page has not landed
+                // Would this frame count as quiet once loops are ambient? Only then is the scene walked for a loading indicator.
+                bool calm = (!tracks || looping) && !scrolling && (looping ? wake & ~FluentGpu.Hosting.WakeReasons.Anim : wake) == 0;
+                loading = calm && loops == LoopMode.Ignore ? LoadingKeys(shell) : null;
+                if (loading is not null) looping = false;   // a region on its placeholder or a loading bar: the page has not landed
                 if (looping)
                 {
                     tracks = false;
                     wake &= ~FluentGpu.Hosting.WakeReasons.Anim;
                 }
-                quiet = tracks || scrolling || wake != 0 ? 0 : quiet + 1;
+                quiet = tracks || scrolling || wake != 0 || loading is not null ? 0 : quiet + 1;
                 if (quiet >= 2)
-                    return new SettleResult(ran, true, false, false, default) { Ambient = ambient, Quiet = quiet, Loops = looping ? LoopKeys(shell) : null };
+                    return new SettleResult(ran, true, false, false, default) { Ambient = ambient, Quiet = quiet, Loops = SettleLoops(shell, looping, loops) };
             }
             return new SettleResult(ran, false, tracks, scrolling, wake)
             {
-                Ambient = ambient, Quiet = quiet, EpochMoved = epochMoved, Loops = looping ? LoopKeys(shell) : null, Loading = loading,
+                Ambient = ambient, Quiet = quiet, EpochMoved = epochMoved, Loops = SettleLoops(shell, looping, loops), Loading = loading,
             };
         }
 
@@ -222,8 +241,8 @@ public static partial class Diagnostics
             return keys;
         }
 
-        /// <summary>`busy:[{key, kind}]`: what still moves after a settle that hit its cap. `loading` = a skeleton's shimmer still
-        /// pulsing (<see cref="SettleResult.Loading"/>; the `loading` string beside the array says so), `anim` = a node with live tracks
+        /// <summary>`busy:[{key, kind}]`: what still moves after a settle that hit its cap. `loading` = a region still on its placeholder or a
+        /// loading bar still up (<see cref="SettleResult.Loading"/>; the `loading` string beside the array says so), `anim` = a node with live tracks
         /// (named by its nearest keyed ancestor; `tracks` beside the array is the engine's census of those rows), `scroll` = a scroller in motion (`motion` = its kind), `wake` = a wake
         /// reason with no node (`reason`; FrameNeeded adds its `terms`, <see cref="WriteFrameNeeded"/>). At most
         /// <paramref name="max"/> nodes per kind. Nothing busy (the cap came before two quiet frames): `quietFrames` and a `note`.</summary>
@@ -255,6 +274,17 @@ public static partial class Diagnostics
                     scrolls++;
                 }
             }
+            // A region on its placeholder carries no track: name it as loading on its own.
+            if (r.Loading is { } stillLoading)
+                foreach (string key in stillLoading)
+                {
+                    if (!named.Add("anim|" + key)) continue;
+                    w.WriteStartObject();
+                    w.WriteString("key", key);
+                    w.WriteString("kind", "loading");
+                    w.WriteEndObject();
+                    anims++;
+                }
             foreach (FluentGpu.Hosting.WakeReasons bit in Enum.GetValues<FluentGpu.Hosting.WakeReasons>())
             {
                 if (bit == 0 || (r.Wake & bit) == 0) continue;
@@ -274,7 +304,7 @@ public static partial class Diagnostics
                 w.WriteString("tracks", census.ToString().TrimStart(' ', '|'));
             }
             if (r.Loading is { Count: > 0 })
-                w.WriteString("loading", "still loading (" + string.Join(", ", r.Loading) + "): a skeleton's shimmer or a progress indicator loops until the data or its error lands, so "
+                w.WriteString("loading", "still loading (" + string.Join(", ", r.Loading) + "): a region stays on its placeholder (and a loading bar up) until the data or its error lands, so "
                     + "the settle waited for it; raise max, or loops=skeletons to stop on the skeleton");
             if (anims + scrolls + wakes == 0)
             {

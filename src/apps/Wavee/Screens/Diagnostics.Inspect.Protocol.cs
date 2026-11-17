@@ -180,6 +180,7 @@ public static partial class Diagnostics
             Arg("every", ArgType.Int, "emit every Nth row (the summary covers every frame)", "1"),
             Arg("rows", ArgType.Bool, "false: the summary only", "true"),
             Arg("census", ArgType.Bool, "a slow frame's row names the components that made it slow", "false"),
+            Arg("flights", ArgType.Bool, "each row carries the connected navigation flights (a card's cover flying into its page), the summary their take-off, landing and hand-off", "false"),
             Arg("baseline", ArgType.Bool, "judge the first traced frame against the watched nodes as they stood before it (on for state)", "state"),
             Arg("jump", ArgType.Float, "a presented move over this many DIP in one frame under a track is a jump", "2"),
             Arg("snap", ArgType.Float, "a change over this many DIP in one frame with no track is a snap", "0.5"),
@@ -332,7 +333,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-credits", "credits-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -492,6 +493,8 @@ public static partial class Diagnostics
                     Arg("page", ArgType.Enum, "with kind=loading|empty: that page's OWN state instead of the shared vacancy (a library tab's or Liked Songs' relations staged; show/episode: a fixture in that state)", null, "library|albums|artists|podcasts|audiobooks|liked|show|episode"),
                     Arg("uri", ArgType.String, "with kind=head: the album, playlist, show or episode whose header is staged unknown, or the artist whose charted rows are staged in flight (it opens); kind=head-land puts it back in place"),
                     Arg("answer", ArgType.Enum, "with kind=head: hold (an artist: its overview instead of its late chart; the page's own ask for its head goes through the real fetch layer and is held by a scripted transport); with kind=head-land: how the held ask settles (fill: the head lands; omit: answered without it, the miss retries omitted too; unfilled: a route that did not answer; fail: a terminal 404; cancel: a transport failure, re-queued in flight)", null, "hold|fill|omit|unfilled|fail|cancel"),
+                    Arg("part", ArgType.Enum, "with kind=head-land after an artist's answer=hold: what lands (overview: the overview and chart, the release cards still in flight; cards: the release cards' fields a few frames later; all: both at once)", "all", "all|overview|cards"),
+                    IntArg("cards", "with kind=head-land part=overview: the release cards land this many frames after the overview, inside the verb's own trace (frame N) or before its settle", null, 0, 1000),
                     Arg("loops", ArgType.Enum, "looping tracks, as on every settling verb; unset: skeletons for loading and cold-* (their skeleton is the picture), ignore for the rest", null, "ignore|wait|skeletons"),
                     Arg("ai", ArgType.Enum, "with kind=ai: the AI lyrics settings card's staged status (no module, no download; the next mount puts 'not started' back); lang-failed: a language added to a ready feature failed, setup-failed: a first setup stopped on a language's file, error: the whole feature failed; timed|timing: ready, and the playing track timed by it (done, or a job running), so the lyrics surfaces draw the AI disclosure (stage after a play)", "ready", string.Join("|", InspectSession.AiCases)),
                     Arg("error", ArgType.Enum, "with kind=ai ai=lang-failed|setup-failed|error: the failure kind", "notfound", string.Join("|", InspectSession.AiErrors)),

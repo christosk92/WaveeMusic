@@ -125,7 +125,7 @@ internal static partial class WinUiDetailFrame
                 if (id.EditableMetadata && spec.Slots.Description is { } editDescription)
                     rows.Add(Block("hero-description", editDescription(measure), late: true, formPiece: true));
                 else if (description.Length > 0)
-                    rows.Add(Block("hero-description", WinUiDetailKit.DescriptionRun(description, center), late: true, formPiece: true));
+                    rows.Add(Block("hero-description", Controls.TextHandOver(description, WinUiDetailKit.DescriptionRun(description, center)), late: true, formPiece: true));
             }
             // THE RESERVED LINES (the owner's recording: the title jumped 37 up when "50 songs · 519.6K saves" arrived, the buttons rode the facts after it). A line
             // the page can still fill (a meta loading, an owner, billed artists) holds its fixed box from the first frame; its words fade in inside it, and a
@@ -209,6 +209,11 @@ internal static partial class WinUiDetailFrame
         bool showNames = hasFaces && (center || filled);
         bool showMeta = hasMeta && settled && (center ? metaLine : filled);
         bool namesLine = !center || hasFaces;
+        // A row line that has not filled yet stands EMPTY in its reserved row: no lines at all. Its lines used to stand as empty boxes, so when
+        // the facts filled, the meta line glided from the row's start to its place beside the names, under the names fading in ("Spotify" over
+        // "50 songs" for two frames). Mounted together on the fill, the names and the meta fade up where they belong.
+        if (!center && !filled)
+            return new BoxEl { Key = "hero-facts", Direction = 0, Height = WinUiDetailRules.AttributionRow(avatar), Shrink = 0f, MinWidth = 0f, MaxWidth = measure };
         var kids = new List<Element>(3);
         if (!center && avatar > 0f && hasFaces && filled)
             kids.Add(WinUiDetailKit.AvatarPile(faces!, avatar) with
@@ -307,11 +312,14 @@ internal static partial class WinUiDetailFrame
         float art = form.Cover;
         BoxEl cover = new()
         {
+            Key = "hero-cover",
             Width = art, Height = art, Shrink = 0f,
             Corners = CornerRadius4.All(WinUiDetailRules.CoverRadius), Shadow = Elevation.Card, ClipToBounds = true,
             Animate = HeroGeometryMotion, TransformOriginX = 0f, TransformOriginY = 0f,
             Draggable = acts.CoverDrag is { } drag ? Drag.Source(drag) : null,
-            Children = [slots.Cover?.Invoke(art) ?? Controls.Artwork(id.CoverUrl, art, art, WinUiDetailRules.CoverRadius, decodePx: WinUiDetailRules.CoverDecode(art))],
+            // A page's own cover (a slot: the generated covers) is not tagged; the artwork is the connected navigation flight's dest (Design.MorphKeys.ForUri).
+            Children = [slots.Cover?.Invoke(art) ?? Controls.Artwork(id.CoverUrl, art, art, WinUiDetailRules.CoverRadius, decodePx: WinUiDetailRules.CoverDecode(art),
+                connect: Design.MorphKeys.ForUri(id.Subject.Text))],
         };
         var mode = SurfaceRules.Ownership(inSlot: false, hasClick: acts.CoverClick is not null);
         return !mode.OwnsClick ? cover : cover with
@@ -369,7 +377,7 @@ internal static partial class WinUiDetailFrame
             Pending: pending, Failed: s_never,
             Content: () => Column(words),
             ShimmerSource: () => Column(shimmer()),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: true);
     }
 
     /// <summary>The hero's arrangement from its parts: the cover beside the words (bottom-aligned while they fit beside it, top-aligned once taller), or over
@@ -429,7 +437,11 @@ internal static partial class WinUiDetailFrame
             {
                 Width = WinUiDetailRules.BandCover, Height = WinUiDetailRules.BandCover, Shrink = 0f,
                 Corners = CornerRadius4.All(WinUiDetailRules.BandCoverRadius), ClipToBounds = true,
-                Children = [Controls.Artwork(id.CoverUrl, WinUiDetailRules.BandCover, WinUiDetailRules.BandCover, WinUiDetailRules.BandCoverRadius, decodePx: WinUiDetailRules.BandCoverDecode)],
+                // The page's own small cover first: a generated one (Liked Songs' treatment, a playlist's mosaic) has no image url, and the url
+                // alone drew an empty tile (the owner, 2026-11-15: "liked songs here in winui is empty blob"). The playlist's slot hands over like
+                // the hero's (a regenerated Mix lands a new cover in place), as the url arm does: never a blank square between the two.
+                Children = [spec.Slots.CompactCover?.Invoke(WinUiDetailRules.BandCover)
+                    ?? Controls.ArtworkHandOver(id.CoverUrl, WinUiDetailRules.BandCover, WinUiDetailRules.BandCover, WinUiDetailRules.BandCoverRadius, decodePx: WinUiDetailRules.BandCoverDecode)],
             },
             new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = identity.ToArray() },
         };

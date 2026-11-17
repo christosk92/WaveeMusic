@@ -118,7 +118,16 @@ public sealed record LibraryPageProps
     /// that words <see cref="Count"/> draws nothing: the list beside it is a skeleton, and "0" would state an empty library (contract 1.59, audit B7).</summary>
     public Prop<bool> CountKnown { get; init; } = true;
 
+    /// <summary>How many episodes Your Episodes holds, as ONE bound text (empty while the listen-later list's count has not landed), on a Podcasts page: a
+    /// borrowing structure words its Your Episodes mode with it (<see cref="LibraryModesArgs.EpisodesCount"/>), as it words Followed shows with
+    /// <see cref="CountText"/>. Null on every other kind. Contract 1.112; since 1.113 it words the mode instead of standing as a count row.</summary>
+    public Prop<string>? SavedCountText { get; init; }
+
     // ── slots the core mounts ──────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The page's head (<see cref="LibraryControlsStyle.Head"/>) is drawn ONCE above the library family's kinds by its host (<c>User.LibraryFamily</c>,
+    /// <see cref="Wavee.Theming.ShellCapabilities.LibraryFamily"/>): the page draws its columns only. Default false: a page that finds a head draws it. Contract 1.109.</summary>
+    public bool HeadHosted { get; init; }
 
     /// <summary>The selected row's pane: the album pane, the show pane or the artists' reader, mounted without a key so a selection re-skins it in place.</summary>
     public required Func<Element> Pane { get; init; }

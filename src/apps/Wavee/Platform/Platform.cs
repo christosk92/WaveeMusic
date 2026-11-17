@@ -134,6 +134,11 @@ public static partial class Platform
         /// <summary>TRUE (the default) scrolls overflowing text; FALSE truncates. Renamed from the negative DisableMarquee
         /// (no migration — pre-1.0, cosmetic).</summary>
         public static readonly SettingKey<bool> MarqueeEnabled = new("appearance.marquee.enabled", true);
+        /// <summary>Fast navigation (Settings ▸ Appearance ▸ Display): FALSE (the default, the owner's pick on 2026-11-15: "it adds a bit of
+        /// calmness") keeps each structure's authored hand-over, the old and the new page overlapping for a few frames; TRUE drops the old page
+        /// on the click and brings the new one in on its own cue (<c>Design.Nav.NoOverlap</c>). Read at each swap, so it applies from the next
+        /// navigation.</summary>
+        public static readonly SettingKey<bool> FastNavigation = new("appearance.fastNavigation", false);
         /// <summary>App-wide UI zoom (effective scale = OS DPI × zoom). Seeded into the window BEFORE it comes up and
         /// SNAPPED on that read: a hand-edited value must never seed a non-ladder scale, because off-rung zooms alias the
         /// glyph-atlas raster buckets — which is the whole reason the ladder is discrete.</summary>
