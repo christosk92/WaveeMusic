@@ -229,7 +229,8 @@ internal static partial class WinUiHomeZones
                                     sub ? zone.Subtitle ?? Loc.Get(Strings.Home.ReleasedThisWeek) : null,
                                     ShelfHeaderTools(HomeVerbs.SeeAll(zone), null, HomeVerbs.SeeAllLabel(zone)), layout, tail);
             default:
-                var tools = ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller, HomeVerbs.SeeAllLabel(zone), pips: !IsPagedGrid(zone.Kind));
+                var tools = ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller, HomeVerbs.SeeAllLabel(zone), pips: !IsPagedGrid(zone.Kind),
+                                             divider: layout.Tier != WidthTier.Compact);
                 return zone.Header is { } entity
                     ? EntityHeader(entity, tools, layout, tail)
                     : ModuleHeader(zone.Title ?? "", sub ? zone.Subtitle : null, tools, layout, tail);
@@ -258,11 +259,12 @@ internal static partial class WinUiHomeZones
     }
 
     /// <summary>A shelf header's tools: the "See all" link (when the zone has a backing section), then — while the shelf pages — a 16-px vertical divider and the
-    /// pager (‹ pips ›). Null when the header has neither.</summary>
-    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller, string label, bool pips = true)
+    /// pager (‹ pips ›). Null when the header has neither. Compact (<paramref name="divider"/> false) leaves the hairline out: beside "See all", the
+    /// chevrons and the board's menu it took the title's last letters ("Because you li…" at 400).</summary>
+    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller, string label, bool pips = true, bool divider = true)
     {
         Element? link = seeAll is null ? null : HyperlinkButton.Create(label, seeAll) with { Shrink = 0f };
-        bool leadingDivider = link is not null;
+        bool leadingDivider = link is not null && divider;
         Element? pager = controller is null ? null
             : Embed.Comp(() => new WinUiHomeShelfTools(new ShelfPagerSource(controller), leadingDivider, pips)) with { Key = leadingDivider ? "tools+link" : "tools" };
         if (link is null) return pager;
