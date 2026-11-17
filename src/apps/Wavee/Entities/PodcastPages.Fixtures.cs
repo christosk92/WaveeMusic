@@ -10,6 +10,7 @@
 // saved, the last visit): never the owner's own listening. The inspector verb `podcastpages fixture=<name>` loads it and
 // dumps the view model; `goto uri=<show>` then opens its page.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace Wavee;
@@ -173,7 +174,28 @@ public static partial class PodcastPages
         string or bool or int or long or float or double or byte or Enum => value is Enum en ? en.ToString() : value,
         DateOnly d => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
         System.Collections.IEnumerable list => list.Cast<object?>().Take(60).Select(Projection).ToArray(),
-        _ => value.GetType().GetProperties().Where(p => p.GetIndexParameters().Length == 0 && p.Name != "EqualityContract")
-                .ToDictionary(p => p.Name, p => Projection(p.GetValue(value)) ?? ""),
+        _ => Members(value),
     };
+
+    /// <summary>A page record as its public properties, read by reflection. A published build trims fully (NativeAOT, TrimMode=full), so every
+    /// record a page model can hold is declared to the trimmer here. A record type missing from this list dumps as an empty object in a
+    /// published build (a Debug build reads it anyway): add it when the page models gain one.</summary>
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(ShowPage))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(EpisodePage))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(AudiobookPage))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(EpisodeRow))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(ChapterRow))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(ChapterToc))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(BookProgress))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(BookPreview))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(BookPrice))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(BookAccess))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(Money))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(GenreCrumb))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(Person))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(Rating))]
+    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Every record a page model holds is kept by the DynamicDependency attributes on this method.")]
+    static Dictionary<string, object> Members(object value)
+        => value.GetType().GetProperties().Where(p => p.GetIndexParameters().Length == 0 && p.Name != "EqualityContract")
+            .ToDictionary(p => p.Name, p => Projection(p.GetValue(value)) ?? "");
 }
