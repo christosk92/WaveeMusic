@@ -469,7 +469,9 @@ public sealed class SpineShelf : Component
             new BoxEl { Gradient = TileWash(song.Accent) },
         };
         if (song.HasCanvas)
-            media.Add(new ImageEl { Source = song.Still ?? song.Cover ?? "", Fit = ImageFit.Cover });
+            // A fluid image (no explicit width) needs its decode size: without one it never decodes and the tile showed its bare wash (owner,
+            // live account, 2026-11-17). The canvas still's own height, as the canvas host decodes it.
+            media.Add(new ImageEl { Source = song.Still ?? song.Cover ?? "", Fit = ImageFit.Cover, DecodePx = SpineShelfRules.StillDecodePx });
         else if (song.Cover is { } cover)
         {
             // The concept's min(70 %, the tier's cover): centred on the tile (the media layer is), never wider than the tile it sits on. A tile
@@ -483,7 +485,6 @@ public sealed class SpineShelf : Component
                 Children = [new ImageEl { Source = cover, Fit = ImageFit.Cover, DecodePx = g.TileCover * 2f }],
             });
         }
-        if (song.HasCanvas) media.Add(Embed.Comp(new TileVideoProps(tile, g.TileRadius), static () => new TileVideo()));
 
         // The media is laid out at the widest a tile gets (so a widening tile reveals it and never re-crops it) and centred on the tile: an
         // unbounded stack layer may overflow its stack on both sides (FlexLayout.ArrangeZStack), and its own Position FLIP rides the tile's
@@ -525,7 +526,11 @@ public sealed class SpineShelf : Component
             OnPointerExit = () => TileLeave(code),
             OnFocusChanged = f => { if (f) TileEnter(code, tile, in s); else TileLeave(code); },
             OnRealized = h => { if (code < _tile.Length) _tile[code] = h; },
-            Children = [mediaLayer, scrim, caption, progress],
+            // The video fills the TILE (not the wider media layer): it is shown only on a settled tile, so its box is the tile's final one, and a
+            // composited video surface never spills past the tile into its neighbours. UniformToFill crops the portrait canvas to it.
+            Children = song.HasCanvas
+                ? [mediaLayer, Embed.Comp(new TileVideoProps(tile, g.TileRadius), static () => new TileVideo()), scrim, caption, progress]
+                : [mediaLayer, scrim, caption, progress],
         };
     }
 
@@ -748,9 +753,13 @@ public sealed class SpineShelf : Component
             var p = UseProps<TileVideoProps>();
             bool showing = ShelfPreview.Showing.Value == p.Tile;
             if (!showing || ShelfPreview.Video is not { } player) return new BoxEl { HitTestVisible = false };
+            // The canvas host's fill box (Shell/Canvas.UI.cs): the root grows into the component's box on both axes and the element grows down
+            // it. Without Grow the root took its content's height (the element's 56 floor) and the video played in a strip at the tile's top
+            // (owner, live account, 2026-11-17; the headless real-media check reproduced the 56-high hole).
             return new BoxEl
             {
-                Direction = 1, HitTestVisible = false,
+                Direction = 1, HitTestVisible = false, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
                 Children = [Embed.Comp(() => new MediaPlayerElement
                 {
                     Player = player, IsDecorative = true, AreTransportControlsEnabled = false, ShowStatusOverlay = false,
