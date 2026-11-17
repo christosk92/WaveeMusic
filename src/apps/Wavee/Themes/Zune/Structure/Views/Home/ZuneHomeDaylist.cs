@@ -231,19 +231,10 @@ internal static class ZuneHomeDaylist
     /// <summary>The tags as one line of lowercase words, " · " between them, each opening its own mix (its niche link, else Search).</summary>
     static Element? Tags(in HomeCard card)
     {
-        int n = Math.Min(card.SeedCount, H.DaylistMaxTags);
-        var tags = new List<string>(n);
-        var links = new List<string?>(n);
-        for (int i = 0; i < n; i++)
-        {
-            string tag = card.SeedAt(i);
-            if (tag.Length == 0) continue;
-            tags.Add(tag);
-            links.Add(SectionCopy.TagLink(in card, i));
-        }
-        if (tags.Count == 0) return null;
-        var spans = new TextSpan[tags.Count * 2 - 1];
-        for (int i = 0; i < tags.Count; i++)
+        var (tags, links) = SectionCopy.DaylistTags(in card, H.DaylistMaxTags);
+        if (tags.Length == 0) return null;
+        var spans = new TextSpan[tags.Length * 2 - 1];
+        for (int i = 0; i < tags.Length; i++)
         {
             if (i > 0) spans[2 * i - 1] = new TextSpan(" · ", Color: Tok.TextTertiary);
             spans[2 * i] = new TextSpan(ZuneText.Word(tags[i]), Color: Tok.TextSecondary, IsLink: true);
@@ -253,7 +244,7 @@ internal static class ZuneHomeDaylist
         {
             Size = meta.Size, LineHeight = meta.LineHeight, Color = Tok.TextSecondary,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            OnSpanClick = i => { if ((i & 1) == 0 && (i >> 1) < tags.Count) HomeVerbs.OpenTag(tags[i >> 1], links[i >> 1]); },
+            OnSpanClick = i => { if ((i & 1) == 0 && (i >> 1) < tags.Length) HomeVerbs.OpenTag(tags[i >> 1], links[i >> 1]); },
         };
     }
 
@@ -270,7 +261,7 @@ internal static class ZuneHomeDaylist
             [
                 text with
                 {
-                    MaxLines = lay.DaylistTitleLines, Wrap = one ? TextWrap.NoWrap : TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    MaxLines = lay.DaylistTitleLines, Wrap = one ? TextWrap.NoWrap : TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     // Each line exactly the role's line height: the strip's height (Extent) counts the role's lines.
                     LineStacking = LineStacking.BlockLineHeight,
                 },

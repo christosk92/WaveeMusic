@@ -813,6 +813,7 @@ public static partial class Spotify
                 // The playlist extras Stage has no Node field for (the Format group's header image + generic title, the
                 // daylist window). Stage appended exactly one playlist row, so it is the last one.
                 bool daylist = c.Type == TPlaylist && !n.Format.IsEmpty && StartsAscii(s.Utf8(n.Format), "daylist");
+                var daylistLinks = daylist && !c.Links.IsEmpty ? Unescaped(s, c.Links) : default;
                 if (c.Type == TPlaylist && s.Playlists.Count > 0 && staged.Kind(s) is EntityKind.Playlist or EntityKind.Collection)
                 {
                     ref var p = ref s.Playlists[s.Playlists.Count - 1];
@@ -825,6 +826,10 @@ public static partial class Spotify
                             p.Known |= (uint)PlaylistFields.Daylist;
                             p.DaylistExpiresAt = (int)(c.ExpiresMs / 1000);
                             p.DaylistCreatedAt = (int)(c.CreatedMs / 1000);
+                            // The edition's words ride its window (the header read stages the same three from its format attributes).
+                            p.DaylistTerms = c.Terms;
+                            p.DaylistLinks = daylistLinks;
+                            p.DaylistBasis = c.Basis;
                         }
                     }
                 }
@@ -865,7 +870,7 @@ public static partial class Spotify
                             if (daylist)
                             {
                                 seeds = SplitTerms(s, c.Terms);
-                                f.Links = c.Links.IsEmpty ? default : Unescaped(s, c.Links);
+                                f.Links = daylistLinks;
                                 f.Basis = c.Basis;
                             }
                             if (seeds == 0 && ListsSeeds(s.Utf8(n.Format)) && !description.IsEmpty) seeds = ParseSeeds(s, description);

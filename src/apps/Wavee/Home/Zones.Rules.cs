@@ -176,14 +176,55 @@ public static class SectionCopy
     public static float EpisodeProgress(in HomeCard e)
         => e.PlayedState == 2 ? (float)EpisodeCaption.ProgressFraction(e.ResumeMs, e.DurationMs) : 0f;
 
-    /// <summary>A daylist's "Based on pop and western" line, "" when the card says nothing about it.</summary>
+    /// <summary>A daylist's "Based on pop and western" line, "" when nothing says it. The playlist row's words first (written with the
+    /// edition's window by the newest answer: the feed card or the playlist's own header read), then the feed card's facts.</summary>
     public static string DaylistBasis(in HomeCard daylist)
     {
-        var terms = daylist.Basis;
-        if (terms is null || terms.Count == 0) return "";
-        return terms.Count == 2 ? Strings.Home.BasedOnTwo(terms[0], terms[1]) : Strings.Home.BasedOn(string.Join(", ", terms));
+        var terms = SplitTerms(daylist.DaylistBasisText);
+        if (terms.Length == 0 && daylist.Basis is { Count: > 0 } facts) terms = [.. facts];
+        if (terms.Length == 0) return "";
+        return terms.Length == 2 ? Strings.Home.BasedOnTwo(terms[0], terms[1]) : Strings.Home.BasedOn(string.Join(", ", terms));
     }
 
-    /// <summary>The playlist daylist tag <paramref name="i"/> opens (its niche mix), null when it has none.</summary>
-    public static string? TagLink(in HomeCard daylist, int i) => daylist.SeedLinks is { } links && (uint)i < (uint)links.Count ? links[i] : null;
+    /// <summary>A daylist's tags and the playlist each opens (null when a tag has none), at most <paramref name="max"/>, from the freshest
+    /// source that has any: the playlist row's <c>localized_terms</c> (the edition's own, written with its window), then the anchors of
+    /// the row's description (what the playlist page shows), then the feed card's facts (the answer the card came in, which a later
+    /// header read outdates). Cold: once per render of the card.</summary>
+    public static (string[] Tags, string?[] Links) DaylistTags(in HomeCard daylist, int max)
+    {
+        var tags = new List<string>(max);
+        var links = new List<string?>(max);
+        var terms = SplitTerms(daylist.DaylistTermsText);
+        if (terms.Length > 0)
+        {
+            var anchors = HomeCardText.AnchorLinks(daylist.DaylistLinksText);
+            for (int i = 0; i < terms.Length && tags.Count < max; i++) { tags.Add(terms[i]); links.Add(LinkOf(anchors, terms[i])); }
+            return (tags.ToArray(), links.ToArray());
+        }
+        var described = HomeCardText.AnchorLinks(daylist.PlaylistDescription);
+        if (described.Count > 0)
+        {
+            for (int i = 0; i < described.Count && tags.Count < max; i++) { tags.Add(described[i].Text); links.Add(described[i].Uri); }
+            return (tags.ToArray(), links.ToArray());
+        }
+        var seedLinks = daylist.SeedLinks;
+        for (int i = 0, n = daylist.SeedCount; i < n && tags.Count < max; i++)
+        {
+            string tag = daylist.SeedAt(i);
+            if (tag.Length == 0) continue;
+            tags.Add(tag);
+            links.Add(seedLinks is not null && i < seedLinks.Count ? seedLinks[i] : null);
+        }
+        return (tags.ToArray(), links.ToArray());
+    }
+
+    static string[] SplitTerms(string? csv)
+        => string.IsNullOrWhiteSpace(csv) ? [] : csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    static string? LinkOf(IReadOnlyList<(string Uri, string Text)> anchors, string tag)
+    {
+        for (int k = 0; k < anchors.Count; k++)
+            if (string.Equals(anchors[k].Text, tag, StringComparison.OrdinalIgnoreCase)) return anchors[k].Uri;
+        return null;
+    }
 }

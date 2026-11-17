@@ -172,7 +172,7 @@ internal static class ZuneConcertDetail
         var title = R.Type.Hero(d.Title) with
         {
             Size = lay.TitleSize, LineHeight = lay.TitleLine, Color = Tok.TextPrimary, MinWidth = 0f,
-            MaxLines = Rules.TitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f,
+            MaxLines = Rules.TitleLines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, Shrink = 1f,
         };
 
         // The title's slot holds the tier's reserved lines (unseen, the title's own type) whatever the name, so the skeleton's one bar and the loaded
