@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.10] - unreleased
+
+### Fixed
+
+- **Find in a scrolled playlist.** The list's search opens wherever the list is scrolled, not only at the top. (#230)
+
 ## [0.3.9] - 2026-11-14
 
 ### Added
