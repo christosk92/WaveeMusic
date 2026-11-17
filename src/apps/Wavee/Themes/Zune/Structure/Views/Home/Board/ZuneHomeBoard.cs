@@ -414,7 +414,7 @@ internal static class ZuneHomeBoard
             if (e.Raw is WidgetSource w)
                 switch (w.Widget)
                 {
-                    case "daylist": return home.DaylistH;
+                    case "daylist": return ZuneHomeDaylist.Extent(home);
                     case "releases": return head + 4f * home.ReleaseRowH + 3f * ZuneHomeRules.RowGap;
                     case "recents": return head + home.QuickTileW + 2f * ZuneHomeRules.TileCaptionGap + 36f;
                 }

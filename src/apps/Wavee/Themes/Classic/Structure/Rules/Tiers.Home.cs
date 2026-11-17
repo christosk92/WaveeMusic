@@ -473,13 +473,20 @@ public static class ClassicRegion
         return MathF.Max(0f, content - 2f * gutter);
     }
 
+    /// <summary>Home's page width on its first frame: the page region held to the tier's cap (the board's width).</summary>
+    public static float EstimateHomePage(in TierFacts facts, float viewportWidth)
+    {
+        var layout = ClassicHomeTiers.Of(facts);
+        float page = EstimateWidth(facts, viewportWidth);
+        return float.IsNaN(layout.PageMaxW) ? page : MathF.Min(page, MathF.Max(0f, layout.PageMaxW - 2f * ClassicTiers.PageOf(facts).Gutter));
+    }
+
     /// <summary>The width of one band of Home on its first frame: the page region held to the tier's cap, and at a tier whose daylist sits beside the Recently played
     /// tiles (Huge) the hero's or the tiles' share of it.</summary>
     public static float EstimateHomeBand(in TierFacts facts, float viewportWidth, bool hero)
     {
         var layout = ClassicHomeTiers.Of(facts);
-        float page = EstimateWidth(facts, viewportWidth);
-        if (!float.IsNaN(layout.PageMaxW)) page = MathF.Min(page, MathF.Max(0f, layout.PageMaxW - 2f * ClassicTiers.PageOf(facts).Gutter));
+        float page = EstimateHomePage(facts, viewportWidth);
         if (!layout.DaylistBeside) return page;
         float share = hero ? ClassicHomeTiers.HeroShare : 1f;
         return MathF.Max(0f, (page - ClassicHomeTiers.HeroGap) * share / (ClassicHomeTiers.HeroShare + 1f));
