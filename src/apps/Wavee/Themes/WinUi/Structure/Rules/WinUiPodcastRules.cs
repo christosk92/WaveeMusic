@@ -49,6 +49,8 @@ internal static class WinUiPodcastKitRules
 
     // ── a section header and the cards ──
     public const float SectionGap = 8f, SectionTop = 24f, SectionBottom = 12f;
+    /// <summary>A description's Body size (14/20).</summary>
+    public const float BodySize = 14f;
     /// <summary>"More like this": a card's cover, its corner, the gap between cards, a row card's cover (the pane's rows).</summary>
     public const float CardCover = 160f, CardRadius = 8f, CardGap = 12f, RowCardCover = 40f, RowCardRadius = 4f, RowCardGap = 12f;
     public const int CardDecode = 320, RowCardDecode = 96;
