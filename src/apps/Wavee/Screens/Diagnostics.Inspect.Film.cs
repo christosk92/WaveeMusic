@@ -187,37 +187,44 @@ public static partial class Diagnostics
                 if (crop is null) return Inspect.Reply.Fail(id, name, "crop: no shown node keyed '" + cropKey + "' is on the window (scroll it into view first)");
             }
             float pxScale = shell.Window.Scale;
-            var cells = new List<(int Frame, byte[] Px, int W, int H)>();
+            ColorF ground = Tok.T.WindowBackground;
+            byte gr = ToByte(ground.R), gg = ToByte(ground.G), gb = ToByte(ground.B);
+            // No allocation per kept frame (film and `perf` share a window): ONE capture buffer, reused, and the sheet made up front
+            // and filled cell by cell. A new full-frame array per kept frame (large-object heap) ran full GCs on the frames being
+            // measured, which `perf` read as ~8 KB on steady frames. framesDir still writes a PNG per kept frame (it allocates).
+            string? dir = framesDir.Length > 0 ? Path.GetFullPath(framesDir) : null;
+            if (dir is not null) Directory.CreateDirectory(dir);
+            var cellFrames = new List<int>(frames / every + 2);
+            for (int f = 0; f < frames; f++) if (f % every == 0 || f == frames - 1) cellFrames.Add(f);
+            FilmRect src = crop is { } cr
+                ? new FilmRect((int)(cr.X * pxScale), (int)(cr.Y * pxScale), (int)(cr.X * pxScale) + (int)(cr.W * pxScale), (int)(cr.Y * pxScale) + (int)(cr.H * pxScale))
+                : new FilmRect(0, 0, (int)shell.Window.ClientSizePx.Width, (int)shell.Window.ClientSizePx.Height);
+            var sheet = new ContactSheet(cellFrames.Count, cols, scale, src.Right - src.Left, src.Bottom - src.Top, gr, gg, gb);
+            byte[]? capture = null;
+            int kept = 0;
             _traceAfterFrameHook = f =>
             {
                 if (f % every != 0 && f != frames - 1) return;
-                byte[] all = surface.CaptureBgra(out int w, out int h);
-                if (crop is { } c) all = Crop(all, w, h, (int)(c.X * pxScale), (int)(c.Y * pxScale), (int)(c.W * pxScale), (int)(c.H * pxScale), out w, out h);
-                cells.Add((f, all, w, h));
+                surface.CaptureBgraInto(ref capture, out int w, out int h);
+                sheet.Cell(kept++, capture!, w, h, in src);
+                if (dir is not null) FluentGpu.Foundation.PngWriter.WriteBgra(Path.Combine(dir, "f" + f.ToString("D3") + ".png"), capture!, w, h, ground);
             };
             InspectTrace.Result result;
             try { result = RunTrace(shell, o); }
             finally { _traceAfterFrameHook = null; }
-            if (cells.Count == 0) return Inspect.Reply.Fail(id, name, "no frame was captured");
-            ColorF ground = Tok.T.WindowBackground;
-            byte gr = ToByte(ground.R), gg = ToByte(ground.G), gb = ToByte(ground.B);
-            if (framesDir.Length > 0)
-            {
-                string dir = Path.GetFullPath(framesDir);
-                Directory.CreateDirectory(dir);
-                foreach (var (f, px, w, h) in cells) FluentGpu.Foundation.PngWriter.WriteBgra(Path.Combine(dir, "f" + f.ToString("D3") + ".png"), px, w, h, ground);
-            }
-            ContactSheet.Write(full, cells, cols, scale, gr, gg, gb);
+            if (kept == 0) return Inspect.Reply.Fail(id, name, "no frame was captured");
+            if (kept < cellFrames.Count) cellFrames.RemoveRange(kept, cellFrames.Count - kept);
+            sheet.Write(full, cellFrames);
             return Inspect.Reply.Ok(id, name, w =>
             {
                 w.WriteString("path", full);
                 w.WriteNumber("traced", result.Rows.Count);
-                w.WriteNumber("cells", cells.Count);
+                w.WriteNumber("cells", cellFrames.Count);
                 if (crop is { } c) Inspect.Reply.Rect(w, "crop", c);
                 w.WriteNumber("every", every);
                 w.WriteString("clock", "16 ms per frame (the inspector's fixed clock); a cell's +ms is its frame's time since the film began");
                 w.WriteStartArray("cellFrames");
-                foreach (var cell in cells) w.WriteNumberValue(cell.Frame);
+                foreach (int cf in cellFrames) w.WriteNumberValue(cf);
                 w.WriteEndArray();
                 if (framesDir.Length > 0) w.WriteString("framesDir", Path.GetFullPath(framesDir));
                 w.WriteStartArray("watch");
@@ -233,45 +240,56 @@ public static partial class Diagnostics
             static byte ToByte(float v) => (byte)Math.Clamp((int)MathF.Round(v * 255f), 0, 255);
         }
 
-        /// <summary>A rectangle of a BGRA8 frame (clamped to it).</summary>
-        static byte[] Crop(byte[] src, int sw, int sh, int x, int y, int cw, int ch, out int w, out int h)
-        {
-            x = Math.Clamp(x, 0, sw - 1); y = Math.Clamp(y, 0, sh - 1);
-            w = Math.Clamp(cw, 1, sw - x); h = Math.Clamp(ch, 1, sh - y);
-            var dst = new byte[w * h * 4];
-            for (int row = 0; row < h; row++) Buffer.BlockCopy(src, ((y + row) * sw + x) * 4, dst, row * w * 4, w * 4);
-            return dst;
-        }
-
         /// <summary>The contact sheet: cells in rows of <c>cols</c>, each frame scaled by area averaging and flattened over the window
         /// ground, a label bar above each (frame number and +ms on the 16 ms clock) in a 5x7 bitmap font.</summary>
-        static class ContactSheet
+        /// <summary>A pixel rectangle of a captured frame (left, top, right, bottom).</summary>
+        readonly record struct FilmRect(int Left, int Top, int Right, int Bottom);
+
+        sealed class ContactSheet
         {
             const int Pad = 6, Bar = 18;
+            readonly byte[] _sheet;
+            readonly int _cols, _cw, _ch, _sw, _sh, _w, _h;
+            readonly byte _gr, _gg, _gb;
 
-            public static void Write(string path, List<(int Frame, byte[] Px, int W, int H)> cells, int cols, float scale, byte gr, byte gg, byte gb)
+            /// <summary>The sheet for <paramref name="count"/> cells of a <paramref name="sw"/> × <paramref name="sh"/> px source, made once.</summary>
+            public ContactSheet(int count, int cols, float scale, int sw, int sh, byte gr, byte gg, byte gb)
             {
-                int sw = cells[0].W, sh = cells[0].H;
-                int cw = Math.Max(1, (int)(sw * scale)), ch = Math.Max(1, (int)(sh * scale));
-                cols = Math.Min(cols, cells.Count);
-                int rows = (cells.Count + cols - 1) / cols;
-                int W = Pad + cols * (cw + Pad), H = Pad + rows * (ch + Bar + Pad);
-                var sheet = new byte[W * H * 4];
-                for (int i = 0; i < W * H; i++) { sheet[i * 4] = 40; sheet[i * 4 + 1] = 40; sheet[i * 4 + 2] = 40; sheet[i * 4 + 3] = 255; }
-                for (int c = 0; c < cells.Count; c++)
+                _sw = Math.Max(1, sw); _sh = Math.Max(1, sh);
+                _cw = Math.Max(1, (int)(_sw * scale)); _ch = Math.Max(1, (int)(_sh * scale));
+                _cols = Math.Max(1, Math.Min(cols, count));
+                int rows = (count + _cols - 1) / _cols;
+                _w = Pad + _cols * (_cw + Pad); _h = Pad + rows * (_ch + Bar + Pad);
+                _gr = gr; _gg = gg; _gb = gb;
+                _sheet = new byte[_w * _h * 4];
+                for (int i = 0; i < _w * _h; i++) { _sheet[i * 4] = 40; _sheet[i * 4 + 1] = 40; _sheet[i * 4 + 2] = 40; _sheet[i * 4 + 3] = 255; }
+            }
+
+            /// <summary>Cell <paramref name="c"/>: the <paramref name="src"/> rect of a captured frame, scaled into its place.</summary>
+            public void Cell(int c, byte[] frame, int fw, int fh, in FilmRect src)
+            {
+                int ox = Pad + (c % _cols) * (_cw + Pad), oy = Pad + (c / _cols) * (_ch + Bar + Pad);
+                if (oy + Bar + _ch > _h) return;
+                Blit(_sheet, _w, ox, oy + Bar, _cw, _ch, frame, fw, fh, src, _gr, _gg, _gb);
+            }
+
+            /// <summary>The labels (frame number and +ms on the 16 ms clock) and the PNG.</summary>
+            public void Write(string path, List<int> frames)
+            {
+                for (int c = 0; c < frames.Count; c++)
                 {
-                    var (frame, px, w, h) = cells[c];
-                    int ox = Pad + (c % cols) * (cw + Pad), oy = Pad + (c / cols) * (ch + Bar + Pad);
-                    Text(sheet, W, ox + 2, oy + 2, "f" + frame + " +" + ((frame + 1) * 16) + "ms");
-                    Blit(sheet, W, ox, oy + Bar, cw, ch, px, w, h, gr, gg, gb);
+                    int ox = Pad + (c % _cols) * (_cw + Pad), oy = Pad + (c / _cols) * (_ch + Bar + Pad);
+                    Text(_sheet, _w, ox + 2, oy + 2, "f" + frames[c] + " +" + ((frames[c] + 1) * 16) + "ms");
                 }
                 string? dir = Path.GetDirectoryName(path);
                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-                FluentGpu.Foundation.PngWriter.WriteBgra(path, sheet, W, H);
+                FluentGpu.Foundation.PngWriter.WriteBgra(path, _sheet, _w, _h);
             }
 
-            static void Blit(byte[] dst, int dw, int ox, int oy, int cw, int ch, byte[] src, int sw, int sh, byte gr, byte gg, byte gb)
+            static void Blit(byte[] dst, int dw, int ox, int oy, int cw, int ch, byte[] frame, int fw, int fh, in FilmRect r, byte gr, byte gg, byte gb)
             {
+                int sx0 = Math.Clamp(r.Left, 0, fw - 1), sy0 = Math.Clamp(r.Top, 0, fh - 1);
+                int sw = Math.Clamp(r.Right - r.Left, 1, fw - sx0), sh = Math.Clamp(r.Bottom - r.Top, 1, fh - sy0);
                 double fx = (double)sw / cw, fy = (double)sh / ch;
                 for (int y = 0; y < ch; y++)
                 {
@@ -279,19 +297,19 @@ public static partial class Diagnostics
                     for (int x = 0; x < cw; x++)
                     {
                         int x0 = (int)(x * fx), x1 = Math.Max(x0 + 1, Math.Min(sw, (int)((x + 1) * fx)));
-                        int b = 0, g = 0, r = 0, n = 0;
+                        int b = 0, g = 0, r2 = 0, n = 0;
                         for (int yy = y0; yy < y1; yy++)
                             for (int xx = x0; xx < x1; xx++)
                             {
-                                int i = (yy * sw + xx) * 4;
-                                int inv = 255 - src[i + 3];
-                                b += src[i] + (gb * inv + 127) / 255;
-                                g += src[i + 1] + (gg * inv + 127) / 255;
-                                r += src[i + 2] + (gr * inv + 127) / 255;
+                                int i = ((sy0 + yy) * fw + sx0 + xx) * 4;
+                                int inv = 255 - frame[i + 3];
+                                b += frame[i] + (gb * inv + 127) / 255;
+                                g += frame[i + 1] + (gg * inv + 127) / 255;
+                                r2 += frame[i + 2] + (gr * inv + 127) / 255;
                                 n++;
                             }
                         int o = ((oy + y) * dw + ox + x) * 4;
-                        dst[o] = (byte)Math.Min(255, b / n); dst[o + 1] = (byte)Math.Min(255, g / n); dst[o + 2] = (byte)Math.Min(255, r / n); dst[o + 3] = 255;
+                        dst[o] = (byte)Math.Min(255, b / n); dst[o + 1] = (byte)Math.Min(255, g / n); dst[o + 2] = (byte)Math.Min(255, r2 / n); dst[o + 3] = 255;
                     }
                 }
             }
