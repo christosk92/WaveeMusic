@@ -251,8 +251,9 @@ internal static class WinUiPodcastEpisode
             var play = Button.Create(Loc.Get(Strings.Podcast.Pages.PlayNext), () => p.PlayEpisode(id), ButtonAppearance.Accent, glyph: WinUiDetailRules.PlaySolid)
                 with { Key = "pe-nextup:play", Shrink = 0f, MinWidth = 0f, Height = a.Lay.Target };
             var data = new Controls.CardData(id, n.Title, Caption(Join(n.Date, n.State == PodcastRowState.InProgress ? n.Left : n.Length)) with { Color = Tok.TextSecondary },
-                n.ArtUrl ?? v.ShowArtUrl, () => p.Open(id))
+                n.ArtUrl ?? v.ShowArtUrl, () => p.Open(id), ShowMenu: false)
             {
+                // The row's menu stays on right-click; no hover "...": it would sit over the trailing Play next.
                 Eyebrow = Caption(Loc.Get(Strings.Podcast.Pages.UpNextInShow)) with { Color = Tok.TextSecondary },
                 Trailing = play,
                 Menu = () => p.RowMenu(id),
@@ -318,7 +319,7 @@ internal static class WinUiPodcastEpisode
                 PodcastEpisodeTab.About => new BoxEl
                 {
                     Direction = 0, MinWidth = 0f, MaxWidth = P.TrTextMax,
-                    Children = [Controls.RichTextFlex(v.About, Ui.Body("").Size, Tok.TextSecondary, Tok.AccentTextPrimary, 0, p.OpenUri)],
+                    Children = [WinUiPodcastKit.Description(v.About)],
                 },
                 PodcastEpisodeTab.Comments => p.Comments?.Invoke() ?? new BoxEl(),
                 _ => WinUiPodcastEpisodeParts.Chapters(p, v, _rowH),
@@ -384,7 +385,7 @@ internal static class WinUiPodcastEpisode
             if (!v.Similar.IsDefaultOrEmpty)
             {
                 kids.Add(Head(WinUiPodcastKit.SectionHeader(Loc.Get(Strings.Podcast.Pages.MoreLikeThis))));
-                kids.Add(WinUiPodcastKit.MoreLikeThis(v.Similar, p.OpenUri, compact));
+                kids.Add(WinUiPodcastKit.MoreLikeThis(v.Similar, p.OpenUri, compact, p.CardMenu, p.PlayCard));
             }
             return new BoxEl { Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
         }
