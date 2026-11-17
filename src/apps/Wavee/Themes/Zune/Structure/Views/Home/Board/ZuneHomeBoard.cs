@@ -192,36 +192,22 @@ internal static class ZuneHomeBoard
             _reveal = () => { if (_p?.Board.View.RingId.Peek() is { } id) _p.Board.Grid.BringIntoView(HomeBoardKeys.Tile(id)); };
         }
 
-        // A measured body lands on its box at the top of the NEXT frame (Measured): the last height a frame laid it out at is the one it
-        // presents. A body whose height eases (RowsResize) is first laid out at its new height and only then put back at the ease's start, so
-        // a height written at once would pack every row under it at the far height for one frame and then pull them back.
-        readonly Dictionary<string, float> _measured = new(StringComparer.Ordinal);
+        // A measured body's height lands on its box in the frame that laid it out (Measured): the box follows its body with no frame between, so
+        // the body never draws past its box (or short of it) while a window drag re-lays it out. A body whose height eases (RowsResize) is first
+        // laid out at its new height and then put back at the ease's start in the same frame; the host lays the board out again after that
+        // (the bounds passes after the reflows' start), so the box ends the frame at the height the body presents.
         // The rows whose box follows their body: a body's FIRST height re-packs the board with its re-flow (the estimate it mounted at was
         // the rules' guess); every later one is the body's own (eased) height, which the box follows frame by frame.
         readonly HashSet<string> _follows = new(StringComparer.Ordinal);
-        Action<Action>? _post;
-        Action? _applyMeasured;
-        bool _measurePosted;
 
         void Measured(Signal<float> extent, string id, float h)
         {
             if (h <= 0f) return;
-            if (extent.Peek() <= 0f) { if (MathF.Abs(h - extent.Peek()) > 0.5f) extent.Value = h; return; }   // the first measure: at once
-            _measured[id] = h;
-            if (_measurePosted || _post is null) return;
-            _measurePosted = true;
-            _post(_applyMeasured ??= ApplyMeasured);
-        }
-
-        void ApplyMeasured()
-        {
-            _measurePosted = false;
-            foreach (var (id, h) in _measured)
-            {
-                var s = ExtentOf(id);
-                if (MathF.Abs(h - s.Peek()) > 0.5f) { s.Value = h; _follows.Add(id); }
-            }
-            _measured.Clear();
+            float was = extent.Peek();
+            if (was <= 0f) { extent.Value = h; return; }   // the first measure: at once (the row re-flows from the rules' estimate)
+            if (MathF.Abs(h - was) <= 0.5f) return;
+            extent.Value = h;
+            _follows.Add(id);
         }
 
         Signal<float> ExtentOf(string id)
@@ -247,7 +233,6 @@ internal static class ZuneHomeBoard
             // The pack's metrics are discrete (the columns): read through a computed, so a width that changes no column (every frame of a drag)
             // does not re-render the grid; the grid packs to its own measured width.
             _metrics = UseComputed(() => _p!.Lay.Metrics(_width.Value));
-            _post = UsePost();
             var board = p.Board;
             var view = board.View;
             view.NoEditMode = null;

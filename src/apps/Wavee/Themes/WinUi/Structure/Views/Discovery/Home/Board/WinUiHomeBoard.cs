@@ -55,6 +55,10 @@ internal static class WinUiHomeBoard
     {
         Memo<PackMetrics>? _metrics;
         IReadSignal<float> _width = s_noWidth;
+        IReadSignal<float> _live = s_noWidth;
+        // The tier record each estimated row was last estimated with: a change of the estimate the width alone makes follows the width; one the tier's
+        // numbers make is a step of the pack's structure (it re-flows, as the rows on screen do).
+        readonly Dictionary<string, WinUiHomeLayout> _estimatedFor = new(StringComparer.Ordinal);
         static readonly IReadSignal<float> s_noWidth = new Signal<float>(0f);
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
         readonly Action<RectF> _onBand;
@@ -86,16 +90,13 @@ internal static class WinUiHomeBoard
         float WidthNow(float measured) => measured > 0f ? measured : _p?.FirstWidth ?? 0f;
 
 
-        // A measured body lands on its box at the top of the NEXT frame (Measured): the last height a frame laid it out at is the one it
-        // presents. A body whose height eases (RowsReflow) is first laid out at its new height and only then put back at the ease's start, so
-        // a height written at once would pack every row under it at the far height for one frame and then pull them back.
-        readonly Dictionary<string, float> _measured = new(StringComparer.Ordinal);
+        // A measured body's height lands on its box in the frame that laid it out (Measured): the box follows its body with no frame between, so
+        // the body never draws past its box (or short of it) while a window drag re-lays it out. A body whose height eases (RowsReflow) is first
+        // laid out at its new height and then put back at the ease's start in the same frame; the host lays the board out again after that
+        // (the bounds passes after the reflows' start), so the box ends the frame at the height the body presents.
         // The rows whose box follows their body: a body's FIRST height re-packs the board with its re-flow (the estimate it mounted at was
         // the rules' guess); every later one is the body's own (eased) height, which the box follows frame by frame.
         readonly HashSet<string> _follows = new(StringComparer.Ordinal);
-        Action<Action>? _post;
-        Action? _applyMeasured;
-        bool _measurePosted;
 
         /// <summary>A full row's body laid out at <paramref name="h"/>. Its box follows it frame by frame (the row packs with
         /// <see cref="PackFlags.Follows"/>): the body eases its own height (<see cref="WinUiDiscoveryMotion.RowsReflow"/>), through a window drag
@@ -103,11 +104,11 @@ internal static class WinUiHomeBoard
         void Measured(Signal<float> extent, string id, float h)
         {
             if (h <= 0f) return;
-            if (extent.Peek() <= 0f) { extent.Value = h; return; }
-            _measured[id] = h;
-            if (_measurePosted || _post is null) return;
-            _measurePosted = true;
-            _post(_applyMeasured ??= ApplyMeasured);
+            float was = extent.Peek();
+            if (was <= 0f) { extent.Value = h; return; }   // the first measure: at once (the row re-flows from the rules' estimate)
+            if (MathF.Abs(h - was) <= WinUiHomeBoardRules.ExtentSlop) return;
+            extent.Value = h;
+            _follows.Add(id);
         }
 
         static string HeadId(BoardEntry e) => "group:" + e.GroupId;
@@ -127,17 +128,6 @@ internal static class WinUiHomeBoard
             };
         }
 
-        void ApplyMeasured()
-        {
-            _measurePosted = false;
-            foreach (var (id, h) in _measured)
-            {
-                var s = ExtentOf(id);
-                if (MathF.Abs(h - s.Peek()) > WinUiHomeBoardRules.ExtentSlop) { s.Value = h; _follows.Add(id); }
-            }
-            _measured.Clear();
-        }
-
         public override Element Render()
         {
             var p = UseProps<BoardProps>();
@@ -147,13 +137,15 @@ internal static class WinUiHomeBoard
             // passes (a column count flipping mid-ease re-flowed the whole board under the slide). Sizes follow the live width: the grid measures its own.
             // Before the first measure every read goes through WidthNow: the region's estimate of the board's width (FirstWidth).
             _width = UseStructureWidth();
+            // The board's LIVE width: what a size follows (a full row's estimated height before its body has laid out). Read only by the pack's
+            // entries (EntryOf, inside the grid's render, which follows its own live width anyway): the board itself never re-renders for it.
+            _live = UseMeasuredWidth();
             // The pack's metrics are discrete (the columns): read through a computed, so a width that changes no column (every frame of a drag)
             // does not re-render the grid; the grid packs to its own measured width.
             _metrics = UseComputed(() => _p!.Lay.Metrics(WidthNow(_width.Value)));
             var board = p.Board;
             board.View.NoEditMode = "winui has no edit mode";   // Windows 11's board changes one thing at a time, on the thing itself
             var items = UseComputed(() => ItemsOf(_p!.Board.Model.Value));
-            _post = UsePost();
 
             _formRule ??= box => WinUiHomeBoardRules.FormOf(in box, _p!.Lay, _p.Lay.ColumnsAt(WidthNow(_width.Peek())));
             _template ??= (item, cell) => Item(item, cell);
@@ -248,20 +240,27 @@ internal static class WinUiHomeBoard
             }
             float open = _p.Board.View.OpenId.Value == e.Id ? WinUiHomeBoardRules.OpenExtent(e, e.Source, lay) : 0f;
             float full = 0f;
-            bool measured = false;
+            bool measured = false, estimated = false;
             if (WinUiHomeBoardRules.SizeOf(e) == HomeSize.Full)
             {
                 // A full row packs at its chapter's own height (the numbers its body reserves with), so it mounts in its box; once its body has
                 // laid out, the row follows the body's height (which eases itself).
                 full = ExtentOf(e.Id).Value;
                 measured = full > 0f;
-                if (!measured)
-                    full = HomeShortcuts.IsGrid(e)
-                        ? ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), WidthNow(_width.Value))
-                        : FullEstimate(e, _p.Home, WidthNow(_width.Value), lay);
+                if (!measured && HomeShortcuts.IsGrid(e)) full = ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), WidthNow(_width.Value));
+                else if (!measured)
+                {
+                    // A row not laid out yet (below the window) is a SIZE that follows the live width, as its body would: estimated at the structure
+                    // width it changed at once on a tier commit, the page's whole extent with it, while every row on screen eased. A new tier record
+                    // re-estimates it as structure (the pack re-flows); the width alone moves it frame by frame (PackFlags.Follows).
+                    full = FullEstimate(e, _p.Home, WidthNow(_live.Value), lay);
+                    estimated = _estimatedFor.TryGetValue(e.Id, out var was) && Equals(was, _p.Home);
+                    _estimatedFor[e.Id] = _p.Home;
+                }
             }
             var entry = WinUiHomeBoardRules.EntryOf(e, lay, full, open, false);
-            return measured && _follows.Contains(e.Id) && open <= 0f && entry.Kind == PackEntryKind.Band ? entry with { Flags = entry.Flags | PackFlags.Follows } : entry;
+            bool follows = (estimated || (measured && _follows.Contains(e.Id))) && open <= 0f && entry.Kind == PackEntryKind.Band;
+            return follows ? entry with { Flags = entry.Flags | PackFlags.Follows } : entry;
         }
 
         /// <summary>A full row's height before its body has laid out: its chapter's own extent at the row's content width (the ⋯ lane aside), else
