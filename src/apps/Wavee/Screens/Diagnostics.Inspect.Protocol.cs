@@ -205,6 +205,8 @@ public static partial class Diagnostics
             Arg("dragX", ArgType.Float, "press at this x (window DIP)"),
             Arg("dragY", ArgType.Float, "press at this y (window DIP)"),
             Arg("dragDy", ArgType.Float, "DIP per frame down while dragging", "0"),
+            Arg("glide", ArgType.String, "drag the window to WxH over the first traced frames (eased in-out, one size per frame, as resize ms=)"),
+            Arg("glideMs", ArgType.Int, "the glide's length (16 ms per frame)", "800"),
         ];
 
         /// <summary>A settling verb's own args, plus the trace options, which only apply beside `trace=N` with N > 0 (anywhere else

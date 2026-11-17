@@ -77,6 +77,10 @@ public static partial class Diagnostics
             public int DragFrames = 8, DragStart;
             public float DragDy, DragX = float.NaN, DragY = float.NaN;
             public string DragKey = "";
+            /// <summary>`glide=WxH glideMs=N`: the window is dragged to that size over the first frames of the trace, one size per traced
+            /// frame eased in-out (as `resize ms=` drags it), so a film or trace watches the drag itself, a tier edge crossed mid-drag included.</summary>
+            public float GlideW = float.NaN, GlideH = float.NaN;
+            public int GlideFrames;
             /// <summary>Set by `theme ... trace=N` (never parsed): the traced frames the switch's transaction holds under its freeze are the
             /// switch's own (<see cref="Row.Switch"/>). A theme switch replaces templates by design (owner decision: it resets page UI state),
             /// so the remounts and moves those frames carry are reported apart and not gated; the frames around them are gated as usual.</summary>
@@ -148,6 +152,14 @@ public static partial class Diagnostics
                 o.DragX = a.Float("dragX", float.NaN);
                 o.DragY = a.Float("dragY", float.NaN);
                 if (o.DragKey.Length == 0 && !(float.IsFinite(o.DragX) && float.IsFinite(o.DragY))) { error = "drag wants dragKey or dragX and dragY"; return false; }
+            }
+            if (a.Has("glide"))
+            {
+                string[] wh = a.Str("glide").Split('x');
+                if (wh.Length != 2 || !float.TryParse(wh[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out o.GlideW)
+                    || !float.TryParse(wh[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out o.GlideH)
+                    || !(o.GlideW >= 1f && o.GlideH >= 1f)) { error = "glide is WxH (DIP), e.g. glide=560x1000"; return false; }
+                o.GlideFrames = Math.Max(1, (Math.Clamp(a.Int("glideMs", 800), 16, 60_000) + 15) / 16);
             }
             options = o;
             return true;
@@ -942,6 +954,7 @@ public static partial class Diagnostics
             int sent = 0;
             bool moved = false;
             Point2 dragAt = default;
+            RectF glideFrom = InspectKit.WindowRect(shell);
             shell.Host.RenderCensus = o.Census;   // a slow frame names its components (row.census)
             if (o.Baseline && o.WatchesNodes)
             {
@@ -975,6 +988,12 @@ public static partial class Diagnostics
                     wheel |= down;
                 }
                 if (o.Drag.Length > 0) DragStep(shell, o, f, keyed, ref dragAt);
+                if (o.GlideFrames > 0 && f < o.GlideFrames)
+                {
+                    float gt = (float)(f + 1) / o.GlideFrames;
+                    gt = gt < 0.5f ? 4f * gt * gt * gt : 1f - MathF.Pow(-2f * gt + 2f, 3f) / 2f;
+                    shell.Resize(MathF.Round(glideFrom.W + (o.GlideW - glideFrom.W) * gt), MathF.Round(glideFrom.H + (o.GlideH - glideFrom.H) * gt));
+                }
                 bool frozenBefore = o.ThemeSwitch && shell.Host.FreezeState == FreezePhase.Frozen;
                 long t0 = Stopwatch.GetTimestamp();
                 FrameStats s = shell.Host.RunFrame();
