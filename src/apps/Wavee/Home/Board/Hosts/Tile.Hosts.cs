@@ -56,7 +56,7 @@ public sealed class HomeTileHost : Component
         var frame = new HomeTileFrame(p.Entry, p.Cell, form, p.Verbs, p.Overlay, p.View);
         if (p.Cell is not null) s_forms[p.Entry.Id] = form;
         var e = p.Entry;
-        if (e.Kind == BoardEntryKind.Placeholder)
+        if (e.Kind == BoardEntryKind.Placeholder || e.Kind == BoardEntryKind.FillCell && e.Feed == HomeFeedState.Loading)
             return Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps
             {
                 Frame = frame, Name = e.Title,
@@ -231,9 +231,23 @@ public sealed class RecentsTileHost : Component
 [CoreHost]
 public sealed class ReleasesTileHost : Component
 {
+    /// <summary>A widget whose data is not on hand: the vacancy the feed's own tiles show in that state (a flat placeholder shaped by
+    /// <paramref name="seed"/> while it loads; the offline or failed face), or null once the data is here.</summary>
+    internal static Element? Pending(HomeTileFrame frame, HomeFeedState state, Zone seed) => state switch
+    {
+        HomeFeedState.Ready => null,
+        _ => Slots.View(ViewKeys.HomeTileVacant, new HomeTileVacantProps
+        {
+            Frame = frame, Seed = seed,
+            Reason = state switch { HomeFeedState.Offline => HomeTileVacancy.Offline, HomeFeedState.Error => HomeTileVacancy.Failed, _ => HomeTileVacancy.Loading },
+        }),
+    };
+
     public override Element Render()
     {
         var p = UseProps<WidgetTileProps>();
+        // Its answers on their way: the loaded list's placeholder, never an empty band (owner rule 11-15: flat, at the loaded size).
+        if (Pending(p.Frame, HomeBoardZones.ReleasesState(), HomeBoardZones.ReleasesSeed) is { } vacant) return vacant;
         var zone = HomeBoardZones.ReleasesZone(p.Frame.Entry);
         return Slots.View(ViewKeys.HomeTileReleases, new HomeReleasesTileProps { Frame = p.Frame, Zone = zone, SeeAll = HomeVerbs.SeeAll(zone) });
     }
@@ -246,6 +260,7 @@ public sealed class DaylistTileHost : Component
     public override Element Render()
     {
         var p = UseProps<WidgetTileProps>();
+        if (ReleasesTileHost.Pending(p.Frame, HomeBoardZones.DaylistState(), HomeBoardZones.DaylistSeed) is { } vacant) return vacant;
         var zone = HomeBoardZones.DaylistZone(p.Frame.Entry);
         var overlay = p.Frame.Overlay;
         string uri = zone.Items.Count > 0 ? zone.Items[0].Uri : "";
