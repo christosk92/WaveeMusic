@@ -197,8 +197,12 @@ public sealed class ShortcutGridView : Component
         _p = p;
         Plan = UseComputed(() =>
         {
-            float w = _width.Value > 0f ? _width.Value : _p!.FirstWidth;
-            return ShortcutGrid.Plan(HomeShortcuts.Cells(_p!.Board.Model.Value), _p.Spec, w);
+            // The props through their signal, so a re-push re-plans: a tier crossing hands the grid a new spec (Zune's columns cap is the tier's),
+            // and the width it measured on that frame may already have re-planned it with the old one (1888: ten 172 cells, not the Standard
+            // eight's 217, every tile's foot cut until the next width change).
+            var q = UseProps<ShortcutGridProps>();
+            float w = _width.Value > 0f ? _width.Value : q.FirstWidth;
+            return ShortcutGrid.Plan(HomeShortcuts.Cells(q.Board.Model.Value), q.Spec, w);
         });
         var plan = Plan.Value;
         var plans = Plan;
