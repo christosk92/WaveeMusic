@@ -529,13 +529,10 @@ public static partial class AudiobookRules
             : m.ToString(CultureInfo.InvariantCulture) + ":" + x.ToString("00", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>The provider's HTML with runs of three or more line breaks folded to one blank line (publishers paste "&lt;br /&gt;" x4 between
-    /// paragraphs, which drew as a screen of empty lines), and the publisher's doubled quotes (a CSV escape that reached the wire: &amp;#34;&amp;#34;) as one.</summary>
+    /// <summary>The provider's HTML with the publisher's doubled quotes (a CSV escape that reached the wire: &amp;#34;&amp;#34;) as one. Runs of
+    /// line breaks are the renderer's to fold (<c>Controls.ParseRich</c>).</summary>
     public static string TidyHtml(string html)
-        => string.IsNullOrEmpty(html) ? "" : BreakRuns().Replace(html, "<br /><br />").Replace("&#34;&#34;", "&#34;").Replace("\"\"", "\"");
-
-    [GeneratedRegex(@"(<br\s*/?>\s*){3,}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex BreakRuns();
+        => string.IsNullOrEmpty(html) ? "" : html.Replace("&#34;&#34;", "&#34;").Replace("\"\"", "\"");
 
 
     /// <summary>The ISO 639-1 code SHOW_V4 states ("en") as the listener's language names it ("English"); the code itself when unknown.</summary>
