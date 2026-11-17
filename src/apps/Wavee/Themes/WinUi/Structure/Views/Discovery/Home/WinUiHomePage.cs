@@ -120,6 +120,7 @@ internal static class WinUiHomePage
                 Key = props.Facet.Length > 0 ? "home:scroll:" + props.Facet : "home:scroll", Grow = 1f, MinWidth = 0f,
                 ScrollKey = props.ScrollKey,
                 Handle = props.Scroll,
+                Anchoring = true,   // what the user looks at stays put when the page above it changes size (a tier edge, a shelf standing up)
                 EdgeCues = ScrollEdgeCues.None,   // the band's own cut does the dissolving: a viewport top cue would fade the pinned row
             };
 

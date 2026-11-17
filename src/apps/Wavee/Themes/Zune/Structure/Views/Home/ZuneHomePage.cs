@@ -71,7 +71,7 @@ internal static class ZuneHomePage
         // at-top test (FacetSwitch.Landed).
         Element scroll = Ui.ScrollView(new BoxEl { Direction = 0, MinWidth = 0f, Children = [column] }) with
         {
-            Key = props.Facet.Length > 0 ? "zune-home-scroll:" + props.Facet : "zune-home-scroll", Grow = 1f, MinWidth = 0f, ScrollKey = props.ScrollKey, Handle = props.Scroll,
+            Key = props.Facet.Length > 0 ? "zune-home-scroll:" + props.Facet : "zune-home-scroll", Grow = 1f, MinWidth = 0f, ScrollKey = props.ScrollKey, Handle = props.Scroll, Anchoring = true,
         };
 
         // On All the board's app bar lies over the page's foot (outside the scroller: it stays put while the page scrolls; the board reserves its height).

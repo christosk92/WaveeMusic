@@ -115,6 +115,7 @@ internal static class ClassicHomePage
                 Key = props.Facet.Length > 0 ? "home:scroll:" + props.Facet : "home:scroll", Grow = 1f, MinWidth = 0f,
                 ScrollKey = props.ScrollKey,
                 Handle = props.Scroll,
+                Anchoring = true,   // what the user looks at stays put when the page above it changes size (a tier edge, a shelf standing up)
                 // No viewport edge cue: its 40-DIP top feather would fade the pinned facet band and chapter headers.
                 // The page dissolves its own content under them (StickyClip + WhileStuck), as `ClassicArtistPage` does.
                 EdgeCues = ScrollEdgeCues.None,
