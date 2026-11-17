@@ -11,7 +11,7 @@
 //
 // The clip (owner call, scratch/pins/spine-shelf-tech.md): only when nothing plays (Playback.IsPlaying, which follows Connect too), at
 // ClipVolume × the user's volume, on its own MF engine. It never calls the player, the queue or Connect. A window with no video
-// compositor builds neither player; the headless inspector builds them only over its fake backend (`mount media=fake`, CanvasVideo.InspectBackend).
+// compositor builds neither player; the inspector's `mount media=fake` builds them over its fake backend (CanvasVideo.InspectBackend).
 
 using FluentGpu.Media;
 
@@ -38,17 +38,21 @@ public static class ShelfPreview
     static ShelfSong s_song;
     static bool s_media, s_fake;
 
+    /// <summary>The inspector's `mount media=real`: the headless test host may build real players (otherwise only the fake backend's).</summary>
+    public static bool RealInTestHost { get; set; }
+
     /// <summary>The canvas player (null in a window that composites no video).</summary>
     public static MediaPlayer? Video => s_video;
 
-    /// <summary>A shelf mounted: build the players once (the warm-up: MF startup and the engine pair are paid here, never on a hover). In a
-    /// window that composites video, over their own Media Foundation backends (the canvas host's reasoning, Shell/Canvas.cs); in the
-    /// headless inspector only over its fake backend (`mount media=fake`, CanvasVideo.InspectBackend), and not at all without one.</summary>
+    /// <summary>A shelf mounted: build the players once (the warm-up: MF startup and the engine pair are paid here, never on a hover), over
+    /// their own Media Foundation backends (the canvas host's reasoning, Shell/Canvas.cs), or over the inspector's fake backend under
+    /// `mount media=fake` (CanvasVideo.InspectBackend). A player opens nothing until a tile has settled under the pointer.</summary>
     public static void Warm(bool composites)
     {
         var fake = CanvasVideo.InspectBackend;
         if (s_media && ReferenceEquals(s_builtOver, fake)) return;
-        if (fake is null && (Shell.IsTestHost || !composites)) return;
+        // The headless inspector builds real Media Foundation players only when a mount asked for them (`media=real`: the hardware lane).
+        if (fake is null && (!composites || Shell.IsTestHost && !RealInTestHost)) return;
         Leave();
         if (s_video is { } oldV) _ = oldV.DisposeAsync();
         if (s_clip is { } oldC) _ = oldC.DisposeAsync();

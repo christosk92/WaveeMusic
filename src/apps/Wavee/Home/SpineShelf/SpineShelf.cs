@@ -197,6 +197,16 @@ public sealed class SpineShelf : Component
     Signal<int> _open = null!;   // created at the first render with the remembered item (a render never writes a signal)
     readonly Signal<int> _live = new(-1);   // item * Songs + song, -1 none
     readonly Signal<int> _closing = new(-1);   // the item whose face is still fading out, -1 none (its face stays in layout until then)
+    IReadSignal<float>? _widthSig;
+    Func<float>? _faceWFn;
+
+    /// <summary>The open face's width (a bound read: it subscribes the bind that calls it to the shelf's measured width).</summary>
+    float FaceWidth()
+    {
+        float w = _widthSig?.Value ?? 0f;
+        return _g.FaceW(w > 1f ? w : _seed, _items.Length);
+    }
+
     float _seed;   // the slot's known width on the first render (a pack grid tile), until the shelf's own measure lands
     int _dwell = -1, _focus, _settling = -1, _settled = -1;
     string _key = "";
@@ -273,9 +283,7 @@ public sealed class SpineShelf : Component
         if (first && measured.Peek() <= 1f
             && Context.ResolveContextSignal?.Invoke(Context.AnchorNode, MeasureMemory.KnownWidth)?.Peek() is float known && known > 1f)
             _seed = known;
-        var widthSig = measured;
-        float W() { float w = widthSig.Value; return w > 1f ? w : _seed; }
-        float FaceW() => g.FaceW(W(), n);
+        _widthSig = measured;
 
         _dwellTimer = UseTimeout(DwellFired, SpineShelfRules.DwellMs, DepKey.Empty);
         _tileTimer = UseTimeout(TileSettled, SpineShelfRules.TileMs, DepKey.Empty);
@@ -301,7 +309,7 @@ public sealed class SpineShelf : Component
         var row = new Element[n];
         bool sameFrame = _builtG.Equals(g) && ReferenceEquals(_builtSkin, skin) && _built.Length == n;
         for (int i = 0; i < n; i++)
-            row[i] = sameFrame && _builtItems[i].Equals(items[i]) ? _built[i] : Item(items[i], i, i == openNow, g, skin, FaceW);
+            row[i] = sameFrame && _builtItems[i].Equals(items[i]) ? _built[i] : Item(items[i], i, i == openNow, g, skin, _faceWFn ??= FaceWidth);
         _built = row; _builtItems = items; _builtG = g; _builtSkin = skin;
 
         // A canvas file that lands while its tile waits re-presents it (CanvasVideo.Files.Epoch).
@@ -323,22 +331,16 @@ public sealed class SpineShelf : Component
         TransitionDynamics.Tween(SpineShelfRules.OpenMs, SpineShelfRules.Curve), SizeMode.Reveal, Axes: SizeAxes.Height);
     static readonly LayoutTransition s_tileMotion = new(TransitionChannels.Bounds,
         TransitionDynamics.Tween(SpineShelfRules.TileMs, SpineShelfRules.Curve), SizeMode.Reveal, Axes: SizeAxes.Width);
+    static readonly LayoutTransition s_coverScale = new(TransitionChannels.Bounds,
+        TransitionDynamics.Tween(SpineShelfRules.TileMs, SpineShelfRules.Curve), SizeMode.ScaleCorrect);
     static readonly LayoutTransition s_tileSlide = new(TransitionChannels.Position,
         TransitionDynamics.Tween(SpineShelfRules.TileMs, SpineShelfRules.Curve));
 
     Element Item(ShelfItem item, int i, bool open, SpineShelfGeometry g, SpineShelfSkin skin,
                  Func<float> faceW)
     {
-        // The tiles share the face's inner width: as many as the lookup named (five, fewer for a short answer), one wider while live.
-        int count = Math.Max(1, item.Songs.Length);
-        float TileSpan() => MathF.Max(0f, faceW() - 2f * g.FacePad - (count - 1) * g.TileGap);
-        float restW() => TileSpan() / count;
-        float liveW() => count == 1 ? TileSpan() : TileSpan() * SpineShelfRules.LiveShare / (count - 1 + SpineShelfRules.LiveShare);
-        float otherW() => TileSpan() / (count - 1 + SpineShelfRules.LiveShare);
         var openSig = _open;
-        var closing = _closing;
         int index = i;
-        string ik = _key + "|" + item.Key;
 
         var spine = new BoxEl
         {
@@ -350,35 +352,9 @@ public sealed class SpineShelf : Component
             Children = [skin.Spine(item, i, g)],
         };
 
-        Element[] tiles;
-        if (item.NoSongs) tiles = [CoverTile(item, g)];
-        else
-        {
-            tiles = new Element[item.Songs.Length];
-            for (int j = 0; j < tiles.Length; j++) tiles[j] = Tile(item, i, j, g, skin, restW, liveW, otherW);
-        }
-        var face = new BoxEl
-        {
-            Key = "shelf:face:" + item.Key, Direction = 1, MinWidth = 0f, Shrink = 0f,
-            Width = g.Standing ? Free : Prop.Of(faceW), Height = g.FaceH, IsolateLayout = true,
-            JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Start,
-            Padding = Edges4.All(g.FacePad), Gap = g.HeadGap, Gradient = skin.FaceWash(item),
-            // Out of layout while closed (Visible below); it fades in when it comes back (the Enter, behind the opening edge) and out before it leaves.
-            Enter = s_faceEnter, Transition = s_faceFade,
-            HitTestVisible = Prop.Of(() => openSig.Value == index),
-            // Only the open face (and one still fading out) is in layout: a closed face costs no measure (a resize re-lays out one face, not n).
-            Visible = Prop.Of(() => openSig.Value == index || closing.Value == index),
-            OnRealized = h => { if (index < _face.Length) _face[index] = h; },
-            Children =
-            [
-                new BoxEl { Direction = 0, Height = g.HeadH, MinWidth = 0f, Shrink = 0f, AlignItems = FlexAlign.Stretch, Children = [skin.Head(item, g)] },
-                new BoxEl
-                {
-                    Key = "shelf:tiles:" + item.Key, Direction = 0, Gap = g.TileGap, Height = g.TilesH, MinWidth = 0f, Shrink = 0f,
-                    IsolateLayout = true, AlignItems = FlexAlign.Stretch, Children = tiles,
-                },
-            ],
-        };
+        // The face is mounted only while its item is open (or fading closed): a closed item carries no tiles, so a resize, a re-projection or
+        // a form swap touches one face, not n.
+        var face = Embed.Comp(new FaceProps(this, item, i, g, skin, faceW), static () => new ShelfFace());
 
         var meter = new BoxEl
         {
@@ -404,6 +380,67 @@ public sealed class SpineShelf : Component
             OnRealized = h => { if (index < _item.Length) _item[index] = h; },
             Children = [spine, face, meter],
         };
+    }
+
+    /// <summary>The open face: the head over the song tiles, at the face width (fixed: never reflowed while its item moves).</summary>
+    internal Element BuildFace(ShelfItem item, int i, SpineShelfGeometry g, SpineShelfSkin skin, Func<float> faceW)
+    {
+        // The tiles share the face's inner width: as many as the lookup named (five, fewer for a short answer), one wider while live.
+        int count = Math.Max(1, item.Songs.Length);
+        float TileSpan() => MathF.Max(0f, faceW() - 2f * g.FacePad - (count - 1) * g.TileGap);
+        float restW() => TileSpan() / count;
+        float liveW() => count == 1 ? TileSpan() : TileSpan() * SpineShelfRules.LiveShare / (count - 1 + SpineShelfRules.LiveShare);
+        float otherW() => TileSpan() / (count - 1 + SpineShelfRules.LiveShare);
+        var openSig = _open;
+        int index = i;
+        Element[] tiles;
+        if (item.NoSongs) tiles = [CoverTile(item, g)];
+        else
+        {
+            tiles = new Element[item.Songs.Length];
+            for (int j = 0; j < tiles.Length; j++) tiles[j] = Tile(item, i, j, g, skin, restW, liveW, otherW);
+        }
+        var face = new BoxEl
+        {
+            Key = "shelf:face:" + item.Key, Direction = 1, MinWidth = 0f, Shrink = 0f,
+            Width = g.Standing ? Free : Prop.Of(faceW), Height = g.FaceH, IsolateLayout = true,
+            JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Start,
+            Padding = Edges4.All(g.FacePad), Gap = g.HeadGap, Gradient = skin.FaceWash(item),
+            // Out of layout while closed (Visible below); it fades in when it comes back (the Enter, behind the opening edge) and out before it leaves.
+            Enter = s_faceEnter, Transition = s_faceFade,
+            HitTestVisible = Prop.Of(() => openSig.Value == index),
+            OnRealized = h => { if (index < _face.Length) _face[index] = h; },
+            Children =
+            [
+                new BoxEl { Direction = 0, Height = g.HeadH, MinWidth = 0f, Shrink = 0f, AlignItems = FlexAlign.Stretch, Children = [skin.Head(item, g)] },
+                new BoxEl
+                {
+                    Key = "shelf:tiles:" + item.Key, Direction = 0, Gap = g.TileGap, Height = g.TilesH, MinWidth = 0f, Shrink = 0f,
+                    IsolateLayout = true, AlignItems = FlexAlign.Stretch, Children = tiles,
+                },
+            ],
+        };
+
+        return face;
+    }
+
+    sealed record FaceProps(SpineShelf Shelf, ShelfItem Item, int Index, SpineShelfGeometry Geo, SpineShelfSkin Skin, Func<float> FaceW);
+
+    /// <summary>An item's face slot: the face while the item is open or fading closed, nothing otherwise. The face is a keyed child of an
+    /// unkeyed box, so it mounts (its Enter fades it in) and unmounts rather than being re-laid out.</summary>
+    sealed class ShelfFace : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<FaceProps>();
+            int open = p.Shelf._open.Value, closing = p.Shelf._closing.Value;
+            bool shown = open == p.Index || closing == p.Index;
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Start,
+                Children = shown ? [p.Shelf.BuildFace(p.Item, p.Index, p.Geo, p.Skin, p.FaceW)] : [],
+            };
+        }
     }
 
     // ── one song tile ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -432,14 +469,22 @@ public sealed class SpineShelf : Component
             new BoxEl { Gradient = TileWash(song.Accent) },
         };
         if (song.HasCanvas)
-            media.Add(new ImageEl { Source = song.Still ?? song.Cover ?? "", Fit = ImageFit.Cover });
+            // A fluid image (no explicit width) needs its decode size: without one it never decodes and the tile showed its bare wash (owner,
+            // live account, 2026-11-17). The canvas still's own height, as the canvas host decodes it.
+            media.Add(new ImageEl { Source = song.Still ?? song.Cover ?? "", Fit = ImageFit.Cover, DecodePx = SpineShelfRules.StillDecodePx });
         else if (song.Cover is { } cover)
+        {
+            // The concept's min(70 %, the tier's cover): centred on the tile (the media layer is), never wider than the tile it sits on. A tile
+            // that widens grows its cover by a uniform scale on the tile's curve (ScaleCorrect: a square scales without distortion).
+            float CoverEdge() => MathF.Min(g.TileCover, TileW() * SpineShelfRules.CoverShare);
             media.Add(new BoxEl
             {
-                AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, Width = g.TileCover, Height = g.TileCover,
-                Children = [Controls.Artwork(cover, g.TileCover, g.TileCover, g.TileRadius)],
+                AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, Width = Prop.Of(CoverEdge), Height = Prop.Of(CoverEdge),
+                Shrink = 0f, ClipToBounds = true, Corners = CornerRadius4.All(g.TileRadius), Layout = s_coverScale, HitTestVisible = false,
+                ZStack = true,   // the image is a layer that fills the bound square
+                Children = [new ImageEl { Source = cover, Fit = ImageFit.Cover, DecodePx = g.TileCover * 2f }],
             });
-        if (song.HasCanvas) media.Add(Embed.Comp(new TileVideoProps(tile, g.TileRadius), static () => new TileVideo()));
+        }
 
         // The media is laid out at the widest a tile gets (so a widening tile reveals it and never re-crops it) and centred on the tile: an
         // unbounded stack layer may overflow its stack on both sides (FlexLayout.ArrangeZStack), and its own Position FLIP rides the tile's
@@ -481,7 +526,11 @@ public sealed class SpineShelf : Component
             OnPointerExit = () => TileLeave(code),
             OnFocusChanged = f => { if (f) TileEnter(code, tile, in s); else TileLeave(code); },
             OnRealized = h => { if (code < _tile.Length) _tile[code] = h; },
-            Children = [mediaLayer, scrim, caption, progress],
+            // The video fills the TILE (not the wider media layer): it is shown only on a settled tile, so its box is the tile's final one, and a
+            // composited video surface never spills past the tile into its neighbours. UniformToFill crops the portrait canvas to it.
+            Children = song.HasCanvas
+                ? [mediaLayer, Embed.Comp(new TileVideoProps(tile, g.TileRadius), static () => new TileVideo()), scrim, caption, progress]
+                : [mediaLayer, scrim, caption, progress],
         };
     }
 
@@ -704,9 +753,13 @@ public sealed class SpineShelf : Component
             var p = UseProps<TileVideoProps>();
             bool showing = ShelfPreview.Showing.Value == p.Tile;
             if (!showing || ShelfPreview.Video is not { } player) return new BoxEl { HitTestVisible = false };
+            // The canvas host's fill box (Shell/Canvas.UI.cs): the root grows into the component's box on both axes and the element grows down
+            // it. Without Grow the root took its content's height (the element's 56 floor) and the video played in a strip at the tile's top
+            // (owner, live account, 2026-11-17; the headless real-media check reproduced the 56-high hole).
             return new BoxEl
             {
-                Direction = 1, HitTestVisible = false,
+                Direction = 1, HitTestVisible = false, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
                 Children = [Embed.Comp(() => new MediaPlayerElement
                 {
                     Player = player, IsDecorative = true, AreTransportControlsEnabled = false, ShowStatusOverlay = false,
