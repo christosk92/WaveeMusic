@@ -213,6 +213,7 @@
     }
   },
   "podcast": {
+    "pages": { "chapterN": "Hoofdstuk {number}" },
     "episodes": "Afleveringen",
     "show": "Podcast",
     "inProgress": "Bezig",

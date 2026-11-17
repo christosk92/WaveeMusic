@@ -76,24 +76,34 @@ public static partial class Spotify
         public static void AudiobookGenres(ReadOnlySpan<byte> anyPayload, ReadOnlySpan<byte> showUri, Staging s)
         {
             if (!showUri.StartsWith("spotify:show:"u8)) return;
-            var names = new List<string>();
+            var names = new List<(int Level, string Name)>();
             for (var r = new ProtoReader(anyPayload); r.Next();)
             {
                 if (r.Field != 1 || r.Wire != 2) { r.Skip(); continue; }
                 ReadOnlySpan<byte> name = default, fallback = default;
+                int level = 1;
                 for (var e = r.Message(); e.Next();)
                 {
                     if (e.Field == 6 && e.Wire == 2) name = e.Bytes();
                     else if (e.Field == 2 && e.Wire == 2) fallback = e.Bytes();
+                    else if (e.Field == 3 && e.Wire == 0) level = Math.Max(1, e.Int32());
                     else e.Skip();
                 }
                 ReadOnlySpan<byte> chosen = name.IsEmpty ? fallback : name;
-                if (!chosen.IsEmpty) names.Add(System.Text.Encoding.UTF8.GetString(chosen));
+                if (!chosen.IsEmpty) names.Add((level, Clean(System.Text.Encoding.UTF8.GetString(chosen))));
             }
-            if (names.Count == 0) return;
-
-            ref var row = ref s.Shows.RowFor(Identity(s, showUri), Authority.Full, (uint)ShowFields.Topics);
-            row.Topics = s.AddText(System.Text.Encoding.UTF8.GetBytes(string.Join('\n', names)));
+            // The breadcrumb reads top level first (Self-Help › Happiness & Success); a stable sort keeps wire order within a level.
+            var ordered = names.Select((n, i) => (n.Level, n.Name, i)).OrderBy(n => n.Level).ThenBy(n => n.i).ToArray();
+            // Topics + Genres in one row: the genre route (kind 83) is the Genres group's, and the same answer is the
+            // book's topic words. An empty tree still settles Genres (the "none").
+            ref var row = ref s.Shows.RowFor(Identity(s, showUri), Authority.Full,
+                (uint)(names.Count > 0 ? ShowFields.Topics | ShowFields.Genres : ShowFields.Genres));
+            if (names.Count > 0)
+            {
+                row.Topics = s.AddText(System.Text.Encoding.UTF8.GetBytes(string.Join('\n', ordered.Select(n => n.Name))));
+                row.Genres = s.AddText(System.Text.Encoding.UTF8.GetBytes(
+                    string.Join('\n', ordered.Select(n => n.Level.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\t" + n.Name))));
+            }
             s.Shows.Settle();
         }
     }

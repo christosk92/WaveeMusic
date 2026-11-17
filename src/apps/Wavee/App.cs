@@ -170,6 +170,7 @@ public static class App
         HomeBoardStore.Boot();           // the pinned Home's per-account document (home.acct-<hash>.json); after Sidebar.Boot: its folder and pins
         Sidebar.InstallActionSeams();    // Actions.Services.IsPinned / SetPinned (J1)
         HomePinVerbs.InstallActionSeams();   // Actions.Services.IsHomePinned / SetHomePinned (pinned Home)
+        Spotify.Books.Install();         // the audiobook-hours allowance's chapter-start PutConsumption (podcast pages data)
         Spotify.Library.Install();       // library writes + sync on Online + the pin bridge; after Sidebar.Boot, before the pane mounts (B2)
         Log.Event(WaveeLogLevel.Info, "app", "boot.playback", "", null, Log.SinceStartMs);
         StartupTimeline.Mark("playback");
