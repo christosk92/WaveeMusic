@@ -105,12 +105,14 @@ public sealed class HomeScreen : Component
         UseEffect(() => _host.Land(tab));
 
         // ── D-plan §6.3: the "From artists you follow" block on All needs the `music-following-chip` document.
-        // Prefetched once per All-entry edge; `Home.EnsureFeed` dedupes on Known/Asked, so re-entering All while it's
-        // still in flight (or already known) costs nothing extra. ──
+        // Prefetched on the All-entry edge AND in each new scope, as the demand above re-asks: a launch mounts Home before the
+        // login, so the first ask lands in the signed-out scope and is never sent; without the re-ask the release list never
+        // filled (a live open, 2026-11-17). `Home.EnsureFeed` dedupes on Known/Asked, so a re-run costs nothing. ──
         UseEffect(() =>
         {
+            _ = Entities.ScopeEpoch.Value;
             if (facetSig.Value.Length == 0) HomeHost.EnsureFollowingChipFeed();
-        }, DepKey.From(facetSig.Value.Length == 0));
+        });
 
         // The row's props: the host's ONE record (its signals are this tab's own stable fields and its delegates read the
         // host's Tab), so it serves the component's whole life — a fresh record per render would re-push on every parent

@@ -580,7 +580,16 @@ internal static class WinUiHomeTiles
         var f = p.Frame;
         // Loading: a flat placeholder at the loaded size, derived from the real chapter (a shelf of blank cards under a title bar), never a pulse.
         if (p.Reason == HomeTileVacancy.Loading)
-            return LoadingShelf(f, WinUiHomeTiers.Of(ctx.Tier()));
+        {
+            var home = WinUiHomeTiers.Of(ctx.Tier());
+            // A widget's own shape (HomeBoardZones' seeds): the daylist card as one plate at the daylist's height (the page's estimate packed its
+            // row at exactly that), the release list as its header over blank rows.
+            // A tile drawn as a card (its box is its span: a widget's card, a shortcut cell) is its empty card plate.
+            if (f.Form != HomeTileForm.Full) return Card(ctx, f, new BoxEl { Grow = 1f }, menu: MoreMenu.None);
+            if (p.Seed is { Kind: ZoneKind.Daylist })
+                return Card(ctx, f, new BoxEl { Height = WinUiHomeDaylist.Extent(home), Corners = Radii.CardAll, Fill = Tok.FillControlSecondary }, menu: MoreMenu.None);
+            return LoadingShelf(f, home, p.Seed);
+        }
         string line = Loc.Get(p.Reason switch
         {
             HomeTileVacancy.Unavailable => Strings.Theme.Winui.Home.Board.Unavailable,
@@ -605,12 +614,17 @@ internal static class WinUiHomeTiles
     }
 
     /// <summary>A placeholder of Spotify's feed while its answer is on its way: the chapter's own skeleton (a shelf of blank cards under a title
-    /// bar) at the loaded size, flat.</summary>
-    static Element LoadingShelf(HomeTileFrame f, WinUiHomeLayout home)
+    /// bar; a widget's own <paramref name="widget"/> zone, its cards blank) at the loaded size, flat.</summary>
+    static Element LoadingShelf(HomeTileFrame f, WinUiHomeLayout home, Zone? widget)
     {
-        var blanks = new HomeCard[WinUiHomeBoardRules.SeedCards];
-        for (int i = 0; i < blanks.Length; i++) blanks[i] = HomeCard.Blank(HomeCardKind.Playlist, i);
-        var seed = new Zone(ZoneKind.CoverShelf, "seed:" + f.Entry.Id, " ", null, blanks);
+        Zone seed;
+        if (widget is not null) seed = widget;
+        else
+        {
+            var blanks = new HomeCard[WinUiHomeBoardRules.SeedCards];
+            for (int i = 0; i < blanks.Length; i++) blanks[i] = HomeCard.Blank(HomeCardKind.Playlist, i);
+            seed = new Zone(ZoneKind.CoverShelf, "seed:" + f.Entry.Id, " ", null, blanks);
+        }
         return new SkelRegionEl(
             Pending: static () => true, Failed: static () => false,
             Content: static () => new BoxEl(),

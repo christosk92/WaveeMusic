@@ -1399,7 +1399,7 @@ public static partial class Entities
     // was edited). `state kind=home-refresh` lands `home.all.second.json` over All: the next answer, for identity.
 
     /// <summary>The fixture names <see cref="StageHomeFixture"/> takes.</summary>
-    public static readonly string[] HomeFixtures = ["mock", "capture", "new", "free", "podcast", "region", "synthetic", "second", "live1"];
+    public static readonly string[] HomeFixtures = ["mock", "capture", "new", "free", "podcast", "region", "synthetic", "second", "live1", "live2"];
 
     /// <summary>The Home fixture the tables hold now.</summary>
     public static string HomeFixture { get; private set; } = "mock";
@@ -1443,6 +1443,68 @@ public static partial class Entities
     public static bool StageHomeRefresh()
     {
         if (!LandHomeAnswer("", "home.all.second.json")) return false;
+        Current.PublishAll();
+        return true;
+    }
+
+    // ── the live open, one step per command (`state kind=home-cold`, then `home-land`, `home-following` and `home-previews` in any
+    // order): what a launch with no Home on disk shows while the answers arrive (a live log: the board first, the All answer
+    // ~0.7 s later, then the Following answer and the baseline lookup). Cold forgets the three answers the page holds (the rows
+    // stay: the land steps make them known again) and seats All and Following, so the fake's own demand (SimulateFacetFetch)
+    // waits for the step instead of landing them on its timer. --
+
+    static (int Section, int[] Targets)[] s_coldPreviews = [];
+    static uint s_coldStamp;
+
+    /// <summary>`state kind=home-cold`: All, the Following facet and the baseline lookup are not known yet, and in flight.</summary>
+    public static bool StageHomeCold()
+    {
+        var all = HomeFeed();
+        var following = HomeFeed("music-following-chip".AsSpan());
+        if (!all.IsValid || !following.IsValid || s_coldStamp != 0) return false;
+        var t = Current.Homes;
+        s_coldStamp = unchecked((uint)Environment.TickCount64) | 1u;
+        foreach (int slot in new[] { all.Slot, following.Slot })
+        {
+            t.Known[slot] &= ~(uint)HomeFields.Sections;
+            t.Seat(slot, s_coldStamp);
+            t.Bump(slot);
+        }
+        var previews = Current.Edges.SectionPreviewTracks;
+        var cold = new List<(int, int[])>();
+        foreach (int s in all.SectionSlots)
+        {
+            if (previews.State(s) == EdgeState.Unknown) continue;
+            cold.Add((s, previews.Targets(s).ToArray()));
+            previews.Clear(s);
+        }
+        s_coldPreviews = cold.ToArray();
+        Current.Edges.HomePreviews.Clear(all.Slot);
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>`state kind=home-land` (All) / `home-following`: that facet's answer concludes, as the live fetch's conclusion does.</summary>
+    public static bool StageHomeAnswer(string facet)
+    {
+        var h = HomeFeed(facet.AsSpan());
+        if (!h.IsValid || Current.Homes.Inflight[h.Slot] == 0) return false;
+        var t = Current.Homes;
+        t.Unseat(h.Slot);
+        t.Bump(h.Slot, (uint)HomeFields.All);
+        if (t.Inflight[HomeFeed().Slot] == 0 && t.Inflight[HomeFeed("music-following-chip".AsSpan()).Slot] == 0) s_coldStamp = 0;
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>`state kind=home-previews`: the baseline lookup answers (the preview songs `home-cold` took back).</summary>
+    public static bool StageHomePreviews()
+    {
+        var previews = Current.Edges.SectionPreviewTracks;
+        foreach (var (section, targets) in s_coldPreviews) previews.ReplaceRun(section, targets, default);
+        s_coldPreviews = [];
+        var all = HomeFeed();
+        if (all.IsValid) Current.Edges.HomePreviews.ReplaceRun(all.Slot, ReadOnlySpan<int>.Empty, default);
         Current.PublishAll();
         return true;
     }

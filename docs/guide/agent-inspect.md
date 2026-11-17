@@ -208,7 +208,8 @@ the profile's file as it is, for a second process on one `--profile`). `pins0`: 
 every size of every MVP source; `v2hidden`: no v3 file and a `home-layout.json` v2 with hidden zones (the migration runs);
 `toonew`: a version 4 file (Home shows the default, the file stays byte for byte, `readOnly: true`); `corrupt`: an unreadable
 file (set aside as `.corrupt`); `unknown`: an unknown source kind, option key and members (they round-trip byte for byte).
-`reset` puts the default document back. `home=live1` is a redacted live answer (2026-11-16); `tools/home-fixture.py` makes
+`reset` puts the default document back. `home=live1` and `home=live2` are redacted live answers (2026-11-16, 2026-11-17; live2's lookup
+was asked for its own answer's cards, so all 20 baseline cards carry their preview songs); `tools/home-fixture.py` makes
 the next one from a `cmd=homecap` folder (the procedure, with its safety rules: the fgpu skill's `verify/debug-home.md`).
 
 `media=fake` builds every media player over a fake backend (`Diagnostics.Inspect.Media.cs`): the Spotify Canvas player and any
@@ -595,6 +596,11 @@ transport do=end                                                       # deck=tr
 
 `state kind=home-refresh` lands the pinned Home's next answer (the `second` fixture) over the one the page shows: a removed
 section keeps its place as a hidden entry, a new one sits after its server neighbour, a hidden one stays hidden.
+
+`state kind=home-cold`, then `home-land`, `home-following` and `home-previews` (any order) stage a live open one answer at a time: cold
+forgets the All answer, the Following facet's answer and the baseline lookup the tables hold and seats All and Following in flight (the
+board shows its placeholders), each land step concludes one of them. Mount from another route (`route=browse`), stage `home-cold`, then
+`goto route=home`, and trace each step (`trace=90 prefix=home:tile:`): the proof that a load moves nothing at once.
 
 `state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back, and steps back off the
 pending search a `loading` opened while it still shows: its skeleton never lands, so every verb on it would settle to `max`); `loading` opens a search for

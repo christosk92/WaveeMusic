@@ -36,6 +36,11 @@ PUBLIC_USERS = {"spotify", "@", "wavee-listener"}
 B62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 
+def name_re(name):
+    """A display name as a whole word (no letter or digit on either side)."""
+    return re.compile(r"(?<![0-9A-Za-z])" + re.escape(name) + r"(?![0-9A-Za-z])")
+
+
 def stand_in(mix_id):
     """A stable stand-in of the same shape for a personal mix id (the prefix kept: the app reads it as a personal mix)."""
     h = int.from_bytes(hashlib.sha256(mix_id.encode()).digest()[:12], "big")
@@ -81,11 +86,13 @@ def collect(src, display_names):
 def redact_text(s, users, names, mixes):
     for u in users:
         s = s.replace("spotify:user:" + u, "spotify:user:wavee-listener").replace(u, "wavee-listener")
+    # Whole words only: a short first name ("Al") must not eat the middle of other words ("Album").
     for n in sorted(names, key=len, reverse=True):
-        s = s.replace(n, "Listener")
+        s = name_re(n).sub("Listener", s)
     for m in mixes:
         s = s.replace(m, stand_in(m))
-    return s
+    # Any e-mail address (a show's contact line in its description): never the account's, but none enters a fixture.
+    return EMAIL_RE.sub("contact@example.com", s)
 
 
 def redact_node(node, users, names, mixes):
@@ -119,7 +126,7 @@ def redact(args):
             body.pop("extensions", None)
             body = {"_fixture": {
                 "source": "Wavee live answer (cmd=homecap), facet %s, redacted by tools/home-fixture.py" % ("\"\"" if facet == "all" else facet),
-                "redacted": "account user ids, display names and personal mix ids replaced; user avatars and response extensions dropped",
+                "redacted": "account user ids, display names, personal mix ids and e-mail addresses replaced; user avatars and response extensions dropped",
             }, **{k: v for k, v in body.items() if k != "_fixture"}}
         dest = os.path.join(args.out, out_name(kind, facet, args.name))
         with open(dest, "w", encoding="utf-8", newline="\n") as fh:
@@ -147,14 +154,14 @@ def leakcheck(args):
             if u in text:
                 leaks.append((path, "the account's user id"))
         for n in names:
-            if n in text:
+            if name_re(n).search(text):
                 leaks.append((path, "a display name (%d chars)" % len(n)))
         for m in mixes:
             if m in text:
                 leaks.append((path, "a personal mix id"))
         for u in set(USER_RE.findall(text)) - PUBLIC_USERS:
             leaks.append((path, "a user uri that is not a stand-in"))
-        for e in set(EMAIL_RE.findall(text)):
+        for e in set(EMAIL_RE.findall(text)) - {"contact@example.com"}:
             leaks.append((path, "an e-mail address"))
         for w in CREDENTIAL_WORDS:
             if w.lower() in text.lower():

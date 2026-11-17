@@ -395,4 +395,8 @@ public sealed record HomeTileVacantProps
 
     /// <summary>The name it had (the document's hint), or empty.</summary>
     public string Name { get; init; } = "";
+
+    /// <summary>A widget's data on its way: the zone it will draw, its cards blank (<c>HomeBoardZones.ReleasesSeed</c>, <c>DaylistSeed</c>), so the
+    /// placeholder takes the loaded tile's own shape and height. Null for a feed section the answer has not named yet.</summary>
+    public Zone? Seed { get; init; }
 }

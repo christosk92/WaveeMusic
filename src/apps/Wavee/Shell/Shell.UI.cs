@@ -1117,6 +1117,11 @@ public static partial class Shell
             case "credits-land": Entities.LandFakeCredits(); return true;
             // Home's next answer over the one the page shows (Entities.Fake.Home.cs): identity across answers.
             case "home-refresh": return Entities.StageHomeRefresh();
+            // Home's live open, one answer per step (Entities.Fake.Home.cs): cold, then the All answer, the Following answer, the lookup.
+            case "home-cold": return Entities.StageHomeCold();
+            case "home-land": return Entities.StageHomeAnswer("");
+            case "home-following": return Entities.StageHomeAnswer("music-following-chip");
+            case "home-previews": return Entities.StageHomePreviews();
             default: return false;
         }
     }

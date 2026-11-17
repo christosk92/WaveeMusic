@@ -72,7 +72,8 @@ public sealed record BoardEntry(string Id, BoardEntryKind Kind, string GroupId, 
     /// <summary>A <see cref="BoardEntryKind.FillCell"/>'s Fill item (the document item that drew it); null for every other kind.</summary>
     public string? Parent { get; init; }
 
-    /// <summary>A <see cref="BoardEntryKind.Placeholder"/>'s reason: the feed's state (Loading before the first answer, Error, Offline).</summary>
+    /// <summary>A <see cref="BoardEntryKind.Placeholder"/>'s reason: the feed's state (Loading before the first answer, Error, Offline). On a
+    /// <see cref="BoardEntryKind.FillCell"/>, Loading marks a cell that holds a shortcut's place until the answer names it.</summary>
     public HomeFeedState Feed { get; init; }
 }
 

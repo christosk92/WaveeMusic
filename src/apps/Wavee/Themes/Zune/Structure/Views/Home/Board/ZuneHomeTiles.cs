@@ -797,7 +797,17 @@ internal static class ZuneHomeTiles
     public static Element Vacant(HomeTileVacantProps p, in ViewContext ctx)
     {
         var f = p.Frame;
-        if (p.Reason == HomeTileVacancy.Loading) return Tile(f, new BoxEl { Grow = 1f, Fill = R.Layer.ArtPlaceholder });
+        // A full band has no height of its own to grow into (the board measures its body): the plate stands at the box the band was packed at (its
+        // tool strip aside), or it draws nothing.
+        if (p.Reason == HomeTileVacancy.Loading)
+        {
+            var cell = f.Cell;
+            return Tile(f, new BoxEl
+            {
+                Grow = 1f, Fill = R.Layer.ArtPlaceholder,
+                Height = f.Form == HomeTileForm.Full && cell is not null ? Prop.Of(() => cell.Box.Value.Height - cell.Box.Value.ToolStrip) : float.NaN,
+            });
+        }
         string word = Loc.Get(p.Reason switch
         {
             HomeTileVacancy.Unavailable => Strings.Theme.Zune.Home.Unavailable,

@@ -377,24 +377,15 @@ public static partial class Diagnostics
         /// plus one always-on <c>[evidence] xm</c> line with the per-kind counts. Reads no table and writes none; the POST
         /// runs on a worker (the api calls block; the UI thread never does).</summary>
         /// <summary>UI THREAD. <c>cmd=homecap</c>: every Home facet's raw answer (<c>home.&lt;facet&gt;.json</c>, the
-        /// feed as <c>all</c>) and, for a facet the tables already hold, its baseline lookup (<c>lookup.&lt;facet&gt;.json</c>,
-        /// the card uris the live request would send), written under <c>evidence/home-&lt;tag&gt;/</c>. The bodies are the
-        /// account's own: they stay on this machine until redacted into a fixture.</summary>
+        /// feed as <c>all</c>) and its baseline lookup (<c>lookup.&lt;facet&gt;.json</c>), written under
+        /// <c>evidence/home-&lt;tag&gt;/</c>. The lookup asks for the cards of THE ANSWER CAPTURED BESIDE IT (its baseline
+        /// sections' first cards, in order, as the live request sends them): the tables hold the answer the app loaded earlier,
+        /// which Spotify has often re-ranked by the time of the capture (live1 matched 10 of 20 cards, the first live2 9 of 20).
+        /// The bodies are the account's own: they stay on this machine until redacted into a fixture.</summary>
         public static void CaptureHome(string tag)
         {
             string dir = Path.Combine(Root, "home-" + EvidenceReport.BundleFolderName(DateTime.Now, tag));
             string[] facets = ["", "music-chip", "music-following-chip", "podcasts-chip", "podcasts-following-chip", "audiobooks-chip"];
-            var lookups = new string[]?[facets.Length];
-            for (int i = 0; i < facets.Length; i++)
-            {
-                var home = Entities.HomeFeed(facets[i].AsSpan());
-                HomePreviewLink[] links = home.IsValid ? home.BaselinePreviewLinks() : [];
-                if (links.Length == 0) continue;
-                var seen = new HashSet<string>(StringComparer.Ordinal);
-                var uris = new List<string>();
-                foreach (var l in links) if (uris.Count < 120 && seen.Add(l.CardUri)) uris.Add(l.CardUri);
-                lookups[i] = uris.ToArray();
-            }
             string timeZone = Spotify.Api.LocalTimeZone;
             _ = Task.Run(() =>
             {
@@ -408,7 +399,7 @@ public static partial class Diagnostics
                         var r = Spotify.Api.HomeQuery(facets[i], timeZone, CancellationToken.None);
                         if (r.Ok) File.WriteAllBytes(Path.Combine(dir, "home." + name + ".json"), r.Body);
                         sb.Append(name).Append(" home=").Append(r.Status.ToString(CultureInfo.InvariantCulture));
-                        if (lookups[i] is { } uris)
+                        if (r.Ok && BaselineCardUris(r.Body) is { Length: > 0 } uris)
                         {
                             var l = Spotify.Api.FeedBaselineLookupQuery(uris, CancellationToken.None);
                             if (l.Ok) File.WriteAllBytes(Path.Combine(dir, "lookup." + name + ".json"), l.Body);
@@ -426,6 +417,40 @@ public static partial class Diagnostics
                     Reply("homecap", "failed", dir);
                 }
             });
+        }
+
+        /// <summary>The card uris a <c>feedBaselineLookup</c> asks for, read off a raw home answer: every
+        /// <c>HomeFeedBaselineSectionData</c> section's first item, in feed order, deduped, at most 120 (the live request's
+        /// shape, <c>Home.BaselinePreviewLinks</c> and <c>Fetch.FillPreviewMap</c>). Diagnostics only (a background thread).</summary>
+        static string[] BaselineCardUris(byte[] body)
+        {
+            var uris = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
+                Walk(doc.RootElement);
+            }
+            catch (System.Text.Json.JsonException) { return []; }
+            return uris.ToArray();
+
+            void Walk(System.Text.Json.JsonElement e)
+            {
+                if (uris.Count >= 120) return;
+                if (e.ValueKind == System.Text.Json.JsonValueKind.Array) { foreach (var x in e.EnumerateArray()) Walk(x); return; }
+                if (e.ValueKind != System.Text.Json.JsonValueKind.Object) return;
+                if (e.TryGetProperty("data", out var data) && data.ValueKind == System.Text.Json.JsonValueKind.Object
+                    && data.TryGetProperty("__typename", out var type) && type.ValueEquals("HomeFeedBaselineSectionData")
+                    && e.TryGetProperty("sectionItems", out var section) && section.ValueKind == System.Text.Json.JsonValueKind.Object
+                    && section.TryGetProperty("items", out var items) && items.ValueKind == System.Text.Json.JsonValueKind.Array
+                    && items.GetArrayLength() > 0 && items[0].ValueKind == System.Text.Json.JsonValueKind.Object
+                    && items[0].TryGetProperty("uri", out var uri) && uri.GetString() is { Length: > 0 } u)
+                {
+                    if (seen.Add(u)) uris.Add(u);
+                    return;
+                }
+                foreach (var p in e.EnumerateObject()) Walk(p.Value);
+            }
         }
 
         public static void QueryExtensions(string[] uris, int[] kinds, string tag)
