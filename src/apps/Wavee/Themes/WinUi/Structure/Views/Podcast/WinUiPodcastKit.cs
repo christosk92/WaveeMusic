@@ -1,0 +1,484 @@
+// ── Themes/WinUi/Structure/Views/Podcast/WinUiPodcastKit.cs — the parts WinUI's podcast pages v2 share (show, episode, audiobook) ────────────────────
+//
+// Concept `winui-podcast-v2.html` (theme=winui). The show lane owns this file; the episode and audiobook lanes reuse it. Its API is STABLE: additive changes
+// only.
+//
+//   Page(...)          the page scaffold: ONE scroller (keyed per route) whose content is the cover-tone wash (232, fading out before the list) under the
+//                      page column, and the 48 collapsed header bar OVER the scroller, shown once the page's BarSentinel (placed after the hero) pins
+//                      under it: it fades and drops 8 in over 167 ms on reserved space (it never moves the layout).
+//   BarSentinel(on)    a zero-height marker: put it right after the hero; `on` turns true when the hero has scrolled under the bar.
+//   Bar(...)           the bar itself: a 32 cover, the title (Body Strong) over a caption, the primary button at the end; opaque, a hairline at its foot.
+//   SmartSplit(...)    the accent SplitButton that names its episode: the main half plays, the chevron opens "Other ways to play" (PodcastMenuItem list,
+//                      the default with a check); no accent when caught up; `fill` stretches the main half (Compact's full-width 40).
+//   EpisodeRow(...)    the episode row: the play button (36 / 40) with the progress ring when in progress and the check for played (replay on hover); the
+//                      title semibold when unplayed, regular secondary when played; the meta (New dot + word, date, length or the accent "N min left",
+//                      Played, the Video tag); the saved glyph at rest, add on hover, the ellipsis always; one line of description when asked; a click
+//                      selects, expands in place (FlowReveal 167 ms: the description, Open episode, Play next) or opens the episode.
+//   SectionHeader(...) Subtitle + a caption + a trailing link.
+//   MoreLikeThis(...)  a grid of cover cards (or, in a narrow column, rows with a 40 cover).
+//
+// No numbers here: `WinUiPodcastKitRules` (Rules/WinUiPodcastRules.cs). No Entities / Playback: every verb comes in as a delegate.
+
+using System.Collections.Immutable;
+using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using FluentGpu.Hooks;
+using FluentGpu.Localization;
+using FluentGpu.Scroll.Effects;
+using FluentGpu.Scroll.Runtime;
+using FluentGpu.Signals;
+using FluentGpu.Theming;
+using Wavee.Theming.Contracts;
+using static FluentGpu.Dsl.Ui;
+using K = Wavee.Themes.WinUi.WinUiPodcastKitRules;
+
+namespace Wavee.Themes.WinUi;
+
+/// <summary>The verbs and live cells an <see cref="WinUiPodcastKit.EpisodeRow"/> reads. Build ONE per page (the rows compare it by reference).</summary>
+internal sealed class PodcastRowVerbs
+{
+    /// <summary>The selected / expanded / playing episode ids (null = none).</summary>
+    public required IReadSignal<string?> Selected { get; init; }
+    public required IReadSignal<string?> Expanded { get; init; }
+    public required IReadSignal<string?> Playing { get; init; }
+    public required Action<string> Play { get; init; }
+    public required Action<string> Open { get; init; }
+    public required Action<string> ToggleSaved { get; init; }
+    public required Action<string> PlayNext { get; init; }
+    public required Action<string?> Select { get; init; }
+    public required Action<string?> Expand { get; init; }
+    public required Func<string, ContextMenuModel?> Menu { get; init; }
+}
+
+/// <summary>WinUI's podcast kit (see the file header).</summary>
+internal static class WinUiPodcastKit
+{
+    // ══ 1. THE PAGE SCAFFOLD ════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The page: the scroller (key <c>podcast-scroll:</c> + <paramref name="routeKey"/>) over the wash and <paramref name="content"/> (a column
+    /// that already carries the gutters), and <paramref name="bar"/> over it while <paramref name="barOn"/> holds. <paramref name="scroll"/> is the page's
+    /// handle (the caller keeps it, e.g. to jump to a year).</summary>
+    public static Element Page(string routeKey, uint tone, IReadSignal<bool> barOn, Element content, Element bar, ScrollHandle? scroll = null)
+    {
+        var wash = K.Wash(tone);
+        Element body = new BoxEl
+        {
+            ZStack = true, Direction = 1, MinWidth = 0f,
+            Children =
+            [
+                new BoxEl { Key = "podcast-wash", Height = K.WashH, AlignSelf = FlexAlign.Start, Gradient = wash, HitTestVisible = false },
+                content,
+            ],
+        };
+        Element scroller = ScrollView(new BoxEl { Direction = 1, MinWidth = 0f, Children = [body] }) with
+        {
+            Key = "podcast-scroll:" + routeKey, Grow = 1f, ScrollKey = "podcast-scroll:" + routeKey, Handle = scroll,
+            EdgeCues = ScrollEdgeCues.None,
+        };
+        Element barLayer = new BoxEl
+        {
+            Direction = 1, Height = K.BarH, AlignSelf = FlexAlign.Start, HitTestPassThrough = true,
+            Children = [Flow.Show(() => barOn.Value, new BoxEl { Key = "podcast-bar", Direction = 1, Enter = K.BarFade, Exit = K.BarFade, Children = [bar] })],
+        };
+        return new BoxEl { Key = "podcast-page:" + routeKey, ZStack = true, Direction = 1, Grow = 1f, MinWidth = 0f, Children = [scroller, barLayer] };
+    }
+
+    /// <summary>The bar's trigger: a zero-height box pinned under the bar; <paramref name="on"/> is true while it is held there (the hero has gone).</summary>
+    public static Element BarSentinel(Signal<bool> on)
+        => new BoxEl { Key = "podcast-bar-sentinel", Height = 0f, HitTestVisible = false }.Sticky(K.BarH, engaged: on);
+
+    /// <summary>The collapsed header bar: the cover, <paramref name="title"/> over <paramref name="caption"/>, then <paramref name="primary"/>.</summary>
+    public static Element Bar(string? artUrl, string title, string caption, Element primary, float inset, bool captionShown = true)
+    {
+        var words = new List<Element>(2)
+        {
+            BodyStrong(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+        };
+        if (captionShown && caption.Length > 0)
+            words.Add(Caption(caption) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
+        return new BoxEl
+        {
+            ZStack = true, Height = K.BarH, HitTestVisible = true, Fill = Prop.Of(static () => R.Layer.ContentSurface),
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, Height = K.BarH, Padding = new Edges4(inset, 0f, inset, 0f), Gap = K.BarGap, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        Controls.Artwork(artUrl, K.BarCover, K.BarCover, K.BarCoverRadius, decodePx: K.BarCoverDecode),
+                        new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = words.ToArray() },
+                        new BoxEl { Shrink = 0f, Children = [primary] },
+                    ],
+                },
+                new BoxEl
+                {
+                    Height = K.BarH, Direction = 1, Justify = FlexJustify.End, HitTestVisible = false,
+                    Children = [new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) }],
+                },
+            ],
+        };
+    }
+
+    // ══ 2. THE SMART SPLITBUTTON ════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The smart action: <paramref name="label"/> (Pause while <paramref name="pausing"/>) on the main half, the menu on the chevron. Without
+    /// <paramref name="accent"/> it is a standard button (caught up). <paramref name="fill"/>: the main half takes the row's width (Compact).</summary>
+    public static Element SmartSplit(string key, string label, bool accent, bool pausing, Action play, ImmutableArray<PodcastMenuItem> menu, float height,
+        bool fill = false)
+        => Embed.Comp(new SplitProps(label, accent, pausing, play, menu, height, fill), static () => new SplitHost()) with { Key = key };
+
+    sealed record SplitProps(string Label, bool Accent, bool Pausing, Action Play, ImmutableArray<PodcastMenuItem> Menu, float Height, bool Fill)
+    {
+        public bool Equals(SplitProps? o) => o is not null && Label == o.Label && Accent == o.Accent && Pausing == o.Pausing && Height == o.Height
+            && Fill == o.Fill && Menu.Length == o.Menu.Length && (Menu.IsDefaultOrEmpty || Menu[0].Label == o.Menu[0].Label);
+        public override int GetHashCode() => HashCode.Combine(Label, Accent, Pausing, Height, Fill, Menu.Length);
+    }
+
+    sealed class SplitHost : Component, IPropsHost
+    {
+        SplitProps? _p;
+        readonly Signal<SplitProps?> _props = new(null);
+        readonly Signal<bool> _open = new(false);
+        IOverlayService? _overlay;
+        NodeHandle _anchor;
+        OverlayHandle? _menu;
+        readonly Action _toggle, _play;
+        readonly Action<NodeHandle> _capture;
+
+        public SplitHost()
+        {
+            _toggle = Toggle;
+            _play = () => _p?.Play();
+            _capture = h => _anchor = h;
+        }
+
+        public void ApplyProps(object props)
+        {
+            _p = (SplitProps)props;
+            _props.Value = _p;
+        }
+
+        public override Element Render()
+        {
+            _ = _props.Value;
+            var p = _p!;
+            _overlay = UseContext(Overlay.Service);
+            bool open = _open.Value;
+            float h = p.Height, r = Radii.Control;
+            string glyph = p.Pausing ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid;
+            string label = p.Pausing ? Loc.Get(Strings.Podcast.Pages.Pause) : p.Label;
+            var appearance = p.Accent ? ButtonAppearance.Accent : ButtonAppearance.Standard;
+            BoxEl main = Button.Create(label, _play, appearance, glyph: glyph) with
+            {
+                Key = "smart:play", Height = h, MinWidth = 0f, Shrink = p.Fill ? 1f : 0f, Grow = p.Fill ? 1f : 0f,
+                Corners = new CornerRadius4(r, 0f, 0f, r),
+            };
+            BoxEl chevron = Button.Create("", _toggle, appearance) with
+            {
+                Key = "smart:menu", Width = h, Height = h, MinWidth = 0f, Shrink = 0f, Padding = default, Gap = 0f,
+                Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Corners = new CornerRadius4(0f, r, r, 0f),
+                Children = [Icon(Icons.ChevronDown, K.SplitChevron, p.Accent ? ColorContrast.PickContrast(Tok.AccentDefault) : Tok.TextPrimary)],
+            };
+            _ = open;
+            return new BoxEl
+            {
+                Direction = 0, Height = h, Gap = 1f, AlignItems = FlexAlign.Center, Shrink = p.Fill ? 1f : 0f, Grow = p.Fill ? 1f : 0f,
+                MinWidth = 0f, OnRealized = _capture,
+                Children = [main, ToolTip.Wrap(chevron, Loc.Get(Strings.Podcast.Pages.OtherWays))],
+            };
+        }
+
+        void Toggle()
+        {
+            if (_menu is { IsOpen: true } shown) { shown.Close(); return; }
+            if (_p is not { } p || Controls.IsNullOverlay(_overlay)) return;
+            var items = new List<MenuFlyoutItem>(p.Menu.Length + 1);
+            bool sep = false;
+            foreach (var m in p.Menu)
+            {
+                if (!sep && (m.Glyph == Icons.Video || m.Glyph == Icons.Volume)) { items.Add(MenuFlyoutItem.Separator); sep = true; }
+                var invoke = m.Invoke;
+                items.Add(MenuFlyoutItem.Toggle(m.Label, m.Checked, invoke, m.Glyph) with { AcceleratorText = m.Sub });
+            }
+            OverlayHandle? opened = null;
+            opened = _overlay!.Open(() => _anchor, () => MenuFlyout.Create(items, () => opened?.Close(), size: OverlayFit.MenuSize),
+                FlyoutPlacement.BottomEdgeAlignedLeft, new PopupOptions(FocusTrap: true) { ConstrainToRootBounds = false });
+            _menu = opened;
+            opened.ClosedAction = () =>
+            {
+                if (!ReferenceEquals(_menu, opened)) return;
+                _menu = null;
+                _open.Value = false;
+            };
+            _open.Value = true;
+        }
+    }
+
+    // ══ 3. THE EPISODE ROW ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>One episode row (see the file header), keyed <c>ep:</c> + the id. <paramref name="compact"/>: the 40 targets, a two-line title, the
+    /// actions always shown.</summary>
+    public static Element EpisodeRow(PodcastEpisodeVm vm, PodcastRowMode mode, bool description, bool compact, PodcastRowVerbs verbs)
+        => Embed.Comp(new RowProps(vm, mode, description, compact, verbs), static () => new RowHost()) with { Key = "ep:" + vm.Id };
+
+    sealed record RowProps(PodcastEpisodeVm Vm, PodcastRowMode Mode, bool Description, bool Compact, PodcastRowVerbs Verbs)
+    {
+        public bool Equals(RowProps? o) => o is not null && Vm.Equals(o.Vm) && Mode == o.Mode && Description == o.Description && Compact == o.Compact
+            && ReferenceEquals(Verbs, o.Verbs);
+        public override int GetHashCode() => HashCode.Combine(Vm.Id, Mode, Description, Compact);
+    }
+
+    sealed class RowHost : Component
+    {
+        readonly Signal<bool> _hover = new(false);
+        RowProps _p = null!;
+        Action? _click, _play, _save, _next, _open, _exit, _toggleExpand;
+        Action<Point2>? _move;
+        Action<KeyEventArgs>? _key;
+
+        public override Element Render()
+        {
+            _p = UseProps<RowProps>();
+            _click ??= Click;
+            _play ??= () => _p.Verbs.Play(_p.Vm.Id);
+            _save ??= () => _p.Verbs.ToggleSaved(_p.Vm.Id);
+            _next ??= () => _p.Verbs.PlayNext(_p.Vm.Id);
+            _open ??= () => _p.Verbs.Open(_p.Vm.Id);
+            _toggleExpand ??= () => _p.Verbs.Expand(_p.Vm.Id);
+            _move ??= _ => _hover.SetIfChanged(true);
+            _exit ??= () => _hover.SetIfChanged(false);
+            _key ??= OnKey;
+            var p = _p;
+            var vm = p.Vm;
+            var v = p.Verbs;
+            string id = vm.Id;
+            bool selected = p.Mode == PodcastRowMode.Select && v.Selected.Value == id;
+            bool expanded = p.Mode == PodcastRowMode.Expand && v.Expanded.Value == id;
+            bool playing = v.Playing.Value == id;
+            bool played = vm.State == PodcastRowState.Played;
+            bool hover = _hover.Value;
+
+            float pb = p.Compact ? K.PlayButtonCompact : K.PlayButton;
+            float act = p.Compact ? K.RowActionCompact : K.RowAction;
+
+            // ── the title column ──
+            var title = (p.Compact ? Body(vm.Title) : Body(vm.Title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }) with
+            {
+                MaxLines = p.Compact ? 2 : 1, Trim = TextTrim.CharacterEllipsis, Wrap = p.Compact ? TextWrap.Wrap : TextWrap.NoWrap, MinWidth = 0f,
+                Weight = played ? (ushort)400 : (ushort)600, Color = played ? Tok.TextSecondary : Tok.TextPrimary,
+            };
+            var text = new List<Element>(3) { title, MetaLine(vm) };
+            if (p.Description && vm.Description.Length > 0 && !expanded)
+                text.Add(Body(vm.Description) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextSecondary, MinWidth = 0f });
+
+            // ── the actions: saved at rest (add on hover), the ellipsis always ──
+            bool showAdd = vm.Saved || hover || selected || p.Compact;
+            Element save = Controls.Named(Controls.IconAction(vm.Saved ? Icons.HeartFill : Icons.Heart, _save, size: act) with
+            {
+                Opacity = showAdd ? 1f : 0f, Key = "row:save",
+            }, Loc.Get(vm.Saved ? Strings.Podcast.Pages.Saved : Strings.Podcast.Pages.Save));
+            Element more = WinUiDetailKit.MoreButton(() => v.Menu(id), act);
+            Element line = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = K.RowColGap, MinWidth = 0f,
+                Children =
+                [
+                    PlayButton(vm, pb, playing, hover, _play),
+                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = text.ToArray() },
+                    new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [save, more] },
+                ],
+            };
+
+            var kids = new List<Element>(2) { line };
+            if (p.Mode == PodcastRowMode.Expand)
+                kids.Add(new BoxEl
+                {
+                    Key = "row:x", Direction = 1, ClipToBounds = true, Height = expanded ? float.NaN : 0f, Animate = K.Expand,
+                    Padding = new Edges4(pb + K.RowColGap, 0f, 0f, 0f),
+                    Children = expanded ? [ExpandBody(vm, _open, _next)] : [],
+                });
+
+            Element row = new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, Corners = Radii.ControlAll, Focusable = true, Role = AutomationRole.Button,
+                Padding = p.Compact ? Edges4.All(K.RowPadCompact) : new Edges4(K.RowPadX, K.RowPadY, K.RowPadX, K.RowPadY),
+                Fill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
+                HoverFill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTertiary,
+                PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
+                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key,
+                Children = kids.ToArray(),
+            };
+            if (!selected) return row;
+            return new BoxEl
+            {
+                ZStack = true, Direction = 1, MinWidth = 0f,
+                Children =
+                [
+                    row,
+                    new BoxEl
+                    {
+                        Width = K.SelectPillW, Height = K.SelectPillH, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
+                        Corners = CornerRadius4.All(K.SelectPillW), Fill = Tok.AccentDefault, HitTestVisible = false,
+                    },
+                ],
+            };
+        }
+
+        void Click()
+        {
+            var p = _p;
+            switch (p.Mode)
+            {
+                case PodcastRowMode.Select: p.Verbs.Select(p.Vm.Id); break;
+                case PodcastRowMode.Expand: p.Verbs.Expand(p.Vm.Id); break;
+                default: p.Verbs.Open(p.Vm.Id); break;
+            }
+        }
+
+        void OnKey(KeyEventArgs e)
+        {
+            if (e.KeyCode != Keys.Enter) return;
+            _p.Verbs.Play(_p.Vm.Id);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>The row's play button: a circle (36 / 40) with the ring while in progress and the check while played (replay on hover).</summary>
+    static Element PlayButton(PodcastEpisodeVm vm, float size, bool playing, bool hover, Action play)
+    {
+        bool prog = vm.State == PodcastRowState.InProgress;
+        bool played = vm.State == PodcastRowState.Played;
+        string glyph = playing ? WinUiDetailRules.PauseSolid : played ? (hover ? Icons.Refresh : Icons.Check) : WinUiDetailRules.PlaySolid;
+        string name = Loc.Get(playing ? Strings.Podcast.Pages.Pause : prog ? Strings.Podcast.Pages.Resume : played ? Strings.Podcast.Pages.PlayAgain
+            : Strings.Podcast.Pages.Play);
+        var layers = new List<Element>(3);
+        if (prog)
+            layers.Add(new BoxEl
+            {
+                Width = size, Height = size, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false,
+                Children = [ProgressRing.Determinate(vm.Progress * 100f, size, foreground: Tok.AccentDefault, track: Tok.StrokeControlStrongDefault with { A = K.RingTrackAlpha })],
+            });
+        layers.Add(new BoxEl
+        {
+            Width = size, Height = size, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false,
+            Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+            Children = [Icon(glyph, K.PlayGlyph, played && !hover && !playing ? Tok.TextTertiary : Tok.TextPrimary)],
+        });
+        bool plate = !prog && !played;
+        return Controls.Named(new BoxEl
+        {
+            Key = "row:play", ZStack = true, Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(size / 2f),
+            Fill = plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
+            BorderWidth = played ? 1f : 0f, BorderBrush = played ? Tok.ControlElevationBorder : null,
+            Role = AutomationRole.Button, Focusable = true, OnClick = play, Children = layers.ToArray(),
+        }, name);
+    }
+
+    /// <summary>The meta line: New (dot + word), the date, the length or the accent time left, Played, the Video tag.</summary>
+    public static Element MetaLine(PodcastEpisodeVm vm, bool showNew = true)
+    {
+        var kids = new List<Element>(8);
+        if (showNew && vm.State == PodcastRowState.New)
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Children =
+                [
+                    new BoxEl { Width = K.NewDot, Height = K.NewDot, Corners = CornerRadius4.All(K.NewDot / 2f), Fill = Tok.AccentDefault },
+                    Caption(Loc.Get(Strings.Podcast.Pages.Fresh)) with { Color = Tok.AccentTextPrimary, Weight = 600 },
+                ],
+            });
+        if (vm.Date.Length > 0) kids.Add(MetaWord(vm.Date));
+        if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) kids.Add(MetaWord(vm.Left) with { Color = Tok.AccentTextPrimary });
+        else if (vm.Length.Length > 0) kids.Add(MetaWord(vm.Length));
+        if (vm.State == PodcastRowState.Played) kids.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Played)));
+        if (vm.Video)
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Gap = K.MetaGap / 2f, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Children = [Icon(Icons.Video, K.MetaGlyph, Tok.TextTertiary), MetaWord(Loc.Get(Strings.Podcast.Pages.Video))],
+            });
+        return new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };
+    }
+
+    static TextEl MetaWord(string text) => Caption(text) with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f };
+
+    /// <summary>The expanded row's body: the description, then Open episode and Play next.</summary>
+    static Element ExpandBody(PodcastEpisodeVm vm, Action open, Action next) => new BoxEl
+    {
+        Direction = 1, Gap = K.ExpandGap, Padding = new Edges4(0f, K.ExpandTop, 0f, 0f),
+        Children =
+        [
+            Body(vm.Description) with { Color = Tok.TextSecondary },
+            new BoxEl
+            {
+                Direction = 0, Gap = K.SectionGap, Wrap = true,
+                Children =
+                [
+                    Button.Create(Loc.Get(Strings.Podcast.Pages.OpenEpisode), open) with { Key = "row:open" },
+                    Button.Create(Loc.Get(Strings.Podcast.Pages.PlayNext), next, glyph: Icons.Queue) with { Key = "row:next" },
+                ],
+            },
+        ],
+    };
+
+    // ══ 4. A SECTION HEADER AND THE CARDS ═══════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>"More like this · See all": Subtitle, a caption and a trailing link.</summary>
+    public static Element SectionHeader(string title, string? caption = null, string? link = null, Action? onLink = null, bool strong = false)
+    {
+        var kids = new List<Element>(3) { strong ? BodyStrong(title) : Subtitle(title) };
+        if (caption is { Length: > 0 }) kids.Add(Caption(caption) with { Color = Tok.TextTertiary, Shrink = 1f, MinWidth = 0f, MaxLines = 1 });
+        kids.Add(new BoxEl { Grow = 1f });
+        if (link is { Length: > 0 } && onLink is not null) kids.Add(HyperlinkButton.Create(link, onLink));
+        return new BoxEl { Direction = 0, Gap = K.SectionGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
+    }
+
+    /// <summary>"More like this": <paramref name="rows"/> draws a narrow column's rows (a 40 cover, title over subtitle), else a wrapping grid of covers.</summary>
+    public static Element MoreLikeThis(ImmutableArray<PodcastCardVm> cards, Action<string> open, bool rows)
+    {
+        var kids = new Element[cards.Length];
+        for (int i = 0; i < cards.Length; i++)
+        {
+            var c = cards[i];
+            Action click = () => open(c.Uri);
+            kids[i] = rows ? RowCard(c, click) : CoverCard(c, click);
+        }
+        return rows
+            ? new BoxEl { Key = "more-like-this", Direction = 1, MinWidth = 0f, Children = kids }
+            : new BoxEl { Key = "more-like-this", Direction = 0, Wrap = true, Gap = K.CardGap, MinWidth = 0f, Children = kids };
+    }
+
+    static Element RowCard(PodcastCardVm c, Action click) => new BoxEl
+    {
+        Key = "card:" + c.Uri, Direction = 0, Gap = K.RowCardGap, AlignItems = FlexAlign.Center, Padding = Edges4.All(K.RowPadCompact / 2f),
+        Corners = Radii.ControlAll, Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+        Role = AutomationRole.Button, Focusable = true, OnClick = click, MinWidth = 0f,
+        Children =
+        [
+            Controls.Artwork(c.ArtUrl, K.RowCardCover, K.RowCardCover, K.RowCardRadius, decodePx: K.RowCardDecode),
+            new BoxEl
+            {
+                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Children =
+                [
+                    Body(c.Title) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                    Caption(c.Subtitle) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                ],
+            },
+        ],
+    };
+
+    static Element CoverCard(PodcastCardVm c, Action click) => new BoxEl
+    {
+        Key = "card:" + c.Uri, Direction = 1, Width = K.CardCover, Gap = K.SectionGap / 2f, Role = AutomationRole.Button, Focusable = true, OnClick = click,
+        Children =
+        [
+            Controls.Artwork(c.ArtUrl, K.CardCover, K.CardCover, K.CardRadius, decodePx: K.CardDecode),
+            Body(c.Title) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+            Caption(c.Subtitle) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+        ],
+    };
+}
