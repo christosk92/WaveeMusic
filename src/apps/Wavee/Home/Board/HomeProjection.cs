@@ -434,7 +434,7 @@ public static class HomeProjection
         return new BoardEntry(id, kind, groupId, def, new SpotifySectionSource(r, title), size, template, title,
             false, false, false, false, kind == BoardEntryKind.FeedSection, -1)
         {
-            Zone = SeedZone(template, sh.Fold ? 1 : sh.Count, "home:section:" + sh.Key, title, sh.Head),
+            Zone = SeedZone(template, sh.Fold ? 1 : sh.Count, "home:section:" + sh.Key, title, sh.Head, sh.Sub),
             Options = options, Members = sh.Fold ? [r] : [], Feed = HomeFeedState.Loading,
         };
     }
@@ -444,7 +444,7 @@ public static class HomeProjection
 
     /// <summary>A zone of <paramref name="template"/>'s kind over <paramref name="count"/> blank cards of the kind it draws (a Spine Shelf's items are
     /// blank cards with no preview songs yet: flat placeholders at their size).</summary>
-    public static Zone SeedZone(SectionTemplate template, int count, string key, string title, bool head = false)
+    public static Zone SeedZone(SectionTemplate template, int count, string key, string title, bool head = false, bool sub = false)
     {
         var kind = template switch
         {
@@ -468,7 +468,7 @@ public static class HomeProjection
             return new Zone(ZoneKind.SpineShelf, key, heading, null, [], Clusters: clusters, TotalCount: n);
         }
         // A header that named an entity: the same header over blank words and no cover (its cover slot and two lines derive at their size).
-        return new Zone(zoneKind, key, heading, null, cards, TotalCount: n) { Header = head ? new HeaderEntity("", " ", null, " ") : null };
+        return new Zone(zoneKind, key, heading, sub ? " " : null, cards, TotalCount: n) { Header = head ? new HeaderEntity("", " ", null, " ") : null };
     }
 
     /// <summary>The document with every placed section's and the feed's <see cref="HomeItem.Shape"/> as <paramref name="shown"/> (a model over an
@@ -499,7 +499,7 @@ public static class HomeProjection
                 switch (it.Source)
                 {
                     case SpotifySectionSource ss when byId.TryGetValue(it.Id, out var e) && !e.Hidden:
-                        shape = [new SeedShape(ss.Ref.Key, e.Template, CountOf(e.Zone), false, e.Zone?.Header is not null)];
+                        shape = [new SeedShape(ss.Ref.Key, e.Template, CountOf(e.Zone), false, e.Zone?.Header is not null, e.Zone?.Subtitle is { Length: > 0 })];
                         break;
                     case SpotifySectionSource ss when folded.Contains(ss.Ref.Key):
                         shape = [new SeedShape(ss.Ref.Key, SectionTemplate.SpineShelf, 1, true)];
@@ -511,7 +511,7 @@ public static class HomeProjection
                         {
                             if (e.GroupId != g.Id || e.Hidden) continue;
                             if (e.Kind == BoardEntryKind.FeedSection && e.Raw is SpotifySectionSource fs)
-                                b.Add(new SeedShape(fs.Ref.Key, e.Template, CountOf(e.Zone), false, e.Zone?.Header is not null));
+                                b.Add(new SeedShape(fs.Ref.Key, e.Template, CountOf(e.Zone), false, e.Zone?.Header is not null, e.Zone?.Subtitle is { Length: > 0 }));
                             else if (e.Kind == BoardEntryKind.Fold)
                                 foreach (var m in e.Members)
                                     if (!placed.Contains(m.Key)) b.Add(new SeedShape(m.Key, SectionTemplate.SpineShelf, 1, true));

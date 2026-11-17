@@ -108,7 +108,8 @@ public static class HomeDocWire
             int n = e.TryGetProperty("n", out var nv) && nv.TryGetInt32(out int nn) ? Math.Clamp(nn, 0, 64) : 0;
             bool fold = e.TryGetProperty("fold", out var fv) && fv.ValueKind == JsonValueKind.True;
             bool head = e.TryGetProperty("head", out var hv) && hv.ValueKind == JsonValueKind.True;
-            b.Add(new SeedShape(key, t, n, fold, head));
+            bool sub = e.TryGetProperty("sub", out var sv) && sv.ValueKind == JsonValueKind.True;
+            b.Add(new SeedShape(key, t, n, fold, head, sub));
         }
         return b.ToImmutable();
     }
@@ -243,6 +244,7 @@ public static class HomeDocWire
                 w.WriteNumber("n", sh.Count);
                 if (sh.Fold) w.WriteBoolean("fold", true);
                 if (sh.Head) w.WriteBoolean("head", true);
+                if (sh.Sub) w.WriteBoolean("sub", true);
                 w.WriteEndObject();
             }
             w.WriteEndArray();
