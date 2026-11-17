@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, Quit,
+            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -576,6 +576,12 @@ public static partial class Diagnostics
                     Arg("mods", ArgType.String, "modifiers held: ctrl+shift (ctrl, shift, alt, win)"),
                 ], s_settleArgs),
             },
+            new(Verb.PodcastPages, "podcastpages", "The podcast/audiobook pages' data: load a redacted fixture (assets/spotify/fixtures/podcast-pages, fake mode) into the scope and dump its view model (ShowPage + the first EpisodePage, or AudiobookPage) and the hours allowance; `goto uri=<show>` then opens the page", "podcastpages fixture=book-titled")
+            {
+                Positional = ["fixture"], NeedsMount = true,
+                Args = [Arg("fixture", ArgType.Enum, "the fixture", "book-titled", "show-episodic|show-serial|book-titled|book-tracks|book-inprogress|book-finished"),
+                        Arg("path", ArgType.Path, "also write the dump's JSON to this file")],
+            },
             new(Verb.Setting, "setting", "List the app's Settings rows (tab, section, id, kind, value, writer), or set one through the row's own writer as a Settings view does (the theme's options are `option`)", "setting id=lyricsBlur value=40")
             {
                 Positional = ["id", "value"],
@@ -595,9 +601,9 @@ public static partial class Diagnostics
             new(Verb.Transport, "transport", "Drive the playback sequencer as the transport and the queue verbs do (next, prev, a natural end, shuffle, repeat, add/playnext, a track ruled unavailable) and read back the deck, the modes, the queue rows and the panel's up-next list; then settle", "transport do=next")
             {
                 Positional = ["do", "value"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable), duration (ms=: the decoder reports the playing row's real length, a same-row duration change)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration"),
+                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable), duration (ms=: the decoder reports the playing row's real length, a same-row duration change), audiobook (uri=: the catalogue classifies a show as a book), putstate (the connect-state PUT body the deck would send now, base64; nothing is sent)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate"),
                              Arg("value", ArgType.String, "shuffle on|off, repeat off|all|one"),
-                             Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead"),
+                             Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead; a spotify:show: uri for audiobook"),
                              Arg("ms", ArgType.Int, "the seek target (seek), the new length (duration)", "0")], s_settleArgs),
             },
             new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); drive a Spine Shelf (shelf) or a Release Spotlight card (spotlight); acting ones settle", "home do=pin uri=spotify:album:al2")
@@ -725,7 +731,7 @@ public static partial class Diagnostics
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
             "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag, "window" => Verb.Window,
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
-            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer,
+            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };

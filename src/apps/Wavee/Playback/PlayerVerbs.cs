@@ -129,9 +129,9 @@ public sealed class PlayerVerbs : IPlayerVerbs
 
     public void TogglePlay(string cause) => Playback.TogglePlay(cause);
 
-    public void Previous() => Playback.Previous();
+    public void Previous() => Playback.Previous("player.button");
 
-    public void Next() => Playback.Next();
+    public void Next() => Playback.Next("player.button");
 
     public void SeekBy(int deltaMs) => Shell.ScrubController.SeekBy(deltaMs);
 

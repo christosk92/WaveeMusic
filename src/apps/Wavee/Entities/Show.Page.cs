@@ -621,7 +621,7 @@ public readonly partial struct Show
                 while (headSlot != -1 && row < viewCount && slots[view[row]] == headSlot) row++;
                 int orig = row < viewCount ? view[row++] : -1;
                 items[j] = new ReaderItem(it.Kind, it.GroupKey, Episode.RowItem.Of(new Episode(it.Slot), marks[j],
-                    audiobook && orig >= 0 ? AudiobookOrder.ChapterNumber(orig, n) : 0));
+                    audiobook && orig >= 0 ? AudiobookOrder.ChapterNumber(new Episode(it.Slot), orig, n) : 0));
             }
 
             var upNext = new int[upCount];

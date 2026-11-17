@@ -981,6 +981,7 @@
     "subtitleSong": "Song"
   },
   "podcast": {
+    "pages": { "chapterN": "Chapter {number}" },
     "details": {
       "publisher": "Publisher",
       "episodes": "Episodes",

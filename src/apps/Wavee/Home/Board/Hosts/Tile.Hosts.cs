@@ -182,8 +182,8 @@ public sealed class NowPlayingTileHost : Component
     static readonly Func<string?> s_cover = static () => Rail.NowArtUrl();
     static readonly Func<Element> s_progress = static () => Shell.ProgressLine();
     static readonly Action s_playPause = static () => Playback.TogglePlay("home.tile");
-    static readonly Action s_next = static () => Playback.Next();
-    static readonly Action s_prev = static () => Playback.Previous();
+    static readonly Action s_next = static () => Playback.Next("home.tile");
+    static readonly Action s_prev = static () => Playback.Previous("home.tile");
     static readonly Action s_open = static () => Shell.PlayerBarHost.Props.OpenNowPlaying?.Invoke();
     static readonly Func<bool> s_shown = static () => Shell.PageShown.Value;
     static readonly Func<Func<MiniLyricsFrame, Element>, Element> s_lyric = static draw => Lyrics.Mini(draw, s_shown);
