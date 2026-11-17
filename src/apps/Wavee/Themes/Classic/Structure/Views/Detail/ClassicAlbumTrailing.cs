@@ -61,7 +61,9 @@ internal static class ClassicAlbumTrailing
     public static Element AsideTemplate(AlbumAsideProps p, in ViewContext ctx)
     {
         var g = ClassicDetailTiers.Of(ctx.Tier()).Aside ?? ClassicDetailAside.Huge;
-        float content = g.ContentWidthFor(DetailKind.Album, body: true);
+        // The aside's live measure (its grip resizes it), else the tier's.
+        float live = ctx.Hooks.UseContext(ClassicDetailFrame.AsideContent);
+        float content = live > 0f ? live : g.ContentWidthFor(DetailKind.Album, body: true);
         var kids = new List<Element>(4);
         if (p.Release is { } release) kids.Add(release);
         // The card freezes at mount: its band height is in the key, so a Huge | Huge 4K crossing re-mounts it at the new band.

@@ -286,6 +286,8 @@
 // the mini player's mount) and `ILyricsHost.FlatRows` (the mini player's mount reads as a picture: every line but the active one at
 // `Lyrics.MiniRows.Ink`, no ladder, no depth blur); both default to the old behaviour. `MiniPlayerStyle.LyricScale` takes the window's width
 // (the mini player is unreleased: its three styles moved with it).
+// 1.109 (the resizable aside): the optional `DetailAsideProps.StoredWidth` / `.CommitWidth` (the aside's remembered width per kind, the
+// active theme's state: a structure draws a grip on the aside's edge and commits the width on release; 0 = never dragged, its own width).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -301,7 +303,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 108;
+    public const int Minor = 109;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
