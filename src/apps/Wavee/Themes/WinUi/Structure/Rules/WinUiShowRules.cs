@@ -75,12 +75,8 @@ internal static class WinUiShowRules
 
     // ── the aside (W-Show, W-Show-Huge) ──
 
-    /// <summary>The show's aside beside the episodes: 320 wide 36 off the episodes at Standard (W-Show: the episodes end at 1048, About starts at 1084),
-    /// 420 and 48 at Huge (W-Show-Huge). Below Standard the frame has no column for it: it stands under the episodes (W-Show-Compact's About).</summary>
-    public const float AsideWidth = 320f, AsideGap = 36f, AsideHugeWidth = 420f, AsideHugeGap = 48f;
-
-    /// <summary>The aside's air above its first head (level with the episodes' toolbar), between its sections, and under a head.</summary>
-    public const float AsideTop = 12f, AsideSectionGap = 24f, AsideHeadGap = 12f;
+    /// <summary>The aside's air between its sections, and under a head.</summary>
+    public const float AsideSectionGap = 24f, AsideHeadGap = 12f;
 
     /// <summary>The description's lines in the aside before "Read more" (W-Show: four lines).</summary>
     public const int AsideAboutLines = 6;

@@ -222,15 +222,13 @@ internal static class WinUiPodcastShow
             };
         }
 
+        /// <summary>publisher · ★ rating (count) · cadence · N episodes: each part after the first carries its own "·", so a wrapped line never ends on one.</summary>
         static Element Meta(PodcastShowHead h)
         {
-            var kids = new List<Element>(8);
-            void Dot() { if (kids.Count > 0) kids.Add(Body("·") with { Color = Tok.TextTertiary }); }
-            if (h.Publisher.Length > 0) kids.Add(Body(h.Publisher) with { MaxLines = 1, Shrink = 1f, MinWidth = 0f });
+            var parts = new List<Element>(4);
+            if (h.Publisher.Length > 0) parts.Add(Body(h.Publisher) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
             if (h.Rating.Length > 0)
-            {
-                Dot();
-                kids.Add(new BoxEl
+                parts.Add(new BoxEl
                 {
                     Direction = 0, Gap = S.TagGap, AlignItems = FlexAlign.Center, Shrink = 0f,
                     Children =
@@ -240,10 +238,16 @@ internal static class WinUiPodcastShow
                         Body(h.RatingCount) with { Color = Tok.TextTertiary },
                     ],
                 });
-            }
-            if (h.Cadence.Length > 0) { Dot(); kids.Add(Body(h.Cadence) with { Color = Tok.TextSecondary, Shrink = 0f }); }
-            if (h.Count.Length > 0) { Dot(); kids.Add(Body(h.Count) with { Color = Tok.TextSecondary, Shrink = 0f }); }
-            return new BoxEl { Direction = 0, Gap = S.EyebrowGap, AlignItems = FlexAlign.Center, Wrap = true, MinWidth = 0f, Children = kids.ToArray() };
+            if (h.Cadence.Length > 0) parts.Add(Body(h.Cadence) with { Color = Tok.TextSecondary });
+            if (h.Count.Length > 0) parts.Add(Body(h.Count) with { Color = Tok.TextSecondary });
+            var kids = new Element[parts.Count];
+            for (int i = 0; i < kids.Length; i++)
+                kids[i] = i == 0 ? parts[i] : new BoxEl
+                {
+                    Direction = 0, Gap = S.EyebrowGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+                    Children = [Body("·") with { Color = Tok.TextTertiary }, parts[i]],
+                };
+            return new BoxEl { Direction = 0, Gap = S.EyebrowGap, AlignItems = FlexAlign.Center, Wrap = true, MinWidth = 0f, Children = kids };
         }
 
         Element Commands(PodcastShowView v, WinUiPodcastShowLayout lay, bool live)
