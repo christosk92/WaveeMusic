@@ -82,7 +82,8 @@ internal static class ClassicHomeBoard
     /// <summary>The board's component: its width, the measured shelves, the items memo, the reorder, the keys and the inspector's seam.</summary>
     internal sealed class BoardView : Component, IHomeBoardInspect
     {
-        readonly Signal<float> _width = new(0f);
+        IReadSignal<float> _width = s_noWidth;
+        static readonly IReadSignal<float> s_noWidth = new Signal<float>(0f);
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
         readonly Action<RectF> _onBounds;
         BoardProps? _p;
@@ -97,7 +98,6 @@ internal static class ClassicHomeBoard
         {
             _onBounds = r =>
             {
-                if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W;
                 if (r.W > 0f && MathF.Abs(r.W - s_width.Peek()) > 0.25f) s_width.Value = r.W;
             };
         }
@@ -163,6 +163,10 @@ internal static class ClassicHomeBoard
         {
             var p = UseProps<BoardProps>();
             _p = p;
+            // The board's STRUCTURE width (the columns, the forms, the shortcuts' grid): the width the board lands at while a width reflow (the page's
+            // margins easing at a tier commit) resizes it, so every choice is made once per slide instead of re-made at each width the slide
+            // passes (a column count flipping mid-ease re-flowed the whole board under the slide). Sizes follow the live width: the grid measures its own.
+            _width = UseStructureWidth();
             _post = UsePost();
             var board = p.Board;
             var items = UseComputed(() =>

@@ -53,9 +53,9 @@ internal static class WinUiHomeBoard
     /// <summary>The board's component: its width, the measured full rows, the items memo and the reorder.</summary>
     internal sealed class BoardView : Component
     {
-        readonly Signal<float> _width = new(0f);
+        IReadSignal<float> _width = s_noWidth;
+        static readonly IReadSignal<float> s_noWidth = new Signal<float>(0f);
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
-        readonly Action<RectF> _onBounds;
         readonly Action<RectF> _onBand;
         float _bandH;
         BoardProps? _p;
@@ -71,7 +71,6 @@ internal static class WinUiHomeBoard
 
         public BoardView()
         {
-            _onBounds = r => { if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W; };
             _onBand = r => _bandH = r.H;
         }
 
@@ -142,9 +141,11 @@ internal static class WinUiHomeBoard
         {
             var p = UseProps<BoardProps>();
             _p = p;
-            // The first pack is at the region's estimate of the board's width; the measurement then only writes when the width really differs, so
-            // a mount whose estimate holds re-packs nothing on its second frame. (First render: nothing reads the width yet.)
-            if (_width.Peek() <= 0f && p.FirstWidth > 0f) _width.Value = p.FirstWidth;
+            // The board's STRUCTURE width (the columns, the forms, the shortcuts' grid): the width the board lands at while a width reflow (the page's
+            // margins easing at a tier commit) resizes it, so every choice is made once per slide instead of re-made at each width the slide
+            // passes (a column count flipping mid-ease re-flowed the whole board under the slide). Sizes follow the live width: the grid measures its own.
+            // Before the first measure every read goes through WidthNow: the region's estimate of the board's width (FirstWidth).
+            _width = UseStructureWidth();
             var board = p.Board;
             board.View.NoEditMode = "winui has no edit mode";   // Windows 11's board changes one thing at a time, on the thing itself
             var items = UseComputed(() => ItemsOf(_p!.Board.Model.Value));
@@ -183,7 +184,6 @@ internal static class WinUiHomeBoard
             return new BoxEl
             {
                 Key = "home:board-col", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                OnBoundsChanged = _onBounds,
                 OnKeyDown = OnKey,
                 // A card's menu: a right-click opens the menu of the tile under the pointer, the Menu key / Shift+F10 that of the tile in focus
                 // (its wrapper holds focus). A touch hold never arrives here: the wrapper's hold takes it, so the hold can become a drag.

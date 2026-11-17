@@ -169,11 +169,11 @@ internal static class ZuneHomeBoard
     /// <summary>The board: its width, the measured bands, the items memo, the reorder, the turned tiles, the keys.</summary>
     internal sealed class BoardView : Component
     {
-        readonly Signal<float> _width = new(0f);
+        IReadSignal<float> _width = s_noWidth;
+        static readonly IReadSignal<float> s_noWidth = new Signal<float>(0f);
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
         readonly Dictionary<string, Signal<bool>> _turned = new(StringComparer.Ordinal);
         readonly Signal<bool> _titleHover = new(false);
-        readonly Action<RectF> _onBounds;
         readonly Action _reveal;
         BoardProps? _p;
         PackReorder<ZuneBoardItem>? _reorder;
@@ -188,7 +188,6 @@ internal static class ZuneHomeBoard
 
         public BoardView()
         {
-            _onBounds = r => { if (r.W > 0f && MathF.Abs(r.W - _width.Peek()) > 0.25f) _width.Value = r.W; };
             _reveal = () => { if (_p?.Board.View.RingId.Peek() is { } id) _p.Board.Grid.BringIntoView(HomeBoardKeys.Tile(id)); };
         }
 
@@ -240,6 +239,10 @@ internal static class ZuneHomeBoard
         {
             var p = UseProps<BoardProps>();
             _p = p;
+            // The board's STRUCTURE width (the columns, the forms, the shortcuts' grid): the width the board lands at while a width reflow (the page's
+            // margins easing at a tier commit) resizes it, so every choice is made once per slide instead of re-made at each width the slide
+            // passes (a column count flipping mid-ease re-flowed the whole board under the slide). Sizes follow the live width: the grid measures its own.
+            _width = UseStructureWidth();
             _post = UsePost();
             var board = p.Board;
             var view = board.View;
@@ -310,7 +313,6 @@ internal static class ZuneHomeBoard
             return new BoxEl
             {
                 Key = "home:board-col", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                OnBoundsChanged = _onBounds,
                 OnKeyDown = OnKey,
                 Children = [TitleRow(board, p.Lay, editing, all), section],
             };
