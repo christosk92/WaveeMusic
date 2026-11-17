@@ -79,12 +79,14 @@ internal static class WinUiPodcastEpisode
             Direction = 1, MinWidth = 0f, Padding = new Edges4(inset, 0f, inset, P.SectionTop),
             Children =
             [
-                Embed.Comp(lr, static () => new Hero()) with { Key = P.HeroKey },
+                // A tier crossing re-arranges the hero (stacked at Compact) and the cards (side by side from 1008): every section rides the one above it
+                // (the position FLIP) and the ones whose size steps ease it (`Reflow`), so nothing lands at once.
+                Embed.Comp(lr, static () => new Hero()) with { Key = P.HeroKey, Layout = WinUiDiscoveryMotion.Reflow },
                 WinUiPodcastKit.BarSentinel(barOn),
-                WinUiPodcastEpisodeParts.Map(p, lay.Target),
-                Embed.Comp(lr, static () => new NextUp()) with { Key = P.NextUpKey },
-                Embed.Comp(lr, static () => new Cards()) with { Key = P.ColsKey },
-                Embed.Comp(lr, static () => new More()) with { Key = P.MoreKey },
+                WinUiPodcastEpisodeParts.Map(p, lay.Target) with { Layout = WinUiDiscoveryMotion.Shove },
+                Embed.Comp(lr, static () => new NextUp()) with { Key = P.NextUpKey, Layout = WinUiDiscoveryMotion.Shove },
+                Embed.Comp(lr, static () => new Cards()) with { Key = P.ColsKey, Layout = WinUiDiscoveryMotion.Reflow },
+                Embed.Comp(lr, static () => new More()) with { Key = P.MoreKey, Layout = WinUiDiscoveryMotion.Shove },
             ],
         };
     }
@@ -109,7 +111,7 @@ internal static class WinUiPodcastEpisode
             if (v.StillTime.Length > 0) stillKids.Add(Tag(v.StillTime, null, FlexAlign.End, FlexAlign.End));
             Element still = new BoxEl
             {
-                Width = lay.StillW, Height = stillH, Shrink = 0f, ZStack = true, Corners = CornerRadius4.All(lay.StillRadius), Children = stillKids.ToArray(),
+                Width = lay.StillW, Height = stillH, Shrink = 0f, ZStack = true, Layout = WinUiDiscoveryMotion.SizeReflow, Corners = CornerRadius4.All(lay.StillRadius), Children = stillKids.ToArray(),
             };
 
             // The crumb: the show's tiny art, its name (the link), a chevron, "Episode 9".
@@ -136,7 +138,7 @@ internal static class WinUiPodcastEpisode
 
             var words = new BoxEl
             {
-                Direction = 1, Gap = P.MainGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+                Direction = 1, Gap = P.MainGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Layout = WinUiDiscoveryMotion.Reflow,
                 Children = [crumb, title, meta, Actions(p, v, lay)],
             };
             return new BoxEl
@@ -310,7 +312,7 @@ internal static class WinUiPodcastEpisode
             var divider = new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault };
             var left = new BoxEl
             {
-                Key = P.SectionsKey, Direction = 1, MinWidth = 0f, ClipToBounds = true, Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+                Key = P.SectionsKey, Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = WinUiDiscoveryMotion.Reflow, Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
                 Corners = transcriptTab ? new CornerRadius4(Radii.Card, Radii.Card, 0f, 0f) : Radii.CardAll,
                 Width = lay.TwoCards ? P.ColsAside : float.NaN, Shrink = 0f, Height = transcriptTab ? float.NaN : lay.CardsH,
                 Children = transcriptTab
@@ -320,7 +322,8 @@ internal static class WinUiPodcastEpisode
             };
             var kids = new List<Element>(2) { left };
             if (lay.TwoCards)
-                kids.Add(new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 1, Children = [WinUiPodcastEpisodeParts.Transcript(p, lay.TranscriptChrome, lay.CardsH, false)] });
+                kids.Add(new BoxEl { Key = "pe-tr-col", Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 1, Layout = WinUiDiscoveryMotion.Reflow,
+                    Children = [WinUiPodcastEpisodeParts.Transcript(p, lay.TranscriptChrome, lay.CardsH, false)] });
             else if (transcriptTab) kids.Add(WinUiPodcastEpisodeParts.Transcript(p, lay.TranscriptChrome, lay.CardsH, true));
             return new BoxEl
             {

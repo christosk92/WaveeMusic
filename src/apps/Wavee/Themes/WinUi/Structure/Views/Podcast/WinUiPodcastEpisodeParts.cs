@@ -399,7 +399,7 @@ internal static class WinUiPodcastEpisodeParts
                     {
                         Width = P.TrCurrentStroke, JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Stretch, Margin = new Edges4(-P.TrTextPadX, -P.TrTextPadY, 0f, -P.TrTextPadY),
                         Fill = Tok.AccentDefault, Opacity = Prop.Of(() => isCur() ? 1f : 0f), HitTestVisible = false,
-                    },
+                    }.Skeletonized(false),
                 ],
             };
             var row = new List<Element>(2);
