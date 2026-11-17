@@ -53,6 +53,7 @@ internal static class WinUiHomeBoard
     /// <summary>The board's component: its width, the measured full rows, the items memo and the reorder.</summary>
     internal sealed class BoardView : Component
     {
+        Memo<PackMetrics>? _metrics;
         IReadSignal<float> _width = s_noWidth;
         static readonly IReadSignal<float> s_noWidth = new Signal<float>(0f);
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
@@ -146,6 +147,9 @@ internal static class WinUiHomeBoard
             // passes (a column count flipping mid-ease re-flowed the whole board under the slide). Sizes follow the live width: the grid measures its own.
             // Before the first measure every read goes through WidthNow: the region's estimate of the board's width (FirstWidth).
             _width = UseStructureWidth();
+            // The pack's metrics are discrete (the columns): read through a computed, so a width that changes no column (every frame of a drag)
+            // does not re-render the grid; the grid packs to its own measured width.
+            _metrics = UseComputed(() => _p!.Lay.Metrics(WidthNow(_width.Value)));
             var board = p.Board;
             board.View.NoEditMode = "winui has no edit mode";   // Windows 11's board changes one thing at a time, on the thing itself
             var items = UseComputed(() => ItemsOf(_p!.Board.Model.Value));
@@ -172,7 +176,7 @@ internal static class WinUiHomeBoard
             {
                 KeyOf = static it => it.Key,
                 EntryOf = it => EntryOf(it),
-                Metrics = () => _p!.Lay.Metrics(WidthNow(_width.Value)),
+                Metrics = () => _metrics!.Value,
                 Controller = board.Grid,
                 Scroll = board.Scroll,
                 Reorder = _reorder,

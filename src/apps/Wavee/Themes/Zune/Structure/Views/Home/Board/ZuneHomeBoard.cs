@@ -169,6 +169,7 @@ internal static class ZuneHomeBoard
     /// <summary>The board: its width, the measured bands, the items memo, the reorder, the turned tiles, the keys.</summary>
     internal sealed class BoardView : Component
     {
+        Memo<PackMetrics>? _metrics;
         IReadSignal<float> _width = s_noWidth;
         static readonly IReadSignal<float> s_noWidth = new Signal<float>(0f);
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
@@ -243,6 +244,9 @@ internal static class ZuneHomeBoard
             // margins easing at a tier commit) resizes it, so every choice is made once per slide instead of re-made at each width the slide
             // passes (a column count flipping mid-ease re-flowed the whole board under the slide). Sizes follow the live width: the grid measures its own.
             _width = UseStructureWidth();
+            // The pack's metrics are discrete (the columns): read through a computed, so a width that changes no column (every frame of a drag)
+            // does not re-render the grid; the grid packs to its own measured width.
+            _metrics = UseComputed(() => _p!.Lay.Metrics(_width.Value));
             _post = UsePost();
             var board = p.Board;
             var view = board.View;
@@ -291,7 +295,7 @@ internal static class ZuneHomeBoard
             {
                 KeyOf = static it => it.Key,
                 EntryOf = it => EntryOf(it),
-                Metrics = () => _p!.Lay.Metrics(_width.Value),
+                Metrics = () => _metrics!.Value,
                 Controller = board.Grid,
                 Scroll = board.Scroll,
                 Reorder = _reorder,
