@@ -1013,7 +1013,7 @@ public readonly partial struct Track
                 var t = src.At(i);
                 if (!t.IsValid) continue;
                 bool unplayable = t.Unplayable(), notYetOut = t.NotYetOut(now);
-                if (FilterModel.HiddenByPlayable(notYetOut, unplayable)) tally = tally.With(notYetOut, unplayable);
+                if (FilterModel.HiddenByPlayable(notYetOut, unplayable)) tally = tally.With(notYetOut, unplayable, t.IsLocalItem);
             }
             _tally = tally;
             _tallySeeded = true; _tallyVersion = version; _tallyPublication = publication;
@@ -1024,11 +1024,21 @@ public readonly partial struct Track
         /// C-Unavailable), or one shared reason ("…: they aren’t out yet.").</summary>
         static string UnavailableExplained(in UnavailableTally tally)
         {
-            string reasons = tally.NotAvailable > 0 && tally.NotYetOut > 0
-                ? Strings.Detail.Filter.Unavailable.Region(count: tally.NotAvailable) + ", " + Strings.Detail.Filter.Unavailable.Upcoming(count: tally.NotYetOut)
-                : tally.NotAvailable > 0
-                    ? Strings.Detail.Filter.Unavailable.AllRegion(count: tally.NotAvailable)
-                    : Strings.Detail.Filter.Unavailable.AllUpcoming(count: tally.NotYetOut);
+            // One reason: its "all" form ("…: they’re local files."); several: each counted, in this order.
+            int kinds = (tally.NotAvailable > 0 ? 1 : 0) + (tally.NotYetOut > 0 ? 1 : 0) + (tally.LocalFiles > 0 ? 1 : 0);
+            string reasons;
+            if (kinds <= 1)
+                reasons = tally.NotAvailable > 0 ? Strings.Detail.Filter.Unavailable.AllRegion(count: tally.NotAvailable)
+                        : tally.LocalFiles > 0 ? Strings.Detail.Filter.Unavailable.AllLocal(count: tally.LocalFiles)
+                        : Strings.Detail.Filter.Unavailable.AllUpcoming(count: tally.NotYetOut);
+            else
+            {
+                var parts = new List<string>(3);
+                if (tally.NotAvailable > 0) parts.Add(Strings.Detail.Filter.Unavailable.Region(count: tally.NotAvailable));
+                if (tally.NotYetOut > 0) parts.Add(Strings.Detail.Filter.Unavailable.Upcoming(count: tally.NotYetOut));
+                if (tally.LocalFiles > 0) parts.Add(Strings.Detail.Filter.Unavailable.Local(count: tally.LocalFiles));
+                reasons = string.Join(", ", parts);
+            }
             return Strings.Detail.Filter.Unavailable.Explained(count: tally.Total, reasons: reasons);
         }
 

@@ -213,6 +213,8 @@
         "upcoming": "{count, plural, one {one isn’t out yet} other {# aren’t out yet}}",
         "allRegion": "{count, plural, one {it isn’t available in your country} other {they aren’t available in your country}}",
         "allUpcoming": "{count, plural, one {it isn’t out yet} other {they aren’t out yet}}",
+        "local": "{count, plural, one {one is a local file} other {# are local files}}",
+        "allLocal": "{count, plural, one {it’s a local file} other {they’re local files}}",
         "hide": "{count, plural, one {Hide it} other {Hide them}}"
       }
     },
@@ -326,6 +328,7 @@
       "unavailable": "Audio unavailable",
       "unavailableShort": "Unavailable",
       "unavailableReason": "This song isn’t available to play",
+      "localReason": "A local file: Wavee can’t play local files yet",
       "$comment2": "Camelot encodes mode in its own suffix — the B ring is major, the A ring minor — so these two words are the only key wording we can state honestly. They are lowercase because they follow a tonic: \"8B · C major\".",
       "major": "major",
       "minor": "minor"

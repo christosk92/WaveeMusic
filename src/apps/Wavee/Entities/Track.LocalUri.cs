@@ -69,6 +69,20 @@ public static class LocalTrackUri
     /// <inheritdoc cref="StageFace(Staging, in StagedId, ReadOnlySpan{byte})"/>
     public static void StageFace(Staging s, in StagedId id, string uri) => StageFace(s, in id, Encoding.UTF8.GetBytes(uri));
 
+    /// <summary>The artist and album a local item's uri names, for the row's display (a row's artist line and album lane read them where a
+    /// catalogue row reads its artist and album entities). Cached per uri: rows re-read them on every render. UI THREAD.</summary>
+    public static (string Artist, string Album) NamesOf(string uri)
+    {
+        if (s_names.TryGetValue(uri, out var names)) return names;
+        if (s_names.Count >= NamesCap) s_names.Clear();
+        names = TryParse(Encoding.UTF8.GetBytes(uri), out string artist, out string album, out _, out _) ? (artist, album) : ("", "");
+        s_names[uri] = names;
+        return names;
+    }
+
+    const int NamesCap = 4096;
+    static readonly Dictionary<string, (string Artist, string Album)> s_names = new(StringComparer.Ordinal);
+
     /// <summary>Form decoding: <c>+</c> → space, <c>%XX</c> → that byte; the bytes are UTF-8. A malformed escape is kept as written.</summary>
     static string Decode(ReadOnlySpan<byte> part)
     {

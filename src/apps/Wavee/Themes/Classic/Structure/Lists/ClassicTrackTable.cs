@@ -401,7 +401,7 @@ internal static class ClassicTrackTable
     static Element BoundMetadataLine(BoundRow r, bool setArtist, bool setAlbum, bool durationInline = false)
     {
         var buffer = new SpanBuffer();
-        int ArtistCount(in RowPresentation p) => Track.ArtistInTitle(in p, setArtist) ? p.Track.ForDisplay.ArtistSlots.Length : 0;
+        int ArtistCount(in RowPresentation p) => Track.ArtistInTitle(in p, setArtist) ? p.Track.ForDisplay.DisplayArtistCount : 0;
         bool HasContainer(in RowPresentation p, Track d)
             => (Track.ShowAlbumInMeta(in p, false, setAlbum) || d.IsPodcast) && Track.ContainerOf(d).Name.Length > 0;
         return new BoxEl
@@ -480,7 +480,7 @@ internal static class ClassicTrackTable
             buffer.Clear();
             var p = r.P;
             bool now = p.State.IsNow;
-            FillClassicSpans(buffer, p.Track.ForDisplay, p.Track.ForDisplay.ArtistSlots.Length, ShowVideo(in p), weight,
+            FillClassicSpans(buffer, p.Track.ForDisplay, p.Track.ForDisplay.DisplayArtistCount, ShowVideo(in p), weight,
                 now ? Tok.AccentTextPrimary : Tok.TextPrimary, now ? Tok.AccentTextPrimary : Tok.TextSecondary,
                 now ? Tok.AccentTextPrimary : Tok.TextTertiary);
             return buffer.Current;
@@ -494,7 +494,7 @@ internal static class ClassicTrackTable
             {
                 var p = r.Presentation.Peek();
                 var d = p.Track.ForDisplay;
-                int artist = RowCellRules.ClassicArtistOf(index, ShowVideo(in p), d.ArtistSlots.Length);
+                int artist = RowCellRules.ClassicArtistOf(index, ShowVideo(in p), d.DisplayArtistCount);
                 if (artist >= 0) Track.GoToArtistAt(d, artist);
             },
         };
@@ -557,18 +557,18 @@ internal static class ClassicTrackTable
             var p = r.P;
             var d = p.Track.ForDisplay;
             ColorF ink = classic && p.State.IsNow ? Tok.AccentTextPrimary : Tok.TextSecondary;
-            FillLinkSpans(buffer, d, d.ArtistSlots.Length, default, ink);
+            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, ink);
             return buffer.Current;
         }))
         {
             Size = classic ? 14f : 12f, LineHeight = classic ? 20f : 16f,
             Color = Tok.TextSecondary,   // SpanTextEl.Color is a value: the spans carry the lane ink
             Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1, MinWidth = 0f,
-            Visible = Prop.Of(() => r.P.Track.ForDisplay.ArtistSlots.Length > 0),
+            Visible = Prop.Of(() => r.P.Track.ForDisplay.DisplayArtistCount > 0),
             OnSpanClick = index =>
             {
                 var d = r.Presentation.Peek().Track.ForDisplay;
-                int target = RowCellRules.LinkTarget(index, d.ArtistSlots.Length, album: false);
+                int target = RowCellRules.LinkTarget(index, d.DisplayArtistCount, album: false);
                 if (target >= 0) Track.GoToArtistAt(d, target);
             },
         };
@@ -730,13 +730,12 @@ internal static class ClassicTrackTable
 
     static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink = default)
     {
-        var slots = t.ArtistSlots;
-        if (artistCount > slots.Length) artistCount = slots.Length;
+        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
         for (int i = 0; i < artistCount; i++)
         {
             if (i > 0) b.Add(new TextSpan(", ", Color: ink));
-            var a = new Artist(slots[i]);
-            b.Add(new TextSpan(a.Name, Color: ink, IsLink: a.Uri.IsValid));
+            var (name, link) = Track.ArtistAt(t, i);
+            b.Add(new TextSpan(name, Color: ink, IsLink: link));
         }
         if (container.Name is { Length: > 0 })
         {
@@ -755,12 +754,11 @@ internal static class ClassicTrackTable
             b.Add(new TextSpan(Icons.Movie, Color: tertiary, FontFamily: Tok.Definition.Fonts.Icon));
         }
         if (artistCount > 0) b.Add(new TextSpan("  ·  ", Color: tertiary));
-        var slots = t.ArtistSlots;
         for (int i = 0; i < artistCount; i++)
         {
             if (i > 0) b.Add(new TextSpan(", ", Color: secondary));
-            var a = new Artist(i < slots.Length ? slots[i] : 0);
-            b.Add(new TextSpan(a.Slot > 0 ? a.Name : "", Color: secondary, IsLink: a.Slot > 0 && a.Uri.IsValid));
+            var (name, link) = Track.ArtistAt(t, i);
+            b.Add(new TextSpan(name, Color: secondary, IsLink: link));
         }
     }
 

@@ -209,7 +209,9 @@ public readonly partial struct Track
     /// <summary>The duration lane's text, both row builders (the bound table and the eager grid): the clock, or for a
     /// withheld row its SHORT reason — "Unavailable" for a ruled-unavailable row, the release date for a pending one.</summary>
     internal static string DurationLabel(Track t, long now)
-        => RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
+        // A playlist's local file is withheld for a reason of its own, not a verdict: its length is known (its uri's), so the lane states it.
+        => t.IsLocalItem ? Format.DurationCell(t.ForDisplay.DurationMs)
+         : RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
         {
             RowCellRules.DurationKind.Unavailable => Loc.Get(Strings.Detail.TrackFacts.UnavailableShort),
             RowCellRules.DurationKind.ReleaseDate => Format.ReleaseDateLabel(t.AvailableAt, now),
@@ -226,7 +228,8 @@ public readonly partial struct Track
     /// available to play" (a terminal verdict names no cause the client could state honestly) or "Releases {date}".
     /// Null for a playable row.</summary>
     internal static string? WithheldReason(Track t, long now)
-        => RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
+        => t.IsLocalItem ? Loc.Get(Strings.Detail.TrackFacts.LocalReason)
+         : RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
         {
             RowCellRules.DurationKind.Unavailable => Loc.Get(Strings.Detail.TrackFacts.UnavailableReason),
             RowCellRules.DurationKind.ReleaseDate => Strings.Detail.ReleasesOn(Format.ReleaseDateLabel(t.AvailableAt, now)),
