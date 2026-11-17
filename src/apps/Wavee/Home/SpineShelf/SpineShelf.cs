@@ -65,6 +65,8 @@ public readonly record struct SpineShelfGeometry(
 /// <param name="Caption">A song tile's words over the media (number, title, artist), laid out at the tile's rest width.</param>
 /// <param name="FormSwap">The theme's declared swap fade: the row form and the standing form are different trees (a Compact edge cross-fades
 /// them, the tile height easing through the board's re-pack), never one tree re-laid out at once.</param>
+/// <param name="TopScrim">The ink of a song tile's top scrim (the theme's on-media scrim): the tile's number and anything at its top read over any
+/// canvas, however bright (the foot scrim holds the words at its foot).</param>
 /// <param name="SpineWash">An item's closed fill (<paramref name="SpineHoverWash"/> under the pointer); <paramref name="FaceWash"/> its open fill.</param>
 public sealed record SpineShelfSkin(
     Func<ShelfItem, int, SpineShelfGeometry, Element> Spine,
@@ -76,6 +78,7 @@ public sealed record SpineShelfSkin(
     Func<ColorF> Meter,
     Func<ColorF> Progress,
     Func<ColorF> Placeholder,
+    Func<ColorF> TopScrim,
     EnterExit FormSwap,
     FluentGpu.Animation.MotionTokenDef FormSwapMotion);
 
@@ -538,6 +541,7 @@ public sealed class SpineShelf : Component
             ],
         };
         var scrim = new BoxEl { HitTestVisible = false, Gradient = s_scrim };
+        var topScrim = new BoxEl { HitTestVisible = false, Gradient = TopScrim(skin.TopScrim()) };
         // The words follow the tile's width: they re-trim once, on the commit frame, never while the tile moves.
         var caption = new BoxEl
         {
@@ -562,7 +566,7 @@ public sealed class SpineShelf : Component
             OnPointerExit = () => TilePointerLeft(code),
             OnFocusChanged = f => { if (f) TileEnter(code, tile, in s); else TileLeave(code); },
             OnRealized = h => { if (code < _tile.Length) _tile[code] = h; },
-            Children = [mediaLayer, scrim, caption, progress],
+            Children = [mediaLayer, topScrim, scrim, caption, progress],
         };
     }
 
@@ -593,6 +597,15 @@ public sealed class SpineShelf : Component
     {
         var c = accent != 0u ? ColorScience.ToColor(accent) : new ColorF(0.16f, 0.16f, 0.17f, 1f);
         return new GradientSpec(GradientShape.Linear, 110f, [new GradientStop(0f, ColorF.Lerp(c, new ColorF(1f, 1f, 1f, 1f), 0.18f)), new GradientStop(1f, ColorF.Lerp(c, new ColorF(0f, 0f, 0f, 1f), 0.45f))]);
+    }
+
+    /// <summary>The top scrim: the theme's on-media scrim, a fifth deeper at the tile's top band (its number: a small caption needs 4.5 : 1 over
+    /// the brightest canvas, and the plate's own strength read 4.47 over a pure green), then gone by a third of the way down, so a bright
+    /// canvas never washes the number out and the picture's middle stays clear.</summary>
+    static GradientSpec TopScrim(ColorF ink)
+    {
+        var deep = ink with { A = MathF.Min(1f, ink.A * 1.2f) };
+        return new(GradientShape.Linear, 90f, [new GradientStop(0f, deep), new GradientStop(0.14f, deep), new GradientStop(0.34f, ink with { A = 0f })]);
     }
 
     /// <summary>The words' scrim: dark at the tile's foot, clear above its middle (the on-media legibility floor).</summary>
