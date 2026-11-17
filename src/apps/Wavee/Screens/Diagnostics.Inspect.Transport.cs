@@ -28,8 +28,8 @@ public static partial class Diagnostics
             switch (verb)
             {
                 case "status": break;
-                case "next": Playback.Next(); break;
-                case "prev": Playback.Previous(); break;
+                case "next": Playback.Next("inspect"); break;
+                case "prev": Playback.Previous("inspect"); break;
                 case "end": Playback.EndNow(); break;
                 case "seek": Playback.SeekTo(Math.Max(0, a.Int("ms", 0))); break;
                 case "shuffle": Playback.SetShuffle(value is "on" or "true" or "1"); break;

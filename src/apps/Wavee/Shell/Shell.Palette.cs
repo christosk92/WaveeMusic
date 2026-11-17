@@ -312,8 +312,8 @@ public static partial class Shell
                 switch (e.PlaybackVerb)
                 {
                     case PalettePlaybackVerb.PlayPause: PlayerVerbs.Default.TogglePlay("palette"); break;
-                    case PalettePlaybackVerb.Next: Playback.Next(); break;
-                    case PalettePlaybackVerb.Previous: Playback.Previous(); break;
+                    case PalettePlaybackVerb.Next: Playback.Next("palette"); break;
+                    case PalettePlaybackVerb.Previous: Playback.Previous("palette"); break;
                     case PalettePlaybackVerb.Shuffle: PlayerVerbs.Default.ToggleShuffle(); break;
                     case PalettePlaybackVerb.Repeat: PlayerVerbs.Default.CycleRepeat(); break;
                 }
