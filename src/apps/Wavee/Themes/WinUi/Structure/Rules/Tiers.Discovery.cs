@@ -457,6 +457,10 @@ public static class WinUiDiscoveryMotion
     /// <summary><see cref="RowsReflow"/>'s damping: critical, so the height never overshoots its rows.</summary>
     const float RowsDamping = 1f;
 
+    /// <summary>A head whose height a WRAP decides (Home's greeting, which takes a second line as the row narrows): <see cref="HeightReflow"/> that keeps
+    /// easing while the window is dragged, so the line it gains or drops glides and the page under it rides it instead of stepping by a line.</summary>
+    public static readonly LayoutTransition HeadReflow = HeightReflow with { AnimateDuringResize = true };
+
     /// <summary>A part whose WIDTH steps with the tier (a page inset): it eases through real layout, so what follows it rides it.</summary>
     public static readonly LayoutTransition WidthReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
