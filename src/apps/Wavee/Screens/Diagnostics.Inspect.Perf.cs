@@ -461,6 +461,7 @@ public static partial class Diagnostics
                 w.WriteNumber("escapes", f.Escapes);
                 w.WriteNumber("components", f.Components);
                 w.WriteNumber("hotAlloc", f.HotAlloc);
+                if (f.Gc0 + f.Gc1 + f.Gc2 > 0) { w.WriteStartArray("gc"); w.WriteNumberValue(f.Gc0); w.WriteNumberValue(f.Gc1); w.WriteNumberValue(f.Gc2); w.WriteEndArray(); }
                 w.WriteBoolean("animating", f.Animating);
                 w.WriteBoolean("presented", f.Presented);
                 if (f.Scopes.Count > 0)

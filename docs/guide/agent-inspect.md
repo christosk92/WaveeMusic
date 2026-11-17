@@ -1261,14 +1261,14 @@ a Debug build's numbers, relative, not the shipped ones. JIT time (`FrameStats.J
 | `rows`, `items`, `path` | report: the rows listed (`over`, default: the over-budget and alloc frames; `all`; `none`), the most per list, and a JSON file of every row |
 | `reset` | report: forget the frames after it |
 
-`perf report` replies `frames, budgetMs, budgetFrom, judged, devices, note, gate{over, alloc, failed}`, `verbs[{verb, frames,
+`perf report` replies `frames, budgetMs, budgetFrom, judged, devices, note, gate{over, alloc, dropped, failed}`, `glyphsDroppedSession`, `dropped[{frame, verb, glyphs}]` (glyph quads the GPU backend did not draw: text missing for a frame), `verbs[{verb, frames,
 animating, presents, over, maxMs, p95Ms, medianMs, maxFrame, jitMs, submitMaxMs, gpuMaxMs|gpuMaxMsWarp, measures, hotAllocBytes}]`,
 `over[{frame, verb, ms, top, topMs, why}]` (the top phase and what is behind it: the relayout scopes and their measures for a
 layout, the components for a flush, the effect owner for postSubmit), `alloc[{frame, verb, bytes, why}]` (a STEADY animation frame,
 something animating and no component, reactive unit, bind write or measure, that allocated on the hot phases 6-13),
 `allocOtherFrames` and `rows[{f, verb, ms{ui, jit, flush, layout, anim, record, postSubmit, submit, gpu}, measures, scopedMarks,
 escapes, components, hotAlloc, animating, presented, scopes[{key, measures, kind}], census?}]`. A scope's key is the node's own, or
-`key >n` for the keyed node n levels above it. `tools/inspect.py --gate-perf [MS]` exits 1 on any over or alloc frame (2 on
+`key >n` for the keyed node n levels above it. `tools/inspect.py --gate-perf [MS]` exits 1 on any over, alloc or dropped frame (a row with a GC carries `gc:[g0,g1,g2]`: a GC reads as up to 8 KB of alloc) (2 on
 `ok:false` or no report); `MS` sets the budget of every `perf report` line that names none. Warm the path first (run the
 interaction once before `perf on`) and compare against a base build: in Debug, Home's full relayouts on a resize run near 16 ms.
 
@@ -1287,7 +1287,7 @@ Motion you can look at (`Diagnostics.Inspect.Film.cs`). Traces `frames` frames f
 with the acting verb's `settle=false`, and keeps every `every`-th frame (and the last) in ONE contact-sheet PNG at `path`: `cols`
 cells per row, each frame scaled by `scale` (default 0.5) and labelled `f12 +208ms` (frame and time on the 16 ms clock). `crop=<key>`
 keeps that node's drawn rect (8 DIP around it, as it stood when the film began; it must be on the window); `framesDir=<dir>` also
-writes each kept frame whole. With `keys`/`prefix` (and every trace option) the reply carries the motion `curves` (see `trace
+writes each kept frame whole (that allocates per kept frame; without it film reuses one capture buffer and may share a `perf` window). With `keys`/`prefix` (and every trace option) the reply carries the motion `curves` (see `trace
 curves=true`). Needs pixels: `gpu=warp` or `gpu=hardware`. Reply: `path, traced, cells, crop?, every, clock, cellFrames[], watch[],
 curves[]?, motionFindings[]?, motionCounts?, settledAt, snaps, instants, remounted`.
 
