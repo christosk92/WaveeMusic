@@ -77,8 +77,9 @@ public static partial class HomeCards
         int lines = item.CaptionLines < 1 ? 1 : item.CaptionLines;
         // An inline meta makes the card render its own caption paragraph (second + " · meta") from STRINGS — the
         // element subtitle is then absent, and no separate meta line exists.
-        Element? second = !item.MetaInline && item.Second.Length > 0
-            ? R.Type.TrackMeta(item.Second) with
+        // A blank seed card holds its caption line (derived, it is the line's bar at the loaded card's height).
+        Element? second = !item.MetaInline && (item.Second.Length > 0 || item.Card.IsBlank)
+            ? R.Type.TrackMeta(item.Second.Length > 0 ? item.Second : " ") with
                 { MaxLines = lines, Wrap = lines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
             : null;
         string? art = coverAspect != 1f ? item.WideArt ?? item.Art : item.Art;

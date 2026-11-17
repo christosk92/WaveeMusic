@@ -412,7 +412,7 @@ internal static class ClassicHomeTiles
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
             Children = [Controls.IconAction(Icons.Previous, p.Previous), pp, Controls.IconAction(Icons.Next, p.Next)],
         };
-        var text = new BoxEl
+        var meta = new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
             Children =
@@ -421,16 +421,29 @@ internal static class ClassicHomeTiles
                 Ui.BodyStrong("") with { Text = Prop.Of(name), MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
                 Ui.Caption("").Secondary() with { Text = Prop.Of(p.Line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
                 p.Lyric is { } lyric && wide ? lyric(LyricLine) : new BoxEl(),
-                new BoxEl { Grow = 1f },
-                transport,
             ],
         };
+        Element cover = Clickable(new BoxEl { Shrink = 0f, Children = [Cover(p.Cover(), art, false)] }, p.Open);
+        // The wide card: the tall cover beside the words, the transport at the words' foot. The card: the cover beside the words, the transport
+        // under both (the words under the cover ran the transport past the card's three units, its buttons cut at the foot: a Compact card is
+        // one column wide, so its 40 targets made it worse).
+        Element face = wide
+            ? new BoxEl
+            {
+                Direction = 0, Gap = Spacing.M, Grow = 1f, MinWidth = 0f,
+                Children = [cover, new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [meta, new BoxEl { Grow = 1f }, transport] }],
+            }
+            : new BoxEl
+            {
+                Direction = 1, Grow = 1f, MinWidth = 0f,
+                Children = [new BoxEl { Direction = 0, Gap = Spacing.M, MinWidth = 0f, AlignItems = FlexAlign.Start, Children = [cover, meta] }, new BoxEl { Grow = 1f }, transport],
+            };
         var body = new BoxEl
         {
             Direction = 1, Grow = 1f, MinWidth = 0f,
             Children =
             [
-                Pad(new BoxEl { Direction = (byte)(wide ? 0 : 1), Gap = Spacing.M, Grow = 1f, MinWidth = 0f, Children = [Clickable(new BoxEl { Shrink = 0f, Children = [Cover(p.Cover(), art, false)] }, p.Open), text] }),
+                Pad(face),
                 new BoxEl { Height = ClassicHomeBoardRules.ProgressH, Shrink = 0f, Direction = 1, Children = [p.ProgressLine()] },
             ],
         };
@@ -620,19 +633,11 @@ internal static class ClassicHomeTiles
     {
         var f = p.Frame;
         var lay = ClassicHomeBoardTiers.Of(ctx.Tier());
-        // The art placeholder's ground, as Zune's: FillSubtleSecondary drew nothing a user could see on the dark page (a live open read the
-        // daylist and the release list as empty bands, 2026-11-17).
-        // A full row has no height of its own to grow into (the board measures its body): the plate stands at the box the row was packed at (its
-        // tool strip aside), or it draws nothing.
-        if (p.Reason == HomeTileVacancy.Loading)
-        {
-            var cell = f.Cell;
-            return new BoxEl
-            {
-                Grow = 1f, Corners = Radii.CardAll, Fill = R.Layer.ArtPlaceholder,
-                Height = f.Form == HomeTileForm.Full && cell is not null ? Prop.Of(() => cell.Box.Value.Height - cell.Box.Value.ToolStrip) : float.NaN,
-            };
-        }
+        // Loading: the tile's own view over its seed, shimmered flat (the app's loading pattern): its title lines, cover squares and rows at the
+        // loaded tile's size, so the swap to the loaded tile moves nothing.
+        if (p.Reason == HomeTileVacancy.Loading && p.Skeleton is { } skeleton)
+            // In a box that fills the tile's packed cell, as the loaded tile does (a band's height is its body's).
+            return new BoxEl { Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [Controls.Shimmer(skeleton, f.Entry)] };
         string line = Loc.Get(p.Reason switch
         {
             HomeTileVacancy.Unavailable => Strings.Theme.Classic.Home.Board.Unavailable,

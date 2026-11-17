@@ -48,7 +48,8 @@ internal static class WinUiHomeDaylist
         if (zone.Items.Count == 0) return new BoxEl();
         var card = zone.Items[0];
         string uri = card.Uri;
-        if (uri.Length == 0) return new BoxEl();
+        // The blank seed card (a board tile whose answer is on its way): the cold-load shape, which the tile's loading region derives.
+        if (uri.Length == 0) return Skeleton(layout);
 
         var host = props.Overlay;
         var menu = HomeCardNav.MenuOf(in card);

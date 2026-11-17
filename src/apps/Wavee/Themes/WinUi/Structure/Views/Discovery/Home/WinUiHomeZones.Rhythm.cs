@@ -44,7 +44,7 @@ internal static partial class WinUiHomeZones
         var data = RhythmCards.Data(in c, sub.Length > 0 ? Meta(sub) : null, host, circular);
         return new BoxEl
         {
-            Key = prefix + c.Uri, Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Shove,
+            Key = prefix + RhythmCards.KeyOf(c), Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Shove,
             Children = [Controls.Surface(data, shape)],
         };
     }
@@ -54,7 +54,7 @@ internal static partial class WinUiHomeZones
     /// <summary>"Made For": the first card as the lead (its header art, name, line and Play) beside (or over) a grid of the next ones.</summary>
     static Element LeadGrid(Zone zone, IOverlayService? overlay, WinUiHomeLayout layout)
     {
-        var cards = RhythmCards.Usable(zone.Items);
+        var cards = zone.Items;
         if (cards.Count == 0) return new BoxEl();
         var band = layout.LeadGrid;
         bool beside = band.Beside;
@@ -112,7 +112,7 @@ internal static partial class WinUiHomeZones
         };
         return new BoxEl
         {
-            Key = "lead-card:" + c.Uri, Direction = 1, MinWidth = 0f, ClipToBounds = true, Corners = Radii.CardAll,
+            Key = "lead-card:" + RhythmCards.KeyOf(c), Direction = 1, MinWidth = 0f, ClipToBounds = true, Corners = Radii.CardAll,
             Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f,
             Grow = beside ? 1f : 0f, Shrink = 1f, Basis = beside ? 0f : float.NaN, Layout = WinUiDiscoveryMotion.Shove,
             // Its edges meet the covers beside it: a fluid cover card stands its plate inset above the cover and under the labels
@@ -126,7 +126,7 @@ internal static partial class WinUiHomeZones
 
     static float LeadGridExtent(Zone zone, WinUiHomeLayout layout, float width)
     {
-        int count = RhythmCards.Usable(zone.Items).Count;
+        int count = zone.Items.Count;
         if (count == 0) return 0f;
         var band = layout.LeadGrid;
         int n = RhythmCards.Shown(band.Cols, band.Rows, count - 1);
@@ -148,7 +148,7 @@ internal static partial class WinUiHomeZones
     /// responsive box: a width inside the same count rebuilds nothing), the cards are star tracks.</summary>
     static Element CappedGrid(Zone zone, WinUiCappedBand band, float gap, float rowH, Func<HomeCard, Element> cell)
     {
-        var cards = RhythmCards.Usable(zone.Items);
+        var cards = zone.Items;
         if (cards.Count == 0) return new BoxEl();
         var cols = band.Columns;
         float first = MathF.Max(cols.MinCol, 1f) * cols.MaxCols + gap * (cols.MaxCols - 1);
@@ -171,7 +171,7 @@ internal static partial class WinUiHomeZones
             var data = RhythmCards.Data(in c, sub.Length > 0 ? Meta(sub) : null, host, circular: c.Kind == HomeCardKind.Artist);
             return new BoxEl
             {
-                Key = "compact-tile:" + c.Uri, Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Shove,
+                Key = "compact-tile:" + RhythmCards.KeyOf(c), Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Shove,
                 Children = [Controls.Surface(data, shape)],
             };
         });
@@ -195,7 +195,7 @@ internal static partial class WinUiHomeZones
     /// at the star track's width).</summary>
     static float CappedExtent(Zone zone, WinUiCappedBand band, float gap, float rowH, SurfaceShape shape, float width)
     {
-        int count = RhythmCards.Usable(zone.Items).Count;
+        int count = zone.Items.Count;
         if (count == 0) return 0f;
         int fit = band.Columns.Columns(width, gap);
         int n = RhythmCards.Shown(fit, band.Rows, count);
