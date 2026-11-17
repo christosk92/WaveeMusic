@@ -92,6 +92,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ChapterTip, ClassicTransport.ChapterTip, "classic.player.chapter-tip");
         views.Add(ViewKeys.SeekReadout, ClassicTransport.SeekReadout, "classic.player.seek-readout");
         views.Add(ViewKeys.SeekPreview, ClassicTransport.SeekPreview, "classic.player.seek-preview");
+        views.Add(ViewKeys.SeekLyric, ClassicTransport.SeekLyric, "classic.player.seek-lyric");
         views.Add(ViewKeys.TimeLabel, ClassicTransport.TimeLabel, "classic.player.time-label");
         // T8a: the track table's rows (the Modern and Classic bound grids and skins; the header, chrome and placeholder are T8b's).
         views.AddStyle(StyleKeys.TrackTable, ClassicTrackTable.Style);

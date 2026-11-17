@@ -514,6 +514,14 @@ public static partial class Shell
         readonly Func<bool> _previewFitsNow;
         bool _previewRail;
 
+        // The LYRIC tip: on a song's rail with no picture, the line sung at the time under the pointer (PlayerBarFacts.Seek.LyricRail). Its
+        // facts come through one memo (the setting, the playing song, what the store holds for it, the video clock), so a lyrics publication
+        // re-renders the rail only when the answer changes. While it applies the readout stays shut too.
+        readonly Func<LyricTipFacts> _lyricFactsNow;
+        readonly Func<bool> _pointerOnNow;   // the pointer hovers the rail or scrubs it: what holds an open lyric tip (see RenderLive)
+        bool _lyricRail;
+        string _lyricTrack = "";
+
         // PRECISE SEEKING (only where there is a picture to be precise about): pulling the pointer away from the rail during a scrub slows
         // it (SeekRail.PreciseStep). Until the pointer first leaves the near band the rail follows it ABSOLUTELY, exactly as a rail without
         // a preview does; from then on the gesture is relative (the travel since the last move, times the step's rate), so coming back to
@@ -554,7 +562,25 @@ public static partial class Shell
             _onExit = () => _chapterHovering.Value = false;
             _onBounds = b => { _railH = b.H; _scrub.SetRailWidth(b.W); };
             _previewFitsNow = () => SeekRail.PreviewFits(onMedia: Surface == SeekRailSurface.OnMedia, _scrub.RailPx.Value);
+            _lyricFactsNow = ReadLyricFacts;
+            _pointerOnNow = () => _chapterHovering.Value || _scrub.Scrubbing.Value;
         }
+
+        /// <summary>The lyric tip's facts, read inside the memo: the switch, the playing song's lyrics-store id and what the store holds for it
+        /// (<see cref="Lyrics.Store.Changed"/> beside the document read, the store's UI contract), and whether the video's clock is what plays.
+        /// With the switch off it reads nothing else, so the store's publications cost an off rail nothing.</summary>
+        static LyricTipFacts ReadLyricFacts()
+        {
+            if (!Prefs.Lyrics.SeekTip()) return default;
+            string trackId = LyricsModel.PlayingTrackId();
+            if (trackId.Length == 0) return new LyricTipFacts(true, "", LyricTipDoc.None, false);
+            _ = Lyrics.Store.Changed.Value;
+            var doc = PlayerBarFacts.Seek.LyricDoc(Lyrics.Store.Answered(trackId), Lyrics.Store.Doc(trackId));
+            return new LyricTipFacts(true, trackId, doc, Lyrics.SyncGate.SyncSuppressed(Playback.VideoActive.Value));
+        }
+
+        /// <summary>The lyric tip's facts as one memo value.</summary>
+        readonly record struct LyricTipFacts(bool Setting, string TrackId, LyricTipDoc Doc, bool SyncSuppressed);
 
         /// <summary>What the last render drew: what a CONCEALED rail answers (see <see cref="Render"/>).</summary>
         Element? _held;
@@ -605,6 +631,8 @@ public static partial class Shell
             // The preview's two facts: the source's sheets (a source change re-renders) and whether the rail is wide enough (a memo: only the edge).
             var sheets = Playback.Video.Source.Value?.SeekPanels;
             bool previewFits = UseComputed(_previewFitsNow).Value;
+            var lyricFacts = UseComputed(_lyricFactsNow).Value;
+            var pointerOn = UseComputed(_pointerOnNow);
 
             // NOTHING TO REWIND: the rail stops pretending to be one (the view draws the live line). After every hook, so the hook
             // order never varies.
@@ -620,15 +648,25 @@ public static partial class Shell
             bool chapterRail = PlayerBarFacts.Seek.ChapterRail(chapterId.Kind, mode);
             bool previewRail = _previewRail = PlayerBarFacts.Seek.PreviewRail(sheets is not null, mode, previewFits);
             var preview = previewRail ? sheets : null;
+            // A song whose first hover asked and whose answer has no timed lines HOLDS the open tip (the time alone) until the pointer leaves
+            // the rail and the scrub ends: a scrub never loses its bubble mid-gesture. The pointer is read (subscribed) only in that case.
+            bool holding = _lyricRail && lyricFacts.Doc == LyricTipDoc.None && lyricFacts.TrackId.Length > 0
+                && string.Equals(_lyricTrack, lyricFacts.TrackId, StringComparison.Ordinal) && pointerOn.Value;
+            bool lyricRail = _lyricRail = PlayerBarFacts.Seek.LyricRail(chapterId.Kind, mode, previewRail, lyricFacts.Setting, lyricFacts.SyncSuppressed,
+                lyricFacts.Doc, holding) && lyricFacts.TrackId.Length > 0;
+            string lyricTrack = _lyricTrack = lyricRail ? lyricFacts.TrackId : "";
             var chapterIdentity = new ChapterResources.Identity(chapterEpoch, Entities.Current.Key.Account, chapterId);
-            // ONE tip host per rail: an episode's chapters, a video's seek preview, or both in one bubble. Keyed on everything it froze at mount.
-            Element? chapters = chapterRail || previewRail
-                ? Embed.Comp(() => new BarRailTip(chapterIdentity, chapterRail, preview, _scrub, _chapterHover, _chapterHovering, Surface, _precise))
-                    with { Key = "player-rail-tip:" + chapterEpoch + ":" + chapterId.Text + (chapterRail ? ":chapters" : "") + (preview is null ? "" : ":" + preview.Key) }
+            // ONE tip host per rail: an episode's chapters, a video's seek preview (or both in one bubble), or a song's lyric line. Keyed on
+            // everything it froze at mount (a lyric rail's document arriving keeps the key: the open tip gains its line in place).
+            bool tip = chapterRail || previewRail || lyricRail;
+            Element? chapters = tip
+                ? Embed.Comp(() => new BarRailTip(chapterIdentity, chapterRail, preview, lyricTrack, _scrub, _chapterHover, _chapterHovering, Surface, _precise))
+                    with { Key = "player-rail-tip:" + chapterEpoch + ":" + chapterId.Text + (chapterRail ? ":chapters" : "") + (preview is null ? "" : ":" + preview.Key)
+                        + (lyricRail ? ":lyrics:" + lyricTrack : "") }
                 : null;
             return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps
             {
-                Host = this, Enabled = enabled, Pending = pending, Dvr = mode == SeekRailMode.Dvr, HoverTip = chapterRail || previewRail, Chapters = chapters,
+                Host = this, Enabled = enabled, Pending = pending, Dvr = mode == SeekRailMode.Dvr, HoverTip = tip, Chapters = chapters,
             });
         }
 
@@ -738,10 +776,10 @@ public static partial class Shell
         // ── the scrub readout (U-7) ──
 
         /// <summary>Open the readout bubble where the controller wants one (<see cref="ScrubController.ReadoutWanted"/>: a plain
-        /// track, not a DVR window or an episode's chapter rail).</summary>
+        /// track, not a DVR window or an episode's chapter rail) and no other tip rides the rail (a seek preview, a lyric tip).</summary>
         void OpenReadout()
         {
-            if (_overlay is null || _readout is { IsOpen: true } || !_scrub.ReadoutWanted || _previewRail) return;
+            if (_overlay is null || _readout is { IsOpen: true } || !_scrub.ReadoutWanted || _previewRail || _lyricRail) return;
             _readout = _overlay.Open(_readoutAnchor, _readoutContent, FlyoutPlacement.Top,
                 new PopupOptions(FocusTrap: false, DismissBehavior: DismissBehavior.None, Chrome: PopupChrome.Raw));
         }

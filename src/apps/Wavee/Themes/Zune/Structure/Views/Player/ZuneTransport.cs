@@ -215,6 +215,34 @@ internal static class ZuneTransport
         return new BoxEl { Padding = T.PreviewLift, HitTestVisible = false, Children = [plate] };
     }
 
+    // ══ THE LYRIC TIP ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.SeekLyric"/>: the chapter tip's square raised plate, the time over the lyric
+    /// line in the tip's own type (the line wraps to two lines at most), left like every Zune caption. The plate keeps the seek preview's
+    /// air over the rail and arrives as it does.</summary>
+    public static Element SeekLyric(SeekLyricProps props, in ViewContext ctx)
+    {
+        var plate = new BoxEl
+        {
+            Direction = 1, Gap = T.TipGap, Width = T.TipW, Padding = T.TipPadding,
+            Fill = R.Layer.FloatingChrome, Corners = R.Shape.All(ShapeRole.Overlay), Shadow = Elevation.Tooltip, HitTestVisible = false,
+            Enter = T.PreviewEnter,
+            Children =
+            [
+                new TextEl(Prop.Of(props.Time))
+                {
+                    Size = T.TipTimeSize, LineHeight = T.TipTimeLine, Color = Tok.TextSecondary, FontFeatures = FontFeatures.TabularFigures,
+                },
+                new TextEl(Prop.Of(props.Line))
+                {
+                    Size = T.TipTitleSize, LineHeight = T.TipTitleLine, MaxLines = T.TipTitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+                    Color = Tok.TextPrimary, MinWidth = 0f, Visible = Prop.Of(props.HasLine),
+                },
+            ],
+        };
+        return new BoxEl { Padding = T.PreviewLift, HitTestVisible = false, Children = [plate] };
+    }
+
     // ══ THE TIME LABELS ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The registered template of <see cref="ViewKeys.TimeLabel"/>: the digits' slot (the elapsed one hugs what follows it, the

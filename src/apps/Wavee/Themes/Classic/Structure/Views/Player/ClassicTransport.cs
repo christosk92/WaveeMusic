@@ -327,6 +327,36 @@ internal static class ClassicTransport
         return new BoxEl { Padding = ClassicTransportLayout.PreviewLift, HitTestVisible = false, Children = [pair] };
     }
 
+    // ══ THE LYRIC TIP ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.SeekLyric"/>: the chapter tip's acrylic card, the time over the lyric line
+    /// (wrapped to two lines at most). The card keeps the seek preview's air over the rail (clear of the thumb) and arrives as it does.</summary>
+    public static Element SeekLyric(SeekLyricProps props, in ViewContext ctx)
+    {
+        var card = new BoxEl
+        {
+            Direction = 1, Gap = ClassicTransportLayout.ChapterTipGap, Width = ClassicTransportLayout.ChapterTipWidth,
+            Acrylic = Tok.AcrylicFlyout, BorderColor = Tok.StrokeFlyoutDefault, BorderWidth = 1,
+            Corners = Radii.ControlAll, Shadow = Elevation.Tooltip, Padding = ClassicTransportLayout.ChapterTipPadding,
+            HitTestVisible = false, Enter = ClassicTransportLayout.PreviewEnter,
+            Children =
+            [
+                new TextEl(Prop.Of(props.Time))
+                {
+                    Size = ClassicTransportLayout.ChapterTipTimeSize, Weight = ClassicTransportLayout.ChapterTipWeight, Color = Tok.TextSecondary,
+                    FontFeatures = FontFeatures.TabularFigures,
+                },
+                new TextEl(Prop.Of(props.Line))
+                {
+                    Size = ClassicTransportLayout.ChapterTipTitleSize, Weight = ClassicTransportLayout.ChapterTipWeight,
+                    MaxLines = ClassicTransportLayout.ChapterTipTitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+                    Color = Tok.TextPrimary, MinWidth = 0, Visible = Prop.Of(props.HasLine),
+                },
+            ],
+        };
+        return new BoxEl { Padding = ClassicTransportLayout.PreviewLift, HitTestVisible = false, Children = [card] };
+    }
+
     // ══ THE TIME LABELS ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The registered template of <see cref="ViewKeys.TimeLabel"/>: the digits' slot, or the live slot.</summary>

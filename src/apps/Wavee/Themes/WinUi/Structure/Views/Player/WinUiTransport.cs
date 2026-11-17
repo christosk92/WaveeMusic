@@ -309,6 +309,42 @@ internal static class WinUiTransport
         };
     }
 
+    // ══ THE LYRIC TIP ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.SeekLyric"/>: the chapter tip's acrylic card (the ToolTip's padding and
+    /// ring) with the time over the lyric line, the line wrapped to two lines at most. The card keeps the seek preview's air: clear of the
+    /// thumb, and on the player bar above the whole bar so the transport buttons stay in view.</summary>
+    public static Element SeekLyric(SeekLyricProps props, in ViewContext ctx)
+    {
+        var card = new BoxEl
+        {
+            Direction = 1, Gap = WinUiTransportLayout.ChapterTipGap, Width = WinUiTransportLayout.ChapterTipWidth,
+            Acrylic = Tok.AcrylicFlyout, BorderColor = Tok.StrokeFlyoutDefault, BorderWidth = 1,
+            Corners = Radii.ControlAll, Shadow = Elevation.Tooltip, Padding = WinUiTransportLayout.ChapterTipPadding,
+            HitTestVisible = false, Enter = WinUiTransportLayout.PreviewEnter,
+            Children =
+            [
+                new TextEl(Prop.Of(props.Time))
+                {
+                    Size = WinUiTransportLayout.ChapterTipTimeSize, Weight = WinUiTransportLayout.ChapterTipWeight, Color = Tok.TextSecondary,
+                    FontFeatures = FontFeatures.TabularFigures,
+                },
+                new TextEl(Prop.Of(props.Line))
+                {
+                    Size = WinUiTransportLayout.ChapterTipTitleSize, Weight = WinUiTransportLayout.ChapterTipWeight,
+                    MaxLines = WinUiTransportLayout.ChapterTipTitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+                    Color = Tok.TextPrimary, MinWidth = 0, Visible = Prop.Of(props.HasLine),
+                },
+            ],
+        };
+        bool overButtons = props.Surface == SeekRailSurface.Bar;
+        return new BoxEl
+        {
+            Padding = overButtons ? WinUiTransportLayout.PreviewLiftBar : WinUiTransportLayout.PreviewLift, HitTestVisible = false,
+            Children = [card],
+        };
+    }
+
     // ══ THE TIME LABELS ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The registered template of <see cref="ViewKeys.TimeLabel"/>: the digits' slot, or the live slot.</summary>

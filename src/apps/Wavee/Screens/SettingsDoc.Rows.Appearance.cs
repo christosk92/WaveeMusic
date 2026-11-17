@@ -63,6 +63,10 @@ public static partial class SettingsDoc
                 SettingsWriter.OfSlider("lyrics.blur", SettingsVerbs.SetLyricsBlur),
                 captionKey: Strings.Settings.Appearance.LyricsBlurSub,
                 value: s => (float)Prefs.Lyrics.FromStored(s.Get(Platform.Keys.LyricsBlurStrength))),
+            // The seek rail's lyric tip (the line sung at the time under the pointer); the rails read `Prefs.Lyrics`' epoch.
+            Make(T.Appearance, "Lyrics", "lyricsSeekTip", K.Toggle, Strings.Settings.Appearance.LyricsSeekTip,
+                SettingsWriter.OfToggle("lyrics.seekTip", SettingsVerbs.SetLyricsSeekTip),
+                captionKey: Strings.Settings.Appearance.LyricsSeekTipSub, value: BoolOf(Platform.Keys.LyricsSeekTip)),
             // On-device AI lyrics (AiLyrics.UI.Settings.cs): the card is the AI module's own state machine; its switches
             // are rows here, its per-language and per-file verbs stay the module's.
             Make(T.Appearance, "Lyrics", "aiLyrics", K.Toggle, Strings.Settings.Lyrics.Ai.Title,
@@ -226,6 +230,13 @@ public static partial class SettingsVerbs
         int strength = Math.Clamp((int)MathF.Round(v), 0, 100);
         if (Platform.Settings.Get(Platform.Keys.LyricsBlurStrength) == strength) return false;
         Prefs.Lyrics.SetBlurStrength(strength);
+        return true;
+    }
+
+    /// <summary>The seek rail's lyric tip: persist and bump the lyrics epoch (the rails re-read it); the page re-reads.</summary>
+    public static bool SetLyricsSeekTip(bool on)
+    {
+        Prefs.Lyrics.SetSeekTip(on);
         return true;
     }
 

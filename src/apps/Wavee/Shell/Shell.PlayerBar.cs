@@ -55,6 +55,10 @@ public static partial class Shell
     /// happened to be reported (a sliding DVR window reported as a 3-minute "track" is the defect this ends).</summary>
     public enum SeekRailMode : byte { Track, Dvr, Line }
 
+    /// <summary>What the lyrics store holds for the playing song, as the seek rail's lyric tip reads it
+    /// (<see cref="PlayerBarFacts.Seek.LyricDoc"/>): not answered yet, a timed document, or none to be had.</summary>
+    public enum LyricTipDoc : byte { Unknown, Timed, None }
+
     // `RightSlot` (the right cluster's slots), `OverflowCommand`, `PrimaryVerb` and `NowPlayingInk` are contract words now
     // (`Theming\Contracts\PlayerBarVocabulary.cs`, T6a): a theme's player bar draws what these decide and may not name `Shell`.
 
@@ -80,6 +84,42 @@ public static partial class Shell
             /// card's rail keep the time alone).</summary>
             public static bool PreviewRail(bool hasSheets, SeekRailMode mode, bool fits)
                 => hasSheets && mode == SeekRailMode.Track && fits;
+
+            /// <summary>Does the rail's tip carry the LYRIC line under the pointer? A song (not an episode) on a rail that scrubs a fixed
+            /// span, with no picture to show (<see cref="PreviewRail"/>: the picture wins, one tip per rail), the user's setting on
+            /// (<c>Prefs.Lyrics.SeekTip</c>), the song's own clock playing (<paramref name="syncSuppressed"/>: a music video's edit is not
+            /// the song's, so its lines would land on the wrong times, <see cref="Lyrics.SyncGate"/>), and lyrics that are TIMED or not
+            /// answered yet. A song whose answer is in and has no timed lines keeps the rail it always had (the readout on a drag, no
+            /// hover tip); one not asked for yet takes the tip, whose first hover asks (<c>Lyrics.Store.Ensure</c>) and shows the time
+            /// alone until the document lands. When that answer has no timed lines, the tip already open stays (the time alone) while
+            /// <paramref name="holding"/> (the pointer still on the rail or the scrub still going), so it never vanishes under the pointer
+            /// or leaves a scrub without a bubble; the rail it always had comes back once the pointer leaves.</summary>
+            public static bool LyricRail(EntityKind kind, SeekRailMode mode, bool previewRail, bool setting, bool syncSuppressed, LyricTipDoc doc,
+                bool holding = false)
+                => setting && kind == EntityKind.Track && mode == SeekRailMode.Track && !previewRail && !syncSuppressed
+                    && (doc != LyricTipDoc.None || holding);
+
+            /// <summary>What the lyrics store holds for the playing song, as the lyric tip reads it: a document timed by line or by word
+            /// (<see cref="Lyrics.PeekClock.ShouldShow"/>, and synced), none to be had (answered with no timed lines, or an offline
+            /// miss), or not answered yet.</summary>
+            public static LyricTipDoc LyricDoc(bool answered, Lyrics.Doc? doc)
+                => doc is { IsSynced: true } && Lyrics.PeekClock.ShouldShow(doc) ? LyricTipDoc.Timed
+                    : answered ? LyricTipDoc.None : LyricTipDoc.Unknown;
+
+            /// <summary>The lyric line the tip shows at <paramref name="ms"/>: the last line that starts at or before it, or −1 (the time
+            /// alone) before the first line, on a line with no words, and once a line's authored end has passed where a real instrumental
+            /// break follows (<see cref="Lyrics.InterludeGapMs"/>, or the last line). The short breath between two sung lines keeps the line
+            /// before it, as the lyrics view keeps its focus, so a sweep does not blink the line out for a quarter of a second.</summary>
+            public static int LyricAt(Lyrics.Doc? doc, long ms)
+            {
+                if (doc is null) return -1;
+                var lines = doc.Lines;
+                int index = Lyrics.ResolveLine(lines, ms);
+                if (index < 0 || lines[index].Text.Length == 0) return -1;
+                if (lines[index].EndMs is { } end && ms >= end
+                    && (index + 1 == lines.Count || lines[index + 1].StartMs - end >= Lyrics.InterludeGapMs)) return -1;
+                return index;
+            }
 
             /// <summary>The chapter intervals the rail marks: the fetched chapters normalised against the duration once the
             /// request is <paramref name="ready"/> (sorted, de-duplicated, each ending where the next starts), else none.</summary>
