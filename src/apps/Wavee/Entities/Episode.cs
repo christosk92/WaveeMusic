@@ -52,6 +52,9 @@ public enum EpisodeFields : uint
     Completion = 1 << 11,
     Transcript = 1 << 12,
     Media = 1 << 13,
+    /// <summary>Whether the chapter counts against the audiobook hours (<c>ENTITY_CAPPING</c>, kind 133). NOT in
+    /// <see cref="All"/> and not persisted: only the audiobook page asks it, once a session (podcast pages data lane).</summary>
+    Capping = 1 << 14,
 
     /// <summary>What an episode row paints. Identical to <see cref="Identity"/> ON PURPOSE: the list's shimmer gate and
     /// the cells' gate are the same set, and <see cref="Progress"/> is excluded because its absence is a rendered
@@ -100,7 +103,9 @@ public sealed class EpisodeTable : Table
     public Column<int> ProgressMs;
     /// <summary>The owning show's slot, 0 = the writer did not know (ch 09 DATA GAPS).</summary>
     public Column<int> Show;
-    /// <summary>The number within its show (<c>number</c>, field 89); 0 = unnumbered. Identity group.</summary>
+    /// <summary>The number within its show (<c>metadata.Episode.number</c>, field 65, zig-zag); 0 = unnumbered. An
+    /// audiobook chapter's wire number is 0-based book order, stored here + 1 so 0 keeps meaning "unstated"
+    /// (<c>Spotify.Decode.EpisodeV4</c>). Identity group.</summary>
     public Column<ushort> Number, Season;
     public Column<bool> TranscriptReadAlong, ExplicitCompleted;
     public Column<long> RevisionUpdateSeconds, RevisionCreateSeconds, CompletionAtMs;
@@ -120,6 +125,10 @@ public sealed class EpisodeTable : Table
     /// stale server position must never rewind the position this device just played to (ch 09 DATA GAPS).</summary>
     public Column<byte> IdentityAuthority, AboutAuthority, ProgressAuthority, DetailAuthority, CompletionAuthority, TranscriptAuthority, MediaAuthority;
 
+    /// <summary><see cref="EpisodeFields.Capping"/>: 0 = unknown, 1 = counts against the audiobook hours, 2 = does not
+    /// (the sample chapter answers an empty trait).</summary>
+    public Column<byte> Capping, CappingAuthority;
+
     public override EntityKind Kind => EntityKind.Episode;
 
     protected override void GrowColumns(int capacity)
@@ -138,6 +147,8 @@ public sealed class EpisodeTable : Table
         DetailAuthority.EnsureCapacity(capacity);
         TranscriptAuthority.EnsureCapacity(capacity);
         MediaAuthority.EnsureCapacity(capacity);
+        Capping.EnsureCapacity(capacity);
+        CappingAuthority.EnsureCapacity(capacity);
         CompletionAuthority.EnsureCapacity(capacity);
         Title.EnsureCapacity(capacity);
         Image.EnsureCapacity(capacity);
@@ -204,6 +215,8 @@ public readonly partial struct Episode(int slot) : IEquatable<Episode>
     public int ShowSlot => T.Show[Slot];
     /// <inheritdoc cref="EpisodeTable.Number"/>
     public int Number => T.Number[Slot];
+    /// <inheritdoc cref="EpisodeTable.Capping"/>
+    public byte Capping => T.Capping[Slot];
     public EpisodeKind Kind => (EpisodeKind)T.Variant[Slot];
     public EpisodeFlags Flags => (EpisodeFlags)T.Flags[Slot];
     public bool IsAudiobookChapter => IsValid && (Flags & EpisodeFlags.AudiobookChapter) != 0;
@@ -239,6 +252,8 @@ public struct StagedEpisode : IStagedRow
     public uint Flags;
     /// <summary>Progress: unix seconds of the newest resume-point revision, written with <see cref="ProgressMs"/>.</summary>
     public int PlayedAt;
+    /// <summary><see cref="EpisodeFields.Capping"/>: 1 capped, 2 not capped.</summary>
+    public byte Capping;
     /// <summary><see cref="EpisodeFields"/>: which groups this row speaks for.</summary>
     public uint Known;
     public Authority Authority;
@@ -340,6 +355,12 @@ public static partial class Entities
                 t.DurationMs[slot] = row.DurationMs;
                 t.Flags[slot] = (t.Flags[slot] & ~mediaFlags) | (row.Flags & mediaFlags);
                 t.Applied(slot, (uint)EpisodeFields.Media, auth, ref t.MediaAuthority);
+            }
+            if ((known & (uint)EpisodeFields.Capping) != 0
+                && t.Accepts(slot, (uint)EpisodeFields.Capping, auth, in t.CappingAuthority))
+            {
+                t.Capping[slot] = row.Capping;
+                t.Applied(slot, (uint)EpisodeFields.Capping, auth, ref t.CappingAuthority);
             }
             if ((known & (uint)EpisodeFields.Detail) != 0
                 && t.Accepts(slot, (uint)EpisodeFields.Detail, auth, in t.DetailAuthority))

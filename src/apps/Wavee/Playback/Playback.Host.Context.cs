@@ -1321,7 +1321,7 @@ public static partial class Playback
         {
             ArmProgressMirror(false);
             if (open) Spotify.Telemetry.Ended(ref s_registration, r.EndPosMs, ReasonText(r.EndReason));
-            if (IsSpotifyEpisode(r.EndedId)) LeaveEpisode(r.EndedId, r.EndPosMs, unix, "end");
+            if (IsSpotifyEpisode(r.EndedId)) LeaveEpisode(r.EndedId, r.EndPosMs, unix, "end", r.EndReason);
             s_registration = default;
             s_registeredId = default;
         }
@@ -1359,11 +1359,14 @@ public static partial class Playback
     /// <summary>The listener left an episode (a pause, an end, a skip): tell herodotus where, and mirror the SAME position
     /// at the SAME instant into the row at Local (podcast plan §5.8) — the row repaints now, the next launch reads it
     /// from disk, and a later hydrate recognises this device's own revision by that instant and keeps the row.</summary>
-    static void LeaveEpisode(EntityId id, int positionMs, long unixMs, string why)
+    /// <para>An end names its reason (<see cref="ReasonText"/>: trackdone, fwdbtn, clickrow, remote, trackerror…), so a chapter that
+    /// changed under the listener reads from the log as a natural end, a skip or a fault rather than as a guess.</para>
+    static void LeaveEpisode(EntityId id, int positionMs, long unixMs, string why, PlayReason reason = PlayReason.None)
     {
         Spotify.Telemetry.ResumePoint(id.Text, positionMs, unixMs);
         Entities.MirrorEpisodeProgress(id, positionMs, unixMs);
-        Log.Info("podcast", "podcast.progress.mirror why=" + why + " positionMs=" + positionMs);
+        Log.Info("podcast", "podcast.progress.mirror why=" + why
+            + (reason == PlayReason.None ? "" : " reason=" + ReasonText(reason)) + " positionMs=" + positionMs);
     }
 
     // ── the local progress mirror's tick (P10, named: EpisodeProgress.MirrorIntervalMs) ──

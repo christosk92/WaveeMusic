@@ -213,6 +213,7 @@
     }
   },
   "podcast": {
+    "pages": { "chapterN": "{number}장" },
     "episodes": "에피소드",
     "show": "팟캐스트",
     "inProgress": "듣는 중",

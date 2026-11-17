@@ -1053,6 +1053,7 @@ public static partial class Spotify
             }
             ActivateOutbox(scope.Key.Account);
             SyncCompletion(scope);
+            Books.OnSessionStart(scope);   // capping-api PutConsumption, as the official client sends it at startup
             HydrateRecentEpisodes(scope);
             long since = HydrateSince(NowMs());
             uint epoch = scope.Epoch;
