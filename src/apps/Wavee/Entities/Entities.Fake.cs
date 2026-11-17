@@ -427,12 +427,18 @@ public static partial class Entities
         }
         me.Replace(LibraryEdgeKind.FollowedArtists, artistSlots, artistPayload);
 
-        Span<int> showSlots = new int[ShowCount];
-        Span<LibraryEdge> showPayload = new LibraryEdge[ShowCount];
+        int[] savedBooks = AlbumSeed.SavedBooks;                       // Entities.Fake.Audiobook.cs: ab0 and ab2 are in Your Library
+        Span<int> showSlots = new int[ShowCount + savedBooks.Length];
+        Span<LibraryEdge> showPayload = new LibraryEdge[ShowCount + savedBooks.Length];
         for (int i = 0; i < ShowCount; i++)
         {
             showSlots[i] = ResolveSeedSlot(EntityKind.Show, ShowUri(i));
             showPayload[i] = new LibraryEdge((int)(now0 - i * 7L * 86_400), 0);
+        }
+        for (int k = 0; k < savedBooks.Length; k++)
+        {
+            showSlots[ShowCount + k] = ResolveSeedSlot(EntityKind.Show, "spotify:show:ab" + savedBooks[k].ToString(System.Globalization.CultureInfo.InvariantCulture));
+            showPayload[ShowCount + k] = new LibraryEdge((int)(now0 - (k + 1) * 4L * 86_400), 0);
         }
         me.Replace(LibraryEdgeKind.SavedShows, showSlots, showPayload);
 

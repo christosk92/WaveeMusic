@@ -177,24 +177,43 @@ public sealed record PodcastEpisodePageProps
 }
 
 /// <summary>One chapter of a book's contents. <see cref="Name"/> is "Chapter N" when the publisher's title is empty or generic ("Track 5", "01");
-/// <see cref="Matter"/> marks front and back matter (credits, introduction, epilogue, acknowledgements), set quieter. <see cref="Fill"/> 0..1.</summary>
+/// <see cref="Matter"/> marks front and back matter (credits, introduction, epilogue, acknowledgements), set quieter. <see cref="StartsAt"/> is where the
+/// chapter starts in the book (the contents page's "page number"); <see cref="Done"/> the chapter is finished (at rest).</summary>
 public sealed record AudiobookChapterVm(int Index, string Number, string Name, bool Matter, int StartMs, int LengthMs, string StartsAt, string Length,
-    string Left, float Fill, bool Current, bool Done, string EpisodeId);
+    bool Done, string Label);
 
-/// <summary>The audiobook page's snapshot. Credits are separate lists (authors, narrators, publishers) and stay empty when the data lacks them: a row the
-/// data cannot fill is left off. <see cref="Price"/> / <see cref="ListPrice"/> are set when the book is for sale (Buy audiobook) rather than included.</summary>
+/// <summary>A credited person (an author, a narrator). <see cref="Uri"/> empty: no page to open (the name is drawn, not linked).</summary>
+public sealed record AudiobookPersonVm(string Name, string Uri);
+
+/// <summary>Where the listener is in the book, LIVE (it follows the playing chapter's clock). <see cref="Current"/> is the chapter the primary continues
+/// (-1 when the book is not started or finished); <see cref="CurrentFill"/> how far into it (0..1); <see cref="Fraction"/> the whole book (0..1).
+/// Texts: <see cref="BookLeft"/> "48% · 9 hr 2 min left", <see cref="BookLeftLong"/> the same "… left in the book", <see cref="InLeft"/>
+/// "3 hr 35 min in · 9 hr left", <see cref="CurrentLeft"/> "12 min left" (the current chapter's own).</summary>
+public readonly record struct AudiobookPlace(int PositionMs, float Fraction, int Current, float CurrentFill, string BookLeft, string BookLeftLong,
+    string InLeft, string CurrentLeft);
+
+/// <summary>The audiobook page's snapshot. Credits are separate lists (authors, narrators) and the facts are labelled rows; a row the data cannot fill is
+/// left off. <see cref="Included"/> false = the book is for sale: <see cref="Price"/> / <see cref="ListPrice"/> and <see cref="BuyLabel"/> replace the
+/// Premium line. The hero's label: <see cref="UpTitle"/> (semibold, "Chapter 9 of 19 · " in the secondary ink when in progress) + <see cref="UpName"/>,
+/// <see cref="UpSub"/> under it (the place binds over it while in progress).</summary>
 public sealed record AudiobookView(
     PodcastLoad Load, string Uri, string Title, string Subtitle, string? ArtUrl, uint Tone,
-    ImmutableArray<PodcastCardVm> Authors, ImmutableArray<PodcastCardVm> Narrators, ImmutableArray<string> Publishers, string Edition,
-    ImmutableArray<string> Genres, int RatingX100, string Ratings, string Released, string Language, string Length, string ChapterCount,
-    AudiobookState State, float Progress, string Percent, string BookLeft, string ChapterLine, string FinishedLine,
-    string PrimaryLabel, bool Included, string PremiumLine, string? Price, string? ListPrice, bool InLibrary, string Speed,
-    ImmutableArray<AudiobookChapterVm> Chapters, bool NamesMissing, string ContentsSub, string LineHead, string LineSub,
-    string? SampleId, string SampleLength, ImmutableArray<string> About, ImmutableArray<PodcastFact> Facts, ImmutableArray<PodcastCardVm> Similar,
-    string SimilarTitle)
+    string Kind, ImmutableArray<string> Genres, bool Included, string IncludedTag,
+    ImmutableArray<AudiobookPersonVm> Authors, ImmutableArray<AudiobookPersonVm> Narrators, string ByLabel, string NarratedByLabel,
+    string Rating, string RatingCount, ImmutableArray<string> Meta,
+    AudiobookState State, string PrimaryLabel, bool PrimaryAccent, string UpTitle, string UpName, string UpSub, string BarTitle,
+    string? SampleId, string SampleButton, string SampleTitle, string SampleSub,
+    bool InLibrary, string LibraryLabel,
+    string PremiumLine, string CheckHoursLabel, string TopUpLabel, string Price, string ListPrice, string BuyLabel,
+    ImmutableArray<AudiobookChapterVm> Chapters, bool NamesMissing, string ContentsTitle, string ContentsSub, string StartsAtLabel,
+    string LineTitle, string LineSub, string LineRight,
+    string AboutTitle, ImmutableArray<string> About, ImmutableArray<PodcastFact> Facts,
+    string RatingsLine, string RateLabel, string FinishedTitle, string FinishedSub,
+    ImmutableArray<PodcastCardVm> Similar, string SimilarTitle, string SeeAllLabel)
 {
-    public static AudiobookView Empty { get; } = new(PodcastLoad.Pending, "", "", "", null, 0u, [], [], [], "", [], 0, "", "", "", "", "",
-        AudiobookState.NotStarted, 0f, "", "", "", "", "", true, "", null, null, false, "", [], false, "", "", "", null, "", [], [], [], "");
+    public static AudiobookView Empty { get; } = new(PodcastLoad.Pending, "", "", "", null, 0u, "", [], true, "", [], [], "", "", "", "", [],
+        AudiobookState.NotStarted, "", true, "", "", "", "", null, "", "", "", false, "", "", "", "", "", "", "",
+        [], false, "", "", "", "", "", "", "", [], [], "", "", "", "", [], "", "");
 }
 
 /// <summary>The props of <see cref="ViewKeys.AudiobookPage"/>.</summary>
@@ -202,23 +221,34 @@ public sealed record AudiobookPageProps
 {
     public required string RouteKey { get; init; }
     public required IReadSignal<AudiobookView> View { get; init; }
-    /// <summary>The book's position in ms from its start (the line's thumb, the current chapter's bar, the percentage).</summary>
-    public required IReadSignal<int> BookPositionMs { get; init; }
+    /// <summary>Where the listener is, live (the hero's bar and words, the line's thumb, the current row's time left).</summary>
+    public required IReadSignal<AudiobookPlace> Place { get; init; }
+    /// <summary>The book is on the deck and playing (the primary reads Pause).</summary>
     public required IReadSignal<bool> Playing { get; init; }
     /// <summary>Start, Continue or Listen again; pauses while the book plays.</summary>
     public required Action Play { get; init; }
     public required Action PlaySample { get; init; }
+    /// <summary>Play chapter i (a contents row, a segment of the line) from where it stopped, or from its start when finished.</summary>
     public required Action<int> PlayChapter { get; init; }
     public required Action ToggleLibrary { get; init; }
-    public required ImmutableArray<float> Speeds { get; init; }
-    public required IReadSignal<float> Speed { get; init; }
-    public required Action<float> SetSpeed { get; init; }
-    public required Action SleepTimer { get; init; }
-    /// <summary>Open a link in the browser (the hours page, the top-up, the purchase).</summary>
+    /// <summary>The speed button's word ("1×", "1.2×"), live.</summary>
+    public required IReadSignal<string> SpeedLabel { get; init; }
+    /// <summary>The speed menu's items (0.8×, 1×, 1.2×, 1.5×, 2×; the current one checked), built when it opens.</summary>
+    public required Func<ImmutableArray<PodcastMenuItem>> SpeedMenu { get; init; }
+    /// <summary>The sleep timer's word ("Sleep timer", "Sleep · 14 min", "Sleep · end of chapter"), live.</summary>
+    public required IReadSignal<string> SleepLabel { get; init; }
+    public required IReadSignal<bool> SleepOn { get; init; }
+    /// <summary>The sleep timer's items (15, 30, 45, 60 min, end of chapter, off), built when it opens.</summary>
+    public required Func<ImmutableArray<PodcastMenuItem>> SleepMenu { get; init; }
+    /// <summary>Open the hours page / the top-up / the purchase in the browser.</summary>
     public required Action CheckHours { get; init; }
     public required Action TopUp { get; init; }
     public required Action? Buy { get; init; }
+    public required Action Download { get; init; }
+    /// <summary>Open a uri (an author, a similar book).</summary>
     public required Action<string> OpenUri { get; init; }
     public required Func<ContextMenuModel?> Menu { get; init; }
     public required Action? Share { get; init; }
+    /// <summary>Rate the book (1..5 stars), null when the account cannot rate it.</summary>
+    public required Action<int>? Rate { get; init; }
 }

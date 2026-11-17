@@ -408,6 +408,7 @@ public static partial class Entities
                 }
             }
             StageTrailer(s, now0);
+            StageAudiobooks(s, now0);                                   // Entities.Fake.Audiobook.cs: ab0-ab7
         }
 
         /// <summary>Resident episodes: <c>8 + s % 5</c> (FakeData.cs:408); fourteen on the serial; none on the empty show.</summary>
@@ -701,6 +702,7 @@ public static partial class Entities
                     total > n ? EdgeState.Partial : EdgeState.Complete, total);
             }
             LandListenLater();
+            LandAudiobooks();                                           // Entities.Fake.Audiobook.cs
         }
 
         /// <summary>The Podcasts library's Your Episodes: the listen-later playlist (`User.SavedEpisodesReader.FakeSavedUri`) holds a few episodes across the seeded shows, so the demo's feed has
