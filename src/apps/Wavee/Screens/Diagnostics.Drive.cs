@@ -7,6 +7,10 @@
 // (FluentAppHarness.QueueInput: the queue the WndProc feeds, so hit testing, hover, rest-to-open timers and previews run as
 // for a mouse). The OS cursor never moves (no SendInput): the driver's pointer is drawn by the app (DriveCursor, below).
 //
+// `resize w= h= ms= loop=true` drags the window's edge through its own move/size loop (FluentApp.ResizeWindowThroughSizeLoop: WM_ENTERSIZEMOVE,
+// eased SetWindowPos steps with the loop's messages dispatched, WM_EXITSIZEMOVE), as a user's drag: the host defers the resize and the tier
+// commit to the loop's end. The cursor never moves (no SendInput, no SetCursorPos). In the inspector `loop=true` is its own modal-loop resize.
+//
 // TIME. The inspector runs on a 16 ms frame clock; here a `steps`/`frames` count keeps that duration (N x 16.67 ms) and the
 // pointer is placed on every frame the display presents in between, so a 120 Hz panel gets 120 moves a second. A step starts
 // on the frame after the previous one ended. Settles are explicit: live verbs do not settle unless `settle=true` (a looping
@@ -172,6 +176,8 @@ public static partial class Diagnostics
             public int Nth;
             public double Ms;
             public bool Ease;
+            /// <summary>`resize loop=true`: through the window's own move/size loop (FluentApp.ResizeWindowThroughSizeLoop), as a user's edge drag.</summary>
+            public bool Loop;
             public int Button, Vk;
             public KeyModifiers Mods;
             public float Dx, Dy, W, H, Top;
@@ -182,7 +188,7 @@ public static partial class Diagnostics
             public long Start;
             public Point2 From, To;
             public float W0, H0;
-            public bool Begun, Hidden, Prefix, Seeking;
+            public bool Begun, Hidden, Prefix, Seeking, LoopStarted;
             public ScrollHandle? Handle;
             public long StillSince;
             public RectF LastRect;
@@ -260,7 +266,7 @@ public static partial class Diagnostics
                         ops.Add(new Op { Kind = OpKind.Wheel, Line = l, Dx = a.Float("dx", 0f), Dy = a.Float("dy", 3f) });
                         break;
                     case "resize":
-                        ops.Add(new Op { Kind = OpKind.Resize, Line = l, W = a.Float("w", 0f), H = a.Float("h", 0f), Ms = Math.Max(0, a.Int("ms", 0)), Ease = true });
+                        ops.Add(new Op { Kind = OpKind.Resize, Line = l, W = a.Float("w", 0f), H = a.Float("h", 0f), Ms = Math.Max(0, a.Int("ms", 0)), Ease = true, Loop = a.Bool("loop", false) });
                         break;
                     case "frames":
                         ops.Add(new Op { Kind = OpKind.Rest, Line = l, Ms = Math.Clamp(a.Int("n", 1), 0, 100_000) * InspectorFrameMs });
@@ -371,6 +377,13 @@ public static partial class Diagnostics
             {
                 case OpKind.Glide:
                 {
+                    // loop=true: the whole drag runs inside the window's own size loop, which holds the frame loop for its length (as a
+                    // user's drag does) and lands the size at its end; the op ends on the first frame after it.
+                    if (op.Loop)
+                    {
+                        if (!op.LoopStarted) { op.LoopStarted = true; FluentApp.ResizeWindowThroughSizeLoop(op.W, op.H, (int)op.Ms); return false; }
+                        return true;
+                    }
                     double f = op.Ms <= 0 ? 1 : Math.Clamp(t / op.Ms, 0, 1);
                     if (op.Ease) f = f < 0.5 ? 4 * f * f * f : 1 - Math.Pow(-2 * f + 2, 3) / 2;   // ease in-out (cubic): a hand's start and stop
                     var p = new Point2(op.From.X + (op.To.X - op.From.X) * (float)f, op.From.Y + (op.To.Y - op.From.Y) * (float)f);
