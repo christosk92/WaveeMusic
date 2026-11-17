@@ -129,10 +129,12 @@ internal static partial class ZuneHomeZones
         float first = band.MinCol * band.MaxCols + gap * (band.MaxCols - 1);
         Element grid = GridFill.Of("zune-rhythm:" + zone.Key, w => band.Columns(w, gap), (c, width) =>
         {
-            int n = RhythmCards.Shown(c, band.Rows, cards.Count);
-            var cells = new Element[n];
-            for (int i = 0; i < n; i++) cells[i] = cell(cards[i]);
-            return GridFill.Build(cells, GridFill.Columns(n, c), width, gap, gap, rowH);
+            // Every card the tier's band can show is mounted, the ones this width does not fit hidden: a width that fits a column fewer (the frame a
+            // window steps across the tier edge, laid out at the old tier) hides the last card instead of dropping its node.
+            int n = RhythmCards.Shown(c, band.Rows, cards.Count), most = Math.Max(n, RhythmCards.Shown(band.MaxCols, band.Rows, cards.Count));
+            var cells = new Element[most];
+            for (int i = 0; i < most; i++) cells[i] = cell(cards[i]);
+            return GridFill.Build(cells, GridFill.Columns(n, c), width, gap, gap, rowH, shown: n);
         }, first);
         return K.Section(Heading(zone, lay), grid);
     }
