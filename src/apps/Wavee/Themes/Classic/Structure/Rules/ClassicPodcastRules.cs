@@ -57,7 +57,7 @@ internal static class ClassicPodcastRules
     // ── the episode row (concept `.t-classic .row`) ──
     public const float RowPadTop = 10f, RowPadEnd = 8f, RowPadBottom = 10f, RowPadStart = 12f, RowPadCompact = 8f, RowColGap = 12f;
     public const float PlayButton = 36f, PlayButtonCompact = 40f, RowAction = 32f, RowActionCompact = 40f;
-    public const float RingTrackAlpha = 0.16f, NewDot = 6f, MetaGap = 6f, MetaGlyph = 12f;
+    public const float RingTrackAlpha = 0.16f, MetaGap = 6f;
     public const float ExpandTop = 10f, ExpandGap = 10f, ExpandMs = 167f;
 
     // ── sections, cards ──
