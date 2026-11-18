@@ -84,14 +84,6 @@ internal static class WinUiShowRules
     /// <summary>The details table (W-Show-Huge "Show details"): a row 32 tall, the card's padding 12 across.</summary>
     public const float DetailRowHeight = 32f, DetailPadX = 12f;
 
-    // ── the rail's rows ──
-
-    /// <summary>The ledger line: the Huge bar's run (W-Show-Huge) and its gap to the counts.</summary>
-    public const float LedgerBarWidth = 140f, LedgerGapX = 10f;
-
-    /// <summary>The facts line under the title (W-Show: the publisher · the rating · the meta): the gap around a separator dot.</summary>
-    public const float FactsGap = 6f;
-
     /// <summary>The show header's Compact form (W-Show-Compact): the 128 cover beside the words (not stacked, as an album's is), 16 apart, the title 28/36;
     /// the action row under them, the primary filling it.</summary>
     public const float CompactCover = 128f, CompactCoverGap = 16f, CompactTitle = 28f, CompactTitleLine = 36f, CompactActionsTop = 16f;
@@ -101,7 +93,4 @@ internal static class WinUiShowRules
 
     /// <summary>The library show pane's loading bars: the eyebrow, a line, the title, the meta and the primary's widths.</summary>
     public const float PaneSeedEyebrow = 64f, PaneSeedLine = 16f, PaneSeedTitle = 220f, PaneSeedMeta = 160f, PaneSeedPrimary = 160f;
-
-    /// <summary>The rating button's gap, star and padding.</summary>
-    public const float RatingGap = 6f, RatingStar = 12f, RatingPadX = 4f, RatingPadY = 2f;
 }

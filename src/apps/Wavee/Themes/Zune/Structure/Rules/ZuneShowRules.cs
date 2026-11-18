@@ -118,21 +118,7 @@ public static class ZuneShowRules
     /// <summary>The seed's U+2007 runs that make the derived shimmer draw a title bar and a meta bar.</summary>
     public const int MiniSeedTitleRun = 18, MiniSeedMetaRun = 10;
 
-    // ── the rail's small words ──
-
-    /// <summary>The ledger: the gap between its bar and its line, the bar (3), the line's size and height, and how long its parts take to ease.</summary>
-    public const float LedgerGap = 6f, LedgerBar = 3f, LedgerSize = 12f, LedgerLine = 16f, LedgerSlideMs = 250f;
-
-    /// <summary>The ledger's parts ease their widths when a mark-played moves them (a flex share changing).</summary>
-    public static readonly LayoutTransition LedgerSlide = new(
-        TransitionChannels.Position | TransitionChannels.Size, TransitionDynamics.Tween(LedgerSlideMs, Easing.SmoothOut),
-        Size: SizeMode.Reflow, Axes: SizeAxes.Width);
-
-    /// <summary>The rating line: the gap between its parts, the star, the line's floor.</summary>
-    public const float RatingGap = 6f, RatingStar = 13f, RatingMinHeight = 24f;
-
-    /// <summary>The badge words' gap and the boxed E's edge.</summary>
-    public const float BadgeGap = 8f, ExplicitBox = 16f;
+    // ── the topic words ──
 
     /// <summary>The topic words: the gap between two and a topic's hit height.</summary>
     public const float TopicGap = 14f, TopicTarget = 32f;

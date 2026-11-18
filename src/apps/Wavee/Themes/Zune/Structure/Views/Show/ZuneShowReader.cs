@@ -34,7 +34,7 @@ namespace Wavee.Themes.Zune;
 internal static partial class ZuneShow
 {
     /// <summary>The style Zune registers under <c>StyleKeys.ShowReader</c>. Stateless: every host and a test share it.</summary>
-    public static readonly ShowReaderStyle Style = new(Primary, Ledger, Rating, Badges, Topics, Publisher, Satellites, Toolbar,
+    public static readonly ShowReaderStyle Style = new(Primary, Topics, Toolbar,
         HeadShell, Head, EpisodesHeader, Group, StickyMonth, YearStrip, YearReserve, Foot, Seed)
     {
         NarrowToolbarGlyph = NarrowControlEdge,

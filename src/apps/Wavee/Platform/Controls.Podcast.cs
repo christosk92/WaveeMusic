@@ -1,6 +1,6 @@
 // ── Platform/Controls.Podcast.cs ───────────────────────────────────────────────────────────────────────────────────
-// the podcast reader's small controls: the badge CHIP, the played LEDGER bar, the STAR row (the rate flyout's), the
-// start-here / next-in-the-story DOOR (+ its `DoorData`), and the reader's FIND box
+// the podcast reader's small controls: the badge CHIP, the STAR row, the start-here / next-in-the-story DOOR (+ its
+// `DoorData`), and the reader's FIND box
 //
 // Role: UI
 // Owner: O
@@ -21,7 +21,7 @@
 //
 // No caps transform. The prototype sets the door label in capitals via CSS; this file does NOT upper-case a localized
 // string (R.Type.Eyebrow's rule — a caps transform mangles Turkish dotted i and German ß): the label keeps its own
-// casing at 11/700 with +90 tracking. The ledger and the stars never format a number: their callers pass values.
+// casing at 11/700 with +90 tracking. The stars never format a number: their callers pass values.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -83,89 +83,7 @@ public static partial class Controls
         };
     }
 
-    // ══ 2. THE LEDGER BAR ════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The played ledger (W1): three flex parts — played (the tone), in progress (the tone at 45 %), to go (the
-    /// subtle ground). <paramref name="played"/> and <paramref name="progress"/> are FRACTIONS of the show (0..1, the
-    /// rest is "to go"); both are live (<see cref="Prop{T}"/>), and a change re-renders only this bar and slides each
-    /// part from its old rect over 250 ms (plan §7 — a mark-played animates, a rail drag does not).</summary>
-    public static Element LedgerBar(Prop<float> played, Prop<float> progress, Func<ColorF> tone)
-        => Embed.Comp(new LedgerProps(played, progress, tone), static () => new LedgerHost());
-
-    sealed record LedgerProps(Prop<float> Played, Prop<float> Progress, Func<ColorF> Tone);
-
-    /// <summary>The ledger's host. Its render READS the two fractions (subscribing to whatever they bind), so a value
-    /// change re-renders this 3-box bar and nothing else; the layout effect keyed on the weights then FLIPs each part from
-    /// the geometry the OLD weights gave at the bar's current width. Handlers are built once in the constructor.</summary>
-    sealed class LedgerHost : Component
-    {
-        static readonly MotionTokenDef s_flex = MotionTokenDef.Eased(Design.Motion.Standard, Easing.FluentStandard, ReducedMotionPolicy.SnapEnd);
-
-        readonly NodeHandle[] _parts = new NodeHandle[3];
-        readonly Action<NodeHandle>[] _realized;
-        readonly Action<RectF> _measured;
-        readonly Action _slide;
-        float _barW, _a, _b, _c;
-        float _prevA = -1f, _prevB, _prevC;
-        Func<ColorF>? _tone;
-        Prop<ColorF> _playedInk, _progressInk;
-
-        public LedgerHost()
-        {
-            _realized = [h => _parts[0] = h, h => _parts[1] = h, h => _parts[2] = h];
-            _measured = r => _barW = r.W;
-            _slide = Slide;
-        }
-
-        public override Element Render()
-        {
-            var p = UseProps<LedgerProps>();
-            (_a, _b, _c) = PodcastLedgerRules.PartsOf(p.Played.Current(), p.Progress.Current());
-            if (!ReferenceEquals(_tone, p.Tone))
-            {
-                Func<ColorF> tone = p.Tone;
-                _tone = tone;
-                _playedInk = Prop.Of(tone);
-                _progressInk = Prop.Of(() => ToneAt(tone(), PodcastLedgerRules.ProgressTone));
-            }
-            UseLayoutEffect(_slide, DepKey.From(_a, _b));
-            return new BoxEl
-            {
-                Direction = 0, Height = PodcastLedgerRules.Height, Gap = PodcastLedgerRules.Gap, MinWidth = 0f, Shrink = 0f,
-                OnBoundsChanged = _measured,
-                Children = [Part(0, _a, _playedInk), Part(1, _b, _progressInk), Part(2, _c, Tok.FillSubtleTertiary)],
-            };
-        }
-
-        BoxEl Part(int i, float weight, Prop<ColorF> fill) => new()
-        {
-            Grow = weight, Basis = 0f, MinWidth = PodcastLedgerRules.MinPart, Corners = CornerRadius4.All(PodcastLedgerRules.Height / 2f),
-            Fill = fill, TransformOriginX = 0f, OnRealized = _realized[i],
-        };
-
-        void Slide()
-        {
-            float a = _a, b = _b, c = _c, pa = _prevA, pb = _prevB, pc = _prevC;
-            _prevA = a; _prevB = b; _prevC = c;
-            if (pa < 0f || _barW <= 0f || Context.Anim is not { } anim) return;   // the mount run: nothing to slide from
-            Span<float> ox = stackalloc float[3];
-            Span<float> ow = stackalloc float[3];
-            Span<float> nx = stackalloc float[3];
-            Span<float> nw = stackalloc float[3];
-            PodcastLedgerRules.Geometry(_barW, pa, pb, pc, ox, ow);
-            PodcastLedgerRules.Geometry(_barW, a, b, c, nx, nw);
-            for (int i = 0; i < 3; i++)
-            {
-                if (_parts[i].IsNull) continue;
-                var s = Words.SlideFrom(ox[i], ow[i], nx[i], nw[i]);
-                if (!s.Animate) continue;
-                anim.SeedValue(_parts[i], AnimChannel.TranslateX, 0f, in s_flex, from: s.Dx);
-                anim.SeedValue(_parts[i], AnimChannel.ScaleX, 1f, in s_flex, from: s.Scale);
-            }
-        }
-    }
-
-    // ══ 3. THE STAR ROW ══════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 2. THE STAR ROW ══════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Stars in a row, and the padding round each star's hit/hover plate.</summary>
     public const int StarCount = 5;
@@ -207,7 +125,7 @@ public static partial class Controls
         };
     }
 
-    // ══ 4. THE DOOR ══════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 3. THE DOOR ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The door's metrics: min 132 high (a caller's grid keeps it ≥ 230 wide), 14 padding, the 64-px ghost
     /// numeral at 9 % ink 10 from the right and 6 above the top, the 32 disc with a 14 glyph, the lead gradient's 26 %.</summary>
@@ -355,7 +273,7 @@ public static partial class Controls
     }, Loc.Get(Strings.Detail.Play));
     }
 
-    // ══ 5. THE FIND BOX ══════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 4. THE FIND BOX ══════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The find box's width in the reader's sticky rail (the prototype's 120-DIP input + its chrome).</summary>
     public const float FindBoxWidth = 180f;

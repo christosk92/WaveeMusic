@@ -273,14 +273,13 @@ public static partial class Lyrics
         readonly IReadSignal<float>? _typeScale;
         float _band;   // the ctor's surface band; a rail under a style's `LyricsRailForm` takes the form's (Render)
 
-        /// <summary>The side pane's mount: neither the stage nor the podcast reader (P6 fix, <c>ILyricsHost.OnRail</c>).</summary>
-        internal bool OnRail => !Large && !OnStage && !_readerEpisode.IsValid;
+        /// <summary>The side pane's mount: not the stage (P6 fix, <c>ILyricsHost.OnRail</c>).</summary>
+        internal bool OnRail => !Large && !OnStage;
 
         /// <summary>The surface's MODEL (C5): the document slot, the clock, the active / voice lines, the follow state machine,
         /// the interlude bookkeeping, the second line, the AI state and the verbs. This view draws and drives nodes from it.</summary>
         internal readonly LyricsModel M;
 
-        readonly EntityId _readerEpisode;
         EntityId _subject { get => M.Subject; set => M.Subject = value; }
         uint _subjectEpoch { get => M.SubjectEpoch; set => M.SubjectEpoch = value; }
         internal bool IsPodcast => M.IsPodcast;
@@ -288,26 +287,23 @@ public static partial class Lyrics
 
         internal bool ObservedPlaybackOwner => M.ObservedPlaybackOwner;
 
-        // `accent` and `onStage` are APPENDED after `readerEpisode`: `Lyrics.Transcript.cs` calls this POSITIONALLY with four
-        // arguments (`new ViewCore(false, false, static () => true, episode)`).
-        internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default,
+        internal ViewCore(bool large, bool onMedia, Func<bool> visible,
             IReadSignal<ColorF>? accent = null, bool onStage = false, IReadSignal<float>? typeScale = null, float band = -1f, float gutter = -1f,
             bool darkArm = false, bool onPicture = false, bool lightArm = false)
         {
             OnPicture = onPicture;
             _bandOverride = band;
             _gutter = gutter;
-            _readerEpisode = readerEpisode;
             Large = large;
             _typeScale = typeScale;
             InkMode = new Ink(onMedia, darkArm, lightArm);
             Accent = accent;
             OnStage = onStage;
             _visible = visible;
-            _band = readerEpisode.IsValid ? 0.05f : Surface.FocalBand(large);
+            _band = Surface.FocalBand(large);
             _wakeTick = WakeTick;
             _reseedOwnership = ReseedForOwnership;
-            M = new LyricsModel(new LyricsSurface(large, onMedia, onStage, typeScale?.Peek() ?? 1f), readerEpisode) { Sink = this };
+            M = new LyricsModel(new LyricsSurface(large, onMedia, onStage, typeScale?.Peek() ?? 1f)) { Sink = this };
             _activeLine = M.ActiveLine;
             _voiceLine = M.VoiceLine;
             NowMs = M.NowMs;
@@ -541,12 +537,11 @@ public static partial class Lyrics
             // A HIDDEN view (its gate down: the rail's lyrics under the full-screen stage, the stage's Lyrics pane parked under the picture, the
             // audio face's column over a video) holds what it drew last and follows no track: a track change behind the cover loads, mounts and
             // scrolls nothing. The gate's rise re-renders it on the frame it shows, on the playing track at once (no swap: see `_heldHidden`).
-            // Not the podcast reader: its subject is its own episode.
-            if (!open && _heldView is { } heldView && !_readerEpisode.IsValid) { _heldHidden = true; return heldView; }
+            if (!open && _heldView is { } heldView) { _heldHidden = true; return heldView; }
             bool caughtUp = _heldHidden;
             _heldHidden = false;
             var current = Playback.Current.Value;
-            _subject = _readerEpisode.IsValid ? _readerEpisode : Playback.CurrentId.Value;
+            _subject = Playback.CurrentId.Value;
             bool anything = _subject.IsValid;
             string trackId = IsPodcast ? _subject.Text
                 : current.Kind == EntityKind.Track && !current.IsNone ? Store.IdOf(new Track(current.Slot)) : "";
@@ -597,10 +592,9 @@ public static partial class Lyrics
             // The developer pill never rides a mount whose lines are a picture (the mini player's): it is the main window's affordance.
             Element? debug = _gutter >= 0f ? null : Embed.Comp(() => new DebugLayer(this)) with { Key = "lyrics-debug:" + trackId };
 
-            // The layers, the overlays and the AI disclosure are the structure's (`Lyrics.View`). The podcast reader never carries the
-            // on-device AI disclosure (episodes are never timed): mount config, so the root's shape never flips for a mounted instance.
+            // The layers, the overlays and the AI disclosure are the structure's (`Lyrics.View`).
             // The disclosure sits BELOW the reading layers — never a virtual-list item, the follow geometry assumes ItemCount == Lines.Count.
-            Element? footer = _readerEpisode.IsValid ? null : AiLyrics.Footer(InkMode, Surface.Timed(Large).SidePad);
+            Element? footer = AiLyrics.Footer(InkMode, Surface.Timed(Large).SidePad);
             return MountView(body: body, ticker: ticker, debug: debug, footer: footer);
         }
 

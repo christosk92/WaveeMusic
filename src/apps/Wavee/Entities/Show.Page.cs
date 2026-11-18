@@ -1,10 +1,11 @@
 // ── Entities/Show.Page.cs ──────────────────────────────────────────────────────────────────────────────────────────
-// the show page: the frame spec (identity + the six podcast rail slots), the page's ONE model (filter · sort · find,
-// seeded from and persisted to `ShowViewPrefs`; one memoized snapshot of everything the rules derive), the READER — a
-// bound list with a sticky word rail as its persistent prefix — and `ShowReaderRules`, the page's pure decisions.
+// the show READER the library's podcast pane mounts (`Show.Pane`): its ONE model (filter · sort · find, seeded from and
+// persisted to `ShowViewPrefs`; one memoized snapshot of everything the rules derive), the pane's facts and primary slot,
+// the reader itself — a bound list with a sticky word rail as its persistent prefix — and `ShowReaderRules`, its pure
+// decisions. The show ROUTE is the podcast pages v2 (`Podcasts/PodcastPages.cs`); `Show.Page` forwards to it.
 //
-// T9c (themes plan 6.1): the PICTURES of the page — the rail's slots, the satellites, the toolbar, the visit head, the headers, the foot, the
-// seed — are the structure's `ShowReaderStyle` (`StyleKeys.ShowReader`; Classic: `Themes\Classic\Structure\Views\Show\`). The hosts here keep
+// T9c (themes plan 6.1): the PICTURES — the primary, the toolbar, the visit head, the headers, the foot, the seed — are the
+// structure's `ShowReaderStyle` (`StyleKeys.ShowReader`; Classic: `Themes\Classic\Structure\Views\Show\`). The hosts here keep
 // the model, the snapshot, the stamps, the hooks and the verbs and call the style's templates while they render.
 //
 // Role: UI (with a CORE section: ShowReaderRules)
@@ -16,27 +17,24 @@
 //
 // ── THE TREE ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 //
-//   Show.Page → PageHost                                       keyed "show-page:" + routeKey; owns the ReaderModel
-//   └─ Detail.Frame(Config.Show, Identity, Slots by presence)
-//      ├─ rail: Badges (BadgesSlot) · Attribution (the publisher) · Rating (RatingSlot → the rate flyout) · meta
-//      │        (N episodes · cadence · since) · Ledger (LedgerSlot) · Primary (PrimarySlot: Follow + ghost │ Resume ·
-//      │        N min left │ episode 1 │ latest) · Satellites (♥ · trailer · 🔔 disabled · share · ⋯) · blurb (not New)
-//      └─ right: Slots.Episodes → ReaderHost                      DEMANDS the rows' facts (ShowReaderRules.RowDemand) itself
-//          └─ SkelRegion(list pending) → ItemsView.CreateBound over the snapshot, PersistentPrefixCount = 1
-//              ├─ [0] RAW sticky element (.Sticky(0)) → RailBody: filter words + counts · FindBox · sort words
-//              ├─ [1] VisitHead   New: doors + about │ Returning: hero + up next + new since │ CaughtUp │ shimmer
-//              ├─ [2] EpisodesHeader  "episodes N" (+ the empty arm)
-//              ├─ [3..] month Group │ Episode.ReaderRow                       ShowReaderShape.Build + ShowReaderRules.Layout
-//              └─ Foot  load more │ the dock reserve
+//   Show.Pane                                                  owns the ReaderModel and its memo pair (Show.Pane.cs)
+//   ├─ Library.ShowPane view: header · Primary (PrimarySlot: Follow + ghost │ Resume · N min left │ episode 1 │ latest)
+//   └─ Reader → ReaderHost                                      DEMANDS the rows' facts (ShowReaderRules.RowDemand) itself
+//       └─ SkelRegion(list pending) → ItemsView.CreateBound over the snapshot, PersistentPrefixCount = 1
+//           ├─ [0] RAW sticky element (.Sticky(0)) → RailBody: filter words + counts · FindBox · sort words
+//           ├─ [1] VisitHead   New: doors + about │ Returning: hero + up next + new since │ CaughtUp │ shimmer
+//           ├─ [2] EpisodesHeader  "episodes N" (+ the empty arm)
+//           ├─ [3..] month Group │ Episode.ReaderRow                       ShowReaderShape.Build + ShowReaderRules.Layout
+//           └─ Foot  load more │ "More like this" │ the aside (a style that draws one) │ the dock reserve
 //
 // ── ONE MODEL, ONE SNAPSHOT ──────────────────────────────────────────────────────────────────────────────────────────
 //
-// §5.6 put the snapshot on the reader host; it lives on the PAGE instead, because the rail reads the same derived facts
-// (the ledger, the visit that picks the primary, the tone) and two memos over the same inputs could disagree for a
-// frame. `ReaderModel.Snap` (the page's `UseComputed`) is the ONE coherent read — slots, pcts (D-5: completed = 1),
+// §5.6 put the snapshot on the reader host; it lives on the PANE instead, because the pane's header and primary read the
+// same derived facts (the visit that picks the primary, the tone) and two memos over the same inputs could disagree for a
+// frame. `ReaderModel.Snap` (the pane's `UseComputed`) is the ONE coherent read — slots, pcts (D-5: completed = 1),
 // the view (status ∩ find, newest/oldest), listen-next, the visit, the ledger, the cadence, the item list — rebuilt when
-// its inputs publish, never per frame; `Facts` is the page's small equality-gated projection of it (the frame spec
-// re-renders only when a fact the rail shows moved), and every other consumer gates on a stamp of its own.
+// its inputs publish, never per frame; `Facts` is the pane's small equality-gated projection of it (the header re-renders
+// only when a fact it shows moved), and every other consumer gates on a stamp of its own.
 //
 // ── THE STICKY RAIL (the Artist.Reader canon) ────────────────────────────────────────────────────────────────────────
 //
@@ -60,311 +58,16 @@ namespace Wavee;
 
 public readonly partial struct Show
 {
-    /// <summary><see cref="Shell.RouteKind.Show"/>: the shared frame with the episode reader in the right column. The
-    /// page is keyed by its route, so the subject is a constructor fact of its host (the persisted-view seed needs it
-    /// before the first render).</summary>
+    /// <summary><see cref="Shell.RouteKind.Show"/>: the show page (<c>Podcasts/PodcastPages.Show.cs</c>).</summary>
     public static Element Page(in Shell.Route route) => PodcastPages.ShowRoute(in route);
 
-    /// <summary>The older reader page, kept for the structures that do not draw the podcast pages (<c>ShellCapabilities.PodcastPages</c> false).</summary>
-    internal static Element LegacyPage(in Shell.Route route)
-    {
-        string routeKey = Shell.NameOf(route);
-        var subject = route.Subject;
-        return Embed.Comp(new PageProps(routeKey), () => new PageHost(subject)) with { Key = "show-page:" + routeKey };
-    }
+    // ══ 1. THE PANE'S FACTS ═══════════════════════════════════════════════════════════════════════════════════════════
 
-    sealed record PageProps(string RouteKey);
-
-    // ══ 1. THE PAGE ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>What the rail shows, projected from the snapshot — the page re-renders (and re-pushes the frame spec)
-    /// only when one of these moved.</summary>
+    /// <summary>What the library pane's header and primary show, projected from the snapshot (<c>Show.Pane</c>'s memo): the pane re-renders only
+    /// when one of these moved.</summary>
     readonly record struct PageFacts(
         ShowReaderRules.Head Head, ShowReaderRules.Primary Primary, ShowReaderRules.Primary Ghost,
-        int ResumeLeft, int FirstNumber, bool Publisher, ShowFlags Flags,
-        int RatingX100, int RatingCount, int MyRating, bool HasTrailer, uint ToneArgb, string Meta, bool Topics, bool Empty = false)
-    {
-        public bool Badges => (Flags & (ShowFlags.Exclusive | ShowFlags.Explicit | ShowFlags.Video)) != 0;
-        public bool Rating => RatingX100 > 0;
-    }
-
-    sealed class PageHost : Component
-    {
-        readonly ReaderModel _m;
-        Scope? _scope;
-        Show _show;
-        string _routeKey = "";
-        Element[]? _satellites;
-        ShowReaderStyle? _style;
-        readonly Detail.FrameActions _actions;
-        readonly Detail.FrameSlots?[] _slotSets = new Detail.FrameSlots?[32];
-        readonly Func<bool, Element> _episodes;
-        readonly Func<Func<ColorF>, Element> _primary;
-        readonly Func<Element[]> _satellitesOf;
-        readonly Func<float, Element> _attribution, _rating, _ledger, _topics;
-        readonly Func<Element> _aside;
-        readonly Func<Element> _badges;
-        readonly Func<PageFacts> _facts;
-        readonly Func<ContextMenuModel?> _more;
-        readonly Action _demandShow, _demandTrailer, _persist, _playTrailer, _share;
-        readonly Prop<bool> _heartShown, _trailerShown;
-
-        // ── row 2 (P5 Z6b2, contract 1.26): a band-style structure (Zune) draws the page's views and its follow word in its band's row 2, so the
-        // page host publishes them through the `PageChromeSink` the content host provides around the page: the view "episodes" (the page itself)
-        // and the action follow / following (the word follows the saved set). Gated on what they are built from. Classic draws its own rail and
-        // reads none of it. ──
-        PageChromeSink _sink = PageChromeSink.None;
-        readonly Action _publishChrome;
-        long _chromeSig = long.MinValue;
-        static readonly Action s_noView = static () => { };
-
-        public PageHost(EntityUri subject)
-        {
-            _publishChrome = PublishChrome;
-            _m = new ReaderModel(subject);
-            Controls.Library ??= User.LibrarySeam;               // the Follow primary and the ♥ satellite write through it
-            _facts = ComputeFacts;
-            _demandShow = DemandShow;
-            _demandTrailer = DemandTrailer;
-            _persist = PersistView;
-            _playTrailer = PlayTrailer;
-            _share = () => Episode.CopyLink(_show.IsValid ? Actions.WebLinkOf(_show.Uri) : "");
-            _more = MoreMenu;
-            _actions = new Detail.FrameActions { CoverDrag = CoverPayload };
-            // THE VERTICAL SEAM. `FrameSlots.Episodes` is `Func<bool, Element>` and the bool is Detail.UI.cs's
-            // `vertical` arm (mode 3 / the Hero page layout): the show page deliberately ignores it today and hands the
-            // SAME reader to both arms — Detail.UI.cs's vertical branch already wraps it in `ShowHeaderCore`. A future
-            // Hero/vertical show layout plugs in HERE (`v => v ? VerticalReader(...) : Reader(...)`) and nowhere else;
-            // nothing below hard-codes a two-column shape, and the rail/grip/splitter are Detail.UI.cs's, not this
-            // page's, so the two-column arm needs no change to make room for it.
-            // The arm reaches the reader as its OWN EDGE (contract 1.73): the vertical arm's reader runs to the window edge and pads its trailing
-            // gutter itself; the two-column arm's ends on the column edge, past which a margin-standing year strip stands.
-            _episodes = v => Embed.Comp(new ReaderProps(_m, _routeKey, OwnsEdge: v), static () => new ReaderHost());
-            _primary = accent => Embed.Comp(new SlotProps(_m, accent), static () => new PrimarySlot()) with { Key = "show:primary" };
-            _satellitesOf = () => _satellites ??= BuildSatellites();
-            _attribution = PublisherOf;
-            _badges = () => Embed.Comp(new SlotProps(_m, null), static () => new BadgesSlot());
-            _rating = w => Embed.Comp(new SlotProps(_m, null, w), static () => new RatingSlot());
-            _ledger = w => Embed.Comp(new SlotProps(_m, null, w), static () => new LedgerSlot());
-            _topics = w => Embed.Comp(new SlotProps(_m, null, w), static () => new TopicsSlot());
-            _aside = () => Embed.Comp(new SlotProps(_m, null), static () => new AsideSlot()) with { Key = "show:aside" };
-            _heartShown = Prop.Of(() => _m.Facts is { } f && f.Value.Primary != ShowReaderRules.Primary.Follow);
-            _trailerShown = Prop.Of(() => _m.Facts is { } f && f.Value.HasTrailer);
-        }
-
-        public override Element Render()
-        {
-            var p = UseProps<PageProps>();
-            uint epoch = Entities.ScopeEpoch.Value;              // FIRST: a scope switch re-points every table below
-            var scope = Entities.Current;
-            _ = scope.Shows.Changed.Value;
-            _ = scope.Edges.ShowEpisodes.Changed.Value;            // the meta line's loading bar
-            var overlay = UseContext(Overlay.Service);
-            if (!Controls.IsNullOverlay(overlay)) Track.DrawerOverlay = overlay;   // idempotent (contract §3)
-            _style ??= StyleOf(UseContext(global::FluentGpu.Theming.ViewRegistry.Context));
-
-            if (!ReferenceEquals(_scope, scope))
-            {
-                _scope = scope;
-                // The factory allocates an empty row for an unseen uri: the page binds it at once and Ensure fills it.
-                _show = _m.Subject.IsValid ? Entities.Show(_m.Subject) : default;
-            }
-            _routeKey = p.RouteKey;
-            _m.Snap = UseComputed(_m.ComputeSnap);
-            _m.Facts = UseComputed(_facts);
-            var facts = _m.Facts.Value;
-            var show = _show;
-            UseEffect(_demandShow, DepKey.From(show.Slot, (int)epoch));
-            UseActivation(onActivated: Reopen);
-            // The ROWS' facts are the reader's own demand (ReaderHost.DemandRows), not this page's: the library pane
-            // mounts the same reader without a page around it.
-            UseEffect(_demandTrailer);
-            UseEffect(_persist);
-            _sink = UseContext(PageChromeSink.Context);
-            UseEffect(_publishChrome);                          // auto-tracks the saved set: the follow word
-
-            if (!show.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
-            return Detail.Frame(new Detail.FrameSpec
-            {
-                Identity = IdentityOf(show, in facts),
-                Config = Detail.Config.Show,
-                Actions = _actions,
-                Slots = SlotsFor(MaskOf(in facts)),
-                RouteKey = p.RouteKey,
-            });
-        }
-
-        /// <summary>A slot is absent until its facts are known (§6.1, never reserved) and the frame's slot equality is
-        /// PRESENCE, so each presence combination is ONE cached <see cref="Detail.FrameSlots"/> over the same builders.</summary>
-        static int MaskOf(in PageFacts f)
-            => (f.Publisher ? 1 : 0) | (f.Badges ? 2 : 0) | (f.Rating ? 4 : 0) | (ShowReaderRules.LedgerShown(f.Head) ? 8 : 0) | (f.Topics ? 16 : 0);
-
-        Detail.FrameSlots SlotsFor(int mask) => _slotSets[mask] ??= new Detail.FrameSlots
-        {
-            Episodes = _episodes,
-            Primary = _primary,
-            Satellites = _satellitesOf,
-            Attribution = (mask & 1) != 0 ? _attribution : null,
-            Badges = (mask & 2) != 0 ? _badges : null,
-            Rating = (mask & 4) != 0 ? _rating : null,
-            Ledger = (mask & 8) != 0 ? _ledger : null,
-            Topics = (mask & 16) != 0 ? _topics : null,
-            // The show's aside (contract 1.88): only a style that draws one gets the slot, and only a frame that reads its show header's slots draws it.
-            Aside = _style?.Aside is not null ? _aside : null,
-        };
-
-        PageFacts ComputeFacts()
-        {
-            var s = _m.Read();
-            var show = s.Show;
-            bool known = show.IsValid;
-            bool followed = Controls.Library is { } lib && _m.SubjectText.Length > 0 && lib.IsSaved(_m.SubjectText);
-            bool serial = s.Order == ConsumptionOrder.Sequential;
-            bool firstKnown = s.FirstSlot > 0;
-            var resume = new Episode(s.ResumeSlot);
-            bool resumable = s.ResumeSlot > 0 && resume.IsValid;
-            var first = new Episode(s.FirstSlot);
-            int firstNumber = firstKnown && first.IsValid && first.Knows(EpisodeFields.Title) && first.Number > 0 ? first.Number : 1;
-            bool rating = known && show.Knows(ShowFields.Rating);
-            return new PageFacts(
-                Head: s.Head,
-                Primary: ShowReaderRules.PrimaryOf(s.Head, followed, serial, firstKnown, resumable),
-                Ghost: ShowReaderRules.GhostOf(serial, firstKnown),
-                ResumeLeft: resumable ? Episode.LeftMinutes(resume.ProgressMs, resume.DurationMs) : 0,
-                FirstNumber: firstNumber,
-                Publisher: known && show.Knows(ShowFields.Publisher) && !show.PublisherId.IsEmpty,
-                Flags: known ? show.Flags : ShowFlags.None,
-                RatingX100: rating ? show.RatingX100 : 0,
-                RatingCount: rating ? show.RatingCount : 0,
-                MyRating: rating ? show.MyRating : 0,
-                HasTrailer: known && show.Knows(ShowFields.Facts) && !show.TrailerId.IsEmpty,
-                ToneArgb: known && show.Knows(ShowFields.Appearance) ? show.Tone : 0u,
-                Meta: MetaOf(s.Total, s.Cadence, s.OldestYear),
-                Topics: known && show.Knows(ShowFields.Topics) && !show.TopicsId.IsEmpty,
-                Empty: s.EmptyShow);
-        }
-
-        /// <summary>Publishes row 2 (an auto-tracked effect: it reads the saved set, so a follow elsewhere re-words the action without re-rendering
-        /// the page).</summary>
-        void PublishChrome()
-        {
-            string uri = _m.SubjectText;
-            if (uri.Length == 0 || !_show.IsValid) return;
-            var lib = Controls.Library;
-            bool following = lib is not null && lib.IsSaved(uri);
-            string? name = _show.Knows(ShowFields.Title) && _show.Title.Length > 0 ? _show.Title : null;
-            long sig = HashCode.Combine(uri, following, lib is not null, name);
-            if (sig == _chromeSig) return;
-            _chromeSig = sig;
-            var views = new PageView[] { new("episodes", Loc.Get(Strings.Podcast.Episodes), true, s_noView) };
-            var actions = new List<PageAction>(1);
-            if (lib is not null)
-                actions.Add(new PageAction("follow", Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow),
-                    () => lib.ToggleSaved(uri, _show.IsValid && _show.Knows(ShowFields.Title) ? _show.Title : ""),
-                    Reserve: Loc.Get(following ? Strings.Artist.Follow : Strings.Artist.Following)));
-            // The head unread (no title: Identity.HeaderPending's own test) keeps "follow" a shimmer with the head (contract 1.82, audit FU2b).
-            _sink.Publish(new PageChromeRow(views, actions, Title: name) { ActionsPending = !_show.Knows(ShowFields.Title) });
-        }
-
-        void DemandShow()
-        {
-            var show = _show;
-            if (!show.IsValid) return;
-            Entities.Ensure(show, ShowFields.All);
-            Reopen();
-        }
-
-        void Reopen()
-        {
-            var show = _show;
-            if (!show.IsValid || !ReferenceEquals(_scope, Entities.Current)) return;
-            var state = Entities.Current.Edges.ShowEpisodes.State(show.Slot);
-            string uri = show.Uri.Text;
-            if (state == EdgeState.Unknown) { Entities.EnsureEdge(FetchEdge.ShowEpisodes, show.Slot); return; }
-            var verdict = ListFreshness.Decide(true, ListStamps.IsDirty(uri), ListStamps.RevalidatedAtMs(uri), ListStamps.NowMs(), false);
-            if (verdict != ListFreshness.Verdict.Paint)
-                Entities.RefreshEdge(FetchEdge.ShowEpisodes, show.Slot,
-                    verdict == ListFreshness.Verdict.PaintThenRevalidate ? FetchPriority.Prefetch : FetchPriority.Visible);
-        }
-
-        /// <summary>The trailer is its own episode row OUTSIDE the membership (a text uri on the show): once the show's
-        /// facts name one, its identity is part of this page's model (the door, the satellite).</summary>
-        void DemandTrailer()
-        {
-            _ = Entities.ScopeEpoch.Value;
-            var scope = Entities.Current;
-            _ = scope.Shows.Changed.Value;
-            var show = _show;
-            if (!show.IsValid || !show.Knows(ShowFields.Facts) || show.TrailerId.IsEmpty) return;
-            var trailer = new Episode(scope.Episodes.Slot(show.TrailerId));
-            if (trailer.IsValid) Entities.Ensure(trailer, EpisodeFields.Row | EpisodeFields.About);
-        }
-
-        /// <summary>D-6: a filter or sort change is written to the ONE capped blob (the find never is, §4). Auto-tracked
-        /// on the two signals; the seed itself writes nothing.</summary>
-        void PersistView()
-        {
-            int status = _m.Status.Value, order = _m.Order.Value;
-            if (status == _m.SavedStatus && order == _m.SavedOrder) return;
-            _m.SavedStatus = status;
-            _m.SavedOrder = order;
-            if (_m.PrefsId.Length == 0) return;
-            ShowViewPrefs.Save(_m.PrefsId, status, order);
-        }
-
-        /// <summary>The CTA's satellites (W1): ♥ (hidden while Follow is the primary) · trailer (when the show names one)
-        /// · the bell, DISABLED with its reason (D-10) · share · ⋯, drawn by the structure. Built once — a FIXED array per
-        /// slot set; what comes and goes binds its presence.</summary>
-        Element[] BuildSatellites()
-        {
-            if (_style is not { } style) return [];
-            string name = _show.IsValid && _show.Knows(ShowFields.Title) ? _show.Title : "";
-            return style.Satellites(new ShowSatellitesArgs
-            {
-                Uri = _m.SubjectText, Name = name, HeartShown = _heartShown, TrailerShown = _trailerShown,
-                PlayTrailer = _playTrailer, Share = _share, More = _more,
-            });
-        }
-
-        /// <summary>The rail's publisher line (the Attribution slot — the publisher left the meta line, P2-M): the text the core resolved at
-        /// the rail's measure; the structure draws it.</summary>
-        Element PublisherOf(float width)
-        {
-            if (_style is not { } style) return new BoxEl();
-            var show = _show;
-            string text = show.IsValid && show.Knows(ShowFields.Publisher) && !show.PublisherId.IsEmpty
-                ? Entities.Strings.Resolve(show.PublisherId) : "";
-            return style.Publisher(text, width);
-        }
-
-        /// <summary>The trailer plays ALONE (it is not a member of the show context).</summary>
-        void PlayTrailer()
-        {
-            var show = _show;
-            if (!show.IsValid || show.TrailerId.IsEmpty) return;
-            var trailer = new Episode(Entities.Current.Episodes.Slot(show.TrailerId));
-            if (trailer.IsValid) Episode.Invoke(trailer, () => Playback.PlayContext(trailer.Id));
-        }
-
-        /// <summary>The show's ⋯: play next · add to queue (the container verbs over the membership) · pin · share.</summary>
-        ContextMenuModel? MoreMenu()
-        {
-            var show = _show;
-            if (!show.IsValid) return null;
-            var target = ActionTarget.ForShow(show.Uri, show.Knows(ShowFields.Title) ? show.Title : "");
-            return Menus.Container(in target, show.Knows(ShowFields.Image) ? Controls.ArtUrl(show.ImageId) : null, null,
-                new ContainerExtras { OnPage = true });
-        }
-
-        object? CoverPayload()
-        {
-            var show = _show;
-            if (!show.IsValid) return null;
-            string uri = show.Uri.Text;
-            return new DragPayload(DragKind.Show, uri, uri, show.Knows(ShowFields.Title) ? show.Title : "",
-                                   new EntityRef(EntityKind.Show, show.Slot), ArtUrl: Controls.ArtUrl(show.ImageId));
-        }
-    }
+        int ResumeLeft, int FirstNumber, uint ToneArgb, string Meta, bool Empty = false);
 
     /// <summary>The show's identity snapshot. The CALLER subscribes (Shows, ShowEpisodes, the facts); this reads.</summary>
     static Detail.Identity IdentityOf(Show show, in PageFacts f)
@@ -1292,159 +995,6 @@ public readonly partial struct Show
             });
         }
     }
-
-    readonly record struct LedgerStamp(bool Failed, int Played, int InProgress, int ToGo, int Fresh);
-
-    /// <summary>The played ledger (W1): the three-part bar and "84 played · 3 in progress · 41 to go · 5 new" — or, when
-    /// the hydrate failed, "progress unavailable" (§6.1).</summary>
-    sealed class LedgerSlot : Component
-    {
-        ReaderModel? _m;
-        IReadSignal<Design.PageAccent>? _accent;
-        Memo<ColorF>? _tone;
-        readonly Func<LedgerStamp> _stamp;
-        readonly Func<ColorF> _toneOf, _toneRead;
-
-        public LedgerSlot()
-        {
-            _stamp = () =>
-            {
-                if (_m is not { } m) return default;
-                var s = m.Read();
-                var l = s.Ledger;
-                return new LedgerStamp(s.ProgressFailed, l.Played, l.InProgress, l.ToGo, l.Fresh);
-            };
-            _toneOf = () =>
-            {
-                ColorF fallback = _accent is { } a ? a.Value.Fill : Tok.AccentDefault;
-                return ToneOf(_m?.Facts is { } f ? f.Value.ToneArgb : 0u, fallback);
-            };
-            _toneRead = () => _tone?.Value ?? Tok.AccentDefault;
-        }
-
-        public override Element Render()
-        {
-            var p = UseProps<SlotProps>();
-            _m = p.Model;
-            _accent = UseContext(Design.AccentCtx.Slot);
-            _tone = UseComputed(_toneOf);
-            var style = StyleOf(UseContext(global::FluentGpu.Theming.ViewRegistry.Context));
-            var st = UseComputed(_stamp).Value;
-            if (style is null) return new BoxEl();
-            return style.Ledger(new ShowLedgerArgs
-            {
-                Failed = st.Failed, Played = st.Played, InProgress = st.InProgress, ToGo = st.ToGo, Fresh = st.Fresh,
-                Width = float.IsFinite(p.Width) ? p.Width : float.NaN, Tone = _toneRead,
-            });
-        }
-    }
-
-    /// <summary>The rating row: ★ 4.8 · "12,431 ratings" (· "yours 5★") — a button that opens the rate flyout, whose
-    /// stars are DISABLED with their reason until the write lands (wave P10, D-10). The flyout's open / close and its
-    /// handle are this host's; the button is the structure's (<see cref="ShowReaderStyle.Rating"/>).</summary>
-    sealed class RatingSlot : Component
-    {
-        ReaderModel? _m;
-        IReadSignal<Design.PageAccent>? _accent;
-        IOverlayService? _overlay;
-        Memo<ColorF>? _tone;
-        NodeHandle _anchor;
-        OverlayHandle? _handle;
-        readonly Func<ColorF> _toneOf, _toneRead;
-        readonly Action _toggle, _clearHandle;
-        readonly Action<NodeHandle> _realized;
-        readonly Func<NodeHandle> _anchorOf;
-        readonly Func<Element> _flyout;
-
-        public RatingSlot()
-        {
-            _toneOf = () =>
-            {
-                ColorF fallback = _accent is { } a ? a.Value.Fill : Tok.AccentDefault;
-                return ToneOf(_m?.Facts is { } f ? f.Value.ToneArgb : 0u, fallback);
-            };
-            _toneRead = () => _tone?.Value ?? Tok.AccentDefault;
-            _toggle = Toggle;
-            _clearHandle = () => _handle = null;
-            _realized = h => _anchor = h;
-            _anchorOf = () => _anchor;
-            _flyout = Flyout;
-        }
-
-        public override Element Render()
-        {
-            var p = UseProps<SlotProps>();
-            _m = p.Model;
-            _overlay = UseContext(Overlay.Service);
-            _accent = UseContext(Design.AccentCtx.Slot);
-            _tone = UseComputed(_toneOf);
-            var style = StyleOf(UseContext(global::FluentGpu.Theming.ViewRegistry.Context));
-            var f = _m.Facts?.Value ?? default;
-            string average = (f.RatingX100 / 100f).ToString("0.0", System.Globalization.CultureInfo.CurrentCulture);
-            string count = Strings.Podcast.Ratings(f.RatingCount);
-            if (f.MyRating > 0) count += " · " + Strings.Podcast.Yours(f.MyRating);
-            var show = _m.Peek().Show;
-            string name = show.IsValid && show.Knows(ShowFields.Title) ? show.Title : "";
-            if (style is null) return new BoxEl();
-            return style.Rating(new ShowRatingArgs
-            {
-                Average = average, Count = count, Name = Strings.Podcast.Rate.Title(name),
-                Width = float.IsFinite(p.Width) ? p.Width : float.NaN, Tone = _toneRead, Toggle = _toggle, Realized = _realized,
-            });
-        }
-
-        void Toggle()
-        {
-            var overlay = _overlay;
-            if (Controls.IsNullOverlay(overlay)) return;
-            if (_handle is { IsOpen: true } open) { open.Close(); return; }
-            var handle = overlay.Open(_anchorOf, _flyout, FlyoutPlacement.BottomEdgeAlignedLeft,
-                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-                { ConstrainToRootBounds = false });
-            handle.ClosedAction = _clearHandle;
-            _handle = handle;
-        }
-
-        /// <summary>The rate flyout (built at OPEN): "Rate {name}", the listener's stars — display-only — and the reason.</summary>
-        Element Flyout()
-        {
-            var show = _m?.Peek().Show ?? default;
-            return show.IsValid
-                ? Embed.Comp(new PodcastReaderUI.RatingProps(show.Uri, _toneRead), static () => new PodcastReaderUI.RatingEditor())
-                : new BoxEl();
-        }
-
-    }
-
-    /// <summary>The badge chips on the eyebrow's line: exclusive (the tone) · E · video.</summary>
-    sealed class BadgesSlot : Component
-    {
-        ReaderModel? _m;
-        IReadSignal<Design.PageAccent>? _accent;
-        Memo<ColorF>? _tone;
-        readonly Func<ColorF> _toneOf, _toneRead;
-
-        public BadgesSlot()
-        {
-            _toneOf = () =>
-            {
-                ColorF fallback = _accent is { } a ? a.Value.Fill : Tok.AccentDefault;
-                return ToneOf(_m?.Facts is { } f ? f.Value.ToneArgb : 0u, fallback);
-            };
-            _toneRead = () => _tone?.Value ?? Tok.AccentDefault;
-        }
-
-        public override Element Render()
-        {
-            var p = UseProps<SlotProps>();
-            _m = p.Model;
-            _accent = UseContext(Design.AccentCtx.Slot);
-            _tone = UseComputed(_toneOf);
-            var style = StyleOf(UseContext(global::FluentGpu.Theming.ViewRegistry.Context));
-            var flags = _m.Facts?.Value.Flags ?? ShowFlags.None;
-            return style is null ? new BoxEl() : style.Badges(new ShowBadgesArgs { Flags = flags, Tone = _toneRead });
-        }
-    }
 }
 
 // ══ 5. THE PAGE'S PURE DECISIONS (CORE — pinned by ShowReaderTests) ══════════════════════════════════════════════════
@@ -1502,9 +1052,6 @@ public static class ShowReaderRules
 
     /// <summary>The ghost pill beside Follow: episode 1 for a serial whose first episode is resident, else the latest.</summary>
     public static Primary GhostOf(bool serial, bool firstKnown) => serial && firstKnown ? Primary.PlayFirst : Primary.PlayLatest;
-
-    /// <summary>The ledger slot is present once the head is decided and is not a new visitor's.</summary>
-    public static bool LedgerShown(Head head) => head is Head.Returning or Head.CaughtUp or Head.Unavailable;
 
     // ── results mode ─────────────────────────────────────────────────────────────────────────────────────────────────
 

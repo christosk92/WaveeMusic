@@ -71,9 +71,4 @@ internal static class ClassicShowRules
 
     /// <summary>The seed's U+2007 runs that make the derived shimmer draw a title bar and a meta bar.</summary>
     public const int MiniSeedTitleRun = 18, MiniSeedMetaRun = 10;
-
-    // ── the rail's rating row ──
-
-    /// <summary>The rating button's gap and star.</summary>
-    public const float RatingGap = 6f, RatingStar = 13f;
 }

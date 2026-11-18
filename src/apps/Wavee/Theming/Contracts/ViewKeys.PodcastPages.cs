@@ -2,8 +2,8 @@
 //
 // Three whole-page keys. The core hosts (`Podcasts/PodcastPages.*.cs`, each a `[CoreHost]`) own the demand, the one snapshot (the smart action, the
 // row states, the filters and their counts, the groups, the credits, the book's progress), the page's own cells (filter, search, sort, selection,
-// expansion, tabs, transcript follow) and every verb; a theme draws the snapshot it is handed. A structure that draws these keys says so with
-// `ShellCapabilities.PodcastPages`; under one that does not, the show and episode routes keep the older reader pages (`Show.Page`, `Episode.Page`).
+// expansion, tabs, transcript follow) and every verb; a theme draws the snapshot it is handed. Every structure draws them: the show and episode routes
+// always mount these pages (`Show.Page`, `Episode.Page` → `PodcastPages.ShowRoute` / `EpisodeRoute`).
 //
 // The concept and its rules: C:/WAVEE/scratch/sphome/winui-podcast-v2.html (design notes 1-9, "The smart action, state by state", "Three widths",
 // "Audiobooks are books"). The value is the same in every theme; the layout and the visual language are each theme's own.

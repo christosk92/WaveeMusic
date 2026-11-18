@@ -92,10 +92,9 @@ public interface ILyricsSceneSink
 
 public sealed class LyricsModel
 {
-    public LyricsModel(LyricsSurface surface, EntityId readerEpisode = default)
+    public LyricsModel(LyricsSurface surface)
     {
         Surface = surface;
-        ReaderEpisode = readerEpisode;
         DotAlpha = new FloatSignal[Lyrics.Interlude.DotCount];
         for (int k = 0; k < DotAlpha.Length; k++) DotAlpha[k] = new FloatSignal(0f);
         ActiveLineProp = Prop.Bind(ActiveLine);
@@ -104,10 +103,6 @@ public sealed class LyricsModel
     }
 
     public LyricsSurface Surface { get; }
-
-    /// <summary>The podcast reader's episode (valid ⇒ the reader, which shows ITS transcript whatever plays); default ⇒ the
-    /// surface follows whatever is playing.</summary>
-    public EntityId ReaderEpisode { get; }
 
     public ILyricsSceneSink? Sink { get; set; }
 
@@ -458,10 +453,10 @@ public sealed class LyricsModel
     }
 
     /// <summary>The header toggle's capability. Gated on a TIMED document: an unsynced block has no rows to render a second
-    /// line in, so offering the toggle there would be a control that visibly does nothing. A reader never publishes it.</summary>
+    /// line in, so offering the toggle there would be a control that visibly does nothing.</summary>
     public void PublishSecondaryAvailability(Lyrics.Doc? doc)
     {
-        if (!ReaderEpisode.IsValid) Lyrics.Prefs.Available.Value = doc is not null && Lyrics.IsTimed(doc) ? doc.SecondaryAvailable : 0;
+        Lyrics.Prefs.Available.Value = doc is not null && Lyrics.IsTimed(doc) ? doc.SecondaryAvailable : 0;
     }
 
     // ══ 7. THE VERBS THAT NEED THIS MODEL ════════════════════════════════════════════════════════════════════════════
@@ -503,7 +498,7 @@ public sealed class LyricsVerbs(LyricsModel? model) : ILyricsVerbs
 
     public void ToggleAiPreferred()
     {
-        string id = model is { } m ? (m.ReaderEpisode.IsValid ? "" : LyricsModel.PlayingTrackId()) : LyricsModel.PlayingTrackId();
+        string id = LyricsModel.PlayingTrackId();
         if (id.Length == 0) return;
         AiLyrics.SetPreferAi(id, !AiLyrics.PrefersAi(id));
     }

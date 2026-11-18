@@ -1,17 +1,16 @@
-// ── Theming/Contracts/ShowReaderStyle.cs — what a structure supplies for the podcast show page (themes plan 6.1, T9c) ──────────────
+// ── Theming/Contracts/ShowReaderStyle.cs — what a structure supplies for the show reader (themes plan 6.1, T9c) ──────────────────
 //
-// From `Entities\Show.UI.cs` and the rail slots of `Show.Page.cs`, `Show.Podcasts.cs` (the library pane's column is the `Library.ShowPane` view, T10c1). The structure registers ONE
-// `ShowReaderStyle` under `StyleKeys.ShowReader`; the core hosts (`Show.PageHost`, the rail slot components, `Show.ReaderHost` and its
-// slots) keep everything that is not a picture and call the templates while they render, so subscriptions, keys, extents and
-// effect timing are what they were.
+// From `Entities\Show.UI.cs`, `Show.Page.cs` and `Show.Podcasts.cs`: the episode reader the library's podcast pane mounts (the pane's column is the
+// `Library.ShowPane` view, T10c1). The structure registers ONE `ShowReaderStyle` under `StyleKeys.ShowReader`; the core hosts (the pane's
+// `Show.PrimarySlot`, `Show.ReaderHost` and its slots, the aside's `Show.AsideSlot` / `Show.TopicsSlot`) keep everything that is not a picture and
+// call the templates while they render, so subscriptions, keys, extents and effect timing are what they were.
 //
 // WHAT THE CORE KEEPS. The reader model and its one snapshot (filter, sort, find, the visit, the ledger, the cadence, the item list), the
 // persisted view prefs, the paging cursor, the toolbar's stage rule (`ShowToolbarLayout`) and its measured inputs, the selection model, the
 // date index and the sticky month, the list's analytic extents (`ShowReaderRules.SeedExtent` / `ExactExtent`: the arithmetic the skeleton
 // and the rows must agree on, with `CheckExtent` holding the arranged heights to it), the reveal gates (`Episode.ReaderRow` / `Episode.Reveal`
-// over `ReaderLoadState`), the follow state and the primary's decision (`ShowReaderRules.PrimaryOf`), the tone memo, the trailer, the rate
-// flyout's open / close, the demand. A template draws and never names `Playback`, `Entities`, `Store`, `Shell`, `Spotify` or `Prefs`
-// (WVTH002): the verbs and the text the core resolved arrive in the args.
+// over `ReaderLoadState`), the follow state and the primary's decision (`ShowReaderRules.PrimaryOf`), the tone memo, the demand.
+// A template draws and never names `Playback`, `Entities`, `Store`, `Shell`, `Spotify` or `Prefs` (WVTH002): the verbs and the text the core resolved arrive in the args.
 //
 // A host mounted where no registry provides the key draws nothing (logged once, `ListStyleLookup`).
 
@@ -58,66 +57,6 @@ internal sealed class ShowPrimaryArgs
     public bool Empty { get; init; }
 }
 
-/// <summary>The played ledger: the bar and its counts line, or the "progress unavailable" line.</summary>
-internal sealed class ShowLedgerArgs
-{
-    /// <summary>The login hydrate failed (the line says so, no bar).</summary>
-    public required bool Failed { get; init; }
-
-    /// <summary>Played count.</summary>
-    public required int Played { get; init; }
-
-    /// <summary>In-progress count.</summary>
-    public required int InProgress { get; init; }
-
-    /// <summary>To-go count.</summary>
-    public required int ToGo { get; init; }
-
-    /// <summary>New-since count.</summary>
-    public required int Fresh { get; init; }
-
-    /// <summary>The rail's measure (NaN: fill the column).</summary>
-    public required float Width { get; init; }
-
-    /// <summary>The show's tone, a live read.</summary>
-    public required Func<ColorF> Tone { get; init; }
-}
-
-/// <summary>The rating row: a button that opens the rate flyout.</summary>
-internal sealed class ShowRatingArgs
-{
-    /// <summary>The average ("4.8", culture format).</summary>
-    public required string Average { get; init; }
-
-    /// <summary>"12,431 ratings" (+ " · yours 5★").</summary>
-    public required string Count { get; init; }
-
-    /// <summary>The button's accessible name ("Rate {show}").</summary>
-    public required string Name { get; init; }
-
-    /// <summary>The rail's measure (NaN: no cap).</summary>
-    public required float Width { get; init; }
-
-    /// <summary>The show's tone, a live read.</summary>
-    public required Func<ColorF> Tone { get; init; }
-
-    /// <summary>Open or close the rate flyout.</summary>
-    public required Action Toggle { get; init; }
-
-    /// <summary>The flyout's anchor handle.</summary>
-    public required Action<NodeHandle> Realized { get; init; }
-}
-
-/// <summary>The badge chips on the eyebrow's line.</summary>
-internal sealed class ShowBadgesArgs
-{
-    /// <summary>The show's flags (exclusive, explicit, video).</summary>
-    public required ShowFlags Flags { get; init; }
-
-    /// <summary>The show's tone, a live read.</summary>
-    public required Func<ColorF> Tone { get; init; }
-}
-
 /// <summary>The topic words under the CTA.</summary>
 internal sealed class ShowTopicsArgs
 {
@@ -129,32 +68,6 @@ internal sealed class ShowTopicsArgs
 
     /// <summary>The rail's measure (NaN: no cap).</summary>
     public required float Width { get; init; }
-}
-
-/// <summary>The CTA's satellites: heart (hidden while Follow is the primary), trailer (when the show names one), the bell (disabled with its
-/// reason), share and the more menu.</summary>
-internal sealed class ShowSatellitesArgs
-{
-    /// <summary>The show's uri text (the heart's target).</summary>
-    public required string Uri { get; init; }
-
-    /// <summary>The show's title (the heart's name).</summary>
-    public required string Name { get; init; }
-
-    /// <summary>The heart's presence bind.</summary>
-    public required Prop<bool> HeartShown { get; init; }
-
-    /// <summary>The trailer's presence bind.</summary>
-    public required Prop<bool> TrailerShown { get; init; }
-
-    /// <summary>Play the trailer alone.</summary>
-    public required Action PlayTrailer { get; init; }
-
-    /// <summary>Copy the web link.</summary>
-    public required Action Share { get; init; }
-
-    /// <summary>The ⋯ menu, built lazily at open.</summary>
-    public required Func<ContextMenuModel?> More { get; init; }
 }
 
 /// <summary>The sticky toolbar's decisions: the rung of the collapse ladder, the find's state and every bound cell and verb.</summary>
@@ -383,12 +296,7 @@ internal sealed class ShowAsideArgs
 }
 
 internal delegate Element ShowPrimaryTemplate(ShowPrimaryArgs args);
-internal delegate Element ShowLedgerTemplate(ShowLedgerArgs args);
-internal delegate Element ShowRatingTemplate(ShowRatingArgs args);
-internal delegate Element ShowBadgesTemplate(ShowBadgesArgs args);
 internal delegate Element ShowTopicsTemplate(ShowTopicsArgs args);
-internal delegate Element ShowPublisherTemplate(string publisher, float width);
-internal delegate Element[] ShowSatellitesTemplate(ShowSatellitesArgs args);
 internal delegate Element ShowToolbarTemplate(ShowToolbarArgs args);
 internal delegate Element ShowHeadShellTemplate(Func<bool> pending, Func<Element> content);
 internal delegate Element ShowHeadTemplate(ShowHeadArgs args);
@@ -404,19 +312,12 @@ internal delegate Element ShowAsideTemplate(ShowAsideArgs args);
 /// <summary>The structure's style for the show page (<c>StyleKeys.ShowReader</c>).</summary>
 public sealed class ShowReaderStyle
 {
-    internal ShowReaderStyle(ShowPrimaryTemplate primary, ShowLedgerTemplate ledger, ShowRatingTemplate rating, ShowBadgesTemplate badges,
-                             ShowTopicsTemplate topics, ShowPublisherTemplate publisher, ShowSatellitesTemplate satellites,
-                             ShowToolbarTemplate toolbar, ShowHeadShellTemplate headShell, ShowHeadTemplate head,
+    internal ShowReaderStyle(ShowPrimaryTemplate primary, ShowTopicsTemplate topics, ShowToolbarTemplate toolbar, ShowHeadShellTemplate headShell, ShowHeadTemplate head,
                              ShowEpisodesHeaderTemplate episodesHeader, ShowGroupTemplate group, ShowStickyMonthTemplate stickyMonth,
                              ShowYearStripTemplate yearStrip, ShowYearReserveTemplate yearReserve, ShowFootTemplate foot, ShowSeedTemplate seed)
     {
         Primary = primary;
-        Ledger = ledger;
-        Rating = rating;
-        Badges = badges;
         Topics = topics;
-        Publisher = publisher;
-        Satellites = satellites;
         Toolbar = toolbar;
         HeadShell = headShell;
         Head = head;
@@ -429,26 +330,11 @@ public sealed class ShowReaderStyle
         Seed = seed;
     }
 
-    /// <summary>The rail's primary (a pill, beside a Follow the ghost play).</summary>
+    /// <summary>The library pane's primary (a pill, beside a Follow the ghost play).</summary>
     internal ShowPrimaryTemplate Primary { get; }
 
-    /// <summary>The played ledger.</summary>
-    internal ShowLedgerTemplate Ledger { get; }
-
-    /// <summary>The rating row.</summary>
-    internal ShowRatingTemplate Rating { get; }
-
-    /// <summary>The badge chips.</summary>
-    internal ShowBadgesTemplate Badges { get; }
-
-    /// <summary>The topic words.</summary>
+    /// <summary>The topic words (the aside's).</summary>
     internal ShowTopicsTemplate Topics { get; }
-
-    /// <summary>The publisher line (the Attribution slot).</summary>
-    internal ShowPublisherTemplate Publisher { get; }
-
-    /// <summary>The CTA's keyed satellites.</summary>
-    internal ShowSatellitesTemplate Satellites { get; }
 
     /// <summary>The sticky toolbar's body.</summary>
     internal ShowToolbarTemplate Toolbar { get; }

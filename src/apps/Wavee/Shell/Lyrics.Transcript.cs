@@ -205,9 +205,6 @@ public static partial class Lyrics
         }
     }
 
-    public static Element TranscriptView(EntityId episode)
-        => Embed.Comp(() => new ViewCore(false, false, static () => true, episode)) with { Key = "transcript-view:" + episode.Text };
-
     // UI-thread leases share one resource between the episode reader, rail and expanded player. The final
     // consumer releases it; subsequent visits revalidate through the transcript HTTP/disk-cache authority.
     public readonly record struct TranscriptIdentity(uint Epoch, string Account, Spotify.Podcasts.TranscriptKey Key, string Url);

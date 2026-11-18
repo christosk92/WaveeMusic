@@ -516,8 +516,8 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc />
     public ShellCapabilities Capabilities(OptionValues structure) => s_capabilities;
 
-    /// <summary>Every feature on; the continuous page swap; the podcast show, episode and audiobook pages are Classic's own (podcast pages v2, the cover column).</summary>
-    static readonly ShellCapabilities s_capabilities = ShellCapabilities.Unrestricted with { ContinuousPageSwap = true, PodcastPages = true };
+    /// <summary>Every feature on; the continuous page swap.</summary>
+    static readonly ShellCapabilities s_capabilities = ShellCapabilities.Unrestricted with { ContinuousPageSwap = true };
 
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;

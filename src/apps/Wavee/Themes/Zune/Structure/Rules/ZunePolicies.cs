@@ -39,7 +39,6 @@ public static partial class ZunePolicies
         Tabs: false, NavTree: false, FriendsPanel: true, ForwardButton: false, HistoryMenu: true, MaxBandPins: 6, DefersPageMount: true, ContinuousPageSwap: true)
     {
         AlbumCredits = true,
-        PodcastPages = true,
     };
 
     private static readonly object s_gate = new();
