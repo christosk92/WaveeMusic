@@ -82,6 +82,8 @@ internal static class ClassicPodcastRules
         TrLineEstimate = 34f, TrHeadingEstimate = 64f, TrCurrentStroke = 3f, FindW = 200f, TrHeadingTop = 10f, TrHeadingBottom = 6f;
     public const float MiniBarH = 3f, MiniBarTrack = 1f, MiniBarRadius = 1.5f;
     public const string Dot = " · ";
+    /// <summary>The New mark that leads a new episode's meta run (a dot, then the word, both in the accent).</summary>
+    public const string NewMark = "● ";
     public static readonly ColorF FindMark = ColorF.FromRgba(0xFF, 0xD3, 0x3D, 0x66);
 
     // ── the audiobook ──
