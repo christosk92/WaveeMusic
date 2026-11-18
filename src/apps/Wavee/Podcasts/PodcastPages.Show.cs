@@ -726,12 +726,12 @@ sealed class ShowModel
         string eyebrow = number > 0
             ? Joined(serial ? Strings.Podcast.Pages.PartN(number) : Strings.Podcast.Pages.EpisodeN(number), longDate)
             : longDate;
-        return new PodcastEpisodeVm(id, title, Episode.DescriptionOf(e), number, serial, date, year, length, left,
+        return PodcastPages.WithAccess(new PodcastEpisodeVm(id, title, Episode.DescriptionOf(e), number, serial, date, year, length, left,
             state == PodcastRowState.Played ? 1f : state == PodcastRowState.InProgress ? pct : 0f, state, saved,
             (flags & EpisodeFlags.Video) != 0, kind == EpisodeKind.Trailer, playable, 0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(e))
         {
             Eyebrow = eyebrow, LongDate = longDate, DescriptionHtml = e.Knows(EpisodeFields.About) ? e.HtmlDescription : "",
-        };
+        }, flags);
     }
 
     /// <summary>The smart action's menu ("Other ways to play"): the default with a check, Play newest, Start this episode over (in progress), Play

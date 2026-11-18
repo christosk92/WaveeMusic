@@ -16,7 +16,7 @@
 //     here"); a trailer episode row OUTSIDE the membership; ★ 4.8 from 12,431; an amber tone.
 //   · sh1 — EPISODIC, NEW. No progress anywhere; explicit on the even-numbered episodes, and so the show; ★ 4.6.
 //   · sh2 — VIDEO + EXCLUSIVE, CAUGHT UP. Every episode played (each a day after it came out, so nothing is new since);
-//     one of them `Paywalled | PreviewOnly`; the listener's own five stars.
+//     one of them `Paywalled | PreviewOnly | Unplayable` (sh2e3); the listener's own five stars.
 //   · sh4 — EPISODIC, NEW EPISODES (podcast pages v2 "New episodes"): one a month across two years; the third to the seventh newest played (the last
 //     play a day after the third came out), the two newest out since then ("new since your last visit": the visit is pinned at that last play),
 //     the oldest five unplayed, nothing in progress.
@@ -170,8 +170,9 @@ public static partial class Entities
                     else if (number == LongBookHeard + 1) { ep.ProgressMs = ep.DurationMs / 2; ep.PlayedAt = (int)(now0 - Day); }
                     break;
                 case CaughtUpShow:
+                    // The wire sets PreviewOnly only on an unplayable episode (Spotify.Decode.Podcast.cs EpisodeDetail): the fake says the same.
                     ep.Flags = (uint)(i == PaywalledEpisode
-                        ? EpisodeFlags.Video | EpisodeFlags.Paywalled | EpisodeFlags.PreviewOnly
+                        ? EpisodeFlags.Video | EpisodeFlags.Paywalled | EpisodeFlags.PreviewOnly | EpisodeFlags.Unplayable
                         : EpisodeFlags.Video);
                     Played(ref ep, ep.PublishedAt + Day);
                     break;

@@ -547,19 +547,23 @@ internal static class ZunePodcastKit
                     Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 });
 
-            string glyph = playing ? ZunePlayerLayout.PauseSolid : played ? (hover ? Icons.Refresh : Icons.Check) : ZunePlayerLayout.PlaySolid;
+            bool off = !vm.Playable;
+            string glyph = playing ? ZunePlayerLayout.PauseSolid : played ? (hover && !off ? Icons.Refresh : Icons.Check) : ZunePlayerLayout.PlaySolid;
             string playName = Loc.Get(playing ? Strings.Podcast.Pages.Pause : vm.State == PodcastRowState.InProgress ? Strings.Podcast.Pages.Resume
                 : played ? Strings.Podcast.Pages.PlayAgain : Strings.Podcast.Pages.Play);
             BoxEl play = new()
             {
                 Key = "row:play", Width = pb, Height = pb, Shrink = 0f, AlignSelf = FlexAlign.Start, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-                Fill = ColorF.Transparent, HoverFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.ButtonHoverAlpha }),
-                PressedFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.ButtonPressedAlpha }),
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, AllowFocusOnInteraction = false, OnClick = _play,
+                // An episode that cannot be played: the button is off (the disabled glyph, no plate, no click); the meta's lock tag says why.
+                Fill = ColorF.Transparent, HoverFill = off ? ColorF.Transparent : Prop.Of(static () => Tok.TextPrimary with { A = Z.ButtonHoverAlpha }),
+                PressedFill = off ? ColorF.Transparent : Prop.Of(static () => Tok.TextPrimary with { A = Z.ButtonPressedAlpha }),
+                Role = AutomationRole.Button, Focusable = !off, Cursor = off ? CursorId.Arrow : CursorId.Hand, AllowFocusOnInteraction = false,
+                OnClick = off ? null : _play,
                 Children = [new TextEl(glyph)
                 {
                     Size = Z.RowGlyph, FontFamily = Tok.Definition.Fonts.Icon,
-                    Color = playing || vm.State == PodcastRowState.InProgress ? Prop.Of(static () => R.Ink.AccentDecor) : played && !hover ? (Prop<ColorF>)Tok.TextTertiary : Tok.TextPrimary,
+                    Color = off ? Tok.TextDisabled
+                        : playing || vm.State == PodcastRowState.InProgress ? Prop.Of(static () => R.Ink.AccentDecor) : played && !hover ? (Prop<ColorF>)Tok.TextTertiary : Tok.TextPrimary,
                 }],
             };
             var line = new BoxEl
@@ -615,6 +619,9 @@ internal static class ZunePodcastKit
                     MetaWord(Loc.Get(Strings.Podcast.Pages.Fresh)) with { Color = Prop.Of(static () => R.Ink.AccentDecor), Weight = Z.Strong },
                 ],
             });
+        // The tags lead the words (after "new"): the line runs off under its right-edge fade (nothing in it shrinks), so a tag at its start is
+        // never the part that fades.
+        if (vm.Lock.Length > 0) parts.Add(Tag(vm.Lock, Icons.Lock));
         if (vm.Date.Length > 0) parts.Add(MetaWord(vm.Date) with { Color = Tok.TextTertiary });
         if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) parts.Add(MetaWord(vm.Left) with { Color = Prop.Of(static () => R.Ink.AccentDecor) });
         else if (vm.Length.Length > 0) parts.Add(MetaWord(vm.Length) with { Color = Tok.TextTertiary });
@@ -622,6 +629,27 @@ internal static class ZunePodcastKit
         if (vm.Video) parts.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Video)) with { Color = Tok.TextTertiary });
         return Meta("row:meta", parts);
     }
+
+    /// <summary>A row tag at the head of the meta (the lock): the glyph and the word in the tertiary ink, lowercased as a label.</summary>
+    static Element Tag(string word, string? glyph)
+    {
+        var kids = new List<Element>(2);
+        if (glyph is not null) kids.Add(Icon(glyph, Z.MetaStar, Tok.TextTertiary));
+        kids.Add(MetaWord(word) with { Color = Tok.TextTertiary });
+        return new BoxEl { Direction = 0, Gap = Z.MetaGap / 2f, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray() };
+    }
+
+    /// <summary>The blocked state of an episode that cannot be played, in place of its play button and as tall: the lock and why, in the secondary
+    /// ink (a sentence: written as the host wrote it).</summary>
+    public static Element Blocked(string key, string why, float height) => new BoxEl
+    {
+        Key = key, Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, MinHeight = height, MinWidth = 0f, Shrink = 1f,
+        Children =
+        [
+            Icon(Icons.Lock, Z.RowGlyph, Tok.TextSecondary),
+            new TextEl(Glue(why)) { Size = Z.ButtonTextSize, LineHeight = Z.ButtonTextLine, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, Shrink = 1f, MinWidth = 0f },
+        ],
+    };
 
     /// <summary>The expanded row: Open episode at its top (the verb's one home), then the description through the house renderer, then Play next.</summary>
     static Element ExpandBody(PodcastEpisodeVm vm, Action open, Action next, bool compact)

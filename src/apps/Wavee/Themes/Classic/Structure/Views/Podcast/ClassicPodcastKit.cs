@@ -151,6 +151,18 @@ internal static class ClassicPodcastKit
         return new BoxEl { Direction = 0, Wrap = true, Gap = P.KindGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
+    /// <summary>The blocked state of an episode that cannot be played, in place of its play button and as tall: the lock and why, in the secondary
+    /// ink.</summary>
+    public static Element Blocked(string key, string why, float height) => new BoxEl
+    {
+        Key = key, Direction = 0, Gap = P.TagGap + P.TagGap, AlignItems = FlexAlign.Center, MinHeight = height, MinWidth = 0f,
+        Children =
+        [
+            Icon(Icons.Lock, P.PlayGlyph, Tok.TextSecondary),
+            new TextEl(why) { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, Shrink = 1f, MinWidth = 0f },
+        ],
+    };
+
     /// <summary>A tag of the kind line (Video, Serial, Included in Premium): a 1-DIP outline, 11/14 semibold.</summary>
     public static Element Tag(string word, string? glyph, ColorF? ink = null)
     {
@@ -602,7 +614,8 @@ internal static class ClassicPodcastKit
     {
         bool prog = vm.State == PodcastRowState.InProgress;
         bool played = vm.State == PodcastRowState.Played;
-        string glyph = playing ? Icons.Pause : played ? (hover ? Icons.Refresh : Icons.Check) : Icons.Play;
+        bool off = !vm.Playable;
+        string glyph = playing ? Icons.Pause : played ? (hover && !off ? Icons.Refresh : Icons.Check) : Icons.Play;
         string name = Loc.Get(playing ? Strings.Podcast.Pages.Pause : prog ? Strings.Podcast.Pages.Resume : played ? Strings.Podcast.Pages.PlayAgain
             : Strings.Podcast.Pages.Play);
         var layers = new List<Element>(2);
@@ -617,15 +630,17 @@ internal static class ClassicPodcastKit
         {
             Width = size, Height = size, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false,
             Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-            Children = [Icon(glyph, P.PlayGlyph, played && !hover && !playing ? Tok.TextTertiary : Tok.TextPrimary)],
+            Children = [Icon(glyph, P.PlayGlyph, off ? Tok.TextDisabled : played && !hover && !playing ? Tok.TextTertiary : Tok.TextPrimary)],
         });
         bool plate = !prog && !played;
+        // An episode that cannot be played: the button is off (the disabled plate and glyph, no click); the meta's lock tag says why.
+        ColorF fill = off ? (plate ? Tok.FillControlDisabled : Tok.FillSubtleTransparent) : plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent;
         return Controls.Named(new BoxEl
         {
             Key = "row:play", ZStack = true, Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(size / 2f),
-            Fill = plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
+            Fill = fill, HoverFill = off ? fill : Tok.FillControlSecondary, PressedFill = off ? fill : Tok.FillControlTertiary,
             BorderWidth = played ? 1f : 0f, BorderBrush = played ? Tok.ControlElevationBorder : null,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = play, Children = layers.ToArray(),
+            Role = AutomationRole.Button, Focusable = !off, Cursor = off ? CursorId.Arrow : CursorId.Hand, OnClick = off ? null : play, Children = layers.ToArray(),
         }, name);
     }
 
@@ -652,12 +667,12 @@ internal static class ClassicPodcastKit
             Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             Shrink = 1f, MinWidth = 0f,
         };
-        if (!vm.Video) return run;
-        return new BoxEl
-        {
-            Direction = 0, Gap = P.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            Children = [run, Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video, Tok.TextTertiary)],
-        };
+        // The tags (Video, the lock) are boxes after the run: they keep their width, the run gives way with an ellipsis.
+        if (!vm.Video && vm.Lock.Length == 0) return run;
+        var kids = new List<Element>(3) { run };
+        if (vm.Video) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video, Tok.TextTertiary));
+        if (vm.Lock.Length > 0) kids.Add(Tag(vm.Lock, Icons.Lock, Tok.TextTertiary));
+        return new BoxEl { Direction = 0, Gap = P.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
     static TextEl Meta(string text) => new(text) { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f, Wrap = TextWrap.NoWrap };

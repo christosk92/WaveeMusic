@@ -397,7 +397,7 @@ public sealed class PodcastEpisodeScreen : Component
             || a.TranscriptLoad != b.TranscriptLoad || a.TranscriptSub != b.TranscriptSub || a.About != b.About || a.CommentCount != b.CommentCount
             || a.Next != b.Next || a.MoreSub != b.MoreSub || a.MapQuietFirst != b.MapQuietFirst || a.StillTime != b.StillTime
             || a.VideoLabel != b.VideoLabel || a.NoChapters != b.NoChapters || a.NoTranscript != b.NoTranscript
-            || a.ChaptersPending != b.ChaptersPending || a.CommentsPending != b.CommentsPending)
+            || a.ChaptersPending != b.ChaptersPending || a.CommentsPending != b.CommentsPending || a.Blocked != b.Blocked)
             return false;
         // A chapter's resting fill moves with the position (the current one draws the live position; the others are 0 or 1 by their flags).
         if (a.Chapters.Length != b.Chapters.Length) return false;
@@ -587,6 +587,7 @@ public sealed class PodcastEpisodeScreen : Component
             ChaptersPending = data is null && _chapters.Value is { } lease && lease.Data.State.Value == (byte)LoadState.Pending,
             CommentsPending = _comments is { } cp && cp.State.Value == (byte)LoadState.Pending,
             NoTranscript = Loc.Get(Strings.Podcast.Pages.TranscriptNone),
+            Blocked = PodcastPages.BlockedOf(e.Flags),
         };
     }
 
@@ -606,11 +607,11 @@ public sealed class PodcastEpisodeScreen : Component
         int duration = x.Knows(EpisodeFields.Duration) ? x.DurationMs : 0;
         float pct = Episode.ReaderPctOf(x);
         var flags = x.Flags;
-        return new PodcastEpisodeVm(x.Uri.Text, title, Episode.DescriptionOf(x), number, serial,
+        return PodcastPages.WithAccess(new PodcastEpisodeVm(x.Uri.Text, title, Episode.DescriptionOf(x), number, serial,
             x.PublishedAt > 0 ? Episode.DateLabel(x.PublishedAt) : "", x.PublishedAt > 0 ? DateTimeOffset.FromUnixTimeSeconds(x.PublishedAt).Year : 0,
             Episode.DurationLabel(duration), state == PodcastRowState.InProgress ? Episode.LeftLabel(x.ProgressMs, duration) : "", pct, state,
             Spotify.Podcasts.IsSaved(x), (flags & EpisodeFlags.Video) != 0, x.Kind == EpisodeKind.Trailer, (flags & EpisodeFlags.Unplayable) == 0,
-            0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(x));
+            0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(x)), flags);
     }
 
     /// <summary>"Mar 14 2023": the day label and the year.</summary>
