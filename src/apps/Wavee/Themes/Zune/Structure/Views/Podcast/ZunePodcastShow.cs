@@ -7,7 +7,7 @@
 //                line and the time left) · the meta (publisher · ★ rating (count) · cadence · N episodes) · follow / bell / share / ...]
 //      the pivot's body:
 //        episodes  the toolbar (pinned under the viewport's top: the filter words with their counts, the search pill, the sort) and the groups (a
-//                  pinned 26/32 heading per year or "new since your last visit" with mark all as played; the rows, which expand in place)
+//                  pinned 26/32 heading per year or "new since your last visit" with mark all as played; the rows, which open their episode)
 //        about     the description (the house rich text), the trailer, the rating and the facts
 //        more      the house cards
 //
@@ -99,7 +99,7 @@ internal static partial class ZunePodcastShow
             OverlaySvc = UseContext(Overlay.Service);
             _verbs ??= new ZunePodcastRowVerbs
             {
-                Expanded = p.Expanded, Playing = p.Playing, Play = p.Play, Open = p.Open, PlayNext = p.PlayNext, Expand = p.Expand, Menu = p.RowMenu,
+                Playing = p.Playing, Play = p.Play, Open = p.Open, Menu = p.RowMenu,
                 Drag = p.RowDrag,
             };
             _project ??= () =>

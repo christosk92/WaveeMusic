@@ -1,6 +1,6 @@
 // ── Themes/WinUi/Structure/Rules/Tiers.PodcastShow.cs — the show page's tier record (podcast pages v2) ────────────────────────────────────────────
 //
-// Keyed on the WINDOW tier (the concept's table: 1008 and up = list + the 360 pane; 641-1007 one column, rows expand in place; 640 and under stacked,
+// Keyed on the WINDOW tier (the concept's table: 1008 and up = list + the 360 pane; 641-1007 one column, a row opens its episode; 640 and under stacked,
 // 40 targets, rows open the episode). Huge reads Standard.
 
 using Wavee.Theming;
@@ -16,7 +16,7 @@ public sealed record WinUiPodcastShowLayout
     public required bool Pane { get; init; }
     /// <summary>Stacked header (640 and under): the cover beside the words, then the full-width button, then the commands; a ComboBox filter.</summary>
     public required bool Stacked { get; init; }
-    /// <summary>What a row's click does: select (pane), expand in place (medium) or open the episode (small).</summary>
+    /// <summary>What a row's click does: select (pane) or open the episode.</summary>
     public required PodcastRowMode RowMode { get; init; }
     /// <summary>Rows carry one line of description (medium).</summary>
     public required bool RowDescription { get; init; }
@@ -43,7 +43,7 @@ public sealed record WinUiPodcastShowLayout
 }
 
 /// <summary>What a row's click does in a tier.</summary>
-public enum PodcastRowMode : byte { Select, Expand, Open }
+public enum PodcastRowMode : byte { Select, Open }
 
 /// <summary>The show page's tier records.</summary>
 public static class WinUiPodcastShowTiers
@@ -56,7 +56,7 @@ public static class WinUiPodcastShowTiers
     };
     static readonly WinUiPodcastShowLayout s_small = new()
     {
-        Tier = WidthTier.Small, Pane = false, Stacked = false, RowMode = PodcastRowMode.Expand, RowDescription = true,
+        Tier = WidthTier.Small, Pane = false, Stacked = false, RowMode = PodcastRowMode.Open, RowDescription = true,
         Cover = 136f, CoverRadius = 8f, HeroTop = 32f, HeroBottom = 24f, CoverGap = 24f, TitleLarge = false, ShareWord = false,
         Target = 32f, PlayButton = WinUiPodcastKitRules.PlayButton, Search = 168f, UpBar = 160f, GroupH = 36f, GroupButtonH = 32f,
     };

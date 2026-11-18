@@ -43,9 +43,6 @@ internal static class WinUiPodcastKitRules
     public const float NewDot = 6f, MetaGap = 6f, MetaGlyph = 12f;
     /// <summary>The row's action buttons (32; 40 at Compact) and their glyph.</summary>
     public const float RowAction = 32f, RowActionCompact = 40f;
-    /// <summary>The expanded row's air above its body and between its parts.</summary>
-    public const float ExpandTop = 10f, ExpandGap = 10f;
-    public const float ExpandMs = 167f;
 
     // ── a section header and the cards ──
     public const float SectionGap = 8f, SectionTop = 24f, SectionBottom = 12f;
@@ -55,9 +52,6 @@ internal static class WinUiPodcastKitRules
     public const float CardCover = 160f, CardRadius = 8f, CardGap = 12f, RowCardCover = 40f, RowCardRadius = 4f, RowCardGap = 12f;
     public const int CardDecode = 320, RowCardDecode = 96;
 
-    /// <summary>The row expand: 167 ms on the standard decelerate (concept note 9), a FlowReveal so what follows rides it.</summary>
-    public static readonly LayoutTransition Expand = new(TransitionChannels.Size, TransitionDynamics.Tween(ExpandMs, Easing.SmoothOut),
-        Size: SizeMode.FlowReveal, Anchor: SizeAnchor.Parallax);
 
     /// <summary>The bar's entrance and exit: a fade with an 8 drop (concept `.compact` 167 ms).</summary>
     public static readonly EnterExit BarFade = new(Dy: BarDrop, Opacity: 0f, Active: true);

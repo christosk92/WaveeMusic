@@ -14,13 +14,13 @@
 //                      itself at the band's lower edge (`.StickyClip(line)` on that content), as WinUI's Home facet row and artist pivot do.
 //   PinnedLine(...)    the hairline a pinned row shows at its foot while `stuck` (the row places it, so it can end where its column ends).
 //   Description(...)   an HTML / plain description through the house rich-text renderer (paragraphs, lists, bold, links through the link policy).
-//   PlayNextIcon / PlayNextButton   the app's play-next glyph (ActionIcons.PlayNext, the Wavee icon face), never Icons.Queue.
+//   PlayNextIcon       the app's play-next glyph (ActionIcons.PlayNext, the Wavee icon face), never Icons.Queue.
 //   SmartSplit(...)    the accent SplitButton that names its episode: the main half plays, the chevron opens "Other ways to play" (PodcastMenuItem list,
 //                      the default with a check); no accent when caught up; `fill` stretches the main half (Compact's full-width 40).
 //   EpisodeRow(...)    the episode row: the play button (36 / 40) with the progress ring when in progress and the check for played (replay on hover); the
 //                      title semibold when unplayed, regular secondary when played; the meta (New dot + word, date, length or the accent "N min left",
 //                      Played, the Video tag); the saved glyph at rest, add on hover, the ellipsis always; one line of description when asked; a click
-//                      selects, expands in place (FlowReveal 167 ms: the description, Open episode, Play next) or opens the episode.
+//                      selects (the details pane) or opens the episode's page.
 //   SectionHeader(...) Subtitle + a caption + a trailing link.
 //   MoreLikeThis(...)  the house media surface (`Controls.Surface`): shelf cards (hover plate, play, pressed, focus, menu, hand cursor), or, in a narrow
 //                      column, the house row (`Shape.Row`).
@@ -46,16 +46,13 @@ namespace Wavee.Themes.WinUi;
 /// <summary>The verbs and live cells an <see cref="WinUiPodcastKit.EpisodeRow"/> reads. Build ONE per page (the rows compare it by reference).</summary>
 internal sealed class PodcastRowVerbs
 {
-    /// <summary>The selected / expanded / playing episode ids (null = none).</summary>
+    /// <summary>The selected / playing episode ids (null = none).</summary>
     public required IReadSignal<string?> Selected { get; init; }
-    public required IReadSignal<string?> Expanded { get; init; }
     public required IReadSignal<string?> Playing { get; init; }
     public required Action<string> Play { get; init; }
     public required Action<string> Open { get; init; }
     public required Action<string> ToggleSaved { get; init; }
-    public required Action<string> PlayNext { get; init; }
     public required Action<string?> Select { get; init; }
-    public required Action<string?> Expand { get; init; }
     public required Func<string, ContextMenuModel?> Menu { get; init; }
     /// <summary>A row's drag payload (the page props' <c>RowDrag</c>; null: the rows carry no drag).</summary>
     public Func<string, object?>? Drag { get; init; }
@@ -192,13 +189,6 @@ internal static class WinUiPodcastKit
     /// <summary>The app's play-next glyph (the menus' and the queue's: <c>ActionIcons.PlayNext</c> in the Wavee icon face).</summary>
     public static Element PlayNextIcon(float size, ColorF color) => Icon(WaveeIcons.PlayNext, size, color, WaveeIcons.Font);
 
-    /// <summary>"Play next" as a standard button with the app's play-next glyph.</summary>
-    public static Element PlayNextButton(Action next, string key)
-    {
-        var b = Button.Create(Loc.Get(Strings.Podcast.Pages.PlayNext), next);
-        return b with { Key = key, Children = [PlayNextIcon(K.PlayGlyph, Tok.TextPrimary), .. b.Children] };
-    }
-
     // ══ 2. THE SMART SPLITBUTTON ════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The smart action: <paramref name="label"/> (Pause while <paramref name="pausing"/>) on the main half, the menu on the chevron. Without
@@ -317,7 +307,7 @@ internal static class WinUiPodcastKit
 
     /// <summary>What a row's TREE depends on (its words are bound, never in here): equal shapes keep the row's render.</summary>
     readonly record struct RowShape(PodcastRowState State, float Progress, bool Saved, bool Video, bool Date, bool Length, bool Left, bool Desc,
-        bool Selected, string? Expanded, bool Playing);
+        bool Selected, bool Playing);
 
     sealed class RowHost : Component, IPropsHost
     {
@@ -329,7 +319,7 @@ internal static class WinUiPodcastKit
         readonly Func<RowShape> _shapeOf;
         readonly Func<string> _title, _date, _length, _desc;
         readonly Func<ContextMenuModel?> _menu;
-        readonly Action _click, _play, _save, _next, _open, _exit;
+        readonly Action _click, _play, _save, _exit;
         readonly Action<Point2> _move;
         readonly Action<KeyEventArgs> _key;
         readonly Action<PointerEventArgs> _press;
@@ -346,8 +336,6 @@ internal static class WinUiPodcastKit
             _click = Click;
             _play = () => _p.Verbs.Play(Id);
             _save = () => _p.Verbs.ToggleSaved(Id);
-            _next = () => _p.Verbs.PlayNext(Id);
-            _open = () => _p.Verbs.Open(Id);
             _move = _ => _hover.SetIfChanged(true);
             _exit = () => _hover.SetIfChanged(false);
             _key = OnKey;
@@ -373,11 +361,10 @@ internal static class WinUiPodcastKit
             if (p is null || vm is null) return default;
             var v = p.Verbs;
             string id = vm.Id;
-            bool expanded = p.Mode == PodcastRowMode.Expand && v.Expanded.Value == id;
             bool left = vm.State == PodcastRowState.InProgress && vm.Left.Length > 0;
             return new RowShape(vm.State, vm.State == PodcastRowState.InProgress ? vm.Progress : 0f, vm.Saved, vm.Video, vm.Date.Length > 0,
-                left || vm.Length.Length > 0, left, p.Description && vm.Description.Length > 0 && !expanded,
-                p.Mode == PodcastRowMode.Select && v.Selected.Value == id, expanded ? id : null, v.Playing.Value == id);
+                left || vm.Length.Length > 0, left, p.Description && vm.Description.Length > 0,
+                p.Mode == PodcastRowMode.Select && v.Selected.Value == id, v.Playing.Value == id);
         }
 
         public override Element Render()
@@ -394,7 +381,7 @@ internal static class WinUiPodcastKit
             // episode selected or released fades.
             bool rebound = _shownId is not null && _shownId != vm.Id;
             _shownId = vm.Id;
-            bool selected = s.Selected, expanded = s.Expanded is not null, played = s.State == PodcastRowState.Played;
+            bool selected = s.Selected, played = s.State == PodcastRowState.Played;
 
             float pb = p.Compact ? K.PlayButtonCompact : K.PlayButton;
             float act = p.Compact ? K.RowActionCompact : K.RowAction;
@@ -428,14 +415,6 @@ internal static class WinUiPodcastKit
                 ],
             };
 
-            var kids = new List<Element>(2) { line };
-            if (p.Mode == PodcastRowMode.Expand)
-                kids.Add(new BoxEl
-                {
-                    Key = "row:x", Direction = 1, ClipToBounds = true, Height = expanded ? float.NaN : 0f, Animate = K.Expand,
-                    Padding = new Edges4(pb + K.RowColGap, 0f, 0f, 0f),
-                    Children = expanded ? [ExpandBody(vm, _open, _next)] : [],
-                });
 
             // Keyed `ep` (one family, never the episode: a recycled slot keeps its row): the row is the instance its verbs act on (the lint's subject,
             // the inspector's drag and click target).
@@ -447,7 +426,7 @@ internal static class WinUiPodcastKit
                 HoverFill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTertiary,
                 PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = rebound ? 0f : Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press, Draggable = _drag,
-                Children = kids.ToArray(),
+                Children = [line],
             };
             // ONE tree selected or not (the pill is present, painted only while selected: an opacity, never a presence change): a selection that comes
             // or goes with the row mode (a tier crossing, 1008) never rebuilds the row and what it holds (the progress ring keeps its mount).
@@ -472,7 +451,6 @@ internal static class WinUiPodcastKit
             switch (p.Mode)
             {
                 case PodcastRowMode.Select: p.Verbs.Select(Id); break;
-                case PodcastRowMode.Expand: p.Verbs.Expand(Id); break;
                 default: p.Verbs.Open(Id); break;
             }
         }
@@ -584,25 +562,6 @@ internal static class WinUiPodcastKit
     };
 
     static TextEl MetaWord(string text) => Caption(text) with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f };
-
-    /// <summary>The expanded row's body: the description (rich), then Open episode and Play next.</summary>
-    static Element ExpandBody(PodcastEpisodeVm vm, Action open, Action next) => new BoxEl
-    {
-        Direction = 1, Gap = K.ExpandGap, Padding = new Edges4(0f, K.ExpandTop, 0f, 0f),
-        Children =
-        [
-            Description(vm.DescriptionHtml.Length > 0 ? vm.DescriptionHtml : vm.Description),
-            new BoxEl
-            {
-                Direction = 0, Gap = K.SectionGap, Wrap = true,
-                Children =
-                [
-                    Button.Create(Loc.Get(Strings.Podcast.Pages.OpenEpisode), open) with { Key = "row:open" },
-                    PlayNextButton(next, "row:next"),
-                ],
-            },
-        ],
-    };
 
     // ══ 4. A SECTION HEADER AND THE CARDS ═══════════════════════════════════════════════════════════════════════════════════
 

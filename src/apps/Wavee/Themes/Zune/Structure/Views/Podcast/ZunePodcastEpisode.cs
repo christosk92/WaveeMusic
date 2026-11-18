@@ -41,7 +41,6 @@ internal static class ZunePodcastEpisode
         => new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, Children = [Embed.Comp(p, static () => new Page()) with { Key = "zune-podcast-episode" }] };
 
     static readonly IReadSignal<PodcastEpisodeView> s_seed = new Signal<PodcastEpisodeView>(ZunePodcastSeed.Episode);
-    static readonly IReadSignal<string?> s_none = new Signal<string?>(null);
 
     sealed record Args(PodcastEpisodePageProps P, ZunePodcastLayout Lay, float Gutter, ZunePodcastRowVerbs Verbs);
 
@@ -61,7 +60,7 @@ internal static class ZunePodcastEpisode
             float gutter = ZuneTiers.GutterOf(in facts);
             _verbs ??= new ZunePodcastRowVerbs
             {
-                Expanded = s_none, Playing = p.OnDeck, Play = p.PlayEpisode, Open = p.Open, PlayNext = p.PlayNext, Expand = null, Menu = p.RowMenu,
+                Playing = p.OnDeck, Play = p.PlayEpisode, Open = p.Open, Menu = p.RowMenu,
                 Drag = p.RowDrag,
             };
             _head ??= () =>

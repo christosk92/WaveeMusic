@@ -4,7 +4,7 @@
 //
 //   PodcastShowScreen (keyed per route by the router)
 //   ├─ demand   Entities.Ensure(show, All) · the episode edge (first page, then Load more) · the rows' facts · the trailer row · "More like this"
-//   ├─ cells    filter · query · oldest-first · selected · expanded · pane tab        (signals; written only by the verbs)
+//   ├─ cells    filter · query · oldest-first · selected · pane tab        (signals; written only by the verbs)
 //   ├─ snapshot ShowModel.Compute (ONE UseComputed, a stable delegate): the head, the smart action and its menu, the rows (state at rest), the
 //   │           counts, the groups ("New since your last visit", then years; a serial's one "In order"), the jump years, HasMore, the similar cards
 //   ├─ pane     the selected episode's chapters (a ChapterResources lease, up to five around the current one)
@@ -94,8 +94,6 @@ public sealed class PodcastShowScreen : Component
             ToggleSort = m.ToggleSort,
             Selected = m.Selected,
             Select = m.Select,
-            Expanded = m.Expanded,
-            Expand = m.Expand,
             PaneTab = m.PaneTab,
             SetPaneTab = m.SetPaneTab,
             Playing = m.Playing,
@@ -211,7 +209,7 @@ sealed class ShowModel
     readonly Signal<PodcastFilter> _filter = new(PodcastFilter.All);
     readonly Signal<string> _query = new("");
     readonly Signal<bool> _oldest = new(false);
-    readonly Signal<string?> _selected = new(null), _expanded = new(null);
+    readonly Signal<string?> _selected = new(null);
     readonly Signal<PodcastPaneTab> _paneTab = new(PodcastPaneTab.Episode);
     readonly Signal<int> _askedFrom = new(-1);
     /// <summary>Whether the reader chose the order (else it follows the show: a serial reads oldest first).</summary>
@@ -222,7 +220,6 @@ sealed class ShowModel
     public IReadSignal<PodcastFilter> Filter => _filter;
     public IReadSignal<bool> Oldest => _oldest;
     public IReadSignal<string?> Selected => _selected;
-    public IReadSignal<string?> Expanded => _expanded;
     public IReadSignal<PodcastPaneTab> PaneTab => _paneTab;
     public readonly Func<Signal<string>> QueryCell;
     public readonly Func<PodcastShowView> ComputeView;
@@ -231,7 +228,7 @@ sealed class ShowModel
     public readonly Action ToggleSort, MarkFreshPlayed, ClearFilter, LoadMore, ToggleFollow, PlayTrailer, PlaySmart, Demand, DemandRows, DemandTrailer,
         SeedSelection, Reopen;
     public readonly Action? Share;
-    public readonly Action<string?> Select, Expand;
+    public readonly Action<string?> Select;
     public readonly Action<PodcastPaneTab> SetPaneTab;
     public readonly Action<string> Play, Open, ToggleSaved, PlayNext, OpenUri;
     public readonly Func<string, ContextMenuModel?> RowMenu;
@@ -289,10 +286,9 @@ sealed class ShowModel
             var id = Playback.CurrentId.Value;
             return Playback.IsPlaying.Value && !id.IsEmpty ? new EntityUri(id).Text : null;
         };
-        SetFilter = f => { _filter.Value = f; _expanded.Value = null; };
+        SetFilter = f => _filter.Value = f;
         ToggleSort = () => { _orderChosen = true; _oldest.Value = !_oldest.Peek(); };
         Select = id => { _selected.Value = id; if (id is not null) _paneTab.Value = PodcastPaneTab.Episode; };
-        Expand = id => _expanded.Value = _expanded.Peek() == id ? null : id;
         SetPaneTab = t => _paneTab.Value = t;
         ClearFilter = () => { _filter.Value = PodcastFilter.All; _query.Value = ""; };
         MarkFreshPlayed = () =>

@@ -8,7 +8,7 @@
 //   └─ the list column
 //        the list bar (pinned; a backing only while pinned): the filter words with their counts · search · sort
 //        groups: a lowercase label (pinned under the bar; opens the Jump to grid; "new since your last visit" offers Mark all as played) + rows
-//        (expand in place; at Compact a row opens its episode) · Load more · More like this
+//        (a click opens the episode's page) · Load more · More like this
 //
 // The tier record is `ClassicPodcastLayout` (window tier). Loading is the same column over a placeholder snapshot (SkelRegionEl, flat fills).
 

@@ -7,7 +7,7 @@
 //   ├─ ItemsView (the list column's scroller)   items = 2 prefix + Items + 1 foot
 //   │  ├─ [0] the cover column at Compact (stacked over the list); nothing from Small up (the column stands in its frame beside the list)
 //   │  ├─ [1] the list bar: a RAW sticky band (filters, search, sort), a backing only while pinned
-//   │  ├─ [2..] Items: a lowercase group label · an episode row (expands in place; at Compact it opens) · Load more · the empty line
+//   │  ├─ [2..] Items: a lowercase group label · an episode row (a click opens its episode) · Load more · the empty line
 //   │  └─ [last] the foot: More like this and the page's foot room
 //   └─ the pinned group label: an overlay under the list bar naming the group the list is in at that line (the list's own measured layout says which
 //      item sits there), backed only while it shows
@@ -79,8 +79,8 @@ internal static partial class ClassicPodcastShow
             _measureColumn ??= r => { if (r.H > 1f && MathF.Abs(r.H - _colH.Peek()) > 0.5f) _colH.Value = r.H; };
             _verbs ??= new ClassicRowVerbs
             {
-                Expanded = _p.Expanded, Playing = _p.Playing, Play = _p.Play, Open = _p.Open, ToggleSaved = _p.ToggleSaved, PlayNext = _p.PlayNext,
-                Expand = _p.Expand, Menu = _p.RowMenu, Drag = _p.RowDrag,
+                Playing = _p.Playing, Play = _p.Play, Open = _p.Open, ToggleSaved = _p.ToggleSaved,
+                Menu = _p.RowMenu, Drag = _p.RowDrag,
             };
             _pinnedOf ??= PinnedGroup;
             _pinned = UseComputed(_pinnedOf);
@@ -331,7 +331,7 @@ internal static partial class ClassicPodcastShow
                 var host = p.Host;
                 var lay = host._lay.Value;
                 return p.Item.Value.Vm is { } vm
-                    ? ClassicPodcastKit.EpisodeRow(vm, lay, lay.RowExpands, lay.RowDescription, host._accent.Value, host._verbs!) with { Key = "ep-slot" }
+                    ? ClassicPodcastKit.EpisodeRow(vm, lay, lay.RowDescription, host._accent.Value, host._verbs!) with { Key = "ep-slot" }
                     : new BoxEl();
             }
         }

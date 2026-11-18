@@ -162,9 +162,6 @@ public sealed record PodcastShowPageProps
     /// <summary>The selected episode (the details pane follows it); null shows the pane's hint / About.</summary>
     public required IReadSignal<string?> Selected { get; init; }
     public required Action<string?> Select { get; init; }
-    /// <summary>The row expanded in place (the medium width's disclosure).</summary>
-    public required IReadSignal<string?> Expanded { get; init; }
-    public required Action<string?> Expand { get; init; }
     public required IReadSignal<PodcastPaneTab> PaneTab { get; init; }
     public required Action<PodcastPaneTab> SetPaneTab { get; init; }
     /// <summary>The episode on the deck and playing (its button shows Pause), else null.</summary>

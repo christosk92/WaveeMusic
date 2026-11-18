@@ -58,7 +58,6 @@ internal static class ClassicPodcastRules
     public const float RowPadTop = 10f, RowPadEnd = 8f, RowPadBottom = 10f, RowPadStart = 12f, RowPadCompact = 8f, RowColGap = 12f;
     public const float PlayButton = 36f, PlayButtonCompact = 40f, RowAction = 32f, RowActionCompact = 40f;
     public const float RingTrackAlpha = 0.16f, MetaGap = 6f;
-    public const float ExpandTop = 10f, ExpandGap = 10f, ExpandMs = 167f;
 
     // ── sections, cards ──
     public const float SectionTop = 28f, SectionBottom = 12f, SectionGap = 8f;
@@ -105,7 +104,4 @@ internal static class ClassicPodcastRules
     /// <summary>A tab's count ("12"; "" while it is on its way or none).</summary>
     public static string CountLabel(int n, bool pending) => pending || n <= 0 ? "" : FormatCache.Int(n);
 
-    /// <summary>The row expand: 167 ms, a FlowReveal so the rows after it ride it.</summary>
-    public static readonly LayoutTransition Expand = new(TransitionChannels.Size, TransitionDynamics.Tween(ExpandMs, Easing.SmoothOut),
-        Size: SizeMode.FlowReveal, Anchor: SizeAnchor.Parallax);
 }

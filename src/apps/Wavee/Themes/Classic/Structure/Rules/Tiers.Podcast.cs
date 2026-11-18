@@ -2,8 +2,8 @@
 //
 // The concept `winui-podcast-v2.html` (theme=classic): an album page. A cover column on the left that stays while the list scrolls (280 from 1008, 240
 // below), stacked over the list at Compact (one scroller; a 120 cover, a 200 still). The episode page keeps the chapters and the transcript side by side
-// only at Standard and up; below, the transcript is a tab. Rows expand in place where the column stands beside the list; at Compact a row opens its
-// episode. Compact targets are 40 (owner rule), 32 elsewhere (Classic's control height).
+// only at Standard and up; below, the transcript is a tab. A row click opens its episode at every
+// width. Compact targets are 40 (owner rule), 32 elsewhere (Classic's control height).
 //
 // The WINDOW tier (`ctx.Tier().Window`): Compact < 528, Small 528-1007, Standard 1008-1919, Huge >= 1920 (Classic's ladder, `ClassicTiers`). A view reads
 // `ClassicPodcastTiers.Of(ctx.Tier())` and never compares a width (WVTH013).
@@ -31,8 +31,6 @@ public sealed record ClassicPodcastLayout
     public required float MainPad { get; init; }
     /// <summary>A row shows its one line of description (not at Compact).</summary>
     public required bool RowDescription { get; init; }
-    /// <summary>A row click expands it in place (beside the column) or opens its episode (Compact).</summary>
-    public required bool RowExpands { get; init; }
     /// <summary>The episode page: the chapters card and the transcript side by side (Standard and up), else the transcript is a tab.</summary>
     public required bool TwoCards { get; init; }
     /// <summary>The episode page's cards' height.</summary>
@@ -51,7 +49,7 @@ public static class ClassicPodcastTiers
     public static readonly ClassicPodcastLayout Standard = new()
     {
         Tier = WidthTier.Standard, Stacked = false, ColumnW = P.ColumnW, Cover = P.ColumnW - P.ColumnPadStart - P.ColumnPadEnd,
-        StillW = P.ColumnW - P.ColumnPadStart - P.ColumnPadEnd, Target = P.Target, MainPad = P.MainPad, RowDescription = true, RowExpands = true,
+        StillW = P.ColumnW - P.ColumnPadStart - P.ColumnPadEnd, Target = P.Target, MainPad = P.MainPad, RowDescription = true,
         TwoCards = true, CardsH = P.CardsH, AboutBeside = true, FollowGlyph = true, FilterMenu = false,
     };
 
@@ -66,7 +64,7 @@ public static class ClassicPodcastTiers
     public static readonly ClassicPodcastLayout Compact = Small with
     {
         Tier = WidthTier.Compact, Stacked = true, ColumnW = 0f, Cover = P.CoverStacked, StillW = P.StillStacked, Target = P.TargetCompact,
-        MainPad = P.MainPadCompact, RowDescription = false, RowExpands = false, CardsH = P.CardsHCompact, FollowGlyph = true, FilterMenu = true,
+        MainPad = P.MainPadCompact, RowDescription = false, CardsH = P.CardsHCompact, FollowGlyph = true, FilterMenu = true,
     };
 
     /// <summary>The window tier's record; where the CONTENT region is narrower than Standard (an inline panel beside a Standard window: the queue), the

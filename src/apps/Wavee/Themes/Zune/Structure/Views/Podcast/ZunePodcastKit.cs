@@ -16,7 +16,7 @@
 //   Line(...)        the 2-DIP Zune progress line, its fill bound.
 //   EpisodeRow(...)  an episode row: the play glyph (no plate), the 18/24 light title (white unplayed, grey played), the meta (the square accent "new",
 //                    the date, the length or the accent time left), one line of description where the tier writes it, the "..." at the end; a click
-//                    expands it in place (Open episode at its top, the description through the house renderer, Play next); right-click is its menu.
+//                    opens the episode's page; right-click is its menu.
 //   Description(...) HTML or plain text through the house rich-text renderer (never a tag on screen).
 //   Cards(...)       "More like this" on the house media surface (`Controls.Surface`: hover, play, pressed, focus, menu, hand).
 //
@@ -42,13 +42,9 @@ namespace Wavee.Themes.Zune;
 /// <summary>The verbs and live cells a <see cref="ZunePodcastKit.EpisodeRow"/> reads. ONE per page (the rows compare it by reference).</summary>
 internal sealed class ZunePodcastRowVerbs
 {
-    public required IReadSignal<string?> Expanded { get; init; }
     public required IReadSignal<string?> Playing { get; init; }
     public required Action<string> Play { get; init; }
     public required Action<string> Open { get; init; }
-    public required Action<string> PlayNext { get; init; }
-    /// <summary>A click: expand in place (the show), or null to open the episode (the episode page's "next in this show").</summary>
-    public required Action<string?>? Expand { get; init; }
     public required Func<string, ContextMenuModel?> Menu { get; init; }
     /// <summary>A row's drag payload (the page props' <c>RowDrag</c>; null: the rows carry no drag).</summary>
     public Func<string, object?>? Drag { get; init; }
@@ -483,9 +479,6 @@ internal static class ZunePodcastKit
             Children = [Controls.RichTextFlex(html, size, Tok.TextSecondary, R.Ink.AccentDecor, maxLines, DetailVerbs.NavigateKey)],
         };
 
-    /// <summary>The play-next glyph the app uses for the verb (the Wavee icon face).</summary>
-    public static Element PlayNextIcon(float size, ColorF color) => Icon(WaveeIcons.PlayNext, size, color, WaveeIcons.Font);
-
     // ══ 6. THE EPISODE ROW ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>One episode row (see the file header), keyed <c>ep:</c> + the id.</summary>
@@ -502,7 +495,7 @@ internal static class ZunePodcastKit
     {
         readonly Signal<bool> _hover = new(false);
         RowProps _p = null!;
-        Action? _click, _play, _next, _open, _exit;
+        Action? _click, _play, _exit;
         Action<Point2>? _move;
         Action<KeyEventArgs>? _key;
         Func<ContextMenuModel?>? _menu;
@@ -513,10 +506,8 @@ internal static class ZunePodcastKit
             _p = UseProps<RowProps>();
             // The row drags as its episode (onto a playlist, the queue, the player bar); the payload is built when the drag promotes.
             if (_drag is null && _p.Verbs.Drag is not null) _drag = Wavee.Drag.Source(() => _p.Verbs.Drag?.Invoke(_p.Vm.Id));
-            _click ??= () => { if (_p.Verbs.Expand is { } x) x(_p.Vm.Id); else _p.Verbs.Open(_p.Vm.Id); };
+            _click ??= () => _p.Verbs.Open(_p.Vm.Id);
             _play ??= () => _p.Verbs.Play(_p.Vm.Id);
-            _next ??= () => _p.Verbs.PlayNext(_p.Vm.Id);
-            _open ??= () => _p.Verbs.Open(_p.Vm.Id);
             _move ??= _ => _hover.SetIfChanged(true);
             _exit ??= () => _hover.SetIfChanged(false);
             _key ??= OnKey;
@@ -525,8 +516,6 @@ internal static class ZunePodcastKit
             var p = _p;
             var vm = p.Vm;
             var v = p.Verbs;
-            bool expandable = v.Expand is not null;
-            bool expanded = expandable && v.Expanded.Value == vm.Id;
             bool playing = v.Playing.Value == vm.Id;
             bool played = vm.State == PodcastRowState.Played;
             bool hover = _hover.Value;
@@ -540,7 +529,7 @@ internal static class ZunePodcastKit
                 Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             };
             var text = new List<Element>(3) { title, RowMeta(vm) };
-            if (p.Description && vm.Description.Length > 0 && !expanded)
+            if (p.Description && vm.Description.Length > 0)
                 text.Add(new TextEl(vm.Description)
                 {
                     Size = Z.RowDescSize, LineHeight = Z.RowDescLine, Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap,
@@ -572,14 +561,6 @@ internal static class ZunePodcastKit
                     new BoxEl { Shrink = 0f, AlignSelf = FlexAlign.Start, Children = [More("row:more", _menu, act, ring: false)] },
                 ],
             };
-            var kids = new List<Element>(2) { line };
-            if (expandable)
-                kids.Add(new BoxEl
-                {
-                    Key = "row:x", Direction = 1, ClipToBounds = true, Height = expanded ? float.NaN : 0f, Animate = ZuneDetailKit.GrowShove,
-                    Padding = new Edges4(pb + Z.RowGap, 0f, act, 0f),
-                    Children = expanded ? [ExpandBody(vm, _open, _next, p.Compact)] : [],
-                });
             BoxEl row = new()
             {
                 Direction = 1, MinWidth = 0f, Focusable = true, Role = AutomationRole.Button, Cursor = CursorId.Hand, AllowFocusOnInteraction = false,
@@ -587,7 +568,7 @@ internal static class ZunePodcastKit
                 Fill = ColorF.Transparent, HoverFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.RowHoverAlpha }),
                 PressedFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.RowPressedAlpha }), BrushTransitionMs = Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, Draggable = _drag,
-                Children = kids.ToArray(),
+                Children = [line],
             };
             if (!Controls.IsNullOverlay(overlay)) row = ContextSheets.Attach(row, overlay, _menu);
             return row;
@@ -621,33 +602,6 @@ internal static class ZunePodcastKit
         if (vm.State == PodcastRowState.Played) parts.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Played)) with { Color = Tok.TextTertiary });
         if (vm.Video) parts.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Video)) with { Color = Tok.TextTertiary });
         return Meta("row:meta", parts);
-    }
-
-    /// <summary>The expanded row: Open episode at its top (the verb's one home), then the description through the house renderer, then Play next.</summary>
-    static Element ExpandBody(PodcastEpisodeVm vm, Action open, Action next, bool compact)
-    {
-        float h = compact ? Z.RowActionCompact : Z.RowAction;
-        var kids = new List<Element>(3)
-        {
-            new BoxEl
-            {
-                Direction = 0, Gap = Z.CommandGap, Wrap = true,
-                Children =
-                [
-                    Button("row:open", Loc.Get(Strings.Podcast.Pages.OpenEpisode), Icons.OpenInNewWindow, open, h),
-                    Button("row:next", Loc.Get(Strings.Podcast.Pages.PlayNext), null, next, h) with
-                    {
-                        Children = [PlayNextIcon(Z.ButtonGlyph, Tok.TextPrimary), new TextEl(Loc.Get(Strings.Podcast.Pages.PlayNext))
-                        {
-                            Size = Z.ButtonTextSize, LineHeight = Z.ButtonTextLine, Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Command), MaxLines = 1,
-                        }],
-                    },
-                ],
-            },
-        };
-        if (vm.Description.Length > 0 || vm.DescriptionHtml.Length > 0)
-            kids.Add(Description(vm.DescriptionHtml.Length > 0 ? vm.DescriptionHtml : vm.Description, 0, Z.BodySize));
-        return new BoxEl { Direction = 1, Gap = Z.ExpandGap, Padding = new Edges4(0f, Z.ExpandTop, 0f, 0f), MinWidth = 0f, Children = kids.ToArray() };
     }
 
     // ══ 7. THE CARDS ════════════════════════════════════════════════════════════════════════════════════════════════════════

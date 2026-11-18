@@ -99,8 +99,8 @@ internal static partial class WinUiPodcastShow
                 if (i == 1) return lay.Pane ? 0f : S.AboutEstimate;
                 if (i == 2) return S.ToolbarH;
                 // EXACT where it can be (a jump far down the list lands on its year): a header is its tier's height, a row at rest its one-line height (with
-                // a line of description where the tier shows one and the episode has one) plus the gap above every row but a group's first. An expanded row,
-                // a two-line Compact title and the foot correct on realize.
+                // a line of description where the tier shows one and the episode has one) plus the gap above every row but a group's first. A two-line
+                // Compact title and the foot correct on realize.
                 var v = View.Peek();
                 int k = i - PrefixCount;
                 if ((uint)k >= (uint)v.Items.Length) return S.FootEstimate;

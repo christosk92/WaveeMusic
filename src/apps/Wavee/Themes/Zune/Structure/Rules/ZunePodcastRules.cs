@@ -101,9 +101,9 @@ public static class ZunePodcastRules
     public const float JumpW = 320f, JumpCellH = 64f, JumpGap = 4f, JumpPad = 16f;
     public const int JumpCols = 3;
 
-    /// <summary>An episode row: the play column, the vertical padding, the title (18/24 light), the description's lines and the expanded body's air.</summary>
+    /// <summary>An episode row: the play column, the vertical padding, the title (18/24 light), and the description's lines.</summary>
     public const float RowPlay = 36f, RowPlayCompact = 40f, RowPadY = 10f, RowGap = 12f, RowGlyph = 14f, RowTitleSize = 18f, RowTitleLine = 24f;
-    public const float RowAction = 36f, RowActionCompact = 40f, RowDescSize = 13f, RowDescLine = 18f, ExpandTop = 8f, ExpandGap = 12f;
+    public const float RowAction = 36f, RowActionCompact = 40f, RowDescSize = 13f, RowDescLine = 18f;
 
     /// <summary>The row's hover wash and the new mark (a square accent dot).</summary>
     public const float RowHoverAlpha = 0.04f, RowPressedAlpha = 0.08f, NewDot = 6f;

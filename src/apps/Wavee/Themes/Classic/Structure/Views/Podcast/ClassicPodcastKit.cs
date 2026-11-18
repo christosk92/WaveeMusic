@@ -12,8 +12,8 @@
 //   PinnedBar(...)   a row that pins in the list column (the list bar, a group label): nothing painted at rest; while pinned it takes the page ground
 //                    and a hairline (owner 2026-11-18: no bands at rest).
 //   EpisodeRow(...)  the row: its words (title semibold while unplayed, the meta line, one line of description), the saved heart at rest, the ⋯ always,
-//                    the play button at its end (the ring while in progress, a check once played); a click expands it in place (Open episode and Play
-//                    next at the top, the description under them) or, at Compact, opens the episode; right-click opens its menu.
+//                    the play button at its end (the ring while in progress, a check once played); a click opens the episode's page;
+//                    right-click opens its menu.
 //   SectionHeader / MoreLikeThis   the 20/28 section head with its link; the house media surface (`Controls.Surface`: hover, pressed, focus, menu,
 //                    drag, the hand) as shelf cards or, narrow, the house rows.
 //
@@ -39,13 +39,10 @@ namespace Wavee.Themes.Classic;
 /// <summary>The verbs and live cells a <see cref="ClassicPodcastKit.EpisodeRow"/> reads. Build ONE per page (rows compare it by reference).</summary>
 internal sealed class ClassicRowVerbs
 {
-    public required IReadSignal<string?> Expanded { get; init; }
     public required IReadSignal<string?> Playing { get; init; }
     public required Action<string> Play { get; init; }
     public required Action<string> Open { get; init; }
     public required Action<string> ToggleSaved { get; init; }
-    public required Action<string> PlayNext { get; init; }
-    public required Action<string?> Expand { get; init; }
     public required Func<string, ContextMenuModel?> Menu { get; init; }
     /// <summary>A row's drag payload (the page props' <c>RowDrag</c>; null: the rows carry no drag).</summary>
     public Func<string, object?>? Drag { get; init; }
@@ -442,19 +439,6 @@ internal static class ClassicPodcastKit
             BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
         }, name);
 
-    /// <summary>The app's play-next glyph (<c>WaveeIcons.PlayNext</c>, the menus' and the queue's), never <c>Icons.Queue</c>.</summary>
-    public static Element PlayNextIcon(float size, ColorF color) => Icon(WaveeIcons.PlayNext, size, color, WaveeIcons.Font);
-
-    /// <summary>"Play next" as a standard button with the app's play-next glyph.</summary>
-    public static Element PlayNextButton(Action next, string key)
-    {
-        // The house button with a glyph (its glyph slot and gap), the glyph swapped for the app's play-next one.
-        var b = Button.Create(Loc.Get(Strings.Podcast.Pages.PlayNext), next, glyph: Icons.Play);
-        var kids = b.Children.ToArray();
-        if (kids.Length > 0) kids[0] = PlayNextIcon(P.PlayGlyph, Tok.TextPrimary);
-        return b with { Key = key, Children = kids };
-    }
-
     // ══ 5. A PINNED ROW ═════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A row that pins <paramref name="top"/> below the list scroller's edge: nothing painted at rest; while pinned (<paramref name="stuck"/>) the
@@ -488,21 +472,21 @@ internal static class ClassicPodcastKit
     // ══ 6. THE EPISODE ROW ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>One episode row (see the file header), keyed <c>ep:</c> + the id.</summary>
-    public static Element EpisodeRow(PodcastEpisodeVm vm, ClassicPodcastLayout lay, bool expands, bool description, ColorF accent, ClassicRowVerbs verbs)
-        => Embed.Comp(new RowProps(vm, lay.Stacked, expands, description, accent, verbs), static () => new RowHost()) with { Key = "ep:" + vm.Id };
+    public static Element EpisodeRow(PodcastEpisodeVm vm, ClassicPodcastLayout lay, bool description, ColorF accent, ClassicRowVerbs verbs)
+        => Embed.Comp(new RowProps(vm, lay.Stacked, description, accent, verbs), static () => new RowHost()) with { Key = "ep:" + vm.Id };
 
-    sealed record RowProps(PodcastEpisodeVm Vm, bool Compact, bool Expands, bool Description, ColorF Accent, ClassicRowVerbs Verbs)
+    sealed record RowProps(PodcastEpisodeVm Vm, bool Compact, bool Description, ColorF Accent, ClassicRowVerbs Verbs)
     {
-        public bool Equals(RowProps? o) => o is not null && Vm.Equals(o.Vm) && Compact == o.Compact && Expands == o.Expands && Description == o.Description
+        public bool Equals(RowProps? o) => o is not null && Vm.Equals(o.Vm) && Compact == o.Compact && Description == o.Description
             && Accent.Equals(o.Accent) && ReferenceEquals(Verbs, o.Verbs);
-        public override int GetHashCode() => HashCode.Combine(Vm.Id, Compact, Expands, Description);
+        public override int GetHashCode() => HashCode.Combine(Vm.Id, Compact, Description);
     }
 
     sealed class RowHost : Component
     {
         readonly Signal<bool> _hover = new(false);
         RowProps _p = null!;
-        Action? _click, _play, _save, _next, _open, _exit;
+        Action? _click, _play, _save, _exit;
         Action<Point2>? _move;
         Action<KeyEventArgs>? _key;
         Func<ContextMenuModel?>? _menu;
@@ -513,11 +497,9 @@ internal static class ClassicPodcastKit
             _p = UseProps<RowProps>();
             // The row drags as its episode (onto a playlist, the queue, the player bar): ONE source per row, the payload built when the drag promotes.
             if (_drag is null && _p.Verbs.Drag is not null) _drag = Wavee.Drag.Source(() => _p.Verbs.Drag?.Invoke(_p.Vm.Id));
-            _click ??= () => { if (_p.Expands) _p.Verbs.Expand(_p.Vm.Id); else _p.Verbs.Open(_p.Vm.Id); };
+            _click ??= () => _p.Verbs.Open(_p.Vm.Id);
             _play ??= () => _p.Verbs.Play(_p.Vm.Id);
             _save ??= () => _p.Verbs.ToggleSaved(_p.Vm.Id);
-            _next ??= () => _p.Verbs.PlayNext(_p.Vm.Id);
-            _open ??= () => _p.Verbs.Open(_p.Vm.Id);
             _move ??= _ => _hover.SetIfChanged(true);
             _exit ??= () => _hover.SetIfChanged(false);
             _menu ??= () => _p.Verbs.Menu(_p.Vm.Id);
@@ -532,7 +514,6 @@ internal static class ClassicPodcastKit
             var vm = p.Vm;
             var v = p.Verbs;
             string id = vm.Id;
-            bool expanded = p.Expands && v.Expanded.Value == id;
             bool playing = v.Playing.Value == id;
             bool played = vm.State == PodcastRowState.Played;
             bool hover = _hover.Value;
@@ -545,15 +526,15 @@ internal static class ClassicPodcastKit
                 Weight = played ? (ushort)400 : P.Strong, Color = played ? Tok.TextSecondary : Tok.TextPrimary,
             };
             var text = new List<Element>(3) { title, MetaLine(vm, accent: p.Accent) };
-            if (p.Description && vm.Description.Length > 0 && !expanded)
+            if (p.Description && vm.Description.Length > 0)
                 text.Add(new TextEl(vm.Description)
                 {
                     Size = P.LineSize, LineHeight = P.LineHeight, MaxLines = P.RowDescLines, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
                     Color = Tok.TextSecondary, MinWidth = 0f,
                 });
 
-            bool showSave = vm.Saved || hover || expanded || p.Compact;
-            // The heart's slot is always reserved; the button itself is mounted only while it shows (saved at rest, hover, expanded, Compact), so a
+            bool showSave = vm.Saved || hover || p.Compact;
+            // The heart's slot is always reserved; the button itself is mounted only while it shows (saved at rest, hover, Compact), so a
             // freshly realised row in a fast scroll carries no hidden button.
             Element save = new BoxEl
             {
@@ -572,13 +553,6 @@ internal static class ClassicPodcastKit
                     PlayButton(vm, pb, playing, hover, p.Accent, _play),
                 ],
             };
-            var kids = new List<Element>(2) { line };
-            if (p.Expands)
-                kids.Add(new BoxEl
-                {
-                    Key = "row:x", Direction = 1, ClipToBounds = true, Height = expanded ? float.NaN : 0f, Animate = P.Expand, MinWidth = 0f,
-                    Children = expanded ? [ExpandBody(vm, _open, _next)] : [],
-                });
 
             // Keyed `ep` (one family): the row is the instance its verbs act on (the lint's subject: each row's More acts on its own episode, never
             // on the page's show), and the inspector's click and drag target.
@@ -588,10 +562,10 @@ internal static class ClassicPodcastKit
                 // The plate bleeds into the gutter: the row's words stand on the column line the list bar and the group labels stand on.
                 Margin = p.Compact ? new Edges4(-P.RowPadCompact, 0f, -P.RowPadCompact, 0f) : new Edges4(-P.RowPadStart, 0f, -P.RowPadEnd, 0f),
                 Padding = p.Compact ? Edges4.All(P.RowPadCompact) : new Edges4(P.RowPadStart, P.RowPadTop, P.RowPadEnd, P.RowPadBottom),
-                Fill = expanded ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
+                Fill = Tok.FillSubtleTransparent,
                 HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, Draggable = _drag,
-                Children = kids.ToArray(),
+                Children = [line],
             };
             return Controls.IsNullOverlay(overlay) ? row : ContextSheets.Attach(row, overlay!, _menu);
         }
@@ -661,25 +635,6 @@ internal static class ClassicPodcastKit
     }
 
     static TextEl Meta(string text) => new(text) { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f, Wrap = TextWrap.NoWrap };
-
-    /// <summary>The expanded row's body: Open episode and Play next at its top (one home for the verb), the description under them.</summary>
-    static Element ExpandBody(PodcastEpisodeVm vm, Action open, Action next) => new BoxEl
-    {
-        Direction = 1, Gap = P.ExpandGap, Padding = new Edges4(0f, P.ExpandTop, 0f, 0f), MinWidth = 0f,
-        Children =
-        [
-            new BoxEl
-            {
-                Direction = 0, Gap = P.SectionGap, Wrap = true,
-                Children =
-                [
-                    Button.Create(Loc.Get(Strings.Podcast.Pages.OpenEpisode), open, glyph: Icons.OpenInNewWindow) with { Key = "row:open" },
-                    PlayNextButton(next, "row:next"),
-                ],
-            },
-            Description(vm.DescriptionHtml.Length > 0 ? vm.DescriptionHtml : vm.Description, "row:desc:" + vm.Id, 0, P.SubSize),
-        ],
-    };
 
     // ══ 7. SECTIONS AND CARDS ═══════════════════════════════════════════════════════════════════════════════════════════════
 
