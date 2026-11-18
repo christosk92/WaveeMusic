@@ -72,6 +72,9 @@ versions separately under `v*` and is not tracked in this file.)
   track still loading, a download finding its size), five small dots rush in, drift through the middle and rush out,
   in place of the sliding block.
 
+- **The WinUI title bar and the app share one background.** The tab row no longer paints its own grey strip; the
+  selected tab is a translucent plate on the window's material.
+
 - **Pinned bars show the window behind them (WinUI, Zune).** The bar that stays at the top of an album or playlist
   page in WinUI no longer paints a lighter band across the page.
 

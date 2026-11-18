@@ -4,7 +4,7 @@
 // (EP16, `TitleBar.Rows`): the core owns the tab workspace, the history stacks, the auth fold, the pin and every verb (`ShellTitleBarProps`);
 // this template draws, per window tier, what `WinUiTiers.TitleBar(tier)` says:
 //
-//   TABS ON (88)   row 1 (40, Mica Alt): the TabView strip (Chrome tabs, the tier's form: Ladder 240 / 200 / 160 -> 110 then scroll, or
+//   TABS ON (88)   row 1 (40, on the window's own Mica: NO strip of its own, so the bar and the app are one ground; owner, 2026-11-18): the TabView strip (Chrome tabs, the tier's form: Ladder 240 / 200 / 160 -> 110 then scroll, or
 //                  Compact's 140 selected + 36 icon tabs) and "+", the drag band, the caption buttons (row-tall)
 //                  row 2 (48): ≡ · Back · Forward | the search (centred on the window at 520 / 640; filling the middle at Small; the
 //                  magnifier at Compact) | pin · Friends · bell (badge) · avatar (+ the name at Huge); Small folds pin and Friends into ⋯
@@ -47,8 +47,10 @@ internal static class WinUiTitleBar
         bool Strip() => facts.Value.Capabilities.ShowsTabStrip;
 
         var parts = new TemplateParts();
-        // Row 1 is the Mica Alt strip (Shell-Top `strip`); the toolbar row lies on the window's Mica.
-        parts[TitleBar.PartTopRow] = static b => b with { Key = WinUiFrameRules.TabRowKey, Fill = Tok.FillSolidBaseAlt };
+        // Row 1 paints nothing: it lies on the window's Mica, as the toolbar row and the app do. It carried a solid Mica Alt strip (Shell-Top
+        // `strip`), which stood apart from the Mica under everything else as a grey band (owner, 2026-11-18: "the titlebar and the app must
+        // merge"). The selected tab is the one plate on it.
+        parts[TitleBar.PartTopRow] = static b => b with { Key = WinUiFrameRules.TabRowKey, Fill = ColorF.Transparent };
         parts[TitleBar.PartToolbarRow] = static b => b with { Key = WinUiFrameRules.ToolbarKey };
         parts[TitleBar.PartPaneToggle] = static b => b with { Key = "winui.titlebar.pane" };
 
@@ -94,12 +96,14 @@ internal static class WinUiTitleBar
         // The Compact touch sizes are live parts, so the 641 crossing keeps every tab, the "+" and the close button and eases them to the
         // touch floor (the plates' height in the engine, the "+" and the close button here).
         Parts = StripParts(tiers),
-        // WinUI's TabView: Chrome tabs (the selected tab joins the toolbar's Mica), the tier's form against the bar's tab lane.
+        // WinUI's TabView: Chrome tabs, the tier's form against the bar's tab lane. The selected tab is WinUI's layer over Mica (translucent:
+        // the window's material shows through it, it is never a solid block on the bar).
         Appearance = TabStripAppearance.Chrome,
         Form = () => WinUiTiers.TitleBarOf(tiers()).TabForm,
         TabHeight = Prop.Of(() => WinUiTiers.TitleBarOf(tiers()).TabH),
         TextFontSize = WinUiFrameRules.MarkTextSize,
-        SelectedFill = Prop.Of(static () => Tok.FillSolidBase),
+        SelectedFill = Prop.Of(static () => Tok.LayerOnMicaBaseAlt),
+        ShowRailBaseline = false,   // one ground under both rows: no edge to draw, and a hairline that ended after the "+" read as a stray line
         // Shell-Top: only the selected tab carries its close button at rest (the others show it under the pointer).
         CloseButtonOverlayMode = TabViewCloseButtonOverlayMode.OnPointerOver,
         IsAddTabButtonVisible = true,
