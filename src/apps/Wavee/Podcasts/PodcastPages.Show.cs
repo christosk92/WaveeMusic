@@ -43,6 +43,10 @@ public sealed class PodcastShowScreen : Component
     Func<PodcastPaneChapters>? _computeChapters;
     Action? _syncLease, _dispose;
     Func<Action>? _cleanup;
+    PageChromeSink _sink = PageChromeSink.None;
+    string _published = "";
+    Action? _publishTitle;
+    Func<Action>? _withdrawOnLeave;
 
     public override Element Render()
     {
@@ -72,6 +76,12 @@ public sealed class PodcastShowScreen : Component
         UseEffect(_syncLease);
         UseEffect(_cleanup, DepKey.Empty);
         UseActivation(onActivated: m.Reopen);
+        // The window tab and the history rows read the page's own title (`PageChromeChannel.PublishedTitle`), not the route's "Podcast".
+        _sink = UseContext(PageChromeSink.Context);
+        _publishTitle ??= PublishTitle;
+        _withdrawOnLeave ??= () => WithdrawTitle;
+        UseEffect(_publishTitle);
+        UseEffect(_withdrawOnLeave, DepKey.Empty);
 
         _props ??= new PodcastShowPageProps
         {
@@ -139,6 +149,17 @@ public sealed class PodcastShowScreen : Component
     }
 
     /// <summary>Up to <see cref="PaneChapterMax"/> chapters around the current one (the episode's resume point, or its live position while it plays).</summary>
+    /// <summary>Auto-tracked on the snapshot: publishes the show's title once it is known and whenever it changes.</summary>
+    void PublishTitle()
+    {
+        string title = _m?.View?.Value.Head.Title ?? "";
+        if (title.Length == 0 || title == _published) return;
+        _published = title;
+        _sink.Publish(new PageChromeRow([], [], Title: title));
+    }
+
+    void WithdrawTitle() => _sink.Publish(null);
+
     PodcastPaneChapters ComputeChapters()
     {
         var data = _chapters.Value;

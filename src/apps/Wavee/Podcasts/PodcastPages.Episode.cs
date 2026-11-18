@@ -52,6 +52,10 @@ public sealed class PodcastEpisodeScreen : Component
     Memo<int>? _chapterMemo;
     Memo<bool>? _playingMemo;
     PodcastEpisodePageProps? _props;
+    PageChromeSink _sink = PageChromeSink.None;
+    string _published = "";
+    readonly Action _publishTitle;
+    readonly Func<Action> _withdrawOnLeave;
 
     readonly Func<int> _positionOf, _chapterOf, _lineOf;
     readonly Func<PodcastRowState> _stateOf;
@@ -92,6 +96,8 @@ public sealed class PodcastEpisodeScreen : Component
     {
         _positionOf = PositionOf; _stateOf = StateOf; _chapterOf = ChapterOf; _lineOf = LineOf; _playingOf = PlayingOf;
         _clockOf = ClockOf; _leftOf = LeftOf; _chapterLeftOf = ChapterLeftOf; _viewOf = ViewOf;
+        _publishTitle = PublishTitle;
+        _withdrawOnLeave = () => WithdrawTitle;
         _commentsView = () => Embed.Comp(new PodcastReaderUI.DiscussionProps(_host.Subject.Text, false), static () => new PodcastReaderUI.Discussion())
             with { Key = "episode-comments:" + _host.Subject.Text };
         _menu = MoreMenu;
@@ -165,6 +171,10 @@ public sealed class PodcastEpisodeScreen : Component
         var chapterLeft = UseComputed(_chapterLeftOf);
         var playing = _playingMemo;
         var onDeck = UseComputed(_onDeckOf);
+        // The window tab and the history rows read the page's own title (`PageChromeChannel.PublishedTitle`), not the route's "Episode".
+        _sink = UseContext(PageChromeSink.Context);
+        UseEffect(_publishTitle);
+        UseEffect(_withdrawOnLeave, DepKey.Empty);
 
         _props ??= new PodcastEpisodePageProps
         {
@@ -181,6 +191,17 @@ public sealed class PodcastEpisodeScreen : Component
         };
         return Slots.View(ViewKeys.PodcastEpisodePage, _props);
     }
+
+    /// <summary>Auto-tracked on the snapshot: publishes the episode's title once it is known and whenever it changes.</summary>
+    void PublishTitle()
+    {
+        string title = _view?.Value.Episode.Title ?? "";
+        if (title.Length == 0 || title == _published) return;
+        _published = title;
+        _sink.Publish(new PageChromeRow([], [], Title: title));
+    }
+
+    void WithdrawTitle() => _sink.Publish(null);
 
     /// <summary>The show's identity, its membership and the rows "Next in this show" paints. Auto-tracked: re-asks as the episode's show and the
     /// membership land (the planner dedupes).</summary>
