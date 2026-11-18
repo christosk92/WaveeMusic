@@ -80,7 +80,7 @@ public static partial class Platform
     /// file does not have to depend on `Design.cs`/`Notify.cs`/`Sidebar.cs` to boot. The same applies to the four rail
     /// widths, whose defaults are `Design.cs` tokens: Wave 4 owes a convergence test pinning the two (the
     /// `ZoomAutoPolicy.DesignW` precedent).</para></summary>
-    // PARTIAL: the Wave-6 keys (`diag.stageRects`, and any a Wave-6 owner adds with a writer) are in Platform.Settings.cs.
+    // PARTIAL: the Wave-6 keys (the fullscreen stage's, and any a Wave-6 owner adds with a writer) are in Platform.Settings.cs.
     public static partial class Keys
     {
         // ── sidebar: legacy (v0) global pane keys, read only by the first-run probe
@@ -1292,7 +1292,7 @@ internal sealed partial class CredentialJson : JsonSerializerContext { }
 // ── WHERE OWNER S's WAVE-6 HALF LANDED (G-199) ───────────────────────────────────────────────────────────────────────
 //   · `Platform.Settings.cs` (the named partial): the settings-backing selection, `Developer`, `Network`, `AmbientPower`,
 //     `LogCapturePolicy`, `WaveeLogSessions` (pure), `WaveeVersionInfo`, `RunMarker`,
-//     `FactoryResetPlan`, `ProvisioningOutcome`, `Keys.StageRects`.
+//     `FactoryResetPlan`, `ProvisioningOutcome`, the fullscreen stage's keys.
 //   · `Platform.Host.cs`: the profile-file / in-memory settings stores, the log levels through `LogCapturePolicy`, the
 //     crash-writer install, the factory-reset apply/request and the restart broker's spawn, the NLM cost host, the
 //     ambient power poll, `Platform.Version`.
