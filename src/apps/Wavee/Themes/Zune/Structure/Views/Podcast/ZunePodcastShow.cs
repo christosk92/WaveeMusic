@@ -311,16 +311,21 @@ internal static partial class ZunePodcastShow
                 var stars = new Element[5];
                 int full = (h.RatingX100 + 50) / 100;
                 for (int i = 0; i < stars.Length; i++) stars[i] = Icon(Icons.FavoriteStarFill, Z.RatingStar, i < full ? Tok.TextPrimary : Tok.TextDisabled);
+                var state = _p.RateState;
                 kids.Add(new BoxEl
                 {
                     Key = "about-rating", Direction = 0, Gap = Z.SectionHeadGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Wrap = true,
                     Children =
                     [
                         R.Type.Heading(h.Rating) with { Shrink = 0f },
-                        new BoxEl { Direction = 1, Shrink = 0f, Children = [new BoxEl { Direction = 0, Children = stars }, K.MetaWord(h.Ratings)] },
-                        _p.Rate is { } r
-                            ? K.Button("about:rate", Loc.Get(Strings.Podcast.Pages.Rate), null, r, lay.Target)
-                            : K.Named(K.Button("about:rate", Loc.Get(Strings.Podcast.Pages.Rate), null, null, lay.Target), Loc.Get(Strings.Podcast.Pages.RateUnavailable), false),
+                        new BoxEl
+                        {
+                            Direction = 1, Shrink = 0f,
+                            Children = [new BoxEl { Direction = 0, Children = stars }, K.MetaWord(h.Ratings) with { Text = Prop.Of(() => state.Value.Line) }],
+                        },
+                        // Rate opens the shared picker (the listener's stars, busy, the failure, why it is off); the line keeps the listener's own at rest.
+                        Controls.RateFlyout("about:rate-flyout", K.Button("about:rate", Loc.Get(Strings.Podcast.Pages.Rate), null, static () => { }, lay.Target),
+                            state, _p.Rate, Z.RatingStar, static () => R.Ink.AccentDecor),
                     ],
                 });
             }

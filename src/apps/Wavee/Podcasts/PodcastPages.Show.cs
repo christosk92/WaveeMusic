@@ -37,6 +37,7 @@ public sealed class PodcastShowScreen : Component
 {
     ShowModel? _m;
     PodcastShowPageProps? _props;
+    PodcastRater? _rater;
     ChapterResources.Lease? _lease;
     ChapterResources.Identity _leaseKey;
     readonly Signal<Loadable<Spotify.Podcasts.Page<Spotify.Podcasts.Chapter>>?> _chapters = new(null);
@@ -69,6 +70,8 @@ public sealed class PodcastShowScreen : Component
         m.View = UseComputed(m.ComputeView);
         m.Playing = UseComputed(m.ComputePlaying);
         m.PaneChapters = UseComputed(_computeChapters);
+        _rater ??= new PodcastRater(hp.Subject, m.RateFacts);
+        var rateState = UseComputed(_rater.Compute);
         UseEffect(m.Demand, DepKey.From((int)epoch));
         UseEffect(m.DemandRows);
         UseEffect(m.DemandTrailer);
@@ -102,7 +105,8 @@ public sealed class PodcastShowScreen : Component
             Play = m.Play,
             PlaySmart = m.PlaySmart,
             PaneChapters = m.PaneChapters,
-            Rate = null,
+            Rate = _rater.Rate,
+            RateState = rateState,
             Open = m.Open,
             ToggleSaved = m.ToggleSaved,
             PlayNext = m.PlayNext,
@@ -414,6 +418,13 @@ sealed class ShowModel
     }
 
     Show ShowOf() => Subject.IsValid ? Entities.Show(Subject) : default;
+
+    /// <summary>The rate control's inputs, read from the snapshot (the rater's compute subscribes through it).</summary>
+    public PodcastRater.Facts RateFacts()
+    {
+        var h = View?.Value.Head ?? PodcastShowView.Empty.Head;
+        return new PodcastRater.Facts(h.Title, h.Ratings, h.MyRating, h.CanRate);
+    }
 
     static Episode EpisodeOf(string? id)
     {
@@ -850,6 +861,10 @@ sealed class ShowModel
         string publisher = page.Publisher;
         var r = page.Rating;
         bool rated = r is { Average: > 0f };
+        // The listener's own stars and the rate gate: the page's rating, else the show's own row (a show with no public average yet).
+        bool rowKnown = show.Knows(ShowFields.Rating);
+        int mine = r?.Mine ?? (rowKnown ? show.MyRating : 0);
+        bool canRate = r?.CanRate ?? (rowKnown && (show.Flags & ShowFlags.CanRate) != 0);
         int ratingX100 = rated ? (int)MathF.Round(r!.Value.Average * 100f) : 0;
         int ratingCount = rated ? r!.Value.Count : 0;
         string rating = rated ? r!.Value.Average.ToString("0.0", CultureInfo.CurrentCulture) : "";
@@ -872,7 +887,10 @@ sealed class ShowModel
             ? Strings.Podcast.Pages.TrailerSub(Episode.DurationLabel(trailer.DurationMs)) : "";
         return new PodcastShowHead(SubjectText, title, art, tone, Loc.Get(Strings.Podcast.Pages.KindPodcast), topics, video, serial, publisher,
             ratingX100, rating, rated ? "(" + count + ")" : "", rated ? (ratingCount == 1 ? Strings.Podcast.Pages.RatingsCount(1) : Strings.Podcast.Pages.RatingsMany(count)) : "",
-            r is { CanRate: true }, cadenceWord, countLine, about, following, trailer.IsValid ? trailerId : null, trailerSub, facts.ToImmutable()) { AboutHtml = aboutHtml };
+            canRate, cadenceWord, countLine, about, following, trailer.IsValid ? trailerId : null, trailerSub, facts.ToImmutable())
+        {
+            AboutHtml = aboutHtml, MyRating = mine,
+        };
     }
 
     ImmutableArray<PodcastCardVm> SimilarOf(Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>? page)

@@ -270,7 +270,9 @@
     "yours": "jouw score {stars}★",
     "rate": {
       "title": "{name} beoordelen",
-      "unavailable": "Beoordelen kan nog niet in Wavee — het gemiddelde en je eigen score worden getoond zoals Spotify ze heeft.",
+      "closed": "Spotify neemt voor dit account geen beoordelingen aan.",
+      "demo": "In de demo worden beoordelingen niet opgeslagen. Log in om te beoordelen.",
+      "saving": "Je beoordeling wordt opgeslagen…",
       "stars": "{count, plural, one {# ster} other {# sterren}}"
     },
     "notify": {

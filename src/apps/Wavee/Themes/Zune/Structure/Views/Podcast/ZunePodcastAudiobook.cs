@@ -438,21 +438,30 @@ internal static class ZunePodcastAudiobook
 
     static Element? Rating(AudiobookView v, AudiobookPageProps p, ZunePodcastLayout lay)
     {
+        var state = p.RateState;
         if (v.State == AudiobookState.Finished)
         {
-            var lines = new List<Element>(2) { K.Heading(v.FinishedTitle) };
+            // "How was it?": the stars inline, holding the listener's own rating; the note says why they are off, the write in flight or its failure.
+            var rs = state.Value;
+            var lines = new List<Element>(3) { K.Heading(v.FinishedTitle) };
             if (v.FinishedSub.Length > 0) lines.Add(R.Type.TrackMeta(v.FinishedSub) with { Case = R.Case.For(LabelKind.Label) });
+            if (rs.Note.Length > 0)
+                lines.Add(R.Type.TrackMeta(rs.Note) with
+                {
+                    Case = R.Case.For(LabelKind.Label), Wrap = TextWrap.Wrap, MinWidth = 0f, Color = rs.Failed ? Tok.SystemFillCritical : Tok.TextSecondary,
+                });
             return new BoxEl
             {
                 Key = "zb-rate", Direction = 1, Gap = Z.FactsRowGap, MinWidth = 0f,
-                Children = [.. lines, Controls.StarRow(0, p.Rate, Z.RatingStar, static () => R.Ink.AccentDecor)],
+                Children = [.. lines, Controls.StarRow(rs.Mine, rs.Enabled ? p.Rate : null, Z.RatingStar, static () => R.Ink.AccentDecor)],
             };
         }
         if (v.Rating.Length == 0) return null;
         var column = new List<Element>(2) { Controls.StarRow((int)MathF.Round(float.TryParse(v.Rating, out float r) ? r : 0f), null, Z.RatingStar) };
-        if (v.RatingsLine.Length > 0) column.Add(K.MetaWord(v.RatingsLine));
-        Element rate = p.Rate is { } rateIt && v.State == AudiobookState.InProgress
-            ? K.Button("zb-rate-btn", v.RateLabel, null, () => rateIt(5), lay.Target)
+        if (v.RatingsLine.Length > 0 || v.MyRating > 0) column.Add(K.MetaWord(v.RatingsLine) with { Text = Prop.Of(() => state.Value.Line) });
+        Element rate = v.State == AudiobookState.InProgress
+            ? Controls.RateFlyout("zb-rate-flyout", K.Button("zb-rate-btn", v.RateLabel, null, static () => { }, lay.Target), state, p.Rate, Z.RatingStar,
+                static () => R.Ink.AccentDecor)
             : K.Button("zb-rate-btn", v.RateLabel, null, null, lay.Target);
         return new BoxEl
         {

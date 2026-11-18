@@ -455,19 +455,23 @@ internal static class ClassicPodcastAudiobook
     {
         var v = a.V;
         var p = a.P;
+        var rs = p.RateState.Value;
         if (v.State == AudiobookState.Finished)
         {
-            var lines = new List<Element>(2) { BodyStrong(v.FinishedTitle) };
+            // "How was it?": the stars inline, holding the listener's own rating; the note says why they are off, the write in flight or its failure.
+            var lines = new List<Element>(4) { BodyStrong(v.FinishedTitle) };
             if (v.FinishedSub.Length > 0) lines.Add(Caption(v.FinishedSub) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f });
             var accent = a.Accent;
-            lines.Add(Controls.StarRow(0, p.Rate, P.PlayGlyph + P.TagGap, () => Design.Palette.ReadableInk(accent)));
+            lines.Add(Controls.StarRow(rs.Mine, rs.Enabled ? p.Rate : null, P.RateStar, () => Design.Palette.ReadableInk(accent)));
+            if (rs.Note.Length > 0)
+                lines.Add(Caption(rs.Note) with { Color = rs.Failed ? Tok.SystemFillCritical : Tok.TextTertiary, Wrap = TextWrap.Wrap, MinWidth = 0f });
             return new BoxEl { Key = "cpa-rate", Direction = 1, Gap = P.FactsRowGap, MinWidth = 0f, Children = lines.ToArray() };
         }
-        if (v.RatingsLine.Length == 0) return null;
+        if (v.Rating.Length == 0 || rs.Line.Length == 0) return null;
         return new BoxEl
         {
             Key = "cpa-rating", Direction = 1, Gap = P.FactsRowGap, MinWidth = 0f,
-            Children = [ClassicPodcastKit.Line(ClassicPodcastKit.Strong(v.Rating), new TextSpan(" ★" + P.Dot + v.RatingsLine))],
+            Children = [ClassicPodcastKit.Line(ClassicPodcastKit.Strong(v.Rating), new TextSpan(" ★" + P.Dot + rs.Line))],
         };
     }
 }

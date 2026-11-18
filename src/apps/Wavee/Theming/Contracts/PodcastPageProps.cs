@@ -98,6 +98,16 @@ public sealed record PodcastCardVm(string Uri, string Title, string Subtitle, st
 /// <summary>A fact of the About list ("Publisher · Halden Audio").</summary>
 public sealed record PodcastFact(string Label, string Value);
 
+/// <summary>The rate control's state, ONE shape for the show page and the audiobook page (their hosts share one rate verb). <see cref="Mine"/> is the
+/// listener's own stars (0 = not rated yet), shown at rest in <see cref="Line"/> ("12,431 ratings · yours 5★"; "" = no public rating and none of
+/// yours). <see cref="Enabled"/>: the stars take a pick now (the account may rate this show or book, the session can write, no write is in flight);
+/// <see cref="Busy"/>: a write is in flight. <see cref="Title"/> heads the picker ("Rate Halden"); <see cref="Note"/> says why the stars are off, that
+/// the rating is being saved, or that the write failed (<see cref="Failed"/>: draw it as an error); "" = nothing to say.</summary>
+public sealed record PodcastRateVm(int Mine, bool Enabled, bool Busy, bool Failed, string Title, string Line, string Note)
+{
+    public static PodcastRateVm None { get; } = new(0, false, false, false, "", "", "");
+}
+
 /// <summary>The show's identity and the About facts. <see cref="Tone"/> is the cover's dark colour (the wash), 0 = none. <see cref="RatingX100"/> 0 = no
 /// public rating; <see cref="Rating"/> is its text ("4.8"), <see cref="RatingCount"/> the hero's "(12,431)" and <see cref="Ratings"/> the card's
 /// "12,431 ratings". <see cref="CanRate"/>: the listener may rate the show (the card's Rate button).</summary>
@@ -108,6 +118,8 @@ public sealed record PodcastShowHead(
 {
     /// <summary>The About text as HTML when the provider sent it ("" = only <see cref="About"/>).</summary>
     public string AboutHtml { get; init; } = "";
+    /// <summary>The listener's own rating, 0..5 (0 = not rated).</summary>
+    public int MyRating { get; init; }
 }
 
 /// <summary>The details pane's chapters of the selected episode: up to five around the current one (<see cref="Shown"/>), how many there are in all
@@ -176,8 +188,10 @@ public sealed record PodcastShowPageProps
     public required Action PlaySmart { get; init; }
     /// <summary>The selected episode's chapters for the details pane.</summary>
     public required IReadSignal<PodcastPaneChapters> PaneChapters { get; init; }
-    /// <summary>Rate the show (null: the listener cannot).</summary>
-    public required Action? Rate { get; init; }
+    /// <summary>Rate the show 1..5 stars (null: this session cannot write a rating); <see cref="RateState"/> says whether the stars take a pick now.</summary>
+    public required Action<int>? Rate { get; init; }
+    /// <summary>The rate control's state (the listener's own stars at rest, busy, failed, why it is off), live.</summary>
+    public required IReadSignal<PodcastRateVm> RateState { get; init; }
     public required Action<string> Open { get; init; }
     public required Action<string> ToggleSaved { get; init; }
     public required Action<string> PlayNext { get; init; }
@@ -350,6 +364,10 @@ public sealed record AudiobookView(
     /// <summary>About this book as the provider's HTML (paragraphs, bold, links), or plain text; rendered by the house rich-text renderer.</summary>
     public string AboutHtml { get; init; } = "";
 
+    /// <summary>The listener's own rating, 0..5 (0 = not rated), and whether the account may rate this book.</summary>
+    public int MyRating { get; init; }
+    public bool CanRate { get; init; }
+
     /// <summary>A representative book the loading state is derived from (its words are never shown: the skeleton fills them).</summary>
     public static AudiobookView Placeholder { get; } = Empty with
     {
@@ -404,6 +422,8 @@ public sealed record AudiobookPageProps
     /// <summary>A similar book's context menu (the container menu of a show) and its play verb, for the house cards.</summary>
     public required Func<string, ContextMenuModel?> SimilarMenu { get; init; }
     public required Action<string> PlaySimilar { get; init; }
-    /// <summary>Rate the book (1..5 stars), null when the account cannot rate it.</summary>
+    /// <summary>Rate the book 1..5 stars (null: this session cannot write a rating); <see cref="RateState"/> says whether the stars take a pick now.</summary>
     public required Action<int>? Rate { get; init; }
+    /// <summary>The rate control's state (the listener's own stars at rest, busy, failed, why it is off), live.</summary>
+    public required IReadSignal<PodcastRateVm> RateState { get; init; }
 }

@@ -1046,7 +1046,9 @@
     "yours": "yours {stars}★",
     "rate": {
       "title": "Rate {name}",
-      "unavailable": "Rating isn't available in Wavee yet — the average and your own rating are shown as Spotify has them.",
+      "closed": "Spotify isn't taking ratings for this from your account.",
+      "demo": "Ratings aren't saved in the demo. Sign in to rate.",
+      "saving": "Saving your rating…",
       "stars": "{count, plural, one {# star} other {# stars}}"
     },
     "notify": {
@@ -1188,7 +1190,6 @@
       "playAsVideo": "Play as video",
       "audioOnly": "Audio only",
       "notifyUnavailable": "New-episode notifications are not available yet",
-      "rateUnavailable": "Rating a show is not available yet",
       "loadMore": "Load more episodes",
       "play": "Play",
       "playAgain": "Play again",
