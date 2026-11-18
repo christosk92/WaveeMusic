@@ -51,7 +51,8 @@ internal static partial class WinUiPodcastShow
 
         readonly ItemsViewController _ctl = new();
         readonly Signal<WinUiPodcastShowLayout> _lay = new(WinUiPodcastShowTiers.For(WidthTier.Standard));
-        readonly Signal<float> _inset = new(0f), _heroH = new(0f), _listW = new(0f);
+        readonly Signal<float> _inset = new(0f), _heroH = new(0f), _listW = new(0f), _pageH = new(0f);
+        Action<RectF>? _measurePage;
         BoundItemsSource<ShowSlot>? _items;
         ListOptions<ShowSlot>? _listOptions;
         RepeatLayout? _listLayout;
@@ -71,6 +72,7 @@ internal static partial class WinUiPodcastShow
             _inset.SetIfChanged(inset);
             _listW.SetIfChanged(listW);
             _tone = tone;
+            _measurePage ??= r => { if (r.H > 1f && MathF.Abs(r.H - _pageH.Peek()) > 0.5f) _pageH.Value = r.H; };
             _measureHero ??= r => { if (r.H > 1f && MathF.Abs(r.H - _heroH.Peek()) > 0.5f) _heroH.Value = r.H; };
             _items ??= BoundItems.Project(_p.View, static v => PrefixCount + v.Items.Length, SlotAt, ShowSlot.None);
             _measured ??= new MeasuredStackVirtualLayout(S.RowEstimate, false, ExtentOf);
@@ -107,15 +109,18 @@ internal static partial class WinUiPodcastShow
                 layers.Add(new BoxEl
                 {
                     Key = "show-pane-layer", Direction = 1, AlignItems = FlexAlign.End, HitTestPassThrough = true, MinWidth = 0f, IsolateLayout = true,
+                    OnBoundsChanged = _measurePage,
                     Padding = new Edges4(0f, 0f, inset, 0f),
+                    // The pane hangs from a 0-tall holder: the layer (and the page) keep the list's height however tall the pane is.
                     Children =
                     [
+                        new BoxEl { Key = "show-pane-holder", Direction = 1, Width = S.PaneW, Height = 0f, Shrink = 0f, Children = [
                         new BoxEl
                         {
                             Key = "show-pane-ride", Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Direction = 1, Width = S.PaneW,
                             Shrink = 0f, MinWidth = 0f, Transform = Prop.Of(_paneRideOf),
                             Children = [Embed.Comp(new PaneProps(this), static () => new PaneHost()) with { Key = "show-pane-host" }],
-                        },
+                        }] },
                     ],
                 });
             return WinUiPodcastKit.ListPage(_p.RouteKey, list, bar, BarOn, layers.ToArray());
@@ -184,7 +189,8 @@ internal static partial class WinUiPodcastShow
         Affine2D PaneRide()
         {
             double o = _scroll.Offset.Value;
-            float view = (float)_scroll.ViewportSignal.Value;
+            // The page's own height (the pane's layer fills it): the list's visible height.
+            float view = _pageH.Value;
             float hero = _heroH.Value, h = _paneH.Value;
             float natural = hero - (float)o;
             bool pinned = natural <= S.PaneTop;
@@ -221,8 +227,9 @@ internal static partial class WinUiPodcastShow
             {
                 var it = v.Items[k];
                 if (it.Kind != PodcastItemKind.Group || (uint)it.Group >= (uint)v.Groups.Length || v.Groups[it.Group].Key != groupKey) continue;
-                _ctl.StartBringItemIntoView(PrefixCount + k, alignmentRatio: 0f, animate: false);
-                _scroll.ScrollBy(-(K.BarH + S.ToolbarH), ScrollMove.Immediate);
+                // The header's own place in the list's measured layout, parked under the bar and the toolbar.
+                if (_measured is { } m) _scroll.ScrollTo(Math.Max(0.0, m.OffsetOf(PrefixCount + k, 0f) - (K.BarH + S.ToolbarH)), ScrollMove.Glide);
+                else _ctl.StartBringItemIntoView(PrefixCount + k, alignmentRatio: 0f, animate: false);
                 return;
             }
         }
