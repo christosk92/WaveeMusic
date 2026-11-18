@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.11",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "Playlists open the moment you click, album covers fly into their page, and every page switch is calmer.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "instant-playlists",
+      "title": "Playlists open at once, and change song by song",
+      "body": "A playlist you have opened before shows up the moment you click, Mixes included, while Wavee checks for changes behind it. When something changed, you see each change: a removed song steps out and the rows close up, a new one arrives in its place, a moved one travels to its spot, and a new cover fades over the old. Loading is calmer everywhere too: still placeholders, and one thin bar only when a page takes longer than a second.",
+      "kind": "improved",
+      "issues": [],
+      "media": {
+        "kind": "motion",
+        "src": "media/playlist-changes.webp",
+        "poster": "media/playlist-changes.jpg",
+        "alt": "A Mix open on its saved copy: when the fresh copy arrives, three songs step out, the rows close up, new songs arrive in their places, and the cover and description change in place",
+        "width": 1440,
+        "height": 810
+      }
+    },
+    {
+      "id": "connected-albums",
+      "title": "Album covers fly into their page",
+      "body": "In the WinUI theme, clicking an album card lifts its cover out and flies it into the album's header while the page fades in underneath. Back flies it home into the card, and pressing Back mid-flight turns it around where it is. It works from Home, artist pages, search and \"More by\".",
+      "kind": "new",
+      "deepLink": "wavee://open?route=albums",
+      "issues": [],
+      "media": {
+        "kind": "motion",
+        "src": "media/album-flight.webp",
+        "poster": "media/album-flight.jpg",
+        "alt": "In the WinUI theme, an album card on an artist's discography: its cover flies into the album page's header, then Back flies it home into the card",
+        "width": 1440,
+        "height": 810
+      }
+    },
+    {
+      "id": "calmer-navigation",
+      "title": "A calmer way between pages",
+      "body": "A new page is complete on its first frame, and going from one album or playlist to the next is a quick fade. The WinUI library slides only its content when you switch between Playlists, Albums, Artists and Podcasts, and the artist page lands whole with tabs that scroll to their section. Prefer it snappier? Turn on Fast navigation in Settings > Appearance.",
+      "kind": "improved",
+      "deepLink": "wavee://open?route=settings",
+      "issues": [],
+      "media": {
+        "kind": "motion",
+        "src": "media/library-switch.webp",
+        "poster": "media/library-switch.jpg",
+        "alt": "The WinUI library switching from Albums to Artists and back: the heading and tabs stay, only the content below slides",
+        "width": 1440,
+        "height": 810
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}
