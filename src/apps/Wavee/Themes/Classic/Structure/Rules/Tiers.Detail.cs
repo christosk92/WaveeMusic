@@ -309,8 +309,7 @@ public sealed record ClassicDetailRail
     /// <summary>Between two rows.</summary>
     public required float Gap { get; init; }
 
-    /// <summary>The fixed actions (Shuffle, heart, Share, ⋯) start their own line under the Play split (C-Album-Small): a full-width break follows the primary.
-    /// The page's own satellites keep their one wrap.</summary>
+    /// <summary>The fixed actions (Shuffle, heart, Share, ⋯) start their own line under the Play split (C-Album-Small): a full-width break follows the primary.</summary>
     public bool BreakAfterPrimary { get; init; }
 
     /// <summary>The cover edge (and the content measure) in a <paramref name="railWidth"/>-wide rail.</summary>

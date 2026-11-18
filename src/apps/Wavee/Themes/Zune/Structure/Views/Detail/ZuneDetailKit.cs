@@ -389,39 +389,32 @@ internal static class ZuneDetailKit
     /// the row's end (the vertical hero's row, Z-Album-Compact). <paramref name="swapEnter"/>: the row re-arranges with its page (the one-tree hero,
     /// audit B9), so the rings one arrangement draws and the other leaves to the band's row 2 (play, saved, shuffle) and the spring enter and leave on
     /// the swap's cross-fade while the rest keep their nodes and glide.</summary>
-    public static Element Rings(string key, Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Detail.FrameSlots slots,
+    public static Element Rings(string key, Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts,
         Func<ColorF> accent, Action play, ZuneDetailLayout lay, bool spring, EnterExit? swapEnter = null)
     {
-        // One home per verb (audit A4): from Small up the band's row 2 carries play, shuffle and saved, so the record leaves them out here. A page's
-        // own primary (a show's or an episode's) is not a band verb and stays.
+        // One home per verb (audit A4): from Small up the band's row 2 carries play, shuffle and saved, so the record leaves them out here.
         var kids = new List<Element>(6);
-        if (slots.Primary is { } primary) kids.Add(primary(accent));
-        else if (lay.PrimaryInHero) kids.Add(Swap(Ring("play", Icons.Play, Loc.Get(Strings.Detail.Play), lay.PlayWord, accent, play, lay), swapEnter));
-        if (slots.Satellites is { } satellites)
-            kids.AddRange(satellites());
-        else
+        if (lay.PrimaryInHero) kids.Add(Swap(Ring("play", Icons.Play, Loc.Get(Strings.Detail.Play), lay.PlayWord, accent, play, lay), swapEnter));
+        if (lay.PrimaryInHero && cfg.Heart != HeartMode.None)
         {
-            if (lay.PrimaryInHero && cfg.Heart != HeartMode.None)
+            var target = id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
+            kids.Add(Swap(SaveRing(target.Text, id.Title, lay.SaveWord, accent, lay), swapEnter));
+        }
+        if (lay.PrimaryInHero && lay.ShuffleRing && acts.Shuffle is { } shuffle)
+            kids.Add(Swap(Ring("shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, null, shuffle, lay), swapEnter));
+        if (spring) kids.Add(Swap(new BoxEl { Key = "rings:spring", Grow = 1f, MinWidth = 0f }, swapEnter));
+        if (lay.ShareRing && ShareActionFor(id) is { } share)
+            kids.Add(Ring("share", Icons.Share, Loc.Get(Strings.Menu.Share), false, null, share, lay));
+        if (lay.MoreRing && acts.More is { } more)
+        {
+            // The owner asked for save in the "..." as well (2026-11-08: the band's pill was not found): the save ring's own target and gate
+            // (none on your own playlist, a local file's or Liked Songs'), so menu and pill are one verb over one saved set.
+            if (cfg.Heart != HeartMode.None)
             {
                 var target = id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
-                kids.Add(Swap(SaveRing(target.Text, id.Title, lay.SaveWord, accent, lay), swapEnter));
+                more = WithSaveRow(more, target.Text, id.Title);
             }
-            if (lay.PrimaryInHero && lay.ShuffleRing && acts.Shuffle is { } shuffle)
-                kids.Add(Swap(Ring("shuffle", Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, null, shuffle, lay), swapEnter));
-            if (spring) kids.Add(Swap(new BoxEl { Key = "rings:spring", Grow = 1f, MinWidth = 0f }, swapEnter));
-            if (lay.ShareRing && ShareActionFor(id) is { } share)
-                kids.Add(Ring("share", Icons.Share, Loc.Get(Strings.Menu.Share), false, null, share, lay));
-            if (lay.MoreRing && acts.More is { } more)
-            {
-                // The owner asked for save in the "..." as well (2026-11-08: the band's pill was not found): the save ring's own target and gate
-                // (none on your own playlist, a local file's or Liked Songs'), so menu and pill are one verb over one saved set.
-                if (cfg.Heart != HeartMode.None)
-                {
-                    var target = id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
-                    more = WithSaveRow(more, target.Text, id.Title);
-                }
-                kids.Add(MoreRing(more, lay));
-            }
+            kids.Add(MoreRing(more, lay));
         }
         return new BoxEl
         {
@@ -453,10 +446,9 @@ internal static class ZuneDetailKit
     static Element Swap(Element ring, EnterExit? enter) => enter is null ? ring with { Exit = ZuneMotion.SwapFade } : ring with { Enter = enter, Exit = ZuneMotion.SwapFade };
 
     /// <summary>How many rings <see cref="Rings"/> lays out for this page (the skeleton reserves exactly these discs).</summary>
-    public static int RingCount(Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Detail.FrameSlots slots, ZuneDetailLayout lay)
+    public static int RingCount(Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, ZuneDetailLayout lay)
     {
-        int n = slots.Primary is not null || lay.PrimaryInHero ? 1 : 0;
-        if (slots.Satellites is { } satellites) return n + satellites().Length;
+        int n = lay.PrimaryInHero ? 1 : 0;
         if (lay.PrimaryInHero && cfg.Heart != HeartMode.None) n++;
         if (lay.PrimaryInHero && lay.ShuffleRing && acts.Shuffle is not null) n++;
         if (lay.ShareRing && id.ShareUrl is { Length: > 0 }) n++;

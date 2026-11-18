@@ -208,7 +208,6 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.DetailFrame, ClassicDetailFrame.Template, "classic.detail.frame");
         views.Add(ViewKeys.DetailRail, ClassicDetailFrame.RailTemplate, "classic.detail.rail");
         views.Add(ViewKeys.DetailCompactRail, ClassicDetailFrame.CompactRailTemplate, "classic.detail.compact-rail");
-        CommonNothing.Register(views, ViewKeys.DetailShowHeader);   // the show and episode pages are the podcast pages v2 (Views\Podcast\)
         views.Add(ViewKeys.DetailHero, ClassicDetailFrame.HeroTemplate, "classic.detail.hero");
         views.AddStyle(StyleKeys.DetailHero, ClassicDetailFrame.HeroStyle);
         views.Add(ViewKeys.DetailInsights, ClassicInsights.SheetTemplate, "classic.detail.insights");

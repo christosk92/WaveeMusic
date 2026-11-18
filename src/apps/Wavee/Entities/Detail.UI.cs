@@ -17,12 +17,6 @@
 // code: the rail family (`ClassicDetailRail.cs`), the vertical hero and its loading band (`ClassicDetailHero.cs`), the insights sheet
 // (`ClassicInsights.cs`). The vertical hero, the context band's helpers and the presence rules are the partial Detail.UI.Hero.cs.
 //
-// Podcast rework wave P2 (podcast-show-rework-implementation.md §5.4): six APPENDED FrameSlots (Badges, Rating, Ledger,
-// Primary, Satellites, Topics) with their insertion points in the rail and in the vertical show header, an episode's rail
-// led by its show link (the Attribution slot), and the skeleton twin reserving each declared slot — both columns walk the
-// ONE row model in Detail.cs §8b. The satellite builders (`ClassicDetailKit.RailSatellite*`, T9c) and the labeled
-// `Controls.PlayButton` are what a page's slots are made of.
-//
 // Role: UI (the host is core; the picture is the structure's)
 // Owner: M
 // Wave: 4.5
@@ -288,11 +282,8 @@ public static partial class Detail
     /// DISAPPEARS (its facts became known, plan §6.1 — a slot is absent until then, never reserved); a builder closes over
     /// the page's own snapshot, and a slot body whose VALUES change reads them through signals (a bound <c>Prop</c>, a
     /// component's <c>UseComputed</c>) — the frame does not re-render for a body that changed behind an equal slot set.
-    /// Builders run on every frame render (and the skeleton calls <see cref="Satellites"/> to count them), so they build
-    /// elements and nothing else: no hooks, no signal writes, keyed components for anything stateful.</para>
-    /// <para>The six podcast slots (plan §5.4) are APPENDED: <see cref="Badges"/> 4096 · <see cref="Rating"/> 8192 ·
-    /// <see cref="Ledger"/> 16384 · <see cref="Primary"/> 32768 · <see cref="Satellites"/> 65536 · <see cref="Topics"/>
-    /// 131072 — the twelve older bits keep their values.</para></summary>
+    /// Builders run on every frame render, so they build elements and nothing else: no hooks, no signal writes, keyed components for
+    /// anything stateful.</para></summary>
     public sealed record FrameSlots
     {
         /// <summary>Custom cover at an edge (liked dynamic, editable playlist).</summary>
@@ -317,38 +308,10 @@ public static partial class Detail
         public Func<float, Element>? LikedFacts { get; init; }
         /// <summary>The album trailing body (HasTrailing).</summary>
         public Func<Element>? Trailing { get; init; }
-        /// <summary>The show's episode list (Content == Episodes), called with the frame's VERTICAL flag (ch 09 W4: no toolbar in the vertical arm).</summary>
+        /// <summary>The content column's body when the page's content is not a track list (Content == Episodes: the unresolvable prerelease
+        /// album's notice), called with the frame's VERTICAL flag.</summary>
         public Func<bool, Element>? Episodes { get; init; }
 
-        // ── the podcast seams (plan §5.4) — appended; the WIDTH a Func<float, …> slot below receives is the rail's content
-        //    measure (the cover edge, exact) in the two-column rail, and NaN (no measure: fill the column) in the vertical
-        //    show header — treat it as a Width / MaxWidth only when it is finite. (Attribution keeps its old contract: the
-        //    cover edge in the rail, the page-estimate's info column in the vertical header.) The frame re-invokes these builders only when it
-        //    re-renders for its own reasons, so a body whose content changes — a label, a count, a satellite that comes and
-        //    goes — is a keyed component or binds its values / its Visible; the Satellites ARRAY is fixed per slot set.
-
-        /// <summary>Badge chips (<c>Controls.Chip</c> × n): on the eyebrow's line for a show ("Podcast [exclusive] [E]"),
-        /// under the meta line for an episode. One line of 16 is reserved (<see cref="RailLayout.BadgeHeight"/>).</summary>
-        public Func<Element>? Badges { get; init; }
-        /// <summary>The rating row, under the title / attribution (a show's ★ 4.8 · 12,431 ratings). Reserved 20.</summary>
-        public Func<float, Element>? Rating { get; init; }
-        /// <summary>The played ledger (<c>Controls.LedgerBar</c> + its counts line), under the meta line. Reserved 26.</summary>
-        public Func<float, Element>? Ledger { get; init; }
-        /// <summary>The CTA's primary, called with the page ACCENT thunk; REPLACES the Play button when present (Follow,
-        /// Resume · 17 min left, Play latest, Play preview — build it with <c>Controls.PlayButton</c>'s label/glyph).</summary>
-        public Func<Func<ColorF>, Element>? Primary { get; init; }
-        /// <summary>The CTA's satellites, KEYED; REPLACES the fixed [heart][Share][⋯] group when present, and they wrap one
-        /// by one after the primary, 8 apart (<c>ClassicDetailKit.RailSatellite</c>, <c>RailSatelliteSave</c>,
-        /// <c>RailSatelliteMore</c> build them at <see cref="RailLayout.SatelliteSize"/>).</summary>
-        public Func<Element[]>? Satellites { get; init; }
-        /// <summary>The topic words (<c>Controls.Words.Links</c>), under the CTA. Two lines reserved; the rail only (the
-        /// vertical header has no topics).</summary>
-        public Func<float, Element>? Topics { get; init; }
-        /// <summary>The rail's SHORT about block — a small label over the description clamped to a few lines, with the
-        /// inline overflow affordance the clamp itself decides on (an episode's; podcast-episode-peek §1). Natural
-        /// height, arrives with the description, and the full text / chapters / links stay in the page body. Rail only
-        /// (the vertical header puts its body under the rows, where the About section already is).</summary>
-        public Func<float, Element>? About { get; init; }
         /// <summary>The page's right ASIDE body (contract 1.21): mounted only where the window tier's record docks an aside
         /// (<c>DetailTierLayout.AsideDocked</c>) in the two-column arm. What it holds must leave the rail, the band under the rows and the
         /// list's tail while it is docked: those read <see cref="AsideDocked"/>. The album's release facts, artist, fans and "More by"; a
@@ -360,9 +323,7 @@ public static partial class Detail
              | (Attribution is null ? 0 : 8) | (Description is null ? 0 : 16) | (Pulse is null ? 0 : 32)
              | (Chart is null ? 0 : 64) | (PreRelease is null ? 0 : 128) | (ReleasePanel is null ? 0 : 256)
              | (LikedFacts is null ? 0 : 512) | (Trailing is null ? 0 : 1024) | (Episodes is null ? 0 : 2048)
-             | (Badges is null ? 0 : 4096) | (Rating is null ? 0 : 8192) | (Ledger is null ? 0 : 16384)
-             | (Primary is null ? 0 : 32768) | (Satellites is null ? 0 : 65536) | (Topics is null ? 0 : 131072)
-             | (About is null ? 0 : 262144) | (Aside is null ? 0 : 524288);
+             | (Aside is null ? 0 : 4096);
 
         public bool Equals(FrameSlots? o) => o is not null && Mask() == o.Mask();
         public override int GetHashCode() => Mask();
@@ -605,13 +566,10 @@ public static partial class Detail
         readonly Func<ContextMenuModel?> _tMore;
         readonly Func<object?> _tCoverDrag;
         readonly Func<DragPayload, int?, bool> _tDeposit;
-        readonly Func<float, Element> _sCover, _sCompactCover, _sAttribution, _sDescription,
-                                      _sRating, _sLedger, _sTopics;
+        readonly Func<float, Element> _sCover, _sCompactCover, _sAttribution, _sDescription;
         readonly Func<float, float, Element> _sTitle;
-        readonly Func<Element> _sPulse, _sChart, _sPreRelease, _sTrailing, _sTrailingVertical, _sBadges;
+        readonly Func<Element> _sPulse, _sChart, _sPreRelease, _sTrailing, _sTrailingVertical;
         readonly Func<bool, Element> _sReleasePanel, _sEpisodes;
-        readonly Func<Func<ColorF>, Element> _sPrimary;
-        readonly Func<Element[]> _sSatellites;
         readonly Func<Element> _sAside;
         FrameActions? _trampActions;
         int _trampActionsMask = -1;
@@ -667,12 +625,6 @@ public static partial class Detail
             _sEpisodes = vertical => _latest?.Slots.Episodes?.Invoke(vertical) ?? new BoxEl();
             _sReleasePanel = outer => _latest?.Slots.ReleasePanel?.Invoke(outer) ?? new BoxEl();
             _sTrailingVertical = VerticalTrailing;
-            _sBadges = () => _latest?.Slots.Badges?.Invoke() ?? new BoxEl();
-            _sRating = w => _latest?.Slots.Rating?.Invoke(w) ?? new BoxEl();
-            _sLedger = w => _latest?.Slots.Ledger?.Invoke(w) ?? new BoxEl();
-            _sTopics = w => _latest?.Slots.Topics?.Invoke(w) ?? new BoxEl();
-            _sPrimary = a => _latest?.Slots.Primary?.Invoke(a) ?? new BoxEl();
-            _sSatellites = () => _latest?.Slots.Satellites?.Invoke() ?? Array.Empty<Element>();
             _sAside = () => _latest?.Slots.Aside?.Invoke() ?? new BoxEl();
 
             // ── INSIGHTS SHEET (additive) ──
@@ -917,11 +869,6 @@ public static partial class Detail
                     TwoColumn = episodes ? twoColumn : null, Form = form,
                     Tint = tint, Tone = tone, Notice = notice,
                     ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
-                    // A show in the vertical arm is the fixed ShowHeader above its episodes — never the hero system.
-                    ShowHeader = verticalTracks ? null : new Contracts.DetailShowHeaderProps
-                    {
-                        Spec = spec, Actions = acts, Accent = _accentFn, Play = _playAll, PageWidth = pageWidthEstimate,
-                    },
                     // ── INSIGHTS SHEET (additive) ── a TRACK page's vertical arm ALWAYS composes the overlay, open or not
                     //    and facts or not, so the page's tree shape never changes underneath the list: the facts arriving
                     //    (or the sheet opening) must not remount the table and lose its scroll position. An episode list's
@@ -1165,12 +1112,6 @@ public static partial class Detail
                     ReleasePanel = s.ReleasePanel is null ? null : _sReleasePanel,
                     Trailing = s.Trailing is null ? null : _sTrailing,
                     Episodes = s.Episodes is null ? null : _sEpisodes,
-                    Badges = s.Badges is null ? null : _sBadges,
-                    Rating = s.Rating is null ? null : _sRating,
-                    Ledger = s.Ledger is null ? null : _sLedger,
-                    Primary = s.Primary is null ? null : _sPrimary,
-                    Satellites = s.Satellites is null ? null : _sSatellites,
-                    Topics = s.Topics is null ? null : _sTopics,
                 };
             }
             return _trampSlots;
