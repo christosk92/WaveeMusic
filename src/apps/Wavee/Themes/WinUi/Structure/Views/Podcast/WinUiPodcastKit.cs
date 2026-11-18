@@ -10,9 +10,9 @@
 //   Bar(...)           the bar itself (WinUI's pinned detail bar, WinUiDetailHero.Bar): a 32 cover, the title (Body Strong) over a caption, the primary
 //                      button at the end, on the card layer with a hairline at its foot. While it shows, the page's content cuts itself at its lower edge
 //                      (a StickyClip engaged with the bar), so nothing scrolls visibly under it and no opaque band is needed.
-//   PinnedBand(...)    a row that pins (a toolbar, a group header): it paints NOTHING at rest; while pinned (Sticky's engaged edge) it shows the hairline
-//                      at its foot. What scrolls under it must cut itself at the band's lower edge (`.StickyClip(line)` on that content), as WinUI's Home
-//                      facet row and artist pivot do.
+//   PinnedBand(...)    a row that pins (a toolbar): it paints NOTHING of its own; `stuck` is Sticky's engaged edge. What scrolls under it must cut
+//                      itself at the band's lower edge (`.StickyClip(line)` on that content), as WinUI's Home facet row and artist pivot do.
+//   PinnedLine(...)    the hairline a pinned row shows at its foot while `stuck` (the row places it, so it can end where its column ends).
 //   Description(...)   an HTML / plain description through the house rich-text renderer (paragraphs, lists, bold, links through the link policy).
 //   PlayNextIcon / PlayNextButton   the app's play-next glyph (ActionIcons.PlayNext, the Wavee icon face), never Icons.Queue.
 //   SmartSplit(...)    the accent SplitButton that names its episode: the main half plays, the chevron opens "Other ways to play" (PodcastMenuItem list,
@@ -145,41 +145,20 @@ internal static class WinUiPodcastKit
         };
     }
 
-    /// <summary>A band that pins <paramref name="top"/> below the viewport's edge (a toolbar, a group header), <paramref name="height"/> tall. It paints
-    /// nothing at rest; while pinned (<paramref name="stuck"/>, Sticky's engaged edge) its foot shows the hairline. <paramref name="scope"/>: the ancestor
-    /// it releases at (null = its parent). The content that scrolls under it cuts itself at <paramref name="top"/> + <paramref name="height"/>.</summary>
+    /// <summary>A band that pins <paramref name="top"/> below the viewport's edge (a toolbar), <paramref name="height"/> tall. It paints nothing of its own;
+    /// <paramref name="stuck"/> is Sticky's engaged edge (its content shows <see cref="PinnedLine"/> from it). <paramref name="scope"/>: the ancestor it
+    /// releases at (null = its parent). The content that scrolls under it cuts itself at <paramref name="top"/> + <paramref name="height"/>.</summary>
     public static BoxEl PinnedBand(string key, Element content, float height, float top, Signal<bool> stuck, string? scope = null)
-        => new BoxEl
-        {
-            Key = key, ZStack = true, Direction = 1, Height = height, MinWidth = 0f,
-            Children =
-            [
-                content,
-                new BoxEl
-                {
-                    Key = key + ":line", AlignSelf = FlexAlign.End, Height = 1f, MinWidth = 0f, HitTestVisible = false,
-                    Fill = Tok.StrokeDividerDefault, Opacity = Prop.Of(() => stuck.Value ? 1f : 0f),
-                },
-            ],
-        }.Sticky(top, scope, stuck);
+        => new BoxEl { Key = key, ZStack = true, Direction = 1, Height = height, MinWidth = 0f, Children = [content] }.Sticky(top, scope, stuck);
 
-    /// <summary>A band that pins <paramref name="top"/> below the viewport's edge at its CONTENT's height (a group header in a virtualised list). With
-    /// <paramref name="backing"/> it takes the page's layer while pinned (the rows and the earlier pinned bands pass under it), never at rest.</summary>
-    public static BoxEl PinnedBand(string key, Element content, float top, Signal<bool> stuck, bool backing)
+    /// <summary>The hairline at a pinned row's foot, shown only while <paramref name="stuck"/>; <paramref name="margin"/> ends it where the row's column
+    /// ends (never across a pane beside it). A layer of the row's ZStack; air on a skeleton.</summary>
+    public static Element PinnedLine(string key, Signal<bool> stuck, Edges4 margin)
         => new BoxEl
         {
-            Key = key, ZStack = true, Direction = 1, MinWidth = 0f,
-            Fill = backing ? Prop.Of(() => stuck.Value ? R.Layer.ContentSurface : Tok.FillSubtleTransparent) : Tok.FillSubtleTransparent,
-            Children =
-            [
-                new BoxEl { Direction = 1, MinWidth = 0f, Children = [content] },
-                new BoxEl
-                {
-                    Key = key + ":line", AlignSelf = FlexAlign.End, Height = 1f, MinWidth = 0f, HitTestVisible = false,
-                    Fill = Tok.StrokeDividerDefault, Opacity = Prop.Of(() => stuck.Value ? 1f : 0f),
-                },
-            ],
-        }.Sticky(top, null, stuck);
+            Key = key, AlignSelf = FlexAlign.End, Height = 1f, MinWidth = 0f, HitTestVisible = false, Margin = margin,
+            Fill = Tok.StrokeDividerDefault, Opacity = Prop.Of(() => stuck.Value ? 1f : 0f),
+        }.Skeletonized(false);
 
     /// <summary>A page whose scroller is a virtualised list (<paramref name="list"/>, an ItemsView carrying its own scroll handle), with
     /// <paramref name="layers"/> over it (an overlay pane) and the 48 bar over everything while <paramref name="barOn"/> holds.</summary>

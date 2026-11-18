@@ -400,8 +400,17 @@ internal static partial class WinUiPodcastShow
                 var v = list.View.Value;
                 var lay = host._lay.Value;
                 float inset = host._inset.Value, listW = host._listW.Value;
-                return host.Guttered("toolbar", lay, inset,
-                    host.Toolbar(v, lay, WinUiPodcastShowTiers.SearchCollapsed(lay, listW), WinUiPodcastShowTiers.FilterCombo(lay, listW)));
+                // While pinned, the hairline runs from the page's leading edge to the list column's end: never across the pane beside it.
+                return new BoxEl
+                {
+                    ZStack = true, Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                    Children =
+                    [
+                        host.Guttered("toolbar", lay, inset,
+                            host.Toolbar(v, lay, WinUiPodcastShowTiers.SearchCollapsed(lay, listW), WinUiPodcastShowTiers.FilterCombo(lay, listW))),
+                        WinUiPodcastKit.PinnedLine("show-toolbar:line", host._toolbarStuck, new Edges4(0f, 0f, lay.Pane ? inset + S.PaneW + S.ColGap : 0f, 0f)),
+                    ],
+                };
             }
         }
 
