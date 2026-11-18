@@ -1,7 +1,7 @@
 // ── Screens/SettingsSpec.Account.cs — Account & privacy: your Spotify account and what leaves this PC (the dials and their verbs) ──
 //
 // Role: CORE (settings rework phase 1). Account (the signed-in name and plan, the profile, Spotify's own account page, "Log out" with the
-// profile menu's confirm) · Privacy (what leaves this PC, the crash-report mode with its memory-snapshot switch, the
+// profile menu's confirm, the private session) · Privacy (what leaves this PC, the crash-report mode with its memory-snapshot switch, the
 // crash-service card, the policy link) · Crash reports (the saved reports and their verbs).
 //
 // The decisions the privacy dials make are `PrivacyRules` (`Settings.Privacy.cs`, engine-free). What a dial DOES — a store write, a
@@ -33,7 +33,11 @@ public static partial class SettingsSpec
                 SettingsWriter.OfAction("account.manage", () => SettingsVerbs.OpenUri(Settings.SpotifyAccountUrl)), legacy: ["manageAccount"],
                 captionKey: Strings.Settings.Account.ManageSub),
             Make("account.signOut", K.Action, Strings.Auth.LogOut,
-                SettingsWriter.OfAction("account.signOut", SettingsVerbs.SignOut), legacy: ["signOut"], captionKey: Strings.Settings.Account.SignOutSub)),
+                SettingsWriter.OfAction("account.signOut", SettingsVerbs.SignOut), legacy: ["signOut"], captionKey: Strings.Settings.Account.SignOutSub),
+            // Spotify Connect's private session (no play history, the flag on the wire): playback reads it; this is its writer.
+            Make("account.privateSession", K.Toggle, Strings.Profile.PrivateSession,
+                SettingsWriter.OfToggle("session.private", SettingsVerbs.SetPrivateSession), glyph: "RevealPassword",
+                captionKey: Strings.Settings.Account.PrivateSessionSub, value: BoolOf(Platform.Keys.PrivateSession))),
 
         Group("privacy", Strings.Settings.Groups.Account.Privacy, PvFacts.Subtitle,
             // The collapsed answer is "No telemetry"; inside, the five places anything leaves this PC and why: facts, no control.
@@ -115,6 +119,16 @@ public static partial class SettingsVerbs
     {
         Shell.OpenLogoutConfirm(SettingsContext.Overlay);
         return false;
+    }
+
+    /// <summary>Spotify Connect's private session: persist, then put this device's state again so the cluster sees the new
+    /// <c>is_private_session</c> at once (the play-history report reads the key at each play). The page re-reads.</summary>
+    public static bool SetPrivateSession(bool on)
+    {
+        if (Platform.Settings.Get(Platform.Keys.PrivateSession) == on) return false;
+        Platform.Settings.Set(Platform.Keys.PrivateSession, on);
+        Playback.RepublishDeviceState();
+        return true;
     }
 
     // ── Privacy ──────────────────────────────────────────────────────────────────────────────────────────────────────

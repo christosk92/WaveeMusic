@@ -1275,7 +1275,8 @@
       "profileSub": "Open your Spotify profile in Wavee",
       "manage": "Manage account on spotify.com",
       "manageSub": "Plan, payment and password live on Spotify's site",
-      "signOutSub": "You'll need to authorize Wavee again to stream your library."
+      "signOutSub": "You'll need to authorize Wavee again to stream your library.",
+      "privateSessionSub": "Nothing you play is added to your listening history or shared"
     },
     "devices": {
       "title": "Spotify Connect",

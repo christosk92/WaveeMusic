@@ -427,6 +427,15 @@ public static partial class Playback
         Spotify.Api.Run(() => Spotify.Connect.WakeDevices(CancellationToken.None));
     }
 
+    /// <summary>A device fact the wire reads changed outside the reducer (the private-session switch, <c>SettingsVerbs.SetPrivateSession</c>):
+    /// put this device's state again so the cluster sees it now, not at the next state change. Silent without a connection (the next
+    /// hello carries it). UI THREAD: the snapshot reads the reducer's state (C1).</summary>
+    public static void RepublishDeviceState()
+    {
+        if (Spotify.Current.ConnectionId.IsEmpty) return;
+        Announce(PublishReason.PlayerStateChanged);
+    }
+
     static int s_hellos;
     static readonly Action s_hello = static () =>
     {
