@@ -660,7 +660,7 @@ sealed class ShowModel
         _lastSmart = smart;
         _lastSimilar = similarCards;
         // The listened ledger (Classic's bar): every known episode, whatever the filter; reused while it holds, so the head's projection keeps it.
-        int played = n - unplayed - inProgress, toGo = Math.Max(0, unplayed - freshCount);
+        int freshCount = freshSlots.Count, played = n - unplayed - inProgress, toGo = Math.Max(0, unplayed - freshCount);
         var ledger = new PodcastLedger(played, inProgress, toGo, freshCount,
             Strings.Podcast.Ledger(played, inProgress, toGo), freshCount > 0 ? Strings.Podcast.LedgerNew(freshCount) : "");
         if (ledger == _lastLedger) ledger = _lastLedger;

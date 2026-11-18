@@ -29,7 +29,7 @@ using P = Wavee.Themes.Classic.ClassicPodcastRules;
 namespace Wavee.Themes.Classic;
 
 /// <summary>Classic's show page.</summary>
-internal static class ClassicPodcastShow
+internal static partial class ClassicPodcastShow
 {
     public static Element Template(PodcastShowPageProps p, in ViewContext ctx) => Embed.Comp(p, static () => new PageHost());
 
@@ -61,41 +61,48 @@ internal static class ClassicPodcastShow
 
     static HeadView HeadOf(PodcastShowView v) => new(v.Load, v.Head, v.Smart, v.Similar, v.Ledger);
 
-    sealed class PageHost : Component
+    sealed partial class PageHost : Component
     {
         PodcastShowPageProps _p = null!;
         Func<HeadView>? _project;
+        Memo<HeadView>? _head;
         Func<bool>? _pending, _failed;
         readonly ScrollHandle _scroll = new();
-        NodeHandle _viewport;
-        Action<NodeHandle>? _capture;
-        Func<NodeHandle>? _viewportOf;
 
         public override Element Render()
         {
             _p = UseProps<PodcastShowPageProps>();
-            _capture ??= h => _viewport = h;
-            _viewportOf ??= () => _viewport;
             var p = _p;
             var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
             var lay = ClassicPodcastTiers.Of(in facts);
             _project ??= () => HeadOf(_p.View.Value);
             _pending ??= () => _p.View.Value.Load == PodcastLoad.Pending;
             _failed ??= () => _p.View.Value.Load == PodcastLoad.Failed;
-            var hv = UseComputed(_project).Value;
+            _head = UseComputed(_project);
+            var hv = _head.Value;
             bool loading = hv.Load == PodcastLoad.Pending;
-            var shown = loading ? HeadOf(s_placeholder) : hv;
-            uint tone = loading ? 0u : shown.Head.Tone;
+            uint tone = loading ? 0u : hv.Head.Tone;
             ColorF accent = ClassicPodcastKit.Accent(tone);
+            UseList(lay, tone, accent);
+            Element list = ListColumn();
+            return ClassicPodcastKit.ListPage(p.RouteKey, lay, tone, lay.Stacked ? null : ColumnRegion(hv, lay, accent), list);
+        }
 
-            Element column = new SkelRegionEl(
-                Pending: _pending, Failed: _failed, Content: () => Column(shown, lay, accent, live: true),
+        /// <summary>The cover column behind its skeleton boundary (the loading form is the same column over the placeholder), keyed as a declared swap: it
+        /// stands in the column frame from Small up and in the list's first slot at Compact.</summary>
+        Element ColumnRegion(HeadView hv, ClassicPodcastLayout lay, ColorF accent)
+        {
+            var shown = hv.Load == PodcastLoad.Pending ? HeadOf(s_placeholder) : hv;
+            Element region = new SkelRegionEl(
+                Pending: _pending!, Failed: _failed!, Content: () => Column(shown, lay, accent, live: true),
                 ShimmerSource: () => Column(HeadOf(s_placeholder), lay, accent, live: false),
                 OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error), Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default with { DeriveComponents = true },
                 Group: null, SmoothResize: false);
-            Element main = Embed.Comp(new ListProps(p, lay, accent, tone, hv.Similar, _viewportOf), static () => new ListHost()) with { Key = "cp-show-list" };
-            return ClassicPodcastKit.Page(p.RouteKey, lay, tone, new BoxEl { Key = "cp-show-column", Direction = 1, Gap = P.ColumnGap, MinWidth = 0f, Children = [column] },
-                main, _scroll, _capture);
+            return new BoxEl
+            {
+                Key = lay.Stacked ? "cp-show-column:stacked" : "cp-show-column", Direction = 1, Gap = P.ColumnGap, MinWidth = 0f,
+                Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Children = [region],
+            };
         }
 
         // ── the cover column ──
@@ -195,207 +202,6 @@ internal static class ClassicPodcastShow
         };
     }
 
-    // ══ THE LIST COLUMN ═════════════════════════════════════════════════════════════════════════════════════════════════════
-
-    sealed record ListProps(PodcastShowPageProps P, ClassicPodcastLayout Lay, ColorF Accent, uint Tone, ImmutableArray<PodcastCardVm> Similar,
-        Func<NodeHandle> Viewport);
-
-    sealed class ListHost : Component
-    {
-        ListProps _a = null!;
-        readonly Signal<int> _filterIx = new(0);
-        readonly Signal<bool> _barStuck = new(false), _searchOpen = new(false);
-        readonly Dictionary<string, Signal<bool>> _groupStuck = [];
-        readonly Dictionary<string, NodeHandle> _groupNodes = [];
-        Controls.Words.Word[]? _words;
-        ClassicRowVerbs? _verbs;
-        IOverlayService? _overlay;
-        OverlayHandle? _jump;
-        Action? _sync;
-
-        public override Element Render()
-        {
-            _a = UseProps<ListProps>();
-            var a = _a;
-            var p = a.P;
-            _overlay = UseContext(Overlay.Service);
-            _sync ??= () => _filterIx.SetIfChanged((int)_a.P.Filter.Value);
-            UseEffect(_sync);
-            _verbs ??= new ClassicRowVerbs
-            {
-                Expanded = p.Expanded, Playing = p.Playing, Play = p.Play, Open = p.Open, ToggleSaved = p.ToggleSaved, PlayNext = p.PlayNext, Expand = p.Expand,
-                Menu = p.RowMenu,
-            };
-            var full = p.View.Value;
-            var v = full.Load == PodcastLoad.Pending ? s_placeholder : full;
-            var lay = a.Lay;
-            var kids = new List<Element>(v.Groups.Length + 4) { ClassicPodcastKit.PinnedBar("cp-listbar", ListBar(v, lay), P.ListBarH, 0f, _barStuck, a.Tone) };
-            foreach (var g in v.Groups) kids.Add(Group(v, g, lay));
-            if (v.ShownCount == 0 && v.Load == PodcastLoad.Ready)
-                kids.Add(new BoxEl
-                {
-                    Key = "cp-empty", Direction = 0, Gap = P.SectionGap, AlignItems = FlexAlign.Center, Wrap = true, Padding = new Edges4(0f, P.EmptyPad, 0f, P.EmptyPad),
-                    Children = [Body(Loc.Get(Strings.Podcast.Pages.NoMatch)) with { Color = Tok.TextSecondary },
-                        HyperlinkButton.Create(Loc.Get(Strings.Podcast.Pages.ClearFilter), p.ClearFilter)],
-                });
-            if (v.HasMore)
-                kids.Add(new BoxEl
-                {
-                    Key = "cp-more", Direction = 0, Justify = FlexJustify.Center, Padding = new Edges4(0f, P.SectionBottom, 0f, P.SectionBottom),
-                    Children = [Button.Create(Loc.Get(Strings.Podcast.Pages.LoadMore), p.LoadMore) with { Key = "load-more" }],
-                });
-            if (!a.Similar.IsDefaultOrEmpty)
-            {
-                kids.Add(ClassicPodcastKit.SectionHeader("cp-similar-head", Loc.Get(Strings.Podcast.Pages.MoreLikeThis)));
-                kids.Add(ClassicPodcastKit.MoreLikeThis(a.Similar, p.OpenUri, lay.Stacked, p.CardMenu, p.PlayCard));
-            }
-            return new BoxEl { Key = "cp-list", Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
-        }
-
-        Element ListBar(PodcastShowView v, ClassicPodcastLayout lay)
-        {
-            var p = _a.P;
-            if (_words is null)
-            {
-                var filters = s_placeholder.Filters;
-                _words = new Controls.Words.Word[filters.Length];
-                for (int i = 0; i < _words.Length; i++)
-                {
-                    int ix = i;
-                    _words[i] = new Controls.Words.Word(
-                        Prop.Of(() => _a.P.View.Value.Filters is { Length: > 0 } f && ix < f.Length ? f[ix].Label : s_placeholder.Filters[ix].Label),
-                        Prop.Of(() => _a.P.View.Value.Filters is { Length: > 0 } f && ix < f.Length ? f[ix].CountText : ""));
-                }
-            }
-            var accent = _a.Accent;
-            var kids = new List<Element>(4);
-            bool searching = lay.Stacked && _searchOpen.Value;
-            if (searching)
-                kids.Add(Swap("tb:search-field", true, SearchBox(lay, fill: true)));
-            else if (lay.FilterMenu)
-                kids.Add(Swap("tb:filter-menu", true, Embed.Comp(_a.P, static () => new FilterMenu()) with { Key = "tb:filter-menu:host" }));
-            else
-                kids.Add(Swap("tb:filters", true, Controls.Words.Rail(_words, _filterIx, () => accent, onSelect: i => _a.P.SetFilter((PodcastFilter)i), fit: true)));
-            if (lay.Stacked)
-                kids.Add(Controls.Named(Controls.IconAction(searching ? Icons.Cancel : Icons.Search, () => _searchOpen.Value = !_searchOpen.Peek(), size: lay.Target) with { Key = "tb:search" },
-                    Loc.Get(Strings.Podcast.Pages.Search)));
-            else kids.Add(Swap("tb:find-box", false, SearchBox(lay, fill: false)));
-            string sortWord = Loc.Get(p.Oldest.Value ? Strings.Podcast.Pages.OldestFirst : Strings.Podcast.Pages.NewestFirst);
-            kids.Add(Controls.Named(Controls.IconAction(Icons.Sort, p.ToggleSort, size: lay.Target) with { Key = "tb:sort" }, sortWord));
-            return new BoxEl
-            {
-                Key = "cp-listbar:row", Direction = 0, Gap = P.ListBarGap, AlignItems = FlexAlign.Center, Height = P.ListBarH, MinWidth = 0f, Children = kids.ToArray(),
-            };
-        }
-
-        static BoxEl Swap(string key, bool fill, Element body) => new()
-        {
-            Key = key, Direction = 0, AlignItems = FlexAlign.Center, Grow = fill ? 1f : 0f, Basis = fill ? 0f : float.NaN, Shrink = fill ? 1f : 0f, MinWidth = 0f,
-            Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Children = [body],
-        };
-
-        Element SearchBox(ClassicPodcastLayout lay, bool fill) => new BoxEl
-        {
-            Key = "tb:find", Shrink = 0f, Grow = fill ? 1f : 0f, MinWidth = 0f,
-            Children = [AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Podcast.Pages.Search),
-                width: fill ? P.SearchWSmall : lay.Tier == WidthTier.Small ? P.SearchWSmall : P.SearchW, text: _a.P.Query(), queryIcon: Icons.Search, grow: fill ? 1f : 0f)],
-        };
-
-        static readonly string[] s_noSuggest = [];
-
-        Element Group(PodcastShowView v, PodcastGroup g, ClassicPodcastLayout lay)
-        {
-            var p = _a.P;
-            bool jumps = v.Years.Length > 1;
-            string key = g.Key;
-            var years = v.Years;
-            var labelKids = new List<Element>(3)
-            {
-                new TextEl(g.Title) { Size = P.GroupLabelSize, LineHeight = P.GroupLabelLine, Weight = P.Strong, Color = Tok.TextSecondary, Case = TextCase.Lower, Wrap = TextWrap.NoWrap },
-            };
-            if (g.CountText.Length > 0) labelKids.Add(new TextEl(g.CountText) { Size = P.GroupLabelSize, LineHeight = P.GroupLabelLine, Color = Tok.TextTertiary });
-            if (jumps) labelKids.Add(Icon(Icons.ChevronDown, P.SplitChevron, Tok.TextTertiary));
-            var headKids = new List<Element>(3)
-            {
-                new BoxEl
-                {
-                    Key = "gh:jump:" + key, Direction = 0, Gap = P.GroupGap, AlignItems = FlexAlign.Center, Height = P.FilterH, Shrink = 0f,
-                    Padding = new Edges4(P.FilterPadX, 0f, P.FilterPadX, 0f), Margin = new Edges4(-P.FilterPadX, 0f, 0f, 0f), Corners = Radii.ControlAll,
-                    Fill = Tok.FillSubtleTransparent, HoverFill = jumps ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
-                    PressedFill = jumps ? Tok.FillSubtleTertiary : Tok.FillSubtleTransparent, Role = AutomationRole.Button, Focusable = jumps,
-                    Cursor = jumps ? CursorId.Hand : CursorId.Arrow,
-                    OnRealized = h => _groupNodes["head:" + key] = h, OnClick = jumps ? () => OpenJump(years, key) : null,
-                    Children = labelKids.ToArray(),
-                },
-                new BoxEl { Grow = 1f },
-            };
-            if (g.Fresh) headKids.Add(HyperlinkButton.Create(Loc.Get(Strings.Podcast.Pages.MarkAllPlayed), p.MarkFreshPlayed) with { Key = "gh:mark" });
-            if (!_groupStuck.TryGetValue(key, out var stuck)) _groupStuck[key] = stuck = new Signal<bool>(false);
-            Element header = ClassicPodcastKit.PinnedBar("gh", new BoxEl
-            {
-                Direction = 0, Height = P.GroupH, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = headKids.ToArray(),
-            }, P.GroupH, P.ListBarH, stuck, _a.Tone);
-            var rows = new Element[g.Rows.Length];
-            for (int i = 0; i < rows.Length; i++)
-            {
-                var vm = v.Episodes[g.Rows[i]];
-                rows[i] = ClassicPodcastKit.EpisodeRow(vm.Hidden ? vm with { Hidden = false } : vm, lay, lay.RowExpands, lay.RowDescription, _a.Accent, _verbs!)
-                    with { Visible = !vm.Hidden };
-            }
-            return new BoxEl
-            {
-                Key = "g:" + key, Direction = 1, MinWidth = 0f, Layout = ClassicDetailKit.Shove, Visible = !g.Hidden, OnRealized = h => _groupNodes[key] = h,
-                Children = [header, new BoxEl { Key = "rows", Direction = 1, MinWidth = 0f, Children = rows }],
-            };
-        }
-
-        void OpenJump(ImmutableArray<PodcastYear> years, string groupKey)
-        {
-            if (_jump is { IsOpen: true } open) { open.Close(); return; }
-            if (Controls.IsNullOverlay(_overlay) || !_groupNodes.TryGetValue("head:" + groupKey, out var anchor)) return;
-            OverlayHandle? opened = null;
-            opened = _overlay!.Open(() => anchor, () => JumpGrid(years, () => opened?.Close()), FlyoutPlacement.BottomEdgeAlignedLeft,
-                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
-            _jump = opened;
-        }
-
-        Element JumpGrid(ImmutableArray<PodcastYear> years, Action close)
-        {
-            var rows = new List<Element>();
-            for (int i = 0; i < years.Length; i += P.JumpCols)
-            {
-                var cells = new Element[P.JumpCols];
-                for (int c = 0; c < P.JumpCols; c++)
-                {
-                    if (i + c >= years.Length) { cells[c] = new BoxEl { Grow = 1f, Basis = 0f }; continue; }
-                    var y = years[i + c];
-                    cells[c] = new BoxEl
-                    {
-                        Key = "jump:" + y.Label, Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = P.JumpCellH, Justify = FlexJustify.Center,
-                        Padding = new Edges4(P.JumpPad, 0f, P.JumpPad, 0f), Corners = Radii.ControlAll, Fill = Tok.FillControlDefault,
-                        HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary, BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
-                        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                        OnClick = () => { close(); JumpTo("y" + y.Label); },
-                        Children = [Subtitle(y.Label), Caption(y.Count) with { Color = Tok.TextTertiary }],
-                    };
-                }
-                rows.Add(new BoxEl { Direction = 0, Gap = P.JumpGap, Children = cells });
-            }
-            return new BoxEl
-            {
-                Key = "cp-jump", Direction = 1, Gap = P.JumpGap, Width = P.JumpW, Padding = Edges4.All(P.JumpPad),
-                Children = [BodyStrong(Loc.Get(Strings.Podcast.Pages.JumpTo)), .. rows],
-            };
-        }
-
-        void JumpTo(string groupKey)
-        {
-            var viewport = _a.Viewport();
-            if (!_groupNodes.TryGetValue(groupKey, out var node) || viewport.IsNull || Context.Scene is not { } scene) return;
-            scene.BringIntoView(viewport, node, align: 0f, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide, margin: P.ListBarH);
-        }
-    }
-
     /// <summary>The filters at Compact: a 40-high button naming the filter and its count, opening the four as radio items (Compact targets are 40).</summary>
     sealed class FilterMenu : Component
     {
@@ -417,7 +223,8 @@ internal static class ClassicPodcastShow
             string label = "";
             foreach (var x in v.Filters)
                 if (x.Filter == f) label = x.CountText.Length > 0 ? x.Label + P.Dot + x.CountText : x.Label;
-            var b = Button.Create(label, _toggle, ButtonAppearance.Subtle) with { Key = "tb:filter-button", Height = P.TargetCompact, MinWidth = 0f, Shrink = 1f };
+            var b = Button.Create(label, _toggle, ButtonAppearance.Subtle) with { Key = "tb:filter-button", Height = P.TargetCompact, MinWidth = 0f, Shrink = 1f,
+                Margin = new Edges4(-P.FilterPadX, 0f, 0f, 0f) };
             return new BoxEl
             {
                 Direction = 0, MinWidth = 0f, OnRealized = _capture,

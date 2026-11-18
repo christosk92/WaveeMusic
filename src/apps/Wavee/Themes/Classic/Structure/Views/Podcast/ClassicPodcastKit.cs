@@ -148,6 +148,33 @@ internal static class ClassicPodcastKit
         };
     }
 
+    /// <summary>The show page's form of <see cref="Page"/>: the list column is ONE virtualised list (the page's scroller at every tier). From Small up the
+    /// cover column stands beside it in its frame; at Compact the frame is empty and hidden and the list's first item carries the column. One row at
+    /// every tier, so a crossing never re-parents the list (its scroll and its mounted rows survive).</summary>
+    public static Element ListPage(string key, ClassicPodcastLayout lay, uint tone, Element? column, Element list)
+        => new BoxEl
+        {
+            Key = "cp-page:" + key, Direction = 0, Grow = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, Fill = Ground(tone), AlignItems = FlexAlign.Stretch,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "cp-column", Direction = 1, Width = lay.Stacked ? 0f : lay.ColumnW, Visible = !lay.Stacked, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
+                    Fill = Tok.FillLayerDefault,
+                    Children = column is null ? [] :
+                    [
+                        ScrollView(new BoxEl
+                        {
+                            Direction = 1, Gap = P.ColumnGap, MinWidth = 0f,
+                            Padding = new Edges4(P.ColumnPadStart, P.ColumnPadTop, P.ColumnPadEnd, P.ColumnPadBottom + R.Space.DockReserve),
+                            Children = [column],
+                        }) with { Key = "cp-column-scroll:" + key, Grow = 1f, MinHeight = 0f, EdgeCues = ScrollEdgeCues.None },
+                    ],
+                },
+                list,
+            ],
+        };
+
     // ══ 2. THE COLUMN'S WORDS ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The kind line: the kind word (a link to its hub when <paramref name="open"/> is set), then the tags (Video, Serial, Included in Premium).</summary>
@@ -461,36 +488,39 @@ internal static class ClassicPodcastKit
     /// <summary>"Play next" as a standard button with the app's play-next glyph.</summary>
     public static Element PlayNextButton(Action next, string key)
     {
-        var b = Button.Create(Loc.Get(Strings.Podcast.Pages.PlayNext), next);
-        return b with { Key = key, Children = [PlayNextIcon(P.PlayGlyph, Tok.TextPrimary), .. b.Children] };
+        // The house button with a glyph (its glyph slot and gap), the glyph swapped for the app's play-next one.
+        var b = Button.Create(Loc.Get(Strings.Podcast.Pages.PlayNext), next, glyph: Icons.Play);
+        var kids = b.Children.ToArray();
+        if (kids.Length > 0) kids[0] = PlayNextIcon(P.PlayGlyph, Tok.TextPrimary);
+        return b with { Key = key, Children = kids };
     }
 
     // ══ 5. A PINNED ROW ═════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A row that pins <paramref name="top"/> below the list scroller's edge: nothing painted at rest; while pinned (<paramref name="stuck"/>) the
-    /// page ground behind it and a hairline at its foot, so what scrolls under it is covered by the colour it scrolls over.</summary>
-    public static BoxEl PinnedBar(string key, Element content, float height, float top, Signal<bool> stuck, uint tone, string? scope = null)
-    {
-        ColorF ground = Ground(tone);
-        return new BoxEl
+    /// page ground behind it (<paramref name="tone"/>, read live) and a hairline at its foot, so what scrolls under it is covered by the colour it scrolls
+    /// over. The row must be the sticky root itself (a sticky root returned from a component never pins).</summary>
+    public static BoxEl PinnedBar(string key, Element content, float height, float top, Signal<bool> stuck, Func<uint> tone, string? scope = null)
+        => new BoxEl
         {
             Key = key, ZStack = true, Direction = 1, Height = height, MinWidth = 0f,
             Children =
             [
                 new BoxEl
                 {
-                    Key = key + ":back", HitTestVisible = false, Margin = new Edges4(-P.MainPad, 0f, -P.MainPad, 0f),
-                    Fill = Prop.Of(() => stuck.Value ? Flatten(ground) : ColorF.Transparent),
+                    Key = key + ":back", HitTestVisible = false, Fill = Prop.Of(() => stuck.Value ? Backing(tone()) : ColorF.Transparent),
                 },
                 content,
                 new BoxEl
                 {
-                    Key = key + ":line", AlignSelf = FlexAlign.End, Height = 1f, MinWidth = 0f, HitTestVisible = false, Margin = new Edges4(-P.MainPad, 0f, -P.MainPad, 0f),
+                    Key = key + ":line", AlignSelf = FlexAlign.End, Height = 1f, MinWidth = 0f, HitTestVisible = false,
                     Fill = Tok.StrokeDividerDefault, Opacity = Prop.Of(() => stuck.Value ? 1f : 0f),
                 },
             ],
         }.Sticky(top, scope, stuck);
-    }
+
+    /// <summary>A pinned row's backing: the page ground over the shell's content surface, opaque.</summary>
+    public static ColorF Backing(uint tone) => Flatten(Ground(tone));
 
     /// <summary>The ground over the shell's content surface, opaque (a pinned row's backing must hide what scrolls under it).</summary>
     static ColorF Flatten(ColorF ground) => ColorContrast.Flatten(ground, R.Layer.ContentSurface);

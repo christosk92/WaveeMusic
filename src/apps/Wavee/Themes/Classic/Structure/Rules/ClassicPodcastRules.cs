@@ -62,6 +62,10 @@ internal static class ClassicPodcastRules
     public const float SectionTop = 28f, SectionBottom = 12f, SectionGap = 8f;
     public const float CardCover = 160f, CardGap = 16f, RowCardCover = 48f;
     public const float EmptyPad = 32f;
+    /// <summary>The list's seeded extents (the measured ones replace them): a row (with its line of description), a group label's foot, the stacked
+    /// column, the foot with More like this; the recycle pools of the page's own parts start here.</summary>
+    public const float RowEstimate = 60f, RowEstimateTall = 78f, FootEstimate = 64f, ColumnEstimate = 720f, SimilarEstimate = 320f;
+    public const int PartType = 16;
     public const float JumpCellH = 56f, JumpGap = 4f, JumpPad = 12f, JumpW = 340f;
     public const int JumpCols = 3;
 
