@@ -37,9 +37,7 @@ internal static partial class ClassicSettings
             Mark("Language & region"),
             SectionHeader(Loc.Get(Strings.Settings.Language.Title), SectionGlyph(Tab.General, "Language & region"),
                 Loc.Get(Strings.Settings.Language.Subtitle)),
-            DocRow(D(Tab.General, "language"),
-                Combo(LanguageLabels(), s_language, width: ClassicSettingsRules.GeneralComboWidth, onChange: SetLanguage,
-                    itemEnabled: Settings.Language.Enabled)),
+            LanguageRow(s_language),
 
             Mark("Links"),
             SectionHeader(Loc.Get(Strings.Settings.Links.Title), SectionGlyph(Tab.General, "Links"),
@@ -59,6 +57,15 @@ internal static partial class ClassicSettings
 
         return kids.ToArray();
     }
+
+    /// <summary>The language row, as Settings draws it and as the setup wizard's Theme step shows it (one row, one writer), its combo on
+    /// <paramref name="selected"/> (the page's signal, or the wizard's own, seeded from the document).</summary>
+    internal static Element LanguageRow(Signal<int> selected)
+        => DocRow(D(Tab.General, "language"),
+            Combo(LanguageLabels(), selected, width: ClassicSettingsRules.GeneralComboWidth, onChange: SetLanguage, itemEnabled: Settings.Language.Enabled));
+
+    /// <summary>The language the document holds, for a surface that seeds its own signal (the setup wizard).</summary>
+    internal static int LanguageIndex() => D(Tab.General, "language").Current is int language ? language : 0;
 
     static string[] LanguageLabels() =>
     [

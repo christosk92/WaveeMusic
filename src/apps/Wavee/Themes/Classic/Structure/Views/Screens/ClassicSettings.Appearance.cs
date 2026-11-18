@@ -97,8 +97,7 @@ internal static partial class ClassicSettings
             ThemeOptionsExpander(),
             // The core presentation prefs every theme honours: no header, so they read as the board's rows under the options.
             Mark("Display"),
-            DocRow(D(Tab.Appearance, "appMode"),
-                Selector(ThemeLabels(), new Signal<int>((int)Appearance.Mode), onChange: static m => SetTheme(m))),
+            AppModeRow(),
             // A ComboBox, not a SelectorBar: thirteen items (Auto + twelve rungs) would be thirteen segments wide.
             DocRow(D(Tab.Appearance, "zoom"), Embed.Comp(static () => new ZoomPicker())),
             DocRow(D(Tab.Appearance, "marquee"), RowToggle(D(Tab.Appearance, "marquee"))),
@@ -143,6 +142,10 @@ internal static partial class ClassicSettings
     }
 
     // ══ 3. THEME + ZOOM ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The app mode row (System · Light · Dark), as Settings draws it and as the setup wizard's Theme step shows it: one row, one writer.</summary>
+    internal static Element AppModeRow()
+        => DocRow(D(Tab.Appearance, "appMode"), Selector(ThemeLabels(), new Signal<int>((int)Appearance.Mode), onChange: static m => SetTheme(m)));
 
     static string[] ThemeLabels() =>
     [

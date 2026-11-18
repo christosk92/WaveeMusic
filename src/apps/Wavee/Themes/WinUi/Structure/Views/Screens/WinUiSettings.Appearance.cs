@@ -97,8 +97,7 @@ internal static partial class WinUiSettings
             Mark("Theme options"),
             // The core presentation prefs every theme honours: no header, so they read as the board's cards under the Theme card.
             Mark("Display"),
-            IconRow(Loc.Get(D(Tab.Appearance, "appMode").TitleKey), DescriptionOf(D(Tab.Appearance, "appMode")), RowGlyph(Tab.Appearance, "appMode"),
-                Combo(ThemeLabels(), new Signal<int>((int)Appearance.Mode), width: WinUiSettingsRules.OptionComboWidth, onChange: static m => SetTheme(m))),
+            AppModeRow(),
             // A ComboBox, not a SelectorBar: thirteen items (Auto + twelve rungs) would be thirteen segments wide.
             IconRow(Loc.Get(D(Tab.Appearance, "zoom").TitleKey), DescriptionOf(D(Tab.Appearance, "zoom")), RowGlyph(Tab.Appearance, "zoom"),
                 Embed.Comp(static () => new ZoomPicker())),
@@ -148,6 +147,11 @@ internal static partial class WinUiSettings
 
     /// <summary>A document row's description (its reason while it is greyed with one, else its caption).</summary>
     static string? DescriptionOf(SettingsRow row) => row.DescriptionKey(SettingsFacts.Live) is { } key ? Loc.Get(key) : null;
+
+    /// <summary>The app mode row (System · Light · Dark), as Settings draws it and as the setup wizard's Theme step shows it: one row, one writer.</summary>
+    internal static Element AppModeRow()
+        => IconRow(Loc.Get(D(Tab.Appearance, "appMode").TitleKey), DescriptionOf(D(Tab.Appearance, "appMode")), RowGlyph(Tab.Appearance, "appMode"),
+            Combo(ThemeLabels(), new Signal<int>((int)Appearance.Mode), width: WinUiSettingsRules.OptionComboWidth, onChange: static m => SetTheme(m)));
 
     static string[] ThemeLabels() =>
     [

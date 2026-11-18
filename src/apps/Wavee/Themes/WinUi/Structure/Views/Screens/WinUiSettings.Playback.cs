@@ -96,7 +96,7 @@ internal static partial class WinUiSettings
 
         Mark("Audio"),
         SectionHeader(Loc.Get(Strings.Settings.Playback.AudioTitle), SectionGlyph(Tab.Playback, "Audio")),
-        DocRow(D(Tab.Playback, "audioQuality"), QualityCombo()),
+        QualityRow(s_quality),
         // The description IS the detector's verdict: every state says something, "Unknown" included (never blank).
         DocRow(D(Tab.Playback, "meteredQuality"), MeteredQualityCombo(), sub: MeteredStatus()),
         // G-132: the switch 0.2.9 persisted but never showed. D5: it, the mode and album mode all apply LIVE to the playing track.
@@ -236,12 +236,19 @@ internal static partial class WinUiSettings
         return lines;
     }
 
+    /// <summary>The audio quality row, as Settings draws it and as the setup wizard's playback step shows it (one row, one writer), its combo on
+    /// <paramref name="selected"/> (the page's signal, or the wizard's own, seeded from the document).</summary>
+    internal static Element QualityRow(Signal<int> selected) => DocRow(D(Tab.Playback, "audioQuality"), QualityCombo(selected));
+
+    /// <summary>The audio quality the document holds, for a surface that seeds its own signal (the setup wizard).</summary>
+    internal static int QualityIndex() => D(Tab.Playback, "audioQuality").Current is int quality ? quality : Platform.Keys.PlaybackQuality.Default;
+
     /// <summary>D7: Lossless is OFFERED only when a key deriver is installed — without one it cannot play, and a
     /// permanently-dead rung is an advert. The combo's items freeze at mount, so the key carries the rung count.</summary>
-    static Element QualityCombo()
+    static Element QualityCombo(Signal<int> selected)
     {
         int count = Settings.Quality.AudioRungCount(SettingsFacts.Live.CanDerive);
-        return Combo(QualityLabels(count), s_quality, width: WinUiSettingsRules.WideComboWidth, itemDescriptions: QualityDescriptions(count),
+        return Combo(QualityLabels(count), selected, width: WinUiSettingsRules.WideComboWidth, itemDescriptions: QualityDescriptions(count),
             onChange: static i =>
             {
                 if (D(Tab.Playback, "audioQuality").Writer.Choose!(i)) Settings.Bump();
