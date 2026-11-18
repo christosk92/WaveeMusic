@@ -74,11 +74,11 @@ internal static class ClassicPodcastEpisode
                 Content: () => Embed.Comp(a, static () => new Column()) with { Key = "cpe-column" },
                 ShimmerSource: () => Embed.Comp(seed, static () => new Column()) with { Key = "cpe-column" },
                 OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error), Reveal: SkelReveal.Soft,
-                Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: null, SmoothResize: false);
+                Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: null, SmoothResize: true);
             Element main = new SkelRegionEl(
                 Pending: () => p.View.Value.Load == PodcastLoad.Pending, Failed: static () => false,
                 Content: () => MainColumn(a), ShimmerSource: () => MainColumn(seed), OnFailed: null, Reveal: SkelReveal.Soft,
-                Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: null, SmoothResize: false);
+                Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: null, SmoothResize: true);
             return ClassicPodcastKit.Page(p.RouteKey, lay, tone, column, main, _scroll);
         }
     }
@@ -286,7 +286,7 @@ internal static class ClassicPodcastEpisode
             Element left;
             if (transcriptTab)
                 left = ClassicPodcastEpisodeParts.Card("cpe-sections", [head, divider,
-                    new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, Children = [ClassicPodcastEpisodeParts.Transcript(p, !lay.Stacked, lay.CardsH - P.ListBarH, accent)] }])
+                    new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, Children = [ClassicPodcastEpisodeParts.Transcript(p, !lay.Stacked, lay.CardsH - P.ListBarH, accent, bare: true)] }])
                     with { Height = lay.CardsH };
             else
             {

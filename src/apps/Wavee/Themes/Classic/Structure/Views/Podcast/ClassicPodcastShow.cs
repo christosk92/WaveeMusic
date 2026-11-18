@@ -44,7 +44,8 @@ internal static partial class ClassicPodcastShow
         var head = PodcastShowView.Empty.Head with
         {
             Title = "Podcast title", Kind = "Podcast", Publisher = "Publisher", Rating = "4.8", Ratings = "1,000 ratings", Cadence = "Weekly",
-            Count = "100 episodes", About = "About this show, a few lines long so the column keeps its shape while the show is on its way.",
+            Count = "100 episodes", About = "About this show, a few lines long so the column keeps its shape while the show is on its way, the way a real one runs.",
+            TrailerId = "seed:trailer", TrailerSub = "2 min", Facts = [new PodcastFact("Order", "Newest first"), new PodcastFact("Topics", "Topic, topic")],
         };
         var smart = new PodcastSmart(PodcastSmartKind.PlayNewest, "seed:0", "Play newest", "New", "Episode title", "12 Nov · 1 hr", -1f, true, []);
         return PodcastShowView.Empty with
@@ -97,7 +98,7 @@ internal static partial class ClassicPodcastShow
                 Pending: _pending!, Failed: _failed!, Content: () => Column(shown, lay, accent, live: true),
                 ShimmerSource: () => Column(HeadOf(s_placeholder), lay, accent, live: false),
                 OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error), Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default with { DeriveComponents = true },
-                Group: null, SmoothResize: false);
+                Group: null, SmoothResize: true);
             return new BoxEl
             {
                 Key = lay.Stacked ? "cp-show-column:stacked" : "cp-show-column", Direction = 1, Gap = P.ColumnGap, MinWidth = 0f,

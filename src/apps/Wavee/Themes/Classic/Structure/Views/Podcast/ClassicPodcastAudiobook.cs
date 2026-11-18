@@ -54,11 +54,11 @@ internal static class ClassicPodcastAudiobook
                 Pending: () => p.View.Value.Load == PodcastLoad.Pending, Failed: () => p.View.Value.Load == PodcastLoad.Failed,
                 Content: () => Column(a), ShimmerSource: () => Column(seed),
                 OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error), Reveal: SkelReveal.Soft,
-                Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: null, SmoothResize: false);
+                Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: null, SmoothResize: true);
             Element main = new SkelRegionEl(
                 Pending: () => p.View.Value.Load == PodcastLoad.Pending, Failed: static () => false,
                 Content: () => MainColumn(a), ShimmerSource: () => MainColumn(seed), OnFailed: null, Reveal: SkelReveal.Soft,
-                Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: null, SmoothResize: false);
+                Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: null, SmoothResize: true);
             return ClassicPodcastKit.Page(p.RouteKey, lay, tone, column, main);
         }
     }

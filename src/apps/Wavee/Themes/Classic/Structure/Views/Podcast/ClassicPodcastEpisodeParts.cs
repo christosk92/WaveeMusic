@@ -223,10 +223,12 @@ internal static class ClassicPodcastEpisodeParts
 
     // ══ 3. THE TRANSCRIPT CARD ══════════════════════════════════════════════════════════════════════════════════════════════
 
-    public sealed record TranscriptArgs(PodcastEpisodePageProps P, bool Chrome, float Height, ColorF Accent);
+    public sealed record TranscriptArgs(PodcastEpisodePageProps P, bool Chrome, float Height, ColorF Accent, bool Bare);
 
-    public static Element Transcript(PodcastEpisodePageProps p, bool chrome, float height, ColorF accent)
-        => Embed.Comp(new TranscriptArgs(p, chrome, height, accent), static () => new TranscriptHost()) with { Key = "cpe-transcript" };
+    /// <summary>The transcript card. <paramref name="bare"/>: the body of the sections card's Transcript tab (no card of its own, no second "Transcript":
+    /// the tab names it).</summary>
+    public static Element Transcript(PodcastEpisodePageProps p, bool chrome, float height, ColorF accent, bool bare = false)
+        => Embed.Comp(new TranscriptArgs(p, chrome, height, accent, bare), static () => new TranscriptHost()) with { Key = "cpe-transcript" };
 
     sealed class TranscriptHost : Component
     {
@@ -268,10 +270,9 @@ internal static class ClassicPodcastEpisodeParts
                 if (m.UserDriven && p.Follow.Peek()) p.SetFollow(false);
             });
 
-            var head = new List<Element>(4)
-            {
-                BodyStrong(Loc.Get(Strings.Podcast.Pages.Transcript)) with { Color = Tok.TextPrimary, Shrink = 0f, Grow = _a.Chrome ? 0f : 1f },
-            };
+            var head = new List<Element>(4);
+            if (!_a.Bare) head.Add(BodyStrong(Loc.Get(Strings.Podcast.Pages.Transcript)) with { Color = Tok.TextPrimary, Shrink = 0f, Grow = _a.Chrome ? 0f : 1f });
+            else if (!_a.Chrome) head.Add(new BoxEl { Grow = 1f });
             if (_a.Chrome)
             {
                 head.Add(Caption(v.TranscriptSub) with { Color = Tok.TextSecondary, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
@@ -315,7 +316,7 @@ internal static class ClassicPodcastEpisodeParts
                     ],
                 };
             }
-            return Card("cpe-transcript-card",
+            var card = Card("cpe-transcript-card",
             [
                 new BoxEl
                 {
@@ -325,6 +326,7 @@ internal static class ClassicPodcastEpisodeParts
                 new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
                 body,
             ]) with { Height = _a.Height };
+            return _a.Bare ? card with { Fill = ColorF.Transparent, BorderWidth = 0f, Corners = default } : card;
         }
 
         static readonly string[] s_noSuggest = [];

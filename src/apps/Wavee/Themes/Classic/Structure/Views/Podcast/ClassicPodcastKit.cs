@@ -69,83 +69,42 @@ internal static class ClassicPodcastKit
     }
 
     /// <summary>The page (see the file header). <paramref name="column"/> is the cover column's content (no padding), <paramref name="main"/> the list
-    /// column's (no padding). <paramref name="scroll"/> is the list scroller's handle (at Compact: the one scroller's).</summary>
+    /// column's (no padding). <paramref name="scroll"/> is the list scroller's handle (at Compact: the one scroller's). ONE row at every tier: the list
+    /// scroller keeps its place (and its scroll) across a crossing; at Compact the column frame is empty and hidden and the column stands at the top of
+    /// the list scroller instead (a declared swap).</summary>
     public static Element Page(string key, ClassicPodcastLayout lay, uint tone, Element column, Element main, ScrollHandle? scroll = null,
         Action<NodeHandle>? viewport = null)
     {
-        ColorF ground = Ground(tone);
-        Element form;
-        if (lay.Stacked)
+        Element mainBox = new BoxEl
         {
-            form = new BoxEl
+            Key = "cp-main", Direction = 1, MinWidth = 0f,
+            Padding = new Edges4(lay.MainPad, 0f, lay.MainPad, P.MainFoot + R.Space.DockReserve), Children = [main],
+        };
+        Element body = lay.Stacked
+            ? new BoxEl
             {
-                Key = "cp-stacked", Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
-                Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade,
-                Children =
-                [
-                    ScrollView(new BoxEl
-                    {
-                        Direction = 1, MinWidth = 0f,
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Key = "cp-column", Direction = 1, Gap = P.ColumnGap, MinWidth = 0f, Fill = Tok.FillLayerDefault,
-                                Padding = Edges4.All(P.ColumnPadStacked), Children = [column],
-                            },
-                            new BoxEl
-                            {
-                                Key = "cp-main", Direction = 1, MinWidth = 0f,
-                                Padding = new Edges4(lay.MainPad, 0f, lay.MainPad, P.MainFoot + R.Space.DockReserve), Children = [main],
-                            },
-                        ],
-                    }) with
-                    {
-                        Key = "cp-scroll:" + key, ScrollKey = "cp-scroll:" + key, Grow = 1f, MinHeight = 0f, Handle = scroll, EdgeCues = ScrollEdgeCues.None,
-                        OnRealized = viewport,
-                    },
-                ],
-            };
-        }
-        else
-        {
-            form = new BoxEl
-            {
-                Key = "cp-wide", Direction = 0, Grow = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade,
+                Direction = 1, MinWidth = 0f,
                 Children =
                 [
                     new BoxEl
                     {
-                        Key = "cp-column", Direction = 1, Width = lay.ColumnW, Shrink = 0f, MinHeight = 0f, ClipToBounds = true, Fill = Tok.FillLayerDefault,
-                        Layout = ClassicTierMotion.Reflow,
-                        Children =
-                        [
-                            ScrollView(new BoxEl
-                            {
-                                Direction = 1, Gap = P.ColumnGap, MinWidth = 0f,
-                                Padding = new Edges4(P.ColumnPadStart, P.ColumnPadTop, P.ColumnPadEnd, P.ColumnPadBottom + R.Space.DockReserve),
-                                Children = [column],
-                            }) with { Key = "cp-column-scroll:" + key, Grow = 1f, MinHeight = 0f, EdgeCues = ScrollEdgeCues.None },
-                        ],
+                        Key = "cp-column-stacked", Direction = 1, Gap = P.ColumnGap, MinWidth = 0f, Fill = Tok.FillLayerDefault, Padding = Edges4.All(P.ColumnPadStacked),
+                        Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Children = [column],
                     },
-                    ScrollView(new BoxEl
-                    {
-                        Key = "cp-main", Direction = 1, MinWidth = 0f,
-                        Padding = new Edges4(lay.MainPad, 0f, lay.MainPad, P.MainFoot + R.Space.DockReserve), Children = [main],
-                    }) with
-                    {
-                        Key = "cp-scroll:" + key, ScrollKey = "cp-scroll:" + key, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Handle = scroll,
-                        EdgeCues = ScrollEdgeCues.None, OnRealized = viewport,
-                    },
+                    mainBox,
                 ],
-            };
-        }
-        return new BoxEl
-        {
-            Key = "cp-page:" + key, Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, Fill = ground,
-            Children = [form],
-        };
+            }
+            : new BoxEl { Direction = 1, MinWidth = 0f, Children = [mainBox] };
+        return ListPage(key, lay, tone, lay.Stacked ? null : new BoxEl
+            {
+                Key = "cp-column-wide", Direction = 1, Gap = P.ColumnGap, MinWidth = 0f, Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade,
+                Children = [column],
+            },
+            ScrollView(body) with
+            {
+                Key = "cp-scroll:" + key, ScrollKey = "cp-scroll:" + key, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Handle = scroll,
+                EdgeCues = ScrollEdgeCues.None, OnRealized = viewport,
+            });
     }
 
     /// <summary>The show page's form of <see cref="Page"/>: the list column is ONE virtualised list (the page's scroller at every tier). From Small up the
