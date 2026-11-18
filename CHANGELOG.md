@@ -72,6 +72,10 @@ versions separately under `v*` and is not tracked in this file.)
   track still loading, a download finding its size), five small dots rush in, drift through the middle and rush out,
   in place of the sliding block.
 
+- **A larger first-run setup.** The setup dialog is much bigger (1040 x 680 on a normal window). "Is this you?" shows
+  the account as a head and says what Wavee does with it, and signing in shows its four steps as a list, each with
+  what it does.
+
 - **"See all" opens in place (WinUI).** A section's "See all" page grows out of the section instead of replacing Home
   with a new page: it opens on the cards the section already showed, holds a place for the ones still loading, and
   Back shrinks it away again.

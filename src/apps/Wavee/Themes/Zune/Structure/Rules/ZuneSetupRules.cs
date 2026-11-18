@@ -111,18 +111,20 @@ public static class ZuneSetupTiers
             ContentPadding = new Edges4(16f, 20f, 16f, 0f), FooterPadding = new Edges4(16f, 12f, 16f, 16f),
             FooterStacked = true, ProgressColumn = 0f, Target = 40f, QrSize = 96f, CardBasis = 280f,
         },
-        // Small (Z-Setup-Small): 720 x 480 with a 160 accent column (20 in, the numeral at 12 / 4), a 72 QR, a 180 progress line, 24 / 22 / 24 / 18 around the page.
-        Plate(WidthTier.Small, 720f, 480f, 160f) with
+        // THE PLATE IS LARGE (owner, 2026-11-18: "make the setup dialog a lot bigger"): 860 x 580, 1040 x 680 and 1240 x 780 where the boards drew 720 x 480 and
+        // 762 x 490; a window too small for it gets the window less its margin, as before.
+        // Small (Z-Setup-Small): 860 x 580 with a 180 accent column (20 in, the numeral at 12 / 4), a 72 QR, a 180 progress line, 24 / 22 / 24 / 18 around the page.
+        Plate(WidthTier.Small, 860f, 580f, 180f) with
         {
             NumeralMargin = new Edges4(12f, 4f, 0f, 0f), AccentPadding = Edges4.All(20f),
             ContentPadding = new Edges4(24f, 22f, 24f, 0f), FooterPadding = new Edges4(24f, 12f, 24f, 18f),
             ProgressColumn = 180f, QrSize = 72f,
         },
-        // Standard (Z-Setup): 762 x 490 with a 192 accent column.
-        Plate(WidthTier.Standard, 762f, 490f, 192f),
-        // Huge (Z-Setup-Huge) and Huge 4K: the same plate; it never stretches.
-        Plate(WidthTier.Huge, 762f, 490f, 192f),
-        Plate(WidthTier.Huge4K, 762f, 490f, 192f),
+        // Standard (Z-Setup): 1040 x 680 with a 264 accent column.
+        Plate(WidthTier.Standard, 1040f, 680f, 264f),
+        // Huge (Z-Setup-Huge) and Huge 4K: 1240 x 780 with a 320 accent column.
+        Plate(WidthTier.Huge, 1240f, 780f, 320f),
+        Plate(WidthTier.Huge4K, 1240f, 780f, 320f),
     ];
 
     /// <summary>The record of window tier <paramref name="window"/>.</summary>
