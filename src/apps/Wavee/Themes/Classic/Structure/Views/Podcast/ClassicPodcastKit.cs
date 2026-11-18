@@ -47,6 +47,8 @@ internal sealed class ClassicRowVerbs
     public required Action<string> PlayNext { get; init; }
     public required Action<string?> Expand { get; init; }
     public required Func<string, ContextMenuModel?> Menu { get; init; }
+    /// <summary>A row's drag payload (the page props' <c>RowDrag</c>; null: the rows carry no drag).</summary>
+    public Func<string, object?>? Drag { get; init; }
 }
 
 /// <summary>Classic's podcast kit (see the file header).</summary>
@@ -504,10 +506,13 @@ internal static class ClassicPodcastKit
         Action<Point2>? _move;
         Action<KeyEventArgs>? _key;
         Func<ContextMenuModel?>? _menu;
+        DragSource? _drag;
 
         public override Element Render()
         {
             _p = UseProps<RowProps>();
+            // The row drags as its episode (onto a playlist, the queue, the player bar): ONE source per row, the payload built when the drag promotes.
+            if (_drag is null && _p.Verbs.Drag is not null) _drag = Wavee.Drag.Source(() => _p.Verbs.Drag?.Invoke(_p.Vm.Id));
             _click ??= () => { if (_p.Expands) _p.Verbs.Expand(_p.Vm.Id); else _p.Verbs.Open(_p.Vm.Id); };
             _play ??= () => _p.Verbs.Play(_p.Vm.Id);
             _save ??= () => _p.Verbs.ToggleSaved(_p.Vm.Id);
@@ -583,7 +588,7 @@ internal static class ClassicPodcastKit
                 Padding = p.Compact ? Edges4.All(P.RowPadCompact) : new Edges4(P.RowPadStart, P.RowPadTop, P.RowPadEnd, P.RowPadBottom),
                 Fill = expanded ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                 HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
-                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key,
+                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, Draggable = _drag,
                 Children = kids.ToArray(),
             };
             return Controls.IsNullOverlay(overlay) ? row : ContextSheets.Attach(row, overlay!, _menu);

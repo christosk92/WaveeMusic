@@ -80,7 +80,7 @@ internal static partial class ClassicPodcastShow
             _verbs ??= new ClassicRowVerbs
             {
                 Expanded = _p.Expanded, Playing = _p.Playing, Play = _p.Play, Open = _p.Open, ToggleSaved = _p.ToggleSaved, PlayNext = _p.PlayNext,
-                Expand = _p.Expand, Menu = _p.RowMenu,
+                Expand = _p.Expand, Menu = _p.RowMenu, Drag = _p.RowDrag,
             };
             _pinnedOf ??= PinnedGroup;
             _pinned = UseComputed(_pinnedOf);
