@@ -592,7 +592,8 @@ internal static partial class ClassicPlayerBar
                             Direction = 1, Grow = 1f, MinHeight = 0f,
                             Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
                             OnRealized = node => barNode.Value = node,
-                            OnClick = mini ? null : () => input.FocusNode?.Invoke(barNode.Value, true),
+                            // A pointer click takes the bar's key map without drawing its focus ring round the whole bar; Tab still shows it.
+                            OnClick = mini ? null : () => input.FocusNode?.Invoke(barNode.Value, false),
                             OnKeyDown = e => props.OnKey(e, input.GetFocus?.Invoke() == barNode.Value),
                             Children =
                             [

@@ -27,7 +27,7 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
-- **Player bar transport.** In Classic, previous and next are filled like the play button, and the three are evenly spaced. (#228)
+- **Player bar transport.** In Classic, previous and next are filled like the play button, and the three are evenly spaced. Clicking the bar in Classic or Zune no longer outlines the whole bar. (#228)
 
 ### Fixed
 
