@@ -6,8 +6,11 @@
 // title, a held press, a right-click or Enter on a tile) and slides away on done, Escape or a tap away. It holds **add** (all items), **options**
 // (turns the selected tile over; enabled when the selected tile has options) and **done**. Its ⋯ slides it up to show the buttons' labels and the
 // menu words ("reset home": at once, undo is by the page title). No undo here (owner: undo is by the title). Never over all items.
+// OUTSIDE CUSTOMIZE (switched off for the release, HomeCustomize) it comes up for a tile picked for its options (`ZuneHomeBoard.Pick`: a held press or
+// a right-click on a tile that has options) with **options** and **done** only (owner, 2026-11-18: the daylist's options are reachable this release).
 //
 //   customizing  (add) (options) (done)              ⋯
+//   picked       (options) (done)                    ⋯
 //   ⋯ open       the same rings with their labels under them, then "reset home" in the 24/30 light voice
 
 using System.Collections.Generic;
@@ -51,10 +54,12 @@ internal static class ZuneHomeAppBar
             string? sel = view.SelectedId.Value;
             bool turned = sel is not null && view.OpenId.Value == sel;
             bool canTurn = ZuneHomeBoard.CanTurn(board.Model.Value, sel);
+            // Outside customize the bar is there only for a tile picked for its options (ZuneHomeBoard.Pick).
+            bool picked = !editing && canTurn;
 
             var buttons = new List<Element>(3);
             {
-                if (HomeCustomize.AddSurface)   // all items only while the add surface is on (HomeCustomize)
+                if (HomeCustomize.AddSurface && editing)   // all items only while the add surface is on (HomeCustomize), and only while customizing
                     buttons.Add(Button("add", Icons.Add, Loc.Get(Strings.Theme.Zune.Home.Add), open, true, false, () => { Close(); ZuneHomeAllItems.Open(board); }));
                 buttons.Add(Button("options", Icons.Settings, Loc.Get(Strings.Theme.Zune.Home.Options), open, canTurn, turned, () => { Close(); ZuneHomeBoard.ToggleOptions(view, verbs); }));
                 buttons.Add(Button("done", Icons.Accept, Loc.Get(Strings.Theme.Zune.Home.Done), open, true, false, () => { Close(); ZuneHomeBoard.Done(view, verbs); }));
@@ -89,7 +94,8 @@ internal static class ZuneHomeAppBar
                     ],
                 },
             };
-            if (open)
+            // "reset home" is customizing's: a tile picked for its options gets the labels alone.
+            if (open && editing)
                 kids.Add(new BoxEl
                 {
                     Key = B.BarMenuKey, Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, B.BarMenuFoot),
@@ -117,12 +123,13 @@ internal static class ZuneHomeAppBar
                 OnKeyDown = e => OnKey(e, board),
                 Children = kids.ToArray(),
             };
-            // A layer over the page's foot: only the bar takes the pointer. It is there only while customizing (owner, 2026-11-16), and never over
-            // all items (its back ring is the way out); the page reserves its height under the board, so the last tiles stay reachable.
+            // A layer over the page's foot: only the bar takes the pointer. It is there only while customizing (owner, 2026-11-16) or for a tile picked
+            // for its options, and never over all items (its back ring is the way out); the page reserves its height under the board, so the last tiles
+            // stay reachable.
             return new BoxEl
             {
                 Direction = 1, Justify = FlexJustify.End, MinWidth = 0f, HitTestPassThrough = true, AlignItems = FlexAlign.Stretch,
-                Children = editing && !all ? [bar] : [],
+                Children = (editing || picked) && !all ? [bar] : [],
             };
         }
 
@@ -140,7 +147,7 @@ internal static class ZuneHomeAppBar
             if (e.Ctrl && !e.Shift && !e.Alt && e.KeyCode == Keys.Z) { board.Verbs.Undo(); e.Handled = true; return; }
             if (e.KeyCode != Keys.Escape) return;
             if (_open.Peek()) { _open.Value = false; e.Handled = true; return; }
-            if (board.View.Editing.Peek()) { ZuneHomeBoard.Done(board.View, board.Verbs); e.Handled = true; }
+            if (board.View.Editing.Peek() || board.View.SelectedId.Peek() is not null) { ZuneHomeBoard.Done(board.View, board.Verbs); e.Handled = true; }
         }
 
         /// <summary>One bar button: a 48 ring with its glyph (filled in the ink while pressed or on), its label under it while the bar is open.</summary>

@@ -10,7 +10,8 @@
 // customize with the tile selected. Customizing, the selected tile wears an outline in the ink and two badges (unpin top right, resize bottom right;
 // a band's both at its foot, under its heading row: never over text), every other tile falls back to 94 % and dims, and a tap on it selects it
 // (a layer over its face takes the tap, so nothing opens). Both are seeded channels on the chrome's own node: no relayout. The ring (2, the accent)
-// marks a tile just added.
+// marks a tile just added. With customize switched off (`HomeCustomize`), the hold and the right-click pick a tile that has options instead
+// (`ZuneHomeBoard.Pick`): it wears the outline alone, and the app bar offers "options".
 
 using System.Collections.Generic;
 using System.Globalization;
@@ -213,11 +214,21 @@ internal static class ZuneHomeTiles
         => Embed.Comp(new ChromeProps(f, f.Cell is not null ? HomeTileMenus.Host(f, s_rows, face) : face, plate), static () => new TileChrome());
 
     /// <summary>Zune's tile rows under a content's menu: the way into customize with this tile selected (Zune edits its board there, never in a
-    /// menu); none while customizing.</summary>
-    static readonly Func<HomeTileFrame, IReadOnlyList<MenuFlyoutItem>> s_rows = static f => f.View.Editing.Peek() || !HomeCustomize.EditMode
-        ? []
-        : [new MenuFlyoutItem(Loc.Get(Strings.Home.Customize), Icons.Edit,
-            Invoke: () => ZuneHomeBoard.Customize(f.View, f.Verbs, Shown?.Invoke() ?? new BoardModel([f.Entry], 0), f.Entry.Id))];
+    /// menu); none while customizing. With customize switched off (HomeCustomize), a tile that has options offers "options": it picks the tile and
+    /// turns it over, and the app bar comes up under it (owner, 2026-11-18: the daylist strip's own menu is where a right-click on it lands).</summary>
+    static readonly Func<HomeTileFrame, IReadOnlyList<MenuFlyoutItem>> s_rows = static f =>
+    {
+        if (f.View.Editing.Peek()) return [];
+        if (HomeCustomize.EditMode)
+            return [new MenuFlyoutItem(Loc.Get(Strings.Home.Customize), Icons.Edit,
+                Invoke: () => ZuneHomeBoard.Customize(f.View, f.Verbs, Shown?.Invoke() ?? new BoardModel([f.Entry], 0), f.Entry.Id))];
+        if (!ZuneHomeBoard.HasBack(f.Entry)) return [];
+        return [new MenuFlyoutItem(Loc.Get(Strings.Theme.Zune.Home.Options), Icons.Settings, Invoke: () =>
+        {
+            ZuneHomeBoard.Pick(f.View, f.Verbs, Shown?.Invoke() ?? new BoardModel([f.Entry], 0), f.Entry.Id);
+            if (f.View.SelectedId.Peek() == f.Entry.Id) ZuneHomeBoard.ToggleOptions(f.View, f.Verbs);
+        })];
+    };
 
     internal sealed record ChromeProps(HomeTileFrame Frame, Element Face, bool Plate);
 
@@ -248,7 +259,9 @@ internal static class ZuneHomeTiles
         {
             if (_p is not { } p) return;
             var f = p.Frame;
-            ZuneHomeBoard.Customize(f.View, f.Verbs, Model(f), f.Entry.Id);
+            // Customize switched off (HomeCustomize): a tile that has options is picked for them instead, and the app bar offers "options".
+            if (HomeCustomize.EditMode) ZuneHomeBoard.Customize(f.View, f.Verbs, Model(f), f.Entry.Id);
+            else ZuneHomeBoard.Pick(f.View, f.Verbs, Model(f), f.Entry.Id);
         }
 
         public override Element Render()
@@ -262,6 +275,9 @@ internal static class ZuneHomeTiles
             bool editing = !preview && view.Editing.Value;
             bool selected = editing && view.SelectedId.Value == id;
             bool recede = editing && !selected;
+            // Customize switched off: a held press or a right-click picks a tile that has options (ZuneHomeBoard.Pick); the picked one wears the outline.
+            bool picks = !preview && !HomeCustomize.EditMode && ZuneHomeBoard.HasBack(f.Entry);
+            bool picked = picks && !editing && view.SelectedId.Value == id;
             if (_first) { _first = false; _receded = recede; _initialScale = recede ? B.Recede : 1f; _initialOpacity = recede ? B.RecedeDim : 1f; }
             UseLayoutEffect(() => Recede(recede), DepKey.From(recede ? 1 : 0));
 
@@ -280,6 +296,8 @@ internal static class ZuneHomeTiles
                 kids.Add(new BoxEl { BorderColor = Tok.TextPrimary, BorderWidth = B.SelectedRing, HitTestVisible = false });
                 kids.Add(Badges(f, full));
             }
+            else if (picked)
+                kids.Add(new BoxEl { BorderColor = Tok.TextPrimary, BorderWidth = B.SelectedRing, HitTestVisible = false });
             if (!preview)
                 kids.Add(new BoxEl
                 {
@@ -292,11 +310,11 @@ internal static class ZuneHomeTiles
                 Fill = p.Plate && !full ? Tok.FillSubtleSecondary : ColorF.Transparent,
                 ScaleX = _initialScale, ScaleY = _initialScale, Opacity = _initialOpacity,
                 OnRealized = _onRealized,
-                // Press and hold enters customize with this tile (the selected tile's hold is the grid's: hold, then drag). Neither the hold nor the
-                // right-click is taken while customize is switched off (HomeCustomize): they reach what is under the tile.
-                Hold = preview || selected || !HomeCustomize.EditMode ? null : new HoldSpec(TouchMs: B.HoldTouchMs, MouseMs: B.HoldMouseMs),
-                OnHold = preview || selected || !HomeCustomize.EditMode ? null : _onHold,
-                OnContextRequested = preview || !HomeCustomize.EditMode ? null : _onContext,
+                // Press and hold enters customize with this tile (the selected tile's hold is the grid's: hold, then drag). While customize is switched
+                // off (HomeCustomize) they pick a tile that has options (`picks`) and reach what is under any other tile.
+                Hold = preview || selected || picked || !(HomeCustomize.EditMode || picks) ? null : new HoldSpec(TouchMs: B.HoldTouchMs, MouseMs: B.HoldMouseMs),
+                OnHold = preview || selected || picked || !(HomeCustomize.EditMode || picks) ? null : _onHold,
+                OnContextRequested = preview || !(HomeCustomize.EditMode || picks) ? null : _onContext,
                 Children = kids.ToArray(),
             };
         }

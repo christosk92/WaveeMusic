@@ -64,6 +64,10 @@ versions separately under `v*` and is not tracked in this file.)
   Wavee, Windows). They are the same settings as Settings > Appearance > Home and Settings > Notifications, so a pick in
   one place shows in the other. In Classic the daylist's ⋯ menu now offers Options too.
 
+- **Zune's app bar offers options for a tile.** Press and hold (or right-click) a Home tile that has options and the app
+  bar comes up with "options" and "done"; "options" turns the tile over to its settings. The daylist strip turns over
+  too, and its own menu ends in "options".
+
 ### Removed
 
 - **The daylist's "Live updates" switch and "Pause live updates" menu item.** Neither ever did anything for the daylist.
