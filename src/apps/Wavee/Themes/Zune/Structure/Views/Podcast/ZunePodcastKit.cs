@@ -407,18 +407,33 @@ internal static class ZunePodcastKit
         MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
     };
 
-    /// <summary>A meta line: each part after the first carries its own "·", so a wrapped line never starts or ends on one.</summary>
+    /// <summary>A meta line on ONE line: each part after the first carries its own "·"; what does not fit runs off under the right edge's fade.</summary>
     public static Element Meta(string key, IReadOnlyList<Element> parts)
     {
         var kids = new Element[parts.Count];
         for (int i = 0; i < kids.Length; i++)
-            kids[i] = i == 0 ? parts[i] : new BoxEl
+            // Nothing shrinks (a squeezed part would slide under the next one's dot): the line's overflow fades instead.
+            kids[i] = i == 0 ? new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [parts[i]] } : new BoxEl
             {
                 Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f,
                 Children = [MetaWord("·") with { Color = Tok.TextTertiary }, parts[i]],
             };
-        return new BoxEl { Key = key, Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, Wrap = true, MinWidth = 0f, Children = kids };
+        // ONE line, never wrapped (a wrapped line would start on its part's dot, owner 2026-11-18): what does not fit runs off under the right edge's
+        // fade, as the name and the pivots do, so no line starts or ends on a dot.
+        return new BoxEl
+        {
+            // The clip keeps a little room for the light face's ink left of the first glyph (its side bearing), taken back by the margin.
+            Key = key, Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
+            Padding = new Edges4(Z.MetaInk, 0f, 0f, 0f), Margin = new Edges4(-Z.MetaInk, 0f, 0f, 0f),
+            EdgeFade = new EdgeFadeSpec(EdgeMask.Right, 0f, 0f, Z.MetaFade, 0f), Children = kids,
+        };
     }
+
+    /// <summary>The separator that travels with both its neighbours (no-break spaces either side): a wrapping text never starts or ends a line on it.</summary>
+    public const string Dot = " · ";
+
+    /// <summary><paramref name="text"/> with every " · " glued to its neighbours (<see cref="Dot"/>), for a host's text that wraps.</summary>
+    public static string Glue(string text) => text.Replace(" · ", Dot, StringComparison.Ordinal);
 
     /// <summary>A meta word: the 13 meta voice in the secondary ink, lowercased as a label.</summary>
     public static TextEl MetaWord(string text) => R.Type.TrackMeta(text) with

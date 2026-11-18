@@ -86,6 +86,9 @@ public static class ZunePodcastRules
 
     public const float MetaGap = 6f, MetaStar = 11f;
 
+    /// <summary>The meta line's right-edge fade (a line that does not fit runs off under it, never wraps).</summary>
+    public const float MetaFade = 32f, MetaInk = 2f;
+
     // ── the toolbar and the groups (the show) ──
 
     /// <summary>The toolbar: its height, the filter words (20/28 light) and their gap, the search pill's width (0 at Compact: the glyph).</summary>

@@ -138,14 +138,14 @@ internal static class ZunePodcastAudiobook
         switch (v.State)
         {
             case AudiobookState.InProgress:
-                string chapter = v.UpTitle + v.UpName;
+                string chapter = K.Glue(v.UpTitle + v.UpName);
                 kids.Add(new BoxEl
                 {
                     Key = "zb-big", Direction = 0, Gap = Z.BigGap, AlignItems = FlexAlign.End, Wrap = true, MinWidth = 0f,
                     Children =
                     [
                         big with { Text = Prop.Of(() => place.Value.Percent ?? "") },
-                        words with { Text = Prop.Of(() => place.Value.Left is { Length: > 0 } left ? left + " · " + chapter : chapter), Margin = new Edges4(0f, 0f, 0f, Z.BigGap / 2f) },
+                        words with { Text = Prop.Of(() => place.Value.Left is { Length: > 0 } left ? left + K.Dot + chapter : chapter), Margin = new Edges4(0f, 0f, 0f, Z.BigGap / 2f) },
                     ],
                 });
                 kids.Add(new BoxEl { Direction = 0, MaxWidth = Z.BookBarMax, MinWidth = 0f, Children = [K.Line(() => place.Value.Fraction) with { Grow = 1f }] });
@@ -154,14 +154,14 @@ internal static class ZunePodcastAudiobook
                 kids.Add(new BoxEl
                 {
                     Key = "zb-big", Direction = 0, Gap = Z.BigGap, AlignItems = FlexAlign.End, Wrap = true, MinWidth = 0f,
-                    Children = [big with { Text = Loc.Get(Strings.Podcast.Pages.Finished) }, words with { Text = v.UpSub, Margin = new Edges4(0f, 0f, 0f, Z.BigGap / 2f) }],
+                    Children = [big with { Text = Loc.Get(Strings.Podcast.Pages.Finished) }, words with { Text = K.Glue(v.UpSub), Margin = new Edges4(0f, 0f, 0f, Z.BigGap / 2f) }],
                 });
                 break;
             default:
                 kids.Add(new BoxEl
                 {
                     Key = "zb-big", Direction = 0, Gap = Z.BigGap, AlignItems = FlexAlign.End, Wrap = true, MinWidth = 0f,
-                    Children = [big with { Text = v.UpTitle }, words with { Text = v.UpSub, Margin = new Edges4(0f, 0f, 0f, Z.BigGap / 2f) }],
+                    Children = [big with { Text = v.UpTitle }, words with { Text = K.Glue(v.UpSub), Margin = new Edges4(0f, 0f, 0f, Z.BigGap / 2f) }],
                 });
                 break;
         }
@@ -248,7 +248,7 @@ internal static class ZunePodcastAudiobook
         if (v.Included)
         {
             if (v.PremiumLine.Length == 0) return null;
-            kids.Add(R.Type.TrackMeta(v.PremiumLine) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), Wrap = TextWrap.Wrap, Shrink = 1f, MinWidth = 0f });
+            kids.Add(R.Type.TrackMeta(K.Glue(v.PremiumLine)) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), Wrap = TextWrap.Wrap, Shrink = 1f, MinWidth = 0f });
             kids.Add(K.Link("zb-hours", v.CheckHoursLabel, p.CheckHours, lay.Target));
             kids.Add(K.Link("zb-topup", v.TopUpLabel, p.TopUp, lay.Target));
         }
