@@ -7,7 +7,7 @@
 //                              bars at its end; it opens where the track plays from
 //   the lane                   each section's header (Body Strong 14): "Next in queue" with "Clear" (an accent text button), "Next up" with
 //                              "<n> more" (Caption, secondary), "Autoplay"; the rows (the shared media surface at the 40 cover, the ✕ as its
-//                              trailing cell, the autoplay rows dimmed); "Show next n · m more"
+//                              trailing cell); "Show next n · m more"
 //   Autoplay                   a divider, then the Autoplay row (Body Strong over "Similar music will keep playing") with its ToggleSwitch
 //
 // The core host (`Queue.RailPanelHost`) keeps what reads and decides (the sections, the page counters, the realized slots, the reorder lane,
@@ -160,7 +160,7 @@ internal sealed class WinUiQueuePanelView : Component
         return new BoxEl
         {
             Key = props.Lane.RowKey("", row.ItemId, row.Index),
-            Direction = 1, Opacity = Q.Dim(row.Section),
+            Direction = 1,   // an Autoplay row is drawn like any row (it was dimmed to 60 %: washed-out covers and text; owner, 2026-11-18). Its heading says what it is.
             Enter = WinUiQueue.RowEnter, Exit = WinUiQueue.RowExit, Layout = LayoutTransition.Slide,
             Children = [Controls.FromData(face, s_rowSurface)],
         };
