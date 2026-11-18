@@ -68,6 +68,8 @@ public sealed class PodcastShowScreen : Component
         var similar = UseResource(ct => PodcastReaderUI.RecommendationsOf(subject, show: true, ct), s_similarSeed, DepKey.From((int)epoch));
         m.Similar = similar.Loadable;
         m.View = UseComputed(m.ComputeView);
+        m.OldestView = UseComputed(m.ComputeOldest);
+        UseEffect(m.PersistView);
         m.Playing = UseComputed(m.ComputePlaying);
         m.PaneChapters = UseComputed(_computeChapters);
         _rater ??= new PodcastRater(hp.Subject, m.RateFacts);
@@ -93,7 +95,7 @@ public sealed class PodcastShowScreen : Component
             Filter = m.Filter,
             SetFilter = m.SetFilter,
             Query = m.QueryCell,
-            Oldest = m.Oldest,
+            Oldest = m.OldestView,
             ToggleSort = m.ToggleSort,
             Selected = m.Selected,
             Select = m.Select,
@@ -218,13 +220,25 @@ sealed class ShowModel
     readonly Signal<string?> _selected = new(null), _expanded = new(null);
     readonly Signal<PodcastPaneTab> _paneTab = new(PodcastPaneTab.Episode);
     readonly Signal<int> _askedFrom = new(-1);
-    /// <summary>Whether the reader chose the order (else it follows the show: a serial reads oldest first).</summary>
-    bool _orderChosen, _seeded;
+    /// <summary>Whether the listener chose the order (else it follows the show: a serial reads oldest first).</summary>
+    readonly Signal<bool> _orderChosen = new(false);
+    bool _seeded;
+    /// <summary>The filter and the order are remembered per show (<see cref="ShowViewPrefs"/>, the one capped blob the library pane's reader
+    /// shares): seeded here, written by <see cref="PersistView"/> on a change. The codes the two surfaces share mean the same (status 0 All,
+    /// 1 Unplayed, 2 In progress; order 0 newest, 1 oldest); each page's own code is one the other's seed reads as its default: this page's
+    /// Saved is <see cref="SavedCode"/> and "the order follows the show" <see cref="OrderFollowsShow"/> (the reader clamps a status past
+    /// Played and an order past 1 to 0), and the reader's Played (3) opens this page on All.</summary>
+    public readonly string PrefsId;
+    int _savedStatus, _savedOrder;
+    const int SavedCode = 4, OrderFollowsShow = 2;
     /// <summary>The smart menu's last video choice (Play as video / Audio only), for its check.</summary>
     bool _audioOnly;
 
     public IReadSignal<PodcastFilter> Filter => _filter;
-    public IReadSignal<bool> Oldest => _oldest;
+    /// <summary>The order the list shows (the listener's, else the show's: a serial oldest first), live.</summary>
+    public Memo<bool>? OldestView;
+    public readonly Func<bool> ComputeOldest;
+    public readonly Action PersistView;
     public IReadSignal<string?> Selected => _selected;
     public IReadSignal<string?> Expanded => _expanded;
     public IReadSignal<PodcastPaneTab> PaneTab => _paneTab;
@@ -286,6 +300,32 @@ sealed class ShowModel
     {
         Subject = subject;
         SubjectText = subject.IsValid ? subject.Text : "";
+        // ── the remembered view: an entry for this show seeds the filter, and the order only when it was chosen (else it follows the show) ──
+        PrefsId = ShowReaderRules.PrefsId(SubjectText);
+        _savedStatus = 0;
+        _savedOrder = OrderFollowsShow;
+        if (ShowViewPrefs.TryRead(ShowViewPrefs.Blob(), PrefsId, out int status, out int order))
+        {
+            var filter = FilterOf(status);
+            _filter = new Signal<PodcastFilter>(filter);
+            _savedStatus = CodeOf(filter);
+            if (order is 0 or 1)
+            {
+                _oldest = new Signal<bool>(order == 1);
+                _orderChosen = new Signal<bool>(true);
+                _savedOrder = order;
+            }
+        }
+        ComputeOldest = () => _orderChosen.Value ? _oldest.Value : View?.Value.Head.Serial ?? false;
+        PersistView = () =>
+        {
+            int st = CodeOf(_filter.Value);
+            int or = _orderChosen.Value ? (_oldest.Value ? 1 : 0) : OrderFollowsShow;
+            if (st == _savedStatus && or == _savedOrder) return;
+            _savedStatus = st;
+            _savedOrder = or;
+            if (PrefsId.Length > 0) ShowViewPrefs.Save(PrefsId, st, or);
+        };
         QueryCell = () => _query;
         ComputeView = Compute;
         ComputePlaying = static () =>
@@ -294,7 +334,13 @@ sealed class ShowModel
             return Playback.IsPlaying.Value && !id.IsEmpty ? new EntityUri(id).Text : null;
         };
         SetFilter = f => { _filter.Value = f; _expanded.Value = null; };
-        ToggleSort = () => { _orderChosen = true; _oldest.Value = !_oldest.Peek(); };
+        // The toggle flips what the list SHOWS (a serial's oldest-first before any choice), then the choice is the listener's.
+        ToggleSort = () =>
+        {
+            bool shown = OldestView?.Peek() ?? _oldest.Peek();
+            _oldest.Value = !shown;
+            _orderChosen.Value = true;
+        };
         Select = id => { _selected.Value = id; if (id is not null) _paneTab.Value = PodcastPaneTab.Episode; };
         Expand = id => _expanded.Value = _expanded.Peek() == id ? null : id;
         SetPaneTab = t => _paneTab.Value = t;
@@ -418,6 +464,23 @@ sealed class ShowModel
     }
 
     Show ShowOf() => Subject.IsValid ? Entities.Show(Subject) : default;
+
+    /// <summary>The stored status code of a filter, and back (see <see cref="PrefsId"/>): anything this page does not define opens on All.</summary>
+    static int CodeOf(PodcastFilter f) => f switch
+    {
+        PodcastFilter.Unplayed => (int)Episode.Rules.Status.Unplayed,
+        PodcastFilter.InProgress => (int)Episode.Rules.Status.InProgress,
+        PodcastFilter.Saved => SavedCode,
+        _ => (int)Episode.Rules.Status.All,
+    };
+
+    static PodcastFilter FilterOf(int code) => code switch
+    {
+        (int)Episode.Rules.Status.Unplayed => PodcastFilter.Unplayed,
+        (int)Episode.Rules.Status.InProgress => PodcastFilter.InProgress,
+        SavedCode => PodcastFilter.Saved,
+        _ => PodcastFilter.All,
+    };
 
     /// <summary>The rate control's inputs, read from the snapshot (the rater's compute subscribes through it).</summary>
     public PodcastRater.Facts RateFacts()
@@ -612,7 +675,7 @@ sealed class ShowModel
         _ = Spotify.Podcasts.SavedChanged.Value;
         var filter = _filter.Value;
         string query = _query.Value;
-        bool oldestCell = _oldest.Value;
+        bool oldestCell = _oldest.Value, orderChosen = _orderChosen.Value;
         _ = _askedFrom.Value;
         EntityId playingId = Playback.CurrentId.Value;
                 var similarState = Similar?.State.Value ?? (byte)LoadState.Pending;
@@ -640,7 +703,7 @@ sealed class ShowModel
         string? trailerId = rp.TrailerId;
         var smart = rp.Smart;
         // The order follows the show until the reader picks one: a serial reads oldest first.
-        if (!_orderChosen) oldestCell = serial;
+        if (!orderChosen) oldestCell = serial;
 
         // ── the filters, the view and the groups ──
         var q = query.AsSpan().Trim();
