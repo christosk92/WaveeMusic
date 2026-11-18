@@ -310,6 +310,7 @@ internal static class WinUiPodcastKit
     {
         readonly Signal<bool> _hover = new(false);
         RowProps _p = null!;
+        string? _shownId;
         Action? _click, _play, _save, _next, _open, _exit, _toggleExpand;
         Action<Point2>? _move;
         Action<KeyEventArgs>? _key;
@@ -332,6 +333,10 @@ internal static class WinUiPodcastKit
             var vm = p.Vm;
             var v = p.Verbs;
             string id = vm.Id;
+            // A row a recycled slot binds to ANOTHER episode shows that episode's state at once (no fill fading from the last one it held); the same
+            // episode selected or released fades.
+            bool rebound = _shownId is not null && _shownId != id;
+            _shownId = id;
             bool selected = p.Mode == PodcastRowMode.Select && v.Selected.Value == id;
             bool expanded = p.Mode == PodcastRowMode.Expand && v.Expanded.Value == id;
             bool playing = v.Playing.Value == id;
@@ -384,11 +389,11 @@ internal static class WinUiPodcastKit
                 Padding = p.Compact ? Edges4.All(K.RowPadCompact) : new Edges4(K.RowPadX, K.RowPadY, K.RowPadX, K.RowPadY),
                 Fill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                 HoverFill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTertiary,
-                PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
+                PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = rebound ? 0f : Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press,
                 Children = kids.ToArray(),
             };
-            // ONE tree selected or not (the pill is present, shown only while selected): a selection that comes or goes with the row mode (a tier
+            // ONE tree selected or not (the pill is present, painted only while selected: an opacity, never a presence change): a selection that comes or goes with the row mode (a tier
             // crossing, 1008) never rebuilds the row and what it holds (the progress ring keeps its mount).
             return new BoxEl
             {
@@ -398,7 +403,7 @@ internal static class WinUiPodcastKit
                     row,
                     new BoxEl
                     {
-                        Width = K.SelectPillW, Height = K.SelectPillH, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, Visible = selected,
+                        Width = K.SelectPillW, Height = K.SelectPillH, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, Opacity = selected ? 1f : 0f,
                         Corners = CornerRadius4.All(K.SelectPillW), Fill = Tok.AccentDefault, HitTestVisible = false,
                     },
                 ],
