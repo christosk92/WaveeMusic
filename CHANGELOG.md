@@ -61,6 +61,10 @@ versions separately under `v*` and is not tracked in this file.)
 - **New installs start in the WinUI theme.** A first run opens in WinUI, and the setup dialog's theme step shows it
   selected. An install that already ran keeps its theme.
 
+- **Zune shows "busy" as a train of dots.** Where progress cannot say how far it is (a search still answering, a
+  track still loading, a download finding its size), five small dots rush in, drift through the middle and rush out,
+  in place of the sliding block.
+
 - **Pinned bars show the window behind them (WinUI, Zune).** The bar that stays at the top of an album or playlist
   page in WinUI no longer paints a lighter band across the page.
 
