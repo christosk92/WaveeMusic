@@ -158,7 +158,7 @@ public static partial class Shell
         // Audiobooks (A2 plan §3.6): its own library route beside Podcasts — same SavedShows edge, split client-side
         // (User.Page.Library.cs's LibraryAudiobookFilter), so it needs its own row for exactly the ch 18 §7 reason
         // every other kind does (a fall-through here would read "Your Library" in the tab strip and history).
-        new(RouteKind.LibraryAudiobooks,   "audiobooks",           false, Strings.Nav.Audiobooks,       Icons.Microphone,  false, false, false),
+        new(RouteKind.LibraryAudiobooks,   "audiobooks",           false, Strings.Nav.Audiobooks,       Icons.ReadingMode,  false, false, false),
         // The playlists list (Z7): the user's playlists and folders as a page of their own, for a structure without a nav tree (Zune's band
         // row 2 reaches it). Core-drawn (`User.LibraryPlaylists`); Classic never links to it.
         new(RouteKind.LibraryPlaylists,    "playlists",            false, Strings.Sidebar.Playlists,    Icons.MusicNote,   false, false, false),

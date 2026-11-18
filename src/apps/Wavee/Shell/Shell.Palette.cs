@@ -106,7 +106,7 @@ public static partial class Shell
             HomeFacetRow("home.all", Loc.Get(Strings.Palette.HomeAll), Icons.Home, ""),
             HomeFacetRow("home.music", Loc.Get(Strings.Palette.HomeMusic), Icons.MusicNote, "music-chip"),
             HomeFacetRow("home.podcasts", Loc.Get(Strings.Palette.HomePodcasts), Icons.RadioTower, "podcasts-chip"),
-            HomeFacetRow("home.audiobooks", Loc.Get(Strings.Palette.HomeAudiobooks), Icons.Microphone, "audiobooks-chip"),
+            HomeFacetRow("home.audiobooks", Loc.Get(Strings.Palette.HomeAudiobooks), Icons.ReadingMode, "audiobooks-chip"),
             SetRow("home.followingOn", Loc.Get(Strings.Palette.HomeFollowingOn), Icons.Friends, PaletteSettingsVerb.HomeFollowingOn),
             SetRow("home.followingOff", Loc.Get(Strings.Palette.HomeFollowingOff), Icons.Friends, PaletteSettingsVerb.HomeFollowingOff),
             // The theme's own way to change Home: WinUI's add band, Classic's Edit Home, Zune's customize (HomeVerbs.OpenCustomize).
