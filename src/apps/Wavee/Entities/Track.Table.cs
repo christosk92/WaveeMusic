@@ -1791,7 +1791,7 @@ public readonly partial struct Track
                 });
                 Element trailBlock = InsetList(new BoxEl { Direction = 1, Children = kids.ToArray() })
                     .StickyClip(line);
-                // A structure with its own band (WinUI's opaque 48 bar) also clips the block at the band's line: the chrome that the block's end pushes up must
+                // A structure with its own band (WinUI's 48 bar, which paints no plate) also clips the block at the band's line: the chrome that the block's end pushes up must
                 // not paint over the bar it passes under. The shell's transparent 56 band leaves it as it was.
                 if (ShellPolicy.Tracked.DetailTiers.For(TiersNow()).BandHeight > 0f) tableBlock = tableBlock.StickyClip(line);
                 children = [TrailHero(spec), tableBlock, trailBlock];

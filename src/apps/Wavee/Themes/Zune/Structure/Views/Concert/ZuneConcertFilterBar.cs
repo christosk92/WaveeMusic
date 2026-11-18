@@ -109,7 +109,6 @@ internal sealed class ZuneConcertFilterBar : Component
         return new BoxEl
         {
             Key = "concert-filter-bar:row", Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Padding = new Edges4(0f, Spacing.S, 0f, Spacing.S),
-            Fill = Prop.Of(static () => R.Layer.Content),
             Children = [caption, scroller],
         }.Sticky(0f);
     }
