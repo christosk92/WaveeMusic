@@ -689,7 +689,15 @@ internal static class ZunePodcastKit
                 Children =
                 [
                     new BoxEl { Width = Z.FactLabelW, Shrink = 0f, Children = [R.Type.TrackTitle(facts[i].Label) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label) }] },
-                    new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [R.Type.TrackTitle(facts[i].Value) with { Wrap = TextWrap.Wrap, MinWidth = 0f }] },
+                    new BoxEl
+                    {
+                        Grow = 1f, Basis = 0f, MinWidth = 0f,
+                        // The app's words ("weekly", "newest first") take the label role; a name from the data stays as written.
+                        Children = [R.Type.TrackTitle(facts[i].Value) with
+                        {
+                            Wrap = TextWrap.Wrap, MinWidth = 0f, Case = facts[i].IsName ? TextCase.AsWritten : R.Case.For(LabelKind.Label),
+                        }],
+                    },
                 ],
             };
         return new BoxEl { Key = key, Direction = 1, Gap = Z.FactsRowGap, MinWidth = 0f, Children = rows };

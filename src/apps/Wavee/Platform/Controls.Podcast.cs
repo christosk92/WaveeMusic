@@ -130,22 +130,26 @@ public static partial class Controls
     /// <summary>The rate picker's metrics: the flyout presenter's padding, its measure (the note wraps inside it), the gap between its lines and
     /// the busy ring beside the stars.</summary>
     public const float RatePickerPadX = 16f, RatePickerPadTop = 15f, RatePickerPadBottom = 17f, RatePickerMaxWidth = 300f, RatePickerGap = 8f,
-                       RatePickerRing = 16f;
+                       RatePickerRing = 16f, RatePickerWordGap = 4f;
 
     /// <summary>A theme's own Rate button (<paramref name="trigger"/>: its look, label and height) that opens THE rate picker of the podcast pages:
     /// "Rate {name}", the five stars holding the listener's own rating (a pick rates N through <paramref name="rate"/> while
     /// <see cref="Theming.Contracts.PodcastRateVm.Enabled"/>), a ring while the write is in flight, and the note (why the stars are off, or the
     /// failed write). The picker reads <paramref name="state"/> live, so it follows a write while it stays open. Wrapped in a box keyed
-    /// <paramref name="key"/> (the trigger's own key would be dropped as a component's root).</summary>
+    /// <paramref name="key"/> (the trigger's own key would be dropped as a component's root).
+    /// <para>The picker's words (the title's verb, the note) take the theme's label case role (as written in WinUI and Classic, lowercase in Zune); the
+    /// subject's name is never re-cased. <paramref name="chrome"/> is the surface it opens on: the popup card by default; a theme whose flyouts are
+    /// its menu plate (Zune's flat, square menu ground) passes <see cref="PopupChrome.Flyout"/>.</para></summary>
     public static Element RateFlyout(string key, BoxEl trigger, IReadSignal<Theming.Contracts.PodcastRateVm> state, Action<int>? rate, float star,
-                                     Func<ColorF>? tone = null)
+                                     Func<ColorF>? tone = null, PopupChrome chrome = PopupChrome.Popup)
         => new BoxEl
         {
             Key = key, Shrink = 0f, MinWidth = 0f,
-            Children = [Embed.Comp(new RateFlyoutProps(trigger, state, rate, star, tone), static () => new RateFlyoutHost())],
+            Children = [Embed.Comp(new RateFlyoutProps(trigger, state, rate, star, tone, chrome), static () => new RateFlyoutHost())],
         };
 
-    sealed record RateFlyoutProps(BoxEl Trigger, IReadSignal<Theming.Contracts.PodcastRateVm> State, Action<int>? Rate, float Star, Func<ColorF>? Tone);
+    sealed record RateFlyoutProps(BoxEl Trigger, IReadSignal<Theming.Contracts.PodcastRateVm> State, Action<int>? Rate, float Star, Func<ColorF>? Tone,
+        PopupChrome Chrome);
 
     /// <summary>The trigger with the picker attached. The anchor lives on the component (not in a per-render closure, as <c>Flyout.Attach</c>
     /// keeps it), so a re-render of the page around it (props re-pushed) never loses the realized node.</summary>
@@ -180,12 +184,28 @@ public static partial class Controls
         {
             if (_open is { IsOpen: true } shown) { shown.Close(); return; }
             if (IsNullOverlay(_overlay) || _anchor.IsNull) return;
-            _open = _overlay.Open(_anchorOf, _body, FlyoutPlacement.BottomEdgeAlignedLeft, new PopupOptions(Chrome: PopupChrome.Popup));
+            _open = _overlay.Open(_anchorOf, _body, FlyoutPlacement.BottomEdgeAlignedLeft, new PopupOptions(Chrome: _p!.Chrome));
         }
     }
 
     sealed class RatePicker : Component
     {
+        /// <summary>"Rate {name}". Under a style that writes its labels as written (WinUI, Classic) the one line it always was; under one that cases them
+        /// (Zune) the title's words take the role and the name stays as written: the words and the name are two runs that wrap as units.</summary>
+        static Element Title(Theming.Contracts.PodcastRateVm s)
+        {
+            var title = BodyStrong(s.Title) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+            var role = R.Case.For(LabelKind.Label);
+            int at = s.Name.Length > 0 ? s.Title.IndexOf(s.Name, StringComparison.Ordinal) : -1;
+            if (role == TextCase.AsWritten || at < 0) return title;
+            var runs = new List<Element>(3);
+            string before = s.Title[..at].TrimEnd(), after = s.Title[(at + s.Name.Length)..].TrimStart();
+            if (before.Length > 0) runs.Add(title with { Text = before, Case = role, Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f });
+            runs.Add(title with { Text = s.Name, Case = TextCase.AsWritten, Shrink = 1f });
+            if (after.Length > 0) runs.Add(title with { Text = after, Case = role, Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f });
+            return new BoxEl { Direction = 0, Wrap = true, Gap = RatePickerWordGap, MinWidth = 0f, Children = runs.ToArray() };
+        }
+
         public override Element Render()
         {
             var p = UseProps<RateFlyoutProps>();
@@ -193,7 +213,7 @@ public static partial class Controls
             Element stars = StarRow(s.Mine, s.Enabled ? p.Rate : null, p.Star, p.Tone);
             var lines = new List<Element>(3)
             {
-                BodyStrong(s.Title) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                Title(s),
                 new BoxEl
                 {
                     Direction = 0, Gap = RatePickerGap, AlignItems = FlexAlign.Center,
@@ -203,7 +223,7 @@ public static partial class Controls
             if (s.Note.Length > 0)
                 lines.Add(Caption(s.Note) with
                 {
-                    Wrap = TextWrap.Wrap, MinWidth = 0f, Color = s.Failed ? Tok.SystemFillCritical : Tok.TextSecondary,
+                    Wrap = TextWrap.Wrap, MinWidth = 0f, Color = s.Failed ? Tok.SystemFillCritical : Tok.TextSecondary, Case = R.Case.For(LabelKind.Label),
                 });
             return new BoxEl
             {

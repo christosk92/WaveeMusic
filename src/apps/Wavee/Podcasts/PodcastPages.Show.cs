@@ -876,12 +876,12 @@ sealed class ShowModel
         for (int i = published.Length - 1; i >= 0; i--)
             if (published[i] > 0) { oldestYear = DateTimeOffset.FromUnixTimeSeconds(published[i]).LocalDateTime.Year; break; }
         var facts = ImmutableArray.CreateBuilder<PodcastFact>(6);
-        if (publisher.Length > 0) facts.Add(new PodcastFact(Loc.Get(Strings.Podcast.Pages.Publisher), publisher));
+        if (publisher.Length > 0) facts.Add(new PodcastFact(Loc.Get(Strings.Podcast.Pages.Publisher), publisher) { IsName = true });
         facts.Add(new PodcastFact(Loc.Get(Strings.Podcast.Pages.Episodes), oldestYear > 0
             ? Strings.Podcast.Pages.EpisodesSince(FormatCache.Int(total), oldestYear.ToString(CultureInfo.InvariantCulture)) : FormatCache.Int(total)));
         if (cadenceWord.Length > 0) facts.Add(new PodcastFact(Loc.Get(Strings.Podcast.Pages.Schedule), cadenceWord));
         facts.Add(new PodcastFact(Loc.Get(Strings.Podcast.Pages.Order), Loc.Get(serial ? Strings.Podcast.Pages.OrderSerial : Strings.Podcast.Pages.OrderNewest)));
-        if (topics.Length > 0) facts.Add(new PodcastFact(Loc.Get(Strings.Podcast.Pages.Topics), string.Join(", ", topics)));
+        if (topics.Length > 0) facts.Add(new PodcastFact(Loc.Get(Strings.Podcast.Pages.Topics), string.Join(", ", topics)) { IsName = true });
         if (video) facts.Add(new PodcastFact(Loc.Get(Strings.Podcast.Pages.Format), Loc.Get(Strings.Podcast.Pages.FormatVideo)));
         string trailerSub = trailer.IsValid && trailer.Knows(EpisodeFields.Duration)
             ? Strings.Podcast.Pages.TrailerSub(Episode.DurationLabel(trailer.DurationMs)) : "";

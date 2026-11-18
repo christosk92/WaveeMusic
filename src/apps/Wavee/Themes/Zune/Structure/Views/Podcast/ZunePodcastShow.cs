@@ -331,7 +331,7 @@ internal static partial class ZunePodcastShow
                         },
                         // Rate opens the shared picker (the listener's stars, busy, the failure, why it is off); the line keeps the listener's own at rest.
                         Controls.RateFlyout("about:rate-flyout", K.Button("about:rate", Loc.Get(Strings.Podcast.Pages.Rate), null, static () => { }, lay.Target),
-                            state, _p.Rate, Z.RatingStar, static () => R.Ink.AccentDecor),
+                            state, _p.Rate, Z.RatingStar, static () => R.Ink.AccentDecor, PopupChrome.Flyout),   // Zune's menu plate: flat, square
                     ],
                 });
             }

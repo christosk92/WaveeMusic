@@ -248,16 +248,16 @@ public sealed class AudiobookScreen : Component
             var authors = book.Authors;
             string authorLine = string.Join(", ", authors.Select(static a => a.Name));
             var factRows = ImmutableArray.CreateBuilder<PodcastFact>(8);
-            if (authorLine.Length > 0) factRows.Add(new(Loc.Get(PP.Author), authorLine));
-            if (book.Narrators.Length > 0) factRows.Add(new(Loc.Get(PP.Narrator), string.Join(", ", book.Narrators)));
-            if (book.Publisher.Length > 0) factRows.Add(new(Loc.Get(PP.Publisher), book.Publisher));
+            if (authorLine.Length > 0) factRows.Add(new(Loc.Get(PP.Author), authorLine) { IsName = true });
+            if (book.Narrators.Length > 0) factRows.Add(new(Loc.Get(PP.Narrator), string.Join(", ", book.Narrators)) { IsName = true });
+            if (book.Publisher.Length > 0) factRows.Add(new(Loc.Get(PP.Publisher), book.Publisher) { IsName = true });
             if (book.Released is { } rel) factRows.Add(new(Loc.Get(PP.Released), rel.ToString("d MMMM yyyy", CultureInfo.CurrentCulture)));
             if (chapterCount > 0) factRows.Add(new(Loc.Get(PP.Length), PP.LengthValue(length, chapterCount)));
             if (book.Language.Length > 0) factRows.Add(new(Loc.Get(PP.Language), AudiobookRules.LanguageName(book.Language)));
-            if (book.Edition.Length > 0) factRows.Add(new(Loc.Get(PP.Edition), book.Edition));
+            if (book.Edition.Length > 0) factRows.Add(new(Loc.Get(PP.Edition), book.Edition) { IsName = true });
             var genres = new List<string>(book.Genres.Length);
             foreach (var g in book.Genres) if (!genres.Contains(g.Name)) genres.Add(g.Name);
-            if (genres.Count > 0) factRows.Add(new(Loc.Get(PP.Genres), string.Join(", ", genres)));
+            if (genres.Count > 0) factRows.Add(new(Loc.Get(PP.Genres), string.Join(", ", genres)) { IsName = true });
 
             // ── more by the author and similar books ──
             string firstAuthor = authors.Length > 0 ? authors[0].Name : "";
