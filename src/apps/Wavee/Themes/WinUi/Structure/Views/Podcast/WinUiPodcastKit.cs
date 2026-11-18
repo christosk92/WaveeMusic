@@ -597,6 +597,50 @@ internal static class WinUiPodcastKit
         Children = [Icon(Icons.Video, K.MetaGlyph, Tok.TextTertiary), MetaWord(Loc.Get(Strings.Podcast.Pages.Video))],
     };
 
+    /// <summary>The topic / genre words of a header line, each a link of its own (the accent ink at rest, the subtle plate on hover and press, focus,
+    /// the hand) that opens <paramref name="open"/> with its words; plain secondary words when <paramref name="open"/> is null. Each word carries
+    /// the "·" before it (the line continues a kind word, so it starts on one), so no line starts or ends on a separator. ONE line: the words that
+    /// do not fit wrap onto a second line the group clips away whole, so a word is never cut and never half a target. <paramref name="target"/>:
+    /// the tier's control height, which each word's hit rect reaches (its slop, inside the clip: the type and the line keep their size).</summary>
+    public static Element WordLinks(string key, ImmutableArray<string> words, Action<string>? open, float target)
+    {
+        var caption = Caption("");
+        float line = caption.LineHeight;
+        float slop = MathF.Max(0f, (target - line) / 2f);
+        // A wrapping line places its first item even where it does not fit: an empty first item (its gap taken back) lets the first word leave the
+        // line too, so the clip never cuts a word.
+        var units = new Element[words.Length + 1];
+        units[0] = new BoxEl { Width = 0f, Height = line, Shrink = 0f, Margin = new Edges4(0f, 0f, -K.WordLinkGap, slop) };
+        for (int i = 0; i < words.Length; i++)
+        {
+            string word = words[i];
+            Element w = open is null
+                ? caption with { Text = word, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap }
+                : new BoxEl
+                {
+                    Key = key + ":" + i, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                    Padding = new Edges4(K.WordLinkPadX, 0f, K.WordLinkPadX, 0f), Margin = new Edges4(-K.WordLinkPadX, 0f, -K.WordLinkPadX, 0f),
+                    HitSlop = new Edges4(0f, slop, 0f, slop), Corners = Radii.ControlAll,
+                    Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+                    Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = () => open(word),
+                    Children = [caption with
+                    {
+                        Text = word, Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary, PressedColor = Tok.AccentTextTertiary, Wrap = TextWrap.NoWrap,
+                    }],
+                };
+            units[i + 1] = new BoxEl
+            {
+                Direction = 0, Gap = K.WordLinkGap, AlignItems = FlexAlign.Center, Shrink = 0f, Height = line, Margin = new Edges4(0f, 0f, 0f, slop),
+                Children = [caption with { Text = "·", Color = Tok.TextSecondary }, w],
+            };
+        }
+        return new BoxEl
+        {
+            Key = key, Direction = 0, Wrap = true, Gap = K.WordLinkGap, AlignItems = FlexAlign.Start, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
+            Height = line + slop + slop, Padding = new Edges4(0f, slop, 0f, 0f), Margin = new Edges4(0f, -slop, 0f, -slop), Children = units,
+        };
+    }
+
     /// <summary>The lock tag of a restricted episode ("Subscribers only", "Preview only"): the lock and the word, never clipped (as the Video tag).</summary>
     static Element LockTag(TextEl word) => new BoxEl
     {

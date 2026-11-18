@@ -96,7 +96,7 @@ internal static class ZunePodcastAudiobook
             Key = "zb-art", Width = lay.Art, Height = lay.Art, Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ZuneMotion.GroupResize,
             Children = [Controls.Artwork(v.ArtUrl, lay.Art, lay.Art, 0f, decodePx: (int)(lay.Art * 2f))],
         };
-        var main = new List<Element>(7) { Label(v, p), Big(v, p), Up(v, p, lay, playing) };
+        var main = new List<Element>(7) { Label(v, p, lay.Target), Big(v, p), Up(v, p, lay, playing) };
         if (v.Authors.Length + v.Narrators.Length > 0) main.Add(Byline(v, p.OpenUri));
         main.Add(Commands(v, p, lay));
         if (Premium(v, p, lay) is { } premium) main.Add(premium);
@@ -108,14 +108,15 @@ internal static class ZunePodcastAudiobook
         };
     }
 
-    /// <summary>"audiobook · included in premium": the kind word links to Browse › Audiobooks where Wavee routes it; the genres name no page (plain).</summary>
-    static Element Label(AudiobookView v, AudiobookPageProps p)
+    /// <summary>"audiobook · included in premium · Self-Help · …": the kind word links to Browse › Audiobooks where Wavee routes it; each genre is a
+    /// link that searches its words (the genre ids name no page Wavee opens).</summary>
+    static Element Label(AudiobookView v, AudiobookPageProps p, float target)
     {
         var parts = new List<Element>(3);
         if (v.Kind.Length > 0)
             parts.Add(v.KindRoute is { Length: > 0 } route ? K.Link("zb-kind", v.Kind, () => p.OpenRoute(route), 0f) : K.Label(v.Kind));
         if (v.Included && v.IncludedTag.Length > 0) parts.Add(K.Label(v.IncludedTag));
-        if (v.Genres.Length > 0) parts.Add(K.MetaWord(string.Join(" · ", v.Genres)) with { Case = TextCase.AsWritten, Color = Tok.TextTertiary, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
+        if (v.Genres.Length > 0) parts.Add(K.WordLinks("zb-genre", v.Genres, p.OpenGenre, target, leadDot: parts.Count > 0));
         return K.Meta("zb-label", parts);
     }
 

@@ -212,6 +212,8 @@ public sealed record PodcastShowPageProps
     public required Action? Share { get; init; }
     /// <summary>The eyebrow's kind word ("Podcast"): its hub. Null: the word is plain text.</summary>
     public Action? OpenKind { get; init; }
+    /// <summary>A topic of <see cref="PodcastShowHead.Topics"/>, by its words: Search for it. Null: the topics are plain text.</summary>
+    public Action<string>? OpenTopic { get; init; }
     /// <summary>"More like this": a card's context menu and its play button (null: none).</summary>
     public Func<string, ContextMenuModel?>? CardMenu { get; init; }
     public Action<string>? PlayCard { get; init; }
@@ -435,4 +437,6 @@ public sealed record AudiobookPageProps
     public required Action<int>? Rate { get; init; }
     /// <summary>The rate control's state (the listener's own stars at rest, busy, failed, why it is off), live.</summary>
     public required IReadSignal<PodcastRateVm> RateState { get; init; }
+    /// <summary>A genre of <see cref="AudiobookView.Genres"/>, by its words: Search for it. Null: the genres are plain text.</summary>
+    public Action<string>? OpenGenre { get; init; }
 }

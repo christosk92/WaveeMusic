@@ -138,9 +138,17 @@ internal static partial class ClassicPodcastShow
             if (h.AboutHtml.Length > 0 || h.About.Length > 0) kids.Add(ClassicPodcastKit.Description(h.AboutHtml.Length > 0 ? h.AboutHtml : h.About, "cp-about"));
             if (h.TrailerId is not null) kids.Add(Trailer(h));
             var facts = new List<PodcastFact>(2);
+            var values = new List<Element?>(2);
+            string topicsLabel = Loc.Get(Strings.Podcast.Pages.Topics);
             foreach (var f in h.Facts)
-                if (f.Label == Loc.Get(Strings.Podcast.Pages.Topics) || f.Label == Loc.Get(Strings.Podcast.Pages.Order)) facts.Add(f);
-            if (facts.Count > 0) kids.Add(ClassicPodcastKit.Facts([.. facts], "cp-facts"));
+            {
+                bool topics = f.Label == topicsLabel;
+                if (!topics && f.Label != Loc.Get(Strings.Podcast.Pages.Order)) continue;
+                facts.Add(f);
+                // The topics as links: each searches its words.
+                values.Add(topics && _p.OpenTopic is { } open && h.Topics.Length > 0 ? ClassicPodcastKit.Links("cp-topic", h.Topics, open, lay.Target) : null);
+            }
+            if (facts.Count > 0) kids.Add(ClassicPodcastKit.Facts([.. facts], "cp-facts", values.ToArray()));
             return new BoxEl { Direction = 1, Gap = P.ColumnGap, MinWidth = 0f, Children = kids.ToArray() };
         }
 

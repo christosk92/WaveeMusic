@@ -41,6 +41,9 @@ internal static class WinUiPodcastKitRules
     public const float SelectPillW = 3f, SelectPillH = 16f;
     /// <summary>The meta line: the New dot (6), the gap between its parts (6), a meta glyph (12).</summary>
     public const float NewDot = 6f, MetaGap = 6f, MetaGlyph = 12f;
+    /// <summary>A header line's word links (topics, genres): the hover plate's side padding (pulled back by the margin, so the word stands where
+    /// its text would) and the gap between a separator and its word.</summary>
+    public const float WordLinkPadX = 4f, WordLinkGap = 6f;
     /// <summary>The row's action buttons (32; 40 at Compact) and their glyph.</summary>
     public const float RowAction = 32f, RowActionCompact = 40f;
     /// <summary>The expanded row's air above its body and between its parts.</summary>

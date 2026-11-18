@@ -409,6 +409,9 @@ public sealed class AudiobookScreen : Component
             OpenRoute = static key => Shell.GoTo(Shell.Parse(key)),
             SimilarMenu = SimilarMenu, PlaySimilar = PlaySimilar,
             Rate = Rater.Rate, RateState = rateState,
+            // A genre searches its words: the genre tree's ids (32-hex AUDIOBOOK_GENRE nodes) name no page Wavee opens (Browse opens
+            // spotify:page: categories), so the older page's topic search is the real destination.
+            OpenGenre = Show.OpenTopic,
         };
 
         void Play()

@@ -196,6 +196,28 @@ internal static class ClassicPodcastKit
         Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f,
     };
 
+    /// <summary>Words as links ("Science, History"), wrapping: each the house hyperlink (rest, hover, pressed, focus; the kind word's look) that opens
+    /// <paramref name="open"/> with its words, its comma glued after it (no line starts on one). Each word's hit rect reaches
+    /// <paramref name="target"/> (its slop: the type keeps its size).</summary>
+    public static Element Links(string key, ImmutableArray<string> words, Action<string> open, float target)
+    {
+        float slop = MathF.Max(0f, (target - P.LineHeight) / 2f);
+        var units = new Element[words.Length];
+        for (int i = 0; i < words.Length; i++)
+        {
+            string word = words[i];
+            var link = HyperlinkButton.Create(word, () => open(word), size: ControlSize.Small) with
+            {
+                // No side padding: the comma after it and the next word sit where the text would, nothing overlaps.
+                Key = key + ":" + i, Shrink = 0f, Padding = default, HitSlop = new Edges4(0f, slop, 0f, slop),
+            };
+            units[i] = i + 1 < words.Length
+                ? new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [link, new TextEl(",") { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextSecondary }] }
+                : link;
+        }
+        return new BoxEl { Key = key, Direction = 0, Wrap = true, Gap = P.TagGap + P.TagGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = units };
+    }
+
     /// <summary>A strong run of a <see cref="Line"/>.</summary>
     public static TextSpan Strong(string text, Action? click = null)
         => new(text, Weight: P.Strong, Color: Tok.TextPrimary, OnClick: click, IsLink: click is not null);
@@ -211,8 +233,9 @@ internal static class ClassicPodcastKit
                 : Controls.RichTextFlex(html, size, Tok.TextSecondary, Tok.AccentTextPrimary, 0, DetailVerbs.NavigateKey)],
         };
 
-    /// <summary>A label / value list (Topics, Order, Released): 12/18, the label tertiary.</summary>
-    public static Element Facts(ImmutableArray<PodcastFact> facts, string key)
+    /// <summary>A label / value list (Topics, Order, Released): 12/18, the label tertiary. <paramref name="values"/>[i], when set, draws row i's value
+    /// instead of its text (the topics as links).</summary>
+    public static Element Facts(ImmutableArray<PodcastFact> facts, string key, Element?[]? values = null)
     {
         var rows = new Element[facts.Length];
         for (int i = 0; i < rows.Length; i++)
@@ -225,7 +248,8 @@ internal static class ClassicPodcastKit
                     new BoxEl
                     {
                         Grow = 1f, Basis = 0f, MinWidth = 0f,
-                        Children = [new TextEl(facts[i].Value) { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f }],
+                        Children = [values is not null && i < values.Length && values[i] is { } own ? own
+                            : new TextEl(facts[i].Value) { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f }],
                     },
                 ],
             };

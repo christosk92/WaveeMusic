@@ -412,12 +412,17 @@ internal static class ZunePodcastKit
     {
         var kids = new Element[parts.Count];
         for (int i = 0; i < kids.Length; i++)
-            // Nothing shrinks (a squeezed part would slide under the next one's dot): the line's overflow fades instead.
-            kids[i] = i == 0 ? new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [parts[i]] } : new BoxEl
+        {
+            // Nothing shrinks (a squeezed part would slide under the next one's dot): the line's overflow fades instead. The one exception is a
+            // part that gives way by itself, whole words at a time (WordLinks): it takes what is left and carries its own dots, so a line whose
+            // words all left never ends on one.
+            float shrink = parts[i] is BoxEl { Shrink: > 0f } ? 1f : 0f;
+            kids[i] = i == 0 || shrink > 0f ? new BoxEl { Direction = 0, Shrink = shrink, MinWidth = 0f, AlignItems = FlexAlign.Center, Children = [parts[i]] } : new BoxEl
             {
-                Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, Shrink = shrink, MinWidth = 0f,
                 Children = [MetaWord("·") with { Color = Tok.TextTertiary }, parts[i]],
             };
+        }
         // ONE line, never wrapped (a wrapped line would start on its part's dot, owner 2026-11-18): what does not fit runs off under the right edge's
         // fade, as the name and the pivots do, so no line starts or ends on a dot.
         return new BoxEl
@@ -426,6 +431,50 @@ internal static class ZunePodcastKit
             Key = key, Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
             Padding = new Edges4(Z.MetaInk, 0f, 0f, 0f), Margin = new Edges4(-Z.MetaInk, 0f, 0f, 0f),
             EdgeFade = new EdgeFadeSpec(EdgeMask.Right, 0f, 0f, Z.MetaFade, 0f), Children = kids,
+        };
+    }
+
+    /// <summary>The topic / genre words of a meta line as ONE part, each word a link of its own (the accent ink at rest as the kind word's link, the
+    /// primary ink on hover, focus, the hand; a name keeps its casing) that opens <paramref name="open"/> with its words, plain tertiary words when
+    /// <paramref name="open"/> is null. Each word carries the "·" before it (<paramref name="leadDot"/> false: not the first, which starts the line).
+    /// The part gives way by itself, a whole word at a time: the words that do not fit wrap onto a second line it clips away, so no word is cut or
+    /// half a target, and the line never ends on a dot. Each word's hit rect reaches <paramref name="target"/> (its slop, inside the clip): the type
+    /// keeps its size.</summary>
+    public static BoxEl WordLinks(string key, ImmutableArray<string> words, Action<string>? open, float target, bool leadDot = true)
+    {
+        var face = R.Type.DenseMeta("");
+        float line = face.LineHeight;
+        float slop = MathF.Max(0f, (target - line) / 2f);
+        // A wrapping line places its first item even where it does not fit: an empty first item (its gap taken back) lets the first word leave the
+        // line too, so the clip never cuts a word.
+        var units = new Element[words.Length + 1];
+        units[0] = new BoxEl { Width = 0f, Height = line, Shrink = 0f, Margin = new Edges4(0f, 0f, -Z.MetaGap, slop) };
+        for (int i = 0; i < words.Length; i++)
+        {
+            string word = words[i];
+            Element w = open is null
+                ? face with { Text = word, Color = Tok.TextTertiary, Case = TextCase.AsWritten, MaxLines = 1, Wrap = TextWrap.NoWrap }
+                : new BoxEl
+                {
+                    Key = key + ":" + i, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, HitSlop = new Edges4(0f, slop, 0f, slop),
+                    Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, OnClick = () => open(word),
+                    Children = [face with
+                    {
+                        Text = word, Color = Prop.Of(static () => R.Ink.AccentDecor), HoverColor = Tok.TextPrimary, PressedColor = Tok.TextSecondary,
+                        Case = TextCase.AsWritten, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                    }],
+                };
+            units[i + 1] = new BoxEl
+            {
+                Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f, Height = line, Margin = new Edges4(0f, 0f, 0f, slop),
+                Children = i == 0 && !leadDot ? [w] : [MetaWord("·") with { Color = Tok.TextTertiary }, w],
+            };
+        }
+        return new BoxEl
+        {
+            Key = key, Direction = 0, Wrap = true, Gap = Z.MetaGap, AlignItems = FlexAlign.Start, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
+            // The trailing room is the meta line's right-edge fade: a word that stays never sits under it, half faded.
+            Height = line + slop + slop, Padding = new Edges4(0f, slop, Z.MetaFade, 0f), Margin = new Edges4(0f, -slop, 0f, -slop), Children = units,
         };
     }
 
