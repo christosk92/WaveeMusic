@@ -22,6 +22,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
@@ -40,6 +41,9 @@ internal static class WinUiPodcastAudiobook
 
     sealed class PageHost : Component
     {
+        /// <summary>The page scroller's handle: the contents page windows its rows on it (only the rows near the viewport mount).</summary>
+        readonly ScrollHandle _scroll = new();
+
         public override Element Render()
         {
             var p = UseProps<AudiobookPageProps>();
@@ -60,7 +64,7 @@ internal static class WinUiPodcastAudiobook
                 Direction = 1, MinWidth = 0f, Padding = new Edges4(inset, 0f, inset, K.PageFoot), Children = [region],
             };
             Element bar = Embed.Comp(new BarProps(p, inset), static () => new BarHost());
-            return WinUiPodcastKit.Page(p.RouteKey, v.Tone, barOn, content, bar);
+            return WinUiPodcastKit.Page(p.RouteKey, v.Tone, barOn, Ctx.Provide(WinUiAudiobookParts.PageScroll, (ScrollHandle?)_scroll, content), bar, _scroll);
         }
     }
 
