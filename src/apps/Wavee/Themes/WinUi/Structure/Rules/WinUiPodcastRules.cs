@@ -102,6 +102,8 @@ internal static class WinUiPodcastShowRules
     /// a foot, the hero and About before they measure; and the content types of the three prefix parts (above every list kind).</summary>
     public const float RowEstimate = 58f, RowEstimateTall = 78f, FootEstimate = 64f, HeroEstimate = 276f, AboutEstimate = 60f;
     public const int PrefixType = 16;
+    /// <summary>A row at rest, measured (10 + 36 + 10; with a line of description 76): the list seeds it exactly, so a jump lands on its year.</summary>
+    public const float RowHeight = 56f, RowHeightDescribed = 76f;
     public const string PageKey = "podcast-show";
 }
 
