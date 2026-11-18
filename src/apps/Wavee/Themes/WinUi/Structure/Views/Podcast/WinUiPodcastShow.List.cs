@@ -449,7 +449,7 @@ internal static partial class WinUiPodcastShow
                 Element body = shape.Kind switch
                 {
                     // ONE row per slot, reading its episode from the slot: a rebind writes the row's words, it never re-renders the row.
-                    PodcastItemKind.Row => WinUiPodcastKit.EpisodeRow(vm, lay.RowMode, lay.RowDescription, lay.Stacked, host._verbs!),
+                    PodcastItemKind.Row => WinUiPodcastKit.EpisodeRow(vm, lay.RowMode, lay.RowDescription, lay.Stacked, host._verbs!) with { Key = "ep" },
                     PodcastItemKind.More => new BoxEl
                     {
                         Key = "show-more", Direction = 0, Justify = FlexJustify.Center, Padding = new Edges4(0f, K.SectionBottom, 0f, K.SectionBottom),
