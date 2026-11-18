@@ -271,9 +271,16 @@ internal static class WinUiPodcastEpisode
     sealed class Cards : Component
     {
         readonly Signal<int> _index = new(0);
-        readonly ScrollHandle _bodyScroll = new();
-        /// <summary>The chapter rows' laid-out heights (the rows write them): where a row sits in the list without a scene walk.</summary>
-        float[] _rowH = [];
+        readonly ScrollHandle _chaptersScroll = new();
+        ImmutableArray<PodcastChapterVm> _stampChapters;
+        int _chaptersStamp;
+
+        /// <summary>A new stamp when the snapshot's chapters change (a crossing moves current and played): the bound slots rebuild from them.</summary>
+        int ChaptersStamp(PodcastEpisodeView v)
+        {
+            if (!_stampChapters.Equals(v.Chapters)) { _stampChapters = v.Chapters; _chaptersStamp++; }
+            return _chaptersStamp;
+        }
 
         public override Element Render()
         {
@@ -299,20 +306,18 @@ internal static class WinUiPodcastEpisode
             int index = Math.Max(0, Array.IndexOf(tabs, tab));
             UseEffect(() => { _index.SetIfChanged(index); }, DepKey.From(index));
             bool transcriptTab = !lay.TwoCards && tab == PodcastEpisodeTab.Transcript;
-            if (_rowH.Length != v.Chapters.Length) _rowH = new float[v.Chapters.Length];
             // The chapters list keeps the current chapter in view as playback crosses into it (the minimal move: a row already shown stays put).
-            var rowH = _rowH;
-            var scroll = _bodyScroll;
+            var scroll = _chaptersScroll;
+            int count = v.Chapters.Length;
             bool chaptersShown = tab == PodcastEpisodeTab.Chapters;
             UseEffect(() =>
             {
                 int at = p.CurrentChapter.Value;
                 _ = scroll.ViewportSignal.Value;
-                if (!chaptersShown || at < 0 || at >= rowH.Length || rowH[at] <= 0f) return;
-                float top = P.ListBodyPad;
-                for (int i = 0; i < at; i++) top += rowH[i];
-                scroll.BringIntoView(top, rowH[at], float.NaN, ScrollMove.Glide, P.ListBodyPad);
+                if (!chaptersShown || at < 0 || at >= count) return;
+                scroll.BringIntoView(at * P.ChRowH, P.ChRowH, float.NaN, ScrollMove.Glide, P.ListBodyPad);
             });
+            bool chaptersList = chaptersShown && count > 0;
 
             Element body = tab switch
             {
@@ -322,7 +327,7 @@ internal static class WinUiPodcastEpisode
                     Children = [WinUiPodcastKit.Description(v.About)],
                 },
                 PodcastEpisodeTab.Comments => p.Comments?.Invoke() ?? new BoxEl(),
-                _ => WinUiPodcastEpisodeParts.Chapters(p, v, _rowH),
+                _ => WinUiPodcastEpisodeParts.NoChapters(v),
             };
             var pivot = new BoxEl
             {
@@ -339,10 +344,12 @@ internal static class WinUiPodcastEpisode
                 Children = transcriptTab
                     ? [pivot, divider]
                     : [pivot, divider,
-                       ScrollView(new BoxEl { Direction = 1, Padding = Edges4.All(P.ListBodyPad), MinWidth = 0f, Children = [body] }) with
-                       {
-                           Key = "pe-sections:scroll", Grow = 1f, MinHeight = 0f, Handle = _bodyScroll,
-                       }],
+                       chaptersList
+                           ? WinUiPodcastEpisodeParts.Chapters(p, v, _chaptersScroll, ChaptersStamp(v))
+                           : ScrollView(new BoxEl { Direction = 1, Padding = Edges4.All(P.ListBodyPad), MinWidth = 0f, Children = [body] }) with
+                           {
+                               Key = "pe-sections:scroll", Grow = 1f, MinHeight = 0f,
+                           }],
             };
             var kids = new List<Element>(2) { left };
             if (lay.TwoCards)

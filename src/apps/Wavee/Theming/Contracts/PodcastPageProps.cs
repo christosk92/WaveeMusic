@@ -179,7 +179,13 @@ public sealed record PodcastShowPageProps
 }
 
 /// <summary>One chapter of an episode: where it starts, its length and how far the listener is through it (0..1).</summary>
-public sealed record PodcastChapterVm(int Index, string Title, int StartMs, int EndMs, string Start, string Length, float Fill, bool Current, bool Played);
+public sealed record PodcastChapterVm(int Index, string Title, int StartMs, int EndMs, string Start, string Length, float Fill, bool Current, bool Played)
+{
+    /// <summary>"16:34 · 6 min" (start and length, joined by the host so a recycled row's rebind formats nothing).</summary>
+    public string Span { get; init; } = "";
+    /// <summary>The chapter's number as text ("7").</summary>
+    public string Number { get; init; } = "";
+}
 
 /// <summary>One line of the transcript, with the chapter heading it opens (null when it opens none).</summary>
 public sealed record PodcastLineVm(int StartMs, string Time, string Text, string? Heading);

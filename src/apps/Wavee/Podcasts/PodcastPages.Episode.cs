@@ -355,7 +355,11 @@ public sealed class PodcastEpisodeScreen : Component
                 float fill = played ? 1f : i == chapterAt ? Math.Clamp((position - c.StartMs) / (float)(end - c.StartMs), 0f, 1f) : 0f;
                 string title = c.Title.Length > 0 ? c.Title : Strings.Podcast.Pages.ChapterN(i + 1);
                 b.Add(new PodcastChapterVm(i, title, c.StartMs, end, Playback.TimeFormat.Clock(c.StartMs), Episode.DurationLabel(end - c.StartMs),
-                    fill, i == chapterAt, played));
+                    fill, i == chapterAt, played)
+                {
+                    Span = Playback.TimeFormat.Clock(c.StartMs) + MetaSep + Episode.DurationLabel(end - c.StartMs),
+                    Number = FluentGpu.Foundation.FormatCache.Int(i + 1),
+                });
             }
             chapters = b.MoveToImmutable();
             vm = vm with { ChapterCount = chapters.Length };

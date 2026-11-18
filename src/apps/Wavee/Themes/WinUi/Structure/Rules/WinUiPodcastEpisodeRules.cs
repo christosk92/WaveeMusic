@@ -30,6 +30,13 @@ internal static class WinUiPodcastEpisodeRules
     public const float MapPadX = 16f, MapPadTop = 12f, MapPadBottom = 14f, MapGap = 10f, CardGap = 12f;
     /// <summary>The segment band: its height, the gap between segments, a segment's rest and hover height, its floor and radius.</summary>
     public const float SegBand = 20f, SegGap = 3f, SegRest = 8f, SegHover = 12f, SegMin = 6f, SegRadius = 4f;
+    /// <summary>A crowded map (a long episode's hundred chapters): from <see cref="SegDenseFrom"/> segments the gap and the floor shrink so every chapter
+    /// still fits a Compact row (100 x 2 + 99 x 1 = 299).</summary>
+    public const int SegDenseFrom = 40;
+    public const float SegGapDense = 1f, SegMinDense = 2f;
+    public static float SegGapFor(int count) => count >= SegDenseFrom ? SegGapDense : SegGap;
+    public static float SegMinFor(int count) => count >= SegDenseFrom ? SegMinDense : SegMin;
+
     /// <summary>The thumb on the current segment: its outer and inner discs.</summary>
     public const float Thumb = 18f, ThumbDot = 10f, ThumbHalf = Thumb / 2f, ThumbDotHalf = ThumbDot / 2f;
     /// <summary>The follow button's glyph.</summary>
@@ -45,8 +52,12 @@ internal static class WinUiPodcastEpisodeRules
     // ── the two cards ──
     public const float ColsAside = 400f, CardsH = 456f, CardsNarrowH = 440f, SelBarPad = 4f, ListBodyPad = 8f;
     /// <summary>A chapter row: the number column, the check column, the row's gap, padding, floor and the current row's accent tick.</summary>
+    /// <summary>A chapter row's fixed height (the virtual list's extent): its padding, the name (20), the meta line (16) and the current one's bar.</summary>
+    public const float ChRowH = 54f;
     public const float ChNum = 28f, ChCheck = 20f, ChGap = 8f, ChPadX = 8f, ChPadY = 6f, ChMinH = 52f, ChCheckGlyph = 12f,
         ChTickW = 3f, ChTickH = 16f, ChTickRadius = 2f, ChBarTop = 3f;
+    /// <summary>Following jumps (no glide) to a current line further than this many viewports away.</summary>
+    public const double FollowJumpViewports = 2.0;
     /// <summary>The transcript header and body.</summary>
     public const float TrHeadMinH = 48f, TrHeadPadL = 16f, TrHeadPad = 8f, FindW = 176f, TrPadX = 16f, TrPadBottom = 16f;
     /// <summary>The sticky chapter heading's padding.</summary>

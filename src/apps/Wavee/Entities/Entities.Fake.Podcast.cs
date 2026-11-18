@@ -55,6 +55,11 @@ public static partial class Entities
         const int PaywalledEpisode = 3;
         /// <summary>sh0's amber <c>backgroundTintedBase</c>, 0xAARRGGBB.</summary>
         const uint SerialTone = 0xFF9A6424;
+        /// <summary>sh9, "The Long Book": an audiobook of a hundred chapters (the realistic maximum the audiobook page's contents are measured on),
+        /// chapters 1-30 heard, 31 under way.</summary>
+        const int LongBookChapters = 100, LongBookHeard = 30;
+        /// <summary>sh0's newest part (sh0e0): three hours.</summary>
+        const int LongEpisodeMs = 3 * 3_600_000;
 
         /// <summary>sh0's trailer: <c>spotify:episode:sh0trailer</c>.</summary>
         static string TrailerUri(int sh) => ShowUri(sh).Replace(":show:", ":episode:", StringComparison.Ordinal) + "trailer";
@@ -79,6 +84,10 @@ public static partial class Entities
                     show.Flags = (uint)(ShowFlags.Explicit | ShowFlags.CanRate);
                     show.RatingX100 = 460;
                     show.RatingCount = 3_208;
+                    break;
+                case LongBook:
+                    show.Flags = (uint)ShowFlags.Audiobook;
+                    show.Order = (byte)ConsumptionOrder.Sequential;
                     break;
                 case CaughtUpShow:
                     show.Flags = (uint)(ShowFlags.Video | ShowFlags.Exclusive | ShowFlags.CanRate);
@@ -129,6 +138,11 @@ public static partial class Entities
                 case NewShow:
                     if (number % 2 == 0) ep.Flags = (uint)EpisodeFlags.Explicit;
                     break;
+                case LongBook:
+                    ep.Flags = (uint)EpisodeFlags.AudiobookChapter;
+                    if (number <= LongBookHeard) Played(ref ep, now0 - (LongBookHeard - number + 2) * Day);
+                    else if (number == LongBookHeard + 1) { ep.ProgressMs = ep.DurationMs / 2; ep.PlayedAt = (int)(now0 - Day); }
+                    break;
                 case CaughtUpShow:
                     ep.Flags = (uint)(i == PaywalledEpisode
                         ? EpisodeFlags.Video | EpisodeFlags.Paywalled | EpisodeFlags.PreviewOnly
@@ -158,6 +172,10 @@ public static partial class Entities
                     }
                     break;
             }
+
+            // The serial's newest part is its long one: three hours (a hundred chapters and ~2,500 transcript lines in the fixtures,
+            // Episode.Fixtures.cs), the realistic maximum the episode page's long lists are measured on.
+            if (sh == SerialShow && number == SerialEpisodes) ep.DurationMs = LongEpisodeMs;
 
             if (sh == SerialShow && number == Resume)
             {
