@@ -593,6 +593,11 @@ internal static class WinUiPodcastKit
         ],
     };
 
+    /// <summary>"View details": the link an embedded page (the library's column) ends its command row on, to the subject's own page. The house
+    /// HyperlinkButton (rest, hover, pressed, focus).</summary>
+    public static Element ViewDetails(Action open)
+        => HyperlinkButton.Create(Loc.Get(Strings.Library.ViewDetails), open, size: ControlSize.Small) with { Key = "cmd:view-details", Shrink = 0f };
+
     /// <summary>The row's line and what runs under it (the Compact card's meta line and description), the absent ones left out.</summary>
     static Element[] Lines(Element line, Element? a, Element? b)
         => a is null ? (b is null ? [line] : [line, b]) : b is null ? [line, a] : [line, a, b];

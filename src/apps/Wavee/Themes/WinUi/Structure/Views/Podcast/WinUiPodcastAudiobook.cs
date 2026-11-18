@@ -54,6 +54,7 @@ internal static class WinUiPodcastAudiobook
         {
             var p = UseProps<AudiobookPageProps>();
             bool embedded = UseContext(PodcastPagePlace.Embedded);   // in another page's column (the library's) the cover is not the page's lead
+            Action? openFull = UseContext(PodcastPagePlace.OpenFull);   // there the cover and the title open the book's own page, and the commands end on "View details"
             var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
             var lay = WinUiAudiobookLayout.Of(facts.Content);
             float inset = WinUiTiers.InsetOf(facts);
@@ -64,10 +65,10 @@ internal static class WinUiPodcastAudiobook
                 _orderFor = v.Uri;
                 _aboutFirst = v.State == AudiobookState.NotStarted;
             }
-            Element real = Column(v, p, lay, barOn, _aboutFirst, embedded);
+            Element real = Column(v, p, lay, barOn, _aboutFirst, embedded, openFull);
             var region = new SkelRegionEl(
                 Pending: () => p.View.Value.Load == PodcastLoad.Pending, Failed: static () => false,
-                Content: () => real, ShimmerSource: () => Column(AudiobookView.Placeholder, p, lay, null, true, embedded),
+                Content: () => real, ShimmerSource: () => Column(AudiobookView.Placeholder, p, lay, null, true, embedded, null),
                 OnFailed: null, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
             Element content = new BoxEl
             {
@@ -80,9 +81,9 @@ internal static class WinUiPodcastAudiobook
 
     // ══ THE COLUMN ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Column(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, Signal<bool>? barOn, bool aboutFirst, bool embedded)
+    static Element Column(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, Signal<bool>? barOn, bool aboutFirst, bool embedded, Action? openFull)
     {
-        var kids = new List<Element>(6) { Hero(v, p, lay, embedded) };
+        var kids = new List<Element>(6) { Hero(v, p, lay, embedded, openFull) };
         if (barOn is not null) kids.Add(WinUiPodcastKit.BarSentinel(barOn));
         kids.Add(Premium(v, p));
         kids.Add(Columns(v, p, lay, aboutFirst));
@@ -100,7 +101,7 @@ internal static class WinUiPodcastAudiobook
 
     // ══ THE HERO ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Hero(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, bool embedded)
+    static Element Hero(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, bool embedded, Action? openFull)
     {
         // The frame's lint guide reads the page's leading edge from the page-title key: the book's leading edge is its cover (the title sits beside
         // it, as on every detail page), so the cover carries the key.
@@ -108,11 +109,12 @@ internal static class WinUiPodcastAudiobook
         {
             Key = embedded ? "book-cover" : WinUiFrameLayout.PageTitleKey, Width = lay.Cover, Height = lay.Cover, Shrink = 0f, AlignSelf = FlexAlign.Start, Corners = CornerRadius4.All(AB.CoverRadius), ClipToBounds = true,
             Draggable = p.CoverDrag,
+            OnClick = openFull, Cursor = openFull is not null ? CursorId.Hand : null,
             Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, AB.CoverRadius, decodePx: AB.CoverDecode)],
         };
         Element eyebrow = Eyebrow(v, p, lay);
-        BoxEl id = Identity(v, p, lay);
-        Element cmds = Commands(v, p, lay);
+        BoxEl id = Identity(v, p, lay, openFull);
+        Element cmds = Commands(v, p, lay, openFull);
         Element up = Up(v, p, lay);
         BoxEl form;
         if (lay.Stacked)
@@ -171,12 +173,18 @@ internal static class WinUiPodcastAudiobook
         };
     }
 
-    static BoxEl Identity(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
+    static BoxEl Identity(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, Action? openFull)
     {
         var kids = new List<Element>(5);
-        kids.Add(TitleLarge(v.Title) with
+        Element title = TitleLarge(v.Title) with
         {
             Size = lay.TitleSize, LineHeight = lay.TitleLine, Wrap = TextWrap.Wrap, MinWidth = 0f,
+        };
+        // In another page's column the title opens the book's own page (a plain box: no plate, no tint, the hand says it).
+        kids.Add(openFull is null ? title : new BoxEl
+        {
+            Key = "book-title-link", Direction = 1, MinWidth = 0f, OnClick = openFull, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink,
+            Fill = ColorF.Transparent, HoverFill = ColorF.Transparent, PressedFill = ColorF.Transparent, Children = [title],
         });
         if (v.Subtitle.Length > 0)
             kids.Add(new TextEl(v.Subtitle) { Size = lay.SubtitleSize, LineHeight = lay.SubtitleLine, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f });
@@ -229,7 +237,7 @@ internal static class WinUiPodcastAudiobook
         return new BoxEl { Direction = 0, Gap = AB.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. kids] };
     }
 
-    static Element Commands(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
+    static Element Commands(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, Action? openFull)
     {
         float h = lay.Control;
         var library = Button.Create(v.LibraryLabel, p.ToggleLibrary, ButtonAppearance.Standard, glyph: v.InLibrary ? Icons.Check : Icons.Add) with
@@ -245,6 +253,8 @@ internal static class WinUiPodcastAudiobook
             kids.Add(ToolTip.Wrap(Controls.Named(Bordered(Controls.IconAction(Icons.Share, share, size: h), true), shareWord), shareWord));
         }
         kids.Add(WinUiDetailKit.MoreButton(p.Menu, h, WinUiDetailKit.MoreLook.Bordered));
+        // In another page's column: the one plain way to the book's own page, at the row's end (the album column's "Open album").
+        if (openFull is not null) kids.Add(new BoxEl { Height = h, Direction = 1, Justify = FlexJustify.Center, Shrink = 0f, Children = [WinUiPodcastKit.ViewDetails(openFull)] });
         return new BoxEl { Key = AB.CmdsKey, Direction = 0, Gap = AB.CmdGap, AlignItems = FlexAlign.Start, Shrink = 0f, Children = [.. kids] };
     }
 

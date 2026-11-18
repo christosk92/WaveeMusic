@@ -1384,6 +1384,7 @@
     "selectAudiobook": "Select an audiobook to see its chapters",
     "selectAlbumTracks": "Select a release",
     "openAlbum": "Open album",
+    "viewDetails": "View details",
     "openPlaylist": "Open playlist",
     "playlistsCount": "{p, plural, one {# playlist} other {# playlists}} · {f, plural, one {# folder} other {# folders}}",
     "playlistGroup": {

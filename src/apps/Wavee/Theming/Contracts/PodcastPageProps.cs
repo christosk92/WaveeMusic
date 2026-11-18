@@ -20,6 +20,11 @@ namespace Wavee.Theming.Contracts;
 public static class PodcastPagePlace
 {
     public static readonly FluentGpu.Hooks.Context<bool> Embedded = new(false);
+
+    /// <summary>Where the page is embedded: opens the page on its own (its route). A structure makes the embedded page's head (cover and title) a way
+    /// there and shows one plain link for it ("View details"), as the album column's "Open album" does (owner, 2026-11-18). Null on the page's own
+    /// route: it is already there.</summary>
+    public static readonly FluentGpu.Hooks.Context<Action?> OpenFull = new(null);
 }
 
 /// <summary>Whether a page's data is still on its way, landed, or failed.</summary>

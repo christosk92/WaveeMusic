@@ -128,6 +128,8 @@ public static partial class PodcastPages
         IReadSignal<ThemeFacts> _window = ThemeHost.Facts;
         IReadSignal<float>? _width;
         ThemeFacts? _drawn, _from;
+        EntityUri _subject;
+        Action? _openFull;
         readonly Func<ThemeFacts> _factsOf;
         readonly Func<bool> _measured;
 
@@ -140,6 +142,7 @@ public static partial class PodcastPages
         public override Element Render()
         {
             var p = UseProps<PaneProps>();
+            _subject = p.Subject;
             _window = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
             _width = UseMeasuredWidth(PaneWidthQuantum);
             var facts = UseComputed(_factsOf);
@@ -150,17 +153,24 @@ public static partial class PodcastPages
                 [
                     Ctx.Provide(ThemeFactsContext.Signal, facts,
                         Ctx.Provide(PageChromeSink.Context, PageChromeSink.None, Ctx.Provide(PodcastPagePlace.Embedded, true,
+                        Ctx.Provide(PodcastPagePlace.OpenFull, _openFull ??= OpenFull,
                             new BoxEl
                             {
                                 Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
                                 Children = [Embed.Comp(new RouteProps(p.Subject, p.RouteKey, false), static () => new RouteHost()) with { Key = "show-page:" + p.RouteKey }],
-                            }))),
+                            })))),
                 ];
             return new BoxEl
             {
                 Key = "library-show-pane", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true,
                 Children = kids,
             };
+        }
+
+        /// <summary>The shown subject's own page (the stable verb the embedded page's head and its "View details" link call).</summary>
+        void OpenFull()
+        {
+            if (_subject.IsValid) Shell.GoTo(Shell.For(_subject));
         }
 
         /// <summary>The facts the page is drawn in: the window's, with the content tier and the content-axis rungs of the column. The record is kept

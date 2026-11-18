@@ -91,12 +91,16 @@ internal static partial class WinUiPodcastShow
 
         /// <summary>Drawn inside another page's column (the library's): the head is the show's head there, not the page's title.</summary>
         bool _embedded;
+        /// <summary>Opens the show's own page from another page's column (null on its own route): the cover and the title are a way there, and the
+        /// command row ends on the "View details" link.</summary>
+        Action? _openFull;
 
         public override Element Render()
         {
             _p = UseProps<PodcastShowPageProps>();
             var p = _p;
             _embedded = UseContext(PodcastPagePlace.Embedded);
+            _openFull = UseContext(PodcastPagePlace.OpenFull);
             var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
             var lay = WinUiPodcastShowTiers.Of(in facts);
             float inset = WinUiTiers.InsetOf(in facts);
@@ -209,20 +213,35 @@ internal static partial class WinUiPodcastShow
             Element cover = new BoxEl
             {
                 Key = "hero:art", Shrink = 0f, Draggable = live ? _p.CoverDrag : null,
+                OnClick = live ? _openFull : null, Cursor = live && _openFull is not null ? CursorId.Hand : null,
                 Children = [Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f), keepWhileHidden: true)],
+            };
+            Element title = (lay.TitleLarge ? TitleLarge(h.Title) : Title(h.Title)) with
+            {
+                Wrap = TextWrap.Wrap, MaxLines = S.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             };
             var idKids = new List<Element>(3)
             {
                 Eyebrow(h, lay),
-                (lay.TitleLarge ? TitleLarge(h.Title) : Title(h.Title)) with
-                {
-                    Wrap = TextWrap.Wrap, MaxLines = S.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                },
+                // In another page's column the title opens the show's own page (a plain box: no plate, no tint, the hand says it).
+                live && _openFull is { } openTitle
+                    ? new BoxEl
+                    {
+                        Key = "hero:title-link", Direction = 1, MinWidth = 0f, OnClick = openTitle, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink,
+                        Fill = ColorF.Transparent, HoverFill = ColorF.Transparent, PressedFill = ColorF.Transparent, Children = [title],
+                    }
+                    : title,
                 Meta(h),
             };
             Element id = new BoxEl { Direction = 1, Gap = S.IdGap, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = idKids.ToArray() };
             Element commands = Commands(v, lay, live);
             Element up = Up(v, lay, live);
+            if (live && !lay.Stacked && _openFull is { } openFull)
+                up = new BoxEl
+                {
+                    Key = "show-up-row", Direction = 0, Gap = S.UpGap, AlignItems = FlexAlign.End, MinWidth = 0f,
+                    Children = [new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [up] }, WinUiPodcastKit.ViewDetails(openFull)],
+                };
             Element form = lay.Stacked ? Stacked() : Beside();
             // The head is the page's title for the lint guide, except in another page's column, where the page's title is that page's.
             return new BoxEl { Key = _embedded ? "podcast-head" : WinUiFrameLayout.PageTitleKey, Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Reflow, Children = [form] };
@@ -343,6 +362,9 @@ internal static partial class WinUiPodcastShow
                     ? Swap("cmd:share-word", false, Button.Create(Loc.Get(Strings.Podcast.Pages.Share), share, glyph: Icons.Share) with { Height = lay.Target, Shrink = 0f })
                     : Swap("cmd:share", false, Controls.Named(Controls.IconAction(Icons.Share, share, size: lay.Target), Loc.Get(Strings.Podcast.Pages.Share))));
             kids.Add(WinUiDetailKit.MoreButton(_p.ShowMenu, lay.Target, WinUiDetailKit.MoreLook.Bordered));
+            // In another page's column: the one plain way to the show's own page (the album column's "Open album"). Stacked, the commands have a
+            // line of their own and it ends them; beside the cover they share the head's width with the words, so it ends the up-next row instead (Hero).
+            if (live && lay.Stacked && _openFull is { } open) kids.Add(WinUiPodcastKit.ViewDetails(open));
             return new BoxEl { Key = "show-commands", Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray() };
         }
 
