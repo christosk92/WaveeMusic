@@ -82,6 +82,8 @@ versions separately under `v*` and is not tracked in this file.)
 - **Saving an upcoming album** from a heart or a ⋯ menu pre-saves it, and every heart on that album shows it saved.
 - **A hidden Wavee window kept waking up.** While another window covered it, Wavee woke for every event on the
   desktop; it now stays asleep until it shows again.
+- **Dragging a card on Home moved its whole section (WinUI), and pressing one tilted the whole section (Zune).** A
+  card inside a section is pressed and dragged as itself; the section moves from its own heading.
 - **Picking a theme during setup closed the setup dialog.** The dialog vanished, the app stayed dimmed and only a
   restart brought it back. The dialog now stays on its theme step in the new theme, with its illustration.
 
