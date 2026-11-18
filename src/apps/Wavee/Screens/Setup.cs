@@ -182,6 +182,11 @@ public static partial class Setup
         /// shown and closed the sign-in door takes it back (a later sign-out must still get a surface).</summary>
         public static bool OwnsSignIn(bool pending, bool open, bool shownThisLaunch) => open || (pending && !shownThisLaunch);
 
+        /// <summary>Does a root that just mounted open the plate again? Yes while a session is live (its plate opened this launch and never
+        /// closed) and this root holds no plate: the plate was an overlay of the root that went away (a theme picked on the wizard's own
+        /// Theme page remounts the root), and the session is still on its page. Without it the shell stays dimmed under no plate.</summary>
+        public static bool ReopensPlate(bool shownThisLaunch, bool sessionLive, bool rootHasPlate) => shownThisLaunch && sessionLive && !rootHasPlate;
+
         /// <summary>Escape (a USER dismissal) may close the plate only on an idle terms re-arm; a programmatic close always
         /// goes through and never reaches this.</summary>
         public static bool EscapeClosesPlate(bool nestedOpen, WizardEntry entry, bool busy) => !nestedOpen && Gating.CanDismiss(entry, busy);
