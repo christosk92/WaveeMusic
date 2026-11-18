@@ -120,7 +120,7 @@ public static partial class Lyrics
         };
     }
 
-    // UI-thread leases share one resource between the episode reader, rail and expanded player. The final
+    // UI-thread leases share one resource between the episode page, rail and expanded player. The final
     // consumer releases it; subsequent visits revalidate through the transcript HTTP/disk-cache authority.
     public readonly record struct TranscriptIdentity(uint Epoch, string Account, Spotify.Podcasts.TranscriptKey Key, string Url);
     static readonly Dictionary<TranscriptIdentity, TranscriptLease> TranscriptLeases = [];

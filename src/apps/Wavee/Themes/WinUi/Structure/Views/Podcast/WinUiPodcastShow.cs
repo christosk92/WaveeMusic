@@ -1,20 +1,19 @@
 // ── Themes/WinUi/Structure/Views/Podcast/WinUiPodcastShow.cs — WinUI's show page (podcast pages v2, concept winui-podcast-v2 "Show") ──────────────────
 //
-//   WinUiPodcastKit.Page (scroller · wash · the 48 bar over it)
-//   └─ column on the gutter
-//      ├─ hero        160 cover · eyebrow (Podcast · topics · Video / Serial tags) · Title Large · meta (publisher · ★ rating (count) · cadence · N
-//      │              episodes) · top right: Following · bell · Share · More · the up row: the smart SplitButton + what it plays (bar, time left)
-//      ├─ BarSentinel (the bar shows once the hero has gone under it)
-//      ├─ About the show (641-1007 and ≤640: an Expander above the list; ≥1008 it is the pane's second tab)
-//      └─ cols: the list column [toolbar (sticky under the bar): SelectorBar filters with counts (≤640: a ComboBox) · search · sort;
-//                                groups: a sticky header (opens the Jump to grid; "New since your last visit" offers Mark all as played) + rows;
-//                                Load more] · the 360 details pane (≥1008, sticky): Episode | About the show
+//   ONE virtualised list (WinUiPodcastShow.List.cs: the hero, About, the toolbar, then the groups' headers and rows), the pinned group header and
+//   the details pane as layers over it, the 48 bar over everything:
+//      ├─ hero        160 cover · eyebrow (Podcast · topics · Video / Serial tags) · Title Large · meta on one line (publisher · ★ rating (count) ·
+//      │              cadence · N episodes) · top right: Following · bell · Share · More · the up row: the smart SplitButton + what it plays
+//      ├─ About the show (Small and Compact: an Expander above the list; Standard: the pane's second tab)
+//      └─ the list column: toolbar (pinned under the bar): SelectorBar filters with counts (Compact: a ComboBox) · search · sort; groups: a header
+//         (opens the Jump to grid; "New since your last visit" offers Mark all as played) + rows (the kit's bound EpisodeRow); Load more ·
+//         the 360 details pane (Standard): Episode | About the show
 //
-// The tier record is `WinUiPodcastShowTiers` (window tier). Loading is the live list page over a placeholder view (`s_placeholder`), derived flat by the
-// SkelRegionEl with its components (WinUiPodcastShow.List.cs `ShowList`).
-// The pinned rows (the toolbar, the year headers) are the kit's PinnedBand: nothing painted at rest, a hairline while pinned; what scrolls under them cuts
-// itself at their lower edge. The pane pins under the bar; taller than the viewport, it rides the page until its foot reaches the viewport's foot and pins
-// there (no scroller of its own). A filter or a search HIDES rows (the rows stay mounted).
+// The tier record is `WinUiPodcastShowTiers` (the CONTENT tier: a docked pane narrows it). Loading is the live list page over a placeholder view
+// (`s_placeholder`), derived flat by the SkelRegionEl with its components (WinUiPodcastShow.List.cs `ShowList`).
+// The toolbar pins under the bar with nothing painted at rest and a hairline while pinned (the kit's PinnedBand / PinnedLine); what scrolls under it cuts
+// itself at its lower edge. The pane pins under the bar; taller than the viewport, it rides the page until its foot reaches the viewport's foot and pins
+// there (no scroller of its own). A filter or a search re-forms the list's items.
 
 using System.Collections.Immutable;
 using FluentGpu.Controls;

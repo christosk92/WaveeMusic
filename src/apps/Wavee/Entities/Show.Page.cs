@@ -664,9 +664,8 @@ public readonly partial struct Show
 
         /// <summary>THE ROWS' DEMAND lives on the reader, not on whoever mounts it. Auto-tracked: as the membership lands
         /// (a page, a refresh, a model swap), ask for what a row paints — <see cref="ShowReaderRules.RowDemand"/> over the
-        /// WHOLE resident membership, never a visible window; the planner dedupes. It sat on the route page's host until
-        /// 2026-09-20, and the library pane (Show.Pane.cs), which mounts this same reader, never asked: a show whose rows
-        /// nothing else had made resident shimmered forever there — nothing was coming, and nothing could fail either.</summary>
+        /// WHOLE resident membership, never a visible window; the planner dedupes. The library pane (Show.Pane.cs) is the host that mounts this
+        /// reader; a demand that sat on a host instead once left a show whose rows nothing else had made resident shimmering forever there.</summary>
         void DemandRows()
         {
             _ = _props.Value;                                      // a model swap re-runs this for the new show
@@ -1016,8 +1015,7 @@ public static class ShowReaderRules
     /// <summary>Below this reader width the rows narrow: no numeral, 48 art, the disc alone (W3).</summary>
     public const float NarrowBelow = 540f;
 
-    /// <summary>What the reader asks for every resident member, from whichever host mounts it (the route page, the
-    /// library pane): what a row PAINTS (<see cref="EpisodeFields.Row"/>), its two-line blurb
+    /// <summary>What the reader asks for every resident member, from the host that mounts it (the library pane): what a row PAINTS (<see cref="EpisodeFields.Row"/>), its two-line blurb
     /// (<see cref="EpisodeFields.About"/>) and its progress (<see cref="EpisodeFields.Progress"/> — no route serves it
     /// per episode, so the plan seals it and the login hydrate fills it; asking is what keeps a later hydrate from being
     /// asked again). One constant, so the demand and the reveal (<c>Episode.RevealState</c>) cannot drift apart.</summary>

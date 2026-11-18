@@ -41,7 +41,7 @@ public sealed record LyricsViewProps
     /// <summary>The developer layer (the lyrics-search debug pill and overlay; zero size unless developer mode is on).</summary>
     public Element? Debug { get; init; }
 
-    /// <summary>The on-device AI disclosure under the reading layers; null on the podcast reader (episodes are never timed).</summary>
+    /// <summary>The on-device AI disclosure under the reading layers; null on a podcast transcript (episodes are never timed).</summary>
     public Element? Footer { get; init; }
 }
 
@@ -79,7 +79,7 @@ public interface ILyricsHost
     /// <summary>The focal band (where the active row's content centres, as a fraction of the viewport).</summary>
     float Band { get; }
 
-    /// <summary>P6 fix: this mount is the side pane's (the rail's: neither the stage nor the podcast reader). A style with a
+    /// <summary>P6 fix: this mount is the side pane's (the rail's, not the stage's). A style with a
     /// <see cref="LyricsLinesStyle.Rail"/> form draws the pane's rows here. Default false.</summary>
     bool OnRail => false;
 
