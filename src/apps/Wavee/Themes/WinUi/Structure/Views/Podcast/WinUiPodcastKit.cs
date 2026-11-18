@@ -437,9 +437,11 @@ internal static class WinUiPodcastKit
                     Children = expanded ? [ExpandBody(vm, _open, _next)] : [],
                 });
 
+            // Keyed `ep` (one family, never the episode: a recycled slot keeps its row): the row is the instance its verbs act on (the lint's subject,
+            // the inspector's drag and click target).
             Element row = new BoxEl
             {
-                Direction = 1, MinWidth = 0f, Corners = Radii.ControlAll, Focusable = true, Role = AutomationRole.Button,
+                Key = "ep", Direction = 1, MinWidth = 0f, Corners = Radii.ControlAll, Focusable = true, Role = AutomationRole.Button,
                 Padding = p.Compact ? Edges4.All(K.RowPadCompact) : new Edges4(K.RowPadX, K.RowPadY, K.RowPadX, K.RowPadY),
                 Fill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                 HoverFill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTertiary,
