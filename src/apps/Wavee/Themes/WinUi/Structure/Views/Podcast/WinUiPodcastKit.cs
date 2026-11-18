@@ -57,6 +57,8 @@ internal sealed class PodcastRowVerbs
     public required Action<string?> Select { get; init; }
     public required Action<string?> Expand { get; init; }
     public required Func<string, ContextMenuModel?> Menu { get; init; }
+    /// <summary>A row's drag payload (the page props' <c>RowDrag</c>; null: the rows carry no drag).</summary>
+    public Func<string, object?>? Drag { get; init; }
 }
 
 /// <summary>WinUI's podcast kit (see the file header).</summary>
@@ -315,10 +317,13 @@ internal static class WinUiPodcastKit
         Action<Point2>? _move;
         Action<KeyEventArgs>? _key;
         Action<PointerEventArgs>? _press;
+        DragSource? _drag;
 
         public override Element Render()
         {
             _p = UseProps<RowProps>();
+            // The row drags as its episode (onto a playlist, the queue, the player bar); the payload is built when the drag promotes.
+            if (_drag is null && _p.Verbs.Drag is not null) _drag = Wavee.Drag.Source(() => _p.Verbs.Drag?.Invoke(_p.Vm.Id));
             _click ??= Click;
             _play ??= () => _p.Verbs.Play(_p.Vm.Id);
             _save ??= () => _p.Verbs.ToggleSaved(_p.Vm.Id);
@@ -390,7 +395,7 @@ internal static class WinUiPodcastKit
                 Fill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                 HoverFill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTertiary,
                 PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = rebound ? 0f : Design.Motion.Faster,
-                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press,
+                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press, Draggable = _drag,
                 Children = kids.ToArray(),
             };
             // ONE tree selected or not (the pill is present, painted only while selected: an opacity, never a presence change): a selection that comes or goes with the row mode (a tier

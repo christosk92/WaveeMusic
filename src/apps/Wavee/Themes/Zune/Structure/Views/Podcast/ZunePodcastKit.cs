@@ -50,6 +50,8 @@ internal sealed class ZunePodcastRowVerbs
     /// <summary>A click: expand in place (the show), or null to open the episode (the episode page's "next in this show").</summary>
     public required Action<string?>? Expand { get; init; }
     public required Func<string, ContextMenuModel?> Menu { get; init; }
+    /// <summary>A row's drag payload (the page props' <c>RowDrag</c>; null: the rows carry no drag).</summary>
+    public Func<string, object?>? Drag { get; init; }
 }
 
 /// <summary>Zune's podcast kit (see the file header).</summary>
@@ -489,10 +491,13 @@ internal static class ZunePodcastKit
         Action<Point2>? _move;
         Action<KeyEventArgs>? _key;
         Func<ContextMenuModel?>? _menu;
+        DragSource? _drag;
 
         public override Element Render()
         {
             _p = UseProps<RowProps>();
+            // The row drags as its episode (onto a playlist, the queue, the player bar); the payload is built when the drag promotes.
+            if (_drag is null && _p.Verbs.Drag is not null) _drag = Wavee.Drag.Source(() => _p.Verbs.Drag?.Invoke(_p.Vm.Id));
             _click ??= () => { if (_p.Verbs.Expand is { } x) x(_p.Vm.Id); else _p.Verbs.Open(_p.Vm.Id); };
             _play ??= () => _p.Verbs.Play(_p.Vm.Id);
             _next ??= () => _p.Verbs.PlayNext(_p.Vm.Id);
@@ -566,7 +571,7 @@ internal static class ZunePodcastKit
                 Padding = new Edges4(0f, Z.RowPadY, 0f, Z.RowPadY),
                 Fill = ColorF.Transparent, HoverFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.RowHoverAlpha }),
                 PressedFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.RowPressedAlpha }), BrushTransitionMs = Design.Motion.Faster,
-                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key,
+                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, Draggable = _drag,
                 Children = kids.ToArray(),
             };
             if (!Controls.IsNullOverlay(overlay)) row = ContextSheets.Attach(row, overlay, _menu);

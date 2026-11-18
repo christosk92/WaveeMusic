@@ -100,6 +100,7 @@ internal static partial class ZunePodcastShow
             _verbs ??= new ZunePodcastRowVerbs
             {
                 Expanded = p.Expanded, Playing = p.Playing, Play = p.Play, Open = p.Open, PlayNext = p.PlayNext, Expand = p.Expand, Menu = p.RowMenu,
+                Drag = p.RowDrag,
             };
             _project ??= () =>
             {

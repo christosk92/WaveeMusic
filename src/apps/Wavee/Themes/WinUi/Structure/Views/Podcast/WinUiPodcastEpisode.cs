@@ -51,7 +51,7 @@ internal static class WinUiPodcastEpisode
             _verbs ??= new PodcastRowVerbs
             {
                 Selected = s_none, Expanded = s_none, Playing = p.OnDeck, Play = p.PlayEpisode, Open = p.Open, ToggleSaved = p.ToggleSavedEpisode,
-                PlayNext = p.PlayNext, Select = static _ => { }, Expand = static _ => { }, Menu = p.RowMenu,
+                PlayNext = p.PlayNext, Select = static _ => { }, Expand = static _ => { }, Menu = p.RowMenu, Drag = p.RowDrag,
             };
             var seed = p with { View = s_seed };
             var verbs = _verbs;

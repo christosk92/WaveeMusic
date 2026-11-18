@@ -188,6 +188,7 @@ public sealed class PodcastEpisodeScreen : Component
             Open = _open, PlayEpisode = _playOther, PlayNext = _playNext, OpenUri = DetailVerbs.NavigateKey,
             Menu = _menu, Share = _share, Comments = _commentsView,
             State = _stateMemo, OnDeck = onDeck, ToggleSavedEpisode = _toggleSavedOther, RowMenu = _rowMenu, CardMenu = _cardMenu, PlayCard = _playCard,
+            RowDrag = PodcastPages.RowDrag,
         };
         return Slots.View(ViewKeys.PodcastEpisodePage, _props);
     }
