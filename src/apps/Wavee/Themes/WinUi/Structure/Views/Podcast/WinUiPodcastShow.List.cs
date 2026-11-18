@@ -51,7 +51,8 @@ internal static partial class WinUiPodcastShow
 
         readonly ItemsViewController _ctl = new();
         readonly Signal<WinUiPodcastShowLayout> _lay = new(WinUiPodcastShowTiers.For(WidthTier.Standard));
-        readonly Signal<float> _inset = new(0f), _heroH = new(0f), _listW = new(0f);
+        readonly Signal<float> _inset = new(0f), _heroH = new(0f), _listW = new(0f), _pageH = new(0f);
+        Action<RectF>? _measurePage;
         BoundItemsSource<ShowSlot>? _items;
         ListOptions<ShowSlot>? _listOptions;
         RepeatLayout? _listLayout;
@@ -71,6 +72,7 @@ internal static partial class WinUiPodcastShow
             _inset.SetIfChanged(inset);
             _listW.SetIfChanged(listW);
             _tone = tone;
+            _measurePage ??= r => { if (r.H > 1f && MathF.Abs(r.H - _pageH.Peek()) > 0.5f) _pageH.Value = r.H; };
             _measureHero ??= r => { if (r.H > 1f && MathF.Abs(r.H - _heroH.Peek()) > 0.5f) _heroH.Value = r.H; };
             _items ??= BoundItems.Project(_p.View, static v => PrefixCount + v.Items.Length, SlotAt, ShowSlot.None);
             _measured ??= new MeasuredStackVirtualLayout(S.RowEstimate, false, ExtentOf);
@@ -107,15 +109,18 @@ internal static partial class WinUiPodcastShow
                 layers.Add(new BoxEl
                 {
                     Key = "show-pane-layer", Direction = 1, AlignItems = FlexAlign.End, HitTestPassThrough = true, MinWidth = 0f, IsolateLayout = true,
+                    OnBoundsChanged = _measurePage,
                     Padding = new Edges4(0f, 0f, inset, 0f),
+                    // The pane hangs from a 0-tall holder: the layer (and the page) keep the list's height however tall the pane is.
                     Children =
                     [
+                        new BoxEl { Key = "show-pane-holder", Direction = 1, Width = S.PaneW, Height = 0f, Shrink = 0f, Children = [
                         new BoxEl
                         {
                             Key = "show-pane-ride", Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Direction = 1, Width = S.PaneW,
                             Shrink = 0f, MinWidth = 0f, Transform = Prop.Of(_paneRideOf),
                             Children = [Embed.Comp(new PaneProps(this), static () => new PaneHost()) with { Key = "show-pane-host" }],
-                        },
+                        }] },
                     ],
                 });
             return WinUiPodcastKit.ListPage(_p.RouteKey, list, bar, BarOn, layers.ToArray());
@@ -184,7 +189,8 @@ internal static partial class WinUiPodcastShow
         Affine2D PaneRide()
         {
             double o = _scroll.Offset.Value;
-            float view = (float)_scroll.ViewportSignal.Value;
+            // The page's own height (the pane's layer fills it): the list's visible height.
+            float view = _pageH.Value;
             float hero = _heroH.Value, h = _paneH.Value;
             float natural = hero - (float)o;
             bool pinned = natural <= S.PaneTop;
@@ -195,6 +201,20 @@ internal static partial class WinUiPodcastShow
             else _paneShift = 0f;
             return Affine2D.Translation(0f, MathF.Max(natural, S.PaneTop) - _paneShift);
         }
+
+        /// <summary>A list item between its gutters: spacers that EASE their width across a crossing (a padding cannot ease): the page inset, and on the
+        /// right the pane's column too where the pane shows.</summary>
+        Element Guttered(string key, WinUiPodcastShowLayout lay, float inset, Element body, Edges4 air = default, bool reflow = false) => new BoxEl
+        {
+            Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Padding = air,
+            Layout = reflow ? WinUiDiscoveryMotion.SizeReflow : null,
+            Children =
+            [
+                WinUiDiscoveryMotion.AirH(key + ":lead", inset),
+                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [body] },
+                WinUiDiscoveryMotion.AirH(key + ":end", inset + (lay.Pane ? S.PaneW + S.ColGap : 0f)),
+            ],
+        };
 
         /// <summary>The gutters of a list item: the page inset, and on the right the pane's column too where the pane shows.</summary>
         Edges4 Gutters(WinUiPodcastShowLayout lay, float inset) => new(inset, 0f, inset + (lay.Pane ? S.PaneW + S.ColGap : 0f), 0f);
@@ -207,8 +227,9 @@ internal static partial class WinUiPodcastShow
             {
                 var it = v.Items[k];
                 if (it.Kind != PodcastItemKind.Group || (uint)it.Group >= (uint)v.Groups.Length || v.Groups[it.Group].Key != groupKey) continue;
-                _ctl.StartBringItemIntoView(PrefixCount + k, alignmentRatio: 0f, animate: false);
-                _scroll.ScrollBy(-(K.BarH + S.ToolbarH), ScrollMove.Immediate);
+                // The header's own place in the list's measured layout, parked under the bar and the toolbar.
+                if (_measured is { } m) _scroll.ScrollTo(Math.Max(0.0, m.OffsetOf(PrefixCount + k, 0f) - (K.BarH + S.ToolbarH)), ScrollMove.Glide);
+                else _ctl.StartBringItemIntoView(PrefixCount + k, alignmentRatio: 0f, animate: false);
                 return;
             }
         }
@@ -278,7 +299,12 @@ internal static partial class WinUiPodcastShow
                         new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(inset, 0f, inset, 0f), Children = [host.Hero(v, lay, live: true)] },
                     ],
                 };
-                return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [on ? body.StickyClip(K.BarH) : body] };
+                // A crossing steps the hero's height (the cover, the title's size): it eases through real layout, so the list's items after it ride it.
+                return new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Layout = WinUiDiscoveryMotion.HeightReflow,
+                    Children = [on ? body.StickyClip(K.BarH) : body],
+                };
             }
         }
 
@@ -290,13 +316,13 @@ internal static partial class WinUiPodcastShow
                 var host = UseProps<SlotProps>().Host;
                 var lay = host._lay.Value;
                 float inset = host._inset.Value;
-                if (lay.Pane) return new BoxEl { Grow = 1f, Basis = 0f, Height = 0f };
+                if (lay.Pane) return new BoxEl { Grow = 1f, Basis = 0f, Height = 0f, Layout = WinUiDiscoveryMotion.HeightReflow };
                 var full = host._p.View.Value;
                 var v = full.Load == PodcastLoad.Pending ? s_placeholder : full;
                 return new BoxEl
                 {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = new Edges4(inset, 0f, inset, 0f),
-                    Children = [host.AboutExpander(ViewOf(HeadOf(v)))],
+                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Layout = WinUiDiscoveryMotion.HeightReflow,
+                    Children = [host.Guttered("about", lay with { Pane = false }, inset, host.AboutExpander(ViewOf(HeadOf(v))))],
                 };
             }
         }
@@ -311,11 +337,8 @@ internal static partial class WinUiPodcastShow
                 var v = full.Load == PodcastLoad.Pending ? s_placeholder : full;
                 var lay = host._lay.Value;
                 float inset = host._inset.Value, listW = host._listW.Value;
-                return new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = host.Gutters(lay, inset),
-                    Children = [host.Toolbar(v, lay, WinUiPodcastShowTiers.SearchCollapsed(lay, listW), WinUiPodcastShowTiers.FilterCombo(lay, listW))],
-                };
+                return host.Guttered("toolbar", lay, inset,
+                    host.Toolbar(v, lay, WinUiPodcastShowTiers.SearchCollapsed(lay, listW), WinUiPodcastShowTiers.FilterCombo(lay, listW)));
             }
         }
 
@@ -329,11 +352,7 @@ internal static partial class WinUiPodcastShow
                 float inset = host._inset.Value;
                 if (slot.Group is not { } g) return new BoxEl { Height = lay.GroupH };
                 var years = host._p.View.Peek().Years;
-                return new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = host.Gutters(lay, inset),
-                    Children = [host.GroupHeadRow(g, years, lay, live: true)],
-                };
+                return host.Guttered("gh", lay, inset, host.GroupHeadRow(g, years, lay, live: true), reflow: true);
             }
         }
 
@@ -364,13 +383,7 @@ internal static partial class WinUiPodcastShow
                     },
                     _ => new BoxEl(),
                 };
-                var pad = host.Gutters(lay, inset);
-                return new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                    Padding = pad with { Top = slot.Kind == PodcastItemKind.Row && !slot.First ? K.RowGap : 0f },
-                    Children = [body],
-                };
+                return host.Guttered("row", lay, inset, body, new Edges4(0f, slot.Kind == PodcastItemKind.Row && !slot.First ? K.RowGap : 0f, 0f, 0f), reflow: true);
             }
         }
     }
