@@ -31,6 +31,8 @@
 // — P5; six chapters on sh0 #9 (`Edges.EpisodeChapters`) and the bundled transcript — P6; the three-comment thread — P7
 // (the transcript and comment stores take their fetch as a delegate, the `Lyrics.Boot` idiom).
 
+using System.Globalization;
+
 namespace Wavee;
 
 public static partial class Entities
@@ -58,6 +60,29 @@ public static partial class Entities
         /// <summary>sh9, "The Long Book": an audiobook of a hundred chapters (the realistic maximum the audiobook page's contents are measured on),
         /// chapters 1-30 heard, 31 under way.</summary>
         const int LongBookChapters = 100, LongBookHeard = 30;
+        /// <summary>sh9's chapter titles as publishers send them: real titles (a book's parts, then its chapters, then back matter), and the generic ones
+        /// the page must rename ("Track 17", "07", an empty title: shown as "Chapter N").</summary>
+        static string BookChapterTitle(int number) => number switch
+        {
+            1 => "Opening Credits",
+            2 => "Epigraph",
+            17 or 18 or 19 => "Track " + number.ToString(CultureInfo.InvariantCulture),
+            44 => number.ToString("D2", CultureInfo.InvariantCulture),
+            61 => "",
+            LongBookChapters - 1 => "Acknowledgements",
+            LongBookChapters => "End Credits",
+            _ => s_bookChapterTitles[(number - 3) % s_bookChapterTitles.Length]
+                 + (number - 3 >= s_bookChapterTitles.Length ? ", Part " + ((number - 3) / s_bookChapterTitles.Length + 1).ToString(CultureInfo.InvariantCulture) : ""),
+        };
+
+        static readonly string[] s_bookChapterTitles =
+        [
+            "The Lighthouse at Vell", "A Ledger of Small Debts", "Salt and Iron", "The Cartographer's Daughter", "What the Tide Kept",
+            "Winter Crossing", "The Long Table", "Letters Never Sent", "An Inventory of Storms", "The Glassblower", "North of Everything",
+            "A House With Two Doors", "The Second Harvest", "Lamplight", "The Archivist", "Quiet Water", "Ash and Orchard", "The Night Ferry",
+            "Borrowed Time", "The Weathervane", "Under the Old Bridge", "Thaw", "The Clockmaker's Apprentice", "Home, Eventually",
+        ];
+
         /// <summary>sh0's newest part (sh0e0): three hours.</summary>
         const int LongEpisodeMs = 3 * 3_600_000;
 
@@ -140,6 +165,7 @@ public static partial class Entities
                     break;
                 case LongBook:
                     ep.Flags = (uint)EpisodeFlags.AudiobookChapter;
+                    ep.Title = Text(s, BookChapterTitle(number));
                     if (number <= LongBookHeard) Played(ref ep, now0 - (LongBookHeard - number + 2) * Day);
                     else if (number == LongBookHeard + 1) { ep.ProgressMs = ep.DurationMs / 2; ep.PlayedAt = (int)(now0 - Day); }
                     break;

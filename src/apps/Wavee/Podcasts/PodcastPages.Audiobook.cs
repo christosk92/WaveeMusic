@@ -125,7 +125,6 @@ public sealed class AudiobookScreen : Component
             var toc = book.Toc.Chapters;
             int n = toc.Length;
             var deck = Playback.CurrentId.Value;
-            bool playing = Playback.IsPlaying.Value;
             var chapters = ImmutableArray.CreateBuilder<Episode>(n);
             int[] rest = new int[n], lengths = new int[n];
             var rows = ImmutableArray.CreateBuilder<AudiobookChapterVm>(n);
@@ -176,8 +175,8 @@ public sealed class AudiobookScreen : Component
             string count = rated is { Count: > 0 } rc ? rc.Count.ToString("N0", CultureInfo.CurrentCulture) : "";
             string finishedDate = finishedAt > 0 ? Episode.DateLabel(finishedAt) : "";
 
-            string primary = onDeck >= 0 && playing ? Loc.Get(PP.Pause)
-                : Loc.Get(state switch { AudiobookState.InProgress => PP.Continue, AudiobookState.Finished => PP.ListenAgain, _ => PP.StartListening });
+            // The resting word: Pause is the view's leaf (it binds Playing), so a press never rebuilds the snapshot.
+            string primary = Loc.Get(state switch { AudiobookState.InProgress => PP.Continue, AudiobookState.Finished => PP.ListenAgain, _ => PP.StartListening });
             string upTitle, upName = "", upSub;
             switch (state)
             {

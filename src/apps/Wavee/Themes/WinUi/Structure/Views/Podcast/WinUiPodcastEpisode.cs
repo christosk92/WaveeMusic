@@ -180,8 +180,9 @@ internal static class WinUiPodcastEpisode
             float h = lay.Target;
             var kids = new List<Element>(8)
             {
-                WinUiPodcastKit.SmartSplit("pe-split", v.PrimaryLabel, v.PrimaryAccent, v.PrimaryLabel == Loc.Get(Strings.Podcast.Pages.Pause), p.Play, v.Menu, h,
-                    lay.SplitFills),
+                // Play/Pause is a leaf: only it re-renders on a press.
+                WinUiPodcastPlayLeaf.Of("pe-split-leaf", () => p.Playing.Value, pausing => WinUiPodcastKit.SmartSplit("pe-split",
+                    pausing ? Loc.Get(Strings.Podcast.Pages.Pause) : v.PrimaryLabel, v.PrimaryAccent, pausing, p.Play, v.Menu, h, lay.SplitFills)),
             };
             if (e.State == PodcastRowState.InProgress)
             {
@@ -413,9 +414,9 @@ internal static class WinUiPodcastEpisode
             var p = a.P;
             var v = p.View.Value;
             string left = p.Left.Value;
-            var primary = Button.Create(v.PrimaryLabel, p.Play, v.PrimaryAccent ? ButtonAppearance.Accent : ButtonAppearance.Standard,
-                glyph: v.PrimaryLabel == Loc.Get(Strings.Podcast.Pages.Pause) ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid)
-                with { Key = "pe-bar:play", Shrink = 0f, MinWidth = 0f };
+            var primary = WinUiPodcastPlayLeaf.Of("pe-bar:leaf", () => p.Playing.Value, pausing => Button.Create(
+                pausing ? Loc.Get(Strings.Podcast.Pages.Pause) : v.PrimaryLabel, p.Play, v.PrimaryAccent ? ButtonAppearance.Accent : ButtonAppearance.Standard,
+                glyph: pausing ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid) with { Key = "pe-bar:play", Shrink = 0f, MinWidth = 0f });
             return WinUiPodcastKit.Bar(v.Episode.ArtUrl ?? v.ShowArtUrl, v.Episode.Title, left.Length > 0 ? left : v.Episode.Length, primary, a.Inset);
         }
     }

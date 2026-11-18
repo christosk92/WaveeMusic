@@ -330,7 +330,6 @@ public sealed class PodcastEpisodeScreen : Component
             return scope.Episodes.IsFailed(e.Slot, (uint)EpisodeFields.All) ? PodcastEpisodeView.Empty with { Load = PodcastLoad.Failed } : PodcastEpisodeView.Empty;
 
         var state = _stateMemo?.Value ?? StateOf();
-        bool playing = _playingMemo?.Value ?? false;
         int chapterAt = _chapterMemo?.Value ?? -1;
         var show = e.Show;
         bool showKnown = show.IsValid && show.Knows(ShowFields.Title);
@@ -411,8 +410,8 @@ public sealed class PodcastEpisodeScreen : Component
         if (state == PodcastRowState.Played) meta.Add(Loc.Get(Strings.Podcast.Pages.Played));
 
         // ── the primary ──
-        string primary = playing ? Loc.Get(Strings.Podcast.Pages.Pause)
-            : state == PodcastRowState.InProgress ? Loc.Get(Strings.Podcast.Pages.Resume)
+        // The resting word: Pause is the view's leaf (it binds Playing), so a press never rebuilds the snapshot.
+        string primary = state == PodcastRowState.InProgress ? Loc.Get(Strings.Podcast.Pages.Resume)
             : state == PodcastRowState.Played ? Loc.Get(Strings.Podcast.Pages.PlayAgain)
             : Loc.Get(Strings.Podcast.Pages.Play);
 

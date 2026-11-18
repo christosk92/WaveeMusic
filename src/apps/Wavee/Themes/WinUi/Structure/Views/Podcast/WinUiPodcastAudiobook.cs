@@ -52,12 +52,10 @@ internal static class WinUiPodcastAudiobook
             float inset = WinUiTiers.InsetOf(facts);
             var barOn = UseSignal(false);
             var v = p.View.Value;
-            bool playing = p.Playing.Value;
-
-            Element real = Column(v, p, lay, playing, barOn);
+            Element real = Column(v, p, lay, barOn);
             var region = new SkelRegionEl(
                 Pending: () => p.View.Value.Load == PodcastLoad.Pending, Failed: static () => false,
-                Content: () => real, ShimmerSource: () => Column(AudiobookView.Placeholder, p, lay, false, null),
+                Content: () => real, ShimmerSource: () => Column(AudiobookView.Placeholder, p, lay, null),
                 OnFailed: null, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
             Element content = new BoxEl
             {
@@ -70,9 +68,9 @@ internal static class WinUiPodcastAudiobook
 
     // ══ THE COLUMN ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Column(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, bool playing, Signal<bool>? barOn)
+    static Element Column(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, Signal<bool>? barOn)
     {
-        var kids = new List<Element>(6) { Hero(v, p, lay, playing) };
+        var kids = new List<Element>(6) { Hero(v, p, lay) };
         if (barOn is not null) kids.Add(WinUiPodcastKit.BarSentinel(barOn));
         kids.Add(Premium(v, p));
         kids.Add(Columns(v, p, lay));
@@ -89,7 +87,7 @@ internal static class WinUiPodcastAudiobook
 
     // ══ THE HERO ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Hero(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, bool playing)
+    static Element Hero(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
     {
         // The frame's lint guide reads the page's leading edge from the page-title key: the book's leading edge is its cover (the title sits beside
         // it, as on every detail page), so the cover carries the key.
@@ -101,7 +99,7 @@ internal static class WinUiPodcastAudiobook
         Element eyebrow = Eyebrow(v, p);
         BoxEl id = Identity(v, p, lay);
         Element cmds = Commands(v, p, lay);
-        Element up = Up(v, p, lay, playing);
+        Element up = Up(v, p, lay);
         BoxEl form;
         if (lay.Stacked)
         {
@@ -247,19 +245,22 @@ internal static class WinUiPodcastAudiobook
 
     // ── the up row ──
 
-    static BoxEl Primary(AudiobookView v, AudiobookPageProps p, bool playing, float h, string key)
-    {
-        string glyph = playing ? WinUiDetailRules.PauseSolid : v.State == AudiobookState.Finished ? Icons.Refresh : WinUiDetailRules.PlaySolid;
-        return Button.Create(v.PrimaryLabel, p.Play, v.PrimaryAccent ? ButtonAppearance.Accent : ButtonAppearance.Standard, glyph: glyph) with
+    /// <summary>Continue / Start listening / Listen again, or Pause while the book plays: a play leaf, so a press re-renders the button alone.</summary>
+    static Element Primary(AudiobookView v, AudiobookPageProps p, float h, string key, float minWidth = 0f, bool start = false, bool grow = false)
+        => WinUiPodcastPlayLeaf.Of(key + ":leaf", () => p.Playing.Value, playing =>
         {
-            Key = key, Height = h, Shrink = 0f,
-        };
-    }
+            string glyph = playing ? WinUiDetailRules.PauseSolid : v.State == AudiobookState.Finished ? Icons.Refresh : WinUiDetailRules.PlaySolid;
+            return Button.Create(playing ? Loc.Get(Strings.Podcast.Pages.Pause) : v.PrimaryLabel, p.Play,
+                v.PrimaryAccent ? ButtonAppearance.Accent : ButtonAppearance.Standard, glyph: glyph) with
+            {
+                Key = key, Height = h, Shrink = 0f, MinWidth = minWidth, Justify = start ? FlexJustify.Start : FlexJustify.Center, Grow = grow ? 1f : 0f,
+            };
+        });
 
-    static Element Up(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, bool playing)
+    static Element Up(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
     {
         float h = lay.Control;
-        var primary = Primary(v, p, playing, h, AB.PrimaryKey) with { MinWidth = AB.PrimaryMinWidth, Justify = FlexJustify.Start };
+        var primary = Primary(v, p, h, AB.PrimaryKey, AB.PrimaryMinWidth, start: true, grow: lay.Stacked);
         Element? sample = v.State == AudiobookState.NotStarted && v.SampleId is not null
             ? Button.Create(v.SampleButton, p.PlaySample, ButtonAppearance.Standard, glyph: Icons.Play) with { Key = AB.SampleKey + ":up", Height = h, Shrink = 0f, MinWidth = 0f }
             : null;
@@ -275,7 +276,7 @@ internal static class WinUiPodcastAudiobook
         };
         if (lay.Stacked)
         {
-            var buttons = sample is null ? new Element[] { primary with { Grow = 1f } } : [primary with { Grow = 1f }, sample];
+            var buttons = sample is null ? new Element[] { primary } : [primary, sample];
             return new BoxEl
             {
                 Key = AB.UpKey, Direction = 1, Gap = AB.UpGapCompact, MinWidth = 0f,
@@ -429,10 +430,9 @@ internal static class WinUiPodcastAudiobook
             var b = UseProps<BarProps>();
             var p = b.P;
             var v = p.View.Value;
-            bool playing = p.Playing.Value;
             var left = UseComputed(() => p.Place.Value.BookLeft);
             string caption = v.State == AudiobookState.InProgress ? left.Value : v.BarTitle;
-            return WinUiPodcastKit.Bar(v.ArtUrl, v.Title, caption, Primary(v, p, playing, K.BarCover, AB.PrimaryKey + ":bar"), b.Inset);
+            return WinUiPodcastKit.Bar(v.ArtUrl, v.Title, caption, Primary(v, p, K.BarCover, AB.PrimaryKey + ":bar"), b.Inset);
         }
     }
 }

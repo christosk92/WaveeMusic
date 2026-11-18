@@ -145,10 +145,12 @@ internal static class WinUiPodcastShow
         {
             var s = v.Smart;
             if (s is null) return new BoxEl();
-            bool pausing = _p.Playing.Value is { } id && id == s.EpisodeId;
-            string label = pausing ? Loc.Get(Strings.Podcast.Pages.Pause) : s.Label;
-            return Button.Create(label, _p.PlaySmart, s.Accent ? ButtonAppearance.Accent : ButtonAppearance.Standard,
-                glyph: pausing ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid) with { Key = "bar:play", Shrink = 0f };
+            var p = _p;
+            string sid = s.EpisodeId;
+            // Play/Pause is a leaf: a press re-renders the button, not the page.
+            return WinUiPodcastPlayLeaf.Of("bar:play:leaf", () => p.Playing.Value is { } id && id == sid, pausing => Button.Create(
+                pausing ? Loc.Get(Strings.Podcast.Pages.Pause) : s.Label, p.PlaySmart, s.Accent ? ButtonAppearance.Accent : ButtonAppearance.Standard,
+                glyph: pausing ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid) with { Key = "bar:play", Shrink = 0f });
         }
 
         // ══ THE PAGE ════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -366,11 +368,13 @@ internal static class WinUiPodcastShow
         {
             var s = v.Smart;
             if (s is null) return new BoxEl { Key = "show-up", MinHeight = S.UpMinH };
-            bool pausing = live && _p.Playing.Value is { } id && id == s.EpisodeId;
-            Element button = s.Kind == PodcastSmartKind.CaughtUp
-                ? Button.Create(pausing ? Loc.Get(Strings.Podcast.Pages.Pause) : s.Label, _p.PlaySmart, glyph: pausing ? WinUiDetailRules.PauseSolid : Icons.Refresh)
+            var p = _p;
+            string sid = s.EpisodeId;
+            // Play/Pause is a leaf: a press re-renders the button, not the page.
+            Element button = WinUiPodcastPlayLeaf.Of("smart:leaf", () => live && p.Playing.Value is { } id && id == sid, pausing => s.Kind == PodcastSmartKind.CaughtUp
+                ? Button.Create(pausing ? Loc.Get(Strings.Podcast.Pages.Pause) : s.Label, p.PlaySmart, glyph: pausing ? WinUiDetailRules.PauseSolid : Icons.Refresh)
                     with { Key = "smart", Height = lay.Target, Shrink = 0f, Grow = lay.Stacked ? 1f : 0f }
-                : WinUiPodcastKit.SmartSplit("smart", s.Label, s.Accent, pausing, _p.PlaySmart, s.Menu, lay.Target, fill: lay.Stacked);
+                : WinUiPodcastKit.SmartSplit("smart", s.Label, s.Accent, pausing, p.PlaySmart, s.Menu, lay.Target, fill: lay.Stacked));
             // What it plays: "Up next · Title" over the bar, the time left (or the date, the length, the part count, the caught-up line).
             Element line = s.Why.Length > 0
                 ? new SpanTextEl(new TextSpans([new TextSpan(s.Why + " · ", Color: Tok.TextSecondary), new TextSpan(s.EpisodeTitle, Weight: S.Strong)], 2))
