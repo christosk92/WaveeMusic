@@ -290,7 +290,12 @@ public sealed record AudiobookPersonVm(string Name, string Uri);
 /// Texts: <see cref="BookLeft"/> "48% · 9 hr 2 min left", <see cref="BookLeftLong"/> the same "… left in the book", <see cref="InLeft"/>
 /// "3 hr 35 min in · 9 hr left", <see cref="CurrentLeft"/> "12 min left" (the current chapter's own).</summary>
 public readonly record struct AudiobookPlace(int PositionMs, float Fraction, int Current, float CurrentFill, string BookLeft, string BookLeftLong,
-    string InLeft, string CurrentLeft);
+    string InLeft, string CurrentLeft)
+{
+    /// <summary>The whole book's percentage alone ("48%": Zune's big number) and the time left alone ("9 hr 2 min left").</summary>
+    public string Percent { get; init; } = "";
+    public string Left { get; init; } = "";
+}
 
 /// <summary>The audiobook page's snapshot. Credits are separate lists (authors, narrators) and the facts are labelled rows; a row the data cannot fill is
 /// left off. <see cref="Included"/> false = the book is for sale: <see cref="Price"/> / <see cref="ListPrice"/> and <see cref="BuyLabel"/> replace the

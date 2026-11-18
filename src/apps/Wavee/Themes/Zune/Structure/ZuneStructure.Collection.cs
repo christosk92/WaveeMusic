@@ -35,10 +35,10 @@ public sealed partial class ZuneStructure
         // Recents.
         views.Add(ViewKeys.RecentsPage, ZuneRecents.Template, "zune.recents.page");
 
-        // The podcast pages v2: not drawn by Zune yet (ShellCapabilities.PodcastPages false keeps the older reader pages).
-        CommonNothing.Register(views, ViewKeys.PodcastShowPage);
-        CommonNothing.Register(views, ViewKeys.PodcastEpisodePage);
-        CommonNothing.Register(views, ViewKeys.AudiobookPage);
+        // The podcast pages v2 (the concept winui-podcast-v2, theme=zune): the show, the episode and the audiobook (`Views\Podcast\`).
+        views.Add(ViewKeys.PodcastShowPage, ZunePodcastShow.Template, "zune.podcast.show");
+        views.Add(ViewKeys.PodcastEpisodePage, ZunePodcastEpisode.Template, "zune.podcast.episode");
+        views.Add(ViewKeys.AudiobookPage, ZunePodcastAudiobook.Template, "zune.podcast.audiobook");
 
         // Profile.
         views.Add(ViewKeys.ProfilePage, ZuneProfile.Template, "zune.profile.page");
