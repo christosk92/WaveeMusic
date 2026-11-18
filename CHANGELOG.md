@@ -84,8 +84,9 @@ versions separately under `v*` and is not tracked in this file.)
   with a new page: it opens on the cards the section already showed, holds a place for the ones still loading, and
   Back shrinks it away again.
 
-- **The WinUI title bar and the app share one background.** The tab row no longer paints its own grey strip; the
-  selected tab is a translucent plate on the window's material.
+- **The WinUI title bar is layered like Windows 11's tabbed apps.** The tab row sits a shade deeper than the toolbar,
+  still tinted by the wallpaper, and the selected tab is the toolbar itself rising into it: the same surface, with no
+  seam along its foot and a hairline round its top. With the backdrop set to None the tab is the window's own colour.
 
 - **Pinned bars show the window behind them (WinUI, Zune).** The bar that stays at the top of an album or playlist
   page in WinUI no longer paints a lighter band across the page.

@@ -4,7 +4,7 @@
 // (EP16, `TitleBar.Rows`): the core owns the tab workspace, the history stacks, the auth fold, the pin and every verb (`ShellTitleBarProps`);
 // this template draws, per window tier, what `WinUiTiers.TitleBar(tier)` says:
 //
-//   TABS ON (88)   row 1 (40, the window's Mica under a translucent veil: Mica Alt that keeps the wallpaper's tint; owner, 2026-11-18): the TabView strip (Chrome tabs, the tier's form: Ladder 240 / 200 / 160 -> 110 then scroll, or
+//   TABS ON (88)   row 1 (40, the window's material under the strip's tone, the selected tab cut out of it: see `Bar`): the TabView strip (Chrome tabs, the tier's form: Ladder 240 / 200 / 160 -> 110 then scroll, or
 //                  Compact's 140 selected + 36 icon tabs) and "+", the drag band, the caption buttons (row-tall)
 //                  row 2 (48): ≡ · Back · Forward | the search (centred on the window at 520 / 640; filling the middle at Small; the
 //                  magnifier at Compact) | pin · Friends · bell (badge) · avatar (+ the name at Huge); Small folds pin and Friends into ⋯
@@ -47,11 +47,16 @@ internal static class WinUiTitleBar
         bool Strip() => facts.Value.Capabilities.ShowsTabStrip;
 
         var parts = new TemplateParts();
-        // Row 1 is the window's Mica under a translucent veil (WinUiFrameRules.TabStripVeil): a step darker than the toolbar and the app, still
-        // tinted by the wallpaper, so the bar belongs to the app's ground AND the selected tab reads as lying on top of it. Three tries on
-        // 2026-11-18 (owner): a SOLID Mica Alt strip stood apart as a grey band ("too discrete"); no strip with a 70 %-white tab was "just
-        // white"; no strip with a grey tint tab was "very ugly ... it must look like it is on top, not blend in".
-        parts[TitleBar.PartTopRow] = static b => b with { Key = WinUiFrameRules.TabRowKey, Fill = Prop.Of(static () => WinUiFrameRules.TabStripVeil) };
+        // THE LAYERS (Windows 11's tabbed window: "App layering with Mica Alt", learn.microsoft.com/windows/apps/design/style/mica, and MUX's
+        // TabView, whose selected tab is filled like the surface under the strip and outlined 1,1,1,0). Row 1 is the BASE: the window's material
+        // under the strip's tone (WinUiFrameRules.TabStripTone), deeper than the app and still tinted by the wallpaper, as Mica Alt is. The toolbar
+        // and the app under it are the layer above it: the window's material bare, as they always were. The SELECTED TAB is that layer rising into
+        // the strip: it cuts the strip's tone out in its own silhouette (BuildStrip: RailFill), so the tab and the toolbar under it are the same
+        // pixels, with no fill that could differ from the toolbar on one wallpaper or another, and no seam along the tab's foot.
+        // Four forms were tried on 2026-11-18 (owner): a SOLID Mica Alt strip stood apart as a grey band ("too discrete"); no strip with a
+        // 70 %-white tab was "just white"; no strip with a grey tint tab was "very ugly ... it must look like it is on top, not blend in", and
+        // again "the layered look is ugly ... selected tab = highest layer" (the tab was the darkest thing in the bar).
+        parts[TitleBar.PartTopRow] = static b => b with { Key = WinUiFrameRules.TabRowKey, Fill = Prop.Of(static () => WinUiFrameRules.TabStripTone) };
         parts[TitleBar.PartToolbarRow] = static b => b with { Key = WinUiFrameRules.ToolbarKey };
         parts[TitleBar.PartPaneToggle] = static b => b with { Key = "winui.titlebar.pane" };
 
@@ -97,14 +102,15 @@ internal static class WinUiTitleBar
         // The Compact touch sizes are live parts, so the 641 crossing keeps every tab, the "+" and the close button and eases them to the
         // touch floor (the plates' height in the engine, the "+" and the close button here).
         Parts = StripParts(tiers),
-        // WinUI's TabView: Chrome tabs, the tier's form against the bar's tab lane. The selected tab is the translucent layer that, over the
-        // strip's veil, comes back to the toolbar's own tone (see TabStripVeil): the tab is the toolbar's surface rising into the darker strip,
-        // wallpaper tint and all.
+        // WinUI's TabView: Chrome tabs, the tier's form against the bar's tab lane. The selected tab is the toolbar's own surface (see `Bar`):
+        // on a material ground it CUTS the strip's tone out; on the solid ground (the style's backdrop None) there is nothing to uncover, so it
+        // is a plate of that ground, the same colour the toolbar stands on.
         Appearance = TabStripAppearance.Chrome,
         Form = () => WinUiTiers.TitleBarOf(tiers()).TabForm,
         TabHeight = Prop.Of(() => WinUiTiers.TitleBarOf(tiers()).TabH),
         TextFontSize = WinUiFrameRules.MarkTextSize,
-        SelectedFill = Prop.Of(static () => Tok.FillLayerDefault),
+        SelectedFill = Prop.Of(static () => Tok.WindowBackground),
+        RailFill = static () => GroundIsMaterial() ? WinUiFrameRules.TabStripTone : null,
         ShowRailBaseline = false,   // the strip's own tone is the edge; the strip's baseline segments ended after the "+" as a stray hairline
         // Shell-Top: only the selected tab carries its close button at rest (the others show it under the pointer).
         CloseButtonOverlayMode = TabViewCloseButtonOverlayMode.OnPointerOver,
@@ -118,6 +124,12 @@ internal static class WinUiTitleBar
         OnTabCloseRequested = props.OnCloseTab,
         ScrollMetricsChanged = m => props.OnTabExtent(m.ContentExtent),
     };
+
+    /// <summary>True when the window's ground is its material (Mica, Mica Alt, Acrylic): the canvas under the bar is clear, so a cut uncovers the
+    /// material. False with the style's backdrop None, whose ground is a solid colour the window paints. The style's backdrop applies on a theme
+    /// transaction IN PLACE (the strip is not built again, it renders again), so the strip asks at every render.</summary>
+    private static bool GroundIsMaterial()
+        => (ThemeHost.ActiveDefinition ?? Design.Definition).Materials.For(Tok.Theme) is { } material && material != FluentGpu.Pal.WindowMaterial.None;
 
     /// <summary>The tabs island's child: nothing while the strip is hidden (a one-row bar would seat the island in the toolbar), else the one
     /// strip of every tier (its form, its plates' height and its touch parts are live).</summary>
