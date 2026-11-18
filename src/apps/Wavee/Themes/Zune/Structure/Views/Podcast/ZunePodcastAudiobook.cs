@@ -144,8 +144,8 @@ internal static class ZunePodcastAudiobook
                     Key = "zb-big", Direction = 0, Gap = Z.BigGap, AlignItems = FlexAlign.End, Wrap = true, MinWidth = 0f,
                     Children =
                     [
-                        big with { Text = Prop.Of(() => place.Value.Percent) },
-                        words with { Text = Prop.Of(() => place.Value.Left.Length > 0 ? place.Value.Left + " · " + chapter : chapter), Margin = new Edges4(0f, 0f, 0f, Z.BigGap / 2f) },
+                        big with { Text = Prop.Of(() => place.Value.Percent ?? "") },
+                        words with { Text = Prop.Of(() => place.Value.Left is { Length: > 0 } left ? left + " · " + chapter : chapter), Margin = new Edges4(0f, 0f, 0f, Z.BigGap / 2f) },
                     ],
                 });
                 kids.Add(new BoxEl { Direction = 0, MaxWidth = Z.BookBarMax, MinWidth = 0f, Children = [K.Line(() => place.Value.Fraction) with { Grow = 1f }] });
