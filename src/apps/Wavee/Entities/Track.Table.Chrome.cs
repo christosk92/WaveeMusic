@@ -1058,7 +1058,7 @@ public readonly partial struct Track
                 var tally = UseComputed(_tally ??= h.UnavailableNow).Value;
                 var filters = h._filters.Value;
                 var template = h._listStyle?.Chrome.UnavailableBar;
-                // Closed with its ✕ on this list: gone for good (Track.UnavailableBar.cs). The read subscribes the closes.
+                // Closed with its ✕ on this list: gone until the app restarts (Track.UnavailableBar.cs). The read subscribes the closes.
                 bool dismissed = UnavailableBarDismissals.Has(h._contextText);
                 bool shown = template is not null && !dismissed && FilterModel.OffersHide(in tally, in filters);
                 UseLayoutEffect(() => h._unavailableShown.Value = shown, DepKey.From(shown));

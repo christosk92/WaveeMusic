@@ -216,7 +216,7 @@
         "local": "{count, plural, one {one is a local file} other {# are local files}}",
         "allLocal": "{count, plural, one {it’s a local file} other {they’re local files}}",
         "hide": "{count, plural, one {Hide it} other {Hide them}}",
-        "dismiss": "Don’t show again for this list"
+        "dismiss": "Close"
       }
     },
     "density": {

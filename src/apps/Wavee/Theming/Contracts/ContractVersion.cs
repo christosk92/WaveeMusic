@@ -286,7 +286,7 @@
 // the mini player's mount) and `ILyricsHost.FlatRows` (the mini player's mount reads as a picture: every line but the active one at
 // `Lyrics.MiniRows.Ink`, no ladder, no depth blur); both default to the old behaviour. `MiniPlayerStyle.LyricScale` takes the window's width
 // (the mini player is unreleased: its three styles moved with it).
-// 1.110 (the unavailable bar's close): the optional `TrackUnavailableBarArgs.Dismiss` / `.DismissLabel` (the bar's ✕, remembered per list).
+// 1.110 (the unavailable bar's close): the optional `TrackUnavailableBarArgs.Dismiss` / `.DismissLabel` (the bar's ✕, per list until the app restarts).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a

@@ -89,7 +89,7 @@ internal static class ZuneTrackChrome
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
                 Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
-                // The ✕: closes the bar on this list for good (the core remembers it).
+                // The ✕: closes the bar on this list until the app restarts.
                 a.Dismiss is { } dismiss
                     ? ToolTip.Wrap(Button.Create("", dismiss, ButtonAppearance.Subtle, glyph: Icons.ChromeClose, isEnabled: a.Shown)
                         with { Key = "unavailable:dismiss", Shrink = 0f }, a.DismissLabel)

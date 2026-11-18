@@ -69,7 +69,7 @@ internal static class ClassicTrackChrome
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
                 Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
-                // The ✕: closes the bar on this list for good (the core remembers it).
+                // The ✕: closes the bar on this list until the app restarts.
                 a.Dismiss is { } dismiss
                     ? ToolTip.Wrap(new BoxEl
                     {
