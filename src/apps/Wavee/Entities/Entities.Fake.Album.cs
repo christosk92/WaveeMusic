@@ -411,7 +411,11 @@ public static partial class Entities
         }
 
         /// <summary>Resident episodes: <c>8 + s % 5</c> (FakeData.cs:408); fourteen on the serial; none on the empty show.</summary>
-        static int EpisodesIn(int sh) => sh == EmptyShow ? 0 : sh == SerialShow ? SerialEpisodes : 8 + sh % 5;
+        static int EpisodesIn(int sh) => sh == EmptyShow ? 0 : sh == SerialShow ? SerialEpisodes : sh == DegradedShow ? LongShowEpisodes : 8 + sh % 5;
+
+        /// <summary>sh3 is also the LONG show (podcast pages list, 2026-11-18): 500 weekly episodes over nearly ten years, the size a virtualised
+        /// episode list is gated at.</summary>
+        const int LongShowEpisodes = 500;
 
         /// <summary>The membership's stated total: sh7 has twelve more than it holds (the load-more pill).</summary>
         static int TotalEpisodes(int sh) => EpisodesIn(sh) + (sh == PartialShow ? 12 : 0);
@@ -691,13 +695,13 @@ public static partial class Entities
 
         static void LandShows()
         {
-            Span<int> targets = stackalloc int[16];
+            var targets = new int[LongShowEpisodes];
             for (int sh = 0; sh < Shows; sh++)
             {
                 int n = EpisodesIn(sh), total = TotalEpisodes(sh);
                 for (int i = 0; i < n; i++) targets[i] = SlotOf(Current.Episodes, EpisodeUri(sh, i));
                 int show = SlotOf(Current.Shows, ShowUri(sh));
-                Current.Edges.ShowEpisodes.Replace(show, targets[..n], default,
+                Current.Edges.ShowEpisodes.Replace(show, targets.AsSpan(0, n), default,
                     total > n ? EdgeState.Partial : EdgeState.Complete, total);
             }
             LandListenLater();

@@ -114,6 +114,16 @@ public sealed record PodcastPaneChapters(int Total, ImmutableArray<PodcastChapte
     public static PodcastPaneChapters Loading { get; } = new(0, [], true);
 }
 
+/// <summary>What one item of the show page's episode LIST is (podcast pages list model): a group's header, an episode row, the "Load more" foot or
+/// the "No episodes match" line. A theme virtualises the list over <see cref="PodcastShowView.Items"/> (only the items on screen are mounted, so a
+/// show of 500 episodes scrolls and filters at the cost of 14), and puts its own prefix items (the hero, the toolbar) before them.</summary>
+public enum PodcastItemKind : byte { Group, Row, More, Empty }
+
+/// <summary>One item of <see cref="PodcastShowView.Items"/>: its kind, its group (an index into <see cref="PodcastShowView.Groups"/>, -1 for the foot
+/// and the empty line) and, for a row, its episode (an index into <see cref="PodcastShowView.Episodes"/>, else -1). <see cref="First"/>: the row opens
+/// its group (no rule above it).</summary>
+public readonly record struct PodcastListItem(PodcastItemKind Kind, int Group, int Episode, bool First = false);
+
 /// <summary>The show page's snapshot.</summary>
 public sealed record PodcastShowView(
     PodcastLoad Load, PodcastShowHead Head, PodcastSmart? Smart,
@@ -122,6 +132,9 @@ public sealed record PodcastShowView(
 {
     /// <summary>How many rows pass the filter and the search (0 = "No episodes match").</summary>
     public int ShownCount { get; init; }
+    /// <summary>The episode list, flattened for a virtualised list: per group its header then its rows, then the foot ("Load more") or the empty line.
+    /// <see cref="Episodes"/> and <see cref="Groups"/> hold only what passes the filter and the search.</summary>
+    public ImmutableArray<PodcastListItem> Items { get; init; } = [];
 
     /// <summary>The empty snapshot a page shows while nothing is known (the skeleton is derived from the loaded layout over it).</summary>
     public static PodcastShowView Empty { get; } = new(PodcastLoad.Pending,

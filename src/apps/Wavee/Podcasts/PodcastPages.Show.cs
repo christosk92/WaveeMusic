@@ -218,6 +218,23 @@ sealed class ShowModel
     public readonly Func<string, ContextMenuModel?> CardMenu;
     public readonly Action<string> PlayCard;
 
+    /// <summary>The flattened list (podcast pages list model): each group's header then its rows, then the foot or the empty line.</summary>
+    static ImmutableArray<PodcastListItem> ItemsOf(ImmutableArray<PodcastGroup> groups, bool hasMore, bool empty)
+    {
+        int n = (hasMore ? 1 : 0) + (empty ? 1 : 0);
+        foreach (var g in groups) n += 1 + g.Rows.Length;
+        var b = ImmutableArray.CreateBuilder<PodcastListItem>(n);
+        for (int gi = 0; gi < groups.Length; gi++)
+        {
+            var g = groups[gi];
+            b.Add(new PodcastListItem(PodcastItemKind.Group, gi, -1));
+            for (int k = 0; k < g.Rows.Length; k++) b.Add(new PodcastListItem(PodcastItemKind.Row, gi, g.Rows[k], k == 0));
+        }
+        if (empty) b.Add(new PodcastListItem(PodcastItemKind.Empty, -1, -1));
+        if (hasMore) b.Add(new PodcastListItem(PodcastItemKind.More, -1, -1));
+        return b.MoveToImmutable();
+    }
+
     PodcastShowHead? _lastHead;
     PodcastSmart? _lastSmart;
     ImmutableArray<PodcastCardVm> _lastSimilar = [];
@@ -555,12 +572,11 @@ sealed class ShowModel
             };
             if (keep && !q.IsEmpty) keep = ShowReaderRules.Matches(vm.Title, vm.Description, q);
             shown[i] = keep;
-            if (keep) shownCount++;
-            view.Add(i);
+            if (keep) { shownCount++; view.Add(i); }
         }
         if (oldestCell) view.Reverse();
         var episodes = ImmutableArray.CreateBuilder<PodcastEpisodeVm>(view.Count);
-        foreach (int i in view) episodes.Add(shown[i] ? vms[i] : vms[i] with { Hidden = true });
+        foreach (int i in view) episodes.Add(vms[i]);
         var years = YearsOf(vms, serial);
         var groups = GroupsOf(vms, view, shown, serial, oldestCell, !q.IsEmpty, filter == PodcastFilter.All && q.IsEmpty, years);
 
@@ -590,7 +606,7 @@ sealed class ShowModel
         _lastSmart = smart;
         _lastSimilar = similarCards;
         return new PodcastShowView(load, head, smart, episodes.MoveToImmutable(), groups, filters, years, hasMore,
-            filter != PodcastFilter.All || !q.IsEmpty, similarCards) { ShownCount = shownCount };
+            filter != PodcastFilter.All || !q.IsEmpty, similarCards) { ShownCount = shownCount, Items = ItemsOf(groups, hasMore, shownCount == 0 && load == PodcastLoad.Ready) };
     }
 
     static PodcastEpisodeVm RowOf(Episode e, int i, int total, bool serial, PodcastRowState state, float pct, bool saved)
