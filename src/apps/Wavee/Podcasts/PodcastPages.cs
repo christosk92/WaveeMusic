@@ -5,11 +5,17 @@
 // `PodcastEpisodeScreen`. Every structure draws the three pages (`ViewKeys.PodcastShowPage`, `PodcastEpisodePage`, `AudiobookPage`).
 //
 // Each host is a `[CoreHost]` in its own file: `PodcastPages.Show.cs`, `PodcastPages.Episode.cs`, `PodcastPages.Audiobook.cs`.
+//
+// ONE SCREEN PER SUBJECT (owner, 2026-11-18). The library's detail column mounts the SAME page (`LibraryPane`): a show or a book picked in the library
+// is the page its route opens, not a second design of it. The page is drawn in the tiers of the COLUMN (`PaneHost`): the content tier and the
+// content-line rungs resolved from the column's own width through the active policy, the window's and the height's tiers kept.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Signals;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee;
@@ -20,17 +26,29 @@ public static partial class PodcastPages
     public static Element ShowRoute(in Shell.Route route)
     {
         string routeKey = Shell.NameOf(route);
-        return Embed.Comp(new RouteProps(route, routeKey, false), static () => new RouteHost()) with { Key = "show-page:" + routeKey };
+        return Embed.Comp(new RouteProps(route.Subject, routeKey, false), static () => new RouteHost()) with { Key = "show-page:" + routeKey };
+    }
+
+    /// <summary>The library's detail column for the show or book <paramref name="show"/>: the page its route mounts, in the column's tiers. NO key: the
+    /// host stays mounted across a selection change (it keeps the column's measured width, so the next page mounts in its tier at once); the page inside
+    /// is keyed per subject, as a route's is.</summary>
+    public static Element LibraryPane(Show show)
+    {
+        if (!show.IsValid) return new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f };
+        EntityUri subject = show.Uri;
+        return Embed.Comp(new PaneProps(subject, "library-pane:" + subject.Text), static () => new PaneHost());
     }
 
     /// <summary>The episode route: the episode page.</summary>
     public static Element EpisodeRoute(in Shell.Route route)
     {
         string routeKey = Shell.NameOf(route);
-        return Embed.Comp(new RouteProps(route, routeKey, true), static () => new RouteHost()) with { Key = "episode-page:" + routeKey };
+        return Embed.Comp(new RouteProps(route.Subject, routeKey, true), static () => new RouteHost()) with { Key = "episode-page:" + routeKey };
     }
 
-    internal sealed record RouteProps(Shell.Route Route, string RouteKey, bool Episode);
+    internal sealed record RouteProps(EntityUri Subject, string RouteKey, bool Episode);
+
+    internal sealed record PaneProps(EntityUri Subject, string RouteKey);
 
     /// <summary>The podcast pages' row drag (<c>RowDrag</c> on the show and episode props): the episode of <paramref name="id"/> (its uri) as the
     /// house's episode payload (<see cref="Episode.DragPayloadOf"/>), or null when it does not resolve.</summary>
@@ -86,16 +104,85 @@ public static partial class PodcastPages
         public override Element Render()
         {
             var p = UseProps<RouteProps>();
-            var route = p.Route;
-            var host = new HostProps(route.Subject, p.RouteKey);
+            var host = new HostProps(p.Subject, p.RouteKey);
             if (p.Episode) return Embed.Comp(host, static () => new PodcastEpisodeScreen()) with { Key = "podcast-episode" };
             _ = Entities.ScopeEpoch.Value;
-            var show = Entities.Show(route.Subject);
+            var show = Entities.Show(p.Subject);
             // A single-child slot ignores its child's key: the keyed page sits in a plain column so that a show turning out to be a book swaps hosts.
             Element page = show.IsValid && show.IsAudiobook
                 ? Embed.Comp(host, static () => new AudiobookScreen()) with { Key = "podcast-audiobook" }
                 : Embed.Comp(host, static () => new PodcastShowScreen()) with { Key = "podcast-show" };
             return new BoxEl { Direction = 1, Grow = 1f, Children = [page] };
+        }
+    }
+
+    /// <summary>The measured-width step of the library's column: a resize re-resolves the column's tiers once per step, never per pixel.</summary>
+    const float PaneWidthQuantum = 8f;
+
+    /// <summary>The library's detail column around a show or book page. It measures the column, resolves the tiers a page that wide is drawn in and
+    /// provides them to the page in place of the window's (<see cref="ThemeFactsContext.Signal"/>); the page's row-2 publications are dropped (the
+    /// library is the route, <see cref="PageChromeSink.None"/>). The page mounts once the column has a width: it is never drawn a frame in the
+    /// window's tiers first. Like <see cref="RouteHost"/> it builds no look: two bare boxes that hold the page's place.</summary>
+    sealed class PaneHost : Component
+    {
+        IReadSignal<ThemeFacts> _window = ThemeHost.Facts;
+        IReadSignal<float>? _width;
+        ThemeFacts? _drawn, _from;
+        readonly Func<ThemeFacts> _factsOf;
+        readonly Func<bool> _measured;
+
+        public PaneHost()
+        {
+            _factsOf = FactsOf;
+            _measured = () => (_width?.Value ?? 0f) > 0f;
+        }
+
+        public override Element Render()
+        {
+            var p = UseProps<PaneProps>();
+            _window = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
+            _width = UseMeasuredWidth(PaneWidthQuantum);
+            var facts = UseComputed(_factsOf);
+            bool measured = UseComputed(_measured).Value;
+            Element[] kids = !measured
+                ? []
+                :
+                [
+                    Ctx.Provide(ThemeFactsContext.Signal, facts,
+                        Ctx.Provide(PageChromeSink.Context, PageChromeSink.None, Ctx.Provide(PodcastPagePlace.Embedded, true,
+                            new BoxEl
+                            {
+                                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+                                Children = [Embed.Comp(new RouteProps(p.Subject, p.RouteKey, false), static () => new RouteHost()) with { Key = "show-page:" + p.RouteKey }],
+                            }))),
+                ];
+            return new BoxEl
+            {
+                Key = "library-show-pane", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true,
+                Children = kids,
+            };
+        }
+
+        /// <summary>The facts the page is drawn in: the window's, with the content tier and the content-axis rungs of the column. The record is kept
+        /// while neither the window's facts nor the column's tier or rungs move, so a resize inside a tier re-renders nothing (the widths in it are
+        /// the ones published at the last crossing, as the window's are).</summary>
+        ThemeFacts FactsOf()
+        {
+            ThemeFacts window = _window.Value;
+            float width = _width?.Value ?? 0f;
+            if (width <= 0f || window.Tiers.Policy is not { } policy) return window;
+            TierFacts own = WindowTiers.Resolve(policy, window.Tiers.ViewportWidth, window.Tiers.ViewportHeight, width,
+                _drawn is { } held ? held.Tiers : null);
+            ulong rungs = window.Tiers.Rungs;
+            for (int i = 0; i < policy.Rungs.Length; i++)
+            {
+                if (policy.Rungs[i].Axis != RungAxis.Content) continue;
+                ulong bit = 1UL << i;
+                rungs = (rungs & ~bit) | (own.Rungs & bit);
+            }
+            if (_drawn is { } d && ReferenceEquals(_from, window) && d.Tiers.Content == own.Content && d.Tiers.Rungs == rungs) return d;
+            _from = window;
+            return _drawn = window with { Tiers = window.Tiers with { Content = own.Content, ContentWidth = own.ContentWidth, Rungs = rungs } };
         }
     }
 }

@@ -89,10 +89,14 @@ internal static partial class WinUiPodcastShow
         Func<bool>? _pending, _failed;
         Func<PodcastShowView>? _placeholderOf;
 
+        /// <summary>Drawn inside another page's column (the library's): the head is the show's head there, not the page's title.</summary>
+        bool _embedded;
+
         public override Element Render()
         {
             _p = UseProps<PodcastShowPageProps>();
             var p = _p;
+            _embedded = UseContext(PodcastPagePlace.Embedded);
             var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
             var lay = WinUiPodcastShowTiers.Of(in facts);
             float inset = WinUiTiers.InsetOf(in facts);
@@ -220,7 +224,8 @@ internal static partial class WinUiPodcastShow
             Element commands = Commands(v, lay, live);
             Element up = Up(v, lay, live);
             Element form = lay.Stacked ? Stacked() : Beside();
-            return new BoxEl { Key = WinUiFrameLayout.PageTitleKey, Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Reflow, Children = [form] };
+            // The head is the page's title for the lint guide, except in another page's column, where the page's title is that page's.
+            return new BoxEl { Key = _embedded ? "podcast-head" : WinUiFrameLayout.PageTitleKey, Direction = 1, MinWidth = 0f, Layout = WinUiDiscoveryMotion.Reflow, Children = [form] };
 
             Element Stacked() => new BoxEl
                 {

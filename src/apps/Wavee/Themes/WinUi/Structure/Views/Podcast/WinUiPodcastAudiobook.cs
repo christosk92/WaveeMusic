@@ -53,6 +53,7 @@ internal static class WinUiPodcastAudiobook
         public override Element Render()
         {
             var p = UseProps<AudiobookPageProps>();
+            bool embedded = UseContext(PodcastPagePlace.Embedded);   // in another page's column (the library's) the cover is not the page's lead
             var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
             var lay = WinUiAudiobookLayout.Of(facts.Content);
             float inset = WinUiTiers.InsetOf(facts);
@@ -63,10 +64,10 @@ internal static class WinUiPodcastAudiobook
                 _orderFor = v.Uri;
                 _aboutFirst = v.State == AudiobookState.NotStarted;
             }
-            Element real = Column(v, p, lay, barOn, _aboutFirst);
+            Element real = Column(v, p, lay, barOn, _aboutFirst, embedded);
             var region = new SkelRegionEl(
                 Pending: () => p.View.Value.Load == PodcastLoad.Pending, Failed: static () => false,
-                Content: () => real, ShimmerSource: () => Column(AudiobookView.Placeholder, p, lay, null, true),
+                Content: () => real, ShimmerSource: () => Column(AudiobookView.Placeholder, p, lay, null, true, embedded),
                 OnFailed: null, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
             Element content = new BoxEl
             {
@@ -79,9 +80,9 @@ internal static class WinUiPodcastAudiobook
 
     // ══ THE COLUMN ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Column(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, Signal<bool>? barOn, bool aboutFirst)
+    static Element Column(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, Signal<bool>? barOn, bool aboutFirst, bool embedded)
     {
-        var kids = new List<Element>(6) { Hero(v, p, lay) };
+        var kids = new List<Element>(6) { Hero(v, p, lay, embedded) };
         if (barOn is not null) kids.Add(WinUiPodcastKit.BarSentinel(barOn));
         kids.Add(Premium(v, p));
         kids.Add(Columns(v, p, lay, aboutFirst));
@@ -99,13 +100,13 @@ internal static class WinUiPodcastAudiobook
 
     // ══ THE HERO ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Hero(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
+    static Element Hero(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, bool embedded)
     {
         // The frame's lint guide reads the page's leading edge from the page-title key: the book's leading edge is its cover (the title sits beside
         // it, as on every detail page), so the cover carries the key.
         Element cover = new BoxEl
         {
-            Key = WinUiFrameLayout.PageTitleKey, Width = lay.Cover, Height = lay.Cover, Shrink = 0f, AlignSelf = FlexAlign.Start, Corners = CornerRadius4.All(AB.CoverRadius), ClipToBounds = true,
+            Key = embedded ? "book-cover" : WinUiFrameLayout.PageTitleKey, Width = lay.Cover, Height = lay.Cover, Shrink = 0f, AlignSelf = FlexAlign.Start, Corners = CornerRadius4.All(AB.CoverRadius), ClipToBounds = true,
             Draggable = p.CoverDrag,
             Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, AB.CoverRadius, decodePx: AB.CoverDecode)],
         };

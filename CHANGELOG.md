@@ -61,6 +61,9 @@ versions separately under `v*` and is not tracked in this file.)
 - **New installs start in the WinUI theme.** A first run opens in WinUI, and the setup dialog's theme step shows it
   selected. An install that already ran keeps its theme.
 
+- **One page per show and per audiobook.** A show or a book picked in the library opens the same page it has
+  everywhere else, fitted to the library's column, instead of an older second design of it.
+
 - **Zune shows "busy" as a train of dots.** Where progress cannot say how far it is (a search still answering, a
   track still loading, a download finding its size), five small dots rush in, drift through the middle and rush out,
   in place of the sliding block.

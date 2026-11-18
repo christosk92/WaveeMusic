@@ -1372,7 +1372,7 @@ public readonly partial struct User
         /// reader: the navigator's slot plus the three Signal instances it steers itself with (there is no MidW and no third pane — the reader is the leaf).</summary>
         Element PaneFor(int slot) => _entity switch
         {
-            EntityKind.Show => Embed.Comp(new Show.PaneProps(slot), static () => new Show.Pane()),
+            EntityKind.Show => PodcastPages.LibraryPane(new Show(slot)),   // the page the show's or book's route mounts, in the column's tiers
             EntityKind.Artist => Embed.Comp(new Artist.ReaderProps(slot, Scope, RSort, AlbumKey), static () => new Artist.Reader()),
             _ => Embed.Comp(new Album.PaneProps(slot, ShowAlsoBy: true, OnAlsoBy: _onAlsoBy), static () => new Album.Pane()),
         };

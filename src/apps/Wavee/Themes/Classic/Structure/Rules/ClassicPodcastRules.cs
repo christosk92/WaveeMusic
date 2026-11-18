@@ -77,6 +77,8 @@ internal static class ClassicPodcastRules
     public const float PlayedPadY = 2f;
     /// <summary>A row in progress: its bar under the title, the time left beside it.</summary>
     public const float RowBarW = 220f, RowBarGap = 10f;
+    /// <summary>The narrowest a row's own progress bar gets where its text column is narrower than the bar and its "left" label.</summary>
+    public const float RowBarMinW = 64f;
 
     // ── sections, cards ──
     public const float SectionTop = 28f, SectionBottom = 12f, SectionGap = 8f;

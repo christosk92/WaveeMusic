@@ -14,6 +14,14 @@ using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
 
+/// <summary>Where a podcast page is drawn. <see cref="Embedded"/> is true inside another page's column (the library's detail column mounts the show and
+/// book pages, <c>PodcastPages.LibraryPane</c>): the page there is not the route's page, so its head is not the page's title (a structure that keys its
+/// head as the page title for the lint guide keys it as itself there).</summary>
+public static class PodcastPagePlace
+{
+    public static readonly FluentGpu.Hooks.Context<bool> Embedded = new(false);
+}
+
 /// <summary>Whether a page's data is still on its way, landed, or failed.</summary>
 public enum PodcastLoad : byte { Pending, Ready, Failed }
 

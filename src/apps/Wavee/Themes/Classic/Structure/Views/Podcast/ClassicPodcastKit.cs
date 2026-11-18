@@ -452,6 +452,31 @@ internal static class ClassicPodcastKit
         ],
     };
 
+    /// <summary>A row's own bar: <see cref="MiniBar"/> at <paramref name="width"/> where the lane has the room, narrower where it has not (never under
+    /// <paramref name="floor"/>), its fill keeping its share of whatever width it gets. The bar is the lane that gives way: the "left" label beside it
+    /// stays whole, and neither runs into the row's end (a 220 bar plus its label was wider than a narrow row's text column and drew over the length).</summary>
+    public static Element RowBar(float value, ColorF accent, float width, float floor)
+    {
+        float share = Math.Clamp(value, 0f, 1f);
+        return new BoxEl
+        {
+            ZStack = true, Width = width, MinWidth = floor, Height = P.MiniBarH, Shrink = 1f,
+            Children =
+            [
+                new BoxEl { Height = P.MiniBarTrack, AlignSelf = FlexAlign.Center, Fill = Tok.StrokeControlStrongDefault },
+                new BoxEl
+                {
+                    Direction = 0, Height = P.MiniBarH, MinWidth = 0f,
+                    Children =
+                    [
+                        new BoxEl { Grow = share, Basis = 0f, MinWidth = P.MiniBarH, Height = P.MiniBarH, Corners = CornerRadius4.All(P.MiniBarRadius), Fill = accent },
+                        new BoxEl { Grow = 1f - share, Basis = 0f, MinWidth = 0f },
+                    ],
+                },
+            ],
+        };
+    }
+
     /// <summary>A live bar (the fill follows <paramref name="value"/>, 0..1, through a compositor scale).</summary>
     public static BoxEl LiveBar(Func<float> value, ColorF accent) => new()
     {
@@ -574,8 +599,8 @@ internal static class ClassicPodcastKit
                 Key = "row:bar", Direction = 0, Gap = P.RowBarGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
                 Children =
                 [
-                    MiniBar(vm.Progress, p.Accent, P.RowBarW),
-                    Meta(vm.Left) with { Color = Design.Palette.ReadableInk(p.Accent), Weight = P.Strong },
+                    RowBar(vm.Progress, p.Accent, P.RowBarW, P.RowBarMinW),
+                    Meta(vm.Left) with { Color = Design.Palette.ReadableInk(p.Accent), Weight = P.Strong, Shrink = 0f },
                 ],
             };
             var text = new List<Element>(3);
