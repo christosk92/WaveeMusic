@@ -534,6 +534,16 @@ internal static class WinUiTrackChrome
             return Plate(active, onClick, onRealized) with { Gap = WinUiListRules.CommandGap, Padding = WinUiListRules.CommandPad, Children = kids };
         }
 
+        /// <summary>Tune as WinUI's AI action: the sparkle in its hue and the word on the command plate, wearing the AI stroke (<see cref="WinUiTuneRules"/>), the
+        /// stroke's wash while lit (tuned, or the strip open). It stands apart from the bar's plain commands on purpose (owner, 2026-11-18: "a lot more prevalent").</summary>
+        public Element TuneCommand(string label, bool lit, Action onClick)
+            => Plate(false, onClick, null) with
+            {
+                Gap = WinUiListRules.CommandGap, Padding = WinUiListRules.CommandPad,
+                BorderBrush = WinUiTuneRules.Stroke, BorderWidth = WinUiTuneRules.StrokeWidth, Gradient = lit ? WinUiTuneRules.LitWash : null,
+                Children = [Icon(Icons.RefineSparkle, WinUiListRules.CommandGlyph) with { Color = WinUiTuneRules.Sparkle }, CommandWord(label, Tok.TextPrimary)],
+            };
+
         /// <summary>Find as a word at Standard and up (W-Album, W-Album-Huge: the glyph and "Find"); the glyph alone below (W-Album-Small).</summary>
         public Element? FindCommand(string label, bool active, Action onClick, Action<NodeHandle> onRealized)
             => WinUiListRules.WordedBar(_tier) ? Labeled(Icons.Search, label, active, onClick, onRealized, null) : null;

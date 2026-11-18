@@ -32,6 +32,12 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Tune opens in the page, not in a dialog.** On a Mix, Tune opens a strip under the list bar with the Mix's directions
+  ("More discovery tracks", "Make it more soft pop", ...) as chips. A direction applies at once and the list rebuilds in
+  place; the strip stays open with the direction you chose lit and "Reset tuning" beside it. The Tune button carries a
+  sparkle and a blue-to-pink edge in every theme, and lights up while the Mix is tuned.
+- **Audiobooks has a book icon** in the sidebar and the command palette, in place of the microphone.
+
 - **Playlists open at once.** A playlist you have opened before shows its saved copy the moment you click, Mixes
   included, and checks for changes behind it; only the daylist waits for its fresh answer. No more placeholder rows for
   a split second.

@@ -326,8 +326,13 @@ public readonly partial struct Track
         public Action<IReadOnlyList<int>>? RemoveRows { get; init; }
         /// <summary>Appended section (O, Wave 5); null = absent.</summary>
         public Func<Element?>? Recommendations { get; init; }
-        /// <summary>Playlist tuning button; null = absent.</summary>
+        /// <summary>Playlist tuning button (it opens and shuts the Tune strip); null = absent.</summary>
         public Action? Tune { get; init; }
+        /// <summary>The Tune strip under the list bar (the structure's `Playlist.Tune` view) while it is open, else null. A tracked read: the strip's
+        /// slot follows it. Null member = no strip. Appended (contract 1.120).</summary>
+        public Func<Element?>? TuneStrip { get; init; }
+        /// <summary>Is Tune lit (the mix is tuned, or its strip is open)? A tracked read. Appended (contract 1.120).</summary>
+        public Func<bool>? TuneLit { get; init; }
         /// <summary>Expanded-row BODY (Track.Drawer.cs, M Wave 5), handed the row's track and DISPLAY index; the host pads it
         /// by <see cref="RowMetrics.DrawerIndent"/>. Null = no chevron lane.</summary>
         public Func<Track, int, Element?>? Drawer { get; init; }

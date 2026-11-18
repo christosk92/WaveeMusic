@@ -102,6 +102,10 @@ internal interface ITrackCommandKit
     /// <summary>The 32 x 32 glyph button: active takes the accent plate, idle is ghost.</summary>
     Element IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized);
 
+    /// <summary>The list bar's Tune: the structure's AI action (a sparkle and its word, in the structure's own AI picture), <paramref name="lit"/> while the mix
+    /// is tuned or its strip is open. Appended (contract 1.120); a structure without one draws the labelled command.</summary>
+    Element TuneCommand(string label, bool lit, Action onClick) => Labeled(Icons.RefineSparkle, label, lit, onClick, null);
+
     /// <summary>The disclosure chevron after a command that opens a flyout (the Sort button's one chevron, tuned Classic D6).</summary>
     Element Chevron();
 

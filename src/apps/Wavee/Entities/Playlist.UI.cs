@@ -93,9 +93,9 @@ public readonly partial struct Playlist
 
     const float SavedHoldMs = 1800f;
 
-    /// <summary>The popups' MEASURES: the access panel's and the Tune panel's content widths. The host that opens them owns the number (a dialog is that much
-    /// wider than its content, <see cref="DialogChrome"/>); the view fills it (it travels on the props).</summary>
-    const float AccessPanelWidth = 300f, TunePanelWidth = 336f, DialogChrome = 48f;
+    /// <summary>The access panel's content width. The host that opens it owns the number (a dialog is that much wider than its content,
+    /// <see cref="DialogChrome"/>); the view fills it (it travels on the props).</summary>
+    const float AccessPanelWidth = 300f, DialogChrome = 48f;
 
     /// <summary>How many collaborators the owner block's pile draws (its "+N" counts the rest).</summary>
     const int PileFaces = 4;
@@ -866,30 +866,77 @@ public readonly partial struct Playlist
         }
     }
 
-    // ══ 8. TUNE (W24) ════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 8. TUNE (W24; inline since 2026-11-18) ════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary><c>TableProfile.Tune</c> hands no anchor, so the panel opens as a centred dialog (the picker's reason). The
-    /// content is W24's: the accent tile header, the choices (the current one disabled with "Current" trailing) and
-    /// "Reset tuning" behind a separator ONLY while a tuning is selected (item 56).</summary>
-    internal static void OpenTune(IOverlayService overlay, Playlist p)
+    /// <summary>Tune on one playlist page (owner, 2026-11-18: "not a dialog but a nicer experience"): the strip opens inline under the list bar, a
+    /// direction applies at once, and the strip stays, showing the direction the mix follows now (Reset beside it), so the next one is a click away. The
+    /// session holds what the strip shows besides the playlist's own tuning: open or shut, the direction being applied, and whether the last pick failed.
+    /// Its verbs are built once, so the strip's props compare by value. UI THREAD.</summary>
+    internal sealed class TuneSession
     {
-        var options = TuneOptionsOf(p);
-        string? selected = p.TuningSelectedId.IsEmpty ? null : Entities.Strings.Resolve(p.TuningSelectedId);
-        OverlayHandle? handle = null;
-        Action<string> pick = id =>
+        readonly Signal<bool> _open = new(false);
+        readonly Signal<string?> _applying = new(null);
+        readonly Signal<bool> _failed = new(false);
+        Playlist _p;
+        readonly Action<string> _pick;
+        readonly Action _close;
+
+        /// <summary>Open or shut the strip (the Tune button, in the list bar or the hero).</summary>
+        public readonly Action Toggle;
+        /// <summary>Is Tune lit: the mix is tuned, or the strip is open? A tracked read.</summary>
+        public readonly Func<bool> Lit;
+        /// <summary>The strip (the structure's `Playlist.Tune` view) while open, else null. A tracked read.</summary>
+        public readonly Func<Element?> Strip;
+
+        public TuneSession()
         {
-            handle?.Close();
-            Spotify.PlaylistEdits.Tune(p, id, null);
-        };
-        handle = ContentDialog.Show(overlay, d =>
+            _pick = Pick;
+            _close = () => _open.Value = false;
+            Toggle = () => _open.Value = !_open.Peek();
+            Lit = () => _open.Value || SelectedOf(_p) is not null;
+            Strip = BuildStrip;
+        }
+
+        /// <summary>The page shows <paramref name="p"/> now: another playlist starts shut, with nothing applying. Called from an effect, never a render.</summary>
+        public void Bind(Playlist p)
         {
-            d.Title = Loc.Get(Strings.Detail.Tuning.FlyoutTitle);
-            d.PrimaryText = "";
-            d.CloseText = Loc.Get(Strings.Common.Close);
-            d.DefaultButton = ContentDialog.DefaultBtn.Close;
-            OverlayFit.Dialog(d, TunePanelWidth + DialogChrome);
-            d.Content = ViewSlots.View(ViewKeys.PlaylistTune, new PlaylistTuneProps(TunePanelWidth, options, selected, pick));   // the `Playlist.Tune` view
-        });
+            if (p.Slot == _p.Slot && p.IsValid == _p.IsValid) return;
+            _p = p;
+            _open.Value = false;
+            _applying.Value = null;
+            _failed.Value = false;
+        }
+
+        Element? BuildStrip()
+        {
+            if (!_open.Value) return null;
+            var p = _p;
+            if (!p.IsValid) return null;
+            return ViewSlots.View(ViewKeys.PlaylistTune, new PlaylistTuneProps(TuneOptionsOf(p), SelectedOf(p), _applying.Value, _failed.Value, _pick, _close));
+        }
+
+        void Pick(string id)
+        {
+            var p = _p;
+            if (!p.IsValid || id.Length == 0 || _applying.Peek() is not null || id == SelectedOf(p)) return;
+            _applying.Value = id;
+            _failed.Value = false;
+            int slot = p.Slot;
+            Spotify.PlaylistEdits.Tune(p, id, ok =>
+            {
+                if (_p.Slot != slot) return;
+                _applying.Value = null;
+                _failed.Value = !ok;
+            });
+        }
+
+        /// <summary>The direction the list follows now, or null while untuned. Tracked: subscribes the playlists' table.</summary>
+        static string? SelectedOf(Playlist p)
+        {
+            _ = Entities.ScopeEpoch.Value;
+            _ = Entities.Current.Playlists.Changed.Value;
+            return !p.IsValid || p.TuningSelectedId.IsEmpty ? null : Entities.Strings.Resolve(p.TuningSelectedId);
+        }
     }
 
     /// <summary>The Tune options as the pure model's input (cold: the panel's open).</summary>

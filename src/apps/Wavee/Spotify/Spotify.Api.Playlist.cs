@@ -472,9 +472,13 @@ public static partial class Spotify
 
         // ── tune (W24): POST /signals, the reply IS the rebuilt list ──────────────────────────────────────────────
 
+        /// <summary>Tune <paramref name="p"/> to <paramref name="identifier"/> (a choice, or the reset). <paramref name="settled"/> hears whether the rebuilt
+        /// list landed; the Tune strip shows the result in place (the direction lit, or its failure line), so nothing toasts. <c>--fake</c> rebuilds the
+        /// seed's mix itself (<c>Entities.FakeTune</c>): there is no account to write with.</summary>
         public static void Tune(Playlist p, string identifier, Action<bool>? settled)
         {
-            if (!p.IsValid || identifier.Length == 0 || !CanWrite(out var scope, out _)) { settled?.Invoke(false); Fail(PlaylistMutationFailure.NotSupported, PlaylistEditVerb.Generic); return; }
+            if (Platform.Args.Fake) { Entities.FakeTune(p, identifier, settled); return; }
+            if (!p.IsValid || identifier.Length == 0 || !CanWrite(out var scope, out _)) { settled?.Invoke(false); return; }
             string id = IdOf(p), uri = p.Uri.Text;
             if (!Net.Run(() =>
                 {
@@ -495,8 +499,6 @@ public static partial class Spotify
                         if (ok && ReferenceEquals(scope, Entities.Current)) { Entities.Commit(staging!); Entities.Publish(); }
                         if (staging is not null) Staging.Return(staging);
                         settled?.Invoke(ok);
-                        Notify.Say(Loc.Get(ok ? Strings.Detail.Tuning.Applied : Strings.Detail.Tuning.ApplyFailed),
-                                   ok ? InfoBarSeverity.Success : InfoBarSeverity.Error, dedupeKey: "playlist.tune");
                     });
                 }))
                 settled?.Invoke(false);

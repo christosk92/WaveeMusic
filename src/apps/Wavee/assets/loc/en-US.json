@@ -58,13 +58,14 @@
     "shuffle": "Shuffle",
     "tuning": {
       "tune": "Tune",
-      "tooltip": "Tune this playlist",
-      "flyoutTitle": "Tune this mix",
-      "flyoutSubtitle": "Choose a direction and Wavee will rebuild the track list.",
-      "current": "Current",
+      "tooltip": "Tune this mix: pick a direction and the list rebuilds",
+      "title": "Tune this mix",
+      "subtitle": "Pick a direction. Wavee rebuilds the list around it.",
+      "applying": "Rebuilding the list…",
+      "tuned": "Tuned: {direction}",
       "reset": "Reset tuning",
-      "applied": "Playlist tuned",
-      "applyFailed": "Couldn’t tune this playlist. Try again."
+      "close": "Close Tune",
+      "applyFailed": "Couldn’t tune this mix. Try again."
     },
     "playNext": "Play next",
     "playAfter": "Play after",

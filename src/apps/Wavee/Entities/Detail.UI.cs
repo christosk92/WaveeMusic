@@ -263,14 +263,17 @@ public static partial class Detail
         /// <summary>Invite collaborators (an owner who can administrate the permissions, on a live edit path); null ⇒ absent. A structure that draws an Invite
         /// action in its hero (WinUI, W-Playlist) reads it; the rest keep it in the menus. Appended (P6 playlist-load lane).</summary>
         public Action? Invite { get; init; }
-        /// <summary>The playlist's Tune flyout, where the list has a tune choice; null ⇒ absent. Drawn in the hero where the tier's table says so
-        /// (<see cref="Theming.DetailTableTier.TuneInHero"/>), else the list bar keeps it (<c>TableProfile.Tune</c>). Appended (P6 playlist-load lane).</summary>
+        /// <summary>The playlist's Tune (it opens and shuts the Tune strip under the list bar), where the list has a tune choice; null ⇒ absent. Drawn in the
+        /// hero where the tier's table says so (<see cref="Theming.DetailTableTier.TuneInHero"/>), else the list bar keeps it (<c>TableProfile.Tune</c>).
+        /// Appended (P6 playlist-load lane).</summary>
         public Action? Tune { get; init; }
+        /// <summary>Is Tune lit (the mix is tuned, or its strip is open)? A tracked read; null = never lit. Appended (contract 1.120).</summary>
+        public Func<bool>? TuneLit { get; init; }
 
         internal int Mask()
             => (Shuffle is null ? 0 : 1) | (More is null ? 0 : 2) | (CoverClick is null ? 0 : 4)
              | (CoverDrag is null ? 0 : 8) | (DepositOnPage is null ? 0 : 16) | (GoLibrary is null ? 0 : 32)
-             | (Invite is null ? 0 : 64) | (Tune is null ? 0 : 128);
+             | (Invite is null ? 0 : 64) | (Tune is null ? 0 : 128) | (TuneLit is null ? 0 : 256);
 
         public bool Equals(FrameActions? o) => o is not null && Mask() == o.Mask();
         public override int GetHashCode() => Mask();
@@ -563,6 +566,7 @@ public static partial class Detail
 
         // trampolines into _latest
         readonly Action _tShuffle, _tCoverClick, _tGoLibrary, _tInvite, _tTune;
+        readonly Func<bool> _tTuneLit;
         readonly Func<ContextMenuModel?> _tMore;
         readonly Func<object?> _tCoverDrag;
         readonly Func<DragPayload, int?, bool> _tDeposit;
@@ -609,6 +613,7 @@ public static partial class Detail
             _tGoLibrary = () => _latest?.Actions.GoLibrary?.Invoke();
             _tInvite = () => _latest?.Actions.Invite?.Invoke();
             _tTune = () => _latest?.Actions.Tune?.Invoke();
+            _tTuneLit = () => _latest?.Actions.TuneLit?.Invoke() ?? false;
             _tMore = () => _latest?.Actions.More?.Invoke();
             _tCoverDrag = () => _latest?.Actions.CoverDrag?.Invoke();
             _tDeposit = (p, i) => _latest?.Actions.DepositOnPage?.Invoke(p, i) ?? false;
@@ -1086,6 +1091,7 @@ public static partial class Detail
                     // The hero's optional pair (a structure that draws them there, WinUI's W-Playlist): dropping them here lost Tune and Invite.
                     Invite = a.Invite is null ? null : _tInvite,
                     Tune = a.Tune is null ? null : _tTune,
+                    TuneLit = a.TuneLit is null ? null : _tTuneLit,
                 };
             }
             return _trampActions;
