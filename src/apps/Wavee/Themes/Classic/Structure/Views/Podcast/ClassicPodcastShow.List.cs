@@ -180,9 +180,9 @@ internal static partial class ClassicPodcastShow
             var it = v.Items[k];
             if ((uint)it.Episode >= (uint)v.Episodes.Length) return P.RowEstimate;
             var vm = v.Episodes[it.Episode];
+            if (it.Lead && !vm.Trailer) return P.RowLeadEstimate;
             if (vm.State == PodcastRowState.Played) return P.RowPlayedEstimate;
             if (vm.State == PodcastRowState.InProgress) return P.RowEstimateTall;
-            if (it.Lead) return P.RowLeadEstimate;
             return lay.RowDescription && vm.Blurb.Length > 0 ? P.RowEstimateTall : P.RowEstimate;
         }
 

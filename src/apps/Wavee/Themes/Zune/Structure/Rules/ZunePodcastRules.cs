@@ -113,6 +113,10 @@ public static class ZunePodcastRules
     /// <summary>The lead: its air, the gap between its lines, its description's measure.</summary>
     public const float LeadPadTop = 14f, LeadPadBottom = 18f, LeadGap = 2f, LeadBlurbW = 640f;
     public const int LeadTitleLines = 2, LeadBlurbLines = 2;
+    /// <summary>The month's lead (the first episode of each month): its cover, square as every Zune cover, and the air over a description set
+    /// under the whole line.</summary>
+    public const float LeadCover = 88f, LeadCoverCompact = 64f, LeadUnderGap = 8f;
+    public const int LeadCoverDecode = 176;
     /// <summary>A played row's vertical padding; the date and length's drop at a wide row's end (onto the title's line).</summary>
     public const float RowPadPlayed = 4f, AsideDrop = 3f;
     /// <summary>A row in progress: its line under the title.</summary>
@@ -127,7 +131,7 @@ public static class ZunePodcastRules
     /// <summary>The list's seeded extents (the measured ones replace them on realize) and the prefix parts' recycle pools (past the item kinds).</summary>
     public const float RowEstimate = 64f, RowEstimateTall = 84f, FootEstimate = 64f;
     /// <summary>A wide row's seeded extents by its form: one line, with its second line (the description or the line in progress), played, the lead.</summary>
-    public const float RowWideEstimate = 56f, RowWideTall = 62f, RowPlayedEstimate = 44f, RowLeadEstimate = 112f;
+    public const float RowWideEstimate = 56f, RowWideTall = 62f, RowPlayedEstimate = 44f, RowLeadEstimate = 120f;
     public const int PrefixType = 16;
 
     /// <summary>The empty line and the foot's air.</summary>

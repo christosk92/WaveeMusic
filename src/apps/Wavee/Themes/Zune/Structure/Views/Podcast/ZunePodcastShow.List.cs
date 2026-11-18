@@ -184,7 +184,7 @@ internal static partial class ZunePodcastShow
             var vm = v.Episodes[it.Episode];
             if (vm.State == PodcastRowState.Played) return Z.RowPlayedEstimate;
             if (vm.State == PodcastRowState.InProgress) return Z.RowWideTall;
-            if (it.Lead) return Z.RowLeadEstimate;
+            if (it.Lead && (uint)it.Episode < (uint)v.Episodes.Length && !v.Episodes[it.Episode].Trailer) return Z.RowLeadEstimate;
             return lay.RowDescription && vm.Blurb.Length > 0 ? Z.RowWideTall : Z.RowWideEstimate;
         }
 

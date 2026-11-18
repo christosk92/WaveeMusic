@@ -54,6 +54,11 @@ internal static class WinUiPodcastKitRules
     /// <summary>The lead: a card (16 inside), the 40 accent play, a section-head title over two lines of what the episode is about.</summary>
     public const float LeadPad = 16f, LeadPlay = 40f, LeadGap = 4f, LeadBlurbW = 640f;
     public const int LeadTitleLines = 2, LeadBlurbLines = 2;
+    /// <summary>The month's card (the first episode of each month): its cover.</summary>
+    public const float LeadCover = 88f, LeadCoverCompact = 64f, LeadCoverRadius = 4f;
+    public const int LeadCoverDecode = 176;
+    /// <summary>The sign before an episode's number where it is written in the meta line ("#97").</summary>
+    public const string NumberSign = "#";
     /// <summary>A played row's vertical padding (one line, the play button's height).</summary>
     public const float RowPadPlayed = 2f;
     /// <summary>A row in progress: its 3-DIP bar under the title.</summary>

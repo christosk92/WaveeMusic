@@ -327,6 +327,8 @@ internal static class WinUiPodcastKit
         public bool Transcript { get; init; }
         /// <summary>The row carries a tag (the lock, or one of the four).</summary>
         public bool Tagged => Locked || Explicit || Bonus || Trailer || Transcript;
+        /// <summary>The cover of the month's card (the row is its month's lead); null on a row.</summary>
+        public string? Art { get; init; }
     }
 
     sealed class RowHost : Component, IPropsHost
@@ -337,7 +339,7 @@ internal static class WinUiPodcastKit
         RowProps _p = null!;
         string? _shownId;
         readonly Func<RowShape> _shapeOf;
-        readonly Func<string> _title, _date, _length, _desc, _numeral, _lock;
+        readonly Func<string> _title, _date, _length, _desc, _numeral, _numeralSigned, _lock;
         readonly Func<ContextMenuModel?> _menu;
         readonly Action _click, _play, _save, _exit;
         readonly Action<Point2> _move;
@@ -354,6 +356,7 @@ internal static class WinUiPodcastKit
             // the opening the episodes share.
             _title = () => Vm?.ShortTitle ?? "";
             _numeral = () => Vm?.Numeral ?? "";
+            _numeralSigned = () => Vm is { Numeral.Length: > 0 } v ? K.NumberSign + v.Numeral : "";
             _date = () => Vm?.Date ?? "";
             _length = () => Vm is { } v ? v.State == PodcastRowState.InProgress && v.Left.Length > 0 ? v.Left : v.Length : "";
             _desc = () => Vm?.Blurb ?? "";
@@ -389,13 +392,15 @@ internal static class WinUiPodcastKit
             string id = vm.Id;
             bool left = vm.State == PodcastRowState.InProgress && vm.Left.Length > 0;
             bool rest = vm.State is PodcastRowState.New or PodcastRowState.Unplayed;
-            bool lead = p.Lead && rest;
-            bool desc = vm.Blurb.Length > 0 && (lead || (rest && p.Wide && !p.Compact && p.Description));
+            // The first episode of each month is the month's card, whatever its state; a started one writes its bar where the description stood.
+            bool lead = p.Lead && !vm.Trailer;
+            bool desc = vm.Blurb.Length > 0 && (lead ? vm.State != PodcastRowState.InProgress : rest && p.Wide && !p.Compact && p.Description);
             return new RowShape(vm.State, vm.State == PodcastRowState.InProgress ? vm.Progress : 0f, vm.Saved, vm.Video, vm.Date.Length > 0,
                 left || vm.Length.Length > 0, left, desc,
                 p.Mode == PodcastRowMode.Select && v.Selected.Value == id, v.Playing.Value == id, lead)
             {
                 Blocked = !vm.Playable, Locked = vm.Lock.Length > 0, Explicit = vm.Explicit, Bonus = vm.Bonus, Trailer = vm.Trailer, Transcript = vm.HasTranscript,
+                Art = lead ? vm.ArtUrl : null,
             };
         }
 
@@ -424,7 +429,7 @@ internal static class WinUiPodcastKit
             bool selected = s.Selected, played = s.State == PodcastRowState.Played, progress = s.State == PodcastRowState.InProgress;
             // The row's form follows what the episode is to the listener: the lead is a card with a headline, a row at rest is the title over its
             // line of description, a row in progress carries its bar, a played row is one quiet line. A narrow list keeps the stacked form.
-            bool lead = s.Lead;
+            bool lead = s.Lead, rest = !played && !progress;
             bool wide = p.Wide && !p.Compact;
 
             float pb = lead ? K.LeadPlay : p.Compact ? K.PlayButtonCompact : K.PlayButton;
@@ -435,7 +440,7 @@ internal static class WinUiPodcastKit
                 ? R.Type.Heading("") with
                 {
                     Text = Prop.Of(_title), MaxLines = K.LeadTitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    Color = Tok.TextPrimary,
+                    Color = played ? Tok.TextSecondary : Tok.TextPrimary,
                 }
                 : Body("") with
                 {
@@ -453,11 +458,16 @@ internal static class WinUiPodcastKit
                     MinWidth = 0f, MaxWidth = K.LeadBlurbW,
                 }
                 : null;
+            // The card at Compact: the column between the cover, the play button and the actions holds the title alone; the meta line (with the
+            // episode's number, which has no lane there) and the description run under the whole line.
+            Element? underMeta = null;
             if (lead)
             {
-                text.Add(RowMeta(s, _date, _length, _lock));
+                Element meta = RowMeta(s, _date, _length, _lock, numeral: p.Numbered && p.Compact ? _numeralSigned : null);
+                if (p.Compact) underMeta = meta; else text.Add(meta);
                 text.Add(title);
-                if (leadBlurb is not null && !p.Compact) text.Add(leadBlurb);
+                if (progress) text.Add(RowBar(s.Progress));
+                else if (leadBlurb is not null && !p.Compact) text.Add(leadBlurb);
             }
             else if (!wide)
             {
@@ -482,8 +492,19 @@ internal static class WinUiPodcastKit
                 Opacity = showAdd ? 1f : 0f, Key = "row:save",
             }, Loc.Get(s.Saved ? Strings.Podcast.Pages.Saved : Strings.Podcast.Pages.Save));
             Element more = WinUiDetailKit.MoreButton(_menu, act);
-            var cells = new List<Element>(5) { PlayButton(s, pb, hover, _play, strong: lead) };
-            if (p.Numbered)
+            var cells = new List<Element>(6);
+            if (lead)
+            {
+                // The episode's own cover leads the card (a show that gives its episodes none shows the show's).
+                float cover = p.Compact ? K.LeadCoverCompact : K.LeadCover;
+                cells.Add(new BoxEl
+                {
+                    Key = "row:cover", Width = cover, Height = cover, Shrink = 0f, AlignSelf = FlexAlign.Start,
+                    Children = [Controls.Artwork(s.Art, cover, cover, K.LeadCoverRadius, decodePx: K.LeadCoverDecode)],
+                });
+            }
+            cells.Add(PlayButton(s, pb, hover, _play, strong: lead && rest));
+            if (p.Numbered && !(lead && p.Compact))
                 cells.Add((lead ? R.Type.NumeralLarge("") : R.Type.Numeral("")) with
                 {
                     Key = "row:numeral", Text = Prop.Of(_numeral), Width = lead ? K.NumeralLeadW : K.NumeralW, Shrink = 0f, TextAlign = TextAlign.End,
@@ -512,7 +533,7 @@ internal static class WinUiPodcastKit
                 PressedFill = lead ? Tok.FillCardSecondary : Tok.FillSubtleTertiary, BrushTransitionMs = rebound ? 0f : Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press, Draggable = _drag,
                 Gap = lead ? K.LeadGap + K.LeadGap : 0f, OnContextRequested = _context,
-                Children = leadBlurb is not null && p.Compact ? [line, leadBlurb] : [line],
+                Children = Lines(line, underMeta, p.Compact ? leadBlurb : null),
             };
             // ONE tree selected or not (the pill is present, painted only while selected: an opacity, never a presence change): a selection that comes
             // or goes with the row mode (a tier crossing, 1008) never rebuilds the row and what it holds (the progress ring keeps its mount).
@@ -568,6 +589,10 @@ internal static class WinUiPodcastKit
         ],
     };
 
+    /// <summary>The row's line and what runs under it (the Compact card's meta line and description), the absent ones left out.</summary>
+    static Element[] Lines(Element line, Element? a, Element? b)
+        => a is null ? (b is null ? [line] : [line, b]) : b is null ? [line, a] : [line, a, b];
+
     /// <summary>A wide row's title with its tags after it (the lock and why, the "E", Bonus, Trailer, the transcript mark): the title gives way
     /// with its ellipsis, the tags keep their width.</summary>
     static Element TitleWithTags(TextEl title, RowShape s, Func<string> lockTag)
@@ -622,12 +647,14 @@ internal static class WinUiPodcastKit
     /// tags (the lock and why, the "E", Bonus, Trailer, the transcript mark). <paramref name="end"/>: it stands at the row's end, where it keeps
     /// its width and carries no tag (they stand after the title). A played row says its date alone, there and under its title (the check and the
     /// quiet title say the rest), then its tags.</summary>
-    static Element RowMeta(RowShape s, Func<string> date, Func<string> length, Func<string> lockTag, bool end = false)
+    /// <remarks><paramref name="numeral"/>: the episode's number leads the line ("#97") where the row has no numeral lane.</remarks>
+    static Element RowMeta(RowShape s, Func<string> date, Func<string> length, Func<string> lockTag, bool end = false, Func<string>? numeral = null)
     {
         var kids = new List<Element>(5);
         bool quiet = s.State == PodcastRowState.Played && (end || s.Tagged);
         if (s.State == PodcastRowState.New) kids.Add(NewMark());
-        if (s.Date) kids.Add(MetaPart(false, MetaWord("") with { Text = Prop.Of(date) }));
+        if (numeral is not null) kids.Add(MetaPart(false, MetaWord("") with { Text = Prop.Of(numeral) }));
+        if (s.Date) kids.Add(MetaPart(numeral is not null, MetaWord("") with { Text = Prop.Of(date) }));
         if (s.Length && !quiet) kids.Add(MetaPart(s.Date, MetaWord("") with { Text = Prop.Of(length), Color = s.Left ? Tok.AccentTextPrimary : Tok.TextTertiary }));
         if (s.State == PodcastRowState.Played && !quiet) kids.Add(MetaPart(s.Date || s.Length, MetaWord(Loc.Get(Strings.Podcast.Pages.Played))));
         if (s.Video && !quiet) kids.Add(VideoTag());

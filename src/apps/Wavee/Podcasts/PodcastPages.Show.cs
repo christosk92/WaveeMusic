@@ -269,7 +269,7 @@ sealed class ShowModel
             var g = groups[gi];
             b.Add(new PodcastListItem(PodcastItemKind.Group, gi, -1));
             for (int k = 0; k < g.Rows.Length; k++)
-                b.Add(new PodcastListItem(PodcastItemKind.Row, gi, g.Rows[k], k == 0, lead && gi == 0 && k == 0));
+                b.Add(new PodcastListItem(PodcastItemKind.Row, gi, g.Rows[k], k == 0, lead && k == 0));
         }
         if (empty) b.Add(new PodcastListItem(PodcastItemKind.Empty, -1, -1));
         if (hasMore) b.Add(new PodcastListItem(PodcastItemKind.More, -1, -1));
@@ -746,10 +746,8 @@ sealed class ShowModel
         foreach (int i in view) episodes.Add(vms[i]);
         var years = YearsOf(vms, serial);
         var groups = GroupsOf(vms, view, shown, serial, oldestCell, !q.IsEmpty);
-        // The list's lead: the newest episode, not started yet, at the head of the whole list (newest first, no search). A serial reads in order
-        // and a search ranks nothing, so neither has one.
-        bool lead = !serial && !oldestCell && q.IsEmpty && filter is PodcastFilter.All or PodcastFilter.Unplayed && view.Count > 0
-            && vms[view[0]] is { State: PodcastRowState.New or PodcastRowState.Unplayed, Trailer: false };
+        // A lead per group: the first episode of each month heads its month. A serial reads in order and a search ranks nothing, so neither has one.
+        bool lead = !serial && q.IsEmpty && view.Count > 0;
 
         var filters = ImmutableArray.Create(
             new PodcastFilterVm(PodcastFilter.All, Loc.Get(Strings.Podcast.Pages.FilterAll), total) { CountText = total > 0 ? FormatCache.Int(total) : "" },

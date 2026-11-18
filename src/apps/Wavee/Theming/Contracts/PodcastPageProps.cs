@@ -168,8 +168,8 @@ public enum PodcastItemKind : byte { Group, Row, More, Empty }
 
 /// <summary>One item of <see cref="PodcastShowView.Items"/>: its kind, its group (an index into <see cref="PodcastShowView.Groups"/>, -1 for the foot
 /// and the empty line) and, for a row, its episode (an index into <see cref="PodcastShowView.Episodes"/>, else -1). <see cref="First"/>: the row opens
-/// its group (no rule above it). <see cref="Lead"/>: the row is the list's lead, the newest episode not started yet at the head of the whole list
-/// (newest first, no search): a theme gives it the weight of a headline.</summary>
+/// its group (no rule above it). <see cref="Lead"/>: the row leads its group, the first episode of its month (never on a serial, which reads in
+/// order, nor in a search): a theme sets it as the month's card, with its cover and the weight of a headline.</summary>
 public readonly record struct PodcastListItem(PodcastItemKind Kind, int Group, int Episode, bool First = false, bool Lead = false);
 
 /// <summary>The show page's snapshot.</summary>
