@@ -93,6 +93,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Expanders open and close in one motion.** On a podcast's page, "About the show" no longer leaves the episode list
+  jumping ahead as it opens or rising over its text as it closes: the list follows the panel's edge both ways. Every
+  expander (Settings too) now slides its panel out from under its header and back, as Windows' own does, so no half
+  line of text is left cut under the header.
+
 - **Your Episodes (WinUI) showed a stray "7", a dead band and a header out of line.** It stands on the library's column
   now, its header sits over the episodes, and its count counts episodes; Podcasts' counts say which mode they count.
 - **A menu over the Canvas showed the panel's buttons through it.** A menu over a playing video or Canvas is frosted
