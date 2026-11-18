@@ -236,8 +236,15 @@ public static class ZunePodcastTiers
     static readonly ZunePodcastLayout s_standard = s_small with { Tier = WidthTier.Standard, TwoColumns = true };
     static readonly ZunePodcastLayout s_huge = s_standard with { Tier = WidthTier.Huge };
 
-    /// <summary>The record for <paramref name="facts"/>' WINDOW tier; Standard's where no frame resolved the tiers.</summary>
-    public static ZunePodcastLayout Of(in TierFacts facts) => facts.Policy is null ? s_standard : For(facts.Window);
+    /// <summary>The record for <paramref name="facts"/>' WINDOW tier (Standard's where no frame resolved the tiers); where the CONTENT region is narrower
+    /// than Standard (the queue docked beside a Standard window), the two columns give way (the chapters over a Transcript tab) so nothing is squeezed,
+    /// as Classic's do.</summary>
+    public static ZunePodcastLayout Of(in TierFacts facts)
+    {
+        if (facts.Policy is null) return s_standard;
+        var l = For(facts.Window);
+        return l.TwoColumns && facts.Content < WidthTier.Standard ? l with { TwoColumns = false } : l;
+    }
 
     public static ZunePodcastLayout For(WidthTier tier) => tier switch
     {

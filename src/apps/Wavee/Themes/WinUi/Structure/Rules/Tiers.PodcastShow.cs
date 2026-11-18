@@ -67,8 +67,10 @@ public static class WinUiPodcastShowTiers
         Target = 32f, PlayButton = WinUiPodcastKitRules.PlayButton, Search = 208f, UpBar = 160f, GroupH = 36f, GroupButtonH = 32f,
     };
 
-    /// <summary>The record for <paramref name="facts"/>' WINDOW tier (Huge reads Standard's); Standard where no frame resolved the tiers.</summary>
-    public static WinUiPodcastShowLayout Of(in TierFacts facts) => facts.Policy is null ? s_standard : For(facts.Window);
+    /// <summary>The record for <paramref name="facts"/>' CONTENT tier (Huge reads Standard's), as the episode and audiobook pages read theirs: a docked
+    /// queue or lyrics pane narrows the content, and the page gives way to the narrower form instead of squeezing the pane-and-list form into it.
+    /// Standard where no frame resolved the tiers.</summary>
+    public static WinUiPodcastShowLayout Of(in TierFacts facts) => facts.Policy is null ? s_standard : For(facts.Content);
 
     /// <summary>The list column's width under which the toolbar's search collapses to its icon button (the filters keep their room): the 1008-1100
     /// windows, where the list beside the 360 pane is about 350 wide.</summary>

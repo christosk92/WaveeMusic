@@ -279,33 +279,36 @@ internal static partial class WinUiPodcastShow
             };
         }
 
-        /// <summary>publisher · ★ rating (count) · cadence · N episodes: each part after the first carries its own "·", so a wrapped line never ends on one.</summary>
+        /// <summary>publisher · ★ rating (count) · cadence · N episodes on ONE line (the audiobook hero's rule): the rating stays whole, the publisher
+        /// and the tail ("· Monthly · 12 episodes", its separators inside the run) end in an ellipsis where the line is short, so no line ever starts or
+        /// ends on a separator.</summary>
         static Element Meta(PodcastShowHead h)
         {
-            var parts = new List<Element>(4);
-            if (h.Publisher.Length > 0) parts.Add(Body(h.Publisher) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
+            var kids = new List<Element>(3);
+            if (h.Publisher.Length > 0)
+                kids.Add(Body(h.Publisher) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
             if (h.Rating.Length > 0)
-                parts.Add(new BoxEl
+                kids.Add(new BoxEl
                 {
                     Direction = 0, Gap = S.TagGap, AlignItems = FlexAlign.Center, Shrink = 0f,
                     Children =
                     [
+                        .. kids.Count > 0 ? new Element[] { Body(Sep) with { Color = Tok.TextTertiary } } : [],
                         Icon(Icons.FavoriteStarFill, S.MetaStar, Tok.TextSecondary),
                         Body(h.Rating) with { Color = Tok.TextSecondary },
                         Body(h.RatingCount) with { Color = Tok.TextTertiary },
                     ],
                 });
-            if (h.Cadence.Length > 0) parts.Add(Body(h.Cadence) with { Color = Tok.TextSecondary });
-            if (h.Count.Length > 0) parts.Add(Body(h.Count) with { Color = Tok.TextSecondary });
-            var kids = new Element[parts.Count];
-            for (int i = 0; i < kids.Length; i++)
-                kids[i] = i == 0 ? parts[i] : new BoxEl
+            string tail = h.Cadence.Length > 0 && h.Count.Length > 0 ? h.Cadence + " " + Sep + " " + h.Count : h.Cadence + h.Count;
+            if (tail.Length > 0)
+                kids.Add(Body(kids.Count > 0 ? Sep + " " + tail : tail) with
                 {
-                    Direction = 0, Gap = S.EyebrowGap, AlignItems = FlexAlign.Center, Shrink = 0f,
-                    Children = [Body("·") with { Color = Tok.TextTertiary }, parts[i]],
-                };
-            return new BoxEl { Direction = 0, Gap = S.EyebrowGap, AlignItems = FlexAlign.Center, Wrap = true, MinWidth = 0f, Children = kids };
+                    Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+                });
+            return new BoxEl { Direction = 0, Gap = S.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
         }
+
+        const string Sep = "·";
 
         Element Commands(PodcastShowView v, WinUiPodcastShowLayout lay, bool live)
         {

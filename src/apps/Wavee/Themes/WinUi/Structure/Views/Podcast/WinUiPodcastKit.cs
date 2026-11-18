@@ -528,32 +528,39 @@ internal static class WinUiPodcastKit
     /// <summary>The row's meta line (<see cref="MetaLine"/>'s parts) with its date and its length (or the accent time left) bound.</summary>
     static Element RowMeta(RowShape s, Func<string> date, Func<string> length)
     {
-        var kids = new List<Element>(8);
+        var kids = new List<Element>(5);
         if (s.State == PodcastRowState.New) kids.Add(NewMark());
-        void Dot() { if (kids.Count > 0) kids.Add(MetaWord("·")); }
-        if (s.Date) kids.Add(MetaWord("") with { Text = Prop.Of(date) });
-        if (s.Length)
-        {
-            Dot();
-            kids.Add(MetaWord("") with { Text = Prop.Of(length), Color = s.Left ? Tok.AccentTextPrimary : Tok.TextTertiary });
-        }
-        if (s.State == PodcastRowState.Played) { Dot(); kids.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Played))); }
+        if (s.Date) kids.Add(MetaPart(false, MetaWord("") with { Text = Prop.Of(date) }));
+        if (s.Length) kids.Add(MetaPart(s.Date, MetaWord("") with { Text = Prop.Of(length), Color = s.Left ? Tok.AccentTextPrimary : Tok.TextTertiary }));
+        if (s.State == PodcastRowState.Played) kids.Add(MetaPart(s.Date || s.Length, MetaWord(Loc.Get(Strings.Podcast.Pages.Played))));
         if (s.Video) kids.Add(VideoTag());
         return new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };
     }
 
-    /// <summary>The meta line: New (dot + word), the date, the length or the accent time left, Played, the Video tag.</summary>
+    /// <summary>The meta line: New (dot + word), the date, the length or the accent time left, Played, the Video tag. Each word after the first
+    /// carries its "·" in one unit (the separator travels with its word); the words give way (an ellipsis) before the New mark and the Video tag,
+    /// which never clip.</summary>
     public static Element MetaLine(PodcastEpisodeVm vm, bool showNew = true)
     {
-        var kids = new List<Element>(8);
+        var kids = new List<Element>(5);
         if (showNew && vm.State == PodcastRowState.New) kids.Add(NewMark());
-        void Dot() { if (kids.Count > 0) kids.Add(MetaWord("·")); }
-        if (vm.Date.Length > 0) kids.Add(MetaWord(vm.Date));
-        if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) { Dot(); kids.Add(MetaWord(vm.Left) with { Color = Tok.AccentTextPrimary }); }
-        else if (vm.Length.Length > 0) { Dot(); kids.Add(MetaWord(vm.Length)); }
-        if (vm.State == PodcastRowState.Played) { Dot(); kids.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Played))); }
+        bool any = false;
+        if (vm.Date.Length > 0) { kids.Add(MetaPart(false, MetaWord(vm.Date))); any = true; }
+        if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) { kids.Add(MetaPart(any, MetaWord(vm.Left) with { Color = Tok.AccentTextPrimary })); any = true; }
+        else if (vm.Length.Length > 0) { kids.Add(MetaPart(any, MetaWord(vm.Length))); any = true; }
+        if (vm.State == PodcastRowState.Played) kids.Add(MetaPart(any, MetaWord(Loc.Get(Strings.Podcast.Pages.Played))));
         if (vm.Video) kids.Add(VideoTag());
         return new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };
+    }
+
+    /// <summary>One meta word with its leading "·" (<paramref name="dot"/>) as ONE unit: the separator never stands apart from its word. The word
+    /// gives way with an ellipsis where the line is short, so what follows it (the Video tag) keeps its whole width.</summary>
+    static Element MetaPart(bool dot, TextEl word)
+    {
+        var flex = word with { Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap };
+        return dot
+            ? new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, Shrink = 1f, MinWidth = 0f, Children = [MetaWord("·"), flex] }
+            : flex;
     }
 
     /// <summary>New: the accent dot and the word.</summary>
