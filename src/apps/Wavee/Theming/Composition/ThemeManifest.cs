@@ -38,10 +38,10 @@ public readonly record struct RoleSet(ImmutableArray<string> RoleIds)
     public static RoleSet None => new(ImmutableArray<string>.Empty);
 }
 
-/// <summary>One Settings row a structure still binds to a LEGACY key (T1b): the id of its <c>SettingsDoc</c> row on the Appearance
-/// tab and the group it is shown under in the theme's options. An M-PR that turns the switch into a theme option removes the
-/// entry and declares the option instead (the generated row takes the same place), so the tab never changes layout again.</summary>
-/// <param name="RowId">The <c>SettingsDoc</c> row id (Appearance tab).</param>
+/// <summary>One Settings row a structure still binds to a LEGACY key (T1b): its registry dial (named by its id or its old row id,
+/// <c>SettingsSpec.TryResolve</c>) and the group it is shown under in the theme's options. An M-PR that turns the switch into a theme
+/// option removes the entry and declares the option instead (the generated row takes the same place), so the page never changes layout again.</summary>
+/// <param name="RowId">The dial's id or old row id.</param>
 /// <param name="Group">The group label's loc key.</param>
 public sealed record LegacyOptionRow(string RowId, string Group);
 

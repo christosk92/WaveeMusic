@@ -115,7 +115,7 @@ internal static partial class WinUiSettings
         {
             if (!row.Visible(SettingsFacts.Live)) continue;
             cards.Add(DocRow(row, KeyChip(row.Current as string ?? "")));
-            if (cycles && row.Id == "newTab")
+            if (cycles && SettingsDoc.RowIdOf(row) == "newTab")
                 cards.Add(Row(Loc.Get(Strings.Theme.Winui.Screens.CycleTabs), Loc.Get(Strings.Theme.Winui.Screens.CycleTabsSub), KeyChip(CycleTabsChord)) with { Key = "settings:keyboard:cycleTabs" });
         }
         return cards.ToArray();

@@ -1,8 +1,8 @@
 // ── Theming/Contracts/SettingsPageProps.cs — the props of the Settings views (themes plan 6.0, T11b) ───────────────────────────
 //
 // `Settings.PageHost` (`Screens\Settings.Page.cs`, `[CoreHost]`) keeps the hooks, the page epoch, the page context and the Storage census; it hands the
-// view the pivot's state and the census as data. The rows themselves are not in the props: a view reads the document (`SettingsDoc.Tabs`, `SettingsDoc.Row`)
-// and writes through each row's writer, so a second theme draws the same page from the same source. Every member is read-only (WVTH006); the writable
+// view the pivot's state and the census as data. The rows themselves are not in the props: a view reads the registry's dials (through the old pages'
+// address, `SettingsDoc.Section`, `SettingsDoc.Row`) and writes through each dial's writer, so a second theme draws the same page from the same source. Every member is read-only (WVTH006); the writable
 // pivot cell travels as a `Func<Signal<T>>`.
 
 using FluentGpu.Signals;

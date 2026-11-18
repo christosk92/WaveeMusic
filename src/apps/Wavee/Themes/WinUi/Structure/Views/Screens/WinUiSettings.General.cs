@@ -226,11 +226,11 @@ internal static partial class WinUiSettings
         });
     }
 
-    static string TopicLabel(NotifyTopic topic) => Loc.Get(SettingsDoc.TopicTitleKey(topic));
+    static string TopicLabel(NotifyTopic topic) => Loc.Get(SettingsSpec.TopicTitleKey(topic));
 
     static string TopicSub(NotifyTopic topic)
     {
-        string sub = Loc.Get(SettingsDoc.TopicCaptionKey(topic));
+        string sub = Loc.Get(SettingsSpec.TopicCaptionKey(topic));
         return NotificationPolicy.IsScheduled(topic) ? sub + "  ·  " + Loc.Get(Strings.Settings.Notify.ClosedBadge) : sub;
     }
 
@@ -249,7 +249,7 @@ internal static partial class WinUiSettings
     /// <summary>A notification row that depends on another setting. The engine does not cascade a card's IsEnabled into its
     /// content (#183: a greyed card kept a live, enabled-looking switch), so ONE flag (the row's enablement) drives the card
     /// and its toggle.</summary>
-    static Element DependentNotifyRow(SettingsRow row, string icon)
+    static Element DependentNotifyRow(SettingsDial row, string icon)
         => DocRow(row, RowToggle(row, row.Enabled(SettingsFacts.Live).Enabled), icon: icon);
 
     static Element QuietRange(in NotificationPolicy policy)
@@ -268,7 +268,7 @@ internal static partial class WinUiSettings
             Icons.Clock);
     }
 
-    static Element HourCombo(string[] hours, SettingsRow row, int value)
+    static Element HourCombo(string[] hours, SettingsDial row, int value)
         => Combo(hours, new Signal<int>(Math.Clamp(value, 0, 23)), width: WinUiSettingsRules.HourComboWidth, onChange: h =>
         {
             if (row.Writer.Choose!(h)) Settings.Bump();

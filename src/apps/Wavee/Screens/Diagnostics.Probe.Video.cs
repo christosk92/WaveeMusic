@@ -1212,22 +1212,19 @@ public static partial class Diagnostics
 
         [LibraryImport("user32.dll", EntryPoint = "PrintWindow")] private static partial int VpPrintWindow(nint hwnd, nint dc, uint flags);
 
-        /// <summary>UI thread: a Settings row's own writer (the inspector's `setting`): a toggle takes true/false, a choice, segmented
-        /// row or picker its index.</summary>
+        /// <summary>UI thread: a Settings dial's own writer (the inspector's `setting`), named by its registry id or its old row id: a
+        /// toggle takes true/false, a choice, segmented dial or picker its index.</summary>
         static string SetSettingRow(string rowId, string value)
         {
-            foreach (SettingsRow row in SettingsDoc.AllRows)
-            {
-                if (!string.Equals(row.Id, rowId, StringComparison.OrdinalIgnoreCase)) continue;
-                SettingsWriter writer = row.Writer;
-                bool reread;
-                if (writer.Toggle is { } toggle && value is "true" or "false" or "1" or "0") reread = toggle(value is "true" or "1");
-                else if (writer.Choose is { } choose && int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int n)) reread = choose(n);
-                else return "row " + rowId + " (" + row.Kind + ") does not take '" + value + "' here";
-                if (reread) Settings.Bump();
-                return "set " + rowId + "=" + value;
-            }
-            return "no Settings row " + rowId;
+            if (!SettingsSpec.TryResolve(rowId, out SettingsDial dial, out var matches))
+                return matches.Count == 0 ? "no Settings dial " + rowId : "'" + rowId + "' names several dials: " + string.Join("|", matches.Select(static d => d.Id));
+            SettingsWriter writer = dial.Writer;
+            bool reread;
+            if (writer.Toggle is { } toggle && value is "true" or "false" or "1" or "0") reread = toggle(value is "true" or "1");
+            else if (writer.Choose is { } choose && int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int n)) reread = choose(n);
+            else return "dial " + rowId + " (" + dial.Kind + ") does not take '" + value + "' here";
+            if (reread) Settings.Bump();
+            return "set " + rowId + "=" + value;
         }
 
         // ── plumbing ──────────────────────────────────────────────────────────────────────────────────────────────

@@ -6,8 +6,7 @@
 // `SettingsPageProps.Storage`; the clears, the budget writes, the folder doors and the factory reset are the rows' writers.
 //
 // RESIDENT CACHE (ch 27 G2, decided): 0.3 has no resident-playlist cache and no per-table census, so the "In memory" section and its "Resident library cache" row
-// are DELETED. `Settings.Catalog` still lists Storage › Memory › residentCache; the section and the row leave the catalog together (the every-section-has-a-row
-// invariant).
+// are DELETED, with their strings.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -160,7 +159,7 @@ internal static partial class ClassicSettings
 
     /// <summary>N11: the verb opens the ONE confirm (Cancel default, the row's <see cref="SettingsConfirm"/>); the confirmed
     /// action — the row's writer — runs off-thread and toasts.</summary>
-    static Element StorageClearButton(SettingsRow row, ISettingsFacts facts)
+    static Element StorageClearButton(SettingsDial row, ISettingsFacts facts)
     {
         var confirm = row.Confirm!;
         return StdButton(Loc.Get(confirm.TitleKey),

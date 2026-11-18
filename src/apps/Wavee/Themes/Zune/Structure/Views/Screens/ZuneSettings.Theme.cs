@@ -296,7 +296,7 @@ internal static partial class ZuneSettings
     /// <summary>One generated row as a Zune row: the control for its kind. A kind this page has no control for (a legacy action, an unknown) is left out.</summary>
     static Element? Draw(ZuneKit k, GeneratedOptionRow g, ISettingsFacts facts)
     {
-        SettingsRow row = g.Row;
+        SettingsDial row = g.Row;
         string title = Loc.Get(row.TitleKey);
         string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
         bool enabled = row.Enabled(facts).Enabled && g.Enabled;

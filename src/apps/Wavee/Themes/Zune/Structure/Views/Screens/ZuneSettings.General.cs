@@ -22,10 +22,10 @@ internal static partial class ZuneSettings
     // ══ shared ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The document's row <paramref name="id"/> of <paramref name="tab"/>.</summary>
-    static SettingsRow D(Tab tab, string id) => SettingsDoc.Row(tab, id);
+    static SettingsDial D(Tab tab, string id) => SettingsDoc.Row(tab, id);
 
     /// <summary>The row exists for the facts (a developer-only row is absent, never greyed).</summary>
-    static bool Shown(SettingsRow row) => row.Visible(SettingsFacts.Live);
+    static bool Shown(SettingsDial row) => row.Visible(SettingsFacts.Live);
 
     /// <summary>A group of the open area: the document section's own title and caption over its rows. It carries the section it draws, so an area can pick its groups.</summary>
     static Named Group(ZuneKit k, Tab tab, string section, params Element?[] rows)
@@ -110,7 +110,7 @@ internal static partial class ZuneSettings
                 labels[i + 1] = a.IsCurrent ? Strings.Settings.Gpu.InUse(a.Name) : a.Name;
             }
             int count = _adapters.Count;
-            return k.DocRow(row, k.Choice(row.Tab + "." + row.Id, new ZuneChoice(labels,
+            return k.DocRow(row, k.Choice(SettingsDoc.TabOf(row) + "." + SettingsDoc.RowIdOf(row), new ZuneChoice(labels,
                 () => row.Current is int at && at > 0 && at <= count ? at : 0,
                 i => row.Writer.Choose!(i), Chips: false, Width: Z.WideComboWidth)));
         }
@@ -145,10 +145,10 @@ internal static partial class ZuneSettings
         return groups.ToArray();
     }
 
-    static Element QuietRange(ZuneKit k, SettingsRow from, SettingsRow to)
+    static Element QuietRange(ZuneKit k, SettingsDial from, SettingsDial to)
     {
         string[] hours = Settings.NotifyRules.HourLabels();
-        Element Hour(SettingsRow row, Func<NotificationPolicy, int> read) => k.Choice(row.Id, new ZuneChoice(hours,
+        Element Hour(SettingsDial row, Func<NotificationPolicy, int> read) => k.Choice(SettingsDoc.RowIdOf(row), new ZuneChoice(hours,
             () => Math.Clamp(read(Notify.Prefs.Policy()), 0, 23),
             h => { if (row.Writer.Choose!(h)) Settings.Bump(); }, Chips: false, Width: Z.HourComboWidth));
         return k.Row("zs:row:quiet-range", Loc.Get(Strings.Settings.Notify.QuietFrom) + " / " + Loc.Get(Strings.Settings.Notify.QuietTo), null,
@@ -170,7 +170,7 @@ internal static partial class ZuneSettings
             : [Loc.Get(Strings.Settings.Notify.LevelOff), Loc.Get(Strings.Settings.Notify.LevelInApp)];
         var kids = new List<Element>(2)
         {
-            k.Choice(ladder.Id, new ZuneChoice(labels, () => (int)Notify.Prefs.Level(topic),
+            k.Choice(SettingsDoc.RowIdOf(ladder), new ZuneChoice(labels, () => (int)Notify.Prefs.Level(topic),
                 i => { if (ladder.Writer.Choose!(i)) Settings.Bump(); }, Chips: true)),
         };
         if (dev)
@@ -178,9 +178,9 @@ internal static partial class ZuneSettings
             {
                 if (D(Tab.Notifications, SettingsDoc.TopicTestRowId(topic)).Writer.Run!()) Settings.Bump();
             }));
-        string sub = Loc.Get(SettingsDoc.TopicCaptionKey(topic));
+        string sub = Loc.Get(SettingsSpec.TopicCaptionKey(topic));
         if (NotificationPolicy.IsScheduled(topic)) sub += "  ·  " + Loc.Get(Strings.Settings.Notify.ClosedBadge);
-        return k.Row(ZuneKit.RowKey(ladder), Loc.Get(SettingsDoc.TopicTitleKey(topic)), sub,
+        return k.Row(ZuneKit.RowKey(ladder), Loc.Get(SettingsSpec.TopicTitleKey(topic)), sub,
             new BoxEl { Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinWidth = 0f, Children = kids.ToArray() });
     }
 

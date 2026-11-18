@@ -166,7 +166,7 @@ internal static partial class ZuneSettings
     }
 
     /// <summary>One of the three ways to tell the developer: a disc with a mark, the words, a chevron. A press opens the report dialog (the row's writer).</summary>
-    static Element ActionRow(SettingsRow row, string mark, bool accent)
+    static Element ActionRow(SettingsDial row, string mark, bool accent)
     {
         string? sub = row.DescriptionKey(SettingsFacts.Live) is { } key ? Loc.Get(key) : null;
         var kids = new List<Element>(2) { ZuneText.Label(Loc.Get(row.TitleKey)) };
@@ -180,7 +180,7 @@ internal static partial class ZuneSettings
         };
         return new BoxEl
         {
-            Key = "zs:action:" + row.Id, Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ActionGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = Z.ActionMinH,
+            Key = "zs:action:" + SettingsDoc.RowIdOf(row), Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ActionGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = Z.ActionMinH,
             Padding = new Edges4(Z.ActionPadX, Z.ActionPadY, Z.ActionPadX, Z.ActionPadY),
             // The row's hover plate bleeds past the column by its padding, so the disc stands on the column's edge (Z-Feedback).
             Margin = new Edges4(-Z.ActionPadX, 0f, -Z.ActionPadX, 0f),

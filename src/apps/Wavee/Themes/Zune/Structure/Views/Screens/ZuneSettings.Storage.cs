@@ -104,7 +104,7 @@ internal static partial class ZuneSettings
     }
 
     /// <summary>The verb opens the ONE confirm (Cancel default, the row's <see cref="SettingsConfirm"/>); the confirmed action, the row's writer, runs off-thread and toasts.</summary>
-    static Element ClearCmd(ZuneKit k, SettingsRow row, ISettingsFacts facts)
+    static Element ClearCmd(ZuneKit k, SettingsDial row, ISettingsFacts facts)
     {
         var confirm = row.Confirm!;
         return k.Cmd(Loc.Get(confirm.TitleKey), () => ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey), () => row.Writer.Run!()),
@@ -257,7 +257,7 @@ internal static partial class ZuneSettings
                 Direction = 1, Gap = Z.ControlGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
                 Children =
                 [
-                    k.Choice(budget.Id, new ZuneChoice(
+                    k.Choice(SettingsDoc.RowIdOf(budget), new ZuneChoice(
                         [Loc.Get(Strings.Settings.Storage.FixedSize), Loc.Get(Strings.Settings.Storage.DriveShare), Loc.Get(Strings.Settings.Storage.Unlimited)],
                         () => budget.Current is int at ? at : 0,
                         m2 => { if (budget.Writer.Choose!(m2)) Settings.Bump(); }, Chips: true)),

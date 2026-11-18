@@ -6,7 +6,7 @@
 // document) · Now playing (hero*, player style) · Home (the daylist clock). The sidebar, track-list and surface cards (the picture of the legacy rows a structure
 // still binds) are in this file's §4-§5.
 //
-// * DEVELOPER-ONLY rows (`Catalog.RowVisible`, the document's `Visible`): the Cover/‹Player› hero switch is composed away while the
+// * DEVELOPER-ONLY rows (the dial's `Tier` and `Visible`): the Cover/‹Player› hero switch is composed away while the
 // developer switch is off. "Lyrics second line" and "Animated lyrics backdrop" are not gated but GONE — neither is a setting any more.
 //
 // EVERY ROW WRITES THROUGH ITS DOCUMENT ROW'S WRITER (which bumps the epoch it always bumped: ch 27 W2 "three facts"). The tab body reads the document, never a
@@ -362,7 +362,7 @@ internal static partial class ClassicSettings
         return new BoxEl
         {
             Direction = 1, Gap = ClassicSettingsRules.SidebarNoteGap,
-            Children = [strip, Ui.Caption(Loc.Get(SettingsDoc.FinishEditingKey)) with { Color = Tok.TextSecondary }],
+            Children = [strip, Ui.Caption(Loc.Get(SettingsSpec.FinishEditingKey)) with { Color = Tok.TextSecondary }],
         };
     }
 

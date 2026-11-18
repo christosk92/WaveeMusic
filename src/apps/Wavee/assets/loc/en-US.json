@@ -1241,6 +1241,32 @@
       "feedback": "Feedback & help",
       "about": "About"
     },
+    "categories": {
+      "$comment": "The settings registry's categories (Screens/SettingsSpec*.cs, the settings rework): the page title, the strip's short word (owner decision 1) and what the category is for.",
+      "home": { "title": "Settings home", "strip": "Home", "subtitle": "Your setup at a glance" },
+      "appearance": { "title": "Appearance", "strip": "Appearance", "subtitle": "How Wavee looks" },
+      "sound": { "title": "Sound", "strip": "Sound", "subtitle": "What you hear" },
+      "playback": { "title": "Playback", "strip": "Playback", "subtitle": "What plays next, and how songs and videos move on" },
+      "lyrics": { "title": "Lyrics & Now playing", "strip": "Lyrics", "subtitle": "The lyrics, Now playing, full screen and the mini player" },
+      "notifications": { "title": "Notifications", "strip": "Notifications", "subtitle": "What Wavee tells you, and where" },
+      "system": { "title": "Startup & system", "strip": "System", "subtitle": "How Wavee starts, closes and runs on this PC" },
+      "storage": { "title": "Storage", "strip": "Storage", "subtitle": "What Wavee keeps on this PC" },
+      "account": { "title": "Account & privacy", "strip": "Account", "subtitle": "Your Spotify account and what leaves this PC" },
+      "help": { "title": "Help & about", "strip": "Help", "subtitle": "Updates, feedback, shortcuts and diagnostics" }
+    },
+    "groups": {
+      "$comment": "The settings registry's group headings, per category (Screens/SettingsSpec*.cs). The theme's own options group is settings.themeOptions.title.",
+      "home": { "glance": "At a glance", "suggestions": "Suggestions", "recent": "Recently changed" },
+      "appearance": { "theme": "Theme", "mode": "Mode", "sizeAndText": "Size and text", "motion": "Motion", "homeAndLibrary": "Home and library" },
+      "sound": { "quality": "Quality", "loudness": "Loudness and volume", "equalizer": "Equalizer", "output": "Output and Connect" },
+      "playback": { "betweenSongs": "Between songs", "playerBar": "Player bar", "podcasts": "Podcasts and audiobooks", "videos": "Videos and Canvas", "runtime": "Playback runtime" },
+      "lyrics": { "text": "Lyrics", "nowPlaying": "Now playing", "fullScreen": "Full screen", "miniPlayer": "Mini player" },
+      "notifications": { "delivery": "Delivery", "topics": "What you're told about" },
+      "system": { "startup": "Startup", "window": "Window and notification area", "language": "Language", "links": "Links", "graphics": "Graphics" },
+      "storage": { "onThisPc": "On this PC", "playbackCache": "Playback cache", "metadataCache": "Metadata cache", "reset": "Reset" },
+      "account": { "signedIn": "Account", "privacy": "Privacy", "crashReports": "Crash reports" },
+      "help": { "about": "About Wavee", "feedback": "Feedback", "shortcuts": "Keyboard shortcuts", "diagnostics": "Diagnostics", "developer": "Developer", "links": "Links and licenses" }
+    },
     "account": {
       "title": "Account",
       "subtitle": "The Spotify account Wavee is signed in to",

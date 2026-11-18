@@ -29,7 +29,6 @@ using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
-using Catalog = Wavee.Settings.Catalog;
 using Tab = Wavee.Settings.Tab;
 
 namespace Wavee.Themes.WinUi;
@@ -329,11 +328,11 @@ internal static partial class WinUiSettings
     };
 
     /// <summary>The document's row <paramref name="id"/> of <paramref name="tab"/>.</summary>
-    static SettingsRow D(Tab tab, string id) => SettingsDoc.Row(tab, id);
+    static SettingsDial D(Tab tab, string id) => SettingsDoc.Row(tab, id);
 
     /// <summary>A compact toggle over a document row: a FRESH signal seeded from the row's value, the row's writer (the one
     /// verb that persists and applies), then the page bump when the writer asks for it.</summary>
-    static Element RowToggle(SettingsRow row, bool isEnabled = true)
+    static Element RowToggle(SettingsDial row, bool isEnabled = true)
         => Toggle(new Signal<bool>(row.Current is true), on =>
         {
             if (row.Writer.Toggle!(on)) Settings.Bump();
@@ -342,7 +341,7 @@ internal static partial class WinUiSettings
     /// <summary>One settings row drawn from a document row: its title, its description (the row's REASON while it is greyed
     /// with one, else its caption — <paramref name="sub"/> overrides it for a live sentence), its glyph (the catalog's, or
     /// <paramref name="icon"/>) and its enablement. The control is the view's.</summary>
-    static Element DocRow(SettingsRow row, Element? control = null, string? sub = null, string? icon = null,
+    static Element DocRow(SettingsDial row, Element? control = null, string? sub = null, string? icon = null,
                           SettingsCard.ContentAlignment align = SettingsCard.ContentAlignment.Right,
                           bool isClickEnabled = false, Action? onClick = null, string? actionIcon = null)
     {
@@ -390,7 +389,7 @@ internal static partial class WinUiSettings
         return Icons.Settings;
     }
 
-    static string SectionGlyph(Tab tab, string title) => Glyph(Catalog.SectionGlyph(tab, title));
+    static string SectionGlyph(Tab tab, string title) => Glyph(SettingsDoc.SectionGlyph(tab, title));
 
-    static string RowGlyph(Tab tab, string rowId) => Glyph(Catalog.RowGlyph(tab, rowId));
+    static string RowGlyph(Tab tab, string rowId) => Glyph(SettingsDoc.RowGlyph(tab, rowId));
 }

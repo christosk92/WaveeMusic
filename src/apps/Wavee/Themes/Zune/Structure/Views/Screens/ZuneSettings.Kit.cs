@@ -155,7 +155,7 @@ internal sealed class ZuneKit
 
     /// <summary>A row drawn from a document row: its title, its description (the reason while it is greyed with one, else its caption; <paramref name="sub"/>
     /// overrides it for a live sentence) and its enablement. The control is the view's.</summary>
-    public Element DocRow(SettingsRow row, Element? control, string? sub = null, bool? enabled = null)
+    public Element DocRow(SettingsDial row, Element? control, string? sub = null, bool? enabled = null)
     {
         var facts = SettingsFacts.Live;
         string? description = sub ?? (row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null);
@@ -163,7 +163,7 @@ internal sealed class ZuneKit
     }
 
     /// <summary>The node key of a document row's row.</summary>
-    public static string RowKey(SettingsRow row) => "zs:row:" + (int)row.Tab + ":" + row.Id;
+    public static string RowKey(SettingsDial row) => "zs:row:" + (int)SettingsDoc.TabOf(row) + ":" + SettingsDoc.RowIdOf(row);
 
     /// <summary>A section: its heading (with the caption beside it on the baseline) over its rows.</summary>
     public Element Block(string key, string? title, string? sub, IReadOnlyList<Element> rows)
@@ -194,7 +194,7 @@ internal sealed class ZuneKit
     // ── switches, checks, chips, combos, sliders ──────────────────────────────────────────────────────────────────────────
 
     /// <summary>A switch over a document row: its value, its writer, then the page bump when the writer asks for it.</summary>
-    public Element Toggle(SettingsRow row, bool enabled = true)
+    public Element Toggle(SettingsDial row, bool enabled = true)
         => Switch(row.Current is true, on => { if (row.Writer.Toggle!(on)) Settings.Bump(); }, enabled);
 
     /// <summary>A switch with its own writer. A fresh signal per render carries the live value (the switch re-pushes its props).</summary>
@@ -218,8 +218,8 @@ internal sealed class ZuneKit
         => Embed.Comp(() => new ChoiceCell(choice)) with { Key = choice.KeyFor(id) };
 
     /// <summary>A choice cell over a document row: the row's current index and its <c>Choose</c> writer, then the page bump when the writer asks for it.</summary>
-    public Element Choice(SettingsRow row, IReadOnlyList<string> labels, bool chips, IReadOnlyList<string>? descriptions = null, IReadOnlyList<bool>? itemEnabled = null, float width = Z.ComboWidth, bool? enabled = null)
-        => Choice(row.Tab + "." + row.Id, new ZuneChoice(labels,
+    public Element Choice(SettingsDial row, IReadOnlyList<string> labels, bool chips, IReadOnlyList<string>? descriptions = null, IReadOnlyList<bool>? itemEnabled = null, float width = Z.ComboWidth, bool? enabled = null)
+        => Choice(SettingsDoc.TabOf(row) + "." + SettingsDoc.RowIdOf(row), new ZuneChoice(labels,
             () => row.Current is int at ? at : 0,
             i => { if (row.Writer.Choose!(i)) Settings.Bump(); },
             chips, enabled is { } e ? () => e : null, descriptions, itemEnabled, width));

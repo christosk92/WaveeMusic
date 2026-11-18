@@ -1413,8 +1413,8 @@ card and the scrim are no tab stops and keep the wheel off the page (`BlocksBack
 
 ### The Settings page (T11b)
 
-Settings is the structure's picture over the core's document (`Themes\Classic\Structure\Views\Screens\ClassicSettings*.cs`). `SettingsDoc` (tabs, sections, rows: kind, title, value, writer, enablement and its reason, visibility, glyph name,
-confirmation), every verb (`row.Writer`: persistence, live apply, DSP pushes, OS registrations, file I/O off the render path), the facts the rows ask (`SettingsFacts`), the page epoch (`Settings.Bump`), the Storage census, the pivot's
+Settings is the structure's picture over the core's settings registry (`Themes\Classic\Structure\Views\Screens\ClassicSettings*.cs`). `SettingsSpec` (categories, groups, dials: kind, title, value, writer, enablement and its reason, visibility, glyph name,
+confirmation; the old pages read a dial by its old address through `SettingsDoc` until each theme draws the registry), every verb (`row.Writer`: persistence, live apply, DSP pushes, OS registrations, file I/O off the render path), the facts the rows ask (`SettingsFacts`), the page epoch (`Settings.Bump`), the Storage census, the pivot's
 root-lifetime cell with the deep link (`Settings.Open`, `TabFromSlug`), the page context the verbs read (`SettingsContext`) and the legacy-row binding (`IStructureLayer.LegacyRows`, left for the M-PRs) stay core.
 
 | Key | Props | Core host | Classic template |
@@ -1739,13 +1739,13 @@ no other home yet (lyrics, full screen, now playing, Home). Nothing in it names 
   `SettingsVerbs.PickTheme` → `ThemeHost.Switch`; the remounted page opens on Appearance again. The manifest's
   `DescriptionKey` is optional.
 - **Generated section.** `Theming\Options\ThemeOptionsSection.Build/Current` turns `ExposedOptions` into `GeneratedOptionRow`s
-  (a `SettingsRow` plus choices, range, swatches): toggle, select (Radio → segments up to 4 choices, else a combo; Combo; Cards
+  (a `SettingsDial`, `appearance.option.<qualifiedId>`, plus choices, range, swatches): toggle, select (Radio → segments up to 4 choices, else a combo; Combo; Cards
   and Swatches → picker; Toggle with exactly two choices → switch), slider, colour (swatches or a free picker), action (its
   `ThemeVerbs.Register`ed verb; greyed without one), reference to a core pref (the core row's own control). Every write is
   `ThemeHost.Apply`; a refused value is logged and changes nothing. `VisibleWhen` and Developer visibility are evaluated at build.
   "Reset options" is `ThemeHost.ResetOptions` (forgets the stored keys and puts the cells back; one remount if a transaction
   option changed).
-- **Legacy rows.** A structure lists the options that are still switches in `IStructureLayer.LegacyRows` (a `SettingsDoc` row id and a
+- **Legacy rows.** A structure lists the options that are still switches in `IStructureLayer.LegacyRows` (a registry dial, by its id or old row id, and a
   group). The page draws them in the same expander and groups; an M-PR deletes its rows from the list and declares the option, so
   the tab never changes layout again. Classic lists 3 (M1 deleted one; M2, M3, M4, M6, M7a and M8 moved the track list style, the row density, the hide-art switch, the washes, the sidebar layout and density and the page layout with its two rail rows into options; the sidebar's three actions stay rows). Inside a group the generated rows come first, so the layout cards and the density sit above the sidebar's actions, as the rows they replaced did.
 - **Palette.** An option with `Command = true` contributes rows (`ThemeOptionsSection.Commands`): a toggle on/off, a select one per

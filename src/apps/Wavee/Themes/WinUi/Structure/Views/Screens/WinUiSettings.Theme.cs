@@ -31,7 +31,6 @@ using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
-using Catalog = Wavee.Settings.Catalog;
 using Tab = Wavee.Settings.Tab;
 
 namespace Wavee.Themes.WinUi;
@@ -70,7 +69,7 @@ internal static partial class WinUiSettings
             {
                 Header = Loc.Get(Strings.Theme.Winui.Screens.ThemeTitle),
                 Description = Loc.Get(Strings.Theme.Winui.Screens.ThemeSub),
-                HeaderIcon = Glyph(Catalog.SectionGlyph(Tab.Appearance, "Theme")),
+                HeaderIcon = Glyph(SettingsDoc.SectionGlyph(Tab.Appearance, "Theme")),
                 Content = new TextEl(current) { Size = WinUiSettingsRules.ValueTagSize, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 ItemsHeader = new BoxEl
                 {
@@ -420,7 +419,7 @@ internal static partial class WinUiSettings
     };
 
     /// <summary>"Reset options": confirmed like every destructive action, greyed while nothing is stored.</summary>
-    static Element ResetCard(SettingsRow reset, ISettingsFacts facts)
+    static Element ResetCard(SettingsDial reset, ISettingsFacts facts)
     {
         bool enabled = reset.Enabled(facts).Enabled;
         string? sub = reset.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
@@ -449,7 +448,7 @@ internal static partial class WinUiSettings
     /// with its On / Off word).</summary>
     static Element OptionCard(GeneratedOptionRow g, ISettingsFacts facts, bool wizard)
     {
-        SettingsRow row = g.Row;
+        SettingsDial row = g.Row;
         string title = Loc.Get(row.TitleKey);
         string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
         bool enabled = row.Enabled(facts).Enabled;

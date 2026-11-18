@@ -378,7 +378,7 @@ internal static partial class WinUiSettings
             => Toggle(new Signal<bool>(on), onChange: enabled ? s_aiSetEnabled : null, isEnabled: enabled);
 
         /// <summary>A behaviour switch: the row's writer (written through the AI preferences' one setter, so the driver's epoch re-evaluates the song).</summary>
-        static Element AiPrefSwitch(SettingsRow row)
+        static Element AiPrefSwitch(SettingsDial row)
             => Toggle(new Signal<bool>(row.Current is true), onChange: on => row.Writer.Toggle!(on));
 
         /// <summary>One row per aligner language in the pack: name, Installed (✓) or its size, and Download / Remove. The last

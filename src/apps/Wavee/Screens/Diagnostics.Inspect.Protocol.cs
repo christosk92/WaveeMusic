@@ -561,12 +561,13 @@ public static partial class Diagnostics
                     Arg("mods", ArgType.String, "modifiers held: ctrl+shift (ctrl, shift, alt, win)"),
                 ], s_settleArgs),
             },
-            new(Verb.Setting, "setting", "List the app's Settings rows (tab, section, id, kind, value, writer), or set one through the row's own writer as a Settings view does (the theme's options are `option`)", "setting id=lyricsBlur value=40")
+            new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {
                 Positional = ["id", "value"],
-                Args = Join([Arg("tab", ArgType.String, "only this tab's rows (general|appearance|playback|notifications|storage|privacy|about|account|devices|keyboard|feedback); needed when an id is on several tabs"),
-                             Arg("id", ArgType.String, "the row (any case)"),
-                             Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none")], s_settleArgs),
+                Args = Join([Arg("category", ArgType.String, "only this category's dials (home|appearance|sound|playback|lyrics|notifications|system|storage|account|help, or an old slug)"),
+                             Arg("tab", ArgType.String, "only the dials an old tab drew (general|appearance|playback|notifications|storage|privacy|about|account|devices|keyboard|feedback); picks between old ids two tabs shared"),
+                             Arg("id", ArgType.String, "the dial: its registry id (playback.crossfade) or its old row id (crossfade), any case"),
+                             Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none (naming an action presses it)")], s_settleArgs),
             },
             new(Verb.Window, "window", "Park the window the way the OS does (minimized, or hidden to the tray) or restore it, blur or re-activate it (active=false|true), and move the cold-maintenance clock ahead so its 30 s services (the scene slab trim) run on the next frame; a parked window's frames skip paint but drain posts, flush and run cold maintenance", "window state=minimized advance=31000")
             {

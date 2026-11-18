@@ -119,7 +119,7 @@ internal static partial class ZuneSettings
         /// ask over a stored-but-unusable Automatic really writes ask.</summary>
         static Element Mode(Crash.Reporting mode, Crash.Reporting current, string labelKey, ISettingsFacts facts)
         {
-            bool enabled = SettingsDoc.CrashModeEnablement((int)mode, facts).Enabled;
+            bool enabled = SettingsSpec.CrashModeEnablement((int)mode, facts).Enabled;
             return new BoxEl
             {
                 Key = "zs:crash-mode:" + (int)mode, Direction = 1, Gap = Z.LabelGap, MinWidth = 0f,
@@ -129,7 +129,7 @@ internal static partial class ZuneSettings
                     {
                         if (D(Tab.PrivacyDiagnostics, "crashReports").Writer.Choose!((int)mode)) Settings.Bump();
                     }, isEnabled: enabled),
-                    ZuneText.Hint(Loc.Get(SettingsDoc.CrashModeCaptionKey((int)mode, facts)))
+                    ZuneText.Hint(Loc.Get(SettingsSpec.CrashModeCaptionKey((int)mode, facts)))
                         with { Color = enabled ? Tok.TextTertiary : Tok.TextDisabled, Margin = new Edges4(Z.RadioCaptionInset, 0f, 0f, 0f) },
                 ],
             };

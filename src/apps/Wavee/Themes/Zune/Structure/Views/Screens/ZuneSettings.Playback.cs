@@ -69,7 +69,7 @@ internal static partial class ZuneSettings
                 k.DocRow(quality, k.Choice(quality, QualityLabels(qualityRungs), chips: false, descriptions: QualityDescriptions(qualityRungs), width: Z.WideComboWidth),
                     QualityHint(quality, QualityDescriptions(qualityRungs))),
                 // The description IS the detector's verdict: every state says something, "Unknown" included (never blank).
-                k.DocRow(metered, k.Choice(metered.Id, new ZuneChoice(QualityLabels(meteredRungs),
+                k.DocRow(metered, k.Choice(SettingsDoc.RowIdOf(metered), new ZuneChoice(QualityLabels(meteredRungs),
                     () => Platform.Network.MeteredQualityCap.Value,
                     i => { if (metered.Writer.Choose!(i)) Settings.Bump(); },   // persist, then publish
                     Chips: false, Descriptions: QualityDescriptions(meteredRungs), Width: Z.WideComboWidth)), MeteredStatus(quality)),
@@ -114,7 +114,7 @@ internal static partial class ZuneSettings
     }
 
     /// <summary>The row's own hint, then the picked rung's line: the chips carry no per-item tooltip, so the picked one says what it is here.</summary>
-    static string QualityHint(SettingsRow row, string[] lines)
+    static string QualityHint(SettingsDial row, string[] lines)
     {
         string own = row.DescriptionKey(SettingsFacts.Live) is { } key ? Loc.Get(key) : "";
         if (lines.Length == 0) return own;
@@ -138,7 +138,7 @@ internal static partial class ZuneSettings
 
     /// <summary>The live cost, the live cap and the chosen quality are all read here, so a network push or either combo re-words the line. "Cap in effect" is claimed
     /// only when the cap is actually below the chosen quality.</summary>
-    static string MeteredStatus(SettingsRow quality)
+    static string MeteredStatus(SettingsDial quality)
     {
         bool capInEffect = Platform.Network.MeteredQualityCap.Value < (quality.Current is int q ? q : 0);
         return Settings.MeteredStatusLine.For(Platform.Network.Cost.Value, capInEffect).Render(s_locGet);

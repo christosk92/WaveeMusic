@@ -358,8 +358,8 @@ internal static partial class ClassicSettings
                         break;
                     case SettingsOptionItemKind.Legacy:
                     {
-                        SettingsRow row = item.Row!;
-                        if (LegacyItem(row.Id, row, facts) is { } legacy) group.Rows.Add((item.Key, legacy));
+                        SettingsDial row = item.Row!;
+                        if (LegacyItem(SettingsDoc.RowIdOf(row), row, facts) is { } legacy) group.Rows.Add((item.Key, legacy));
                         break;
                     }
                     default:
@@ -400,7 +400,7 @@ internal static partial class ClassicSettings
     };
 
     /// <summary>"Reset options": confirmed like every destructive action (N11), greyed while nothing is stored.</summary>
-    static Element ResetItem(SettingsRow reset, ISettingsFacts facts)
+    static Element ResetItem(SettingsDial reset, ISettingsFacts facts)
     {
         bool enabled = reset.Enabled(facts).Enabled;
         string? sub = reset.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
@@ -426,11 +426,11 @@ internal static partial class ClassicSettings
 
     /// <summary>The control of a row a structure still binds to a legacy key. An id this page has no control for is left out
     /// (and logged) rather than drawn blank.</summary>
-    static Element? LegacyItem(string id, SettingsRow row, ISettingsFacts facts)
+    static Element? LegacyItem(string id, SettingsDial row, ISettingsFacts facts)
     {
         string title = Loc.Get(row.TitleKey);
         string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
-        string? icon = row.GlyphRole is { } glyph ? Glyph(glyph) : null;
+        string? icon = row.Glyph is { } glyph ? Glyph(glyph) : null;
         bool enabled = row.Enabled(facts).Enabled;
         switch (id)
         {
@@ -491,10 +491,10 @@ internal static partial class ClassicSettings
     /// <summary>One generated row as a card: the control for its kind (themes plan 8.2).</summary>
     static Element GeneratedItem(GeneratedOptionRow g, ISettingsFacts facts, bool wizard)
     {
-        SettingsRow row = g.Row;
+        SettingsDial row = g.Row;
         string title = Loc.Get(row.TitleKey);
         string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
-        string? icon = row.GlyphRole is { } glyph ? Glyph(glyph) : OptionGlyph(g.QualifiedId);
+        string? icon = row.Glyph is { } glyph ? Glyph(glyph) : OptionGlyph(g.QualifiedId);
         bool enabled = row.Enabled(facts).Enabled;
 
         if (g.Pref is { } pref) return PrefItem(pref, row, title, sub, icon, wizard);
@@ -605,7 +605,7 @@ internal static partial class ClassicSettings
     }
 
     /// <summary>A reference to a core preference: the core row's own control, so there is one writer for it.</summary>
-    static Element PrefItem(CorePref pref, SettingsRow row, string title, string? sub, string? icon, bool wizard)
+    static Element PrefItem(CorePref pref, SettingsDial row, string title, string? sub, string? icon, bool wizard)
     {
         Element? control = pref switch
         {

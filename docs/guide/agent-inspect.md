@@ -645,20 +645,26 @@ Which `value` each option kind takes:
 | Slider | A number. |
 | Colour | `"#RRGGBB"` or `"#RRGGBBAA"`. |
 
-### `setting {tab?, id?, value?}`
+### `setting {category?, tab?, id?, value?}`
 
-The app's own settings (a theme's options are `option`). `setting` lists every Settings row as data (`SettingsDoc`): `{tab, section,
-id, kind, value, writer, readOnly?, enabled?, reason?}`; `tab=appearance` lists one tab's. `setting id=<row>` reads one row;
-`setting id=<row> value=<v>` sets it through the row's own writer, the verb a Settings view calls (a toggle's `true`/`false`, a
-slider's number, a choice's, a segmented row's or a picker's index; an action runs with no value), and bumps the page epoch when the
-writer asks the page to re-read, as a view does: a mounted Settings page, the lyrics stage and the bar read the new value as after a
-click. A value set on a live mount is that mount's: the next `mount` (or `reset`) puts it back through the row's writer (toggles,
-sliders, choices). One set with nothing mounted is for the next mount, which keeps it. An id on several tabs wants `tab=`; a read-only row or a module's own card (`aiLyrics`' per-file verbs) is refused.
+The app's own settings: every dial of the settings registry (`SettingsSpec`, `Screens/SettingsSpec*.cs`). `setting` lists them in
+registry order, then the active theme's option dials (`live: true`): `{id, legacy?, category, group, parent?, tier?, was?, kind, value,
+writer, readOnly?, enabled?, reason?, visible?, live?}` plus `count` (the registry's dials) and `live`. `was` is the old address
+(`<old tab>/<old row id>`) of a dial the old pages drew; `visible: false` marks one the facts compose away right now (it is still
+listed). `category=sound` (or an old slug, `audio`) lists one category; `tab=appearance` the dials one old tab drew. `setting id=<dial>`
+reads one dial, named by its registry id (`playback.crossfade`) or its old row id (`crossfade`), any case; `setting id=<dial> value=<v>`
+sets it through the dial's own writer, the verb a Settings view calls (a toggle's `true`/`false`, a slider's number, a choice's, a
+segmented dial's or a picker's index; naming an action presses it, with no value), and bumps the page epoch when the writer asks the
+page to re-read, as a view does: a mounted Settings page, the lyrics stage and the bar read the new value as after a click. A value set
+on a live mount is that mount's: the next `mount` (or `reset`) puts it back through the dial's writer (toggles, sliders, choices). One
+set with nothing mounted is for the next mount, which keeps it. An old id two tabs shared (`privacyPolicy`) wants the registry id or
+`tab=`; a read-only dial or a module's own card (`lyrics.ai.files`) is refused. A theme option is a dial too
+(`appearance.option.style.density`); `option` writes it by its own grammar.
 
 ```text
-setting id=lyricsBlur value=0        # the lyrics blur off (0..100)
-setting id=marquee value=false
-setting tab=appearance               # the tab's rows with their values
+setting id=lyrics.blur value=0       # the lyrics blur off (0..100)
+setting id=marquee value=false       # an old row id still names its dial
+setting category=sound               # one category's dials with their values
 ```
 
 The Settings tab strips key their items (`settings:tabitem:<slug>`: Classic's areas, WinUI's tabs; Zune's section list is

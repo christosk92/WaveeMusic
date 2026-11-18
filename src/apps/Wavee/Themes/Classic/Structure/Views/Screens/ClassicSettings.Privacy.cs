@@ -116,8 +116,8 @@ internal static partial class ClassicSettings
 
     /// <summary>One mode with its caption and enablement from the document (Automatic needs a service, and says so).</summary>
     static Element ModeItemOf(Crash.Reporting mode, Crash.Reporting current, string labelKey, ISettingsFacts facts)
-        => ModeItem(mode, current, Loc.Get(labelKey), Loc.Get(SettingsDoc.CrashModeCaptionKey((int)mode, facts)),
-            SettingsDoc.CrashModeEnablement((int)mode, facts).Enabled);
+        => ModeItem(mode, current, Loc.Get(labelKey), Loc.Get(SettingsSpec.CrashModeCaptionKey((int)mode, facts)),
+            SettingsSpec.CrashModeEnablement((int)mode, facts).Enabled);
 
     /// <summary>One mode: a radio and an indented caption, left-aligned so the card renders ONLY the content
     /// (<c>SettingsCard.ContentAlignment.Left</c>). Disabled, the caption says why.</summary>
