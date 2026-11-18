@@ -136,20 +136,14 @@ internal static class ClassicPodcastKit
 
     // ══ 2. THE COLUMN'S WORDS ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The kind line: the kind word (a link to its hub when <paramref name="open"/> is set), then the tags (Video, Serial, Included in Premium).</summary>
+    /// <summary>The kind line: the kind word (the house hyperlink to its hub when <paramref name="open"/> is set), then the tags (Video, Serial, Included in Premium).</summary>
     public static Element Kind(string kind, Action? open, params Element[] tags)
     {
         var kids = new List<Element>(tags.Length + 1);
         if (kind.Length > 0)
             kids.Add(open is not null
-                ? new BoxEl
-                {
-                    Key = "cp-kind", Shrink = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = open,
-                    Children = [Caption(kind) with
-                    {
-                        Weight = P.Strong, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary, PressedColor = Tok.TextTertiary, Wrap = TextWrap.NoWrap,
-                    }],
-                }
+                // The house hyperlink (rest, hover, pressed, focus), its own side padding pulled back so the word stands on the column edge.
+                ? HyperlinkButton.Create(kind, open, size: ControlSize.Small) with { Key = "cp-kind", Shrink = 0f, Margin = new Edges4(-P.LinkPadX, 0f, -P.LinkPadX, 0f) }
                 : Caption(kind) with { Weight = P.Strong, Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, Shrink = 0f });
         kids.AddRange(tags);
         return new BoxEl { Direction = 0, Wrap = true, Gap = P.KindGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };

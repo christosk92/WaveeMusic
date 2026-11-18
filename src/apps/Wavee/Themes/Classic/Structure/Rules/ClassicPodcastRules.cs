@@ -31,6 +31,8 @@ internal static class ClassicPodcastRules
     public const ushort Strong = 600;
     public const float TagH = 18f, TagPadX = 5f, TagGap = 4f, TagGlyph = 12f, TagSize = 11f, TagLine = 14f, TagStrokeAlpha = 0.6f;
     public const float CrumbArt = 16f, CrumbArtRadius = 3f;
+    /// <summary>A small hyperlink's own side padding (the kind word stands on the column edge).</summary>
+    public const float LinkPadX = 4f;
 
     // ── the listened bar (concept `.lbar`) ──
     public const float LedgerH = 4f, LedgerGap = 2f, LedgerRadius = 2f, LedgerMin = 2f;
