@@ -42,6 +42,8 @@ internal static class ClassicPodcastRules
     public const float SplitChevron = 12f, SplitDivider = 1f, SplitDividerH = 20f, SplitDividerInk = 0.35f, SplitChevronInk = 0.86f, SplitMenuW = 32f;
     public const float UpGap = 8f, UpBarW = 88f, UpSubGap = 8f;
     public const float CommandGap = 6f;
+    /// <summary>A star of the rate picker and of the finished book's "How was it?".</summary>
+    public const float RateStar = 18f;
 
     // ── the description, facts, trailer ──
     public const float DescSize = 12f;

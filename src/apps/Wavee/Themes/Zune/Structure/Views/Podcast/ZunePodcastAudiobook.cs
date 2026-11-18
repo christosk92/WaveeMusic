@@ -115,7 +115,7 @@ internal static class ZunePodcastAudiobook
         if (v.Kind.Length > 0)
             parts.Add(v.KindRoute is { Length: > 0 } route ? K.Link("zb-kind", v.Kind, () => p.OpenRoute(route), 0f) : K.Label(v.Kind));
         if (v.Included && v.IncludedTag.Length > 0) parts.Add(K.Label(v.IncludedTag));
-        if (v.Genres.Length > 0) parts.Add(K.MetaWord(string.Join(" · ", v.Genres)) with { Color = Tok.TextTertiary, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
+        if (v.Genres.Length > 0) parts.Add(K.MetaWord(string.Join(" · ", v.Genres)) with { Case = TextCase.AsWritten, Color = Tok.TextTertiary, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
         return K.Meta("zb-label", parts);
     }
 
@@ -138,14 +138,27 @@ internal static class ZunePodcastAudiobook
         switch (v.State)
         {
             case AudiobookState.InProgress:
-                string chapter = K.Glue(v.UpTitle + v.UpName);
+                string chapterN = K.Glue(v.UpTitle), chapterName = v.UpName;
                 kids.Add(new BoxEl
                 {
                     Key = "zb-big", Direction = 0, Gap = Z.BigGap, AlignItems = FlexAlign.End, Wrap = true, MinWidth = 0f,
                     Children =
                     [
                         big with { Text = Prop.Of(() => place.Value.Percent ?? "") },
-                        words with { Text = Prop.Of(() => place.Value.Left is { Length: > 0 } left ? left + K.Dot + chapter : chapter), Margin = new Edges4(0f, 0f, 0f, Z.BigGap / 2f) },
+                        // The theme's words ("3 hr left · chapter 4 of 12 ·", lowered) and the chapter's name (as written) on ONE line, the name ellipsised.
+                        new BoxEl
+                        {
+                            Direction = 0, MinWidth = 0f, Shrink = 1f, Margin = new Edges4(0f, 0f, 0f, Z.BigGap / 2f),
+                            Children =
+                            [
+                                words with
+                                {
+                                    Text = Prop.Of(() => place.Value.Left is { Length: > 0 } left ? left + K.Dot + chapterN : chapterN),
+                                    Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
+                                },
+                                words with { Text = chapterName, Case = TextCase.AsWritten, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f },
+                            ],
+                        },
                     ],
                 });
                 kids.Add(new BoxEl { Direction = 0, MaxWidth = Z.BookBarMax, MinWidth = 0f, Children = [K.Line(() => place.Value.Fraction) with { Grow = 1f }] });
@@ -211,7 +224,7 @@ internal static class ZunePodcastAudiobook
         {
             var person = people[i];
             string uri = person.Uri;
-            var name = Byword(i < people.Length - 1 ? person.Name + "," : person.Name);
+            var name = Byword(i < people.Length - 1 ? person.Name + "," : person.Name) with { Case = TextCase.AsWritten };   // a name, as written
             kids.Add(uri.Length == 0 ? name : new BoxEl
             {
                 Key = "zb-credit:" + uri, Shrink = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false,
@@ -276,10 +289,15 @@ internal static class ZunePodcastAudiobook
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.LineGap, MinWidth = 0f,
             Children =
             [
-                new SpanTextEl(new TextSpan[] { new(v.LineTitle, Color: Tok.TextPrimary), new(" " + v.LineSub, Color: Tok.TextTertiary) })
+                // "the whole book · 12 chapters, drawn to length": the theme's words, lowered by the label role.
+                new BoxEl
                 {
-                    FontFamily = R.Type.Pivot("").FontFamily, Size = Z.MapHeadSize, LineHeight = Z.MapHeadLine, Weight = Z.Light,
-                    Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                    Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        LineWord(v.LineTitle) with { Color = Tok.TextPrimary, Shrink = 0f },
+                        LineWord(" " + v.LineSub) with { Color = Tok.TextTertiary, Shrink = 1f, Trim = TextTrim.CharacterEllipsis },
+                    ],
                 },
                 right,
             ],
@@ -291,6 +309,12 @@ internal static class ZunePodcastAudiobook
         Element segments = Responsive.Of(w => Segments(w, chapters, place, play, finished, seek));
         return new BoxEl { Key = "zb-line", Direction = 1, Gap = Z.LineGap, MinWidth = 0f, Children = [head, segments] };
     }
+
+    static TextEl LineWord(string text) => new(text)
+    {
+        FontFamily = R.Type.Pivot("").FontFamily, Size = Z.MapHeadSize, LineHeight = Z.MapHeadLine, Weight = Z.Light, Case = R.Case.For(LabelKind.Label),
+        Wrap = TextWrap.NoWrap, MaxLines = 1, MinWidth = 0f,
+    };
 
     static Element Segments(float width, ImmutableArray<AudiobookChapterVm> chapters, IReadSignal<AudiobookPlace> place, Action<int> play, bool finished, bool seek)
     {
@@ -438,21 +462,30 @@ internal static class ZunePodcastAudiobook
 
     static Element? Rating(AudiobookView v, AudiobookPageProps p, ZunePodcastLayout lay)
     {
+        var state = p.RateState;
         if (v.State == AudiobookState.Finished)
         {
-            var lines = new List<Element>(2) { K.Heading(v.FinishedTitle) };
+            // "How was it?": the stars inline, holding the listener's own rating; the note says why they are off, the write in flight or its failure.
+            var rs = state.Value;
+            var lines = new List<Element>(3) { K.Heading(v.FinishedTitle) };
             if (v.FinishedSub.Length > 0) lines.Add(R.Type.TrackMeta(v.FinishedSub) with { Case = R.Case.For(LabelKind.Label) });
+            if (rs.Note.Length > 0)
+                lines.Add(R.Type.TrackMeta(rs.Note) with
+                {
+                    Case = R.Case.For(LabelKind.Label), Wrap = TextWrap.Wrap, MinWidth = 0f, Color = rs.Failed ? Tok.SystemFillCritical : Tok.TextSecondary,
+                });
             return new BoxEl
             {
                 Key = "zb-rate", Direction = 1, Gap = Z.FactsRowGap, MinWidth = 0f,
-                Children = [.. lines, Controls.StarRow(0, p.Rate, Z.RatingStar, static () => R.Ink.AccentDecor)],
+                Children = [.. lines, Controls.StarRow(rs.Mine, rs.Enabled ? p.Rate : null, Z.RatingStar, static () => R.Ink.AccentDecor)],
             };
         }
         if (v.Rating.Length == 0) return null;
         var column = new List<Element>(2) { Controls.StarRow((int)MathF.Round(float.TryParse(v.Rating, out float r) ? r : 0f), null, Z.RatingStar) };
-        if (v.RatingsLine.Length > 0) column.Add(K.MetaWord(v.RatingsLine));
-        Element rate = p.Rate is { } rateIt && v.State == AudiobookState.InProgress
-            ? K.Button("zb-rate-btn", v.RateLabel, null, () => rateIt(5), lay.Target)
+        if (v.RatingsLine.Length > 0 || v.MyRating > 0) column.Add(K.MetaWord(v.RatingsLine) with { Text = Prop.Of(() => state.Value.Line) });
+        Element rate = v.State == AudiobookState.InProgress
+            ? Controls.RateFlyout("zb-rate-flyout", K.Button("zb-rate-btn", v.RateLabel, null, static () => { }, lay.Target), state, p.Rate, Z.RatingStar,
+                static () => R.Ink.AccentDecor)
             : K.Button("zb-rate-btn", v.RateLabel, null, null, lay.Target);
         return new BoxEl
         {

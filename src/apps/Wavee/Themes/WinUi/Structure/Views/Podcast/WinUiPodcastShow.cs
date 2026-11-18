@@ -423,9 +423,9 @@ internal static partial class WinUiPodcastShow
             var stars = new Element[S.Stars];
             int full = (h.RatingX100 + S.StarRound) / S.StarScale;
             for (int i = 0; i < stars.Length; i++) stars[i] = Icon(Icons.FavoriteStarFill, S.RatingStar, i < full ? Tok.TextPrimary : Tok.TextDisabled);
-            Element rate = _p.Rate is { } r
-                ? Button.Create(Loc.Get(Strings.Podcast.Pages.Rate), r)
-                : Controls.Named(Button.Create(Loc.Get(Strings.Podcast.Pages.Rate), static () => { }, isEnabled: false), Loc.Get(Strings.Podcast.Pages.RateUnavailable));
+            // Rate opens the shared picker (the listener's stars, busy, the failure, why it is off); the line keeps the listener's own stars at rest.
+            Element rate = Controls.RateFlyout("about:rate", Button.Create(Loc.Get(Strings.Podcast.Pages.Rate), static () => { }), _p.RateState, _p.Rate, S.RatingStar);
+            var state = _p.RateState;
             return new BoxEl
             {
                 Key = "about-rating", Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, Padding = Edges4.All(S.RatingCardPad), MinWidth = 0f,
@@ -436,7 +436,11 @@ internal static partial class WinUiPodcastShow
                     new BoxEl
                     {
                         Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                        Children = [new BoxEl { Direction = 0, Children = stars }, Caption(h.Ratings) with { MaxLines = 1 }],
+                        Children =
+                        [
+                            new BoxEl { Direction = 0, Children = stars },
+                            Caption(h.Ratings) with { Text = Prop.Of(() => state.Value.Line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                        ],
                     },
                     new BoxEl { Shrink = 0f, Children = [rate] },
                 ],

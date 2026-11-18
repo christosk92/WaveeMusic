@@ -1,5 +1,5 @@
 // ── Platform/Controls.Podcast.cs ───────────────────────────────────────────────────────────────────────────────────
-// the podcast reader's small controls: the badge CHIP, the STAR row, the start-here / next-in-the-story DOOR (+ its
+// the podcast pages' small controls: the badge CHIP, the STAR row, the RATE flyout, the start-here / next-in-the-story DOOR (+ its
 // `DoorData`), and the reader's FIND box
 //
 // Role: UI
@@ -123,6 +123,95 @@ public static partial class Controls
             Direction = 0, Gap = Spacing.XXS, AlignItems = FlexAlign.Center, Shrink = 0f, Role = AutomationRole.Rating,
             Children = stars,
         };
+    }
+
+    // ══ 2b. THE RATE FLYOUT ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The rate picker's metrics: the flyout presenter's padding, its measure (the note wraps inside it), the gap between its lines and
+    /// the busy ring beside the stars.</summary>
+    public const float RatePickerPadX = 16f, RatePickerPadTop = 15f, RatePickerPadBottom = 17f, RatePickerMaxWidth = 300f, RatePickerGap = 8f,
+                       RatePickerRing = 16f;
+
+    /// <summary>A theme's own Rate button (<paramref name="trigger"/>: its look, label and height) that opens THE rate picker of the podcast pages:
+    /// "Rate {name}", the five stars holding the listener's own rating (a pick rates N through <paramref name="rate"/> while
+    /// <see cref="Theming.Contracts.PodcastRateVm.Enabled"/>), a ring while the write is in flight, and the note (why the stars are off, or the
+    /// failed write). The picker reads <paramref name="state"/> live, so it follows a write while it stays open. Wrapped in a box keyed
+    /// <paramref name="key"/> (the trigger's own key would be dropped as a component's root).</summary>
+    public static Element RateFlyout(string key, BoxEl trigger, IReadSignal<Theming.Contracts.PodcastRateVm> state, Action<int>? rate, float star,
+                                     Func<ColorF>? tone = null)
+        => new BoxEl
+        {
+            Key = key, Shrink = 0f, MinWidth = 0f,
+            Children = [Embed.Comp(new RateFlyoutProps(trigger, state, rate, star, tone), static () => new RateFlyoutHost())],
+        };
+
+    sealed record RateFlyoutProps(BoxEl Trigger, IReadSignal<Theming.Contracts.PodcastRateVm> State, Action<int>? Rate, float Star, Func<ColorF>? Tone);
+
+    /// <summary>The trigger with the picker attached. The anchor lives on the component (not in a per-render closure, as <c>Flyout.Attach</c>
+    /// keeps it), so a re-render of the page around it (props re-pushed) never loses the realized node.</summary>
+    sealed class RateFlyoutHost : Component
+    {
+        RateFlyoutProps? _p;
+        IOverlayService? _overlay;
+        NodeHandle _anchor;
+        OverlayHandle? _open;
+        readonly Action _toggle;
+        readonly Action<NodeHandle> _realized;
+        readonly Func<NodeHandle> _anchorOf;
+        readonly Func<Element> _body;
+
+        public RateFlyoutHost()
+        {
+            _toggle = Toggle;
+            _realized = h => _anchor = h;
+            _anchorOf = () => _anchor;
+            _body = () => _p is { } p ? Embed.Comp(p, static () => new RatePicker()) : new BoxEl();
+        }
+
+        public override Element Render()
+        {
+            var p = _p = UseProps<RateFlyoutProps>();
+            _overlay = UseContext(Overlay.Service);
+            var own = p.Trigger.OnRealized;
+            return p.Trigger with { OnClick = _toggle, OnRealized = own is null ? _realized : h => { own(h); _realized(h); } };
+        }
+
+        void Toggle()
+        {
+            if (_open is { IsOpen: true } shown) { shown.Close(); return; }
+            if (IsNullOverlay(_overlay) || _anchor.IsNull) return;
+            _open = _overlay.Open(_anchorOf, _body, FlyoutPlacement.BottomEdgeAlignedLeft, new PopupOptions(Chrome: PopupChrome.Popup));
+        }
+    }
+
+    sealed class RatePicker : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<RateFlyoutProps>();
+            var s = p.State.Value;
+            Element stars = StarRow(s.Mine, s.Enabled ? p.Rate : null, p.Star, p.Tone);
+            var lines = new List<Element>(3)
+            {
+                BodyStrong(s.Title) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                new BoxEl
+                {
+                    Direction = 0, Gap = RatePickerGap, AlignItems = FlexAlign.Center,
+                    Children = s.Busy ? [stars, ProgressRing.Indeterminate(RatePickerRing)] : [stars],
+                },
+            };
+            if (s.Note.Length > 0)
+                lines.Add(Caption(s.Note) with
+                {
+                    Wrap = TextWrap.Wrap, MinWidth = 0f, Color = s.Failed ? Tok.SystemFillCritical : Tok.TextSecondary,
+                });
+            return new BoxEl
+            {
+                Key = "rate-picker", Direction = 1, Gap = RatePickerGap, MinWidth = 0f, MaxWidth = RatePickerMaxWidth,
+                Padding = new Edges4(RatePickerPadX, RatePickerPadTop, RatePickerPadX, RatePickerPadBottom),
+                Children = lines.ToArray(),
+            };
+        }
     }
 
     // ══ 3. THE DOOR ══════════════════════════════════════════════════════════════════════════════════════════════════
