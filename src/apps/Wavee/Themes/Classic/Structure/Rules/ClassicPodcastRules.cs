@@ -53,6 +53,8 @@ internal static class ClassicPodcastRules
 
     // ── the list bar (filters, search, sort) and the group labels ──
     public const float ListBarH = 52f, ListBarGap = 8f, SearchW = 208f, SearchWSmall = 160f;
+    /// <summary>The hairline at the foot of the pinned group label.</summary>
+    public const float PinnedRule = 1f;
     public const float GroupH = 36f, GroupGap = 6f, GroupLabelSize = 12f, GroupLabelLine = 16f;
     public const float FilterPadX = 10f, FilterH = 32f, FilterGap = 4f, FilterCountGap = 4f, FilterUnderline = 3f, FilterUnderlineW = 16f;
 

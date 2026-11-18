@@ -9,8 +9,8 @@
 //                    the 14/20 secondary sub, the 12/18 lines.
 //   Ledger(...)      the listened bar: played, in progress, to go, new, each a segment drawn to its count, and its words under it.
 //   Primary(...)     the full-width button in the cover's own colour (the page accent, Classic's artwork policy), its menu on the chevron.
-//   PinnedBar(...)   a row that pins in the list column (the list bar, a group label): nothing painted at rest; while pinned it takes the page ground
-//                    and a hairline (owner 2026-11-18: no bands at rest).
+//   PinnedBar(...)   a row that pins in the list column (the list bar): it paints no plate, at rest or pinned (owner 2026-11-18: what is behind the
+//                    page shows through it); while pinned it draws a hairline at its foot, and the list cuts what scrolls under it at that edge.
 //   EpisodeRow(...)  the row: its words (title semibold while unplayed, the meta line, one line of description), the saved heart at rest, the ⋯ always,
 //                    the play button at its end (the ring while in progress, a check once played); a click opens the episode's page;
 //                    right-click opens its menu.
@@ -477,19 +477,16 @@ internal static class ClassicPodcastKit
 
     // ══ 5. A PINNED ROW ═════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A row that pins <paramref name="top"/> below the list scroller's edge: nothing painted at rest; while pinned (<paramref name="stuck"/>) the
-    /// page ground behind it (<paramref name="tone"/>, read live) and a hairline at its foot, so what scrolls under it is covered by the colour it scrolls
-    /// over. The row must be the sticky root itself (a sticky root returned from a component never pins).</summary>
-    public static BoxEl PinnedBar(string key, Element content, float height, float top, Signal<bool> stuck, Func<uint> tone, string? scope = null)
+    /// <summary>A row that pins <paramref name="top"/> below the list scroller's edge. It paints NO plate, at rest or pinned: the list cuts what scrolls
+    /// under it at its lower edge (its item clip), so what is behind the page (the window's backdrop, the page's ground) shows through it. An opaque
+    /// backing stood out as a solid band wherever the backdrop tints the page (owner, 2026-11-18). While pinned (<paramref name="stuck"/>) it draws a
+    /// hairline at its foot. The row must be the sticky root itself (a sticky root returned from a component never pins).</summary>
+    public static BoxEl PinnedBar(string key, Element content, float height, float top, Signal<bool> stuck, string? scope = null)
         => new BoxEl
         {
             Key = key, ZStack = true, Direction = 1, Height = height, MinWidth = 0f,
             Children =
             [
-                new BoxEl
-                {
-                    Key = key + ":back", HitTestVisible = false, Fill = Prop.Of(() => stuck.Value ? Backing(tone()) : ColorF.Transparent),
-                },
                 content,
                 new BoxEl
                 {
@@ -498,12 +495,6 @@ internal static class ClassicPodcastKit
                 },
             ],
         }.Sticky(top, scope, stuck);
-
-    /// <summary>A pinned row's backing: the page ground over the shell's content surface, opaque.</summary>
-    public static ColorF Backing(uint tone) => Flatten(Ground(tone));
-
-    /// <summary>The ground over the shell's content surface, opaque (a pinned row's backing must hide what scrolls under it).</summary>
-    static ColorF Flatten(ColorF ground) => ColorContrast.Flatten(ground, R.Layer.ContentSurface);
 
     // ══ 6. THE EPISODE ROW ══════════════════════════════════════════════════════════════════════════════════════════════════
 

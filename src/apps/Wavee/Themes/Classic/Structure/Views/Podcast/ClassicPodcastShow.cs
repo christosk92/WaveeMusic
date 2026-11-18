@@ -84,7 +84,7 @@ internal static partial class ClassicPodcastShow
             bool loading = hv.Load == PodcastLoad.Pending;
             uint tone = loading ? 0u : hv.Head.Tone;
             ColorF accent = ClassicPodcastKit.Accent(tone);
-            UseList(lay, tone, accent);
+            UseList(lay, accent);
             Element list = ListColumn();
             return ClassicPodcastKit.ListPage(p.RouteKey, lay, tone, lay.Stacked ? null : ColumnRegion(hv, lay, accent), list);
         }
