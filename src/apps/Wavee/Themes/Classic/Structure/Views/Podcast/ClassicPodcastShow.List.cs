@@ -162,7 +162,7 @@ internal static partial class ClassicPodcastShow
             if (i == BarPart) return P.ListBarH;
             return KindAt(i) switch
             {
-                (int)PodcastItemKind.Group => P.GroupH,
+                (int)PodcastItemKind.Group => MathF.Max(P.GroupH, lay.Target),
                 (int)PodcastItemKind.Row => lay.RowDescription ? P.RowEstimateTall : P.RowEstimate,
                 (int)PodcastItemKind.More or (int)PodcastItemKind.Empty => P.FootEstimate,
                 _ => P.SimilarEstimate,
@@ -220,7 +220,7 @@ internal static partial class ClassicPodcastShow
                     Key = "cp-pinned-head:" + v.Groups[gi].Key, Direction = 1, MinWidth = 0f, Fill = ClassicPodcastKit.Backing(tone),
                     Children =
                     [
-                        new BoxEl { Direction = 1, MinWidth = 0f, Padding = Gutters(lay), Children = [host.GroupHeadRow(v.Groups[gi], v.Years)] },
+                        new BoxEl { Direction = 1, MinWidth = 0f, Padding = Gutters(lay), Children = [host.GroupHeadRow(v.Groups[gi], v.Years, lay)] },
                         new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
                     ],
                 };
@@ -264,9 +264,9 @@ internal static partial class ClassicPodcastShow
             {
                 var slot = item.Value;
                 var lay = host._lay.Value;
-                if (slot.Group is not { } g) return new BoxEl { Height = P.GroupH };
+                if (slot.Group is not { } g) return new BoxEl { Height = MathF.Max(P.GroupH, lay.Target) };
                 var years = host._p.View.Peek().Years;
-                return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = Gutters(lay), Children = [host.GroupHeadRow(g, years)] };
+                return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = Gutters(lay), Children = [host.GroupHeadRow(g, years, lay)] };
             }
         }
 
@@ -369,7 +369,7 @@ internal static partial class ClassicPodcastShow
 
         // ── a group label ──
 
-        Element GroupHeadRow(PodcastGroup g, ImmutableArray<PodcastYear> years)
+        Element GroupHeadRow(PodcastGroup g, ImmutableArray<PodcastYear> years, ClassicPodcastLayout lay)
         {
             var p = _p;
             bool jumps = years.Length > 1;
@@ -384,7 +384,7 @@ internal static partial class ClassicPodcastShow
             {
                 new BoxEl
                 {
-                    Key = "gh:jump:" + key, Direction = 0, Gap = P.GroupGap, AlignItems = FlexAlign.Center, Height = P.FilterH, Shrink = 0f,
+                    Key = "gh:jump:" + key, Direction = 0, Gap = P.GroupGap, AlignItems = FlexAlign.Center, Height = lay.Target, Shrink = 0f,
                     Padding = new Edges4(P.FilterPadX, 0f, P.FilterPadX, 0f), Margin = new Edges4(-P.FilterPadX, 0f, 0f, 0f), Corners = Radii.ControlAll,
                     Fill = Tok.FillSubtleTransparent, HoverFill = jumps ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                     PressedFill = jumps ? Tok.FillSubtleTertiary : Tok.FillSubtleTransparent, Role = AutomationRole.Button, Focusable = jumps,
@@ -395,7 +395,7 @@ internal static partial class ClassicPodcastShow
                 new BoxEl { Grow = 1f },
             };
             if (g.Fresh) headKids.Add(HyperlinkButton.Create(Loc.Get(Strings.Podcast.Pages.MarkAllPlayed), p.MarkFreshPlayed) with { Key = "gh:mark" });
-            return new BoxEl { Key = "gh", Direction = 0, Height = P.GroupH, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = headKids.ToArray() };
+            return new BoxEl { Key = "gh", Direction = 0, Height = MathF.Max(P.GroupH, lay.Target), AlignItems = FlexAlign.Center, MinWidth = 0f, Children = headKids.ToArray() };
         }
 
         void OpenJump(ImmutableArray<PodcastYear> years, string groupKey)

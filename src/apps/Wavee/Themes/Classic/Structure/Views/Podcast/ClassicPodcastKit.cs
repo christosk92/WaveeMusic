@@ -399,7 +399,12 @@ internal static class ClassicPodcastKit
         var sub2 = new List<Element>(2);
         if (progress >= 0f) sub2.Add(MiniBar(progress, accent, P.UpBarW));
         if (sub.Length > 0)
-            sub2.Add(new TextEl(sub) { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
+            sub2.Add(new TextEl(sub)
+            {
+                // Beside a bar the words take one line; alone (a caught-up or finished line) they wrap to two rather than being cut.
+                Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextSecondary, Wrap = progress >= 0f ? TextWrap.NoWrap : TextWrap.Wrap,
+                MaxLines = progress >= 0f ? 1 : 2, Trim = TextTrim.CharacterEllipsis, Grow = progress >= 0f ? 0f : 1f, Shrink = 1f, MinWidth = 0f,
+            });
         return new BoxEl
         {
             Key = "cp-up-label", Direction = 1, MinWidth = 0f,
