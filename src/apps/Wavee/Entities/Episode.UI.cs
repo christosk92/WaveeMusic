@@ -50,26 +50,11 @@ public readonly partial struct Episode
 {
     // ══ 1. WHAT A ROW BINDS ══════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>What the HOST knows about a row that the episode does not: <see cref="Fresh"/> — published after the
-    /// show's last play (<c>ShowLedger.IsFresh</c>, only once progress settled); <see cref="NoRule"/> — the row follows a
-    /// month header or a section head, so its top hairline is dropped (the prototype's <c>.group + .erow</c>).</summary>
-    [Flags]
-    public enum RowMarks : byte
+    /// <summary>What one bound row slot binds: the handle and its row version — so a data change to THIS episode re-fires
+    /// the slot's binds and a publish of any other row does not (the slot item is equality-gated).</summary>
+    public readonly record struct RowItem(Episode Episode, uint Version)
     {
-        None = 0,
-        Fresh = 1,
-        NoRule = 2,
-    }
-
-    /// <summary>What one bound row slot binds: the handle, its row version and the host's marks — so a data change to
-    /// THIS episode (or its marks) re-fires the slot's binds and a publish of any other row does not (the slot item is
-    /// equality-gated).</summary>
-    /// <param name="Number">A number the HOST states for this row, 0 = "the episode's own" (an audiobook chapter's
-    /// position, say): the host hands it down here — the row never recomputes an order it cannot see.</param>
-    public readonly record struct RowItem(Episode Episode, uint Version, RowMarks Marks = RowMarks.None, int Number = 0)
-    {
-        public static RowItem Of(Episode e, RowMarks marks = RowMarks.None, int number = 0)
-            => new(e, e.IsValid ? e.Version : 0u, marks, number);
+        public static RowItem Of(Episode e) => new(e, e.IsValid ? e.Version : 0u);
     }
 
     /// <summary>What a row needs from its host, built ONCE per host: the show's tone (a live read), the disc's verb, the
@@ -140,7 +125,7 @@ public readonly partial struct Episode
     /// (<c>Table.Failed</c>: a transport failure's <c>MarkFailed</c>, or <c>FetchMissPolicy</c>'s seal after the
     /// wire omitted the row twice), else <see cref="LoadState.Pending"/>.</item>
     /// </list>
-    /// Whoever asks for the facts is a different question (<c>ShowReaderRules.RowDemand</c>, the page's own demand):
+    /// Whoever asks for the facts is a different question (<c>ShowListRules.RowDemand</c>, the page's own demand):
     /// this rule only says what to paint for what the columns hold.</summary>
     public static LoadState RevealState(bool valid, bool knowsTitle, bool hasTitle, bool failed)
     {
@@ -289,14 +274,12 @@ public readonly partial struct Episode
     static int NumberOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Title) ? e.Number : 0;
     static string NumeralText(Episode e) { int n = NumberOf(e); return n > 0 ? FormatCache.Int(n) : ""; }
 
-    /// <summary>The row's numeral: the HOST's number when it stated one (an audiobook chapter's POSITION — the wire
-    /// carries none), else the episode's own.</summary>
-    internal static string NumeralOf(RowItem r) => r.Number > 0 ? FormatCache.Int(r.Number) : NumeralText(r.Episode);
+    /// <summary>The row's numeral: the episode's own.</summary>
+    internal static string NumeralOf(RowItem r) => NumeralText(r.Episode);
     internal static string DurationLabelOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Duration) ? DurationLabel(e.DurationMs) : "";
     internal static bool InProgressOf(Episode e) => Rules.InProgress(PlaybackProgressOf(e).Pct);
     internal static bool PlayedOf(Episode e) => Rules.Played(PlaybackProgressOf(e).Pct);
     internal static string LeftOf(Episode e) => InProgressOf(e) ? PlaybackProgressOf(e).LeftLabel : "";
-    internal static bool IsNew(in RowItem r) => (r.Marks & RowMarks.Fresh) != 0 && PlaybackProgressOf(r.Episode).Pct <= Rules.InProgressFloor;
 
     /// <summary>The wide arm's title: the number prefix stripped when the numeral carries it (cached per title).</summary>
     internal static string ShownTitle(Episode e)

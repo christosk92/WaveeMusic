@@ -998,7 +998,6 @@
     "startFromBeginning": "start from the beginning",
     "left": "{time} left",
     "played": "Played",
-    "new": "New",
     "ledger": "{played} played · {progress} in progress · {togo} to go",
     "ledgerNew": "{count} new",
     "cadence": {

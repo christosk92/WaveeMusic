@@ -231,7 +231,6 @@
     "startFromBeginning": "begin bij het begin",
     "left": "nog {time}",
     "played": "beluisterd",
-    "new": "nieuw",
     "ledger": "{played} beluisterd · {progress} bezig · nog {togo} te gaan",
     "ledgerNew": "{count} nieuw",
     "cadence": {

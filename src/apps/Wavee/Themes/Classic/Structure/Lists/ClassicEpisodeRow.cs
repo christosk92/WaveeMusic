@@ -13,7 +13,7 @@
 // (`Episode.Fixed`), so they are the list's pixels.
 //
 // WHAT THE CORE KEEPS. `Episode.ReaderRow` (the reveal gate: pending -> the seed, failed -> the failure row, ready -> the content;
-// `SkelRegionEl` over `ReaderLoadState`), the row's own decisions (`PlayedOf`, `InProgressOf`, `LeftOf`, `IsNew`, `ShownTitle`, the
+// `SkelRegionEl` over `ReaderLoadState`), the row's own decisions (`PlayedOf`, `InProgressOf`, `LeftOf`, `ShownTitle`, the
 // completion rule `ReaderPct`: a completed episode reads 1, so "played", the rule and the host's filter and ledger never disagree),
 // the verbs (`RowContext`: the disc's play, the row's open, the menu, the selection seam) and the host that builds the context. The
 // template draws and never names `Playback`, `Entities` or `Store` (WVTH002); numbers are `Rules\ClassicEpisodeRowLayout.cs` (WVTH003).
@@ -35,7 +35,6 @@ namespace Wavee.Themes.Classic;
 
 using RowContext = global::Wavee.Episode.RowContext;
 using RowItem = global::Wavee.Episode.RowItem;
-using RowMarks = global::Wavee.Episode.RowMarks;
 
 /// <summary>Classic's style for the episode row.</summary>
 internal static class ClassicEpisodeRow
@@ -109,11 +108,11 @@ internal static class ClassicEpisodeRow
             OnClick = item.Invoke(r => open(r.Episode)),
             Children =
             [
-                // The top hairline, dropped under a month header (the prototype's `.group + .erow`).
+                // The top hairline.
                 new BoxEl
                 {
                     Height = 1f, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                    Fill = Tok.StrokeDividerDefault, Visible = item.Show(static r => (r.Marks & RowMarks.NoRule) == 0),
+                    Fill = Tok.StrokeDividerDefault,
                 },
                 // NOW PLAYING: the 3-DIP tone bar on the row's left edge, inset by the row's own padding.
                 new BoxEl
@@ -223,11 +222,6 @@ internal static class ClassicEpisodeRow
                 with { Visible = item.Show(static r => (Episode.FlagsOf(r.Episode) & EpisodeFlags.Video) != 0) },
             Controls.Chip(Loc.Get(Strings.Podcast.Badge.Subscribers), LockGlyph)
                 with { Visible = item.Show(static r => (Episode.FlagsOf(r.Episode) & EpisodeFlags.Paywalled) != 0) },
-            R.Type.MicroMeta(Loc.Get(Strings.Podcast.New)) with
-            {
-                Weight = 700, CharSpacing = 60f, Color = textInk, MaxLines = 1,
-                Visible = item.Show(static r => Episode.IsNew(in r)),
-            },
             new TextEl(item.Text(static r => Episode.LeftOf(r.Episode)))
             {
                 Size = Ui.Caption("").Size, LineHeight = Ui.Caption("").LineHeight,

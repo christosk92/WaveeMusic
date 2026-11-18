@@ -231,7 +231,6 @@
     "startFromBeginning": "처음부터 시작",
     "left": "{time} 남음",
     "played": "들음",
-    "new": "신규",
     "ledger": "{played}개 들음 · {progress}개 듣는 중 · {togo}개 남음",
     "ledgerNew": "새 에피소드 {count}개",
     "cadence": {

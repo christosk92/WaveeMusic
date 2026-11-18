@@ -224,7 +224,7 @@ public sealed class PodcastEpisodeScreen : Component
         Entities.Ensure(show, ShowFields.Identity | ShowFields.Rating | ShowFields.Appearance | ShowFields.Facts);
         if (scope.Edges.ShowEpisodes.State(show.Slot) == EdgeState.Unknown) { Entities.EnsureEdge(FetchEdge.ShowEpisodes, show.Slot); return; }
         var slots = scope.Edges.ShowEpisodes.Targets(show.Slot);
-        if (slots.Length > 0) Entities.Ensure(scope.Episodes, slots, (uint)ShowReaderRules.RowDemand);
+        if (slots.Length > 0) Entities.Ensure(scope.Episodes, slots, (uint)ShowListRules.RowDemand);
     }
 
     static readonly Spotify.Podcasts.Transcript s_transcriptSeed = new("", [], 0);

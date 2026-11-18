@@ -1,6 +1,6 @@
 // ── Entities/Show.Page.cs ──────────────────────────────────────────────────────────────────────────────────────────
-// the show ROUTE's forwarder (the page is the podcast pages', `Podcasts/PodcastPages.Show.cs`) and `ShowReaderRules`, the
-// pure decisions the podcast pages share with it: the rows' demand, the in-show find and the view prefs' key.
+// the show ROUTE's forwarder (the page is the podcast pages', `Podcasts/PodcastPages.Show.cs`) and `ShowListRules`, the
+// pure decisions the podcast pages read: the rows' demand, the in-show find and the view prefs' key.
 
 using FluentGpu.Dsl;
 
@@ -14,7 +14,7 @@ public readonly partial struct Show
 
 /// <summary>The show's episode-list decisions the podcast pages read: what a row asks for, the find predicate and the
 /// per-show view prefs' key. Engine-free; <see cref="PrefsId"/> (once per page) allocates, nothing here runs per frame.</summary>
-public static class ShowReaderRules
+public static class ShowListRules
 {
     /// <summary>What a podcast page asks for every resident member it lists (<c>PodcastPages.Show.cs</c>, <c>PodcastPages.Episode.cs</c>):
     /// what a row PAINTS (<see cref="EpisodeFields.Row"/>), its two-line blurb (<see cref="EpisodeFields.About"/>) and its progress

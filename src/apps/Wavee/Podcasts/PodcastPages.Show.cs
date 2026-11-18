@@ -301,7 +301,7 @@ sealed class ShowModel
         Subject = subject;
         SubjectText = subject.IsValid ? subject.Text : "";
         // ── the remembered view: an entry for this show seeds the filter, and the order only when it was chosen (else it follows the show) ──
-        PrefsId = ShowReaderRules.PrefsId(SubjectText);
+        PrefsId = ShowListRules.PrefsId(SubjectText);
         _savedStatus = 0;
         _savedOrder = OrderFollowsShow;
         if (ShowViewPrefs.TryRead(ShowViewPrefs.Blob(), PrefsId, out int status, out int order))
@@ -436,7 +436,7 @@ sealed class ShowModel
             _ = scope.Edges.ShowEpisodes.Changed.Value;
             if (!Subject.IsValid || !scope.Shows.TryGetSlot(Subject.Id, out int show)) return;
             var slots = scope.Edges.ShowEpisodes.Targets(show);
-            if (slots.Length > 0) Entities.Ensure(scope.Episodes, slots, (uint)ShowReaderRules.RowDemand);
+            if (slots.Length > 0) Entities.Ensure(scope.Episodes, slots, (uint)ShowListRules.RowDemand);
         };
         DemandTrailer = () =>
         {
@@ -736,7 +736,7 @@ sealed class ShowModel
                 PodcastFilter.Saved => vm.Saved,
                 _ => true,
             };
-            if (keep && !q.IsEmpty) keep = ShowReaderRules.Matches(vm.Title, vm.Description, q);
+            if (keep && !q.IsEmpty) keep = ShowListRules.Matches(vm.Title, vm.Description, q);
             shown[i] = keep;
             if (keep) { shownCount++; view.Add(i); }
         }

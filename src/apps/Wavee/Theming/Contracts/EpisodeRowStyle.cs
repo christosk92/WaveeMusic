@@ -9,7 +9,7 @@
 // `Episode.SeedReaderRow`.
 //
 // WHAT THE CORE KEEPS. The reveal gate of the row (`Episode.ReaderRow`: a `SkelRegionEl` over `ReaderLoadState`: pending shows the seed,
-// failed the failure row, ready the content), every decision the row reads (`Episode.PlayedOf`, `InProgressOf`, `LeftOf`, `IsNew`,
+// failed the failure row, ready the content), every decision the row reads (`Episode.PlayedOf`, `InProgressOf`, `LeftOf`,
 // `ShownTitle`, `NumeralOf`, ... and the one completion rule `ReaderPct`: a completed episode reads 1, so "played", the rule and the
 // host's filter and ledger never disagree), the verbs (`Episode.RowContext`: the tone, the disc's play, the row's open, the menu, the
 // selection seam), the host that builds the context and the retry (`Episode.RetryRow`). A template draws and never names `Playback`,
