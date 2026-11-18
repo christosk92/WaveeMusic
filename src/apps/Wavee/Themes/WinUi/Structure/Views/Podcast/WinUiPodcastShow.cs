@@ -50,7 +50,9 @@ internal static partial class WinUiPodcastShow
                 PodcastRowState.Unplayed, false, false, false, true, 0, false, null));
         var head = PodcastShowView.Empty.Head with
         {
-            Title = "Podcast title", Kind = "Podcast", Publisher = "Publisher", Cadence = "Weekly", Count = "100 episodes", About = "About this show.",
+            // The meta line holds two words: a derived "·" is a 32 bar, so a longer line wrapped at Compact (the loaded line does not) and the shimmer
+            // stood 15 taller than the page that lands.
+            Title = "Podcast title", Kind = "Podcast", Publisher = "Publisher", Cadence = "Weekly", About = "About this show.",
             Following = following,
         };
         var smart = new PodcastSmart(PodcastSmartKind.PlayNewest, "seed:0", "Play newest", "New", "Episode title", "12 Nov · 1 hr", -1f, true, []);
