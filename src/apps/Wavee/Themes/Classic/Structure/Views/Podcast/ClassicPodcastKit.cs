@@ -714,8 +714,13 @@ internal static class ClassicPodcastKit
                 Children = [rows ? Controls.Surface(data, Shape.Row(P.RowCardCover)) : Controls.Surface(data, Shape.Shelf(), P.CardCover)],
             };
         }
+        // The two forms are a declared swap (a crossing at the Compact edge trades the house rows for the shelf cards).
         return rows
-            ? new BoxEl { Key = "more-like-this", Direction = 1, MinWidth = 0f, Children = kids }
-            : new BoxEl { Key = "more-like-this", Direction = 0, Wrap = true, Gap = P.CardGap, MinWidth = 0f, Children = kids };
+            ? new BoxEl { Key = "more-like-this:rows", Direction = 1, MinWidth = 0f, Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Children = kids }
+            : new BoxEl
+            {
+                Key = "more-like-this:cards", Direction = 0, Wrap = true, Gap = P.CardGap, MinWidth = 0f, Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade,
+                Children = kids,
+            };
     }
 }

@@ -69,7 +69,14 @@ public static class ClassicPodcastTiers
         MainPad = P.MainPadCompact, RowDescription = false, RowExpands = false, CardsH = P.CardsHCompact, FollowGlyph = true, FilterMenu = true,
     };
 
-    public static ClassicPodcastLayout Of(in TierFacts facts) => facts.Policy is null ? Standard : For(facts.Window);
+    /// <summary>The window tier's record; where the CONTENT region is narrower than Standard (an inline panel beside a Standard window: the queue), the
+    /// side-by-side forms of the list column (the chapters beside the transcript, About beside the facts) give way, so nothing is squeezed.</summary>
+    public static ClassicPodcastLayout Of(in TierFacts facts)
+    {
+        if (facts.Policy is null) return Standard;
+        var l = For(facts.Window);
+        return l.TwoCards && facts.Content < WidthTier.Standard ? l with { TwoCards = false, AboutBeside = false } : l;
+    }
 
     public static ClassicPodcastLayout For(WidthTier tier) => tier switch
     {
