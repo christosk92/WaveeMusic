@@ -50,12 +50,26 @@ public sealed record PodcastEpisodeVm(
     public string LongDate { get; init; } = "";
     /// <summary>The description as HTML when the provider sent it ("" = only <see cref="Description"/>); render it with the house rich text.</summary>
     public string DescriptionHtml { get; init; } = "";
+    /// <summary>The month it came out (1..12; 0 = not known): the list groups by it.</summary>
+    public int Month { get; init; }
+    /// <summary>The episode's own number as a row writes it beside the title ("97"; "" = the show does not number its episodes).</summary>
+    public string Numeral { get; init; } = "";
+    readonly string _shortTitle = "", _blurb = "";
+    /// <summary>The title without what every episode of the show repeats in it (the show's name, "EP 97 -"): what a row writes beside
+    /// <see cref="Numeral"/>. The whole <see cref="Title"/> where nothing repeats.</summary>
+    public string ShortTitle { get => _shortTitle.Length > 0 ? _shortTitle : Title; init => _shortTitle = value; }
+    /// <summary>The description without the opening line the show's episodes share ("Welcome back!"): a row's one line starts on what THIS
+    /// episode is about. The whole <see cref="Description"/> where none is shared.</summary>
+    public string Blurb { get => _blurb.Length > 0 ? _blurb : Description; init => _blurb = value; }
     /// <summary>The episode is for a show's subscribers (Spotify's paywall) / only its preview is available (the full episode is not playable).</summary>
     public bool Paywalled { get; init; }
     public bool PreviewOnly { get; init; }
     /// <summary>The lock tag of a restricted episode ("Subscribers only", "Preview only", "Unavailable"; "" = none): a row draws it with the lock glyph
     /// beside its meta, and a row that is not <see cref="Playable"/> draws its play button off.</summary>
     public string Lock { get; init; } = "";
+    /// <summary>The episode is explicit (the house "E" in the row's meta) / a bonus episode (the Bonus tag; <see cref="Trailer"/> is the trailer's).</summary>
+    public bool Explicit { get; init; }
+    public bool Bonus { get; init; }
 }
 
 /// <summary>One item of the smart action's menu ("Other ways to play").</summary>
@@ -68,12 +82,20 @@ public sealed record PodcastSmart(
     PodcastSmartKind Kind, string EpisodeId, string Label, string Why, string EpisodeTitle, string Sub, float Progress, bool Accent,
     ImmutableArray<PodcastMenuItem> Menu);
 
-/// <summary>One group of the episode list: "New since your last visit" (<see cref="Fresh"/>, offers Mark all as played), a year, or a serial's "In order".
-/// <see cref="Count"/> is the group's stated size (the year's whole count when known). <see cref="Rows"/> index <see cref="PodcastShowView.Episodes"/>.</summary>
+/// <summary>One group of the episode list: "New since your last visit" (<see cref="Fresh"/>, offers Mark all as played), a month ("October"), or a
+/// serial's "In order". <see cref="Count"/> is how many of its rows show. <see cref="Rows"/> index <see cref="PodcastShowView.Episodes"/>.</summary>
 public sealed record PodcastGroup(string Key, string Title, int Count, bool Fresh, ImmutableArray<int> Rows)
 {
     /// <summary><see cref="Count"/> as the header shows it ("" = none).</summary>
     public string CountText { get; init; } = "";
+    /// <summary>A month group's year (0: "new since your last visit", a serial's one group, an undated run): the jump list lands on a year's first
+    /// group.</summary>
+    public int Year { get; init; }
+    /// <summary><see cref="Year"/> as a header writes it beside the month ("2026"; "" = none).</summary>
+    public string YearText { get; init; } = "";
+    /// <summary>The first group of its year in the list: its header says the year (the ones after it say the month alone; a pinned header always
+    /// says both).</summary>
+    public bool OpensYear { get; init; }
 }
 
 /// <summary>One cell of the jump list: a year and how many episodes it holds.</summary>
@@ -126,6 +148,9 @@ public sealed record PodcastShowHead(
     public string AboutHtml { get; init; } = "";
     /// <summary>The listener's own rating, 0..5 (0 = not rated).</summary>
     public int MyRating { get; init; }
+    /// <summary>The show is explicit (the house "E" beside its tags) / a Spotify exclusive (the Exclusive tag).</summary>
+    public bool Explicit { get; init; }
+    public bool Exclusive { get; init; }
 }
 
 /// <summary>The details pane's chapters of the selected episode: up to five around the current one (<see cref="Shown"/>), how many there are in all
@@ -143,8 +168,9 @@ public enum PodcastItemKind : byte { Group, Row, More, Empty }
 
 /// <summary>One item of <see cref="PodcastShowView.Items"/>: its kind, its group (an index into <see cref="PodcastShowView.Groups"/>, -1 for the foot
 /// and the empty line) and, for a row, its episode (an index into <see cref="PodcastShowView.Episodes"/>, else -1). <see cref="First"/>: the row opens
-/// its group (no rule above it).</summary>
-public readonly record struct PodcastListItem(PodcastItemKind Kind, int Group, int Episode, bool First = false);
+/// its group (no rule above it). <see cref="Lead"/>: the row is the list's lead, the newest episode not started yet at the head of the whole list
+/// (newest first, no search): a theme gives it the weight of a headline.</summary>
+public readonly record struct PodcastListItem(PodcastItemKind Kind, int Group, int Episode, bool First = false, bool Lead = false);
 
 /// <summary>The show page's snapshot.</summary>
 public sealed record PodcastShowView(
@@ -159,6 +185,9 @@ public sealed record PodcastShowView(
     public ImmutableArray<PodcastListItem> Items { get; init; } = [];
     /// <summary>The listened ledger (whatever the filter: it counts every known episode). Reused while it holds, like the head.</summary>
     public PodcastLedger Ledger { get; init; } = PodcastLedger.None;
+    /// <summary>The show numbers its episodes (most of them say their number, or it is a serial): a row keeps a lane for
+    /// <see cref="PodcastEpisodeVm.Numeral"/>, so the titles stand on one line down the list.</summary>
+    public bool Numbered { get; init; }
 
     /// <summary>The empty snapshot a page shows while nothing is known (the skeleton is derived from the loaded layout over it).</summary>
     public static PodcastShowView Empty { get; } = new(PodcastLoad.Pending,
@@ -180,9 +209,6 @@ public sealed record PodcastShowPageProps
     /// <summary>The selected episode (the details pane follows it); null shows the pane's hint / About.</summary>
     public required IReadSignal<string?> Selected { get; init; }
     public required Action<string?> Select { get; init; }
-    /// <summary>The row expanded in place (the medium width's disclosure).</summary>
-    public required IReadSignal<string?> Expanded { get; init; }
-    public required Action<string?> Expand { get; init; }
     public required IReadSignal<PodcastPaneTab> PaneTab { get; init; }
     public required Action<PodcastPaneTab> SetPaneTab { get; init; }
     /// <summary>The episode on the deck and playing (its button shows Pause), else null.</summary>
@@ -220,6 +246,9 @@ public sealed record PodcastShowPageProps
     /// <summary>An episode row's drag payload, built when a drag promotes (a cold factory; wrap it in the house's <c>Drag.Source</c>): it drops onto a
     /// playlist and onto the queue as a track does. Null: the rows carry no drag.</summary>
     public Func<string, object?>? RowDrag { get; init; }
+    /// <summary>The hero cover's drag source (ONE per page, made by the host: the show as the house's show payload, read when the drag promotes):
+    /// it pins onto the sidebar and drops onto a playlist or the queue as a show card does. Null: the cover carries no drag.</summary>
+    public DragSource? CoverDrag { get; init; }
 }
 
 /// <summary>One chapter of an episode: where it starts, its length and how far the listener is through it (0..1).</summary>
@@ -367,6 +396,27 @@ public sealed record AudiobookView(
 
     /// <summary>The chapter the primary continues (in progress), else -1.</summary>
     public int Current { get; init; } = -1;
+    /// <summary>The chapters are still on their way (the book's membership has not answered whole; a book pages itself to the end). The page does
+    /// not wait for them: a theme holds their place with the rows of <see cref="HeldChapters"/> as a placeholder, and the rows arrive in it.</summary>
+    public bool ChaptersPending { get; init; }
+    /// <summary>How many chapters the book has, as the wire states it before the chapters themselves arrive (0 = not said yet).</summary>
+    public int ChapterCount { get; init; }
+    /// <summary>The chapters are on their way and nothing has said how many: what stands under the contents has no place of its own yet. A theme
+    /// holds it back (a placeholder) and draws it when the count is known, where it will stay: content a listener can read never moves.</summary>
+    public bool ChaptersUnsized => ChaptersPending && ChapterCount == 0;
+    /// <summary>Every chapter is here and knows its length: the line can be drawn to length (before that it would be re-cut as the lengths land).</summary>
+    public bool LineKnown { get; init; }
+
+    /// <summary>How many placeholder rows stand for the chapters while nothing has said how many (the loading page's own count).</summary>
+    public const int HeldRows = 12;
+
+    /// <summary>The rows a theme derives the chapters' placeholder from while <see cref="ChaptersPending"/>: <see cref="ChapterCount"/> of them, or
+    /// <see cref="HeldRows"/> while the count is not known. Their words are never shown.</summary>
+    public ImmutableArray<AudiobookChapterVm> HeldChapters() => Held(ChapterCount > 0 ? ChapterCount : HeldRows);
+
+    static ImmutableArray<AudiobookChapterVm> Held(int count)
+        => [.. Enumerable.Range(0, count).Select(static i => new AudiobookChapterVm(i, (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "Chapter title", false, i * 1_800_000, 1_800_000, "0:00:00", "30 min", false, ""))];
 
     /// <summary>The route key the kind word ("Audiobook") opens (the Browse category of audiobooks), or null when Wavee routes none: the word is then
     /// drawn, not linked.</summary>
@@ -390,8 +440,7 @@ public sealed record AudiobookView(
         StartsAtLabel = "starts at", LineTitle = "The whole book", LineSub = "select one to start there", LineRight = "8 hr 30 min",
         AboutTitle = "About this book", AboutHtml = "A placeholder paragraph about the book, long enough to wrap over three or four lines in the card beside the contents page.",
         Facts = [new("Author", "Author name"), new("Narrator", "Narrator name"), new("Released", "1 January 2024"), new("Length", "8 hr 30 min")],
-        Chapters = [.. Enumerable.Range(0, 12).Select(static i => new AudiobookChapterVm(i, (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "Chapter title", false, i * 1_800_000, 1_800_000, "0:00:00", "30 min", false, ""))],
+        Chapters = Held(HeldRows), LineKnown = true,
     };
 }
 
@@ -439,4 +488,7 @@ public sealed record AudiobookPageProps
     public required IReadSignal<PodcastRateVm> RateState { get; init; }
     /// <summary>A genre of <see cref="AudiobookView.Genres"/>, by its words: Search for it. Null: the genres are plain text.</summary>
     public Action<string>? OpenGenre { get; init; }
+    /// <summary>The hero cover's drag source (ONE per page, made by the host: the book as the house's show payload, as
+    /// <see cref="PodcastShowPageProps.CoverDrag"/>). Null: the cover carries no drag.</summary>
+    public DragSource? CoverDrag { get; init; }
 }

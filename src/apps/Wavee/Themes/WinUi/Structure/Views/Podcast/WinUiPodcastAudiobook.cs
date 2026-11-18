@@ -44,6 +44,12 @@ internal static class WinUiPodcastAudiobook
         /// <summary>The page scroller's handle: the contents page windows its rows on it (only the rows near the viewport mount).</summary>
         readonly ScrollHandle _scroll = new();
 
+        /// <summary>The single column's order (About first for a book not started), decided once per book when the page first shows it. A
+        /// listener's place can land after the page (a cold open) or change on it (pressing Start): re-ordering then took the card being read
+        /// away to the foot of the contents.</summary>
+        string _orderFor = "";
+        bool _aboutFirst = true;
+
         public override Element Render()
         {
             var p = UseProps<AudiobookPageProps>();
@@ -52,10 +58,15 @@ internal static class WinUiPodcastAudiobook
             float inset = WinUiTiers.InsetOf(facts);
             var barOn = UseSignal(false);
             var v = p.View.Value;
-            Element real = Column(v, p, lay, barOn);
+            if (v.Load != PodcastLoad.Pending && _orderFor != v.Uri)
+            {
+                _orderFor = v.Uri;
+                _aboutFirst = v.State == AudiobookState.NotStarted;
+            }
+            Element real = Column(v, p, lay, barOn, _aboutFirst);
             var region = new SkelRegionEl(
                 Pending: () => p.View.Value.Load == PodcastLoad.Pending, Failed: static () => false,
-                Content: () => real, ShimmerSource: () => Column(AudiobookView.Placeholder, p, lay, null),
+                Content: () => real, ShimmerSource: () => Column(AudiobookView.Placeholder, p, lay, null, true),
                 OnFailed: null, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
             Element content = new BoxEl
             {
@@ -68,13 +79,14 @@ internal static class WinUiPodcastAudiobook
 
     // ══ THE COLUMN ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Column(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, Signal<bool>? barOn)
+    static Element Column(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, Signal<bool>? barOn, bool aboutFirst)
     {
         var kids = new List<Element>(6) { Hero(v, p, lay) };
         if (barOn is not null) kids.Add(WinUiPodcastKit.BarSentinel(barOn));
         kids.Add(Premium(v, p));
-        kids.Add(Columns(v, p, lay));
-        if (v.Similar.Length > 0)
+        kids.Add(Columns(v, p, lay, aboutFirst));
+        // The similar books stand under the contents: they are drawn once something says how many chapters there are, where they will stay.
+        if (v.Similar.Length > 0 && !v.ChaptersUnsized)
         {
             kids.Add(new BoxEl
             {
@@ -94,6 +106,7 @@ internal static class WinUiPodcastAudiobook
         Element cover = new BoxEl
         {
             Key = WinUiFrameLayout.PageTitleKey, Width = lay.Cover, Height = lay.Cover, Shrink = 0f, AlignSelf = FlexAlign.Start, Corners = CornerRadius4.All(AB.CoverRadius), ClipToBounds = true,
+            Draggable = p.CoverDrag,
             Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, AB.CoverRadius, decodePx: AB.CoverDecode)],
         };
         Element eyebrow = Eyebrow(v, p, lay);
@@ -181,14 +194,15 @@ internal static class WinUiPodcastAudiobook
         kids.Add(v.KindRoute is { Length: > 0 } route
             ? HyperlinkButton.Create(v.Kind, () => p.OpenRoute(route), size: ControlSize.Small) with { Key = AB.KindKey, Shrink = 0f, Padding = default }
             : Caption(v.Kind) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, Shrink = 0f });
-        if (v.Genres.Length > 0) kids.Add(WinUiPodcastKit.WordLinks("ab-genre", v.Genres, p.OpenGenre, lay.Control));
-        if (v.Included && v.IncludedTag.Length > 0)
-            kids.Add(new BoxEl
+        Element? tag = v.Included && v.IncludedTag.Length > 0 ? new BoxEl
             {
                 Height = AB.TagHeight, Padding = new Edges4(AB.TagPadX, 0f, AB.TagPadX, 0f), Corners = CornerRadius4.All(AB.TagRadius), Direction = 0,
                 AlignItems = FlexAlign.Center, BorderWidth = 1f, BorderColor = Tok.AccentTextPrimary, Shrink = 0f,
                 Children = [new TextEl(v.IncludedTag) { Size = AB.TagSize, LineHeight = AB.TagLine, Weight = AB.Strong, Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap }],
-            });
+            } : null;
+        // The genres give way a whole word at a time; the tag rides with them, right after the last genre that shows.
+        if (v.Genres.Length > 0) kids.Add(WinUiPodcastKit.WordLinks("ab-genre", v.Genres, p.OpenGenre, lay.Control, tag is null ? [] : [tag]));
+        else if (tag is not null) kids.Add(tag);
         return new BoxEl { Direction = 0, Gap = AB.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. kids] };
     }
 
@@ -396,7 +410,7 @@ internal static class WinUiPodcastAudiobook
 
     // ══ THE COLUMNS ═════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Columns(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
+    static Element Columns(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay, bool aboutFirst)
     {
         Element chapters = new BoxEl
         {
@@ -405,7 +419,7 @@ internal static class WinUiPodcastAudiobook
             Children = [WinUiAudiobookParts.Line(v, p, lay), WinUiAudiobookParts.Contents(v, p, lay)],
         };
         Element about = WinUiAudiobookParts.About(v, p, lay) with { Layout = AB.Block };
-        bool aboutFirst = !lay.TwoColumns && v.State == AudiobookState.NotStarted;
+        aboutFirst &= !lay.TwoColumns;
         return new BoxEl
         {
             Key = AB.ColumnsKey, Layout = AB.Block, Direction = (byte)(lay.TwoColumns ? 0 : 1), Gap = lay.ColumnGap, MinWidth = 0f,

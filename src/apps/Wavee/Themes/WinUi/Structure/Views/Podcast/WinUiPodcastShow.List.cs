@@ -43,7 +43,7 @@ internal static partial class WinUiPodcastShow
 {
     /// <summary>One slot's item: a prefix part (0 hero, 1 about, 2 toolbar) or a list item resolved against the snapshot. Records compare by value, so a
     /// slot whose episode did not change does not re-render when the list around it does.</summary>
-    sealed record ShowSlot(int Prefix, PodcastItemKind Kind, PodcastGroup? Group, PodcastEpisodeVm? Vm, bool First)
+    sealed record ShowSlot(int Prefix, PodcastItemKind Kind, PodcastGroup? Group, PodcastEpisodeVm? Vm, bool First, bool Lead = false, bool Numbered = false)
     {
         public static readonly ShowSlot None = new(-1, PodcastItemKind.Empty, null, null, false);
     }
@@ -99,8 +99,8 @@ internal static partial class WinUiPodcastShow
                 if (i == 1) return lay.Pane ? 0f : S.AboutEstimate;
                 if (i == 2) return S.ToolbarH;
                 // EXACT where it can be (a jump far down the list lands on its year): a header is its tier's height, a row at rest its one-line height (with
-                // a line of description where the tier shows one and the episode has one) plus the gap above every row but a group's first. An expanded row,
-                // a two-line Compact title and the foot correct on realize.
+                // a line of description where the tier shows one and the episode has one) plus the gap above every row but a group's first. A two-line
+                // Compact title and the foot correct on realize.
                 var v = View.Peek();
                 int k = i - PrefixCount;
                 if ((uint)k >= (uint)v.Items.Length) return S.FootEstimate;
@@ -110,8 +110,12 @@ internal static partial class WinUiPodcastShow
                     case PodcastItemKind.Group: return lay.GroupH;
                     case PodcastItemKind.Row:
                         var vm = (uint)it.Episode < (uint)v.Episodes.Length ? v.Episodes[it.Episode] : null;
-                        bool desc = lay.RowDescription && vm is not null && (vm.Description.Length > 0 || vm.DescriptionHtml.Length > 0);
-                        return (it.First ? 0f : K.RowGap) + (desc ? S.RowHeightDescribed : S.RowHeight);
+                        // By the row's form: the lead card, a played line, a wide row at rest with its line of description, a one-line row.
+                        bool rest = vm is { State: PodcastRowState.New or PodcastRowState.Unplayed };
+                        bool desc = rest && lay.RowDescription && vm!.Blurb.Length > 0 && Host._rowWide is { } rw && rw.Peek();
+                        float h = vm is { State: PodcastRowState.Played } ? S.RowHeightPlayed : it.Lead && rest ? S.RowLeadEstimate
+                            : desc ? S.RowHeightDescribed : S.RowHeight;
+                        return (it.First ? 0f : K.RowGap) + h;
                     default: return S.FootEstimate;
                 }
             }
@@ -148,8 +152,9 @@ internal static partial class WinUiPodcastShow
                     {
                         ScrollKey = Live ? "podcast-scroll:" + host._p.RouteKey : null, Handle = Live ? host._scroll : null,
                         AutoEdgeFade = false, EdgeCues = ScrollEdgeCues.None,
-                        // The rows cut themselves at the pinned toolbar's lower edge (the bar and the toolbar paint no band at rest).
-                        ItemClipTopInset = K.BarH + S.ToolbarH,
+                        // The rows cut themselves at the pinned toolbar's lower edge, and at the pinned group header's while one shows (the bar,
+                        // the toolbar and the header paint no band: what is behind the page shows through all three).
+                        ItemClipTopInset = K.BarH + S.ToolbarH, ItemClipTopInsetSource = Live ? host._clipInset : null,
                     },
                 };
                 Element list = ItemsView.CreateBound<ShowSlot>(Items, Template, Layout, _options);
@@ -243,7 +248,7 @@ internal static partial class WinUiPodcastShow
             var it = v.Items[k];
             var g = (uint)it.Group < (uint)v.Groups.Length ? v.Groups[it.Group] : null;
             var vm = it.Kind == PodcastItemKind.Row && (uint)it.Episode < (uint)v.Episodes.Length ? v.Episodes[it.Episode] : null;
-            return new ShowSlot(-1, it.Kind, it.Kind == PodcastItemKind.Group ? g : null, vm, it.First);
+            return new ShowSlot(-1, it.Kind, it.Kind == PodcastItemKind.Group ? g : null, vm, it.First, it.Lead, v.Numbered);
         }
 
         /// <summary>The pane's place: under the toolbar at rest (the hero's foot), pinned 16 under the bar, and taller than the viewport it rides the scroll
@@ -282,14 +287,14 @@ internal static partial class WinUiPodcastShow
         Edges4 Gutters(WinUiPodcastShowLayout lay, float inset) => new(inset, 0f, inset + (lay.Pane ? S.PaneW + S.ColGap : 0f), 0f);
 
         /// <summary>Jump to a year: its header to the top of the list, under the bar and the toolbar.</summary>
-        void JumpToGroup(string groupKey)
+        void JumpToYear(int year)
         {
             var live = _live!;
             var v = live.View.Peek();
             for (int k = 0; k < v.Items.Length; k++)
             {
                 var it = v.Items[k];
-                if (it.Kind != PodcastItemKind.Group || (uint)it.Group >= (uint)v.Groups.Length || v.Groups[it.Group].Key != groupKey) continue;
+                if (it.Kind != PodcastItemKind.Group || (uint)it.Group >= (uint)v.Groups.Length || v.Groups[it.Group].Year != year) continue;
                 // The header's own place in the list's measured layout, parked under the bar and the toolbar.
                 _scroll.ScrollTo(Math.Max(0.0, live.Measured.OffsetOf(PrefixCount + k, 0f) - (K.BarH + S.ToolbarH)), ScrollMove.Immediate);
                 return;
@@ -314,14 +319,33 @@ internal static partial class WinUiPodcastShow
         {
             _pinnedOf ??= PinnedGroup;
             _pinned = UseComputed(_pinnedOf);
+            // Whether a row is the wide form (the date and length at its end): a memo over the tier and the list's width, so the rows re-render
+            // when it flips, never per width step.
+            _rowWideOf ??= () => WinUiPodcastShowTiers.RowWide(_lay.Value, _listW.Value);
+            _rowWide = UseComputed(_rowWideOf);
+            // Where the rows are cut at the top of the list: under the bar and the toolbar, and under the pinned group header (with its hairline)
+            // while one shows.
+            _clipInsetOf ??= () => K.BarH + S.ToolbarH + ((_pinned?.Value ?? -1) >= 0 ? _lay.Value.GroupH + S.PinnedRule : 0f);
+            _clipInset = UseComputed(_clipInsetOf);
         }
+
+        Func<bool>? _rowWideOf;
+        Memo<bool>? _rowWide;
+        Func<float>? _clipInsetOf;
+        Memo<float>? _clipInset;
 
         sealed record SlotProps(ShowList List);
 
-        /// <summary>The pinned group header over the list: the year (or "New since your last visit") the list is in under the toolbar, on the page's layer
-        /// with the hairline; nothing while the toolbar has not pinned.</summary>
+        /// <summary>The pinned group header over the list: the month (or "New since your last visit") the list is in under the toolbar, with its
+        /// hairline; nothing while the toolbar has not pinned. It paints NO plate: the rows cut themselves at its lower edge (the list's live clip
+        /// inset), as they do at the toolbar's, so what is behind the page shows through it (an opaque content-surface plate stood out as a solid
+        /// band wherever the window's backdrop tints the page; owner, 2026-11-18).</summary>
         sealed class PinnedHead : Component
         {
+            NodeHandle _chip;
+            Action<NodeHandle>? _setChip;
+            Func<NodeHandle>? _chipOf;
+
             public override Element Render()
             {
                 var list = UseProps<SlotProps>().List;
@@ -332,11 +356,11 @@ internal static partial class WinUiPodcastShow
                 var lay = host._lay.Value;
                 return new BoxEl
                 {
-                    Key = "show-pinned-head:" + v.Groups[gi].Key, Direction = 1, MinWidth = 0f, Fill = Prop.Of(static () => R.Layer.ContentSurface),
+                    Key = "show-pinned-head:" + v.Groups[gi].Key, Direction = 1, MinWidth = 0f,
                     Children =
                     [
-                        host.GroupHeadRow(v.Groups[gi], v.Years, lay, live: true),
-                        new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
+                        host.GroupHeadRow(v.Groups[gi], v.Years, lay, live: true, pinned: true, _setChip ??= h => _chip = h, _chipOf ??= () => _chip),
+                        new BoxEl { Height = S.PinnedRule, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
                     ],
                 };
             }
@@ -417,6 +441,10 @@ internal static partial class WinUiPodcastShow
         /// <summary>A group header's content: the year (or "New since your last visit", "In order") with its count, the jump list, Mark all as played.</summary>
         sealed class HeadSlot(ShowList list, IReadSignal<ShowSlot> item) : Component
         {
+            NodeHandle _chip;
+            Action<NodeHandle>? _setChip;
+            Func<NodeHandle>? _chipOf;
+
             public override Element Render()
             {
                 var host = list.Host;
@@ -425,7 +453,8 @@ internal static partial class WinUiPodcastShow
                 float inset = host._inset.Value;
                 if (slot.Group is not { } g) return new BoxEl { Height = lay.GroupH };
                 var years = list.View.Peek().Years;
-                return host.Guttered("gh", lay, inset, host.GroupHeadRow(g, years, lay, list.Live), reflow: true);
+                return host.Guttered("gh", lay, inset,
+                    host.GroupHeadRow(g, years, lay, list.Live, pinned: false, _setChip ??= h => _chip = h, _chipOf ??= () => _chip), reflow: true);
             }
         }
 
@@ -434,13 +463,13 @@ internal static partial class WinUiPodcastShow
         /// re-rendering neither the row (unless its own shape changed) nor its gutters.</summary>
         sealed class BodySlot(ShowList list, IReadSignal<ShowSlot> item) : Component
         {
-            Func<(PodcastItemKind Kind, bool First)>? _shapeOf;
+            Func<(PodcastItemKind Kind, bool First, bool Lead, bool Numbered)>? _shapeOf;
             Func<PodcastEpisodeVm?>? _vmOf;
 
             public override Element Render()
             {
                 var host = list.Host;
-                _shapeOf ??= () => (item.Value.Kind, item.Value.First);
+                _shapeOf ??= () => (item.Value.Kind, item.Value.First, item.Value.Lead, item.Value.Numbered);
                 var shape = UseComputed(_shapeOf).Value;
                 _vmOf ??= () => item.Value.Vm;
                 var vm = UseComputed(_vmOf);
@@ -449,7 +478,8 @@ internal static partial class WinUiPodcastShow
                 Element body = shape.Kind switch
                 {
                     // ONE row per slot, reading its episode from the slot: a rebind writes the row's words, it never re-renders the row.
-                    PodcastItemKind.Row => WinUiPodcastKit.EpisodeRow(vm, lay.RowMode, lay.RowDescription, lay.Stacked, host._verbs!),
+                    PodcastItemKind.Row => WinUiPodcastKit.EpisodeRow(vm, lay.RowMode, lay.RowDescription, lay.Stacked, host._verbs!,
+                        wide: host._rowWide?.Value ?? false, lead: shape.Lead, numbered: shape.Numbered),
                     PodcastItemKind.More => new BoxEl
                     {
                         Key = "show-more", Direction = 0, Justify = FlexJustify.Center, Padding = new Edges4(0f, K.SectionBottom, 0f, K.SectionBottom),

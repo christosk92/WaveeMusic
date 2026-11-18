@@ -347,9 +347,11 @@ internal static class WinUiPodcastEpisodeParts
             if (_a.Chrome)
             {
                 head.Add(Caption(v.TranscriptSub) with { Color = Tok.TextSecondary, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
+                // The find box keeps its width (its slot shrank while the box inside did not, so the box ran under the follow button): where the
+                // header is too narrow for both, the header wraps and they take its second line.
                 head.Add(new BoxEl
                 {
-                    Width = P.FindW, Shrink = 1f, MinWidth = 0f,
+                    Width = P.FindW, Shrink = 0f,
                     Children = [AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Podcast.Pages.FindInTranscript), width: P.FindW, text: p.Find(),
                         queryIcon: Icons.Search, cornerRadius: Radii.Control)],
                 });
@@ -411,7 +413,7 @@ internal static class WinUiPodcastEpisodeParts
                 [
                     new BoxEl
                     {
-                        Direction = 0, Gap = P.TrHeadPad, AlignItems = FlexAlign.Center, MinHeight = P.TrHeadMinH, Shrink = 0f, MinWidth = 0f,
+                        Direction = 0, Wrap = true, Gap = P.TrHeadPad, AlignItems = FlexAlign.Center, MinHeight = P.TrHeadMinH, Shrink = 0f, MinWidth = 0f,
                         Padding = new Edges4(P.TrHeadPadL, P.TrHeadPad, P.TrHeadPad, P.TrHeadPad), BorderWidth = 0f,
                         Children = head.ToArray(),
                     },

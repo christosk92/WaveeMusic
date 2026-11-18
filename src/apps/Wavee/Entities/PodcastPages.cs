@@ -138,8 +138,12 @@ public static partial class PodcastPages
 
         string full = book.Title;
         bool credits = book.Knows(ShowFields.Credits);
-        string title = credits && book.BookTitle.Length > 0 ? book.BookTitle : full;
-        string subtitle = credits ? book.BookSubtitle : "";
+        // The title and its subtitle are their final shape from the first answer: SHOW_V4 sends them joined ("Title: Subtitle"), and until the
+        // credits say them apart the page splits them itself (AudiobookRules.SplitTitle, the cards' rule). The joined form ran the title
+        // over six lines and re-wrapped it to three the moment the credits landed, moving everything under it.
+        var split = AudiobookRules.SplitTitle(full);
+        string title = credits ? (book.BookTitle.Length > 0 ? book.BookTitle : full) : split.Title;
+        string subtitle = credits ? book.BookSubtitle : split.Subtitle;
         string description = Entities.Strings.Resolve(book.DescriptionId);
 
         var authors = AuthorsOf(book);

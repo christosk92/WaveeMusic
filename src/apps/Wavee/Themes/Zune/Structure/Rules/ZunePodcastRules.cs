@@ -101,15 +101,33 @@ public static class ZunePodcastRules
     public const float JumpW = 320f, JumpCellH = 64f, JumpGap = 4f, JumpPad = 16f;
     public const int JumpCols = 3;
 
-    /// <summary>An episode row: the play column, the vertical padding, the title (18/24 light), the description's lines and the expanded body's air.</summary>
+    /// <summary>An episode row: the play column, the vertical padding, the title (18/24 light), and the description's lines.</summary>
     public const float RowPlay = 36f, RowPlayCompact = 40f, RowPadY = 10f, RowGap = 12f, RowGlyph = 14f, RowTitleSize = 18f, RowTitleLine = 24f;
-    public const float RowAction = 36f, RowActionCompact = 40f, RowDescSize = 13f, RowDescLine = 18f, ExpandTop = 8f, ExpandGap = 12f;
+    public const float RowAction = 36f, RowActionCompact = 40f, RowDescSize = 13f, RowDescLine = 18f;
+    // The row's forms (the state sets the weight): the lead is a headline, a row at rest is the title over its line of description with the date
+    // and the length at its end, a row in progress carries its line, a played row is one quiet line. A numbered show keeps its numbers in a
+    // lane before the titles, in the numeral voice (22/28 light; 28/36 on the lead).
+    /// <summary>The numeral lane, and how far a numeral is moved so its baseline is the title's (the numeral's line box is the taller one; on the
+    /// lead it stands beside the title, under the meta line).</summary>
+    public const float NumeralW = 40f, NumeralLeadW = 52f, NumeralLift = -3f, NumeralLeadDrop = 14f;
+    /// <summary>The lead: its air, the gap between its lines, its description's measure.</summary>
+    public const float LeadPadTop = 14f, LeadPadBottom = 18f, LeadGap = 2f, LeadBlurbW = 640f;
+    public const int LeadTitleLines = 2, LeadBlurbLines = 2;
+    /// <summary>A played row's vertical padding; the date and length's drop at a wide row's end (onto the title's line).</summary>
+    public const float RowPadPlayed = 4f, AsideDrop = 3f;
+    /// <summary>A row in progress: its line under the title.</summary>
+    public const float RowBarW = 280f, RowBarTop = 8f;
+
+    /// <summary>What leads an episode's number where it stands in the meta line ("#97").</summary>
+    public const string NumberSign = "#";
 
     /// <summary>The row's hover wash and the new mark (a square accent dot).</summary>
     public const float RowHoverAlpha = 0.04f, RowPressedAlpha = 0.08f, NewDot = 6f;
 
     /// <summary>The list's seeded extents (the measured ones replace them on realize) and the prefix parts' recycle pools (past the item kinds).</summary>
     public const float RowEstimate = 64f, RowEstimateTall = 84f, FootEstimate = 64f;
+    /// <summary>A wide row's seeded extents by its form: one line, with its second line (the description or the line in progress), played, the lead.</summary>
+    public const float RowWideEstimate = 56f, RowWideTall = 62f, RowPlayedEstimate = 44f, RowLeadEstimate = 112f;
     public const int PrefixType = 16;
 
     /// <summary>The empty line and the foot's air.</summary>

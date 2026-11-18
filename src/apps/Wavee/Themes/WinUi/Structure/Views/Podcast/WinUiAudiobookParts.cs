@@ -76,12 +76,25 @@ internal static class WinUiAudiobookParts
                 right,
             ],
         };
+        var view = p.View;
+        // Drawn to length once every length is known (the chapters land before their lengths: segments cut evenly would be re-cut under the eye).
+        // Until then the band stands empty, and the segments fade in where they belong. A region's own run can come before the page's re-render
+        // hands it new closures, so what it mounts reads the view as it is NOW.
+        Element segments = new SkelRegionEl(
+            Pending: () => !view.Value.LineKnown, Failed: static () => false,
+            Content: () => SegmentsOf(view.Value, p, lay), ShimmerSource: static () => new BoxEl { Height = AB.SegBand }, OnFailed: null,
+            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+        return Card(AB.LineKey, new Edges4(AB.LinePadX, AB.LinePadTop, AB.LinePadX, AB.LinePadBottom), AB.LineGap, [head, segments]);
+    }
+
+    static Element SegmentsOf(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
+    {
+        var place = p.Place;
         var chapters = v.Chapters;
         var playChapter = p.PlayChapter;
-        bool finished = v.State == AudiobookState.Finished;
+        bool progress = v.State == AudiobookState.InProgress, finished = v.State == AudiobookState.Finished;
         bool seek = !lay.Stacked;   // Compact: the line shows your place; the contents rows (44 tall) are the targets, a 6-DIP segment cannot be one
-        Element segments = Responsive.Of(w => Segments(w, chapters, place, playChapter, progress, finished, seek));
-        return Card(AB.LineKey, new Edges4(AB.LinePadX, AB.LinePadTop, AB.LinePadX, AB.LinePadBottom), AB.LineGap, [head, segments]);
+        return Responsive.Of(w => Segments(w, chapters, place, playChapter, progress, finished, seek));
     }
 
     static Element Segments(float width, ImmutableArray<AudiobookChapterVm> chapters, IReadSignal<AudiobookPlace> place, Action<int> play,
@@ -179,8 +192,26 @@ internal static class WinUiAudiobookParts
                 Caption(v.StartsAtLabel) with { Color = Tok.TextSecondary, Shrink = 0f },
             ],
         };
-        var rows = Embed.Comp(new RowsArgs(v, p, lay), static () => new RowsHost()) with { Key = AB.ContentsKey + ":rows" };
+        var view = p.View;
+        // The rows do not hold the page. While they are on their way their place is held by as many placeholder rows as the book has chapters (the
+        // loading page's twelve until something says how many), and they arrive in it one behind the other.
+        // A region's own run can come before the page's re-render hands it new closures, so what it mounts reads the view as it is NOW: rows that
+        // arrive are there when the reveal looks for them.
+        Element rows = new SkelRegionEl(
+            Pending: () => view.Value.ChaptersPending, Failed: static () => false,
+            Content: () => Embed.Comp(new RowsArgs(view.Value, p, lay), static () => new RowsHost()) with { Key = AB.ContentsKey + ":rows" },
+            ShimmerSource: () => HeldRows(view.Value, p, lay), OnFailed: null, Reveal: SkelReveal.StaggerRows,
+            Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
         return Card(AB.ContentsKey, new Edges4(AB.ContentsPadX, AB.ContentsPadTop, AB.ContentsPadX, AB.ContentsPadBottom), 0f, [head, rows]);
+    }
+
+    /// <summary>The placeholder's rows: one per chapter the book states (never windowed: nothing of them is drawn but their shape).</summary>
+    static Element HeldRows(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
+    {
+        var held = v.HeldChapters();
+        var kids = new Element[held.Length];
+        for (int i = 0; i < kids.Length; i++) kids[i] = Row(held[i], v, p, lay);
+        return new BoxEl { Direction = 1, MinWidth = 0f, Children = kids };
     }
 
     /// <summary>The page scroller's handle, provided by the page (null: a view mounted alone, every row mounts).</summary>
@@ -253,11 +284,12 @@ internal static class WinUiAudiobookParts
             Size = c.Matter ? AB.MatterSize : AB.NameSize, LineHeight = AB.NameLine, Weight = cur ? AB.Strong : (ushort)0, Color = nameInk,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
         };
-        // Dot leaders, as a book's contents page sets them: a dotted rule (a dashed stroke of 1-DIP dots) toward the start time.
+        // Dot leaders, as a book's contents page sets them: a dotted rule (a dashed stroke of 1-DIP dots) toward the start time. There are none
+        // until the start is known (a chapter's name lands before its place in the book).
         var leader = new BoxEl
         {
             Height = AB.LeaderHeight, Grow = 1f, MinWidth = AB.LeaderMin, AlignSelf = FlexAlign.Center, OffsetY = AB.LeaderLift / 2f,
-            BorderWidth = AB.LeaderHeight, BorderDashOn = AB.LeaderDot, BorderDashOff = AB.LeaderGap,
+            BorderWidth = c.StartsAt.Length > 0 ? AB.LeaderHeight : 0f, BorderDashOn = AB.LeaderDot, BorderDashOff = AB.LeaderGap,
             BorderColor = Tok.TextPrimary with { A = done ? AB.LeaderDoneAlpha : AB.LeaderAlpha },
         };
         var left = new TextEl("")

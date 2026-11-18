@@ -7,7 +7,7 @@
 //                line and the time left) · the meta (publisher · ★ rating (count) · cadence · N episodes) · follow / bell / share / ...]
 //      the pivot's body:
 //        episodes  the toolbar (pinned under the viewport's top: the filter words with their counts, the search pill, the sort) and the groups (a
-//                  pinned 26/32 heading per year or "new since your last visit" with mark all as played; the rows, which expand in place)
+//                  pinned 26/32 heading per year or "new since your last visit" with mark all as played; the rows, which open their episode)
 //        about     the description (the house rich text), the trailer, the rating and the facts
 //        more      the house cards
 //
@@ -99,7 +99,7 @@ internal static partial class ZunePodcastShow
             OverlaySvc = UseContext(Overlay.Service);
             _verbs ??= new ZunePodcastRowVerbs
             {
-                Expanded = p.Expanded, Playing = p.Playing, Play = p.Play, Open = p.Open, PlayNext = p.PlayNext, Expand = p.Expand, Menu = p.RowMenu,
+                Playing = p.Playing, Play = p.Play, Open = p.Open, Menu = p.RowMenu,
                 Drag = p.RowDrag,
             };
             _project ??= () =>
@@ -167,6 +167,8 @@ internal static partial class ZunePodcastShow
             Element art = new BoxEl
             {
                 Key = "zp-art", Width = lay.Art, Height = lay.Art, Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ZuneMotion.GroupResize,
+                // The art drags as the show (the host's one source); the shimmer's carries none.
+                Draggable = live ? _p.CoverDrag : null,
                 Children = [Controls.Artwork(head.ArtUrl, lay.Art, lay.Art, 0f, decodePx: (int)(lay.Art * 2f))],
             };
             var s = h.Smart;
@@ -259,6 +261,8 @@ internal static partial class ZunePodcastShow
             if (h.Cadence.Length > 0) parts.Add(K.MetaWord(h.Cadence));
             if (h.Count.Length > 0) parts.Add(K.MetaWord(h.Count));
             if (h.Serial) parts.Add(K.MetaWord(Loc.Get(Strings.Podcast.Pages.Serial)));
+            if (h.Exclusive) parts.Add(K.MetaWord(Loc.Get(Strings.Podcast.Pages.Exclusive)));
+            if (h.Explicit) parts.Add(ZuneRowCells.ExplicitMark());
             if (h.Kind.Length > 0)
                 parts.Add(_p.OpenKind is { } kind ? K.Link("zp-kind", h.Kind, kind, 0f) : K.MetaWord(h.Kind));
             // The topics: each a link that searches its words (names: as written); the ones that do not fit leave the line whole.
@@ -346,7 +350,6 @@ internal static partial class ZunePodcastShow
     sealed class ListState
     {
         public readonly Signal<bool> ToolbarStuck = new(false), SearchOpen = new(false);
-        public readonly Dictionary<string, NodeHandle> GroupNodes = [];
         public OverlayHandle? Jump;
     }
 
@@ -378,10 +381,10 @@ internal static partial class ZunePodcastShow
                     Flush();
                     var g = v.Groups[it.Group];
                     groupKey = g.Key;
-                    groupHead = GroupHeader(host, st, v.Years, g, live);
+                    groupHead = GroupHeader(host, st, v.Years, g, live, pinned: false, null, null);
                     break;
                 case PodcastItemKind.Row:
-                    groupRows.Add(K.EpisodeRow(v.Episodes[it.Episode], lay.RowDescription, lay.Stacked, host.Verbs));
+                    groupRows.Add(K.EpisodeRow(v.Episodes[it.Episode], lay.RowDescription, lay.Stacked, host.Verbs, it.Lead, v.Numbered));
                     break;
                 case PodcastItemKind.Empty:
                     Flush();
@@ -484,13 +487,20 @@ internal static partial class ZunePodcastShow
         Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade, Layout = ZuneMotion.GroupResize, Children = [body],
     };
 
-    static Element GroupHeader(PageHost host, ListState st, ImmutableArray<PodcastYear> years, PodcastGroup g, bool live)
+    /// <remarks>A month's header says its year (in the count's raised voice) where the year opens in the list and wherever it is
+    /// <paramref name="pinned"/> (the list scrolled away from the header that said it); the other groups say their count.
+    /// <paramref name="realized"/> / <paramref name="chip"/>: the header's own node, kept by the slot that mounts it: the jump list opens under THIS
+    /// header (a header keyed by its group stood twice, in the list and pinned, and the list opened on whichever mounted last, even after it
+    /// had gone); null where the header is a skeleton's.</remarks>
+    static Element GroupHeader(PageHost host, ListState st, ImmutableArray<PodcastYear> years, PodcastGroup g, bool live, bool pinned,
+        Action<NodeHandle>? realized, Func<NodeHandle>? chip)
     {
         var p = host.Props;
         bool jumps = years.Length > 1;
         var words = new List<Element>(3) { ZuneDetailKit.Heading(g.Title) with { Color = Tok.TextTertiary, HoverColor = jumps ? Tok.TextPrimary : Tok.TextTertiary, Shrink = 1f } };
-        if (g.CountText.Length > 0)
-            words.Add(new TextEl(g.CountText) { Size = Z.CountSize, LineHeight = Z.CountLine, Color = Tok.TextTertiary, Shrink = 0f, AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, Z.GroupCountLift, 0f, 0f) });
+        string beside = g.YearText.Length > 0 ? (pinned || g.OpensYear ? g.YearText : "") : g.CountText;
+        if (beside.Length > 0)
+            words.Add(new TextEl(beside) { Size = Z.CountSize, LineHeight = Z.CountLine, Color = Tok.TextTertiary, Shrink = 0f, AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, Z.GroupCountLift, 0f, 0f) });
         if (jumps) words.Add(Icon(Icons.ChevronDown, Z.GroupGlyph, Tok.TextTertiary));
         string key = g.Key;
         var kids = new List<Element>(3)
@@ -499,8 +509,8 @@ internal static partial class ZunePodcastShow
             {
                 Key = "gh:jump:" + key, Direction = 0, Gap = Z.GroupGap, AlignItems = FlexAlign.Center, MinHeight = Z.GroupH, Shrink = 1f, MinWidth = 0f,
                 Role = AutomationRole.Button, Focusable = jumps, Cursor = jumps ? CursorId.Hand : CursorId.Arrow, AllowFocusOnInteraction = false,
-                OnRealized = live ? h => st.GroupNodes["head:" + key] = h : null,
-                OnClick = jumps && live ? () => OpenJump(host, st, years, key) : null,
+                OnRealized = live ? realized : null,
+                OnClick = jumps && live && chip is not null ? () => OpenJump(host, st, years, chip) : null,
                 Children = words.ToArray(),
             },
             new BoxEl { Grow = 1f },
@@ -509,13 +519,13 @@ internal static partial class ZunePodcastShow
         return new BoxEl { Key = "gh", Direction = 0, Height = Z.GroupH, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
-    static void OpenJump(PageHost host, ListState st, ImmutableArray<PodcastYear> years, string groupKey)
+    static void OpenJump(PageHost host, ListState st, ImmutableArray<PodcastYear> years, Func<NodeHandle> anchor)
     {
         if (st.Jump is { IsOpen: true } open) { open.Close(); return; }
         var overlay = host.OverlaySvc;
-        if (Controls.IsNullOverlay(overlay) || !st.GroupNodes.TryGetValue("head:" + groupKey, out var anchor)) return;
+        if (Controls.IsNullOverlay(overlay) || anchor().IsNull) return;
         OverlayHandle? opened = null;
-        opened = overlay!.Open(() => anchor, () => JumpGrid(host, st, years, () => opened?.Close()), FlyoutPlacement.BottomEdgeAlignedLeft,
+        opened = overlay!.Open(anchor, () => JumpGrid(host, st, years, () => opened?.Close()), FlyoutPlacement.BottomEdgeAlignedLeft,
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
         st.Jump = opened;
     }
@@ -536,7 +546,7 @@ internal static partial class ZunePodcastShow
                     Padding = new Edges4(Z.JumpPad, 0f, Z.JumpPad, 0f), Fill = Prop.Of(static () => Tok.TextPrimary with { A = Z.RowHoverAlpha }),
                     HoverFill = Prop.Of(static () => Tok.AccentDefault), PressedFill = Prop.Of(static () => Tok.AccentTertiary),
                     Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                    OnClick = () => { close(); JumpTo(host, st, "y" + y.Label); },
+                    OnClick = () => { close(); JumpTo(host, st, y.Year); },
                     Children = [R.Type.Numeral(y.Label), R.Type.TrackMeta(y.Count) with { Case = R.Case.For(LabelKind.Label) }],
                 };
             }
@@ -549,5 +559,5 @@ internal static partial class ZunePodcastShow
         };
     }
 
-    static void JumpTo(PageHost host, ListState st, string groupKey) => host.JumpToGroup(groupKey);
+    static void JumpTo(PageHost host, ListState st, int year) => host.JumpToYear(year);
 }

@@ -60,15 +60,26 @@ internal static class ClassicPodcastRules
     public const float RowPadTop = 10f, RowPadEnd = 8f, RowPadBottom = 10f, RowPadStart = 12f, RowPadCompact = 8f, RowColGap = 12f;
     public const float PlayButton = 36f, PlayButtonCompact = 40f, RowAction = 32f, RowActionCompact = 40f;
     public const float RingTrackAlpha = 0.16f, MetaGap = 6f;
-    public const float ExpandTop = 10f, ExpandGap = 10f, ExpandMs = 167f;
+    // The row's forms (the state sets the weight): the lead is a headline, a row at rest is two lines, a row in progress carries its bar, a played
+    // row is one quiet line. A numbered show keeps its numbers in a lane before the titles.
+    /// <summary>The numeral lane: the row-number voice, its end on one line down the list.</summary>
+    public const float NumeralW = 28f;
+    /// <summary>The lead: a section-head title over two lines of what the episode is about, more air, the 44 accent play.</summary>
+    public const float LeadPadTop = 14f, LeadPadBottom = 16f, LeadGap = 2f, LeadPlay = 44f, LeadBlurbW = 560f, LeadPlayHover = 0.90f, LeadPlayPressed = 0.80f;
+    public const int LeadTitleLines = 2, LeadBlurbLines = 2;
+    /// <summary>A played row's vertical padding (one line, the play button's height).</summary>
+    public const float PlayedPadY = 2f;
+    /// <summary>A row in progress: its bar under the title, the time left beside it.</summary>
+    public const float RowBarW = 220f, RowBarGap = 10f;
 
     // ── sections, cards ──
     public const float SectionTop = 28f, SectionBottom = 12f, SectionGap = 8f;
     public const float CardCover = 160f, CardGap = 16f, RowCardCover = 48f;
     public const float EmptyPad = 32f;
-    /// <summary>The list's seeded extents (the measured ones replace them): a row (with its line of description), a group label's foot, the stacked
-    /// column, the foot with More like this; the recycle pools of the page's own parts start here.</summary>
-    public const float RowEstimate = 60f, RowEstimateTall = 78f, FootEstimate = 64f, ColumnEstimate = 720f, SimilarEstimate = 320f;
+    /// <summary>The list's seeded extents (the measured ones replace them): a row (one line, with its line of description or its bar, played, the
+    /// lead), a group label's foot, the stacked column, the foot with More like this; the recycle pools of the page's own parts start here.</summary>
+    public const float RowEstimate = 56f, RowEstimateTall = 58f, RowPlayedEstimate = 40f, RowLeadEstimate = 116f, FootEstimate = 64f,
+        ColumnEstimate = 720f, SimilarEstimate = 320f;
     public const int PartType = 16;
     public const float JumpCellH = 56f, JumpGap = 4f, JumpPad = 12f, JumpW = 340f;
     public const int JumpCols = 3;
@@ -95,6 +106,8 @@ internal static class ClassicPodcastRules
     public const string Dot = " · ";
     /// <summary>The New mark that leads a new episode's meta run (a dot, then the word, both in the accent).</summary>
     public const string NewMark = "● ";
+    /// <summary>What leads an episode's number where it stands in the meta line ("#97").</summary>
+    public const string NumberSign = "#";
     public static readonly ColorF FindMark = ColorF.FromRgba(0xFF, 0xD3, 0x3D, 0x66);
 
     // ── the audiobook ──
@@ -107,7 +120,4 @@ internal static class ClassicPodcastRules
     /// <summary>A tab's count ("12"; "" while it is on its way or none).</summary>
     public static string CountLabel(int n, bool pending) => pending || n <= 0 ? "" : FormatCache.Int(n);
 
-    /// <summary>The row expand: 167 ms, a FlowReveal so the rows after it ride it.</summary>
-    public static readonly LayoutTransition Expand = new(TransitionChannels.Size, TransitionDynamics.Tween(ExpandMs, Easing.SmoothOut),
-        Size: SizeMode.FlowReveal, Anchor: SizeAnchor.Parallax);
 }

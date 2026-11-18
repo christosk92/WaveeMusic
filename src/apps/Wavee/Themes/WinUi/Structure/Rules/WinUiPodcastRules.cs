@@ -46,9 +46,18 @@ internal static class WinUiPodcastKitRules
     public const float WordLinkPadX = 4f, WordLinkGap = 6f;
     /// <summary>The row's action buttons (32; 40 at Compact) and their glyph.</summary>
     public const float RowAction = 32f, RowActionCompact = 40f;
-    /// <summary>The expanded row's air above its body and between its parts.</summary>
-    public const float ExpandTop = 10f, ExpandGap = 10f;
-    public const float ExpandMs = 167f;
+    // The row's forms (the state sets the weight): the lead is a card with a headline, a row at rest is the title over its line of description
+    // with the date and the length at its end, a row in progress carries its bar, a played row is one quiet line. A numbered show keeps its
+    // numbers in a lane before the titles.
+    /// <summary>The numeral lane (the row-number voice, 20/28) and the lead's (28/36).</summary>
+    public const float NumeralW = 36f, NumeralLeadW = 48f;
+    /// <summary>The lead: a card (16 inside), the 40 accent play, a section-head title over two lines of what the episode is about.</summary>
+    public const float LeadPad = 16f, LeadPlay = 40f, LeadGap = 4f, LeadBlurbW = 640f;
+    public const int LeadTitleLines = 2, LeadBlurbLines = 2;
+    /// <summary>A played row's vertical padding (one line, the play button's height).</summary>
+    public const float RowPadPlayed = 2f;
+    /// <summary>A row in progress: its 3-DIP bar under the title.</summary>
+    public const float RowBarH = 3f, RowBarW = 240f, RowBarTop = 6f;
 
     // ── a section header and the cards ──
     public const float SectionGap = 8f, SectionTop = 24f, SectionBottom = 12f;
@@ -58,9 +67,6 @@ internal static class WinUiPodcastKitRules
     public const float CardCover = 160f, CardRadius = 8f, CardGap = 12f, RowCardCover = 40f, RowCardRadius = 4f, RowCardGap = 12f;
     public const int CardDecode = 320, RowCardDecode = 96;
 
-    /// <summary>The row expand: 167 ms on the standard decelerate (concept note 9), a FlowReveal so what follows rides it.</summary>
-    public static readonly LayoutTransition Expand = new(TransitionChannels.Size, TransitionDynamics.Tween(ExpandMs, Easing.SmoothOut),
-        Size: SizeMode.FlowReveal, Anchor: SizeAnchor.Parallax);
 
     /// <summary>The bar's entrance and exit: a fade with an 8 drop (concept `.compact` 167 ms).</summary>
     public static readonly EnterExit BarFade = new(Dy: BarDrop, Opacity: 0f, Active: true);
@@ -82,6 +88,8 @@ internal static class WinUiPodcastShowRules
     public const float PaneW = 360f, ColGap = 24f, PaneTop = 64f, PanePad = 16f, PanePadTop = 4f, PaneFoot = 24f;
     /// <summary>The toolbar (52 tall, sticky under the bar) and a group header (36, sticky under the toolbar).</summary>
     public const float ToolbarH = 52f, GroupButtonPad = 8f;
+    /// <summary>The hairline at a pinned group header's foot.</summary>
+    public const float PinnedRule = 1f;
     /// <summary>The jump grid: three columns of 56-tall cells, 4 apart, 12 inside, at most 340 wide.</summary>
     public const float JumpCellH = 56f, JumpGap = 4f, JumpPad = 12f, JumpW = 340f;
     public const int JumpCols = 3;
@@ -105,8 +113,9 @@ internal static class WinUiPodcastShowRules
     /// a foot, the hero and About before they measure; and the content types of the three prefix parts (above every list kind).</summary>
     public const float RowEstimate = 58f, RowEstimateTall = 78f, FootEstimate = 64f, HeroEstimate = 276f, AboutEstimate = 60f;
     public const int PrefixType = 16;
-    /// <summary>A row at rest, measured (10 + 36 + 10; with a line of description 76): the list seeds it exactly, so a jump lands on its year.</summary>
-    public const float RowHeight = 56f, RowHeightDescribed = 76f;
+    /// <summary>A row at rest, measured (10 + 36 + 10; with a line of description under its title 60; a played row 2 + 36 + 2; the lead card with
+    /// a one-line title and two lines of description): the list seeds them exactly, so a jump lands on its year.</summary>
+    public const float RowHeight = 56f, RowHeightDescribed = 60f, RowHeightPlayed = 40f, RowLeadEstimate = 126f;
     public const string PageKey = "podcast-show";
 }
 

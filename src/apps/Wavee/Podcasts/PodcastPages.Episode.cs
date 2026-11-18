@@ -643,7 +643,10 @@ public sealed class PodcastEpisodeScreen : Component
             x.PublishedAt > 0 ? Episode.DateLabel(x.PublishedAt) : "", x.PublishedAt > 0 ? DateTimeOffset.FromUnixTimeSeconds(x.PublishedAt).Year : 0,
             Episode.DurationLabel(duration), state == PodcastRowState.InProgress ? Episode.LeftLabel(x.ProgressMs, duration) : "", pct, state,
             Spotify.Podcasts.IsSaved(x), (flags & EpisodeFlags.Video) != 0, x.Kind == EpisodeKind.Trailer, (flags & EpisodeFlags.Unplayable) == 0,
-            0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(x)), flags);
+            0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(x))
+        {
+            Explicit = (flags & EpisodeFlags.Explicit) != 0, Bonus = x.Kind == EpisodeKind.Bonus,
+        }, flags);
     }
 
     /// <summary>"Mar 14 2023": the day label and the year.</summary>

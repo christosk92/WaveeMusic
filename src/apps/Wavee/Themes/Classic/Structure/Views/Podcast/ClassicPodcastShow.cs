@@ -8,7 +8,7 @@
 //   └─ the list column
 //        the list bar (pinned; a backing only while pinned): the filter words with their counts · search · sort
 //        groups: a lowercase label (pinned under the bar; opens the Jump to grid; "new since your last visit" offers Mark all as played) + rows
-//        (expand in place; at Compact a row opens its episode) · Load more · More like this
+//        (a click opens the episode's page) · Load more · More like this
 //
 // The tier record is `ClassicPodcastLayout` (window tier). Loading is the same column over a placeholder snapshot (SkelRegionEl, flat fills).
 
@@ -116,12 +116,16 @@ internal static partial class ClassicPodcastShow
                 new BoxEl
                 {
                     Key = "cp-cover", Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ClassicTierMotion.Reflow,
+                    // The cover drags as the show (the host's one source); the shimmer's carries none.
+                    Draggable = live ? _p.CoverDrag : null,
                     Children = [Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, P.CoverRadius, decodePx: P.CoverDecode)],
                 },
             };
-            var tags = new List<Element>(2);
+            var tags = new List<Element>(4);
             if (h.Video) tags.Add(ClassicPodcastKit.Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video));
             if (h.Serial) tags.Add(ClassicPodcastKit.Tag(Loc.Get(Strings.Podcast.Pages.Serial), null));
+            if (h.Exclusive) tags.Add(ClassicPodcastKit.Tag(Loc.Get(Strings.Podcast.Pages.Exclusive), null));
+            if (h.Explicit) tags.Add(Controls.ExplicitBadge());
             var words = new List<Element>(4)
             {
                 ClassicPodcastKit.Kind(h.Kind, live ? _p.OpenKind : null, [.. tags]),

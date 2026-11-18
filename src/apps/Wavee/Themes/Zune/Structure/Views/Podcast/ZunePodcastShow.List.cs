@@ -40,7 +40,8 @@ internal static partial class ZunePodcastShow
 {
     /// <summary>One slot's item: a prefix part or a list item resolved against the snapshot (records compare by value: an unchanged slot does not
     /// re-render when the list around it does). <see cref="Last"/>: the list's last item (it carries the page's foot).</summary>
-    sealed record ShowSlot(int Prefix, PodcastItemKind Kind, PodcastGroup? Group, PodcastEpisodeVm? Vm, bool First, bool Last)
+    sealed record ShowSlot(int Prefix, PodcastItemKind Kind, PodcastGroup? Group, PodcastEpisodeVm? Vm, bool First, bool Last, bool Lead = false,
+        bool Numbered = false)
     {
         public static readonly ShowSlot None = new(-1, PodcastItemKind.Empty, null, null, false, false);
     }
@@ -131,7 +132,7 @@ internal static partial class ZunePodcastShow
             var it = v.Items[k];
             var g = (uint)it.Group < (uint)v.Groups.Length ? v.Groups[it.Group] : null;
             var vm = it.Kind == PodcastItemKind.Row && (uint)it.Episode < (uint)v.Episodes.Length ? v.Episodes[it.Episode] : null;
-            return new ShowSlot(-1, it.Kind, it.Kind == PodcastItemKind.Group ? g : null, vm, it.First, i == count - 1);
+            return new ShowSlot(-1, it.Kind, it.Kind == PodcastItemKind.Group ? g : null, vm, it.First, i == count - 1, it.Lead, v.Numbered);
         }
 
         PodcastItemKind KindAt(int i)
@@ -159,10 +160,26 @@ internal static partial class ZunePodcastShow
                 _ => KindAt(i) switch
                 {
                     PodcastItemKind.Group => Z.GroupH,
-                    PodcastItemKind.Row => lay.RowDescription ? Z.RowEstimateTall : Z.RowEstimate,
+                    PodcastItemKind.Row => RowExtent(i - PrefixCount, lay),
                     _ => Z.FootEstimate,
                 },
             };
+        }
+
+        /// <summary>A row's seeded extent by its form: Compact's stacked row; else the lead, a played line, a row with its second line (the
+        /// description or the line in progress), a one-line row.</summary>
+        float RowExtent(int k, ZunePodcastLayout lay)
+        {
+            if (lay.Stacked) return Z.RowEstimate;
+            var v = _p.View.Peek();
+            if ((uint)k >= (uint)v.Items.Length) return Z.RowWideEstimate;
+            var it = v.Items[k];
+            if ((uint)it.Episode >= (uint)v.Episodes.Length) return Z.RowWideEstimate;
+            var vm = v.Episodes[it.Episode];
+            if (vm.State == PodcastRowState.Played) return Z.RowPlayedEstimate;
+            if (vm.State == PodcastRowState.InProgress) return Z.RowWideTall;
+            if (it.Lead) return Z.RowLeadEstimate;
+            return lay.RowDescription && vm.Blurb.Length > 0 ? Z.RowWideTall : Z.RowWideEstimate;
         }
 
         Element Template(BoundItemScope<ShowSlot> scope)
@@ -208,13 +225,13 @@ internal static partial class ZunePodcastShow
         static float Foot => Z.PageFoot + R.Space.DockReserve;
 
         /// <summary>Jump to a year: its header to the top of the list, under the toolbar.</summary>
-        internal void JumpToGroup(string groupKey)
+        internal void JumpToYear(int year)
         {
             var v = _p.View.Peek();
             for (int k = 0; k < v.Items.Length; k++)
             {
                 var it = v.Items[k];
-                if (it.Kind != PodcastItemKind.Group || (uint)it.Group >= (uint)v.Groups.Length || v.Groups[it.Group].Key != groupKey) continue;
+                if (it.Kind != PodcastItemKind.Group || (uint)it.Group >= (uint)v.Groups.Length || v.Groups[it.Group].Year != year) continue;
                 if (_measured is { } m) _scroll.ScrollTo(Math.Max(0.0, m.OffsetOf(PrefixCount + k, 0f) - Z.ToolbarH), Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide);
                 else _ctl.StartBringItemIntoView(PrefixCount + k, alignmentRatio: 0f, animate: false);
                 return;
@@ -244,14 +261,21 @@ internal static partial class ZunePodcastShow
         /// <summary>The pinned group header over the list (the page's layer behind it while it shows; nothing otherwise).</summary>
         sealed class PinnedHead : Component
         {
+            NodeHandle _chip;
+            Action<NodeHandle>? _setChip;
+            Func<NodeHandle>? _chipOf;
+
             public override Element Render()
             {
                 var host = UseProps<SlotProps>().Host;
                 int gi = host._pinned?.Value ?? -1;
                 var v = host._p.View.Peek();
                 if ((uint)gi >= (uint)v.Groups.Length) return new BoxEl { Height = 0f };
-                return host.Column(GroupHeader(host, host.State, v.Years, v.Groups[gi], live: true), fill: Prop.Of(static () => R.Layer.ContentSurface))
-                    with { Key = "show-pinned-head:" + v.Groups[gi].Key };
+                return host.Column(GroupHeader(host, host.State, v.Years, v.Groups[gi], live: true, pinned: true, _setChip ??= h => _chip = h,
+                        _chipOf ??= () => _chip), fill: Prop.Of(static () => R.Layer.ContentSurface))
+                    // Its OWN height: a slot's column grows (it fills its list slot), and here that grew the backing over the whole list, so
+                    // every row under a pinned header was painted out.
+                    with { Key = "show-pinned-head:" + v.Groups[gi].Key, Grow = 0f, Basis = float.NaN };
             }
         }
 
@@ -335,11 +359,16 @@ internal static partial class ZunePodcastShow
         /// <summary>A group header (the year, "new since your last visit" with mark all as played, "in order").</summary>
         sealed class HeadSlot(PageHost host, IReadSignal<ShowSlot> item) : Component
         {
+            NodeHandle _chip;
+            Action<NodeHandle>? _setChip;
+            Func<NodeHandle>? _chipOf;
+
             public override Element Render()
             {
                 var slot = item.Value;
                 if (slot.Group is not { } g) return new BoxEl { Height = Z.GroupH };
-                return host.Column(GroupHeader(host, host.State, host._p.View.Peek().Years, g, live: true), foot: slot.Last ? Foot : 0f);
+                return host.Column(GroupHeader(host, host.State, host._p.View.Peek().Years, g, live: true, pinned: false, _setChip ??= h => _chip = h,
+                    _chipOf ??= () => _chip), foot: slot.Last ? Foot : 0f);
             }
         }
 
@@ -354,7 +383,8 @@ internal static partial class ZunePodcastShow
                 Element body = slot.Kind switch
                 {
                     // ONE row per slot (a constant key): a recycled slot re-renders its row for the new episode instead of mounting a new one.
-                    PodcastItemKind.Row when slot.Vm is { } vm => K.EpisodeRow(vm, lay.RowDescription, lay.Stacked, host.Verbs) with { Key = "ep" },
+                    PodcastItemKind.Row when slot.Vm is { } vm
+                        => K.EpisodeRow(vm, lay.RowDescription, lay.Stacked, host.Verbs, slot.Lead, slot.Numbered) with { Key = "ep" },
                     PodcastItemKind.More => new BoxEl
                     {
                         Key = "show-more", Direction = 0, Padding = new Edges4(0f, Z.MoreTop, 0f, 0f),

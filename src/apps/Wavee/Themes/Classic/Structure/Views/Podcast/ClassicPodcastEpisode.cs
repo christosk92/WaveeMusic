@@ -65,8 +65,8 @@ internal static class ClassicPodcastEpisode
             ColorF accent = ClassicPodcastKit.Accent(tone);
             _verbs ??= new ClassicRowVerbs
             {
-                Expanded = s_none, Playing = p.OnDeck, Play = p.PlayEpisode, Open = p.Open, ToggleSaved = p.ToggleSavedEpisode, PlayNext = p.PlayNext,
-                Expand = static _ => { }, Menu = p.RowMenu, Drag = p.RowDrag,
+                Playing = p.OnDeck, Play = p.PlayEpisode, Open = p.Open, ToggleSaved = p.ToggleSavedEpisode,
+                Menu = p.RowMenu, Drag = p.RowDrag,
             };
             var a = new Args(p, lay, accent, _verbs);
             var seed = a with { P = p with { View = s_seed } };
@@ -84,7 +84,6 @@ internal static class ClassicPodcastEpisode
         }
     }
 
-    static readonly IReadSignal<string?> s_none = new Signal<string?>(null);
 
     static Element MainColumn(Args a) => new BoxEl
     {
@@ -377,7 +376,7 @@ internal static class ClassicPodcastEpisode
             {
                 kids.Add(ClassicPodcastKit.SectionHeader("cpe-next-head", Loc.Get(Strings.Podcast.Pages.NextInShow), Loc.Get(Strings.Podcast.Pages.AllEpisodes), p.OpenShow));
                 var rows = new Element[v.More.Length];
-                for (int i = 0; i < rows.Length; i++) rows[i] = ClassicPodcastKit.EpisodeRow(v.More[i], lay, expands: false, description: lay.RowDescription, a.Accent, a.Verbs);
+                for (int i = 0; i < rows.Length; i++) rows[i] = ClassicPodcastKit.EpisodeRow(v.More[i], lay, description: lay.RowDescription, a.Accent, a.Verbs);
                 kids.Add(new BoxEl { Key = "cpe-next-rows", Direction = 1, MinWidth = 0f, Children = rows });
             }
             if (!v.Similar.IsDefaultOrEmpty)

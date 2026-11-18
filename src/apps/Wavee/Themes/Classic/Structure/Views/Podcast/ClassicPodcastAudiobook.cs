@@ -74,7 +74,7 @@ internal static class ClassicPodcastAudiobook
         {
             new BoxEl
             {
-                Key = "cpa-cover", Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ClassicTierMotion.Reflow,
+                Key = "cpa-cover", Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ClassicTierMotion.Reflow, Draggable = p.CoverDrag,
                 Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, P.CoverRadius, decodePx: P.CoverDecode)],
             },
         };
@@ -127,6 +127,7 @@ internal static class ClassicPodcastAudiobook
         string label = a.Playing ? Loc.Get(Strings.Podcast.Pages.Pause) : v.PrimaryLabel;
         var kids = new List<Element>(4) { ClassicPodcastKit.Primary("cpa-primary", label, glyph, a.Accent, v.PrimaryAccent, p.Play, [], lay.Target) };
         // Where you are: "Chapter 9 of 19 · name" over the whole book's bar and its words (live), or what Start listening plays.
+        Element where;
         if (v.State == AudiobookState.InProgress)
         {
             var spans = v.UpName.Length > 0
@@ -134,7 +135,7 @@ internal static class ClassicPodcastAudiobook
                 : [new(v.UpTitle, Weight: P.Strong, Color: Tok.TextPrimary)];
             var place = p.Place;
             ColorF accent = a.Accent;
-            kids.Add(new BoxEl
+            where = new BoxEl
             {
                 Key = "cpa-place", Direction = 1, Gap = P.FactsRowGap, MinWidth = 0f,
                 Children =
@@ -151,10 +152,13 @@ internal static class ClassicPodcastAudiobook
                         ],
                     },
                 ],
-            });
+            };
         }
         else
-            kids.Add(ClassicPodcastKit.UpLabel("", v.UpTitle, v.UpSub, -1f, a.Accent));
+            where = ClassicPodcastKit.UpLabel("", v.UpTitle, v.UpSub, -1f, a.Accent);
+        // The label changes form when the listener's place lands after the page (a length over the chapter count, then a chapter's name over the
+        // book's bar): its slot eases to the new height and what stands under it rides the difference, instead of stepping down a line.
+        kids.Add(new BoxEl { Key = "cpa-where", Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.Resize, Children = [where] });
         var tools = new List<Element>(3);
         if (v.State == AudiobookState.NotStarted && v.SampleId is not null)
             tools.Add(Button.Create(v.SampleButton, p.PlaySample, glyph: Icons.Play) with { Key = "cpa-sample", Height = lay.Target, Shrink = 0f, MinWidth = 0f });
@@ -258,21 +262,32 @@ internal static class ClassicPodcastAudiobook
 
     static Element MainColumn(Args a)
     {
+        var view = a.P.View;
+        // What stands under the contents has no place of its own until something says how many chapters there are. It is held back (the loading
+        // page's own placeholder) and drawn when the count is known, where it will stay: content a listener can read never moves.
+        Element tail = new SkelRegionEl(
+            Pending: () => view.Value.ChaptersUnsized, Failed: static () => false,
+            Content: () => Tail(a with { V = view.Value }), ShimmerSource: () => Tail(a with { V = AudiobookView.Placeholder }), OnFailed: null,
+            Reveal: SkelReveal.Soft,
+            Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: null, SmoothResize: true);
+        return new BoxEl
+        {
+            Key = "cpa-main", Direction = 1, Gap = 0f, MinWidth = 0f, Padding = new Edges4(0f, a.Lay.Stacked ? 0f : P.ColumnPadTop, 0f, 0f),
+            Children = [Line(a), Contents(a), tail],
+        };
+    }
+
+    /// <summary>Under the contents: about the book, then the similar books.</summary>
+    static Element Tail(Args a)
+    {
         var v = a.V;
-        var lay = a.Lay;
-        var kids = new List<Element>(6) { Line(a), Contents(a) };
-        kids.Add(ClassicPodcastKit.SectionHeader("cpa-about-head", v.AboutTitle));
-        kids.Add(About(a));
+        var kids = new List<Element>(4) { ClassicPodcastKit.SectionHeader("cpa-about-head", v.AboutTitle), About(a) };
         if (!v.Similar.IsDefaultOrEmpty)
         {
             kids.Add(ClassicPodcastKit.SectionHeader("cpa-similar-head", v.SimilarTitle));
-            kids.Add(ClassicPodcastKit.MoreLikeThis(v.Similar, a.P.OpenUri, lay.Stacked, a.P.SimilarMenu, a.P.PlaySimilar));
+            kids.Add(ClassicPodcastKit.MoreLikeThis(v.Similar, a.P.OpenUri, a.Lay.Stacked, a.P.SimilarMenu, a.P.PlaySimilar));
         }
-        return new BoxEl
-        {
-            Key = "cpa-main", Direction = 1, Gap = 0f, MinWidth = 0f, Padding = new Edges4(0f, lay.Stacked ? 0f : P.ColumnPadTop, 0f, 0f),
-            Children = kids.ToArray(),
-        };
+        return new BoxEl { Key = "cpa-tail", Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
     }
 
     /// <summary>The whole book: its head ("The whole book · 19 chapters, drawn to length" … "3 h in · 4 h left") over the segments.</summary>
@@ -295,13 +310,26 @@ internal static class ClassicPodcastAudiobook
                 right,
             ],
         };
+        var view = p.View;
+        // Drawn to length once every length is known (the chapters land before their lengths: segments cut evenly would be re-cut under the eye).
+        // Until then the band stands empty, and the segments fade in where they belong.
+        Element segments = new SkelRegionEl(
+            Pending: () => !view.Value.LineKnown, Failed: static () => false,
+            Content: () => SegmentsOf(a with { V = view.Value }), ShimmerSource: static () => new BoxEl { Height = P.BookSegBand }, OnFailed: null,
+            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+        return ClassicPodcastEpisodeParts.Card("cpa-line", [head, segments], P.MapGap, new Edges4(P.MapPadX, P.MapPadTop, P.MapPadX, P.MapPadBottom));
+    }
+
+    static Element SegmentsOf(Args a)
+    {
+        var v = a.V;
         var chapters = v.Chapters;
-        var play = p.PlayChapter;
-        bool finished = v.State == AudiobookState.Finished;
+        var place = a.P.Place;
+        var play = a.P.PlayChapter;
+        bool progress = v.State == AudiobookState.InProgress, finished = v.State == AudiobookState.Finished;
         bool seek = !a.Lay.Stacked;
         ColorF accent = a.Accent;
-        Element segments = Responsive.Of(w => Segments(w, chapters, place, play, progress, finished, seek, accent));
-        return ClassicPodcastEpisodeParts.Card("cpa-line", [head, segments], P.MapGap, new Edges4(P.MapPadX, P.MapPadTop, P.MapPadX, P.MapPadBottom));
+        return Responsive.Of(w => Segments(w, chapters, place, play, progress, finished, seek, accent));
     }
 
     static Element Segments(float width, ImmutableArray<AudiobookChapterVm> chapters, IReadSignal<AudiobookPlace> place, Action<int> play, bool progress,
@@ -387,9 +415,27 @@ internal static class ClassicPodcastAudiobook
                 Caption(v.StartsAtLabel) with { Color = Tok.TextTertiary, Shrink = 0f },
             ],
         };
-        var kids = new List<Element>(v.Chapters.Length + 2) { head, new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, Margin = new Edges4(0f, 0f, 0f, P.FactsRowGap) } };
-        foreach (var c in v.Chapters) kids.Add(Row(c, a));
-        return new BoxEl { Key = "cpa-contents", Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, P.SectionTop, 0f, 0f), Children = kids.ToArray() };
+        var view = a.P.View;
+        // The rows do not hold the page. While they are on their way their place is held by as many placeholder rows as the book has chapters (the
+        // loading page's twelve until something says how many), and they arrive in it one behind the other.
+        // A region's own run can come before the page's re-render hands it new closures, so what it mounts reads the view as it is NOW: rows that
+        // arrive are there when the reveal looks for them.
+        Element rows = new SkelRegionEl(
+            Pending: () => view.Value.ChaptersPending, Failed: static () => false,
+            Content: () => Rows(a with { V = view.Value }, view.Value.Chapters), ShimmerSource: () => Rows(a, view.Value.HeldChapters()), OnFailed: null,
+            Reveal: SkelReveal.StaggerRows, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
+        return new BoxEl
+        {
+            Key = "cpa-contents", Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, P.SectionTop, 0f, 0f),
+            Children = [head, new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, Margin = new Edges4(0f, 0f, 0f, P.FactsRowGap) }, rows],
+        };
+    }
+
+    static Element Rows(Args a, ImmutableArray<AudiobookChapterVm> chapters)
+    {
+        var kids = new Element[chapters.Length];
+        for (int i = 0; i < kids.Length; i++) kids[i] = Row(chapters[i], a);
+        return new BoxEl { Key = "cpa-rows", Direction = 1, MinWidth = 0f, Children = kids };
     }
 
     static Element Row(AudiobookChapterVm c, Args a)
@@ -406,9 +452,11 @@ internal static class ClassicPodcastAudiobook
             Weight = cur ? P.Strong : Body("").Weight, Color = cur ? Tok.TextPrimary : done || c.Matter ? Tok.TextSecondary : Tok.TextPrimary,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
         };
+        // The dots lead to the chapter's start: there are none until it is known (a chapter's name lands before its place in the book).
         var leader = new BoxEl
         {
-            Height = 1f, Grow = 1f, MinWidth = P.TocGap, AlignSelf = FlexAlign.Center, BorderWidth = 1f, BorderDashOn = 1f, BorderDashOff = P.LedgerGap + 1f,
+            Height = 1f, Grow = 1f, MinWidth = P.TocGap, AlignSelf = FlexAlign.Center, BorderWidth = c.StartsAt.Length > 0 ? 1f : 0f, BorderDashOn = 1f,
+            BorderDashOff = P.LedgerGap + 1f,
             BorderColor = Tok.TextPrimary with { A = done ? P.LedgerTrackAlpha : P.LedgerTrackAlpha + P.LedgerTrackAlpha },
         };
         var left = new TextEl("")
