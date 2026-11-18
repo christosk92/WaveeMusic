@@ -46,18 +46,15 @@ internal static class ClassicConcertRules
     // ── the date block ──
     public const float DateBlockW = 56f, DateBlockH = 60f, DateBlockCompactW = 48f, DateBlockCompactH = 52f;
 
-    // ── the split hero ──
-    /// <summary>The wide copy pane's grow (the photo's is the metrics' media fraction, 0.44).</summary>
-    public const float HeroCopyGrow = 0.56f;
+    // ── the hero ──
+    /// <summary>The gap between the head's commands (the show page's, <c>ClassicPodcastRules.CommandGap</c>).</summary>
+    public const float CommandGap = 6f;
 
     /// <summary>The photo's vertical focus, decode width and reveal fade.</summary>
     public const float HeroFocusY = 0.30f, HeroDecode = 1024f, HeroRevealMs = 220f;
 
     /// <summary>The photo-less pane's calendar glyph.</summary>
     public const float HeroGlyph = 52f;
-
-    /// <summary>Where the seam gradient fades out: the wide arm's, and the narrow arm's start.</summary>
-    public const float HeroSeamWide = 0.22f, HeroSeamNarrow = 0.68f;
 
     // ── the location button ──
     public const float LocationMinH = 32f, LocationGlyphBox = 20f, LocationPin = 16f, LocationChevronBoxW = 16f;
@@ -114,7 +111,7 @@ internal static class ClassicConcertRules
     public const float SubPageBottomExtra = 40f;
 
     // ── the tour dashboard ──
-    public const float ScheduleLocationW = 220f, TourDatesSize = 28f, TourDatesLine = 36f, MonthTabsH = 48f;
+    public const float ScheduleLocationW = 220f, MonthTabsH = 48f;
     public const float BoardHeadMinH = 58f, BoardMonthSize = 20f, BoardMonthLine = 28f, BoardShowAllMinH = 44f, BoardChevron = 14f;
     public const float BoardTileMinH = 68f, BoardRailW = 3f, BoardRailH = 32f, BoardRailRadius = 2f, BoardTextGap = 2f, BoardTrailing = 16f, BoardPin = 12f;
     public const float BoardDayW = 44f, BoardRunDayW = 60f;

@@ -225,11 +225,6 @@ public static class ZuneConcertRules
     /// <summary>The hub head's lines' gap.</summary>
     public const float HeadLineGap = 4f;
 
-    // ── the location button ──
-
-    /// <summary>The pin's box, the pin and the chevron's box.</summary>
-    public const float LocationGlyphBox = 20f, LocationPin = 16f, LocationChevronBoxW = 16f;
-
     // ── the filter bar's pills and tokens ──
 
     /// <summary>The pill's height (32; the Compact 40 target is the tier's record), the Compact target, the gap between a pill's parts, its side padding, the glyphs.</summary>
@@ -348,8 +343,8 @@ public static class ZuneConcertRules
 
     // ── the tour dashboard ──
 
-    /// <summary>The empty month card's air and the location button's width beside "view event".</summary>
-    public const float EmptyPadY = 48f, ScheduleLocationW = 220f;
+    /// <summary>The empty month card's air.</summary>
+    public const float EmptyPadY = 48f;
 
     /// <summary>The month tabs' height, the board's head floor, the chevron and the pin.</summary>
     public const float MonthTabsH = 48f, BoardHeadMinH = 52f, BoardChevron = 14f, BoardPin = 12f;

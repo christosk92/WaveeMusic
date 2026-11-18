@@ -206,24 +206,6 @@ internal static class ZuneConcertCells
         };
     }
 
-    /// <summary>The hero's location control: a round 1-dip outline of the pill height, a pin, the place, a chevron; a <see cref="BoxEl"/> so the caller
-    /// attaches its anchor capture.</summary>
-    public static BoxEl LocationButton(string label, Action onClick, float height) => new()
-    {
-        Direction = 0, Grow = 1f, Basis = 0f, MinHeight = height, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-        AlignItems = FlexAlign.Center, Gap = Spacing.S, Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-        Corners = CornerRadius4.All(height / 2f),
-        HoverFill = Prop.Of(static () => R.Layer.ChromeHover), PressedFill = Prop.Of(static () => R.Layer.ChromePressed),
-        BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
-        Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
-        Children =
-        [
-            new BoxEl { Width = Rules.LocationGlyphBox, Height = Rules.LocationGlyphBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [Icon(Icons.MapPin, Rules.LocationPin, Tok.TextSecondary)] },
-            R.Type.DenseTitle(label) with { Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis },
-            new BoxEl { Width = Rules.LocationChevronBoxW, Height = Rules.LocationGlyphBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [Icon(Icons.ChevronDown, Rules.PillChevron, Tok.TextSecondary)] },
-        ],
-    };
-
     // ══ 3. THE FILTER BAR'S PILLS AND TOKENS ═════════════════════════════════════════════════════════════════════════
 
     static LayoutTransition WidthReflow(float ms) => new(

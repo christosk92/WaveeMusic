@@ -74,7 +74,12 @@ versions separately under `v*` and is not tracked in this file.)
 
 - **Concerts follows each theme.** The page's title stands on the page instead of in a card, the filters are one row of
   the theme's own controls (place and dates are drop-down buttons beside the toggles, no longer capsules) with the
-  event count at its end, and the shelves are titled like Home's.
+  event count at its end, and the shelves are titled like Home's. The filter row stays under the title bar as you
+  scroll (Classic, WinUI). A concert's page and an artist's tour dates open with their picture beside the name, as an
+  album does, with "Play the lineup", "Interested" and share under it; their sections are titled like Home's, and the
+  trail ends on the concert or the artist ("Browse > Concerts > The Wavee Collective") instead of a second
+  "Concerts". In Zune, "view event" is a ring like the event page's, the place is the hub's own control and the
+  months are lowercase.
 
 - **A larger first-run setup.** The setup dialog is much bigger (1040 x 680 on a normal window). "Is this you?" shows
   the account as a head and says what Wavee does with it, and signing in shows its four steps as a list, each with

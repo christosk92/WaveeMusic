@@ -95,11 +95,12 @@ internal sealed class ClassicConcertFilterBar : Component
             ScrollKey = _a.ScrollScope + "concert-hub-filter",
         };
         // ON THE PAGE'S GROUND: one row, the controls then the count. It stood in a card under a caption line (owner, 2026-11-18: out of pattern).
+        // The hub pins it (ClassicConcertHub: a sticky root returned from a component never pins, so the pin is the hub's box around it).
         return new BoxEl
         {
-            Key = "concert-filter-bar:row", Direction = 0, Gap = Spacing.L, MinWidth = 0f, AlignItems = FlexAlign.Center,
+            Key = "concert-filter-bar:row", Direction = 0, Gap = Spacing.L, MinWidth = 0f, AlignItems = FlexAlign.Center, Height = Rules.BarScrollerH,
             Children = [new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [scroller] }, count],
-        }.Sticky(ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero));
+        };
     }
 
     /// <summary>Rest: [📅 Dates ▾] + the "This weekend" chip. Active: the SAME "when-pill" node fused (§0 #3).</summary>

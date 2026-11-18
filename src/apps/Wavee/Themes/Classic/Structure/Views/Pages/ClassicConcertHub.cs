@@ -18,6 +18,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Scroll.Effects;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
@@ -48,6 +49,7 @@ internal static class ClassicConcertHub
     public static Element Template(ConcertHubProps props, in ViewContext ctx)
     {
         var page = ClassicTiers.PageOf(ctx.Tier());   // the one page gutter (F3)
+        var stuck = ctx.Hooks.UseRef(new Signal<bool>(false)).Value;   // the filter row is pinned: its hairline shows
         Element region = Cells.Region(props.Pending, props.Failed, () => props.Body is { } body ? FeedOf(props, body) : new BoxEl(), FeedSeed,
             () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry), "concert-hub");
         var content = new BoxEl
@@ -65,8 +67,8 @@ internal static class ClassicConcertHub
                     Children =
                     [
                         Cells.UnderBand(Head()),
-                        Embed.Comp(new ClassicConcertFilterBar.Args(props.Bar, props.ScrollScope), static () => new ClassicConcertFilterBar()) with { Key = "concert-filter-bar" },
-                        Cells.UnderBand(new BoxEl { Direction = 1, MinWidth = 0f, Children = [region] }),
+                        FilterPin(props, stuck),
+                        Cells.UnderFilterBar(new BoxEl { Direction = 1, MinWidth = 0f, Children = [region] }),
                     ],
                 },
             ],
@@ -77,6 +79,24 @@ internal static class ClassicConcertHub
         };
     }
 
+    /// <summary>The filter row, PINNED under the masthead once the page scrolls to it (the podcast pages' toolbar does the same): a raw box in the page's
+    /// column carries the pin, since a sticky root returned from a component never pins (its parent is the component's anchor, of its own height; the
+    /// row asked for it there and never pinned). It paints no plate: the feed under it is cut at its foot (<c>Cells.UnderFilterBar</c>), and a
+    /// hairline marks the foot while it is pinned.</summary>
+    static Element FilterPin(ConcertHubProps props, Signal<bool> stuck) => new BoxEl
+    {
+        Key = "concert-filter-bar:pin", ZStack = true, Direction = 1, MinWidth = 0f,
+        Children =
+        [
+            Embed.Comp(new ClassicConcertFilterBar.Args(props.Bar, props.ScrollScope), static () => new ClassicConcertFilterBar()) with { Key = "concert-filter-bar" },
+            new BoxEl
+            {
+                Key = "concert-filter-bar:line", AlignSelf = FlexAlign.End, Height = 1f, MinWidth = 0f, HitTestVisible = false,
+                Fill = Tok.StrokeDividerDefault, Opacity = Prop.Of(() => stuck.Value ? 1f : 0f),
+            },
+        ],
+    }.Sticky(ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero), null, stuck);
+
     /// <summary>The hub's head, ON THE PAGE'S GROUND: the eyebrow, the title in the page voice, the quiet line under it. It stood in a card, as no
     /// other page's title does (owner, 2026-11-18: the concert pages "look out of pattern").</summary>
     static BoxEl Head() => new()
@@ -84,7 +104,7 @@ internal static class ClassicConcertHub
         Key = "concert-hub:head", Direction = 1, MinWidth = 0f, Gap = Spacing.XS,
         Children =
         [
-            Cells.SectionCaption(Loc.Get(Strings.Concerts.LiveMusic)),
+            ClassicDetailKit.EyebrowRun(Loc.Get(Strings.Concerts.LiveMusic)),
             R.Type.PageHero(Loc.Get(Strings.Concerts.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             Body(Loc.Get(Strings.Concerts.Subtitle)) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
         ],

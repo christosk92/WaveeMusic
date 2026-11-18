@@ -108,9 +108,11 @@ internal sealed class ZuneConcertFilterBar : Component
         };
         return new BoxEl
         {
+            // It scrolls with the page, as Zune's other toolbars do. (It asked for Sticky on its own root, which a component's root never takes: it never
+            // pinned.)
             Key = "concert-filter-bar:row", Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Padding = new Edges4(0f, Spacing.S, 0f, Spacing.S),
             Children = [caption, scroller],
-        }.Sticky(0f);
+        };
     }
 
     /// <summary>Rest: [📅 Dates ▾] + the "This weekend" chip. Active: the SAME "when-pill" node fused (§0 #3).</summary>
