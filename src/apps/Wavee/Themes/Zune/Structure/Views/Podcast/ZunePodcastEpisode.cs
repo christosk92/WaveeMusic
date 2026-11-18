@@ -361,6 +361,10 @@ internal static class ZunePodcastEpisode
 
     sealed class Cols : Component
     {
+        readonly ScrollHandle _chaptersScroll = new();
+        ImmutableArray<PodcastChapterVm> _stampChapters;
+        int _stamp;
+
         public override Element Render()
         {
             var a = UseProps<Args>();
@@ -369,17 +373,33 @@ internal static class ZunePodcastEpisode
             var v = p.View.Value;
             var tab = p.Tab.Value;
             if (lay.TwoColumns && tab == PodcastEpisodeTab.Transcript) tab = PodcastEpisodeTab.Chapters;
+            if (!_stampChapters.Equals(v.Chapters)) { _stampChapters = v.Chapters; _stamp++; }
+            // The list keeps the current chapter in view as playback crosses into it (the minimal move: a row already shown stays put); a far one (a
+            // start or a seek deep in a long episode) lands at once, since a glide would realize every row on its way.
+            var scroll = _chaptersScroll;
+            int count = v.Chapters.Length;
+            bool chaptersShown = tab == PodcastEpisodeTab.Chapters;
+            UseEffect(() =>
+            {
+                int at = p.CurrentChapter.Value;
+                _ = scroll.ViewportSignal.Value;
+                if (!chaptersShown || at < 0 || at >= count) return;
+                double top = at * Z.ChRowH, vh = scroll.ViewportSignal.Peek();
+                bool far = Math.Abs(top - scroll.Offset.Peek()) > vh * Z.FollowJumpViewports;
+                scroll.BringIntoView(top, Z.ChRowH, float.NaN, far ? ScrollMove.Immediate : ScrollMove.Glide, 0f);
+            });
             Element body = tab switch
             {
                 PodcastEpisodeTab.About => new BoxEl { Direction = 1, MinWidth = 0f, MaxWidth = Z.AboutMax, Children = [K.Description(v.About, 0, Z.BodySize)] },
                 PodcastEpisodeTab.Comments => p.Comments?.Invoke() ?? new BoxEl(),
                 PodcastEpisodeTab.Transcript => Transcript(p),
-                _ => Chapters(p, v),
+                _ => Chapters(p, v, _chaptersScroll, _stamp, lay.TwoColumns),
             };
             Element left = new BoxEl
             {
                 Key = "ze-left-col", Direction = 1, MinWidth = 0f, Width = lay.TwoColumns ? Z.ChaptersW : float.NaN, Shrink = 0f, Animate = ZuneMotion.GroupResize,
-                Children = [K.Body("ze-tab:" + tab, body)],
+                // Beside the transcript the column takes the row's height and the chapters' list fills it (its scroller ends with the transcript's).
+                Children = [K.Body("ze-tab:" + tab, body, fill: lay.TwoColumns)],
             };
             var kids = new List<Element>(2) { left };
             if (lay.TwoColumns)
@@ -390,66 +410,84 @@ internal static class ZunePodcastEpisode
             return new BoxEl
             {
                 Direction = (byte)(lay.TwoColumns ? 0 : 1), Gap = lay.TwoColumns ? Z.ColsGap : 0f, MinWidth = 0f,
-                AlignItems = lay.TwoColumns ? FlexAlign.Start : FlexAlign.Stretch, Children = kids.ToArray(),
+                AlignItems = FlexAlign.Stretch, Children = kids.ToArray(),
             };
         }
     }
 
-    static Element Chapters(PodcastEpisodePageProps p, PodcastEpisodeView v)
+    /// <summary>The chapters as a BOUND virtual list of one row height in its own scroller (the transcript's height beside it): each visible slot is
+    /// built once and rebound by its index, so a long episode (a hundred chapters) costs the visible rows. <paramref name="stamp"/> rebuilds the slots
+    /// when the snapshot's chapters change.</summary>
+    static Element Chapters(PodcastEpisodePageProps p, PodcastEpisodeView v, ScrollHandle scroll, int stamp, bool fill)
     {
         if (v.Chapters.IsDefaultOrEmpty)
             return R.Type.TrackTitle(v.NoChapters) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), Wrap = TextWrap.Wrap, MinWidth = 0f };
-        var rows = new Element[v.Chapters.Length];
-        for (int i = 0; i < rows.Length; i++) rows[i] = ChapterRow(p, v.Chapters[i]);
-        return new BoxEl { Key = "ze-chapters", Direction = 1, MinWidth = 0f, Children = rows };
+        var chapters = v.Chapters;
+        return new BoxEl
+        {
+            // Beside the transcript it fills the column (its scroller ends with the transcript's); alone, it is the transcript's height at most.
+            Key = "ze-chapters", Direction = 1, MinWidth = 0f, Grow = fill ? 1f : 0f, Basis = fill ? 0f : float.NaN,
+            Height = fill ? float.NaN : MathF.Min(Z.TrH, chapters.Length * Z.ChRowH), MinHeight = fill ? MathF.Min(Z.TrH, chapters.Length * Z.ChRowH) : 0f,
+            Children =
+            [
+                Virtual.ListBound(chapters.Length, Z.ChRowH, idx => ChapterRow(p, chapters, idx)) with
+                {
+                    Key = "ze-chapters:list", Grow = 1f, MinHeight = 0f, Handle = scroll, TemplateStamp = stamp,
+                },
+            ],
+        };
     }
 
-    static Element ChapterRow(PodcastEpisodePageProps p, PodcastChapterVm c)
+    /// <summary>One bound chapter slot: everything that differs by chapter binds on <paramref name="idx"/> (the clicks read it at the click).</summary>
+    static Element ChapterRow(PodcastEpisodePageProps p, ImmutableArray<PodcastChapterVm> chapters, IReadSignal<int> idx)
     {
-        int index = c.Index, start = c.StartMs;
         var cur = p.CurrentChapter;
-        bool current = c.Current;
-        var name = new TextEl(c.Title)
-        {
-            FontFamily = R.Type.Pivot("").FontFamily, Size = Z.ChNameSize, LineHeight = Z.ChNameLine, Weight = Z.Light, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            Color = current ? Prop.Of(static () => R.Ink.AccentDecor) : c.Played ? (Prop<ColorF>)Tok.TextTertiary : Tok.TextPrimary,
-        };
+        var state = p.State;
+        PodcastChapterVm At() => chapters[Math.Clamp(idx.Value, 0, chapters.Length - 1)];
+        bool Current() => cur.Value == idx.Value;
+        bool Played() => state?.Value == PodcastRowState.Played || (cur.Value >= 0 && idx.Value < cur.Value) || (cur.Value < 0 && At().Played);
         var metaVoice = R.Type.TrackMeta("");
+        var name = new TextEl("")
+        {
+            Text = Prop.Of(() => At().Title), FontFamily = R.Type.Pivot("").FontFamily, Size = Z.ChNameSize, LineHeight = Z.ChNameLine, Weight = Z.Light,
+            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Color = Prop.Of(() => Current() ? R.Ink.AccentDecor : Played() ? Tok.TextTertiary : Tok.TextPrimary),
+        };
         var meta = new BoxEl
         {
             Direction = 0, MinWidth = 0f,
             Children =
             [
-                R.Type.TrackMeta(c.Start + " · " + c.Length) with { Color = Tok.TextTertiary, Shrink = 0f },
+                new TextEl("") { Text = Prop.Of(() => At().Span), Size = metaVoice.Size, LineHeight = metaVoice.LineHeight, Color = Tok.TextTertiary, Shrink = 0f },
                 new TextEl("")
                 {
-                    Text = Prop.Of(() => cur.Value == index ? p.ChapterLeft.Value : ""), Size = metaVoice.Size, LineHeight = metaVoice.LineHeight,
+                    Text = Prop.Of(() => Current() ? p.ChapterLeft.Value : ""), Size = metaVoice.Size, LineHeight = metaVoice.LineHeight,
                     Color = Prop.Of(static () => R.Ink.AccentDecor), Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
             ],
         };
         return new BoxEl
         {
-            Key = "ze-ch:" + index, Direction = 0, Gap = Z.ChGap, AlignItems = FlexAlign.Center, MinHeight = Z.ChMinH, MinWidth = 0f,
-            Padding = new Edges4(0f, Z.ChPadY, 0f, Z.ChPadY),
+            Direction = 0, Gap = Z.ChGap, AlignItems = FlexAlign.Center, Height = Z.ChRowH, MinWidth = 0f,
             Fill = ColorF.Transparent, HoverFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.RowHoverAlpha }),
             PressedFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.RowPressedAlpha }),
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => p.SeekTo(start), BrushTransitionMs = Design.Motion.Faster,
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, BrushTransitionMs = Design.Motion.Faster,
+            OnClick = () => p.SeekTo(chapters[Math.Clamp(idx.Peek(), 0, chapters.Length - 1)].StartMs),
             Children =
             [
                 new BoxEl
                 {
                     Width = Z.ChNumW, Shrink = 0f, Direction = 0, Justify = FlexJustify.Center,
-                    Children = [new TextEl((index + 1).ToString(System.Globalization.CultureInfo.CurrentCulture))
+                    Children = [new TextEl("")
                     {
-                        FontFamily = R.Type.Pivot("").FontFamily, Size = Z.ChNumSize, LineHeight = Z.ChNumLine, Weight = Z.Light,
-                        Color = current ? Prop.Of(static () => R.Ink.AccentDecor) : (Prop<ColorF>)Tok.TextTertiary,
+                        Text = Prop.Of(() => At().Number), FontFamily = R.Type.Pivot("").FontFamily, Size = Z.ChNumSize, LineHeight = Z.ChNumLine, Weight = Z.Light,
+                        Color = Prop.Of(() => Current() ? R.Ink.AccentDecor : Tok.TextTertiary),
                     }],
                 },
                 new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [name, meta] },
                 new BoxEl
                 {
-                    Width = Z.ChCheck, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Opacity = c.Played ? 1f : 0f,
+                    Width = Z.ChCheck, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Opacity = Prop.Of(() => Played() ? 1f : 0f),
                     Children = [Icon(Icons.Check, Z.ChCheckGlyph, Tok.TextTertiary)],
                 },
             ],
