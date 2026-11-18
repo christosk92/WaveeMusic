@@ -96,7 +96,7 @@ internal static class WinUiPodcastAudiobook
             Key = WinUiFrameLayout.PageTitleKey, Width = lay.Cover, Height = lay.Cover, Shrink = 0f, AlignSelf = FlexAlign.Start, Corners = CornerRadius4.All(AB.CoverRadius), ClipToBounds = true,
             Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, AB.CoverRadius, decodePx: AB.CoverDecode)],
         };
-        Element eyebrow = Eyebrow(v, p);
+        Element eyebrow = Eyebrow(v, p, lay);
         BoxEl id = Identity(v, p, lay);
         Element cmds = Commands(v, p, lay);
         Element up = Up(v, p, lay);
@@ -172,20 +172,16 @@ internal static class WinUiPodcastAudiobook
     }
 
     /// <summary>"Audiobook · Nonfiction · Business &amp; Careers [Included in Premium]" on ONE line: the kind word opens the Browse category of
-    /// audiobooks (a house HyperlinkButton: rest, hover, pressed, focus); the genres name no page Wavee can open (AUDIOBOOK_GENRE ids are not Browse
-    /// pages) and run after it as one caption that ends in an ellipsis where the line is short (the facts list them all); the tag stays whole at the end.
-    /// A wrapped eyebrow put a separator at a line's edge and the tag on a line of its own (owner 2026-11-18).</summary>
-    static Element Eyebrow(AudiobookView v, AudiobookPageProps p)
+    /// audiobooks (a house HyperlinkButton: rest, hover, pressed, focus); each genre is a link that searches its words (AUDIOBOOK_GENRE ids are not
+    /// Browse pages), and the genres that do not fit leave the line whole (<see cref="WinUiPodcastKit.WordLinks"/>; the facts list them all); the tag
+    /// stays whole at the end. A wrapped eyebrow put a separator at a line's edge and the tag on a line of its own (owner 2026-11-18).</summary>
+    static Element Eyebrow(AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
     {
         var kids = new List<Element>(3);
         kids.Add(v.KindRoute is { Length: > 0 } route
             ? HyperlinkButton.Create(v.Kind, () => p.OpenRoute(route), size: ControlSize.Small) with { Key = AB.KindKey, Shrink = 0f, Padding = default }
             : Caption(v.Kind) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, Shrink = 0f });
-        if (v.Genres.Length > 0)
-            kids.Add(Caption(Sep + string.Join(" " + Sep, v.Genres)) with
-            {
-                Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
-            });
+        if (v.Genres.Length > 0) kids.Add(WinUiPodcastKit.WordLinks("ab-genre", v.Genres, p.OpenGenre, lay.Control));
         if (v.Included && v.IncludedTag.Length > 0)
             kids.Add(new BoxEl
             {

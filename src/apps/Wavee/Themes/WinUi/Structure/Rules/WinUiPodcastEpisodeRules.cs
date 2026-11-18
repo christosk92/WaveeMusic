@@ -21,6 +21,8 @@ internal static class WinUiPodcastEpisodeRules
     public const float CrumbArt = 20f, CrumbArtRadius = 3f, CrumbGap = 8f, CrumbChevron = 12f;
     /// <summary>The gap between the words' rows and the action row's top margin.</summary>
     public const float MainGap = 6f, ActionTop = 10f, ActionGap = 8f;
+    /// <summary>The blocked state in place of the play button (an episode that cannot be played): the lock's size and its padding.</summary>
+    public const float BlockedGlyph = 16f, BlockedPadX = 12f;
     /// <summary>The in-progress mini bar beside the split: its width and the gap over the bar.</summary>
     public const float MiniBarW = 220f, MiniBarCompactW = 120f, BarGap = 4f;
     /// <summary>The WinUI progress bar: a 3-DIP fill on a 1-DIP track.</summary>

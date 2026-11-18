@@ -50,6 +50,12 @@ public sealed record PodcastEpisodeVm(
     public string LongDate { get; init; } = "";
     /// <summary>The description as HTML when the provider sent it ("" = only <see cref="Description"/>); render it with the house rich text.</summary>
     public string DescriptionHtml { get; init; } = "";
+    /// <summary>The episode is for a show's subscribers (Spotify's paywall) / only its preview is available (the full episode is not playable).</summary>
+    public bool Paywalled { get; init; }
+    public bool PreviewOnly { get; init; }
+    /// <summary>The lock tag of a restricted episode ("Subscribers only", "Preview only", "Unavailable"; "" = none): a row draws it with the lock glyph
+    /// beside its meta, and a row that is not <see cref="Playable"/> draws its play button off.</summary>
+    public string Lock { get; init; } = "";
 }
 
 /// <summary>One item of the smart action's menu ("Other ways to play").</summary>
@@ -206,6 +212,8 @@ public sealed record PodcastShowPageProps
     public required Action? Share { get; init; }
     /// <summary>The eyebrow's kind word ("Podcast"): its hub. Null: the word is plain text.</summary>
     public Action? OpenKind { get; init; }
+    /// <summary>A topic of <see cref="PodcastShowHead.Topics"/>, by its words: Search for it. Null: the topics are plain text.</summary>
+    public Action<string>? OpenTopic { get; init; }
     /// <summary>"More like this": a card's context menu and its play button (null: none).</summary>
     public Func<string, ContextMenuModel?>? CardMenu { get; init; }
     public Action<string>? PlayCard { get; init; }
@@ -249,6 +257,9 @@ public sealed record PodcastEpisodeView(
     /// <summary>The chapters / the comments have not answered yet: a tab keeps its count's room (no tab moves when the count lands).</summary>
     public bool ChaptersPending { get; init; }
     public bool CommentsPending { get; init; }
+    /// <summary>Why the episode cannot be played ("Only a preview is available for this episode.", "This episode requires access through Spotify.";
+    /// "" = it plays): the hero draws this quiet state, with the lock, in place of the play button.</summary>
+    public string Blocked { get; init; } = "";
 
     public static PodcastEpisodeView Empty { get; } = new(PodcastLoad.Pending,
         new PodcastEpisodeVm("", "", "", 0, false, "", 0, "", "", 0f, PodcastRowState.Unplayed, false, false, false, false, 0, false, null),
@@ -426,4 +437,6 @@ public sealed record AudiobookPageProps
     public required Action<int>? Rate { get; init; }
     /// <summary>The rate control's state (the listener's own stars at rest, busy, failed, why it is off), live.</summary>
     public required IReadSignal<PodcastRateVm> RateState { get; init; }
+    /// <summary>A genre of <see cref="AudiobookView.Genres"/>, by its words: Search for it. Null: the genres are plain text.</summary>
+    public Action<string>? OpenGenre { get; init; }
 }

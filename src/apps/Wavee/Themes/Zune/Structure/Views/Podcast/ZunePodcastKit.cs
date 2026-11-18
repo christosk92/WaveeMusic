@@ -412,12 +412,17 @@ internal static class ZunePodcastKit
     {
         var kids = new Element[parts.Count];
         for (int i = 0; i < kids.Length; i++)
-            // Nothing shrinks (a squeezed part would slide under the next one's dot): the line's overflow fades instead.
-            kids[i] = i == 0 ? new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [parts[i]] } : new BoxEl
+        {
+            // Nothing shrinks (a squeezed part would slide under the next one's dot): the line's overflow fades instead. The one exception is a
+            // part that gives way by itself, whole words at a time (WordLinks): it takes what is left and carries its own dots, so a line whose
+            // words all left never ends on one.
+            float shrink = parts[i] is BoxEl { Shrink: > 0f } ? 1f : 0f;
+            kids[i] = i == 0 || shrink > 0f ? new BoxEl { Direction = 0, Shrink = shrink, MinWidth = 0f, AlignItems = FlexAlign.Center, Children = [parts[i]] } : new BoxEl
             {
-                Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, Shrink = shrink, MinWidth = 0f,
                 Children = [MetaWord("·") with { Color = Tok.TextTertiary }, parts[i]],
             };
+        }
         // ONE line, never wrapped (a wrapped line would start on its part's dot, owner 2026-11-18): what does not fit runs off under the right edge's
         // fade, as the name and the pivots do, so no line starts or ends on a dot.
         return new BoxEl
@@ -426,6 +431,50 @@ internal static class ZunePodcastKit
             Key = key, Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
             Padding = new Edges4(Z.MetaInk, 0f, 0f, 0f), Margin = new Edges4(-Z.MetaInk, 0f, 0f, 0f),
             EdgeFade = new EdgeFadeSpec(EdgeMask.Right, 0f, 0f, Z.MetaFade, 0f), Children = kids,
+        };
+    }
+
+    /// <summary>The topic / genre words of a meta line as ONE part, each word a link of its own (the accent ink at rest as the kind word's link, the
+    /// primary ink on hover, focus, the hand; a name keeps its casing) that opens <paramref name="open"/> with its words, plain tertiary words when
+    /// <paramref name="open"/> is null. Each word carries the "·" before it (<paramref name="leadDot"/> false: not the first, which starts the line).
+    /// The part gives way by itself, a whole word at a time: the words that do not fit wrap onto a second line it clips away, so no word is cut or
+    /// half a target, and the line never ends on a dot. Each word's hit rect reaches <paramref name="target"/> (its slop, inside the clip): the type
+    /// keeps its size.</summary>
+    public static BoxEl WordLinks(string key, ImmutableArray<string> words, Action<string>? open, float target, bool leadDot = true)
+    {
+        var face = R.Type.DenseMeta("");
+        float line = face.LineHeight;
+        float slop = MathF.Max(0f, (target - line) / 2f);
+        // A wrapping line places its first item even where it does not fit: an empty first item (its gap taken back) lets the first word leave the
+        // line too, so the clip never cuts a word.
+        var units = new Element[words.Length + 1];
+        units[0] = new BoxEl { Width = 0f, Height = line, Shrink = 0f, Margin = new Edges4(0f, 0f, -Z.MetaGap, slop) };
+        for (int i = 0; i < words.Length; i++)
+        {
+            string word = words[i];
+            Element w = open is null
+                ? face with { Text = word, Color = Tok.TextTertiary, Case = TextCase.AsWritten, MaxLines = 1, Wrap = TextWrap.NoWrap }
+                : new BoxEl
+                {
+                    Key = key + ":" + i, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, HitSlop = new Edges4(0f, slop, 0f, slop),
+                    Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, OnClick = () => open(word),
+                    Children = [face with
+                    {
+                        Text = word, Color = Prop.Of(static () => R.Ink.AccentDecor), HoverColor = Tok.TextPrimary, PressedColor = Tok.TextSecondary,
+                        Case = TextCase.AsWritten, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                    }],
+                };
+            units[i + 1] = new BoxEl
+            {
+                Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f, Height = line, Margin = new Edges4(0f, 0f, 0f, slop),
+                Children = i == 0 && !leadDot ? [w] : [MetaWord("·") with { Color = Tok.TextTertiary }, w],
+            };
+        }
+        return new BoxEl
+        {
+            Key = key, Direction = 0, Wrap = true, Gap = Z.MetaGap, AlignItems = FlexAlign.Start, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
+            // The trailing room is the meta line's right-edge fade: a word that stays never sits under it, half faded.
+            Height = line + slop + slop, Padding = new Edges4(0f, slop, Z.MetaFade, 0f), Margin = new Edges4(0f, -slop, 0f, -slop), Children = units,
         };
     }
 
@@ -547,19 +596,23 @@ internal static class ZunePodcastKit
                     Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 });
 
-            string glyph = playing ? ZunePlayerLayout.PauseSolid : played ? (hover ? Icons.Refresh : Icons.Check) : ZunePlayerLayout.PlaySolid;
+            bool off = !vm.Playable;
+            string glyph = playing ? ZunePlayerLayout.PauseSolid : played ? (hover && !off ? Icons.Refresh : Icons.Check) : ZunePlayerLayout.PlaySolid;
             string playName = Loc.Get(playing ? Strings.Podcast.Pages.Pause : vm.State == PodcastRowState.InProgress ? Strings.Podcast.Pages.Resume
                 : played ? Strings.Podcast.Pages.PlayAgain : Strings.Podcast.Pages.Play);
             BoxEl play = new()
             {
                 Key = "row:play", Width = pb, Height = pb, Shrink = 0f, AlignSelf = FlexAlign.Start, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-                Fill = ColorF.Transparent, HoverFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.ButtonHoverAlpha }),
-                PressedFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.ButtonPressedAlpha }),
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, AllowFocusOnInteraction = false, OnClick = _play,
+                // An episode that cannot be played: the button is off (the disabled glyph, no plate, no click); the meta's lock tag says why.
+                Fill = ColorF.Transparent, HoverFill = off ? ColorF.Transparent : Prop.Of(static () => Tok.TextPrimary with { A = Z.ButtonHoverAlpha }),
+                PressedFill = off ? ColorF.Transparent : Prop.Of(static () => Tok.TextPrimary with { A = Z.ButtonPressedAlpha }),
+                Role = AutomationRole.Button, Focusable = !off, Cursor = off ? CursorId.Arrow : CursorId.Hand, AllowFocusOnInteraction = false,
+                OnClick = off ? null : _play,
                 Children = [new TextEl(glyph)
                 {
                     Size = Z.RowGlyph, FontFamily = Tok.Definition.Fonts.Icon,
-                    Color = playing || vm.State == PodcastRowState.InProgress ? Prop.Of(static () => R.Ink.AccentDecor) : played && !hover ? (Prop<ColorF>)Tok.TextTertiary : Tok.TextPrimary,
+                    Color = off ? Tok.TextDisabled
+                        : playing || vm.State == PodcastRowState.InProgress ? Prop.Of(static () => R.Ink.AccentDecor) : played && !hover ? (Prop<ColorF>)Tok.TextTertiary : Tok.TextPrimary,
                 }],
             };
             var line = new BoxEl
@@ -615,6 +668,9 @@ internal static class ZunePodcastKit
                     MetaWord(Loc.Get(Strings.Podcast.Pages.Fresh)) with { Color = Prop.Of(static () => R.Ink.AccentDecor), Weight = Z.Strong },
                 ],
             });
+        // The tags lead the words (after "new"): the line runs off under its right-edge fade (nothing in it shrinks), so a tag at its start is
+        // never the part that fades.
+        if (vm.Lock.Length > 0) parts.Add(Tag(vm.Lock, Icons.Lock));
         if (vm.Date.Length > 0) parts.Add(MetaWord(vm.Date) with { Color = Tok.TextTertiary });
         if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) parts.Add(MetaWord(vm.Left) with { Color = Prop.Of(static () => R.Ink.AccentDecor) });
         else if (vm.Length.Length > 0) parts.Add(MetaWord(vm.Length) with { Color = Tok.TextTertiary });
@@ -622,6 +678,27 @@ internal static class ZunePodcastKit
         if (vm.Video) parts.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Video)) with { Color = Tok.TextTertiary });
         return Meta("row:meta", parts);
     }
+
+    /// <summary>A row tag at the head of the meta (the lock): the glyph and the word in the tertiary ink, lowercased as a label.</summary>
+    static Element Tag(string word, string? glyph)
+    {
+        var kids = new List<Element>(2);
+        if (glyph is not null) kids.Add(Icon(glyph, Z.MetaStar, Tok.TextTertiary));
+        kids.Add(MetaWord(word) with { Color = Tok.TextTertiary });
+        return new BoxEl { Direction = 0, Gap = Z.MetaGap / 2f, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray() };
+    }
+
+    /// <summary>The blocked state of an episode that cannot be played, in place of its play button and as tall: the lock and why, in the secondary
+    /// ink (a sentence: written as the host wrote it).</summary>
+    public static Element Blocked(string key, string why, float height) => new BoxEl
+    {
+        Key = key, Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, MinHeight = height, MinWidth = 0f, Shrink = 1f,
+        Children =
+        [
+            Icon(Icons.Lock, Z.RowGlyph, Tok.TextSecondary),
+            new TextEl(Glue(why)) { Size = Z.ButtonTextSize, LineHeight = Z.ButtonTextLine, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, Shrink = 1f, MinWidth = 0f },
+        ],
+    };
 
     /// <summary>The expanded row: Open episode at its top (the verb's one home), then the description through the house renderer, then Play next.</summary>
     static Element ExpandBody(PodcastEpisodeVm vm, Action open, Action next, bool compact)

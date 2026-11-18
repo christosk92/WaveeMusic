@@ -317,7 +317,12 @@ internal static class WinUiPodcastKit
 
     /// <summary>What a row's TREE depends on (its words are bound, never in here): equal shapes keep the row's render.</summary>
     readonly record struct RowShape(PodcastRowState State, float Progress, bool Saved, bool Video, bool Date, bool Length, bool Left, bool Desc,
-        bool Selected, string? Expanded, bool Playing);
+        bool Selected, string? Expanded, bool Playing)
+    {
+        /// <summary>The episode cannot be played (its play button is off) / it carries the lock tag (its words are bound).</summary>
+        public bool Blocked { get; init; }
+        public bool Locked { get; init; }
+    }
 
     sealed class RowHost : Component, IPropsHost
     {
@@ -327,7 +332,7 @@ internal static class WinUiPodcastKit
         RowProps _p = null!;
         string? _shownId;
         readonly Func<RowShape> _shapeOf;
-        readonly Func<string> _title, _date, _length, _desc;
+        readonly Func<string> _title, _date, _length, _desc, _lock;
         readonly Func<ContextMenuModel?> _menu;
         readonly Action _click, _play, _save, _next, _open, _exit;
         readonly Action<Point2> _move;
@@ -342,6 +347,7 @@ internal static class WinUiPodcastKit
             _date = () => Vm?.Date ?? "";
             _length = () => Vm is { } v ? v.State == PodcastRowState.InProgress && v.Left.Length > 0 ? v.Left : v.Length : "";
             _desc = () => Vm?.Description ?? "";
+            _lock = () => Vm?.Lock ?? "";
             _menu = () => _p.Verbs.Menu(Id);
             _click = Click;
             _play = () => _p.Verbs.Play(Id);
@@ -377,7 +383,10 @@ internal static class WinUiPodcastKit
             bool left = vm.State == PodcastRowState.InProgress && vm.Left.Length > 0;
             return new RowShape(vm.State, vm.State == PodcastRowState.InProgress ? vm.Progress : 0f, vm.Saved, vm.Video, vm.Date.Length > 0,
                 left || vm.Length.Length > 0, left, p.Description && vm.Description.Length > 0 && !expanded,
-                p.Mode == PodcastRowMode.Select && v.Selected.Value == id, expanded ? id : null, v.Playing.Value == id);
+                p.Mode == PodcastRowMode.Select && v.Selected.Value == id, expanded ? id : null, v.Playing.Value == id)
+            {
+                Blocked = !vm.Playable, Locked = vm.Lock.Length > 0,
+            };
         }
 
         public override Element Render()
@@ -406,7 +415,7 @@ internal static class WinUiPodcastKit
                 MaxLines = p.Compact ? 2 : 1, Trim = TextTrim.CharacterEllipsis, Wrap = p.Compact ? TextWrap.Wrap : TextWrap.NoWrap, MinWidth = 0f,
                 Weight = played ? (ushort)400 : (ushort)600, Color = played ? Tok.TextSecondary : Tok.TextPrimary,
             };
-            var text = new List<Element>(3) { title, RowMeta(s, _date, _length) };
+            var text = new List<Element>(3) { title, RowMeta(s, _date, _length, _lock) };
             if (s.Desc)
                 text.Add(Body("") with { Text = Prop.Of(_desc), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextSecondary, MinWidth = 0f });
 
@@ -499,7 +508,8 @@ internal static class WinUiPodcastKit
         bool prog = s.State == PodcastRowState.InProgress;
         bool played = s.State == PodcastRowState.Played;
         bool playing = s.Playing;
-        string glyph = playing ? WinUiDetailRules.PauseSolid : played ? (hover ? Icons.Refresh : Icons.Check) : WinUiDetailRules.PlaySolid;
+        bool off = s.Blocked;
+        string glyph = playing ? WinUiDetailRules.PauseSolid : played ? (hover && !off ? Icons.Refresh : Icons.Check) : WinUiDetailRules.PlaySolid;
         string name = Loc.Get(playing ? Strings.Podcast.Pages.Pause : prog ? Strings.Podcast.Pages.Resume : played ? Strings.Podcast.Pages.PlayAgain
             : Strings.Podcast.Pages.Play);
         var layers = new List<Element>(3);
@@ -514,21 +524,23 @@ internal static class WinUiPodcastKit
         {
             Width = size, Height = size, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false,
             Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-            Children = [Icon(glyph, K.PlayGlyph, played && !hover && !playing ? Tok.TextTertiary : Tok.TextPrimary)],
+            Children = [Icon(glyph, K.PlayGlyph, off ? Tok.TextDisabled : played && !hover && !playing ? Tok.TextTertiary : Tok.TextPrimary)],
         });
         bool plate = !prog && !played;
+        ColorF fill = off ? (plate ? Tok.FillControlDisabled : Tok.FillSubtleTransparent) : plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent;
         return Controls.Named(new BoxEl
         {
             // Its size steps at Compact (the 40 target): it eases, never snaps.
             Key = "row:play", ZStack = true, Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(size / 2f), Layout = WinUiDiscoveryMotion.SizeReflow,
-            Fill = plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
+            // An episode that cannot be played: the button is off (the disabled plate and glyph, no click); the row's lock tag says why.
+            Fill = fill, HoverFill = off ? fill : Tok.FillControlSecondary, PressedFill = off ? fill : Tok.FillControlTertiary,
             BorderWidth = played ? 1f : 0f, BorderBrush = played ? Tok.ControlElevationBorder : null,
-            Role = AutomationRole.Button, Focusable = true, OnClick = play, Children = layers.ToArray(),
+            Role = AutomationRole.Button, Focusable = !off, OnClick = off ? null : play, Children = layers.ToArray(),
         }, name);
     }
 
     /// <summary>The row's meta line (<see cref="MetaLine"/>'s parts) with its date and its length (or the accent time left) bound.</summary>
-    static Element RowMeta(RowShape s, Func<string> date, Func<string> length)
+    static Element RowMeta(RowShape s, Func<string> date, Func<string> length, Func<string> lockTag)
     {
         var kids = new List<Element>(5);
         if (s.State == PodcastRowState.New) kids.Add(NewMark());
@@ -536,6 +548,7 @@ internal static class WinUiPodcastKit
         if (s.Length) kids.Add(MetaPart(s.Date, MetaWord("") with { Text = Prop.Of(length), Color = s.Left ? Tok.AccentTextPrimary : Tok.TextTertiary }));
         if (s.State == PodcastRowState.Played) kids.Add(MetaPart(s.Date || s.Length, MetaWord(Loc.Get(Strings.Podcast.Pages.Played))));
         if (s.Video) kids.Add(VideoTag());
+        if (s.Locked) kids.Add(LockTag(MetaWord("") with { Text = Prop.Of(lockTag) }));
         return new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };
     }
 
@@ -552,6 +565,7 @@ internal static class WinUiPodcastKit
         else if (vm.Length.Length > 0) { kids.Add(MetaPart(any, MetaWord(vm.Length))); any = true; }
         if (vm.State == PodcastRowState.Played) kids.Add(MetaPart(any, MetaWord(Loc.Get(Strings.Podcast.Pages.Played))));
         if (vm.Video) kids.Add(VideoTag());
+        if (vm.Lock.Length > 0) kids.Add(LockTag(MetaWord(vm.Lock)));
         return new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };
     }
 
@@ -581,6 +595,57 @@ internal static class WinUiPodcastKit
     {
         Direction = 0, Gap = K.MetaGap / 2f, AlignItems = FlexAlign.Center, Shrink = 0f,
         Children = [Icon(Icons.Video, K.MetaGlyph, Tok.TextTertiary), MetaWord(Loc.Get(Strings.Podcast.Pages.Video))],
+    };
+
+    /// <summary>The topic / genre words of a header line, each a link of its own (the accent ink at rest, the subtle plate on hover and press, focus,
+    /// the hand) that opens <paramref name="open"/> with its words; plain secondary words when <paramref name="open"/> is null. Each word carries
+    /// the "·" before it (the line continues a kind word, so it starts on one), so no line starts or ends on a separator. ONE line: the words that
+    /// do not fit wrap onto a second line the group clips away whole, so a word is never cut and never half a target. <paramref name="target"/>:
+    /// the tier's control height, which each word's hit rect reaches (its slop, inside the clip: the type and the line keep their size).</summary>
+    public static Element WordLinks(string key, ImmutableArray<string> words, Action<string>? open, float target)
+    {
+        var caption = Caption("");
+        float line = caption.LineHeight;
+        float slop = MathF.Max(0f, (target - line) / 2f);
+        // A wrapping line places its first item even where it does not fit: an empty first item (its gap taken back) lets the first word leave the
+        // line too, so the clip never cuts a word.
+        var units = new Element[words.Length + 1];
+        units[0] = new BoxEl { Width = 0f, Height = line, Shrink = 0f, Margin = new Edges4(0f, 0f, -K.WordLinkGap, slop) };
+        for (int i = 0; i < words.Length; i++)
+        {
+            string word = words[i];
+            Element w = open is null
+                ? caption with { Text = word, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap }
+                : new BoxEl
+                {
+                    Key = key + ":" + i, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                    Padding = new Edges4(K.WordLinkPadX, 0f, K.WordLinkPadX, 0f), Margin = new Edges4(-K.WordLinkPadX, 0f, -K.WordLinkPadX, 0f),
+                    HitSlop = new Edges4(0f, slop, 0f, slop), Corners = Radii.ControlAll,
+                    Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+                    Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = () => open(word),
+                    Children = [caption with
+                    {
+                        Text = word, Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary, PressedColor = Tok.AccentTextTertiary, Wrap = TextWrap.NoWrap,
+                    }],
+                };
+            units[i + 1] = new BoxEl
+            {
+                Direction = 0, Gap = K.WordLinkGap, AlignItems = FlexAlign.Center, Shrink = 0f, Height = line, Margin = new Edges4(0f, 0f, 0f, slop),
+                Children = [caption with { Text = "·", Color = Tok.TextSecondary }, w],
+            };
+        }
+        return new BoxEl
+        {
+            Key = key, Direction = 0, Wrap = true, Gap = K.WordLinkGap, AlignItems = FlexAlign.Start, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
+            Height = line + slop + slop, Padding = new Edges4(0f, slop, 0f, 0f), Margin = new Edges4(0f, -slop, 0f, -slop), Children = units,
+        };
+    }
+
+    /// <summary>The lock tag of a restricted episode ("Subscribers only", "Preview only"): the lock and the word, never clipped (as the Video tag).</summary>
+    static Element LockTag(TextEl word) => new BoxEl
+    {
+        Direction = 0, Gap = K.MetaGap / 2f, AlignItems = FlexAlign.Center, Shrink = 0f,
+        Children = [Icon(Icons.Lock, K.MetaGlyph, Tok.TextTertiary), word],
     };
 
     static TextEl MetaWord(string text) => Caption(text) with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f };

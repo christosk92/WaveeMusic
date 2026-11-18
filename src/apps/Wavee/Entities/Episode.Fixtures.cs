@@ -61,6 +61,10 @@ internal static class PodcastReaderFixtures
     static int DurationOf(string episodeUri)
         => EntityId.TryParse(episodeUri, out var id) && Entities.Current.Episodes.TryGetSlot(id, out int slot) ? new Episode(slot).DurationMs : 0;
 
+    static bool NotesCarryChapters(string episodeUri)
+        => EntityId.TryParse(episodeUri, out var id) && Entities.Current.Episodes.TryGetSlot(id, out int slot)
+            && RichTextBlocks.Split(new Episode(slot).HtmlDescription).Chapters.Length > 0;
+
     /// <summary>A LONG episode (3 h and up, fake sh0e0) carries a realistic maximum: 100 chapters and a line every <see cref="LongLineEveryMs"/>
     /// (about 2,500 lines over 3 h): the episode page's long lists are measured on it.</summary>
     const int LongFromMs = 2 * 3_600_000, LongChapters = 100, LongLineEveryMs = 4_300;
@@ -69,6 +73,8 @@ internal static class PodcastReaderFixtures
     /// unknown.</summary>
     internal static Spotify.Podcasts.Page<Spotify.Podcasts.Chapter> ChaptersFor(string episodeUri)
     {
+        // An episode whose show notes carry its chapters ("CHAPTERS(00:00:00) …", fake sh5e1) has none on the chapter endpoint, as on the wire.
+        if (NotesCarryChapters(episodeUri)) return new([], "", 0, "", 200);
         int duration = DurationOf(episodeUri);
         if (duration <= 0) return Chapters;
         var items = ChapterList(duration);

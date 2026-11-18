@@ -205,7 +205,7 @@ internal static partial class WinUiPodcastShow
             Element cover = Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f), keepWhileHidden: true);
             var idKids = new List<Element>(3)
             {
-                Eyebrow(h),
+                Eyebrow(h, lay),
                 (lay.TitleLarge ? TitleLarge(h.Title) : Title(h.Title)) with
                 {
                     Wrap = TextWrap.Wrap, MaxLines = S.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -248,8 +248,8 @@ internal static partial class WinUiPodcastShow
             };
         }
 
-        /// <summary>The eyebrow: the kind word as a link to its hub, then the topics (plain: the data carries no destination for a topic), then the tags.</summary>
-        Element Eyebrow(PodcastShowHead h)
+        /// <summary>The eyebrow: the kind word as a link to its hub, then the topics as links (each searches its words), then the tags.</summary>
+        Element Eyebrow(PodcastShowHead h, WinUiPodcastShowLayout lay)
         {
             var kids = new List<Element>(4);
             if (_p.OpenKind is { } openKind && h.Kind.Length > 0)
@@ -259,8 +259,7 @@ internal static partial class WinUiPodcastShow
                     Children = [HyperlinkButton.Create(h.Kind, openKind, size: ControlSize.Small)],
                 });
             else if (h.Kind.Length > 0) kids.Add(Caption(h.Kind) with { Color = Tok.TextSecondary });
-            if (h.Topics.Length > 0)
-                kids.Add(Caption("· " + string.Join(" · ", h.Topics)) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
+            if (h.Topics.Length > 0) kids.Add(WinUiPodcastKit.WordLinks("eyebrow:topic", h.Topics, _p.OpenTopic, lay.Target));
             if (h.Video) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video));
             if (h.Serial) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Serial), null));
             return new BoxEl { Direction = 0, Gap = S.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };

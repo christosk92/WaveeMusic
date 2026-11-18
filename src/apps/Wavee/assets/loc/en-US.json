@@ -1339,7 +1339,11 @@
       "follow": "Follow",
       "following": "Following",
       "share": "Share",
-      "download": "Download"
+      "download": "Download",
+      "lockSubscribers": "Subscribers only",
+      "lockPreview": "Preview only",
+      "lockUnavailable": "Unavailable",
+      "unplayable": "This episode isn't available to play."
     }
   },
   "recents": {

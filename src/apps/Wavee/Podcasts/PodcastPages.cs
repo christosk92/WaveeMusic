@@ -8,6 +8,8 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Hooks;
+using FluentGpu.Localization;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -37,6 +39,25 @@ public static partial class PodcastPages
         var uri = EntityUri.Parse(id);
         return uri.IsValid && Entities.Current.Episodes.TryGetSlot(uri.Id, out int slot) ? Episode.DragPayloadOf(new Episode(slot)) : null;
     };
+
+    /// <summary>An episode's access as the rows and the episode page show it (both hosts): paywalled, preview only, and the row's lock tag. The wire
+    /// sets <c>PreviewOnly</c> only on an unplayable episode that offers a preview (<c>Spotify.Decode.Podcast.cs</c> EpisodeDetail).</summary>
+    internal static PodcastEpisodeVm WithAccess(PodcastEpisodeVm vm, EpisodeFlags flags)
+    {
+        if ((flags & (EpisodeFlags.Paywalled | EpisodeFlags.PreviewOnly | EpisodeFlags.Unplayable)) == 0) return vm;
+        string lockTag = (flags & EpisodeFlags.PreviewOnly) != 0 ? Loc.Get(Strings.Podcast.Pages.LockPreview)
+            : (flags & EpisodeFlags.Paywalled) != 0 ? Loc.Get(Strings.Podcast.Pages.LockSubscribers)
+            : Loc.Get(Strings.Podcast.Pages.LockUnavailable);
+        return vm with { Paywalled = (flags & EpisodeFlags.Paywalled) != 0, PreviewOnly = (flags & EpisodeFlags.PreviewOnly) != 0, Lock = lockTag };
+    }
+
+    /// <summary>Why an episode cannot be played, for the episode page's hero ("" = it plays): the old reader's primary (a9a799dac^ Episode.Page.cs
+    /// EpisodePrimary) and its About notes, one sentence.</summary>
+    internal static string BlockedOf(EpisodeFlags flags)
+        => (flags & EpisodeFlags.Unplayable) == 0 ? ""
+            : (flags & EpisodeFlags.PreviewOnly) != 0 ? Loc.Get(Strings.Podcast.Reader.Preview)
+            : (flags & EpisodeFlags.Paywalled) != 0 ? Loc.Get(Strings.Podcast.Reader.Paywall)
+            : Loc.Get(Strings.Podcast.Pages.Unplayable);
 
     /// <summary>The props every page host reads: the subject and the route key.</summary>
     internal sealed record HostProps(EntityUri Subject, string RouteKey);

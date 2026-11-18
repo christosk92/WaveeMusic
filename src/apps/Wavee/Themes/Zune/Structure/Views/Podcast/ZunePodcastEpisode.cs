@@ -179,6 +179,9 @@ internal static class ZunePodcastEpisode
             var p = a.P;
             var lay = a.Lay;
             var e = v.Episode;
+            // An episode that cannot be played says why, quietly, with the lock, where the play button stands.
+            if (v.Blocked.Length > 0)
+                return new BoxEl { Key = "ze-up", Direction = 0, MinWidth = 0f, Children = [K.Blocked("ze-blocked", v.Blocked, lay.Target)] };
             bool pausing = v.PrimaryLabel == Loc.Get(Strings.Podcast.Pages.Pause);
             Element split = K.Split("ze-split", v.PrimaryLabel, v.PrimaryAccent, pausing, p.Play, v.Menu, lay.Target, lay.PrimaryFills);
             if (e.State != PodcastRowState.InProgress)

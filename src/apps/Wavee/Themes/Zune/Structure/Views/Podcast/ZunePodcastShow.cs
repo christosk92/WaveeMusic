@@ -174,7 +174,7 @@ internal static partial class ZunePodcastShow
             // Caught up: the up line says it (the label would say it twice).
             if (s is { Kind: not PodcastSmartKind.CaughtUp }) main.Add(K.Label(LabelOf(s)));
             main.Add(Up(s, lay, live));
-            main.Add(Meta(head));
+            main.Add(Meta(head, lay.Target));
             main.Add(Commands(head, lay));
             var words = new BoxEl { Key = "zp-hmain", Direction = 1, Gap = Z.HeroLineGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = main.ToArray() };
             return new BoxEl
@@ -241,7 +241,7 @@ internal static partial class ZunePodcastShow
         }
 
         /// <summary>publisher · ★ rating (count) · cadence · N episodes · serial: the kind word links to its hub; each part carries its own "·".</summary>
-        Element Meta(PodcastShowHead h)
+        Element Meta(PodcastShowHead h, float target)
         {
             var parts = new List<Element>(6);
             if (h.Publisher.Length > 0) parts.Add(K.MetaWord(h.Publisher) with { Case = TextCase.AsWritten, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
@@ -261,7 +261,8 @@ internal static partial class ZunePodcastShow
             if (h.Serial) parts.Add(K.MetaWord(Loc.Get(Strings.Podcast.Pages.Serial)));
             if (h.Kind.Length > 0)
                 parts.Add(_p.OpenKind is { } kind ? K.Link("zp-kind", h.Kind, kind, 0f) : K.MetaWord(h.Kind));
-            if (h.Topics.Length > 0) parts.Add(K.MetaWord(string.Join(" · ", h.Topics)) with { Case = TextCase.AsWritten, Color = Tok.TextTertiary, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
+            // The topics: each a link that searches its words (names: as written); the ones that do not fit leave the line whole.
+            if (h.Topics.Length > 0) parts.Add(K.WordLinks("zp-topic", h.Topics, _p.OpenTopic, target, leadDot: parts.Count > 0));
             return K.Meta("zp-meta", parts);
         }
 

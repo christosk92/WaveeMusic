@@ -449,7 +449,10 @@ internal static class ClassicPodcastAudiobook
         if (Rating(a) is { } rating) side.Add(rating);
         var sideBox = new BoxEl
         {
+            // Stacked under the text it takes the column's width (the parent aligns Start, which would hug the widest unwrapped child, the sample
+            // button, and break the facts' values mid-word).
             Key = "cpa-about-side", Direction = 1, Gap = P.ColumnGap, MinWidth = 0f, Width = a.Lay.AboutBeside ? P.AboutW : float.NaN, Shrink = 0f,
+            AlignSelf = a.Lay.AboutBeside ? FlexAlign.Start : FlexAlign.Stretch,
             Children = side.ToArray(),
         };
         return new BoxEl
@@ -477,10 +480,21 @@ internal static class ClassicPodcastAudiobook
             return new BoxEl { Key = "cpa-rate", Direction = 1, Gap = P.FactsRowGap, MinWidth = 0f, Children = lines.ToArray() };
         }
         if (v.Rating.Length == 0 || rs.Line.Length == 0) return null;
+        // The line with Rate beside it, as the Classic show's rating row: in progress it opens the shared picker; before the first listen it is
+        // "Rate after listening", off (WinUI's and Zune's rule).
+        var tone = a.Accent;
+        Element rate = v.State == AudiobookState.InProgress
+            ? Controls.RateFlyout("cpa-rate-btn", Button.Create(v.RateLabel, static () => { }) with { Height = a.Lay.Target, MinWidth = 0f }, p.RateState, p.Rate,
+                P.RateStar, () => Design.Palette.ReadableInk(tone))
+            : Button.Create(v.RateLabel, static () => { }, isEnabled: false) with { Key = "cpa-rate-btn", Height = a.Lay.Target, Shrink = 0f, MinWidth = 0f };
         return new BoxEl
         {
-            Key = "cpa-rating", Direction = 1, Gap = P.FactsRowGap, MinWidth = 0f,
-            Children = [ClassicPodcastKit.Line(ClassicPodcastKit.Strong(v.Rating), new TextSpan(" ★" + P.Dot + rs.Line))],
+            Key = "cpa-rating", Direction = 0, Gap = P.CommandGap, AlignItems = FlexAlign.Center, Wrap = true, MinWidth = 0f,
+            Children =
+            [
+                ClassicPodcastKit.Line(ClassicPodcastKit.Strong(v.Rating), new TextSpan(" ★" + P.Dot + rs.Line)) with { Grow = 1f, Shrink = 1f, Basis = 0f },
+                rate,
+            ],
         };
     }
 }
