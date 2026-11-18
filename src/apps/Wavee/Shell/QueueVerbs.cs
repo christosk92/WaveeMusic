@@ -205,9 +205,11 @@ public static partial class Shell
                 int added = Queue.InsertUser(refs.AsSpan(0, n), Playback.Snap().Cursor, userIndex);
                 if (added == 0) return;
                 Changed();
+                // Episodes alone are counted as episodes ("Added 1 episode to queue"), anything with songs as songs.
+                string count = tracks.Length == 0 ? Strings.Podcast.EpisodeCount(added) : Strings.Detail.SongCount(added);
                 Notify.Say(PlayerBarRules.DropWasTruncated(total)
-                    ? Strings.Detail.AddedFirstToQueue(Strings.Detail.SongCount(added))
-                    : Strings.Detail.AddedToQueue(Strings.Detail.SongCount(added)), InfoBarSeverity.Success);
+                    ? Strings.Detail.AddedFirstToQueue(count)
+                    : Strings.Detail.AddedToQueue(count), InfoBarSeverity.Success);
             });
         }
 
