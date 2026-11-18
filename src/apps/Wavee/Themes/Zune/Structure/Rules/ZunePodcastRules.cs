@@ -133,7 +133,10 @@ public static class ZunePodcastRules
     public const float ChaptersW = 380f, ColsGap = 48f, ColsTop = 0f;
 
     /// <summary>A chapter row: the number column (16/28), the name (18/24 light), the row's floor, its padding.</summary>
-    public const float ChNumW = 36f, ChNumSize = 16f, ChNumLine = 28f, ChNameSize = 18f, ChNameLine = 24f, ChMinH = 44f, ChPadY = 6f, ChGap = 8f;
+    public const float ChNumW = 36f, ChNumSize = 16f, ChNumLine = 28f, ChNameSize = 18f, ChNameLine = 24f, ChRowH = 56f, ChGap = 8f;
+
+    /// <summary>How far (in viewports) the current chapter may be from the list's view before keeping it in view jumps instead of gliding.</summary>
+    public const double FollowJumpViewports = 2.0;
     public const float ChCheck = 24f, ChCheckGlyph = 12f;
 
     /// <summary>The transcript: its height (it scrolls the lines inside, the house virtual list), the head, the find pill, the lines (16/24), the time

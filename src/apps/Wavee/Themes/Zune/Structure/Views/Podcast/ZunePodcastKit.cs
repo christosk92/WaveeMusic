@@ -187,10 +187,10 @@ internal static class ZunePodcastKit
     }
 
     /// <summary>A pivot's body, keyed per pivot under a plain anchor (a slot's lone child ignores its key): the new body fades in where it lands.</summary>
-    public static Element Body(string key, Element body) => new BoxEl
+    public static Element Body(string key, Element body, bool fill = false) => new BoxEl
     {
-        Direction = 1, MinWidth = 0f,
-        Children = [new BoxEl { Key = key, Direction = 1, MinWidth = 0f, Enter = Z.BodySwap, Children = [body] }],
+        Direction = 1, MinWidth = 0f, Grow = fill ? 1f : 0f,
+        Children = [new BoxEl { Key = key, Direction = 1, MinWidth = 0f, Grow = fill ? 1f : 0f, Enter = Z.BodySwap, Children = [body] }],
     };
 
     // ══ 4. COMMANDS ═════════════════════════════════════════════════════════════════════════════════════════════════════════
