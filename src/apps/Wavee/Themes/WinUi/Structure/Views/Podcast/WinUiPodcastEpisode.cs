@@ -271,6 +271,8 @@ internal static class WinUiPodcastEpisode
 
     sealed class Cards : Component
     {
+        Func<PodcastEpisodeView>? _sliceOf;
+        PodcastEpisodePageProps? _p;
         readonly Signal<int> _index = new(0);
         readonly ScrollHandle _chaptersScroll = new();
         ImmutableArray<PodcastChapterVm> _stampChapters;
@@ -287,8 +289,10 @@ internal static class WinUiPodcastEpisode
         {
             var a = UseProps<HeroArgs>();
             var p = a.P;
+            _p = p;
             var lay = a.Lay;
-            var v = p.View.Value;
+            // Its slice of the snapshot: a change elsewhere (the hero's word, the state) does not re-render this section.
+            var v = UseComputed(_sliceOf ??= () => { var w = _p!.View.Value; return PodcastEpisodeView.Empty with { Load = w.Load, Chapters = w.Chapters, ChaptersPending = w.ChaptersPending, CommentCount = w.CommentCount, CommentsPending = w.CommentsPending, About = w.About, NoChapters = w.NoChapters }; }).Value;
             var tab = p.Tab.Value;
             // The transcript is a tab only where the window is too narrow to keep it beside the chapters.
             if (lay.TwoCards && tab == PodcastEpisodeTab.Transcript) tab = PodcastEpisodeTab.Chapters;
@@ -316,7 +320,10 @@ internal static class WinUiPodcastEpisode
                 int at = p.CurrentChapter.Value;
                 _ = scroll.ViewportSignal.Value;
                 if (!chaptersShown || at < 0 || at >= count) return;
-                scroll.BringIntoView(at * P.ChRowH, P.ChRowH, float.NaN, ScrollMove.Glide, P.ListBodyPad);
+                // A far chapter (a start or a seek deep in a long episode) lands at once: a glide would realize every row on its way.
+                double top = at * P.ChRowH, vh = scroll.ViewportSignal.Peek();
+                bool far = Math.Abs(top - scroll.Offset.Peek()) > vh * P.FollowJumpViewports;
+                scroll.BringIntoView(top, P.ChRowH, float.NaN, far ? ScrollMove.Immediate : ScrollMove.Glide, P.ListBodyPad);
             });
             bool chaptersList = chaptersShown && count > 0;
 
@@ -375,12 +382,16 @@ internal static class WinUiPodcastEpisode
 
     sealed class More : Component
     {
+        Func<PodcastEpisodeView>? _sliceOf;
+        PodcastEpisodePageProps? _p;
         public override Element Render()
         {
             var a = UseProps<HeroArgs>();
             var p = a.P;
+            _p = p;
             var lay = a.Lay;
-            var v = p.View.Value;
+            // Its slice of the snapshot: a change elsewhere (the hero's word, the state) does not re-render this section.
+            var v = UseComputed(_sliceOf ??= () => { var w = _p!.View.Value; return PodcastEpisodeView.Empty with { Load = w.Load, More = w.More, MoreSub = w.MoreSub, Similar = w.Similar }; }).Value;
             bool compact = lay.Tier == WidthTier.Compact;
             var kids = new List<Element>(4);
             if (!v.More.IsDefaultOrEmpty)

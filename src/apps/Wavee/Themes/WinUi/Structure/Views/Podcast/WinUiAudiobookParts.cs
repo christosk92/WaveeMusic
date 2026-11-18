@@ -99,6 +99,9 @@ internal static class WinUiAudiobookParts
         var starts = new float[n];
         float x = 0f;
         var kids = new Element[n + 1];
+        // ONE tooltip over the line, its text the hovered segment's (a hundred-chapter book drew a hundred tooltip hosts that re-rendered with the page).
+        var hover = new Signal<int>(-1);
+        var labels = new string[n];
         for (int i = 0; i < n; i++)
         {
             widths[i] *= scale;
@@ -107,13 +110,16 @@ internal static class WinUiAudiobookParts
             int index = i;
             float segW = widths[i];
             bool done = chapters[i].Done;
+            labels[i] = chapters[i].Label;
+            // The fill is a compositor scale (a bound width relaid the line out on every position tick).
             var fill = new BoxEl
             {
-                Width = Prop.Of(() =>
+                Width = segW, TransformOriginX = 0f,
+                Transform = Prop.Of(() =>
                 {
+                    if (finished || done) return Affine2D.Identity;
                     var pl = place.Value;
-                    float f = finished || done ? 1f : pl.Current == index ? pl.CurrentFill : 0f;
-                    return segW * f;
+                    return Affine2D.Scale(pl.Current == index ? MathF.Max(0.001f, pl.CurrentFill) : 0.001f, 1f);
                 }),
                 Height = AB.SegHeight, Corners = CornerRadius4.All(AB.SegRadius),
                 Fill = finished ? Tok.FillControlStrong : Tok.AccentDefault,
@@ -129,13 +135,14 @@ internal static class WinUiAudiobookParts
                 Corners = CornerRadius4.All(AB.SegRadius),
             };
             // One tree at every tier (a crossing keeps the segments): only the verb comes and goes.
-            kids[i] = ToolTip.Wrap(seek
+            kids[i] = seek
                 ? seg with
                 {
                     Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = () => play(index),
                     Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+                    OnHoverMove = _ => hover.SetIfChanged(index),
                 }
-                : seg with { HitTestVisible = false }, chapters[i].Label);
+                : seg with { OnHoverMove = _ => hover.SetIfChanged(index) };
         }
         // the thumb: one node over the row, placed at your place on the current chapter's segment
         kids[n] = new BoxEl
@@ -152,8 +159,9 @@ internal static class WinUiAudiobookParts
             }),
             Children = [new BoxEl { Width = AB.ThumbInner, Height = AB.ThumbInner, Corners = CornerRadius4.All(AB.ThumbInner / 2f), Fill = Tok.AccentDefault }],
         };
-        var row = new BoxEl { Direction = 0, Gap = AB.SegGap, Height = AB.SegBand, Children = kids[..n] };
-        return new BoxEl { ZStack = true, Height = AB.SegBand, Children = [row, kids[n]] };
+        var row = new BoxEl { Direction = 0, Gap = AB.SegGap, Height = AB.SegBand, Children = kids[..n], OnPointerExit = () => hover.SetIfChanged(-1) };
+        return ToolTip.Wrap(new BoxEl { ZStack = true, Height = AB.SegBand, Children = [row, kids[n]] },
+            Prop.Of<string?>(() => hover.Value >= 0 && hover.Value < labels.Length ? labels[hover.Value] : null));
     }
 
     // ══ THE CONTENTS PAGE ═══════════════════════════════════════════════════════════════════════════════════════════════════════

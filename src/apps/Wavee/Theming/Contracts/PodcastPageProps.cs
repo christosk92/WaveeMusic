@@ -231,6 +231,9 @@ public sealed record PodcastEpisodePageProps
     public required IReadSignal<int> CurrentChapter { get; init; }
     /// <summary>The transcript line the position is in (index into <see cref="PodcastEpisodeView.Transcript"/>; -1 none). Changes only on a new line.</summary>
     public required IReadSignal<int> CurrentLine { get; init; }
+    /// <summary>The episode's state (Unplayed, InProgress, Played), live: the chapter rows and the map derive played and current from it and
+    /// <see cref="CurrentChapter"/>, so starting or finishing an episode moves two leaves instead of rebuilding the lists.</summary>
+    public IReadSignal<PodcastRowState>? State { get; init; }
     /// <summary>The map's clock: "12:10 / 37:00" while under way, the length otherwise.</summary>
     public required IReadSignal<string> MapClock { get; init; }
     /// <summary>"21 min left" in the episode (empty unless under way).</summary>
