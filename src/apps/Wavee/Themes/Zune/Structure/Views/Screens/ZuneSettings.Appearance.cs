@@ -32,10 +32,9 @@ internal static partial class ZuneSettings
             new Named("Theme options", Slots.View(ViewKeys.SettingsThemeOptions, SettingsThemeOptionsProps.Page) with { Key = "zs:options-view" }),
         };
 
-        var mode = D(Tab.Appearance, "appMode");
         var marquee = D(Tab.Appearance, "marquee");
         groups.Add(Group(k, Tab.Appearance, "Display",
-            k.DocRow(mode, k.Choice(mode, ModeLabels(), chips: true)),
+            AppModeRow(k),
             k.DocRow(D(Tab.Appearance, "zoom"), Embed.Comp(static () => new ZoomCell()) with { Key = "zs:zoom" }),
             k.DocRow(marquee, k.Toggle(marquee))));
 
@@ -88,6 +87,13 @@ internal static partial class ZuneSettings
                 Loc.Get(Strings.Settings.Appearance.DaylistClockCountdown),
             ], chips: true))));
         return groups.ToArray();
+    }
+
+    /// <summary>The app mode row (system · light · dark), as Settings draws it and as the setup wizard's theme step shows it: one row, one writer.</summary>
+    internal static Element AppModeRow(ZuneKit k)
+    {
+        var mode = D(Tab.Appearance, "appMode");
+        return k.DocRow(mode, k.Choice(mode, ModeLabels(), chips: true));
     }
 
     static string[] ModeLabels() =>

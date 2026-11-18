@@ -81,6 +81,9 @@ versions separately under `v*` and is not tracked in this file.)
   "Concerts". In Zune, "view event" is a ring like the event page's, the place is the hub's own control and the
   months are lowercase.
 
+- **Setup asks for light or dark, the language and the audio quality.** The theme step now has the app mode and the
+  app language under the theme cards, and the playback step has the audio quality: the same rows as in Settings.
+
 - **A larger first-run setup.** The setup dialog is much bigger (1040 x 680 on a normal window). "Is this you?" shows
   the account as a head and says what Wavee does with it, and signing in shows its four steps as a list, each with
   what it does.

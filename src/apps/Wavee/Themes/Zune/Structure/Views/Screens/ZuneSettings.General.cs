@@ -62,13 +62,11 @@ internal static partial class ZuneSettings
 
     static Named[] GeneralTab(ZuneKit k)
     {
-        var language = D(Tab.General, "language");
         var tray = D(Tab.General, "trayIcon");
         var links = D(Tab.General, "spotifyLinks");
         return
         [
-            Group(k, Tab.General, "Language & region",
-                k.DocRow(language, k.Choice(language, LanguageLabels(), chips: false, itemEnabled: Settings.Language.Enabled))),
+            Group(k, Tab.General, "Language & region", LanguageRow(k)),
             Group(k, Tab.General, "Links",
                 k.DocRow(links, k.Toggle(links, links.Enabled(SettingsFacts.Live).Enabled))),
             Group(k, Tab.General, "Notification area",
@@ -82,6 +80,13 @@ internal static partial class ZuneSettings
                 ToggleRow(k, Tab.General, "startHidden"), ToggleRow(k, Tab.General, "startOnLogin")),
             Group(k, Tab.General, "Graphics", Embed.Comp(static () => new GpuRow()) with { Key = "zs:gpu" }),
         ];
+    }
+
+    /// <summary>The language row, as Settings draws it and as the setup wizard's theme step shows it: one row, one writer.</summary>
+    internal static Element LanguageRow(ZuneKit k)
+    {
+        var language = D(Tab.General, "language");
+        return k.DocRow(language, k.Choice(language, LanguageLabels(), chips: false, itemEnabled: Settings.Language.Enabled));
     }
 
     static string[] LanguageLabels() =>

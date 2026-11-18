@@ -66,8 +66,7 @@ internal static partial class ZuneSettings
 
             // Its title is the Audio area's own heading.
             Bare(k, Tab.Playback, "Audio",
-                k.DocRow(quality, k.Choice(quality, QualityLabels(qualityRungs), chips: false, descriptions: QualityDescriptions(qualityRungs), width: Z.WideComboWidth),
-                    QualityHint(quality, QualityDescriptions(qualityRungs))),
+                QualityRow(k),
                 // The description IS the detector's verdict: every state says something, "Unknown" included (never blank).
                 k.DocRow(metered, k.Choice(metered.Id, new ZuneChoice(QualityLabels(meteredRungs),
                     () => Platform.Network.MeteredQualityCap.Value,
@@ -98,6 +97,15 @@ internal static partial class ZuneSettings
     }
 
     // ── audio ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The audio quality row, as Settings draws it and as the setup wizard's playback step shows it: one row, one writer.</summary>
+    internal static Element QualityRow(ZuneKit k)
+    {
+        var quality = D(Tab.Playback, "audioQuality");
+        int rungs = Settings.Quality.AudioRungCount(SettingsFacts.Live.CanDerive);
+        return k.DocRow(quality, k.Choice(quality, QualityLabels(rungs), chips: false, descriptions: QualityDescriptions(rungs), width: Z.WideComboWidth),
+            QualityHint(quality, QualityDescriptions(rungs)));
+    }
 
     static string[] QualityLabels(int count)
     {
