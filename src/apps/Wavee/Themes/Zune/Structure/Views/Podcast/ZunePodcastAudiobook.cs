@@ -58,8 +58,10 @@ internal static class ZunePodcastAudiobook
             int pivot = _pivot.Value;
             if (pivot == (int)Pivot.More && shown.Similar.IsDefaultOrEmpty) pivot = (int)Pivot.Chapters;
             var items = ImmutableArray.CreateBuilder<K.PivotItem>(3);
+            // The count is the book's own as soon as something states it (before the chapters themselves are here).
+            int chapterCount = Math.Max(shown.ChapterCount, shown.Chapters.Length);
             items.Add(new K.PivotItem(Loc.Get(Strings.Podcast.Pages.Chapters),
-                shown.Chapters.Length > 0 ? shown.Chapters.Length.ToString(System.Globalization.CultureInfo.CurrentCulture) : ""));
+                chapterCount > 0 ? chapterCount.ToString(System.Globalization.CultureInfo.CurrentCulture) : ""));
             items.Add(new K.PivotItem(Loc.Get(Strings.Podcast.Pages.About), ""));
             if (!shown.Similar.IsDefaultOrEmpty) items.Add(new K.PivotItem(Loc.Get(Strings.Podcast.Pages.MoreByTheAuthor), ""));
 
@@ -165,7 +167,9 @@ internal static class ZunePodcastAudiobook
                 });
                 break;
         }
-        return new BoxEl { Direction = 1, Gap = Z.UpSubGap, MinWidth = 0f, Children = kids.ToArray() };
+        // The block changes form when the listener's place lands after the page (the length, then the percentage over the book's bar): its height
+        // eases and what stands under it rides the re-solve, instead of stepping down.
+        return new BoxEl { Key = "zb-where", Direction = 1, Gap = Z.UpSubGap, MinWidth = 0f, Layout = ZuneMotion.HeightResize, Children = kids.ToArray() };
     }
 
     static Element Up(AudiobookView v, AudiobookPageProps p, ZunePodcastLayout lay, bool playing)
@@ -284,12 +288,25 @@ internal static class ZunePodcastAudiobook
                 right,
             ],
         };
+        var view = p.View;
+        // Drawn to length once every length is known (the chapters land before their lengths: segments cut evenly would be re-cut under the eye).
+        // Until then the band stands empty, and the segments fade in where they belong. A region's own run can come before the page's re-render
+        // hands it new closures, so what it mounts reads the view as it is NOW.
+        Element segments = new SkelRegionEl(
+            Pending: () => !view.Value.LineKnown, Failed: static () => false,
+            Content: () => SegmentsOf(view.Value, p, lay), ShimmerSource: static () => new BoxEl { Height = Z.MapBand }, OnFailed: null,
+            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+        return new BoxEl { Key = "zb-line", Direction = 1, Gap = Z.LineGap, MinWidth = 0f, Children = [head, segments] };
+    }
+
+    static Element SegmentsOf(AudiobookView v, AudiobookPageProps p, ZunePodcastLayout lay)
+    {
+        var place = p.Place;
         var chapters = v.Chapters;
         var play = p.PlayChapter;
         bool finished = v.State == AudiobookState.Finished;
         bool seek = !lay.Stacked;
-        Element segments = Responsive.Of(w => Segments(w, chapters, place, play, finished, seek));
-        return new BoxEl { Key = "zb-line", Direction = 1, Gap = Z.LineGap, MinWidth = 0f, Children = [head, segments] };
+        return Responsive.Of(w => Segments(w, chapters, place, play, finished, seek));
     }
 
     static Element Segments(float width, ImmutableArray<AudiobookChapterVm> chapters, IReadSignal<AudiobookPlace> place, Action<int> play, bool finished, bool seek)
@@ -348,9 +365,23 @@ internal static class ZunePodcastAudiobook
                 R.Type.TrackMeta(v.StartsAtLabel) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), Shrink = 0f },
             ],
         };
-        var kids = new List<Element>(v.Chapters.Length + 1) { head };
-        foreach (var c in v.Chapters) kids.Add(Row(c, v, p));
-        return new BoxEl { Key = "zb-contents", Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
+        var view = p.View;
+        // The rows do not hold the page. While they are on their way their place is held by as many placeholder rows as the book has chapters (the
+        // loading page's twelve until something says how many), and they arrive in it one behind the other.
+        // A region's own run can come before the page's re-render hands it new closures, so what it mounts reads the view as it is NOW: rows that
+        // arrive are there when the reveal looks for them.
+        Element rows = new SkelRegionEl(
+            Pending: () => view.Value.ChaptersPending, Failed: static () => false,
+            Content: () => Rows(view.Value.Chapters, view.Value, p), ShimmerSource: () => Rows(view.Value.HeldChapters(), view.Value, p), OnFailed: null,
+            Reveal: SkelReveal.StaggerRows, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
+        return new BoxEl { Key = "zb-contents", Direction = 1, MinWidth = 0f, Children = [head, rows] };
+    }
+
+    static Element Rows(ImmutableArray<AudiobookChapterVm> chapters, AudiobookView v, AudiobookPageProps p)
+    {
+        var kids = new Element[chapters.Length];
+        for (int i = 0; i < kids.Length; i++) kids[i] = Row(chapters[i], v, p);
+        return new BoxEl { Key = "zb-rows", Direction = 1, MinWidth = 0f, Children = kids };
     }
 
     static Element Row(AudiobookChapterVm c, AudiobookView v, AudiobookPageProps p)
@@ -367,10 +398,11 @@ internal static class ZunePodcastAudiobook
             Color = cur ? Prop.Of(static () => R.Ink.AccentDecor) : done || c.Matter ? (Prop<ColorF>)Tok.TextTertiary : Tok.TextPrimary,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
         };
+        // The dots lead to the chapter's start: there are none until it is known (a chapter's name lands before its place in the book).
         var leader = new BoxEl
         {
             Height = Z.LeaderH, Grow = 1f, MinWidth = Z.LeaderMin, AlignSelf = FlexAlign.Center, OffsetY = Z.LeaderLift,
-            BorderWidth = Z.LeaderH, BorderDashOn = Z.LeaderDot, BorderDashOff = Z.LeaderGapDash,
+            BorderWidth = c.StartsAt.Length > 0 ? Z.LeaderH : 0f, BorderDashOn = Z.LeaderDot, BorderDashOff = Z.LeaderGapDash,
             BorderColor = Prop.Of(() => Tok.TextPrimary with { A = done ? Z.LeaderDoneAlpha : Z.LeaderAlpha }),
         };
         var left = new TextEl("")

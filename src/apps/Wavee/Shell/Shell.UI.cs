@@ -1105,6 +1105,10 @@ public static partial class Shell
             case "cold-rows": Entities.StageColdRows(); return true;
             case "cold-warm": Entities.StageColdWarm(); return true;
             case "cold-faces": Entities.StageColdFaces(); return true;
+            // The cold book (Entities.Fake.Cold.cs): sh9 loads one answer per step (`goto uri=spotify:show:sh9` after cold-book).
+            case "cold-book": s_inspectState.Value = ""; Entities.StageColdBook(); return true;
+            case "cold-book-chapters": Entities.StageColdBookChapters(); return true;
+            case "cold-book-facts": Entities.StageColdBookFacts(); return true;
             // A regenerated Mix's fresh answer over the copy the page holds (`goto` pl6 first): Entities.Fake.Cold.cs.
             case "regen": Entities.StageRegen(); return true;
             // A small remote edit over the membership the page shows (another device; `goto` pl6 first): Entities.Fake.Cold.cs.

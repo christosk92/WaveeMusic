@@ -362,6 +362,27 @@ public sealed record AudiobookView(
 
     /// <summary>The chapter the primary continues (in progress), else -1.</summary>
     public int Current { get; init; } = -1;
+    /// <summary>The chapters are still on their way (the book's membership has not answered whole; a book pages itself to the end). The page does
+    /// not wait for them: a theme holds their place with the rows of <see cref="HeldChapters"/> as a placeholder, and the rows arrive in it.</summary>
+    public bool ChaptersPending { get; init; }
+    /// <summary>How many chapters the book has, as the wire states it before the chapters themselves arrive (0 = not said yet).</summary>
+    public int ChapterCount { get; init; }
+    /// <summary>The chapters are on their way and nothing has said how many: what stands under the contents has no place of its own yet. A theme
+    /// holds it back (a placeholder) and draws it when the count is known, where it will stay: content a listener can read never moves.</summary>
+    public bool ChaptersUnsized => ChaptersPending && ChapterCount == 0;
+    /// <summary>Every chapter is here and knows its length: the line can be drawn to length (before that it would be re-cut as the lengths land).</summary>
+    public bool LineKnown { get; init; }
+
+    /// <summary>How many placeholder rows stand for the chapters while nothing has said how many (the loading page's own count).</summary>
+    public const int HeldRows = 12;
+
+    /// <summary>The rows a theme derives the chapters' placeholder from while <see cref="ChaptersPending"/>: <see cref="ChapterCount"/> of them, or
+    /// <see cref="HeldRows"/> while the count is not known. Their words are never shown.</summary>
+    public ImmutableArray<AudiobookChapterVm> HeldChapters() => Held(ChapterCount > 0 ? ChapterCount : HeldRows);
+
+    static ImmutableArray<AudiobookChapterVm> Held(int count)
+        => [.. Enumerable.Range(0, count).Select(static i => new AudiobookChapterVm(i, (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "Chapter title", false, i * 1_800_000, 1_800_000, "0:00:00", "30 min", false, ""))];
 
     /// <summary>The route key the kind word ("Audiobook") opens (the Browse category of audiobooks), or null when Wavee routes none: the word is then
     /// drawn, not linked.</summary>
@@ -381,8 +402,7 @@ public sealed record AudiobookView(
         StartsAtLabel = "starts at", LineTitle = "The whole book", LineSub = "select one to start there", LineRight = "8 hr 30 min",
         AboutTitle = "About this book", AboutHtml = "A placeholder paragraph about the book, long enough to wrap over three or four lines in the card beside the contents page.",
         Facts = [new("Author", "Author name"), new("Narrator", "Narrator name"), new("Released", "1 January 2024"), new("Length", "8 hr 30 min")],
-        Chapters = [.. Enumerable.Range(0, 12).Select(static i => new AudiobookChapterVm(i, (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "Chapter title", false, i * 1_800_000, 1_800_000, "0:00:00", "30 min", false, ""))],
+        Chapters = Held(HeldRows), LineKnown = true,
     };
 }
 

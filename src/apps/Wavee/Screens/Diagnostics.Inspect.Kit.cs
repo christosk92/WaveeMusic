@@ -635,6 +635,7 @@ public static partial class Diagnostics
             Entities.RestoreHead();   // a `state kind=head` page's header
             Entities.EndScripted();   // a `state kind=head answer=` page's scripted transport and send gate
             Entities.LandFakeCredits();   // a `state kind=cold-credits` album's credits
+            Entities.RestoreColdBook();   // a `state kind=cold-book` book
             if (s_coldSlot == Table.None) return;
             Entities.RestoreColdHead();
             Scope s = Entities.Current;

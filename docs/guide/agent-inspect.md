@@ -682,6 +682,13 @@ state kind=empty page=podcasts       # W-EmptyLibrary: Library, Podcasts with no
 state kind=loading page=show
 ```
 
+**A staged book load.** The audiobook page's cold open, one answer per command, on `spotify:show:sh9` (The Long Book, a hundred chapters;
+`Entities.Fake.Cold.cs`): `state cold-book` (the show's own answer: the title and subtitle joined in one string, no membership, no credits, no
+lengths), then `goto uri=spotify:show:sh9 loops=skeletons` (the page stands; the chapters' place, the line and what is under the contents are
+held), then `state cold-book-chapters` (the membership lands: names, no lengths, so no start times and no line yet), then
+`state cold-book-facts` (the credits and every chapter's length land: the start times, the line, the listener's place). Each takes `trace=`:
+watch `cpa-ch:N` / `ab-row:N` / `zb-row:N` and the hero's keys; nothing readable may snap.
+
 **Staged playlist loads.** Every fake list is seeded whole, so a fake page never shows the real client's staging. The cold playlist
 (`Entities.Fake.Cold.cs`, `spotify:playlist:pl6`) stages one, one step per command: `state cold-list` (header known, length and rows not:
 the meta line loads, the rows shimmer), then `goto uri=spotify:playlist:pl6`, then either `state cold-rows` (the membership lands, rows 1

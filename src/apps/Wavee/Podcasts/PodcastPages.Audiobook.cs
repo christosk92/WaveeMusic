@@ -131,6 +131,9 @@ public sealed class AudiobookScreen : Component
             long total = 0;
             int onDeck = -1, current = -1, finishedAt = 0;
             bool named = false;
+            // A chapter's place in the book is shown once it and every chapter before it have a length (a chapter row arrives before its facts; the
+            // first chapter alone saying 0:00 over a column of blanks reads as a fault).
+            bool startsKnown = true;
             for (int i = 0; i < n; i++)
                 if (toc[i].DisplayTitle == toc[i].RawTitle) { named = true; break; }
             for (int i = 0; i < n; i++)
@@ -148,8 +151,9 @@ public sealed class AudiobookScreen : Component
                 bool generic = c.DisplayTitle != c.RawTitle;
                 rows.Add(new AudiobookChapterVm(i, c.Number.ToString(CultureInfo.CurrentCulture), c.DisplayTitle,
                     !generic && AudiobookRules.IsMatter(c.RawTitle),
-                    (int)Math.Min(int.MaxValue, total), len, AudiobookRules.Clock(total), Episode.DurationLabel(len), done,
+                    (int)Math.Min(int.MaxValue, total), len, startsKnown && len > 0 ? AudiobookRules.Clock(total) : "", len > 0 ? Episode.DurationLabel(len) : "", done,
                     generic ? c.DisplayTitle : PodcastPages.ChapterTitle("", c.Number) + ", " + c.DisplayTitle));
+                if (len <= 0) startsKnown = false;
                 total += len;
             }
             var progress = book.Progress;
@@ -163,12 +167,20 @@ public sealed class AudiobookScreen : Component
             long bookMs = book.TotalDurationMs > 0 ? book.TotalDurationMs : total;
             string length = bookMs > 0 ? Episode.DurationWords(Episode.Rules.Minutes((int)Math.Min(int.MaxValue, bookMs))) : "";
             int chapterCount = Math.Max(n, book.Toc.Total);
-            string chaptersWord = PP.ChaptersCount(chapterCount);
+            string chaptersWord = chapterCount > 0 ? PP.ChaptersCount(chapterCount) : "";   // never "0 chapters" while nothing has said how many
+            // The contents are on their way until the membership has answered whole (a book pages itself to the end) or failed. The page does
+            // not wait for them: it says how many there will be, and a theme holds their place.
+            var edge = scope.Edges.ShowEpisodes;
+            var readiness = edge.Readiness(showSlot);
+            bool chaptersPending = readiness == EdgeState.Unknown
+                || (readiness == EdgeState.Partial && !book.Toc.Complete && !edge.IsFailed(showSlot));
             string year = book.Released is { } r ? r.Year.ToString(CultureInfo.CurrentCulture) : "";
             var meta = ImmutableArray.CreateBuilder<string>(3);
             if (length.Length > 0) meta.Add(length);
             if (chapterCount > 0) meta.Add(chaptersWord);
             if (year.Length > 0) meta.Add(year);
+            // Nothing of the line is known before the chapters answer: it stands from the first frame, so the primary under it does not step down.
+            if (meta.Count == 0 && chaptersPending) meta.Add(HeldLine);
 
             var rated = book.Rating;
             string rating = rated is { Average: > 0f } ra ? ra.Average.ToString("0.0", CultureInfo.CurrentCulture) : "";
@@ -190,8 +202,10 @@ public sealed class AudiobookScreen : Component
                     upSub = finishedDate.Length > 0 ? PP.FinishedOnLine(finishedDate) : Loc.Get(PP.FinishedLine);
                     break;
                 default:
-                    upTitle = length;
-                    upSub = chaptersWord;
+                    // The length arrives with the chapters' facts: its line stands from the first frame (a measured blank holds it), so the
+                    // words under it do not step down when it lands.
+                    upTitle = length.Length > 0 ? length : HeldLine;
+                    upSub = chaptersWord.Length > 0 ? chaptersWord : HeldLine;
                     break;
             }
             string lineSub = state switch
@@ -200,7 +214,7 @@ public sealed class AudiobookScreen : Component
                 AudiobookState.Finished => finishedDate.Length > 0 ? PP.FinishedSub(finishedDate) : "",
                 _ => PP.LineSub(Loc.Get(PP.SelectToStart)),
             };
-            string contentsSub = PP.ContentsSub(chapterCount, length);
+            string contentsSub = length.Length > 0 && chapterCount > 0 ? PP.ContentsSub(chapterCount, length) : chaptersWord;   // no "100 chapters ·" before the length
             if (!named && n > 0) contentsSub += " · " + Loc.Get(PP.NoTitles);
 
             // ── access: the Premium line (the plan's allowance, never hours left) or the price pair ──
@@ -232,7 +246,7 @@ public sealed class AudiobookScreen : Component
             if (book.Narrators.Length > 0) factRows.Add(new(Loc.Get(PP.Narrator), string.Join(", ", book.Narrators)));
             if (book.Publisher.Length > 0) factRows.Add(new(Loc.Get(PP.Publisher), book.Publisher));
             if (book.Released is { } rel) factRows.Add(new(Loc.Get(PP.Released), rel.ToString("d MMMM yyyy", CultureInfo.CurrentCulture)));
-            if (chapterCount > 0) factRows.Add(new(Loc.Get(PP.Length), PP.LengthValue(length, chapterCount)));
+            if (chapterCount > 0) factRows.Add(new(Loc.Get(PP.Length), length.Length > 0 ? PP.LengthValue(length, chapterCount) : chaptersWord));   // no ", 100 chapters" before the length
             if (book.Language.Length > 0) factRows.Add(new(Loc.Get(PP.Language), AudiobookRules.LanguageName(book.Language)));
             if (book.Edition.Length > 0) factRows.Add(new(Loc.Get(PP.Edition), book.Edition));
             var genres = new List<string>(book.Genres.Length);
@@ -276,12 +290,15 @@ public sealed class AudiobookScreen : Component
                 Similar: similar, SimilarTitle: firstAuthor.Length > 0 ? PP.MoreByAuthor(firstAuthor) : Loc.Get(PP.SimilarBooks),
                 SeeAllLabel: Loc.Get(PP.SeeAll))
             {
-                Current = current,
+                Current = current, ChaptersPending = chaptersPending, ChapterCount = chapterCount, LineKnown = n > 0 && !chaptersPending && startsKnown,
                 KindRoute = "browse:" + AudiobookRules.AudiobooksCategory,   // the Browse category route (Browse.CategoryPageFor)
                 AboutHtml = AudiobookRules.TidyHtml(book.AboutHtml.Length > 0 ? book.AboutHtml : book.About),
             };
             return new Snapshot(view, show, chapters.ToImmutable(), rest, lengths, total, current, state, sample);
         }
+
+        /// <summary>A line that is not known yet, held: one FIGURE SPACE (it measures, so the line box stands; nothing is drawn).</summary>
+        const string HeldLine = "\u2007";
 
         /// <summary>The similar books (similarAudiobooks' thin show rows), the author's own first; at most twelve.</summary>
         ImmutableArray<PodcastCardVm> SimilarCards(Scope scope, string[] uris, string author)
