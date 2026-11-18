@@ -116,6 +116,7 @@ public sealed class PodcastShowScreen : Component
             ShowMenu = m.ShowMenu,
             Share = m.Share,
             OpenKind = m.OpenKind,
+            RowDrag = PodcastPages.RowDrag,
             CardMenu = m.CardMenu,
             PlayCard = m.PlayCard,
         };

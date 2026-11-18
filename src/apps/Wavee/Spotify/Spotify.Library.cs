@@ -1135,6 +1135,7 @@ public static partial class Spotify
             if (!CanWrite(out _, out _)) { Unavailable(); return; }
             if (string.Equals(payload.SourcePlaylistUri, playlistUri, StringComparison.Ordinal)
                 || string.Equals(payload.Uri, playlistUri, StringComparison.Ordinal)) return;
+            string[] episodes = payload.EpisodeUris();   // a podcast row's episodes, read here on the UI thread
             Task<Track[]> resolving;
             try { resolving = payload.ResolveTracksAsync(); }
             catch (Exception ex)
@@ -1145,11 +1146,11 @@ public static partial class Spotify
             resolving.ContinueWith(t =>
             {
                 Track[] tracks = t.IsCompletedSuccessfully ? t.Result : [];
-                Post(() => DepositResolved(playlistUri, name, tracks));
+                Post(() => DepositResolved(playlistUri, name, tracks, episodes));
             }, TaskScheduler.Default);
         }
 
-        static void DepositResolved(string playlistUri, string name, Track[] tracks)
+        static void DepositResolved(string playlistUri, string name, Track[] tracks, string[] episodes)
         {
             if (!CanWrite(out var scope, out string username)) { Unavailable(); return; }
             long now = UnixNowMs();
@@ -1160,6 +1161,7 @@ public static partial class Spotify
                 string uri = tracks[i].Id.Text;
                 if (uri.Length > 0) members.Add(new PlaylistMember(uri, Api.NewItemId(), now));
             }
+            foreach (string uri in episodes) members.Add(new PlaylistMember(uri, Api.NewItemId(), now));
             if (members.Count == 0)
             {
                 Notify.Say(Loc.Get("library.nothingToAdd"), InfoBarSeverity.Informational, dedupeKey: "library.nothing-to-add");

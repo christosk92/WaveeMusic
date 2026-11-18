@@ -945,13 +945,14 @@ public readonly partial struct Playlist
                 return false;
             if (_local) return false;
             int slot = pl.Slot;
+            string[] episodes = payload.EpisodeUris();
             Task<Track[]> resolving;
             try { resolving = payload.ResolveTracksAsync(); }
             catch (Exception ex) { Log.Warn("playlist", "a deposit's tracks could not be resolved", ex); return false; }
             resolving.ContinueWith(t =>
             {
                 Track[] tracks = t.IsCompletedSuccessfully ? t.Result : [];
-                Spotify.Post(() => Spotify.PlaylistEdits.AddTracks(new Playlist(slot), tracks, at));
+                Spotify.Post(() => Spotify.PlaylistEdits.AddTracks(new Playlist(slot), tracks, at, episodes: episodes));
             }, TaskScheduler.Default);
             return true;
         }
