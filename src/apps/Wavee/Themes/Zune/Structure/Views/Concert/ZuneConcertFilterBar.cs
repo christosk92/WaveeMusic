@@ -120,7 +120,7 @@ internal sealed class ZuneConcertFilterBar : Component
             ?
             [
                 Cells.RestDatePill(_openWhen, _pill) with { OnRealized = _captureWhen },
-                Cells.FilterToken(Loc.Get(Strings.Concerts.Filter.ThisWeekend), false, _thisWeekend, animate: Cells.ChipExit, size: TokenSize) with { Key = "when-chip" },
+                Cells.FilterToken(Loc.Get(Strings.Concerts.Filter.ThisWeekend), false, _thisWeekend, animate: Cells.ChipExit, size: TokenSize, command: true) with { Key = "when-chip" },
             ]
             : [Cells.FusedPill("when-pill", ZuneSegmentedPillStyle.AccentAt(_pill), when.Name, ConcertHub.WhenLabel(when.Range, CultureInfo.CurrentCulture), _openWhen) with { OnRealized = _captureWhen }];
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Children = kids };
@@ -129,7 +129,7 @@ internal sealed class ZuneConcertFilterBar : Component
     Element Genres(IReadOnlyList<ConcertConcept> all, IReadOnlyList<string> selected, bool expanded)
     {
         var shown = ConcertHub.TopConcepts(all, selected, expanded);
-        var kids = new List<Element>(shown.Count + 2) { Cells.FilterToken(Loc.Get(Strings.Concerts.AllGenres), selected.Count == 0, _clearGenres, size: TokenSize) };
+        var kids = new List<Element>(shown.Count + 2) { Cells.FilterToken(Loc.Get(Strings.Concerts.AllGenres), selected.Count == 0, _clearGenres, size: TokenSize, command: true) };
         for (int i = 0; i < shown.Count; i++)
         {
             string uri = shown[i].Uri;

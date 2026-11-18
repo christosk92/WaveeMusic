@@ -47,7 +47,7 @@ internal sealed record ZuneSegmentedPillStyle(
     public static ZuneSegmentedPillStyle AccentAt(float height)
         => height.Equals(Rules.AccentPillH) ? Accent : Accent with { Height = height, SegmentHeight = height - 2f * Rules.AccentPillPadT };
 
-    /// <summary>A 32-dip accent capsule carrying an OPAQUE raised segment (<c>FillControlSolid</c> — never a translucent card fill, which in dark is
+    /// <summary>A 32-dip accent control (square, as every Zune control) carrying an OPAQUE raised segment (<c>FillControlSolid</c> — never a translucent card fill, which in dark is
     /// 5 % white and reads as accent-on-accent ink).</summary>
     public static ZuneSegmentedPillStyle Accent => new(
         Height: Rules.AccentPillH, SegmentHeight: Rules.AccentPillSegmentH,
@@ -247,8 +247,11 @@ internal static class ZuneConcertCells
     /// next-state argument because the PAGE, not the control, owns the multi-select set. A genre is a name the catalogue wrote: as written.</summary>
     /// <param name="animate">Overrides the token's own reflow motion (the "this weekend" chip's exit-into-the-pill leg, <see cref="ChipExit"/>).</param>
     /// <param name="size">The toggle's size: Large is the Compact 40 target (the hub's pill height there).</param>
-    public static Element FilterToken(string label, bool selected, Action onClick, LayoutTransition? animate = null, ControlSize size = ControlSize.Medium)
-        => ToggleButton.Controlled(label, selected, _ => onClick(), parts: animate is null ? s_tokenParts : TokenParts(animate.Value), size: size)
+    /// <param name="command">The label is a command of ours ("this weekend", "all genres"), cased as Zune cases a command; false: a name the catalogue
+    /// wrote (a genre), as written.</param>
+    public static Element FilterToken(string label, bool selected, Action onClick, LayoutTransition? animate = null, ControlSize size = ControlSize.Medium, bool command = false)
+        => ToggleButton.Controlled(command ? FluentGpu.Text.TextCaseMap.Apply(label, R.Case.For(LabelKind.Command)) : label, selected, _ => onClick(),
+               parts: animate is null ? s_tokenParts : TokenParts(animate.Value), size: size)
             with { Key = "filter-token:" + label };
 
     static readonly TemplateParts s_tokenParts = TokenParts(s_tokenReflow);
@@ -271,13 +274,13 @@ internal static class ZuneConcertCells
         ],
     };
 
-    /// <summary>The pill's shared chrome: round, a 1-dip outline, the wash for hover and press, a hand.</summary>
+    /// <summary>The place and dates controls' shared chrome: SQUARE, on the wash the genre tokens rest on, the same height. ONE FAMILY (owner,
+    /// 2026-11-18): they were round outlined capsules beside the square tokens, two shapes in one row and no other Zune control's.</summary>
     static BoxEl Pill(float height, Action onClick) => new()
     {
         Direction = 0, Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Rules.PillGap,
-        Padding = new Edges4(Rules.PillPadX, 0f, Rules.PillPadX, 0f), Corners = CornerRadius4.All(height / 2f),
-        HoverFill = Prop.Of(static () => R.Layer.ChromeHover), PressedFill = Prop.Of(static () => R.Layer.ChromePressed),
-        BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
+        Padding = new Edges4(Rules.PillPadX, 0f, Rules.PillPadX, 0f),
+        Fill = Prop.Of(static () => R.Layer.ChromeHover), HoverFill = Prop.Of(static () => R.Layer.ChromePressed), PressedFill = Prop.Of(static () => R.Layer.ChromePressed),
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
     };
 
@@ -316,7 +319,7 @@ internal static class ZuneConcertCells
     {
         Key = key, Animate = s_pillReflow,
         Direction = 0, Height = s.Height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = s.Gap,
-        Padding = s.Padding, Corners = CornerRadius4.All(s.Height / 2f),
+        Padding = s.Padding,
         Fill = s.Fill, HoverFill = s.HoverFill, PressedFill = s.PressedFill,
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
         Children =
@@ -325,7 +328,7 @@ internal static class ZuneConcertCells
             {
                 Key = key + ":seg", Animate = s_segmentDock,
                 Direction = 0, Height = s.SegmentHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = s.SegmentGap,
-                Padding = s.SegmentPadding, Corners = CornerRadius4.All(s.SegmentHeight / 2f),
+                Padding = s.SegmentPadding,
                 Fill = s.SegmentFill, Shadow = s.SegmentShadow,
                 Children =
                 [

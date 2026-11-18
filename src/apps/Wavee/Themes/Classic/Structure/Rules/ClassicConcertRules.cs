@@ -78,6 +78,8 @@ internal static class ClassicConcertRules
     // ── the fused pill's accent register ──
     public const float AccentPillH = 32f, AccentPillSegmentH = 26f, AccentPillPadL = 3f, AccentPillPadT = 3f, AccentPillPadR = 12f, AccentPillSegPad = 11f;
     public const float AccentPillGap = 8f, AccentPillSegmentGap = 5f, AccentPillText = 14f, AccentPillCheck = 12f, AccentPillTrailing = 10f;
+    /// <summary>The raised name segment inside the active dates control: one less than the control's own corner, so the two curves run parallel.</summary>
+    public const float AccentPillSegmentRadius = 3f;
 
     // ── the count ticker ──
     public const float TickerNumberW = 64f, TickerGap = 2f;

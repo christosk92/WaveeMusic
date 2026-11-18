@@ -43,7 +43,7 @@ internal sealed record SegmentedPillStyle(
     public static SegmentedPillStyle AccentAt(float height)
         => height.Equals(Rules.AccentPillH) ? Accent : Accent with { Height = height, SegmentHeight = height - 2f * Rules.AccentPillPadT };
 
-    /// <summary>The Concerts register: a 32-DIP accent capsule carrying an OPAQUE raised segment (<c>FillControlSolid</c>
+    /// <summary>The Concerts register: a 32-DIP accent control carrying an OPAQUE raised segment (<c>FillControlSolid</c>
     /// — never <c>FillCardDefault</c>, which in dark is 5 % white and read as accent-on-accent ink).</summary>
     public static SegmentedPillStyle Accent => new(
         Height: Rules.AccentPillH, SegmentHeight: Rules.AccentPillSegmentH,
@@ -198,6 +198,11 @@ internal static class ClassicConcertCells
     public static TextEl SectionCaption(string label)
         => R.Type.Eyebrow(label) with { Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
 
+    /// <summary>A shelf's title on the hub ("Near you", "All events"): the structure's own section voice, the one Home's shelves are titled in
+    /// (<c>R.Type.ModuleHeader</c>). They were accent eyebrows, a voice no other page titles a shelf in (owner, 2026-11-18: "out of pattern").</summary>
+    public static TextEl ShelfTitle(string label)
+        => R.Type.ModuleHeader(label) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+
     // ══ 2. DATE BLOCKS, THE SPLIT HERO, THE LOCATION BUTTON (W13, W13b/c, W19) ════════════════════════════════════════
 
     /// <summary>56×60 (compact 48×52): a neutral plate, the accent month over the primary day — the stored clock.</summary>
@@ -345,12 +350,13 @@ internal static class ClassicConcertCells
         ],
     };
 
-    /// <summary>The where pill: MapPin 14, the label (BodyStrong), chevron 10; <paramref name="height"/> tall (the tier's: 32, the Compact 40), fully
-    /// rounded, the control ramp.</summary>
+    /// <summary>The where control: MapPin 14, the label (BodyStrong), chevron 10; <paramref name="height"/> tall (the tier's: 32, the Compact 40), on the
+    /// control ramp with the CONTROL'S corner. ONE FAMILY (owner, 2026-11-18): the row's place and dates were capsules beside the stock toggles of
+    /// "This weekend" and the genres, two shapes in one row; they are drop-down buttons now, the toggles' own height, corner and ramp.</summary>
     public static BoxEl WherePill(string label, Action onClick, float height) => new()
     {
         Direction = 0, Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Rules.PillGap,
-        Padding = new Edges4(Rules.PillPadX, Rules.PillPadY, Rules.PillPadX, Rules.PillPadY), Corners = Radii.FullAll,
+        Padding = new Edges4(Rules.PillPadX, Rules.PillPadY, Rules.PillPadX, Rules.PillPadY), Corners = Radii.ControlAll,
         Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
         BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
@@ -368,7 +374,7 @@ internal static class ClassicConcertCells
     {
         Key = "when-pill", Animate = s_pillReflow,
         Direction = 0, Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Rules.PillGap,
-        Padding = new Edges4(Rules.PillPadX, Rules.PillPadY, Rules.PillPadX, Rules.PillPadY), Corners = Radii.FullAll,
+        Padding = new Edges4(Rules.PillPadX, Rules.PillPadY, Rules.PillPadX, Rules.PillPadY), Corners = Radii.ControlAll,
         Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
         BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
@@ -387,7 +393,7 @@ internal static class ClassicConcertCells
     {
         Key = key, Animate = s_pillReflow,
         Direction = 0, Height = s.Height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = s.Gap,
-        Padding = s.Padding, Corners = Radii.FullAll,
+        Padding = s.Padding, Corners = Radii.ControlAll,
         Fill = s.Fill, HoverFill = s.HoverFill, PressedFill = s.PressedFill,
         BorderWidth = s.BorderWidth, BorderColor = s.BorderColor,
         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
@@ -397,7 +403,7 @@ internal static class ClassicConcertCells
             {
                 Key = key + ":seg", Animate = s_segmentDock,
                 Direction = 0, Height = s.SegmentHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = s.SegmentGap,
-                Padding = s.SegmentPadding, Corners = CornerRadius4.All(s.SegmentHeight / 2f),
+                Padding = s.SegmentPadding, Corners = CornerRadius4.All(Rules.AccentPillSegmentRadius),
                 Fill = s.SegmentFill, Shadow = s.SegmentShadow,
                 Children =
                 [

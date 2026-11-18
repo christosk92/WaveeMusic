@@ -64,7 +64,7 @@ internal static class ClassicConcertHub
                     Padding = page.Pad(0f, R.Space.DockReserve + page.Gutter),
                     Children =
                     [
-                        Cells.UnderBand(HeaderCard()),
+                        Cells.UnderBand(Head()),
                         Embed.Comp(new ClassicConcertFilterBar.Args(props.Bar, props.ScrollScope), static () => new ClassicConcertFilterBar()) with { Key = "concert-filter-bar" },
                         Cells.UnderBand(new BoxEl { Direction = 1, MinWidth = 0f, Children = [region] }),
                     ],
@@ -77,10 +77,11 @@ internal static class ClassicConcertHub
         };
     }
 
-    static BoxEl HeaderCard() => new()
+    /// <summary>The hub's head, ON THE PAGE'S GROUND: the eyebrow, the title in the page voice, the quiet line under it. It stood in a card, as no
+    /// other page's title does (owner, 2026-11-18: the concert pages "look out of pattern").</summary>
+    static BoxEl Head() => new()
     {
-        Direction = 1, MinWidth = 0f, Gap = Spacing.XS, Padding = new Edges4(Spacing.XL, Spacing.L, Spacing.XL, Spacing.L),
-        Corners = Radii.CardAll, Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+        Key = "concert-hub:head", Direction = 1, MinWidth = 0f, Gap = Spacing.XS,
         Children =
         [
             Cells.SectionCaption(Loc.Get(Strings.Concerts.LiveMusic)),
@@ -123,13 +124,13 @@ internal static class ClassicConcertHub
     /// caption; every other non-grid kind is "Recommended for you" (§1.1).</summary>
     static Element ConcertShelf(ConcertFeedBlock block)
         => PagedShelf.Create(block.Items, s_concertCard,
-               header: Cells.SectionCaption(Loc.Get(block.Nearby ? Strings.Concerts.NearYou : Strings.Concerts.RecommendedForYou)),
+               header: Cells.ShelfTitle(Loc.Get(block.Nearby ? Strings.Concerts.NearYou : Strings.Concerts.RecommendedForYou)),
                headerGap: Spacing.S, measured: true, keyOf: s_itemKey, maxItems: Rules.ShelfMax)
            with { Key = block.Key };
 
     static Element PromoShelf(ConcertFeedBlock block)
         => PagedShelf.Create(block.Items, s_promoCard, onInvoke: static (item, _) => ConcertVerbs.OpenPlaylist(item.Slot),   // the slot owns the click
-               header: Cells.SectionCaption(Loc.Get(Strings.Concerts.PlaylistsForScene)),
+               header: Cells.ShelfTitle(Loc.Get(Strings.Concerts.PlaylistsForScene)),
                headerGap: Spacing.S, measured: true, keyOf: s_itemKey, maxItems: Rules.ShelfMax)
            with { Key = block.Key };
 
@@ -163,7 +164,7 @@ internal static class ClassicConcertHub
         Key = "hub-grid", Direction = 1, Gap = Spacing.S, MinWidth = 0f,
         Children =
         [
-            Cells.SectionCaption(Loc.Get(Strings.Concerts.AllEvents)),
+            Cells.ShelfTitle(Loc.Get(Strings.Concerts.AllEvents)),
             Embed.Comp(() => new LazyGrid(count: props.GridCount, cell: (index, _) => GridCell(props, index), ensureRange: static (_, _) => { },
                 minColWidth: ClassicConcertTiers.GridMinColumn, gap: ClassicConcertTiers.GridColumnGap,
                 rowExtra: ClassicConcertTiers.GridRowExtra, overscanRows: Rules.GridOverscanRows)) with { Key = "hub-grid-lazy:" + feed.ToString(CultureInfo.InvariantCulture) },
@@ -190,12 +191,12 @@ internal static class ClassicConcertHub
             Direction = 1, Gap = Spacing.XL, MinWidth = 0f,
             Children =
             [
-                PagedShelf.Create(shelf, static (d, _, _) => Cells.Tile(d, null), header: Cells.SectionCaption(Loc.Get(Strings.Concerts.NearYou)),
+                PagedShelf.Create(shelf, static (d, _, _) => Cells.Tile(d, null), header: Cells.ShelfTitle(Loc.Get(Strings.Concerts.NearYou)),
                     headerGap: Spacing.S, measured: true, keyOf: static (d, _) => d.Key),
                 new BoxEl
                 {
                     Direction = 1, Gap = Spacing.S,
-                    Children = [Cells.SectionCaption(Loc.Get(Strings.Concerts.AllEvents)), AutoGrid(ClassicConcertTiers.GridMinColumn, ClassicConcertTiers.GridColumnGap, float.NaN, cards)],
+                    Children = [Cells.ShelfTitle(Loc.Get(Strings.Concerts.AllEvents)), AutoGrid(ClassicConcertTiers.GridMinColumn, ClassicConcertTiers.GridColumnGap, float.NaN, cards)],
                 },
             ],
         };

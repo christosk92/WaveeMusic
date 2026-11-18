@@ -72,6 +72,10 @@ versions separately under `v*` and is not tracked in this file.)
   track still loading, a download finding its size), five small dots rush in, drift through the middle and rush out,
   in place of the sliding block.
 
+- **Concerts follows each theme.** The page's title stands on the page instead of in a card, the filters are one row of
+  the theme's own controls (place and dates are drop-down buttons beside the toggles, no longer capsules) with the
+  event count at its end, and the shelves are titled like Home's.
+
 - **A larger first-run setup.** The setup dialog is much bigger (1040 x 680 on a normal window). "Is this you?" shows
   the account as a head and says what Wavee does with it, and signing in shows its four steps as a list, each with
   what it does.
