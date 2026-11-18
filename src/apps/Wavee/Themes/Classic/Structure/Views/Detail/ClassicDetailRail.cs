@@ -1,7 +1,7 @@
-// ── Themes/Classic/Structure/Views/Detail/ClassicDetailRail.cs — Classic's detail rail, collapsed strip and show header (themes plan 6.1, T9a) ──
+// ── Themes/Classic/Structure/Views/Detail/ClassicDetailRail.cs — Classic's detail rail and collapsed strip (themes plan 6.1, T9a) ──
 //
 // From `Entities\Detail.UI.cs` §4 (the rail family): the rail's frame, its loaded column and its loading twin (one skeleton boundary), the
-// collapsed 96-DIP identity strip, the vertical show header, and the row bodies they share with the hero (the meta line, the chart caption,
+// collapsed 96-DIP identity strip, and the row bodies they share with the hero (the meta line, the chart caption,
 // the default owner row, the billed-artist line). Moved verbatim with the pictures; what DECIDES stays core: the row presence (`RailLayout`,
 // `Skeleton.RailPlanFor`), the title rule (`VerticalLayout.RailTitleTypeFor`), the rung that picks the title cap and the description clamp
 // (the host), the accent, the play-all cell and every page slot builder.
@@ -40,7 +40,7 @@ using VerticalLayout = Wavee.Detail.VerticalLayout;
 
 namespace Wavee.Themes.Classic;
 
-/// <summary>Classic's detail frame: the scaffold (<see cref="Template"/>), the rail, the collapsed strip, the show header, the hero and its loading band
+/// <summary>Classic's detail frame: the scaffold (<see cref="Template"/>), the rail, the collapsed strip, the hero and its loading band
 /// (this class is split over <c>ClassicDetailFrame.cs</c>, <c>ClassicDetailRail.cs</c> and <c>ClassicDetailHero.cs</c>).</summary>
 internal static partial class ClassicDetailFrame
 {
@@ -86,10 +86,6 @@ internal static partial class ClassicDetailFrame
             ShimmerSource: () => CompactRailSkeleton(p.Spec.Identity.CoverUrl, cover),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false));
     }
-
-    /// <summary>The registered template of <see cref="ViewKeys.DetailShowHeader"/>.</summary>
-    public static Element ShowHeaderTemplate(DetailShowHeaderProps p, in ViewContext ctx)
-        => ShowHeaderCore(p.Spec, p.Actions, p.Accent, p.Play, p.PageWidth);
 
     // ── the rail family ──
 
@@ -465,102 +461,7 @@ internal static partial class ClassicDetailFrame
         return ToolTip.Wrap(strip, title, grow: 1f);
     }
 
-    /// <summary>W25: the VERTICAL show header — the third composition, never the hero system. Cover 140 at saturation
-    /// 1.0 (the one arm without the 1.18 boost), the PageHero title, Play + heart + a bare Share FAB, no toolbar. The
-    /// podcast slots land as the prototype's narrow pane does: badges / rating beside the cover in the info column, the
-    /// ledger and the CTA (a page's primary + satellites) full width under it, no topics and no blurb. The rows are the
-    /// rail's own decision (<see cref="RailLayout.RowsFor"/>); every slot width here is NaN (fill the column).</summary>
-    static Element ShowHeaderCore(FrameSpec spec, FrameActions acts, Func<ColorF> accent, Action play, float pageWidth)
-    {
-        const float coverSize = ClassicDetailLayout.ShowCover;
-        // The info column's measure: the page less the header's two insets, the cover and the gap between. An unmeasured
-        // page (NaN) keeps the old 600 DIP nominal.
-        float infoW = float.IsFinite(pageWidth) ? MathF.Max(0f, pageWidth - 3f * Spacing.L - coverSize) : ClassicDetailLayout.ShowInfoWidth;
-        var id = spec.Identity;
-        var cfg = spec.Config;
-        var slots = spec.Slots;
-        Element[]? satellites = slots.Satellites?.Invoke();
-        var presence = PresenceOf(slots, satellites?.Length ?? 0);
-        bool lead = RailLayout.LeadsWithAttribution(id.Kind, presence);
-        var rows = RailLayout.RowsFor(id.Kind, cfg.Badges, id.Eyebrow.Length > 0, id.OwnerName is { Length: > 0 },
-            id.Artists is { Count: > 0 }, id.Meta is { Length: > 0 } || id.MetaLoading, fabs: 0, description: false,
-            descriptionMaxLines: 0, presence);
-        var info = new List<Element>(6);
-
-        // The info column already clamps (Grow / Basis 0), so the eyebrow run needs no explicit width here.
-        if (rows.Eyebrow)
-            info.Add(ClassicDetailKit.LateRow("hdr:eyebrow", rows.Badges == RailBadgeRow.BesideEyebrow && slots.Badges is { } badgesBeside
-                ? EyebrowWithBadges(id.Eyebrow, badgesBeside(), float.NaN)
-                : ClassicDetailKit.EyebrowRun(id.Eyebrow)));
-        if (rows.Owner)
-            info.Add(lead && slots.Attribution is { } showLink
-                ? ClassicDetailKit.LateRow("hdr:lead", showLink(ClassicDetailLayout.ShowInfoWidth))
-                : ClassicDetailKit.LateRow("hdr:owner", slots.Attribution?.Invoke(ClassicDetailLayout.ShowInfoWidth) ?? OwnerBlock(id, ClassicDetailLayout.ShowInfoWidth)));
-        if (rows.Badges == RailBadgeRow.OwnRow && slots.Badges is { } badgesOwn)
-            info.Add(SlotRow("hdr:badges", badgesOwn(), RailLayout.BadgeHeight));
-
-        info.Add(ClassicDetailKit.Row("hdr:title", slots.Title?.Invoke(ClassicDetailLayout.ShowTitleSize, ClassicDetailLayout.ShowTitleLine)
-            ?? R.Type.PageHero(id.Title) with
-            {
-                Size = ClassicDetailLayout.ShowTitleSize, LineHeight = ClassicDetailLayout.ShowTitleLine, Weight = 600,
-                // The detail frame's ONE trim rule: a title wraps, ellipsised only past the pathological cap.
-                Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap, Trim = TextTrim.CharacterEllipsis,
-            }));
-        if (rows.Artists)
-            info.Add(ClassicDetailKit.LateRow("hdr:artists", slots.Attribution?.Invoke(infoW)
-                ?? (id.Artists is { Count: > 0 } billed ? BilledArtists(billed, infoW) : new BoxEl())));
-        if (rows.Rating && slots.Rating is { } rating) info.Add(SlotRow("hdr:rating", rating(float.NaN), RailLayout.RatingHeight));
-        if (rows.Meta) info.Add(ClassicDetailKit.LateRow("hdr:meta", MetaRow(id, float.NaN, maxLines: 1)));
-        if (rows.Badges == RailBadgeRow.AfterMeta && slots.Badges is { } badgesLate)
-            info.Add(SlotRow("hdr:badges", badgesLate(), RailLayout.BadgeHeight));
-
-        var coverRow = new BoxEl
-        {
-            Key = "hdr:cover",
-            Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center,   // centred: balanced, never a wedge
-            Children =
-            [
-                ClickableCover(new BoxEl
-                {
-                    Width = coverSize, Height = coverSize, Corners = CornerRadius4.All(Radii.Card),
-                    Shadow = Elevation.Card, ClipToBounds = true, Shrink = 0f,
-                    Draggable = acts.CoverDrag is { } drag ? Drag.Source(drag) : null,
-                    Children = [slots.Cover?.Invoke(coverSize)
-                        ?? Controls.Artwork(id.CoverUrl, coverSize, coverSize, Radii.Card, decodePx: RailCoverDecodePx)],
-                }, acts.CoverClick),
-                // The column is centred on the cover, so a row the show's head brings late (the publisher, the rating) re-centres it: its height eases
-                // through layout and the eyebrow and title ride up with it, instead of stepping 24 in the landing frame (audit FU2d).
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS, Children = info.ToArray(),
-                    Layout = Design.Reduced ? null : ClassicTierMotion.HangingReflow,
-                },
-            ],
-        };
-
-        // A page's primary replaces the Play split; its satellites replace the fixed actions (D1, the rail's row) and wrap
-        // one by one.
-        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : ClassicDetailKit.PlaySplit(id.Subject, accent, play);
-        Element ctaRow = satellites is not null
-            ? SatelliteCta("hdr:play", primary, satellites, topMargin: 0f)
-            : ClassicDetailKit.ActionRow("hdr:play", primary, ClassicDetailKit.FixedActions("hdr:", id, cfg.Heart != HeartMode.None, acts, accent), topMargin: 0f);
-
-        var headerKids = new List<Element>(5) { coverRow };
-        // The ledger spans the header (the narrow pane's full-basis row), above the CTA.
-        if (rows.Ledger && slots.Ledger is { } ledger) headerKids.Add(SlotRow("hdr:ledger", ledger(float.NaN), RailLayout.LedgerHeight));
-        headerKids.Add(ctaRow);
-        if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) headerKids.Add(ClassicDetailKit.LateRow("hdr:prerelease", pre()));
-        if (cfg.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release) headerKids.Add(ClassicDetailKit.ReleaseRow("hdr:release", release(false)));
-
-        return new BoxEl
-        {
-            Direction = 1, Gap = Spacing.M, Shrink = 0f,
-            Padding = new Edges4(Spacing.L, Spacing.L, Spacing.L, Spacing.S),
-            Children = headerKids.ToArray(),
-        };
-    }
-
-    // ── shared row bodies (rail, show header, hero) ──
+    // ── shared row bodies (rail, hero) ──
 
     /// <summary>The "N songs · 2 hr 59 min" caption — or, while the count is still loading, a shimmer bar of that
     /// caption's SHAPE in the same slot ("0 songs · 1 min" is a count the page does not have).</summary>

@@ -259,6 +259,7 @@ sealed class ShowModel
     PodcastShowHead? _lastHead;
     PodcastSmart? _lastSmart;
     ImmutableArray<PodcastCardVm> _lastSimilar = [];
+    PodcastLedger _lastLedger = PodcastLedger.None;
 
     static bool SameHead(PodcastShowHead a, PodcastShowHead b)
         => a with { Topics = [], Facts = [] } == b with { Topics = [], Facts = [] }
@@ -679,8 +680,14 @@ sealed class ShowModel
         _lastHead = head;
         _lastSmart = smart;
         _lastSimilar = similarCards;
+        // The listened ledger (Classic's bar): every known episode, whatever the filter; reused while it holds, so the head's projection keeps it.
+        int freshCount = freshSlots.Count, played = n - unplayed - inProgress, toGo = Math.Max(0, unplayed - freshCount);
+        var ledger = new PodcastLedger(played, inProgress, toGo, freshCount,
+            Strings.Podcast.Ledger(played, inProgress, toGo), freshCount > 0 ? Strings.Podcast.LedgerNew(freshCount) : "");
+        if (ledger == _lastLedger) ledger = _lastLedger;
+        _lastLedger = ledger;
         return new PodcastShowView(load, head, smart, episodes.MoveToImmutable(), groups, filters, years, hasMore,
-            filter != PodcastFilter.All || !q.IsEmpty, similarCards) { ShownCount = shownCount, Items = ItemsOf(groups, hasMore, shownCount == 0 && load == PodcastLoad.Ready) };
+            filter != PodcastFilter.All || !q.IsEmpty, similarCards) { ShownCount = shownCount, Items = ItemsOf(groups, hasMore, shownCount == 0 && load == PodcastLoad.Ready), Ledger = ledger };
     }
 
     static PodcastEpisodeVm RowOf(Episode e, int i, int total, bool serial, PodcastRowState state, float pct, bool saved)

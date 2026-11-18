@@ -49,17 +49,6 @@ public static class ClassicDetailLayout
     /// <summary>The shimmer SHAPE of the meta line ("00 songs · 0 hr 00 min"): sized by the engine's deriver, never painted as text.</summary>
     public const string MetaShimmerText = "00 songs · 0 hr 00 min";
 
-    // ── the vertical show header ──────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The show header's cover edge (the one arm without the 1.18 saturation boost).</summary>
-    public const float ShowCover = 140f;
-
-    /// <summary>The info column's nominal measure while the page is unmeasured, and the width a page slot is handed there.</summary>
-    public const float ShowInfoWidth = 600f;
-
-    /// <summary>The show header's title: size and line height (the PageHero ramp's 28 / 36).</summary>
-    public const float ShowTitleSize = 28f, ShowTitleLine = 36f;
-
     // ── the attribution run (the owner line of the rail and of the hero) ──────────────────────────────────────────────
 
     /// <summary>The owner avatar of the default owner row.</summary>
