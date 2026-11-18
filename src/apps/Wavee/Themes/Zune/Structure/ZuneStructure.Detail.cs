@@ -10,6 +10,7 @@
 
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 
 namespace Wavee.Themes.Zune;
 
@@ -21,7 +22,7 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.DetailFrame, ZuneDetailFrame.Template, "zune.detail.frame");
         views.Add(ViewKeys.DetailRail, ZuneDetailRail.RailTemplate, "zune.detail.rail");
         views.Add(ViewKeys.DetailCompactRail, ZuneDetailRail.CompactRailTemplate, "zune.detail.compact-rail");
-        views.Add(ViewKeys.DetailShowHeader, ZuneDetailRail.ShowHeaderTemplate, "zune.detail.show-header");
+        CommonNothing.Register(views, ViewKeys.DetailShowHeader);   // the show and episode pages are the podcast pages v2 (Views\Podcast\)
         views.Add(ViewKeys.DetailHero, ZuneDetailHero.Template, "zune.detail.hero");
         views.AddStyle(StyleKeys.DetailHero, ZuneDetailHero.Style);
         views.Add(ViewKeys.DetailInsights, ZuneInsights.SheetTemplate, "zune.detail.insights");
