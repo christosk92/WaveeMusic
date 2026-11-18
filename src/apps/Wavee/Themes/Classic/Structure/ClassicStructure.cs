@@ -257,10 +257,10 @@ public sealed class ClassicStructure : IStructureLayer
         ClassicSettings.Register(views);
         // T10c2: Recents, the profile page and the Following / Followers list page (`Views\Pages`). The shapes, demands, accents, scroll spies, load rules and every verb stay core.
         views.Add(ViewKeys.RecentsPage, ClassicRecents.Template, "classic.recents.page");
-        // The podcast pages v2: not drawn by Classic yet (ShellCapabilities.PodcastPages false keeps the older reader pages).
-        CommonNothing.Register(views, ViewKeys.PodcastShowPage);
-        CommonNothing.Register(views, ViewKeys.PodcastEpisodePage);
-        CommonNothing.Register(views, ViewKeys.AudiobookPage);
+        // The podcast pages v2 (the concept winui-podcast-v2, theme=classic): the show, the episode and the audiobook (`Views\Podcast\`).
+        views.Add(ViewKeys.PodcastShowPage, ClassicPodcastShow.Template, "classic.podcast.show");
+        views.Add(ViewKeys.PodcastEpisodePage, ClassicPodcastEpisode.Template, "classic.podcast.episode");
+        views.Add(ViewKeys.AudiobookPage, ClassicPodcastAudiobook.Template, "classic.podcast.audiobook");
         ClassicProfile.Register(views);
         ClassicProfileList.Register(views);
         // T9b: the album and playlist sub-contracts of the detail frame. The notice strip and the vertical arm's trailing body (the frame's two leaves only an album or a
@@ -514,7 +514,10 @@ public sealed class ClassicStructure : IStructureLayer
             structure.Get(AccentFromArtwork.Key), structure.Get(NowPlayingColors.Key));
 
     /// <inheritdoc />
-    public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted with { ContinuousPageSwap = true };
+    public ShellCapabilities Capabilities(OptionValues structure) => s_capabilities;
+
+    /// <summary>Every feature on; the continuous page swap; the podcast show, episode and audiobook pages are Classic's own (podcast pages v2, the cover column).</summary>
+    static readonly ShellCapabilities s_capabilities = ShellCapabilities.Unrestricted with { ContinuousPageSwap = true, PodcastPages = true };
 
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;

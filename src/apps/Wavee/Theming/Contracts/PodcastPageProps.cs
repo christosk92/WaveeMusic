@@ -88,6 +88,14 @@ public sealed record PodcastFilterVm(PodcastFilter Filter, string Label, int Cou
     public string CountText { get; init; } = "";
 }
 
+/// <summary>How far through the show the listener is, over the episodes known so far (Classic's listened bar): played, in progress, still to go
+/// (unplayed, not new) and new since the last visit. <see cref="Text"/> is "39 played · 2 in progress · 62 to go", <see cref="NewText"/> "1 new"
+/// ("" when nothing is new).</summary>
+public sealed record PodcastLedger(int Played, int InProgress, int ToGo, int New, string Text, string NewText)
+{
+    public static PodcastLedger None { get; } = new(0, 0, 0, 0, "", "");
+}
+
 /// <summary>A "More like this" card: a show or a book.</summary>
 public sealed record PodcastCardVm(string Uri, string Title, string Subtitle, string? ArtUrl);
 
@@ -135,6 +143,8 @@ public sealed record PodcastShowView(
     /// <summary>The episode list, flattened for a virtualised list: per group its header then its rows, then the foot ("Load more") or the empty line.
     /// <see cref="Episodes"/> and <see cref="Groups"/> hold only what passes the filter and the search.</summary>
     public ImmutableArray<PodcastListItem> Items { get; init; } = [];
+    /// <summary>The listened ledger (whatever the filter: it counts every known episode). Reused while it holds, like the head.</summary>
+    public PodcastLedger Ledger { get; init; } = PodcastLedger.None;
 
     /// <summary>The empty snapshot a page shows while nothing is known (the skeleton is derived from the loaded layout over it).</summary>
     public static PodcastShowView Empty { get; } = new(PodcastLoad.Pending,
