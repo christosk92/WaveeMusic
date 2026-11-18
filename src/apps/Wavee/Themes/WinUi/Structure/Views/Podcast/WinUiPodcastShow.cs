@@ -214,7 +214,7 @@ internal static partial class WinUiPodcastShow
             {
                 Key = "hero:art", Shrink = 0f, Draggable = live ? _p.CoverDrag : null,
                 OnClick = live ? _openFull : null, Cursor = live && _openFull is not null ? CursorId.Hand : null,
-                Children = [Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f), keepWhileHidden: true)],
+                Children = [Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f), keepWhileHidden: true, connect: Design.MorphKeys.ForUri(h.Uri))],
             };
             Element title = (lay.TitleLarge ? TitleLarge(h.Title) : Title(h.Title)) with
             {

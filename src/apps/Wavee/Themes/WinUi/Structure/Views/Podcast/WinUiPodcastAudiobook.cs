@@ -110,7 +110,7 @@ internal static class WinUiPodcastAudiobook
             Key = embedded ? "book-cover" : WinUiFrameLayout.PageTitleKey, Width = lay.Cover, Height = lay.Cover, Shrink = 0f, AlignSelf = FlexAlign.Start, Corners = CornerRadius4.All(AB.CoverRadius), ClipToBounds = true,
             Draggable = p.CoverDrag,
             OnClick = openFull, Cursor = openFull is not null ? CursorId.Hand : null,
-            Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, AB.CoverRadius, decodePx: AB.CoverDecode)],
+            Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, AB.CoverRadius, decodePx: AB.CoverDecode, connect: Design.MorphKeys.ForUri(v.Uri))],
         };
         Element eyebrow = Eyebrow(v, p, lay);
         BoxEl id = Identity(v, p, lay, openFull);
