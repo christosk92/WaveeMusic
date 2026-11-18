@@ -1344,7 +1344,9 @@
       "lockPreview": "Preview only",
       "lockUnavailable": "Unavailable",
       "unplayable": "This episode isn't available to play.",
-      "exclusive": "Exclusive"
+      "exclusive": "Exclusive",
+      "bonus": "Bonus",
+      "transcriptMark": "Has a transcript"
     }
   },
   "recents": {

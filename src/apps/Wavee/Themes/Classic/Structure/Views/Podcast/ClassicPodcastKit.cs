@@ -691,11 +691,17 @@ internal static class ClassicPodcastKit
             Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             Shrink = 1f, MinWidth = 0f,
         };
-        // The tags (Video, the lock) are boxes after the run: they keep their width, the run gives way with an ellipsis.
-        if (!vm.Video && vm.Lock.Length == 0) return run;
-        var kids = new List<Element>(3) { run };
+        // The tags (Video, the lock, the "E", Bonus, Trailer, the transcript mark) are boxes after the run: they keep their width, the run gives way
+        // with an ellipsis.
+        if (!vm.Video && vm.Lock.Length == 0 && !vm.Explicit && !vm.Bonus && !vm.Trailer && !vm.HasTranscript) return run;
+        var kids = new List<Element>(7) { run };
         if (vm.Video) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video, Tok.TextTertiary));
         if (vm.Lock.Length > 0) kids.Add(Tag(vm.Lock, Icons.Lock, Tok.TextTertiary));
+        if (vm.Explicit) kids.Add(Controls.ExplicitBadge(P.TagH));
+        if (vm.Bonus) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Bonus), null, Tok.TextTertiary));
+        if (vm.Trailer) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Trailer), null, Tok.TextTertiary));
+        if (vm.HasTranscript)
+            kids.Add(Controls.Named(new BoxEl { Shrink = 0f, Children = [Icon(Icons.Document, P.TagGlyph, Tok.TextTertiary)] }, Loc.Get(Strings.Podcast.Pages.TranscriptMark)));
         return new BoxEl { Direction = 0, Gap = P.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 

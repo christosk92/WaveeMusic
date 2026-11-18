@@ -322,6 +322,11 @@ internal static class WinUiPodcastKit
         /// <summary>The episode cannot be played (its play button is off) / it carries the lock tag (its words are bound).</summary>
         public bool Blocked { get; init; }
         public bool Locked { get; init; }
+        /// <summary>The row's tags after its words: explicit, bonus, trailer, the transcript mark.</summary>
+        public bool Explicit { get; init; }
+        public bool Bonus { get; init; }
+        public bool Trailer { get; init; }
+        public bool Transcript { get; init; }
     }
 
     sealed class RowHost : Component, IPropsHost
@@ -385,7 +390,7 @@ internal static class WinUiPodcastKit
                 left || vm.Length.Length > 0, left, p.Description && vm.Description.Length > 0 && !expanded,
                 p.Mode == PodcastRowMode.Select && v.Selected.Value == id, expanded ? id : null, v.Playing.Value == id)
             {
-                Blocked = !vm.Playable, Locked = vm.Lock.Length > 0,
+                Blocked = !vm.Playable, Locked = vm.Lock.Length > 0, Explicit = vm.Explicit, Bonus = vm.Bonus, Trailer = vm.Trailer, Transcript = vm.HasTranscript,
             };
         }
 
@@ -549,6 +554,7 @@ internal static class WinUiPodcastKit
         if (s.State == PodcastRowState.Played) kids.Add(MetaPart(s.Date || s.Length, MetaWord(Loc.Get(Strings.Podcast.Pages.Played))));
         if (s.Video) kids.Add(VideoTag());
         if (s.Locked) kids.Add(LockTag(MetaWord("") with { Text = Prop.Of(lockTag) }));
+        Tags(kids, s.Explicit, s.Bonus, s.Trailer, s.Transcript);
         return new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };
     }
 
@@ -566,6 +572,7 @@ internal static class WinUiPodcastKit
         if (vm.State == PodcastRowState.Played) kids.Add(MetaPart(any, MetaWord(Loc.Get(Strings.Podcast.Pages.Played))));
         if (vm.Video) kids.Add(VideoTag());
         if (vm.Lock.Length > 0) kids.Add(LockTag(MetaWord(vm.Lock)));
+        Tags(kids, vm.Explicit, vm.Bonus, vm.Trailer, vm.HasTranscript);
         return new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };
     }
 
@@ -633,6 +640,17 @@ internal static class WinUiPodcastKit
             };
         }
         return Controls.WordLine(key, units, trailing ?? [], line, slop, K.WordLinkGap);
+    }
+
+    /// <summary>The row's tags after its words, each whole (never clipped; the words before them give way): the house "E", Bonus, Trailer and the
+    /// transcript mark (the document glyph, named for assistive tech).</summary>
+    static void Tags(List<Element> kids, bool isExplicit, bool bonus, bool trailer, bool transcript)
+    {
+        if (isExplicit) kids.Add(WinUiRowCells.ExplicitMark());
+        if (bonus) kids.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Bonus)));
+        if (trailer) kids.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Trailer)));
+        if (transcript)
+            kids.Add(Controls.Named(new BoxEl { Shrink = 0f, Children = [Icon(Icons.Document, K.MetaGlyph, Tok.TextTertiary)] }, Loc.Get(Strings.Podcast.Pages.TranscriptMark)));
     }
 
     /// <summary>The lock tag of a restricted episode ("Subscribers only", "Preview only"): the lock and the word, never clipped (as the Video tag).</summary>

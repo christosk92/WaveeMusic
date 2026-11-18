@@ -162,6 +162,8 @@ public static partial class Entities
                     break;
                 case NewShow:
                     if (number % 2 == 0) ep.Flags = (uint)EpisodeFlags.Explicit;
+                    // A bonus episode (the rows' Bonus tag), with a transcript (their transcript mark).
+                    if (i == 1) { ep.Kind = (byte)EpisodeKind.Bonus; ep.Flags |= (uint)EpisodeFlags.HasTranscript; }
                     break;
                 case LongBook:
                     ep.Flags = (uint)EpisodeFlags.AudiobookChapter;

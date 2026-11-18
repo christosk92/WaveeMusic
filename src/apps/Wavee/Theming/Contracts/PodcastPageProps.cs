@@ -56,6 +56,9 @@ public sealed record PodcastEpisodeVm(
     /// <summary>The lock tag of a restricted episode ("Subscribers only", "Preview only", "Unavailable"; "" = none): a row draws it with the lock glyph
     /// beside its meta, and a row that is not <see cref="Playable"/> draws its play button off.</summary>
     public string Lock { get; init; } = "";
+    /// <summary>The episode is explicit (the house "E" in the row's meta) / a bonus episode (the Bonus tag; <see cref="Trailer"/> is the trailer's).</summary>
+    public bool Explicit { get; init; }
+    public bool Bonus { get; init; }
 }
 
 /// <summary>One item of the smart action's menu ("Other ways to play").</summary>

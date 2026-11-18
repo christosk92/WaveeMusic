@@ -661,9 +661,14 @@ internal static class ZunePodcastKit
                     MetaWord(Loc.Get(Strings.Podcast.Pages.Fresh)) with { Color = Prop.Of(static () => R.Ink.AccentDecor), Weight = Z.Strong },
                 ],
             });
-        // The tags lead the words (after "new"): the line runs off under its right-edge fade (nothing in it shrinks), so a tag at its start is
-        // never the part that fades.
+        // The tags (the lock, the "E", bonus, trailer, the transcript mark) lead the words (after "new"): the line runs off under its right-edge
+        // fade (nothing in it shrinks), so a tag at its start is never the part that fades.
         if (vm.Lock.Length > 0) parts.Add(Tag(vm.Lock, Icons.Lock));
+        if (vm.Explicit) parts.Add(ZuneRowCells.ExplicitMark());
+        if (vm.Bonus) parts.Add(Tag(Loc.Get(Strings.Podcast.Pages.Bonus), null));
+        if (vm.Trailer) parts.Add(Tag(Loc.Get(Strings.Podcast.Pages.Trailer), null));
+        if (vm.HasTranscript)
+            parts.Add(Controls.Named(new BoxEl { Shrink = 0f, Children = [Icon(Icons.Document, Z.MetaStar, Tok.TextTertiary)] }, Loc.Get(Strings.Podcast.Pages.TranscriptMark)));
         if (vm.Date.Length > 0) parts.Add(MetaWord(vm.Date) with { Color = Tok.TextTertiary });
         if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) parts.Add(MetaWord(vm.Left) with { Color = Prop.Of(static () => R.Ink.AccentDecor) });
         else if (vm.Length.Length > 0) parts.Add(MetaWord(vm.Length) with { Color = Tok.TextTertiary });

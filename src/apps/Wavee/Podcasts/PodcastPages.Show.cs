@@ -795,6 +795,7 @@ sealed class ShowModel
             (flags & EpisodeFlags.Video) != 0, kind == EpisodeKind.Trailer, playable, 0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(e))
         {
             Eyebrow = eyebrow, LongDate = longDate, DescriptionHtml = e.Knows(EpisodeFields.About) ? e.HtmlDescription : "",
+            Explicit = (flags & EpisodeFlags.Explicit) != 0, Bonus = kind == EpisodeKind.Bonus,
         }, flags);
     }
 
