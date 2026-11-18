@@ -182,17 +182,17 @@ internal static class ZunePodcastAudiobook
             K.Menu("zb-speed", p.SpeedLabel, null, null, p.SpeedMenu, h, true, Loc.Get(Strings.Podcast.Pages.Speed)),
             K.Menu("zb-sleep", p.SleepLabel, p.SleepOn, Icons.Moon, p.SleepMenu, h, lay.Words, Loc.Get(Strings.Podcast.Pages.SleepTimer)),
         };
-        if (lay.Stacked)
-            return new BoxEl
-            {
-                Key = "zb-up", Direction = 1, Gap = Z.CommandGap, MinWidth = 0f,
-                Children =
-                [
-                    new BoxEl { Direction = 0, Gap = Z.CommandGap, MinWidth = 0f, Children = first.ToArray() },
-                    new BoxEl { Direction = 0, Gap = Z.CommandGap, MinWidth = 0f, Children = tools.ToArray() },
-                ],
-            };
-        return new BoxEl { Key = "zb-up", Direction = 0, Gap = Z.CommandGap, Wrap = true, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. first, .. tools] };
+        // ONE tree at every tier (a crossing keeps the buttons): the primary's line and the tools' line, side by side or stacked.
+        return new BoxEl
+        {
+            Key = "zb-up", Direction = (byte)(lay.Stacked ? 1 : 0), Gap = Z.CommandGap, Wrap = !lay.Stacked, AlignItems = lay.Stacked ? FlexAlign.Stretch : FlexAlign.Center,
+            MinWidth = 0f,
+            Children =
+            [
+                new BoxEl { Key = "zb-up:play", Direction = 0, Gap = Z.CommandGap, MinWidth = 0f, Children = first.ToArray() },
+                new BoxEl { Key = "zb-up:tools", Direction = 0, Gap = Z.CommandGap, MinWidth = 0f, Children = tools.ToArray() },
+            ],
+        };
     }
 
     /// <summary>"by imogen hartley   narrated by daniel osei": the words lowercase and tertiary, the names in the primary ink, links where they have a page.</summary>

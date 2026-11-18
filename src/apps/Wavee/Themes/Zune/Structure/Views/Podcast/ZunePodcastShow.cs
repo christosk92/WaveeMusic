@@ -170,7 +170,8 @@ internal static partial class ZunePodcastShow
             };
             var s = h.Smart;
             var main = new List<Element>(5);
-            if (s is not null) main.Add(K.Label(LabelOf(s)));
+            // Caught up: the up line says it (the label would say it twice).
+            if (s is { Kind: not PodcastSmartKind.CaughtUp }) main.Add(K.Label(LabelOf(s)));
             main.Add(Up(s, lay, live));
             main.Add(Meta(head));
             main.Add(Commands(head, lay));
@@ -203,11 +204,18 @@ internal static partial class ZunePodcastShow
             var spans = new List<TextSpan>(2);
             if (s.Why.Length > 0) spans.Add(new TextSpan(s.Why.ToLowerInvariant() + " · ", Color: Tok.TextTertiary));
             spans.Add(new TextSpan(s.EpisodeTitle, Color: Tok.TextPrimary));
-            var line = new SpanTextEl(new TextSpans(spans.ToArray(), spans.Count))
-            {
-                FontFamily = R.Type.Pivot("").FontFamily, Size = Z.UpTitleSize, LineHeight = Z.UpTitleLine, Weight = Z.Light,
-                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            };
+            Element line = s.Kind == PodcastSmartKind.CaughtUp
+                // The caught-up line is the theme's sentence, not a name: lowercased as a label.
+                ? new TextEl(s.EpisodeTitle)
+                {
+                    FontFamily = R.Type.Pivot("").FontFamily, Size = Z.UpTitleSize, LineHeight = Z.UpTitleLine, Weight = Z.Light, Color = Tok.TextPrimary,
+                    Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                }
+                : new SpanTextEl(new TextSpans(spans.ToArray(), spans.Count))
+                {
+                    FontFamily = R.Type.Pivot("").FontFamily, Size = Z.UpTitleSize, LineHeight = Z.UpTitleLine, Weight = Z.Light,
+                    MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                };
             var sub = new List<Element>(2);
             float progress = s.Progress;
             if (progress >= 0f) sub.Add(K.Line(() => progress, Z.UpBarW));
