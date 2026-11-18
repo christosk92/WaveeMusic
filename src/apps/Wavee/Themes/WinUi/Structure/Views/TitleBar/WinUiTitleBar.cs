@@ -96,13 +96,14 @@ internal static class WinUiTitleBar
         // The Compact touch sizes are live parts, so the 641 crossing keeps every tab, the "+" and the close button and eases them to the
         // touch floor (the plates' height in the engine, the "+" and the close button here).
         Parts = StripParts(tiers),
-        // WinUI's TabView: Chrome tabs, the tier's form against the bar's tab lane. The selected tab is WinUI's layer over Mica (translucent:
-        // the window's material shows through it, it is never a solid block on the bar).
+        // WinUI's TabView: Chrome tabs, the tier's form against the bar's tab lane. The selected tab is the subtle selection tint (what a selected
+        // navigation item wears on Mica): a soft plate of the bar's own ground. WinUI's layer-over-Mica fill is 70 % white in light, which read as
+        // a white card on the tinted bar (owner, 2026-11-18: "the tab card now is just white").
         Appearance = TabStripAppearance.Chrome,
         Form = () => WinUiTiers.TitleBarOf(tiers()).TabForm,
         TabHeight = Prop.Of(() => WinUiTiers.TitleBarOf(tiers()).TabH),
         TextFontSize = WinUiFrameRules.MarkTextSize,
-        SelectedFill = Prop.Of(static () => Tok.LayerOnMicaBaseAlt),
+        SelectedFill = Prop.Of(static () => Tok.FillSubtleSecondary),
         ShowRailBaseline = false,   // one ground under both rows: no edge to draw, and a hairline that ended after the "+" read as a stray line
         // Shell-Top: only the selected tab carries its close button at rest (the others show it under the pointer).
         CloseButtonOverlayMode = TabViewCloseButtonOverlayMode.OnPointerOver,
