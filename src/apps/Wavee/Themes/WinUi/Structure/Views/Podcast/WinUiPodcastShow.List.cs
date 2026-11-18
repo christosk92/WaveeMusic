@@ -347,7 +347,9 @@ internal static partial class WinUiPodcastShow
                 float inset = host._inset.Value;
                 Element body = slot.Kind switch
                 {
-                    PodcastItemKind.Row when slot.Vm is { } vm => WinUiPodcastKit.EpisodeRow(vm, lay.RowMode, lay.RowDescription, lay.Stacked, host._verbs!),
+                    // ONE row per slot (a constant key): a recycled slot re-renders its row for the new episode instead of mounting a new one, so a filter
+                    // switch that brings rows back costs their props, not their mount.
+                    PodcastItemKind.Row when slot.Vm is { } vm => WinUiPodcastKit.EpisodeRow(vm, lay.RowMode, lay.RowDescription, lay.Stacked, host._verbs!) with { Key = "ep" },
                     PodcastItemKind.More => new BoxEl
                     {
                         Key = "show-more", Direction = 0, Justify = FlexJustify.Center, Padding = new Edges4(0f, K.SectionBottom, 0f, K.SectionBottom),

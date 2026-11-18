@@ -422,23 +422,29 @@ sealed class ShowModel
 
     // ══ THE SNAPSHOT ═══════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    PodcastShowView Compute()
+    /// <summary>The part of the snapshot a filter, a search or the order cannot change: the data door's rows as view models, the counts, the smart action,
+    /// the trailer. Rebuilt only when an entity table, the saved set, the deck, the similar answer or the paging moves (its stamp); a filter switch on a
+    /// 500-episode show then costs the filter, never 500 view models.</summary>
+    sealed class RowsPart
     {
-        _ = Entities.ScopeEpoch.Value;
-        var scope = Entities.Current;
-        _ = scope.Shows.Changed.Value;
-        _ = scope.Episodes.Changed.Value;
-        _ = scope.Edges.ShowEpisodes.Changed.Value;
-        _ = Spotify.Podcasts.SavedChanged.Value;
-        var filter = _filter.Value;
-        string query = _query.Value;
-        bool oldestCell = _oldest.Value;
-        _ = _askedFrom.Value;
-        EntityId playingId = Playback.CurrentId.Value;
-                var similarState = Similar?.State.Value ?? (byte)LoadState.Pending;
-        var similar = similarState == (byte)LoadState.Ready ? Similar?.Value.Value : null;
-        if (!Subject.IsValid) return PodcastShowView.Empty with { Load = PodcastLoad.Failed };
+        public object? Stamp;
+        public Show Show;
+        public ShowPage Page = null!;
+        public EdgeState Readiness;
+        public bool Following, Known, Serial, AnyProgress;
+        public int N, Total, Unplayed, InProgress, Saved;
+        public int[] Slots = [], Published = [];
+        public PodcastEpisodeVm[] Vms = [];
+        public ShowCadence.Kind Cadence;
+        public Episode Trailer;
+        public string? TrailerId;
+        public PodcastSmart? Smart;
+    }
 
+    RowsPart? _rowsPart;
+
+    RowsPart BuildRows(Scope scope, EntityId playingId)
+    {
         var show = new Show(scope.Shows.Slot(Subject.Id));
         var edge = scope.Edges.ShowEpisodes;
         int slot = show.Slot;
@@ -466,7 +472,6 @@ sealed class ShowModel
         }
         bool serial = page.Order == ShowOrder.Serial;
         // The order follows the show until the reader picks one: a serial reads oldest first.
-        if (!_orderChosen) oldestCell = serial;
         var (cadence, _) = ShowCadence.Of(published);
         following = page.Saved == SaveState.Saved || following;
 
@@ -554,6 +559,54 @@ sealed class ShowModel
             smart = new PodcastSmart(kind, vms[at].Id, label, why,
                 kind == PodcastSmartKind.CaughtUp ? Loc.Get(Strings.Podcast.Pages.CaughtUp) : vms[at].Title, sub, progress, accent, menu);
         }
+
+        return new RowsPart
+        {
+            Show = show, Page = page, Readiness = readiness, Following = following, Known = known, Serial = serial, AnyProgress = anyProgress,
+            N = n, Total = total, Unplayed = unplayed, InProgress = inProgress, Saved = saved, Slots = slots, Published = published, Vms = vms,
+            Cadence = cadence, Trailer = trailer, TrailerId = trailerId, Smart = smart,
+        };
+    }
+
+    PodcastShowView Compute()
+    {
+        _ = Entities.ScopeEpoch.Value;
+        var scope = Entities.Current;
+        _ = scope.Shows.Changed.Value;
+        _ = scope.Episodes.Changed.Value;
+        _ = scope.Edges.ShowEpisodes.Changed.Value;
+        _ = Spotify.Podcasts.SavedChanged.Value;
+        var filter = _filter.Value;
+        string query = _query.Value;
+        bool oldestCell = _oldest.Value;
+        _ = _askedFrom.Value;
+        EntityId playingId = Playback.CurrentId.Value;
+                var similarState = Similar?.State.Value ?? (byte)LoadState.Pending;
+        var similar = similarState == (byte)LoadState.Ready ? Similar?.Value.Value : null;
+        if (!Subject.IsValid) return PodcastShowView.Empty with { Load = PodcastLoad.Failed };
+
+        var stamp = (Entities.ScopeEpoch.Peek(), scope.Shows.Changed.Peek(), scope.Episodes.Changed.Peek(), scope.Edges.ShowEpisodes.Changed.Peek(),
+            Spotify.Podcasts.SavedChanged.Peek(), playingId, _askedFrom.Peek(), Controls.Library is { } l && l.IsSaved(SubjectText));
+        var rp = _rowsPart is { } cached && Equals(cached.Stamp, stamp) ? cached : null;
+        if (rp is null)
+        {
+            rp = BuildRows(scope, playingId);
+            rp.Stamp = stamp;
+            _rowsPart = rp;
+        }
+        var show = rp.Show;
+        var page = rp.Page;
+        var readiness = rp.Readiness;
+        bool following = rp.Following, known = rp.Known, serial = rp.Serial, anyProgress = rp.AnyProgress;
+        int n = rp.N, total = rp.Total, unplayed = rp.Unplayed, inProgress = rp.InProgress, saved = rp.Saved;
+        int[] slots = rp.Slots, published = rp.Published;
+        var vms = rp.Vms;
+        var cadence = rp.Cadence;
+        var trailer = rp.Trailer;
+        string? trailerId = rp.TrailerId;
+        var smart = rp.Smart;
+        // The order follows the show until the reader picks one: a serial reads oldest first.
+        if (!_orderChosen) oldestCell = serial;
 
         // ── the filters, the view and the groups ──
         var q = query.AsSpan().Trim();
