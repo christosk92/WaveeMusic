@@ -520,7 +520,7 @@ internal static partial class WinUiPodcastShow
                 kids.Add(Swap("tb:filters", true,
                     WinUiChoice.Pivot(labels, _filterIx, WinUiChoiceRules.PivotItemH, i => _p.SetFilter((PodcastFilter)i), s_filterKeys)) with { ClipToBounds = true });
             if (searchIcon)
-                kids.Add(Controls.Named(Controls.IconAction(Icons.Search, () => _searchOpen.Value = !_searchOpen.Peek(), size: lay.Target) with { Key = "tb:search" },
+                kids.Add(Controls.Named(Controls.IconAction(Icons.Search, () => _searchOpen.Value = !_searchOpen.Peek(), size: lay.Target) with { Key = "tb:search", Layout = WinUiDiscoveryMotion.Reflow },
                     Loc.Get(Strings.Podcast.Pages.Search)));
             else kids.Add(Swap("tb:find-box", false, SearchBox(lay, fill: false)));
             bool oldest = _p.Oldest.Value;
@@ -572,6 +572,8 @@ internal static partial class WinUiPodcastShow
             headKids.Add(new BoxEl
             {
                 Key = "gh:jump:" + g.Key, Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, Height = lay.GroupButtonH, Shrink = 0f,
+                // Its height steps at Compact (the 40 target): that eases; its width (the count) does not animate.
+                Layout = WinUiDiscoveryMotion.HeightReflow,
                 Padding = new Edges4(S.GroupButtonPad, 0f, S.GroupButtonPad, 0f), Margin = new Edges4(-S.GroupButtonPad, 0f, 0f, 0f),
                 Corners = Radii.ControlAll, Fill = Tok.FillSubtleTransparent, HoverFill = jumps ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                 PressedFill = jumps ? Tok.FillSubtleTertiary : Tok.FillSubtleTransparent, Role = AutomationRole.Button, Focusable = jumps,
