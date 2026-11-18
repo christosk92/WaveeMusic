@@ -65,7 +65,8 @@ internal static class ZunePodcastAudiobook
             items.Add(new K.PivotItem(Loc.Get(Strings.Podcast.Pages.About), ""));
             if (!shown.Similar.IsDefaultOrEmpty) items.Add(new K.PivotItem(Loc.Get(Strings.Podcast.Pages.MoreByTheAuthor), ""));
 
-            Element real = Column(v, p, lay, playing, pivot);
+            Action? openFull = UseContext(PodcastPagePlace.OpenFull);   // in another page's column (the library's): the way to the book's own page
+            Element real = Column(v, p, lay, playing, pivot, openFull);
             var region = new SkelRegionEl(
                 Pending: () => p.View.Value.Load == PodcastLoad.Pending, Failed: static () => false,
                 Content: () => real, ShimmerSource: () => Column(AudiobookView.Placeholder, p, lay, false, (int)Pivot.Chapters),
@@ -78,7 +79,7 @@ internal static class ZunePodcastAudiobook
         }
     }
 
-    static Element Column(AudiobookView v, AudiobookPageProps p, ZunePodcastLayout lay, bool playing, int pivot)
+    static Element Column(AudiobookView v, AudiobookPageProps p, ZunePodcastLayout lay, bool playing, int pivot, Action? openFull = null)
     {
         Element body = (Pivot)pivot switch
         {
@@ -86,12 +87,12 @@ internal static class ZunePodcastAudiobook
             Pivot.More => K.Body("zb-body:more", K.Cards("zb-more", v.Similar, p.OpenUri, lay.Stacked, p.SimilarMenu, p.PlaySimilar)),
             _ => K.Body("zb-body:chapters", new BoxEl { Direction = 1, Gap = Z.SectionGap, MinWidth = 0f, Children = [BookLine(v, p, lay), Contents(v, p, lay)] }),
         };
-        return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Hero(v, p, lay, playing), body] };
+        return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Hero(v, p, lay, playing, openFull), body] };
     }
 
     // ══ THE HERO ════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Hero(AudiobookView v, AudiobookPageProps p, ZunePodcastLayout lay, bool playing)
+    static Element Hero(AudiobookView v, AudiobookPageProps p, ZunePodcastLayout lay, bool playing, Action? openFull)
     {
         Element art = new BoxEl
         {
@@ -100,7 +101,7 @@ internal static class ZunePodcastAudiobook
         };
         var main = new List<Element>(7) { Label(v, p, lay.Target), Big(v, p), Up(v, p, lay, playing) };
         if (v.Authors.Length + v.Narrators.Length > 0) main.Add(Byline(v, p.OpenUri));
-        main.Add(Commands(v, p, lay));
+        main.Add(Commands(v, p, lay, openFull));
         if (Premium(v, p, lay) is { } premium) main.Add(premium);
         return new BoxEl
         {
@@ -244,7 +245,7 @@ internal static class ZunePodcastAudiobook
         Size = Z.BylineSize, LineHeight = Z.BylineLine, Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Label), Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
     };
 
-    static Element Commands(AudiobookView v, AudiobookPageProps p, ZunePodcastLayout lay)
+    static Element Commands(AudiobookView v, AudiobookPageProps p, ZunePodcastLayout lay, Action? openFull)
     {
         float h = lay.Target;
         string download = Loc.Get(Strings.Podcast.Pages.Download);
@@ -255,6 +256,7 @@ internal static class ZunePodcastAudiobook
         };
         if (p.Share is { } share) kids.Add(K.Named(K.Button("zb-share", null, Icons.Share, share, h), Loc.Get(Strings.Podcast.Pages.Share), false));
         kids.Add(K.More("zb-more-cmd", p.Menu, h));
+        if (openFull is not null) kids.Add(K.Button("cmd:view-details", Loc.Get(Strings.Library.ViewDetails), Icons.OpenInNewWindow, openFull, h));
         return new BoxEl { Key = "zb-cmds", Direction = 0, Gap = Z.CommandGap, Wrap = true, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 

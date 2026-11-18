@@ -452,6 +452,21 @@ internal static class ClassicPodcastKit
         ],
     };
 
+    /// <summary>"View details": the link an embedded page (the library's column) ends its command row on, to the subject's own page, drawn as the album
+    /// column's "Open album" is (accent words and the open glyph, a hyperlink, not a button).</summary>
+    public static Element ViewDetails(Action open) => new BoxEl
+    {
+        Key = "cmd:view-details", Direction = 0, Gap = ClassicLibraryPaneRules.OpenLinkGap, AlignItems = FlexAlign.Center, Corners = Radii.ControlAll, Shrink = 0f,
+        Padding = new Edges4(Spacing.S, ClassicLibraryPaneRules.OpenLinkPadY, Spacing.S, ClassicLibraryPaneRules.OpenLinkPadY),
+        Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, BrushTransitionMs = Design.Motion.Faster,
+        Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
+        Children =
+        [
+            R.Type.DenseMeta(Loc.Get(Strings.Library.ViewDetails)) with { Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap },
+            Icon(Icons.OpenInNewWindow, ClassicLibraryPaneRules.OpenGlyph, Tok.AccentTextPrimary),
+        ],
+    };
+
     /// <summary>A row's own bar: <see cref="MiniBar"/> at <paramref name="width"/> where the lane has the room, narrower where it has not (never under
     /// <paramref name="floor"/>), its fill keeping its share of whatever width it gets. The bar is the lane that gives way: the "left" label beside it
     /// stays whole, and neither runs into the row's end (a 220 bar plus its label was wider than a narrow row's text column and drew over the length).</summary>
