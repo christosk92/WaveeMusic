@@ -98,6 +98,10 @@ internal static class WinUiPodcastShowRules
     /// <summary>The rating card's five stars (a rating x100 rounds to whole stars); the semibold weight.</summary>
     public const int Stars = 5, StarRound = 50, StarScale = 100;
     public const ushort Strong = 600;
+    /// <summary>The virtualised list's seeded extents (a realized item reports its measured one): a row (one line of meta; with a line of description),
+    /// a foot, the hero and About before they measure; and the content types of the three prefix parts (above every list kind).</summary>
+    public const float RowEstimate = 58f, RowEstimateTall = 78f, FootEstimate = 64f, HeroEstimate = 276f, AboutEstimate = 60f;
+    public const int PrefixType = 16;
     public const string PageKey = "podcast-show";
 }
 

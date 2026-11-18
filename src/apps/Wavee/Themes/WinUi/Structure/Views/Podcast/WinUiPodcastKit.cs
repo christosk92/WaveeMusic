@@ -163,6 +163,42 @@ internal static class WinUiPodcastKit
             ],
         }.Sticky(top, scope, stuck);
 
+    /// <summary>A band that pins <paramref name="top"/> below the viewport's edge at its CONTENT's height (a group header in a virtualised list). With
+    /// <paramref name="backing"/> it takes the page's layer while pinned (the rows and the earlier pinned bands pass under it), never at rest.</summary>
+    public static BoxEl PinnedBand(string key, Element content, float top, Signal<bool> stuck, bool backing)
+        => new BoxEl
+        {
+            Key = key, ZStack = true, Direction = 1, MinWidth = 0f,
+            Fill = backing ? Prop.Of(() => stuck.Value ? R.Layer.ContentSurface : Tok.FillSubtleTransparent) : Tok.FillSubtleTransparent,
+            Children =
+            [
+                new BoxEl { Direction = 1, MinWidth = 0f, Children = [content] },
+                new BoxEl
+                {
+                    Key = key + ":line", AlignSelf = FlexAlign.End, Height = 1f, MinWidth = 0f, HitTestVisible = false,
+                    Fill = Tok.StrokeDividerDefault, Opacity = Prop.Of(() => stuck.Value ? 1f : 0f),
+                },
+            ],
+        }.Sticky(top, null, stuck);
+
+    /// <summary>A page whose scroller is a virtualised list (<paramref name="list"/>, an ItemsView carrying its own scroll handle), with
+    /// <paramref name="layers"/> over it (an overlay pane) and the 48 bar over everything while <paramref name="barOn"/> holds.</summary>
+    public static Element ListPage(string routeKey, Element list, Element bar, IReadSignal<bool> barOn, params Element[] layers)
+    {
+        Element barLayer = new BoxEl
+        {
+            Direction = 1, Height = K.BarH, AlignSelf = FlexAlign.Start, HitTestPassThrough = true,
+            // The bar coming and going relayouts this layer alone (a boundary: the page owns its size), never the page around the list.
+            IsolateLayout = true,
+            Children = [Flow.Show(() => barOn.Value, new BoxEl { Key = "podcast-bar", Direction = 1, Enter = K.BarFade, Exit = K.BarFade, Children = [bar] })],
+        };
+        var kids = new Element[layers.Length + 2];
+        kids[0] = list;
+        layers.CopyTo(kids, 1);
+        kids[^1] = barLayer;
+        return new BoxEl { Key = "podcast-page:" + routeKey, ZStack = true, Direction = 1, Grow = 1f, MinWidth = 0f, Children = kids };
+    }
+
     /// <summary>A description: HTML (paragraphs, lists, bold, links routed in-app or opened through the link policy) or plain text, through the house
     /// renderer, never a tag or an entity on screen. <paramref name="maxLines"/> 0 = all.</summary>
     public static Element Description(string html, int maxLines = 0, bool secondary = true)
