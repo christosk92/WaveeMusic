@@ -202,7 +202,12 @@ internal static partial class WinUiPodcastShow
         {
             var h = v.Head;
             // Kept while scrolled away: the cover coming back into view at the top must not re-acquire its image (a scroll frame never allocates).
-            Element cover = Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f), keepWhileHidden: true);
+            // The cover drags as the show (the host's one source: a sidebar pin, a playlist, the queue); the shimmer's carries none.
+            Element cover = new BoxEl
+            {
+                Key = "hero:art", Shrink = 0f, Draggable = live ? _p.CoverDrag : null,
+                Children = [Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f), keepWhileHidden: true)],
+            };
             var idKids = new List<Element>(3)
             {
                 Eyebrow(h, lay),

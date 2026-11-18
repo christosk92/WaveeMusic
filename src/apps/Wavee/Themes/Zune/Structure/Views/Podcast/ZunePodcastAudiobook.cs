@@ -93,7 +93,7 @@ internal static class ZunePodcastAudiobook
     {
         Element art = new BoxEl
         {
-            Key = "zb-art", Width = lay.Art, Height = lay.Art, Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ZuneMotion.GroupResize,
+            Key = "zb-art", Width = lay.Art, Height = lay.Art, Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ZuneMotion.GroupResize, Draggable = p.CoverDrag,
             Children = [Controls.Artwork(v.ArtUrl, lay.Art, lay.Art, 0f, decodePx: (int)(lay.Art * 2f))],
         };
         var main = new List<Element>(7) { Label(v, p, lay.Target), Big(v, p), Up(v, p, lay, playing) };

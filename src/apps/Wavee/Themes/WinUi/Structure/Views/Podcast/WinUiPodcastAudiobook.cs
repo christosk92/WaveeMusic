@@ -94,6 +94,7 @@ internal static class WinUiPodcastAudiobook
         Element cover = new BoxEl
         {
             Key = WinUiFrameLayout.PageTitleKey, Width = lay.Cover, Height = lay.Cover, Shrink = 0f, AlignSelf = FlexAlign.Start, Corners = CornerRadius4.All(AB.CoverRadius), ClipToBounds = true,
+            Draggable = p.CoverDrag,
             Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, AB.CoverRadius, decodePx: AB.CoverDecode)],
         };
         Element eyebrow = Eyebrow(v, p, lay);

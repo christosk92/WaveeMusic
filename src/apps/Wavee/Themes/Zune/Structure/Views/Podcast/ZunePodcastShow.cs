@@ -167,6 +167,8 @@ internal static partial class ZunePodcastShow
             Element art = new BoxEl
             {
                 Key = "zp-art", Width = lay.Art, Height = lay.Art, Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ZuneMotion.GroupResize,
+                // The art drags as the show (the host's one source); the shimmer's carries none.
+                Draggable = live ? _p.CoverDrag : null,
                 Children = [Controls.Artwork(head.ArtUrl, lay.Art, lay.Art, 0f, decodePx: (int)(lay.Art * 2f))],
             };
             var s = h.Smart;

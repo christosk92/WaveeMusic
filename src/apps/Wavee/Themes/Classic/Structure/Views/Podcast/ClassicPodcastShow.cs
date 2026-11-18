@@ -116,6 +116,8 @@ internal static partial class ClassicPodcastShow
                 new BoxEl
                 {
                     Key = "cp-cover", Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ClassicTierMotion.Reflow,
+                    // The cover drags as the show (the host's one source); the shimmer's carries none.
+                    Draggable = live ? _p.CoverDrag : null,
                     Children = [Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, P.CoverRadius, decodePx: P.CoverDecode)],
                 },
             };

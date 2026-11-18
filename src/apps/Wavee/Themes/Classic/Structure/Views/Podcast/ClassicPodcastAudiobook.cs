@@ -74,7 +74,7 @@ internal static class ClassicPodcastAudiobook
         {
             new BoxEl
             {
-                Key = "cpa-cover", Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ClassicTierMotion.Reflow,
+                Key = "cpa-cover", Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ClassicTierMotion.Reflow, Draggable = p.CoverDrag,
                 Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, P.CoverRadius, decodePx: P.CoverDecode)],
             },
         };

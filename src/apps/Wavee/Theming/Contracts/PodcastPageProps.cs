@@ -226,6 +226,9 @@ public sealed record PodcastShowPageProps
     /// <summary>An episode row's drag payload, built when a drag promotes (a cold factory; wrap it in the house's <c>Drag.Source</c>): it drops onto a
     /// playlist and onto the queue as a track does. Null: the rows carry no drag.</summary>
     public Func<string, object?>? RowDrag { get; init; }
+    /// <summary>The hero cover's drag source (ONE per page, made by the host: the show as the house's show payload, read when the drag promotes):
+    /// it pins onto the sidebar and drops onto a playlist or the queue as a show card does. Null: the cover carries no drag.</summary>
+    public DragSource? CoverDrag { get; init; }
 }
 
 /// <summary>One chapter of an episode: where it starts, its length and how far the listener is through it (0..1).</summary>
@@ -445,4 +448,7 @@ public sealed record AudiobookPageProps
     public required IReadSignal<PodcastRateVm> RateState { get; init; }
     /// <summary>A genre of <see cref="AudiobookView.Genres"/>, by its words: Search for it. Null: the genres are plain text.</summary>
     public Action<string>? OpenGenre { get; init; }
+    /// <summary>The hero cover's drag source (ONE per page, made by the host: the book as the house's show payload, as
+    /// <see cref="PodcastShowPageProps.CoverDrag"/>). Null: the cover carries no drag.</summary>
+    public DragSource? CoverDrag { get; init; }
 }

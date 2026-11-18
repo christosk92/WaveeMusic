@@ -412,6 +412,7 @@ public sealed class AudiobookScreen : Component
             // A genre searches its words: the genre tree's ids (32-hex AUDIOBOOK_GENRE nodes) name no page Wavee opens (Browse opens
             // spotify:page: categories), so the older page's topic search is the real destination.
             OpenGenre = Show.OpenTopic,
+            CoverDrag = PodcastPages.CoverDrag(subject),
         };
 
         void Play()
