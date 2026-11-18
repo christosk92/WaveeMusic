@@ -10,7 +10,7 @@
 // ── ONE BAR ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 //
 // Four files had grown their own filled rounded bar for "this line is coming" — the Recents row's two-bar text column,
-// the track drawer's reserved video row, the library pane's header placeholder (album and show twins) and its rows' bars.
+// the track drawer's reserved video row, the library pane's header placeholder and its rows' bars.
 // They differed only by a corner radius (a half-height capsule, a fixed 4, a fixed 3) and by whether the bar may shrink.
 // The bar is GEOMETRY, never an invented string: it is a plain filled box with no text, no handlers and no role, so a
 // screen reader reads nothing and the pointer falls through to whatever is under it.

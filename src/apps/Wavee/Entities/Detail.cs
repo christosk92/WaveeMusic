@@ -1149,8 +1149,6 @@ public static partial class Detail
         public const float PlaySplitWidth = PlayHalf + SplitDivider + MenuHalf;
         /// <summary>The split's trailing margin: the 4 that, with the wrap's 8, set it 12 from the first action.</summary>
         public const float SplitTrail = CtaGap - FabGap;
-        /// <summary>A satellite action beside a primary (the library's show pane: the heart and the ⋯ at the standard 32), 8 apart.</summary>
-        public const float SatelliteSize = 32f, SatelliteGap = 8f;
         /// <summary>The CTA primary's height — Workstream B's 32/r4 <see cref="Controls.PrimaryButton"/>.</summary>
         public const float PillHeight = Controls.ButtonHeight;
         public const float EyebrowHeight = VerticalLayout.EyebrowRowHeight;

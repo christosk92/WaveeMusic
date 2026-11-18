@@ -4,7 +4,7 @@
 // title rung, the gaps of the copy column and the meta line, the art's radius, the progress rule's corner, the equalizer's height and
 // the length of the seed's figure-space runs. They are data, not decisions: `Lists\WinUiEpisodeRow.cs` reads them (WVTH003 allows
 // literals only here, in `Rules\**`). The row's outer metrics (`Episode.RowArt`, `RowDisc`, `RowGap`, `RowPadY`, ...) stay public on
-// `Episode`: the reader's extents and the show page's skeleton are computed from them.
+// `Episode`: the table's episode rows and their skeleton are sized from them.
 
 namespace Wavee.Themes.WinUi;
 

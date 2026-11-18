@@ -45,6 +45,13 @@ internal static class ZuneConcertDetail
 {
     static readonly Action s_goHub = static () => ConcertVerbs.OpenHub();
 
+    /// <summary>The detail record the ring row is drawn in: the vertical arm's (the Compact record) below the content's Small edge, else the content tier's
+    /// own (the same record the identity column reads).</summary>
+    internal static ZuneDetailLayout RingLayoutOf(in TierFacts facts)
+        // The vertical arm's ring row is one line at 400: the saved ring stands without its word there (its filled glyph is the state), so the row does
+        // not wrap its last ring onto a second line.
+        => facts.Content == WidthTier.Compact ? ZuneDetailTiers.Hero with { SaveWord = false } : ZuneDetailTiers.Of(in facts);
+
     /// <summary>The view's one hook cell: the viewport's scroll handle, the section anchors (details · lineup · related) and the spy's answer, with
     /// the stable callbacks (a fresh delegate would re-arm what holds it).</summary>
     internal sealed class Cell
@@ -74,7 +81,7 @@ internal static class ZuneConcertDetail
         var cell = ctx.Hooks.UseRef(new Cell()).Value;
         var facts = ctx.Tier();
         var lay = ZuneConcertTiers.Of(in facts);
-        var rings = ZuneShow.RingLayoutOf(in facts);
+        var rings = RingLayoutOf(in facts);
         float gutter = ZuneTiers.FrameOf(in facts).Gutter;
         Func<Element> content = () => props.Unavailable
             ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Concerts.Detail.NotAvailable),

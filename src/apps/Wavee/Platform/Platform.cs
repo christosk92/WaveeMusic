@@ -179,7 +179,7 @@ public static partial class Platform
         public static readonly SettingKey<string> PlaylistVideoFirst = new("playlist.videoFirst", "");
 
         // ── podcasts ──
-        /// <summary>The show reader's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most
+        /// <summary>The podcast show page's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most
         /// recent first, <see cref="ShowViewPrefs.Cap"/> shows), never a key per uri (podcast plan D-6). Read and written
         /// ONLY through <see cref="ShowViewPrefs"/>, which owns the format.</summary>
         public static readonly SettingKey<string> PodcastViews = new("podcast.views", "");

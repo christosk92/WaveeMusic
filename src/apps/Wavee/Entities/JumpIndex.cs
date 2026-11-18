@@ -1,10 +1,10 @@
 // ── Entities/JumpIndex.cs — the ONE kernel behind every "jump to a group" strip in the app ──────────────────────────
 //
-// A–Z letters (User.cs's LibraryLetters) and a show reader's date/month rail (S-reader, plan §3.4) are the SAME shape:
+// A–Z letters (User.cs's LibraryLetters, the people lists' letters) are one shape:
 // a flat item space that interleaves group HEADERS with ROWS, and a strip that needs two things from it — "where does
 // group K's header sit in the flat space" (a tap target) and, given a header's position, which group it belongs to.
 // This file is that shape, pure and engine-free (no Wavee entity, no signal, no allocation beyond the caller's own
-// output buffer) so both callers share one tested kernel instead of two hand-rolled lookup tables that can drift.
+// output buffer) so every caller shares one kernel instead of hand-rolled lookup tables that can drift.
 //
 // Role: CORE (pure)
 // Owner: A2

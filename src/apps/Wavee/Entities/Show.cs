@@ -222,8 +222,8 @@ public sealed class ShowTable : Table
     }
 }
 
-/// <summary>A show: one <c>int</c>. Partial because <c>Show.UI.cs</c> and <c>Show.Page.cs</c> (Wave 5) add the show arm
-/// of the shared frame.</summary>
+/// <summary>A show: one <c>int</c>. Partial because <c>Show.Page.cs</c> (the route's forwarder) and <c>Show.Podcasts.cs</c> (the topic
+/// search and the cadence word the podcast pages share) add to it.</summary>
 public readonly partial struct Show(int slot) : IEquatable<Show>
 {
     static ShowTable T => Entities.Current.Shows;

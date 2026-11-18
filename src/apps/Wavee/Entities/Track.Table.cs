@@ -3067,10 +3067,10 @@ public readonly partial struct Track
             // (track / episode), which is all its shape depends on; the display index is peeked where it is needed.
             var kind = UseComputed(() => _host.RowKindAt(_scope.Index.Value - _start)).Value;
 
-            // An episode row is never wrapped by Skin — it IS the show reader's own row (Episode.ReaderRow), self-
+            // An episode row is never wrapped by Skin — it IS the episode reader row (Episode.ReaderRow), self-
             // contained (click, hover, check lane, "…"), built through Episode.RowContext from this host's own
-            // tone/play/overlay/menu/selection seams (Track.Table.EpisodeRow.cs). Looks and behaves identically to a
-            // row in the show reader, whether it's hosted in a mixed playlist or Your Episodes.
+            // tone/play/overlay/menu/selection seams (Track.Table.EpisodeRow.cs), whether it's hosted in a mixed
+            // playlist or Your Episodes.
             if (kind == RowTemplate.Episode)
             {
                 _episodeItem ??= _host.BindEpisodeItemFor(_scope, _start);

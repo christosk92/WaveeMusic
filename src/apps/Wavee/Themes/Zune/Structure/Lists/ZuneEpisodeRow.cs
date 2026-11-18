@@ -1,6 +1,6 @@
 // ── Themes/Zune/Structure/Lists/ZuneEpisodeRow.cs — Zune's podcast episode row (themes plan 6.3; P5 Z3) ────────────────────────────
 //
-// The show reader's row as Zune draws it (Z-Show, Z-Home-Podcasts: no dedicated row board, so built from Zune's parts, owner Q18): the cover
+// The episode reader row as Zune draws it (Z-Show, Z-Home-Podcasts: no dedicated row board, so built from Zune's parts, owner Q18): the cover
 // at the Cover radius (2), the title in the TrackTitle role (accent while playing, the bars before it), the two-line blurb, the meta line in
 // the TrackMeta role ("#n", the badges, "new", "23 min left", the date and the length, "played", the transcript mark), the 3-DIP progress
 // rule (square), the "..." and the round accent play disc (Zune's one accent: the disc, the rule, "new" and "left" read the style's accent,

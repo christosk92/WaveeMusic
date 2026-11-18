@@ -12,7 +12,7 @@
 //
 // PRESENTATIONAL ONLY. Every builder is a pure function of VALUES (a tile's text, a date, a label); the hosts read the tables and the page views hand
 // these what to paint. The tile's facts are `Concert.TileData` (core: `Concert.TileOf`, `SeedTile`), so a skeleton derives its shimmer from the SAME
-// builder the loaded page renders. The numbers are `Rules\ZuneShowRules.cs` (`ZuneConcertRules`); the colours are the style's roles
+// builder the loaded page renders. The numbers are `Rules\ZuneEpisodeConcertRules.cs` (`ZuneConcertRules`); the colours are the style's roles
 // (`R.Layer.EventPlate`, `R.Layer.EventHeroPlate`).
 
 using System.Globalization;

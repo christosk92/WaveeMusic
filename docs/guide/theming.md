@@ -1029,7 +1029,6 @@ the collapse state and every pane's model, readiness and verbs stay core.
 |---|---|---|---|
 | `Pages.Library` | `LibraryPageProps` (the title and kind, the arm facts: collapsed, saved-episodes mode, full search, shimmer, depth and crumbs; the persisted signals `LeftW`, `MidW`, `Sort`, `Desc`, `View`, `Size`, `Filter`, `PodcastsMode` and their commit verbs; the width seam `SetPageWidth` and the kind chips `Kinds` (the layout ladder's source and the one-column head's chips); the pane and Your Episodes slots; `LibraryNavigatorProps`: the load state, the bound source, the mount and the letters' signals; `LibrarySearchProps`: the hit lists as lazy Funcs and the selection) | `User.LibraryPage` (`[CoreHost]`, `Entities\User.Page.Library.cs`): the shape memo, the selection and its re-assert effects, the letters, the demand, the search state, the persistence, the layout tier (`UseTier` over the structure's `library.layout` ladder); `ResolveMount()` is the one place the mount identity, the selection pre-write and the cached layout and options meet | `ClassicLibraryPage` (`.cs`, `.Toolbar.cs`, `.Nav.cs`, `.Search.cs`): the root that reports its width, the wide arm (navigator column, `lib:grip`, the pane column), Your Episodes, the three search columns, the collapsed drill (the kind chips over the root rung, a crumb bar over a leaf) keyed by depth, the two arms cross-faded; the toolbar with the word rail and view toggle (Compact: kind chips, a sort button and 40 view cells); the bound list, rows, cards and letter headers; the hit rows |
 | `Library.AlbumPane` | `LibraryAlbumPaneProps` (the readiness state, the keyed child's key, the header facts, the verbs, the notice, the region's cached `Loadable`, the shimmer count and row height, `Table` and `AlsoBy`) | `Album.Pane` (`[CoreHost]`, `Entities\Album.Pane.cs`): the demand (identity, rows, credits, partial pages), `AlbumPaneReadiness`, the keys, the log, the retry | `ClassicLibraryAlbumPane`: the header and its stated-height skeleton, the command row, the keyed swap with its crossfade, the counted shimmer under the header shim, the failed strip and the "Also by" strip |
-| `Library.ShowPane` | `LibraryShowPaneProps` (the header facts, the primary as a Func over the accent, the heart's presence bind, the menu, the reader element) | `Show.Pane` (`[CoreHost]`, `Entities\Show.Pane.cs`): the selection signal, the memo pair, the demand, the reader's per-show key | `ClassicLibraryShowPane`: the two arm keys (`showpane:body` / `showpane:skel`), the swap, the header, the command row and the reader slot |
 | `Library.SavedEpisodes` | `LibrarySavedEpisodesProps` (pending, failed, the content and failed arms as Funcs) | `SavedEpisodesReader` (`[CoreHost]`, `Entities\User.SavedEpisodes.cs`): the read of the listen-later playlist, the edge demand, the table | `ClassicLibrarySavedEpisodes`: the region with the cold seed of the structure's episode rows and the fade-only reveal |
 | `Library.ArtistReader` | `LibraryArtistReaderProps` (the host seam, the mount's `ListKey`, counts, `RepeatLayout` and `ListOptions`, the page's scope and sort signals, the spine's controller and count, the bounds and mount callbacks; never equal to another instance) | `Artist.Reader` (`[CoreHost]`, `Entities\Artist.Reader.cs`): props channel, shape memo and block order, catalogue gate, demand, `BlockCell` readiness, extent corrections, scroll spy and spine follow, mount key, width arms, verbs; it implements `IArtistReaderHost`, and each block cell `IArtistReaderBlock` | `ClassicLibraryArtistReader` (`Views\Pages`): the lane, the band in both arms, the name column, the pinned sub-rail, the cover spine and dots, the block faces and their counted skeletons, the tail |
 
@@ -1052,7 +1051,7 @@ and equal to `ClassicLibraryRules`). `LibraryViewPrefs` (`Read`, `SetLeftW`, `Se
 **What a Library view may call.** The WVTH002 fence applies. The navigator's data adapters stay core and are called by the rows (`LibraryRows`, `User.NavSubtitleText`, `User.ArtOf`, `User.DragOf`, `User.HitDrag`,
 `ClassicLetterKit.StickyLetter` / `JumpStrip` / `LetterPlate` / `LetterText` (`Views\Pages\ClassicLetterKit.cs`, shared with the profile lists), `ClassicDetailKit.MoreButton` / `CommandCircle` / `ArtistLine`); a hit row is the shared media surface over `Search.MenuOf` and `Track.RowData`; the pane's verbs (play, shuffle, open,
 retry, the ⋯ menu) arrive as props. The numbers are `Rules\ClassicLibraryRules.cs`, `ClassicLibraryPaneRules.cs` (the pane header's stated height and type budget, the swap, the shimmer, the "Also by" strip),
-`ClassicLibrarySearchRules.cs` and `ClassicLibraryReaderRules.cs`. The pane header, its loading twin, the command row and the swap are shared by the album and the show pane (`ClassicLibraryPaneKit`).
+`ClassicLibrarySearchRules.cs` and `ClassicLibraryReaderRules.cs`. The pane header, its loading twin, the command row and the swap are the album pane's (`ClassicLibraryPaneKit`). A picked show or audiobook is the route's own page (`PodcastPages.LibraryPane`), drawn by the podcast pages' keys in the tiers of the column.
 
 **Skeletons.** The navigator's eight shimmer rows cross-dissolve into the rows (`SkelReveal.StaggerRows`); the album pane's header skeleton states the real header's height, so the crossfade is a dissolve and never a reflow; its
 counted shimmer is the table's own lanes and row pitch under the header shim; Your Episodes seeds with the structure's episode rows; the reader's blocks keep their analytic extents.
@@ -1137,8 +1136,8 @@ to another instance (the view re-runs exactly when the host re-rendered, which i
 that compares by data and by the reference of the table's pieces: the table owns that gate.
 
 **What the pages keep calling.** The page-facing builders that used to stay in `Detail` as the seam are all Classic's since T10c2: the band (`Band` / `BandTitle` / `BandByline` / `BandHairline` / `Pivot`) is `ClassicDetailBand` (`Views\Detail\ClassicDetailBand.cs`); `Satellite`, `Fab`, `MoreButton`, `ArtistLine`, `CommandCircle` (was `Album.CommandCircle`) and the `SaveTargetOf` / `ShareActionFor` targets are `ClassicDetailKit` (`ClassicDetailKit.Helpers.cs`); the A-Z overlay, plate and strip (was `User.StickyLetter` / `LetterPlate` / `JumpStrip` / `LetterText`) are `ClassicLetterKit`; the artist section shell (was `Artist.SectionBlock`) is `ClassicArtistSections.SectionBlock`. `Detail.BandLayout` (the band's numbers and the scroll-spy arithmetic) stays core: the artist and profile hosts read it. The library album pane's props carry the billed `Artists` (the view builds the line). The ones the album and the playlist, and the frame's own views, used moved in T9b (below): the keyed rail rows, the eyebrow run and
-the billed-artist line box are the shared Classic kit (`ClassicDetailKit.cs`), and `NoticeBar` is a mount of the `Detail.Notice` view. T9c moved the
-rail satellites (`ClassicDetailKit.Satellites.cs`) and dropped `Detail.PlayButton`. A view may not name `Shell`, `Playback`, `Entities` or `Store`
+the billed-artist line box are the shared Classic kit (`ClassicDetailKit.cs`), and `NoticeBar` is a mount of the `Detail.Notice` view. T9c dropped
+`Detail.PlayButton` (the rail satellites it moved out went with the library's old show pane, contract 1.118). A view may not name `Shell`, `Playback`, `Entities` or `Store`
 (WVTH002): what a detail view must do that touches them is `DetailVerbs` (`NavigateKey`, `OpenOwner`, `PlayContext`, `ChartCaptionText`).
 
 **Motion and keys are the host's old tree.** The content column keeps its key across a rail collapse so the table reconciles in place; the grip lives in
@@ -1215,28 +1214,13 @@ constants in `Rules\ClassicLikedRules.cs`.
 (`User.LensHeader`, `User.FactsPanel`: the playlist page mounts the same two, so they are T9b's seam), the empty state (`Controls.Vacancy`, shared) and
 the table's filter. `Detail.Config.SlimHead` / `HoverHeart` / `PlainRows` (PR 205) are not on this branch, so there was nothing to move.
 
-### The podcast show page (T9c)
+### The podcast show page (T9c, retired)
 
-The show page is the shared detail frame (T9a) with a rail of podcast slots on the left and the episode reader on the right. Its pictures are ONE style, not views:
-the reader is a bound list with a persistent sticky prefix, a reveal region per head and per row, and skeletons that derive their shimmer from a PURE builder (the
-skeleton deriver cannot run a view slot), so the core hosts keep every hook and call pure templates while they render, exactly as the list surfaces do (T8c).
-
-| Key (id) | Contract | Core half | Classic |
-|---|---|---|---|
-| `StyleKeys.ShowReader` (`Show.Reader`) | `ShowReaderStyle`: the rail slots `Primary`, `Ledger`, `Rating`, `Badges`, `Topics`, `Publisher`, `Satellites`; the reader's `Toolbar`, `HeadShell`, `Head`, `EpisodesHeader`, `Group`, `StickyMonth`, `YearStrip`, `YearReserve`, `Foot`, `Seed` | `Show.PageHost` (the frame spec, the demand, the persisted view, the slot sets by presence), the rail slot components (`PrimarySlot`, `LedgerSlot`, `RatingSlot` with the rate flyout's handle, `BadgesSlot`, `TopicsSlot`: tone memo, facts, verbs), `Show.ReaderHost` (the model and its one snapshot, the toolbar stage and its measures, the selection, the date index and sticky month, the analytic extents and `CheckExtent`, the reveal gates), `RailBody`, `VisitHead`, `EpisodesHeader`, `ReaderFoot` (stamps and args), `Show.Pane` (the selection signal, the memo pair, the demand and the reader's key; its picture is the `Library.ShowPane` view, T10c1) | `ClassicShow` (`Views\Show\ClassicShowReader.cs`, `ClassicShowHead.cs`, `ClassicShowRail.cs`) over `Rules\ClassicShowRules.cs` |
-
-- **What stayed core, and why.** The decisions the list, the skeleton and the rows must agree on row for row are core and pure: `ShowReaderRules` (the head, the primary, the
-  results mode, the item list with its marks, the head columns, the gutters, the strip's column, the rail / header / month extents and every seed), `ShowToolbarLayout`, `ShowDateIndex`,
-  `ShowCadence`, `ListenNext`, the follow write (`Controls.Library`), the trailer, `Show.MonthWordOf` (culture text shared by the month header and the sticky month) and `Show.MetaOf` (the meta
-  line's words). The sticky root of the toolbar is a RAW element in the host: a sticky root returned from a component never pins.
-- **Skeletons match real heights.** The cold seed (`Seed`: the real filter words, the "episodes" head, eight seed rows) and the head's shimmer (`HeadShell`) are the same builders as the live
-  pictures; the extents they reserve are the core's (`ShowReaderRules.SeedExtent`), and `CheckExtent` holds the arranged month and header heights to them.
-- **Episodes in the head.** The head's doors, hero and up-next cards sit behind `Episode.Reveal` (card once the identity is there, a shimmer while it comes, "unavailable - retry" on a failed ask), and
-  the new-since rows are the episode row style (`StyleKeys.EpisodeRow`) over a fixed scope; both are the core's gate over the structure's pictures.
-- **A host without a registry** logs `no style is registered for Show.Reader` once and draws nothing.
-
-Also in the T9a section: "What the pages keep calling" no longer lists `PlayButton` (dropped: a one-line forward to `Controls.PlayButton`) or `RailSatellite*` (moved to
-`Views\Detail\ClassicDetailKit.cs`, the shared kit T9b also appends to).
+T9c drew the show page as the shared detail frame with a rail of podcast slots and the episode reader (`StyleKeys.ShowReader`, `ShowReaderStyle`), and the library's
+podcast column as the `Library.ShowPane` view over the same reader. Both are gone (contract 1.118): the show route and the library's show column mount the podcast
+pages (`Podcasts\PodcastPages*.cs`: `Pages.PodcastShow` / `Pages.Audiobook`, `ViewKeys.PodcastPages.cs`; the library's column is `PodcastPages.LibraryPane`). The
+core rules the pages still read are `ShowReaderRules` (the rows' demand, the find, the view prefs' key), `ShowViewPrefs`, `ShowCadence`, `ShowLedger.IsFresh` and the
+episode row style (`StyleKeys.EpisodeRow`, the playlist table's episode rows).
 
 ### The episode page, reader and discussion (T9c)
 
@@ -1557,8 +1541,7 @@ and the page's mount cache swaps only the grid's `GridFit` value, so a crossing 
 **The Huge navigator and album pane** (C-Library-Huge, C-LibraryList-Huge): the navigator column is tinted over the card (`ClassicLibraryLayout.NavTinted`, `ClassicLibraryRules.NavTint`, a static fill eased across a crossing) and the album
 pane's "Also by … in your library" leaves the rows' trailing band for a 300 aside 32 right of them (`AlsoByAside` / `AlsoByAsideGap`): a 14/20 heading over two columns of 140 covers (the shared surface at a 156 card), scrolling on its own.
 The aside column is in the pane's row at every tier (width 0 below Huge) so a crossing eases it and the rows' slot is never re-parented; the view provides a Classic context the rows' trailing band reads (a small host of its own,
-`AlsoByTrailing`), so the strip is never shown twice. **The library show pane's command row is 40 at Compact** like the album pane's: `LibraryShowPaneProps.Primary` takes the control size the view asks for (contract 1.22, `ShowPrimaryArgs.Size`),
-and the heart and the "..." take the 40 box.
+`AlsoByTrailing`), so the strip is never shown twice.
 
 **Recents' docked Overview** (C-Recents-Huge, `ClassicRecentsLayout.ListMax` / `OverviewAside` / `OverviewGap`): the page is a row of the column (masthead, pivots, list; capped at 1100 plus the gutters) and an aside 48 right of it with
 its own "Overview" head, the heat key and two columns of plated month cards (`ClassicRecentsOverview`: the calendar's month card in a card plate, its own list and scroll, never the zoom's controller). The masthead's Overview

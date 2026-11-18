@@ -1,13 +1,12 @@
-// ── Theming/Contracts/LibraryPaneProps.cs — the props of the library's album pane, show pane and Your Episodes page (themes plan 6.0, T10c1) ──
+// ── Theming/Contracts/LibraryPaneProps.cs — the props of the library's album pane and Your Episodes page (themes plan 6.0, T10c1) ──────────────
 //
-// The core hosts (`Album.Pane`, `Show.Pane`, `SavedEpisodesReader`) keep the selection, the demands, the readiness verdicts, the keys and every verb; the
-// views draw the pane. The pane's models are untouched: `AlbumPaneReadiness` decides the state, `Album.Pane` demands the rows and the credits, `Show.Pane`
-// keeps the memo pair. Every record compares by reference (the host rebuilds one per render). Every member is read-only (WVTH006).
+// The core hosts (`Album.Pane`, `SavedEpisodesReader`) keep the selection, the demands, the readiness verdicts, the keys and every verb; the views draw
+// the pane. The pane's models are untouched: `AlbumPaneReadiness` decides the state, `Album.Pane` demands the rows and the credits. Every record
+// compares by reference (the host rebuilds one per render). Every member is read-only (WVTH006).
 
 using System.Runtime.CompilerServices;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
@@ -90,54 +89,6 @@ public sealed record LibraryAlbumPaneProps
 
     /// <inheritdoc />
     public bool Equals(LibraryAlbumPaneProps? other) => ReferenceEquals(this, other);
-
-    /// <inheritdoc />
-    public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
-}
-
-/// <summary>The props of <see cref="ViewKeys.LibraryShowPane"/>.</summary>
-public sealed record LibraryShowPaneProps
-{
-    /// <summary>The header may paint (the show's title is known): otherwise the header skeleton.</summary>
-    public required bool HeaderReady { get; init; }
-
-    /// <summary>The show's cover art url.</summary>
-    public string? CoverUrl { get; init; }
-
-    /// <summary>The header's eyebrow.</summary>
-    public string Eyebrow { get; init; } = "";
-
-    /// <summary>The show's title.</summary>
-    public string Title { get; init; } = "";
-
-    /// <summary>The publisher's name (the attribution line).</summary>
-    public string Publisher { get; init; } = "";
-
-    /// <summary>The header's meta line.</summary>
-    public string Meta { get; init; } = "";
-
-    /// <summary>The show's uri text.</summary>
-    public string Uri { get; init; } = "";
-
-    /// <summary>Open the show's page.</summary>
-    public required Action Open { get; init; }
-
-    /// <summary>The primary slot: a core component keyed "showpane:primary", built by the host over the accent the view hands it (the app accent: a live read) at the
-    /// control size the view asks for (the stock Medium, or Large for the 40-DIP targets of a Compact pane; contract 1.22: the size argument is new, before any external
-    /// theme existed, as 1.2 did); null while the header is a skeleton.</summary>
-    public Func<Func<ColorF>, ControlSize, Element>? Primary { get; init; }
-
-    /// <summary>The heart's presence bind (shown while the primary is not "Follow").</summary>
-    public required Prop<bool> HeartShown { get; init; }
-
-    /// <summary>The ⋯ menu, built lazily at open.</summary>
-    public required Func<ContextMenuModel?> More { get; init; }
-
-    /// <summary>The reader (the SAME one the route page mounts), keyed per show by the pane; null while the header is a skeleton.</summary>
-    public Element? Reader { get; init; }
-
-    /// <inheritdoc />
-    public bool Equals(LibraryShowPaneProps? other) => ReferenceEquals(this, other);
 
     /// <inheritdoc />
     public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);

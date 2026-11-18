@@ -47,7 +47,7 @@ internal static partial class WinUiDetailFrame
         Element content = new BoxEl
         {
             Direction = 1, Grow = 1f, ClipToBounds = true, DropTarget = p.Drop,
-            Children = [ReaderInset(right, ShowReaderRules.Pad)],
+            Children = [right],
         };
         Element page = new BoxEl
         {
@@ -71,22 +71,6 @@ internal static partial class WinUiDetailFrame
             ZStack = true, Grow = 1f, OnBoundsChanged = p.OnMeasured, ClipToBounds = true,
             Children = [p.Tint, p.Tone, Arm("vertical", row)],
         });
-    }
-
-    /// <summary>The episodes' column between two easing spacers: the page's inset less the reader's own pad (0 where they agree: Compact, Small).</summary>
-    static Element ReaderInset(Element column, float inset)
-    {
-        float side = MathF.Max(0f, inset - ShowReaderRules.Pad);
-        return new BoxEl
-        {
-            Key = "detail:reader-inset", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-            Children =
-            [
-                new BoxEl { Key = "reader-inset:lead", Width = side, Shrink = 0f, Layout = WinUiDiscoveryMotion.WidthReflow },
-                new BoxEl { Key = "reader-inset:column", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [column] },
-                new BoxEl { Key = "reader-inset:trail", Width = side, Shrink = 0f, Layout = WinUiDiscoveryMotion.WidthReflow },
-            ],
-        };
     }
 
     /// <summary>One arm of the frame under its own key, entering and leaving on opacity alone.</summary>

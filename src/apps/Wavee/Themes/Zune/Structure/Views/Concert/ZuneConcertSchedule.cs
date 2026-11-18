@@ -74,7 +74,7 @@ internal static class ZuneConcertSchedule
         var cell = ctx.Hooks.UseRef(new Cell()).Value;
         var facts = ctx.Tier();
         var lay = ZuneConcertTiers.Of(in facts);
-        var rings = ZuneShow.RingLayoutOf(in facts);   // the event page's command rings, for "view event"
+        var rings = ZuneConcertDetail.RingLayoutOf(in facts);   // the event page's command rings, for "view event"
         float gutter = ZuneTiers.FrameOf(in facts).Gutter;
         Func<Element> content = () => props.Empty
             ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Concerts.Schedule.NoUpcoming),

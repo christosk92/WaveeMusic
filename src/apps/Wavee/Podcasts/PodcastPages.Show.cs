@@ -223,11 +223,10 @@ sealed class ShowModel
     /// <summary>Whether the listener chose the order (else it follows the show: a serial reads oldest first).</summary>
     readonly Signal<bool> _orderChosen = new(false);
     bool _seeded;
-    /// <summary>The filter and the order are remembered per show (<see cref="ShowViewPrefs"/>, the one capped blob the library pane's reader
-    /// shares): seeded here, written by <see cref="PersistView"/> on a change. The codes the two surfaces share mean the same (status 0 All,
-    /// 1 Unplayed, 2 In progress; order 0 newest, 1 oldest); each page's own code is one the other's seed reads as its default: this page's
-    /// Saved is <see cref="SavedCode"/> and "the order follows the show" <see cref="OrderFollowsShow"/> (the reader clamps a status past
-    /// Played and an order past 1 to 0), and the reader's Played (3) opens this page on All.</summary>
+    /// <summary>The filter and the order are remembered per show (<see cref="ShowViewPrefs"/>, one capped blob): seeded here, written by
+    /// <see cref="PersistView"/> on a change. Status 0 All, 1 Unplayed, 2 In progress and <see cref="SavedCode"/> Saved; order 0 newest,
+    /// 1 oldest and <see cref="OrderFollowsShow"/> "the order follows the show". A stored status this page does not define (the retired
+    /// library reader's Played, 3) opens it on All.</summary>
     public readonly string PrefsId;
     int _savedStatus, _savedOrder;
     const int SavedCode = 4, OrderFollowsShow = 2;
@@ -569,7 +568,7 @@ sealed class ShowModel
         }
         bool serial = page.Order == ShowOrder.Serial;
         // The order follows the show until the reader picks one: a serial reads oldest first.
-        var (cadence, _) = ShowCadence.Of(published);
+        var cadence = ShowCadence.Of(published);
         following = page.Saved == SaveState.Saved || following;
 
         // What a row leaves out (PodcastRowRules): the show's own name in its title, the opening line the descriptions share.

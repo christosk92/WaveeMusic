@@ -426,11 +426,10 @@ numbers and tier records `Rules\ZunePlaylistRules.cs` (`ZunePlaylistRules`, `Zun
 
 ## Z6b2: the show, the episode and the concerts
 
-Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Compact` / `-Small` / `-Huge` twins. Files: `Themes\Zune\Structure\ZuneStructure.ShowEpisodeConcert.cs` (the registrar), `Views\Show\ZuneShowReader.cs`, `ZuneShowHead.cs`, `ZuneShowRail.cs`; `Views\Episode\ZuneEpisode.cs`, `ZuneEpisodeReader.cs`, `ZuneEpisodeDiscussion.cs`; `Views\Concert\ZuneConcertCells.cs`, `ZuneConcertDetail.cs`, `ZuneConcertHub.cs`, `ZuneConcertFilterBar.cs`, `ZuneConcertFlyouts.cs`, `ZuneConcertPicker.cs`, `ZuneConcertSchedule.cs`; numbers and records `Rules\ZuneShowRules.cs` (`ZuneShowRules`, `ZuneEpisodeRules`, `ZuneConcertRules`, `ZuneConcertTiers` / `ZuneConcertLayout`). Zune's registrations win over Classic's stand-in key by key.
+Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Compact` / `-Small` / `-Huge` twins. Files: `Themes\Zune\Structure\ZuneStructure.ShowEpisodeConcert.cs` (the registrar); `Views\Episode\ZuneEpisode.cs`, `ZuneEpisodeReader.cs`, `ZuneEpisodeDiscussion.cs`; `Views\Concert\ZuneConcertCells.cs`, `ZuneConcertDetail.cs`, `ZuneConcertHub.cs`, `ZuneConcertFilterBar.cs`, `ZuneConcertFlyouts.cs`, `ZuneConcertPicker.cs`, `ZuneConcertSchedule.cs`; numbers and records `Rules\ZuneEpisodeConcertRules.cs` (`ZuneEpisodeRules`, `ZuneConcertRules`, `ZuneConcertTiers` / `ZuneConcertLayout`). Zune's registrations win over Classic's stand-in key by key.
 
 | Key | Zune's template |
 |---|---|
-| `StyleKeys.ShowReader` | `ZuneShow.Style` (rail primary, ledger, rating, badges, topics, publisher, satellites; the toolbar, the visit head, the headers, the foot, the seed) |
 | `Episode.Primary` `.Attribution` `.Actions` `.Save` `.RailAbout` `.Rating` | `zune.episode.*` |
 | `Episode.Reader` `.About` `.Chapters` | `zune.episode.reader` / `.about` / `.chapters` |
 | `Episode.Discussion` `.CommentCard` `.CommentSeed` `.LoadMore` `.ReactionFlyout` `.ReactionRoster` `.ReactionPeople` | `zune.episode.*` |
@@ -438,7 +437,7 @@ Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Com
 | `Pages.Concerts`, `Concert.Tail` | `zune.concerts.hub`, `zune.concerts.tail` |
 | `Pages.ArtistConcerts`, `Concert.PlacePicker` | `zune.concerts.artist-schedule`, `zune.concerts.place-picker` |
 
-**The show** stands in Z6a1's detail frame. The rail's slots: the publisher link (15), the badge words ("exclusive · E · video", the accent on exclusive), the rating line, the played LEDGER (a 3-dip bar: played in the primary ink, in progress in the accent, the rest the track, its parts easing their widths; "84 played · 3 in progress · 41 to go · 5 new"), the RING row (the accent play ring with its words, "resume" over "23 min left", or "follow" with a ghost play; save, trailer, share and "..." after it) and the topic words. The rings' size is the tier's (36, 40 at Compact and 4K) and a slot template has no view context, so each ring is a small component that reads the facts it is drawn in. The reader is the core word rail under the accent underline (the stage rule's measure is the core's), the visit head's cards are flat (a 72 cover, the accent label, the title, "6 min left · #808", a 2-dip track and a 40 ring), the "episodes 812" heading is the 26/32 heading voice on the core's stated 30 line, a month the 22 light group voice on the stated 24 line. The core's arithmetic (48 rail, 30 + 12 header, 14 + 24 + 4 month, 30 strip) is untouched.
+**The show** was the reader style (`StyleKeys.ShowReader`: the rail's slots, the word rail, the visit head, the month headers and their jump list, the year strip); it is retired with the library's old show pane (contract 1.118). The show page is the podcast pages' (`Views\Podcast\ZunePodcastShow*.cs`).
 
 **The episode** is the frame's two columns (the cover, the show link, the ring row: resume over its minutes, save, the played mark, share, "...") and Zune's reader: about · chapters · transcript · comments STACKED in one scroll under 26/32 light headings at a 760 measure, the description at 15/22. Chapters are the BIG-NUMERAL rows (a 22 light numeral in a 44 column, the title at 15, the start time at 12; the playing chapter in the accent on the selected wash). The reader draws no pivot: the four words are the band's row 2.
 
@@ -450,7 +449,7 @@ Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Com
 
 **Words and casing.** Everything the theme writes (headings, rings, captions, quiet lines, a month, a weekday) is lowered by the case roles; a title, a venue, a place, an artist and a genre keep their casing.
 
-**Decided here.** `Concert.Tail` and `Concert.PlacePicker` are Zune's own (not Nothing). The stand-in's disabled new-episode bell has no ring in Zune. `ConcertDetailView` gained `Date` (the show's date and time as a value, the contract addition).
+**Decided here.** `Concert.Tail` and `Concert.PlacePicker` are Zune's own (not Nothing). `ConcertDetailView` gained `Date` (the show's date and time as a value, the contract addition).
 
 **Board versus contract / plan.** The boards lay chapters and transcript side by side; the reader's contract is a stack of anchored sections read by one spy (two sections would share a top), so they stack. The boards put the episode's title (40/48) above the about; the frame's panorama (and row 2) already carries it. The boards draw no panorama on a show or an episode (the title in the rail); Z6a1's frame draws one on every detail page. The board's "about" tab on a show has no target: the rail already carries the description.
 
@@ -462,7 +461,7 @@ Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Com
 
 Library, Recents and the profile (`ZuneStructure.Collection.cs`; boards `Z-Library-{Albums,Artists,Playlists,Podcasts,Audiobooks}`, `Z-Recents`, `Z-Profile`, each with its Compact / Small / Huge twin).
 
-**Keys.** Own: `Pages.Library`, `Library.AlbumPane`, `Library.ShowPane`, `Library.ArtistReader`, `Library.SavedEpisodes` (`Views\Library\`), `Pages.Recents` (`Views\Recents\`), `Pages.User` and `Pages.ProfileList` (`Views\Profile\`; the list has no board, owner Q18). Common: Module. Local files renders through the playlist page.
+**Keys.** Own: `Pages.Library`, `Library.AlbumPane`, `Library.ArtistReader`, `Library.SavedEpisodes` (`Views\Library\`), `Pages.Recents` (`Views\Recents\`), `Pages.User` and `Pages.ProfileList` (`Views\Profile\`; the list has no board, owner Q18). Common: Module. Local files renders through the playlist page.
 
 **The playlists route (core).** `RouteKind.LibraryPlaylists` (`playlists`) is a new exact route. Its page is `User.LibraryPlaylists` (`Entities\User.Page.Playlists.cs`): the rootlist tree the sidebar plans from (`Sidebar.Model.Rootlist`: playlists and folders, folder expansion persisted), the sidebar's covers and subtitles, the create-playlist and new-folder verbs. It is core-drawn with the style's roles (no view key, so Classic needed no change), pumps the nav model itself (the pane that normally does is not mounted under Zune), and is the second view of the library's row 2 (`User.LibraryChromeViews`: liked, playlists, albums, artists, podcasts, audiobooks). Under Classic nothing links to it, but navigating there draws the list. It is registered through its own lazy group (`Shell.InstallLazyGroupFor`).
 
@@ -706,7 +705,7 @@ toggle and close 40.
 
 ## ZT6: artist and people tiers
 
-Boards: `Z-Artist` and its `-Compact` / `-Small` / `-Huge` / `-Huge4K`, `Z-Profile` and its `-Compact` / `-Small` / `-Huge`, `Z-Concert` and its `-Compact` / `-Small` / `-Huge`. No board (owner Q18, built from Zune's parts): the discography page, the lightbox, the people list, the concert hub, the tour dashboard and the place picker. Files: `Rules\ZuneArtistRules.cs` (`ZuneArtistTiers`, `ZuneArtistTierPolicy`), `Rules\ZuneProfileRules.cs` (`ZuneProfileTiers`), `Rules\ZuneShowRules.cs` (`ZuneConcertTiers`, the popups' fit), `Rules\ZunePolicies.Artist.cs`, the views under `Views\Artist`, `Views\Profile` and `Views\Concert`.
+Boards: `Z-Artist` and its `-Compact` / `-Small` / `-Huge` / `-Huge4K`, `Z-Profile` and its `-Compact` / `-Small` / `-Huge`, `Z-Concert` and its `-Compact` / `-Small` / `-Huge`. No board (owner Q18, built from Zune's parts): the discography page, the lightbox, the people list, the concert hub, the tour dashboard and the place picker. Files: `Rules\ZuneArtistRules.cs` (`ZuneArtistTiers`, `ZuneArtistTierPolicy`), `Rules\ZuneProfileRules.cs` (`ZuneProfileTiers`), `Rules\ZuneEpisodeConcertRules.cs` (`ZuneConcertTiers`, the popups' fit), `Rules\ZunePolicies.Artist.cs`, the views under `Views\Artist`, `Views\Profile` and `Views\Concert`.
 
 **Records.** Each family has a record per content tier and every one reads `ZuneTiers.Frame(tier).Gutter`. `Of(facts)` returns the content tier's record, folded on a Short window (330-699 tall: the band folds to 52 and the bar holds 72, so about 160 DIP are left to the page); a view mounted with no frame reads Standard's. A record carries what the tier lays out: the artist's hero height, name voice, where the actions stand, the chart's columns, cap and rail, the shelf cards and the grid cell; the profile's avatar, name voice, ranked columns, cards and list cell; the concert's title, numeral, slab and rows. A bare link word is a `LinkTarget` (40 at Compact, 0 where the word is its own target).
 
