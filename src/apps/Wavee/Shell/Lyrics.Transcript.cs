@@ -83,7 +83,7 @@ public static partial class Lyrics
     /// this side never touches a theme token, so it is plain, engine-free and unit-testable.</summary>
     public enum InkRung : byte { Accent, Primary, Secondary }
 
-    /// <summary>Playing transcripts share the lyrics presentation; independently browsed speech stays neutral.</summary>
+    /// <summary>The playing episode's transcript shares the lyrics presentation; these are its ink rungs.</summary>
     public static class TranscriptPresentation
     {
         public static void Publish(Loadable<Doc> target, Doc document, Action<Doc> prepare)
@@ -91,16 +91,9 @@ public static partial class Lyrics
             prepare(document);
             target.SetReady(document);
         }
-        public static bool Neutral(bool podcast, bool ownsPlayback) => podcast && !ownsPlayback;
-        public static float RowOpacity(bool podcast, bool ownsPlayback, int emphasis)
-            => Neutral(podcast, ownsPlayback) ? 1f : Emphasis.OpacityOf(emphasis);
-        public static bool Active(bool podcast, bool ownsPlayback, int emphasis)
-            => (!podcast || ownsPlayback) && Emphasis.DistOf(emphasis) == 0;
-        public static bool WordHighlight(bool podcast, bool ownsPlayback, Line line)
-            => line.IsWordByWord && line.Syllables.Count > 0 && !Neutral(podcast, ownsPlayback);
 
         /// <summary>Beyond this many ring steps PAST the active line, a row's own ink dims too. Inside that ring the
-        /// row's OPACITY (<see cref="RowOpacity"/>) already carries the distance — a nearer past row reads the same
+        /// row's OPACITY (<see cref="Emphasis.OpacityOf"/>) already carries the distance — a nearer past row reads the same
         /// full ink as an upcoming one — so a transcript with many rows visible at once doesn't read as a flat grey
         /// wall the moment a line is behind.</summary>
         public const int PastInkRing = 1;
@@ -125,84 +118,6 @@ public static partial class Lyrics
             LineRole.Past => InkRung.Secondary,
             _ => InkRung.Primary,
         };
-    }
-
-    /// <summary>THE PEEK's arithmetic (podcast-episode-peek §2). A transcript the reader is browsing for an episode
-    /// that is NOT the one playing shows its real opening lines behind a veil that is sharp at the top and dissolves
-    /// toward the bottom, with the play gate sitting on the dissolve. The engine has no backdrop filter, so the
-    /// dissolve is the CONTENT's own: the opening lines are grouped into <see cref="Bands"/> stacked blocks, each one
-    /// carrying its own self-blur σ (<c>BoxEl.Blur</c>) and its own opacity — band 0 sharp and fully opaque, the last
-    /// one a blurred whisper. Pure numbers only; <c>Lyrics.UI.cs</c> turns them into nodes.</summary>
-    public static class TranscriptPeek
-    {
-        /// <summary>How many of the document's OPENING lines the peek renders. Enough to fill the pane behind the
-        /// gate and no more — the peek is an excerpt, never a silent way to read a transcript you have not started.</summary>
-        public const int MaxLines = 9;
-        /// <summary>The opening lines that stay completely readable ("roughly the first two lines").</summary>
-        public const int SharpLines = 2;
-        /// <summary>Bands INCLUDING the sharp one, so <see cref="Bands"/> - 1 veiled steps follow it.</summary>
-        public const int Bands = 4;
-        /// <summary>The σ (DIP) of the LAST band — the deepest blur the dissolve reaches.</summary>
-        public const float MaxSigma = 6f;
-        /// <summary>…and the opacity it fades to over the same run.</summary>
-        public const float MinOpacity = 0.26f;
-
-        /// <summary>The pane is GATED exactly when a podcast transcript the reader is browsing belongs to an episode
-        /// that is not the one playing AND there is something to peek at. An episode with NO transcript keeps the
-        /// quiet "no transcript" line — there is nothing to preview, so there is no veil and no gate — and the moment
-        /// this episode becomes the one playing (from anywhere in the app) the gate is gone.</summary>
-        public static bool Gated(bool podcast, bool ownsPlayback, int lineCount)
-            => podcast && !ownsPlayback && lineCount > 0;
-
-        /// <summary>How many lines the peek actually renders out of <paramref name="available"/>.</summary>
-        public static int LineCount(int available) => available <= 0 ? 0 : Math.Min(MaxLines, available);
-
-        /// <summary>The band row <paramref name="index"/> belongs to (0 = sharp). The lines after the sharp head are
-        /// split as evenly as they divide over the veiled bands, so a short transcript dissolves over its own length
-        /// rather than leaving the last bands empty.</summary>
-        public static int BandOf(int index, int count)
-        {
-            if (index < SharpLines || count <= SharpLines) return 0;
-            int tail = Bands - 1;
-            int per = Math.Max(1, (count - SharpLines + tail - 1) / tail);
-            return 1 + Math.Min(tail - 1, (index - SharpLines) / per);
-        }
-
-        /// <summary>The self-blur σ a band paints with — 0 on the sharp head, <see cref="MaxSigma"/> on the last.</summary>
-        public static float SigmaOf(int band)
-            => band <= 0 ? 0f : MaxSigma * Math.Min(band, Bands - 1) / (Bands - 1);
-
-        /// <summary>The band's opacity: 1 on the sharp head, easing to <see cref="MinOpacity"/> on the last. This is
-        /// the other half of the dissolve, and the half that works on ANY background (Mica included) — a coloured
-        /// veil would have to guess the surface underneath it.</summary>
-        public static float OpacityOf(int band)
-        {
-            if (band <= 0) return 1f;
-            float t = Math.Min(band, Bands - 1) / (float)(Bands - 1);
-            return 1f + (MinOpacity - 1f) * t;
-        }
-
-        /// <summary>The gate's quiet line: the episode length and the transcript's language, either alone when the
-        /// other is unknown, and nothing at all when neither is.</summary>
-        public static string MetaLine(string duration, string language)
-        {
-            duration = duration?.Trim() ?? "";
-            language = language?.Trim() ?? "";
-            return duration.Length == 0 ? language
-                : language.Length == 0 ? duration
-                : duration + " · " + language;
-        }
-
-        /// <summary>A BCP-47 tag as the gate shows it. The app runs with invariant globalization, so there is no
-        /// culture table to turn "en-US" into "English": the primary subtag, upper-cased, is the honest answer.</summary>
-        public static string LanguageLabel(string? tag)
-        {
-            if (string.IsNullOrWhiteSpace(tag)) return "";
-            var span = tag.AsSpan().Trim();
-            int cut = span.IndexOfAny('-', '_');
-            if (cut > 0) span = span[..cut];
-            return span.Length is 0 or > 8 ? "" : span.ToString().ToUpperInvariant();
-        }
     }
 
     // UI-thread leases share one resource between the episode reader, rail and expanded player. The final
@@ -308,17 +223,14 @@ public static partial class Lyrics
                     if (state == LoadState.Ready)
                     {
                         TranscriptPresentation.Publish(_presentation, doc,
-                            next => owner.PrepareDocument(next, owner.OwnsPlayback ? Playback.PositionMs.Peek() : 0));
+                            next => owner.PrepareDocument(next, Playback.PositionMs.Peek()));
                     }
                     else if (state == LoadState.Failed)
                         _presentation.SetFailed(data.Error ?? new InvalidOperationException("Transcript unavailable"));
                     else if (!_presentation.IsReady) _presentation.SetPending(TranscriptSeed);
                 });
-                // TranscriptContent READS the playback-owner signal, and this region's content runs inside the
-                // reconciler's own tracked effect — so the peek's veil and gate lift the instant this episode becomes
-                // the one playing (from anywhere in the app), without a remount and without re-fetching.
                 return Skel.Region(_presentation,
-                    content: doc => ReferenceEquals(doc, TranscriptSeed) ? owner.UnsyncedContent(doc) : owner.TranscriptContent(doc),
+                    content: doc => ReferenceEquals(doc, TranscriptSeed) ? owner.UnsyncedContent(doc) : owner.LyricsContent(doc),
                     isEmpty: static doc => doc.Lines.Count == 0,
                     onEmpty: () => owner.Message(Loc.Get(Strings.Podcast.Reader.NoTranscript)),
                     onFailed: () => PodcastReaderUI.Failed(() => _lease?.Refresh()),

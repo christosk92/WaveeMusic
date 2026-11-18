@@ -653,13 +653,23 @@ public sealed class PodcastEpisodeScreen : Component
     /// any other shows its tag.</summary>
     static string LanguageName(string? tag)
     {
-        string code = Lyrics.TranscriptPeek.LanguageLabel(tag);
+        string code = LanguageCode(tag);
         return code switch
         {
             "EN" => "English", "DE" => "Deutsch", "NL" => "Nederlands", "FR" => "Français", "ES" => "Español", "IT" => "Italiano",
             "PT" => "Português", "SV" => "Svenska", "JA" => "日本語", "EL" => "Ελληνικά",
             _ => code,
         };
+    }
+
+    /// <summary>A BCP-47 tag's primary subtag, upper-cased ("en-US" is "EN"); "" when there is none or it is not a language subtag.</summary>
+    static string LanguageCode(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return "";
+        var span = tag.AsSpan().Trim();
+        int cut = span.IndexOfAny('-', '_');
+        if (cut > 0) span = span[..cut];
+        return span.Length is 0 or > 8 ? "" : span.ToString().ToUpperInvariant();
     }
 
     /// <summary>The smart action's menu: what the button plays, starting over, play next, the show's newest and a serial's trailer.</summary>
