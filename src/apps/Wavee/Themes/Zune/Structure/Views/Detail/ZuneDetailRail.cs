@@ -14,8 +14,7 @@
 // THE COLLAPSED STRIP. Zune draws no grip (the column is the tier's width), so it never collapses the column itself; a collapse stored by another
 // theme reaches it, and the strip (`Detail.CompactRail`) is the cover and a 40 expand target, so the stored state is one click from undone.
 //
-// THE SHOW HEADER (`Detail.ShowHeader`): a show's or an episode's vertical arm, built from the same parts (no board draws it under Zune, Q18). Since audit
-// B9 it IS the rail drawn stacked (`DetailRailProps.Stacked`): one identity at every width, so a crossing glides the cover, the facts and the rings.
+// THE SHOW HEADER (`Detail.ShowHeader`) is drawn by no one under Zune: the show and episode pages are the podcast pages v2 (`Views\Podcast\`).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -32,8 +31,7 @@ using Z = Wavee.Themes.Zune.ZuneDetailRules;
 
 namespace Wavee.Themes.Zune;
 
-/// <summary>Zune's identity column (<see cref="ViewKeys.DetailRail"/>), its strip (<see cref="ViewKeys.DetailCompactRail"/>) and the show header
-/// (<see cref="ViewKeys.DetailShowHeader"/>).</summary>
+/// <summary>Zune's identity column (<see cref="ViewKeys.DetailRail"/>) and its strip (<see cref="ViewKeys.DetailCompactRail"/>).</summary>
 internal static class ZuneDetailRail
 {
     // ── the identity column ──────────────────────────────────────────────────────────────────────────────────────────
@@ -260,18 +258,4 @@ internal static class ZuneDetailRail
         };
         return ToolTip.Wrap(strip, id.Title, grow: 1f);
     }
-
-    // ── the show header ──────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The registered template of <see cref="ViewKeys.DetailShowHeader"/>: the identity drawn STACKED (<see cref="RailTemplate"/>; Zune's own frame
-    /// draws the rail stacked at every show and episode page below the mode edge, audit B9, and the panorama in its band). The cover beside the facts
-    /// (the publisher or the show, the rating, the meta line), the ledger, then the ring row full width; the prerelease card and the release facts under
-    /// it. ONE HOME PER VERB (audit A4): the rings' own gates read the WINDOW's band, so a show's follow and save leave the row where the band's row 2
-    /// carries "follow". A SHORT window folds it to the show's name in the heading voice over the ring row.</summary>
-    public static Element ShowHeaderTemplate(DetailShowHeaderProps p, in ViewContext ctx)
-        => RailTemplate(new DetailRailProps
-        {
-            Spec = p.Spec, Actions = p.Actions, RailWidth = 0f, TitleSize = 0f, DescriptionLines = 0, Accent = p.Accent, Play = p.Play,
-            Pending = K.Never, Stacked = true,
-        }, ctx);
 }

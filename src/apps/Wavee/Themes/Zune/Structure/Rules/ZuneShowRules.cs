@@ -6,7 +6,7 @@
 //   · `ZuneShowRules`     the show reader (its rhythm, the visit head's cards, the ledger and the rail's small words). The arithmetic the list's
 //                         seeds and the skeleton must agree on row for row is the core's (`ShowReaderRules`: the 48 rail, the 30 + 12 header, the
 //                         14 + 24 + 4 month header, the gutters, the strip's 30) and is NOT repeated here;
-//   · `ZuneEpisodeRules`  the episode page (the reader's measure, a chapter row, a comment, the reaction pill, the flyout);
+//   · `ZuneEpisodeRules`  the episode discussion (the thread measure, a comment, the reaction pill, the flyout);
 //   · `ZuneConcertRules`  the concert pages, and `ZuneConcertTiers` / `ZuneConcertLayout` their records per CONTENT tier:
 //
 //       tier      title             date numeral   tickets               lineup / related
@@ -141,50 +141,10 @@ public static class ZuneShowRules
 /// <summary>Zune's episode page geometry (DIP).</summary>
 public static class ZuneEpisodeRules
 {
-    // ── the slots ──
+    // ── the discussion (the podcast pages' episode page mounts it under its "comments" pivot) ──
 
-    /// <summary>The ring's label arrives as "Resume · 23 min left": the word and the quiet line split at this.</summary>
-    public const string LabelSplit = " · ";
-
-    /// <summary>The show link under the cover (Z-Episode: 15), and the rail's short about (13, clamped to this many lines).</summary>
-    public const float AttributionSize = 15f, RailAboutSize = 13f;
-
-    /// <summary>The rail's About block clamps to this many lines.</summary>
-    public const int RailAboutLines = 4;
-
-    /// <summary>The show rating popover's width and its stars' size.</summary>
-    public const float RatingWidth = 250f, RatingStar = 24f;
-
-    // ── the reader ──
-
-    /// <summary>The reader's column key (the tests find it).</summary>
-    public const string ReaderKey = "zune.episode.reader";
-
-    /// <summary>The reader's air above its first heading and below the last section (past the player dock's reserve).</summary>
-    public const float ReaderTop = 8f, ReaderBottom = 16f;
-
-    /// <summary>The reading measure of a section, of the chapters and of a comment thread.</summary>
-    public const float ReaderMeasure = 760f, ThreadMeasure = 760f;
-
-    /// <summary>The transcript section's height (its view scrolls inside the page's scroll).</summary>
-    public const float TranscriptHeight = 560f;
-
-    /// <summary>The reader scroll's edge fade band.</summary>
-    public const float EdgeFadeBand = 24f;
-
-    /// <summary>The description's size (15/22 in Z-Episode) and its clamp, and the seed's line count.</summary>
-    public const float AboutSize = 15f;
-
-    /// <summary>See <see cref="AboutSize"/>.</summary>
-    public const int AboutLines = 8, SeedLines = 8;
-
-    // ── a chapter row (Z-Episode: a 44 numeral column, 56 high) ──
-
-    /// <summary>The row's height, its numeral column and the numeral's inset from the row's edge.</summary>
-    public const float ChapterRowH = 56f, ChapterNumeralW = 44f, ChapterNumeralInset = 4f;
-
-    /// <summary>The start time under the title (12 on a 16 line) and the playing row's equalizer beside it.</summary>
-    public const float ChapterTimeSize = 12f, ChapterTimeLine = 16f, ChapterEqualizer = 11f;
+    /// <summary>The reading measure of a comment thread.</summary>
+    public const float ThreadMeasure = 760f;
 
     // ── a comment ──
 

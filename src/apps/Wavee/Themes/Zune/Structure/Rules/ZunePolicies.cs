@@ -33,11 +33,13 @@ public static partial class ZunePolicies
     };
 
     /// <summary>What the shell offers under Zune (technical plan 6.3): no tabs, no nav tree, no Forward button, six band pins, the history
-    /// menu and the friends panel; the album's credits (Z-Album's "credits", contract 1.84).</summary>
+    /// menu and the friends panel; the album's credits (Z-Album's "credits", contract 1.84); the podcast pages v2 (the show, the episode and the audiobook
+    /// pages, `Views\Podcast\ZunePodcast*`).</summary>
     public static ShellCapabilities Capabilities { get; } = new(
         Tabs: false, NavTree: false, FriendsPanel: true, ForwardButton: false, HistoryMenu: true, MaxBandPins: 6, DefersPageMount: true, ContinuousPageSwap: true)
     {
         AlbumCredits = true,
+        PodcastPages = true,
     };
 
     private static readonly object s_gate = new();
