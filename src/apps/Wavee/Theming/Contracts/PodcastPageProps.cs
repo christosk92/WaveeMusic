@@ -50,6 +50,17 @@ public sealed record PodcastEpisodeVm(
     public string LongDate { get; init; } = "";
     /// <summary>The description as HTML when the provider sent it ("" = only <see cref="Description"/>); render it with the house rich text.</summary>
     public string DescriptionHtml { get; init; } = "";
+    /// <summary>The month it came out (1..12; 0 = not known): the list groups by it.</summary>
+    public int Month { get; init; }
+    /// <summary>The episode's own number as a row writes it beside the title ("97"; "" = the show does not number its episodes).</summary>
+    public string Numeral { get; init; } = "";
+    readonly string _shortTitle = "", _blurb = "";
+    /// <summary>The title without what every episode of the show repeats in it (the show's name, "EP 97 -"): what a row writes beside
+    /// <see cref="Numeral"/>. The whole <see cref="Title"/> where nothing repeats.</summary>
+    public string ShortTitle { get => _shortTitle.Length > 0 ? _shortTitle : Title; init => _shortTitle = value; }
+    /// <summary>The description without the opening line the show's episodes share ("Welcome back!"): a row's one line starts on what THIS
+    /// episode is about. The whole <see cref="Description"/> where none is shared.</summary>
+    public string Blurb { get => _blurb.Length > 0 ? _blurb : Description; init => _blurb = value; }
 }
 
 /// <summary>One item of the smart action's menu ("Other ways to play").</summary>
@@ -62,12 +73,20 @@ public sealed record PodcastSmart(
     PodcastSmartKind Kind, string EpisodeId, string Label, string Why, string EpisodeTitle, string Sub, float Progress, bool Accent,
     ImmutableArray<PodcastMenuItem> Menu);
 
-/// <summary>One group of the episode list: "New since your last visit" (<see cref="Fresh"/>, offers Mark all as played), a year, or a serial's "In order".
-/// <see cref="Count"/> is the group's stated size (the year's whole count when known). <see cref="Rows"/> index <see cref="PodcastShowView.Episodes"/>.</summary>
+/// <summary>One group of the episode list: "New since your last visit" (<see cref="Fresh"/>, offers Mark all as played), a month ("October"), or a
+/// serial's "In order". <see cref="Count"/> is how many of its rows show. <see cref="Rows"/> index <see cref="PodcastShowView.Episodes"/>.</summary>
 public sealed record PodcastGroup(string Key, string Title, int Count, bool Fresh, ImmutableArray<int> Rows)
 {
     /// <summary><see cref="Count"/> as the header shows it ("" = none).</summary>
     public string CountText { get; init; } = "";
+    /// <summary>A month group's year (0: "new since your last visit", a serial's one group, an undated run): the jump list lands on a year's first
+    /// group.</summary>
+    public int Year { get; init; }
+    /// <summary><see cref="Year"/> as a header writes it beside the month ("2026"; "" = none).</summary>
+    public string YearText { get; init; } = "";
+    /// <summary>The first group of its year in the list: its header says the year (the ones after it say the month alone; a pinned header always
+    /// says both).</summary>
+    public bool OpensYear { get; init; }
 }
 
 /// <summary>One cell of the jump list: a year and how many episodes it holds.</summary>
@@ -125,8 +144,9 @@ public enum PodcastItemKind : byte { Group, Row, More, Empty }
 
 /// <summary>One item of <see cref="PodcastShowView.Items"/>: its kind, its group (an index into <see cref="PodcastShowView.Groups"/>, -1 for the foot
 /// and the empty line) and, for a row, its episode (an index into <see cref="PodcastShowView.Episodes"/>, else -1). <see cref="First"/>: the row opens
-/// its group (no rule above it).</summary>
-public readonly record struct PodcastListItem(PodcastItemKind Kind, int Group, int Episode, bool First = false);
+/// its group (no rule above it). <see cref="Lead"/>: the row is the list's lead, the newest episode not started yet at the head of the whole list
+/// (newest first, no search): a theme gives it the weight of a headline.</summary>
+public readonly record struct PodcastListItem(PodcastItemKind Kind, int Group, int Episode, bool First = false, bool Lead = false);
 
 /// <summary>The show page's snapshot.</summary>
 public sealed record PodcastShowView(
@@ -141,6 +161,9 @@ public sealed record PodcastShowView(
     public ImmutableArray<PodcastListItem> Items { get; init; } = [];
     /// <summary>The listened ledger (whatever the filter: it counts every known episode). Reused while it holds, like the head.</summary>
     public PodcastLedger Ledger { get; init; } = PodcastLedger.None;
+    /// <summary>The show numbers its episodes (most of them say their number, or it is a serial): a row keeps a lane for
+    /// <see cref="PodcastEpisodeVm.Numeral"/>, so the titles stand on one line down the list.</summary>
+    public bool Numbered { get; init; }
 
     /// <summary>The empty snapshot a page shows while nothing is known (the skeleton is derived from the loaded layout over it).</summary>
     public static PodcastShowView Empty { get; } = new(PodcastLoad.Pending,

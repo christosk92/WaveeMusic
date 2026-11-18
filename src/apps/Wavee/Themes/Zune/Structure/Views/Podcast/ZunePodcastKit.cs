@@ -404,7 +404,9 @@ internal static class ZunePodcastKit
     };
 
     /// <summary>A meta line on ONE line: each part after the first carries its own "·"; what does not fit runs off under the right edge's fade.</summary>
-    public static Element Meta(string key, IReadOnlyList<Element> parts)
+    /// <remarks><paramref name="runsOff"/> false: the line keeps its whole width (a row's date and length at its end) and has no clip and no
+    /// fade.</remarks>
+    public static Element Meta(string key, IReadOnlyList<Element> parts, bool runsOff = true)
     {
         var kids = new Element[parts.Count];
         for (int i = 0; i < kids.Length; i++)
@@ -416,6 +418,7 @@ internal static class ZunePodcastKit
             };
         // ONE line, never wrapped (a wrapped line would start on its part's dot, owner 2026-11-18): what does not fit runs off under the right edge's
         // fade, as the name and the pivots do, so no line starts or ends on a dot.
+        if (!runsOff) return new BoxEl { Key = key, Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids };
         return new BoxEl
         {
             // The clip keeps a little room for the light face's ink left of the first glyph (its side bearing), taken back by the margin.
@@ -482,13 +485,16 @@ internal static class ZunePodcastKit
     // ══ 6. THE EPISODE ROW ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>One episode row (see the file header), keyed <c>ep:</c> + the id.</summary>
-    public static Element EpisodeRow(PodcastEpisodeVm vm, bool description, bool compact, ZunePodcastRowVerbs verbs)
-        => Embed.Comp(new RowProps(vm, description, compact, verbs), static () => new RowHost()) with { Key = "ep:" + vm.Id };
+    /// <remarks><paramref name="lead"/>: the list's lead row (the newest episode, not started): a headline. <paramref name="numbered"/>: the show
+    /// numbers its episodes, so the row keeps the numeral lane.</remarks>
+    public static Element EpisodeRow(PodcastEpisodeVm vm, bool description, bool compact, ZunePodcastRowVerbs verbs, bool lead = false, bool numbered = false)
+        => Embed.Comp(new RowProps(vm, description, compact, verbs, lead, numbered), static () => new RowHost()) with { Key = "ep:" + vm.Id };
 
-    sealed record RowProps(PodcastEpisodeVm Vm, bool Description, bool Compact, ZunePodcastRowVerbs Verbs)
+    sealed record RowProps(PodcastEpisodeVm Vm, bool Description, bool Compact, ZunePodcastRowVerbs Verbs, bool Lead, bool Numbered)
     {
-        public bool Equals(RowProps? o) => o is not null && Vm.Equals(o.Vm) && Description == o.Description && Compact == o.Compact && ReferenceEquals(Verbs, o.Verbs);
-        public override int GetHashCode() => HashCode.Combine(Vm.Id, Description, Compact);
+        public bool Equals(RowProps? o) => o is not null && Vm.Equals(o.Vm) && Description == o.Description && Compact == o.Compact
+            && ReferenceEquals(Verbs, o.Verbs) && Lead == o.Lead && Numbered == o.Numbered;
+        public override int GetHashCode() => HashCode.Combine(Vm.Id, Description, Compact, Lead, Numbered);
     }
 
     sealed class RowHost : Component
@@ -517,24 +523,60 @@ internal static class ZunePodcastKit
             var vm = p.Vm;
             var v = p.Verbs;
             bool playing = v.Playing.Value == vm.Id;
-            bool played = vm.State == PodcastRowState.Played;
+            bool played = vm.State == PodcastRowState.Played, progress = vm.State == PodcastRowState.InProgress;
             bool hover = _hover.Value;
+            // The row's form follows what the episode is to the listener: the lead is a headline, a row at rest is the title over its line of
+            // description, a row in progress carries its line, a played row is one quiet line. Compact keeps the stacked form.
+            bool lead = p.Lead && !played && !progress;
+            bool wide = !p.Compact;
             float pb = p.Compact ? Z.RowPlayCompact : Z.RowPlay;
             float act = p.Compact ? Z.RowActionCompact : Z.RowAction;
 
-            var title = new TextEl(vm.Title)
-            {
-                FontFamily = R.Type.Pivot("").FontFamily, Size = Z.RowTitleSize, LineHeight = Z.RowTitleLine, Weight = Z.Light,
-                Color = played ? Tok.TextTertiary : Tok.TextPrimary, MaxLines = p.Compact ? 2 : 1, Wrap = p.Compact ? TextWrap.Wrap : TextWrap.NoWrap,
-                Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            };
-            var text = new List<Element>(3) { title, RowMeta(vm) };
-            if (p.Description && vm.Description.Length > 0)
-                text.Add(new TextEl(vm.Description)
+            // A name is written as it is (never re-cased): the row's title is the episode's.
+            TextEl title = lead
+                ? R.Type.QuickplayHead(vm.ShortTitle) with
                 {
-                    Size = Z.RowDescSize, LineHeight = Z.RowDescLine, Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                    Case = TextCase.AsWritten, Color = Tok.TextPrimary, MaxLines = Z.LeadTitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+                    MinWidth = 0f,
+                }
+                : new TextEl(vm.ShortTitle)
+                {
+                    FontFamily = R.Type.Pivot("").FontFamily, Size = Z.RowTitleSize, LineHeight = Z.RowTitleLine, Weight = Z.Light,
+                    Color = played ? Tok.TextTertiary : Tok.TextPrimary, MaxLines = p.Compact ? 2 : 1, Wrap = p.Compact ? TextWrap.Wrap : TextWrap.NoWrap,
                     Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                });
+                };
+            // The numeral stands in its lane where the row is wide; the meta line carries it at Compact.
+            bool lane = p.Numbered && wide;
+            string lineNumeral = p.Numbered && !wide ? vm.Numeral : "";
+            var text = new List<Element>(3);
+            if (lead)
+            {
+                text.Add(RowMeta(vm, numeral: lineNumeral));
+                text.Add(title);
+                if (vm.Blurb.Length > 0)
+                    text.Add(new TextEl(vm.Blurb)
+                    {
+                        Size = Z.RowDescSize, LineHeight = Z.RowDescLine, Color = Tok.TextSecondary, MaxLines = Z.LeadBlurbLines, Wrap = TextWrap.Wrap,
+                        Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, MaxWidth = Z.LeadBlurbW,
+                    });
+            }
+            else if (!wide)
+            {
+                text.Add(title);
+                text.Add(RowMeta(vm, numeral: lineNumeral));
+            }
+            else
+            {
+                text.Add(title);
+                float at = vm.Progress;
+                if (progress) text.Add(Line(() => at, Z.RowBarW) with { Key = "row:bar", Margin = new Edges4(0f, Z.RowBarTop, 0f, 0f) });
+                else if (!played && p.Description && vm.Blurb.Length > 0)
+                    text.Add(new TextEl(vm.Blurb)
+                    {
+                        Size = Z.RowDescSize, LineHeight = Z.RowDescLine, Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                        Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    });
+            }
 
             string glyph = playing ? ZunePlayerLayout.PauseSolid : played ? (hover ? Icons.Refresh : Icons.Check) : ZunePlayerLayout.PlaySolid;
             string playName = Loc.Get(playing ? Strings.Podcast.Pages.Pause : vm.State == PodcastRowState.InProgress ? Strings.Podcast.Pages.Resume
@@ -548,23 +590,30 @@ internal static class ZunePodcastKit
                 Children = [new TextEl(glyph)
                 {
                     Size = Z.RowGlyph, FontFamily = Tok.Definition.Fonts.Icon,
-                    Color = playing || vm.State == PodcastRowState.InProgress ? Prop.Of(static () => R.Ink.AccentDecor) : played && !hover ? (Prop<ColorF>)Tok.TextTertiary : Tok.TextPrimary,
+                    Color = playing || progress || lead ? Prop.Of(static () => R.Ink.AccentDecor) : played && !hover ? (Prop<ColorF>)Tok.TextTertiary : Tok.TextPrimary,
                 }],
             };
-            var line = new BoxEl
-            {
-                Direction = 0, Gap = Z.RowGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
-                Children =
-                [
-                    Controls.Named(play, playName),
-                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = text.ToArray() },
-                    new BoxEl { Shrink = 0f, AlignSelf = FlexAlign.Start, Children = [More("row:more", _menu, act, ring: false)] },
-                ],
-            };
+            var cells = new List<Element>(5) { Controls.Named(play, playName) };
+            if (lane)
+                cells.Add((lead ? R.Type.NumeralLarge(vm.Numeral) : R.Type.Numeral(vm.Numeral)) with
+                {
+                    Key = "row:numeral", Width = lead ? Z.NumeralLeadW : Z.NumeralW, Shrink = 0f, TextAlign = TextAlign.End, Color = Tok.TextTertiary,
+                    MaxLines = 1, Wrap = TextWrap.NoWrap, AlignSelf = FlexAlign.Start,
+                    // On the title's baseline: beside the lead's title (under its meta line), lifted on a row (its line box is the taller one).
+                    Margin = new Edges4(0f, lead ? Z.NumeralLeadDrop : Z.NumeralLift, 0f, 0f),
+                });
+            cells.Add(new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = lead ? Z.LeadGap : 0f, Children = text.ToArray() });
+            // The date and the length at the row's end (the lead and Compact write them as their meta line).
+            if (wide && !lead)
+                cells.Add(new BoxEl { Shrink = 0f, AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, Z.AsideDrop, 0f, 0f), Children = [RowMeta(vm, end: true)] });
+            cells.Add(new BoxEl { Shrink = 0f, AlignSelf = FlexAlign.Start, Children = [More("row:more", _menu, act, ring: false)] });
+            var line = new BoxEl { Direction = 0, Gap = Z.RowGap, MinWidth = 0f, AlignItems = FlexAlign.Start, Children = cells.ToArray() };
             BoxEl row = new()
             {
                 Direction = 1, MinWidth = 0f, Focusable = true, Role = AutomationRole.Button, Cursor = CursorId.Hand, AllowFocusOnInteraction = false,
-                Padding = new Edges4(0f, Z.RowPadY, 0f, Z.RowPadY),
+                Padding = lead ? new Edges4(0f, Z.LeadPadTop, 0f, Z.LeadPadBottom)
+                    : played && wide ? new Edges4(0f, Z.RowPadPlayed, 0f, Z.RowPadPlayed)
+                    : new Edges4(0f, Z.RowPadY, 0f, Z.RowPadY),
                 Fill = ColorF.Transparent, HoverFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.RowHoverAlpha }),
                 PressedFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.RowPressedAlpha }), BrushTransitionMs = Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, Draggable = _drag,
@@ -583,9 +632,17 @@ internal static class ZunePodcastKit
     }
 
     /// <summary>The row's meta: the square accent "new", the date, the length or the accent time left, "played", the video word.</summary>
-    public static Element RowMeta(PodcastEpisodeVm vm)
+    /// <remarks><paramref name="end"/>: it stands at a wide row's end; a played row says its date alone there (the check and the quiet title say
+    /// the rest). <paramref name="numeral"/>: the episode's number leads the line ("#97") where the row has no numeral lane.</remarks>
+    public static Element RowMeta(PodcastEpisodeVm vm, bool end = false, string numeral = "")
     {
         var parts = new List<Element>(6);
+        if (end && vm.State == PodcastRowState.Played)
+        {
+            if (vm.Date.Length > 0) parts.Add(MetaWord(vm.Date) with { Color = Tok.TextTertiary });
+            return Meta("row:aside", parts, runsOff: false);
+        }
+        if (numeral.Length > 0) parts.Add(MetaWord(Z.NumberSign + numeral) with { Color = Tok.TextTertiary });
         if (vm.State == PodcastRowState.New)
             parts.Add(new BoxEl
             {
@@ -601,7 +658,7 @@ internal static class ZunePodcastKit
         else if (vm.Length.Length > 0) parts.Add(MetaWord(vm.Length) with { Color = Tok.TextTertiary });
         if (vm.State == PodcastRowState.Played) parts.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Played)) with { Color = Tok.TextTertiary });
         if (vm.Video) parts.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Video)) with { Color = Tok.TextTertiary });
-        return Meta("row:meta", parts);
+        return Meta(end ? "row:aside" : "row:meta", parts, runsOff: !end);
     }
 
     // ══ 7. THE CARDS ════════════════════════════════════════════════════════════════════════════════════════════════════════

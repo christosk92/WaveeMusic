@@ -34,7 +34,7 @@ internal static partial class ClassicPodcastShow
 {
     /// <summary>One slot's item: a part of the page (0 the stacked column, 1 the list bar, 2 the foot) or a list item resolved against the snapshot. Records
     /// compare by value, so a slot whose episode did not change does not re-render when the list around it does.</summary>
-    sealed record ShowSlot(int Part, PodcastItemKind Kind, PodcastGroup? Group, PodcastEpisodeVm? Vm, bool First)
+    sealed record ShowSlot(int Part, PodcastItemKind Kind, PodcastGroup? Group, PodcastEpisodeVm? Vm, bool First, bool Lead = false, bool Numbered = false)
     {
         public static readonly ShowSlot None = new(-1, PodcastItemKind.Empty, null, null, false);
     }
@@ -50,7 +50,6 @@ internal static partial class ClassicPodcastShow
         readonly Signal<float> _colH = new(0f);
         readonly Signal<int> _filterIx = new(0);
         readonly Signal<bool> _barStuck = new(false), _searchOpen = new(false);
-        readonly Dictionary<string, NodeHandle> _groupNodes = [];
         BoundItemsSource<ShowSlot>? _items;
         ListOptions<ShowSlot>? _listOptions;
         RepeatLayout? _listLayout;
@@ -134,7 +133,7 @@ internal static partial class ClassicPodcastShow
             var it = v.Items[k];
             var g = (uint)it.Group < (uint)v.Groups.Length ? v.Groups[it.Group] : null;
             var vm = it.Kind == PodcastItemKind.Row && (uint)it.Episode < (uint)v.Episodes.Length ? v.Episodes[it.Episode] : null;
-            return new ShowSlot(-1, it.Kind, it.Kind == PodcastItemKind.Group ? g : null, vm, it.First);
+            return new ShowSlot(-1, it.Kind, it.Kind == PodcastItemKind.Group ? g : null, vm, it.First, it.Lead, v.Numbered);
         }
 
         /// <summary>-1: a page part (a prefix or the foot); else the list item's kind.</summary>
@@ -163,10 +162,25 @@ internal static partial class ClassicPodcastShow
             return KindAt(i) switch
             {
                 (int)PodcastItemKind.Group => MathF.Max(P.GroupH, lay.Target),
-                (int)PodcastItemKind.Row => lay.RowDescription ? P.RowEstimateTall : P.RowEstimate,
+                (int)PodcastItemKind.Row => RowExtent(i - PrefixCount, lay),
                 (int)PodcastItemKind.More or (int)PodcastItemKind.Empty => P.FootEstimate,
                 _ => P.SimilarEstimate,
             };
+        }
+
+        /// <summary>A row's seeded extent by its form: the lead, a played line, a row with its second line (the description or the bar), a one-line row.
+        /// Compact rows are the stacked form.</summary>
+        float RowExtent(int k, ClassicPodcastLayout lay)
+        {
+            var v = _p.View.Peek();
+            if (lay.Stacked || (uint)k >= (uint)v.Items.Length) return P.RowEstimate;
+            var it = v.Items[k];
+            if ((uint)it.Episode >= (uint)v.Episodes.Length) return P.RowEstimate;
+            var vm = v.Episodes[it.Episode];
+            if (vm.State == PodcastRowState.Played) return P.RowPlayedEstimate;
+            if (vm.State == PodcastRowState.InProgress) return P.RowEstimateTall;
+            if (it.Lead) return P.RowLeadEstimate;
+            return lay.RowDescription && vm.Blurb.Length > 0 ? P.RowEstimateTall : P.RowEstimate;
         }
 
         Element Template(BoundItemScope<ShowSlot> scope)
@@ -207,6 +221,10 @@ internal static partial class ClassicPodcastShow
         /// <summary>The pinned group label over the list: the group the list is in under the list bar, on the page's ground with the hairline.</summary>
         sealed class PinnedHead : Component
         {
+            NodeHandle _chip;
+            Action<NodeHandle>? _setChip;
+            Func<NodeHandle>? _chipOf;
+
             public override Element Render()
             {
                 var host = UseProps<SlotProps>().Host;
@@ -220,7 +238,8 @@ internal static partial class ClassicPodcastShow
                     Key = "cp-pinned-head:" + v.Groups[gi].Key, Direction = 1, MinWidth = 0f, Fill = ClassicPodcastKit.Backing(tone),
                     Children =
                     [
-                        new BoxEl { Direction = 1, MinWidth = 0f, Padding = Gutters(lay), Children = [host.GroupHeadRow(v.Groups[gi], v.Years, lay)] },
+                        new BoxEl { Direction = 1, MinWidth = 0f, Padding = Gutters(lay), Children =
+                            [host.GroupHeadRow(v.Groups[gi], v.Years, lay, pinned: true, _setChip ??= h => _chip = h, _chipOf ??= () => _chip)] },
                         new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
                     ],
                 };
@@ -260,13 +279,18 @@ internal static partial class ClassicPodcastShow
         /// <summary>A group label: the lowercase group name with its count, the jump list, Mark all as played.</summary>
         sealed class HeadSlot(PageHost host, IReadSignal<ShowSlot> item) : Component
         {
+            NodeHandle _chip;
+            Action<NodeHandle>? _setChip;
+            Func<NodeHandle>? _chipOf;
+
             public override Element Render()
             {
                 var slot = item.Value;
                 var lay = host._lay.Value;
                 if (slot.Group is not { } g) return new BoxEl { Height = MathF.Max(P.GroupH, lay.Target) };
                 var years = host._p.View.Peek().Years;
-                return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = Gutters(lay), Children = [host.GroupHeadRow(g, years, lay)] };
+                return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = Gutters(lay), Children =
+                    [host.GroupHeadRow(g, years, lay, pinned: false, _setChip ??= h => _chip = h, _chipOf ??= () => _chip)] };
             }
         }
 
@@ -330,8 +354,9 @@ internal static partial class ClassicPodcastShow
                 var p = UseProps<RowItemProps>();
                 var host = p.Host;
                 var lay = host._lay.Value;
-                return p.Item.Value.Vm is { } vm
-                    ? ClassicPodcastKit.EpisodeRow(vm, lay, lay.RowDescription, host._accent.Value, host._verbs!) with { Key = "ep-slot" }
+                var slot = p.Item.Value;
+                return slot.Vm is { } vm
+                    ? ClassicPodcastKit.EpisodeRow(vm, lay, lay.RowDescription, host._accent.Value, host._verbs!, slot.Lead, slot.Numbered) with { Key = "ep-slot" }
                     : new BoxEl();
             }
         }
@@ -391,7 +416,12 @@ internal static partial class ClassicPodcastShow
 
         // ── a group label ──
 
-        Element GroupHeadRow(PodcastGroup g, ImmutableArray<PodcastYear> years, ClassicPodcastLayout lay)
+        /// <remarks>A month's label says its year where the year opens in the list and wherever it is <paramref name="pinned"/> (the list scrolled
+        /// away from the label that said it); the other groups say their count. <paramref name="realized"/> / <paramref name="chip"/>: the label's own
+        /// node, kept by the slot that mounts it: the Jump to list opens under THIS label (a label keyed by its group stood twice, in the list and
+        /// pinned, and the list opened on whichever mounted last, even after it had gone).</remarks>
+        Element GroupHeadRow(PodcastGroup g, ImmutableArray<PodcastYear> years, ClassicPodcastLayout lay, bool pinned, Action<NodeHandle> realized,
+            Func<NodeHandle> chip)
         {
             var p = _p;
             bool jumps = years.Length > 1;
@@ -400,7 +430,8 @@ internal static partial class ClassicPodcastShow
             {
                 new TextEl(g.Title) { Size = P.GroupLabelSize, LineHeight = P.GroupLabelLine, Weight = P.Strong, Color = Tok.TextSecondary, Case = TextCase.Lower, Wrap = TextWrap.NoWrap },
             };
-            if (g.CountText.Length > 0) labelKids.Add(new TextEl(g.CountText) { Size = P.GroupLabelSize, LineHeight = P.GroupLabelLine, Color = Tok.TextTertiary });
+            string beside = g.YearText.Length > 0 ? (pinned || g.OpensYear ? g.YearText : "") : g.CountText;
+            if (beside.Length > 0) labelKids.Add(new TextEl(beside) { Size = P.GroupLabelSize, LineHeight = P.GroupLabelLine, Color = Tok.TextTertiary });
             if (jumps) labelKids.Add(Icon(Icons.ChevronDown, P.SplitChevron, Tok.TextTertiary));
             var headKids = new List<Element>(3)
             {
@@ -411,7 +442,7 @@ internal static partial class ClassicPodcastShow
                     Fill = Tok.FillSubtleTransparent, HoverFill = jumps ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                     PressedFill = jumps ? Tok.FillSubtleTertiary : Tok.FillSubtleTransparent, Role = AutomationRole.Button, Focusable = jumps,
                     Cursor = jumps ? CursorId.Hand : CursorId.Arrow,
-                    OnRealized = h => _groupNodes["head:" + key] = h, OnClick = jumps ? () => OpenJump(years, key) : null,
+                    OnRealized = realized, OnClick = jumps ? () => OpenJump(years, chip) : null,
                     Children = labelKids.ToArray(),
                 },
                 new BoxEl { Grow = 1f },
@@ -420,12 +451,12 @@ internal static partial class ClassicPodcastShow
             return new BoxEl { Key = "gh", Direction = 0, Height = MathF.Max(P.GroupH, lay.Target), AlignItems = FlexAlign.Center, MinWidth = 0f, Children = headKids.ToArray() };
         }
 
-        void OpenJump(ImmutableArray<PodcastYear> years, string groupKey)
+        void OpenJump(ImmutableArray<PodcastYear> years, Func<NodeHandle> anchor)
         {
             if (_jump is { IsOpen: true } open) { open.Close(); return; }
-            if (Controls.IsNullOverlay(_overlay) || !_groupNodes.TryGetValue("head:" + groupKey, out var anchor)) return;
+            if (Controls.IsNullOverlay(_overlay) || anchor().IsNull) return;
             OverlayHandle? opened = null;
-            opened = _overlay!.Open(() => anchor, () => JumpGrid(years, () => opened?.Close()), FlyoutPlacement.BottomEdgeAlignedLeft,
+            opened = _overlay!.Open(anchor, () => JumpGrid(years, () => opened?.Close()), FlyoutPlacement.BottomEdgeAlignedLeft,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
             _jump = opened;
         }
@@ -446,7 +477,7 @@ internal static partial class ClassicPodcastShow
                         Padding = new Edges4(P.JumpPad, 0f, P.JumpPad, 0f), Corners = Radii.ControlAll, Fill = Tok.FillControlDefault,
                         HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary, BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
                         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                        OnClick = () => { close(); JumpToGroup("y" + y.Label); },
+                        OnClick = () => { close(); JumpToYear(y.Year); },
                         Children = [Subtitle(y.Label), Caption(y.Count) with { Color = Tok.TextTertiary }],
                     };
                 }
@@ -460,13 +491,13 @@ internal static partial class ClassicPodcastShow
         }
 
         /// <summary>Jump to a year: its label to the top of the list, under the pinned list bar.</summary>
-        void JumpToGroup(string groupKey)
+        void JumpToYear(int year)
         {
             var v = _p.View.Peek();
             for (int k = 0; k < v.Items.Length; k++)
             {
                 var it = v.Items[k];
-                if (it.Kind != PodcastItemKind.Group || (uint)it.Group >= (uint)v.Groups.Length || v.Groups[it.Group].Key != groupKey) continue;
+                if (it.Kind != PodcastItemKind.Group || (uint)it.Group >= (uint)v.Groups.Length || v.Groups[it.Group].Year != year) continue;
                 _ctl.StartBringItemIntoView(PrefixCount + k, alignmentRatio: 0f, animate: false);
                 _scroll.ScrollBy(-P.ListBarH, ScrollMove.Immediate);
                 return;

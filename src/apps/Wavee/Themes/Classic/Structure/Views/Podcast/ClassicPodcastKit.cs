@@ -472,14 +472,17 @@ internal static class ClassicPodcastKit
     // ══ 6. THE EPISODE ROW ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>One episode row (see the file header), keyed <c>ep:</c> + the id.</summary>
-    public static Element EpisodeRow(PodcastEpisodeVm vm, ClassicPodcastLayout lay, bool description, ColorF accent, ClassicRowVerbs verbs)
-        => Embed.Comp(new RowProps(vm, lay.Stacked, description, accent, verbs), static () => new RowHost()) with { Key = "ep:" + vm.Id };
+    /// <remarks><paramref name="lead"/>: the list's lead row (the newest episode, not started): a headline. <paramref name="numbered"/>: the show
+    /// numbers its episodes, so the row keeps the numeral lane.</remarks>
+    public static Element EpisodeRow(PodcastEpisodeVm vm, ClassicPodcastLayout lay, bool description, ColorF accent, ClassicRowVerbs verbs,
+        bool lead = false, bool numbered = false)
+        => Embed.Comp(new RowProps(vm, lay.Stacked, description, accent, verbs, lead, numbered), static () => new RowHost()) with { Key = "ep:" + vm.Id };
 
-    sealed record RowProps(PodcastEpisodeVm Vm, bool Compact, bool Description, ColorF Accent, ClassicRowVerbs Verbs)
+    sealed record RowProps(PodcastEpisodeVm Vm, bool Compact, bool Description, ColorF Accent, ClassicRowVerbs Verbs, bool Lead, bool Numbered)
     {
         public bool Equals(RowProps? o) => o is not null && Vm.Equals(o.Vm) && Compact == o.Compact && Description == o.Description
-            && Accent.Equals(o.Accent) && ReferenceEquals(Verbs, o.Verbs);
-        public override int GetHashCode() => HashCode.Combine(Vm.Id, Compact, Description);
+            && Accent.Equals(o.Accent) && ReferenceEquals(Verbs, o.Verbs) && Lead == o.Lead && Numbered == o.Numbered;
+        public override int GetHashCode() => HashCode.Combine(Vm.Id, Compact, Description, Lead, Numbered);
     }
 
     sealed class RowHost : Component
@@ -515,23 +518,65 @@ internal static class ClassicPodcastKit
             var v = p.Verbs;
             string id = vm.Id;
             bool playing = v.Playing.Value == id;
-            bool played = vm.State == PodcastRowState.Played;
+            bool played = vm.State == PodcastRowState.Played, progress = vm.State == PodcastRowState.InProgress;
             bool hover = _hover.Value;
-            float pb = p.Compact ? P.PlayButtonCompact : P.PlayButton;
+            // The row's form follows what the episode is to the listener: the lead is a headline, a row at rest is two lines, a row in progress
+            // carries its bar, a played row is one quiet line. Compact keeps the stacked form (the words, then the meta line).
+            bool lead = p.Lead && !played && !progress;
+            bool wide = !p.Compact;
+            float pb = lead ? P.LeadPlay : p.Compact ? P.PlayButtonCompact : P.PlayButton;
             float act = p.Compact ? P.RowActionCompact : P.RowAction;
 
-            var title = Body(vm.Title) with
-            {
-                MaxLines = p.Compact ? 2 : 1, Trim = TextTrim.CharacterEllipsis, Wrap = p.Compact ? TextWrap.Wrap : TextWrap.NoWrap, MinWidth = 0f,
-                Weight = played ? (ushort)400 : P.Strong, Color = played ? Tok.TextSecondary : Tok.TextPrimary,
-            };
-            var text = new List<Element>(3) { title, MetaLine(vm, accent: p.Accent) };
-            if (p.Description && vm.Description.Length > 0)
-                text.Add(new TextEl(vm.Description)
+            TextEl title = lead
+                ? R.Type.Heading(vm.ShortTitle) with
                 {
-                    Size = P.LineSize, LineHeight = P.LineHeight, MaxLines = P.RowDescLines, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
-                    Color = Tok.TextSecondary, MinWidth = 0f,
-                });
+                    MaxLines = P.LeadTitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Color = Tok.TextPrimary,
+                }
+                : Body(vm.ShortTitle) with
+                {
+                    MaxLines = p.Compact ? 2 : 1, Trim = TextTrim.CharacterEllipsis, Wrap = p.Compact ? TextWrap.Wrap : TextWrap.NoWrap, MinWidth = 0f,
+                    Weight = played ? (ushort)400 : P.Strong, Color = played ? Tok.TextSecondary : Tok.TextPrimary,
+                };
+            // The numeral stands in its lane where the row is wide; the meta line carries it at Compact.
+            bool lane = p.Numbered && wide;
+            string lineNumeral = p.Numbered && !wide ? vm.Numeral : "";
+            var text = new List<Element>(3);
+            if (lead)
+            {
+                text.Add(MetaLine(vm, accent: p.Accent, numeral: lineNumeral));
+                text.Add(title);
+                if (vm.Blurb.Length > 0)
+                    text.Add(new TextEl(vm.Blurb)
+                    {
+                        Size = P.LineSize, LineHeight = P.LineHeight, MaxLines = P.LeadBlurbLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+                        Color = Tok.TextSecondary, MinWidth = 0f, MaxWidth = P.LeadBlurbW,
+                    });
+            }
+            else if (!wide)
+            {
+                text.Add(title);
+                text.Add(MetaLine(vm, accent: p.Accent, numeral: lineNumeral));
+            }
+            else
+            {
+                text.Add(title);
+                if (progress)
+                    text.Add(new BoxEl
+                    {
+                        Key = "row:bar", Direction = 0, Gap = P.RowBarGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                        Children =
+                        [
+                            MiniBar(vm.Progress, p.Accent, P.RowBarW),
+                            Meta(vm.Left) with { Color = Design.Palette.ReadableInk(p.Accent), Weight = P.Strong },
+                        ],
+                    });
+                else if (!played && p.Description && vm.Blurb.Length > 0)
+                    text.Add(new TextEl(vm.Blurb)
+                    {
+                        Size = P.LineSize, LineHeight = P.LineHeight, MaxLines = P.RowDescLines, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                        Color = Tok.TextSecondary, MinWidth = 0f,
+                    });
+            }
 
             bool showSave = vm.Saved || hover || p.Compact;
             // The heart's slot is always reserved; the button itself is mounted only while it shows (saved at rest, hover, Compact), so a
@@ -543,16 +588,20 @@ internal static class ClassicPodcastKit
                     Loc.Get(vm.Saved ? Strings.Podcast.Pages.Saved : Strings.Podcast.Pages.Save))] : [],
             };
             Element more = ClassicDetailKit.MoreButton(_menu, act);
-            Element line = new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = P.RowColGap, MinWidth = 0f,
-                Children =
-                [
-                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = text.ToArray() },
-                    new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [save, more] },
-                    PlayButton(vm, pb, playing, hover, p.Accent, _play),
-                ],
-            };
+            var cells = new List<Element>(5);
+            if (lane)
+                cells.Add(R.Type.Numeral(vm.Numeral) with
+                {
+                    Key = "row:numeral", Width = P.NumeralW, Shrink = 0f, TextAlign = TextAlign.End, Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                    // Beside the lead's meta line (its first line); centred on a row.
+                    AlignSelf = lead ? FlexAlign.Start : FlexAlign.Center,
+                });
+            cells.Add(new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = lead ? P.LeadGap : 0f, Children = text.ToArray() });
+            // The date over the length at the row's end (the lead and Compact write them as their meta line).
+            if (wide && !lead) cells.Add(RowAside(vm, p.Accent));
+            cells.Add(new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [save, more] });
+            cells.Add(PlayButton(vm, pb, playing, hover, p.Accent, _play, strong: lead));
+            Element line = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = P.RowColGap, MinWidth = 0f, Children = cells.ToArray() };
 
             // Keyed `ep` (one family): the row is the instance its verbs act on (the lint's subject: each row's More acts on its own episode, never
             // on the page's show), and the inspector's click and drag target.
@@ -561,7 +610,10 @@ internal static class ClassicPodcastKit
                 Key = "ep", Direction = 1, MinWidth = 0f, Corners = Radii.ControlAll, Focusable = true, Role = AutomationRole.Button, Cursor = CursorId.Hand,
                 // The plate bleeds into the gutter: the row's words stand on the column line the list bar and the group labels stand on.
                 Margin = p.Compact ? new Edges4(-P.RowPadCompact, 0f, -P.RowPadCompact, 0f) : new Edges4(-P.RowPadStart, 0f, -P.RowPadEnd, 0f),
-                Padding = p.Compact ? Edges4.All(P.RowPadCompact) : new Edges4(P.RowPadStart, P.RowPadTop, P.RowPadEnd, P.RowPadBottom),
+                Padding = p.Compact ? Edges4.All(P.RowPadCompact)
+                    : lead ? new Edges4(P.RowPadStart, P.LeadPadTop, P.RowPadEnd, P.LeadPadBottom)
+                    : played ? new Edges4(P.RowPadStart, P.PlayedPadY, P.RowPadEnd, P.PlayedPadY)
+                    : new Edges4(P.RowPadStart, P.RowPadTop, P.RowPadEnd, P.RowPadBottom),
                 Fill = Tok.FillSubtleTransparent,
                 HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, Draggable = _drag,
@@ -571,8 +623,33 @@ internal static class ClassicPodcastKit
         }
     }
 
-    /// <summary>The row's play button at its end: a circle with the ring while in progress, a check once played (replay on hover).</summary>
-    static Element PlayButton(PodcastEpisodeVm vm, float size, bool playing, bool hover, ColorF accent, Action play)
+    /// <summary>The row's end column where the row is wide: the date (a new episode says so before it, in the accent) over the length (with the
+    /// video glyph on a video episode). A played row says the date alone; a row in progress writes its time left beside its bar.</summary>
+    static Element RowAside(PodcastEpisodeVm vm, ColorF accent)
+    {
+        var lines = new List<Element>(2);
+        if (vm.State == PodcastRowState.New)
+            lines.Add(new SpanTextEl(
+            [
+                new TextSpan(Loc.Get(Strings.Podcast.Pages.Fresh), Weight: P.Strong, Color: Design.Palette.ReadableInk(accent)),
+                new TextSpan(vm.Date.Length > 0 ? P.Dot + vm.Date : ""),
+            ])
+            { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f });
+        else if (vm.Date.Length > 0) lines.Add(Meta(vm.Date));
+        if (vm.State != PodcastRowState.Played && vm.Length.Length > 0)
+            lines.Add(vm.Video
+                ? new BoxEl
+                {
+                    Direction = 0, Gap = P.TagGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+                    Children = [Icon(Icons.Video, P.TagGlyph, Tok.TextTertiary), Meta(vm.Length)],
+                }
+                : Meta(vm.Length));
+        return new BoxEl { Key = "row:aside", Direction = 1, AlignItems = FlexAlign.End, Shrink = 0f, Children = lines.ToArray() };
+    }
+
+    /// <summary>The row's play button at its end: a circle with the ring while in progress, a check once played (replay on hover).
+    /// <paramref name="strong"/>: the lead's, filled with the accent.</summary>
+    static Element PlayButton(PodcastEpisodeVm vm, float size, bool playing, bool hover, ColorF accent, Action play, bool strong = false)
     {
         bool prog = vm.State == PodcastRowState.InProgress;
         bool played = vm.State == PodcastRowState.Played;
@@ -591,20 +668,23 @@ internal static class ClassicPodcastKit
         {
             Width = size, Height = size, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false,
             Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-            Children = [Icon(glyph, P.PlayGlyph, played && !hover && !playing ? Tok.TextTertiary : Tok.TextPrimary)],
+            Children = [Icon(glyph, P.PlayGlyph, strong ? ColorContrast.PickContrast(accent) : played && !hover && !playing ? Tok.TextTertiary : Tok.TextPrimary)],
         });
         bool plate = !prog && !played;
         return Controls.Named(new BoxEl
         {
             Key = "row:play", ZStack = true, Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(size / 2f),
-            Fill = plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
+            Fill = strong ? accent : plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent,
+            HoverFill = strong ? accent with { A = P.LeadPlayHover } : Tok.FillControlSecondary,
+            PressedFill = strong ? accent with { A = P.LeadPlayPressed } : Tok.FillControlTertiary,
             BorderWidth = played ? 1f : 0f, BorderBrush = played ? Tok.ControlElevationBorder : null,
             Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = play, Children = layers.ToArray(),
         }, name);
     }
 
     /// <summary>The meta line: New (a dot and the word in the accent), the date, the length or the accent time left, Played, the Video tag.</summary>
-    public static Element MetaLine(PodcastEpisodeVm vm, bool showNew = true, ColorF? accent = null)
+    /// <remarks><paramref name="numeral"/>: the episode's number leads the line ("#97") where the row has no numeral lane.</remarks>
+    public static Element MetaLine(PodcastEpisodeVm vm, bool showNew = true, ColorF? accent = null, string numeral = "")
     {
         // ONE run of spans (a recycled row realises one text node, not a box per part): the separators ride inside the run, and the run never wraps,
         // so no line starts or ends on a "·". The Video tag is its own box only on a video episode.
@@ -616,6 +696,7 @@ internal static class ClassicPodcastKit
             if (spans.Count > 0) spans.Add(new TextSpan(P.Dot));
             spans.Add(color is { } c ? new TextSpan(text, Weight: weight, Color: c) : new TextSpan(text, Weight: weight));
         }
+        if (numeral.Length > 0) Part(P.NumberSign + numeral);
         if (showNew && vm.State == PodcastRowState.New) Part(P.NewMark + Loc.Get(Strings.Podcast.Pages.Fresh), ink, P.Strong);
         Part(vm.Date);
         if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) Part(vm.Left, ink);

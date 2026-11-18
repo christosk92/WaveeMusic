@@ -83,7 +83,6 @@ internal static partial class WinUiPodcastShow
         string[]? _paneLabels;
         readonly ScrollHandle _scroll = new();
         PodcastRowVerbs? _verbs;
-        readonly Dictionary<string, NodeHandle> _groupNodes = [];
         IOverlayService? _overlay;
         OverlayHandle? _jump;
         Action? _syncCells;
@@ -524,12 +523,18 @@ internal static partial class WinUiPodcastShow
 
         /// <summary>A group header's row: the title (the jump list's trigger where there are years to jump to) with its count, and "Mark all as played"
         /// on "New since your last visit".</summary>
-        Element GroupHeadRow(PodcastGroup g, ImmutableArray<PodcastYear> years, WinUiPodcastShowLayout lay, bool live)
+        /// <remarks>A month's header says its year where the year opens in the list and wherever it is <paramref name="pinned"/> (the list scrolled
+        /// away from the header that said it); the other groups say their count. <paramref name="realized"/> / <paramref name="chip"/>: the
+        /// button's own node, kept by the slot that mounts it: the Jump to list opens under THIS header (a header keyed by its group stood twice,
+        /// in the list and pinned, and the list opened on whichever mounted last, even after it had gone).</remarks>
+        Element GroupHeadRow(PodcastGroup g, ImmutableArray<PodcastYear> years, WinUiPodcastShowLayout lay, bool live, bool pinned,
+            Action<NodeHandle> realized, Func<NodeHandle> chip)
         {
             bool jumps = years.Length > 1;
             var headKids = new List<Element>(3);
             var buttonKids = new List<Element>(3) { BodyStrong(g.Title) };
-            if (g.CountText.Length > 0) buttonKids.Add(Caption(g.CountText) with { Color = Tok.TextTertiary });
+            string beside = g.YearText.Length > 0 ? (pinned || g.OpensYear ? g.YearText : "") : g.CountText;
+            if (beside.Length > 0) buttonKids.Add(Caption(beside) with { Color = Tok.TextTertiary });
             if (jumps) buttonKids.Add(Icon(Icons.ChevronDown, K.SplitChevron, Tok.TextSecondary));
             string key = g.Key;
             headKids.Add(new BoxEl
@@ -540,8 +545,8 @@ internal static partial class WinUiPodcastShow
                 Padding = new Edges4(S.GroupButtonPad, 0f, S.GroupButtonPad, 0f), Margin = new Edges4(-S.GroupButtonPad, 0f, 0f, 0f),
                 Corners = Radii.ControlAll, Fill = Tok.FillSubtleTransparent, HoverFill = jumps ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                 PressedFill = jumps ? Tok.FillSubtleTertiary : Tok.FillSubtleTransparent, Role = AutomationRole.Button, Focusable = jumps,
-                OnRealized = live ? h => _groupNodes["head:" + key] = h : null,
-                OnClick = jumps && live ? () => OpenJump(years, key) : null,
+                OnRealized = live ? realized : null,
+                OnClick = jumps && live ? () => OpenJump(years, chip) : null,
                 Children = buttonKids.ToArray(),
             });
             headKids.Add(new BoxEl { Grow = 1f });
@@ -549,12 +554,12 @@ internal static partial class WinUiPodcastShow
             return new BoxEl { Direction = 0, Height = lay.GroupH, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = headKids.ToArray() };
         }
 
-        void OpenJump(ImmutableArray<PodcastYear> years, string groupKey)
+        void OpenJump(ImmutableArray<PodcastYear> years, Func<NodeHandle> anchor)
         {
             if (_jump is { IsOpen: true } open) { open.Close(); return; }
-            if (Controls.IsNullOverlay(_overlay) || !_groupNodes.TryGetValue("head:" + groupKey, out var anchor)) return;
+            if (Controls.IsNullOverlay(_overlay) || anchor().IsNull) return;
             OverlayHandle? opened = null;
-            opened = _overlay!.Open(() => anchor, () => JumpGrid(years, () => opened?.Close()), FlyoutPlacement.BottomEdgeAlignedLeft,
+            opened = _overlay!.Open(anchor, () => JumpGrid(years, () => opened?.Close()), FlyoutPlacement.BottomEdgeAlignedLeft,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
             _jump = opened;
         }
@@ -575,7 +580,7 @@ internal static partial class WinUiPodcastShow
                         Padding = new Edges4(S.JumpPad, 0f, S.JumpPad, 0f), Corners = Radii.ControlAll, Fill = Tok.FillControlDefault,
                         HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary, BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
                         Role = AutomationRole.Button, Focusable = true,
-                        OnClick = () => { close(); JumpToGroup("y" + y.Label); },
+                        OnClick = () => { close(); JumpToYear(y.Year); },
                         Children = [Subtitle(y.Label), Caption(y.Count) with { Color = Tok.TextTertiary }],
                     };
                 }

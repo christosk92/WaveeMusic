@@ -6,7 +6,7 @@
 //   ├─ demand   Entities.Ensure(show, All) · the episode edge (first page, then Load more) · the rows' facts · the trailer row · "More like this"
 //   ├─ cells    filter · query · oldest-first · selected · pane tab        (signals; written only by the verbs)
 //   ├─ snapshot ShowModel.Compute (ONE UseComputed, a stable delegate): the head, the smart action and its menu, the rows (state at rest), the
-//   │           counts, the groups ("New since your last visit", then years; a serial's one "In order"), the jump years, HasMore, the similar cards
+//   │           counts, the groups ("New since your last visit", then months; a serial's one "In order"), the jump years, HasMore, the similar cards
 //   ├─ pane     the selected episode's chapters (a ChapterResources lease, up to five around the current one)
 //   └─ Slots.View(ViewKeys.PodcastShowPage, props built ONCE)
 //
@@ -237,8 +237,9 @@ sealed class ShowModel
     public readonly Func<string, ContextMenuModel?> CardMenu;
     public readonly Action<string> PlayCard;
 
-    /// <summary>The flattened list (podcast pages list model): each group's header then its rows, then the foot or the empty line.</summary>
-    static ImmutableArray<PodcastListItem> ItemsOf(ImmutableArray<PodcastGroup> groups, bool hasMore, bool empty)
+    /// <summary>The flattened list (podcast pages list model): each group's header then its rows, then the foot or the empty line.
+    /// <paramref name="lead"/>: the list's first row is its lead (the newest episode, not started yet).</summary>
+    static ImmutableArray<PodcastListItem> ItemsOf(ImmutableArray<PodcastGroup> groups, bool hasMore, bool empty, bool lead)
     {
         int n = (hasMore ? 1 : 0) + (empty ? 1 : 0);
         foreach (var g in groups) n += 1 + g.Rows.Length;
@@ -247,7 +248,8 @@ sealed class ShowModel
         {
             var g = groups[gi];
             b.Add(new PodcastListItem(PodcastItemKind.Group, gi, -1));
-            for (int k = 0; k < g.Rows.Length; k++) b.Add(new PodcastListItem(PodcastItemKind.Row, gi, g.Rows[k], k == 0));
+            for (int k = 0; k < g.Rows.Length; k++)
+                b.Add(new PodcastListItem(PodcastItemKind.Row, gi, g.Rows[k], k == 0, lead && gi == 0 && k == 0));
         }
         if (empty) b.Add(new PodcastListItem(PodcastItemKind.Empty, -1, -1));
         if (hasMore) b.Add(new PodcastListItem(PodcastItemKind.More, -1, -1));
@@ -450,7 +452,7 @@ sealed class ShowModel
         public Show Show;
         public ShowPage Page = null!;
         public EdgeState Readiness;
-        public bool Following, Known, Serial, AnyProgress;
+        public bool Following, Known, Serial, AnyProgress, Numbered;
         public int N, Total, Unplayed, InProgress, Saved;
         public int[] Slots = [], Published = [];
         public PodcastEpisodeVm[] Vms = [];
@@ -494,6 +496,23 @@ sealed class ShowModel
         var (cadence, _) = ShowCadence.Of(published);
         following = page.Saved == SaveState.Saved || following;
 
+        // What a row leaves out (PodcastRowRules): the show's own name in its title, the opening line the descriptions share.
+        string showTitle = known ? show.Title : "";
+        var descriptions = new string[n];
+        for (int i = 0; i < n; i++) descriptions[i] = Episode.DescriptionOf(rows[i].Episode);
+        string sharedLead = PodcastRowRules.SharedLead(descriptions);
+        // A show is NUMBERED when most of its episodes say their number (a serial always is, by position): its rows keep a numeral lane. Where only a
+        // few do, no lane: their titles keep their numbers.
+        int numerals = 0, titled = 0;
+        for (int i = 0; i < n; i++)
+        {
+            var e = rows[i].Episode;
+            if (!e.IsValid || !e.Knows(EpisodeFields.Title) || e.Kind == EpisodeKind.Trailer) continue;
+            titled++;
+            if (PodcastRowRules.Split(e.Title, showTitle, e.Number).Numeral.Length > 0) numerals++;
+        }
+        bool numbered = serial ? n > 0 : numerals > 0 && numerals * 2 > titled;
+
         var vms = new PodcastEpisodeVm[n];
         int unplayed = 0, inProgress = 0, saved = 0;
         bool anyProgress = false;
@@ -512,7 +531,7 @@ sealed class ShowModel
             if (state is PodcastRowState.Played or PodcastRowState.InProgress) anyProgress = true;
             bool isSaved = e.IsValid && Spotify.Podcasts.IsSaved(e);
             if (isSaved) saved++;
-            vms[i] = RowOf(e, i, total, serial, state, pcts[i], isSaved);
+            vms[i] = RowOf(e, i, total, serial, state, pcts[i], isSaved, showTitle, descriptions[i], sharedLead, numbered);
         }
 
         // ── the smart action ──
@@ -583,7 +602,7 @@ sealed class ShowModel
         {
             Show = show, Page = page, Readiness = readiness, Following = following, Known = known, Serial = serial, AnyProgress = anyProgress,
             N = n, Total = total, Unplayed = unplayed, InProgress = inProgress, Saved = saved, Slots = slots, Published = published, Vms = vms,
-            Cadence = cadence, Trailer = trailer, TrailerId = trailerId, Smart = smart,
+            Cadence = cadence, Trailer = trailer, TrailerId = trailerId, Smart = smart, Numbered = numbered,
         };
     }
 
@@ -650,7 +669,11 @@ sealed class ShowModel
         var episodes = ImmutableArray.CreateBuilder<PodcastEpisodeVm>(view.Count);
         foreach (int i in view) episodes.Add(vms[i]);
         var years = YearsOf(vms, serial);
-        var groups = GroupsOf(vms, view, shown, serial, oldestCell, !q.IsEmpty, filter == PodcastFilter.All && q.IsEmpty, years);
+        var groups = GroupsOf(vms, view, shown, serial, oldestCell, !q.IsEmpty);
+        // The list's lead: the newest episode, not started yet, at the head of the whole list (newest first, no search). A serial reads in order
+        // and a search ranks nothing, so neither has one.
+        bool lead = !serial && !oldestCell && q.IsEmpty && filter is PodcastFilter.All or PodcastFilter.Unplayed && view.Count > 0
+            && vms[view[0]] is { State: PodcastRowState.New or PodcastRowState.Unplayed, Trailer: false };
 
         var filters = ImmutableArray.Create(
             new PodcastFilterVm(PodcastFilter.All, Loc.Get(Strings.Podcast.Pages.FilterAll), total) { CountText = total > 0 ? FormatCache.Int(total) : "" },
@@ -684,10 +707,11 @@ sealed class ShowModel
         if (ledger == _lastLedger) ledger = _lastLedger;
         _lastLedger = ledger;
         return new PodcastShowView(load, head, smart, episodes.MoveToImmutable(), groups, filters, years, hasMore,
-            filter != PodcastFilter.All || !q.IsEmpty, similarCards) { ShownCount = shownCount, Items = ItemsOf(groups, hasMore, shownCount == 0 && load == PodcastLoad.Ready), Ledger = ledger };
+            filter != PodcastFilter.All || !q.IsEmpty, similarCards) { ShownCount = shownCount, Items = ItemsOf(groups, hasMore, shownCount == 0 && load == PodcastLoad.Ready, lead), Ledger = ledger, Numbered = rp.Numbered };
     }
 
-    static PodcastEpisodeVm RowOf(Episode e, int i, int total, bool serial, PodcastRowState state, float pct, bool saved)
+    static PodcastEpisodeVm RowOf(Episode e, int i, int total, bool serial, PodcastRowState state, float pct, bool saved, string showTitle,
+        string description, string sharedLead, bool numbered)
     {
         if (!e.IsValid) return new PodcastEpisodeVm("", "", "", 0, serial, "", 0, "", "", 0f, state, false, false, false, false, 0, false, null);
         string id = e.Uri.Text;
@@ -700,7 +724,13 @@ sealed class ShowModel
             ? Strings.Podcast.Pages.NumberedTitle(number, Episode.TitleSansNumber(raw, e.Number)) : raw;
         int at = e.Knows(EpisodeFields.Published) ? e.PublishedAt : 0;
         var local = at > 0 ? DateTimeOffset.FromUnixTimeSeconds(at).LocalDateTime : default;
-        int year = at > 0 ? local.Year : 0;
+        int year = at > 0 ? local.Year : 0, month = at > 0 ? local.Month : 0;
+        // The row's numeral and what it writes beside it: a serial's position and its bare title; else what the title itself says (PodcastRowRules).
+        var (numeral, shortTitle) = kind == EpisodeKind.Trailer || raw.Length == 0 ? ("", raw)
+            : serial ? (number > 0 ? FormatCache.Int(number) : "", Episode.TitleSansNumber(raw, e.Number))
+            : PodcastRowRules.Split(raw, showTitle, number);
+        // No numeral lane on this show: the title keeps its own number.
+        if (!numbered && numeral.Length > 0) (numeral, shortTitle) = ("", raw);
         string date = at > 0 ? Episode.DateLabel(at) : "";
         string longDate = at > 0 ? local.ToString("d MMM yyyy", CultureInfo.CurrentCulture) : "";
         int dur = e.Knows(EpisodeFields.Duration) ? e.DurationMs : 0;
@@ -711,11 +741,12 @@ sealed class ShowModel
         string eyebrow = number > 0
             ? Joined(serial ? Strings.Podcast.Pages.PartN(number) : Strings.Podcast.Pages.EpisodeN(number), longDate)
             : longDate;
-        return new PodcastEpisodeVm(id, title, Episode.DescriptionOf(e), number, serial, date, year, length, left,
+        return new PodcastEpisodeVm(id, title, description, number, serial, date, year, length, left,
             state == PodcastRowState.Played ? 1f : state == PodcastRowState.InProgress ? pct : 0f, state, saved,
             (flags & EpisodeFlags.Video) != 0, kind == EpisodeKind.Trailer, playable, 0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(e))
         {
             Eyebrow = eyebrow, LongDate = longDate, DescriptionHtml = e.Knows(EpisodeFields.About) ? e.HtmlDescription : "",
+            Month = month, Numeral = numeral, ShortTitle = shortTitle, Blurb = PodcastRowRules.BlurbOf(description, sharedLead),
         };
     }
 
@@ -775,10 +806,10 @@ sealed class ShowModel
         return b.MoveToImmutable();
     }
 
-    /// <summary>"New since your last visit" (episodic, newest first, no search), then a group per year; a serial lists one "In order".
+    /// <summary>"New since your last visit" (episodic, newest first, no search), then a group per MONTH (a year of weekly episodes reads as twelve short
+    /// runs, not one wall; the year stands on its first month and in the jump list); a serial lists one "In order".
     /// <see cref="PodcastGroup.Rows"/> index the view (the snapshot's <c>Episodes</c>).</summary>
-    static ImmutableArray<PodcastGroup> GroupsOf(PodcastEpisodeVm[] vms, List<int> view, bool[] shown, bool serial, bool oldest, bool searching, bool whole,
-        ImmutableArray<PodcastYear> years)
+    static ImmutableArray<PodcastGroup> GroupsOf(PodcastEpisodeVm[] vms, List<int> view, bool[] shown, bool serial, bool oldest, bool searching)
     {
         var groups = ImmutableArray.CreateBuilder<PodcastGroup>();
         if (view.Count == 0) return groups.ToImmutable();
@@ -803,34 +834,39 @@ sealed class ShowModel
             groups.Add(new PodcastGroup("new", Loc.Get(Strings.Podcast.Pages.NewSince), visible, true, freshRows.ToImmutable())
                 { CountText = FormatCache.Int(visible) });
         }
-        int currentYear = int.MinValue;
+        int currentYear = int.MinValue, currentMonth = int.MinValue, saidYear = int.MinValue;
         ImmutableArray<int>.Builder? rows = null;
         for (int k = 0; k < view.Count; k++)
         {
             if (inFresh[k]) continue;
-            int year = vms[view[k]].Year;
-            if (rows is null || year != currentYear)
+            var vm = vms[view[k]];
+            if (rows is null || vm.Year != currentYear || vm.Month != currentMonth)
             {
-                Flush(groups, rows, currentYear, whole, years, view, shown);
-                currentYear = year;
+                Flush(groups, rows, currentYear, currentMonth, ref saidYear, view, shown);
+                currentYear = vm.Year;
+                currentMonth = vm.Month;
                 rows = ImmutableArray.CreateBuilder<int>();
             }
             rows.Add(k);
         }
-        Flush(groups, rows, currentYear, whole, years, view, shown);
+        Flush(groups, rows, currentYear, currentMonth, ref saidYear, view, shown);
         return groups.ToImmutable();
 
-        static void Flush(ImmutableArray<PodcastGroup>.Builder groups, ImmutableArray<int>.Builder? rows, int year, bool whole, ImmutableArray<PodcastYear> years,
+        static void Flush(ImmutableArray<PodcastGroup>.Builder groups, ImmutableArray<int>.Builder? rows, int year, int month, ref int saidYear,
             List<int> view, bool[] shown)
         {
             if (rows is null || rows.Count == 0) return;
             int count = 0;
             foreach (int k in rows) if (shown[view[k]]) count++;
-            if (whole)
-                foreach (var y in years)
-                    if (y.Year == year) { count = Math.Max(count, y.Episodes); break; }
-            string title = year > 0 ? year.ToString(CultureInfo.InvariantCulture) : "";
-            groups.Add(new PodcastGroup("y" + title, title, count, false, rows.ToImmutable()) { CountText = FormatCache.Int(count) });
+            string yearText = year > 0 ? year.ToString(CultureInfo.InvariantCulture) : "";
+            bool dated = year > 0 && month is >= 1 and <= 12;
+            // The month in the reader's language ("October"); an undated run is headed by nothing.
+            string title = dated ? Sentence(CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month)) : yearText;
+            groups.Add(new PodcastGroup("m" + yearText + "-" + month.ToString("00", CultureInfo.InvariantCulture), title, count, false, rows.ToImmutable())
+            {
+                CountText = FormatCache.Int(count), Year = year, YearText = dated ? yearText : "", OpensYear = year != saidYear,
+            });
+            saidYear = year;
         }
     }
 

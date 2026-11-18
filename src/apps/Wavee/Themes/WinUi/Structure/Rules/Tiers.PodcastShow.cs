@@ -83,6 +83,13 @@ public static class WinUiPodcastShowTiers
     /// <summary>Whether the filter is the ComboBox in a list <paramref name="listWidth"/> wide.</summary>
     public static bool FilterCombo(WinUiPodcastShowLayout lay, float listWidth) => lay.Stacked || (listWidth > 0f && listWidth < FilterComboBelow);
 
+    /// <summary>The list column's width from which a row writes its date and length at its end (and its line of description under the title where
+    /// the tier shows one); under it a row is the stacked form (the title, then the meta line), as at Compact.</summary>
+    public const float RowWideFrom = 520f;
+
+    /// <summary>Whether a row is the wide form in a list <paramref name="listWidth"/> wide.</summary>
+    public static bool RowWide(WinUiPodcastShowLayout lay, float listWidth) => !lay.Stacked && (listWidth <= 0f ? !lay.Pane : listWidth >= RowWideFrom);
+
     /// <summary>Whether the search box collapses to its icon in a list <paramref name="listWidth"/> wide.</summary>
     public static bool SearchCollapsed(WinUiPodcastShowLayout lay, float listWidth) => lay.Search <= 0f || (listWidth > 0f && listWidth < SearchCollapseBelow);
 
