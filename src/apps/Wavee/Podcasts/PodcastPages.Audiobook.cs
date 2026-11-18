@@ -289,7 +289,7 @@ public sealed class AudiobookScreen : Component
                 StartsAtLabel: Loc.Get(PP.StartsAt),
                 LineTitle: Loc.Get(state == AudiobookState.Finished ? PP.Finished : PP.WholeBook), LineSub: lineSub, LineRight: length,
                 AboutTitle: Loc.Get(PP.AboutBook), Facts: factRows.ToImmutable(),
-                RatingsLine: rated is { Count: > 0 } rl ? PP.RatingsCount(rl.Count) : "",
+                RatingsLine: rated is { Count: > 0 } rl ? rl.Count == 1 ? PP.RatingsCount(1) : PP.RatingsMany(count) : "",   // "4,952 ratings": the grouped count
                 RateLabel: Loc.Get(state == AudiobookState.InProgress ? PP.Rate : PP.RateAfter),
                 FinishedTitle: Loc.Get(PP.YouFinished),
                 FinishedSub: rating.Length > 0 ? PP.HowWasIt(rating, count) : "",
