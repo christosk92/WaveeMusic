@@ -195,6 +195,9 @@ public sealed record PodcastShowPageProps
     /// <summary>"More like this": a card's context menu and its play button (null: none).</summary>
     public Func<string, ContextMenuModel?>? CardMenu { get; init; }
     public Action<string>? PlayCard { get; init; }
+    /// <summary>An episode row's drag payload, built when a drag promotes (a cold factory; wrap it in the house's <c>Drag.Source</c>): it drops onto a
+    /// playlist and onto the queue as a track does. Null: the rows carry no drag.</summary>
+    public Func<string, object?>? RowDrag { get; init; }
 }
 
 /// <summary>One chapter of an episode: where it starts, its length and how far the listener is through it (0..1).</summary>
@@ -289,6 +292,8 @@ public sealed record PodcastEpisodePageProps
     /// <summary>A "More like this" card's menu and its play (the card's show, by uri).</summary>
     public required Func<string, ContextMenuModel?> CardMenu { get; init; }
     public required Action<string> PlayCard { get; init; }
+    /// <summary>A row's drag payload ("Next in this show", "Up next in this show"), as <see cref="PodcastShowPageProps.RowDrag"/>.</summary>
+    public Func<string, object?>? RowDrag { get; init; }
 }
 
 /// <summary>One chapter of a book's contents. <see cref="Name"/> is "Chapter N" when the publisher's title is empty or generic ("Track 5", "01");

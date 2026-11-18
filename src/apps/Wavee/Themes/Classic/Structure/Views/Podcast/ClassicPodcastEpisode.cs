@@ -10,6 +10,7 @@
 // About is not a tab here: the description is in the column (concept `.t-classic .sbi[data-etab="about"]`). Numbers: `ClassicPodcastRules`, the tier
 // record `ClassicPodcastLayout`.
 
+using System.Collections.Immutable;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -65,7 +66,7 @@ internal static class ClassicPodcastEpisode
             _verbs ??= new ClassicRowVerbs
             {
                 Expanded = s_none, Playing = p.OnDeck, Play = p.PlayEpisode, Open = p.Open, ToggleSaved = p.ToggleSavedEpisode, PlayNext = p.PlayNext,
-                Expand = static _ => { }, Menu = p.RowMenu,
+                Expand = static _ => { }, Menu = p.RowMenu, Drag = p.RowDrag,
             };
             var a = new Args(p, lay, accent, _verbs);
             var seed = a with { P = p with { View = s_seed } };
@@ -232,10 +233,19 @@ internal static class ClassicPodcastEpisode
     sealed class Cards : Component
     {
         readonly Signal<int> _index = new(0);
-        readonly ScrollHandle _bodyScroll = new();
-        float[] _rowH = [];
+        readonly ScrollHandle _chaptersScroll = new();
         Controls.Words.Word[]? _wide, _narrow;
         Args _a = null!;
+        Func<PodcastEpisodeView>? _sliceOf;
+        ImmutableArray<PodcastChapterVm> _stampChapters;
+        int _chaptersStamp;
+
+        /// <summary>A new stamp when the snapshot's chapters change: the bound slots rebuild from them.</summary>
+        int ChaptersStamp(ImmutableArray<PodcastChapterVm> chapters)
+        {
+            if (!_stampChapters.Equals(chapters)) { _stampChapters = chapters; _chaptersStamp++; }
+            return _chaptersStamp;
+        }
 
         static readonly PodcastEpisodeTab[] s_wideTabs = [PodcastEpisodeTab.Chapters, PodcastEpisodeTab.Comments];
         static readonly PodcastEpisodeTab[] s_narrowTabs = [PodcastEpisodeTab.Chapters, PodcastEpisodeTab.Transcript, PodcastEpisodeTab.Comments];
@@ -246,25 +256,35 @@ internal static class ClassicPodcastEpisode
             var a = _a;
             var p = a.P;
             var lay = a.Lay;
-            var v = p.View.Value;
+            // Its slice of the snapshot: a change elsewhere (the primary's word, the state) does not re-render this section.
+            var v = UseComputed(_sliceOf ??= () =>
+            {
+                var w = _a.P.View.Value;
+                return PodcastEpisodeView.Empty with
+                {
+                    Load = w.Load, Chapters = w.Chapters, ChaptersPending = w.ChaptersPending, CommentCount = w.CommentCount, CommentsPending = w.CommentsPending,
+                    NoChapters = w.NoChapters,
+                };
+            }).Value;
             var tab = p.Tab.Value;
             // About lives in the column; the transcript is a tab only where the window is too narrow to keep it beside the chapters.
             if (tab == PodcastEpisodeTab.About || lay.TwoCards && tab == PodcastEpisodeTab.Transcript) tab = PodcastEpisodeTab.Chapters;
             var tabs = lay.TwoCards ? s_wideTabs : s_narrowTabs;
             int index = Math.Max(0, Array.IndexOf(tabs, tab));
             UseEffect(() => { _index.SetIfChanged(index); }, DepKey.From(index));
-            if (_rowH.Length != v.Chapters.Length) _rowH = new float[v.Chapters.Length];
-            var rowH = _rowH;
-            var scroll = _bodyScroll;
+            // The chapters list keeps the current chapter in view as playback crosses into it; a far chapter (a seek deep in a long episode) lands at
+            // once (a glide would realise every row on its way).
+            var scroll = _chaptersScroll;
+            int count = v.Chapters.Length;
             bool chaptersShown = tab == PodcastEpisodeTab.Chapters;
             UseEffect(() =>
             {
                 int at = p.CurrentChapter.Value;
                 _ = scroll.ViewportSignal.Value;
-                if (!chaptersShown || at < 0 || at >= rowH.Length || rowH[at] <= 0f) return;
-                float top = P.BodyPad;
-                for (int i = 0; i < at; i++) top += rowH[i];
-                scroll.BringIntoView(top, rowH[at], float.NaN, ScrollMove.Glide, P.BodyPad);
+                if (!chaptersShown || at < 0 || at >= count) return;
+                double top = at * P.ChRowH, vh = scroll.ViewportSignal.Peek();
+                bool far = Math.Abs(top - scroll.Offset.Peek()) > vh * P.FollowJumpViewports;
+                scroll.BringIntoView(top, P.ChRowH, float.NaN, far ? ScrollMove.Immediate : ScrollMove.Glide, P.BodyPad);
             });
 
             var words = lay.TwoCards ? _wide ??= Words(s_wideTabs) : _narrow ??= Words(s_narrowTabs);
@@ -290,14 +310,17 @@ internal static class ClassicPodcastEpisode
                     with { Height = lay.CardsH };
             else
             {
-                Element body = tab == PodcastEpisodeTab.Comments ? p.Comments?.Invoke() ?? new BoxEl() : ClassicPodcastEpisodeParts.Chapters(p, v, _rowH, accent);
+                bool chaptersList = chaptersShown && count > 0;
+                Element body = tab == PodcastEpisodeTab.Comments ? p.Comments?.Invoke() ?? new BoxEl() : ClassicPodcastEpisodeParts.NoChapters(v.NoChapters);
                 left = ClassicPodcastEpisodeParts.Card("cpe-sections",
                 [
                     head, divider,
-                    ScrollView(new BoxEl { Direction = 1, Padding = Edges4.All(P.BodyPad), MinWidth = 0f, Children = [body] }) with
-                    {
-                        Key = "cpe-sections:scroll", Grow = 1f, MinHeight = 0f, Handle = _bodyScroll,
-                    },
+                    chaptersList
+                        ? ClassicPodcastEpisodeParts.Chapters(p, v.Chapters, _chaptersScroll, ChaptersStamp(v.Chapters), accent)
+                        : ScrollView(new BoxEl { Direction = 1, Padding = Edges4.All(P.BodyPad), MinWidth = 0f, Children = [body] }) with
+                        {
+                            Key = "cpe-sections:scroll", Grow = 1f, MinHeight = 0f,
+                        },
                 ]) with { Height = lay.CardsH, Width = lay.TwoCards ? P.ChaptersCardW : float.NaN, Shrink = 0f, Layout = ClassicTierMotion.Reflow };
             }
             var kids = new List<Element>(2) { left };

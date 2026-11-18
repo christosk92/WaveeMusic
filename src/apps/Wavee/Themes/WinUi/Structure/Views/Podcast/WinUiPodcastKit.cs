@@ -57,6 +57,8 @@ internal sealed class PodcastRowVerbs
     public required Action<string?> Select { get; init; }
     public required Action<string?> Expand { get; init; }
     public required Func<string, ContextMenuModel?> Menu { get; init; }
+    /// <summary>A row's drag payload (the page props' <c>RowDrag</c>; null: the rows carry no drag).</summary>
+    public Func<string, object?>? Drag { get; init; }
 }
 
 /// <summary>WinUI's podcast kit (see the file header).</summary>
@@ -331,6 +333,7 @@ internal static class WinUiPodcastKit
         readonly Action<Point2> _move;
         readonly Action<KeyEventArgs> _key;
         readonly Action<PointerEventArgs> _press;
+        DragSource? _drag;
 
         public RowHost()
         {
@@ -384,6 +387,9 @@ internal static class WinUiPodcastKit
             bool hover = _hover.Value;
             var vm = (p.Source ?? _own).Peek();
             if (vm is null) return new BoxEl();
+            // The row drags as its episode (onto a playlist, the queue, the player bar): ONE source per row, reading the episode the row holds when the
+            // drag promotes (a rebind never rebuilds it); the payload is built then.
+            if (_drag is null && p.Verbs.Drag is not null) _drag = Wavee.Drag.Source(() => _p.Verbs.Drag?.Invoke(Id));
             // A row a recycled slot binds to ANOTHER episode shows that episode's state at once (no fill fading from the last one it held); the same
             // episode selected or released fades.
             bool rebound = _shownId is not null && _shownId != vm.Id;
@@ -438,7 +444,7 @@ internal static class WinUiPodcastKit
                 Fill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                 HoverFill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTertiary,
                 PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = rebound ? 0f : Design.Motion.Faster,
-                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press,
+                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press, Draggable = _drag,
                 Children = kids.ToArray(),
             };
             // ONE tree selected or not (the pill is present, painted only while selected: an opacity, never a presence change): a selection that comes

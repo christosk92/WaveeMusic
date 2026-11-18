@@ -1,13 +1,14 @@
 // ── Themes/Classic/Structure/Views/Podcast/ClassicPodcastEpisodeParts.cs — the episode page's own parts in Classic (podcast pages v2) ──────────────
 //
 //   · THE CHAPTER MAP: a card whose head names where the listener is ("Chapter 7 of 12 · name" and the clock, "Played · finished 9 Nov", "12 chapters ·
-//     select one to start there") over a band in which every chapter is a segment drawn to its length, filled to the position in the page accent (the
-//     current one live, through a compositor scale), a thumb on the current one; a segment grows under the pointer and seeks on click.
-//   · THE CHAPTERS LIST: number, name, "start · length · time left", the current row's bar (its room kept on every row), a check once played; the list
-//     keeps the current chapter in view as playback crosses into it.
+//     select one to start there") over a band in which every chapter is ONE node drawn to its length (a crowded map's gap and floor shrink), coloured
+//     played or not by binds, and one overlay that fills the current segment to the position, plus the thumb: a playback event re-renders nothing here.
+//   · THE CHAPTERS LIST: a BOUND virtual list (its own scroller, rows of one height): each visible slot is built once and recycled by its index signal,
+//     so a scroll rebinds and builds nothing, whatever the count (a long episode has a hundred). Number, name, "start · length · time left", the current
+//     row's bar (its room kept on every row), a check once played.
 //   · THE TRANSCRIPT CARD: Transcript, "Auto-generated · English", Find in transcript, the follow button (its width held); the chapter heading over the
-//     lines (a measured virtual list); the current line highlights and, while following, stays centred; a user scroll stops following, "Back to current
-//     line" brings it back; a click seeks; Find marks the matches.
+//     lines on BOUND virtual slots over a measured layout (a 3-hour episode has ~2,500 lines); the current line highlights and, while following, stays
+//     centred (a far target lands at once); a user scroll stops following, "Back to current line" brings it back; a click seeks; Find marks the matches.
 // Numbers: `ClassicPodcastRules`. No data access (WVTH002): everything comes on the props.
 
 using System.Collections.Immutable;
@@ -16,6 +17,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Reconciler;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
@@ -42,87 +44,89 @@ internal static class ClassicPodcastEpisodeParts
     public static Element Map(PodcastEpisodePageProps p, float target, ColorF accent)
         => Embed.Comp(new MapArgs(p, target, accent), static () => new MapHost()) with { Key = "cpe-map" };
 
+    /// <summary>The map: its head (its own small component) over the band, which renders only when the chapters change. Everything that moves with
+    /// playback is a bind: each segment's colour, one overlay filling the current segment to the position, the thumb.</summary>
     sealed class MapHost : Component
     {
         readonly Signal<int> _hover = new(-1);
+        readonly Signal<int> _laid = new(0);
+        Func<ImmutableArray<PodcastChapterVm>>? _chaptersOf;
+        PodcastEpisodePageProps? _p;
         float[] _segW = [];
 
         public override Element Render()
         {
             var a = UseProps<MapArgs>();
             var p = a.P;
-            var v = p.View.Value;
-            var chapters = v.Chapters;
-            if (_segW.Length != chapters.Length) _segW = new float[chapters.Length];
-            var starts = new int[chapters.Length];
-            for (int i = 0; i < starts.Length; i++) starts[i] = chapters[i].StartMs;
-            var strong = BodyStrong(v.MapHead) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f };
-            var quiet = Body(v.MapSub) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = v.MapQuietFirst ? 0f : 1f, MinWidth = 0f,
-                Trim = TextTrim.CharacterEllipsis };
-            var head = new Element[]
-            {
-                new BoxEl { Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Children = v.MapQuietFirst ? [quiet, strong] : [strong, quiet] },
-                new TextEl("") { Text = Prop.Bind(p.MapClock), Size = Caption("").Size, LineHeight = Caption("").LineHeight, Color = Tok.TextSecondary, Shrink = 0f },
-            };
-            var segs = new Element[chapters.Length];
+            _p = p;
+            var chapters = UseComputed(_chaptersOf ??= () => _p!.View.Value.Chapters).Value;
+            int n = chapters.IsDefault ? 0 : chapters.Length;
+            if (_segW.Length != n) _segW = new float[n];
+            var segW = _segW;
+            var starts = new int[n];
+            for (int i = 0; i < n; i++) starts[i] = chapters[i].StartMs;
             var cur = p.CurrentChapter;
+            var state = p.State;
             var pos = p.PositionMs;
+            var hover = _hover;
+            var laid = _laid;
             ColorF accent = a.Accent;
-            for (int i = 0; i < chapters.Length; i++)
+            float gap = P.SegGapFor(n), segMin = P.SegMinFor(n);
+            bool Played(int i) => state?.Value == PodcastRowState.Played || (cur.Value >= 0 && i < cur.Value);
+            float FillOf(int c) => c < 0 || c >= n ? 0f
+                : Math.Clamp((pos.Value - chapters[c].StartMs) / (float)Math.Max(1, chapters[c].EndMs - chapters[c].StartMs), 0f, 1f);
+            float StartOf(int c) { _ = laid.Value; float x = 0f; for (int k = 0; k < c && k < segW.Length; k++) x += segW[k] + gap; return x; }
+            float WidthOf(int c) { _ = laid.Value; return c >= 0 && c < segW.Length ? segW[c] : 0f; }
+
+            var segs = new Element[n];
+            for (int i = 0; i < n; i++)
             {
-                var c = chapters[i];
-                int index = i, start = c.StartMs, end = c.EndMs;
-                float fill = c.Fill;
-                Element bar = new BoxEl
-                {
-                    Height = P.SegRest, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(P.SegRadius), ClipToBounds = true, Direction = 0,
-                    Fill = Prop.Of(() => _hover.Value == index ? Tok.FillControlTertiary : Tok.FillControlSecondary), TransformOriginY = 0.5f,
-                    Transform = Prop.Of(() => Affine2D.Scale(1f, _hover.Value == index ? P.SegHover / P.SegRest : 1f)),
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Grow = 1f, TransformOriginX = 0f, Corners = CornerRadius4.All(P.SegRadius),
-                            Fill = c.Played && v.Episode.State == PodcastRowState.Played ? Tok.FillControlStrong : accent,
-                            Transform = Prop.Of(() => Affine2D.Scale(MathF.Max(0.001f, cur.Value == index
-                                ? Math.Clamp((pos.Value - start) / (float)Math.Max(1, end - start), 0f, 1f) : fill), 1f)),
-                        },
-                    ],
-                };
-                Element thumb = new BoxEl
-                {
-                    Width = P.Thumb, Height = P.Thumb, Corners = CornerRadius4.All(P.ThumbHalf), Fill = Tok.FillControlSolid, BorderWidth = P.ThumbStroke,
-                    BorderColor = Tok.StrokeControlDefault, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, AlignItems = FlexAlign.Center,
-                    Justify = FlexJustify.Center, HitTestVisible = false, Visible = Prop.Of(() => cur.Value == index),
-                    Transform = Prop.Of(() => Affine2D.Translation(-P.ThumbHalf + Math.Clamp((pos.Value - start) / (float)Math.Max(1, end - start), 0f, 1f)
-                        * _segW[Math.Min(index, _segW.Length - 1)], 0f)),
-                    Children = [new BoxEl { Width = P.ThumbDot, Height = P.ThumbDot, Corners = CornerRadius4.All(P.ThumbDotHalf), Fill = accent }],
-                };
+                int index = i;
                 segs[i] = new BoxEl
                 {
-                    Key = "cpe-seg:" + i, Grow = MathF.Max(1f, end - start), Basis = 0f, MinWidth = P.SegMin, Height = P.SegBand, ZStack = true,
-                    AlignItems = FlexAlign.Center, HitTestVisible = false,
-                    OnBoundsChanged = r => { if (index < _segW.Length) _segW[index] = r.W; },
-                    Children = [new BoxEl { Direction = 1, Justify = FlexJustify.Center, Children = [bar] }, thumb],
+                    Key = "cpe-seg:" + i, Grow = MathF.Max(1f, chapters[i].EndMs - chapters[i].StartMs), Basis = 0f, MinWidth = segMin, Height = P.SegRest,
+                    AlignSelf = FlexAlign.Center, Corners = CornerRadius4.All(P.SegRadius), HitTestVisible = false, TransformOriginY = 0.5f,
+                    OnBoundsChanged = r => { if (index < segW.Length && segW[index] != r.W) { segW[index] = r.W; laid.Value++; } },
+                    Fill = Prop.Of(() => Played(index)
+                        ? (state?.Value == PodcastRowState.Played ? Tok.FillControlStrong : accent)
+                        : hover.Value == index ? Tok.FillControlTertiary : Tok.FillControlSecondary),
+                    Transform = Prop.Of(() => Affine2D.Scale(1f, hover.Value == index ? P.SegHover / P.SegRest : 1f)),
                 };
             }
-            var segW = _segW;
+            Element fill = new BoxEl
+            {
+                Height = P.SegRest, Width = Prop.Of(() => WidthOf(cur.Value)), AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, HitTestVisible = false,
+                Corners = CornerRadius4.All(P.SegRadius), Fill = accent, TransformOriginX = 0f, Visible = Prop.Of(() => cur.Value >= 0),
+                Transform = Prop.Of(() => { int c = cur.Value; return new Affine2D(MathF.Max(0.001f, FillOf(c)), 0f, 0f, 1f, StartOf(c), 0f); }),
+            };
+            Element thumb = new BoxEl
+            {
+                Width = P.Thumb, Height = P.Thumb, Corners = CornerRadius4.All(P.ThumbHalf), Fill = Tok.FillControlSolid, BorderWidth = P.ThumbStroke,
+                BorderColor = Tok.StrokeControlDefault, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, AlignItems = FlexAlign.Center,
+                Justify = FlexJustify.Center, HitTestVisible = false, Visible = Prop.Of(() => cur.Value >= 0),
+                Transform = Prop.Of(() => { int c = cur.Value; return Affine2D.Translation(StartOf(c) + FillOf(c) * WidthOf(c) - P.ThumbHalf, 0f); }),
+                Children = [new BoxEl { Width = P.ThumbDot, Height = P.ThumbDot, Corners = CornerRadius4.All(P.ThumbDotHalf), Fill = accent }],
+            };
+            var band = new BoxEl
+            {
+                Key = "cpe-map-band", Direction = 0, Gap = gap, Height = a.Target, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = n > 0,
+                OnHoverMove = pt => hover.SetIfChanged(IndexAt(segW, pt.X)),
+                OnPointerExit = () => hover.SetIfChanged(-1),
+                OnClick = () =>
+                {
+                    int at = hover.Peek();
+                    if (at >= 0 && at < starts.Length) p.SeekTo(starts[at]);
+                },
+                Children = segs,
+            };
             return Card("cpe-map-card",
             [
-                new BoxEl { Direction = 0, Gap = P.MapGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = head },
+                Embed.Comp(p, static () => new MapHeadHost()) with { Key = "cpe-map-head" },
                 new BoxEl
                 {
-                    Key = "cpe-map-band", Direction = 0, Gap = P.SegGap, Height = a.Target, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                    Margin = new Edges4(0f, (P.SegBand - a.Target) / 2f, 0f, (P.SegBand - a.Target) / 2f),
-                    Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = chapters.Length > 0,
-                    OnHoverMove = pt => _hover.SetIfChanged(IndexAt(segW, pt.X)),
-                    OnPointerExit = () => _hover.SetIfChanged(-1),
-                    OnClick = () =>
-                    {
-                        int at = _hover.Peek();
-                        if (at >= 0 && at < starts.Length) p.SeekTo(starts[at]);
-                    },
-                    Children = segs,
+                    ZStack = true, MinWidth = 0f, Margin = new Edges4(0f, (P.SegBand - a.Target) / 2f, 0f, (P.SegBand - a.Target) / 2f),
+                    Children = [band, fill, thumb],
                 },
             ], P.MapGap, new Edges4(P.MapPadX, P.MapPadTop, P.MapPadX, P.MapPadBottom));
         }
@@ -132,66 +136,105 @@ internal static class ClassicPodcastEpisodeParts
             float at = 0f;
             for (int i = 0; i < widths.Length; i++)
             {
-                at += widths[i] + P.SegGap;
+                at += widths[i] + P.SegGapFor(widths.Length);
                 if (x < at) return i;
             }
             return widths.Length - 1;
         }
     }
 
-    // ══ 2. THE CHAPTERS LIST ════════════════════════════════════════════════════════════════════════════════════════════════
-
-    public static Element Chapters(PodcastEpisodePageProps p, PodcastEpisodeView v, float[] rowH, ColorF accent)
+    /// <summary>The map's head: "Chapter 7 of 12 · name" / "Played · finished 9 Nov" / "12 chapters · select one to start there", and the clock.</summary>
+    sealed class MapHeadHost : Component
     {
-        if (v.Chapters.IsDefaultOrEmpty)
-            return new BoxEl { Padding = Edges4.All(P.BodyPad), Children = [Body(v.NoChapters) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f }] };
-        var rows = new Element[v.Chapters.Length];
-        for (int i = 0; i < rows.Length; i++) rows[i] = ChapterRow(p, v.Chapters[i], rowH, accent);
-        return new BoxEl { Direction = 1, MinWidth = 0f, Children = rows };
+        Func<(string, string, bool)>? _headOf;
+        PodcastEpisodePageProps? _p;
+
+        public override Element Render()
+        {
+            var p = UseProps<PodcastEpisodePageProps>();
+            _p = p;
+            var (headText, subText, quietFirst) = UseComputed(_headOf ??= () => { var w = _p!.View.Value; return (w.MapHead, w.MapSub, w.MapQuietFirst); }).Value;
+            var strong = BodyStrong(headText) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f };
+            var quiet = Body(subText) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = quietFirst ? 0f : 1f, MinWidth = 0f,
+                Trim = TextTrim.CharacterEllipsis };
+            return new BoxEl
+            {
+                Direction = 0, Gap = P.MapGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl { Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Children = quietFirst ? [quiet, strong] : [strong, quiet] },
+                    new TextEl("") { Text = Prop.Bind(p.MapClock), Size = Caption("").Size, LineHeight = Caption("").LineHeight, Color = Tok.TextSecondary, Shrink = 0f },
+                ],
+            };
+        }
     }
 
-    static Element ChapterRow(PodcastEpisodePageProps p, PodcastChapterVm c, float[] rowH, ColorF accent)
+    // ══ 2. THE CHAPTERS LIST ════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The chapters as a BOUND virtual list (its own scroller, rows of one height). <paramref name="stamp"/> rebuilds the slots when the
+    /// snapshot's chapters change.</summary>
+    public static Element Chapters(PodcastEpisodePageProps p, ImmutableArray<PodcastChapterVm> chapters, ScrollHandle scroll, int stamp, ColorF accent)
+        => Virtual.ListBound(chapters.Length, P.ChRowH, idx => ChapterRow(p, chapters, idx, accent)) with
+        {
+            Key = "cpe-sections:chapters", Grow = 1f, MinHeight = 0f, Handle = scroll, TemplateStamp = stamp,
+            Margin = new Edges4(P.BodyPad, P.BodyPad, P.BodyPad, 0f),
+        };
+
+    /// <summary>"This episode has no chapters."</summary>
+    public static Element NoChapters(string text) => Body(text) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f };
+
+    /// <summary>One bound chapter slot: everything that differs by chapter binds on <paramref name="idx"/>; the click reads it at the click.</summary>
+    static Element ChapterRow(PodcastEpisodePageProps p, ImmutableArray<PodcastChapterVm> chapters, IReadSignal<int> idx, ColorF accent)
     {
-        int index = c.Index, start = c.StartMs, end = c.EndMs;
         var cur = p.CurrentChapter;
         var pos = p.PositionMs;
-        bool current = c.Current;
+        var state = p.State;
+        PodcastChapterVm At() => chapters[Math.Clamp(idx.Value, 0, chapters.Length - 1)];
+        bool Current() => cur.Value == idx.Value;
+        bool Played() => state?.Value == PodcastRowState.Played || (cur.Value >= 0 && idx.Value < cur.Value);
+        ColorF ink = Design.Palette.ReadableInk(accent);
         var meta = new BoxEl
         {
             Direction = 0, MinWidth = 0f,
             Children =
             [
-                Caption(c.Start + P.Dot + c.Length) with { Color = Tok.TextSecondary, Shrink = 0f },
-                new TextEl("") { Text = Prop.Of(() => cur.Value == index ? p.ChapterLeft.Value : ""), Size = Caption("").Size, LineHeight = Caption("").LineHeight,
+                new TextEl("") { Text = Prop.Of(() => At().Span), Size = Caption("").Size, LineHeight = Caption("").LineHeight, Color = Tok.TextSecondary, Shrink = 0f },
+                new TextEl("") { Text = Prop.Of(() => cur.Value == idx.Value ? p.ChapterLeft.Value : ""), Size = Caption("").Size, LineHeight = Caption("").LineHeight,
                     Color = Tok.TextSecondary, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             ],
         };
         var bar = new BoxEl
         {
             Height = P.ChBarH, Margin = new Edges4(0f, P.ChBarTop, 0f, 0f), Corners = CornerRadius4.All(P.MiniBarRadius), ClipToBounds = true,
-            Fill = Tok.FillControlStrong, Opacity = current ? 1f : 0f, Direction = 0,
+            Fill = Tok.FillControlStrong, Opacity = Prop.Of(() => Current() ? 1f : 0f), Direction = 0,
             Children =
             [
                 new BoxEl
                 {
                     Grow = 1f, Fill = accent, TransformOriginX = 0f, Corners = CornerRadius4.All(P.MiniBarRadius),
-                    Transform = Prop.Of(() => Affine2D.Scale(MathF.Max(0.001f, cur.Value == index
-                        ? Math.Clamp((pos.Value - start) / (float)Math.Max(1, end - start), 0f, 1f) : 0f), 1f)),
+                    Transform = Prop.Of(() =>
+                    {
+                        var c = At();
+                        float f = cur.Value == idx.Value ? Math.Clamp((pos.Value - c.StartMs) / (float)Math.Max(1, c.EndMs - c.StartMs), 0f, 1f) : 0f;
+                        return Affine2D.Scale(MathF.Max(0.001f, f), 1f);
+                    }),
                 },
             ],
         };
-        var name = new TextEl(c.Title)
+        // The name: regular, or semibold on the current chapter (two runs laid over each other: a weight is no bind).
+        TextEl Name(bool strong) => new("")
         {
-            Size = Body("").Size, LineHeight = Body("").LineHeight, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            Weight = current ? P.Strong : Body("").Weight, Color = c.Played ? Tok.TextSecondary : Tok.TextPrimary,
+            Text = Prop.Of(() => At().Title), Size = Body("").Size, LineHeight = Body("").LineHeight, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Weight = strong ? P.Strong : Body("").Weight,
+            Color = Prop.Of<ColorF>(() => Current() != strong ? ColorF.Transparent : Played() ? Tok.TextSecondary : Tok.TextPrimary),
         };
         return new BoxEl
         {
-            Key = "cpe-ch:" + index, Direction = 0, Gap = P.ChGap, AlignItems = FlexAlign.Center, MinHeight = P.ChMinH, MinWidth = 0f,
+            Direction = 0, Gap = P.ChGap, AlignItems = FlexAlign.Center, Height = P.ChRowH, MinWidth = 0f,
             Padding = new Edges4(P.ChPadX, P.ChPadY, P.ChPadX, P.ChPadY), Corners = Radii.ControlAll,
-            Fill = current ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => p.SeekTo(start), BrushTransitionMs = Design.Motion.Faster,
-            OnBoundsChanged = r => { if (index < rowH.Length) rowH[index] = r.H; },
+            Fill = Prop.Of(() => Current() ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent), HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, BrushTransitionMs = Design.Motion.Faster,
+            OnClick = () => p.SeekTo(chapters[Math.Clamp(idx.Peek(), 0, chapters.Length - 1)].StartMs),
             Children =
             [
                 new BoxEl
@@ -202,20 +245,24 @@ internal static class ClassicPodcastEpisodeParts
                         new BoxEl
                         {
                             Width = P.ChTickW, Height = P.ChTickH, Corners = CornerRadius4.All(P.ChTickW), Fill = accent, JustifySelf = FlexAlign.Start,
-                            AlignSelf = FlexAlign.Center, Margin = new Edges4(-P.ChPadX, 0f, 0f, 0f), Opacity = current ? 1f : 0f, HitTestVisible = false,
-                        },
-                        new TextEl((index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture))
+                            AlignSelf = FlexAlign.Center, Margin = new Edges4(-P.ChPadX, 0f, 0f, 0f), Opacity = Prop.Of(() => Current() ? 1f : 0f), HitTestVisible = false,
+                        }.Skeletonized(false),
+                        new TextEl("")
                         {
-                            Size = Body("").Size, LineHeight = Body("").LineHeight, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
-                            Color = current ? Design.Palette.ReadableInk(accent) : Tok.TextTertiary,
+                            Text = Prop.Of(() => At().Number), Size = Body("").Size, LineHeight = Body("").LineHeight, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
+                            Color = Prop.Of(() => Current() ? ink : Tok.TextTertiary),
                         },
                     ],
                 },
-                new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [name, meta, bar] },
+                new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                    Children = [new BoxEl { ZStack = true, MinWidth = 0f, Children = [Name(false), Name(true)] }, meta, bar],
+                },
                 new BoxEl
                 {
                     Width = P.ChCheck, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Opacity = c.Played ? 1f : 0f, Children = [Icon(Icons.Check, P.ChCheckGlyph, Tok.TextTertiary)],
+                    Opacity = Prop.Of(() => Played() ? 1f : 0f), Children = [Icon(Icons.Check, P.ChCheckGlyph, Tok.TextTertiary)],
                 },
             ],
         };
@@ -237,12 +284,24 @@ internal static class ClassicPodcastEpisodeParts
         ImmutableArray<PodcastLineVm> _lines;
         string[] _headingAt = [];
         TranscriptArgs _a = null!;
+        Func<PodcastEpisodeView>? _sliceOf;
+        ImmutableArray<PodcastLineVm> _stampLines;
+        string _stampFind = "";
+        int _stamp;
 
         public override Element Render()
         {
             _a = UseProps<TranscriptArgs>();
             var p = _a.P;
-            var v = p.View.Value;
+            // Its slice of the snapshot: a change elsewhere (the primary's word, the state) does not re-render the transcript.
+            var v = UseComputed(_sliceOf ??= () =>
+            {
+                var w = _a.P.View.Value;
+                return PodcastEpisodeView.Empty with
+                {
+                    Load = w.Load, Transcript = w.Transcript, TranscriptLoad = w.TranscriptLoad, TranscriptSub = w.TranscriptSub, NoTranscript = w.NoTranscript,
+                };
+            }).Value;
             string find = p.Find().Value.Trim();
             if (_layout is null || !_lines.Equals(v.Transcript))
             {
@@ -261,8 +320,10 @@ internal static class ClassicPodcastEpisodeParts
                 double vh = _scroll.ViewportSignal.Value;
                 _ = _scroll.ExtentSignal.Value;
                 if (!follow || line < 0 || vh <= 0 || lines.Length == 0) return;
-                double target = layout.OffsetOf(line, 0f) - vh / 2 + P.TrLineEstimate / 2;
-                _scroll.ScrollTo(Math.Max(0, target), ScrollMove.Follow);
+                double target = Math.Max(0, layout.OffsetOf(line, 0f) - vh / 2 + P.TrLineEstimate / 2);
+                // A far target (a seek deep in a long episode) lands at once: a glide over thousands of lines would realise every row on its way.
+                bool far = Math.Abs(target - _scroll.Offset.Peek()) > vh * P.FollowJumpViewports;
+                _scroll.ScrollTo(target, far ? ScrollMove.Immediate : ScrollMove.Follow);
             });
             UseEffect(() =>
             {
@@ -293,8 +354,19 @@ internal static class ClassicPodcastEpisodeParts
                 var chrome = _a.Chrome;
                 var cur = p.CurrentLine;
                 ColorF accent = _a.Accent;
-                var list = Virtual.Measured(lines.Length, layout, i => Line(p, lines[i], i, cur, chrome, find, accent), i => "cpe-ln:" + i)
-                    with { Handle = _scroll, Grow = 1f, TemplateStamp = find.GetHashCode() };
+                // BOUND slots over the measured layout: each visible slot is built once and recycled by its index signal (a scroll rebinds, builds
+                // nothing). A new document or a new find text rebuilds the slots (the stamp).
+                if (!_stampLines.Equals(lines) || _stampFind != find)
+                {
+                    _stampLines = lines;
+                    _stampFind = find;
+                    _stamp++;
+                }
+                var list = new VirtualListEl
+                {
+                    ItemCount = lines.Length, ItemLayout = layout, RowBind = idx => Line(p, lines, idx, cur, chrome, find, accent),
+                    Handle = _scroll, Grow = 1f, TemplateStamp = _stamp,
+                };
                 var heading = new TextEl("")
                 {
                     Text = Prop.Of(() =>
@@ -354,55 +426,64 @@ internal static class ClassicPodcastEpisodeParts
             }
         }
 
-        static Element Line(PodcastEpisodePageProps p, PodcastLineVm l, int index, IReadSignal<int> cur, bool chrome, string find, ColorF accent)
+        /// <summary>One bound transcript slot: its line, time, highlight and chapter heading all bind on <paramref name="idx"/>. With a find text, the
+        /// matching lines draw their runs with the matches marked.</summary>
+        static Element Line(PodcastEpisodePageProps p, ImmutableArray<PodcastLineVm> lines, IReadSignal<int> idx, IReadSignal<int> cur, bool chrome, string find,
+            ColorF accent)
         {
-            int start = l.StartMs;
-            Func<bool> isCur = () => cur.Value == index;
-            Element text = find.Length > 0 && l.Text.Contains(find, StringComparison.OrdinalIgnoreCase)
-                ? new SpanTextEl(Marked(l.Text, find)) { Wrap = TextWrap.Wrap, Size = P.TrTextSize, LineHeight = P.TrTextLine, MinWidth = 0f }
-                : new TextEl(l.Text)
+            PodcastLineVm At() => lines[Math.Clamp(idx.Value, 0, lines.Length - 1)];
+            bool IsCur() => cur.Value == idx.Value;
+            bool Marks() => find.Length > 0 && At().Text.Contains(find, StringComparison.OrdinalIgnoreCase);
+            ColorF ink = Design.Palette.ReadableInk(accent);
+            var plain = new TextEl("")
+            {
+                Text = Prop.Of(() => At().Text), Wrap = TextWrap.Wrap, Size = P.TrTextSize, LineHeight = P.TrTextLine, MinWidth = 0f,
+                Visible = find.Length == 0 ? true : Prop.Of(() => !Marks()),
+                Color = Prop.Of<ColorF>(() => IsCur() ? Tok.TextPrimary : cur.Value > idx.Value ? Tok.TextSecondary : Tok.TextTertiary),
+            };
+            var kidsText = new List<Element>(3) { plain };
+            if (find.Length > 0)
+                kidsText.Add(new SpanTextEl(Prop.Of(() => Marks() ? Marked(At().Text, find) : s_noSpans))
                 {
-                    Wrap = TextWrap.Wrap, Size = P.TrTextSize, LineHeight = P.TrTextLine, MinWidth = 0f,
-                    Color = Prop.Of<ColorF>(() => isCur() ? Tok.TextPrimary : cur.Value > index ? Tok.TextSecondary : Tok.TextTertiary),
-                };
+                    Wrap = TextWrap.Wrap, Size = P.TrTextSize, LineHeight = P.TrTextLine, MinWidth = 0f, Visible = Prop.Of(() => Marks()),
+                });
+            kidsText.Add(new BoxEl
+            {
+                Width = P.TrCurrentStroke, JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Stretch, Margin = new Edges4(-P.TrTextPadX, -P.TrTextPadY, 0f, -P.TrTextPadY),
+                Fill = accent, Opacity = Prop.Of(() => IsCur() ? 1f : 0f), HitTestVisible = false,
+            }.Skeletonized(false));
             var textBox = new BoxEl
             {
                 Direction = 0, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, ZStack = true,
                 Padding = new Edges4(P.TrTextPadX, P.TrTextPadY, P.TrTextPadX, P.TrTextPadY), Corners = Radii.ControlAll, BrushTransitionMs = Design.Motion.Faster,
-                Fill = Prop.Of(() => isCur() ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent), HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-                Children =
-                [
-                    text,
-                    new BoxEl
-                    {
-                        Width = P.TrCurrentStroke, JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Stretch, Margin = new Edges4(-P.TrTextPadX, -P.TrTextPadY, 0f, -P.TrTextPadY),
-                        Fill = accent, Opacity = Prop.Of(() => isCur() ? 1f : 0f), HitTestVisible = false,
-                    }.Skeletonized(false),
-                ],
+                Fill = Prop.Of(() => IsCur() ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent), HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+                Children = kidsText.ToArray(),
             };
             var row = new List<Element>(2);
-            ColorF ink = Design.Palette.ReadableInk(accent);
             if (chrome)
                 row.Add(new BoxEl
                 {
                     Width = P.TrTimeW, Shrink = 0f, Direction = 0, Justify = FlexJustify.End, Padding = new Edges4(0f, P.TrTextPadY + P.TrTextPadY, 0f, 0f),
-                    Children = [new TextEl(l.Time) { Size = Caption("").Size, LineHeight = Caption("").LineHeight, Color = Prop.Of(() => isCur() ? ink : Tok.TextTertiary) }],
+                    Children = [new TextEl("") { Text = Prop.Of(() => At().Time), Size = Caption("").Size, LineHeight = Caption("").LineHeight,
+                        Color = Prop.Of(() => IsCur() ? ink : Tok.TextTertiary) }],
                 });
             row.Add(textBox);
-            var kids = new List<Element>(2);
-            if (l.Heading is { } h && index > 0)
-                kids.Add(new BoxEl
-                {
-                    Padding = new Edges4(chrome ? P.TrTimeW + P.TrColGap + P.TrTextPadX : P.TrTextPadX, P.SectionBottom, 0f, P.TrTextPadY),
-                    Children = [BodyStrong(h) with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f }],
-                });
-            kids.Add(new BoxEl
+            var heading = new BoxEl
+            {
+                Padding = new Edges4(chrome ? P.TrTimeW + P.TrColGap + P.TrTextPadX : P.TrTextPadX, P.SectionBottom, 0f, P.TrTextPadY),
+                Visible = Prop.Of(() => idx.Value > 0 && At().Heading is not null),
+                Children = [new TextEl("") { Text = Prop.Of(() => At().Heading ?? ""), Size = BodyStrong("").Size, LineHeight = BodyStrong("").LineHeight,
+                    Weight = BodyStrong("").Weight, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f }],
+            };
+            var line = new BoxEl
             {
                 Direction = 0, Gap = P.TrColGap, MinWidth = 0f, AlignItems = FlexAlign.Start, Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
-                OnClick = () => p.SeekTo(start), Children = row.ToArray(),
-            });
-            return new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, P.TrLineGap, 0f, 0f), Children = kids.ToArray() };
+                OnClick = () => p.SeekTo(lines[Math.Clamp(idx.Peek(), 0, lines.Length - 1)].StartMs), Children = row.ToArray(),
+            };
+            return new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, P.TrLineGap, 0f, 0f), Children = [heading, line] };
         }
+
+        static readonly TextSpans s_noSpans = new([], 0);
 
         static TextSpans Marked(string text, string find)
         {

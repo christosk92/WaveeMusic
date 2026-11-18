@@ -29,6 +29,15 @@ public static partial class PodcastPages
 
     internal sealed record RouteProps(Shell.Route Route, string RouteKey, bool Episode);
 
+    /// <summary>The podcast pages' row drag (<c>RowDrag</c> on the show and episode props): the episode of <paramref name="id"/> (its uri) as the
+    /// house's episode payload (<see cref="Episode.DragPayloadOf"/>), or null when it does not resolve.</summary>
+    internal static readonly Func<string, object?> RowDrag = static id =>
+    {
+        if (string.IsNullOrEmpty(id)) return null;
+        var uri = EntityUri.Parse(id);
+        return uri.IsValid && Entities.Current.Episodes.TryGetSlot(uri.Id, out int slot) ? Episode.DragPayloadOf(new Episode(slot)) : null;
+    };
+
     /// <summary>The props every page host reads: the subject and the route key.</summary>
     internal sealed record HostProps(EntityUri Subject, string RouteKey);
 

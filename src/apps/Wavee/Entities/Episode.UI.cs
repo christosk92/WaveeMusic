@@ -481,6 +481,16 @@ public readonly partial struct Episode
     /// right-click funnel; <c>Drag</c> is the episode's own drag (kind
     /// <see cref="DragKind.Episode"/>, the row's episode — never a selection) wherever the handle resolves.</item>
     /// </list></summary>
+    /// <summary>An episode as a drag (kind <see cref="DragKind.Episode"/>): it drops onto a playlist (added as an item) and onto the queue or the
+    /// player bar (queued), as a track does. Null when the handle does not resolve. Built at drag promotion (a cold factory), never per frame.</summary>
+    public static DragPayload? DragPayloadOf(Episode e)
+    {
+        if (!e.IsValid || !e.Uri.IsValid) return null;
+        string uri = e.Uri.Text;
+        var row = new EntityRef(EntityKind.Episode, e.Slot);
+        return new DragPayload(DragKind.Episode, uri, uri, TitleOf(e), row, ArtUrl: ArtOf(e)) { Episodes = [row] };
+    }
+
     public static Controls.CardData RowData(Episode e, in RowFacts f, in RowOptions o)
     {
         var episode = e;                                   // a copy the handlers can hold (an `in` cannot be captured)
@@ -507,9 +517,9 @@ public readonly partial struct Episode
 
         string dragUri = f.Uri, dragTitle = f.Title;
         string? dragCover = f.Cover;
+        var dragRow = new EntityRef(EntityKind.Episode, episode.Slot);
         DragSource? drag = e.IsValid && dragUri.Length > 0
-            ? Drag.Source(() => new DragPayload(DragKind.Episode, dragUri, dragUri, dragTitle,
-                                                new EntityRef(EntityKind.Episode, episode.Slot), ArtUrl: dragCover))
+            ? Drag.Source(() => new DragPayload(DragKind.Episode, dragUri, dragUri, dragTitle, dragRow, ArtUrl: dragCover) { Episodes = [dragRow] })
             : null;
 
         return new Controls.CardData(f.Uri, f.Title, f.Show is { Length: > 0 } show ? RowCaption(show) : null, f.Cover,

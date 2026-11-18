@@ -62,6 +62,7 @@ internal static class ZunePodcastEpisode
             _verbs ??= new ZunePodcastRowVerbs
             {
                 Expanded = s_none, Playing = p.OnDeck, Play = p.PlayEpisode, Open = p.Open, PlayNext = p.PlayNext, Expand = null, Menu = p.RowMenu,
+                Drag = p.RowDrag,
             };
             _head ??= () =>
             {

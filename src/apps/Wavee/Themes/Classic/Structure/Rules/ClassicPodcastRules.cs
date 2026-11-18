@@ -57,7 +57,7 @@ internal static class ClassicPodcastRules
     // ── the episode row (concept `.t-classic .row`) ──
     public const float RowPadTop = 10f, RowPadEnd = 8f, RowPadBottom = 10f, RowPadStart = 12f, RowPadCompact = 8f, RowColGap = 12f;
     public const float PlayButton = 36f, PlayButtonCompact = 40f, RowAction = 32f, RowActionCompact = 40f;
-    public const float RingTrackAlpha = 0.16f, NewDot = 6f, MetaGap = 6f, MetaGlyph = 12f;
+    public const float RingTrackAlpha = 0.16f, MetaGap = 6f;
     public const float ExpandTop = 10f, ExpandGap = 10f, ExpandMs = 167f;
 
     // ── sections, cards ──
@@ -75,6 +75,15 @@ internal static class ClassicPodcastRules
     public const float StillTagH = 20f, StillTagPadX = 6f, StillTagInset = 8f, StillTagGap = 4f;
     public const float MapPadX = 16f, MapPadTop = 14f, MapPadBottom = 16f, MapGap = 12f, SegGap = 2f, SegRest = 6f, SegHover = 10f, SegBand = 16f,
         SegRadius = 3f, SegMin = 4f, Thumb = 16f, ThumbHalf = 8f, ThumbDot = 6f, ThumbDotHalf = 3f, ThumbStroke = 1f;
+    /// <summary>A crowded map (a long episode's hundred chapters): from <see cref="SegDenseFrom"/> segments the gap and the floor shrink so every chapter
+    /// still fits a Compact row.</summary>
+    public const int SegDenseFrom = 40;
+    public const float SegGapDense = 1f, SegMinDense = 2f;
+    public static float SegGapFor(int count) => count >= SegDenseFrom ? SegGapDense : SegGap;
+    public static float SegMinFor(int count) => count >= SegDenseFrom ? SegMinDense : SegMin;
+    /// <summary>A chapter row's one height (the bound list's rows), and how far (in viewports) a follow target must be to land at once.</summary>
+    public const float ChRowH = 56f;
+    public const double FollowJumpViewports = 2.0;
     public const float CardsH = 452f, CardsHCompact = 420f, ChaptersCardW = 320f, CardRadius = 8f;
     public const float ChNum = 28f, ChGap = 10f, ChPadX = 8f, ChPadY = 8f, ChMinH = 52f, ChBarTop = 6f, ChBarH = 3f, ChCheck = 16f, ChCheckGlyph = 12f, ChTickW = 3f, ChTickH = 16f;
     public const float CardHeadPadX = 16f, CardHeadPadTop = 10f, BodyPad = 8f;
@@ -82,6 +91,8 @@ internal static class ClassicPodcastRules
         TrLineEstimate = 34f, TrHeadingEstimate = 64f, TrCurrentStroke = 3f, FindW = 200f, TrHeadingTop = 10f, TrHeadingBottom = 6f;
     public const float MiniBarH = 3f, MiniBarTrack = 1f, MiniBarRadius = 1.5f;
     public const string Dot = " · ";
+    /// <summary>The New mark that leads a new episode's meta run (a dot, then the word, both in the accent).</summary>
+    public const string NewMark = "● ";
     public static readonly ColorF FindMark = ColorF.FromRgba(0xFF, 0xD3, 0x3D, 0x66);
 
     // ── the audiobook ──

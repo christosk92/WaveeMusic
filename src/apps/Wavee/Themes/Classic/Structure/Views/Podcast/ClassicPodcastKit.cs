@@ -47,6 +47,8 @@ internal sealed class ClassicRowVerbs
     public required Action<string> PlayNext { get; init; }
     public required Action<string?> Expand { get; init; }
     public required Func<string, ContextMenuModel?> Menu { get; init; }
+    /// <summary>A row's drag payload (the page props' <c>RowDrag</c>; null: the rows carry no drag).</summary>
+    public Func<string, object?>? Drag { get; init; }
 }
 
 /// <summary>Classic's podcast kit (see the file header).</summary>
@@ -504,10 +506,13 @@ internal static class ClassicPodcastKit
         Action<Point2>? _move;
         Action<KeyEventArgs>? _key;
         Func<ContextMenuModel?>? _menu;
+        DragSource? _drag;
 
         public override Element Render()
         {
             _p = UseProps<RowProps>();
+            // The row drags as its episode (onto a playlist, the queue, the player bar): ONE source per row, the payload built when the drag promotes.
+            if (_drag is null && _p.Verbs.Drag is not null) _drag = Wavee.Drag.Source(() => _p.Verbs.Drag?.Invoke(_p.Vm.Id));
             _click ??= () => { if (_p.Expands) _p.Verbs.Expand(_p.Vm.Id); else _p.Verbs.Open(_p.Vm.Id); };
             _play ??= () => _p.Verbs.Play(_p.Vm.Id);
             _save ??= () => _p.Verbs.ToggleSaved(_p.Vm.Id);
@@ -548,10 +553,14 @@ internal static class ClassicPodcastKit
                 });
 
             bool showSave = vm.Saved || hover || expanded || p.Compact;
-            Element save = Controls.Named(Controls.IconAction(vm.Saved ? Icons.HeartFill : Icons.Heart, _save, size: act) with
+            // The heart's slot is always reserved; the button itself is mounted only while it shows (saved at rest, hover, expanded, Compact), so a
+            // freshly realised row in a fast scroll carries no hidden button.
+            Element save = new BoxEl
             {
-                Opacity = showSave ? 1f : 0f, Key = "row:save",
-            }, Loc.Get(vm.Saved ? Strings.Podcast.Pages.Saved : Strings.Podcast.Pages.Save));
+                Key = "row:save-slot", Width = act, Height = act, Shrink = 0f,
+                Children = showSave ? [Controls.Named(Controls.IconAction(vm.Saved ? Icons.HeartFill : Icons.Heart, _save, size: act) with { Key = "row:save" },
+                    Loc.Get(vm.Saved ? Strings.Podcast.Pages.Saved : Strings.Podcast.Pages.Save))] : [],
+            };
             Element more = ClassicDetailKit.MoreButton(_menu, act);
             Element line = new BoxEl
             {
@@ -579,7 +588,7 @@ internal static class ClassicPodcastKit
                 Padding = p.Compact ? Edges4.All(P.RowPadCompact) : new Edges4(P.RowPadStart, P.RowPadTop, P.RowPadEnd, P.RowPadBottom),
                 Fill = expanded ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
                 HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
-                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key,
+                OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, Draggable = _drag,
                 Children = kids.ToArray(),
             };
             return Controls.IsNullOverlay(overlay) ? row : ContextSheets.Attach(row, overlay!, _menu);
@@ -621,33 +630,32 @@ internal static class ClassicPodcastKit
     /// <summary>The meta line: New (a dot and the word in the accent), the date, the length or the accent time left, Played, the Video tag.</summary>
     public static Element MetaLine(PodcastEpisodeVm vm, bool showNew = true, ColorF? accent = null)
     {
-        ColorF a = accent ?? Tok.AccentDefault;
-        ColorF ink = Design.Palette.ReadableInk(a);
-        var kids = new List<Element>(8);
-        if (showNew && vm.State == PodcastRowState.New)
-            kids.Add(new BoxEl
-            {
-                Direction = 0, Gap = P.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Children =
-                [
-                    new BoxEl { Width = P.NewDot, Height = P.NewDot, Corners = CornerRadius4.All(P.NewDot / 2f), Fill = a },
-                    Meta(Loc.Get(Strings.Podcast.Pages.Fresh)) with { Color = ink, Weight = P.Strong },
-                ],
-            });
-        if (vm.Date.Length > 0) kids.Add(Meta(vm.Date));
-        if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) kids.Add(Meta(vm.Left) with { Color = ink });
-        else if (vm.Length.Length > 0) kids.Add(Meta(vm.Length));
-        if (vm.State == PodcastRowState.Played) kids.Add(Meta(Loc.Get(Strings.Podcast.Pages.Played)));
-        if (vm.Video) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video, Tok.TextTertiary));
-        // Each part after the first carries its own "·", so a separator never ends a line or starts one.
-        var parts = new Element[kids.Count];
-        for (int i = 0; i < parts.Length; i++)
-            parts[i] = i == 0 ? kids[i] : new BoxEl
-            {
-                Direction = 0, Gap = P.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Children = [Meta("·"), kids[i]],
-            };
-        return new BoxEl { Direction = 0, Gap = P.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = parts };
+        // ONE run of spans (a recycled row realises one text node, not a box per part): the separators ride inside the run, and the run never wraps,
+        // so no line starts or ends on a "·". The Video tag is its own box only on a video episode.
+        ColorF ink = Design.Palette.ReadableInk(accent ?? Tok.AccentDefault);
+        var spans = new List<TextSpan>(8);
+        void Part(string text, ColorF? color = null, ushort weight = 0)
+        {
+            if (text.Length == 0) return;
+            if (spans.Count > 0) spans.Add(new TextSpan(P.Dot));
+            spans.Add(color is { } c ? new TextSpan(text, Weight: weight, Color: c) : new TextSpan(text, Weight: weight));
+        }
+        if (showNew && vm.State == PodcastRowState.New) Part(P.NewMark + Loc.Get(Strings.Podcast.Pages.Fresh), ink, P.Strong);
+        Part(vm.Date);
+        if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) Part(vm.Left, ink);
+        else Part(vm.Length);
+        if (vm.State == PodcastRowState.Played) Part(Loc.Get(Strings.Podcast.Pages.Played));
+        var run = new SpanTextEl(spans.ToArray())
+        {
+            Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+            Shrink = 1f, MinWidth = 0f,
+        };
+        if (!vm.Video) return run;
+        return new BoxEl
+        {
+            Direction = 0, Gap = P.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Children = [run, Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video, Tok.TextTertiary)],
+        };
     }
 
     static TextEl Meta(string text) => new(text) { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f, Wrap = TextWrap.NoWrap };
@@ -706,8 +714,13 @@ internal static class ClassicPodcastKit
                 Children = [rows ? Controls.Surface(data, Shape.Row(P.RowCardCover)) : Controls.Surface(data, Shape.Shelf(), P.CardCover)],
             };
         }
+        // The two forms are a declared swap (a crossing at the Compact edge trades the house rows for the shelf cards).
         return rows
-            ? new BoxEl { Key = "more-like-this", Direction = 1, MinWidth = 0f, Children = kids }
-            : new BoxEl { Key = "more-like-this", Direction = 0, Wrap = true, Gap = P.CardGap, MinWidth = 0f, Children = kids };
+            ? new BoxEl { Key = "more-like-this:rows", Direction = 1, MinWidth = 0f, Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Children = kids }
+            : new BoxEl
+            {
+                Key = "more-like-this:cards", Direction = 0, Wrap = true, Gap = P.CardGap, MinWidth = 0f, Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade,
+                Children = kids,
+            };
     }
 }

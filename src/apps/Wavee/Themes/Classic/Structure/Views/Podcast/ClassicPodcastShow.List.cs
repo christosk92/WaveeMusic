@@ -80,7 +80,7 @@ internal static partial class ClassicPodcastShow
             _verbs ??= new ClassicRowVerbs
             {
                 Expanded = _p.Expanded, Playing = _p.Playing, Play = _p.Play, Open = _p.Open, ToggleSaved = _p.ToggleSaved, PlayNext = _p.PlayNext,
-                Expand = _p.Expand, Menu = _p.RowMenu,
+                Expand = _p.Expand, Menu = _p.RowMenu, Drag = _p.RowDrag,
             };
             _pinnedOf ??= PinnedGroup;
             _pinned = UseComputed(_pinnedOf);
@@ -270,15 +270,21 @@ internal static partial class ClassicPodcastShow
             }
         }
 
-        /// <summary>An episode row, the "Load more" foot, the empty line, or the page's foot (More like this).</summary>
+        /// <summary>An episode row, the "Load more" foot, the empty line, or the page's foot (More like this), between its gutters. It re-renders only when
+        /// its slot's SHAPE changes (the part, the kind): a recycled slot that rebinds to another episode re-renders the row alone (<see cref="RowItem"/>),
+        /// so a fast scroll realising many rows a frame pays for each row's content only.</summary>
         sealed class BodySlot(PageHost host, IReadSignal<ShowSlot> item) : Component
         {
+            Func<(int Part, PodcastItemKind Kind)>? _shapeOf;
+            RowItemProps? _row;
+
             public override Element Render()
             {
-                var slot = item.Value;
+                _shapeOf ??= () => (item.Value.Part, item.Value.Kind);
+                var shape = UseComputed(_shapeOf).Value;
                 var lay = host._lay.Value;
                 var p = host._p;
-                if (slot.Part == FootPart)
+                if (shape.Part == FootPart)
                 {
                     var hv = host._head!.Value;
                     var kids = new List<Element>(2);
@@ -293,10 +299,9 @@ internal static partial class ClassicPodcastShow
                         Padding = Gutters(lay) with { Bottom = P.MainFoot + R.Space.DockReserve }, Children = kids.ToArray(),
                     };
                 }
-                Element body = slot.Kind switch
+                Element body = shape.Kind switch
                 {
-                    // ONE row per slot (a constant key): a recycled slot re-renders its row for the new episode instead of mounting a new one.
-                    PodcastItemKind.Row when slot.Vm is { } vm => ClassicPodcastKit.EpisodeRow(vm, lay, lay.RowExpands, lay.RowDescription, host._accent.Value, host._verbs!) with { Key = "ep" },
+                    PodcastItemKind.Row => Embed.Comp(_row ??= new RowItemProps(host, item), static () => new RowItem()),
                     PodcastItemKind.More => new BoxEl
                     {
                         Key = "cp-more", Direction = 0, Justify = FlexJustify.Center, Padding = new Edges4(0f, P.SectionBottom, 0f, P.SectionBottom),
@@ -311,6 +316,23 @@ internal static partial class ClassicPodcastShow
                     _ => new BoxEl(),
                 };
                 return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = Gutters(lay), Children = [body] };
+            }
+        }
+
+        sealed record RowItemProps(PageHost Host, IReadSignal<ShowSlot> Item);
+
+        /// <summary>The episode row of a row slot: ONE row per slot (a constant key), so a recycled slot re-renders its row for the new episode instead of
+        /// mounting a new one.</summary>
+        sealed class RowItem : Component
+        {
+            public override Element Render()
+            {
+                var p = UseProps<RowItemProps>();
+                var host = p.Host;
+                var lay = host._lay.Value;
+                return p.Item.Value.Vm is { } vm
+                    ? ClassicPodcastKit.EpisodeRow(vm, lay, lay.RowExpands, lay.RowDescription, host._accent.Value, host._verbs!) with { Key = "ep" }
+                    : new BoxEl();
             }
         }
 

@@ -113,7 +113,7 @@ internal static partial class WinUiPodcastShow
             _verbs ??= new PodcastRowVerbs
             {
                 Selected = p.Selected, Expanded = p.Expanded, Playing = p.Playing, Play = p.Play, Open = p.Open, ToggleSaved = p.ToggleSaved,
-                PlayNext = p.PlayNext, Select = p.Select, Expand = p.Expand, Menu = p.RowMenu,
+                PlayNext = p.PlayNext, Select = p.Select, Expand = p.Expand, Menu = p.RowMenu, Drag = p.RowDrag,
             };
 
             _projectHead ??= () => HeadOf(_p.View.Value);
