@@ -25,6 +25,8 @@ versions separately under `v*` and is not tracked in this file.)
   line sung at that moment, on a small card that points at your mouse. Settings > Appearance > Lyrics > "Show lyrics
   when seeking" turns it off.
 
+- **Close the bar about songs that can't be played.** Its new ✕ hides it on that list for good; other lists still show theirs. (#231)
+
 ### Fixed
 
 - **Video podcasts that are not copy-protected play their video.** Such an episode played as audio only, as if it had no

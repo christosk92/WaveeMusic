@@ -69,6 +69,17 @@ internal static class ClassicTrackChrome
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
                 Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
+                // The ✕: closes the bar on this list for good (the core remembers it).
+                a.Dismiss is { } dismiss
+                    ? ToolTip.Wrap(new BoxEl
+                    {
+                        Key = "unavailable:dismiss", Width = g.Height - g.Padding.Top - g.Padding.Bottom, Height = g.Height - g.Padding.Top - g.Padding.Bottom, Shrink = 0f,
+                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+                        HoverFill = Prop.Of(static () => Tok.FillSubtleSecondary), PressedFill = Prop.Of(static () => Tok.FillSubtleTertiary),
+                        Role = AutomationRole.Button, Focusable = a.Shown, IsEnabled = a.Shown, Cursor = CursorId.Hand, OnClick = dismiss,
+                        Children = [Icon(Icons.ChromeClose, g.Glyph, Tok.TextSecondary)],
+                    }, a.DismissLabel)
+                    : new BoxEl { Shrink = 0f },
             ],
         };
         // The bar stands between two easing gutters (not a padding: a padding cannot ease), so a crossing that moves the rows' inset (the detail page's

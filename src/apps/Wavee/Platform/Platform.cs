@@ -206,6 +206,10 @@ public static partial class Platform
         public static readonly SettingKey<bool> PlaybackRuntimeSetupDismissed = new("playback.runtime.dismissed", false);
         public static readonly SettingKey<string> PlaybackRuntimeCatalogUrl = new("playback.runtime.catalogUrl", "");
 
+        // ── lists ──
+        /// <summary>The lists whose unavailable-songs bar was closed with its ✕ (<c>UnavailableBarDismissals</c>): their context uris, one per line.</summary>
+        public static readonly SettingKey<string> UnavailableBarDismissed = new("detail.unavailableBar.dismissed", "");
+
         // ── playback ──
         public static readonly SettingKey<int> PlaybackQuality = new("playback.quality", 2);
         public static readonly SettingKey<int> MeteredQualityCap = new("playback.quality.meteredCap", 1);

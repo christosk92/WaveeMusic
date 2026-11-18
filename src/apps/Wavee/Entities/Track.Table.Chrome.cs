@@ -85,6 +85,7 @@ public readonly partial struct Track
         Func<PlaylistHost> _laneHost = null!;
         // the unavailable-songs bar (contract 1.22): its verb, whether it is on (the hero arm's clip inset follows it), and its cached tally
         Action _hideUnavailable = null!;
+        Action? _dismissUnavailable;
         readonly Signal<bool> _unavailableShown = new(false);
         UnavailableTally _tally;
         uint _tallyVersion, _tallyPublication;
@@ -1057,7 +1058,9 @@ public readonly partial struct Track
                 var tally = UseComputed(_tally ??= h.UnavailableNow).Value;
                 var filters = h._filters.Value;
                 var template = h._listStyle?.Chrome.UnavailableBar;
-                bool shown = template is not null && FilterModel.OffersHide(in tally, in filters);
+                // Closed with its ✕ on this list: gone for good (Track.UnavailableBar.cs). The read subscribes the closes.
+                bool dismissed = UnavailableBarDismissals.Has(h._contextText);
+                bool shown = template is not null && !dismissed && FilterModel.OffersHide(in tally, in filters);
                 UseLayoutEffect(() => h._unavailableShown.Value = shown, DepKey.From(shown));
                 if (template is null) return new BoxEl();
                 bool vertical = h.HeroFormLive;
@@ -1070,6 +1073,9 @@ public readonly partial struct Track
                     Explained = tally.Total > 0 ? UnavailableExplained(in tally) : Strings.Detail.Filter.Unavailable.Summary(count: count),
                     ActionLabel = Strings.Detail.Filter.Unavailable.Hide(count: count),
                     Hide = h._hideUnavailable,
+                    // The list's context at CLICK time (the host is reused across pages).
+                    Dismiss = h._contextText.Length > 0 ? h._dismissUnavailable ??= () => UnavailableBarDismissals.Add(h._contextText) : null,
+                    DismissLabel = Loc.Get(Strings.Detail.Filter.Unavailable.Dismiss),
                     InsetX = insetX,
                     Tiers = h.TiersNow(),
                 });
