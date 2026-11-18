@@ -73,7 +73,7 @@ internal static class ZunePodcastAudiobook
                 OnFailed: null, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
             var kids = new List<Element>(4) { K.Title(shown.Title, lay, gutter) };
             if (shown.Subtitle.Length > 0) kids.Add(K.Sub(shown.Subtitle, gutter));
-            kids.Add(K.Pivots("zb-pivots", items.ToImmutable(), pivot, _select, lay, gutter));
+            kids.Add(K.Pivots("zb-pivots", items.ToImmutable(), pivot, _select, lay, gutter, UseContext(PodcastPagePlace.Embedded)));
             kids.Add(region);
             return K.Page(p.RouteKey, new BoxEl { Key = "zune-book-column", Direction = 1, MinWidth = 0f, Children = kids.ToArray() }, gutter);
         }

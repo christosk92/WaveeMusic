@@ -307,7 +307,7 @@ internal static partial class ZunePodcastShow
                 _ = host._head!.Value;
                 _ = host._pivot.Value;
                 var lay = host._layS.Value;
-                return host.Column(K.Pivots("zp-pivots", host._pivotItems, host._pivotNow, host._select!, lay, 0f), bleed: true);
+                return host.Column(K.Pivots("zp-pivots", host._pivotItems, host._pivotNow, host._select!, lay, 0f, host._embedded), bleed: true);
             }
         }
 

@@ -110,9 +110,11 @@ internal static class ZunePodcastKit
     /// <summary>One pivot: its word and its small count ("" = none; a pending count keeps its room with a blank).</summary>
     public readonly record struct PivotItem(string Word, string Count);
 
-    /// <summary>The pivot row (see the file header): <paramref name="items"/> in their order, <paramref name="selected"/> lit and leading.</summary>
-    public static Element Pivots(string key, ImmutableArray<PivotItem> items, int selected, Action<int> select, ZunePodcastLayout lay, float gutter)
-        => Embed.Comp(new PivotProps(key, items, selected, select, lay.PivotGap, gutter), static () => new PivotHost()) with { Key = ZuneFrameRules.PageTitleKey };
+    /// <summary>The pivot row (see the file header): <paramref name="items"/> in their order, <paramref name="selected"/> lit and leading. On its own route it is
+    /// the page's title (<c>ZuneFrameRules.PageTitleKey</c>, which the gutter rule measures); in another page's column (<paramref name="embedded"/>: the library's)
+    /// it is not, and keeps <paramref name="key"/>.</summary>
+    public static Element Pivots(string key, ImmutableArray<PivotItem> items, int selected, Action<int> select, ZunePodcastLayout lay, float gutter, bool embedded = false)
+        => Embed.Comp(new PivotProps(key, items, selected, select, lay.PivotGap, gutter), static () => new PivotHost()) with { Key = embedded ? key : ZuneFrameRules.PageTitleKey };
 
     sealed record PivotProps(string Key, ImmutableArray<PivotItem> Items, int Selected, Action<int> Select, float Gap, float Gutter)
     {
