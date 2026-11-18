@@ -857,6 +857,7 @@
     "play": "재생"
   },
   "menu": {
+    "openInNewTab": "새 탭에서 열기",
     "artistUnavailable": "이 앨범의 아티스트를 찾지 못했습니다",
     "moveManyToFolder": "{count}개를 폴더로 이동…",
     "moveUp": "위로 이동",

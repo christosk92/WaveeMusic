@@ -40,6 +40,7 @@ public static partial class Shell
         OnActivateTab = static index => WorkspaceVerbs.Shared.ActivateTab(index),
         OnCloseTab = static index => WorkspaceVerbs.Shared.CloseTab(index),
         OnNewTab = static () => WorkspaceVerbs.Shared.OpenTab(new Route(RouteKind.Home)),
+        NewTabDrop = s_newTabDrop,
         OnTabExtent = static extent => s_tabExtent.SetIfChanged(Chrome.TabExtentFromMetrics(extent)),
         CanBack = static () => Shell.CanBack.Value,
         CanForward = static () => Shell.CanForward.Value,

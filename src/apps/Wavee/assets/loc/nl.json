@@ -860,6 +860,7 @@
     "play": "Afspelen"
   },
   "menu": {
+    "openInNewTab": "Openen in nieuw tabblad",
     "artistUnavailable": "De artiest van dit album is niet gevonden",
     "moveManyToFolder": "{count} verplaatsen naar map…",
     "moveUp": "Omhoog verplaatsen",

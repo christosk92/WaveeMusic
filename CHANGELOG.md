@@ -26,6 +26,10 @@ versions separately under `v*` and is not tracked in this file.)
   wherever the menu opens, and both write exactly what the page's own heart does. Your own playlists, Liked Songs and
   Your Episodes are never offered a Save or a Follow.
 
+- **Open in new tab.** The menu of an album, playlist, artist or show offers "Open in new tab" under "Open", and
+  anything with a page of its own (a card, a row, a sidebar item) can be dropped on the title bar to open it in a new
+  tab (Classic and WinUI).
+
 ### Changed
 
 - **Playlists open at once.** A playlist you have opened before shows its saved copy the moment you click, Mixes

@@ -1340,6 +1340,31 @@ public static partial class Shell
             springLoadOnly: true);
     }
 
+    /// <summary>The menu row "Open in new tab" for <paramref name="route"/> (one wording and one glyph wherever a menu offers it).</summary>
+    internal static MenuFlyoutItem OpenInNewTabRow(Route route)
+        => new(Loc.Get(Strings.Menu.OpenInNewTab), Icons.OpenInNewWindow, true, () => WorkspaceVerbs.Shared.OpenTab(route));
+
+    /// <summary>THE TITLE BAR TAKES A DROP (owner, 2026-11-18): anything with a page of its own (a card, a row, a sidebar item) dropped on the bar
+    /// opens in a new tab. A tab that takes a deposit (an editable playlist's) keeps its own target, which sits above this one. A lifted TAB is not
+    /// taken (it would open a second copy of itself), nor a track (it has no page), nor a queue row.</summary>
+    static readonly DropTargetSpec s_newTabDrop = Drop.Target<DragPayload>(Drag.Resource,
+        accepts: static p => ShellCaps.Now.Tabs && !NewTabRouteOf(p).IsNone,
+        onDrop: static (p, _) =>
+        {
+            var route = NewTabRouteOf(p);
+            if (!route.IsNone) WorkspaceVerbs.Shared.OpenTab(route);
+        },
+        caption: static _ => Loc.Get(Strings.Menu.OpenInNewTab),
+        settleOnDrop: false);
+
+    /// <summary>The page a dropped payload opens, or none.</summary>
+    static Route NewTabRouteOf(DragPayload p)
+    {
+        if (p.FromTab || p.FromQueue || p.Kind is DragKind.Track or DragKind.Folder) return new Route(RouteKind.NotFound);
+        var uri = EntityUri.Parse(p.Uri);
+        return uri.IsValid ? For(uri, p.Name) : new Route(RouteKind.NotFound);
+    }
+
     static ContextMenuModel? TabMenu(int tabId)
     {
         int index = Tabs.IndexOf(tabId);

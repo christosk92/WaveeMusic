@@ -3004,6 +3004,7 @@
     "moveLeft": "Move left",
     "moveRight": "Move right",
     "open": "Open",
+    "openInNewTab": "Open in new tab",
     "saveToLibrary": "Save to Your Library",
     "removeFromLibrary": "Remove from Your Library",
     "renamePlaylist": "Rename playlist",
