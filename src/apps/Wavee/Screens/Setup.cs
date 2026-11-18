@@ -599,7 +599,7 @@ public static partial class Setup
             => !disk.LibraryDb && !disk.StoredCredential && !disk.History
                && !settings.Get(Platform.Keys.SidebarWidthUserSetLegacy) && !settings.Get(Platform.Keys.SidebarCollapsedLegacy);
 
-        /// <summary>Arm the wizard for a fresh install, suppress it for an existing one — ONCE per install — then the two
+        /// <summary>Arm the wizard for a fresh install (and store the theme a new install starts in), suppress it for an existing one — ONCE per install — then the two
         /// every-launch checks: a wiped data folder resets a "completed" install, and a terms bump re-arms a completed one.
         /// On a fresh install the wizard is the one onboarding prompt (0.2.9's rule).</summary>
         public static void Run(IAppSettings settings, in InstallWitnesses disk)
@@ -620,6 +620,8 @@ public static partial class Setup
                 settings.Set(Platform.Keys.SetupPending, fresh);
                 settings.Set(Platform.Keys.SetupCompleted, !fresh);
                 settings.Set(Platform.Keys.SetupBootstrapVersion, TargetVersion);
+                // A new install starts in the new-install theme; an existing one keeps the theme it has (stored, or the fallback).
+                if (fresh) Wavee.Theming.ThemeHost.SeedNewInstall(settings);
                 Log.Info("setup", fresh ? "fresh install: first-run setup wizard armed" : "existing install: first-run setup wizard suppressed");
             }
 

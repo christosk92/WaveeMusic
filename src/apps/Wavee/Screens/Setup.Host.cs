@@ -22,7 +22,8 @@ public static partial class Setup
     // ══ REGION 2 — THE INSTALL BOOTSTRAP'S DISK PROBE (gap batch B5, G-095) ═════════════════════════════════════════
 
     /// <summary>Arm (or suppress) the first-run wizard for this install. Call ONCE per launch from the composition root,
-    /// after <c>Platform.Boot</c> (it needs the settings store and the profile path) and BEFORE <c>Store.Use</c> opens
+    /// after <c>Platform.Boot</c> (it needs the settings store and the profile path), before the themes install (a new install's
+    /// theme is stored here) and BEFORE <c>Store.Use</c> opens
     /// the store (<c>library.&lt;schema&gt;.db</c>) or the shell writes its history — either would make every install
     /// look existing. Writes settings only; the wizard itself is shown later, gated on <c>setup.pending</c>.</summary>
     public static void BootstrapInstall()

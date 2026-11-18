@@ -58,6 +58,12 @@ versions separately under `v*` and is not tracked in this file.)
 - **WinUI lyrics pane follows the blur setting,** and the active line and the words being sung stand clearly apart
   from the rest.
 
+- **New installs start in the WinUI theme.** A first run opens in WinUI, and the setup dialog's theme step shows it
+  selected. An install that already ran keeps its theme.
+
+- **Pinned bars show the window behind them (WinUI, Zune).** The bar that stays at the top of an album or playlist
+  page in WinUI no longer paints a lighter band across the page.
+
 ### Fixed
 
 - **Your Episodes (WinUI) showed a stray "7", a dead band and a header out of line.** It stands on the library's column
@@ -69,6 +75,8 @@ versions separately under `v*` and is not tracked in this file.)
 - **Saving an upcoming album** from a heart or a ⋯ menu pre-saves it, and every heart on that album shows it saved.
 - **A hidden Wavee window kept waking up.** While another window covered it, Wavee woke for every event on the
   desktop; it now stays asleep until it shows again.
+- **Picking a theme during setup closed the setup dialog.** The dialog vanished, the app stayed dimmed and only a
+  restart brought it back. The dialog now stays on its theme step in the new theme, with its illustration.
 
 ## [0.3.9] - 2026-11-14
 

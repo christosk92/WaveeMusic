@@ -96,6 +96,9 @@ public static class App
             if (!Shell.AcquireInstance()) return false;
         }
         RegisterShapes();                // the catalog's disk schema (G-007): before Store.Boot / Entities.Boot either way, so --fake and a real profile share one registration path
+        // Fresh-install detection over the profile's disk witnesses (read-only probe), before any store opens (B5) AND before the themes install: a new
+        // install's theme is the bootstrap's to store (ThemeCatalog.NewInstallId), and InstallThemes activates the stored id.
+        if (!Platform.Args.Fake) Setup.BootstrapInstall();
         // The compositions, once and before any surface mounts: it resolves the stored theme id and publishes the active theme's registry, options and facts. FULLY QUALIFIED because
         // inside `namespace Wavee` the simple name `Themes` is the namespace `Wavee.Themes` (the theme packages), not the class.
         // A Developer-only theme (none today) resolves to Classic with Developer mode off, the stored id kept for when it is on again.
@@ -117,7 +120,6 @@ public static class App
         InstallThemes();
         if (!Platform.Args.Fake)
         {
-            Setup.BootstrapInstall();    // fresh-install detection over the profile's disk witnesses (read-only probe), before any store opens (B5)
             StoreFiles.Reap(Platform.LocalFolder, Store.FileName);   // stale schemas, the legacy library.db set, .dead-* leftovers — after the gate, before the open
             Store.Use(Path.Combine(Platform.LocalFolder, Store.FileName));   // the persistent graph (G-007), one file per schema fingerprint; --fake stays memory-only
             // The persisted metadata-cache ceiling, applied at boot (until now only a Storage combo change set it); 0 disables the budget leg.
