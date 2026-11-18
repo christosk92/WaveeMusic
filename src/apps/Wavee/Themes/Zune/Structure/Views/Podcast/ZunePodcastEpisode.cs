@@ -215,7 +215,7 @@ internal static class ZunePodcastEpisode
         {
             Key = "ze-show", Direction = 0, Shrink = 1f, MinWidth = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true,
             AllowFocusOnInteraction = false, OnClick = open,
-            Children = [K.MetaWord(name) with { HoverColor = Tok.TextPrimary, PressedColor = Tok.TextTertiary, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f }],
+            Children = [K.MetaWord(name) with { Case = TextCase.AsWritten, HoverColor = Tok.TextPrimary, PressedColor = Tok.TextTertiary, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f }],
         };
 
         static Element Commands(PodcastEpisodePageProps p, PodcastEpisodeView v, ZunePodcastLayout lay)
@@ -255,7 +255,8 @@ internal static class ZunePodcastEpisode
             var strong = new TextEl(v.MapHead)
             {
                 FontFamily = R.Type.Pivot("").FontFamily, Size = Z.MapHeadSize, LineHeight = Z.MapHeadLine, Weight = Z.Strong, Color = Tok.TextPrimary,
-                Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+                // The head is the current chapter's NAME (as written) when the quiet words lead it, else the theme's words ("played", "12 chapters").
+                Case = v.MapQuietFirst ? TextCase.AsWritten : R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
             };
             var quiet = new TextEl(v.MapSub)
             {
@@ -543,11 +544,11 @@ internal static class ZunePodcastEpisode
                 Children =
                 [
                     K.Heading(Loc.Get(Strings.Podcast.Pages.Transcript)) with { Shrink = 0f },
-                    R.Type.TrackMeta(v.TranscriptSub) with { Color = Tok.TextSecondary, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    R.Type.TrackMeta(v.TranscriptSub) with { Case = R.Case.For(LabelKind.Label), Color = Tok.TextSecondary, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     new BoxEl
                     {
                         Width = Z.FindW, Shrink = 0f, MinWidth = 0f,
-                        Children = [AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Podcast.Pages.FindInTranscript), width: Z.FindW, text: p.Find(), queryIcon: Icons.Search)],
+                        Children = [AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Theme.Zune.Detail.FindInTranscript), width: Z.FindW, text: p.Find(), queryIcon: Icons.Search)],
                     },
                     Embed.Comp(p, static () => new FollowHost()) with { Key = "ze-follow" },
                 ],
@@ -569,7 +570,7 @@ internal static class ZunePodcastEpisode
                         return _headingAt[Math.Clamp(at, 0, _headingAt.Length - 1)];
                     }),
                     FontFamily = R.Type.Pivot("").FontFamily, Size = Z.TrHeadingSize, LineHeight = Z.TrHeadingLine, Weight = Z.Light, Color = Tok.TextSecondary,
-                    Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    Case = TextCase.AsWritten, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 };
                 body = new BoxEl
                 {
@@ -622,7 +623,7 @@ internal static class ZunePodcastEpisode
                     Children = [new TextEl(h)
                     {
                         FontFamily = R.Type.Pivot("").FontFamily, Size = Z.TrHeadingSize, LineHeight = Z.TrHeadingLine, Weight = Z.Light, Color = Tok.TextSecondary,
-                        Case = R.Case.For(LabelKind.Label), Wrap = TextWrap.Wrap, MinWidth = 0f,
+                        Case = TextCase.AsWritten, Wrap = TextWrap.Wrap, MinWidth = 0f,
                     }],
                 });
             kids.Add(row);

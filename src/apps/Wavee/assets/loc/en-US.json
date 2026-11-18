@@ -3359,6 +3359,9 @@
         "category": "Category"
       },
       "detail": {
+        "$commentPodcast": "Podcast pages v2: the search fields' placeholders, written lowercase as the title bar's pill is (a placeholder takes no case role).",
+        "searchShow": "search this show",
+        "findInTranscript": "find in transcript",
         "$commentPlaylist": "Z6b1: the playlist's words. Written as people say them; the style's case roles lower them. chooseCover is the empty cover tile's word; emptyTitle and emptyLine lead an empty playlist (Z-State-Empty-Playlist); refresh and add are the recommended section's words.",
         "chooseCover": "Choose a cover",
         "emptyTitle": "Let’s find something for this playlist",
