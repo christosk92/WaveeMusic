@@ -653,12 +653,14 @@ internal static class ZunePodcastKit
             var cells = new List<Element>(6);
             if (lead)
             {
-                // The episode's own cover leads the row (a show that gives its episodes none shows the show's): square, as every Zune cover.
+                // The episode's own picture leads the row: a video episode's still, wide as it was shot (cut square at Compact, where the row has
+                // no room for it); else its cover (a show that gives its episodes none shows the show's). Square corners, as every Zune picture.
                 float cover = p.Compact ? Z.LeadCoverCompact : Z.LeadCover;
+                float coverW = vm.StillUrl is not null && !p.Compact ? cover * Z.StillAspect : cover;
                 cells.Add(new BoxEl
                 {
-                    Key = "row:cover", Width = cover, Height = cover, Shrink = 0f, AlignSelf = FlexAlign.Start,
-                    Children = [Controls.Artwork(vm.ArtUrl, cover, cover, 0f, decodePx: Z.LeadCoverDecode)],
+                    Key = "row:cover", Width = coverW, Height = cover, Shrink = 0f, AlignSelf = FlexAlign.Start,
+                    Children = [Controls.Artwork(vm.StillUrl ?? vm.ArtUrl, coverW, cover, 0f, decodePx: Z.LeadCoverDecode)],
                 });
             }
             cells.Add(Controls.Named(play, playName));

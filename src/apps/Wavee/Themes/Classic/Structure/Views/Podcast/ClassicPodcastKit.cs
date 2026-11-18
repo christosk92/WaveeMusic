@@ -627,12 +627,14 @@ internal static class ClassicPodcastKit
             var cells = new List<Element>(5);
             if (lead)
             {
-                // The episode's own cover leads the card (a show that gives its episodes none shows the show's).
+                // The episode's own picture leads the card: a video episode's still, wide as it was shot (cut square at Compact, where the card
+                // has no room for it); else its cover (a show that gives its episodes none shows the show's).
                 float cover = p.Compact ? P.LeadCoverCompact : P.LeadCover;
+                float coverW = vm.StillUrl is not null && !p.Compact ? cover * P.StillAspect : cover;
                 cells.Add(new BoxEl
                 {
-                    Key = "row:cover", Width = cover, Height = cover, Shrink = 0f, AlignSelf = FlexAlign.Start,
-                    Children = [Controls.Artwork(vm.ArtUrl, cover, cover, P.LeadCoverRadius, decodePx: P.LeadCoverDecode)],
+                    Key = "row:cover", Width = coverW, Height = cover, Shrink = 0f, AlignSelf = FlexAlign.Start,
+                    Children = [Controls.Artwork(vm.StillUrl ?? vm.ArtUrl, coverW, cover, P.LeadCoverRadius, decodePx: P.LeadCoverDecode)],
                 });
             }
             if (lane)

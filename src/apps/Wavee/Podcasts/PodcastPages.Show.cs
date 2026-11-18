@@ -819,7 +819,7 @@ sealed class ShowModel
             state == PodcastRowState.Played ? 1f : state == PodcastRowState.InProgress ? pct : 0f, state, saved,
             (flags & EpisodeFlags.Video) != 0, kind == EpisodeKind.Trailer, playable, 0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(e))
         {
-            Eyebrow = eyebrow, LongDate = longDate, DescriptionHtml = e.Knows(EpisodeFields.About) ? e.HtmlDescription : "",
+            StillUrl = Episode.StillOf(e), Eyebrow = eyebrow, LongDate = longDate, DescriptionHtml = e.Knows(EpisodeFields.About) ? e.HtmlDescription : "",
             Month = month, Numeral = numeral, ShortTitle = shortTitle, Blurb = PodcastRowRules.BlurbOf(description, sharedLead),
             Explicit = (flags & EpisodeFlags.Explicit) != 0, Bonus = kind == EpisodeKind.Bonus,
         }, flags);

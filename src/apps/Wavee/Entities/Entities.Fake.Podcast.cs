@@ -176,6 +176,7 @@ public static partial class Entities
                     ep.Flags = (uint)(i == PaywalledEpisode
                         ? EpisodeFlags.Video | EpisodeFlags.Paywalled | EpisodeFlags.PreviewOnly | EpisodeFlags.Unplayable
                         : EpisodeFlags.Video);
+                    ep.Still = Text(s, Cover(sh + 11 + i));          // each video episode's own still (the show's cover is its square one)
                     Played(ref ep, ep.PublishedAt + Day);
                     break;
                 case FreshShow:

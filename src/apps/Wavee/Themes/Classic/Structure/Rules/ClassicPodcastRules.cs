@@ -72,7 +72,7 @@ internal static class ClassicPodcastRules
     /// <summary>The month's card (the first episode of each month): its cover, the card's inset and corner, the air above and under it.</summary>
     public const float LeadCover = 88f, LeadCoverCompact = 64f, LeadCoverRadius = 6f, LeadCardPad = 12f, LeadCardRadius = 8f, LeadCardTop = 4f, LeadCardBottom = 8f,
         LeadCardGap = 8f;
-    public const int LeadCoverDecode = 176;
+    public const int LeadCoverDecode = 320;
     /// <summary>A played row's vertical padding (one line, the play button's height).</summary>
     public const float PlayedPadY = 2f;
     /// <summary>A row in progress: its bar under the title, the time left beside it.</summary>

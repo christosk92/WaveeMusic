@@ -972,6 +972,9 @@ public static partial class Spotify
                     case 70: if (r.Bool()) row.Flags |= (uint)EpisodeFlags.Explicit; break;
                     case 71: row.ShowUri = ThinShow(r.Message(), s); break;
                     case 72: row.Flags |= (uint)EpisodeFlags.Video; r.Skip(); break;   // repeated VideoFile: one is a video
+                    // `freeze_frame` (ImageGroup, metadata.proto): the video's own still, 16:9. A video show's episodes usually carry the SHOW's
+                    // square cover as `cover_image`, so a page that drew that as the picture showed a crop of the host's portrait.
+                    case 76: row.Still = Cover(s, r.Message()); break;
                     case 87:                                                         // FULL 0 · TRAILER 1 · BONUS 2 = EpisodeKind's own
                         {
                             int kind = r.Int32();

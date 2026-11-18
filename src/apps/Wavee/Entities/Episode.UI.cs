@@ -282,6 +282,10 @@ public readonly partial struct Episode
     internal static bool HasDescription(Episode e) => e.IsValid && e.Knows(EpisodeFields.About) && !e.DescriptionId.IsEmpty;
     internal static string DescriptionOf(Episode e) => HasDescription(e) ? Entities.Strings.Resolve(e.DescriptionId) : "";
     internal static string? ArtOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Image) ? Controls.ArtUrl(e.ImageId) : null;
+
+    /// <summary>A video episode's own still (16:9), or null where none is known: the picture of the episode itself, where its cover is
+    /// often the show's.</summary>
+    internal static string? StillOf(Episode e) => e.IsValid && !e.StillId.IsEmpty ? Controls.ArtUrl(e.StillId) : null;
     internal static int DateKeyOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Published) ? DateKey(e.PublishedAt) : DateKeys.None;
     internal static EpisodeFlags FlagsOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Title) ? e.Flags : EpisodeFlags.None;
     internal static EpisodeKind KindOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Title) ? e.Kind : EpisodeKind.Full;

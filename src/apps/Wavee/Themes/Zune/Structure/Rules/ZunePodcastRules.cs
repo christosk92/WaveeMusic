@@ -116,7 +116,7 @@ public static class ZunePodcastRules
     /// <summary>The month's lead (the first episode of each month): its cover, square as every Zune cover, and the air over a description set
     /// under the whole line.</summary>
     public const float LeadCover = 88f, LeadCoverCompact = 64f, LeadUnderGap = 8f;
-    public const int LeadCoverDecode = 176;
+    public const int LeadCoverDecode = 320;
     /// <summary>A played row's vertical padding; the date and length's drop at a wide row's end (onto the title's line).</summary>
     public const float RowPadPlayed = 4f, AsideDrop = 3f;
     /// <summary>A row in progress: its line under the title.</summary>

@@ -645,7 +645,7 @@ public sealed class PodcastEpisodeScreen : Component
             Spotify.Podcasts.IsSaved(x), (flags & EpisodeFlags.Video) != 0, x.Kind == EpisodeKind.Trailer, (flags & EpisodeFlags.Unplayable) == 0,
             0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(x))
         {
-            Explicit = (flags & EpisodeFlags.Explicit) != 0, Bonus = x.Kind == EpisodeKind.Bonus,
+            StillUrl = Episode.StillOf(x), Explicit = (flags & EpisodeFlags.Explicit) != 0, Bonus = x.Kind == EpisodeKind.Bonus,
         }, flags);
     }
 

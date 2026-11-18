@@ -95,6 +95,8 @@ public enum EpisodeKind : byte { Full = 0, Trailer = 1, Bonus = 2 }
 public sealed class EpisodeTable : Table
 {
     public Column<StringId> Title, Image, Description, HtmlDescription, TranscriptUrl, TranscriptLanguage;
+    /// <summary>A video episode's own still (the wire's <c>freeze_frame</c>, 16:9); empty where the wire states none.</summary>
+    public Column<StringId> Still;
     public Column<int> DurationMs;
     /// <summary>Unix seconds, the same epoch as <c>FetchedAt</c> (ch 09 DATA GAPS).</summary>
     public Column<int> PublishedAt;
@@ -134,6 +136,7 @@ public sealed class EpisodeTable : Table
     protected override void GrowColumns(int capacity)
     {
         HtmlDescription.EnsureCapacity(capacity);
+        Still.EnsureCapacity(capacity);
         TranscriptUrl.EnsureCapacity(capacity);
         TranscriptLanguage.EnsureCapacity(capacity);
         Season.EnsureCapacity(capacity);
@@ -174,6 +177,7 @@ public sealed class EpisodeTable : Table
     {
         ClearText(ref Title, slot);
         ClearText(ref Image, slot);
+        ClearText(ref Still, slot);
         ClearText(ref Description, slot);
         ClearText(ref HtmlDescription, slot);
         ClearText(ref TranscriptUrl, slot);
@@ -200,6 +204,8 @@ public readonly partial struct Episode(int slot) : IEquatable<Episode>
     public StringId TitleId => T.Title[Slot];
     public string Title => Entities.Strings.Resolve(T.Title[Slot]);
     public StringId ImageId => T.Image[Slot];
+    /// <summary>A video episode's own still; empty where none is known.</summary>
+    public StringId StillId => T.Still[Slot];
     public StringId DescriptionId => T.Description[Slot];
     public int DurationMs => T.DurationMs[Slot];
     public int PublishedAt => T.PublishedAt[Slot];
@@ -240,6 +246,8 @@ public struct StagedEpisode : IStagedRow
     /// <c>s.Slot(table, in row.Id)</c> — and no format-to-arena-then-parse-back round trip.</summary>
     public StagedId Id;
     public TextRef Title, Image, Description, HtmlDescription, TranscriptUrl, TranscriptLanguage;
+    /// <summary>A video episode's own still (<c>freeze_frame</c>); empty: this answer states none (a thin row never does).</summary>
+    public TextRef Still;
     /// <summary>The show this episode belongs to — staged thin so the row can name it before the fetch.</summary>
     public StagedId ShowUri;
     public int DurationMs, PublishedAt, ProgressMs;
@@ -315,6 +323,8 @@ public static partial class Entities
                     if (Detail.CoverLatch.AcceptsImage(t.Image[slot], incomingImage))
                         t.SetText(ref t.Image, slot, incomingImage);
                 }
+                // Only an answer that states a still writes one: a thin row (a list member, a card) knows the cover alone and must not blank it.
+                if (!row.Still.IsEmpty) t.SetText(ref t.Still, slot, s.Intern(row.Still));
                 if ((known & (uint)EpisodeFields.Duration) != 0 && !t.Knows(slot, (uint)EpisodeFields.Media)) t.DurationMs[slot] = row.DurationMs;
                 if ((known & (uint)EpisodeFields.Published) != 0) t.PublishedAt[slot] = row.PublishedAt;
                 if (!row.ShowUri.IsEmpty) t.Show[slot] = s.Slot(Current.Shows, in row.ShowUri);
@@ -442,6 +452,7 @@ public sealed class EpisodeShape : KindShape
         new("media_duration_ms", StoreType.Int),
         new("media_flags", StoreType.Int),
         new("media_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("still", StoreType.Text),                   // 33   identity (appended: the DDL fingerprint moves, a new store file)
     ];
 
     const uint PersistedFields = (uint)EpisodeFields.All;
@@ -474,6 +485,7 @@ public sealed class EpisodeShape : KindShape
             {
                 w.Text(0, row.Title);
                 w.Text(1, row.Image);
+                w.Text(33, row.Still);
                 w.Id(2, s, row.ShowUri);
                 w.Int(3, row.DurationMs);
                 w.Int(4, row.PublishedAt);
@@ -484,7 +496,7 @@ public sealed class EpisodeShape : KindShape
                 if ((known & (uint)EpisodeFields.Identity) == (uint)EpisodeFields.Identity) w.Int(12, row.Flags);
                 else w.Null(12);
             }
-            else { w.Null(0); w.Null(1); w.Null(2); w.Null(3); w.Null(4); w.Null(10); w.Null(11); w.Null(12); }
+            else { w.Null(0); w.Null(1); w.Null(2); w.Null(3); w.Null(4); w.Null(10); w.Null(11); w.Null(12); w.Null(33); }
             w.Int(7, identity ? authority : 0);
 
             if (about) w.Text(5, row.Description);
@@ -550,6 +562,7 @@ public sealed class EpisodeShape : KindShape
             {
                 row.Title = r.Text(0);
                 row.Image = r.Text(1);
+                row.Still = r.Text(33);
                 row.ShowUri = r.Text(2);
                 row.DurationMs = (int)r.Int(3);
                 row.PublishedAt = (int)r.Int(4);

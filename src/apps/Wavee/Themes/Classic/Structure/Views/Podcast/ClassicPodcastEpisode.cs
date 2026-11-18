@@ -174,7 +174,7 @@ internal static class ClassicPodcastEpisode
         {
             bool video = v.VideoLabel.Length > 0;
             float w = video ? lay.StillW : lay.Cover, h = video ? lay.StillW / P.StillAspect : lay.Cover;
-            var kids = new List<Element>(3) { Controls.Artwork(v.Episode.ArtUrl ?? v.ShowArtUrl, w, h, P.CoverRadius, decodePx: P.CoverDecode) };
+            var kids = new List<Element>(3) { Controls.Artwork(v.Episode.StillUrl ?? v.Episode.ArtUrl ?? v.ShowArtUrl, w, h, P.CoverRadius, decodePx: P.CoverDecode) };
             if (video) kids.Add(StillTag(v.VideoLabel, Icons.Video, FlexJustify.Start, FlexAlign.Start));
             if (v.StillTime.Length > 0) kids.Add(StillTag(v.StillTime, null, FlexJustify.End, FlexAlign.End));
             return new BoxEl

@@ -327,8 +327,10 @@ internal static class WinUiPodcastKit
         public bool Transcript { get; init; }
         /// <summary>The row carries a tag (the lock, or one of the four).</summary>
         public bool Tagged => Locked || Explicit || Bonus || Trailer || Transcript;
-        /// <summary>The cover of the month's card (the row is its month's lead); null on a row.</summary>
+        /// <summary>The picture of the month's card (the row is its month's lead): a video episode's still (<c>ArtWide</c>), else its cover;
+        /// null on a row.</summary>
         public string? Art { get; init; }
+        public bool ArtWide { get; init; }
     }
 
     sealed class RowHost : Component, IPropsHost
@@ -400,7 +402,7 @@ internal static class WinUiPodcastKit
                 p.Mode == PodcastRowMode.Select && v.Selected.Value == id, v.Playing.Value == id, lead)
             {
                 Blocked = !vm.Playable, Locked = vm.Lock.Length > 0, Explicit = vm.Explicit, Bonus = vm.Bonus, Trailer = vm.Trailer, Transcript = vm.HasTranscript,
-                Art = lead ? vm.ArtUrl : null,
+                Art = lead ? vm.StillUrl ?? vm.ArtUrl : null, ArtWide = lead && vm.StillUrl is not null,
             };
         }
 
@@ -495,12 +497,14 @@ internal static class WinUiPodcastKit
             var cells = new List<Element>(6);
             if (lead)
             {
-                // The episode's own cover leads the card (a show that gives its episodes none shows the show's).
+                // The episode's own picture leads the card: a video episode's still, wide as it was shot (cut square at Compact, where the card
+                // has no room for it); else its cover (a show that gives its episodes none shows the show's).
                 float cover = p.Compact ? K.LeadCoverCompact : K.LeadCover;
+                float coverW = s.ArtWide && !p.Compact ? cover * K.LeadStillAspect : cover;
                 cells.Add(new BoxEl
                 {
-                    Key = "row:cover", Width = cover, Height = cover, Shrink = 0f, AlignSelf = FlexAlign.Start,
-                    Children = [Controls.Artwork(s.Art, cover, cover, K.LeadCoverRadius, decodePx: K.LeadCoverDecode)],
+                    Key = "row:cover", Width = coverW, Height = cover, Shrink = 0f, AlignSelf = FlexAlign.Start,
+                    Children = [Controls.Artwork(s.Art, coverW, cover, K.LeadCoverRadius, decodePx: K.LeadCoverDecode)],
                 });
             }
             cells.Add(PlayButton(s, pb, hover, _play, strong: lead && rest));

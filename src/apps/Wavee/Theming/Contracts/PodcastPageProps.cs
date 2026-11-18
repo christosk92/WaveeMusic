@@ -50,6 +50,9 @@ public sealed record PodcastEpisodeVm(
     public string LongDate { get; init; } = "";
     /// <summary>The description as HTML when the provider sent it ("" = only <see cref="Description"/>); render it with the house rich text.</summary>
     public string DescriptionHtml { get; init; } = "";
+    /// <summary>A video episode's own still (16:9), or null: where it is set a theme draws IT as the episode's picture, wide, and
+    /// <see cref="ArtUrl"/> (often the show's square cover) only where there is none.</summary>
+    public string? StillUrl { get; init; }
     /// <summary>The month it came out (1..12; 0 = not known): the list groups by it.</summary>
     public int Month { get; init; }
     /// <summary>The episode's own number as a row writes it beside the title ("97"; "" = the show does not number its episodes).</summary>
