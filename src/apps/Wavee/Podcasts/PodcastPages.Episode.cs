@@ -50,6 +50,10 @@ public sealed class PodcastEpisodeScreen : Component
     // The coarse leaves the snapshot reads: each re-runs per tick while the episode plays but notifies only on a change, so the snapshot never does.
     Memo<PodcastRowState>? _stateMemo;
     Memo<int>? _chapterMemo;
+    /// <summary>The episode's chapters (Spotify's chapter data, else the show notes' timestamp lines): re-runs on a data change, never per tick.</summary>
+    Memo<Spotify.Podcasts.Chapter[]>? _itemsMemo;
+    string? _notesHtml;
+    Spotify.Podcasts.Chapter[] _notes = [];
     Memo<bool>? _playingMemo;
     PodcastEpisodePageProps? _props;
     PageChromeSink _sink = PageChromeSink.None;
@@ -58,6 +62,7 @@ public sealed class PodcastEpisodeScreen : Component
     readonly Func<Action> _withdrawOnLeave;
 
     readonly Func<int> _positionOf, _chapterOf, _lineOf;
+    readonly Func<Spotify.Podcasts.Chapter[]> _itemsOf;
     readonly Func<PodcastRowState> _stateOf;
     readonly Func<bool> _playingOf;
     readonly Func<string> _clockOf, _leftOf, _chapterLeftOf;
@@ -94,7 +99,7 @@ public sealed class PodcastEpisodeScreen : Component
 
     public PodcastEpisodeScreen()
     {
-        _positionOf = PositionOf; _stateOf = StateOf; _chapterOf = ChapterOf; _lineOf = LineOf; _playingOf = PlayingOf;
+        _positionOf = PositionOf; _stateOf = StateOf; _chapterOf = ChapterOf; _itemsOf = ItemsOf; _lineOf = LineOf; _playingOf = PlayingOf;
         _clockOf = ClockOf; _leftOf = LeftOf; _chapterLeftOf = ChapterLeftOf; _viewOf = ViewOf;
         _publishTitle = PublishTitle;
         _withdrawOnLeave = () => WithdrawTitle;
@@ -161,6 +166,7 @@ public sealed class PodcastEpisodeScreen : Component
 
         _stateMemo = UseComputed(_stateOf);
         _playingMemo = UseComputed(_playingOf);
+        _itemsMemo = UseComputed(_itemsOf);
         _chapterMemo = UseComputed(_chapterOf);
         _view = UseComputed(_viewOf);
         var position = UseComputed(_positionOf);
@@ -247,6 +253,31 @@ public sealed class PodcastEpisodeScreen : Component
         return lease.Data.State.Value == (byte)LoadState.Ready ? lease.Data.Value.Value : null;
     }
 
+    /// <summary>The episode's chapters: Spotify's chapter data when it lists any; once it has answered with none (or failed), the show notes'
+    /// timestamp lines ("(00:12:30) Title", <see cref="RichTextBlocks.Split"/>), which the About's prose no longer shows (<c>Episode.AboutProse</c>
+    /// splits them off), so a show that only writes its chapters into its notes still gets the chapter list and its seeks. Empty while the data is on
+    /// its way (the tab keeps its count's room). The notes' chapters are parsed once per description.</summary>
+    Spotify.Podcasts.Chapter[] ItemsOf()
+    {
+        var data = ChapterData();
+        if (data is { Items.Length: > 0 }) return data.Items;
+        if (data is null && _chapters.Value is { } lease && lease.Data.State.Value == (byte)LoadState.Pending) return [];
+        _ = Entities.Current.Episodes.Changed.Value;
+        var e = Current;
+        if (!e.IsValid) return [];
+        string html = e.HtmlDescription.Length > 0 ? e.HtmlDescription : Episode.DescriptionOf(e);
+        if (string.Equals(html, _notesHtml, StringComparison.Ordinal)) return _notes;
+        var links = RichTextBlocks.Split(html).Chapters;
+        // The splitter reads one timestamp per LINE: an HTML body of paragraphs on one line hides them, the plain description keeps its lines.
+        if (links.Length == 0 && e.HtmlDescription.Length > 0) links = RichTextBlocks.Split(Episode.DescriptionOf(e)).Chapters;
+        var notes = new Spotify.Podcasts.Chapter[links.Length];
+        for (int i = 0; i < links.Length; i++) notes[i] = new Spotify.Podcasts.Chapter("", links[i].Title, links[i].StartMs, 0);
+        _notesHtml = html;
+        return _notes = notes;
+    }
+
+    Spotify.Podcasts.Chapter[] Items() => _itemsMemo?.Value ?? ItemsOf();
+
     /// <summary>Is this episode the deck's, with the deck not idle (its clock is the position)?</summary>
     static bool Live(Episode e) => Episode.IsNowPlaying(e) && Playback.PhaseSignal.Value != Playback.Phase.Idle;
 
@@ -283,11 +314,11 @@ public sealed class PodcastEpisodeScreen : Component
     /// <summary>The chapter under way (-1 on a played or untouched episode: a thumb there would claim a place nobody is at).</summary>
     int ChapterOf()
     {
-        var data = ChapterData();
-        if (data is null || data.Items.Length == 0) return -1;
+        var items = Items();
+        if (items.Length == 0) return -1;
         var e = Current;
         if (!e.IsValid || !UnderWay(e)) return -1;
-        return PodcastReaderRules.CurrentChapter(data.Items, PositionOf());
+        return PodcastReaderRules.CurrentChapter(items, PositionOf());
     }
 
     /// <summary>The transcript line the position is in (the snapshot's line index), -1 before the first or when not under way.</summary>
@@ -327,10 +358,10 @@ public sealed class PodcastEpisodeScreen : Component
     string ChapterLeftOf()
     {
         int at = ChapterOf();
-        var data = ChapterData();
-        if (at < 0 || data is null) return "";
-        var c = data.Items[at];
-        int end = c.EndMs > c.StartMs ? c.EndMs : at + 1 < data.Items.Length ? data.Items[at + 1].StartMs : Current.DurationMs;
+        var items = Items();
+        if (at < 0 || at >= items.Length) return "";
+        var c = items[at];
+        int end = c.EndMs > c.StartMs ? c.EndMs : at + 1 < items.Length ? items[at + 1].StartMs : Current.DurationMs;
         if (end <= c.StartMs) return "";
         return MetaSep + Episode.LeftLabel(PositionOf() - c.StartMs, end - c.StartMs);
     }
@@ -446,16 +477,17 @@ public sealed class PodcastEpisodeScreen : Component
 
         // ── chapters (the fill is the resting one; the view binds the live position for the current chapter) ──
         var data = ChapterData();
+        var items = Items();
         var chapters = ImmutableArray<PodcastChapterVm>.Empty;
-        if (data is { Items.Length: > 0 })
+        if (items.Length > 0)
         {
-            var b = ImmutableArray.CreateBuilder<PodcastChapterVm>(data.Items.Length);
+            var b = ImmutableArray.CreateBuilder<PodcastChapterVm>(items.Length);
             // A peek: the resting fill at build time (the current chapter's live fill is the view's bind on the position).
             int position = chapterAt < 0 ? 0 : Episode.IsNowPlaying(e) ? Playback.PositionMs.Peek() : e.ProgressMs;
-            for (int i = 0; i < data.Items.Length; i++)
+            for (int i = 0; i < items.Length; i++)
             {
-                var c = data.Items[i];
-                int end = c.EndMs > c.StartMs ? c.EndMs : i + 1 < data.Items.Length ? data.Items[i + 1].StartMs : duration;
+                var c = items[i];
+                int end = c.EndMs > c.StartMs ? c.EndMs : i + 1 < items.Length ? items[i + 1].StartMs : duration;
                 if (end <= c.StartMs) end = c.StartMs + 1;
                 bool played = state == PodcastRowState.Played || (chapterAt >= 0 && i < chapterAt);
                 float fill = played ? 1f : i == chapterAt ? Math.Clamp((position - c.StartMs) / (float)(end - c.StartMs), 0f, 1f) : 0f;
@@ -566,9 +598,9 @@ public sealed class PodcastEpisodeScreen : Component
         var similar = ImmutableArray<PodcastCardVm>.Empty;
         if (_similar is { } sl && sl.State.Value == (byte)LoadState.Ready && sl.Value.Value.Ok)
         {
-            var items = sl.Value.Value.Items;
-            var sb = ImmutableArray.CreateBuilder<PodcastCardVm>(items.Length);
-            foreach (var r in items) sb.Add(new PodcastCardVm(r.Uri, r.Title, r.Subtitle, r.Image.Length > 0 ? r.Image : null));
+            var recos = sl.Value.Value.Items;
+            var sb = ImmutableArray.CreateBuilder<PodcastCardVm>(recos.Length);
+            foreach (var r in recos) sb.Add(new PodcastCardVm(r.Uri, r.Title, r.Subtitle, r.Image.Length > 0 ? r.Image : null));
             similar = sb.MoveToImmutable();
         }
 

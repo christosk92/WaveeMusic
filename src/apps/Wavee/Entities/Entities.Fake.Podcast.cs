@@ -217,6 +217,16 @@ public static partial class Entities
                     + "<li>False memories &amp; confident mistakes</li></ul>");
             }
 
+            // sh5e1 (in progress) writes its chapters into its show notes, as many shows do, and Spotify lists none for it (the chapter fixture
+            // answers empty for an episode whose notes carry them, Episode.Fixtures.cs): the episode page builds its chapters from the notes.
+            if (sh == ProgressShow && i == 1)
+            {
+                // The notes as plain lines (the convention RichTextBlocks.Split reads: one timestamp line each).
+                ep.Description = Text(s, "Five habits, one week, and what stuck.\n\nCHAPTERS(00:00:00) Cold open\n(00:02:40) Why habits fail on Wednesday\n"
+                    + "(00:07:15) The two-minute rule\n(00:12:30) Stacking and cues\n(00:17:05) What we kept\n\nThanks for listening.");
+                ep.HtmlDescription = ep.Description;
+            }
+
             static void Played(ref StagedEpisode row, long at)
             {
                 row.ProgressMs = row.DurationMs;
