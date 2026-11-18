@@ -225,6 +225,9 @@ public static partial class MiniPlayer
     public static int FaceCount => s_faces.Length;
     static int ClampFace(int i) => (uint)i < (uint)s_faces.Length ? i : 0;
 
+    /// <summary>A stored face index clamped onto the faces (an unknown one reads as Cover): the Settings dial's value.</summary>
+    public static int ClampFaceIndex(int stored) => ClampFace(stored);
+
     static string FaceName(int i)
     {
         var f = s_faces[ClampFace(i)];
@@ -478,11 +481,32 @@ public static partial class MiniPlayer
     }
 
     /// <summary>"Colour from album art" for a theme slot: its explicit choice, else the theme's default.</summary>
-    static bool ArtColour(int slot, bool fallback)
+    static bool ArtColour(int slot, bool fallback) => ArtColourOf(s_artColour.Value, slot, fallback);
+
+    /// <summary>"Colour from album art" in <paramref name="mask"/> for a theme slot: its explicit choice, else the theme's default.</summary>
+    static bool ArtColourOf(int mask, int slot, bool fallback)
     {
-        int mask = s_artColour.Value;
         if (mask < 0 || (uint)slot > 7u) return fallback;
         return (mask & (1 << slot)) != 0 || ((mask & (1 << (slot + 8))) == 0 && fallback);
+    }
+
+    /// <summary>The ACTIVE theme's slot and default (its registered <see cref="MiniPlayerStyle"/>), or false before a theme registers one.</summary>
+    static bool ActiveArtSlot(out int slot, out bool fallback)
+    {
+        bool known = Theming.ThemeHost.Registry.TryGetStyle(StyleKeys.MiniPlayer, out var style);
+        (slot, fallback) = known ? (style!.ArtColourSlot, style.ArtColourDefault) : (-1, false);
+        return known;
+    }
+
+    /// <summary>"Colour from album art" for the ACTIVE theme, read from the stored <paramref name="mask"/>: the Settings dial's value.</summary>
+    public static bool ArtColourForActiveTheme(int mask) => ActiveArtSlot(out int slot, out bool fallback) && ArtColourOf(mask, slot, fallback);
+
+    /// <summary>Set "Colour from album art" for the ACTIVE theme's slot (the Options panel's writer, after the prefs are loaded so the
+    /// other themes' choices survive); nothing before a theme registers its style.</summary>
+    public static void SetArtColourForActiveTheme(bool on)
+    {
+        EnsurePrefs();
+        if (ActiveArtSlot(out int slot, out _)) SetArtColour(slot, on);
     }
 
     static void SetArtColour(int slot, bool on)
@@ -549,11 +573,22 @@ public static partial class MiniPlayer
         Platform.Settings.Set(Platform.Keys.MiniPlayerFace, index);
     }
 
-    static void ToggleOnTop()
+    /// <summary>Pick the face (the Options panel's writer), after the prefs are loaded so keep on top and the colours survive.</summary>
+    public static void ChooseFace(int index)
     {
-        bool next = !s_onTop.Peek();
-        s_onTop.Value = next;
-        Platform.Settings.Set(Platform.Keys.MiniPlayerOnTop, next);
+        EnsurePrefs();
+        SetFace(index);
+    }
+
+    static void ToggleOnTop() => SetOnTop(!s_onTop.Peek());
+
+    /// <summary>Keep on top (the Options panel's writer): persisted and published, so an open window follows at once.</summary>
+    public static void SetOnTop(bool on)
+    {
+        EnsurePrefs();
+        if (s_onTop.Peek() == on) return;
+        s_onTop.Value = on;
+        Platform.Settings.Set(Platform.Keys.MiniPlayerOnTop, on);
     }
 
     static string ArtistText()

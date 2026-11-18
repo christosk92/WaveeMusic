@@ -1466,7 +1466,9 @@
     "nowPlaying": {
       "$comment": "The Now playing GROUP eyebrow only (docs/plans/wavee/npv-player-styles-implementation.md). Its two rows keep the settings.appearance.npv* keys since they write the same WaveeSettings.Npv* prefs the header row and flyout do.",
       "title": "Now playing",
-      "subtitle": "How the art looks in Now playing"
+      "subtitle": "How the art looks in Now playing",
+      "finish": "Finish",
+      "finishSub": "The colour of the record or the player, for the styles that have one"
     },
     "themePicker": {
       "$comment": "Settings > Appearance > Theme: the strip of installed-theme cards (themes plan 8.1).",

@@ -1,8 +1,9 @@
 // ── Screens/SettingsSpec.Appearance.cs — Appearance: how Wavee looks (the dials and their verbs) ───────────────────────────────
 //
 // Role: CORE (settings rework phase 1). Theme (the picker) · ‹Theme› options (the active theme's options and the legacy rows its
-// structure lists) · Mode · Size and text · Motion · Home and library (the daylist clock). Every write goes through the epoch it always
-// bumped: marquee, fast navigation and the daylist clock → `Prefs.Appearance`. A verb returns whether the PAGE must re-read.
+// structure lists) · Mode · Size and text · Motion · Home and library (the daylist clock, the Liked Songs cover, the two opt-in list
+// columns). Every write goes through the epoch it always bumped: marquee, fast navigation, the daylist clock, the Liked cover and the
+// list columns → `Prefs.Appearance`. A verb returns whether the PAGE must re-read.
 
 using Wavee.Theming;
 using K = Wavee.SettingsRowKind;
@@ -74,7 +75,21 @@ public static partial class SettingsSpec
             // No page re-read: nothing else on the page shows the clock.
             Make("appearance.daylistClock", K.Choice, Strings.Settings.Appearance.DaylistClock,
                 SettingsWriter.OfChoice("lists.daylistClock", SettingsVerbs.SetDaylistClock), legacy: ["daylistClock"], glyph: "Clock",
-                captionKey: Strings.Settings.Appearance.DaylistClockSub, value: _ => (int)Prefs.Appearance.DaylistClock())),
+                captionKey: Strings.Settings.Appearance.DaylistClockSub, value: _ => (int)Prefs.Appearance.DaylistClock()),
+            // The Liked Songs cover: the same writer as the cover's "Cover style" flyout; its value is the slot in the picker's order.
+            Make("appearance.likedCover", K.Picker, Strings.Detail.LikedCover.Title,
+                SettingsWriter.OfChoice("liked.coverStyle", SettingsVerbs.SetLikedCover), glyph: "Album",
+                captionKey: Strings.Detail.LikedCover.Note,
+                value: _ => LikedCoverRules.PickerIndexOf(LikedCoverRules.FromSetting(Prefs.Appearance.LikedCover(LikedCoverRules.StyleCount))),
+                contexts: [SettingsSurfaces.LikedCover]),
+            // The two opt-in list columns: the same writers and the same keys as a track list's ⋯ menu (the active structure's scope
+            // included, so Settings and the list never disagree).
+            Make("appearance.tempoColumn", K.Toggle, Strings.Detail.TempoColumn,
+                SettingsWriter.OfToggle("lists.tempoColumn", SettingsVerbs.SetTempoColumn), glyph: "List",
+                value: s => s.Get(TableColumnsPref.TempoKey(ShellPolicy.Now.Lists)), contexts: [SettingsSurfaces.TrackListMenu]),
+            Make("appearance.playsColumn", K.Toggle, Strings.Detail.PlaysColumn,
+                SettingsWriter.OfToggle("lists.playsColumn", SettingsVerbs.SetPlaysColumn), glyph: "ViewList",
+                value: BoolOf(Platform.Keys.PlaysColumn), contexts: [SettingsSurfaces.TrackListMenu])),
     ]);
 
     /// <summary>The sidebar's layout verbs refuse while it is being edited, and say so (Q7).</summary>
@@ -162,6 +177,31 @@ public static partial class SettingsVerbs
         if ((uint)i >= DaylistClockShows.ModeCount || Platform.Settings.Get(Platform.Keys.DaylistClock) == i) return false;
         Prefs.Appearance.Set(Platform.Keys.DaylistClock, i);
         return false;
+    }
+
+    /// <summary>The Liked Songs cover style at slot <paramref name="i"/> of the picker's order: the cover flyout's own writer (E15),
+    /// persisted through the appearance writer, so the cover behind the flyout repaints on the bump. Idempotent and cheap, which it
+    /// MUST be: the flyout's strip fires on every keyboard rove (selection follows focus), and roving IS the preview.</summary>
+    public static bool SetLikedCover(int i)
+    {
+        var order = LikedCoverRules.PickerOrder;
+        if ((uint)i >= (uint)order.Length) return false;
+        Prefs.Appearance.Set(Platform.Keys.LikedCoverStyle, LikedCoverRules.ToSetting(order[i]));
+        return true;
+    }
+
+    /// <summary>The BPM · Key column: the track list menu's writer (persist, one appearance bump); the page re-reads.</summary>
+    public static bool SetTempoColumn(bool on)
+    {
+        TableColumnsPref.SetTempo(on);
+        return true;
+    }
+
+    /// <summary>The Plays column: the track list menu's writer (persist, one appearance bump); the page re-reads.</summary>
+    public static bool SetPlaysColumn(bool on)
+    {
+        TableColumnsPref.SetPlays(on);
+        return true;
     }
 
     // ── Sidebar ──────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -232,7 +232,7 @@ public readonly partial struct User
             };
             // E4: opening the picker is the SECOND thing that charges the liked-list warm.
             _demand = DemandLikedCover;
-            _apply = Apply;
+            _apply = static i => SettingsVerbs.SetLikedCover(i);   // the Settings dial's writer (idempotent and cheap: the strip roves)
         }
 
         public override Element Render()
@@ -242,29 +242,8 @@ public readonly partial struct User
             return ViewSlots.View(Contracts.ViewKeys.LikedCoverStyleFlyout, new Contracts.LikedCoverStyleFlyoutProps
             {
                 Tiles = snap.Tiles, TileKey = snap.TileKey, TrackCount = snap.TrackCount,
-                Selected = IndexOf(LikedCoverRules.PickerOrder, snap.Requested), Apply = _apply,
+                Selected = LikedCoverRules.PickerIndexOf(snap.Requested), Apply = _apply,
             });
-        }
-
-        /// <summary>Idempotent and cheap, which it MUST be: the strip fires on every keyboard rove (selection follows focus),
-        /// and roving IS the preview — the cover behind the flyout repaints on the bump.</summary>
-        static void Apply(int i)
-        {
-            var order = LikedCoverRules.PickerOrder;
-            if ((uint)i >= (uint)order.Length) return;
-            Prefs.Appearance.Set(Platform.Keys.LikedCoverStyle, LikedCoverRules.ToSetting(order[i]));
-        }
-
-        /// <summary>The persisted style's slot, or Stock's (a hand-edited value this build does not define reads as Stock).</summary>
-        static int IndexOf(LikedCoverStyle[] order, LikedCoverStyle style)
-        {
-            int stock = 0;
-            for (int i = 0; i < order.Length; i++)
-            {
-                if (order[i] == style) return i;
-                if (order[i] == LikedCoverStyle.Stock) stock = i;
-            }
-            return stock;
         }
     }
 }

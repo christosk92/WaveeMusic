@@ -353,7 +353,7 @@ public static partial class Playback
     public static void Boot()
     {
         s_state = State.Initial;
-        s_state.EpisodeRate = ValidEpisodeSpeed(Platform.Settings.Get(s_episodeSpeedKey));
+        s_state.EpisodeRate = ValidEpisodeSpeed(Platform.Settings.Get(EpisodeSpeedKey));
         EpisodeSpeed.SetIfChanged(s_state.EpisodeRate);
         s_state.Us = DeviceHash(Platform.DeviceId);
         s_identity = new DeviceIdentity(

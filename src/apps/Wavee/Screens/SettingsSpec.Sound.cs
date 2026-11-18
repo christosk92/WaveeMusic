@@ -1,7 +1,8 @@
 // ── Screens/SettingsSpec.Sound.cs — Sound: what you hear (the dials and their verbs) ───────────────────────────────────────────
 //
 // Role: CORE (settings rework phase 1). Quality (the streaming ladder with the D7 lossless rung, the metered cap) · Loudness and
-// volume (normalization, remember volume) · Equalizer (the curve bound to the live DSP) · Output and Connect (this PC's Connect name).
+// volume (normalization, remember volume) · Equalizer (the curve bound to the live DSP) · Output and Connect (the output device the
+// device picker sets, this PC's Connect name).
 //
 // THE LIVE DSP. Every equalizer write persists and then pushes the WHOLE state to `Playback.Audio` (`SetEqualizer`), so the ear follows
 // the curve while it is dragged; normalization goes through the `Settings.ApplyNormalization` seam until the audio host exposes its own
@@ -65,6 +66,12 @@ public static partial class SettingsSpec
                 enabled: EqOn, silent: true)),
 
         Group("output", Strings.Settings.Groups.Sound.Output, null,
+            // The output device: the device picker's this-computer rows (index 0 is the system default, then the endpoints in roster
+            // order), written through the picker's own door. Choosing it here changes the output; it does not pull playback here.
+            Make("sound.outputDevice", K.Choice, Strings.Settings.Playback.OutputDevice,
+                SettingsWriter.OfChoice("audio.outputDevice", SettingsVerbs.SetOutputDevice), glyph: "Speakers",
+                captionKey: Strings.Settings.Playback.OutputDeviceSub, value: s => SettingsVerbs.OutputDeviceIndex(s.Get(Platform.Keys.OutputDeviceId)),
+                contexts: [SettingsSurfaces.DevicePicker]),
             Make("sound.connectName", K.Fact, Strings.Settings.Devices.ThisPc, SettingsWriter.ReadOnly, legacy: ["thisPc"],
                 captionKey: Strings.Settings.Devices.ThisPcSub, value: _ => Playback.DeviceName)),
     ]);
@@ -149,4 +156,28 @@ public static partial class SettingsVerbs
     }
 
     public static bool ResetEqCurve() => ApplyEqPreset(0);
+
+    // ── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The output device at <paramref name="index"/> (0 the system default, then the endpoints in roster order), through the
+    /// device picker's door (<see cref="Shell.DeviceVerbs.Run"/>): it persists the output and routes the next local audio to it. An
+    /// index past the roster (it changed under a stale view) writes nothing.</summary>
+    public static bool SetOutputDevice(int index)
+    {
+        var devices = Playback.Audio.Devices.Peek();
+        if ((uint)index > (uint)devices.Length) return false;
+        string id = index == 0 ? "" : devices[index - 1].Id;
+        Shell.DeviceVerbs.Run(new Shell.DeviceIntent(Shell.DeviceIntentKind.SelectLocal, LocalId: id));
+        return true;
+    }
+
+    /// <summary>The output device's index in the roster (0 the system default, and an endpoint no longer in the roster).</summary>
+    public static int OutputDeviceIndex(string? deviceId)
+    {
+        if (string.IsNullOrEmpty(deviceId)) return 0;
+        var devices = Playback.Audio.Devices.Peek();
+        for (int i = 0; i < devices.Length; i++)
+            if (string.Equals(devices[i].Id, deviceId, StringComparison.OrdinalIgnoreCase)) return i + 1;
+        return 0;
+    }
 }

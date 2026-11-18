@@ -1,7 +1,8 @@
 // ── Screens/SettingsSpec.Playback.cs — Playback: what plays next, and how songs and videos move on (the dials and their verbs) ─────
 //
-// Role: CORE (settings rework phase 1). Between songs (autoplay, crossfade bound to the live DSP) · Player bar · Videos and Canvas
-// (quality, the metered cap, prepare-ahead, Canvas, the end countdown, the attached videos) · Playback runtime (the runtime card's doors).
+// Role: CORE (settings rework phase 1). Between songs (autoplay, crossfade bound to the live DSP) · Player bar · Podcasts and
+// audiobooks (the episode speed the speed menus set) · Videos and Canvas (quality, the metered cap, prepare-ahead, Canvas, the
+// end countdown, the attached videos) · Playback runtime (the runtime card's doors).
 //
 // Every crossfade write persists and then pushes the WHOLE state to `Playback.Audio` (`SetCrossfade`), so the ear follows the slider.
 
@@ -38,6 +39,13 @@ public static partial class SettingsSpec
                 legacy: ["playerBarRemaining"], glyph: "Clock",
                 captionKey: Strings.Settings.Playback.ShowRemainingSub, value: BoolOf(Platform.Keys.PlayerBarShowRemaining),
                 contexts: [SettingsSurfaces.PlayerBar])),
+
+        Group("podcasts", Strings.Settings.Groups.Playback.Podcasts, null,
+            // The episode speed: the speed menus' writer (the account's podcast speed, synced to every device; a song always plays at 1x).
+            Make("playback.episodeSpeed", K.Slider, Strings.Player.SpeedMenu,
+                SettingsWriter.OfSlider("playback.episodeSpeed", SettingsVerbs.SetEpisodeSpeed), glyph: "Forward",
+                value: s => Playback.ValidEpisodeSpeed(s.Get(Playback.EpisodeSpeedKey)),
+                contexts: [SettingsSurfaces.PlayerBar, SettingsSurfaces.VideoMenu])),
 
         Group("videos", Strings.Settings.Groups.Playback.Videos, null,
             Make("playback.video.quality", K.Choice, Strings.Settings.Playback.VideoQuality,
@@ -120,6 +128,16 @@ public static partial class SettingsVerbs
         Platform.Settings.Set(Platform.Keys.CrossfadeMs, ms);
         PushCrossfade();
         return true;
+    }
+
+    // ── Podcasts and audiobooks ──────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The episode speed: the speed menus' own writer (<see cref="Playback.SetEpisodeSpeed"/>: clamped, applied, persisted and
+    /// synced to the account). The page does not re-read.</summary>
+    public static bool SetEpisodeSpeed(float rate)
+    {
+        Playback.SetEpisodeSpeed(rate);
+        return false;
     }
 
     // ── Video ────────────────────────────────────────────────────────────────────────────────────────────────────────
