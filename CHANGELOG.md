@@ -72,6 +72,10 @@ versions separately under `v*` and is not tracked in this file.)
   track still loading, a download finding its size), five small dots rush in, drift through the middle and rush out,
   in place of the sliding block.
 
+- **"See all" opens in place (WinUI).** A section's "See all" page grows out of the section instead of replacing Home
+  with a new page: it opens on the cards the section already showed, holds a place for the ones still loading, and
+  Back shrinks it away again.
+
 - **The WinUI title bar and the app share one background.** The tab row no longer paints its own grey strip; the
   selected tab is a translucent plate on the window's material.
 
@@ -89,6 +93,7 @@ versions separately under `v*` and is not tracked in this file.)
 - **Saving an upcoming album** from a heart or a ⋯ menu pre-saves it, and every heart on that album shows it saved.
 - **A hidden Wavee window kept waking up.** While another window covered it, Wavee woke for every event on the
   desktop; it now stays asleep until it shows again.
+- **"See all" on "From artists you follow" opened an empty page titled "Home".** It opens the whole list of releases.
 - **Dragging a card on Home moved its whole section (WinUI), and pressing one tilted the whole section (Zune).** A
   card inside a section is pressed and dragged as itself; the section moves from its own heading.
 - **Picking a theme during setup closed the setup dialog.** The dialog vanished, the app stayed dimmed and only a

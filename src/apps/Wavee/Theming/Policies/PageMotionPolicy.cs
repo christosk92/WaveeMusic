@@ -66,6 +66,11 @@ public sealed record PageMotionPolicy(Func<PageSwap, LayoutTransition?>? Recipe 
     /// authored when nothing flies). Honoured where <see cref="Connected"/> is: off with Settings' Connected animations, never under reduced motion.</summary>
     public Func<EntityKind, GrowNav?>? GrowInto { get; init; }
 
+    /// <summary>A section's "See all" page (a Home or Browse section's drill) grows out of the place it was opened from, as a <see cref="GrowInto"/>
+    /// kind does, and its units do not stagger in (the page is the section the user was looking at, grown: its first cards are the same cards).
+    /// Back shrinks it toward the same place. Null = the swap plays as authored. Honoured where <see cref="GrowInto"/> is.</summary>
+    public GrowNav? GrowIntoSection { get; init; }
+
     /// <summary>Under a flight, the page swap keeps its recipe's opacity legs and timings and loses its slide, zoom and stagger
     /// (<c>Design.Nav.Quiet</c>): the cover is the only thing that travels (Microsoft: a connected animation "does not work well" over a
     /// translating page transition). False keeps the authored recipe under the flight.</summary>

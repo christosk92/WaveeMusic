@@ -46,6 +46,14 @@ public static partial class Shell
     static Route s_growFor = Route.None;
     static Theming.GrowNav? s_grow;
     static bool s_growBack;
+    /// <summary>The armed grow's page enters as one block: its units do not stagger in (<see cref="PageCascade"/>). A section's drill.</summary>
+    static bool s_growQuietUnits;
+
+    /// <summary>A section's "See all" page (a Home or Browse section's drill).</summary>
+    static bool IsSectionDrill(in Route r) => r.Kind is RouteKind.HomeSection or RouteKind.BrowseSection;
+
+    /// <summary>Is the swap to <paramref name="next"/> an armed grow whose page enters as one block?</summary>
+    static bool GrowsAsOneBlock(in Route next) => s_growQuietUnits && s_grow is not null && !s_growFor.IsNone && SameSlot(next, s_growFor);
     static RectF s_growItem, s_growBox;
 
     /// <summary>Set by <see cref="ConnectFromActivated"/>: the next forward commit flies the largest picture inside the activated element.</summary>
@@ -85,6 +93,7 @@ public static partial class Shell
         s_connectedFor = Route.None;
         s_growFor = Route.None;
         s_grow = null;
+        s_growQuietUnits = false;
         s_fromActivated = false;
         var motion = Theming.ThemeHost.Facts.Peek().Policies.PageMotion;
         string? key = page.IsNone ? null : KeyOf(in page);
@@ -94,6 +103,13 @@ public static partial class Shell
         if (key is not null && motion.GrowInto?.Invoke(page.Subject.Kind) is { } grow)
         {
             ArmGrow(in to, key, grow, back, remembered: back || source == ConnectedNavSource.Remembered);
+            key = null;
+        }
+        // A section's "See all" page grows out of where it was opened (its link in the section's head), the same way.
+        else if (IsSectionDrill(in page) && motion.GrowIntoSection is { } sectionGrow && Platform.Settings.Get(Platform.Keys.ConnectedAnimations))
+        {
+            ArmGrow(in to, "section:" + page.Subject.Text, sectionGrow, back, remembered: back || source == ConnectedNavSource.Remembered);
+            s_growQuietUnits = true;
             key = null;
         }
         if (s_beginNav is not { } begin || motion.Connected is not { } spec) return;

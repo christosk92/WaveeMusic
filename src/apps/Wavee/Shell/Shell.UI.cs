@@ -1005,6 +1005,7 @@ public static partial class Shell
         if (oldToken is Route ? NeedsVideoSafe(from, next) : next.Kind == RouteKind.Module) return null;
         if (IsSameKindSwap(oldToken, next)) return null;   // the same-kind swap is one quick fade: no stagger
         if (oldToken is Route && SwapsUnderFlight(in next)) return null;   // the quiet swap under a flight: no staggered rise
+        if (oldToken is Route && GrowsAsOneBlock(in next)) return null;    // a section's drill grows as one block (Shell.Connected.cs)
         if (Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Cascade is not { } cascade || cascade(SwapOf(from, next, Motion.Peek())) is not { } units)
             return null;
         return SwapsWithoutOverlap(oldToken) ? Design.Nav.NoOverlap(in units) : units;

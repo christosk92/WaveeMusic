@@ -30,7 +30,10 @@ public static class HomeBoardZones
     public static Zone RecentsZone() => Current().Recents ?? s_noRecents;
 
     /// <summary>The Following release list; while its answers are on their way, <see cref="ReleasesSeed"/> (a board sizes the tile by it).</summary>
-    public static Zone ReleasesZone(BoardEntry e)
+    public static Zone ReleasesZone(BoardEntry e) => ReleasesZone();
+
+    /// <summary>The Following release list with no entry of its own (its "See all" page reads it).</summary>
+    public static Zone ReleasesZone()
         => Current().Releases ?? (ReleasesState() == HomeFeedState.Loading ? ReleasesSeed : s_noReleases);
 
     /// <summary>The shape a pending release list will have: a full list of blank albums under the widget's title (Spotify's Following answer
