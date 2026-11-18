@@ -52,6 +52,10 @@ public sealed class PodcastEpisodeScreen : Component
     Memo<int>? _chapterMemo;
     Memo<bool>? _playingMemo;
     PodcastEpisodePageProps? _props;
+    PageChromeSink _sink = PageChromeSink.None;
+    string _published = "";
+    readonly Action _publishTitle;
+    readonly Func<Action> _withdrawOnLeave;
 
     readonly Func<int> _positionOf, _chapterOf, _lineOf;
     readonly Func<PodcastRowState> _stateOf;
@@ -92,6 +96,8 @@ public sealed class PodcastEpisodeScreen : Component
     {
         _positionOf = PositionOf; _stateOf = StateOf; _chapterOf = ChapterOf; _lineOf = LineOf; _playingOf = PlayingOf;
         _clockOf = ClockOf; _leftOf = LeftOf; _chapterLeftOf = ChapterLeftOf; _viewOf = ViewOf;
+        _publishTitle = PublishTitle;
+        _withdrawOnLeave = () => WithdrawTitle;
         _commentsView = () => Embed.Comp(new PodcastReaderUI.DiscussionProps(_host.Subject.Text, false), static () => new PodcastReaderUI.Discussion())
             with { Key = "episode-comments:" + _host.Subject.Text };
         _menu = MoreMenu;
@@ -165,6 +171,10 @@ public sealed class PodcastEpisodeScreen : Component
         var chapterLeft = UseComputed(_chapterLeftOf);
         var playing = _playingMemo;
         var onDeck = UseComputed(_onDeckOf);
+        // The window tab and the history rows read the page's own title (`PageChromeChannel.PublishedTitle`), not the route's "Episode".
+        _sink = UseContext(PageChromeSink.Context);
+        UseEffect(_publishTitle);
+        UseEffect(_withdrawOnLeave, DepKey.Empty);
 
         _props ??= new PodcastEpisodePageProps
         {
@@ -177,10 +187,22 @@ public sealed class PodcastEpisodeScreen : Component
             Play = _play, SeekTo = _seek, ToggleSaved = _toggleSaved, ToggleCompleted = _toggleCompleted, OpenShow = _openShow,
             Open = _open, PlayEpisode = _playOther, PlayNext = _playNext, OpenUri = DetailVerbs.NavigateKey,
             Menu = _menu, Share = _share, Comments = _commentsView,
-            OnDeck = onDeck, ToggleSavedEpisode = _toggleSavedOther, RowMenu = _rowMenu, CardMenu = _cardMenu, PlayCard = _playCard,
+            State = _stateMemo, OnDeck = onDeck, ToggleSavedEpisode = _toggleSavedOther, RowMenu = _rowMenu, CardMenu = _cardMenu, PlayCard = _playCard,
+            RowDrag = PodcastPages.RowDrag,
         };
         return Slots.View(ViewKeys.PodcastEpisodePage, _props);
     }
+
+    /// <summary>Auto-tracked on the snapshot: publishes the episode's title once it is known and whenever it changes.</summary>
+    void PublishTitle()
+    {
+        string title = _view?.Value.Episode.Title ?? "";
+        if (title.Length == 0 || title == _published) return;
+        _published = title;
+        _sink.Publish(new PageChromeRow([], [], Title: title));
+    }
+
+    void WithdrawTitle() => _sink.Publish(null);
 
     /// <summary>The show's identity, its membership and the rows "Next in this show" paints. Auto-tracked: re-asks as the episode's show and the
     /// membership land (the planner dedupes).</summary>
@@ -315,7 +337,92 @@ public sealed class PodcastEpisodeScreen : Component
 
     // ══ THE SNAPSHOT ════════════════════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The last snapshot handed out: a recompute that lands on the same content returns THIS instance, so the memo does not notify and no view
+    /// re-renders (the tables publish for any episode's write, the deck's pause stores a resume point the page already shows, ...).</summary>
+    PodcastEpisodeView? _last;
+
     PodcastEpisodeView ViewOf()
+    {
+        var next = BuildView();
+        if (_last is not null)
+        {
+            if (SameView(_last, next)) return _last;
+            next = Reuse(next, _last);
+        }
+        return _last = next;
+    }
+
+    /// <summary>A new snapshot keeps the previous one's lists where their content did not change, so a view that reads only a list (the chapters, the
+    /// transcript, "Next in this show") sees the same instance and does not re-render. The chapters compare without their live parts (fill, current,
+    /// played: the WinUI rows and map derive those from <c>CurrentChapter</c> and <c>State</c>).</summary>
+    static PodcastEpisodeView Reuse(PodcastEpisodeView next, PodcastEpisodeView last)
+    {
+        if (SameChapters(next.Chapters, last.Chapters)) next = next with { Chapters = last.Chapters };
+        if (SameLines(next.Transcript, last.Transcript)) next = next with { Transcript = last.Transcript };
+        if (SameItems(next.More, last.More)) next = next with { More = last.More };
+        if (SameItems(next.Similar, last.Similar)) next = next with { Similar = last.Similar };
+        if (SameItems(next.Meta, last.Meta)) next = next with { Meta = last.Meta };
+        return next;
+    }
+
+    static bool SameChapters(ImmutableArray<PodcastChapterVm> x, ImmutableArray<PodcastChapterVm> y)
+    {
+        if (x.IsDefault || y.IsDefault) return x.IsDefault == y.IsDefault;
+        if (x.Length != y.Length) return false;
+        for (int i = 0; i < x.Length; i++)
+            if (x[i] with { Fill = 0f, Current = false, Played = false } != y[i] with { Fill = 0f, Current = false, Played = false }) return false;
+        return true;
+    }
+
+    static bool SameLines(ImmutableArray<PodcastLineVm> x, ImmutableArray<PodcastLineVm> y)
+        => x.IsDefault || y.IsDefault ? x.IsDefault == y.IsDefault
+            : x.Length == y.Length && (x.Length == 0 || (x[0] == y[0] && x[^1] == y[^1] && x[x.Length / 2] == y[y.Length / 2]));
+
+    static bool SameItems<T>(ImmutableArray<T> x, ImmutableArray<T> y)
+    {
+        if (x.IsDefault || y.IsDefault) return x.IsDefault == y.IsDefault;
+        if (x.Length != y.Length) return false;
+        var c = EqualityComparer<T>.Default;
+        for (int i = 0; i < x.Length; i++) if (!c.Equals(x[i], y[i])) return false;
+        return true;
+    }
+
+    /// <summary>Content equality of two snapshots: records by value, the lists by their items, the menu by what it shows (its verbs are fresh closures).</summary>
+    static bool SameView(PodcastEpisodeView a, PodcastEpisodeView b)
+    {
+        // The episode's own resting progress and time left are not drawn here (the page binds the live position): a stored resume point is no change.
+        if (a.Load != b.Load || a.Episode with { Progress = 0f, Left = "" } != b.Episode with { Progress = 0f, Left = "" } || a.ShowUri != b.ShowUri || a.ShowTitle != b.ShowTitle || a.ShowArtUrl != b.ShowArtUrl
+            || a.Tone != b.Tone || a.Crumb != b.Crumb || a.PrimaryLabel != b.PrimaryLabel || a.PrimaryAccent != b.PrimaryAccent
+            || a.MapHead != b.MapHead || a.MapSub != b.MapSub || a.MapTime != b.MapTime || a.DurationMs != b.DurationMs
+            || a.TranscriptLoad != b.TranscriptLoad || a.TranscriptSub != b.TranscriptSub || a.About != b.About || a.CommentCount != b.CommentCount
+            || a.Next != b.Next || a.MoreSub != b.MoreSub || a.MapQuietFirst != b.MapQuietFirst || a.StillTime != b.StillTime
+            || a.VideoLabel != b.VideoLabel || a.NoChapters != b.NoChapters || a.NoTranscript != b.NoTranscript
+            || a.ChaptersPending != b.ChaptersPending || a.CommentsPending != b.CommentsPending)
+            return false;
+        // A chapter's resting fill moves with the position (the current one draws the live position; the others are 0 or 1 by their flags).
+        if (a.Chapters.Length != b.Chapters.Length) return false;
+        for (int i = 0; i < a.Chapters.Length; i++) if (a.Chapters[i] with { Fill = 0f } != b.Chapters[i] with { Fill = 0f }) return false;
+        if (!Same(a.Meta, b.Meta) || !Same(a.More, b.More) || !Same(a.Similar, b.Similar)) return false;
+        // The transcript's lines are rebuilt from the same document: the document's identity is in its first/last line and its length.
+        if (a.Transcript.Length != b.Transcript.Length) return false;
+        if (a.Transcript.Length > 0 && (a.Transcript[0] != b.Transcript[0] || a.Transcript[^1] != b.Transcript[^1])) return false;
+        if (a.Menu.Length != b.Menu.Length) return false;
+        for (int i = 0; i < a.Menu.Length; i++)
+            if (a.Menu[i].Label != b.Menu[i].Label || a.Menu[i].Sub != b.Menu[i].Sub || a.Menu[i].Glyph != b.Menu[i].Glyph || a.Menu[i].Checked != b.Menu[i].Checked)
+                return false;
+        return true;
+
+        static bool Same<T>(ImmutableArray<T> x, ImmutableArray<T> y)
+        {
+            if (x.IsDefault || y.IsDefault) return x.IsDefault == y.IsDefault;
+            if (x.Length != y.Length) return false;
+            var c = EqualityComparer<T>.Default;
+            for (int i = 0; i < x.Length; i++) if (!c.Equals(x[i], y[i])) return false;
+            return true;
+        }
+    }
+
+    PodcastEpisodeView BuildView()
     {
         _ = Entities.ScopeEpoch.Value;
         var scope = Entities.Current;
@@ -330,7 +437,6 @@ public sealed class PodcastEpisodeScreen : Component
             return scope.Episodes.IsFailed(e.Slot, (uint)EpisodeFields.All) ? PodcastEpisodeView.Empty with { Load = PodcastLoad.Failed } : PodcastEpisodeView.Empty;
 
         var state = _stateMemo?.Value ?? StateOf();
-        bool playing = _playingMemo?.Value ?? false;
         int chapterAt = _chapterMemo?.Value ?? -1;
         var show = e.Show;
         bool showKnown = show.IsValid && show.Knows(ShowFields.Title);
@@ -355,7 +461,11 @@ public sealed class PodcastEpisodeScreen : Component
                 float fill = played ? 1f : i == chapterAt ? Math.Clamp((position - c.StartMs) / (float)(end - c.StartMs), 0f, 1f) : 0f;
                 string title = c.Title.Length > 0 ? c.Title : Strings.Podcast.Pages.ChapterN(i + 1);
                 b.Add(new PodcastChapterVm(i, title, c.StartMs, end, Playback.TimeFormat.Clock(c.StartMs), Episode.DurationLabel(end - c.StartMs),
-                    fill, i == chapterAt, played));
+                    fill, i == chapterAt, played)
+                {
+                    Span = Playback.TimeFormat.Clock(c.StartMs) + MetaSep + Episode.DurationLabel(end - c.StartMs),
+                    Number = FluentGpu.Foundation.FormatCache.Int(i + 1),
+                });
             }
             chapters = b.MoveToImmutable();
             vm = vm with { ChapterCount = chapters.Length };
@@ -407,8 +517,8 @@ public sealed class PodcastEpisodeScreen : Component
         if (state == PodcastRowState.Played) meta.Add(Loc.Get(Strings.Podcast.Pages.Played));
 
         // ── the primary ──
-        string primary = playing ? Loc.Get(Strings.Podcast.Pages.Pause)
-            : state == PodcastRowState.InProgress ? Loc.Get(Strings.Podcast.Pages.Resume)
+        // The resting word: Pause is the view's leaf (it binds Playing), so a press never rebuilds the snapshot.
+        string primary = state == PodcastRowState.InProgress ? Loc.Get(Strings.Podcast.Pages.Resume)
             : state == PodcastRowState.Played ? Loc.Get(Strings.Podcast.Pages.PlayAgain)
             : Loc.Get(Strings.Podcast.Pages.Play);
 
@@ -543,13 +653,23 @@ public sealed class PodcastEpisodeScreen : Component
     /// any other shows its tag.</summary>
     static string LanguageName(string? tag)
     {
-        string code = Lyrics.TranscriptPeek.LanguageLabel(tag);
+        string code = LanguageCode(tag);
         return code switch
         {
             "EN" => "English", "DE" => "Deutsch", "NL" => "Nederlands", "FR" => "Français", "ES" => "Español", "IT" => "Italiano",
             "PT" => "Português", "SV" => "Svenska", "JA" => "日本語", "EL" => "Ελληνικά",
             _ => code,
         };
+    }
+
+    /// <summary>A BCP-47 tag's primary subtag, upper-cased ("en-US" is "EN"); "" when there is none or it is not a language subtag.</summary>
+    static string LanguageCode(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return "";
+        var span = tag.AsSpan().Trim();
+        int cut = span.IndexOfAny('-', '_');
+        if (cut > 0) span = span[..cut];
+        return span.Length is 0 or > 8 ? "" : span.ToString().ToUpperInvariant();
     }
 
     /// <summary>The smart action's menu: what the button plays, starting over, play next, the show's newest and a serial's trailer.</summary>

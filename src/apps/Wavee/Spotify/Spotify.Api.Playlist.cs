@@ -644,13 +644,15 @@ public static partial class Spotify
 
         /// <summary>Add tracks at a PRE-move insertion slot (<paramref name="at"/> null = append): ONE ADD with a
         /// client-minted item id per row (a046), then "Added to {name}", the MRU remember and a membership refresh.</summary>
-        public static void AddTracks(Playlist p, IReadOnlyList<Track> tracks, int? at, Action<bool>? settled = null)
+        public static void AddTracks(Playlist p, IReadOnlyList<Track> tracks, int? at, Action<bool>? settled = null, IReadOnlyList<string>? episodes = null)
         {
             if (!p.IsValid || !p.Editable || !CanWrite(out var scope, out _)) { settled?.Invoke(false); Fail(PlaylistMutationFailure.NotSupported, PlaylistEditVerb.Add); return; }
             long now = NowMs();
             var members = new List<PlaylistMember>(tracks.Count);
             for (int i = 0; i < tracks.Count; i++)
                 if (tracks[i].IsValid && tracks[i].Id.Provider == EntityProvider.Spotify) members.Add(new PlaylistMember(tracks[i].Id.Text, Api.NewItemId(), now));
+            // A podcast row's episodes (their uris, read by the caller on the UI thread) after the tracks, in drop order.
+            if (episodes is not null) foreach (string ep in episodes) members.Add(new PlaylistMember(ep, Api.NewItemId(), now));
             if (members.Count == 0)
             {
                 settled?.Invoke(false);

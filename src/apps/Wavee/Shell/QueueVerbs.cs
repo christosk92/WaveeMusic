@@ -181,12 +181,19 @@ public static partial class Shell
             Track[] tracks;
             try { tracks = await payload.ResolveTracksAsync().ConfigureAwait(false); }
             catch (Exception ex) { Log.Warn("queue", "drop could not resolve its tracks", ex); return; }
-            if (tracks.Length == 0) return;
+            var episodes = payload.Episodes ?? [];
+            if (tracks.Length == 0 && episodes.Length == 0) return;
             Playback.ToUi(() =>
             {
-                int cap = PlayerBarRules.DropInsertCount(tracks.Length), n = 0;
+                // The rows in drop order: the tracks, then the episodes (a podcast row's drag carries its episode there).
+                int total = tracks.Length + episodes.Length;
+                int cap = PlayerBarRules.DropInsertCount(total), n = 0;
                 var refs = new EntityRef[cap];
-                for (int i = 0; i < cap; i++) if (tracks[i].IsValid) refs[n++] = new EntityRef(EntityKind.Track, tracks[i].Slot);
+                for (int i = 0; i < cap; i++)
+                {
+                    if (i < tracks.Length) { if (tracks[i].IsValid) refs[n++] = new EntityRef(EntityKind.Track, tracks[i].Slot); }
+                    else if (episodes[i - tracks.Length] is { Kind: EntityKind.Episode } ep && new Episode(ep.Slot).IsValid) refs[n++] = ep;
+                }
                 if (QueueModel.IsViewer())
                 {
                     // G-248: another device plays — the rows go to its queue through Connect, not into a queue we do not own.
@@ -198,9 +205,11 @@ public static partial class Shell
                 int added = Queue.InsertUser(refs.AsSpan(0, n), Playback.Snap().Cursor, userIndex);
                 if (added == 0) return;
                 Changed();
-                Notify.Say(PlayerBarRules.DropWasTruncated(tracks.Length)
-                    ? Strings.Detail.AddedFirstToQueue(Strings.Detail.SongCount(added))
-                    : Strings.Detail.AddedToQueue(Strings.Detail.SongCount(added)), InfoBarSeverity.Success);
+                // Episodes alone are counted as episodes ("Added 1 episode to queue"), anything with songs as songs.
+                string count = tracks.Length == 0 ? Strings.Podcast.EpisodeCount(added) : Strings.Detail.SongCount(added);
+                Notify.Say(PlayerBarRules.DropWasTruncated(total)
+                    ? Strings.Detail.AddedFirstToQueue(count)
+                    : Strings.Detail.AddedToQueue(count), InfoBarSeverity.Success);
             });
         }
 
@@ -216,7 +225,20 @@ public static partial class Shell
             Track[] tracks;
             try { tracks = await payload.ResolveTracksAsync().ConfigureAwait(false); }
             catch (Exception ex) { Log.Warn("playerbar", "play-next drop could not resolve its tracks", ex); return; }
-            if (tracks.Length == 0) return;
+            string[] episodeUris = [];
+            if (tracks.Length == 0)
+            {
+                // A podcast row: its episodes play next by uri (the episode table's handles are read on the UI thread).
+                if (payload.Episodes is not { Length: > 0 }) return;
+                Playback.ToUi(() =>
+                {
+                    episodeUris = payload.EpisodeUris();
+                    if (episodeUris.Length == 0 || Actions.Services.PlayNext is not { } next) { Notify.Say(Loc.Get(Strings.Detail.QueueUnavailable), InfoBarSeverity.Warning); return; }
+                    for (int i = episodeUris.Length - 1; i >= 0; i--) next(EntityUri.Parse(episodeUris[i]));
+                    Notify.Say(Strings.Detail.AddedToQueue(Strings.Podcast.EpisodeCount(episodeUris.Length)), InfoBarSeverity.Success);
+                });
+                return;
+            }
             Playback.ToUi(() =>
             {
                 // G-211: nothing must answer with silence: a drop with no queue seam behind it still tells the user why,

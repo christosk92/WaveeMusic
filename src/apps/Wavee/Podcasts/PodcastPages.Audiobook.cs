@@ -125,7 +125,6 @@ public sealed class AudiobookScreen : Component
             var toc = book.Toc.Chapters;
             int n = toc.Length;
             var deck = Playback.CurrentId.Value;
-            bool playing = Playback.IsPlaying.Value;
             var chapters = ImmutableArray.CreateBuilder<Episode>(n);
             int[] rest = new int[n], lengths = new int[n];
             var rows = ImmutableArray.CreateBuilder<AudiobookChapterVm>(n);
@@ -176,8 +175,8 @@ public sealed class AudiobookScreen : Component
             string count = rated is { Count: > 0 } rc ? rc.Count.ToString("N0", CultureInfo.CurrentCulture) : "";
             string finishedDate = finishedAt > 0 ? Episode.DateLabel(finishedAt) : "";
 
-            string primary = onDeck >= 0 && playing ? Loc.Get(PP.Pause)
-                : Loc.Get(state switch { AudiobookState.InProgress => PP.Continue, AudiobookState.Finished => PP.ListenAgain, _ => PP.StartListening });
+            // The resting word: Pause is the view's leaf (it binds Playing), so a press never rebuilds the snapshot.
+            string primary = Loc.Get(state switch { AudiobookState.InProgress => PP.Continue, AudiobookState.Finished => PP.ListenAgain, _ => PP.StartListening });
             string upTitle, upName = "", upSub;
             switch (state)
             {
@@ -332,8 +331,15 @@ public sealed class AudiobookScreen : Component
             int inMin = Episode.Rules.Minutes((int)Math.Min(int.MaxValue, listened));
             return new AudiobookPlace((int)Math.Min(int.MaxValue, listened), fraction, current, fill,
                 s_bookLeft.Get((pct, leftMin), s_bookLeftFormat), s_bookLeftLong.Get((pct, leftMin), s_bookLeftLongFormat),
-                s_inLeft.Get((inMin, leftMin), s_inLeftFormat), current >= 0 ? Episode.LeftLabel(curPos, s.Lengths[current]) : "");
+                s_inLeft.Get((inMin, leftMin), s_inLeftFormat), current >= 0 ? Episode.LeftLabel(curPos, s.Lengths[current]) : "")
+            {
+                Percent = s_percent.Get((pct, 0), s_percentFormat), Left = s_left.Get((0, leftMin), s_leftFormat),
+            };
         }
+
+        static readonly FormatCache<(int Pct, int Left)> s_percent = new(), s_left = new();
+        static readonly Func<(int Pct, int Left), string> s_percentFormat = static k => PP.Percent(k.Pct);
+        static readonly Func<(int Pct, int Left), string> s_leftFormat = static k => PP.Left(Episode.DurationWords(k.Left));
 
         static readonly FormatCache<(int Pct, int Left)> s_bookLeft = new(), s_bookLeftLong = new();
         static readonly FormatCache<(int In, int Left)> s_inLeft = new();

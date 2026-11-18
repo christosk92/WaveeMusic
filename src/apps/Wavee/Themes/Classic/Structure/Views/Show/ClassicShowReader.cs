@@ -3,7 +3,7 @@
 // From `Entities\Show.UI.cs`: the show READER's pieces (W1-W3): the sticky word rail's body (the toolbar), the "episodes N" header and its
 // empty arm, the month headers, the sticky month and the year strip, the foot, the cold seed the skeletons derive from, and the section-head
 // type the visit head shares (`Pivot`, `SecHead`). `ShowReaderStyle` is the one registered contract (`StyleKeys.ShowReader`); the visit head is
-// `ClassicShowHead.cs`, the rail's slots, the satellites and the library pane's column `ClassicShowRail.cs`.
+// `ClassicShowHead.cs`, the library pane's primary and the topic words `ClassicShowRail.cs`.
 //
 // WHAT THE CORE KEEPS (`Show.ReaderHost` and its slots): which toolbar stage, whether the find is open, the filter / sort / find signals, the
 // measure plumbing, the snapshot, the extents and `CheckExtent`, the sticky month and the date index, the reveal gates. The pictures here are
@@ -30,7 +30,7 @@ namespace Wavee.Themes.Classic;
 internal static partial class ClassicShow
 {
     /// <summary>The style Classic registers under <c>StyleKeys.ShowReader</c>. Stateless: every host and a test share it.</summary>
-    public static readonly ShowReaderStyle Style = new(Primary, Ledger, Rating, Badges, Topics, Publisher, Satellites, Toolbar,
+    public static readonly ShowReaderStyle Style = new(Primary, Topics, Toolbar,
         HeadShell, Head, EpisodesHeader, Group, StickyMonth, YearStrip, YearReserve, Foot, Seed)
     {
         NarrowToolbarGlyph = NarrowControlEdge,

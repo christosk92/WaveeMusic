@@ -19,7 +19,7 @@
 //   · a view reacts to an edge by reading the small records below (`FollowChange`, `ScrollEdge`, `FollowTick`,
 //     `LyricsFrame`, `UpgradeVerdict`) and by being the `ILyricsSceneSink` the model calls back through.
 //
-// ONE MODEL PER MOUNTED SURFACE (the rail's body, the stage's column, a podcast reader's transcript): `Surface` says which.
+// ONE MODEL PER MOUNTED SURFACE (the rail's body, the stage's column, the mini player's face): `Surface` says which.
 // A theme's lyrics view reads the signals (`State`, `ActiveLine`, `Follow`, `ResyncNeeded`, `DotsShown`, `SecondLine`),
 // the pure facts (`WordProgress`) and calls `Verbs`; it never reaches into `Playback` or the stores itself.
 
@@ -92,10 +92,9 @@ public interface ILyricsSceneSink
 
 public sealed class LyricsModel
 {
-    public LyricsModel(LyricsSurface surface, EntityId readerEpisode = default)
+    public LyricsModel(LyricsSurface surface)
     {
         Surface = surface;
-        ReaderEpisode = readerEpisode;
         DotAlpha = new FloatSignal[Lyrics.Interlude.DotCount];
         for (int k = 0; k < DotAlpha.Length; k++) DotAlpha[k] = new FloatSignal(0f);
         ActiveLineProp = Prop.Bind(ActiveLine);
@@ -104,10 +103,6 @@ public sealed class LyricsModel
     }
 
     public LyricsSurface Surface { get; }
-
-    /// <summary>The podcast reader's episode (valid ⇒ the reader, which shows ITS transcript whatever plays); default ⇒ the
-    /// surface follows whatever is playing.</summary>
-    public EntityId ReaderEpisode { get; }
 
     public ILyricsSceneSink? Sink { get; set; }
 
@@ -142,7 +137,7 @@ public sealed class LyricsModel
 
     // ── identity ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The playable the surface shows: the reader's episode, else whatever plays.</summary>
+    /// <summary>The playable the surface shows: whatever plays (as of the surface's last render).</summary>
     public EntityId Subject { get; set; }
 
     public uint SubjectEpoch { get; set; }
@@ -152,7 +147,6 @@ public sealed class LyricsModel
 
     public bool IsPodcast => Subject.Kind == EntityKind.Episode;
     public bool OwnsPlayback => Subject == Playback.CurrentId.Peek();
-    public bool ObservedPlaybackOwner => Subject == Playback.CurrentId.Value;
 
     /// <summary>The lyrics-store id of the song that plays right now ("" when none): what the AI sparkle and its verbs ask
     /// for. Subscribing when read in a render.</summary>
@@ -291,18 +285,18 @@ public sealed class LyricsModel
     }
 
     /// <summary>The document's TRUE opening line (through the same interlude advance the frame uses): -1 for an untimed
-    /// document and for a podcast reader that does not own playback.</summary>
+    /// document.</summary>
     public int SeedActive(Lyrics.Doc doc, long posMs)
-        => Lyrics.IsTimed(doc) && (!IsPodcast || OwnsPlayback)
+        => Lyrics.IsTimed(doc)
             ? Lyrics.AdvancePastInterlude(doc, Lyrics.ResolveLine(doc.Lines, posMs), posMs, out _, out _)
             : -1;
 
-    /// <summary>Publish a seeded opening: the active line, and the voice line retired for an untimed or non-owning surface.
+    /// <summary>Publish a seeded opening: the active line, and the voice line retired for an untimed document.
     /// (The caller writes <see cref="NowMs"/> after it repacks its rows, as the surface always did.)</summary>
     public void PublishSeed(Lyrics.Doc doc, int seedActive)
     {
         ActiveLine.Value = seedActive;
-        if (!Lyrics.IsTimed(doc) || (IsPodcast && !OwnsPlayback)) VoiceLine.Value = -1;
+        if (!Lyrics.IsTimed(doc)) VoiceLine.Value = -1;
     }
 
     /// <summary>Resolve one frame at <paramref name="nowMs"/>: eye leads voice (emphasis + follow on the LEAD-shifted clock,
@@ -342,9 +336,9 @@ public sealed class LyricsModel
 
     long _resyncDeadlineMs;
 
-    /// <summary>Is the Resync pill up? The follow is detached and this surface tracks playback. Subscribing when read.</summary>
+    /// <summary>Is the Resync pill up? The follow is detached. Subscribing when read.</summary>
     public bool ResyncNeeded
-        => (!IsPodcast || ObservedPlaybackOwner) && Follow.Value is Lyrics.FollowMode.DetachedActive or Lyrics.FollowMode.DetachedIdle;
+        => Follow.Value is Lyrics.FollowMode.DetachedActive or Lyrics.FollowMode.DetachedIdle;
 
     /// <summary>A detached follow draws no depth of field (the user owns the scroll).</summary>
     public static bool SuppressesDof(Lyrics.FollowMode mode) => mode != Lyrics.FollowMode.Following;
@@ -367,12 +361,10 @@ public sealed class LyricsModel
         ResyncProgress.Value = 1f;
     }
 
-    /// <summary>The user-scroll EDGE. A reader that does not own playback has no follow to detach. A grab detaches (the view
-    /// retires the cascade, then writes DetachedActive); a release from DetachedActive starts the idle countdown (the view
-    /// writes DetachedIdle).</summary>
+    /// <summary>The user-scroll EDGE. A grab detaches (the view retires the cascade, then writes DetachedActive); a release
+    /// from DetachedActive starts the idle countdown (the view writes DetachedIdle).</summary>
     public ScrollEdge OnScrollActivity(bool userScrollActive, long nowMs)
     {
-        if (IsPodcast && !OwnsPlayback) return ScrollEdge.None;
         if (userScrollActive)
         {
             ClearCountdown();
@@ -458,26 +450,23 @@ public sealed class LyricsModel
     }
 
     /// <summary>The header toggle's capability. Gated on a TIMED document: an unsynced block has no rows to render a second
-    /// line in, so offering the toggle there would be a control that visibly does nothing. A reader never publishes it.</summary>
+    /// line in, so offering the toggle there would be a control that visibly does nothing.</summary>
     public void PublishSecondaryAvailability(Lyrics.Doc? doc)
     {
-        if (!ReaderEpisode.IsValid) Lyrics.Prefs.Available.Value = doc is not null && Lyrics.IsTimed(doc) ? doc.SecondaryAvailable : 0;
+        Lyrics.Prefs.Available.Value = doc is not null && Lyrics.IsTimed(doc) ? doc.SecondaryAvailable : 0;
     }
 
     // ══ 7. THE VERBS THAT NEED THIS MODEL ════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A line was tapped: back to live, commit the seek (the playing episode seeks; a reader's other episode starts
-    /// at the line), re-anchor the clock, and hard-latch the follow. A line tap is a commit, never a scrub preview.</summary>
+    /// <summary>A line was tapped: back to live, commit the seek, re-anchor the clock, and hard-latch the follow. A line tap is
+    /// a commit, never a scrub preview.</summary>
     public void SeekToLine(int index)
     {
         var doc = Doc;
         if (doc is null || (uint)index >= (uint)doc.Lines.Count) return;
         Sink?.ResetFollow();
         long ms = doc.Lines[index].StartMs;
-        int target = (int)Math.Clamp(ms, 0L, int.MaxValue);
-        if (IsPodcast && !OwnsPlayback)
-            Episode.StartAt(Entities.Episode(Subject), Playback.EpisodeStartKind.Position, target);
-        else Playback.SeekTo(target);
+        Playback.SeekTo((int)Math.Clamp(ms, 0L, int.MaxValue));
         RebaseClock(ms);
         Sink?.SeekLanded();
     }
@@ -503,7 +492,7 @@ public sealed class LyricsVerbs(LyricsModel? model) : ILyricsVerbs
 
     public void ToggleAiPreferred()
     {
-        string id = model is { } m ? (m.ReaderEpisode.IsValid ? "" : LyricsModel.PlayingTrackId()) : LyricsModel.PlayingTrackId();
+        string id = LyricsModel.PlayingTrackId();
         if (id.Length == 0) return;
         AiLyrics.SetPreferAi(id, !AiLyrics.PrefersAi(id));
     }

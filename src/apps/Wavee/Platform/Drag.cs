@@ -166,7 +166,22 @@ public sealed record DragPayload(
     /// <see cref="Drag.Depositable"/>, and every destination reads THIS property, so the queue refusal reaches them all
     /// without a single target knowing the queue exists.</summary>
     public bool CanCopyTracks
-        => Drag.Depositable(Tracks is { Length: > 0 } || TrackResolver is not null, FromQueue);
+        => Drag.Depositable(Tracks is { Length: > 0 } || TrackResolver is not null || Episodes is { Length: > 0 }, FromQueue);
+
+    /// <summary>The podcast EPISODES this payload deposits (each an <see cref="EntityKind.Episode"/> ref), beside its tracks: a playlist takes them
+    /// as items (their uris), the queue as rows, the player bar's play-next by uri. Null for every payload that carries none. An episode is not a
+    /// <see cref="Track"/> (its slot lives in the episode table), so it travels here rather than in <see cref="Tracks"/>.</summary>
+    public EntityRef[]? Episodes { get; init; }
+
+    /// <summary>The uris of <see cref="Episodes"/> that resolve (a recycled slot can hold the default item), in drop order.</summary>
+    public string[] EpisodeUris()
+    {
+        if (Episodes is not { Length: > 0 } eps) return [];
+        var uris = new List<string>(eps.Length);
+        foreach (var r in eps)
+            if (r.Kind == EntityKind.Episode && new Episode(r.Slot) is { IsValid: true } e && e.Uri.IsValid) uris.Add(e.Uri.Text);
+        return [.. uris];
+    }
 
     /// <summary>Cheap eligibility for UI gating (drop-zone reveal, spring-load) — routes through the SAME boundary the
     /// pin commit uses rather than duplicating its kind list, so the two can never drift apart.</summary>

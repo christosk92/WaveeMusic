@@ -31,7 +31,7 @@ namespace Wavee.Themes.WinUi;
 internal static partial class WinUiShow
 {
     /// <summary>The style WinUI registers under <c>StyleKeys.ShowReader</c>. Stateless: every host shares it.</summary>
-    public static readonly ShowReaderStyle Style = new(Primary, Ledger, Rating, Badges, Topics, Publisher, Satellites, Toolbar,
+    public static readonly ShowReaderStyle Style = new(Primary, Topics, Toolbar,
         HeadShell, Head, EpisodesHeader, Group, StickyMonth, YearStrip, YearReserve, Foot, Seed)
     {
         NarrowToolbarGlyph = NarrowControlEdge,

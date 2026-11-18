@@ -43,6 +43,10 @@ public sealed class PodcastShowScreen : Component
     Func<PodcastPaneChapters>? _computeChapters;
     Action? _syncLease, _dispose;
     Func<Action>? _cleanup;
+    PageChromeSink _sink = PageChromeSink.None;
+    string _published = "";
+    Action? _publishTitle;
+    Func<Action>? _withdrawOnLeave;
 
     public override Element Render()
     {
@@ -72,6 +76,12 @@ public sealed class PodcastShowScreen : Component
         UseEffect(_syncLease);
         UseEffect(_cleanup, DepKey.Empty);
         UseActivation(onActivated: m.Reopen);
+        // The window tab and the history rows read the page's own title (`PageChromeChannel.PublishedTitle`), not the route's "Podcast".
+        _sink = UseContext(PageChromeSink.Context);
+        _publishTitle ??= PublishTitle;
+        _withdrawOnLeave ??= () => WithdrawTitle;
+        UseEffect(_publishTitle);
+        UseEffect(_withdrawOnLeave, DepKey.Empty);
 
         _props ??= new PodcastShowPageProps
         {
@@ -106,6 +116,7 @@ public sealed class PodcastShowScreen : Component
             ShowMenu = m.ShowMenu,
             Share = m.Share,
             OpenKind = m.OpenKind,
+            RowDrag = PodcastPages.RowDrag,
             CardMenu = m.CardMenu,
             PlayCard = m.PlayCard,
         };
@@ -139,6 +150,17 @@ public sealed class PodcastShowScreen : Component
     }
 
     /// <summary>Up to <see cref="PaneChapterMax"/> chapters around the current one (the episode's resume point, or its live position while it plays).</summary>
+    /// <summary>Auto-tracked on the snapshot: publishes the show's title once it is known and whenever it changes.</summary>
+    void PublishTitle()
+    {
+        string title = _m?.View?.Value.Head.Title ?? "";
+        if (title.Length == 0 || title == _published) return;
+        _published = title;
+        _sink.Publish(new PageChromeRow([], [], Title: title));
+    }
+
+    void WithdrawTitle() => _sink.Publish(null);
+
     PodcastPaneChapters ComputeChapters()
     {
         var data = _chapters.Value;
@@ -218,9 +240,27 @@ sealed class ShowModel
     public readonly Func<string, ContextMenuModel?> CardMenu;
     public readonly Action<string> PlayCard;
 
+    /// <summary>The flattened list (podcast pages list model): each group's header then its rows, then the foot or the empty line.</summary>
+    static ImmutableArray<PodcastListItem> ItemsOf(ImmutableArray<PodcastGroup> groups, bool hasMore, bool empty)
+    {
+        int n = (hasMore ? 1 : 0) + (empty ? 1 : 0);
+        foreach (var g in groups) n += 1 + g.Rows.Length;
+        var b = ImmutableArray.CreateBuilder<PodcastListItem>(n);
+        for (int gi = 0; gi < groups.Length; gi++)
+        {
+            var g = groups[gi];
+            b.Add(new PodcastListItem(PodcastItemKind.Group, gi, -1));
+            for (int k = 0; k < g.Rows.Length; k++) b.Add(new PodcastListItem(PodcastItemKind.Row, gi, g.Rows[k], k == 0));
+        }
+        if (empty) b.Add(new PodcastListItem(PodcastItemKind.Empty, -1, -1));
+        if (hasMore) b.Add(new PodcastListItem(PodcastItemKind.More, -1, -1));
+        return b.MoveToImmutable();
+    }
+
     PodcastShowHead? _lastHead;
     PodcastSmart? _lastSmart;
     ImmutableArray<PodcastCardVm> _lastSimilar = [];
+    PodcastLedger _lastLedger = PodcastLedger.None;
 
     static bool SameHead(PodcastShowHead a, PodcastShowHead b)
         => a with { Topics = [], Facts = [] } == b with { Topics = [], Facts = [] }
@@ -405,23 +445,29 @@ sealed class ShowModel
 
     // ══ THE SNAPSHOT ═══════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    PodcastShowView Compute()
+    /// <summary>The part of the snapshot a filter, a search or the order cannot change: the data door's rows as view models, the counts, the smart action,
+    /// the trailer. Rebuilt only when an entity table, the saved set, the deck, the similar answer or the paging moves (its stamp); a filter switch on a
+    /// 500-episode show then costs the filter, never 500 view models.</summary>
+    sealed class RowsPart
     {
-        _ = Entities.ScopeEpoch.Value;
-        var scope = Entities.Current;
-        _ = scope.Shows.Changed.Value;
-        _ = scope.Episodes.Changed.Value;
-        _ = scope.Edges.ShowEpisodes.Changed.Value;
-        _ = Spotify.Podcasts.SavedChanged.Value;
-        var filter = _filter.Value;
-        string query = _query.Value;
-        bool oldestCell = _oldest.Value;
-        _ = _askedFrom.Value;
-        EntityId playingId = Playback.CurrentId.Value;
-                var similarState = Similar?.State.Value ?? (byte)LoadState.Pending;
-        var similar = similarState == (byte)LoadState.Ready ? Similar?.Value.Value : null;
-        if (!Subject.IsValid) return PodcastShowView.Empty with { Load = PodcastLoad.Failed };
+        public object? Stamp;
+        public Show Show;
+        public ShowPage Page = null!;
+        public EdgeState Readiness;
+        public bool Following, Known, Serial, AnyProgress;
+        public int N, Total, Unplayed, InProgress, Saved;
+        public int[] Slots = [], Published = [];
+        public PodcastEpisodeVm[] Vms = [];
+        public ShowCadence.Kind Cadence;
+        public Episode Trailer;
+        public string? TrailerId;
+        public PodcastSmart? Smart;
+    }
 
+    RowsPart? _rowsPart;
+
+    RowsPart BuildRows(Scope scope, EntityId playingId)
+    {
         var show = new Show(scope.Shows.Slot(Subject.Id));
         var edge = scope.Edges.ShowEpisodes;
         int slot = show.Slot;
@@ -449,7 +495,6 @@ sealed class ShowModel
         }
         bool serial = page.Order == ShowOrder.Serial;
         // The order follows the show until the reader picks one: a serial reads oldest first.
-        if (!_orderChosen) oldestCell = serial;
         var (cadence, _) = ShowCadence.Of(published);
         following = page.Saved == SaveState.Saved || following;
 
@@ -538,6 +583,54 @@ sealed class ShowModel
                 kind == PodcastSmartKind.CaughtUp ? Loc.Get(Strings.Podcast.Pages.CaughtUp) : vms[at].Title, sub, progress, accent, menu);
         }
 
+        return new RowsPart
+        {
+            Show = show, Page = page, Readiness = readiness, Following = following, Known = known, Serial = serial, AnyProgress = anyProgress,
+            N = n, Total = total, Unplayed = unplayed, InProgress = inProgress, Saved = saved, Slots = slots, Published = published, Vms = vms,
+            Cadence = cadence, Trailer = trailer, TrailerId = trailerId, Smart = smart,
+        };
+    }
+
+    PodcastShowView Compute()
+    {
+        _ = Entities.ScopeEpoch.Value;
+        var scope = Entities.Current;
+        _ = scope.Shows.Changed.Value;
+        _ = scope.Episodes.Changed.Value;
+        _ = scope.Edges.ShowEpisodes.Changed.Value;
+        _ = Spotify.Podcasts.SavedChanged.Value;
+        var filter = _filter.Value;
+        string query = _query.Value;
+        bool oldestCell = _oldest.Value;
+        _ = _askedFrom.Value;
+        EntityId playingId = Playback.CurrentId.Value;
+                var similarState = Similar?.State.Value ?? (byte)LoadState.Pending;
+        var similar = similarState == (byte)LoadState.Ready ? Similar?.Value.Value : null;
+        if (!Subject.IsValid) return PodcastShowView.Empty with { Load = PodcastLoad.Failed };
+
+        var stamp = (Entities.ScopeEpoch.Peek(), scope.Shows.Changed.Peek(), scope.Episodes.Changed.Peek(), scope.Edges.ShowEpisodes.Changed.Peek(),
+            Spotify.Podcasts.SavedChanged.Peek(), playingId, _askedFrom.Peek(), Controls.Library is { } l && l.IsSaved(SubjectText));
+        var rp = _rowsPart is { } cached && Equals(cached.Stamp, stamp) ? cached : null;
+        if (rp is null)
+        {
+            rp = BuildRows(scope, playingId);
+            rp.Stamp = stamp;
+            _rowsPart = rp;
+        }
+        var show = rp.Show;
+        var page = rp.Page;
+        var readiness = rp.Readiness;
+        bool following = rp.Following, known = rp.Known, serial = rp.Serial, anyProgress = rp.AnyProgress;
+        int n = rp.N, total = rp.Total, unplayed = rp.Unplayed, inProgress = rp.InProgress, saved = rp.Saved;
+        int[] slots = rp.Slots, published = rp.Published;
+        var vms = rp.Vms;
+        var cadence = rp.Cadence;
+        var trailer = rp.Trailer;
+        string? trailerId = rp.TrailerId;
+        var smart = rp.Smart;
+        // The order follows the show until the reader picks one: a serial reads oldest first.
+        if (!_orderChosen) oldestCell = serial;
+
         // ── the filters, the view and the groups ──
         var q = query.AsSpan().Trim();
         var view = new List<int>(n);
@@ -555,12 +648,11 @@ sealed class ShowModel
             };
             if (keep && !q.IsEmpty) keep = ShowReaderRules.Matches(vm.Title, vm.Description, q);
             shown[i] = keep;
-            if (keep) shownCount++;
-            view.Add(i);
+            if (keep) { shownCount++; view.Add(i); }
         }
         if (oldestCell) view.Reverse();
         var episodes = ImmutableArray.CreateBuilder<PodcastEpisodeVm>(view.Count);
-        foreach (int i in view) episodes.Add(shown[i] ? vms[i] : vms[i] with { Hidden = true });
+        foreach (int i in view) episodes.Add(vms[i]);
         var years = YearsOf(vms, serial);
         var groups = GroupsOf(vms, view, shown, serial, oldestCell, !q.IsEmpty, filter == PodcastFilter.All && q.IsEmpty, years);
 
@@ -589,8 +681,14 @@ sealed class ShowModel
         _lastHead = head;
         _lastSmart = smart;
         _lastSimilar = similarCards;
+        // The listened ledger (Classic's bar): every known episode, whatever the filter; reused while it holds, so the head's projection keeps it.
+        int freshCount = freshSlots.Count, played = n - unplayed - inProgress, toGo = Math.Max(0, unplayed - freshCount);
+        var ledger = new PodcastLedger(played, inProgress, toGo, freshCount,
+            Strings.Podcast.Ledger(played, inProgress, toGo), freshCount > 0 ? Strings.Podcast.LedgerNew(freshCount) : "");
+        if (ledger == _lastLedger) ledger = _lastLedger;
+        _lastLedger = ledger;
         return new PodcastShowView(load, head, smart, episodes.MoveToImmutable(), groups, filters, years, hasMore,
-            filter != PodcastFilter.All || !q.IsEmpty, similarCards) { ShownCount = shownCount };
+            filter != PodcastFilter.All || !q.IsEmpty, similarCards) { ShownCount = shownCount, Items = ItemsOf(groups, hasMore, shownCount == 0 && load == PodcastLoad.Ready), Ledger = ledger };
     }
 
     static PodcastEpisodeVm RowOf(Episode e, int i, int total, bool serial, PodcastRowState state, float pct, bool saved)
@@ -694,7 +792,7 @@ sealed class ShowModel
             int visible = 0;
             for (int k = 0; k < view.Count; k++) { all.Add(k); if (shown[view[k]]) visible++; }
             groups.Add(new PodcastGroup("order", Loc.Get(Strings.Podcast.Pages.InOrder), visible, false, all.MoveToImmutable())
-                { CountText = FormatCache.Int(visible), Hidden = visible == 0 });
+                { CountText = FormatCache.Int(visible) });
             return groups.ToImmutable();
         }
         var inFresh = new bool[view.Count];
@@ -707,7 +805,7 @@ sealed class ShowModel
             int visible = 0;
             foreach (int k in freshRows) if (shown[view[k]]) visible++;
             groups.Add(new PodcastGroup("new", Loc.Get(Strings.Podcast.Pages.NewSince), visible, true, freshRows.ToImmutable())
-                { CountText = FormatCache.Int(visible), Hidden = visible == 0 });
+                { CountText = FormatCache.Int(visible) });
         }
         int currentYear = int.MinValue;
         ImmutableArray<int>.Builder? rows = null;
@@ -732,12 +830,11 @@ sealed class ShowModel
             if (rows is null || rows.Count == 0) return;
             int count = 0;
             foreach (int k in rows) if (shown[view[k]]) count++;
-            int visible = count;
             if (whole)
                 foreach (var y in years)
                     if (y.Year == year) { count = Math.Max(count, y.Episodes); break; }
             string title = year > 0 ? year.ToString(CultureInfo.InvariantCulture) : "";
-            groups.Add(new PodcastGroup("y" + title, title, count, false, rows.ToImmutable()) { CountText = FormatCache.Int(count), Hidden = visible == 0 });
+            groups.Add(new PodcastGroup("y" + title, title, count, false, rows.ToImmutable()) { CountText = FormatCache.Int(count) });
         }
     }
 

@@ -50,8 +50,6 @@ public sealed record PodcastEpisodeVm(
     public string LongDate { get; init; } = "";
     /// <summary>The description as HTML when the provider sent it ("" = only <see cref="Description"/>); render it with the house rich text.</summary>
     public string DescriptionHtml { get; init; } = "";
-    /// <summary>The row is filtered out (a filter or a search): it stays in the list, mounted and hidden, so a filter switch never remounts the rows.</summary>
-    public bool Hidden { get; init; }
 }
 
 /// <summary>One item of the smart action's menu ("Other ways to play").</summary>
@@ -70,8 +68,6 @@ public sealed record PodcastGroup(string Key, string Title, int Count, bool Fres
 {
     /// <summary><see cref="Count"/> as the header shows it ("" = none).</summary>
     public string CountText { get; init; } = "";
-    /// <summary>No row of the group passes the filter: the group stays, hidden.</summary>
-    public bool Hidden { get; init; }
 }
 
 /// <summary>One cell of the jump list: a year and how many episodes it holds.</summary>
@@ -86,6 +82,14 @@ public sealed record PodcastFilterVm(PodcastFilter Filter, string Label, int Cou
 {
     /// <summary><see cref="Count"/> as the SelectorBar shows it ("" = none).</summary>
     public string CountText { get; init; } = "";
+}
+
+/// <summary>How far through the show the listener is, over the episodes known so far (Classic's listened bar): played, in progress, still to go
+/// (unplayed, not new) and new since the last visit. <see cref="Text"/> is "39 played · 2 in progress · 62 to go", <see cref="NewText"/> "1 new"
+/// ("" when nothing is new).</summary>
+public sealed record PodcastLedger(int Played, int InProgress, int ToGo, int New, string Text, string NewText)
+{
+    public static PodcastLedger None { get; } = new(0, 0, 0, 0, "", "");
 }
 
 /// <summary>A "More like this" card: a show or a book.</summary>
@@ -114,6 +118,16 @@ public sealed record PodcastPaneChapters(int Total, ImmutableArray<PodcastChapte
     public static PodcastPaneChapters Loading { get; } = new(0, [], true);
 }
 
+/// <summary>What one item of the show page's episode LIST is (podcast pages list model): a group's header, an episode row, the "Load more" foot or
+/// the "No episodes match" line. A theme virtualises the list over <see cref="PodcastShowView.Items"/> (only the items on screen are mounted, so a
+/// show of 500 episodes scrolls and filters at the cost of 14), and puts its own prefix items (the hero, the toolbar) before them.</summary>
+public enum PodcastItemKind : byte { Group, Row, More, Empty }
+
+/// <summary>One item of <see cref="PodcastShowView.Items"/>: its kind, its group (an index into <see cref="PodcastShowView.Groups"/>, -1 for the foot
+/// and the empty line) and, for a row, its episode (an index into <see cref="PodcastShowView.Episodes"/>, else -1). <see cref="First"/>: the row opens
+/// its group (no rule above it).</summary>
+public readonly record struct PodcastListItem(PodcastItemKind Kind, int Group, int Episode, bool First = false);
+
 /// <summary>The show page's snapshot.</summary>
 public sealed record PodcastShowView(
     PodcastLoad Load, PodcastShowHead Head, PodcastSmart? Smart,
@@ -122,6 +136,11 @@ public sealed record PodcastShowView(
 {
     /// <summary>How many rows pass the filter and the search (0 = "No episodes match").</summary>
     public int ShownCount { get; init; }
+    /// <summary>The episode list, flattened for a virtualised list: per group its header then its rows, then the foot ("Load more") or the empty line.
+    /// <see cref="Episodes"/> and <see cref="Groups"/> hold only what passes the filter and the search.</summary>
+    public ImmutableArray<PodcastListItem> Items { get; init; } = [];
+    /// <summary>The listened ledger (whatever the filter: it counts every known episode). Reused while it holds, like the head.</summary>
+    public PodcastLedger Ledger { get; init; } = PodcastLedger.None;
 
     /// <summary>The empty snapshot a page shows while nothing is known (the skeleton is derived from the loaded layout over it).</summary>
     public static PodcastShowView Empty { get; } = new(PodcastLoad.Pending,
@@ -176,10 +195,19 @@ public sealed record PodcastShowPageProps
     /// <summary>"More like this": a card's context menu and its play button (null: none).</summary>
     public Func<string, ContextMenuModel?>? CardMenu { get; init; }
     public Action<string>? PlayCard { get; init; }
+    /// <summary>An episode row's drag payload, built when a drag promotes (a cold factory; wrap it in the house's <c>Drag.Source</c>): it drops onto a
+    /// playlist and onto the queue as a track does. Null: the rows carry no drag.</summary>
+    public Func<string, object?>? RowDrag { get; init; }
 }
 
 /// <summary>One chapter of an episode: where it starts, its length and how far the listener is through it (0..1).</summary>
-public sealed record PodcastChapterVm(int Index, string Title, int StartMs, int EndMs, string Start, string Length, float Fill, bool Current, bool Played);
+public sealed record PodcastChapterVm(int Index, string Title, int StartMs, int EndMs, string Start, string Length, float Fill, bool Current, bool Played)
+{
+    /// <summary>"16:34 · 6 min" (start and length, joined by the host so a recycled row's rebind formats nothing).</summary>
+    public string Span { get; init; } = "";
+    /// <summary>The chapter's number as text ("7").</summary>
+    public string Number { get; init; } = "";
+}
 
 /// <summary>One line of the transcript, with the chapter heading it opens (null when it opens none).</summary>
 public sealed record PodcastLineVm(int StartMs, string Time, string Text, string? Heading);
@@ -225,6 +253,9 @@ public sealed record PodcastEpisodePageProps
     public required IReadSignal<int> CurrentChapter { get; init; }
     /// <summary>The transcript line the position is in (index into <see cref="PodcastEpisodeView.Transcript"/>; -1 none). Changes only on a new line.</summary>
     public required IReadSignal<int> CurrentLine { get; init; }
+    /// <summary>The episode's state (Unplayed, InProgress, Played), live: the chapter rows and the map derive played and current from it and
+    /// <see cref="CurrentChapter"/>, so starting or finishing an episode moves two leaves instead of rebuilding the lists.</summary>
+    public IReadSignal<PodcastRowState>? State { get; init; }
     /// <summary>The map's clock: "12:10 / 37:00" while under way, the length otherwise.</summary>
     public required IReadSignal<string> MapClock { get; init; }
     /// <summary>"21 min left" in the episode (empty unless under way).</summary>
@@ -261,6 +292,8 @@ public sealed record PodcastEpisodePageProps
     /// <summary>A "More like this" card's menu and its play (the card's show, by uri).</summary>
     public required Func<string, ContextMenuModel?> CardMenu { get; init; }
     public required Action<string> PlayCard { get; init; }
+    /// <summary>A row's drag payload ("Next in this show", "Up next in this show"), as <see cref="PodcastShowPageProps.RowDrag"/>.</summary>
+    public Func<string, object?>? RowDrag { get; init; }
 }
 
 /// <summary>One chapter of a book's contents. <see cref="Name"/> is "Chapter N" when the publisher's title is empty or generic ("Track 5", "01");
@@ -277,7 +310,12 @@ public sealed record AudiobookPersonVm(string Name, string Uri);
 /// Texts: <see cref="BookLeft"/> "48% · 9 hr 2 min left", <see cref="BookLeftLong"/> the same "… left in the book", <see cref="InLeft"/>
 /// "3 hr 35 min in · 9 hr left", <see cref="CurrentLeft"/> "12 min left" (the current chapter's own).</summary>
 public readonly record struct AudiobookPlace(int PositionMs, float Fraction, int Current, float CurrentFill, string BookLeft, string BookLeftLong,
-    string InLeft, string CurrentLeft);
+    string InLeft, string CurrentLeft)
+{
+    /// <summary>The whole book's percentage alone ("48%": Zune's big number) and the time left alone ("9 hr 2 min left").</summary>
+    public string Percent { get; init; } = "";
+    public string Left { get; init; } = "";
+}
 
 /// <summary>The audiobook page's snapshot. Credits are separate lists (authors, narrators) and the facts are labelled rows; a row the data cannot fill is
 /// left off. <see cref="Included"/> false = the book is for sale: <see cref="Price"/> / <see cref="ListPrice"/> and <see cref="BuyLabel"/> replace the

@@ -140,7 +140,7 @@ internal static partial class WinUiDetailFrame
                 rows.Add(Block("hero-attribution", Facts(faces, id.Meta, settled, metaLine, avatar, measure, form, center)));
             // A daylist's strip under the facts (its countdown, or "Your next daylist is running late"): the page's pulse slot, as Classic's rail draws it.
             if (Pulses(spec)) rows.Add(Block("hero-daylist", PulseRow(spec.Slots.Pulse!(), center)));
-            rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.Slots, spec.PlayAll, tier, form, words, center)));
+            rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.PlayAll, tier, form, words, center)));
 
             Element cover = Cover(spec.Identity, spec.Slots, spec.Actions, form);
             // A head not read yet (audit B7 r2: blank reserved lines beside a live Play) shimmers its words in place: the loading band's own rows at their
@@ -329,18 +329,14 @@ internal static partial class WinUiDetailFrame
         };
     }
 
-    /// <summary>The action row: the Play split, then Shuffle, Save, Share and "..." (the page's satellites replace the fixed group where it has them).</summary>
-    static Element Actions(Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Detail.FrameSlots slots, Action? playAll, WinUiDetailTier tier,
+    /// <summary>The action row: the Play split, then Shuffle, Save, Share and "...".</summary>
+    static Element Actions(Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Action? playAll, WinUiDetailTier tier,
         WinUiHeroForm form, bool words, bool center)
     {
         float target = tier.Target;
-        Element primary = slots.Primary is { } primaryOf
-            ? primaryOf(() => Tok.AccentDefault)
-            : WinUiDetailKit.PlaySplit(id.Subject, playAll ?? DetailVerbs.PlayContext(id.Subject), target, enabled: !id.Empty);
-        IReadOnlyList<Element> fixedGroup = slots.Satellites is { } satellites
-            ? satellites()
-            : WinUiDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, target, words,
-                shuffleGlyph: ShuffleGlyph(tier, id.Kind), invite: acts.Invite, tune: TuneInHero(tier) ? acts.Tune : null);
+        Element primary = WinUiDetailKit.PlaySplit(id.Subject, playAll ?? DetailVerbs.PlayContext(id.Subject), target, enabled: !id.Empty);
+        IReadOnlyList<Element> fixedGroup = WinUiDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, target, words,
+            shuffleGlyph: ShuffleGlyph(tier, id.Kind), invite: acts.Invite, tune: TuneInHero(tier) ? acts.Tune : null);
         return WinUiDetailKit.ActionRow("vhero-actions", primary, fixedGroup, form.ActionTop, center: center);
     }
 

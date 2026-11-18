@@ -786,7 +786,7 @@ header's height, the reading measure, how many avatars fit) are `Stage.ArtistRul
 | Key | Props / style | Core half | Classic template |
 |---|---|---|---|
 | `Lyrics.View` | `LyricsViewProps` (`Host` is an `ILyricsHost`; `Message`, `Body`, `Ticker`, `Debug`, `Footer`) | `Lyrics.ViewCore` (`Shell\Lyrics.UI.cs`, `Lyrics.Host.UI.cs`; the rail's body, the stage's pane and the podcast reader mount it) | `ClassicLyrics` (`Views\Lyrics\`): the layer stack, the breathing dots, the resync pill and its ring, the "no sync during video" note, the AI disclosure's place under the layers, the stage's capped left-anchored column |
-| `StyleKeys.LyricsLines` | `LyricsLinesStyle` (`Message`, `Shimmer`, `Skeleton`, `Unsynced`, `Lines`, `Peek`; optional `Offline` since 1.1) | the host calls it where a document is on screen | `ClassicLyricsLines` (`Lists\`): the state line, the loading bars, the unsynced block, the measured virtual list and its rows (`ClassicLyricsRow`), the podcast peek and its gate |
+| `StyleKeys.LyricsLines` | `LyricsLinesStyle` (`Message`, `Shimmer`, `Skeleton`, `Unsynced`, `Lines`; optional `Offline` since 1.1) | the host calls it where a document is on screen | `ClassicLyricsLines` (`Lists\`): the state line, the loading bars, the unsynced block, the measured virtual list and its rows (`ClassicLyricsRow`) |
 
 **The model and the driver stay core.** `LyricsModel` (state, document, the upgrade gate, the clock, the follow and resync machine, the interlude
 reserve, the second line, the AI state, the verbs), `Lyrics.BlurPolicy` / `Lyrics.Prefs.BlurStrength(onStage)` and the frame driver in `ViewCore`

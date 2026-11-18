@@ -65,8 +65,6 @@ public static partial class Lyrics
 
         RowMetrics LyricsContracts.ILyricsHost.Metrics => Metrics;
         bool LyricsContracts.ILyricsHost.IsPodcast => IsPodcast;
-        bool LyricsContracts.ILyricsHost.OwnsPlayback => OwnsPlayback;
-        bool LyricsContracts.ILyricsHost.ObservedPlaybackOwner => ObservedPlaybackOwner;
 
         // ── the lines ───────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -91,19 +89,6 @@ public static partial class Lyrics
         void LyricsContracts.ILyricsHost.ReportGlowNode(int index, NodeHandle node) => ReportGlowNode(index, node);
         void LyricsContracts.ILyricsHost.ReportDofNode(int index, NodeHandle node) => ReportDofNode(index, node);
         void LyricsContracts.ILyricsHost.SeekToLine(int index) => SeekToLine(index);
-        bool LyricsContracts.ILyricsHost.BlurEnabled => BlurPolicy.Enabled(_strength);
-
-        /// <summary>THE GATE that sits on the peek's dissolve (podcast-episode-peek §2): the caption, the primary pill that starts this
-        /// episode, and the quiet length · language line. Only ever reached from a reader (<c>_readerEpisode</c> valid): the rail
-        /// always tracks whatever is playing, so it never lands here.</summary>
-        LyricsContracts.LyricsPeekGate LyricsContracts.ILyricsHost.PeekGate()
-        {
-            var episode = Entities.Episode(_subject);
-            string duration = episode.IsValid && episode.Knows(EpisodeFields.Duration) && episode.DurationMs > 0
-                ? Episode.DurationLabel(episode.DurationMs) : "";
-            string meta = TranscriptPeek.MetaLine(duration, TranscriptPeek.LanguageLabel(episode.TranscriptLanguage));
-            return new LyricsContracts.LyricsPeekGate(meta, () => Episode.StartAt(episode, Playback.EpisodeStartKind.Resume));
-        }
 
         // ── the overlays ────────────────────────────────────────────────────────────────────────────────────────────
 
