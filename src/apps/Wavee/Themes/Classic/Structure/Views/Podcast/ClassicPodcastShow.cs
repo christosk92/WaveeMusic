@@ -185,9 +185,10 @@ internal static partial class ClassicPodcastShow
             return new BoxEl { Key = "cp-commands", Direction = 0, Wrap = true, Gap = P.CommandGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
         }
 
+        // Keyed by the trailer episode: its Play acts on the trailer (the lint's subject), not on the show the smart split plays from.
         Element Trailer(PodcastShowHead h) => new BoxEl
         {
-            Key = "cp-trailer", Direction = 0, Gap = P.TrailerGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Key = "cp-trailer:" + h.TrailerId, Direction = 0, Gap = P.TrailerGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
             Children =
             [
                 Controls.Named(Controls.IconAction(Icons.Play, _p.PlayTrailer, size: P.TrailerButton) with

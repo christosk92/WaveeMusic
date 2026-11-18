@@ -580,9 +580,11 @@ internal static class ClassicPodcastKit
                     Children = expanded ? [ExpandBody(vm, _open, _next)] : [],
                 });
 
+            // Keyed `ep` (one family): the row is the instance its verbs act on (the lint's subject: each row's More acts on its own episode, never
+            // on the page's show), and the inspector's click and drag target.
             BoxEl row = new()
             {
-                Direction = 1, MinWidth = 0f, Corners = Radii.ControlAll, Focusable = true, Role = AutomationRole.Button, Cursor = CursorId.Hand,
+                Key = "ep", Direction = 1, MinWidth = 0f, Corners = Radii.ControlAll, Focusable = true, Role = AutomationRole.Button, Cursor = CursorId.Hand,
                 // The plate bleeds into the gutter: the row's words stand on the column line the list bar and the group labels stand on.
                 Margin = p.Compact ? new Edges4(-P.RowPadCompact, 0f, -P.RowPadCompact, 0f) : new Edges4(-P.RowPadStart, 0f, -P.RowPadEnd, 0f),
                 Padding = p.Compact ? Edges4.All(P.RowPadCompact) : new Edges4(P.RowPadStart, P.RowPadTop, P.RowPadEnd, P.RowPadBottom),

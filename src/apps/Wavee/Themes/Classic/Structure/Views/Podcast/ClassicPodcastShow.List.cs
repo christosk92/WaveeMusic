@@ -331,7 +331,7 @@ internal static partial class ClassicPodcastShow
                 var host = p.Host;
                 var lay = host._lay.Value;
                 return p.Item.Value.Vm is { } vm
-                    ? ClassicPodcastKit.EpisodeRow(vm, lay, lay.RowExpands, lay.RowDescription, host._accent.Value, host._verbs!) with { Key = "ep" }
+                    ? ClassicPodcastKit.EpisodeRow(vm, lay, lay.RowExpands, lay.RowDescription, host._accent.Value, host._verbs!) with { Key = "ep-slot" }
                     : new BoxEl();
             }
         }
