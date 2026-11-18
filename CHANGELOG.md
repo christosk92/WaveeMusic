@@ -85,7 +85,7 @@ versions separately under `v*` and is not tracked in this file.)
   the account as a head and says what Wavee does with it, and signing in shows its four steps as a list, each with
   what it does.
 
-- **"See all" opens in place (WinUI).** A section's "See all" page grows out of the section instead of replacing Home
+- **"See all" opens in place.** A section's "See all" page grows out of the section instead of replacing Home
   with a new page: it opens on the cards the section already showed, holds a place for the ones still loading, and
   Back shrinks it away again.
 

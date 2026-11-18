@@ -93,7 +93,9 @@ public static class ClassicPolicies
         // The boards' seven Settings tabs over the twelve areas (owner 2026-10-25: twelve tabs overran the strip at every width).
         Settings = SettingsGrouping.Seven,
         // The pinned Home (spec 8.3): "Pin to Home ›" with the groups, Pinned first; a toast with Undo; the band strip reads the sidebar's pins.
-        Home = new HomePolicy(HomePinMenu.GroupsSubmenu, HomeConfirm.Toast, BandPinsSource.Sidebar) };
+        Home = new HomePolicy(HomePinMenu.GroupsSubmenu, HomeConfirm.Toast, BandPinsSource.Sidebar),
+        // The core's fade-through, and a section's "See all" grows out of its link (ClassicPageMotion).
+        PageMotion = ClassicPageMotion.Policy };
 
     // The bundle for each combination of the structure options that reach the core (M7a: the sidebar layout x density; M4: the track artwork hidden; M8: the
     // detail page layout x the rails' uniformity; M2: the track row style; S0: the sidebar covers; CT9: the accent from artwork and the now-playing colours):

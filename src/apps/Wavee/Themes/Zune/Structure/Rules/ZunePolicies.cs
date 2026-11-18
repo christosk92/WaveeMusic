@@ -94,6 +94,8 @@ public static partial class ZunePolicies
             ArtistTiers = artistTiers,
             LibraryTiers = libraryTiers,
             Home = HomeBoard,
+            // The core's fade-through, and a section's "See all" grows out of its link (ZunePageMotion).
+            PageMotion = ZunePageMotion.Policy,
         };
     }
 
