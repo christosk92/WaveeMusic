@@ -78,7 +78,7 @@ public static partial class Entities
 
         /// <summary>al0-al12 are the base seed's; al13 is the prerelease, al14 the waterfall.</summary>
         const int Albums = 15, PreReleaseAlbum = 13, WaterfallAlbum = 14, RichAlbum = 2, ShortAlbum = 3, CompilationAlbum = 4;
-        const int Shows = 9, PartialShow = 7, EmptyShow = 8, DegradedShow = 3;
+        const int Shows = 10, PartialShow = 7, EmptyShow = 8, DegradedShow = 3, LongBook = 9;
         const long Day = 86_400;
         /// <summary>The countdown lead: 730 d + ch 31 W16's 9 d 4 h (the clock trap in the header).</summary>
         const long Lead = 739 * Day + 4 * 3600;
@@ -376,13 +376,13 @@ public static partial class Entities
             for (int sh = 0; sh < Shows; sh++)
             {
                 int n = EpisodesIn(sh);
-                string name = sh < ShowCount ? s_showNames[sh] : "The Empty Room";
+                string name = sh < ShowCount ? s_showNames[sh] : sh == LongBook ? "The Long Book" : "The Empty Room";
                 ref var show = ref s.Shows.RowFor(Text(s, ShowUri(sh)), Authority.Seed,
                     (uint)(sh < ShowCount ? ShowFields.About : ShowFields.All));
                 // FakeData.cs:405's blurb; the base seed's identity stands for sh0-sh7, sh8 is new
                 show.Description = Text(s, name + " — conversations, deep dives and field recordings from Wavee Podcasts. New episodes weekly.");
                 show.EpisodesAsked = n;                                 // the cursor: everything resident was asked
-                if (sh == EmptyShow)
+                if (sh == EmptyShow || sh == LongBook)
                 {
                     show.Title = Text(s, name);
                     show.Image = Text(s, Cover(10));
@@ -411,7 +411,8 @@ public static partial class Entities
         }
 
         /// <summary>Resident episodes: <c>8 + s % 5</c> (FakeData.cs:408); fourteen on the serial; none on the empty show.</summary>
-        static int EpisodesIn(int sh) => sh == EmptyShow ? 0 : sh == SerialShow ? SerialEpisodes : sh == DegradedShow ? LongShowEpisodes : 8 + sh % 5;
+        static int EpisodesIn(int sh) => sh == EmptyShow ? 0 : sh == SerialShow ? SerialEpisodes : sh == DegradedShow ? LongShowEpisodes
+            : sh == LongBook ? LongBookChapters : 8 + sh % 5;
 
         /// <summary>sh3 is also the LONG show (podcast pages list, 2026-11-18): 500 weekly episodes over nearly ten years, the size a virtualised
         /// episode list is gated at.</summary>
@@ -695,7 +696,7 @@ public static partial class Entities
 
         static void LandShows()
         {
-            var targets = new int[LongShowEpisodes];
+            var targets = new int[Math.Max(LongShowEpisodes, LongBookChapters)];   // the longest membership (sh3's 500 episodes)
             for (int sh = 0; sh < Shows; sh++)
             {
                 int n = EpisodesIn(sh), total = TotalEpisodes(sh);

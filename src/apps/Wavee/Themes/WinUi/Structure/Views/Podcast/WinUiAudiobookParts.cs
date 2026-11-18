@@ -11,6 +11,7 @@
 using System.Collections.Immutable;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
@@ -98,6 +99,9 @@ internal static class WinUiAudiobookParts
         var starts = new float[n];
         float x = 0f;
         var kids = new Element[n + 1];
+        // ONE tooltip over the line, its text the hovered segment's (a hundred-chapter book drew a hundred tooltip hosts that re-rendered with the page).
+        var hover = new Signal<int>(-1);
+        var labels = new string[n];
         for (int i = 0; i < n; i++)
         {
             widths[i] *= scale;
@@ -106,13 +110,16 @@ internal static class WinUiAudiobookParts
             int index = i;
             float segW = widths[i];
             bool done = chapters[i].Done;
+            labels[i] = chapters[i].Label;
+            // The fill is a compositor scale (a bound width relaid the line out on every position tick).
             var fill = new BoxEl
             {
-                Width = Prop.Of(() =>
+                Width = segW, TransformOriginX = 0f,
+                Transform = Prop.Of(() =>
                 {
+                    if (finished || done) return Affine2D.Identity;
                     var pl = place.Value;
-                    float f = finished || done ? 1f : pl.Current == index ? pl.CurrentFill : 0f;
-                    return segW * f;
+                    return Affine2D.Scale(pl.Current == index ? MathF.Max(0.001f, pl.CurrentFill) : 0.001f, 1f);
                 }),
                 Height = AB.SegHeight, Corners = CornerRadius4.All(AB.SegRadius),
                 Fill = finished ? Tok.FillControlStrong : Tok.AccentDefault,
@@ -128,13 +135,14 @@ internal static class WinUiAudiobookParts
                 Corners = CornerRadius4.All(AB.SegRadius),
             };
             // One tree at every tier (a crossing keeps the segments): only the verb comes and goes.
-            kids[i] = ToolTip.Wrap(seek
+            kids[i] = seek
                 ? seg with
                 {
                     Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = () => play(index),
                     Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+                    OnHoverMove = _ => hover.SetIfChanged(index),
                 }
-                : seg with { HitTestVisible = false }, chapters[i].Label);
+                : seg with { OnHoverMove = _ => hover.SetIfChanged(index) };
         }
         // the thumb: one node over the row, placed at your place on the current chapter's segment
         kids[n] = new BoxEl
@@ -151,8 +159,9 @@ internal static class WinUiAudiobookParts
             }),
             Children = [new BoxEl { Width = AB.ThumbInner, Height = AB.ThumbInner, Corners = CornerRadius4.All(AB.ThumbInner / 2f), Fill = Tok.AccentDefault }],
         };
-        var row = new BoxEl { Direction = 0, Gap = AB.SegGap, Height = AB.SegBand, Children = kids[..n] };
-        return new BoxEl { ZStack = true, Height = AB.SegBand, Children = [row, kids[n]] };
+        var row = new BoxEl { Direction = 0, Gap = AB.SegGap, Height = AB.SegBand, Children = kids[..n], OnPointerExit = () => hover.SetIfChanged(-1) };
+        return ToolTip.Wrap(new BoxEl { ZStack = true, Height = AB.SegBand, Children = [row, kids[n]] },
+            Prop.Of<string?>(() => hover.Value >= 0 && hover.Value < labels.Length ? labels[hover.Value] : null));
     }
 
     // ══ THE CONTENTS PAGE ═══════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -170,9 +179,65 @@ internal static class WinUiAudiobookParts
                 Caption(v.StartsAtLabel) with { Color = Tok.TextSecondary, Shrink = 0f },
             ],
         };
-        var kids = new List<Element>(v.Chapters.Length + 1) { head };
-        foreach (var c in v.Chapters) kids.Add(Row(c, v, p, lay));
-        return Card(AB.ContentsKey, new Edges4(AB.ContentsPadX, AB.ContentsPadTop, AB.ContentsPadX, AB.ContentsPadBottom), 0f, [.. kids]);
+        var rows = Embed.Comp(new RowsArgs(v, p, lay), static () => new RowsHost()) with { Key = AB.ContentsKey + ":rows" };
+        return Card(AB.ContentsKey, new Edges4(AB.ContentsPadX, AB.ContentsPadTop, AB.ContentsPadX, AB.ContentsPadBottom), 0f, [head, rows]);
+    }
+
+    /// <summary>The page scroller's handle, provided by the page (null: a view mounted alone, every row mounts).</summary>
+    public static readonly Context<ScrollHandle?> PageScroll = new(null);
+
+    sealed record RowsArgs(AudiobookView V, AudiobookPageProps P, WinUiAudiobookLayout Lay);
+
+    /// <summary>The contents' rows WINDOWED on the page scroll: a long book has a hundred chapters, and every mounted row costs each scroll frame's
+    /// record. The rows are one height (<c>lay.RowMin</c>), so the window is arithmetic: the rows near the viewport mount (a chunk of overscan either
+    /// side, re-cut only when the viewport crosses a chunk), spacers of the exact height stand for the rest, and the card keeps its full height (nothing
+    /// under it moves).</summary>
+    sealed class RowsHost : Component
+    {
+        NodeHandle _node;
+        Action<NodeHandle>? _capture;
+        Func<long>? _windowOf;
+        RowsArgs _a = null!;
+        ScrollHandle? _scroll;
+
+        public override Element Render()
+        {
+            _a = UseProps<RowsArgs>();
+            _scroll = UseContext(PageScroll);
+            _capture ??= h => _node = h;
+            _windowOf ??= WindowOf;
+            var a = _a;
+            int n = a.V.Chapters.Length;
+            float h = a.Lay.RowMin;
+            long window = UseComputed(_windowOf).Value;
+            int first = (int)(window >> 32), last = (int)window;
+            if (_scroll is null || n <= AB.WindowFrom) { first = 0; last = n - 1; }
+            var kids = new List<Element>(last - first + 3);
+            if (first > 0) kids.Add(new BoxEl { Key = "toc:above", Height = first * h, Shrink = 0f }.Skeletonized(false));
+            for (int i = first; i <= last && i < n; i++) kids.Add(Row(a.V.Chapters[i], a.V, a.P, a.Lay));
+            if (last < n - 1) kids.Add(new BoxEl { Key = "toc:below", Height = (n - 1 - last) * h, Shrink = 0f }.Skeletonized(false));
+            return new BoxEl { Direction = 1, MinWidth = 0f, OnRealized = _capture, Children = [.. kids] };
+        }
+
+        /// <summary>The window as (first &lt;&lt; 32 | last), cut to chunks of <c>AB.WindowChunk</c> rows so it changes only when the viewport crosses one.</summary>
+        long WindowOf()
+        {
+            var a = _a;
+            int n = a.V.Chapters.Length;
+            var scroll = _scroll;
+            if (scroll is null || n <= AB.WindowFrom) return n - 1;
+            double offset = scroll.Offset.Value, vh = scroll.ViewportSignal.Value;
+            var scene = Context.Scene;
+            if (scene is null || _node.IsNull || !scene.IsLive(_node) || vh <= 0) return AB.WindowChunk * 2 - 1;
+            // The rows' top in the scroller's content: their window position plus the offset (the viewport's own top is inside the overscan).
+            float top = (float)(scene.AbsoluteRect(_node).Y + offset);
+            float h = a.Lay.RowMin;
+            int from = (int)Math.Floor((offset - top) / h), to = (int)Math.Ceiling((offset + vh - top) / h);
+            int first = Math.Max(0, (from / AB.WindowChunk - 1) * AB.WindowChunk);
+            int last = Math.Min(n - 1, (to / AB.WindowChunk + 2) * AB.WindowChunk - 1);
+            if (last < first) last = first;
+            return ((long)first << 32) | (uint)last;
+        }
     }
 
     static Element Row(AudiobookChapterVm c, AudiobookView v, AudiobookPageProps p, WinUiAudiobookLayout lay)
@@ -217,7 +282,7 @@ internal static class WinUiAudiobookParts
         };
         return new BoxEl
         {
-            Key = AB.RowKey + c.Index, Direction = 0, MinHeight = lay.RowMin, MinWidth = 0f,
+            Key = AB.RowKey + c.Index, Direction = 0, MinHeight = lay.RowMin, Height = lay.RowMin, MinWidth = 0f,
             Corners = new CornerRadius4(0f, Radii.Control, Radii.Control, 0f),
             Fill = cur ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
             Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = () => p.PlayChapter(index),

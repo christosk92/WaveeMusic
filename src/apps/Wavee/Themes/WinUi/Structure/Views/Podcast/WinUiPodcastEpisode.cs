@@ -180,8 +180,9 @@ internal static class WinUiPodcastEpisode
             float h = lay.Target;
             var kids = new List<Element>(8)
             {
-                WinUiPodcastKit.SmartSplit("pe-split", v.PrimaryLabel, v.PrimaryAccent, v.PrimaryLabel == Loc.Get(Strings.Podcast.Pages.Pause), p.Play, v.Menu, h,
-                    lay.SplitFills),
+                // Play/Pause is a leaf: only it re-renders on a press.
+                WinUiPodcastPlayLeaf.Of("pe-split-leaf", () => p.Playing.Value, pausing => WinUiPodcastKit.SmartSplit("pe-split",
+                    pausing ? Loc.Get(Strings.Podcast.Pages.Pause) : v.PrimaryLabel, v.PrimaryAccent, pausing, p.Play, v.Menu, h, lay.SplitFills)),
             };
             if (e.State == PodcastRowState.InProgress)
             {
@@ -270,17 +271,28 @@ internal static class WinUiPodcastEpisode
 
     sealed class Cards : Component
     {
+        Func<PodcastEpisodeView>? _sliceOf;
+        PodcastEpisodePageProps? _p;
         readonly Signal<int> _index = new(0);
-        readonly ScrollHandle _bodyScroll = new();
-        /// <summary>The chapter rows' laid-out heights (the rows write them): where a row sits in the list without a scene walk.</summary>
-        float[] _rowH = [];
+        readonly ScrollHandle _chaptersScroll = new();
+        ImmutableArray<PodcastChapterVm> _stampChapters;
+        int _chaptersStamp;
+
+        /// <summary>A new stamp when the snapshot's chapters change (a crossing moves current and played): the bound slots rebuild from them.</summary>
+        int ChaptersStamp(PodcastEpisodeView v)
+        {
+            if (!_stampChapters.Equals(v.Chapters)) { _stampChapters = v.Chapters; _chaptersStamp++; }
+            return _chaptersStamp;
+        }
 
         public override Element Render()
         {
             var a = UseProps<HeroArgs>();
             var p = a.P;
+            _p = p;
             var lay = a.Lay;
-            var v = p.View.Value;
+            // Its slice of the snapshot: a change elsewhere (the hero's word, the state) does not re-render this section.
+            var v = UseComputed(_sliceOf ??= () => { var w = _p!.View.Value; return PodcastEpisodeView.Empty with { Load = w.Load, Chapters = w.Chapters, ChaptersPending = w.ChaptersPending, CommentCount = w.CommentCount, CommentsPending = w.CommentsPending, About = w.About, NoChapters = w.NoChapters }; }).Value;
             var tab = p.Tab.Value;
             // The transcript is a tab only where the window is too narrow to keep it beside the chapters.
             if (lay.TwoCards && tab == PodcastEpisodeTab.Transcript) tab = PodcastEpisodeTab.Chapters;
@@ -299,20 +311,21 @@ internal static class WinUiPodcastEpisode
             int index = Math.Max(0, Array.IndexOf(tabs, tab));
             UseEffect(() => { _index.SetIfChanged(index); }, DepKey.From(index));
             bool transcriptTab = !lay.TwoCards && tab == PodcastEpisodeTab.Transcript;
-            if (_rowH.Length != v.Chapters.Length) _rowH = new float[v.Chapters.Length];
             // The chapters list keeps the current chapter in view as playback crosses into it (the minimal move: a row already shown stays put).
-            var rowH = _rowH;
-            var scroll = _bodyScroll;
+            var scroll = _chaptersScroll;
+            int count = v.Chapters.Length;
             bool chaptersShown = tab == PodcastEpisodeTab.Chapters;
             UseEffect(() =>
             {
                 int at = p.CurrentChapter.Value;
                 _ = scroll.ViewportSignal.Value;
-                if (!chaptersShown || at < 0 || at >= rowH.Length || rowH[at] <= 0f) return;
-                float top = P.ListBodyPad;
-                for (int i = 0; i < at; i++) top += rowH[i];
-                scroll.BringIntoView(top, rowH[at], float.NaN, ScrollMove.Glide, P.ListBodyPad);
+                if (!chaptersShown || at < 0 || at >= count) return;
+                // A far chapter (a start or a seek deep in a long episode) lands at once: a glide would realize every row on its way.
+                double top = at * P.ChRowH, vh = scroll.ViewportSignal.Peek();
+                bool far = Math.Abs(top - scroll.Offset.Peek()) > vh * P.FollowJumpViewports;
+                scroll.BringIntoView(top, P.ChRowH, float.NaN, far ? ScrollMove.Immediate : ScrollMove.Glide, P.ListBodyPad);
             });
+            bool chaptersList = chaptersShown && count > 0;
 
             Element body = tab switch
             {
@@ -322,7 +335,7 @@ internal static class WinUiPodcastEpisode
                     Children = [WinUiPodcastKit.Description(v.About)],
                 },
                 PodcastEpisodeTab.Comments => p.Comments?.Invoke() ?? new BoxEl(),
-                _ => WinUiPodcastEpisodeParts.Chapters(p, v, _rowH),
+                _ => WinUiPodcastEpisodeParts.NoChapters(v),
             };
             var pivot = new BoxEl
             {
@@ -339,10 +352,12 @@ internal static class WinUiPodcastEpisode
                 Children = transcriptTab
                     ? [pivot, divider]
                     : [pivot, divider,
-                       ScrollView(new BoxEl { Direction = 1, Padding = Edges4.All(P.ListBodyPad), MinWidth = 0f, Children = [body] }) with
-                       {
-                           Key = "pe-sections:scroll", Grow = 1f, MinHeight = 0f, Handle = _bodyScroll,
-                       }],
+                       chaptersList
+                           ? WinUiPodcastEpisodeParts.Chapters(p, v, _chaptersScroll, ChaptersStamp(v))
+                           : ScrollView(new BoxEl { Direction = 1, Padding = Edges4.All(P.ListBodyPad), MinWidth = 0f, Children = [body] }) with
+                           {
+                               Key = "pe-sections:scroll", Grow = 1f, MinHeight = 0f,
+                           }],
             };
             var kids = new List<Element>(2) { left };
             if (lay.TwoCards)
@@ -367,12 +382,16 @@ internal static class WinUiPodcastEpisode
 
     sealed class More : Component
     {
+        Func<PodcastEpisodeView>? _sliceOf;
+        PodcastEpisodePageProps? _p;
         public override Element Render()
         {
             var a = UseProps<HeroArgs>();
             var p = a.P;
+            _p = p;
             var lay = a.Lay;
-            var v = p.View.Value;
+            // Its slice of the snapshot: a change elsewhere (the hero's word, the state) does not re-render this section.
+            var v = UseComputed(_sliceOf ??= () => { var w = _p!.View.Value; return PodcastEpisodeView.Empty with { Load = w.Load, More = w.More, MoreSub = w.MoreSub, Similar = w.Similar }; }).Value;
             bool compact = lay.Tier == WidthTier.Compact;
             var kids = new List<Element>(4);
             if (!v.More.IsDefaultOrEmpty)
@@ -406,9 +425,9 @@ internal static class WinUiPodcastEpisode
             var p = a.P;
             var v = p.View.Value;
             string left = p.Left.Value;
-            var primary = Button.Create(v.PrimaryLabel, p.Play, v.PrimaryAccent ? ButtonAppearance.Accent : ButtonAppearance.Standard,
-                glyph: v.PrimaryLabel == Loc.Get(Strings.Podcast.Pages.Pause) ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid)
-                with { Key = "pe-bar:play", Shrink = 0f, MinWidth = 0f };
+            var primary = WinUiPodcastPlayLeaf.Of("pe-bar:leaf", () => p.Playing.Value, pausing => Button.Create(
+                pausing ? Loc.Get(Strings.Podcast.Pages.Pause) : v.PrimaryLabel, p.Play, v.PrimaryAccent ? ButtonAppearance.Accent : ButtonAppearance.Standard,
+                glyph: pausing ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid) with { Key = "pe-bar:play", Shrink = 0f, MinWidth = 0f });
             return WinUiPodcastKit.Bar(v.Episode.ArtUrl ?? v.ShowArtUrl, v.Episode.Title, left.Length > 0 ? left : v.Episode.Length, primary, a.Inset);
         }
     }

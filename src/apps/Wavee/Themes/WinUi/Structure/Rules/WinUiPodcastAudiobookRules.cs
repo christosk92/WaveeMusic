@@ -56,6 +56,8 @@ internal static class WinUiPodcastAudiobookRules
 
     // ── the contents page (.contents, .cl) ──
     public const float ContentsPadX = 16f, ContentsPadTop = 6f, ContentsPadBottom = 16f, ContentsHeadPad = 8f, ContentsHeadBottom = 10f;
+    /// <summary>The contents page windows its rows on the page scroll from this many chapters, in chunks of <see cref="WindowChunk"/> rows.</summary>
+    public const int WindowFrom = 24, WindowChunk = 8;
     public const float RowMin = 36f, RowMinCompact = 44f, RowPadX = 8f, RowPadLeft = 12f, RowGap = 10f, NumberWidth = 24f, StartWidth = 52f;
     public const float NameSize = 15f, NameLine = 22f, MatterSize = 14f, Margin = 2f, LeaderHeight = 1f, LeaderMin = 20f, LeaderDot = 1f, LeaderGap = 3f, LeaderLift = -4f;
     public const float MarginRest = 0.08f, MarginDone = 0.34f, LeaderAlpha = 0.3f, LeaderDoneAlpha = 0.14f;

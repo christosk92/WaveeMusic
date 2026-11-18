@@ -61,34 +61,65 @@ internal static class PodcastReaderFixtures
     static int DurationOf(string episodeUri)
         => EntityId.TryParse(episodeUri, out var id) && Entities.Current.Episodes.TryGetSlot(id, out int slot) ? new Episode(slot).DurationMs : 0;
 
-    /// <summary>Twelve chapters scaled to the episode's length; the two-chapter fixture when the length is unknown.</summary>
+    /// <summary>A LONG episode (3 h and up, fake sh0e0) carries a realistic maximum: 100 chapters and a line every <see cref="LongLineEveryMs"/>
+    /// (about 2,500 lines over 3 h): the episode page's long lists are measured on it.</summary>
+    const int LongFromMs = 2 * 3_600_000, LongChapters = 100, LongLineEveryMs = 4_300;
+
+    /// <summary>The chapters: twelve scaled to the episode's length (the concept's), a hundred on a long one; the two-chapter fixture when the length is
+    /// unknown.</summary>
     internal static Spotify.Podcasts.Page<Spotify.Podcasts.Chapter> ChaptersFor(string episodeUri)
     {
         int duration = DurationOf(episodeUri);
         if (duration <= 0) return Chapters;
-        var items = new Spotify.Podcasts.Chapter[s_chapters.Length];
-        for (int i = 0; i < items.Length; i++)
-        {
-            int start = Scale(s_chapters[i].Start, duration);
-            int end = i + 1 < items.Length ? Scale(s_chapters[i + 1].Start, duration) : duration;
-            items[i] = new("fake:chapter:" + i, s_chapters[i].Title, start, end);
-        }
+        var items = ChapterList(duration);
         return new(items, "", items.Length, "", 200);
     }
 
-    /// <summary>A transcript over the whole episode: a line every <see cref="LineEveryMs"/>, each chapter's title a heading where it starts.</summary>
+    static Spotify.Podcasts.Chapter[] ChapterList(int duration)
+    {
+        if (duration < LongFromMs)
+        {
+            var items = new Spotify.Podcasts.Chapter[s_chapters.Length];
+            for (int i = 0; i < items.Length; i++)
+            {
+                int start = Scale(s_chapters[i].Start, duration);
+                int end = i + 1 < items.Length ? Scale(s_chapters[i + 1].Start, duration) : duration;
+                items[i] = new("fake:chapter:" + i, s_chapters[i].Title, start, end);
+            }
+            return items;
+        }
+        // A hundred chapters of uneven length (a pure function of the index): the concept's titles, then numbered parts of them.
+        var starts = new long[LongChapters + 1];
+        long sum = 0;
+        for (int i = 0; i < LongChapters; i++) { starts[i] = sum; sum += 7 + (i * 37 % 11); }
+        starts[LongChapters] = sum;
+        var list = new Spotify.Podcasts.Chapter[LongChapters];
+        for (int i = 0; i < LongChapters; i++)
+        {
+            int start = (int)(starts[i] * duration / sum), end = (int)(starts[i + 1] * duration / sum);
+            string title = s_chapters[i % s_chapters.Length].Title;
+            if (i >= s_chapters.Length) title += ", part " + (i / s_chapters.Length + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            list[i] = new("fake:chapter:" + i, title, start, end);
+        }
+        return list;
+    }
+
+    /// <summary>A transcript over the whole episode: a line every <see cref="LineEveryMs"/> (<see cref="LongLineEveryMs"/> on a long one), each
+    /// chapter's title a heading where it starts.</summary>
     internal static Spotify.Podcasts.Transcript TranscriptFor(string episodeUri)
     {
         int duration = DurationOf(episodeUri);
         if (duration <= 0) return Transcript;
-        var lines = new List<Spotify.Podcasts.TranscriptLine>(duration / LineEveryMs + 2 * s_chapters.Length);
+        var chapters = ChapterList(duration);
+        int every = duration < LongFromMs ? LineEveryMs : LongLineEveryMs;
+        var lines = new List<Spotify.Podcasts.TranscriptLine>(duration / every + 2 * chapters.Length);
         int chapter = 0, spoken = 0;
-        for (int at = 0; at < duration; at += LineEveryMs)
+        for (int at = 0; at < duration; at += every)
         {
-            while (chapter < s_chapters.Length && Scale(s_chapters[chapter].Start, duration) <= at)
+            while (chapter < chapters.Length && chapters[chapter].StartMs <= at)
             {
-                int start = Scale(s_chapters[chapter].Start, duration);
-                lines.Add(new(start, s_chapters[chapter].Title, true));
+                int start = chapters[chapter].StartMs;
+                lines.Add(new(start, chapters[chapter].Title, true));
                 if (start < at) lines.Add(new(start, s_lines[spoken++ % s_lines.Length], false));
                 chapter++;
             }

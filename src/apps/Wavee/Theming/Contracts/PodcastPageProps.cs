@@ -188,7 +188,13 @@ public sealed record PodcastShowPageProps
 }
 
 /// <summary>One chapter of an episode: where it starts, its length and how far the listener is through it (0..1).</summary>
-public sealed record PodcastChapterVm(int Index, string Title, int StartMs, int EndMs, string Start, string Length, float Fill, bool Current, bool Played);
+public sealed record PodcastChapterVm(int Index, string Title, int StartMs, int EndMs, string Start, string Length, float Fill, bool Current, bool Played)
+{
+    /// <summary>"16:34 · 6 min" (start and length, joined by the host so a recycled row's rebind formats nothing).</summary>
+    public string Span { get; init; } = "";
+    /// <summary>The chapter's number as text ("7").</summary>
+    public string Number { get; init; } = "";
+}
 
 /// <summary>One line of the transcript, with the chapter heading it opens (null when it opens none).</summary>
 public sealed record PodcastLineVm(int StartMs, string Time, string Text, string? Heading);
@@ -234,6 +240,9 @@ public sealed record PodcastEpisodePageProps
     public required IReadSignal<int> CurrentChapter { get; init; }
     /// <summary>The transcript line the position is in (index into <see cref="PodcastEpisodeView.Transcript"/>; -1 none). Changes only on a new line.</summary>
     public required IReadSignal<int> CurrentLine { get; init; }
+    /// <summary>The episode's state (Unplayed, InProgress, Played), live: the chapter rows and the map derive played and current from it and
+    /// <see cref="CurrentChapter"/>, so starting or finishing an episode moves two leaves instead of rebuilding the lists.</summary>
+    public IReadSignal<PodcastRowState>? State { get; init; }
     /// <summary>The map's clock: "12:10 / 37:00" while under way, the length otherwise.</summary>
     public required IReadSignal<string> MapClock { get; init; }
     /// <summary>"21 min left" in the episode (empty unless under way).</summary>
