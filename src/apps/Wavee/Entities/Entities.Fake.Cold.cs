@@ -237,8 +237,9 @@ public static partial class Entities
     static (Table Table, Column<StringId> Title, int Slot, StringId Value, uint Known)? s_head;
 
     /// <summary>Take the header of the album, playlist, show or episode <paramref name="uri"/> away (its title and every known field, the one the
-    /// page's HeaderPending reads among them). False for another kind or an unknown uri.</summary>
-    public static bool StageHead(string uri, bool artistOverview = false)
+    /// page's HeaderPending reads among them). <paramref name="keepCard"/> keeps what a card's thin row stages (the title and the cover, as a
+    /// Home or search card leaves them on live data), so the page opens on the head a card click gives it. False for another kind or an unknown uri.</summary>
+    public static bool StageHead(string uri, bool artistOverview = false, bool keepCard = false)
     {
         RestoreHead();
         var kind = EntityUri.KindOf(uri.AsSpan());
@@ -255,9 +256,17 @@ public static partial class Entities
             _ => null,
         };
         if (head is not { } h) return false;
+        uint card = !keepCard ? 0u : kind switch
+        {
+            EntityKind.Album => (uint)(AlbumFields.Title | AlbumFields.Image),
+            EntityKind.Playlist => (uint)PlaylistFields.Identity,
+            EntityKind.Show => (uint)(ShowFields.Title | ShowFields.Image),
+            EntityKind.Episode => (uint)EpisodeFields.Identity,
+            _ => 0u,
+        };
         s_head = (h.Table, h.Title, slot, h.Title[slot], h.Table.Known[slot]);
-        h.Title[slot] = StringId.Empty;
-        h.Table.Known[slot] = 0;
+        if (card == 0u) h.Title[slot] = StringId.Empty;
+        h.Table.Known[slot] &= card;
         h.Table.Version[slot]++;
         h.Table.MarkDirty();   // a publication carries only the tables marked
         s.PublishAll();

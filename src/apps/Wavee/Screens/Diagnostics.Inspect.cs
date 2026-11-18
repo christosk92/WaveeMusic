@@ -636,13 +636,16 @@ public static partial class Diagnostics
                         if (kind == "head")
                         {
                             string uri = a.Str("uri");
-                            if (!Entities.StageHead(uri, artistOverview: a.Has("answer"))) return Inspect.Reply.Fail(id, name, "state kind=head wants uri=<an album, playlist, show, episode or artist the fake holds>, not '" + uri + "'");
+                            string keep = a.Str("keep");
+                            if (keep.Length > 0 && keep != "card") return Inspect.Reply.Fail(id, name, "state kind=head keep= takes card (the title and the cover a card stages), not '" + keep + "'");
+                            if (!Entities.StageHead(uri, artistOverview: a.Has("answer"), keepCard: keep == "card")) return Inspect.Reply.Fail(id, name, "state kind=head wants uri=<an album, playlist, show, episode or artist the fake holds>, not '" + uri + "'");
                             InspectKit.ColdStaged = true;   // the next mount puts the header back
                             // answer=hold: the page's own ask for its head goes through the real fetch layer and is held by a scripted transport
                             // (Entities.Fake.Answer.cs), for `head-land answer=` to settle.
                             if (a.Has("answer") && !Entities.BeginScripted(uri))
                                 return Inspect.Reply.Fail(id, name, "state kind=head answer= wants an album, playlist, show, episode or artist the fake holds");
-                            Wavee.Shell.GoTo(Wavee.Shell.For(EntityUri.Parse(uri)));
+                            // go=false stages it where the listener is, so a card click opens the page the way a listener does (its cover's flight).
+                            if (a.Bool("go", true)) Wavee.Shell.GoTo(Wavee.Shell.For(EntityUri.Parse(uri)));
                             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
                             return Settled(id, name, a, w =>
                             {

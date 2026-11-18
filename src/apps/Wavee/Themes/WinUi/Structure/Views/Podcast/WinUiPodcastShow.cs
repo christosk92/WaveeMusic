@@ -205,17 +205,24 @@ internal static partial class WinUiPodcastShow
 
         // ── the hero ──
 
+        /// <summary>The show's cover, the connected flight's landing. Kept while scrolled away: the cover coming back into view at the top must not
+        /// re-acquire its image (a scroll frame never allocates). The live cover drags as the show (the host's one source: a sidebar pin, a playlist,
+        /// the queue); the shimmer's carries none.</summary>
+        Element Cover(PodcastShowHead h, WinUiPodcastShowLayout lay, bool live) => new BoxEl
+        {
+            Key = "hero:art", Shrink = 0f, Draggable = live ? _p.CoverDrag : null,
+            OnClick = live ? _openFull : null, Cursor = live && _openFull is not null ? CursorId.Hand : null,
+            Children = [Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f), keepWhileHidden: true, connect: Design.MorphKeys.ForUri(h.Uri))],
+        };
+
         Element Hero(PodcastShowView v, WinUiPodcastShowLayout lay, bool live)
         {
             var h = v.Head;
-            // Kept while scrolled away: the cover coming back into view at the top must not re-acquire its image (a scroll frame never allocates).
-            // The cover drags as the show (the host's one source: a sidebar pin, a playlist, the queue); the shimmer's carries none.
-            Element cover = new BoxEl
-            {
-                Key = "hero:art", Shrink = 0f, Draggable = live ? _p.CoverDrag : null,
-                OnClick = live ? _openFull : null, Cursor = live && _openFull is not null ? CursorId.Hand : null,
-                Children = [Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f), keepWhileHidden: true, connect: Design.MorphKeys.ForUri(h.Uri))],
-            };
+            Element cover = Cover(h, lay, live);
+            // Loading, a cover the page already knows (a card's, on the head the page holds while it loads) is no bar: it stands in the shimmer as itself
+            // from the first frame and stays put through the reveal, as an album's does, so a card's cover has its landing on the click frame (WinUI
+            // flies only to one that is there then).
+            if (!live && _headView?.Value.Head is { ArtUrl: not null } known) cover = cover.SkelHeld(Cover(known, lay, live: false));
             Element title = (lay.TitleLarge ? TitleLarge(h.Title) : Title(h.Title)) with
             {
                 Wrap = TextWrap.Wrap, MaxLines = S.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,

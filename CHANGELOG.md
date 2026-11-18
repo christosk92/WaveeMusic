@@ -104,7 +104,8 @@ versions separately under `v*` and is not tracked in this file.)
 - **An audiobook opened from Home started out as a podcast's page.** It showed a show's layout until the book's details
   arrived, then turned into the book's page; it opens as the book from its first frame.
 - **Podcast and audiobook covers did not fly into their page (WinUI).** The show, audiobook and episode pages now take
-  the cover a card lifts, as album pages do, when the page has its details at hand (a show or book you opened before).
+  the cover a card lifts, as album pages do. A show or book still loading shows the card's cover at once while the rest
+  of its page loads, and the cover stays where it is when the page fills in.
 
 - **Expanders open and close in one motion.** On a podcast's page, "About the show" no longer leaves the episode list
   jumping ahead as it opens or rising over its text as it closes: the list follows the panel's edge both ways. Every
