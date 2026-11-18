@@ -204,7 +204,14 @@ internal static partial class ClassicHomeZones
     {
         Element body = Body(zone, overlay, controller, layout);
         Element? header = Header(zone, controller is not null && (IsPagedGrid(zone.Kind) || ShelfBandOf(zone.Kind, layout).Pager) ? controller : null, layout);
-        if (header is null) return body;
+        // A headerless zone meets the facet row's line itself, so it dissolves there (its own feather, armed while its cut is engaged).
+        if (header is null)
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
+                Children = [body],
+            }.StickyClip(ClassicHomeRules.StuckBottom);
         // A header with an entity (its cover over two lines) is taller; the body's clip follows it.
         float headerH = HasEntityHeader(zone) ? ClassicHomeRules.EntityHeaderH : ClassicHomeRules.HeaderH;
         // The body cuts itself at the header's lower edge, feathered exactly while the cut is engaged.

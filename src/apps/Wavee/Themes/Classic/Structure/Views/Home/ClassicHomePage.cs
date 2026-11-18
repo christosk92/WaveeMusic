@@ -14,7 +14,7 @@
 //           ├─ Home.FacetRow (the SelectorBar in R.Type.FacetTitleStyle — the facet words ARE the page title —
 //           │     · Following ToggleButton · busy ProgressBar)
 //           │     its band is `.Sticky(StuckInset, scope: PageScope)` — transparent, no acrylic
-//           └─ content  ZStack `.StickyClip(StuckBottom)` + EdgeFade(Top, 24) { WhileStuck }   (the Browse masthead idiom)
+//           └─ content  ZStack `.StickyClip(StuckBottom)`: a plain cut. The FEATHER is each headerless zone's own (`ClassicHomeZones.Chapter`)
 //      (the ScrollView has EdgeCues None: its viewport top feather would fade the pinned rows)
 //                └─ SkelRegionEl(Content: keyed facet column → dim host (Opacity/HitTest binds only) → the zone column,
 //                                ShimmerSource: the zone column over the seed, OnFailed: Controls.Vacancy(Error, retry), Reveal None)
@@ -25,8 +25,10 @@
 // facet-row → content step; the 40-px rhythm between zones is the zone column's.
 //
 // STICKY WITHOUT A BACKGROUND: the facet band paints nothing (live Mica); the content column under it cuts ITSELF at the band's lower edge
-// (`StickyClip(StuckBottom)`) with a top feather that arms only while the clip is engaged (`EdgeFadeSpec.WhileStuck`), so content dissolves
-// into the band, is never guillotined, and never softens at rest. Unlike Browse the band is IN the scroll flow (an in-flow
+// (`StickyClip(StuckBottom)`). What dissolves into the band is the content that SCROLLS under it: a headerless zone feathers itself at that
+// line, and a zone with a header feathers its body under the header (`ClassicHomeZones.Chapter`). A PINNED HEADER IS NEVER FEATHERED: it is
+// parked on the line, not passing under it. One feather over the whole content softened the top of every header parked there (its eyebrow
+// faded, a second fade over the one its own body makes under it; owner, 2026-11-18). Unlike Browse the band is IN the scroll flow (an in-flow
 // `.Sticky(StuckInset)` row, 12 below the viewport top), so no spacer is needed above the clipped node: the clip engages exactly when the
 // content's top reaches the pinned band's lower edge. Chapter headers inside the zone column pin at `StuckBottom` under this band.
 //
@@ -66,8 +68,8 @@ internal static class ClassicHomePage
             OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.RetryFirstLoad),
             Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: props.Group, SmoothResize: false);
 
-        // THE CLIP IS THE CONTRACT: the band paints nothing, so the content cuts itself at the band's lower edge and
-        // feathers that cut exactly while the clip is engaged (`ClassicBrowseDirectory`'s directory / `ClassicArtistPage`'s magazine).
+        // THE CLIP IS THE CONTRACT: the band paints nothing, so the content cuts itself at the band's lower edge. The feather of that cut is
+        // each headerless zone's own (see the file header): the pinned chapter headers parked on the line are not softened.
         // The facet failure's InfoBar has its own slot (tuning H1): a layer stacked over the content's top edge, so the zones keep their
         // place when a switch fails and when the bar closes.
         Element content = new BoxEl
@@ -75,7 +77,6 @@ internal static class ClassicHomePage
             Key = "home:content", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ZStack = true,
             // The column's gutter, top and head gap are the content tier's and step when it changes (a docked panel, a resize): the content glides there.
             Layout = ClassicTierMotion.Shove,
-            EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
             Children = [region, ClassicHomeFacetRow.FailureLayer(props.FacetRow)],
         }.StickyClip(ClassicHomeRules.StuckBottom);
 
