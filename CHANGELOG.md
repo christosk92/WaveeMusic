@@ -107,10 +107,6 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
-- **Wavee could close by itself a few seconds after starting on x64 PCs.** 0.3.8 and 0.3.9 were built with a preview of
-  .NET 11 whose compiler left a pointer where the garbage collector could not find it while covers were decoding; a
-  collection at that moment ended the app, most often on the first page after launch or when the window came back after
-  a long time hidden. Wavee is now built with the released .NET 11 SDK, which does not have the defect.
 - **An audiobook opened from Home started out as a podcast's page.** It showed a show's layout until the book's details
   arrived, then turned into the book's page; it opens as the book from its first frame.
 - **Podcast and audiobook covers did not fly into their page (WinUI).** The show, audiobook and episode pages now take
