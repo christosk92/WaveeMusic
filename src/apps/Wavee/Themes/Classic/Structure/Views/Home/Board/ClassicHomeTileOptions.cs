@@ -1,7 +1,8 @@
 // ── Themes/Classic/Structure/Views/Home/Board/ClassicHomeTileOptions.cs — "Options": the tile opens in place (spec 8.3) ─────────────────────────
 //
 // The sidebar's "Section options" shape, inside the tile: its name and "Done" in the head, each option as a label over radio rows (a toggle is a
-// switch), "Live updates" for a live source. A long list ("which playlist", an Entity option) is a find box over the list, inside the tile (the Move to
+// switch), "Live updates" for a live source, then the feature's app-wide settings under their group's label (the daylist's Clock and "Tell me when it
+// refreshes", "For every daylist"), each a label over radio rows. A long list ("which playlist", an Entity option) is a find box over the list, inside the tile (the Move to
 // folder chooser's "Find a folder", moved out of its dialog). A choice applies at once; the tile grew to fit and the others slid aside (the grid packs it
 // at `OpenExtent`). Done or Esc closes it; one visit is one undo step ("{name} updated" + Undo on the toast); focus returns to the tile.
 
@@ -88,12 +89,35 @@ internal static class ClassicHomeTileOptions
             if (p.Live && !liveInSchema && p.ToggleLive is { } toggle && p.Paused is { } paused)
                 kids.Add(ToggleSwitch.Create(new Signal<bool>(!paused()), _ => toggle(), header: Loc.Get(Strings.Theme.Classic.Home.Board.LiveUpdates))
                     with { Key = "home:options:live" });
+            AddDials(kids, p);
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f, Gap = Spacing.S, AlignItems = FlexAlign.Stretch,
                 Padding = new Edges4(ClassicHomeBoardRules.CardPad, Spacing.XS, ClassicHomeBoardRules.CardPad, ClassicHomeBoardRules.CardPad),
                 Children = kids.ToArray(),
             };
+        }
+
+        /// <summary>The app-wide settings after the tile's own (settings design 5.3), in the options' own grammar: the group's label ("For every
+        /// daylist"), then each setting's label (in the primary ink, so it reads as the field under the group's) over its radio rows, bound to the value
+        /// Settings shows and written through Settings' writer; under them, while one holds, the reason its pick does not act as it says.
+        /// <see cref="ClassicHomeBoardRules.OpenExtent"/> counts them.</summary>
+        static void AddDials(List<Element> kids, HomeTileOptionsProps p)
+        {
+            if (p.Dials.IsDefaultOrEmpty) return;
+            if (p.DialsLabelKey is { } group)
+                kids.Add(Ui.Caption(Loc.Get(group)).Secondary() with { Key = "home:options:dials", MaxLines = 1, MinWidth = 0f });
+            foreach (var d in p.Dials)
+            {
+                var dial = d;
+                kids.Add(Ui.Caption(Loc.Get(dial.LabelKey)).Primary() with { Key = "home:options:" + dial.Id + ":label", MaxLines = 1, MinWidth = 0f });
+                var labels = new string[dial.ChoiceKeys.Length];
+                for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(dial.ChoiceKeys[i]);
+                kids.Add(RadioButtons.Create(labels, new Signal<int>(dial.Value()), i => { if ((uint)i < (uint)labels.Length) dial.Choose(i); })
+                    with { Key = "home:options:" + dial.Id });
+                if (dial.NoteKey?.Invoke() is { } note)
+                    kids.Add(Ui.Caption(Loc.Get(note)).Secondary() with { Key = "home:options:" + dial.Id + ":note", Wrap = TextWrap.Wrap, MinWidth = 0f });
+            }
         }
     }
 }

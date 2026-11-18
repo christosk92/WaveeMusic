@@ -63,6 +63,9 @@ internal static class ClassicHomeDaylist
         var facts = ctx.Tier();
         var dl = ClassicHomeTiers.Of(facts).Daylist;
         float firstW = ClassicRegion.EstimateHomeBand(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width, hero: true);
+        // On the pinned board the card stands in a tile: its "…" and a right-click open ONE menu, the playlist's rows then the tile's Home rows (Size,
+        // Options, the moves: HomeTileMenus), so the tile's options are a click away with Edit Home switched off (HomeCustomize).
+        var tile = ctx.Hooks.UseContext(HomeTileMenus.Current);
 
         var zone = props.Zone;
         if (zone.Items.Count == 0) return new BoxEl();
@@ -72,7 +75,7 @@ internal static class ClassicHomeDaylist
         if (uri.Length == 0) return Skeleton(ClassicHomeTiers.Of(facts));
 
         var host = props.Overlay;
-        var menu = HomeCardNav.MenuOf(in card);
+        var menu = HomeTileMenus.Merge(HomeCardNav.MenuOf(in card), tile);
         var c = card;
         string title = card.Title;
 

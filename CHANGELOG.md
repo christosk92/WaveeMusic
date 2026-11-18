@@ -58,6 +58,17 @@ versions separately under `v*` and is not tracked in this file.)
 - **WinUI lyrics pane follows the blur setting,** and the active line and the words being sung stand clearly apart
   from the rest.
 
+- **The daylist's options show its clock and its refresh notice (every theme).** Customize Daylist (WinUI), Daylist
+  options (Classic) and the back of the daylist strip (Zune) now hold the daylist's two real settings under "For every
+  daylist": Clock (Countdown and update time, Update time only, Countdown only) and "Tell me when it refreshes" (Off, In
+  Wavee, Windows). They are the same settings as Settings > Appearance > Home and Settings > Notifications, so a pick in
+  one place shows in the other. In Classic the daylist's ⋯ menu now offers Options too.
+
+### Removed
+
+- **The daylist's "Live updates" switch and "Pause live updates" menu item.** Neither ever did anything for the daylist.
+  Its clock is the only part that moves every second, and Clock > Update time only stills it.
+
 ### Fixed
 
 - **Your Episodes (WinUI) showed a stray "7", a dead band and a header out of line.** It stands on the library's column
