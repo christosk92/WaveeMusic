@@ -418,16 +418,20 @@ internal static class WinUiPodcastKit
                     Weight = played ? (ushort)400 : (ushort)600, Color = played ? Tok.TextSecondary : Tok.TextPrimary,
                 };
             var text = new List<Element>(3);
+            // The lead's description: under its title where the card is wide; under the whole line at Compact, where the column between the play
+            // button and the actions is too narrow to read two lines in.
+            Element? leadBlurb = lead && s.Desc
+                ? Body("") with
+                {
+                    Text = Prop.Of(_desc), MaxLines = K.LeadBlurbLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextSecondary,
+                    MinWidth = 0f, MaxWidth = K.LeadBlurbW,
+                }
+                : null;
             if (lead)
             {
                 text.Add(RowMeta(s, _date, _length));
                 text.Add(title);
-                if (s.Desc)
-                    text.Add(Body("") with
-                    {
-                        Text = Prop.Of(_desc), MaxLines = K.LeadBlurbLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextSecondary,
-                        MinWidth = 0f, MaxWidth = K.LeadBlurbW,
-                    });
+                if (leadBlurb is not null && !p.Compact) text.Add(leadBlurb);
             }
             else if (!wide)
             {
@@ -478,7 +482,8 @@ internal static class WinUiPodcastKit
                 BorderWidth = lead ? 1f : 0f, BorderColor = lead ? Tok.StrokeCardDefault : ColorF.Transparent,
                 PressedFill = lead ? Tok.FillCardSecondary : Tok.FillSubtleTertiary, BrushTransitionMs = rebound ? 0f : Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press, Draggable = _drag,
-                Children = [line],
+                Gap = lead ? K.LeadGap + K.LeadGap : 0f,
+                Children = leadBlurb is not null && p.Compact ? [line, leadBlurb] : [line],
             };
             // ONE tree selected or not (the pill is present, painted only while selected: an opacity, never a presence change): a selection that comes
             // or goes with the row mode (a tier crossing, 1008) never rebuilds the row and what it holds (the progress ring keeps its mount).
