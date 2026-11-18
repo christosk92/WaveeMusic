@@ -451,7 +451,7 @@ internal static partial class ZunePodcastShow
                 with { BorderWidth = 0f }, Loc.Get(Strings.Podcast.Pages.Search), false));
         bool oldest = live && p.Oldest.Value;
         string sortWord = Loc.Get(oldest ? Strings.Podcast.Pages.OldestFirst : Strings.Podcast.Pages.NewestFirst);
-        kids.Add(K.Named(K.Button("tb:sort", null, Icons.Sort, p.ToggleSort, lay.Target) with { BorderWidth = 0f }, sortWord, false));
+        kids.Add(K.Named(K.Button("tb:sort", null, Icons.Sort, p.ToggleSort, lay.Target) with { BorderWidth = 0f, Layout = ZuneMotion.GroupResize }, sortWord, false));
         return kids.ToArray();
     }
 
@@ -459,7 +459,8 @@ internal static partial class ZunePodcastShow
     static BoxEl Swap(string key, bool fill, Element body) => new()
     {
         Key = key, Direction = 0, AlignItems = FlexAlign.Center, Grow = fill ? 1f : 0f, Basis = fill ? 0f : float.NaN, Shrink = fill ? 1f : 0f, MinWidth = 0f,
-        Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade, Children = [body],
+        // A crossing that brings or drops a part beside it (the search pill) re-sizes it: it glides on the pivot slide's clock.
+        Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade, Layout = ZuneMotion.GroupResize, Children = [body],
     };
 
     static Element GroupHeader(PageHost host, ListState st, ImmutableArray<PodcastYear> years, PodcastGroup g, bool live)

@@ -43,9 +43,10 @@ public static class ZunePodcastRules
     /// <summary>The room the name's box keeps for its descenders under the exact line (the pivots' own air above is that much less).</summary>
     public const float TitleDescent = 6f;
 
-    /// <summary>The pivots: the gap between two words (Compact 20), their row's height (the 40 floor holds), the air above and below, the edge fade's
-    /// band, the small count's size and its lift onto the word's cap height.</summary>
-    public const float PivotGap = 32f, PivotGapCompact = 20f, PivotH = 44f, PivotTop = 0f, PivotBottom = 28f, PivotFade = 64f;
+    /// <summary>The pivots: the gap between two words (32 at every tier: the concept's 20 at Compact would step the words at the 640 edge, and the
+    /// words bleed under the fade anyway), their row's height (the 40 floor holds), the air above and below, the edge fade's band, the small count's
+    /// size and its lift onto the word's cap height.</summary>
+    public const float PivotGap = 32f, PivotH = 44f, PivotTop = 0f, PivotBottom = 28f, PivotFade = 64f;
     public const float CountSize = 13f, CountLine = 16f, CountLift = 12f, CountGap = 6f, FilterCountLift = 6f, GroupCountLift = 8f;
 
     /// <summary>The swap of a pivot's body: the new body fades in where it lands.</summary>
@@ -221,7 +222,7 @@ public static class ZunePodcastTiers
     static readonly ZunePodcastLayout s_compact = new()
     {
         Tier = WidthTier.Compact, TitleSize = 80f, TitleLine = 84f, TitleWraps = true, Stacked = true, Art = 128f, Still = 0f, StillMax = 280f,
-        Target = 40f, PivotGap = ZunePodcastRules.PivotGapCompact, RowDescription = false, SearchPill = false, TwoColumns = false, PrimaryFills = true,
+        Target = 40f, PivotGap = ZunePodcastRules.PivotGap, RowDescription = false, SearchPill = false, TwoColumns = false, PrimaryFills = true,
         Words = false,
     };
     static readonly ZunePodcastLayout s_small = new()
