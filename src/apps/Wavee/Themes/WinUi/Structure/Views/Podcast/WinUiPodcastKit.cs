@@ -344,6 +344,8 @@ internal static class WinUiPodcastKit
         readonly Action<KeyEventArgs> _key;
         readonly Action<PointerEventArgs> _press;
         DragSource? _drag;
+        Action<ContextRequestEventArgs>? _context;
+        IOverlayService? _contextOverlay;
 
         public RowHost()
         {
@@ -399,11 +401,19 @@ internal static class WinUiPodcastKit
             var p = _props.Value ?? _p;
             var s = UseComputed(_shapeOf).Value;
             bool hover = _hover.Value;
+            var overlay = UseContext(Overlay.Service);
             var vm = (p.Source ?? _own).Peek();
             if (vm is null) return new BoxEl();
             // The row drags as its episode (onto a playlist, the queue, the player bar): ONE source per row, reading the episode the row holds when the
             // drag promotes (a rebind never rebuilds it); the payload is built then.
             if (_drag is null && p.Verbs.Drag is not null) _drag = Wavee.Drag.Source(() => _p.Verbs.Drag?.Invoke(Id));
+            // A right-click (or the context key) on the row opens its episode's menu, the same one its "…" opens: ONE handler per row (per overlay
+            // service), whose menu delegate reads the episode the row holds when the menu opens, so a rebind neither rebuilds nor allocates it.
+            if (!ReferenceEquals(overlay, _contextOverlay))
+            {
+                _contextOverlay = overlay;
+                _context = Controls.IsNullOverlay(overlay) ? null : ContextSheets.Attach(new BoxEl(), overlay!, _menu).OnContextRequested;
+            }
             // A row a recycled slot binds to ANOTHER episode shows that episode's state at once (no fill fading from the last one it held); the same
             // episode selected or released fades.
             bool rebound = _shownId is not null && _shownId != vm.Id;
@@ -461,7 +471,7 @@ internal static class WinUiPodcastKit
                 HoverFill = selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTertiary,
                 PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = rebound ? 0f : Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press, Draggable = _drag,
-                Children = kids.ToArray(),
+                OnContextRequested = _context, Children = kids.ToArray(),
             };
             // ONE tree selected or not (the pill is present, painted only while selected: an opacity, never a presence change): a selection that comes
             // or goes with the row mode (a tier crossing, 1008) never rebuilds the row and what it holds (the progress ring keeps its mount).
