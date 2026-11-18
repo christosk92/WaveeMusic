@@ -437,18 +437,15 @@ internal static class ZunePodcastKit
     /// <summary>The topic / genre words of a meta line as ONE part, each word a link of its own (the accent ink at rest as the kind word's link, the
     /// primary ink on hover, focus, the hand; a name keeps its casing) that opens <paramref name="open"/> with its words, plain tertiary words when
     /// <paramref name="open"/> is null. Each word carries the "·" before it (<paramref name="leadDot"/> false: not the first, which starts the line).
-    /// The part gives way by itself, a whole word at a time: the words that do not fit wrap onto a second line it clips away, so no word is cut or
-    /// half a target, and the line never ends on a dot. Each word's hit rect reaches <paramref name="target"/> (its slop, inside the clip): the type
+    /// The part hugs its words and gives way by itself, a whole word at a time (<see cref="Controls.WordLine"/>), so no word is cut or half a
+    /// target, and the line never ends on a dot. Each word's hit rect reaches <paramref name="target"/> (its slop, inside the clip): the type
     /// keeps its size.</summary>
-    public static BoxEl WordLinks(string key, ImmutableArray<string> words, Action<string>? open, float target, bool leadDot = true)
+    public static Element WordLinks(string key, ImmutableArray<string> words, Action<string>? open, float target, bool leadDot = true)
     {
         var face = R.Type.DenseMeta("");
         float line = face.LineHeight;
         float slop = MathF.Max(0f, (target - line) / 2f);
-        // A wrapping line places its first item even where it does not fit: an empty first item (its gap taken back) lets the first word leave the
-        // line too, so the clip never cuts a word.
-        var units = new Element[words.Length + 1];
-        units[0] = new BoxEl { Width = 0f, Height = line, Shrink = 0f, Margin = new Edges4(0f, 0f, -Z.MetaGap, slop) };
+        var units = new Element[words.Length];
         for (int i = 0; i < words.Length; i++)
         {
             string word = words[i];
@@ -464,18 +461,14 @@ internal static class ZunePodcastKit
                         Case = TextCase.AsWritten, MaxLines = 1, Wrap = TextWrap.NoWrap,
                     }],
                 };
-            units[i + 1] = new BoxEl
+            units[i] = new BoxEl
             {
                 Direction = 0, Gap = Z.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f, Height = line, Margin = new Edges4(0f, 0f, 0f, slop),
                 Children = i == 0 && !leadDot ? [w] : [MetaWord("·") with { Color = Tok.TextTertiary }, w],
             };
         }
-        return new BoxEl
-        {
-            Key = key, Direction = 0, Wrap = true, Gap = Z.MetaGap, AlignItems = FlexAlign.Start, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
-            // The trailing room is the meta line's right-edge fade: a word that stays never sits under it, half faded.
-            Height = line + slop + slop, Padding = new Edges4(0f, slop, Z.MetaFade, 0f), Margin = new Edges4(0f, -slop, 0f, -slop), Children = units,
-        };
+        // The trailing room is the meta line's right-edge fade: a word that stays never sits under it, half faded.
+        return new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, Children = [Controls.WordLine(key, units, [], line, slop, Z.MetaGap, Z.MetaFade)] };
     }
 
     /// <summary>The separator that travels with both its neighbours (no-break spaces either side): a wrapping text never starts or ends a line on it.</summary>

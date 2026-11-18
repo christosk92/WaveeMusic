@@ -119,9 +119,11 @@ internal static partial class ClassicPodcastShow
                     Children = [Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, P.CoverRadius, decodePx: P.CoverDecode)],
                 },
             };
-            var tags = new List<Element>(2);
+            var tags = new List<Element>(4);
             if (h.Video) tags.Add(ClassicPodcastKit.Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video));
             if (h.Serial) tags.Add(ClassicPodcastKit.Tag(Loc.Get(Strings.Podcast.Pages.Serial), null));
+            if (h.Exclusive) tags.Add(ClassicPodcastKit.Tag(Loc.Get(Strings.Podcast.Pages.Exclusive), null));
+            if (h.Explicit) tags.Add(Controls.ExplicitBadge());
             var words = new List<Element>(4)
             {
                 ClassicPodcastKit.Kind(h.Kind, live ? _p.OpenKind : null, [.. tags]),

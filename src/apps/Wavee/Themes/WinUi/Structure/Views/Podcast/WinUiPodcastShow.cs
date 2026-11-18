@@ -259,9 +259,14 @@ internal static partial class WinUiPodcastShow
                     Children = [HyperlinkButton.Create(h.Kind, openKind, size: ControlSize.Small)],
                 });
             else if (h.Kind.Length > 0) kids.Add(Caption(h.Kind) with { Color = Tok.TextSecondary });
-            if (h.Topics.Length > 0) kids.Add(WinUiPodcastKit.WordLinks("eyebrow:topic", h.Topics, _p.OpenTopic, lay.Target));
-            if (h.Video) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video));
-            if (h.Serial) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Serial), null));
+            var tags = new List<Element>(4);
+            if (h.Video) tags.Add(Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video));
+            if (h.Serial) tags.Add(Tag(Loc.Get(Strings.Podcast.Pages.Serial), null));
+            if (h.Exclusive) tags.Add(Tag(Loc.Get(Strings.Podcast.Pages.Exclusive), null));
+            if (h.Explicit) tags.Add(WinUiRowCells.ExplicitMark());
+            // The topics give way a whole word at a time; the tags ride with them, right after the last topic that shows.
+            if (h.Topics.Length > 0) kids.Add(WinUiPodcastKit.WordLinks("eyebrow:topic", h.Topics, _p.OpenTopic, lay.Target, tags.ToArray()));
+            else kids.AddRange(tags);
             return new BoxEl { Direction = 0, Gap = S.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
         }
 

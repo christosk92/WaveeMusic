@@ -259,6 +259,8 @@ internal static partial class ZunePodcastShow
             if (h.Cadence.Length > 0) parts.Add(K.MetaWord(h.Cadence));
             if (h.Count.Length > 0) parts.Add(K.MetaWord(h.Count));
             if (h.Serial) parts.Add(K.MetaWord(Loc.Get(Strings.Podcast.Pages.Serial)));
+            if (h.Exclusive) parts.Add(K.MetaWord(Loc.Get(Strings.Podcast.Pages.Exclusive)));
+            if (h.Explicit) parts.Add(ZuneRowCells.ExplicitMark());
             if (h.Kind.Length > 0)
                 parts.Add(_p.OpenKind is { } kind ? K.Link("zp-kind", h.Kind, kind, 0f) : K.MetaWord(h.Kind));
             // The topics: each a link that searches its words (names: as written); the ones that do not fit leave the line whole.

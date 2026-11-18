@@ -126,6 +126,9 @@ public sealed record PodcastShowHead(
     public string AboutHtml { get; init; } = "";
     /// <summary>The listener's own rating, 0..5 (0 = not rated).</summary>
     public int MyRating { get; init; }
+    /// <summary>The show is explicit (the house "E" beside its tags) / a Spotify exclusive (the Exclusive tag).</summary>
+    public bool Explicit { get; init; }
+    public bool Exclusive { get; init; }
 }
 
 /// <summary>The details pane's chapters of the selected episode: up to five around the current one (<see cref="Shown"/>), how many there are in all

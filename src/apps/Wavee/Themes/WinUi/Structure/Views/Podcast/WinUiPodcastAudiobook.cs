@@ -181,14 +181,15 @@ internal static class WinUiPodcastAudiobook
         kids.Add(v.KindRoute is { Length: > 0 } route
             ? HyperlinkButton.Create(v.Kind, () => p.OpenRoute(route), size: ControlSize.Small) with { Key = AB.KindKey, Shrink = 0f, Padding = default }
             : Caption(v.Kind) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, Shrink = 0f });
-        if (v.Genres.Length > 0) kids.Add(WinUiPodcastKit.WordLinks("ab-genre", v.Genres, p.OpenGenre, lay.Control));
-        if (v.Included && v.IncludedTag.Length > 0)
-            kids.Add(new BoxEl
+        Element? tag = v.Included && v.IncludedTag.Length > 0 ? new BoxEl
             {
                 Height = AB.TagHeight, Padding = new Edges4(AB.TagPadX, 0f, AB.TagPadX, 0f), Corners = CornerRadius4.All(AB.TagRadius), Direction = 0,
                 AlignItems = FlexAlign.Center, BorderWidth = 1f, BorderColor = Tok.AccentTextPrimary, Shrink = 0f,
                 Children = [new TextEl(v.IncludedTag) { Size = AB.TagSize, LineHeight = AB.TagLine, Weight = AB.Strong, Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap }],
-            });
+            } : null;
+        // The genres give way a whole word at a time; the tag rides with them, right after the last genre that shows.
+        if (v.Genres.Length > 0) kids.Add(WinUiPodcastKit.WordLinks("ab-genre", v.Genres, p.OpenGenre, lay.Control, tag is null ? [] : [tag]));
+        else if (tag is not null) kids.Add(tag);
         return new BoxEl { Direction = 0, Gap = AB.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [.. kids] };
     }
 

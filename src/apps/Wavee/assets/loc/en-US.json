@@ -1343,7 +1343,8 @@
       "lockSubscribers": "Subscribers only",
       "lockPreview": "Preview only",
       "lockUnavailable": "Unavailable",
-      "unplayable": "This episode isn't available to play."
+      "unplayable": "This episode isn't available to play.",
+      "exclusive": "Exclusive"
     }
   },
   "recents": {

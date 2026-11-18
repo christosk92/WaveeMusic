@@ -599,18 +599,16 @@ internal static class WinUiPodcastKit
 
     /// <summary>The topic / genre words of a header line, each a link of its own (the accent ink at rest, the subtle plate on hover and press, focus,
     /// the hand) that opens <paramref name="open"/> with its words; plain secondary words when <paramref name="open"/> is null. Each word carries
-    /// the "·" before it (the line continues a kind word, so it starts on one), so no line starts or ends on a separator. ONE line: the words that
-    /// do not fit wrap onto a second line the group clips away whole, so a word is never cut and never half a target. <paramref name="target"/>:
+    /// the "·" before it (the line continues a kind word, so it starts on one), so no line starts or ends on a separator. ONE line that hugs its
+    /// words and gives way a whole word at a time (<see cref="Controls.WordLine"/>): a word is never cut, never half a target, and
+    /// <paramref name="trailing"/> (the tags) sits right after the last word that shows. <paramref name="target"/>:
     /// the tier's control height, which each word's hit rect reaches (its slop, inside the clip: the type and the line keep their size).</summary>
-    public static Element WordLinks(string key, ImmutableArray<string> words, Action<string>? open, float target)
+    public static Element WordLinks(string key, ImmutableArray<string> words, Action<string>? open, float target, Element[]? trailing = null)
     {
         var caption = Caption("");
         float line = caption.LineHeight;
         float slop = MathF.Max(0f, (target - line) / 2f);
-        // A wrapping line places its first item even where it does not fit: an empty first item (its gap taken back) lets the first word leave the
-        // line too, so the clip never cuts a word.
-        var units = new Element[words.Length + 1];
-        units[0] = new BoxEl { Width = 0f, Height = line, Shrink = 0f, Margin = new Edges4(0f, 0f, -K.WordLinkGap, slop) };
+        var units = new Element[words.Length];
         for (int i = 0; i < words.Length; i++)
         {
             string word = words[i];
@@ -628,17 +626,13 @@ internal static class WinUiPodcastKit
                         Text = word, Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary, PressedColor = Tok.AccentTextTertiary, Wrap = TextWrap.NoWrap,
                     }],
                 };
-            units[i + 1] = new BoxEl
+            units[i] = new BoxEl
             {
                 Direction = 0, Gap = K.WordLinkGap, AlignItems = FlexAlign.Center, Shrink = 0f, Height = line, Margin = new Edges4(0f, 0f, 0f, slop),
                 Children = [caption with { Text = "·", Color = Tok.TextSecondary }, w],
             };
         }
-        return new BoxEl
-        {
-            Key = key, Direction = 0, Wrap = true, Gap = K.WordLinkGap, AlignItems = FlexAlign.Start, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
-            Height = line + slop + slop, Padding = new Edges4(0f, slop, 0f, 0f), Margin = new Edges4(0f, -slop, 0f, -slop), Children = units,
-        };
+        return Controls.WordLine(key, units, trailing ?? [], line, slop, K.WordLinkGap);
     }
 
     /// <summary>The lock tag of a restricted episode ("Subscribers only", "Preview only"): the lock and the word, never clipped (as the Video tag).</summary>

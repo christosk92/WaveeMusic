@@ -954,6 +954,7 @@ sealed class ShowModel
             canRate, cadenceWord, countLine, about, following, trailer.IsValid ? trailerId : null, trailerSub, facts.ToImmutable())
         {
             AboutHtml = aboutHtml, MyRating = mine,
+            Explicit = page.Explicit, Exclusive = (show.Flags & ShowFlags.Exclusive) != 0,
         };
     }
 

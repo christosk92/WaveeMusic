@@ -214,6 +214,107 @@ public static partial class Controls
         }
     }
 
+    // ══ 2c. THE WORD LINE ══════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>A line of words (a header's topic or genre links, each <paramref name="units"/> item one word with its separator) followed by
+    /// <paramref name="trailing"/> (its tags), that gives way a WHOLE word at a time: the words wrap inside their box and every line after the
+    /// first is clipped away, so a word is never cut (never half a target) and a separator never ends the line; the tags always show, right after
+    /// the last word that does. The line asks its row for its natural width (the words' and the tags' measured widths) and is the part of the row
+    /// that shrinks; inside the width it is given, the words' box is exactly as wide as the words that fit. (A wrapping box takes every width it
+    /// is offered, so the line measures its parts instead of asking the box.) <paramref name="line"/> is one line's height and
+    /// <paramref name="slop"/> how far each word's hit rect reaches above and below it (kept inside the clip); <paramref name="padEnd"/> trailing
+    /// room inside the words' box (a fade it must keep clear). The first frame lays the words out before their widths are known.</summary>
+    public static Element WordLine(string key, Element[] units, Element[] trailing, float line, float slop, float gap, float padEnd = 0f)
+        => Embed.Comp(new WordLineProps(units, trailing, line, slop, gap, padEnd), static () => new WordLineHost()) with { Key = key };
+
+    sealed record WordLineProps(Element[] Units, Element[] Trailing, float Line, float Slop, float Gap, float PadEnd);
+
+    sealed class WordLineHost : Component
+    {
+        const float Unknown = 1e6f;
+        /// <summary>Bumped when a measured width changes (the words', the tags'); the width the row gave the line.</summary>
+        readonly Signal<int> _measured = new(0);
+        readonly Signal<float> _given = new(float.NaN);
+        float[] _unitW = [];
+        float _tagsW = float.NaN;
+        Action<RectF>[] _unitMeasure = [];
+        readonly Action<RectF> _arranged, _tagsMeasure;
+
+        public WordLineHost()
+        {
+            _arranged = r => { if (float.IsNaN(_given.Peek()) || MathF.Abs(r.W - _given.Peek()) > 0.5f) _given.Value = r.W; };
+            _tagsMeasure = r => { if (float.IsNaN(_tagsW) || MathF.Abs(r.W - _tagsW) > 0.5f) { _tagsW = r.W; _measured.Value++; } };
+        }
+
+        Action<RectF> UnitMeasure(int i) => r =>
+        {
+            if (i >= _unitW.Length || (!float.IsNaN(_unitW[i]) && MathF.Abs(r.W - _unitW[i]) <= 0.5f)) return;
+            _unitW[i] = r.W;
+            _measured.Value++;
+        };
+
+        public override Element Render()
+        {
+            var p = UseProps<WordLineProps>();
+            int n = p.Units.Length;
+            if (_unitW.Length != n)
+            {
+                _unitW = new float[n];
+                Array.Fill(_unitW, float.NaN);
+                _unitMeasure = new Action<RectF>[n];
+                for (int i = 0; i < n; i++) _unitMeasure[i] = UnitMeasure(i);
+            }
+            _ = _measured.Value;
+            float given = _given.Value;
+            bool tags = p.Trailing.Length > 0;
+            bool known = (!tags || !float.IsNaN(_tagsW)) && Array.TrueForAll(_unitW, static w => !float.IsNaN(w));
+            float tagsRoom = tags && known ? _tagsW + p.Gap : 0f;
+            float words = 0f;
+            for (int i = 0; known && i < n; i++) words += (i > 0 ? p.Gap : 0f) + _unitW[i];
+            float full = known ? words + p.PadEnd + tagsRoom : Unknown;
+            // The words that fit in what the row gave: the longest run of whole words.
+            float wordsW = float.NaN;
+            if (known && !float.IsNaN(given))
+            {
+                float room = given - tagsRoom - p.PadEnd, x = 0f, fit = 0f;
+                for (int i = 0; i < n; i++)
+                {
+                    x += (i > 0 ? p.Gap : 0f) + _unitW[i];
+                    if (x > room + 0.01f) break;
+                    fit = x;
+                }
+                wordsW = fit + p.PadEnd;
+            }
+            // The row never asks for more than the sizer (a row as wide as an old, wider grant would keep the line from shrinking back).
+            float rowW = MathF.Min(given, full);
+            var kids = new Element[n + 1];
+            // A wrapping line places its first item even where it does not fit: an empty first item (its gap taken back) lets the first word leave
+            // the line too.
+            kids[0] = new BoxEl { Width = 0f, Height = p.Line, Shrink = 0f, Margin = new Edges4(0f, 0f, -p.Gap, p.Slop) };
+            for (int i = 0; i < n; i++)
+                kids[i + 1] = new BoxEl { Direction = 0, Shrink = 0f, OnBoundsChanged = _unitMeasure[i], Children = [p.Units[i]] };
+            float h = p.Line + p.Slop + p.Slop;
+            var wordsBox = new BoxEl
+            {
+                Width = wordsW, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Height = h, Padding = new Edges4(0f, p.Slop, p.PadEnd, 0f),
+                Direction = 0, Wrap = true, Gap = p.Gap, AlignItems = FlexAlign.Start, Children = kids,
+            };
+            Element row = tags
+                ? new BoxEl
+                {
+                    Width = rowW, Direction = 0, Gap = p.Gap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Children = [wordsBox, new BoxEl { Direction = 0, Gap = p.Gap, AlignItems = FlexAlign.Center, Shrink = 0f, OnBoundsChanged = _tagsMeasure, Children = p.Trailing }],
+                }
+                : new BoxEl { Width = rowW, Direction = 0, MinWidth = 0f, Children = [wordsBox] };
+            return new BoxEl
+            {
+                // Two layers: the sizer asks the row for the natural width; the words and the tags lay out in the width the row gave.
+                ZStack = true, Shrink = 1f, MinWidth = 0f, Height = h, Margin = new Edges4(0f, -p.Slop, 0f, -p.Slop), OnBoundsChanged = _arranged,
+                Children = [new BoxEl { Width = full, Height = h, HitTestVisible = false }, row],
+            };
+        }
+    }
+
     // ══ 3. THE DOOR ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The door's metrics: min 132 high (a caller's grid keeps it ≥ 230 wide), 14 padding, the 64-px ghost
