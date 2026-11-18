@@ -3,7 +3,7 @@
 // Concept `winui-podcast-v2.html`, theme=zune: no chrome, no cards, flat colour, light lowercase display type.
 //
 //   Page(...)        ONE scroller (keyed per route) over the page column (the frame's gutters, capped and centred as every Zune page), ending past the dock.
-//   Title(...)       the name: the tier's display size (120/130; 150/160 at Huge; 80/84 at Compact, where it wraps), weight 200, lowercase, on ONE line that
+//   Title(...)       the name: the tier's display size (120/130; 80/84 at Compact, where it wraps), weight 200, lowercase, on ONE line that
 //                    runs past the column to the window's edge and dissolves under a fade there. Never fitted, never shrunk (owner rule).
 //   Pivots(...)      the pivot words on ONE line (28/36 light, the lit one in the primary ink, a small count beside a word), bleeding under the same
 //                    fade; a change slides the strip like a Windows Phone pivot (`ZunePivotCarousel`: the lit word leads, the rest follow round).
@@ -62,7 +62,7 @@ internal static class ZunePodcastKit
     {
         var column = new BoxEl
         {
-            Key = "zune-podcast-page", Direction = 1, MinWidth = 0f,
+            Key = "zune-podcast-page", Direction = 1, MinWidth = 0f, Animate = ZuneMotion.GroupResize,
             Padding = new Edges4(0f, Z.PageTop, 0f, Z.PageFoot + R.Space.DockReserve),
             Children = [content],
         };

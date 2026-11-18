@@ -155,7 +155,7 @@ internal static class ZunePodcastEpisode
             return new BoxEl
             {
                 Direction = (byte)(lay.Stacked ? 1 : 0), Gap = lay.Stacked ? Z.HeroRowGap : Z.HeroColGap, MinWidth = 0f,
-                AlignItems = lay.Stacked ? FlexAlign.Stretch : FlexAlign.Start, Margin = new Edges4(0f, 0f, 0f, Z.HeroBottom),
+                AlignItems = lay.Stacked ? FlexAlign.Stretch : FlexAlign.Start, Margin = new Edges4(0f, 0f, 0f, Z.HeroBottom), Layout = ZuneMotion.GroupResize,
                 Children = [still, words],
             };
         }
@@ -377,12 +377,15 @@ internal static class ZunePodcastEpisode
             };
             Element left = new BoxEl
             {
-                Key = "ze-left-col", Direction = 1, MinWidth = 0f, Width = lay.TwoColumns ? Z.ChaptersW : float.NaN, Shrink = 0f,
+                Key = "ze-left-col", Direction = 1, MinWidth = 0f, Width = lay.TwoColumns ? Z.ChaptersW : float.NaN, Shrink = 0f, Animate = ZuneMotion.GroupResize,
                 Children = [K.Body("ze-tab:" + tab, body)],
             };
             var kids = new List<Element>(2) { left };
             if (lay.TwoColumns)
-                kids.Add(new BoxEl { Key = "ze-tr-col", Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 1, Children = [Transcript(p)] });
+                kids.Add(new BoxEl
+                {
+                    Key = "ze-tr-col", Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 1, Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade, Children = [Transcript(p)],
+                });
             return new BoxEl
             {
                 Direction = (byte)(lay.TwoColumns ? 0 : 1), Gap = lay.TwoColumns ? Z.ColsGap : 0f, MinWidth = 0f,

@@ -34,7 +34,7 @@ using Z = Wavee.Themes.Zune.ZunePodcastRules;
 namespace Wavee.Themes.Zune;
 
 /// <summary>Zune's show page.</summary>
-internal static class ZunePodcastShow
+internal static partial class ZunePodcastShow
 {
     public static Element Template(PodcastShowPageProps p, in ViewContext ctx)
         => new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, Children = [Embed.Comp(p, static () => new PageHost()) with { Key = "zune-podcast-show" }] };
@@ -69,25 +69,22 @@ internal static class ZunePodcastShow
 
     sealed record HeadView(PodcastLoad Load, PodcastShowHead Head, PodcastSmart? Smart, ImmutableArray<PodcastCardVm> Similar, string AllCount);
 
-    sealed class PageHost : Component
+    sealed partial class PageHost : Component
     {
         PodcastShowPageProps _p = null!;
         readonly Signal<int> _pivot = new(0);
         Func<HeadView>? _project;
-        Action<int>? _select;
+        Memo<HeadView>? _head;
+        internal Action<int>? _select;
         ZunePodcastRowVerbs? _verbs;
         Func<bool>? _pending, _failed;
         readonly ScrollHandle _scroll = new();
-        NodeHandle _viewport;
-        Action<NodeHandle>? _captureViewport;
 
         internal PodcastShowPageProps Props => _p;
         internal ZunePodcastRowVerbs Verbs => _verbs!;
         internal ScrollHandle Scroll => _scroll;
-        internal NodeHandle Viewport => _viewport;
         internal readonly ListState State = new();
         internal IOverlayService? OverlaySvc;
-        internal FluentGpu.Scene.SceneStore? SceneOf() => Context.Scene;
 
         public override Element Render()
         {
@@ -99,7 +96,6 @@ internal static class ZunePodcastShow
             _select ??= i => _pivot.Value = i;
             _pending ??= () => _p.View.Value.Load == PodcastLoad.Pending;
             _failed ??= () => _p.View.Value.Load == PodcastLoad.Failed;
-            _captureViewport ??= h => _viewport = h;
             OverlaySvc = UseContext(Overlay.Service);
             _verbs ??= new ZunePodcastRowVerbs
             {
@@ -111,7 +107,9 @@ internal static class ZunePodcastShow
                 string all = v.Filters.Length > 0 ? v.Filters[0].CountText : "";
                 return new HeadView(v.Load, v.Head, v.Smart, v.Similar, all);
             };
-            var h = UseComputed(_project).Value;
+            _head = UseComputed(_project);
+            UseListMemos();
+            var h = _head.Value;
             bool loading = h.Load == PodcastLoad.Pending;
             var shown = loading ? new HeadView(PodcastLoad.Pending, s_placeholder.Head, s_placeholder.Smart, [], "") : h;
             int pivot = _pivot.Value;
@@ -122,23 +120,32 @@ internal static class ZunePodcastShow
             pivots.Add(new K.PivotItem(Loc.Get(Strings.Podcast.Pages.About), ""));
             if (!shown.Similar.IsDefaultOrEmpty) pivots.Add(new K.PivotItem(Loc.Get(Strings.Podcast.Pages.MoreLikeThis), ""));
 
-            Element region = new SkelRegionEl(
+            var pivotItems = pivots.ToImmutable();
+            float lead = ZuneFrameRules.ColumnLead(facts.ContentWidth, gutter);
+            _layS.SetIfChanged(lay);
+            _leadS.SetIfChanged(lead);
+            _pivotItems = pivotItems;
+            _pivotNow = pivot;
+            var placeholder = new HeadView(PodcastLoad.Pending, s_placeholder.Head, s_placeholder.Smart, [], "");
+            return new SkelRegionEl(
                 Pending: _pending, Failed: _failed,
-                Content: () => Compose(shown, lay, pivot, live: true), ShimmerSource: () => Compose(new HeadView(PodcastLoad.Pending, s_placeholder.Head, s_placeholder.Smart, [], ""), lay, 0, live: false),
+                Content: () => LivePage(),
+                ShimmerSource: () => K.Page(p.RouteKey, new BoxEl
+                {
+                    Key = "zune-show-column", Direction = 1, MinWidth = 0f,
+                    Children =
+                    [
+                        K.Title(placeholder.Head.Title, lay, gutter),
+                        K.Pivots("zp-pivots", pivotItems, 0, _select, lay, gutter),
+                        Compose(placeholder, lay, 0, live: false),
+                    ],
+                }, gutter),
                 OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error), Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default with { DeriveComponents = true },
                 Group: null, SmoothResize: false);
-            var column = new BoxEl
-            {
-                Key = "zune-show-column", Direction = 1, MinWidth = 0f,
-                Children =
-                [
-                    K.Title(shown.Head.Title, lay, gutter),
-                    K.Pivots("zp-pivots", pivots.ToImmutable(), pivot, _select, lay, gutter),
-                    region,
-                ],
-            };
-            return K.Page(p.RouteKey, column, gutter, _scroll, _captureViewport);
         }
+
+        ImmutableArray<K.PivotItem> _pivotItems = [];
+        int _pivotNow;
 
         Element Compose(HeadView h, ZunePodcastLayout lay, int pivot, bool live)
         {
@@ -146,16 +153,14 @@ internal static class ZunePodcastShow
             {
                 Pivot.About => K.Body("zp-body:about", About(h, lay)),
                 Pivot.More => K.Body("zp-body:more", K.Cards("zp-more", h.Similar, _p.OpenUri, lay.Stacked, _p.CardMenu, _p.PlayCard)),
-                _ => K.Body("zp-body:episodes", live
-                    ? Embed.Comp(new ListProps(this, lay), static () => new ListHost()) with { Key = "zp-list-host" }
-                    : ListColumn(this, s_placeholder, lay, live: false)),
+                _ => K.Body("zp-body:episodes", ListColumn(this, s_placeholder, lay, live: false)),
             };
             return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Hero(h, lay, live), body] };
         }
 
         // ── the hero ──
 
-        Element Hero(HeadView h, ZunePodcastLayout lay, bool live)
+        internal Element Hero(HeadView h, ZunePodcastLayout lay, bool live)
         {
             var head = h.Head;
             Element art = new BoxEl
@@ -264,7 +269,7 @@ internal static class ZunePodcastShow
 
         // ── about ──
 
-        Element About(HeadView v, ZunePodcastLayout lay)
+        internal Element About(HeadView v, ZunePodcastLayout lay)
         {
             var h = v.Head;
             var kids = new List<Element>(5);
@@ -317,23 +322,9 @@ internal static class ZunePodcastShow
 
     // ══ THE EPISODES PIVOT ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    sealed record ListProps(PageHost Host, ZunePodcastLayout Lay);
-
-    /// <summary>The toolbar and the groups: their own component, the only part of the page a filter, a search, the order or a row's state re-renders.</summary>
-    sealed class ListHost : Component
-    {
-        public override Element Render()
-        {
-            var a = UseProps<ListProps>();
-            var full = a.Host.Props.View.Value;
-            return ListColumn(a.Host, full.Load == PodcastLoad.Pending ? s_placeholder : full, a.Lay, live: true);
-        }
-    }
-
     sealed class ListState
     {
         public readonly Signal<bool> ToolbarStuck = new(false), SearchOpen = new(false);
-        public readonly Dictionary<string, Signal<bool>> GroupStuck = [];
         public readonly Dictionary<string, NodeHandle> GroupNodes = [];
         public OverlayHandle? Jump;
     }
@@ -366,7 +357,7 @@ internal static class ZunePodcastShow
                     Flush();
                     var g = v.Groups[it.Group];
                     groupKey = g.Key;
-                    groupHead = GroupHeader(host, st, v, g, live);
+                    groupHead = GroupHeader(host, st, v.Years, g, live);
                     break;
                 case PodcastItemKind.Row:
                     groupRows.Add(K.EpisodeRow(v.Episodes[it.Episode], lay.RowDescription, lay.Stacked, host.Verbs));
@@ -471,16 +462,15 @@ internal static class ZunePodcastShow
         Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade, Children = [body],
     };
 
-    static Element GroupHeader(PageHost host, ListState st, PodcastShowView v, PodcastGroup g, bool live)
+    static Element GroupHeader(PageHost host, ListState st, ImmutableArray<PodcastYear> years, PodcastGroup g, bool live)
     {
         var p = host.Props;
-        bool jumps = v.Years.Length > 1;
+        bool jumps = years.Length > 1;
         var words = new List<Element>(3) { ZuneDetailKit.Heading(g.Title) with { Color = Tok.TextTertiary, HoverColor = jumps ? Tok.TextPrimary : Tok.TextTertiary, Shrink = 1f } };
         if (g.CountText.Length > 0)
             words.Add(new TextEl(g.CountText) { Size = Z.CountSize, LineHeight = Z.CountLine, Color = Tok.TextTertiary, Shrink = 0f, AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, Z.GroupCountLift, 0f, 0f) });
         if (jumps) words.Add(Icon(Icons.ChevronDown, Z.GroupGlyph, Tok.TextTertiary));
         string key = g.Key;
-        var years = v.Years;
         var kids = new List<Element>(3)
         {
             new BoxEl
@@ -494,12 +484,7 @@ internal static class ZunePodcastShow
             new BoxEl { Grow = 1f },
         };
         if (g.Fresh) kids.Add(K.Link("gh:mark", Loc.Get(Strings.Podcast.Pages.MarkAllPlayed), p.MarkFreshPlayed, Z.GroupH));
-        if (!st.GroupStuck.TryGetValue(key, out var stuck)) st.GroupStuck[key] = stuck = new Signal<bool>(false);
-        return new BoxEl
-        {
-            Key = "gh", Direction = 0, Height = Z.GroupH, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            OnRealized = live ? h => st.GroupNodes[key] = h : null, Children = kids.ToArray(),
-        }.Sticky(Z.ToolbarH, null, stuck);
+        return new BoxEl { Key = "gh", Direction = 0, Height = Z.GroupH, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
     static void OpenJump(PageHost host, ListState st, ImmutableArray<PodcastYear> years, string groupKey)
@@ -542,9 +527,5 @@ internal static class ZunePodcastShow
         };
     }
 
-    static void JumpTo(PageHost host, ListState st, string groupKey)
-    {
-        if (!st.GroupNodes.TryGetValue(groupKey, out var node) || host.Viewport.IsNull || host.SceneOf() is not { } scene) return;
-        scene.BringIntoView(host.Viewport, node, align: 0f, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide, margin: Z.ToolbarH);
-    }
+    static void JumpTo(PageHost host, ListState st, string groupKey) => host.JumpToGroup(groupKey);
 }

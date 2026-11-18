@@ -1,16 +1,18 @@
 // ── Themes/Zune/Structure/Rules/ZunePodcastRules.cs — the numbers of Zune's podcast pages v2 (show, episode, audiobook) and their tier record ─────────
 //
 // Concept `winui-podcast-v2.html`, theme=zune (CSS `.t-zune`, the views `showZune`, `epZune`, `bookZune`), boards Z-Show, Z-Episode, Z-Album. No chrome
-// cards: the 120 light lowercase name on one line bleeding off the right edge under a fade (80 and wrapping at Compact, 150 at Huge: a tier's size,
+// cards: the 120 light lowercase name on one line bleeding off the right edge under a fade (80 and wrapping at Compact: a tier's size,
 // never a size fitted to the name), the pivots on one line (28/36 light, bleeding under a fade, sliding like a Windows Phone pivot), flat square art,
 // square bordered words for buttons, the Zune accent for the one primary, state by colour and weight. WVTH003 keeps every number of
 // `Views\Podcast\Zune*` here; the views read the record of their WINDOW tier (`ZunePodcastTiers.Of`) and compare no width.
 //
 //   tier       name          art (show / still)   hero          episode columns          controls
-//   Compact    80/84 wraps   128 / the column     stacked       one column               40
-//   Small      120/130       168 / 256            art beside    one column               36
-//   Standard   120/130       216 / 320            art beside    380 chapters | transcript 36
-//   Huge+      150/160       216 / 320            art beside    380 chapters | transcript 36
+//   Compact    80/84 wraps   128 / 280 at most    stacked       one column               40
+//   Small      120/130       216 / 320            art beside    one column               36
+//   Standard+  120/130       216 / 320            art beside    380 chapters | transcript 36
+//
+// The art and the name keep one size from Small up (the concept's 168 at 900 and a 150 name at Huge would step the hero at the 1008 and 1920 edges:
+// the list under it would jump; the owner's no-jump rule wins over the concept's step).
 //
 // Public, so the tier records can be pinned (the assembly has no InternalsVisibleTo).
 
@@ -101,6 +103,10 @@ public static class ZunePodcastRules
 
     /// <summary>The row's hover wash and the new mark (a square accent dot).</summary>
     public const float RowHoverAlpha = 0.04f, RowPressedAlpha = 0.08f, NewDot = 6f;
+
+    /// <summary>The list's seeded extents (the measured ones replace them on realize) and the prefix parts' recycle pools (past the item kinds).</summary>
+    public const float RowEstimate = 64f, RowEstimateTall = 84f, FootEstimate = 64f;
+    public const int PrefixType = 16;
 
     /// <summary>The empty line and the foot's air.</summary>
     public const float EmptyPad = 24f, MoreTop = 24f;
@@ -220,11 +226,11 @@ public static class ZunePodcastTiers
     };
     static readonly ZunePodcastLayout s_small = new()
     {
-        Tier = WidthTier.Small, TitleSize = 120f, TitleLine = 130f, TitleWraps = false, Stacked = false, Art = 168f, Still = 256f, StillMax = 256f,
+        Tier = WidthTier.Small, TitleSize = 120f, TitleLine = 130f, TitleWraps = false, Stacked = false, Art = 216f, Still = 320f, StillMax = 320f,
         Target = 36f, PivotGap = ZunePodcastRules.PivotGap, RowDescription = true, SearchPill = true, TwoColumns = false, PrimaryFills = false, Words = true,
     };
-    static readonly ZunePodcastLayout s_standard = s_small with { Tier = WidthTier.Standard, Art = 216f, Still = 320f, StillMax = 320f, TwoColumns = true };
-    static readonly ZunePodcastLayout s_huge = s_standard with { Tier = WidthTier.Huge, TitleSize = 150f, TitleLine = 160f };
+    static readonly ZunePodcastLayout s_standard = s_small with { Tier = WidthTier.Standard, TwoColumns = true };
+    static readonly ZunePodcastLayout s_huge = s_standard with { Tier = WidthTier.Huge };
 
     /// <summary>The record for <paramref name="facts"/>' WINDOW tier; Standard's where no frame resolved the tiers.</summary>
     public static ZunePodcastLayout Of(in TierFacts facts) => facts.Policy is null ? s_standard : For(facts.Window);
