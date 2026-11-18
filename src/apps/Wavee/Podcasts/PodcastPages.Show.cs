@@ -763,7 +763,7 @@ sealed class ShowModel
             int visible = 0;
             for (int k = 0; k < view.Count; k++) { all.Add(k); if (shown[view[k]]) visible++; }
             groups.Add(new PodcastGroup("order", Loc.Get(Strings.Podcast.Pages.InOrder), visible, false, all.MoveToImmutable())
-                { CountText = FormatCache.Int(visible), Hidden = visible == 0 });
+                { CountText = FormatCache.Int(visible) });
             return groups.ToImmutable();
         }
         var inFresh = new bool[view.Count];
@@ -776,7 +776,7 @@ sealed class ShowModel
             int visible = 0;
             foreach (int k in freshRows) if (shown[view[k]]) visible++;
             groups.Add(new PodcastGroup("new", Loc.Get(Strings.Podcast.Pages.NewSince), visible, true, freshRows.ToImmutable())
-                { CountText = FormatCache.Int(visible), Hidden = visible == 0 });
+                { CountText = FormatCache.Int(visible) });
         }
         int currentYear = int.MinValue;
         ImmutableArray<int>.Builder? rows = null;
@@ -801,12 +801,11 @@ sealed class ShowModel
             if (rows is null || rows.Count == 0) return;
             int count = 0;
             foreach (int k in rows) if (shown[view[k]]) count++;
-            int visible = count;
             if (whole)
                 foreach (var y in years)
                     if (y.Year == year) { count = Math.Max(count, y.Episodes); break; }
             string title = year > 0 ? year.ToString(CultureInfo.InvariantCulture) : "";
-            groups.Add(new PodcastGroup("y" + title, title, count, false, rows.ToImmutable()) { CountText = FormatCache.Int(count), Hidden = visible == 0 });
+            groups.Add(new PodcastGroup("y" + title, title, count, false, rows.ToImmutable()) { CountText = FormatCache.Int(count) });
         }
     }
 

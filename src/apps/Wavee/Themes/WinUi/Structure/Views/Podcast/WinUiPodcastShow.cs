@@ -207,7 +207,7 @@ internal static partial class WinUiPodcastShow
                 PodcastEpisodeVm? vm = null;
                 if (id is not null)
                     foreach (var e in full.Episodes)
-                        if (e.Id == id) { vm = e.Hidden ? e with { Hidden = false } : e; break; }
+                        if (e.Id == id) { vm = e; break; }
                 return new PaneView(full.Load, vm, full.Head, full.Similar);
             }
         }
@@ -217,7 +217,8 @@ internal static partial class WinUiPodcastShow
         Element Hero(PodcastShowView v, WinUiPodcastShowLayout lay, bool live)
         {
             var h = v.Head;
-            Element cover = Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f));
+            // Kept while scrolled away: the cover coming back into view at the top must not re-acquire its image (a scroll frame never allocates).
+            Element cover = Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f), keepWhileHidden: true);
             var idKids = new List<Element>(3)
             {
                 Eyebrow(h),

@@ -160,12 +160,22 @@ internal static partial class WinUiPodcastShow
             if (i == 0) return _heroH.Peek() > 0f ? _heroH.Peek() : S.HeroEstimate;
             if (i == 1) return lay.Pane ? 0f : S.AboutEstimate;
             if (i == 2) return S.ToolbarH;
-            return KindAt(i) switch
+            // EXACT where it can be (a jump far down the list lands on its year): a header is its tier's height, a row at rest its one-line height (with
+            // a line of description where the tier shows one and the episode has one) plus the gap above every row but a group's first. An expanded row,
+            // a two-line Compact title and the foot correct on realize.
+            var v = _p.View.Peek();
+            int k = i - PrefixCount;
+            if ((uint)k >= (uint)v.Items.Length) return S.FootEstimate;
+            var it = v.Items[k];
+            switch (it.Kind)
             {
-                PodcastItemKind.Group => lay.GroupH,
-                PodcastItemKind.Row => lay.RowDescription ? S.RowEstimateTall : S.RowEstimate,
-                _ => S.FootEstimate,
-            };
+                case PodcastItemKind.Group: return lay.GroupH;
+                case PodcastItemKind.Row:
+                    var vm = (uint)it.Episode < (uint)v.Episodes.Length ? v.Episodes[it.Episode] : null;
+                    bool desc = lay.RowDescription && vm is not null && (vm.Description.Length > 0 || vm.DescriptionHtml.Length > 0);
+                    return (it.First ? 0f : K.RowGap) + (desc ? S.RowHeightDescribed : S.RowHeight);
+                default: return S.FootEstimate;
+            }
         }
 
         Element Template(BoundItemScope<ShowSlot> scope)
@@ -228,7 +238,7 @@ internal static partial class WinUiPodcastShow
                 var it = v.Items[k];
                 if (it.Kind != PodcastItemKind.Group || (uint)it.Group >= (uint)v.Groups.Length || v.Groups[it.Group].Key != groupKey) continue;
                 // The header's own place in the list's measured layout, parked under the bar and the toolbar.
-                if (_measured is { } m) _scroll.ScrollTo(Math.Max(0.0, m.OffsetOf(PrefixCount + k, 0f) - (K.BarH + S.ToolbarH)), ScrollMove.Glide);
+                if (_measured is { } m) _scroll.ScrollTo(Math.Max(0.0, m.OffsetOf(PrefixCount + k, 0f) - (K.BarH + S.ToolbarH)), ScrollMove.Immediate);
                 else _ctl.StartBringItemIntoView(PrefixCount + k, alignmentRatio: 0f, animate: false);
                 return;
             }

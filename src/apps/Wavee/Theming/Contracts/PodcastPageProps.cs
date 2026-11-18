@@ -50,8 +50,6 @@ public sealed record PodcastEpisodeVm(
     public string LongDate { get; init; } = "";
     /// <summary>The description as HTML when the provider sent it ("" = only <see cref="Description"/>); render it with the house rich text.</summary>
     public string DescriptionHtml { get; init; } = "";
-    /// <summary>The row is filtered out (a filter or a search): it stays in the list, mounted and hidden, so a filter switch never remounts the rows.</summary>
-    public bool Hidden { get; init; }
 }
 
 /// <summary>One item of the smart action's menu ("Other ways to play").</summary>
@@ -70,8 +68,6 @@ public sealed record PodcastGroup(string Key, string Title, int Count, bool Fres
 {
     /// <summary><see cref="Count"/> as the header shows it ("" = none).</summary>
     public string CountText { get; init; } = "";
-    /// <summary>No row of the group passes the filter: the group stays, hidden.</summary>
-    public bool Hidden { get; init; }
 }
 
 /// <summary>One cell of the jump list: a year and how many episodes it holds.</summary>
