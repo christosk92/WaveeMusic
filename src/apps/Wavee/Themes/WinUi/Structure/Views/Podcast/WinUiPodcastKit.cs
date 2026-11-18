@@ -388,7 +388,8 @@ internal static class WinUiPodcastKit
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press,
                 Children = kids.ToArray(),
             };
-            if (!selected) return row;
+            // ONE tree selected or not (the pill is present, shown only while selected): a selection that comes or goes with the row mode (a tier
+            // crossing, 1008) never rebuilds the row and what it holds (the progress ring keeps its mount).
             return new BoxEl
             {
                 ZStack = true, Direction = 1, MinWidth = 0f,
@@ -397,7 +398,7 @@ internal static class WinUiPodcastKit
                     row,
                     new BoxEl
                     {
-                        Width = K.SelectPillW, Height = K.SelectPillH, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
+                        Width = K.SelectPillW, Height = K.SelectPillH, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start, Visible = selected,
                         Corners = CornerRadius4.All(K.SelectPillW), Fill = Tok.AccentDefault, HitTestVisible = false,
                     },
                 ],
@@ -456,7 +457,8 @@ internal static class WinUiPodcastKit
         bool plate = !prog && !played;
         return Controls.Named(new BoxEl
         {
-            Key = "row:play", ZStack = true, Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(size / 2f),
+            // Its size steps at Compact (the 40 target): it eases, never snaps.
+            Key = "row:play", ZStack = true, Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(size / 2f), Layout = WinUiDiscoveryMotion.SizeReflow,
             Fill = plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
             BorderWidth = played ? 1f : 0f, BorderBrush = played ? Tok.ControlElevationBorder : null,
             Role = AutomationRole.Button, Focusable = true, OnClick = play, Children = layers.ToArray(),
