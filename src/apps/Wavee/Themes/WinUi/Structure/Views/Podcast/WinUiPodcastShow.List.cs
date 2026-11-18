@@ -429,25 +429,27 @@ internal static partial class WinUiPodcastShow
             }
         }
 
-        /// <summary>An episode row, the "Load more" foot or the empty line.</summary>
         /// <summary>An episode row, the "Load more" foot or the empty line, between its gutters. It re-renders only when its slot's SHAPE changes (the
-        /// kind, whether the row opens its group): a recycled slot that rebinds to another episode re-renders the row alone (<see cref="RowItem"/>), never
-        /// its gutters, so a fast scroll realising many rows a frame pays for each row's content only.</summary>
+        /// kind, whether the row opens its group): a recycled slot that rebinds to another episode writes the row's words through the kit's bound row,
+        /// re-rendering neither the row (unless its own shape changed) nor its gutters.</summary>
         sealed class BodySlot(ShowList list, IReadSignal<ShowSlot> item) : Component
         {
             Func<(PodcastItemKind Kind, bool First)>? _shapeOf;
-            RowItemProps? _row;
+            Func<PodcastEpisodeVm?>? _vmOf;
 
             public override Element Render()
             {
                 var host = list.Host;
                 _shapeOf ??= () => (item.Value.Kind, item.Value.First);
                 var shape = UseComputed(_shapeOf).Value;
+                _vmOf ??= () => item.Value.Vm;
+                var vm = UseComputed(_vmOf);
                 var lay = host._lay.Value;
                 float inset = host._inset.Value;
                 Element body = shape.Kind switch
                 {
-                    PodcastItemKind.Row => Embed.Comp(_row ??= new RowItemProps(list, item), static () => new RowItem()),
+                    // ONE row per slot, reading its episode from the slot: a rebind writes the row's words, it never re-renders the row.
+                    PodcastItemKind.Row => WinUiPodcastKit.EpisodeRow(vm, lay.RowMode, lay.RowDescription, lay.Stacked, host._verbs!),
                     PodcastItemKind.More => new BoxEl
                     {
                         Key = "show-more", Direction = 0, Justify = FlexJustify.Center, Padding = new Edges4(0f, K.SectionBottom, 0f, K.SectionBottom),
@@ -463,21 +465,6 @@ internal static partial class WinUiPodcastShow
                     _ => new BoxEl(),
                 };
                 return host.Guttered("row", lay, inset, body, new Edges4(0f, shape.Kind == PodcastItemKind.Row && !shape.First ? K.RowGap : 0f, 0f, 0f), reflow: true);
-            }
-        }
-
-        sealed record RowItemProps(ShowList List, IReadSignal<ShowSlot> Item);
-
-        /// <summary>The episode row of a row slot: ONE row per slot, so a recycled slot re-renders its row for the new episode instead of mounting a new
-        /// one (a filter switch that brings rows back costs their props, not their mount).</summary>
-        sealed class RowItem : Component
-        {
-            public override Element Render()
-            {
-                var p = UseProps<RowItemProps>();
-                var host = p.List.Host;
-                var lay = host._lay.Value;
-                return p.Item.Value.Vm is { } vm ? WinUiPodcastKit.EpisodeRow(vm, lay.RowMode, lay.RowDescription, lay.Stacked, host._verbs!) : new BoxEl();
             }
         }
     }

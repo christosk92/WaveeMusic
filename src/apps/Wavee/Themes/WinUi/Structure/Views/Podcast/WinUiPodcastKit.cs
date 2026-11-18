@@ -297,78 +297,126 @@ internal static class WinUiPodcastKit
     /// <summary>One episode row (see the file header), keyed <c>ep:</c> + the id. <paramref name="compact"/>: the 40 targets, a two-line title, the
     /// actions always shown.</summary>
     public static Element EpisodeRow(PodcastEpisodeVm vm, PodcastRowMode mode, bool description, bool compact, PodcastRowVerbs verbs)
-        => Embed.Comp(new RowProps(vm, mode, description, compact, verbs), static () => new RowHost()) with { Key = "ep:" + vm.Id };
+        => Embed.Comp(new RowProps(vm, null, mode, description, compact, verbs), static () => new RowHost()) with { Key = "ep:" + vm.Id };
 
-    sealed record RowProps(PodcastEpisodeVm Vm, PodcastRowMode Mode, bool Description, bool Compact, PodcastRowVerbs Verbs)
+    /// <summary>The row of a recycled list slot: it reads its episode from <paramref name="vm"/>, so a slot that binds to another episode writes the
+    /// row's words through its binds and re-renders only when the row's SHAPE changes (its state, its parts, its selection): a fast scroll
+    /// realising many rows a frame neither re-renders nor allocates a row per slot.</summary>
+    public static Element EpisodeRow(IReadSignal<PodcastEpisodeVm?> vm, PodcastRowMode mode, bool description, bool compact, PodcastRowVerbs verbs)
+        => Embed.Comp(new RowProps(null, vm, mode, description, compact, verbs), static () => new RowHost());
+
+    sealed record RowProps(PodcastEpisodeVm? Vm, IReadSignal<PodcastEpisodeVm?>? Source, PodcastRowMode Mode, bool Description, bool Compact,
+        PodcastRowVerbs Verbs)
     {
-        public bool Equals(RowProps? o) => o is not null && Vm.Equals(o.Vm) && Mode == o.Mode && Description == o.Description && Compact == o.Compact
-            && ReferenceEquals(Verbs, o.Verbs);
-        public override int GetHashCode() => HashCode.Combine(Vm.Id, Mode, Description, Compact);
+        public bool Equals(RowProps? o) => o is not null && Equals(Vm, o.Vm) && ReferenceEquals(Source, o.Source) && Mode == o.Mode
+            && Description == o.Description && Compact == o.Compact && ReferenceEquals(Verbs, o.Verbs);
+        public override int GetHashCode() => HashCode.Combine(Vm?.Id, Mode, Description, Compact);
     }
 
-    sealed class RowHost : Component
+    /// <summary>What a row's TREE depends on (its words are bound, never in here): equal shapes keep the row's render.</summary>
+    readonly record struct RowShape(PodcastRowState State, float Progress, bool Saved, bool Video, bool Date, bool Length, bool Left, bool Desc,
+        bool Selected, string? Expanded, bool Playing);
+
+    sealed class RowHost : Component, IPropsHost
     {
         readonly Signal<bool> _hover = new(false);
+        readonly Signal<RowProps?> _props = new(null);
+        readonly Signal<PodcastEpisodeVm?> _own = new(null);
         RowProps _p = null!;
         string? _shownId;
-        Action? _click, _play, _save, _next, _open, _exit, _toggleExpand;
-        Action<Point2>? _move;
-        Action<KeyEventArgs>? _key;
-        Action<PointerEventArgs>? _press;
+        readonly Func<RowShape> _shapeOf;
+        readonly Func<string> _title, _date, _length, _desc;
+        readonly Func<ContextMenuModel?> _menu;
+        readonly Action _click, _play, _save, _next, _open, _exit;
+        readonly Action<Point2> _move;
+        readonly Action<KeyEventArgs> _key;
+        readonly Action<PointerEventArgs> _press;
+
+        public RowHost()
+        {
+            _shapeOf = ShapeOf;
+            _title = () => Vm?.Title ?? "";
+            _date = () => Vm?.Date ?? "";
+            _length = () => Vm is { } v ? v.State == PodcastRowState.InProgress && v.Left.Length > 0 ? v.Left : v.Length : "";
+            _desc = () => Vm?.Description ?? "";
+            _menu = () => _p.Verbs.Menu(Id);
+            _click = Click;
+            _play = () => _p.Verbs.Play(Id);
+            _save = () => _p.Verbs.ToggleSaved(Id);
+            _next = () => _p.Verbs.PlayNext(Id);
+            _open = () => _p.Verbs.Open(Id);
+            _move = _ => _hover.SetIfChanged(true);
+            _exit = () => _hover.SetIfChanged(false);
+            _key = OnKey;
+            _press = OnPress;
+        }
+
+        public void ApplyProps(object props)
+        {
+            _p = (RowProps)props;
+            if (_p.Vm is not null) _own.Value = _p.Vm;
+            _props.Value = _p;
+        }
+
+        /// <summary>The episode the row shows (tracked: a bind or the shape memo reading it follows a rebind).</summary>
+        PodcastEpisodeVm? Vm => (_props.Value?.Source ?? _own).Value;
+
+        string Id => ((_p.Source ?? _own).Peek())?.Id ?? "";
+
+        RowShape ShapeOf()
+        {
+            var p = _props.Value;
+            var vm = Vm;
+            if (p is null || vm is null) return default;
+            var v = p.Verbs;
+            string id = vm.Id;
+            bool expanded = p.Mode == PodcastRowMode.Expand && v.Expanded.Value == id;
+            bool left = vm.State == PodcastRowState.InProgress && vm.Left.Length > 0;
+            return new RowShape(vm.State, vm.State == PodcastRowState.InProgress ? vm.Progress : 0f, vm.Saved, vm.Video, vm.Date.Length > 0,
+                left || vm.Length.Length > 0, left, p.Description && vm.Description.Length > 0 && !expanded,
+                p.Mode == PodcastRowMode.Select && v.Selected.Value == id, expanded ? id : null, v.Playing.Value == id);
+        }
 
         public override Element Render()
         {
-            _p = UseProps<RowProps>();
-            _click ??= Click;
-            _play ??= () => _p.Verbs.Play(_p.Vm.Id);
-            _save ??= () => _p.Verbs.ToggleSaved(_p.Vm.Id);
-            _next ??= () => _p.Verbs.PlayNext(_p.Vm.Id);
-            _open ??= () => _p.Verbs.Open(_p.Vm.Id);
-            _toggleExpand ??= () => _p.Verbs.Expand(_p.Vm.Id);
-            _move ??= _ => _hover.SetIfChanged(true);
-            _exit ??= () => _hover.SetIfChanged(false);
-            _key ??= OnKey;
-            _press ??= OnPress;
-            var p = _p;
-            var vm = p.Vm;
-            var v = p.Verbs;
-            string id = vm.Id;
+            var p = _props.Value ?? _p;
+            var s = UseComputed(_shapeOf).Value;
+            bool hover = _hover.Value;
+            var vm = (p.Source ?? _own).Peek();
+            if (vm is null) return new BoxEl();
             // A row a recycled slot binds to ANOTHER episode shows that episode's state at once (no fill fading from the last one it held); the same
             // episode selected or released fades.
-            bool rebound = _shownId is not null && _shownId != id;
-            _shownId = id;
-            bool selected = p.Mode == PodcastRowMode.Select && v.Selected.Value == id;
-            bool expanded = p.Mode == PodcastRowMode.Expand && v.Expanded.Value == id;
-            bool playing = v.Playing.Value == id;
-            bool played = vm.State == PodcastRowState.Played;
-            bool hover = _hover.Value;
+            bool rebound = _shownId is not null && _shownId != vm.Id;
+            _shownId = vm.Id;
+            bool selected = s.Selected, expanded = s.Expanded is not null, played = s.State == PodcastRowState.Played;
 
             float pb = p.Compact ? K.PlayButtonCompact : K.PlayButton;
             float act = p.Compact ? K.RowActionCompact : K.RowAction;
 
-            // ── the title column ──
-            var title = (p.Compact ? Body(vm.Title) : Body(vm.Title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }) with
+            // ── the title column: the words are binds (a rebind writes them, it never re-renders the row) ──
+            var title = Body("") with
             {
+                Text = Prop.Of(_title),
                 MaxLines = p.Compact ? 2 : 1, Trim = TextTrim.CharacterEllipsis, Wrap = p.Compact ? TextWrap.Wrap : TextWrap.NoWrap, MinWidth = 0f,
                 Weight = played ? (ushort)400 : (ushort)600, Color = played ? Tok.TextSecondary : Tok.TextPrimary,
             };
-            var text = new List<Element>(3) { title, MetaLine(vm) };
-            if (p.Description && vm.Description.Length > 0 && !expanded)
-                text.Add(Body(vm.Description) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextSecondary, MinWidth = 0f });
+            var text = new List<Element>(3) { title, RowMeta(s, _date, _length) };
+            if (s.Desc)
+                text.Add(Body("") with { Text = Prop.Of(_desc), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextSecondary, MinWidth = 0f });
 
             // ── the actions: saved at rest (add on hover), the ellipsis always ──
-            bool showAdd = vm.Saved || hover || selected || p.Compact;
-            Element save = Controls.Named(Controls.IconAction(vm.Saved ? Icons.HeartFill : Icons.Heart, _save, size: act) with
+            bool showAdd = s.Saved || hover || selected || p.Compact;
+            Element save = Controls.Named(Controls.IconAction(s.Saved ? Icons.HeartFill : Icons.Heart, _save, size: act) with
             {
                 Opacity = showAdd ? 1f : 0f, Key = "row:save",
-            }, Loc.Get(vm.Saved ? Strings.Podcast.Pages.Saved : Strings.Podcast.Pages.Save));
-            Element more = WinUiDetailKit.MoreButton(() => v.Menu(id), act);
+            }, Loc.Get(s.Saved ? Strings.Podcast.Pages.Saved : Strings.Podcast.Pages.Save));
+            Element more = WinUiDetailKit.MoreButton(_menu, act);
             Element line = new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = K.RowColGap, MinWidth = 0f,
                 Children =
                 [
-                    PlayButton(vm, pb, playing, hover, _play),
+                    PlayButton(s, pb, hover, _play),
                     new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = text.ToArray() },
                     new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [save, more] },
                 ],
@@ -393,8 +441,8 @@ internal static class WinUiPodcastKit
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press,
                 Children = kids.ToArray(),
             };
-            // ONE tree selected or not (the pill is present, painted only while selected: an opacity, never a presence change): a selection that comes or goes with the row mode (a tier
-            // crossing, 1008) never rebuilds the row and what it holds (the progress ring keeps its mount).
+            // ONE tree selected or not (the pill is present, painted only while selected: an opacity, never a presence change): a selection that comes
+            // or goes with the row mode (a tier crossing, 1008) never rebuilds the row and what it holds (the progress ring keeps its mount).
             return new BoxEl
             {
                 ZStack = true, Direction = 1, MinWidth = 0f,
@@ -415,9 +463,9 @@ internal static class WinUiPodcastKit
             var p = _p;
             switch (p.Mode)
             {
-                case PodcastRowMode.Select: p.Verbs.Select(p.Vm.Id); break;
-                case PodcastRowMode.Expand: p.Verbs.Expand(p.Vm.Id); break;
-                default: p.Verbs.Open(p.Vm.Id); break;
+                case PodcastRowMode.Select: p.Verbs.Select(Id); break;
+                case PodcastRowMode.Expand: p.Verbs.Expand(Id); break;
+                default: p.Verbs.Open(Id); break;
             }
         }
 
@@ -425,23 +473,24 @@ internal static class WinUiPodcastKit
         void OnPress(PointerEventArgs e)
         {
             if (e.ClickCount < 2 || e.Button != 0 || _p.Mode != PodcastRowMode.Select) return;
-            _p.Verbs.Play(_p.Vm.Id);
+            _p.Verbs.Play(Id);
             e.Handled = true;
         }
 
         void OnKey(KeyEventArgs e)
         {
             if (e.KeyCode != Keys.Enter) return;
-            _p.Verbs.Play(_p.Vm.Id);
+            _p.Verbs.Play(Id);
             e.Handled = true;
         }
     }
 
     /// <summary>The row's play button: a circle (36 / 40) with the ring while in progress and the check while played (replay on hover).</summary>
-    static Element PlayButton(PodcastEpisodeVm vm, float size, bool playing, bool hover, Action play)
+    static Element PlayButton(RowShape s, float size, bool hover, Action play)
     {
-        bool prog = vm.State == PodcastRowState.InProgress;
-        bool played = vm.State == PodcastRowState.Played;
+        bool prog = s.State == PodcastRowState.InProgress;
+        bool played = s.State == PodcastRowState.Played;
+        bool playing = s.Playing;
         string glyph = playing ? WinUiDetailRules.PauseSolid : played ? (hover ? Icons.Refresh : Icons.Check) : WinUiDetailRules.PlaySolid;
         string name = Loc.Get(playing ? Strings.Podcast.Pages.Pause : prog ? Strings.Podcast.Pages.Resume : played ? Strings.Podcast.Pages.PlayAgain
             : Strings.Podcast.Pages.Play);
@@ -451,7 +500,7 @@ internal static class WinUiPodcastKit
             {
                 Width = size, Height = size, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false,
                 // The determinate ring keeps its mount value: a new resting position mounts a new ring.
-                Children = [ProgressRing.Determinate(vm.Progress, size, foreground: Tok.AccentDefault, track: Tok.StrokeControlStrongDefault with { A = K.RingTrackAlpha }) with { Key = "ring:" + vm.Progress.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) }],
+                Children = [ProgressRing.Determinate(s.Progress, size, foreground: Tok.AccentDefault, track: Tok.StrokeControlStrongDefault with { A = K.RingTrackAlpha }) with { Key = "ring:" + s.Progress.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) }],
             });
         layers.Add(new BoxEl
         {
@@ -470,33 +519,54 @@ internal static class WinUiPodcastKit
         }, name);
     }
 
+    /// <summary>The row's meta line (<see cref="MetaLine"/>'s parts) with its date and its length (or the accent time left) bound.</summary>
+    static Element RowMeta(RowShape s, Func<string> date, Func<string> length)
+    {
+        var kids = new List<Element>(8);
+        if (s.State == PodcastRowState.New) kids.Add(NewMark());
+        void Dot() { if (kids.Count > 0) kids.Add(MetaWord("·")); }
+        if (s.Date) kids.Add(MetaWord("") with { Text = Prop.Of(date) });
+        if (s.Length)
+        {
+            Dot();
+            kids.Add(MetaWord("") with { Text = Prop.Of(length), Color = s.Left ? Tok.AccentTextPrimary : Tok.TextTertiary });
+        }
+        if (s.State == PodcastRowState.Played) { Dot(); kids.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Played))); }
+        if (s.Video) kids.Add(VideoTag());
+        return new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };
+    }
+
     /// <summary>The meta line: New (dot + word), the date, the length or the accent time left, Played, the Video tag.</summary>
     public static Element MetaLine(PodcastEpisodeVm vm, bool showNew = true)
     {
         var kids = new List<Element>(8);
-        if (showNew && vm.State == PodcastRowState.New)
-            kids.Add(new BoxEl
-            {
-                Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Children =
-                [
-                    new BoxEl { Width = K.NewDot, Height = K.NewDot, Corners = CornerRadius4.All(K.NewDot / 2f), Fill = Tok.AccentDefault },
-                    Caption(Loc.Get(Strings.Podcast.Pages.Fresh)) with { Color = Tok.AccentTextPrimary, Weight = 600 },
-                ],
-            });
+        if (showNew && vm.State == PodcastRowState.New) kids.Add(NewMark());
         void Dot() { if (kids.Count > 0) kids.Add(MetaWord("·")); }
         if (vm.Date.Length > 0) kids.Add(MetaWord(vm.Date));
         if (vm.State == PodcastRowState.InProgress && vm.Left.Length > 0) { Dot(); kids.Add(MetaWord(vm.Left) with { Color = Tok.AccentTextPrimary }); }
         else if (vm.Length.Length > 0) { Dot(); kids.Add(MetaWord(vm.Length)); }
         if (vm.State == PodcastRowState.Played) { Dot(); kids.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Played))); }
-        if (vm.Video)
-            kids.Add(new BoxEl
-            {
-                Direction = 0, Gap = K.MetaGap / 2f, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Children = [Icon(Icons.Video, K.MetaGlyph, Tok.TextTertiary), MetaWord(Loc.Get(Strings.Podcast.Pages.Video))],
-            });
+        if (vm.Video) kids.Add(VideoTag());
         return new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };
     }
+
+    /// <summary>New: the accent dot and the word.</summary>
+    static Element NewMark() => new BoxEl
+    {
+        Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+        Children =
+        [
+            new BoxEl { Width = K.NewDot, Height = K.NewDot, Corners = CornerRadius4.All(K.NewDot / 2f), Fill = Tok.AccentDefault },
+            Caption(Loc.Get(Strings.Podcast.Pages.Fresh)) with { Color = Tok.AccentTextPrimary, Weight = 600 },
+        ],
+    };
+
+    /// <summary>The Video tag: the glyph and the word.</summary>
+    static Element VideoTag() => new BoxEl
+    {
+        Direction = 0, Gap = K.MetaGap / 2f, AlignItems = FlexAlign.Center, Shrink = 0f,
+        Children = [Icon(Icons.Video, K.MetaGlyph, Tok.TextTertiary), MetaWord(Loc.Get(Strings.Podcast.Pages.Video))],
+    };
 
     static TextEl MetaWord(string text) => Caption(text) with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f };
 
