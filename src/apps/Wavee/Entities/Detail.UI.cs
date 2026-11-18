@@ -8,7 +8,7 @@
 // T9b (themes plan 6.1): the notice strip (`NoticeBar` is now only the mount of `Detail.Notice`), the vertical arm's trailing body (`Detail.VerticalTrailing`),
 // the keyed rail rows (`Row` / `LateRow` / `ReleaseRow`, their FLIP and fade-up), the eyebrow run and the billed-artist line box are Classic's: they moved to
 // `Themes\Classic\Structure\Views\Detail\ClassicDetailKit.cs` and `ClassicDetailSeam.cs`, with the numbers in `Rules\ClassicDetailKitLayout.cs`.
-// T9c moved the rail satellites (`RailSatellite*`) to `ClassicDetailKit.Satellites.cs` and dropped `PlayButton` (a forward to `Controls.PlayButton`).
+// T9c dropped `PlayButton` (a forward to `Controls.PlayButton`); the rail satellites it moved out (`RailSatellite*`) went with the library's old show pane.
 //
 // T9a (themes plan 6.1): the PICTURE of the frame is Classic's. `FrameHost.Render` decides and builds ONE `DetailFrameProps`, and the
 // registered `Detail.Frame` view (`Themes\Classic\Structure\Views\Detail\ClassicDetailFrame.cs`) arranges the notice strip, the content

@@ -635,10 +635,10 @@ public sealed class EpisodeShape : KindShape
 
 // ══ WAVE 5 (owner M, stream C): Episode.Rules ════════════════════════════════════════════════════════════════════════
 //
-// The one genuinely new pure class ch 09 §8 asks for, EXTRACTED from 0.2.9 `EpisodeList.cs` — where these five decisions
-// were private statics inside a Component and therefore untestable. The thresholds (`> 0.01`, `< 0.98`, `>= 0.98`) and
-// the `max(model, local)` cursor fold are 0.2.9's and load-bearing; the rule (3 DIP), the "In progress" caption and the
-// status filter are three presentations of ONE number, so all three read `Pct` and never three predicates (ch 09 §9.1).
+// The one genuinely new pure class ch 09 §8 asks for, EXTRACTED from 0.2.9 `EpisodeList.cs` — where these decisions were
+// private statics inside a Component and therefore untestable. The thresholds (`> 0.01`, `< 0.98`, `>= 0.98`) are 0.2.9's
+// and load-bearing; the rule (3 DIP), the "In progress" caption and the status filter are presentations of ONE number, so
+// all of them read `Pct` and never separate predicates (ch 09 §9.1).
 
 public readonly partial struct Episode
 {
@@ -715,15 +715,6 @@ public readonly partial struct Episode
         /// <summary>Does the card draw its progress rule (EpisodeList.cs:230)?</summary>
         public static bool HasRule(float pct) => pct > InProgressFloor;
 
-        /// <summary>The status filter's predicate (EpisodeList.cs:56).</summary>
-        public static bool Matches(Status status, float pct) => status switch
-        {
-            Status.Unplayed => pct <= InProgressFloor,
-            Status.InProgress => InProgress(pct),
-            Status.Played => Played(pct),
-            _ => true,
-        };
-
         /// <summary>The "Listen next" pick: the most-progressed IN-PROGRESS episode over ALL episodes, whatever the
         /// filter shows (EpisodeList.cs:78-81); ties keep the earlier (newer) one; -1 when none is in progress.</summary>
         public static int ResumePick(ReadOnlySpan<float> pcts)
@@ -735,49 +726,8 @@ public readonly partial struct Episode
             return resume;
         }
 
-        /// <summary>The filtered, ordered view as ORIGINAL indices (so Play addresses the show context, not the view):
-        /// newest-first as the wire orders them, reversed for Oldest (EpisodeList.cs:52-59). Returns the count written.</summary>
-        public static int View(ReadOnlySpan<float> pcts, Status status, bool oldest, Span<int> into)
-        {
-            int n = 0;
-            for (int i = 0; i < pcts.Length && n < into.Length; i++)
-                if (Matches(status, pcts[i])) into[n++] = i;
-            if (oldest) into[..n].Reverse();
-            return n;
-        }
-
-        /// <summary>THE load-more gate — the paging CURSOR, never the resident count (EpisodeList.cs:65-72; ch 09 §9.1):
-        /// how far anybody has ASKED, the model's cursor or the page's own, against the total.</summary>
-        public static bool CanLoadMore(int edgeAsked, int localAsked, int total) => Math.Max(edgeAsked, localAsked) < total;
-
-        /// <summary>The pill as the page shows it: only a PARTIAL membership pages (a Complete list never does, whatever
-        /// the cursor column says), and then the cursor gate above decides.</summary>
-        public static bool CanLoadMore(EdgeState state, int edgeAsked, int localAsked, int total)
-            => state == EdgeState.Partial && CanLoadMore(edgeAsked, localAsked, total);
-
-        /// <summary>Is a load-more ask still out? It was asked (<paramref name="askedFrom"/> ≥ 0), the relation's version has
-        /// not moved since the ask, and the ask has not failed. A version move or a failure ends it.</summary>
-        public static bool Paging(int askedFrom, uint versionAtAsk, uint versionNow, bool failed)
-            => askedFrom >= 0 && versionNow == versionAtAsk && !failed;
-
-        /// <summary>The page's own half of the cursor after an ask settles: a page that ANSWERED (with rows or without)
-        /// moves it past the offset asked, so a withdrawn member cannot pin the pill; a failure leaves it so the next tap
-        /// retries (0.2.9's `_pagedTo`, EpisodeList.cs:107-123).</summary>
-        public static int LocalCursorAfter(int localAsked, int askedFrom, bool paging, bool failed)
-            => askedFrom >= 0 && !paging && !failed ? Math.Max(localAsked, askedFrom + 1) : localAsked;
-
-        /// <summary>Where the next page starts: the furthest of the model's cursor, the page's cursor and the resident
-        /// count.</summary>
-        public static int NextOffset(int edgeAsked, int localAsked, int resident)
-            => Math.Max(Math.Max(edgeAsked, localAsked), resident);
-
         /// <summary>Whole minutes, 0.2.9's integer arithmetic (<c>DurationMs / 60000</c>); the view formats
         /// <c>podcast.minutes</c> (ch 09 §9.4's loc fix).</summary>
         public static int Minutes(int durationMs) => durationMs / 60_000;
-
-        /// <summary>The zero-episode arm (ch 09 §9.4 fix): the show's own empty copy only when no filter is applied and
-        /// the unfiltered set is genuinely empty; any other empty view is "No episodes match this filter".</summary>
-        public static bool IsEmptyShow(int total, int resident, Status status)
-            => status == Status.All && resident == 0 && total <= 0;
     }
 }

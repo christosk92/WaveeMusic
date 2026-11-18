@@ -5,7 +5,7 @@
 // album's face pile are this ONE look). Moved verbatim with their numbers (`Rules\ClassicDetailKitLayout.cs`); what DECIDES stays core
 // (`Detail.RailArtistLine`: the width ladder and its hysteresis, the reserved heights, the "+N" arithmetic).
 //
-// The class is PARTIAL: the save and more satellites the library's show pane draws (T9c) are in `ClassicDetailKit.Satellites.cs`.
+// The class is PARTIAL: the page-facing helpers (`Satellite`, `MoreButton`, `ArtistLine`, the save and share targets) are `ClassicDetailKit.Helpers.cs`; the play split is `ClassicPlaySplit.cs`.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;

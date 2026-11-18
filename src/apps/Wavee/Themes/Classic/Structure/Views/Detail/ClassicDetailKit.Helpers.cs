@@ -89,7 +89,7 @@ internal static partial class ClassicDetailKit
     /// <summary>The billed artists as one comma-joined run of 14/20/600 links (accent on hover), each one shrinkable and
     /// clipped so a long bill yields instead of pushing the meta line out. An empty bill is an EMPTY BOX, never a blank
     /// row of air: the header's gap must not open for an attribution that does not exist. A detail-frame piece, shared by
-    /// the library's album pane, the show pane's publisher slot and the artist reader (library rework §5.5).</summary>
+    /// the library's album pane and the artist reader (library rework §5.5).</summary>
     public static Element ArtistLine(IReadOnlyList<Controls.Face>? artists)
     {
         if (artists is not { Count: > 0 }) return new BoxEl();

@@ -3,7 +3,7 @@
 // Z7: the library, Recents and the profile. Zune's registrations win over Classic's stand-in key by key.
 //
 //   Library   Pages.Library (`Views\Library\ZuneLibraryPage*.cs`: the head of words, the navigator's grid or list, the pane column, the search columns and the Compact
-//             drill-in), Library.AlbumPane (`ZuneLibraryAlbumPane`), Library.ShowPane (`ZuneLibraryShowPane`), Library.ArtistReader (`ZuneLibraryArtistReader*`: the band,
+//             drill-in), Library.AlbumPane (`ZuneLibraryAlbumPane`), Library.ArtistReader (`ZuneLibraryArtistReader*`: the band,
 //             the sub-rail, the blocks, the spine) and Library.SavedEpisodes (`ZuneLibrarySavedEpisodes`). The kinds (liked · playlists · albums · artists · podcasts ·
 //             audiobooks) are the band's row 2, published by the core as route-level views; the playlists list is the core's own page (`User.LibraryPlaylists`), drawn
 //             with the style's roles. Local files renders through the playlist page (Z6b1).
@@ -28,7 +28,6 @@ public sealed partial class ZuneStructure
         views.AddStyle(StyleKeys.LibraryPlaylistHead, ZuneLibraryPlaylistHead.Style);
         views.Add(ViewKeys.LibraryPage, ZuneLibraryPage.Template, "zune.library.page");
         views.Add(ViewKeys.LibraryAlbumPane, ZuneLibraryAlbumPane.Template, "zune.library.album-pane");
-        views.Add(ViewKeys.LibraryShowPane, ZuneLibraryShowPane.Template, "zune.library.show-pane");
         views.Add(ViewKeys.LibraryArtistReader, ZuneLibraryArtistReader.Template, "zune.library.artist-reader");
         views.Add(ViewKeys.LibrarySavedEpisodes, ZuneLibrarySavedEpisodes.Template, "zune.library.saved-episodes");
 

@@ -220,41 +220,16 @@
     "episodeCount": "{count, plural, one {# aflevering} other {# afleveringen}}",
     "listenNext": "Hierna luisteren",
     "continueListening": "VERDER LUISTEREN",
-    "resume": "Hervatten",
     "noEpisodes": "Geen afleveringen voor dit filter",
-    "loadMore": "Meer afleveringen laden",
-    "loadingMore": "Laden…",
     "filter": {
       "all": "Alle",
       "unplayed": "Niet beluisterd",
       "inProgress": "Bezig",
       "played": "Beluisterd"
     },
-    "sort": {
-      "newest": "Nieuwste",
-      "oldest": "Oudste"
-    },
     "minutes": "{n} min",
-    "empty": "Deze podcast heeft nog geen afleveringen",
-    "startHere": "Begin hier",
-    "beginHere": "Begin hier",
-    "whereItBegan": "Waar het begon",
-    "latest": "nieuwste",
-    "trailer": "trailer",
-    "serialHint": "Een serie — het best op volgorde te beluisteren",
-    "episodicHint": "Losse afleveringen — begin waar je wilt",
-    "about": "Over",
-    "continue": "Verder luisteren",
-    "upNextFromProgress": "Hierna, op basis van je voortgang",
     "startFromBeginning": "begin bij het begin",
-    "newSince": "Nieuw sinds je laatste bezoek",
-    "markAllPlayed": "alles als beluisterd markeren",
-    "caughtUp": "Je bent helemaal bij",
-    "caughtUpNext": "Nieuwe afleveringen verschijnen meestal {day, select, monday {op maandag} tuesday {op dinsdag} wednesday {op woensdag} thursday {op donderdag} friday {op vrijdag} saturday {op zaterdag} sunday {op zondag} other {op een vaste dag}}.",
-    "episodesCount": "Afleveringen {count}",
-    "countOf": "{shown} van {total}",
     "left": "nog {time}",
-    "leftOf": "nog {left} van {total}",
     "played": "beluisterd",
     "new": "nieuw",
     "ledger": "{played} beluisterd · {progress} bezig · nog {togo} te gaan",
@@ -265,7 +240,6 @@
       "fortnightly": "om de twee weken",
       "monthly": "maandelijks"
     },
-    "since": "sinds {when}",
     "ratings": "{count, plural, one {# beoordeling} other {# beoordelingen}}",
     "yours": "jouw score {stars}★",
     "rate": {
@@ -278,9 +252,6 @@
     "notify": {
       "unavailable": "Meldingen over nieuwe afleveringen zijn nog niet beschikbaar in Wavee."
     },
-    "find": "Zoeken in deze podcast",
-    "nothingMatches": "Niets gevonden",
-    "nothingMatchesHint": "Probeer een ander woord, of zet het filter terug op alle.",
     "moreLikeThis": "meer zoals dit",
     "alsoFollow": "luisteraars van {name} volgen ook",
     "tabs": {
@@ -319,20 +290,17 @@
       "bonus": "bonus",
       "trailer": "trailer",
       "subscribers": "abonnees",
-      "previewAvailable": "alleen voor abonnees · voorproefje beschikbaar",
-      "episode": "aflevering {n}"
+      "previewAvailable": "alleen voor abonnees · voorproefje beschikbaar"
     },
     "menu": {
       "markPlayed": "Markeren als beluisterd",
       "markUnplayed": "Markeren als niet beluisterd",
       "goToShow": "Naar podcast"
     },
-    "progressUnavailable": "Je luistervoortgang is nu niet beschikbaar",
     "reader": {
       "jumpDate": "Naar datum",
       "undated": "Zonder datum",
       "audiobook": "Luisterboek",
-      "chaptersCount": "{count, plural, one {# hoofdstuk} other {# hoofdstukken}}",
       "findBook": "Zoeken in dit boek",
       "chapterOrder": "Hoofdstukvolgorde",
       "reverseChapterOrder": "Omgekeerde hoofdstukvolgorde",
@@ -340,7 +308,6 @@
       "chapters": "Hoofdstukken",
       "transcript": "Transcript",
       "comments": "Reacties",
-      "related": "Vergelijkbare podcasts",
       "showAll": "Alles tonen",
       "showLess": "Minder tonen",
       "retry": "Opnieuw proberen",

@@ -1,8 +1,8 @@
 // ── Entities/Episode.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// the episode READER ROW (W3) — the show reader's rows, the visit head's "new since you were here" — its figure-space
-// seed twin, and the row's own decisions: the pct the reader reads, "N min left", the duration words, the title without
-// its number, now-playing and the disc's click — plus `RowData`, the adapter that feeds an episode to the app's shared
-// media surface (Home's episode rows, Recents' members) as `Controls.CardData`
+// the episode READER ROW (W3) — the episode rows of a track table (a playlist's episode kind) — its figure-space seed
+// twin, and the row's own decisions: the pct the reader reads, "N min left", the duration words, the title without its
+// number, now-playing and the disc's click — plus `RowData`, the adapter that feeds an episode to the app's shared media
+// surface (Home's episode rows, Recents' members) as `Controls.CardData`
 //
 // Role: UI (with pure statics)
 // Owner: E
@@ -14,11 +14,12 @@
 //
 // ── ONE ROW, BOUND ───────────────────────────────────────────────────────────────────────────────────────────────────
 //
-// `ReaderRow` is built ONCE per slot (the list's template, re-run only when the slot's kind or the reader's width arm
+// `ReaderRow` is built ONCE per slot (the list's template, re-run only when the slot's kind or the list's width arm
 // flips), and every per-episode value is a bind over the slot's equality-gated `RowItem` — the handle, its row version
 // and the host's per-row marks — so a recycle re-binds and allocates nothing: titles and descriptions resolve interned
 // strings; the date, the duration, "N min left" and the stripped title go through bounded `FormatCache`s; the rule is a
-// compositor scale. The visit head's handful of eager rows reuse the SAME template over a fixed scope (`Fixed`).
+// compositor scale. A row drawn outside a bound list (a structure's seed and failure rows) reuses the SAME template over a
+// fixed scope (`Fixed`).
 //
 // ── THE STATES (W3) ──────────────────────────────────────────────────────────────────────────────────────────────────
 //
@@ -63,10 +64,8 @@ public readonly partial struct Episode
     /// <summary>What one bound row slot binds: the handle, its row version and the host's marks — so a data change to
     /// THIS episode (or its marks) re-fires the slot's binds and a publish of any other row does not (the slot item is
     /// equality-gated).</summary>
-    /// <param name="Number">A number the HOST states for this row, 0 = "the episode's own". An audiobook's chapter
-    /// number comes from the wire (field 65) or, for a row cached without it, from POSITION
-    /// (<see cref="AudiobookOrder.ChapterNumber(Episode,int,int)"/>); the host hands it down here — the row never
-    /// recomputes an order it cannot see.</param>
+    /// <param name="Number">A number the HOST states for this row, 0 = "the episode's own" (an audiobook chapter's
+    /// position, say): the host hands it down here — the row never recomputes an order it cannot see.</param>
     public readonly record struct RowItem(Episode Episode, uint Version, RowMarks Marks = RowMarks.None, int Number = 0)
     {
         public static RowItem Of(Episode e, RowMarks marks = RowMarks.None, int number = 0)
@@ -90,8 +89,7 @@ public readonly partial struct Episode
         /// <para>B2 (plan §3.3): narrowed from the deleted <c>EpisodeSelection</c> to the two members
         /// <c>ReaderRowContent</c> actually reads — <c>Track.Table</c>'s rows carry their OWN selection state
         /// through <c>RowScope</c>/<c>host.Skin</c> (the check lane, the row fill) and reach this seam only for the
-        /// hyperlink-vs-toggle click decision. A caller still using the retired per-page selection model (the show
-        /// reader, until the S-reader wave migrates it onto <c>Track.Table</c>) adapts to this shape instead.</para></summary>
+        /// hyperlink-vs-toggle click decision.</para></summary>
         public RowSelectionContext? Selection { get; init; }
     }
 
@@ -116,7 +114,7 @@ public readonly partial struct Episode
     internal const int SeedDateKey = 20000101;
     internal const int SeedDurationMs = 180_000;
 
-    /// <summary>The row's default verb: the episode page. A template reads it as the open action when the host states none. The reader's
+    /// <summary>The row's default verb: the episode page. A template reads it as the open action when the host states none. The
     /// rows are bound templates and cannot carry a per-item flight tag, so the row's own picture (its art, the largest picture in the
     /// activated row) flies into the episode's header (<see cref="Shell.ConnectFromActivated"/>).</summary>
     internal static readonly Action<Episode> OpenPageAction = static e => Shell.ConnectFromActivated(OpenPage, e);
@@ -132,8 +130,7 @@ public readonly partial struct Episode
     public static float ReaderPctOf(Episode e)
         => e.IsValid ? e.Completed ? 1f : e.Knows(EpisodeFields.Progress) ? ReaderPct(e.ProgressMs, e.DurationMs) : 0f : 0f;
 
-    /// <summary>THE reveal rule — what one reader surface (a row, an up-next chip, the continue hero) shows for an
-    /// episode, from four column facts and nothing else. Pure, so a test pins the table of outcomes without a table:
+    /// <summary>THE reveal rule — what an episode row shows for its episode, from four column facts and nothing else. Pure, so a test pins the table of outcomes without a table:
     /// <list type="bullet">
     /// <item>no row at all (<paramref name="valid"/> false) → <see cref="LoadState.Pending"/> — a recycled slot holds
     /// the default item for a frame, and a shimmer is the only honest thing to draw for it;</item>
@@ -143,8 +140,8 @@ public readonly partial struct Episode
     /// (<c>Table.Failed</c>: a transport failure's <c>MarkFailed</c>, or <c>FetchMissPolicy</c>'s seal after the
     /// wire omitted the row twice), else <see cref="LoadState.Pending"/>.</item>
     /// </list>
-    /// Whoever asks for the facts is a different question (<c>ShowReaderRules.RowDemand</c>, the reader host's own
-    /// effect): this rule only says what to paint for what the columns hold.</summary>
+    /// Whoever asks for the facts is a different question (<c>ShowReaderRules.RowDemand</c>, the page's own demand):
+    /// this rule only says what to paint for what the columns hold.</summary>
     public static LoadState RevealState(bool valid, bool knowsTitle, bool hasTitle, bool failed)
     {
         if (!valid) return LoadState.Pending;
@@ -351,23 +348,10 @@ public readonly partial struct Episode
         if (episode.IsValid) Entities.Refresh(Entities.Current.Episodes, [episode.Slot], (uint)(EpisodeFields.Row | EpisodeFields.About));
     }
 
-    /// <summary>The reveal GATE every reader surface shares: <paramref name="content"/> once <see cref="ReaderLoadState"/>
-    /// says Ready, <paramref name="seed"/> (a derived shimmer of the same shape) while Pending, <paramref name="failed"/>
-    /// on Failed — so a surface built over an episode whose identity is not there yet never paints an empty plate, and
-    /// one whose ask failed offers a Retry instead of shimmering forever. <paramref name="episode"/> is FIXED (the head's
-    /// chips and hero are rebuilt by their owner when the episode's version moves); a bound row uses
-    /// <see cref="ReaderRow"/>, which reads its slot's live item.</summary>
-    public static Element Reveal(Episode episode, Func<Element> content, Func<Element> seed, Func<Element> failed)
-        => new SkelRegionEl(
-            Pending: () => ReaderLoadState(episode) == LoadState.Pending,
-            Failed: () => ReaderLoadState(episode) == LoadState.Failed,
-            Content: content, ShimmerSource: seed, OnFailed: failed,
-            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
-
     // ══ 5. THE EAGER SCOPE, THE SEED, THE TRACK ══════════════════════════════════════════════════════════════════════
 
-    /// <summary>A FIXED scope over one row — the visit head's few eager rows reuse the bound template (so they are the
-    /// same pixels); their owner re-renders them when the row's version or marks move.</summary>
+    /// <summary>A FIXED scope over one row — a row drawn outside a bound list (a structure's seed and failure rows) reuses
+    /// the bound template, so it is the list's pixels.</summary>
     public static BoundItemScope<RowItem> Fixed(RowItem row) => new(s_fixedRow, new FixedSignal<RowItem>(row));
 
     static readonly RowScope s_fixedRow = new(new FixedSignal<int>(0), static () => false, static () => false,
@@ -389,7 +373,7 @@ public readonly partial struct Episode
 
     // ══ 6. THE MEDIA ROW — what `Controls.Surface(RowData(…), Shape.EpisodeRow)` is fed ═════════════════════════════
     //
-    // The reader row above is the show page's own list row. Everywhere else an episode is one more media row on the
+    // The reader row above is the episode list's own row. Everywhere else an episode is one more media row on the
     // app's shared surface (hover plate, hand, play FAB, "…", right-click menu): Home's episode zones and Recents' members.
     // `RowData` is that surface's ONE adapter for an episode; the shape (`Shape.EpisodeRow`: 56 art, a two-line title,
     // the 72 floor — or a site's own band) is the caller's. An episode is not a drag source and its menu is

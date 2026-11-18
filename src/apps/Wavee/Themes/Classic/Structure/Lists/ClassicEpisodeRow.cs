@@ -7,10 +7,10 @@
 // check lane. `StyleKeys.EpisodeRow` carries the three pieces the core row composes: the CONTENT (a bound slot's tree), the SEED (the
 // cold skeleton's twin, figure-space bars in the real geometry) and the FAILURE row (the unavailable copy and Retry).
 //
-// ONE ROW, BOUND. The content is built ONCE per slot (the list's template, re-run only when the slot's kind or the reader's width arm
+// ONE ROW, BOUND. The content is built ONCE per slot (the list's template, re-run only when the slot's kind or the list's width arm
 // flips), and every per-episode value is a bind over the slot's equality-gated `RowItem` (the handle, its row version and the host's
-// marks), so a recycle re-binds and allocates nothing. The visit head's handful of eager rows reuse the SAME template over a fixed
-// scope (`Episode.Fixed`), so they are the list's pixels.
+// marks), so a recycle re-binds and allocates nothing. The seed and failure rows reuse the SAME template over a fixed scope
+// (`Episode.Fixed`), so they are the list's pixels.
 //
 // WHAT THE CORE KEEPS. `Episode.ReaderRow` (the reveal gate: pending -> the seed, failed -> the failure row, ready -> the content;
 // `SkelRegionEl` over `ReaderLoadState`), the row's own decisions (`PlayedOf`, `InProgressOf`, `LeftOf`, `IsNew`, `ShownTitle`, the

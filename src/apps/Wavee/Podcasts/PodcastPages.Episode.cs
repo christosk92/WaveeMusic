@@ -10,7 +10,7 @@
 //   · the cells (the section tab, follow playback, the find text) and every verb.
 // It builds no element and reads no look (WVTH008): the WinUI picture is `Themes/WinUi/Structure/Views/Podcast/WinUiPodcastEpisode.cs`.
 //
-// Memo delegates are bound ONCE (the constructor): `UseComputed` keeps the first delegate it is given (`Show.Pane.cs` header). The page is keyed per
+// Memo delegates are bound ONCE (the constructor): `UseComputed` keeps the first delegate it is given (engine `Hooks/RenderContext.cs`). The page is keyed per
 // route by the router, so the subject never changes under a mounted host; a scope change (sign-in, the fake catalogue) re-resolves through
 // `Episode.ReaderEpisode`, which subscribes to the scope.
 

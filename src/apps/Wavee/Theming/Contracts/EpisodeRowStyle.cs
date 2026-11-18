@@ -1,12 +1,12 @@
 // ── Theming/Contracts/EpisodeRowStyle.cs — what a structure supplies for the podcast episode row (themes plan 6.1, T8c) ─────────
 //
-// The episode row is the show reader's row (W3): art, the title line with its badges, the two-line blurb, the date / "23 min left" /
+// The episode row is the reader row (W3): art, the title line with its badges, the two-line blurb, the date / "23 min left" /
 // "played" meta line, the 3-DIP progress rule, the hover cluster (the "..." menu and the tone disc) and the now-playing tone bar.
-// It is built ONCE per slot (a bound list slot, re-run only when the slot's kind or the width arm flips) or once over a fixed scope (the
-// visit head's few eager rows), with every per-episode value a bind over the slot's equality-gated `Episode.RowItem`, so a recycle
-// re-binds and allocates nothing. The structure registers an `EpisodeRowStyle` under `StyleKeys.EpisodeRow`; the three places that
-// mount an episode row (the show reader and its head, the playlist table's episode kind, the cold skeletons) resolve it from the
-// ambient registry once per host and hand it to `Episode.ReaderRow` / `Episode.SeedReaderRow`.
+// It is built ONCE per slot (a bound list slot, re-run only when the slot's kind or the width arm flips) or once over a fixed scope (a
+// seed or failure row), with every per-episode value a bind over the slot's equality-gated `Episode.RowItem`, so a recycle re-binds and
+// allocates nothing. The structure registers an `EpisodeRowStyle` under `StyleKeys.EpisodeRow`; the places that mount an episode row (the
+// playlist table's episode kind, the cold skeletons) resolve it from the ambient registry once per host and hand it to `Episode.ReaderRow` /
+// `Episode.SeedReaderRow`.
 //
 // WHAT THE CORE KEEPS. The reveal gate of the row (`Episode.ReaderRow`: a `SkelRegionEl` over `ReaderLoadState`: pending shows the seed,
 // failed the failure row, ready the content), every decision the row reads (`Episode.PlayedOf`, `InProgressOf`, `LeftOf`, `IsNew`,

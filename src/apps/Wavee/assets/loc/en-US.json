@@ -982,55 +982,21 @@
   },
   "podcast": {
     "pages": { "chapterN": "Chapter {number}" },
-    "details": {
-      "publisher": "Publisher",
-      "episodes": "Episodes",
-      "since": "Since",
-      "format": "Format",
-      "ratings": "Ratings",
-      "audio": "Audio",
-      "audioVideo": "Audio and video"
-    },
     "episodes": "Episodes",
     "show": "Podcast",
     "episodeCount": "{count, plural, one {# episode} other {# episodes}}",
     "listenNext": "Listen next",
     "continueListening": "Continue listening",
-    "resume": "Resume",
     "noEpisodes": "No episodes match this filter",
-    "loadMore": "Load more episodes",
-    "loadingMore": "Loading…",
     "filter": {
       "all": "All",
       "unplayed": "Unplayed",
       "inProgress": "In progress",
       "played": "Played"
     },
-    "sort": {
-      "newest": "Newest",
-      "oldest": "Oldest"
-    },
     "minutes": "{n} min",
-    "empty": "This podcast doesn't have any episodes yet",
-    "startHere": "Start here",
-    "beginHere": "Begin here",
-    "whereItBegan": "Where it began",
-    "latest": "Latest",
-    "trailer": "Trailer",
-    "serialHint": "A serial — best heard in order",
-    "episodicHint": "Episodes stand alone — start anywhere",
-    "about": "About",
-    "continue": "Continue",
-    "upNextFromProgress": "Up next from your progress",
     "startFromBeginning": "start from the beginning",
-    "newSince": "New since you were here",
-    "markAllPlayed": "Mark all played",
-    "caughtUp": "You're all caught up",
-    "caughtUpNext": "New episodes usually land {day, select, monday {on Mondays} tuesday {on Tuesdays} wednesday {on Wednesdays} thursday {on Thursdays} friday {on Fridays} saturday {on Saturdays} sunday {on Sundays} other {on a regular day}}.",
-    "episodesCount": "Episodes {count}",
-    "countOf": "{shown} of {total}",
     "left": "{time} left",
-    "leftOf": "{left} left of {total}",
     "played": "Played",
     "new": "New",
     "ledger": "{played} played · {progress} in progress · {togo} to go",
@@ -1041,7 +1007,6 @@
       "fortnightly": "every two weeks",
       "monthly": "monthly"
     },
-    "since": "since {when}",
     "ratings": "{count, plural, one {# rating} other {# ratings}}",
     "yours": "yours {stars}★",
     "rate": {
@@ -1054,9 +1019,6 @@
     "notify": {
       "unavailable": "New-episode notifications aren't available in Wavee yet."
     },
-    "find": "Find in this show",
-    "nothingMatches": "Nothing matches",
-    "nothingMatchesHint": "Try another word, or switch the filter back to all.",
     "moreLikeThis": "More like this",
     "alsoFollow": "listeners of {name} also follow",
     "tabs": {
@@ -1095,20 +1057,17 @@
       "bonus": "bonus",
       "trailer": "trailer",
       "subscribers": "subscribers",
-      "previewAvailable": "subscribers only · preview available",
-      "episode": "episode {n}"
+      "previewAvailable": "subscribers only · preview available"
     },
     "menu": {
       "markPlayed": "Mark as played",
       "markUnplayed": "Mark as unplayed",
       "goToShow": "Go to show"
     },
-    "progressUnavailable": "Listening progress isn't available right now",
     "reader": {
       "jumpDate": "Jump to date",
       "undated": "Undated",
       "audiobook": "Audiobook",
-      "chaptersCount": "{count, plural, one {# chapter} other {# chapters}}",
       "findBook": "Find in this book",
       "chapterOrder": "Chapter order",
       "reverseChapterOrder": "Reverse chapter order",
@@ -1116,7 +1075,6 @@
       "chapters": "Chapters",
       "transcript": "Transcript",
       "comments": "Comments",
-      "related": "More like this",
       "showAll": "Show all",
       "showLess": "Show less",
       "retry": "Try again",
@@ -3598,9 +3556,7 @@
           "allReleases": "All releases",
           "allShort": "All"
         },
-        "filterShows": "Filter shows",
-        "showSort": "Sort episodes",
-        "showFilter": "Filter episodes"
+        "filterShows": "Filter shows"
       },
       "lists": {
         "$comment": "W3 (the lists). WinUI's track table, rows, chrome, eager row, episode row, surface, lyrics lines, artist chart and drawer read the shared words (detail.column.*, detail.filter.*, theme.winui.style.density* for the Row size menu); the family adds none."
@@ -3626,7 +3582,6 @@
         "discography": "Discography",
         "readMore": "Read more",
         "showLess": "Show less",
-        "showDetails": "Show details",
         "youMightAlsoLike": "You might also like",
         "viewGrid": "Grid",
         "viewList": "List",

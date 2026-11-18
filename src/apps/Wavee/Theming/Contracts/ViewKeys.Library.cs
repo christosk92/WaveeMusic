@@ -1,8 +1,8 @@
 // ── Theming/Contracts/ViewKeys.Library.cs — the Library family of published view keys (themes plan 6.0, T10c1) ───────────────────
 //
-// T10c1 publishes the library page (`Pages.Library`: the albums / artists / podcasts / audiobooks master-detail) and its four panes: the album pane
-// (`Library.AlbumPane`), the compact show pane (`Library.ShowPane`, podcasts and audiobooks), the artists' reader (`Library.ArtistReader`) and the
-// Your Episodes page (`Library.SavedEpisodes`).
+// T10c1 publishes the library page (`Pages.Library`: the albums / artists / podcasts / audiobooks master-detail) and its three panes: the album pane
+// (`Library.AlbumPane`), the artists' reader (`Library.ArtistReader`) and the Your Episodes page (`Library.SavedEpisodes`). A picked show or audiobook
+// is the route's own page (`PodcastPages.LibraryPane`: `Pages.PodcastShow` / `Pages.Audiobook`, `ViewKeys.PodcastPages.cs`).
 //
 // What stays core: the library data (the relations, the rows, the demand), the navigator's shape memo (filter, sort, the letter groups, the a-z gate, the
 // mount identity), the selection and its persistence (`LibraryViewPrefs`), the search matcher and its selection commit, the collapse state, the readiness of
@@ -22,10 +22,6 @@ public static partial class ViewKeys
     /// <summary>The albums' pane: the header, the command row, the notice strip, the counted shimmer or the embedded table, and the "Also by" strip. Mounted by
     /// `Album.Pane`. Props: <see cref="LibraryAlbumPaneProps"/>.</summary>
     public static readonly ViewKey<LibraryAlbumPaneProps> LibraryAlbumPane = new("Library.AlbumPane");
-
-    /// <summary>The compact show pane (a followed show or an audiobook): the header, the command row and the episode reader. Mounted by `Show.Pane`.
-    /// Props: <see cref="LibraryShowPaneProps"/>.</summary>
-    public static readonly ViewKey<LibraryShowPaneProps> LibraryShowPane = new("Library.ShowPane");
 
     /// <summary>The artists' reader: one scroller of release blocks under a sticky band and sub-rail, with a spine of dots. Mounted by `Artist.Reader`.
     /// Props: <see cref="LibraryArtistReaderProps"/>.</summary>

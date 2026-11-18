@@ -14,6 +14,12 @@ public static class WinUiChoiceRules
     /// <summary>The library page's head (W-Library): "Library" in Title Large 40/52 at every tier, 16 over the kinds' SelectorBar (40 tall).</summary>
     public const float HeadTitle = 40f, HeadTitleLine = 52f, HeadGap = 16f, HeadPivot = 40f;
 
+    /// <summary>The head title's face (Title Large is the Display face) and weight (semibold).</summary>
+    public const string HeadFace = "Segoe UI Variable Display";
+
+    /// <summary>See <see cref="HeadFace"/>.</summary>
+    public const ushort HeadWeight = 600;
+
     /// <summary>The stock control height (W-Library's toolbar row: the filter, the sort and the view pair all 32).</summary>
     public const float ControlH = 32f;
 

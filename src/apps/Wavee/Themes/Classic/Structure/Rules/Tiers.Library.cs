@@ -34,7 +34,7 @@
 // in your library" leaves the bottom of the rows for a 300 ASIDE 32 right of them (`AlsoByAside`, `AlsoByAsideGap`): two columns of 140 covers, 16 / 20 apart. Below
 // Huge the aside is width 0 (it stays in the pane's row, so a crossing eases it) and the strip is the rows' trailing band again.
 //
-// THE PANE HEADER PER TIER: the album and show panes' stated header is 156 tall with its 128 cover 18 from the words at Standard (C-Library), 146 with a 96 cover in a 120
+// THE PANE HEADER PER TIER: the album pane's stated header is 156 tall with its 128 cover 18 from the words at Standard (C-Library), 146 with a 96 cover in a 120
 // band 16 from the words and 10 over the command row at Small (C-Library-Small, with an 8 left inset and a 24/30 title; the Compact drill-in's pane leaf keeps the 156 and the 16), and 200 with a 160 cover 24 from the words
 // at Huge (C-Library-Huge).
 //
@@ -79,10 +79,10 @@ public sealed record ClassicLibraryLayout
     /// <summary>The detail pane's floor beside the navigator: the navigator gives way (down to the grip's range floor) before the pane drops under it.</summary>
     public required float RightMin { get; init; }
 
-    /// <summary>The pane's insets (the album and show panes' header, commands and "Also by" band, and the reader's bands): <see cref="ClassicTiers.PaneInset"/> at every tier.</summary>
+    /// <summary>The pane's insets (the album pane's header, commands and "Also by" band, and the reader's bands): <see cref="ClassicTiers.PaneInset"/> at every tier.</summary>
     public float PaneInset => ClassicTiers.PaneInset;
 
-    /// <summary>The album and show panes' cover edge (128; C-Library-Huge 160).</summary>
+    /// <summary>The album pane's cover edge (128; C-Library-Huge 160).</summary>
     public float PaneCover { get; init; } = ClassicLibraryPaneRules.PaneCover;
 
     /// <summary>The panes' STATED header height (the cover with its padding: 156; C-Library-Huge 200).</summary>
