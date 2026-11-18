@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.10",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "A fix for Wavee closing by itself shortly after it starts on x64 PCs.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

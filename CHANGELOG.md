@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.10] - unreleased
+
+### Fixed
+
+- **Wavee could close by itself a few seconds after starting on x64 PCs.** 0.3.8 and 0.3.9 were built with a preview of
+  .NET 11 whose compiler left a pointer where the garbage collector could not find it while covers were decoding; a
+  collection at that moment ended the app, most often on the first page after launch or when the window came back after
+  a long time hidden. Wavee is now built with the released .NET 11 SDK, which does not have the defect.
+
 ## [0.3.9] - 2026-11-14
 
 ### Added
