@@ -235,14 +235,23 @@ internal static class ClassicPodcastAudiobook
         var v = a.V;
         var p = a.P;
         var lay = a.Lay;
-        var kids = new List<Element>(4)
+        // The glyph buttons stay together as one group; where the column cannot hold the library button's words beside them, the group wraps to the
+        // line under it and the button spans the column. The label is never cut (no shrink).
+        var glyphs = new List<Element>(3) { ClassicPodcastKit.Glyph("cpa-download", Icons.Download, Loc.Get(Strings.Podcast.Pages.Download), p.Download, lay.Target) };
+        if (p.Share is { } share) glyphs.Add(ClassicPodcastKit.Glyph("cpa-share", Icons.Share, Loc.Get(Strings.Podcast.Pages.Share), share, lay.Target));
+        glyphs.Add(new BoxEl { Key = "cpa-more", Shrink = 0f, Children = [ClassicDetailKit.MoreButton(p.Menu, lay.Target)] });
+        return new BoxEl
         {
-            Button.Create(v.LibraryLabel, p.ToggleLibrary, glyph: v.InLibrary ? Icons.Check : Icons.Add) with { Key = "cpa-library", Height = lay.Target, Shrink = 1f, MinWidth = 0f },
-            ClassicPodcastKit.Glyph("cpa-download", Icons.Download, Loc.Get(Strings.Podcast.Pages.Download), p.Download, lay.Target),
+            Key = "cpa-commands", Direction = 0, Wrap = true, Gap = P.CommandGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Children =
+            [
+                Button.Create(v.LibraryLabel, p.ToggleLibrary, glyph: v.InLibrary ? Icons.Check : Icons.Add) with
+                {
+                    Key = "cpa-library", Height = lay.Target, Shrink = 0f, Grow = 1f, Justify = FlexJustify.Start,
+                },
+                new BoxEl { Key = "cpa-glyphs", Direction = 0, Gap = P.CommandGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = glyphs.ToArray() },
+            ],
         };
-        if (p.Share is { } share) kids.Add(ClassicPodcastKit.Glyph("cpa-share", Icons.Share, Loc.Get(Strings.Podcast.Pages.Share), share, lay.Target));
-        kids.Add(new BoxEl { Key = "cpa-more", Shrink = 0f, Children = [ClassicDetailKit.MoreButton(p.Menu, lay.Target)] });
-        return new BoxEl { Key = "cpa-commands", Direction = 0, Gap = P.CommandGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
     // ══ THE LIST COLUMN ═════════════════════════════════════════════════════════════════════════════════════════════════════
