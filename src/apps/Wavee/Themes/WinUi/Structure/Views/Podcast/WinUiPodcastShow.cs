@@ -201,10 +201,15 @@ internal static partial class WinUiPodcastShow
         {
             var h = v.Head;
             // Kept while scrolled away: the cover coming back into view at the top must not re-acquire its image (a scroll frame never allocates).
-            Element cover = Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f), keepWhileHidden: true);
+            // The cover drags as the show (the host's one source: a sidebar pin, a playlist, the queue); the shimmer's carries none.
+            Element cover = new BoxEl
+            {
+                Key = "hero:art", Shrink = 0f, Draggable = live ? _p.CoverDrag : null,
+                Children = [Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, lay.CoverRadius, decodePx: (int)(lay.Cover * 2f), keepWhileHidden: true)],
+            };
             var idKids = new List<Element>(3)
             {
-                Eyebrow(h),
+                Eyebrow(h, lay),
                 (lay.TitleLarge ? TitleLarge(h.Title) : Title(h.Title)) with
                 {
                     Wrap = TextWrap.Wrap, MaxLines = S.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -247,8 +252,8 @@ internal static partial class WinUiPodcastShow
             };
         }
 
-        /// <summary>The eyebrow: the kind word as a link to its hub, then the topics (plain: the data carries no destination for a topic), then the tags.</summary>
-        Element Eyebrow(PodcastShowHead h)
+        /// <summary>The eyebrow: the kind word as a link to its hub, then the topics as links (each searches its words), then the tags.</summary>
+        Element Eyebrow(PodcastShowHead h, WinUiPodcastShowLayout lay)
         {
             var kids = new List<Element>(4);
             if (_p.OpenKind is { } openKind && h.Kind.Length > 0)
@@ -258,10 +263,14 @@ internal static partial class WinUiPodcastShow
                     Children = [HyperlinkButton.Create(h.Kind, openKind, size: ControlSize.Small)],
                 });
             else if (h.Kind.Length > 0) kids.Add(Caption(h.Kind) with { Color = Tok.TextSecondary });
-            if (h.Topics.Length > 0)
-                kids.Add(Caption("· " + string.Join(" · ", h.Topics)) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
-            if (h.Video) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video));
-            if (h.Serial) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Serial), null));
+            var tags = new List<Element>(4);
+            if (h.Video) tags.Add(Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video));
+            if (h.Serial) tags.Add(Tag(Loc.Get(Strings.Podcast.Pages.Serial), null));
+            if (h.Exclusive) tags.Add(Tag(Loc.Get(Strings.Podcast.Pages.Exclusive), null));
+            if (h.Explicit) tags.Add(WinUiRowCells.ExplicitMark());
+            // The topics give way a whole word at a time; the tags ride with them, right after the last topic that shows.
+            if (h.Topics.Length > 0) kids.Add(WinUiPodcastKit.WordLinks("eyebrow:topic", h.Topics, _p.OpenTopic, lay.Target, tags.ToArray()));
+            else kids.AddRange(tags);
             return new BoxEl { Direction = 0, Gap = S.EyebrowGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
         }
 
@@ -422,9 +431,9 @@ internal static partial class WinUiPodcastShow
             var stars = new Element[S.Stars];
             int full = (h.RatingX100 + S.StarRound) / S.StarScale;
             for (int i = 0; i < stars.Length; i++) stars[i] = Icon(Icons.FavoriteStarFill, S.RatingStar, i < full ? Tok.TextPrimary : Tok.TextDisabled);
-            Element rate = _p.Rate is { } r
-                ? Button.Create(Loc.Get(Strings.Podcast.Pages.Rate), r)
-                : Controls.Named(Button.Create(Loc.Get(Strings.Podcast.Pages.Rate), static () => { }, isEnabled: false), Loc.Get(Strings.Podcast.Pages.RateUnavailable));
+            // Rate opens the shared picker (the listener's stars, busy, the failure, why it is off); the line keeps the listener's own stars at rest.
+            Element rate = Controls.RateFlyout("about:rate", Button.Create(Loc.Get(Strings.Podcast.Pages.Rate), static () => { }), _p.RateState, _p.Rate, S.RatingStar);
+            var state = _p.RateState;
             return new BoxEl
             {
                 Key = "about-rating", Direction = 0, Gap = S.CommandGap, AlignItems = FlexAlign.Center, Padding = Edges4.All(S.RatingCardPad), MinWidth = 0f,
@@ -435,7 +444,11 @@ internal static partial class WinUiPodcastShow
                     new BoxEl
                     {
                         Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                        Children = [new BoxEl { Direction = 0, Children = stars }, Caption(h.Ratings) with { MaxLines = 1 }],
+                        Children =
+                        [
+                            new BoxEl { Direction = 0, Children = stars },
+                            Caption(h.Ratings) with { Text = Prop.Of(() => state.Value.Line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                        ],
                     },
                     new BoxEl { Shrink = 0f, Children = [rate] },
                 ],

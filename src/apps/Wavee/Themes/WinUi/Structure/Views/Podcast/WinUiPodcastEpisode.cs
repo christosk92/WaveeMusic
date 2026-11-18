@@ -180,11 +180,13 @@ internal static class WinUiPodcastEpisode
             float h = lay.Target;
             var kids = new List<Element>(8)
             {
+                // An episode that cannot be played says why, quietly, with the lock, where the play button stands (its height: nothing moves).
+                v.Blocked.Length > 0 ? Blocked(v.Blocked, h)
                 // Play/Pause is a leaf: only it re-renders on a press.
-                WinUiPodcastPlayLeaf.Of("pe-split-leaf", () => p.Playing.Value, pausing => WinUiPodcastKit.SmartSplit("pe-split",
+                : WinUiPodcastPlayLeaf.Of("pe-split-leaf", () => p.Playing.Value, pausing => WinUiPodcastKit.SmartSplit("pe-split",
                     pausing ? Loc.Get(Strings.Podcast.Pages.Pause) : v.PrimaryLabel, v.PrimaryAccent, pausing, p.Play, v.Menu, h, lay.SplitFills)),
             };
-            if (e.State == PodcastRowState.InProgress)
+            if (e.State == PodcastRowState.InProgress && v.Blocked.Length == 0)
             {
                 var pos = p.PositionMs;
                 int duration = Math.Max(1, v.DurationMs);
@@ -226,6 +228,18 @@ internal static class WinUiPodcastEpisode
             };
         }
     }
+
+    /// <summary>The blocked state: the lock and why, in the secondary ink on the subtle plate, as tall as the play button it stands for.</summary>
+    static Element Blocked(string why, float height) => new BoxEl
+    {
+        Key = "pe-blocked", Direction = 0, Gap = P.ActionGap, AlignItems = FlexAlign.Center, MinHeight = height, Shrink = 1f, MinWidth = 0f,
+        Padding = new Edges4(P.BlockedPadX, 0f, P.BlockedPadX, 0f), Corners = Radii.ControlAll, Fill = Tok.FillSubtleSecondary,
+        Children =
+        [
+            Icon(Icons.Lock, P.BlockedGlyph, Tok.TextSecondary),
+            Body(why) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, Shrink = 1f, MinWidth = 0f },
+        ],
+    };
 
     /// <summary>A bordered standard glyph button (the control fill, the elevation stroke, r4).</summary>
     static BoxEl Bordered(string glyph, Action onClick, float size) => Controls.IconAction(glyph, onClick, size: size) with
@@ -425,7 +439,10 @@ internal static class WinUiPodcastEpisode
             var p = a.P;
             var v = p.View.Value;
             string left = p.Left.Value;
-            var primary = WinUiPodcastPlayLeaf.Of("pe-bar:leaf", () => p.Playing.Value, pausing => Button.Create(
+            // A blocked episode's bar keeps its trailing slot: the lock and its tag, off.
+            var primary = v.Blocked.Length > 0
+                ? Button.Create(v.Episode.Lock, static () => { }, glyph: Icons.Lock, isEnabled: false) with { Key = "pe-bar:play", Shrink = 0f, MinWidth = 0f }
+                : WinUiPodcastPlayLeaf.Of("pe-bar:leaf", () => p.Playing.Value, pausing => Button.Create(
                 pausing ? Loc.Get(Strings.Podcast.Pages.Pause) : v.PrimaryLabel, p.Play, v.PrimaryAccent ? ButtonAppearance.Accent : ButtonAppearance.Standard,
                 glyph: pausing ? WinUiDetailRules.PauseSolid : WinUiDetailRules.PlaySolid) with { Key = "pe-bar:play", Shrink = 0f, MinWidth = 0f });
             return WinUiPodcastKit.Bar(v.Episode.ArtUrl ?? v.ShowArtUrl, v.Episode.Title, left.Length > 0 ? left : v.Episode.Length, primary, a.Inset);

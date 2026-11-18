@@ -167,6 +167,8 @@ internal static partial class ZunePodcastShow
             Element art = new BoxEl
             {
                 Key = "zp-art", Width = lay.Art, Height = lay.Art, Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ZuneMotion.GroupResize,
+                // The art drags as the show (the host's one source); the shimmer's carries none.
+                Draggable = live ? _p.CoverDrag : null,
                 Children = [Controls.Artwork(head.ArtUrl, lay.Art, lay.Art, 0f, decodePx: (int)(lay.Art * 2f))],
             };
             var s = h.Smart;
@@ -174,7 +176,7 @@ internal static partial class ZunePodcastShow
             // Caught up: the up line says it (the label would say it twice).
             if (s is { Kind: not PodcastSmartKind.CaughtUp }) main.Add(K.Label(LabelOf(s)));
             main.Add(Up(s, lay, live));
-            main.Add(Meta(head));
+            main.Add(Meta(head, lay.Target));
             main.Add(Commands(head, lay));
             var words = new BoxEl { Key = "zp-hmain", Direction = 1, Gap = Z.HeroLineGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = main.ToArray() };
             return new BoxEl
@@ -202,9 +204,12 @@ internal static partial class ZunePodcastShow
                     lay.Target, fill: lay.PrimaryFills)
                 : K.Split("smart", s.Label, s.Accent, pausing, _p.PlaySmart, s.Menu, lay.Target, lay.PrimaryFills);
             // What it plays: "up next · Title" (20/28 light), then the line and the time left (or the date and length, the parts, the caught-up line).
-            var spans = new List<TextSpan>(2);
-            if (s.Why.Length > 0) spans.Add(new TextSpan(s.Why.ToLowerInvariant() + " · ", Color: Tok.TextTertiary));
-            spans.Add(new TextSpan(s.EpisodeTitle, Color: Tok.TextPrimary));
+            // "up next ·" is the theme's word (lowered by the label role); the episode's title is a name, as written.
+            TextEl UpWord(string text) => new(text)
+            {
+                FontFamily = R.Type.Pivot("").FontFamily, Size = Z.UpTitleSize, LineHeight = Z.UpTitleLine, Weight = Z.Light,
+                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            };
             Element line = s.Kind == PodcastSmartKind.CaughtUp
                 // The caught-up line is the theme's sentence, not a name: lowercased as a label.
                 ? new TextEl(s.EpisodeTitle)
@@ -212,10 +217,13 @@ internal static partial class ZunePodcastShow
                     FontFamily = R.Type.Pivot("").FontFamily, Size = Z.UpTitleSize, LineHeight = Z.UpTitleLine, Weight = Z.Light, Color = Tok.TextPrimary,
                     Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 }
-                : new SpanTextEl(new TextSpans(spans.ToArray(), spans.Count))
+                : new BoxEl
                 {
-                    FontFamily = R.Type.Pivot("").FontFamily, Size = Z.UpTitleSize, LineHeight = Z.UpTitleLine, Weight = Z.Light,
-                    MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Children = s.Why.Length > 0
+                        ? [UpWord(s.Why + K.Dot) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), Shrink = 0f },
+                           UpWord(s.EpisodeTitle) with { Color = Tok.TextPrimary, Shrink = 1f }]
+                        : [UpWord(s.EpisodeTitle) with { Color = Tok.TextPrimary, Shrink = 1f }],
                 };
             var sub = new List<Element>(2);
             float progress = s.Progress;
@@ -235,7 +243,7 @@ internal static partial class ZunePodcastShow
         }
 
         /// <summary>publisher · ★ rating (count) · cadence · N episodes · serial: the kind word links to its hub; each part carries its own "·".</summary>
-        Element Meta(PodcastShowHead h)
+        Element Meta(PodcastShowHead h, float target)
         {
             var parts = new List<Element>(6);
             if (h.Publisher.Length > 0) parts.Add(K.MetaWord(h.Publisher) with { Case = TextCase.AsWritten, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
@@ -253,9 +261,12 @@ internal static partial class ZunePodcastShow
             if (h.Cadence.Length > 0) parts.Add(K.MetaWord(h.Cadence));
             if (h.Count.Length > 0) parts.Add(K.MetaWord(h.Count));
             if (h.Serial) parts.Add(K.MetaWord(Loc.Get(Strings.Podcast.Pages.Serial)));
+            if (h.Exclusive) parts.Add(K.MetaWord(Loc.Get(Strings.Podcast.Pages.Exclusive)));
+            if (h.Explicit) parts.Add(ZuneRowCells.ExplicitMark());
             if (h.Kind.Length > 0)
                 parts.Add(_p.OpenKind is { } kind ? K.Link("zp-kind", h.Kind, kind, 0f) : K.MetaWord(h.Kind));
-            if (h.Topics.Length > 0) parts.Add(K.MetaWord(string.Join(" · ", h.Topics)) with { Color = Tok.TextTertiary, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f });
+            // The topics: each a link that searches its words (names: as written); the ones that do not fit leave the line whole.
+            if (h.Topics.Length > 0) parts.Add(K.WordLinks("zp-topic", h.Topics, _p.OpenTopic, target, leadDot: parts.Count > 0));
             return K.Meta("zp-meta", parts);
         }
 
@@ -311,16 +322,21 @@ internal static partial class ZunePodcastShow
                 var stars = new Element[5];
                 int full = (h.RatingX100 + 50) / 100;
                 for (int i = 0; i < stars.Length; i++) stars[i] = Icon(Icons.FavoriteStarFill, Z.RatingStar, i < full ? Tok.TextPrimary : Tok.TextDisabled);
+                var state = _p.RateState;
                 kids.Add(new BoxEl
                 {
                     Key = "about-rating", Direction = 0, Gap = Z.SectionHeadGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Wrap = true,
                     Children =
                     [
                         R.Type.Heading(h.Rating) with { Shrink = 0f },
-                        new BoxEl { Direction = 1, Shrink = 0f, Children = [new BoxEl { Direction = 0, Children = stars }, K.MetaWord(h.Ratings)] },
-                        _p.Rate is { } r
-                            ? K.Button("about:rate", Loc.Get(Strings.Podcast.Pages.Rate), null, r, lay.Target)
-                            : K.Named(K.Button("about:rate", Loc.Get(Strings.Podcast.Pages.Rate), null, null, lay.Target), Loc.Get(Strings.Podcast.Pages.RateUnavailable), false),
+                        new BoxEl
+                        {
+                            Direction = 1, Shrink = 0f,
+                            Children = [new BoxEl { Direction = 0, Children = stars }, K.MetaWord(h.Ratings) with { Text = Prop.Of(() => state.Value.Line) }],
+                        },
+                        // Rate opens the shared picker (the listener's stars, busy, the failure, why it is off); the line keeps the listener's own at rest.
+                        Controls.RateFlyout("about:rate-flyout", K.Button("about:rate", Loc.Get(Strings.Podcast.Pages.Rate), null, static () => { }, lay.Target),
+                            state, _p.Rate, Z.RatingStar, static () => R.Ink.AccentDecor),
                     ],
                 });
             }
@@ -411,7 +427,7 @@ internal static partial class ZunePodcastShow
         var kids = new List<Element>(4);
         bool searching = !lay.SearchPill && live && st.SearchOpen.Value;
         if (searching)
-            kids.Add(Swap("tb:search-field", true, AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Podcast.Pages.Search), width: Z.SearchW, text: p.Query(),
+            kids.Add(Swap("tb:search-field", true, AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Theme.Zune.Detail.SearchShow), width: Z.SearchW, text: p.Query(),
                 queryIcon: Icons.Search, grow: 1f)));
         else
         {
@@ -452,7 +468,7 @@ internal static partial class ZunePodcastShow
             kids.Add(Swap("tb:find", false, new BoxEl
             {
                 Key = "tb:find-box", Shrink = 0f, MinWidth = 0f,
-                Children = [AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Podcast.Pages.Search), width: Z.SearchW, text: p.Query(), queryIcon: Icons.Search)],
+                Children = [AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Theme.Zune.Detail.SearchShow), width: Z.SearchW, text: p.Query(), queryIcon: Icons.Search)],
             }));
         else
             kids.Add(K.Named(K.Button("tb:search", null, searching ? Icons.ChromeClose : Icons.Search, () => st.SearchOpen.Value = !st.SearchOpen.Peek(), lay.Target)

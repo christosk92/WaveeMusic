@@ -16,7 +16,7 @@
 //     here"); a trailer episode row OUTSIDE the membership; ★ 4.8 from 12,431; an amber tone.
 //   · sh1 — EPISODIC, NEW. No progress anywhere; explicit on the even-numbered episodes, and so the show; ★ 4.6.
 //   · sh2 — VIDEO + EXCLUSIVE, CAUGHT UP. Every episode played (each a day after it came out, so nothing is new since);
-//     one of them `Paywalled | PreviewOnly`; the listener's own five stars.
+//     one of them `Paywalled | PreviewOnly | Unplayable` (sh2e3); the listener's own five stars.
 //   · sh4 — EPISODIC, NEW EPISODES (podcast pages v2 "New episodes"): one a month across two years; the third to the seventh newest played (the last
 //     play a day after the third came out), the two newest out since then ("new since your last visit": the visit is pinned at that last play),
 //     the oldest five unplayed, nothing in progress.
@@ -162,6 +162,8 @@ public static partial class Entities
                     break;
                 case NewShow:
                     if (number % 2 == 0) ep.Flags = (uint)EpisodeFlags.Explicit;
+                    // A bonus episode (the rows' Bonus tag), with a transcript (their transcript mark).
+                    if (i == 1) { ep.Kind = (byte)EpisodeKind.Bonus; ep.Flags |= (uint)EpisodeFlags.HasTranscript; }
                     break;
                 case LongBook:
                     ep.Flags = (uint)EpisodeFlags.AudiobookChapter;
@@ -170,8 +172,9 @@ public static partial class Entities
                     else if (number == LongBookHeard + 1) { ep.ProgressMs = ep.DurationMs / 2; ep.PlayedAt = (int)(now0 - Day); }
                     break;
                 case CaughtUpShow:
+                    // The wire sets PreviewOnly only on an unplayable episode (Spotify.Decode.Podcast.cs EpisodeDetail): the fake says the same.
                     ep.Flags = (uint)(i == PaywalledEpisode
-                        ? EpisodeFlags.Video | EpisodeFlags.Paywalled | EpisodeFlags.PreviewOnly
+                        ? EpisodeFlags.Video | EpisodeFlags.Paywalled | EpisodeFlags.PreviewOnly | EpisodeFlags.Unplayable
                         : EpisodeFlags.Video);
                     Played(ref ep, ep.PublishedAt + Day);
                     break;
@@ -214,6 +217,16 @@ public static partial class Entities
                     + "how it gets in, and how it gets lost.</p><p>The <i>Baker-baker paradox</i>, sleep, and what to do by Monday. "
                     + "More in <a href=\"spotify:show:sh1\">our sister show</a>.</p><ul><li>Encoding and attention</li><li>Sleep and consolidation</li>"
                     + "<li>False memories &amp; confident mistakes</li></ul>");
+            }
+
+            // sh5e1 (in progress) writes its chapters into its show notes, as many shows do, and Spotify lists none for it (the chapter fixture
+            // answers empty for an episode whose notes carry them, Episode.Fixtures.cs): the episode page builds its chapters from the notes.
+            if (sh == ProgressShow && i == 1)
+            {
+                // The notes as plain lines (the convention RichTextBlocks.Split reads: one timestamp line each).
+                ep.Description = Text(s, "Five habits, one week, and what stuck.\n\nCHAPTERS(00:00:00) Cold open\n(00:02:40) Why habits fail on Wednesday\n"
+                    + "(00:07:15) The two-minute rule\n(00:12:30) Stacking and cues\n(00:17:05) What we kept\n\nThanks for listening.");
+                ep.HtmlDescription = ep.Description;
             }
 
             static void Played(ref StagedEpisode row, long at)

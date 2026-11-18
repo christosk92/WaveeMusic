@@ -270,7 +270,6 @@
     "yours": "내 평가 {stars}★",
     "rate": {
       "title": "{name} 평가하기",
-      "unavailable": "Wavee에서는 아직 평가할 수 없어요 — 평균 평점과 내 평가는 Spotify에 있는 그대로 표시돼요.",
       "stars": "{count, plural, other {별 #개}}"
     },
     "notify": {

@@ -379,21 +379,27 @@ internal static class WinUiAudiobookParts
         Element words;
         Element? trailing = null;
         bool ask = v.State == AudiobookState.Finished;
+        var state = p.RateState;
         if (ask)
         {
-            var lines = new List<Element>(2) { BodyStrong(v.FinishedTitle) };
+            // "How was it?": the stars inline, holding the listener's own rating; the note says why they are off, the write in flight or its failure.
+            var rs = state.Value;
+            var lines = new List<Element>(3) { BodyStrong(v.FinishedTitle) };
             if (v.FinishedSub.Length > 0) lines.Add(Caption(v.FinishedSub) with { Color = Tok.TextSecondary });
+            if (rs.Note.Length > 0)
+                lines.Add(Caption(rs.Note) with { Color = rs.Failed ? Tok.SystemFillCritical : Tok.TextTertiary, Wrap = TextWrap.Wrap, MinWidth = 0f });
             words = new BoxEl { Direction = 1, Grow = 1f, MinWidth = 0f, Children = [.. lines] };
-            stars = Controls.StarRow(0, p.Rate, AB.RateStar, static () => Tok.AccentTextPrimary);
+            stars = Controls.StarRow(rs.Mine, rs.Enabled ? p.Rate : null, AB.RateStar, static () => Tok.AccentTextPrimary);
             return Plate(true, [words, stars]);
         }
         if (v.Rating.Length == 0) return null;
         var big = new TextEl(v.Rating) { Size = AB.RateBig, LineHeight = AB.RateBigLine, Weight = AB.Strong, Shrink = 0f };
         var column = new List<Element>(2) { Controls.StarRow((int)MathF.Round(float.TryParse(v.Rating, out float r) ? r : 0f), null, AB.RateStar) };
-        if (v.RatingsLine.Length > 0) column.Add(Caption(v.RatingsLine) with { Color = Tok.TextSecondary });
+        if (v.RatingsLine.Length > 0 || v.MyRating > 0)
+            column.Add(Caption(v.RatingsLine) with { Text = Prop.Of(() => state.Value.Line), Color = Tok.TextSecondary });
         words = new BoxEl { Direction = 1, Grow = 1f, MinWidth = 0f, Children = [.. column] };
-        if (p.Rate is { } rate && v.State == AudiobookState.InProgress)
-            trailing = Button.Create(v.RateLabel, () => rate(5)) with { Shrink = 0f };
+        if (v.State == AudiobookState.InProgress)
+            trailing = Controls.RateFlyout("ab-rate", Button.Create(v.RateLabel, static () => { }), state, p.Rate, AB.RateStar);
         else
             trailing = Button.Create(v.RateLabel, static () => { }, isEnabled: false) with { Shrink = 0f };
         return Plate(false, [big, words, trailing]);

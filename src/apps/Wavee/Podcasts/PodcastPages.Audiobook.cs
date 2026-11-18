@@ -59,7 +59,8 @@ public sealed class AudiobookScreen : Component
         var speed = UseComputed(Book.SpeedLabelOf);
         var sleep = UseComputed(Book.SleepLabelOf);
         var sleepOn = UseComputed(Book.SleepOnOf);
-        m.Props ??= m.BuildProps(view, place, playing, speed, sleep, sleepOn);
+        var rateState = UseComputed(m.Rater.Compute);
+        m.Props ??= m.BuildProps(view, place, playing, speed, sleep, sleepOn, rateState);
         return Slots.View(ViewKeys.AudiobookPage, m.Props);
     }
 
@@ -70,11 +71,30 @@ public sealed class AudiobookScreen : Component
         public static Snapshot Empty { get; } = new(AudiobookView.Empty, default, [], [], [], 0L, -1, AudiobookState.NotStarted, default);
     }
 
-    sealed class Book(EntityUri subject, string routeKey)
+    sealed class Book
     {
-        public readonly string UriText = subject.Text;
+        readonly EntityUri subject;
+        readonly string routeKey;
+        public readonly string UriText;
         public Memo<Snapshot>? Snap;
         public AudiobookPageProps? Props;
+        /// <summary>The rate verb and the rate control's state (shared with the show page).</summary>
+        public readonly PodcastRater Rater;
+
+        public Book(EntityUri subject, string routeKey)
+        {
+            this.subject = subject;
+            this.routeKey = routeKey;
+            UriText = subject.Text;
+            Rater = new PodcastRater(subject, RateFacts);
+        }
+
+        /// <summary>The rate control's inputs, read from the snapshot (the rater's compute subscribes through it).</summary>
+        PodcastRater.Facts RateFacts()
+        {
+            var v = Snap?.Value.View ?? AudiobookView.Empty;
+            return new PodcastRater.Facts(v.Title, v.RatingsLine, v.MyRating, v.CanRate);
+        }
 
         Snapshot Peek() => Snap?.Peek() ?? Snapshot.Empty;
 
@@ -283,7 +303,7 @@ public sealed class AudiobookScreen : Component
                 StartsAtLabel: Loc.Get(PP.StartsAt),
                 LineTitle: Loc.Get(state == AudiobookState.Finished ? PP.Finished : PP.WholeBook), LineSub: lineSub, LineRight: length,
                 AboutTitle: Loc.Get(PP.AboutBook), Facts: factRows.ToImmutable(),
-                RatingsLine: rated is { Count: > 0 } rl ? PP.RatingsCount(rl.Count) : "",
+                RatingsLine: rated is { Count: > 0 } rl ? rl.Count == 1 ? PP.RatingsCount(1) : PP.RatingsMany(count) : "",   // "4,952 ratings": the grouped count
                 RateLabel: Loc.Get(state == AudiobookState.InProgress ? PP.Rate : PP.RateAfter),
                 FinishedTitle: Loc.Get(PP.YouFinished),
                 FinishedSub: rating.Length > 0 ? PP.HowWasIt(rating, count) : "",
@@ -293,6 +313,8 @@ public sealed class AudiobookScreen : Component
                 Current = current, ChaptersPending = chaptersPending, ChapterCount = chapterCount, LineKnown = n > 0 && !chaptersPending && startsKnown,
                 KindRoute = "browse:" + AudiobookRules.AudiobooksCategory,   // the Browse category route (Browse.CategoryPageFor)
                 AboutHtml = AudiobookRules.TidyHtml(book.AboutHtml.Length > 0 ? book.AboutHtml : book.About),
+                MyRating = rated?.Mine ?? (show.Knows(ShowFields.Rating) ? show.MyRating : 0),
+                CanRate = rated?.CanRate ?? (show.Knows(ShowFields.Rating) && (show.Flags & ShowFlags.CanRate) != 0),
             };
             return new Snapshot(view, show, chapters.ToImmutable(), rest, lengths, total, current, state, sample);
         }
@@ -393,7 +415,7 @@ public sealed class AudiobookScreen : Component
         // ══ THE VERBS ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
         public AudiobookPageProps BuildProps(IReadSignal<AudiobookView> view, IReadSignal<AudiobookPlace> place, IReadSignal<bool> playing,
-            IReadSignal<string> speed, IReadSignal<string> sleep, IReadSignal<bool> sleepOn) => new()
+            IReadSignal<string> speed, IReadSignal<string> sleep, IReadSignal<bool> sleepOn, IReadSignal<PodcastRateVm> rateState) => new()
         {
             RouteKey = routeKey, View = view, Place = place, Playing = playing,
             Play = Play, PlaySample = PlaySample, PlayChapter = PlayChapter, ToggleLibrary = ToggleLibrary,
@@ -403,7 +425,11 @@ public sealed class AudiobookScreen : Component
             Buy = Buy, Download = null, OpenUri = static uri => Shell.OpenLink(uri), Menu = Menu, Share = Share,
             OpenRoute = static key => Shell.GoTo(Shell.Parse(key)),
             SimilarMenu = SimilarMenu, PlaySimilar = PlaySimilar,
-            Rate = Platform.Args.Fake ? null : Rate,
+            Rate = Rater.Rate, RateState = rateState,
+            // A genre searches its words: the genre tree's ids (32-hex AUDIOBOOK_GENRE nodes) name no page Wavee opens (Browse opens
+            // spotify:page: categories), so the older page's topic search is the real destination.
+            OpenGenre = Show.OpenTopic,
+            CoverDrag = PodcastPages.CoverDrag(subject),
         };
 
         void Play()
@@ -498,21 +524,6 @@ public sealed class AudiobookScreen : Component
             });
             var target = ActionTarget.ForShow(show.Uri, s.View.Title);
             return Menus.Container(in target, s.View.ArtUrl, null, new ContainerExtras { OnPage = true, Tail = [mark] });
-        }
-
-        async void Rate(int value)
-        {
-            var show = Peek().Show;
-            uint epoch = Entities.ScopeEpoch.Peek();
-            Spotify.Podcasts.Mutation result;
-            try { result = await Spotify.Podcasts.RateAsync(UriText, value, CancellationToken.None).ConfigureAwait(false); }
-            catch { result = new(false, 0, true); }
-            Store.Post(() =>
-            {
-                if (Entities.ScopeEpoch.Peek() != epoch || !result.Success || !show.IsValid) return;
-                Entities.Invalidate(Entities.Current.Shows, [show.Slot], (uint)ShowFields.Rating);
-                Entities.Ensure(show, ShowFields.Rating);
-            });
         }
     }
 }

@@ -61,6 +61,15 @@ public sealed record PodcastEpisodeVm(
     /// <summary>The description without the opening line the show's episodes share ("Welcome back!"): a row's one line starts on what THIS
     /// episode is about. The whole <see cref="Description"/> where none is shared.</summary>
     public string Blurb { get => _blurb.Length > 0 ? _blurb : Description; init => _blurb = value; }
+    /// <summary>The episode is for a show's subscribers (Spotify's paywall) / only its preview is available (the full episode is not playable).</summary>
+    public bool Paywalled { get; init; }
+    public bool PreviewOnly { get; init; }
+    /// <summary>The lock tag of a restricted episode ("Subscribers only", "Preview only", "Unavailable"; "" = none): a row draws it with the lock glyph
+    /// beside its meta, and a row that is not <see cref="Playable"/> draws its play button off.</summary>
+    public string Lock { get; init; } = "";
+    /// <summary>The episode is explicit (the house "E" in the row's meta) / a bonus episode (the Bonus tag; <see cref="Trailer"/> is the trailer's).</summary>
+    public bool Explicit { get; init; }
+    public bool Bonus { get; init; }
 }
 
 /// <summary>One item of the smart action's menu ("Other ways to play").</summary>
@@ -117,6 +126,16 @@ public sealed record PodcastCardVm(string Uri, string Title, string Subtitle, st
 /// <summary>A fact of the About list ("Publisher · Halden Audio").</summary>
 public sealed record PodcastFact(string Label, string Value);
 
+/// <summary>The rate control's state, ONE shape for the show page and the audiobook page (their hosts share one rate verb). <see cref="Mine"/> is the
+/// listener's own stars (0 = not rated yet), shown at rest in <see cref="Line"/> ("12,431 ratings · yours 5★"; "" = no public rating and none of
+/// yours). <see cref="Enabled"/>: the stars take a pick now (the account may rate this show or book, the session can write, no write is in flight);
+/// <see cref="Busy"/>: a write is in flight. <see cref="Title"/> heads the picker ("Rate Halden"); <see cref="Note"/> says why the stars are off, that
+/// the rating is being saved, or that the write failed (<see cref="Failed"/>: draw it as an error); "" = nothing to say.</summary>
+public sealed record PodcastRateVm(int Mine, bool Enabled, bool Busy, bool Failed, string Title, string Line, string Note)
+{
+    public static PodcastRateVm None { get; } = new(0, false, false, false, "", "", "");
+}
+
 /// <summary>The show's identity and the About facts. <see cref="Tone"/> is the cover's dark colour (the wash), 0 = none. <see cref="RatingX100"/> 0 = no
 /// public rating; <see cref="Rating"/> is its text ("4.8"), <see cref="RatingCount"/> the hero's "(12,431)" and <see cref="Ratings"/> the card's
 /// "12,431 ratings". <see cref="CanRate"/>: the listener may rate the show (the card's Rate button).</summary>
@@ -127,6 +146,11 @@ public sealed record PodcastShowHead(
 {
     /// <summary>The About text as HTML when the provider sent it ("" = only <see cref="About"/>).</summary>
     public string AboutHtml { get; init; } = "";
+    /// <summary>The listener's own rating, 0..5 (0 = not rated).</summary>
+    public int MyRating { get; init; }
+    /// <summary>The show is explicit (the house "E" beside its tags) / a Spotify exclusive (the Exclusive tag).</summary>
+    public bool Explicit { get; init; }
+    public bool Exclusive { get; init; }
 }
 
 /// <summary>The details pane's chapters of the selected episode: up to five around the current one (<see cref="Shown"/>), how many there are in all
@@ -196,8 +220,10 @@ public sealed record PodcastShowPageProps
     public required Action PlaySmart { get; init; }
     /// <summary>The selected episode's chapters for the details pane.</summary>
     public required IReadSignal<PodcastPaneChapters> PaneChapters { get; init; }
-    /// <summary>Rate the show (null: the listener cannot).</summary>
-    public required Action? Rate { get; init; }
+    /// <summary>Rate the show 1..5 stars (null: this session cannot write a rating); <see cref="RateState"/> says whether the stars take a pick now.</summary>
+    public required Action<int>? Rate { get; init; }
+    /// <summary>The rate control's state (the listener's own stars at rest, busy, failed, why it is off), live.</summary>
+    public required IReadSignal<PodcastRateVm> RateState { get; init; }
     public required Action<string> Open { get; init; }
     public required Action<string> ToggleSaved { get; init; }
     public required Action<string> PlayNext { get; init; }
@@ -212,12 +238,17 @@ public sealed record PodcastShowPageProps
     public required Action? Share { get; init; }
     /// <summary>The eyebrow's kind word ("Podcast"): its hub. Null: the word is plain text.</summary>
     public Action? OpenKind { get; init; }
+    /// <summary>A topic of <see cref="PodcastShowHead.Topics"/>, by its words: Search for it. Null: the topics are plain text.</summary>
+    public Action<string>? OpenTopic { get; init; }
     /// <summary>"More like this": a card's context menu and its play button (null: none).</summary>
     public Func<string, ContextMenuModel?>? CardMenu { get; init; }
     public Action<string>? PlayCard { get; init; }
     /// <summary>An episode row's drag payload, built when a drag promotes (a cold factory; wrap it in the house's <c>Drag.Source</c>): it drops onto a
     /// playlist and onto the queue as a track does. Null: the rows carry no drag.</summary>
     public Func<string, object?>? RowDrag { get; init; }
+    /// <summary>The hero cover's drag source (ONE per page, made by the host: the show as the house's show payload, read when the drag promotes):
+    /// it pins onto the sidebar and drops onto a playlist or the queue as a show card does. Null: the cover carries no drag.</summary>
+    public DragSource? CoverDrag { get; init; }
 }
 
 /// <summary>One chapter of an episode: where it starts, its length and how far the listener is through it (0..1).</summary>
@@ -255,6 +286,9 @@ public sealed record PodcastEpisodeView(
     /// <summary>The chapters / the comments have not answered yet: a tab keeps its count's room (no tab moves when the count lands).</summary>
     public bool ChaptersPending { get; init; }
     public bool CommentsPending { get; init; }
+    /// <summary>Why the episode cannot be played ("Only a preview is available for this episode.", "This episode requires access through Spotify.";
+    /// "" = it plays): the hero draws this quiet state, with the lock, in place of the play button.</summary>
+    public string Blocked { get; init; } = "";
 
     public static PodcastEpisodeView Empty { get; } = new(PodcastLoad.Pending,
         new PodcastEpisodeVm("", "", "", 0, false, "", 0, "", "", 0f, PodcastRowState.Unplayed, false, false, false, false, 0, false, null),
@@ -391,6 +425,10 @@ public sealed record AudiobookView(
     /// <summary>About this book as the provider's HTML (paragraphs, bold, links), or plain text; rendered by the house rich-text renderer.</summary>
     public string AboutHtml { get; init; } = "";
 
+    /// <summary>The listener's own rating, 0..5 (0 = not rated), and whether the account may rate this book.</summary>
+    public int MyRating { get; init; }
+    public bool CanRate { get; init; }
+
     /// <summary>A representative book the loading state is derived from (its words are never shown: the skeleton fills them).</summary>
     public static AudiobookView Placeholder { get; } = Empty with
     {
@@ -444,6 +482,13 @@ public sealed record AudiobookPageProps
     /// <summary>A similar book's context menu (the container menu of a show) and its play verb, for the house cards.</summary>
     public required Func<string, ContextMenuModel?> SimilarMenu { get; init; }
     public required Action<string> PlaySimilar { get; init; }
-    /// <summary>Rate the book (1..5 stars), null when the account cannot rate it.</summary>
+    /// <summary>Rate the book 1..5 stars (null: this session cannot write a rating); <see cref="RateState"/> says whether the stars take a pick now.</summary>
     public required Action<int>? Rate { get; init; }
+    /// <summary>The rate control's state (the listener's own stars at rest, busy, failed, why it is off), live.</summary>
+    public required IReadSignal<PodcastRateVm> RateState { get; init; }
+    /// <summary>A genre of <see cref="AudiobookView.Genres"/>, by its words: Search for it. Null: the genres are plain text.</summary>
+    public Action<string>? OpenGenre { get; init; }
+    /// <summary>The hero cover's drag source (ONE per page, made by the host: the book as the house's show payload, as
+    /// <see cref="PodcastShowPageProps.CoverDrag"/>). Null: the cover carries no drag.</summary>
+    public DragSource? CoverDrag { get; init; }
 }

@@ -315,7 +315,19 @@ internal static class WinUiPodcastKit
     /// list's lead and its episode is not started; <c>Desc</c>: it writes its description (one line under the title of a wide row at rest, two on
     /// the lead).</summary>
     readonly record struct RowShape(PodcastRowState State, float Progress, bool Saved, bool Video, bool Date, bool Length, bool Left, bool Desc,
-        bool Selected, bool Playing, bool Lead);
+        bool Selected, bool Playing, bool Lead)
+    {
+        /// <summary>The episode cannot be played (its play button is off) / it carries the lock tag (its words are bound).</summary>
+        public bool Blocked { get; init; }
+        public bool Locked { get; init; }
+        /// <summary>The row's tags after its words: explicit, bonus, trailer, the transcript mark.</summary>
+        public bool Explicit { get; init; }
+        public bool Bonus { get; init; }
+        public bool Trailer { get; init; }
+        public bool Transcript { get; init; }
+        /// <summary>The row carries a tag (the lock, or one of the four).</summary>
+        public bool Tagged => Locked || Explicit || Bonus || Trailer || Transcript;
+    }
 
     sealed class RowHost : Component, IPropsHost
     {
@@ -325,13 +337,15 @@ internal static class WinUiPodcastKit
         RowProps _p = null!;
         string? _shownId;
         readonly Func<RowShape> _shapeOf;
-        readonly Func<string> _title, _date, _length, _desc, _numeral;
+        readonly Func<string> _title, _date, _length, _desc, _numeral, _lock;
         readonly Func<ContextMenuModel?> _menu;
         readonly Action _click, _play, _save, _exit;
         readonly Action<Point2> _move;
         readonly Action<KeyEventArgs> _key;
         readonly Action<PointerEventArgs> _press;
         DragSource? _drag;
+        Action<ContextRequestEventArgs>? _context;
+        IOverlayService? _contextOverlay;
 
         public RowHost()
         {
@@ -343,6 +357,7 @@ internal static class WinUiPodcastKit
             _date = () => Vm?.Date ?? "";
             _length = () => Vm is { } v ? v.State == PodcastRowState.InProgress && v.Left.Length > 0 ? v.Left : v.Length : "";
             _desc = () => Vm?.Blurb ?? "";
+            _lock = () => Vm?.Lock ?? "";
             _menu = () => _p.Verbs.Menu(Id);
             _click = Click;
             _play = () => _p.Verbs.Play(Id);
@@ -378,7 +393,10 @@ internal static class WinUiPodcastKit
             bool desc = vm.Blurb.Length > 0 && (lead || (rest && p.Wide && !p.Compact && p.Description));
             return new RowShape(vm.State, vm.State == PodcastRowState.InProgress ? vm.Progress : 0f, vm.Saved, vm.Video, vm.Date.Length > 0,
                 left || vm.Length.Length > 0, left, desc,
-                p.Mode == PodcastRowMode.Select && v.Selected.Value == id, v.Playing.Value == id, lead);
+                p.Mode == PodcastRowMode.Select && v.Selected.Value == id, v.Playing.Value == id, lead)
+            {
+                Blocked = !vm.Playable, Locked = vm.Lock.Length > 0, Explicit = vm.Explicit, Bonus = vm.Bonus, Trailer = vm.Trailer, Transcript = vm.HasTranscript,
+            };
         }
 
         public override Element Render()
@@ -386,11 +404,19 @@ internal static class WinUiPodcastKit
             var p = _props.Value ?? _p;
             var s = UseComputed(_shapeOf).Value;
             bool hover = _hover.Value;
+            var overlay = UseContext(Overlay.Service);
             var vm = (p.Source ?? _own).Peek();
             if (vm is null) return new BoxEl();
             // The row drags as its episode (onto a playlist, the queue, the player bar): ONE source per row, reading the episode the row holds when the
             // drag promotes (a rebind never rebuilds it); the payload is built then.
             if (_drag is null && p.Verbs.Drag is not null) _drag = Wavee.Drag.Source(() => _p.Verbs.Drag?.Invoke(Id));
+            // A right-click (or the context key) on the row opens its episode's menu, the same one its "…" opens: ONE handler per row (per overlay
+            // service), whose menu delegate reads the episode the row holds when the menu opens, so a rebind neither rebuilds nor allocates it.
+            if (!ReferenceEquals(overlay, _contextOverlay))
+            {
+                _contextOverlay = overlay;
+                _context = Controls.IsNullOverlay(overlay) ? null : ContextSheets.Attach(new BoxEl(), overlay!, _menu).OnContextRequested;
+            }
             // A row a recycled slot binds to ANOTHER episode shows that episode's state at once (no fill fading from the last one it held); the same
             // episode selected or released fades.
             bool rebound = _shownId is not null && _shownId != vm.Id;
@@ -429,18 +455,21 @@ internal static class WinUiPodcastKit
                 : null;
             if (lead)
             {
-                text.Add(RowMeta(s, _date, _length));
+                text.Add(RowMeta(s, _date, _length, _lock));
                 text.Add(title);
                 if (leadBlurb is not null && !p.Compact) text.Add(leadBlurb);
             }
             else if (!wide)
             {
                 text.Add(title);
-                if (!played) text.Add(RowMeta(s, _date, _length));
+                // A played row is one quiet line; one that carries a tag (the lock, the "E") says it under its title, after its date alone
+                // (the whole line and the tags do not fit a phone's column: the words gave way to a letter).
+                if (!played || s.Tagged) text.Add(RowMeta(s, _date, _length, _lock));
             }
             else
             {
-                text.Add(title);
+                // A wide row has no meta line (its date and length stand at its end): its tags stand after its title.
+                text.Add(s.Tagged ? TitleWithTags(title, s, _lock) : title);
                 if (progress) text.Add(RowBar(s.Progress));
                 else if (s.Desc)
                     text.Add(Body("") with { Text = Prop.Of(_desc), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextSecondary, MinWidth = 0f });
@@ -462,7 +491,7 @@ internal static class WinUiPodcastKit
                 });
             cells.Add(new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = lead ? K.LeadGap : 0f, Children = text.ToArray() });
             // The date and the length at the row's end (the lead and a narrow list write them as their meta line).
-            if (wide && !lead) cells.Add(RowMeta(s, _date, _length, end: true));
+            if (wide && !lead) cells.Add(RowMeta(s, _date, _length, _lock, end: true));
             cells.Add(new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [save, more] });
             Element line = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = K.RowColGap, MinWidth = 0f, Children = cells.ToArray() };
 
@@ -482,7 +511,7 @@ internal static class WinUiPodcastKit
                 BorderWidth = lead ? 1f : 0f, BorderColor = lead ? Tok.StrokeCardDefault : ColorF.Transparent,
                 PressedFill = lead ? Tok.FillCardSecondary : Tok.FillSubtleTertiary, BrushTransitionMs = rebound ? 0f : Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, OnPointerPressed = _press, Draggable = _drag,
-                Gap = lead ? K.LeadGap + K.LeadGap : 0f,
+                Gap = lead ? K.LeadGap + K.LeadGap : 0f, OnContextRequested = _context,
                 Children = leadBlurb is not null && p.Compact ? [line, leadBlurb] : [line],
             };
             // ONE tree selected or not (the pill is present, painted only while selected: an opacity, never a presence change): a selection that comes
@@ -539,6 +568,16 @@ internal static class WinUiPodcastKit
         ],
     };
 
+    /// <summary>A wide row's title with its tags after it (the lock and why, the "E", Bonus, Trailer, the transcript mark): the title gives way
+    /// with its ellipsis, the tags keep their width.</summary>
+    static Element TitleWithTags(TextEl title, RowShape s, Func<string> lockTag)
+    {
+        var kids = new List<Element>(6) { title with { Shrink = 1f } };
+        if (s.Locked) kids.Add(LockTag(MetaWord("") with { Text = Prop.Of(lockTag) }));
+        Tags(kids, s.Explicit, s.Bonus, s.Trailer, s.Transcript);
+        return new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
+    }
+
     /// <summary>The row's play button: a circle (36 / 40) with the ring while in progress and the check while played (replay on hover).
     /// <paramref name="strong"/>: the lead's, filled with the accent.</summary>
     static Element PlayButton(RowShape s, float size, bool hover, Action play, bool strong = false)
@@ -546,7 +585,8 @@ internal static class WinUiPodcastKit
         bool prog = s.State == PodcastRowState.InProgress;
         bool played = s.State == PodcastRowState.Played;
         bool playing = s.Playing;
-        string glyph = playing ? WinUiDetailRules.PauseSolid : played ? (hover ? Icons.Refresh : Icons.Check) : WinUiDetailRules.PlaySolid;
+        bool off = s.Blocked;
+        string glyph = playing ? WinUiDetailRules.PauseSolid : played ? (hover && !off ? Icons.Refresh : Icons.Check) : WinUiDetailRules.PlaySolid;
         string name = Loc.Get(playing ? Strings.Podcast.Pages.Pause : prog ? Strings.Podcast.Pages.Resume : played ? Strings.Podcast.Pages.PlayAgain
             : Strings.Podcast.Pages.Play);
         var layers = new List<Element>(3);
@@ -561,32 +601,41 @@ internal static class WinUiPodcastKit
         {
             Width = size, Height = size, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false,
             Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-            Children = [Icon(glyph, K.PlayGlyph, strong ? Tok.OnAccent : played && !hover && !playing ? Tok.TextTertiary : Tok.TextPrimary)],
+            Children = [Icon(glyph, K.PlayGlyph, off ? Tok.TextDisabled : strong ? Tok.OnAccent : played && !hover && !playing ? Tok.TextTertiary : Tok.TextPrimary)],
         });
         bool plate = !prog && !played;
+        ColorF fill = off ? (plate ? Tok.FillControlDisabled : Tok.FillSubtleTransparent)
+            : strong ? Tok.AccentDefault : plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent;
         return Controls.Named(new BoxEl
         {
             // Its size steps at Compact (the 40 target): it eases, never snaps.
             Key = "row:play", ZStack = true, Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(size / 2f), Layout = WinUiDiscoveryMotion.SizeReflow,
-            Fill = strong ? Tok.AccentDefault : plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent,
-            HoverFill = strong ? Tok.AccentSecondary : Tok.FillControlSecondary, PressedFill = strong ? Tok.AccentTertiary : Tok.FillControlTertiary,
+            // An episode that cannot be played: the button is off (the disabled plate and glyph, no click); the row's lock tag says why.
+            Fill = fill, HoverFill = off ? fill : strong ? Tok.AccentSecondary : Tok.FillControlSecondary,
+            PressedFill = off ? fill : strong ? Tok.AccentTertiary : Tok.FillControlTertiary,
             BorderWidth = played ? 1f : 0f, BorderBrush = played ? Tok.ControlElevationBorder : null,
-            Role = AutomationRole.Button, Focusable = true, OnClick = play, Children = layers.ToArray(),
+            Role = AutomationRole.Button, Focusable = !off, OnClick = off ? null : play, Children = layers.ToArray(),
         }, name);
     }
 
-    /// <summary>The row's meta line (<see cref="MetaLine"/>'s parts) with its date and its length (or the accent time left) bound.
-    /// <paramref name="end"/>: it stands at the row's end, where it keeps its width; a played row says its date alone there (the check and the
-    /// quiet title say the rest).</summary>
-    static Element RowMeta(RowShape s, Func<string> date, Func<string> length, bool end = false)
+    /// <summary>The row's meta line (<see cref="MetaLine"/>'s parts) with its date and its length (or the accent time left) bound, then the row's
+    /// tags (the lock and why, the "E", Bonus, Trailer, the transcript mark). <paramref name="end"/>: it stands at the row's end, where it keeps
+    /// its width and carries no tag (they stand after the title). A played row says its date alone, there and under its title (the check and the
+    /// quiet title say the rest), then its tags.</summary>
+    static Element RowMeta(RowShape s, Func<string> date, Func<string> length, Func<string> lockTag, bool end = false)
     {
         var kids = new List<Element>(5);
-        bool quiet = end && s.State == PodcastRowState.Played;
+        bool quiet = s.State == PodcastRowState.Played && (end || s.Tagged);
         if (s.State == PodcastRowState.New) kids.Add(NewMark());
         if (s.Date) kids.Add(MetaPart(false, MetaWord("") with { Text = Prop.Of(date) }));
         if (s.Length && !quiet) kids.Add(MetaPart(s.Date, MetaWord("") with { Text = Prop.Of(length), Color = s.Left ? Tok.AccentTextPrimary : Tok.TextTertiary }));
         if (s.State == PodcastRowState.Played && !quiet) kids.Add(MetaPart(s.Date || s.Length, MetaWord(Loc.Get(Strings.Podcast.Pages.Played))));
         if (s.Video && !quiet) kids.Add(VideoTag());
+        if (!end)
+        {
+            if (s.Locked) kids.Add(LockTag(MetaWord("") with { Text = Prop.Of(lockTag) }));
+            Tags(kids, s.Explicit, s.Bonus, s.Trailer, s.Transcript);
+        }
         return new BoxEl
         {
             Key = end ? "row:aside" : null, Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = end ? 0f : 1f,
@@ -607,6 +656,8 @@ internal static class WinUiPodcastKit
         else if (vm.Length.Length > 0) { kids.Add(MetaPart(any, MetaWord(vm.Length))); any = true; }
         if (vm.State == PodcastRowState.Played) kids.Add(MetaPart(any, MetaWord(Loc.Get(Strings.Podcast.Pages.Played))));
         if (vm.Video) kids.Add(VideoTag());
+        if (vm.Lock.Length > 0) kids.Add(LockTag(MetaWord(vm.Lock)));
+        Tags(kids, vm.Explicit, vm.Bonus, vm.Trailer, vm.HasTranscript);
         return new BoxEl { Direction = 0, Gap = K.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids.ToArray() };
     }
 
@@ -636,6 +687,62 @@ internal static class WinUiPodcastKit
     {
         Direction = 0, Gap = K.MetaGap / 2f, AlignItems = FlexAlign.Center, Shrink = 0f,
         Children = [Icon(Icons.Video, K.MetaGlyph, Tok.TextTertiary), MetaWord(Loc.Get(Strings.Podcast.Pages.Video))],
+    };
+
+    /// <summary>The topic / genre words of a header line, each a link of its own (the accent ink at rest, the subtle plate on hover and press, focus,
+    /// the hand) that opens <paramref name="open"/> with its words; plain secondary words when <paramref name="open"/> is null. Each word carries
+    /// the "·" before it (the line continues a kind word, so it starts on one), so no line starts or ends on a separator. ONE line that hugs its
+    /// words and gives way a whole word at a time (<see cref="Controls.WordLine"/>): a word is never cut, never half a target, and
+    /// <paramref name="trailing"/> (the tags) sits right after the last word that shows. <paramref name="target"/>:
+    /// the tier's control height, which each word's hit rect reaches (its slop, inside the clip: the type and the line keep their size).</summary>
+    public static Element WordLinks(string key, ImmutableArray<string> words, Action<string>? open, float target, Element[]? trailing = null)
+    {
+        var caption = Caption("");
+        float line = caption.LineHeight;
+        float slop = MathF.Max(0f, (target - line) / 2f);
+        var units = new Element[words.Length];
+        for (int i = 0; i < words.Length; i++)
+        {
+            string word = words[i];
+            Element w = open is null
+                ? caption with { Text = word, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap }
+                : new BoxEl
+                {
+                    Key = key + ":" + i, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                    Padding = new Edges4(K.WordLinkPadX, 0f, K.WordLinkPadX, 0f), Margin = new Edges4(-K.WordLinkPadX, 0f, -K.WordLinkPadX, 0f),
+                    HitSlop = new Edges4(0f, slop, 0f, slop), Corners = Radii.ControlAll,
+                    Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+                    Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true, OnClick = () => open(word),
+                    Children = [caption with
+                    {
+                        Text = word, Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary, PressedColor = Tok.AccentTextTertiary, Wrap = TextWrap.NoWrap,
+                    }],
+                };
+            units[i] = new BoxEl
+            {
+                Direction = 0, Gap = K.WordLinkGap, AlignItems = FlexAlign.Center, Shrink = 0f, Height = line, Margin = new Edges4(0f, 0f, 0f, slop),
+                Children = [caption with { Text = "·", Color = Tok.TextSecondary }, w],
+            };
+        }
+        return Controls.WordLine(key, units, trailing ?? [], line, slop, K.WordLinkGap);
+    }
+
+    /// <summary>The row's tags after its words, each whole (never clipped; the words before them give way): the house "E", Bonus, Trailer and the
+    /// transcript mark (the document glyph, named for assistive tech).</summary>
+    static void Tags(List<Element> kids, bool isExplicit, bool bonus, bool trailer, bool transcript)
+    {
+        if (isExplicit) kids.Add(WinUiRowCells.ExplicitMark());
+        if (bonus) kids.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Bonus)));
+        if (trailer) kids.Add(MetaWord(Loc.Get(Strings.Podcast.Pages.Trailer)));
+        if (transcript)
+            kids.Add(Controls.Named(new BoxEl { Shrink = 0f, Children = [Icon(Icons.Document, K.MetaGlyph, Tok.TextTertiary)] }, Loc.Get(Strings.Podcast.Pages.TranscriptMark)));
+    }
+
+    /// <summary>The lock tag of a restricted episode ("Subscribers only", "Preview only"): the lock and the word, never clipped (as the Video tag).</summary>
+    static Element LockTag(TextEl word) => new BoxEl
+    {
+        Direction = 0, Gap = K.MetaGap / 2f, AlignItems = FlexAlign.Center, Shrink = 0f,
+        Children = [Icon(Icons.Lock, K.MetaGlyph, Tok.TextTertiary), word],
     };
 
     static TextEl MetaWord(string text) => Caption(text) with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f };

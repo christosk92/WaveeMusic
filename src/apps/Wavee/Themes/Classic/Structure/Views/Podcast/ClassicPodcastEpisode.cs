@@ -135,10 +135,12 @@ internal static class ClassicPodcastEpisode
             bool pausing = v.PrimaryLabel == Loc.Get(Strings.Podcast.Pages.Pause);
             var up = new List<Element>(2)
             {
-                ClassicPodcastKit.Primary("cpe-split", v.PrimaryLabel, pausing ? Icons.Pause : e.State == PodcastRowState.Played ? Icons.Refresh : Icons.Play,
+                // An episode that cannot be played says why, quietly, with the lock, where the play button stands.
+                v.Blocked.Length > 0 ? ClassicPodcastKit.Blocked("cpe-blocked", v.Blocked, lay.Target)
+                : ClassicPodcastKit.Primary("cpe-split", v.PrimaryLabel, pausing ? Icons.Pause : e.State == PodcastRowState.Played ? Icons.Refresh : Icons.Play,
                     a.Accent, v.PrimaryAccent, p.Play, v.Menu, lay.Target),
             };
-            if (e.State == PodcastRowState.InProgress)
+            if (e.State == PodcastRowState.InProgress && v.Blocked.Length == 0)
             {
                 var pos = p.PositionMs;
                 int duration = Math.Max(1, v.DurationMs);

@@ -8,12 +8,14 @@ namespace Wavee;
 
 public readonly partial struct Show
 {
+    /// <summary>A topic's destination: Search for its words (the topics carry no page of their own). The library pane's topic words and the podcast
+    /// show page's topic links (<c>PodcastShowPageProps.OpenTopic</c>) share it.</summary>
+    internal static readonly Action<string> OpenTopic = static topic => Shell.GoTo(new Shell.Route(Shell.RouteKind.Search, default, Entities.Strings.Intern(topic)));
+
     /// <summary>The topic words under the CTA: the core resolves the topics and the search each one opens; the structure draws them
     /// (<see cref="ShowReaderStyle.Topics"/>).</summary>
     sealed class TopicsSlot : Component
     {
-        static readonly Action<string> s_openTopic = static topic => Shell.GoTo(new Shell.Route(Shell.RouteKind.Search, default, Entities.Strings.Intern(topic)));
-
         public override Element Render()
         {
             var p = UseProps<SlotProps>();
@@ -23,7 +25,7 @@ public readonly partial struct Show
             var show = p.Model.Read().Show;
             if (style is null || !show.IsValid || show.TopicsId.IsEmpty) return new BoxEl();
             var topics = Entities.Strings.Resolve(show.TopicsId).Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            return style.Topics(new ShowTopicsArgs { Topics = topics, Open = s_openTopic, Width = p.Width });
+            return style.Topics(new ShowTopicsArgs { Topics = topics, Open = OpenTopic, Width = p.Width });
         }
     }
 

@@ -74,7 +74,7 @@ internal static class ClassicPodcastAudiobook
         {
             new BoxEl
             {
-                Key = "cpa-cover", Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ClassicTierMotion.Reflow,
+                Key = "cpa-cover", Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ClassicTierMotion.Reflow, Draggable = p.CoverDrag,
                 Children = [Controls.Artwork(v.ArtUrl, lay.Cover, lay.Cover, P.CoverRadius, decodePx: P.CoverDecode)],
             },
         };
@@ -497,7 +497,10 @@ internal static class ClassicPodcastAudiobook
         if (Rating(a) is { } rating) side.Add(rating);
         var sideBox = new BoxEl
         {
+            // Stacked under the text it takes the column's width (the parent aligns Start, which would hug the widest unwrapped child, the sample
+            // button, and break the facts' values mid-word).
             Key = "cpa-about-side", Direction = 1, Gap = P.ColumnGap, MinWidth = 0f, Width = a.Lay.AboutBeside ? P.AboutW : float.NaN, Shrink = 0f,
+            AlignSelf = a.Lay.AboutBeside ? FlexAlign.Start : FlexAlign.Stretch,
             Children = side.ToArray(),
         };
         return new BoxEl
@@ -512,19 +515,34 @@ internal static class ClassicPodcastAudiobook
     {
         var v = a.V;
         var p = a.P;
+        var rs = p.RateState.Value;
         if (v.State == AudiobookState.Finished)
         {
-            var lines = new List<Element>(2) { BodyStrong(v.FinishedTitle) };
+            // "How was it?": the stars inline, holding the listener's own rating; the note says why they are off, the write in flight or its failure.
+            var lines = new List<Element>(4) { BodyStrong(v.FinishedTitle) };
             if (v.FinishedSub.Length > 0) lines.Add(Caption(v.FinishedSub) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f });
             var accent = a.Accent;
-            lines.Add(Controls.StarRow(0, p.Rate, P.PlayGlyph + P.TagGap, () => Design.Palette.ReadableInk(accent)));
+            lines.Add(Controls.StarRow(rs.Mine, rs.Enabled ? p.Rate : null, P.RateStar, () => Design.Palette.ReadableInk(accent)));
+            if (rs.Note.Length > 0)
+                lines.Add(Caption(rs.Note) with { Color = rs.Failed ? Tok.SystemFillCritical : Tok.TextTertiary, Wrap = TextWrap.Wrap, MinWidth = 0f });
             return new BoxEl { Key = "cpa-rate", Direction = 1, Gap = P.FactsRowGap, MinWidth = 0f, Children = lines.ToArray() };
         }
-        if (v.RatingsLine.Length == 0) return null;
+        if (v.Rating.Length == 0 || rs.Line.Length == 0) return null;
+        // The line with Rate beside it, as the Classic show's rating row: in progress it opens the shared picker; before the first listen it is
+        // "Rate after listening", off (WinUI's and Zune's rule).
+        var tone = a.Accent;
+        Element rate = v.State == AudiobookState.InProgress
+            ? Controls.RateFlyout("cpa-rate-btn", Button.Create(v.RateLabel, static () => { }) with { Height = a.Lay.Target, MinWidth = 0f }, p.RateState, p.Rate,
+                P.RateStar, () => Design.Palette.ReadableInk(tone))
+            : Button.Create(v.RateLabel, static () => { }, isEnabled: false) with { Key = "cpa-rate-btn", Height = a.Lay.Target, Shrink = 0f, MinWidth = 0f };
         return new BoxEl
         {
-            Key = "cpa-rating", Direction = 1, Gap = P.FactsRowGap, MinWidth = 0f,
-            Children = [ClassicPodcastKit.Line(ClassicPodcastKit.Strong(v.Rating), new TextSpan(" ★" + P.Dot + v.RatingsLine))],
+            Key = "cpa-rating", Direction = 0, Gap = P.CommandGap, AlignItems = FlexAlign.Center, Wrap = true, MinWidth = 0f,
+            Children =
+            [
+                ClassicPodcastKit.Line(ClassicPodcastKit.Strong(v.Rating), new TextSpan(" ★" + P.Dot + rs.Line)) with { Grow = 1f, Shrink = 1f, Basis = 0f },
+                rate,
+            ],
         };
     }
 }

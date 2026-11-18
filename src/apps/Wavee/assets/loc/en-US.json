@@ -1046,7 +1046,9 @@
     "yours": "yours {stars}★",
     "rate": {
       "title": "Rate {name}",
-      "unavailable": "Rating isn't available in Wavee yet — the average and your own rating are shown as Spotify has them.",
+      "closed": "Spotify isn't taking ratings for this from your account.",
+      "demo": "Ratings aren't saved in the demo. Sign in to rate.",
+      "saving": "Saving your rating…",
       "stars": "{count, plural, one {# star} other {# stars}}"
     },
     "notify": {
@@ -1188,7 +1190,6 @@
       "playAsVideo": "Play as video",
       "audioOnly": "Audio only",
       "notifyUnavailable": "New-episode notifications are not available yet",
-      "rateUnavailable": "Rating a show is not available yet",
       "loadMore": "Load more episodes",
       "play": "Play",
       "playAgain": "Play again",
@@ -1338,7 +1339,14 @@
       "follow": "Follow",
       "following": "Following",
       "share": "Share",
-      "download": "Download"
+      "download": "Download",
+      "lockSubscribers": "Subscribers only",
+      "lockPreview": "Preview only",
+      "lockUnavailable": "Unavailable",
+      "unplayable": "This episode isn't available to play.",
+      "exclusive": "Exclusive",
+      "bonus": "Bonus",
+      "transcriptMark": "Has a transcript"
     }
   },
   "recents": {
@@ -3358,6 +3366,9 @@
         "category": "Category"
       },
       "detail": {
+        "$commentPodcast": "Podcast pages v2: the search fields' placeholders, written lowercase as the title bar's pill is (a placeholder takes no case role).",
+        "searchShow": "search this show",
+        "findInTranscript": "find in transcript",
         "$commentPlaylist": "Z6b1: the playlist's words. Written as people say them; the style's case roles lower them. chooseCover is the empty cover tile's word; emptyTitle and emptyLine lead an empty playlist (Z-State-Empty-Playlist); refresh and add are the recommended section's words.",
         "chooseCover": "Choose a cover",
         "emptyTitle": "Let’s find something for this playlist",

@@ -148,6 +148,18 @@ internal static class ClassicPodcastKit
         return new BoxEl { Direction = 0, Wrap = true, Gap = P.KindGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
+    /// <summary>The blocked state of an episode that cannot be played, in place of its play button and as tall: the lock and why, in the secondary
+    /// ink.</summary>
+    public static Element Blocked(string key, string why, float height) => new BoxEl
+    {
+        Key = key, Direction = 0, Gap = P.TagGap + P.TagGap, AlignItems = FlexAlign.Center, MinHeight = height, MinWidth = 0f,
+        Children =
+        [
+            Icon(Icons.Lock, P.PlayGlyph, Tok.TextSecondary),
+            new TextEl(why) { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, Shrink = 1f, MinWidth = 0f },
+        ],
+    };
+
     /// <summary>A tag of the kind line (Video, Serial, Included in Premium): a 1-DIP outline, 11/14 semibold.</summary>
     public static Element Tag(string word, string? glyph, ColorF? ink = null)
     {
@@ -181,6 +193,28 @@ internal static class ClassicPodcastKit
         Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f,
     };
 
+    /// <summary>Words as links ("Science, History"), wrapping: each the house hyperlink (rest, hover, pressed, focus; the kind word's look) that opens
+    /// <paramref name="open"/> with its words, its comma glued after it (no line starts on one). Each word's hit rect reaches
+    /// <paramref name="target"/> (its slop: the type keeps its size).</summary>
+    public static Element Links(string key, ImmutableArray<string> words, Action<string> open, float target)
+    {
+        float slop = MathF.Max(0f, (target - P.LineHeight) / 2f);
+        var units = new Element[words.Length];
+        for (int i = 0; i < words.Length; i++)
+        {
+            string word = words[i];
+            var link = HyperlinkButton.Create(word, () => open(word), size: ControlSize.Small) with
+            {
+                // No side padding: the comma after it and the next word sit where the text would, nothing overlaps.
+                Key = key + ":" + i, Shrink = 0f, Padding = default, HitSlop = new Edges4(0f, slop, 0f, slop),
+            };
+            units[i] = i + 1 < words.Length
+                ? new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [link, new TextEl(",") { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextSecondary }] }
+                : link;
+        }
+        return new BoxEl { Key = key, Direction = 0, Wrap = true, Gap = P.TagGap + P.TagGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = units };
+    }
+
     /// <summary>A strong run of a <see cref="Line"/>.</summary>
     public static TextSpan Strong(string text, Action? click = null)
         => new(text, Weight: P.Strong, Color: Tok.TextPrimary, OnClick: click, IsLink: click is not null);
@@ -196,8 +230,9 @@ internal static class ClassicPodcastKit
                 : Controls.RichTextFlex(html, size, Tok.TextSecondary, Tok.AccentTextPrimary, 0, DetailVerbs.NavigateKey)],
         };
 
-    /// <summary>A label / value list (Topics, Order, Released): 12/18, the label tertiary.</summary>
-    public static Element Facts(ImmutableArray<PodcastFact> facts, string key)
+    /// <summary>A label / value list (Topics, Order, Released): 12/18, the label tertiary. <paramref name="values"/>[i], when set, draws row i's value
+    /// instead of its text (the topics as links).</summary>
+    public static Element Facts(ImmutableArray<PodcastFact> facts, string key, Element?[]? values = null)
     {
         var rows = new Element[facts.Length];
         for (int i = 0; i < rows.Length; i++)
@@ -210,7 +245,8 @@ internal static class ClassicPodcastKit
                     new BoxEl
                     {
                         Grow = 1f, Basis = 0f, MinWidth = 0f,
-                        Children = [new TextEl(facts[i].Value) { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f }],
+                        Children = [values is not null && i < values.Length && values[i] is { } own ? own
+                            : new TextEl(facts[i].Value) { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f }],
                     },
                 ],
             };
@@ -559,7 +595,7 @@ internal static class ClassicPodcastKit
             }
             else
             {
-                text.Add(title);
+                text.Add(TitleWithTags(title, vm));
                 if (progress)
                     text.Add(new BoxEl
                     {
@@ -653,7 +689,8 @@ internal static class ClassicPodcastKit
     {
         bool prog = vm.State == PodcastRowState.InProgress;
         bool played = vm.State == PodcastRowState.Played;
-        string glyph = playing ? Icons.Pause : played ? (hover ? Icons.Refresh : Icons.Check) : Icons.Play;
+        bool off = !vm.Playable;
+        string glyph = playing ? Icons.Pause : played ? (hover && !off ? Icons.Refresh : Icons.Check) : Icons.Play;
         string name = Loc.Get(playing ? Strings.Podcast.Pages.Pause : prog ? Strings.Podcast.Pages.Resume : played ? Strings.Podcast.Pages.PlayAgain
             : Strings.Podcast.Pages.Play);
         var layers = new List<Element>(2);
@@ -668,17 +705,21 @@ internal static class ClassicPodcastKit
         {
             Width = size, Height = size, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, HitTestVisible = false,
             Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-            Children = [Icon(glyph, P.PlayGlyph, strong ? ColorContrast.PickContrast(accent) : played && !hover && !playing ? Tok.TextTertiary : Tok.TextPrimary)],
+            Children = [Icon(glyph, P.PlayGlyph, off ? Tok.TextDisabled : strong ? ColorContrast.PickContrast(accent)
+                : played && !hover && !playing ? Tok.TextTertiary : Tok.TextPrimary)],
         });
         bool plate = !prog && !played;
+        // An episode that cannot be played: the button is off (the disabled plate and glyph, no click); the meta's lock tag says why.
+        ColorF fill = off ? (plate ? Tok.FillControlDisabled : Tok.FillSubtleTransparent)
+            : strong ? accent : plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent;
         return Controls.Named(new BoxEl
         {
             Key = "row:play", ZStack = true, Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(size / 2f),
-            Fill = strong ? accent : plate ? Tok.FillControlDefault : Tok.FillSubtleTransparent,
-            HoverFill = strong ? accent with { A = P.LeadPlayHover } : Tok.FillControlSecondary,
-            PressedFill = strong ? accent with { A = P.LeadPlayPressed } : Tok.FillControlTertiary,
+            Fill = fill,
+            HoverFill = off ? fill : strong ? accent with { A = P.LeadPlayHover } : Tok.FillControlSecondary,
+            PressedFill = off ? fill : strong ? accent with { A = P.LeadPlayPressed } : Tok.FillControlTertiary,
             BorderWidth = played ? 1f : 0f, BorderBrush = played ? Tok.ControlElevationBorder : null,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = play, Children = layers.ToArray(),
+            Role = AutomationRole.Button, Focusable = !off, Cursor = off ? CursorId.Arrow : CursorId.Hand, OnClick = off ? null : play, Children = layers.ToArray(),
         }, name);
     }
 
@@ -707,12 +748,38 @@ internal static class ClassicPodcastKit
             Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             Shrink = 1f, MinWidth = 0f,
         };
-        if (!vm.Video) return run;
-        return new BoxEl
-        {
-            Direction = 0, Gap = P.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            Children = [run, Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video, Tok.TextTertiary)],
-        };
+        // The tags (Video, the lock, the "E", Bonus, Trailer, the transcript mark) are boxes after the run: they keep their width, the run gives way
+        // with an ellipsis.
+        if (!vm.Video && !Tagged(vm)) return run;
+        var kids = new List<Element>(7) { run };
+        if (vm.Video) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video, Tok.TextTertiary));
+        RowTags(kids, vm);
+        return new BoxEl { Direction = 0, Gap = P.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
+    }
+
+    /// <summary>The episode carries a row tag (the lock, the "E", Bonus, Trailer, the transcript mark).</summary>
+    static bool Tagged(PodcastEpisodeVm vm) => vm.Lock.Length > 0 || vm.Explicit || vm.Bonus || vm.Trailer || vm.HasTranscript;
+
+    /// <summary>The row's tags, each a box that keeps its width: the lock and why, the house "E", Bonus, Trailer, the transcript mark (named for
+    /// assistive tech).</summary>
+    static void RowTags(List<Element> kids, PodcastEpisodeVm vm)
+    {
+        if (vm.Lock.Length > 0) kids.Add(Tag(vm.Lock, Icons.Lock, Tok.TextTertiary));
+        if (vm.Explicit) kids.Add(Controls.ExplicitBadge(P.TagH));
+        if (vm.Bonus) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Bonus), null, Tok.TextTertiary));
+        if (vm.Trailer) kids.Add(Tag(Loc.Get(Strings.Podcast.Pages.Trailer), null, Tok.TextTertiary));
+        if (vm.HasTranscript)
+            kids.Add(Controls.Named(new BoxEl { Shrink = 0f, Children = [Icon(Icons.Document, P.TagGlyph, Tok.TextTertiary)] }, Loc.Get(Strings.Podcast.Pages.TranscriptMark)));
+    }
+
+    /// <summary>A wide row's title with the episode's tags after it: such a row has no meta line to carry them (its date and length stand at its
+    /// end). The title gives way with its ellipsis; the tags keep their width.</summary>
+    static Element TitleWithTags(TextEl title, PodcastEpisodeVm vm)
+    {
+        if (!Tagged(vm)) return title;
+        var kids = new List<Element>(6) { title with { Shrink = 1f } };
+        RowTags(kids, vm);
+        return new BoxEl { Direction = 0, Gap = P.MetaGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
     static TextEl Meta(string text) => new(text) { Size = P.LineSize, LineHeight = P.LineHeight, Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f, Wrap = TextWrap.NoWrap };

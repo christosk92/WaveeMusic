@@ -116,29 +116,25 @@ internal static partial class ClassicPodcastShow
                 new BoxEl
                 {
                     Key = "cp-cover", Shrink = 0f, AlignSelf = FlexAlign.Start, Layout = ClassicTierMotion.Reflow,
+                    // The cover drags as the show (the host's one source); the shimmer's carries none.
+                    Draggable = live ? _p.CoverDrag : null,
                     Children = [Controls.Artwork(h.ArtUrl, lay.Cover, lay.Cover, P.CoverRadius, decodePx: P.CoverDecode)],
                 },
             };
-            var tags = new List<Element>(2);
+            var tags = new List<Element>(4);
             if (h.Video) tags.Add(ClassicPodcastKit.Tag(Loc.Get(Strings.Podcast.Pages.Video), Icons.Video));
             if (h.Serial) tags.Add(ClassicPodcastKit.Tag(Loc.Get(Strings.Podcast.Pages.Serial), null));
+            if (h.Exclusive) tags.Add(ClassicPodcastKit.Tag(Loc.Get(Strings.Podcast.Pages.Exclusive), null));
+            if (h.Explicit) tags.Add(Controls.ExplicitBadge());
             var words = new List<Element>(4)
             {
                 ClassicPodcastKit.Kind(h.Kind, live ? _p.OpenKind : null, [.. tags]),
                 ClassicPodcastKit.Title(h.Title),
             };
             if (h.Publisher.Length > 0) words.Add(ClassicPodcastKit.Sub(h.Publisher));
-            var line = new List<TextSpan>(6);
-            if (h.Rating.Length > 0)
-            {
-                line.Add(ClassicPodcastKit.Strong(h.Rating));
-                line.Add(new TextSpan(" ★"));
-                if (h.Ratings.Length > 0) line.Add(new TextSpan(P.Dot + h.Ratings));
-                line.Add(new TextSpan("\n"));
-            }
+            if (h.Rating.Length > 0) words.Add(Rating(h, lay, accent));
             string counts = h.Count.Length > 0 && h.Cadence.Length > 0 ? h.Count + P.Dot + h.Cadence : h.Count + h.Cadence;
-            if (counts.Length > 0) line.Add(new TextSpan(counts));
-            if (line.Count > 0) words.Add(ClassicPodcastKit.Line([.. line]));
+            if (counts.Length > 0) words.Add(ClassicPodcastKit.Line(new TextSpan(counts)));
             kids.Add(new BoxEl { Key = "cp-id", Direction = 1, Gap = P.FactsRowGap, MinWidth = 0f, Children = words.ToArray() });
             if (v.Ledger.Played + v.Ledger.InProgress + v.Ledger.ToGo + v.Ledger.New > 0) kids.Add(ClassicPodcastKit.Ledger(v.Ledger, accent));
             kids.Add(Up(v, lay, accent, live));
@@ -146,10 +142,38 @@ internal static partial class ClassicPodcastShow
             if (h.AboutHtml.Length > 0 || h.About.Length > 0) kids.Add(ClassicPodcastKit.Description(h.AboutHtml.Length > 0 ? h.AboutHtml : h.About, "cp-about"));
             if (h.TrailerId is not null) kids.Add(Trailer(h));
             var facts = new List<PodcastFact>(2);
+            var values = new List<Element?>(2);
+            string topicsLabel = Loc.Get(Strings.Podcast.Pages.Topics);
             foreach (var f in h.Facts)
-                if (f.Label == Loc.Get(Strings.Podcast.Pages.Topics) || f.Label == Loc.Get(Strings.Podcast.Pages.Order)) facts.Add(f);
-            if (facts.Count > 0) kids.Add(ClassicPodcastKit.Facts([.. facts], "cp-facts"));
+            {
+                bool topics = f.Label == topicsLabel;
+                if (!topics && f.Label != Loc.Get(Strings.Podcast.Pages.Order)) continue;
+                facts.Add(f);
+                // The topics as links: each searches its words.
+                values.Add(topics && _p.OpenTopic is { } open && h.Topics.Length > 0 ? ClassicPodcastKit.Links("cp-topic", h.Topics, open, lay.Target) : null);
+            }
+            if (facts.Count > 0) kids.Add(ClassicPodcastKit.Facts([.. facts], "cp-facts", values.ToArray()));
             return new BoxEl { Direction = 1, Gap = P.ColumnGap, MinWidth = 0f, Children = kids.ToArray() };
+        }
+
+        /// <summary>"4.8 ★ · 12,431 ratings · yours 5★" (the listener's own stars at rest) and Rate, which opens the shared picker.</summary>
+        Element Rating(PodcastShowHead h, ClassicPodcastLayout lay, ColorF accent)
+        {
+            var state = _p.RateState;
+            string line = state.Value.Line;
+            return new BoxEl
+            {
+                Key = "cp-rating", Direction = 0, Gap = P.CommandGap, AlignItems = FlexAlign.Center, Wrap = true, MinWidth = 0f,
+                Children =
+                [
+                    ClassicPodcastKit.Line(ClassicPodcastKit.Strong(h.Rating), new TextSpan(line.Length > 0 ? " ★" + P.Dot + line : " ★")) with
+                    {
+                        Grow = 1f, Shrink = 1f, Basis = 0f,
+                    },
+                    Controls.RateFlyout("cp-rate", Button.Create(Loc.Get(Strings.Podcast.Pages.Rate), static () => { }) with { Height = lay.Target, MinWidth = 0f },
+                        state, _p.Rate, P.RateStar, () => Design.Palette.ReadableInk(accent)),
+                ],
+            };
         }
 
         Element Up(HeadView v, ClassicPodcastLayout lay, ColorF accent, bool live)
