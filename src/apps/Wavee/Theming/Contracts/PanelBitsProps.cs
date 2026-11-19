@@ -69,6 +69,28 @@ public sealed record PanelLyricsHeaderProps
 
     /// <summary>Close the panel.</summary>
     public required Action Close { get; init; }
+
+    /// <summary>The header's ⋯ (design 5.4): the lyrics blur in place and the AI lyrics status line, or null for no ⋯. Appended (contract 1.117).</summary>
+    public LyricsPaneOptions? Options { get; init; }
+}
+
+/// <summary>What the lyrics header's ⋯ offers (design 5.4, decision 8): the lyrics blur, drawn in place as the SAME dial Settings › Lyrics shows
+/// (its value, its writer, recorded as written from the lyrics pane), and the AI lyrics status line with a link to its Settings card (the master
+/// switch stays there: turning it on downloads models the card states and asks about). Every member is a cached static.</summary>
+public sealed record LyricsPaneOptions
+{
+    /// <summary>The blur now, 0 (off) ..100; call it inside a render or a signal effect (it subscribes the lyrics preferences).</summary>
+    public required Func<int> Blur { get; init; }
+
+    /// <summary>Write the blur (0..100) through the Settings dial's writer.</summary>
+    public required Action<int> SetBlur { get; init; }
+
+    /// <summary>The AI lyrics status line ("Word-by-word: on"), or "" where AI lyrics cannot run on this PC (then no line is drawn); call it
+    /// inside a render (it subscribes the AI status).</summary>
+    public required Func<string> AiLine { get; init; }
+
+    /// <summary>Open Settings at the AI lyrics dial (the deep link highlights its card): the line's link, worded "Settings" (<c>Strings.Auth.Settings</c>).</summary>
+    public required Action OpenAiSettings { get; init; }
 }
 
 /// <summary>One "Next up" row: its node key (the queue item, or its index, and the artwork flag), whether the art shows, and the shared media

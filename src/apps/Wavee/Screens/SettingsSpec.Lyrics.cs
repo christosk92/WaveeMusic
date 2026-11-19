@@ -22,7 +22,7 @@ public static partial class SettingsSpec
                 SettingsWriter.OfSlider("lyrics.blur", SettingsVerbs.SetLyricsBlur), legacy: ["lyricsBlur"], glyph: "Filter",
                 captionKey: Strings.Settings.Appearance.LyricsBlurSub,
                 value: s => (float)Prefs.Lyrics.FromStored(s.Get(Platform.Keys.LyricsBlurStrength)),
-                contexts: [SettingsSurfaces.StageOptions]),
+                contexts: [SettingsSurfaces.StageOptions, SettingsSurfaces.LyricsPane]),
             // The seek rail's lyric tip (the line sung at the time under the pointer); the rails read `Prefs.Lyrics`' epoch.
             Make("lyrics.seekTip", K.Toggle, Strings.Settings.Appearance.LyricsSeekTip,
                 SettingsWriter.OfToggle("lyrics.seekTip", SettingsVerbs.SetLyricsSeekTip), legacy: ["lyricsSeekTip"], glyph: "MusicNote",

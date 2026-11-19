@@ -208,6 +208,17 @@ internal static class RailWiring
             Diagnostics.LyricsInspector.Open(overlay, Diagnostics.LyricsInspector.CurrentTrackId());
         },
         Close = static () => Shell.PanelHost.Shared.Close(),
+        Options = s_lyricsOptions,
+    };
+
+    // The lyrics header's ⋯ (design 5.4): the blur is the Settings dial itself, written with the lyrics pane as its source.
+    static readonly SettingsDial s_lyricsBlur = SettingsSpec.Dial("lyrics.blur");
+    static readonly LyricsPaneOptions s_lyricsOptions = new()
+    {
+        Blur = static () => Prefs.Lyrics.BlurStrength(),
+        SetBlur = static v => s_lyricsBlur.WriteSlider(v, SettingsSurfaces.LyricsPane),
+        AiLine = static () => AiLyrics.StatusLine(),
+        OpenAiSettings = static () => InContextDoors.OpenSettings("lyrics.ai"),
     };
 
     // ══ THE FRIENDS PANEL ════════════════════════════════════════════════════════════════════════════════════════════

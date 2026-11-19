@@ -5,7 +5,10 @@
 //   Panel.LyricsHeader   NO title and NO close (Z2a's hand-off: the panel's pivot head carries "lyrics" and ✕). What is left is the board's
 //                        meta row under the pivots, words 16 apart in the small tertiary voice: "translate" (the second line; the accent while
 //                        on, only when the document carries one), the AI sparkle (only where the feature can run; it breathes while the track
-//                        is being timed), "full screen" (the stage on lyrics), and the developer inspector's glyph. 28 tall, 40 at Compact.
+//                        is being timed), "full screen" (the stage on lyrics), "options" (settings rework phase 5, design 5.4: a card with
+//                        "lyrics blur" and its value over the slider, the SAME dial as Settings › lyrics written through
+//                        `LyricsPaneOptions.SetBlur`, then the AI lyrics status line and the accent word "settings"), and the developer
+//                        inspector's glyph. 28 tall, 40 at Compact.
 //   Panel.NextUp         the rows under "up next": the shared media surface in its row shape at the board's 36 art and 52 floor.
 //   Player.LyricsPeek    the sung line over a faded peek at the next on a 2-px square accent spine, both in the panel's lyric voice (22/28
 //                        light); a playing video's one-row note. Each line is keyed by its index, so a new line flips in from below.
@@ -18,6 +21,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -47,6 +51,8 @@ internal static class ZuneLyricsHeader
         kids.Add(Embed.Comp(new SparkleProps(props, h), static () => new ZuneLyricsSparkle()) with { Key = "ai-lyrics-header" });
         kids.Add(ToolTip.Wrap(ZunePlayerBar.Word(Loc.Get(Strings.Player.Fullscreen), () => props.Expand(begin), true, false, h, P.MetaSize), facts.ExpandTip)
             with { Key = "lyrics-expand" });
+        if (props.Options is { } options)
+            kids.Add(Embed.Comp(new ZuneLyricsOptions.Props(options, h), static () => new ZuneLyricsOptions()) with { Key = "lyrics-options" });
         kids.Add(Embed.Comp(new SparkleProps(props, h), static () => new ZuneLyricsInspector()) with { Key = "lyrics-inspector" });
         return new BoxEl
         {
@@ -57,6 +63,105 @@ internal static class ZuneLyricsHeader
 
     /// <summary>The props of the sparkle and the inspector glyph: the header's and the row's height.</summary>
     internal sealed record SparkleProps(PanelLyricsHeaderProps Header, float Height);
+}
+
+/// <summary>The "options" word: opens the lyrics options card under it (light dismiss); a second press closes it.</summary>
+internal sealed class ZuneLyricsOptions : Component
+{
+    /// <summary>The options and the meta row's height (the Compact touch floor included).</summary>
+    internal sealed record Props(LyricsPaneOptions Options, float Height);
+
+    readonly Ref<NodeHandle> _anchor = new(default);
+    readonly Action _toggle;
+    OverlayHandle? _handle;
+    IOverlayService? _overlay;
+    Props? _props;
+
+    public ZuneLyricsOptions() => _toggle = Toggle;
+
+    public override Element Render()
+    {
+        var p = _props = UseProps<Props>();
+        _overlay = UseContext(Overlay.Service);
+        return ToolTip.Wrap(ZunePlayerBar.Word(Loc.Get(Strings.Theme.Zune.Stage.Options), _toggle, true, false, p.Height, P.MetaSize,
+            realized: h => _anchor.Value = h), Loc.Get(Strings.Player.LyricsOptions));
+    }
+
+    void Toggle()
+    {
+        if (_handle is { IsOpen: true } open) { open.Close(); return; }
+        if (_overlay is not { } overlay || _props is not { } props) return;
+        var opened = overlay.Open(() => _anchor.Value, () => Embed.Comp(props, static () => new ZuneLyricsOptionsCard()),
+            FlyoutPlacement.BottomEdgeAlignedLeft,
+            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = true });
+        _handle = opened;
+        opened.ClosedAction = () => { if (ReferenceEquals(_handle, opened)) _handle = null; };
+    }
+}
+
+/// <summary>The lyrics options card: "lyrics blur" and its value over the slider, then the AI lyrics status line and the accent word "settings".</summary>
+internal sealed class ZuneLyricsOptionsCard : Component
+{
+    static readonly Slider.SliderOptions s_blurOptions = new()
+    {
+        Min = 0f, Max = P.LyricsBlurMax, Step = P.LyricsBlurStep, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
+
+    static readonly string?[] s_numbers = new string?[(int)P.LyricsBlurMax + 1];
+
+    /// <summary>"off" at 0, else the number (each built once: a drag allocates nothing).</summary>
+    static string BlurWords(float v)
+    {
+        int n = Math.Clamp((int)MathF.Round(v), 0, (int)P.LyricsBlurMax);
+        return n == 0 ? Loc.Get(Strings.Stage.Options.BlurOff) : s_numbers[n] ??= n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    public override Element Render()
+    {
+        var p = UseProps<ZuneLyricsOptions.Props>();
+        var o = p.Options;
+        var blur = UseFloatSignal(o.Blur());
+        UseSignalEffect(() => blur.SetIfChanged(o.Blur()));
+        string ai = o.AiLine();
+        float inner = P.LyricsOptionsW - 2f * P.LyricsOptionsPad;
+        var kids = new List<Element>(2)
+        {
+            new BoxEl
+            {
+                Key = "lyrics-options:blur", Direction = 1, Gap = P.LyricsOptionsInnerGap,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.Center,
+                        Children =
+                        [
+                            new TextEl(Loc.Get(Strings.Settings.Appearance.LyricsBlur)) { Size = P.MetaSize, LineHeight = P.MetaLine, Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Heading) },
+                            new TextEl("") { Text = Prop.Of(() => BlurWords(blur.Value)), Size = P.MetaSize, LineHeight = P.MetaLine, Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label) },
+                        ],
+                    },
+                    Slider.Create(blur, v => o.SetBlur((int)MathF.Round(v / P.LyricsBlurStep) * (int)P.LyricsBlurStep), s_blurOptions,
+                        length: inner, thickness: MathF.Max(P.LyricsSliderThickness, p.Height)),
+                ],
+            },
+        };
+        if (ai.Length > 0)
+            kids.Add(new BoxEl
+            {
+                Key = "lyrics-options:ai", Direction = 0, AlignItems = FlexAlign.Center, Gap = P.MetaGap,
+                Children =
+                [
+                    new TextEl(ai) { Size = P.MetaSize, LineHeight = P.MetaLine, Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), Shrink = 1f, MinWidth = 0f, MaxLines = 2, Wrap = TextWrap.Wrap },
+                    ZunePlayerBar.Word(Loc.Get(Strings.Auth.Settings), o.OpenAiSettings, true, true, p.Height, P.MetaSize) with { Key = "lyrics-options:ai:settings", Role = AutomationRole.Hyperlink },
+                ],
+            });
+        return new BoxEl
+        {
+            Key = "lyrics-options:card", Width = P.LyricsOptionsW, Direction = 1, Gap = P.LyricsOptionsGap,
+            Padding = Edges4.All(P.LyricsOptionsPad), Children = kids.ToArray(),
+        };
+    }
 }
 
 /// <summary>The AI sparkle: hidden while the feature cannot run; the accent while the song is timed by AI; it breathes (a looping opacity
