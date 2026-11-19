@@ -1,24 +1,20 @@
-// ── Themes/WinUi/Structure/Views/Screens/WinUiSettings.AiLyrics.cs — the on-device AI lyrics card (themes plan 6.1, T11b) ──────────────────
+// ── Themes/WinUi/Structure/Views/Screens/WinUiSettings.Body.Lyrics.cs — Lyrics & Now playing's WinUI cards: the sliders, the faces, the AI lyrics card ───────
 //
-// From `AiLyrics\AiLyrics.UI.Settings.cs` (plan docs/plans/wavee/ai-lyrics-sync-implementation.md §4.3): the Appearance › Lyrics card, right after the blur row.
+// The lyrics blur (0..100, 0 turns it off), the full screen's sensitivity, sync offset and artist dimming are sliders over each dial's own range (the
+// registry carries no range). The player style's finish, the full screen's spectrum and the mini player's face word their choices here (the finishes and the
+// faces are the player styles' names; the spectrum the stage options' words). The on-device AI lyrics card (plan docs/plans/wavee/ai-lyrics-sync-implementation.md
+// §4.3) is ONE component bound to AiLyrics.Current: it only reads signals and calls the host's verbs (no file, no task, no wait). Its master switch is the AI
+// module's own verb; its three behaviour switches are the child dials' writers; the per-language and per-file verbs stay the module's.
 //
-// ONE component bound to AiLyrics.Current. It only reads signals and calls the host's verbs: no file, no task, no wait. It is built with the page's own row grammar (Item,
-// RowGlyph, ConfirmThen, CardSpacing) and the catalog's glyphs; the master switch is the AI module's own verb and the three behaviour switches are the document's rows
-// (`aiWordSync`, `aiPlainText`, `aiBatterySaver`), their per-language and per-file verbs stay the module's (`AiLyrics.InstallLanguage` / `RemoveLanguage` /
-// `OpenFolder` / `RemoveFiles`).
-//
-// THREE RATES, THREE BINDINGS (a 10 Hz download never re-renders the page, and never even re-renders this card):
-//   • the card's SHAPE (phase, error, sizes, the file label…) is a UseComputed over Current: an equality-gated memo, so
-//     the card re-renders only when what it draws as structure changes;
-//   • the bars bind FloatSignals written by a passive effect (compositor/relayout only, the fill eased by a reflow
-//     PartFill, WinUiSetup.SignIn.cs LoginStepBar precedent);
-//   • the "12.3 / 84.0 MB · 4.2 MB/s · 18 s left" line is a TextEl bound to a static Func (relayout of one run).
-//
-// NO LAYOUT JUMPS: every phase is ONE SettingsCard (Ready: ONE SettingsExpander) in a keyed arm that fades in (Dy 4) and
-// out, inside a column whose height reflows (MotionTok.ControlNormal) so the sections below glide instead of jumping.
-// While Ready the column drops its reflow: the expander animates its own disclosure, and a second reflow on the parent
-// would chase it frame by frame.
+// THREE RATES, THREE BINDINGS (a 10 Hz download never re-renders the page, and never even re-renders the card):
+//   • the card's SHAPE (phase, error, sizes, the file label…) is a UseComputed over Current: an equality-gated memo, so the card re-renders only when what it
+//     draws as structure changes;
+//   • the bars bind FloatSignals written by a passive effect (compositor/relayout only, the fill eased by a reflow PartFill);
+//   • the "12.3 / 84.0 MB · 4.2 MB/s · 18 s left" line is a description bound to a static Func (relayout of one run).
+// NO LAYOUT JUMPS: every phase is ONE card (Ready: ONE expander) in a keyed arm that fades in (Dy 4) and out, inside a column whose height reflows
+// (MotionTok.ControlNormal) so the rows below glide instead of jumping. While Ready the column drops its reflow: the expander animates its own disclosure.
 
+using System.Globalization;
 using FluentGpu;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -27,18 +23,81 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using AiS = Wavee.Strings.Settings.Lyrics.Ai;
-using Tab = Wavee.Settings.Tab;
 
 namespace Wavee.Themes.WinUi;
 
 internal static partial class WinUiSettings
 {
+    // ══ 1. THE SLIDERS ════════════════════════════════════════════════════════════════════════════════════════════
+
+    static readonly Slider.SliderOptions s_lyricsBlurOptions = new()
+    {
+        Min = 0f, Max = 100f, Step = 1f, TickFrequency = 25f, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(CultureInfo.InvariantCulture) + "%",
+    };
+    static readonly Slider.SliderOptions s_stageSensitivityOptions = new()
+    {
+        Min = 0.3f, Max = 1.5f, Step = 0.05f, TickFrequency = 0.3f, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v * 100f)).ToString(CultureInfo.InvariantCulture) + "%",
+    };
+    static readonly Slider.SliderOptions s_stageSyncOptions = new()
+    {
+        Min = -500f, Max = 500f, Step = 10f, TickFrequency = 250f, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(CultureInfo.InvariantCulture) + " ms",
+    };
+    static readonly Slider.SliderOptions s_heroDimOptions = s_lyricsBlurOptions;
+
+    /// <summary>The lyrics blur: the 0..100 slider (0 turns the blur off).</summary>
+    static Element LyricsBlurCard(RowCtx x) => DialCard(BaseCard(x, DialSlider(x.Row, s_lyricsBlurOptions, WinUiSettingsRules.SliderLength)));
+
+    /// <summary>The full screen visualizer's sensitivity (30 % to 150 %).</summary>
+    static Element StageSensitivityCard(RowCtx x) => DialCard(BaseCard(x, DialSlider(x.Row, s_stageSensitivityOptions, WinUiSettingsRules.SliderLength)));
+
+    /// <summary>The full screen lyrics' sync offset (-500 to 500 ms).</summary>
+    static Element StageSyncCard(RowCtx x) => DialCard(BaseCard(x, DialSlider(x.Row, s_stageSyncOptions, WinUiSettingsRules.SliderLength)));
+
+    /// <summary>The artist layout's photo dimming (0..100).</summary>
+    static Element HeroDimCard(RowCtx x) => DialCard(BaseCard(x, DialSlider(x.Row, s_heroDimOptions, WinUiSettingsRules.SliderLength)));
+
+    // ══ 2. THE WORDED CHOICES ═════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The player style's finish (Vinyl, Pocket): the style's finishes by name.</summary>
+    static Element FinishCard(RowCtx x)
+    {
+        var style = Rail.PlayerCatalog.ById(Rail.PlayerPrefs.StylePeek());
+        var labels = new string[style.Finishes.Length];
+        for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(style.Finishes[i].LabelKey);
+        return DialCard(BaseCard(x, labels.Length == 0 ? null : DialCombo(x.Row, labels, WinUiSettingsRules.NpvComboWidth)));
+    }
+
+    /// <summary>The spectrum under the cover (the large-art and centred layouts): Bars · Ring · Line · Off, the stage options' words.</summary>
+    static Element SpectrumCard(RowCtx x)
+    {
+        var row = x.Row;
+        var dial = row.Dial;
+        string[] labels = row.Choices.Length > 0 ? [.. row.Choices]
+            : [Loc.Get(Strings.Stage.Spectrum.Bars), Loc.Get(Strings.Stage.Spectrum.Ring), Loc.Get(Strings.Stage.Spectrum.Line), Loc.Get(Strings.Stage.Spectrum.Off)];
+        Element control = Selector(labels, new Signal<int>(row.Value is int at ? at : -1), i =>
+        {
+            if (dial.Writer.Choose is { } choose && choose(i)) Settings.Bump();
+        });
+        return DialCard(BaseCard(x, control));
+    }
+
+    /// <summary>The mini player's face: the player styles' names and Lyrics, in a combo (the generic picker would be as wide as the style list's words).</summary>
+    static Element MiniFaceCard(RowCtx x) => DialCard(BaseCard(x, DialCombo(x.Row, x.Row.Choices, WinUiSettingsRules.NpvComboWidth)));
+
+    // ══ 3. THE ON-DEVICE AI LYRICS CARD ═══════════════════════════════════════════════════════════════════════════
+
     /// <summary>The Settings card (Appearance › Lyrics, right after the blur row). Its own component: progress and phase
     /// changes re-render only the card.</summary>
-    static Element AiLyricsCard()
-        => Embed.Comp(static () => new AiLyricsCardView()) with { Key = "appearance.ai-lyrics" };
+    static Element AiLyricsCard(RowCtx x)
+        => Embed.Comp(new AiCardProps(x), static () => new AiLyricsCardView()) with { Key = "appearance.ai-lyrics" };
+
+    sealed record AiCardProps(RowCtx X);
 
     /// <summary>The card. Every static it needs lives here, so nothing runs in the page's own type initializer.</summary>
     sealed class AiLyricsCardView : SettingsComponent
@@ -67,8 +126,6 @@ internal static partial class WinUiSettings
         /// re-rendering anything.</summary>
         static readonly Func<string> s_aiDownloadLine = static () => AiDownloadLine(AiLyrics.Current.Value);
 
-        static readonly TemplateParts s_aiLiveDescription = AiLiveDescription();
-
         static readonly Func<AiCardShape> s_aiShapeOf = static () => AiCardShape.Of(AiLyrics.Current.Value);
 
         static readonly Func<Action?> s_aiMarkVisible = static () =>
@@ -89,13 +146,6 @@ internal static partial class WinUiSettings
 
         static string[]? s_aiLangOrder;
         static long[]? s_aiLangBytes;
-
-        static TemplateParts AiLiveDescription()
-        {
-            var parts = new TemplateParts();
-            parts.Set<TextEl>(SettingsCard.PartDescription, static t => t with { Text = Prop.Of(s_aiDownloadLine) });
-            return parts;
-        }
 
         /// <summary>What the card draws as STRUCTURE. Progress bytes, speed and prepare weights are deliberately absent: they
         /// reach the screen through bindings, so a progress write leaves this value equal and the memo silent.</summary>
@@ -118,6 +168,7 @@ internal static partial class WinUiSettings
         public override Element Render()
         {
             UseLayout();
+            var x = UseProps<AiCardProps>().X;
             // UNCONDITIONAL hooks, fixed order.
             UseEffect(s_aiMarkVisible, DepKey.Empty);
             UseActivation(onActivated: s_aiOnActivated, onDeactivated: s_aiMarkHidden);
@@ -133,9 +184,10 @@ internal static partial class WinUiSettings
             });
             var (details, setDetails) = UseState(false);
             var (langDetails, setLangDetails) = UseState(false);
-            // The Ready expander's open state lives with this card: it survives the arm swap (a language download swaps the arm out
-            // and back) but not a remount, so a theme switch mounts the page collapsed like a fresh navigation (Q26).
-            var expanded = UseSignal(false);
+            // The Ready expander's open state lives with the row's host: it survives the arm swap (a language download swaps the arm out
+            // and back) but not a remount, so a theme switch mounts the page collapsed like a fresh navigation (Q26); a link to one of
+            // its rows opens it (the arrival).
+            var expanded = x.Expanded;
             _ = SettingsFacts.AiLyricsEpoch.Value;
             bool deferred = s_aiRemoveDeferred.Value;
 
@@ -144,18 +196,18 @@ internal static partial class WinUiSettings
 
             Element arm = shape.Phase switch
             {
-                AiLyrics.SetupPhase.NeedsSetup => AiArm("ai:setup", NeedsSetupCard(st)),
-                AiLyrics.SetupPhase.Downloading => AiArm("ai:download", DownloadingCard(shape, st, download)),
-                AiLyrics.SetupPhase.Paused => AiArm("ai:paused", PausedCard(st, download)),
-                AiLyrics.SetupPhase.Preparing => AiArm("ai:prepare", PreparingCard(shape, prepare)),
+                AiLyrics.SetupPhase.NeedsSetup => AiArm("ai:setup", NeedsSetupCard(x, st)),
+                AiLyrics.SetupPhase.Downloading => AiArm("ai:download", DownloadingCard(x, shape, st, download)),
+                AiLyrics.SetupPhase.Paused => AiArm("ai:paused", PausedCard(x, st, download)),
+                AiLyrics.SetupPhase.Preparing => AiArm("ai:prepare", PreparingCard(x, shape, prepare)),
                 // a language whose download failed says so under the card (the installed languages keep working); it arrives
                 // with the Ready arm itself (the download's arm swaps out), and its Details glide (the bar's own height reflow)
                 AiLyrics.SetupPhase.Ready => st.LanguageFailure.IsSet
-                    ? AiArm("ai:ready", ReadyExpander(st, expanded), LanguageFailureBar(st.LanguageFailure, langDetails, setLangDetails))
-                    : AiArm("ai:ready", ReadyExpander(st, expanded)),
-                AiLyrics.SetupPhase.Error => AiArm("ai:error", ErrorBar(st, details, setDetails), MasterCard(st, on: true)),
+                    ? AiArm("ai:ready", ReadyExpander(x, st, expanded), LanguageFailureBar(st.LanguageFailure, langDetails, setLangDetails))
+                    : AiArm("ai:ready", ReadyExpander(x, st, expanded)),
+                AiLyrics.SetupPhase.Error => AiArm("ai:error", ErrorBar(st, details, setDetails), MasterCard(x, st, on: true)),
                 // Unknown (before the boot scan), Unavailable and Off share one shape: the switch only changes state.
-                _ => AiArm("ai:off", MasterCard(st, on: false)),
+                _ => AiArm("ai:off", MasterCard(x, st, on: false)),
             };
 
             bool showDeferred = deferred && shape.Phase is AiLyrics.SetupPhase.Off or AiLyrics.SetupPhase.NeedsSetup;
@@ -177,18 +229,18 @@ internal static partial class WinUiSettings
 
         /// <summary>Unknown / Unavailable / Off (switch off; disabled with the reason when the PC cannot run it), and the
         /// card under the Error bar (switch on, so the feature can still be turned off from there).</summary>
-        static Element MasterCard(in AiLyrics.Status st, bool on)
+        static Element MasterCard(RowCtx x, in AiLyrics.Status st, bool on)
         {
             bool unknown = st == AiLyrics.Status.Unknown;
             if (!on && (unknown || st.Phase == AiLyrics.SetupPhase.Unavailable))
-                return AiCard(Loc.Get(AiS.Title),
+                return AiCard(x, Loc.Get(AiS.Title),
                     Loc.Get(unknown ? AiS.Sub : AiLyrics.Rules.UnavailableKey(st.Availability)),
                     AiSwitch(false, enabled: false));
-            return AiCard(Loc.Get(AiS.Title), Loc.Get(AiS.Sub), AiSwitch(on || st.Enabled, enabled: true));
+            return AiCard(x, Loc.Get(AiS.Title), Loc.Get(AiS.Sub), AiSwitch(on || st.Enabled, enabled: true));
         }
 
         /// <summary>The one-time download offer: the size, Download (asking first on a metered link), the switch still on.</summary>
-        static Element NeedsSetupCard(in AiLyrics.Status st) => AiCard(
+        static Element NeedsSetupCard(RowCtx x, in AiLyrics.Status st) => AiCard(x, 
             Loc.Get(AiS.Setup.Title),
             AiS.Setup.Sub(AiLyrics.Rules.FormatBytes(st.PendingDownloadBytes)),
             AiRow(
@@ -198,7 +250,7 @@ internal static partial class WinUiSettings
 
         /// <summary>The file being fetched, the live "done / total · speed/s · eta" line, the bar (sweeping while the host
         /// checks or verifies), Pause and Cancel.</summary>
-        static Element DownloadingCard(in AiCardShape shape, in AiLyrics.Status st, FloatSignal fraction)
+        static Element DownloadingCard(RowCtx x, in AiCardShape shape, in AiLyrics.Status st, FloatSignal fraction)
         {
             Element bar = shape.DownloadIndeterminate
                 ? ProgressBar.Indeterminate(AiBarWidth)
@@ -206,15 +258,15 @@ internal static partial class WinUiSettings
             string header = shape.DownloadLabel.Length > 0
                 ? AiS.Downloading.Title(shape.DownloadLabel)
                 : Loc.Get(AiS.Setup.Title);
-            return AiCard(header, AiDownloadLine(st),
+            return AiCard(x, header, AiDownloadLine(st),
                 AiRow(bar,
                     LinkButton(Loc.Get(AiS.Pause), static () => AiLyrics.PauseDownload()),
                     LinkButton(Loc.Get(AiS.Cancel), static () => AiLyrics.CancelDownload())),
-                s_aiLiveDescription);
+                Prop.Of(s_aiDownloadLine));
         }
 
         /// <summary>Paused: what is already here, the bar held at its place in the caution colour, Resume and Cancel.</summary>
-        static Element PausedCard(in AiLyrics.Status st, FloatSignal fraction) => AiCard(
+        static Element PausedCard(RowCtx x, in AiLyrics.Status st, FloatSignal fraction) => AiCard(x, 
             Loc.Get(AiS.Paused.Title),
             AiS.Paused.Sub(AiLyrics.Rules.FormatBytes(st.Download.Done), AiLyrics.Rules.FormatBytes(st.Download.Total)),
             AiRow(
@@ -223,7 +275,7 @@ internal static partial class WinUiSettings
                 LinkButton(Loc.Get(AiS.Cancel), static () => AiLyrics.CancelDownload())));
 
         /// <summary>The first NPU compile: "x of y" (why, when a stale cache is rebuilt), the bar by compile weight.</summary>
-        static Element PreparingCard(in AiCardShape shape, FloatSignal fraction)
+        static Element PreparingCard(RowCtx x, in AiCardShape shape, FloatSignal fraction)
         {
             string sub = shape.Finishing
                 ? Loc.Get(AiS.Preparing.Finishing)
@@ -233,44 +285,40 @@ internal static partial class WinUiSettings
             Element bar = shape.PrepareTotal > 0
                 ? ProgressBar.Create(fraction, AiBarWidth, ProgressBarState.Normal, s_aiFillEase)
                 : ProgressBar.Indeterminate(AiBarWidth);
-            return AiCard(Loc.Get(AiS.Preparing.Title), sub, bar);
+            return AiCard(x, Loc.Get(AiS.Preparing.Title), sub, bar);
         }
 
-        /// <summary>Ready: the switch on, and inside the three behaviour switches, the languages and the files.</summary>
-        static Element ReadyExpander(in AiLyrics.Status st, Signal<bool> expanded)
+        /// <summary>Ready: the switch on, and inside the three behaviour switches, the languages and the files, each hosted as its child dial (a link to
+        /// "word-by-word" opens the expander and lands on its row).</summary>
+        static Element ReadyExpander(RowCtx x, in AiLyrics.Status st, Signal<bool> expanded)
         {
             string ready = Loc.Get(AiS.Ready.Title);
             string description = st.NpuName.Length > 0
                 ? ready + " · " + AiS.Ready.Sub(st.NpuName, st.NpuDriver)
                 : ready;
             long installed = st.InstalledBytes;
-            return SettingsExpander.Create(new SettingsExpander.Options
+            var items = new List<Element>(5)
             {
-                Header = Loc.Get(AiS.Title),
-                Description = description,
-                HeaderIcon = null,
-                Content = AiSwitch(true, enabled: true),
-                IsExpanded = expanded,
-                Items =
-                [
-                    Item(Loc.Get(AiS.WordSync), Loc.Get(AiS.WordSyncSub),
-                        AiPrefSwitch(D(Tab.Appearance, "aiWordSync")),
-                        icon: RowGlyph(Tab.Appearance, "aiWordSync")),
-                    Item(Loc.Get(AiS.PlainText), Loc.Get(AiS.PlainTextSub),
-                        AiPrefSwitch(D(Tab.Appearance, "aiPlainText")),
-                        icon: RowGlyph(Tab.Appearance, "aiPlainText")),
-                    Item(Loc.Get(AiS.BatterySaver), Loc.Get(AiS.BatterySaverSub),
-                        AiPrefSwitch(D(Tab.Appearance, "aiBatterySaver")),
-                        icon: RowGlyph(Tab.Appearance, "aiBatterySaver")),
-                    Item(Loc.Get(AiS.Languages), AiS.LanguagesSub(AiLyrics.Rules.FormatBytes(AiAverageLanguageBytes())),
-                        AiLanguages(st.Languages), icon: RowGlyph(Tab.Appearance, "aiLanguages")),
-                    Item(Loc.Get(AiS.Files), AiS.FilesSub(AiLyrics.Rules.FormatBytes(installed)),
-                        AiRow(
-                            LinkButton(Loc.Get(AiS.OpenFolder), static () => AiLyrics.OpenFolder()),
-                            StdButton(Loc.Get(AiS.Remove), () => AiConfirmRemove(installed))),
-                        icon: RowGlyph(Tab.Appearance, "aiFiles")),
-                ],
-            });
+                AiPrefItem(x, "lyrics.ai.wordSync", Loc.Get(AiS.WordSync), Loc.Get(AiS.WordSyncSub)),
+                AiPrefItem(x, "lyrics.ai.plainText", Loc.Get(AiS.PlainText), Loc.Get(AiS.PlainTextSub)),
+                AiPrefItem(x, "lyrics.ai.batterySaver", Loc.Get(AiS.BatterySaver), Loc.Get(AiS.BatterySaverSub)),
+                HostedItem(x, "lyrics.ai.languages", PlainItem(Loc.Get(AiS.Languages), AiS.LanguagesSub(AiLyrics.Rules.FormatBytes(AiAverageLanguageBytes())),
+                    AiLanguages(st.Languages))),
+                HostedItem(x, "lyrics.ai.files", PlainItem(Loc.Get(AiS.Files), AiS.FilesSub(AiLyrics.Rules.FormatBytes(installed)),
+                    AiRow(
+                        LinkButton(Loc.Get(AiS.OpenFolder), static () => AiLyrics.OpenFolder()),
+                        StdButton(Loc.Get(AiS.Remove), () => AiConfirmRemove(installed))))),
+            };
+            var header = BaseCard(x, AiSwitch(true, enabled: true)) with { Label = Loc.Get(AiS.Title), Description = description };
+            return Expander(header, items, expanded);
+        }
+
+        /// <summary>A behaviour switch's item: the child dial's switch (written through the AI preferences' one setter), hosted.</summary>
+        static Element AiPrefItem(RowCtx x, string id, string label, string sub)
+        {
+            var child = Child(x, id);
+            var dial = child?.Dial ?? Dial(id);
+            return HostedItem(x, id, PlainItem(label, sub, AiPrefSwitch(dial)));
         }
 
         /// <summary>The failure: its one sentence, the raw detail behind "Details", and the recovery the kind allows. A first
@@ -355,17 +403,10 @@ internal static partial class WinUiSettings
             Children = body,
         };
 
-        /// <summary>The card shape every non-Ready phase shares; the header icon is always the Windows AI sparkle.</summary>
-        static Element AiCard(string header, string? description, Element? content, TemplateParts? parts = null)
-            => SettingsCard.Create(new SettingsCard.Options
-            {
-                Header = header,
-                Description = description,
-                HeaderIcon = null,
-                Content = content,
-                IsActionIconVisible = false,
-                Parts = parts,
-            });
+        /// <summary>The card shape every non-Ready phase shares: the row card of the AI lyrics dial (its badge after the label), a bound description
+        /// for the download's live line.</summary>
+        static Element AiCard(RowCtx x, string header, string? description, Element? content, Prop<string>? live = null)
+            => DialCard(BaseCard(x, content) with { Label = header, Description = description, LiveDescription = live });
 
         static Element AiRow(params Element[] children) => new BoxEl
         {

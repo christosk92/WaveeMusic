@@ -3537,7 +3537,25 @@
         "navNoteExpanded": "Now the full pane: the window is {width} wide.",
         "previewTitle": "Preview",
         "cycleTabs": "Next tab",
-        "cycleTabsSub": "Add Shift to go back. Works while a tab is open, even with the strip hidden."
+        "cycleTabsSub": "Add Shift to go back. Works while a tab is open, even with the strip hidden.",
+        "settings": {
+          "$comment": "The registry's Settings page (settings rework phase 4, WinUI): the Find a setting box, the home, the results page and the explanation tip.",
+          "find": "Find a setting",
+          "glance": "At a glance",
+          "glanceSub": "Your setup right now. Each opens its setting.",
+          "suggestions": "Suggestions",
+          "suggestionsSub": "At most three, and never one you closed",
+          "recent": "Recently changed",
+          "recentSub": "The last five settings you changed, wherever you changed them",
+          "recentNone": "Settings you change show up here, wherever you change them.",
+          "results": "Search results for “{query}”",
+          "resultsCount": "{count} settings. Each result is the real setting: change it right here.",
+          "resultsCountOne": "1 setting. The result is the real setting: change it right here.",
+          "noResults": "No results",
+          "showMe": "Show me",
+          "playClip": "Play",
+          "alsoIn": "Also in"
+        }
       },
       "overlays": {
         "$comment": "W8a: the overlays and the dialogs. The offline strip is an InfoBar: the title is common.offlineTitle, the body is this.",

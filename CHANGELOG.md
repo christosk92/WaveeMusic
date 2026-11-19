@@ -54,6 +54,14 @@ versions separately under `v*` and is not tracked in this file.)
   word that opens a short clip under the row, and settings that also live elsewhere say where. On a narrow window the
   page is a list of the sections with a line on each, and a section opens as its own page. The big "settings" title
   keeps its size at every width.
+- **A new Settings page in WinUI, laid out like Windows 11 Settings.** It opens on a home that shows your setup at a
+  glance (theme, audio quality, notifications, storage, lyrics, account: each card opens its setting), suggestions and
+  the settings you changed most recently. Nine categories sit in the strip under the title (Appearance, Sound,
+  Playback, Lyrics, Notifications, System, Storage, Account, Help) in place of the old seven tabs. "Find a setting"
+  beside the title lists the closest matches as you type, typos included; pick one to jump straight to it, or press
+  Enter for a page of results where every setting can be changed in place. A link to a setting opens its category,
+  unfolds its group, scrolls it into view and highlights it briefly. Settings whose effect is easier to see than to
+  describe carry an info badge after their name that opens a short explanation.
 
 ### Changed
 

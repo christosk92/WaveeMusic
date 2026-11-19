@@ -235,6 +235,14 @@ public static partial class Settings
     /// <summary>The same for the area holding <paramref name="tab"/>'s first section (the pre-areas seam, kept for themes written against it).</summary>
     public static void OpenNextMountOn(Tab tab) => OpenNextMountOn(HomeArea(tab));
 
+    /// <summary>The registry page's seam (contract 1.116): the next mounted root opens Settings on the category <paramref name="slug"/> names (a theme pick:
+    /// Appearance, the picker first), and the old pages on the area that slug has always named.</summary>
+    public static void OpenNextMountOn(string slug)
+    {
+        s_pendingCategory = SettingsPageModel.IndexOf(slug);
+        s_pendingTab = (int)ShellPolicy.Now.Settings.AreaFromSlug(slug);
+    }
+
     static int TakePendingTab()
     {
         int tab = s_pendingTab;
