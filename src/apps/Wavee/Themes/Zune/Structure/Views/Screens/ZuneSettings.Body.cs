@@ -30,13 +30,17 @@ namespace Wavee.Themes.Zune;
 
 internal static partial class ZuneSettings
 {
-    /// <summary>What every row of one category's column is drawn with: the tier's kit, the page's props (the Storage census, the arrival) and the facts.</summary>
-    sealed class Paint(ZuneKit k, SettingsPageProps props, string category)
+    /// <summary>What every row of one category's column is drawn with: the tier's kit, the page's props (the Storage census, the arrival) and the facts. A paint
+    /// for a row outside the page (<see cref="OutsideRow"/>: the setup wizard) has no page: no arrival, no "also in" places, and it draws only the rows whose
+    /// picture reads nothing of the page.</summary>
+    sealed class Paint(ZuneKit k, SettingsPageProps? props, string category)
     {
         public ZuneKit K { get; } = k;
-        public SettingsPageProps Props { get; } = props;
+        public SettingsPageProps Props => props ?? throw new InvalidOperationException("A row drawn outside the Settings page reads no page props.");
         public string Category { get; } = category;
-        public SettingsArrival Focus => Props.Focus;
+        public SettingsArrival Focus => props?.Focus ?? SettingsArrival.None;
+        /// <summary>The row is drawn outside the page (<see cref="OutsideRow"/>).</summary>
+        public bool Outside => props is null;
         public ISettingsFacts Facts { get; } = SettingsFacts.Live;
     }
 
@@ -161,6 +165,28 @@ internal static partial class ZuneSettings
         foreach (var child in row.Children) DrawRow(d, child, into);
     }
 
+    // ── a row outside the page ────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The app mode row (system · light · dark), as Settings draws it and as the setup wizard's theme step shows it: one row, one writer.</summary>
+    internal static Element AppModeRow(ZuneKit k) => OutsideRow(k, "appearance.appMode");
+
+    /// <summary>The language row, as Settings draws it and as the setup wizard's theme step shows it: one row, one writer.</summary>
+    internal static Element LanguageRow(ZuneKit k) => OutsideRow(k, "system.language");
+
+    /// <summary>The audio quality row, as Settings draws it and as the setup wizard's playback step shows it: one row, one writer.</summary>
+    internal static Element QualityRow(ZuneKit k) => OutsideRow(k, "sound.quality");
+
+    /// <summary>A dial for a surface outside the page: the registry's row (<see cref="SettingsPageModel.RowOf"/>) drawn as the page draws it, its children after
+    /// it, with a paint that has no page (<see cref="Paint.Outside"/>). Nothing shows while the facts compose the dial away.</summary>
+    static Element OutsideRow(ZuneKit k, string dialId)
+    {
+        if (SettingsPageModel.RowOf(SettingsSpec.Dial(dialId)) is not { } row) return new BoxEl { Visible = false };
+        string category = SettingsSpec.TryPlace(row.Dial, out SettingsCategory placed, out _) ? placed.Slug : "";
+        var rows = new List<Element>(1 + row.Children.Length);
+        DrawRow(new Paint(k, null, category), row, rows);
+        return rows.Count == 1 ? rows[0] : new BoxEl { Direction = 1, Gap = Z.RowGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = rows.ToArray() };
+    }
+
     // ── the row ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A dial's row: its label (lit on arrival), "see it" when it explains itself (its clip under the row), the description, its "also in" places and
@@ -179,10 +205,11 @@ internal static partial class ZuneSettings
         };
     }
 
-    /// <summary>"also in: queue · full screen › options" in the hint voice under the description: each place with a door of its own is a word that opens it.</summary>
+    /// <summary>"also in: queue · full screen › options" in the hint voice under the description: each place with a door of its own is a word that opens it.
+    /// None outside the page (its doors lead away from the surface the row is drawn on).</summary>
     static Element? AlsoIn(Paint d, SettingsBodyRow row)
     {
-        if (row.AlsoIn.IsEmpty || row.AlsoInLine is not { } line) return null;
+        if (d.Outside || row.AlsoIn.IsEmpty || row.AlsoInLine is not { } line) return null;
         bool doors = false;
         foreach (var place in row.AlsoIn) doors |= place.Open is not null;
         if (!doors) return ZuneText.Hint(line) with { Key = SettingsKeys.ZuneRow(row.Id) + ":also" };

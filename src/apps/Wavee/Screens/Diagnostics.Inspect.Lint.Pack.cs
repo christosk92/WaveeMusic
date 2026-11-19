@@ -7,9 +7,10 @@
 // The snapshot carries every registered grid (HomeBoardInspect.RegisterPack) as a PackShot: its entries, metrics, width, the
 // key of each entry, and each realized wrapper's presented rect with the grid's window origin. pack.hole re-packs the
 // entries (PackLayout is pure: the result depends on entries, metrics and width only) and runs PackLayout.Verify, so the
-// rule covers the whole board, not just what is on screen; then, on a settled frame, every realized wrapper must sit on its
-// packed rect (a layout or animation bug that leaves a tile short of its box). pack.tools: an edit tool strip
-// (home:tile:<id>:tools) drawn over text or a control of its own tile's content.
+// rule covers the whole board, not just what is on screen; then, on a settled frame, every realized wrapper that PAINTS (in the
+// snapshot: not a parked keep-alive page's, not a hidden one's) must sit on its packed rect (a layout or animation bug that
+// leaves a tile short of its box). pack.tools: an edit tool strip (home:tile:<id>:tools) drawn over text or a control of its
+// own tile's content.
 
 using System.Globalization;
 using System.Text.Json;
@@ -30,11 +31,16 @@ public static partial class Diagnostics
         /// <summary>A packed rect may sit this far off its wrapper before pack.hole's scene half calls it a fault.</summary>
         const float PackSlackDip = 0.5f;
 
-        /// <summary>pack.hole: <see cref="PackLayout.Verify"/> over each grid, then (settled frames only) every realized wrapper on its packed rect.</summary>
+        /// <summary>pack.hole: <see cref="PackLayout.Verify"/> over each grid, then (settled frames only) every realized wrapper that paints on its
+        /// packed rect. A parked page's grid stays registered (Home kept alive behind Settings) and draws nothing: a tile it parked mid-motion
+        /// is off its rect where no one sees it and lands when the page comes back, so the scene half judges only wrappers in the snapshot.</summary>
         static int PackHoleRule(Snapshot s, List<Finding> into)
         {
             int looked = 0;
             Span<PackFault> faults = stackalloc PackFault[64];
+            var painted = new HashSet<string>(StringComparer.Ordinal);
+            foreach (Node n in s.Nodes)
+                if (n.Key is { } nk && nk.StartsWith(TilePrefix, StringComparison.Ordinal)) painted.Add(nk);
             foreach (PackShot p in s.Packs)
             {
                 looked++;
@@ -58,13 +64,14 @@ public static partial class Diagnostics
                 for (int i = 0; i < p.Entries.Length && i < result.Count; i++)
                 {
                     if (i >= p.Nodes.Length || p.Nodes[i].W <= 0f || result.BandOf[i] < 0) continue;
+                    if (p.Keys[i] is not { } tileKey || !painted.Contains(TileKey(tileKey))) continue;   // parked or hidden: it draws nothing
                     RectF packed = result.Rects[i];
                     var want = new RectF(p.Origin.X + packed.X, p.Origin.Y + packed.Y, packed.W, packed.H);
                     RectF got = p.Nodes[i];
                     float off = Math.Max(Math.Max(Math.Abs(got.X - want.X), Math.Abs(got.Y - want.Y)),
                                          Math.Max(Math.Abs(got.W - want.W), Math.Abs(got.H - want.H)));
                     if (off <= PackSlackDip) continue;
-                    string key = p.Keys[i] is { } k ? "home:tile:" + k : p.Key;
+                    string key = TileKey(tileKey);
                     into.Add(new Finding(Rules.PackHole, Severity.Error,
                         $"{key} sits {F(off)} DIP off its packed rect: drawn at {F(got.X)},{F(got.Y)} {F(got.W)} x {F(got.H)}, packed at {F(want.X)},{F(want.Y)} {F(want.W)} x {F(want.H)}",
                         [key])
@@ -76,6 +83,11 @@ public static partial class Diagnostics
             }
             return looked;
         }
+
+        const string TilePrefix = "home:tile:";
+
+        /// <summary>The wrapper node's key of a grid item: the board's item keys already carry the tile prefix (a second one named no node).</summary>
+        static string TileKey(string itemKey) => itemKey.StartsWith(TilePrefix, StringComparison.Ordinal) ? itemKey : TilePrefix + itemKey;
 
         static string Describe(PackFault f) => f.Kind switch
         {
@@ -92,9 +104,9 @@ public static partial class Diagnostics
         static List<string> KeysAround(PackShot p, PackResult r, PackFault f)
         {
             var keys = new List<string>();
-            if (f.Entry >= 0 && f.Entry < p.Keys.Length && p.Keys[f.Entry] is { } own) keys.Add("home:tile:" + own);
+            if (f.Entry >= 0 && f.Entry < p.Keys.Length && p.Keys[f.Entry] is { } own) keys.Add(TileKey(own));
             for (int i = 0; i < r.Count && i < p.Keys.Length && keys.Count < 6; i++)
-                if (r.BandOf[i] == f.Band && i != f.Entry && p.Keys[i] is { } k) keys.Add("home:tile:" + k);
+                if (r.BandOf[i] == f.Band && i != f.Entry && p.Keys[i] is { } k) keys.Add(TileKey(k));
             return keys;
         }
 

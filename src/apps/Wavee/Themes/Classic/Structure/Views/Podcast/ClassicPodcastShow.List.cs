@@ -6,11 +6,12 @@
 //   ZStack (the list column)
 //   ├─ ItemsView (the list column's scroller)   items = 2 prefix + Items + 1 foot
 //   │  ├─ [0] the cover column at Compact (stacked over the list); nothing from Small up (the column stands in its frame beside the list)
-//   │  ├─ [1] the list bar: a RAW sticky band (filters, search, sort), a backing only while pinned
+//   │  ├─ [1] the list bar: a RAW sticky band (filters, search, sort); it paints no plate
 //   │  ├─ [2..] Items: a lowercase group label · an episode row (a click opens its episode) · Load more · the empty line
 //   │  └─ [last] the foot: More like this and the page's foot room
 //   └─ the pinned group label: an overlay under the list bar naming the group the list is in at that line (the list's own measured layout says which
-//      item sits there), backed only while it shows
+//      item sits there). It paints no plate either: the rows cut themselves at the list bar's lower edge, and at the label's while one shows (the
+//      list's live item clip), so what is behind the page shows through both
 //
 // Every slot reads the tier record from `_lay` (a signal the page writes on render), so a crossing re-pads the slots in place.
 
@@ -45,7 +46,6 @@ internal static partial class ClassicPodcastShow
 
         readonly ItemsViewController _ctl = new();
         readonly Signal<ClassicPodcastLayout> _lay = new(ClassicPodcastTiers.Standard);
-        readonly Signal<uint> _tone = new(0u);
         readonly Signal<ColorF> _accent = new(ColorF.Transparent);
         readonly Signal<float> _colH = new(0f);
         readonly Signal<int> _filterIx = new(0);
@@ -57,7 +57,8 @@ internal static partial class ClassicPodcastShow
         Func<BoundItemScope<ShowSlot>, Element>? _template;
         Func<int>? _pinnedOf;
         Memo<int>? _pinned;
-        Func<uint>? _toneOf;
+        Func<float>? _clipInsetOf;
+        Memo<float>? _clipInset;
         Action<RectF>? _measureColumn;
         Controls.Words.Word[]? _words;
         ClassicRowVerbs? _verbs;
@@ -66,15 +67,13 @@ internal static partial class ClassicPodcastShow
         Action? _sync;
 
         /// <summary>The list's hooks and cells (called by the page's render, in a stable order).</summary>
-        void UseList(ClassicPodcastLayout lay, uint tone, ColorF accent)
+        void UseList(ClassicPodcastLayout lay, ColorF accent)
         {
             _lay.SetIfChanged(lay);
-            _tone.SetIfChanged(tone);
             _accent.SetIfChanged(accent);
             _overlay = UseContext(Overlay.Service);
             _sync ??= () => _filterIx.SetIfChanged((int)_p.Filter.Value);
             UseEffect(_sync);
-            _toneOf ??= () => _tone.Value;
             _measureColumn ??= r => { if (r.H > 1f && MathF.Abs(r.H - _colH.Peek()) > 0.5f) _colH.Value = r.H; };
             _verbs ??= new ClassicRowVerbs
             {
@@ -83,6 +82,9 @@ internal static partial class ClassicPodcastShow
             };
             _pinnedOf ??= PinnedGroup;
             _pinned = UseComputed(_pinnedOf);
+            // Where the rows are cut at the top of the list: under the list bar, and under the pinned group label (with its hairline) while one shows.
+            _clipInsetOf ??= () => P.ListBarH + ((_pinned?.Value ?? -1) >= 0 ? MathF.Max(P.GroupH, _lay.Value.Target) + P.PinnedRule : 0f);
+            _clipInset = UseComputed(_clipInsetOf);
         }
 
         /// <summary>The list column: the virtualised list and the pinned group label over it.</summary>
@@ -103,8 +105,9 @@ internal static partial class ClassicPodcastShow
                 Scroll = new ScrollOptions
                 {
                     ScrollKey = "cp-scroll:" + _p.RouteKey, Handle = _scroll, AutoEdgeFade = false, EdgeCues = ScrollEdgeCues.None,
-                    // The rows cut themselves at the pinned list bar's lower edge.
-                    ItemClipTopInset = P.ListBarH,
+                    // The rows cut themselves at the pinned list bar's lower edge, and at the pinned group label's while one shows: neither paints a
+                    // plate, so what is behind the page shows through both.
+                    ItemClipTopInset = P.ListBarH, ItemClipTopInsetSource = _clipInset,
                 },
             };
             Element list = ItemsView.CreateBound<ShowSlot>(_items!, _template!, _listLayout!.Value, _listOptions) with { Key = "cp-list:" + _p.RouteKey };
@@ -177,9 +180,9 @@ internal static partial class ClassicPodcastShow
             var it = v.Items[k];
             if ((uint)it.Episode >= (uint)v.Episodes.Length) return P.RowEstimate;
             var vm = v.Episodes[it.Episode];
+            if (it.Lead && !vm.Trailer) return P.RowLeadEstimate;
             if (vm.State == PodcastRowState.Played) return P.RowPlayedEstimate;
             if (vm.State == PodcastRowState.InProgress) return P.RowEstimateTall;
-            if (it.Lead) return P.RowLeadEstimate;
             return lay.RowDescription && vm.Blurb.Length > 0 ? P.RowEstimateTall : P.RowEstimate;
         }
 
@@ -192,7 +195,7 @@ internal static partial class ClassicPodcastShow
                 case ColumnPart: return Embed.Comp(new SlotProps(host), static () => new ColumnSlot());
                 case BarPart:
                     // RAW: the sticky root must be the slot itself (a sticky root returned from a component never pins).
-                    return ClassicPodcastKit.PinnedBar("cp-listbar", Embed.Comp(new SlotProps(host), static () => new ListBarSlot()), P.ListBarH, 0f, _barStuck, _toneOf!);
+                    return ClassicPodcastKit.PinnedBar("cp-listbar", Embed.Comp(new SlotProps(host), static () => new ListBarSlot()), P.ListBarH, 0f, _barStuck);
             }
             var item = scope.Item;
             if (item.Peek().Kind == PodcastItemKind.Group && item.Peek().Part < 0) return Embed.Comp(() => new HeadSlot(host, item));
@@ -218,7 +221,8 @@ internal static partial class ClassicPodcastShow
 
         sealed record SlotProps(PageHost Host);
 
-        /// <summary>The pinned group label over the list: the group the list is in under the list bar, on the page's ground with the hairline.</summary>
+        /// <summary>The pinned group label over the list: the group the list is in under the list bar, with its hairline. No plate: the rows cut
+        /// themselves at its lower edge (<c>_clipInset</c>).</summary>
         sealed class PinnedHead : Component
         {
             NodeHandle _chip;
@@ -232,15 +236,14 @@ internal static partial class ClassicPodcastShow
                 var v = host._p.View.Peek();
                 if ((uint)gi >= (uint)v.Groups.Length) return new BoxEl { Height = 0f };
                 var lay = host._lay.Value;
-                uint tone = host._tone.Value;
                 return new BoxEl
                 {
-                    Key = "cp-pinned-head:" + v.Groups[gi].Key, Direction = 1, MinWidth = 0f, Fill = ClassicPodcastKit.Backing(tone),
+                    Key = "cp-pinned-head:" + v.Groups[gi].Key, Direction = 1, MinWidth = 0f,
                     Children =
                     [
                         new BoxEl { Direction = 1, MinWidth = 0f, Padding = Gutters(lay), Children =
                             [host.GroupHeadRow(v.Groups[gi], v.Years, lay, pinned: true, _setChip ??= h => _chip = h, _chipOf ??= () => _chip)] },
-                        new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
+                        new BoxEl { Height = P.PinnedRule, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
                     ],
                 };
             }

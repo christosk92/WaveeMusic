@@ -10,7 +10,7 @@
 //   · the cells (the section tab, follow playback, the find text) and every verb.
 // It builds no element and reads no look (WVTH008): the WinUI picture is `Themes/WinUi/Structure/Views/Podcast/WinUiPodcastEpisode.cs`.
 //
-// Memo delegates are bound ONCE (the constructor): `UseComputed` keeps the first delegate it is given (`Show.Pane.cs` header). The page is keyed per
+// Memo delegates are bound ONCE (the constructor): `UseComputed` keeps the first delegate it is given (engine `Hooks/RenderContext.cs`). The page is keyed per
 // route by the router, so the subject never changes under a mounted host; a scope change (sign-in, the fake catalogue) re-resolves through
 // `Episode.ReaderEpisode`, which subscribes to the scope.
 
@@ -224,7 +224,7 @@ public sealed class PodcastEpisodeScreen : Component
         Entities.Ensure(show, ShowFields.Identity | ShowFields.Rating | ShowFields.Appearance | ShowFields.Facts);
         if (scope.Edges.ShowEpisodes.State(show.Slot) == EdgeState.Unknown) { Entities.EnsureEdge(FetchEdge.ShowEpisodes, show.Slot); return; }
         var slots = scope.Edges.ShowEpisodes.Targets(show.Slot);
-        if (slots.Length > 0) Entities.Ensure(scope.Episodes, slots, (uint)ShowReaderRules.RowDemand);
+        if (slots.Length > 0) Entities.Ensure(scope.Episodes, slots, (uint)ShowListRules.RowDemand);
     }
 
     static readonly Spotify.Podcasts.Transcript s_transcriptSeed = new("", [], 0);
@@ -645,7 +645,7 @@ public sealed class PodcastEpisodeScreen : Component
             Spotify.Podcasts.IsSaved(x), (flags & EpisodeFlags.Video) != 0, x.Kind == EpisodeKind.Trailer, (flags & EpisodeFlags.Unplayable) == 0,
             0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(x))
         {
-            Explicit = (flags & EpisodeFlags.Explicit) != 0, Bonus = x.Kind == EpisodeKind.Bonus,
+            StillUrl = Episode.StillOf(x), Explicit = (flags & EpisodeFlags.Explicit) != 0, Bonus = x.Kind == EpisodeKind.Bonus,
         }, flags);
     }
 

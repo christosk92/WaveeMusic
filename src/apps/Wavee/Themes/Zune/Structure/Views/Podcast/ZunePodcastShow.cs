@@ -89,6 +89,8 @@ internal static partial class ZunePodcastShow
         public override Element Render()
         {
             _p = UseProps<PodcastShowPageProps>();
+            _openFull = UseContext(PodcastPagePlace.OpenFull);   // in another page's column (the library's): the way to the show's own page
+            _embedded = UseContext(PodcastPagePlace.Embedded);   // there the pivots are not the page's title
             var p = _p;
             var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
             var lay = ZunePodcastTiers.Of(in facts);
@@ -137,7 +139,7 @@ internal static partial class ZunePodcastShow
                     Children =
                     [
                         K.Title(placeholder.Head.Title, lay, gutter),
-                        K.Pivots("zp-pivots", pivotItems, 0, _select, lay, gutter),
+                        K.Pivots("zp-pivots", pivotItems, 0, _select, lay, gutter, _embedded),
                         Compose(placeholder, lay, 0, live: false),
                     ],
                 }, gutter),
@@ -270,6 +272,12 @@ internal static partial class ZunePodcastShow
             return K.Meta("zp-meta", parts);
         }
 
+        /// <summary>Opens the show's own page from another page's column (null on its own route): the command row ends on "view details".</summary>
+        Action? _openFull;
+
+        /// <summary>The page stands in another page's column (the library's), where its pivots are not the page's title.</summary>
+        internal bool _embedded;
+
         Element Commands(PodcastShowHead h, ZunePodcastLayout lay)
         {
             float t = lay.Target;
@@ -284,6 +292,7 @@ internal static partial class ZunePodcastShow
                 kids.Add(K.Named(K.Button("cmd:share", lay.Words ? Loc.Get(Strings.Podcast.Pages.Share) : null, Icons.Share, share, t),
                     Loc.Get(Strings.Podcast.Pages.Share), lay.Words));
             kids.Add(K.More("cmd:more", _p.ShowMenu, t));
+            if (_openFull is { } open) kids.Add(K.Button("cmd:view-details", Loc.Get(Strings.Library.ViewDetails), Icons.OpenInNewWindow, open, t));
             return new BoxEl { Key = "zp-cmds", Direction = 0, Gap = Z.CommandGap, Wrap = true, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
         }
 

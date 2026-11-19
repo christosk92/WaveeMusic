@@ -9,7 +9,7 @@
 // The page-facing helpers (`Satellite`, `MoreButton`, `ArtistLine` and the share / save targets) STAY in `Detail`: the pages, the library
 // panes and the artist page build their own pieces from them (T10 moves them with those pages). This file calls them through `Detail`. The keyed
 // rail rows (`Row` / `LateRow` / `ReleaseRow`), the eyebrow run and the billed-artist line box moved to the shared kit (`ClassicDetailKit.cs`, T9b),
-// the rail satellites to `ClassicDetailKit.Satellites.cs` (T9c, which also dropped `Detail.PlayButton`), and the notice strip to `ClassicDetailSeam.cs`.
+// T9c dropped `Detail.PlayButton`, and the notice strip moved to `ClassicDetailSeam.cs`.
 //
 // NAME NOTE: `Text`, `Skeleton` and `Config` are nested `Detail` classes; the aliases below keep their short names here.
 

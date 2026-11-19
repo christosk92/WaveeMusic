@@ -124,6 +124,30 @@ internal static partial class ClassicSettings
         return card is { } c ? Framed(row, c) : null;
     }
 
+    // ── a row outside the page ────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The app mode row (System · Light · Dark), as Settings draws it and as the setup wizard's Theme step shows it: one row, one writer.</summary>
+    internal static Element AppModeRow() => OutsideRow("appearance.appMode", static row => GenericCard(row));
+
+    /// <summary>The language row, as Settings draws it and as the setup wizard's Theme step shows it (one row, one writer), its combo on
+    /// <paramref name="selected"/> (the wizard's own signal, seeded from the dial: <see cref="LanguageIndex"/>).</summary>
+    internal static Element LanguageRow(Signal<int> selected) => OutsideRow("system.language", row => LanguageRow(row, selected));
+
+    /// <summary>The audio quality row, as Settings draws it and as the setup wizard's playback step shows it (one row, one writer), its combo on
+    /// <paramref name="selected"/> (the wizard's own signal, seeded from the dial: <see cref="QualityIndex"/>).</summary>
+    internal static Element QualityRow(Signal<int> selected) => OutsideRow("sound.quality", row => CardRow(row, QualityCombo(selected)));
+
+    /// <summary>The language the dial holds, for a surface that seeds its own signal (the setup wizard).</summary>
+    internal static int LanguageIndex() => Dial("system.language").Current is int language ? language : 0;
+
+    /// <summary>The audio quality the dial holds, for a surface that seeds its own signal (the setup wizard).</summary>
+    internal static int QualityIndex() => Dial("sound.quality").Current is int quality ? quality : Platform.Keys.PlaybackQuality.Default;
+
+    /// <summary>A dial's card for a surface outside the page: the registry's row (<see cref="SettingsPageModel.RowOf"/>) in the card the page draws, unframed
+    /// (no "Also in" line: its doors lead away from the surface; no arrival). Nothing shows while the facts compose the dial away.</summary>
+    static Element OutsideRow(string dialId, Func<SettingsBodyRow, Element> card)
+        => SettingsPageModel.RowOf(Dial(dialId)) is { } row ? card(row) : new BoxEl { Visible = false };
+
     /// <summary>The 16-DIP glyph of a group's header: the group's subject (the old sections' glyphs where a group took one over), else the category's.</summary>
     static string GroupGlyph(string slug, string group, string categoryGlyph) => (slug, group) switch
     {

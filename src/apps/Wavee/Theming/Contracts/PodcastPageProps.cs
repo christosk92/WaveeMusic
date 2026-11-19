@@ -14,6 +14,19 @@ using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
 
+/// <summary>Where a podcast page is drawn. <see cref="Embedded"/> is true inside another page's column (the library's detail column mounts the show and
+/// book pages, <c>PodcastPages.LibraryPane</c>): the page there is not the route's page, so its head is not the page's title (a structure that keys its
+/// head as the page title for the lint guide keys it as itself there).</summary>
+public static class PodcastPagePlace
+{
+    public static readonly FluentGpu.Hooks.Context<bool> Embedded = new(false);
+
+    /// <summary>Where the page is embedded: opens the page on its own (its route). A structure makes the embedded page's head (cover and title) a way
+    /// there and shows one plain link for it ("View details"), as the album column's "Open album" does (owner, 2026-11-18). Null on the page's own
+    /// route: it is already there.</summary>
+    public static readonly FluentGpu.Hooks.Context<Action?> OpenFull = new(null);
+}
+
 /// <summary>Whether a page's data is still on its way, landed, or failed.</summary>
 public enum PodcastLoad : byte { Pending, Ready, Failed }
 
@@ -50,6 +63,9 @@ public sealed record PodcastEpisodeVm(
     public string LongDate { get; init; } = "";
     /// <summary>The description as HTML when the provider sent it ("" = only <see cref="Description"/>); render it with the house rich text.</summary>
     public string DescriptionHtml { get; init; } = "";
+    /// <summary>A video episode's own still (16:9), or null: where it is set a theme draws IT as the episode's picture, wide, and
+    /// <see cref="ArtUrl"/> (often the show's square cover) only where there is none.</summary>
+    public string? StillUrl { get; init; }
     /// <summary>The month it came out (1..12; 0 = not known): the list groups by it.</summary>
     public int Month { get; init; }
     /// <summary>The episode's own number as a row writes it beside the title ("97"; "" = the show does not number its episodes).</summary>
@@ -168,8 +184,8 @@ public enum PodcastItemKind : byte { Group, Row, More, Empty }
 
 /// <summary>One item of <see cref="PodcastShowView.Items"/>: its kind, its group (an index into <see cref="PodcastShowView.Groups"/>, -1 for the foot
 /// and the empty line) and, for a row, its episode (an index into <see cref="PodcastShowView.Episodes"/>, else -1). <see cref="First"/>: the row opens
-/// its group (no rule above it). <see cref="Lead"/>: the row is the list's lead, the newest episode not started yet at the head of the whole list
-/// (newest first, no search): a theme gives it the weight of a headline.</summary>
+/// its group (no rule above it). <see cref="Lead"/>: the row leads its group, the first episode of its month (never on a serial, which reads in
+/// order, nor in a search): a theme sets it as the month's card, with its cover and the weight of a headline.</summary>
 public readonly record struct PodcastListItem(PodcastItemKind Kind, int Group, int Episode, bool First = false, bool Lead = false);
 
 /// <summary>The show page's snapshot.</summary>

@@ -58,6 +58,13 @@ public sealed record BoardEntry(string Id, BoardEntryKind Kind, string GroupId, 
     /// <summary>A placed section the current answer does not carry: a Hidden pack entry that keeps its place.</summary>
     public bool Hidden { get; init; }
 
+    /// <summary>The tile HOLDS items of their own (a feed or placed section, a fold of sections, the recents, releases and up-next widgets): each
+    /// card or row in it is pressed and dragged as itself, and the tile is moved from its own surface (its head, its gaps). False for a tile that
+    /// IS one thing (a pin, a fill cell, the now-playing and daylist widgets): a press or a drag anywhere on it is the tile's (owner, 2026-11-18:
+    /// dragging a card of a section lifted the whole section).</summary>
+    public bool HoldsItems => Kind is BoardEntryKind.FeedSection or BoardEntryKind.Fold
+        || Raw is SpotifySectionSource or SpotifyFeedSource or WidgetSource { Widget: "recents" or "releases" or "upNext" };
+
     /// <summary>The item's options as saved (empty for entries the document does not hold yet).</summary>
     public ImmutableSortedDictionary<string, string> Options { get; init; } = ImmutableSortedDictionary<string, string>.Empty;
 

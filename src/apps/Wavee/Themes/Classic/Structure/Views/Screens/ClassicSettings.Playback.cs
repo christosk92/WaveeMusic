@@ -193,11 +193,12 @@ internal static partial class ClassicSettings
     }
 
     /// <summary>D7: Lossless is OFFERED only when a key deriver is installed — without one it cannot play, and a
-    /// permanently-dead rung is an advert. The combo's items freeze at mount, so the key carries the rung count.</summary>
-    static Element QualityCombo()
+    /// permanently-dead rung is an advert. The combo's items freeze at mount, so the key carries the rung count. The combo is on
+    /// <paramref name="selected"/> (the page's signal, or the setup wizard's own, seeded from the dial).</summary>
+    static Element QualityCombo(Signal<int> selected)
     {
         int count = Settings.Quality.AudioRungCount(SettingsFacts.Live.CanDerive);
-        return Combo(QualityLabels(count), s_quality, width: ClassicSettingsRules.WideComboWidth, itemDescriptions: QualityDescriptions(count),
+        return Combo(QualityLabels(count), selected, width: ClassicSettingsRules.WideComboWidth, itemDescriptions: QualityDescriptions(count),
             onChange: static i =>
             {
                 if (Dial("sound.quality").Writer.Choose!(i)) Settings.Bump();

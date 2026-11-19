@@ -106,7 +106,7 @@ internal static class WinUiPodcastEpisode
             var e = v.Episode;
             float stillH = lay.StillW / P.StillAspect;
 
-            var stillKids = new List<Element>(3) { Controls.Artwork(e.ArtUrl ?? v.ShowArtUrl, lay.StillW, stillH, lay.StillRadius) };
+            var stillKids = new List<Element>(3) { Controls.Artwork(e.StillUrl ?? e.ArtUrl ?? v.ShowArtUrl, lay.StillW, stillH, lay.StillRadius, connect: Design.MorphKeys.ForUri(e.Id)) };
             if (v.VideoLabel.Length > 0) stillKids.Add(Tag(v.VideoLabel, Icons.Video, FlexAlign.Start, FlexAlign.Start));
             if (v.StillTime.Length > 0) stillKids.Add(Tag(v.StillTime, null, FlexAlign.End, FlexAlign.End));
             Element still = new BoxEl

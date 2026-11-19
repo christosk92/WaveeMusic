@@ -1,11 +1,8 @@
-// ── Themes/Zune/Structure/Rules/ZuneShowRules.cs — the numbers and records of Zune's show, episode and concert pages (themes plan 6.3; P5 Z6b2) ──
+// ── Themes/Zune/Structure/Rules/ZuneEpisodeConcertRules.cs — the numbers and records of Zune's episode discussion and concert pages (themes plan 6.3; P5 Z6b2) ──
 //
-// Boards Z-Show (+ -Compact, -Small, -Huge), Z-Episode (+ -Compact, -Small, -Huge) and Z-Concert (+ -Compact, -Small, -Huge). WVTH003 keeps every
-// number that makes a look out of the views (`Views\Show`, `Views\Episode`, `Views\Concert`): they are here. Three families, one file:
+// Boards Z-Episode (+ -Compact, -Small, -Huge) and Z-Concert (+ -Compact, -Small, -Huge). WVTH003 keeps every number that makes a look out of the
+// views (`Views\Episode`, `Views\Concert`): they are here. Two families, one file:
 //
-//   · `ZuneShowRules`     the show reader (its rhythm, the visit head's cards, the ledger and the rail's small words). The arithmetic the list's
-//                         seeds and the skeleton must agree on row for row is the core's (`ShowReaderRules`: the 48 rail, the 30 + 12 header, the
-//                         14 + 24 + 4 month header, the gutters, the strip's 30) and is NOT repeated here;
 //   · `ZuneEpisodeRules`  the episode discussion (the thread measure, a comment, the reaction pill, the flyout);
 //   · `ZuneConcertRules`  the concert pages, and `ZuneConcertTiers` / `ZuneConcertLayout` their records per CONTENT tier:
 //
@@ -23,106 +20,12 @@
 // Public, so `Wavee.Tests` pins the rules (the assembly has no InternalsVisibleTo).
 
 using System.Collections.Immutable;
-using FluentGpu.Animation;
 using FluentGpu.Foundation;
 using Wavee.Theming;
 using Wavee.Theming.Roles;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Zune;
-
-/// <summary>Zune's show page geometry (DIP).</summary>
-public static class ZuneShowRules
-{
-    // ── the section rhythm ──
-
-    /// <summary>The head's air above, and the gap between its sections.</summary>
-    public const float HeadTop = 12f, SectionGap = 28f;
-
-    /// <summary>The gap between a head word and its small count, the count's lift onto the word's baseline and the stacked sub line's gap.</summary>
-    public const float HeadGap = 12f, SubLineLift = 4f, StackedGap = 2f;
-
-    /// <summary>The reading measure of the about and of the rail's publisher line when the rail states none, and the about's size (15/22 in the boards).</summary>
-    public const float AboutMeasure = 620f, AboutSize = 15f;
-
-    /// <summary>The pinned month's plate and one year's row in the strip.</summary>
-    public const float StickyMonthPlateH = 20f, YearRowHeight = 15f;
-
-    /// <summary>Whether the year strip stands with its years (V19): in the frame's outer margin past the column edge (<paramref name="ownsEdge"/> false),
-    /// at Standard and up, whose 48 holds four digits of the micro voice on a 30 row. Under Standard the margin (Compact's 16, Small's 24) would clip
-    /// them and leave rows no finger can take, so there, and inside a reader's own gutter, the month headers open the jump list instead (the owner's
-    /// call, 2026-10-24: Windows Phone's semantic zoom).</summary>
-    public static bool YearsInStrip(WidthTier window, bool ownsEdge) => !ownsEdge && window >= WidthTier.Standard;
-
-    // ── the month jump list (`ZuneShowJumpList.cs`) ──
-
-    /// <summary>A month tile's height, the gap between tiles and rows, its inner padding, the air above a year after the first, and the tiles a row holds
-    /// (four at Compact, six above it: a tile is never narrower than 40).</summary>
-    public const float JumpTileH = 72f, JumpGap = 8f, JumpTilePad = 8f, JumpYearGap = 24f;
-
-    /// <summary>The tiles a row of the jump grid holds.</summary>
-    public static int JumpColumns(WidthTier window) => window == WidthTier.Compact ? 4 : 6;
-
-    /// <summary>The tiles' entrance: each grows from this scale while it fades in, after (row + column) x the stagger, the wave capped at that many steps.</summary>
-    public const float JumpTileScale = 0.86f, JumpStaggerMs = 18f;
-    public const int JumpStaggerCap = 12;
-
-    /// <summary>The grid's zoom back on close: its length and the scale it grows to while it fades.</summary>
-    public const float JumpCloseMs = 220f, JumpCloseScale = 1.06f;
-
-    /// <summary>The tiles' entrance clock (the pivot slide's, on the smooth-out curve; reduced motion keeps the fade).</summary>
-    public static MotionTokenDef JumpTileMotion => MotionTokenDef.Eased(ZuneMotion.PivotSlideMs, Easing.SmoothOut, ReducedMotionPolicy.KeepFade);
-
-    /// <summary>The month header's target reaches this far into the air above its line and the foot below it (24 + 16 = the 40 floor; the row's extent is
-    /// unchanged).</summary>
-    public const float HeaderTargetPad = 8f;
-
-    /// <summary>The browser Back key (VK_BROWSER_BACK), which closes the jump list as Escape does.</summary>
-    public const int BrowserBackKey = 166;
-
-    /// <summary>The month header's target, the grid, and a tile's key prefix.</summary>
-    public const string MonthHeaderKey = "rd:group:head", JumpGridKey = "zune-jump-grid", JumpTilePrefix = "zune-jump:";
-
-    /// <summary>The cold skeleton's seed rows.</summary>
-    public const int SeedRows = 8;
-
-    /// <summary>A skeleton bar's radius.</summary>
-    public const float SkelRadius = 2f;
-
-    // ── the toolbar ──
-
-    /// <summary>The toolbar's body (the core's plane is <c>ShowReaderRules.RailExtent</c>, the body centres in it), a glyph control's edge (the stage
-    /// rule's own <c>ShowToolbarLayout.Glyph</c>: it sums the controls' widths), the glyph, the hairline between find and sort, the folded filter's
-    /// chevron, the find box's floor and its open-field width.</summary>
-    public const float ToolbarHeight = 40f, ControlEdge = ShowToolbarLayout.Glyph, ToggleGlyph = 14f, DividerHeight = 16f, FilterChevron = 10f,
-                       FindMinHeight = 32f, FindFillMax = 9999f;
-
-    /// <summary>A glyph control's edge under the reader's narrow arm: the Compact 40 target (a 30 glyph's slop met the list's scroll bar lane at the
-    /// row's end: MultiSelect 30 x 30). The style states it (<c>ShowReaderStyle.NarrowToolbarGlyph</c>), so the stage rule sums 40 there too.</summary>
-    public const float NarrowControlEdge = ZuneListRules.CompactTarget;
-
-    // ── the visit head ──
-
-    /// <summary>The head's shimmer: its title bar's width and the card's height.</summary>
-    public const float HeadSeedTitleWidth = 160f, HeroSeedHeight = 72f;
-
-    /// <summary>The card (Z-Show's continue and up-next items): the 72 cover, the gap beside it, the lines' gap, the label's size and line, the 40 ring.</summary>
-    public const float CardArt72 = 72f, CardGap = 14f, CardTextGap = 2f, CardLabelSize = 12f, CardLabelLine = 16f, CardRing = 40f, CardRingGlyph = 14f;
-
-    /// <summary>The continue card's progress track: its height (2, like the play bar's seek row) and its longest run.</summary>
-    public const float HeroRuleHeight = 2f, HeroTrackMax = 420f;
-
-    /// <summary>The up-next card's numeral column (the light numeral lead).</summary>
-    public const float MiniNumeralW = 34f;
-
-    /// <summary>The seed's U+2007 runs that make the derived shimmer draw a title bar and a meta bar.</summary>
-    public const int MiniSeedTitleRun = 18, MiniSeedMetaRun = 10;
-
-    // ── the topic words ──
-
-    /// <summary>The topic words: the gap between two and a topic's hit height.</summary>
-    public const float TopicGap = 14f, TopicTarget = 32f;
-}
 
 /// <summary>Zune's episode page geometry (DIP).</summary>
 public static class ZuneEpisodeRules
@@ -224,11 +127,6 @@ public static class ZuneConcertRules
 
     /// <summary>The hub head's lines' gap.</summary>
     public const float HeadLineGap = 4f;
-
-    // ── the location button ──
-
-    /// <summary>The pin's box, the pin and the chevron's box.</summary>
-    public const float LocationGlyphBox = 20f, LocationPin = 16f, LocationChevronBoxW = 16f;
 
     // ── the filter bar's pills and tokens ──
 
@@ -348,8 +246,8 @@ public static class ZuneConcertRules
 
     // ── the tour dashboard ──
 
-    /// <summary>The empty month card's air and the location button's width beside "view event".</summary>
-    public const float EmptyPadY = 48f, ScheduleLocationW = 220f;
+    /// <summary>The empty month card's air.</summary>
+    public const float EmptyPadY = 48f;
 
     /// <summary>The month tabs' height, the board's head floor, the chevron and the pin.</summary>
     public const float MonthTabsH = 48f, BoardHeadMinH = 52f, BoardChevron = 14f, BoardPin = 12f;

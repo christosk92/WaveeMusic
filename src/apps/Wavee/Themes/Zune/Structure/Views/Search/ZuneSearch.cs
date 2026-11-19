@@ -407,7 +407,8 @@ internal static class ZuneSearch
                 [
                     new BoxEl
                     {
-                        Key = ZuneFrameRules.PopupProgressKey, Width = w, Height = ZuneFrameRules.ProgressSlotHeight, Shrink = 0f, ClipToBounds = true,
+                        // No clip: the slot holds the line's place, and the train's dots (taller than the line) show whole on it.
+                        Key = ZuneFrameRules.PopupProgressKey, Width = w, Height = ZuneFrameRules.ProgressSlotHeight, Shrink = 0f,
                         HitTestVisible = false, Opacity = state == SearchAnswerState.Pending ? 1f : 0f, Transition = MotionTok.ControlFast,
                         Children = state == SearchAnswerState.Pending ? [ProgressBar.Indeterminate(w)] : [],
                     },

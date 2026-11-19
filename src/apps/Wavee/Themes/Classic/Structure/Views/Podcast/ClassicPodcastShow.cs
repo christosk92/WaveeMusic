@@ -74,6 +74,7 @@ internal static partial class ClassicPodcastShow
         {
             _p = UseProps<PodcastShowPageProps>();
             var p = _p;
+            _openFull = UseContext(PodcastPagePlace.OpenFull);   // in another page's column (the library's): the way to the show's own page
             var facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers;
             var lay = ClassicPodcastTiers.Of(in facts);
             _project ??= () => HeadOf(_p.View.Value);
@@ -84,7 +85,7 @@ internal static partial class ClassicPodcastShow
             bool loading = hv.Load == PodcastLoad.Pending;
             uint tone = loading ? 0u : hv.Head.Tone;
             ColorF accent = ClassicPodcastKit.Accent(tone);
-            UseList(lay, tone, accent);
+            UseList(lay, accent);
             Element list = ListColumn();
             return ClassicPodcastKit.ListPage(p.RouteKey, lay, tone, lay.Stacked ? null : ColumnRegion(hv, lay, accent), list);
         }
@@ -194,6 +195,9 @@ internal static partial class ClassicPodcastShow
             };
         }
 
+        /// <summary>Opens the show's own page from another page's column (null on its own route): the command row ends on "View details".</summary>
+        Action? _openFull;
+
         Element Commands(PodcastShowHead h, ClassicPodcastLayout lay)
         {
             // Following is a state at rest: the check and the word while followed, Add and Follow while not (a standard button, not an accent).
@@ -206,6 +210,7 @@ internal static partial class ClassicPodcastShow
                 kids.Add(ClassicPodcastKit.Glyph("cmd:bell", Icons.Bell, Loc.Get(Strings.Podcast.Pages.NotifyUnavailable), null, lay.Target));
             if (_p.Share is { } share) kids.Add(ClassicPodcastKit.Glyph("cmd:share", Icons.Share, Loc.Get(Strings.Podcast.Pages.Share), share, lay.Target));
             kids.Add(new BoxEl { Key = "cmd:more", Shrink = 0f, Children = [ClassicDetailKit.MoreButton(_p.ShowMenu, lay.Target)] });
+            if (_openFull is { } open) kids.Add(ClassicPodcastKit.ViewDetails(open));
             return new BoxEl { Key = "cp-commands", Direction = 0, Wrap = true, Gap = P.CommandGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
         }
 

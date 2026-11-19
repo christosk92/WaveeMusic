@@ -29,10 +29,12 @@ internal static partial class WinUiSetup
     /// (or a change from the palette) shows at once.</summary>
     public static Element ThemeTemplate(SetupThemeProps props, in ViewContext ctx)
     {
-        var kids = new List<Element>(3)
+        // Light or dark and the language belong to a first run as much as the theme does (they were Settings-only): the rows Settings draws.
+        var kids = new List<Element>(5)
         {
             SetupText.Body(Loc.Get(Strings.Setup.Theme.Body)),
             props.ThemePicker(),
+            new BoxEl { Key = "setup:prefs", Direction = 1, Gap = WinUiSetupGeometry.BodySpacing, MinWidth = 0f, Children = [WinUiSettings.AppModeRow(), WinUiSettings.LanguageRow()] },
         };
         if (props.ThemeOptions() is { } options) kids.Add(options);
         return WizardFrame(Setup.WizardPage.Theme, Loc.Get(Strings.Setup.Theme.Title), SetupText.Stack(kids.ToArray()));
@@ -123,14 +125,17 @@ internal static partial class WinUiSetup
     {
         var overlay = ctx.Hooks.UseContext(Overlay.Service);
         var layout = WinUiSetupTiers.Of(ctx.Tier());
+        // The quality the app streams at belongs to the first run's playback step (it was Settings-only): the row Settings draws, in every arm.
         if (props.Session.Model is not { } m)   // no provisioning host (D3): the model-null arm — no Key, no motion, no fine print
             return WizardFrame(Setup.WizardPage.LocalPlayback, Loc.Get(Setup.Commands.RuntimeHeaderKey(null)), SetupText.Stack(
                 SetupText.Lead(Loc.Get(Setup.Commands.RuntimeLeadKey(null))),
-                SetupText.Body(Loc.Get(Strings.Playback.Runtime.NotActive))));
+                SetupText.Body(Loc.Get(Strings.Playback.Runtime.NotActive)),
+                WinUiSettings.QualityRow() with { Key = "setup:quality" }));
 
         RuntimePhase phase = m.Phase.Value;
         string arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString();
-        var kids = new List<Element>(3) { SetupText.Lead(Loc.Get(Setup.Commands.RuntimeLeadKey(phase))), LocalContent(props, m, phase, arch, overlay, layout) };
+        var kids = new List<Element>(4) { SetupText.Lead(Loc.Get(Setup.Commands.RuntimeLeadKey(phase))), LocalContent(props, m, phase, arch, overlay, layout) };
+        if (phase != RuntimePhase.Advanced) kids.Add(WinUiSettings.QualityRow() with { Key = "setup:quality" });
         if (phase != RuntimePhase.Advanced)
             kids.Add(SetupText.Secondary(Loc.Get(Strings.Setup.LocalPlayback.FinePrint)) with { Key = "runtime:fineprint" });
         Element body = SetupText.Stack(kids.ToArray()) with

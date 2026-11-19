@@ -267,10 +267,26 @@ public static class WinUiPageMotion
     /// <summary>The kinds whose page grows out of its item instead of flying a picture (<see cref="PageMotionPolicy.GrowInto"/>): the artist.</summary>
     static GrowNav? GrowInto(EntityKind kind) => kind == EntityKind.Artist ? s_grow : null;
 
+    // ── A SECTION'S "SEE ALL" GROWS OUT OF THE SECTION ─────────────────────────────────────────────────────────────────────
+    // The owner, 2026-11-18, on a recording of "See all": "a LOT more smooth and less out of body experience, something with connected or
+    // expanding. now it feels too heavy and like we are leaving the page". The swap was the drill-in of any other page: Home left, a page
+    // arrived, its cards rose one after another. The drill is the section the user was looking at, with the rest of its cards: so the page
+    // grows out of the "See all" link it was opened from (0.96 to 1 about that point, fading in on the flights' spring, while Home only
+    // fades: no slide, no gap between the two), as one block with no stagger, and it opens on the cards the section already showed
+    // (SectionScreen holds a place for the rest). Back shrinks it toward the same point while Home fades back where it was left.
+    /// <summary>The section page's scale as it starts to grow: a short travel, it is the same content getting room.</summary>
+    public const float SectionGrowEnterScale = 0.96f;
+    /// <summary>Where the section page shrinks to on Back.</summary>
+    public const float SectionGrowBackScale = 0.97f;
+    /// <summary>The section grow's spring response (s): the flights' short hop.</summary>
+    public const float SectionGrowResponse = 0.24f;
+
+    static readonly GrowNav s_sectionGrow = new(SectionGrowEnterScale, SectionGrowBackScale, EnterOpacity: 0f, SectionGrowResponse, ConnectedBackScale, MinVisible: 0f);
+
     /// <summary>The policy WinUI publishes (<c>ThemePolicies.PageMotion</c>).</summary>
     public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor)
     {
         ReducedFade = s_reduced, SectionJump = s_sectionJump, LibraryPivot = LibraryPivot, Connected = s_connected,
-        GrowInto = GrowInto,
+        GrowInto = GrowInto, GrowIntoSection = s_sectionGrow,
     };
 }

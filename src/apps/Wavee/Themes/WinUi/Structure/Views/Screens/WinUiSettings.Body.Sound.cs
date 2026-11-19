@@ -54,19 +54,24 @@ internal static partial class WinUiSettings
     static Element QualityCard(RowCtx x, bool metered)
     {
         var row = x.Row;
+        if (!metered) return QualityCard(row, BaseCard(x, null));
+
         var dial = row.Dial;
-        bool derive = SettingsFacts.Live.CanDerive;
-        int count = metered ? Settings.Quality.MeteredRungCount(derive) : Settings.Quality.AudioRungCount(derive);
+        int count = Settings.Quality.MeteredRungCount(SettingsFacts.Live.CanDerive);
         string[] labels = QualityLabels(count);
         string[] descriptions = QualityDescriptions(count);
-        if (!metered)
-            return DialCard(BaseCard(x, DialCombo(row, labels, WinUiSettingsRules.WideComboWidth, descriptions)));
-
         Element combo = Combo(labels, Platform.Network.MeteredQualityCap, width: WinUiSettingsRules.WideComboWidth, itemDescriptions: descriptions, onChange: i =>
         {
             if (dial.Writer.Choose is { } choose && choose(i)) Settings.Bump();   // persist, then publish
         }) with { Key = count == Settings.Quality.AudioRungCount(true) ? "playback.meteredCap:lossless" : "playback.meteredCap" };
         return DialCard(BaseCard(x, combo) with { Description = MeteredStatus() });
+    }
+
+    /// <summary>The streaming quality card over <paramref name="card"/> (the page's base card, or a card outside the page: <see cref="QualityRow"/>).</summary>
+    static Element QualityCard(SettingsBodyRow row, Card card)
+    {
+        int count = Settings.Quality.AudioRungCount(SettingsFacts.Live.CanDerive);
+        return DialCard(card with { Control = DialCombo(row, QualityLabels(count), WinUiSettingsRules.WideComboWidth, QualityDescriptions(count)) });
     }
 
     /// <summary>Reactive: the live cost, the live cap and the chosen quality are read here, so an NLM push or either combo re-words the line. "Cap in effect" is

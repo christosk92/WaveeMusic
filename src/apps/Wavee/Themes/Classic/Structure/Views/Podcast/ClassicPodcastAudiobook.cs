@@ -33,7 +33,8 @@ internal static class ClassicPodcastAudiobook
     public static Element Template(AudiobookPageProps p, in ViewContext ctx)
         => new BoxEl { Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Children = [Embed.Comp(p, static () => new PageHost()) with { Key = "cpa-page" }] };
 
-    sealed record Args(AudiobookPageProps P, AudiobookView V, ClassicPodcastLayout Lay, ColorF Accent, bool Playing);
+    /// <param name="OpenFull">Opens the book's own page from another page's column (the library's); null on its own route.</param>
+    sealed record Args(AudiobookPageProps P, AudiobookView V, ClassicPodcastLayout Lay, ColorF Accent, bool Playing, Action? OpenFull);
 
     sealed class PageHost : Component
     {
@@ -48,7 +49,7 @@ internal static class ClassicPodcastAudiobook
             bool playing = p.Playing.Value;
             uint tone = loading ? 0u : v.Tone;
             ColorF accent = ClassicPodcastKit.Accent(tone);
-            var a = new Args(p, v, lay, accent, playing);
+            var a = new Args(p, v, lay, accent, playing, UseContext(PodcastPagePlace.OpenFull));
             var seed = a with { V = AudiobookView.Placeholder };
             Element column = new SkelRegionEl(
                 Pending: () => p.View.Value.Load == PodcastLoad.Pending, Failed: () => p.View.Value.Load == PodcastLoad.Failed,
@@ -244,6 +245,7 @@ internal static class ClassicPodcastAudiobook
         var glyphs = new List<Element>(3) { ClassicPodcastKit.Glyph("cpa-download", Icons.Download, Loc.Get(Strings.Podcast.Pages.Download), p.Download, lay.Target) };
         if (p.Share is { } share) glyphs.Add(ClassicPodcastKit.Glyph("cpa-share", Icons.Share, Loc.Get(Strings.Podcast.Pages.Share), share, lay.Target));
         glyphs.Add(new BoxEl { Key = "cpa-more", Shrink = 0f, Children = [ClassicDetailKit.MoreButton(p.Menu, lay.Target)] });
+        if (a.OpenFull is { } open) glyphs.Add(ClassicPodcastKit.ViewDetails(open));
         return new BoxEl
         {
             Key = "cpa-commands", Direction = 0, Wrap = true, Gap = P.CommandGap, AlignItems = FlexAlign.Center, MinWidth = 0f,

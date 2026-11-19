@@ -361,6 +361,23 @@
 // after its own options, with its Settings row's value and writer) and `HomeTileOptionsProps.DialsLabelKey` (the "For every daylist" label over them).
 // 2.4 (#242 merged onto 2.3, additive): the daylist panel's `HomeTileOptionsProps.Dials` and `DialsLabelKey` (pinned-home 1.118 above) land on
 // the 2.x line.
+// The podcast-row-open line (feat/podcast-row-open: the show reader removed, Tune inline) numbered its own minors on pinned-home 1.117,
+// beside the daylist panel's 1.118; its notes as written there (merged as 2.5):
+// podcast-row-open 1.118 (the library's show column is the route's page): `Library.ShowPane` (`LibraryShowPaneProps`) and `StyleKeys.ShowReader` (`ShowReaderStyle`,
+// its templates and their args: `ShowPrimaryArgs`, `ShowTopicsArgs`, `ShowToolbarArgs`, `ShowHeadArgs`, `ShowEpisodesHeaderArgs`, `ShowGroupArgs`,
+// `ShowJumpList`, `ShowFootArgs`, `ShowAsideArgs`, `ShowDetail`) are gone with the old show reader: the library mounts the podcast pages' own show and
+// audiobook page (`PodcastPages.LibraryPane`: `Pages.PodcastShow` / `Pages.Audiobook`) (removed before any external theme existed, as 1.2 did).
+// podcast-row-open 1.119 (the episode row's host marks): `Episode.RowItem` loses `Marks` and `Number`, and `Episode.RowMarks` and `Episode.IsNew` are gone: the show
+// reader was the one host that set them, so no row has drawn its "New" mark or dropped its hairline since (removed before any external theme existed,
+// as 1.2 did).
+// podcast-row-open 1.120 (Tune inline): `Playlist.Tune` is the strip under the list bar, no longer a dialog's content: `PlaylistTuneProps` loses `Width` and gains
+// `Applying`, `Failed` and `Close` (changed before any external theme existed, as 1.2 did); the optional `ITrackCommandKit.TuneCommand` (the list bar's
+// Tune as the structure's AI action, lit while tuned or open), `Detail.FrameActions.TuneLit` and `TableProfile.TuneStrip` / `TuneLit`.
+// 2.5 (feat/podcast-row-open merged onto 2.4): the podcast-row-open line's 1.118-1.120 land on the 2.x line: Tune inline
+// (`PlaylistTuneProps.Applying` / `Failed` / `Close`, the optional `ITrackCommandKit.TuneCommand`, `Detail.FrameActions.TuneLit`,
+// `TableProfile.TuneStrip` / `TuneLit`). Its removals (`Library.ShowPane` with `LibraryShowPaneProps`, `StyleKeys.ShowReader` with its
+// templates and args, `Episode.RowItem.Marks` / `Number`, `Episode.RowMarks`, `Episode.IsNew`, `PlaylistTuneProps.Width`) were made before
+// any external theme existed, as 1.2 did, so they ride a minor; nothing the settings rework added names them.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -376,7 +393,7 @@ public static class ContractVersion
     public const int Major = 2;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 4;
+    public const int Minor = 5;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

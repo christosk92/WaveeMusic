@@ -223,11 +223,10 @@ sealed class ShowModel
     /// <summary>Whether the listener chose the order (else it follows the show: a serial reads oldest first).</summary>
     readonly Signal<bool> _orderChosen = new(false);
     bool _seeded;
-    /// <summary>The filter and the order are remembered per show (<see cref="ShowViewPrefs"/>, the one capped blob the library pane's reader
-    /// shares): seeded here, written by <see cref="PersistView"/> on a change. The codes the two surfaces share mean the same (status 0 All,
-    /// 1 Unplayed, 2 In progress; order 0 newest, 1 oldest); each page's own code is one the other's seed reads as its default: this page's
-    /// Saved is <see cref="SavedCode"/> and "the order follows the show" <see cref="OrderFollowsShow"/> (the reader clamps a status past
-    /// Played and an order past 1 to 0), and the reader's Played (3) opens this page on All.</summary>
+    /// <summary>The filter and the order are remembered per show (<see cref="ShowViewPrefs"/>, one capped blob): seeded here, written by
+    /// <see cref="PersistView"/> on a change. Status 0 All, 1 Unplayed, 2 In progress and <see cref="SavedCode"/> Saved; order 0 newest,
+    /// 1 oldest and <see cref="OrderFollowsShow"/> "the order follows the show". A stored status this page does not define (the retired
+    /// library reader's Played, 3) opens it on All.</summary>
     public readonly string PrefsId;
     int _savedStatus, _savedOrder;
     const int SavedCode = 4, OrderFollowsShow = 2;
@@ -269,7 +268,7 @@ sealed class ShowModel
             var g = groups[gi];
             b.Add(new PodcastListItem(PodcastItemKind.Group, gi, -1));
             for (int k = 0; k < g.Rows.Length; k++)
-                b.Add(new PodcastListItem(PodcastItemKind.Row, gi, g.Rows[k], k == 0, lead && gi == 0 && k == 0));
+                b.Add(new PodcastListItem(PodcastItemKind.Row, gi, g.Rows[k], k == 0, lead && k == 0));
         }
         if (empty) b.Add(new PodcastListItem(PodcastItemKind.Empty, -1, -1));
         if (hasMore) b.Add(new PodcastListItem(PodcastItemKind.More, -1, -1));
@@ -302,7 +301,7 @@ sealed class ShowModel
         Subject = subject;
         SubjectText = subject.IsValid ? subject.Text : "";
         // ── the remembered view: an entry for this show seeds the filter, and the order only when it was chosen (else it follows the show) ──
-        PrefsId = ShowReaderRules.PrefsId(SubjectText);
+        PrefsId = ShowListRules.PrefsId(SubjectText);
         _savedStatus = 0;
         _savedOrder = OrderFollowsShow;
         if (ShowViewPrefs.TryRead(ShowViewPrefs.Blob(), PrefsId, out int status, out int order))
@@ -437,7 +436,7 @@ sealed class ShowModel
             _ = scope.Edges.ShowEpisodes.Changed.Value;
             if (!Subject.IsValid || !scope.Shows.TryGetSlot(Subject.Id, out int show)) return;
             var slots = scope.Edges.ShowEpisodes.Targets(show);
-            if (slots.Length > 0) Entities.Ensure(scope.Episodes, slots, (uint)ShowReaderRules.RowDemand);
+            if (slots.Length > 0) Entities.Ensure(scope.Episodes, slots, (uint)ShowListRules.RowDemand);
         };
         DemandTrailer = () =>
         {
@@ -569,7 +568,7 @@ sealed class ShowModel
         }
         bool serial = page.Order == ShowOrder.Serial;
         // The order follows the show until the reader picks one: a serial reads oldest first.
-        var (cadence, _) = ShowCadence.Of(published);
+        var cadence = ShowCadence.Of(published);
         following = page.Saved == SaveState.Saved || following;
 
         // What a row leaves out (PodcastRowRules): the show's own name in its title, the opening line the descriptions share.
@@ -737,7 +736,7 @@ sealed class ShowModel
                 PodcastFilter.Saved => vm.Saved,
                 _ => true,
             };
-            if (keep && !q.IsEmpty) keep = ShowReaderRules.Matches(vm.Title, vm.Description, q);
+            if (keep && !q.IsEmpty) keep = ShowListRules.Matches(vm.Title, vm.Description, q);
             shown[i] = keep;
             if (keep) { shownCount++; view.Add(i); }
         }
@@ -746,10 +745,8 @@ sealed class ShowModel
         foreach (int i in view) episodes.Add(vms[i]);
         var years = YearsOf(vms, serial);
         var groups = GroupsOf(vms, view, shown, serial, oldestCell, !q.IsEmpty);
-        // The list's lead: the newest episode, not started yet, at the head of the whole list (newest first, no search). A serial reads in order
-        // and a search ranks nothing, so neither has one.
-        bool lead = !serial && !oldestCell && q.IsEmpty && filter is PodcastFilter.All or PodcastFilter.Unplayed && view.Count > 0
-            && vms[view[0]] is { State: PodcastRowState.New or PodcastRowState.Unplayed, Trailer: false };
+        // A lead per group: the first episode of each month heads its month. A serial reads in order and a search ranks nothing, so neither has one.
+        bool lead = !serial && q.IsEmpty && view.Count > 0;
 
         var filters = ImmutableArray.Create(
             new PodcastFilterVm(PodcastFilter.All, Loc.Get(Strings.Podcast.Pages.FilterAll), total) { CountText = total > 0 ? FormatCache.Int(total) : "" },
@@ -821,7 +818,7 @@ sealed class ShowModel
             state == PodcastRowState.Played ? 1f : state == PodcastRowState.InProgress ? pct : 0f, state, saved,
             (flags & EpisodeFlags.Video) != 0, kind == EpisodeKind.Trailer, playable, 0, (flags & EpisodeFlags.HasTranscript) != 0, Episode.ArtOf(e))
         {
-            Eyebrow = eyebrow, LongDate = longDate, DescriptionHtml = e.Knows(EpisodeFields.About) ? e.HtmlDescription : "",
+            StillUrl = Episode.StillOf(e), Eyebrow = eyebrow, LongDate = longDate, DescriptionHtml = e.Knows(EpisodeFields.About) ? e.HtmlDescription : "",
             Month = month, Numeral = numeral, ShortTitle = shortTitle, Blurb = PodcastRowRules.BlurbOf(description, sharedLead),
             Explicit = (flags & EpisodeFlags.Explicit) != 0, Bonus = kind == EpisodeKind.Bonus,
         }, flags);

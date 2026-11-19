@@ -809,6 +809,11 @@ public static partial class Spotify
                     show.Publisher = c.Publisher;
                     show.Known |= (uint)ShowFields.Publisher;
                 }
+                // A card the answer types `Audiobook` is the catalogue classifying the show as a book, as the books lane's similar-books read
+                // takes it: the bit rides the header route (a pure OR, Show.cs), so the page the card opens is the book's from its first frame,
+                // never a show page that turns into one when the show's metadata lands (the cover's flight would land on the show's head).
+                if (c.Type == TAudiobook && s.Shows.Count > 0 && staged.Kind(s) == EntityKind.Show)
+                    s.Shows[s.Shows.Count - 1].HeaderFacts |= (uint)ShowFlags.Audiobook;
 
                 // The playlist extras Stage has no Node field for (the Format group's header image + generic title, the
                 // daylist window). Stage appended exactly one playlist row, so it is the last one.

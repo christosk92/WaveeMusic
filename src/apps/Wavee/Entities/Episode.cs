@@ -95,6 +95,8 @@ public enum EpisodeKind : byte { Full = 0, Trailer = 1, Bonus = 2 }
 public sealed class EpisodeTable : Table
 {
     public Column<StringId> Title, Image, Description, HtmlDescription, TranscriptUrl, TranscriptLanguage;
+    /// <summary>A video episode's own still (the wire's <c>freeze_frame</c>, 16:9); empty where the wire states none.</summary>
+    public Column<StringId> Still;
     public Column<int> DurationMs;
     /// <summary>Unix seconds, the same epoch as <c>FetchedAt</c> (ch 09 DATA GAPS).</summary>
     public Column<int> PublishedAt;
@@ -134,6 +136,7 @@ public sealed class EpisodeTable : Table
     protected override void GrowColumns(int capacity)
     {
         HtmlDescription.EnsureCapacity(capacity);
+        Still.EnsureCapacity(capacity);
         TranscriptUrl.EnsureCapacity(capacity);
         TranscriptLanguage.EnsureCapacity(capacity);
         Season.EnsureCapacity(capacity);
@@ -174,6 +177,7 @@ public sealed class EpisodeTable : Table
     {
         ClearText(ref Title, slot);
         ClearText(ref Image, slot);
+        ClearText(ref Still, slot);
         ClearText(ref Description, slot);
         ClearText(ref HtmlDescription, slot);
         ClearText(ref TranscriptUrl, slot);
@@ -200,6 +204,8 @@ public readonly partial struct Episode(int slot) : IEquatable<Episode>
     public StringId TitleId => T.Title[Slot];
     public string Title => Entities.Strings.Resolve(T.Title[Slot]);
     public StringId ImageId => T.Image[Slot];
+    /// <summary>A video episode's own still; empty where none is known.</summary>
+    public StringId StillId => T.Still[Slot];
     public StringId DescriptionId => T.Description[Slot];
     public int DurationMs => T.DurationMs[Slot];
     public int PublishedAt => T.PublishedAt[Slot];
@@ -240,6 +246,8 @@ public struct StagedEpisode : IStagedRow
     /// <c>s.Slot(table, in row.Id)</c> — and no format-to-arena-then-parse-back round trip.</summary>
     public StagedId Id;
     public TextRef Title, Image, Description, HtmlDescription, TranscriptUrl, TranscriptLanguage;
+    /// <summary>A video episode's own still (<c>freeze_frame</c>); empty: this answer states none (a thin row never does).</summary>
+    public TextRef Still;
     /// <summary>The show this episode belongs to — staged thin so the row can name it before the fetch.</summary>
     public StagedId ShowUri;
     public int DurationMs, PublishedAt, ProgressMs;
@@ -315,6 +323,8 @@ public static partial class Entities
                     if (Detail.CoverLatch.AcceptsImage(t.Image[slot], incomingImage))
                         t.SetText(ref t.Image, slot, incomingImage);
                 }
+                // Only an answer that states a still writes one: a thin row (a list member, a card) knows the cover alone and must not blank it.
+                if (!row.Still.IsEmpty) t.SetText(ref t.Still, slot, s.Intern(row.Still));
                 if ((known & (uint)EpisodeFields.Duration) != 0 && !t.Knows(slot, (uint)EpisodeFields.Media)) t.DurationMs[slot] = row.DurationMs;
                 if ((known & (uint)EpisodeFields.Published) != 0) t.PublishedAt[slot] = row.PublishedAt;
                 if (!row.ShowUri.IsEmpty) t.Show[slot] = s.Slot(Current.Shows, in row.ShowUri);
@@ -442,6 +452,7 @@ public sealed class EpisodeShape : KindShape
         new("media_duration_ms", StoreType.Int),
         new("media_flags", StoreType.Int),
         new("media_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("still", StoreType.Text),                   // 33   identity (appended: the DDL fingerprint moves, a new store file)
     ];
 
     const uint PersistedFields = (uint)EpisodeFields.All;
@@ -474,6 +485,7 @@ public sealed class EpisodeShape : KindShape
             {
                 w.Text(0, row.Title);
                 w.Text(1, row.Image);
+                w.Text(33, row.Still);
                 w.Id(2, s, row.ShowUri);
                 w.Int(3, row.DurationMs);
                 w.Int(4, row.PublishedAt);
@@ -484,7 +496,7 @@ public sealed class EpisodeShape : KindShape
                 if ((known & (uint)EpisodeFields.Identity) == (uint)EpisodeFields.Identity) w.Int(12, row.Flags);
                 else w.Null(12);
             }
-            else { w.Null(0); w.Null(1); w.Null(2); w.Null(3); w.Null(4); w.Null(10); w.Null(11); w.Null(12); }
+            else { w.Null(0); w.Null(1); w.Null(2); w.Null(3); w.Null(4); w.Null(10); w.Null(11); w.Null(12); w.Null(33); }
             w.Int(7, identity ? authority : 0);
 
             if (about) w.Text(5, row.Description);
@@ -550,6 +562,7 @@ public sealed class EpisodeShape : KindShape
             {
                 row.Title = r.Text(0);
                 row.Image = r.Text(1);
+                row.Still = r.Text(33);
                 row.ShowUri = r.Text(2);
                 row.DurationMs = (int)r.Int(3);
                 row.PublishedAt = (int)r.Int(4);
@@ -622,10 +635,10 @@ public sealed class EpisodeShape : KindShape
 
 // ══ WAVE 5 (owner M, stream C): Episode.Rules ════════════════════════════════════════════════════════════════════════
 //
-// The one genuinely new pure class ch 09 §8 asks for, EXTRACTED from 0.2.9 `EpisodeList.cs` — where these five decisions
-// were private statics inside a Component and therefore untestable. The thresholds (`> 0.01`, `< 0.98`, `>= 0.98`) and
-// the `max(model, local)` cursor fold are 0.2.9's and load-bearing; the rule (3 DIP), the "In progress" caption and the
-// status filter are three presentations of ONE number, so all three read `Pct` and never three predicates (ch 09 §9.1).
+// The one genuinely new pure class ch 09 §8 asks for, EXTRACTED from 0.2.9 `EpisodeList.cs` — where these decisions were
+// private statics inside a Component and therefore untestable. The thresholds (`> 0.01`, `< 0.98`, `>= 0.98`) are 0.2.9's
+// and load-bearing; the rule (3 DIP), the "In progress" caption and the status filter are presentations of ONE number, so
+// all of them read `Pct` and never separate predicates (ch 09 §9.1).
 
 public readonly partial struct Episode
 {
@@ -702,15 +715,6 @@ public readonly partial struct Episode
         /// <summary>Does the card draw its progress rule (EpisodeList.cs:230)?</summary>
         public static bool HasRule(float pct) => pct > InProgressFloor;
 
-        /// <summary>The status filter's predicate (EpisodeList.cs:56).</summary>
-        public static bool Matches(Status status, float pct) => status switch
-        {
-            Status.Unplayed => pct <= InProgressFloor,
-            Status.InProgress => InProgress(pct),
-            Status.Played => Played(pct),
-            _ => true,
-        };
-
         /// <summary>The "Listen next" pick: the most-progressed IN-PROGRESS episode over ALL episodes, whatever the
         /// filter shows (EpisodeList.cs:78-81); ties keep the earlier (newer) one; -1 when none is in progress.</summary>
         public static int ResumePick(ReadOnlySpan<float> pcts)
@@ -722,49 +726,8 @@ public readonly partial struct Episode
             return resume;
         }
 
-        /// <summary>The filtered, ordered view as ORIGINAL indices (so Play addresses the show context, not the view):
-        /// newest-first as the wire orders them, reversed for Oldest (EpisodeList.cs:52-59). Returns the count written.</summary>
-        public static int View(ReadOnlySpan<float> pcts, Status status, bool oldest, Span<int> into)
-        {
-            int n = 0;
-            for (int i = 0; i < pcts.Length && n < into.Length; i++)
-                if (Matches(status, pcts[i])) into[n++] = i;
-            if (oldest) into[..n].Reverse();
-            return n;
-        }
-
-        /// <summary>THE load-more gate — the paging CURSOR, never the resident count (EpisodeList.cs:65-72; ch 09 §9.1):
-        /// how far anybody has ASKED, the model's cursor or the page's own, against the total.</summary>
-        public static bool CanLoadMore(int edgeAsked, int localAsked, int total) => Math.Max(edgeAsked, localAsked) < total;
-
-        /// <summary>The pill as the page shows it: only a PARTIAL membership pages (a Complete list never does, whatever
-        /// the cursor column says), and then the cursor gate above decides.</summary>
-        public static bool CanLoadMore(EdgeState state, int edgeAsked, int localAsked, int total)
-            => state == EdgeState.Partial && CanLoadMore(edgeAsked, localAsked, total);
-
-        /// <summary>Is a load-more ask still out? It was asked (<paramref name="askedFrom"/> ≥ 0), the relation's version has
-        /// not moved since the ask, and the ask has not failed. A version move or a failure ends it.</summary>
-        public static bool Paging(int askedFrom, uint versionAtAsk, uint versionNow, bool failed)
-            => askedFrom >= 0 && versionNow == versionAtAsk && !failed;
-
-        /// <summary>The page's own half of the cursor after an ask settles: a page that ANSWERED (with rows or without)
-        /// moves it past the offset asked, so a withdrawn member cannot pin the pill; a failure leaves it so the next tap
-        /// retries (0.2.9's `_pagedTo`, EpisodeList.cs:107-123).</summary>
-        public static int LocalCursorAfter(int localAsked, int askedFrom, bool paging, bool failed)
-            => askedFrom >= 0 && !paging && !failed ? Math.Max(localAsked, askedFrom + 1) : localAsked;
-
-        /// <summary>Where the next page starts: the furthest of the model's cursor, the page's cursor and the resident
-        /// count.</summary>
-        public static int NextOffset(int edgeAsked, int localAsked, int resident)
-            => Math.Max(Math.Max(edgeAsked, localAsked), resident);
-
         /// <summary>Whole minutes, 0.2.9's integer arithmetic (<c>DurationMs / 60000</c>); the view formats
         /// <c>podcast.minutes</c> (ch 09 §9.4's loc fix).</summary>
         public static int Minutes(int durationMs) => durationMs / 60_000;
-
-        /// <summary>The zero-episode arm (ch 09 §9.4 fix): the show's own empty copy only when no filter is applied and
-        /// the unfiltered set is genuinely empty; any other empty view is "No episodes match this filter".</summary>
-        public static bool IsEmptyShow(int total, int resident, Status status)
-            => status == Status.All && resident == 0 && total <= 0;
     }
 }

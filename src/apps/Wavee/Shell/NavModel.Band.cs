@@ -58,8 +58,10 @@ public sealed partial class NavModel
             }) is { } entity)
             return WithOpen(entity, open, unpin);
 
-        // A route pin (Your Episodes, a browse page): Open · Unpin, then the moves.
-        var rows = new List<MenuFlyoutItem>(5) { open, unpin };
+        // A route pin (Your Episodes, a browse page): Open · Open in new tab (where the structure has tabs) · Unpin, then the moves.
+        var rows = new List<MenuFlyoutItem>(6) { open };
+        if (routeKey.Length > 0 && ShellCaps.Now.Tabs && Shell.Parse(routeKey) is { IsNone: false } tabRoute) rows.Add(Shell.OpenInNewTabRow(tabRoute));
+        rows.Add(unpin);
         if (moves is { Count: > 0 })
         {
             Actions.Menu.OpenGroup(rows);

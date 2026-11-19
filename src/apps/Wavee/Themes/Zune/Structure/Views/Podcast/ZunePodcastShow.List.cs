@@ -11,9 +11,9 @@
 //   │  ├─ [3] the toolbar: a RAW sticky band at the viewport's top (episodes pivot; empty otherwise)   persistent prefix
 //   │  ├─ [4] the about / more like this body (empty on the episodes pivot)          persistent prefix
 //   │  └─ [5..] Items: a group header · an episode row · the "load more" foot · the empty line
-//   └─ the pinned group header: an overlay under the toolbar naming the group the list is in at that line (the list's measured layout says which),
-//      backed by the page's layer only while it shows; the rows cut themselves at the toolbar's lower edge (the list's item clip), so nothing at rest
-//      paints a band.
+//   └─ the pinned group header: an overlay under the toolbar naming the group the list is in at that line (the list's measured layout says which).
+//      Neither it nor the toolbar paints a band: the rows cut themselves at the toolbar's lower edge, and at the header's while one shows (the
+//      list's live item clip), so what is behind the page shows through both.
 //
 // Every slot reads the tier record, the column's lead and the pivot from signals the page writes on render, so a crossing re-pads the slots in place.
 
@@ -80,7 +80,13 @@ internal static partial class ZunePodcastShow
             _snap = UseComputed(_snapOf);
             _pinnedOf ??= PinnedGroup;
             _pinned = UseComputed(_pinnedOf);
+            // Where the rows are cut at the top of the list: under the toolbar, and under the pinned group header while one shows.
+            _clipInsetOf ??= () => Z.ToolbarH + ((_pinned?.Value ?? -1) >= 0 ? Z.GroupH : 0f);
+            _clipInset = UseComputed(_clipInsetOf);
         }
+
+        Func<float>? _clipInsetOf;
+        Memo<float>? _clipInset;
 
         /// <summary>The live page: the list and the pinned group header over it.</summary>
         Element LivePage()
@@ -100,8 +106,8 @@ internal static partial class ZunePodcastShow
                 Scroll = new ScrollOptions
                 {
                     ScrollKey = "podcast-scroll:" + _p.RouteKey, Handle = _scroll, AutoEdgeFade = false, EdgeCues = ScrollEdgeCues.None,
-                    // The rows cut themselves at the pinned toolbar's lower edge: no band is painted at rest.
-                    ItemClipTopInset = Z.ToolbarH,
+                    // The rows cut themselves at the pinned toolbar's lower edge, and at the pinned group header's while one shows: no band is painted.
+                    ItemClipTopInset = Z.ToolbarH, ItemClipTopInsetSource = _clipInset,
                 },
             };
             Element list = ItemsView.CreateBound<ShowSlot>(_items, _template, _listLayout.Value, _listOptions) with { Key = "podcast-list:" + _p.RouteKey };
@@ -178,7 +184,7 @@ internal static partial class ZunePodcastShow
             var vm = v.Episodes[it.Episode];
             if (vm.State == PodcastRowState.Played) return Z.RowPlayedEstimate;
             if (vm.State == PodcastRowState.InProgress) return Z.RowWideTall;
-            if (it.Lead) return Z.RowLeadEstimate;
+            if (it.Lead && (uint)it.Episode < (uint)v.Episodes.Length && !v.Episodes[it.Episode].Trailer) return Z.RowLeadEstimate;
             return lay.RowDescription && vm.Blurb.Length > 0 ? Z.RowWideTall : Z.RowWideEstimate;
         }
 
@@ -207,7 +213,7 @@ internal static partial class ZunePodcastShow
         /// <summary>A slot on the page column: the lead each side (the frame's gutter, or more past the 2400 cap) as the house's easing spacers
         /// (`ZuneFrameRules.Gutter`), so a crossing that changes the gutter glides the slot's content instead of snapping it; <paramref name="bleed"/>
         /// keeps no right spacer (the name and the pivots run to the window's edge). <paramref name="foot"/>: the page's foot under it.</summary>
-        BoxEl Column(Element content, bool bleed = false, float foot = 0f, Prop<ColorF>? fill = null)
+        BoxEl Column(Element content, bool bleed = false, float foot = 0f)
         {
             float lead = _leadS.Value;
             var body = new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [content] };
@@ -215,7 +221,7 @@ internal static partial class ZunePodcastShow
             {
                 // A crossing steps an item's height (the name wraps at Compact, the hero stacks, a row's title takes two lines): it eases through real
                 // layout, so the list's items after it ride it instead of jumping.
-                Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, foot), Fill = fill ?? (Prop<ColorF>)ColorF.Transparent,
+                Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, foot),
                 Layout = ZuneMotion.HeightResize,
                 Children = bleed ? [ZuneFrameRules.Gutter(lead), body] : [ZuneFrameRules.Gutter(lead), body, ZuneFrameRules.Gutter(lead)],
             };
@@ -258,7 +264,8 @@ internal static partial class ZunePodcastShow
 
         sealed record SlotProps(PageHost Host);
 
-        /// <summary>The pinned group header over the list (the page's layer behind it while it shows; nothing otherwise).</summary>
+        /// <summary>The pinned group header over the list. It paints no layer: the rows cut themselves at its lower edge (<c>_clipInset</c>), so what
+        /// is behind the page shows through it (an opaque content-surface layer stood out as a solid band; owner, 2026-11-18).</summary>
         sealed class PinnedHead : Component
         {
             NodeHandle _chip;
@@ -272,9 +279,8 @@ internal static partial class ZunePodcastShow
                 var v = host._p.View.Peek();
                 if ((uint)gi >= (uint)v.Groups.Length) return new BoxEl { Height = 0f };
                 return host.Column(GroupHeader(host, host.State, v.Years, v.Groups[gi], live: true, pinned: true, _setChip ??= h => _chip = h,
-                        _chipOf ??= () => _chip), fill: Prop.Of(static () => R.Layer.ContentSurface))
-                    // Its OWN height: a slot's column grows (it fills its list slot), and here that grew the backing over the whole list, so
-                    // every row under a pinned header was painted out.
+                        _chipOf ??= () => _chip))
+                    // Its OWN height (a slot's column grows to fill its list slot): the overlay is as tall as the header it draws.
                     with { Key = "show-pinned-head:" + v.Groups[gi].Key, Grow = 0f, Basis = float.NaN };
             }
         }
@@ -301,7 +307,7 @@ internal static partial class ZunePodcastShow
                 _ = host._head!.Value;
                 _ = host._pivot.Value;
                 var lay = host._layS.Value;
-                return host.Column(K.Pivots("zp-pivots", host._pivotItems, host._pivotNow, host._select!, lay, 0f), bleed: true);
+                return host.Column(K.Pivots("zp-pivots", host._pivotItems, host._pivotNow, host._select!, lay, 0f, host._embedded), bleed: true);
             }
         }
 

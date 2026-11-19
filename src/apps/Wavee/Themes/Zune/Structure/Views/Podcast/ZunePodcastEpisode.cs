@@ -136,7 +136,7 @@ internal static class ZunePodcastEpisode
             var e = v.Episode;
             float stillW = lay.Still > 0f ? lay.Still : lay.StillMax;
             float stillH = stillW / Z.StillAspect;
-            var stillKids = new List<Element>(3) { Controls.Artwork(e.ArtUrl ?? v.ShowArtUrl, stillW, stillH, 0f) };
+            var stillKids = new List<Element>(3) { Controls.Artwork(e.StillUrl ?? e.ArtUrl ?? v.ShowArtUrl, stillW, stillH, 0f) };
             if (v.VideoLabel.Length > 0) stillKids.Add(Tag(v.VideoLabel, Icons.Video, FlexJustify.Start, FlexAlign.Start));
             if (v.StillTime.Length > 0) stillKids.Add(Tag(v.StillTime, null, FlexJustify.End, FlexAlign.End));
             Element still = new BoxEl

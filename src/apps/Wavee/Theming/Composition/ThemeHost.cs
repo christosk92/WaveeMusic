@@ -138,6 +138,10 @@ public static class ThemeHost
         Platform.Settings.Set(IdKey, themeId);
     }
 
+    /// <summary>Stores the theme a new install starts in (<see cref="ThemeCatalog.NewInstallId"/>) as its <c>theme.id</c>. Called by
+    /// the install bootstrap, before <see cref="Install"/> resolves the stored id.</summary>
+    public static void SeedNewInstall(IAppSettings settings) => settings.Set(IdKey, ThemeCatalog.NewInstallId);
+
     /// <summary>Installs the compositions and activates the stored one (<c>theme.id</c>; an unknown or unavailable id
     /// activates Classic). App.cs only. A second call replaces the installed set, which tests use; production calls once.</summary>
     public static void Install(params ThemeComposition[] themes)

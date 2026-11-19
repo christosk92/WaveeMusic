@@ -21,16 +21,18 @@ internal static partial class WinUiSettings
 {
     /// <summary>App mode: System · Light · Dark in a combo. The writer swaps the installed palette IN PLACE (System re-reads the OS theme and accent), persists,
     /// and asks the host for the re-theme cross-fade; the page then re-reads its rows.</summary>
-    static Element AppModeCard(RowCtx x)
+    static Element AppModeCard(RowCtx x) => AppModeCard(x.Row, BaseCard(x, null));
+
+    /// <summary>The App mode card over <paramref name="card"/> (the page's base card, or a card outside the page: <see cref="AppModeRow"/>).</summary>
+    static Element AppModeCard(SettingsBodyRow row, Card card)
     {
-        var row = x.Row;
         var dial = row.Dial;
         string[] labels = row.Choices.Length > 0 ? [.. row.Choices] : [Loc.Get(Strings.Settings.Choice.System), Loc.Get(Strings.Settings.Choice.Light), Loc.Get(Strings.Settings.Choice.Dark)];
         Element combo = Combo(labels, new Signal<int>(row.Value is int at ? at : 0), width: WinUiSettingsRules.OptionComboWidth, onChange: m =>
         {
             if (dial.Writer.Choose is { } choose && choose(m)) Settings.Bump();
         });
-        return DialCard(BaseCard(x, combo) with { Glyph = Glyph(row.Glyph) });
+        return DialCard(card with { Control = combo, Glyph = Glyph(row.Glyph) });
     }
 
     /// <summary>Zoom: a ComboBox, not segments (thirteen items would be thirteen segments wide), with its glyph.</summary>

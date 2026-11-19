@@ -96,6 +96,8 @@ public static partial class ZunePolicies
             // The registry Settings page's arrival: the row's label holds the accent and returns to the ink over Zune's highlight (design 7.3).
             SettingsPage = new SettingsPagePolicy(ZuneSettingsRules.HighlightMs),
             Home = HomeBoard,
+            // The core's fade-through, and a section's "See all" grows out of its link (ZunePageMotion).
+            PageMotion = ZunePageMotion.Policy,
         };
     }
 

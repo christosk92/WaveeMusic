@@ -314,10 +314,13 @@ public static class ZuneControls
         Foreground = Tok.AccentDefault, Track = ColorF.Transparent, RoundCaps = false,
     };
 
-    /// <summary>The progress bar: a 2-DIP square line on a 12 % ink track (the play bar's seek line, Z-Part-PlayBar).</summary>
+    /// <summary>The progress bar: a 2-DIP square line on a 12 % ink track (the play bar's seek line, Z-Part-PlayBar). A bar that cannot say how far
+    /// it is runs the train of dots, never a sliding block (owner, 2026-11-18): five square 4-DIP dots in the accent that rush in, drift through the
+    /// middle and rush out (<c>ProgressBarIndeterminateForm.Dots</c>).</summary>
     public static ProgressBar.Style LineProgress() => ProgressBar.FluentStyle() with
     {
         TrackHeight = 2f, IndicatorRadius = 0f, TrackRadius = 0f, TrackFill = Ink(ZuneTokens.TrackA), Foreground = Tok.AccentDefault,
+        IndeterminateForm = ProgressBarIndeterminateForm.Dots, DotCount = 5, DotSize = 4f, DotRadius = 0f,
     };
 
     // ── pivots and toasts ───────────────────────────────────────────────────────────────────────────────────────────────────

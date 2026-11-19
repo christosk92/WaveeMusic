@@ -1,13 +1,13 @@
 // ── Themes/Zune/Structure/Lists/ZuneEpisodeRow.cs — Zune's podcast episode row (themes plan 6.3; P5 Z3) ────────────────────────────
 //
-// The show reader's row as Zune draws it (Z-Show, Z-Home-Podcasts: no dedicated row board, so built from Zune's parts, owner Q18): the cover
+// The episode reader row as Zune draws it (Z-Show, Z-Home-Podcasts: no dedicated row board, so built from Zune's parts, owner Q18): the cover
 // at the Cover radius (2), the title in the TrackTitle role (accent while playing, the bars before it), the two-line blurb, the meta line in
 // the TrackMeta role ("#n", the badges, "new", "23 min left", the date and the length, "played", the transcript mark), the 3-DIP progress
 // rule (square), the "..." and the round accent play disc (Zune's one accent: the disc, the rule, "new" and "left" read the style's accent,
 // not the page tone), the playing row's accent bar on the left edge; hover is the 5 % ink wash, pressed the pressed wash, selected the 12 %
 // accent wash. No hairline between rows (Zune rows are bare).
 //
-// WHAT THE CORE KEEPS. `Episode.ReaderRow` (the reveal gate), every decision the row reads (`PlayedOf`, `InProgressOf`, `LeftOf`, `IsNew`,
+// WHAT THE CORE KEEPS. `Episode.ReaderRow` (the reveal gate), every decision the row reads (`PlayedOf`, `InProgressOf`, `LeftOf`,
 // `ShownTitle`, `NumeralOf`, `ReaderPct`), the verbs (`RowContext`) and the host. The content is built ONCE per slot; every per-episode value
 // is a bind over the slot's `RowItem`, so a recycle rebinds and allocates nothing. The geometry (art, padding, disc) is the core's
 // `Episode.*`, so the row is exactly as tall as the core sized it.
@@ -210,12 +210,6 @@ internal static class ZuneEpisodeRow
                     with { Visible = item.Show(static r => (Episode.FlagsOf(r.Episode) & EpisodeFlags.Video) != 0) },
                 Controls.Chip(Loc.Get(Strings.Podcast.Badge.Subscribers), LockGlyph)
                     with { Visible = item.Show(static r => (Episode.FlagsOf(r.Episode) & EpisodeFlags.Paywalled) != 0) },
-                R.Type.MicroMeta(Loc.Get(Strings.Podcast.New)) with
-                {
-                    Weight = 700, CharSpacing = ZuneListRules.EpisodeNewTracking, Color = accentInk, MaxLines = 1,
-                    Case = R.Case.For(LabelKind.Label),
-                    Visible = item.Show(static r => Episode.IsNew(in r)),
-                },
                 new TextEl(item.Text(static r => Episode.LeftOf(r.Episode)))
                 {
                     Size = meta.Size, LineHeight = meta.LineHeight, Weight = 600, Color = accentInk, MaxLines = 1, Wrap = TextWrap.NoWrap,

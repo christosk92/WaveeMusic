@@ -155,6 +155,12 @@ public static class WinUiFrameRules
     /// <summary>The Wavee mark (tabs off): a 16 accent square with r4, 8 before the word (12), 8 from the Forward button.</summary>
     public const float MarkSize = 16f, MarkRadius = 4f, MarkGap = 8f, MarkLeadPad = 8f, MarkTextSize = 12f;
 
+    /// <summary>The tab strip's TONE over the window's material: black at 6 % in light, at 35 % in dark. It makes the strip the BASE of Windows 11's
+    /// tabbed window (Mica Alt under the commanding layer) without a solid colour: the wallpaper's tint still shows through it, and it stands about as
+    /// far under the toolbar as Mica Alt stands under a stock selected tab (some 14 levels in light, 11 in dark, on the neutral Mica). The selected
+    /// tab does not paint over it: it cuts it out (<c>TabStrip.RailFill</c>), so the tab is the toolbar's own surface.</summary>
+    public static ColorF TabStripTone => Tok.Theme == ThemeKind.Light ? ColorF.FromRgba(0, 0, 0, 0x0F) : ColorF.FromRgba(0, 0, 0, 0x59);
+
     // ── the search popup (W-Flyouts: AutoSuggestBox suggestions) ────────────────────────────────────────────────────────
 
     /// <summary>The popup's row text: 14; the matched run semibold.</summary>

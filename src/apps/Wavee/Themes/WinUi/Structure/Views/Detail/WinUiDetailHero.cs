@@ -7,8 +7,8 @@
 //     they fit beside it, top-aligned once they outgrow it: the eyebrow,
 //     the title (Title Large 40/52), the billed artists with their avatars and the meta on one line, the action row; under it the table's own list bar (Find,
 //     the order, Filter, Select). A SHORT window (under 720 tall, W-Shell-Short) draws the short form: a 104 cover, the title 28/36, no eyebrow.
-//   · THE STICKY BAR (W-Shell-Short): 48 tall, once the hero has collapsed: a 32 cover, the title over the byline and Play as an accent button, on a layer of its
-//     own with a hairline under it. The core's collapse distance is the hero's measured height less these 48 (`DetailTierLayout.BandHeight`); it reveals over the
+//   · THE STICKY BAR (W-Shell-Short): 48 tall, once the hero has collapsed: a 32 cover, the title over the byline and Play as an accent button, over the
+//     window's own ground (NO PLATE: the rows are cut under it, so nothing needs hiding; owner, 2026-11-18) with a hairline under it. The core's collapse distance is the hero's measured height less these 48 (`DetailTierLayout.BandHeight`); it reveals over the
 //     last 44 of the collapse and takes hits only once the table's chrome has stuck (the engaged edge, `CompactInteractive`).
 //
 // The numbers are `WinUiDetailRules` and the tier's `WinUiDetailTier`; the form (tall, short, stacked) is the tier's and the window's height (`TierFacts.Height`).
@@ -419,7 +419,8 @@ internal static partial class WinUiDetailFrame
     // ══ 3. THE STICKY BAR ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The 48 bar: a 32 cover, the title (Body Strong 14/20) over the byline (Caption 12/16), the insights entry where the page has facts and Play as an
-    /// accent button, on the tier's inset, over a layer with a hairline at its foot (W-Shell-Short).</summary>
+    /// accent button, on the tier's inset, with a hairline at its foot (W-Shell-Short). It paints no plate: the table clips its rows at the bar's line, so the
+    /// window's material shows under the bar as it does under the page.</summary>
     static Element Bar(VerticalSpec spec, HeroParts parts, float width, float inset)
     {
         var id = spec.Identity;
@@ -451,7 +452,6 @@ internal static partial class WinUiDetailFrame
         return new BoxEl
         {
             Width = width, Height = h, ZStack = true, HitTestVisible = true,
-            Fill = Prop.Of(static () => Tok.FillCardDefault),
             Children =
             [
                 new BoxEl

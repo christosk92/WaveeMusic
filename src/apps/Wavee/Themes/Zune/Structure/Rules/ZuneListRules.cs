@@ -257,9 +257,6 @@ public static class ZuneListRules
     /// <summary>The figure-space runs the episode seed draws its bars with.</summary>
     public const int EpisodeSeedTitleRun = 28, EpisodeSeedDescriptionRun = 64;
 
-    /// <summary>The "new" mark's tracking.</summary>
-    public const float EpisodeNewTracking = 60f;
-
     // ── the lyrics lines (Z-Lyrics) ──────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A state line's type (13 on 18) and the offline caption's measure.</summary>

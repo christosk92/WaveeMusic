@@ -294,8 +294,8 @@ public static class WinUiQueueRules
     /// <summary>The Autoplay row: 8 above the divider, 12 / 4 inside.</summary>
     public static readonly Edges4 AutoplayMargin = new(0f, 8f, 0f, 0f), AutoplayPadding = new(0f, 12f, 0f, 4f);
 
-    /// <summary>The autoplay rows' dim, the row entrance and exit travel.</summary>
-    public const float AutoplayDim = 0.6f, EnterDy = 6f, ExitDy = 4f;
+    /// <summary>The row entrance and exit travel.</summary>
+    public const float EnterDy = 6f, ExitDy = 4f;
 
     /// <summary>The shared surface's row text column (title, gap, caption).</summary>
     public const float TextColumn = SurfaceGeometry.CardTitleLineH + SurfaceGeometry.CardLabelGap + SurfaceGeometry.CardCaptionLineH;
@@ -312,9 +312,6 @@ public static class WinUiQueueRules
 
     /// <summary>The "show next" slot's extent: its row and the margin above it.</summary>
     public static float MoreExtent(WidthTier window) => MoreH(window) + MoreTop;
-
-    /// <summary>A section's rows dim when they are the radio's tail.</summary>
-    public static float Dim(QueueSection section) => section == QueueSection.Autoplay ? AutoplayDim : 1f;
 
     /// <summary>Which adapter feeds a row: the seed face while its title is unknown, the episode adapter, the track adapter.</summary>
     public enum Face : byte { Seed, Track, Episode }

@@ -284,7 +284,9 @@ internal static class ZuneHomeTiles
             UseLayoutEffect(() => Recede(recede), DepKey.From(recede ? 1 : 0));
 
             bool full = f.Form == HomeTileForm.Full;
-            var kids = new List<Element>(4) { preview ? p.Face : TileMotion.Tilt(p.Face) };
+            // A tile that IS one thing tilts under a press. A tile that holds items of its own (a section's cards) does not: the press is the
+            // card's, and the whole section tilting under it read as the section being pressed (owner, 2026-11-18).
+            var kids = new List<Element>(4) { preview || f.Entry.HoldsItems ? p.Face : TileMotion.Tilt(p.Face) };
             if (!preview)
                 // A tap on a receded tile selects it: a layer over the face takes it (nothing opens while customizing). Always mounted, so it rides the
                 // tile's recede instead of arriving in the middle of it; it takes the pointer only while the tile is receded.

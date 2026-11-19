@@ -32,6 +32,7 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.DetailVerticalTrailing, WinUiDetailSeam.VerticalTrailingTemplate, "winui.detail.vertical-trailing");
         views.Add(ViewKeys.PlaylistEditor, WinUiPlaylistEditor.Template, "winui.playlist.editor");
         views.Add(ViewKeys.LikedChipBar, WinUiLikedChipBar.Template, "winui.liked.chip-bar");
+        views.Add(ViewKeys.PlaylistTune, WinUiPlaylistTune.Template, "winui.playlist.tune");
         CommonNothing.Register(views, ViewKeys.DetailRail);
         CommonNothing.Register(views, ViewKeys.DetailCompactRail);
 

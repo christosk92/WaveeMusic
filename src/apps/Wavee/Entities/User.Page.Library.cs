@@ -2,8 +2,9 @@
 // the albums / artists / podcasts / audiobooks MASTER-DETAIL page's CORE HOST: LibraryPageFor + LibraryPage (the two-rung browser's
 // persisted per-kind signals, the shape memo, the letter groups, the selection, the collapse state, the search mode) over the structure's
 // `Pages.Library` view. The page's PICTURE is Classic's (T10c1: `Themes\Classic\Structure\Views\Pages\ClassicLibraryPage*.cs`, props in
-// `Theming\Contracts\LibraryPageProps.cs`); the panes it mounts are `Album.Pane` (Entities/Album.Pane.cs), `Show.Pane` (Entities/Show.Pane.cs)
-// and the artists' `Artist.Reader` (Entities/Artist.Reader.cs), each a core host over its own view key, and `SavedEpisodesReader`
+// `Theming\Contracts\LibraryPageProps.cs`); the panes it mounts are `Album.Pane` (Entities/Album.Pane.cs), the show or audiobook's own page
+// (`PodcastPages.LibraryPane`, Podcasts/PodcastPages.cs) and the artists' `Artist.Reader` (Entities/Artist.Reader.cs), each a core host over its
+// own view key, and `SavedEpisodesReader`
 // (Entities/User.SavedEpisodes.cs): this file mounts them, it does not build them.
 //
 // Role: CORE host
@@ -22,7 +23,7 @@
 //  └─ Pages.Library → root BoxEl (OnBoundsChanged → `SetPageWidth` → the structure's layout ladder → `_layoutTier`)
 //     ├─ WIDE "lib:wide": NavPanel "lib:nav"[Toolbar · ListBody | LeftSearchBody] │ "lib:grip" ColumnGrip(LeftW) │ right
 //     │        Toolbar = PageHero + the bound count · the word rail + the view toggle · the filter box
-//     │        right   = the pane (`PaneFor`): Album.Pane (albums) | Show.Pane (podcasts, audiobooks)
+//     │        right   = the pane (`PaneFor`): Album.Pane (albums) | PodcastPages.LibraryPane (podcasts, audiobooks)
 //     │                  the reader (artists, 280 + the rest — no MidW, no third pane)
 //     │                  the two SEARCH column shapes (unchanged, still MidW + "lib:midgrip")
 //     └─ COLLAPSED "lib:collapsed": CrumbBar "lib:crumbs" · depth 0 (toolbar + list) | depth 1 (the pane / the reader) —
@@ -1372,7 +1373,7 @@ public readonly partial struct User
         /// reader: the navigator's slot plus the three Signal instances it steers itself with (there is no MidW and no third pane — the reader is the leaf).</summary>
         Element PaneFor(int slot) => _entity switch
         {
-            EntityKind.Show => Embed.Comp(new Show.PaneProps(slot), static () => new Show.Pane()),
+            EntityKind.Show => PodcastPages.LibraryPane(new Show(slot)),   // the page the show's or book's route mounts, in the column's tiers
             EntityKind.Artist => Embed.Comp(new Artist.ReaderProps(slot, Scope, RSort, AlbumKey), static () => new Artist.Reader()),
             _ => Embed.Comp(new Album.PaneProps(slot, ShowAlsoBy: true, OnAlsoBy: _onAlsoBy), static () => new Album.Pane()),
         };

@@ -329,6 +329,25 @@ internal static partial class WinUiSettings
         };
     }
 
+    // ── a row outside the page ──────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The app mode row (System · Light · Dark), as Settings draws it and as the setup wizard's Theme step shows it: one row, one writer.</summary>
+    internal static Element AppModeRow() => OutsideRow("appearance.appMode", static (row, card) => AppModeCard(row, card));
+
+    /// <summary>The language row, as Settings draws it and as the setup wizard's Theme step shows it: one row, one writer.</summary>
+    internal static Element LanguageRow() => OutsideRow("system.language", static (row, card) => LanguageCard(row, card));
+
+    /// <summary>The audio quality row, as Settings draws it and as the setup wizard's playback step shows it: one row, one writer.</summary>
+    internal static Element QualityRow() => OutsideRow("sound.quality", static (row, card) => QualityCard(row, card));
+
+    /// <summary>A dial's card for a surface outside the page: the registry's row (<see cref="SettingsPageModel.RowOf"/>) in the card the page draws, with no
+    /// host (no arrival ring) and no "Also in" footer (its doors lead away from the surface). Nothing shows while the facts compose the dial away.</summary>
+    static Element OutsideRow(string dialId, Func<SettingsBodyRow, Card, Element> present)
+    {
+        if (SettingsPageModel.RowOf(Dial(dialId)) is not { } row) return new BoxEl { Visible = false };
+        return present(row, new Card(row.Label, row.Description, null, SettingsCard.DefaultStyle) { Enabled = row.Enabled, Explain = ExplainOf(row), WrapLabel = true });
+    }
+
     /// <summary>A clickable card (an action without a control): the clickable style where it is an expander item.</summary>
     static Card DoorCard(RowCtx x, Action onClick, string? actionIcon = null)
     {

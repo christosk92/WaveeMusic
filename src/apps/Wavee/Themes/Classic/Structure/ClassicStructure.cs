@@ -215,9 +215,8 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.DetailInsights, ClassicInsights.SheetTemplate, "classic.detail.insights");
         views.Add(ViewKeys.DetailInsightsToggle, ClassicInsights.ToggleTemplate, "classic.detail.insights-toggle");
         views.AddStyle(StyleKeys.DetailFacts, User.FactsFluentStyle);
-        // T9c: the Liked, show and episode pages (and the reader and discussion) over that frame. Each family registers its own keys.
+        // T9c: the Liked and episode pages (and the discussion) over that frame. Each family registers its own keys.
         ClassicLiked.Register(views);
-        ClassicShow.Register(views);
         ClassicEpisode.Register(views);
         // T10a2: Browse and Search (`Views\Pages`). The directory (the clipped masthead column and the six bands), its Charts band (a core host over the chart
         // deck), a category page (shelves, tile blocks, the flattened grid, the empty and error arms), the section drill page (the Home drill template under

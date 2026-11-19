@@ -113,7 +113,7 @@ internal static partial class WinUiPodcastShow
                         // By the row's form: the lead card, a played line, a wide row at rest with its line of description, a one-line row.
                         bool rest = vm is { State: PodcastRowState.New or PodcastRowState.Unplayed };
                         bool desc = rest && lay.RowDescription && vm!.Blurb.Length > 0 && Host._rowWide is { } rw && rw.Peek();
-                        float h = vm is { State: PodcastRowState.Played } ? S.RowHeightPlayed : it.Lead && rest ? S.RowLeadEstimate
+                        float h = it.Lead && vm is { Trailer: false } ? S.RowLeadEstimate : vm is { State: PodcastRowState.Played } ? S.RowHeightPlayed
                             : desc ? S.RowHeightDescribed : S.RowHeight;
                         return (it.First ? 0f : K.RowGap) + h;
                     default: return S.FootEstimate;

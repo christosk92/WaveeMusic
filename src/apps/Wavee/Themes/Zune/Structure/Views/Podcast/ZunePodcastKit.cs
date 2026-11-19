@@ -110,9 +110,11 @@ internal static class ZunePodcastKit
     /// <summary>One pivot: its word and its small count ("" = none; a pending count keeps its room with a blank).</summary>
     public readonly record struct PivotItem(string Word, string Count);
 
-    /// <summary>The pivot row (see the file header): <paramref name="items"/> in their order, <paramref name="selected"/> lit and leading.</summary>
-    public static Element Pivots(string key, ImmutableArray<PivotItem> items, int selected, Action<int> select, ZunePodcastLayout lay, float gutter)
-        => Embed.Comp(new PivotProps(key, items, selected, select, lay.PivotGap, gutter), static () => new PivotHost()) with { Key = ZuneFrameRules.PageTitleKey };
+    /// <summary>The pivot row (see the file header): <paramref name="items"/> in their order, <paramref name="selected"/> lit and leading. On its own route it is
+    /// the page's title (<c>ZuneFrameRules.PageTitleKey</c>, which the gutter rule measures); in another page's column (<paramref name="embedded"/>: the library's)
+    /// it is not, and keeps <paramref name="key"/>.</summary>
+    public static Element Pivots(string key, ImmutableArray<PivotItem> items, int selected, Action<int> select, ZunePodcastLayout lay, float gutter, bool embedded = false)
+        => Embed.Comp(new PivotProps(key, items, selected, select, lay.PivotGap, gutter), static () => new PivotHost()) with { Key = embedded ? key : ZuneFrameRules.PageTitleKey };
 
     sealed record PivotProps(string Key, ImmutableArray<PivotItem> Items, int Selected, Action<int> Select, float Gap, float Gutter)
     {
@@ -567,9 +569,11 @@ internal static class ZunePodcastKit
             bool playing = v.Playing.Value == vm.Id;
             bool played = vm.State == PodcastRowState.Played, progress = vm.State == PodcastRowState.InProgress;
             bool hover = _hover.Value;
-            // The row's form follows what the episode is to the listener: the lead is a headline, a row at rest is the title over its line of
-            // description, a row in progress carries its line, a played row is one quiet line. Compact keeps the stacked form.
-            bool lead = p.Lead && !played && !progress;
+            // The row's form follows what the episode is to the listener: a row at rest is the title over its line of description, a row in
+            // progress carries its line, a played row is one quiet line. Compact keeps the stacked form. The first episode of each month leads its
+            // month, whatever its state: its cover, a headline and what it is about (its line once started).
+            bool lead = p.Lead && !vm.Trailer;
+            bool rest = !played && !progress;
             bool wide = !p.Compact;
             float pb = p.Compact ? Z.RowPlayCompact : Z.RowPlay;
             float act = p.Compact ? Z.RowActionCompact : Z.RowAction;
@@ -578,8 +582,8 @@ internal static class ZunePodcastKit
             TextEl title = lead
                 ? R.Type.QuickplayHead(vm.ShortTitle) with
                 {
-                    Case = TextCase.AsWritten, Color = Tok.TextPrimary, MaxLines = Z.LeadTitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
-                    MinWidth = 0f,
+                    Case = TextCase.AsWritten, Color = played ? Tok.TextTertiary : Tok.TextPrimary, MaxLines = Z.LeadTitleLines, Wrap = TextWrap.Wrap,
+                    Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 }
                 : new TextEl(vm.ShortTitle)
                 {
@@ -591,16 +595,24 @@ internal static class ZunePodcastKit
             bool lane = p.Numbered && wide;
             string lineNumeral = p.Numbered && !wide ? vm.Numeral : "";
             var text = new List<Element>(3);
+            // The lead's description: under its title where the row is wide; under the whole line at Compact, where the column beside the cover
+            // is too narrow to read two lines in.
+            Element? under = null;
             if (lead)
             {
                 text.Add(RowMeta(vm, numeral: lineNumeral));
                 text.Add(title);
-                if (vm.Blurb.Length > 0)
-                    text.Add(new TextEl(vm.Blurb)
+                float leadAt = vm.Progress;
+                if (progress) text.Add(Line(() => leadAt, Z.RowBarW) with { Key = "row:bar", Margin = new Edges4(0f, Z.RowBarTop, 0f, 0f) });
+                else if (vm.Blurb.Length > 0)
+                {
+                    Element blurb = new TextEl(vm.Blurb)
                     {
-                        Size = Z.RowDescSize, LineHeight = Z.RowDescLine, Color = Tok.TextSecondary, MaxLines = Z.LeadBlurbLines, Wrap = TextWrap.Wrap,
-                        Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, MaxWidth = Z.LeadBlurbW,
-                    });
+                        Size = Z.RowDescSize, LineHeight = Z.RowDescLine, Color = played ? Tok.TextTertiary : Tok.TextSecondary, MaxLines = Z.LeadBlurbLines,
+                        Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, MaxWidth = Z.LeadBlurbW,
+                    };
+                    if (p.Compact) under = blurb; else text.Add(blurb);
+                }
             }
             else if (!wide)
             {
@@ -636,10 +648,24 @@ internal static class ZunePodcastKit
                 {
                     Size = Z.RowGlyph, FontFamily = Tok.Definition.Fonts.Icon,
                     Color = off ? Tok.TextDisabled
-                        : playing || progress || lead ? Prop.Of(static () => R.Ink.AccentDecor) : played && !hover ? (Prop<ColorF>)Tok.TextTertiary : Tok.TextPrimary,
+                        : playing || progress || (lead && rest) ? Prop.Of(static () => R.Ink.AccentDecor)
+                        : played && !hover ? (Prop<ColorF>)Tok.TextTertiary : Tok.TextPrimary,
                 }],
             };
-            var cells = new List<Element>(5) { Controls.Named(play, playName) };
+            var cells = new List<Element>(6);
+            if (lead)
+            {
+                // The episode's own picture leads the row: a video episode's still, wide as it was shot (cut square at Compact, where the row has
+                // no room for it); else its cover (a show that gives its episodes none shows the show's). Square corners, as every Zune picture.
+                float cover = p.Compact ? Z.LeadCoverCompact : Z.LeadCover;
+                float coverW = vm.StillUrl is not null && !p.Compact ? cover * Z.StillAspect : cover;
+                cells.Add(new BoxEl
+                {
+                    Key = "row:cover", Width = coverW, Height = cover, Shrink = 0f, AlignSelf = FlexAlign.Start,
+                    Children = [Controls.Artwork(vm.StillUrl ?? vm.ArtUrl, coverW, cover, 0f, decodePx: Z.LeadCoverDecode)],
+                });
+            }
+            cells.Add(Controls.Named(play, playName));
             if (lane)
                 cells.Add((lead ? R.Type.NumeralLarge(vm.Numeral) : R.Type.Numeral(vm.Numeral)) with
                 {
@@ -663,7 +689,7 @@ internal static class ZunePodcastKit
                 Fill = ColorF.Transparent, HoverFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.RowHoverAlpha }),
                 PressedFill = Prop.Of(static () => Tok.TextPrimary with { A = Z.RowPressedAlpha }), BrushTransitionMs = Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, Draggable = _drag,
-                Children = [line],
+                Gap = under is null ? 0f : Z.LeadUnderGap, Children = under is null ? [line] : [line, under],
             };
             if (!Controls.IsNullOverlay(overlay)) row = ContextSheets.Attach(row, overlay, _menu);
             return row;

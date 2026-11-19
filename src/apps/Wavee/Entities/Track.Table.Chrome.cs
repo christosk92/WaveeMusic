@@ -85,6 +85,8 @@ public readonly partial struct Track
         Func<PlaylistHost> _laneHost = null!;
         // the unavailable-songs bar (contract 1.22): its verb, whether it is on (the hero arm's clip inset follows it), and its cached tally
         Action _hideUnavailable = null!;
+        /// <summary>The list bar's Tune verb, built once (the profile's own verb, read at click time).</summary>
+        Action? _tuneToggle;
         readonly Signal<bool> _unavailableShown = new(false);
         UnavailableTally _tally;
         uint _tallyVersion, _tallyPublication;
@@ -157,6 +159,10 @@ public readonly partial struct Track
                     Margin = pageBar ? new Edges4(0f, 0f, 0f, Spacing.XS) : default,
                     Children = [Toolbar()],
                 });
+            // The Tune strip (contract 1.120): under the list bar while Tune is open. ONE slot, mounted whenever the list can be tuned, whose height eases
+            // through real layout as the strip opens and shuts, so the rows slide instead of jumping (the chips slot's form below).
+            if (P.TuneStrip is not null)
+                stack.Add(Embed.Comp(new TuneSlotProps(this, padX), static () => new TableTuneSlot()) with { Key = "chrome:tune" });
             // The unavailable-songs bar (boards C-Unavailable / C-Unavailable-Compact, contract 1.22) leads what narrows the rows: under the
             // list bar in the two-column arm, first in the hero arm's pinned chrome (the hero above it). Its slot stays mounted on a track list
             // and eases its own height, so it never moves the rows by a snap.
@@ -288,9 +294,10 @@ public readonly partial struct Track
             }
             if (!pageBar && fit.Has(InlineCommand.Shuffle))
                 left.Add(MeasuredCommand(2, "cmd:shuffle", Kit.Labeled(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, Shuffle, null), live));
+            // Tune is the structure's AI action (contract 1.120), lit while the mix is tuned or its strip is open: the read is tracked, so the bar follows it.
             if (hasTune)
                 left.Add(MeasuredCommand(1, "cmd:tune", ToolTip.Wrap(
-                    Kit.Labeled(Icons.RefineSparkle, Loc.Get(Strings.Detail.Tuning.Tune), false, () => _latest.Profile.Tune?.Invoke(), null),
+                    Kit.TuneCommand(Loc.Get(Strings.Detail.Tuning.Tune), P.TuneLit?.Invoke() ?? false, _tuneToggle ??= () => _latest.Profile.Tune?.Invoke()),
                     Loc.Get(Strings.Detail.Tuning.Tooltip)), live));
 
             var view = new List<Element>(2);
@@ -1037,6 +1044,28 @@ public readonly partial struct Track
         /// <summary>The bar's slot: the core decides whether it is on (<see cref="FilterModel.OffersHide"/>: rows the filter would hide, the filter
         /// off) and words it; the structure's template draws it and eases its band. Its own component, so a track publication re-renders the
         /// bar only (the tally is read here, never in the host), and the host hears the on / off edge alone (<c>_unavailableShown</c>).</summary>
+        /// <summary>What the Tune strip's slot is handed (re-pushed with the chrome, so a tier crossing re-pads it): the host and the rows' gutter.</summary>
+        sealed record TuneSlotProps(TableHost Host, float PadX);
+
+        /// <summary>The Tune strip's slot (contract 1.120): the structure's strip while Tune is open, nothing while it is shut, its height easing through real
+        /// layout (the chips slot's form), so the strip opening or shutting slides the rows instead of moving them at once. The strip keeps the rows' gutter,
+        /// with the bar's air over it and the header's under it. Its own component: the strip's reads (open, applying, the mix's tuning) re-render this slot,
+        /// never the chrome.</summary>
+        sealed class TableTuneSlot : Component
+        {
+            public override Element Render()
+            {
+                var p = UseProps<TuneSlotProps>();
+                Element? strip = p.Host.P.TuneStrip?.Invoke();
+                return new BoxEl
+                {
+                    Key = "chrome:tune-slot", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = p.Host.ChromeResize,
+                    Padding = strip is null ? default : new Edges4(p.PadX, Spacing.XS, p.PadX, Spacing.S),
+                    Children = strip is null ? [] : [strip],
+                };
+            }
+        }
+
         sealed class TableUnavailableBar(TableHost host) : Component
         {
             Func<UnavailableTally>? _tally;

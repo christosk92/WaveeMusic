@@ -154,6 +154,8 @@ internal static class WinUiHomeBoard
                 // A shortcut cell showing Recently played is not the shortcut it stands for: it does not lift until the grid shows the shortcuts again.
                 // The shortcuts grid is the Pinned group's whole body: its cells move inside it, the grid itself stays.
                 CanLift = it => !it.EmptyRow && it.Entry.Kind != BoardEntryKind.GroupHead && !HomeShortcuts.IsGrid(it.Entry),
+                // A section's cards drag as themselves (to a playlist, the sidebar, the tab strip); the section lifts from its own head and gaps.
+                ClaimsInnerDrag = static it => !it.Entry.HoldsItems,
                 LiftStyle = new DragVisualStyle { Scale = 1.03f },
                 Slot = static rect => WinUiHomeTiles.Slot(rect),
                 AcceptKinds = [WinUiHomeAddBand.DragKind],

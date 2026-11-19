@@ -57,7 +57,7 @@ public readonly partial struct Concert
     public static Element MountSchedule(in Shell.Route route)
     {
         string key = Shell.NameOf(route);
-        return Embed.Comp(new PageProps(route.Subject, key, route.Arg), static () => new ScheduleHost()) with { Key = "artist-schedule:" + key };
+        return Embed.Comp(new PageProps(route.Subject, key, route.Arg, route), static () => new ScheduleHost()) with { Key = "artist-schedule:" + key };
     }
 
     /// <summary><see cref="Shell.RouteKind.Concert"/>, keyed by the route.</summary>
@@ -65,10 +65,17 @@ public readonly partial struct Concert
     public static Element MountDetail(in Shell.Route route)
     {
         string key = Shell.NameOf(route);
-        return Embed.Comp(new PageProps(route.Subject, key, route.Arg), static () => new DetailHost()) with { Key = "concert-detail:" + key };
+        return Embed.Comp(new PageProps(route.Subject, key, route.Arg, route), static () => new DetailHost()) with { Key = "concert-detail:" + key };
     }
 
-    sealed record PageProps(EntityUri Subject, string RouteKey, StringId Arg);
+    /// <param name="Route">The route the page stands on: the page publishes its own name under it (<see cref="PublishCrumb"/>).</param>
+    sealed record PageProps(EntityUri Subject, string RouteKey, StringId Arg, Shell.Route Route);
+
+    /// <summary>The page's own name as the masthead's live title, so the trail ends on it ("Browse › Concerts › The Wavee Collective"). Without it the
+    /// trail fell back to the route's argument, which a concert opened from a tile does not carry, and then to "Concerts": "Browse › Concerts ›
+    /// Concerts". Null while the name is not known (the trail keeps its fallback until then).</summary>
+    static void PublishCrumb(in Shell.Route route, string name)
+        => Shell.Mastheads.Publish(route, new Shell.MastheadPublication(string.IsNullOrWhiteSpace(name) ? null : name));
 
     // ══ 2. SHARED READS ═══════════════════════════════════════════════════════════════════════════════════════════════
 

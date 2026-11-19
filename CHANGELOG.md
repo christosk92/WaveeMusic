@@ -126,6 +126,10 @@ versions separately under `v*` and is not tracked in this file.)
   Settings > Notifications > Tips about features, which turns them all off until you turn it back on. When a metered
   connection is what lowers the audio quality, the devices list says so every time ("Lowered on a metered connection").
 
+- **Open in new tab.** The menu of an album, playlist, artist or show offers "Open in new tab" under "Open", and
+  anything with a page of its own (a card, a row, a sidebar item) can be dropped on the title bar to open it in a new
+  tab (Classic and WinUI).
+
 ### Changed
 
 - **The sidebar's menu offers only what the theme has.** Right-clicking the sidebar offers Layout and Density only in a
@@ -183,6 +187,50 @@ versions separately under `v*` and is not tracked in this file.)
   those options shows in Settings' Recently changed as made on Home. The first time the daylist refreshes while Home is
   on screen, the options item in the daylist's ⋯ menu carries a one-time dot (Zune says "options" in the accent).
 
+- **Tune opens in the page, not in a dialog.** On a Mix, Tune opens a strip under the list bar with the Mix's directions
+  ("More discovery tracks", "Make it more soft pop", ...) as chips. A direction applies at once and the list rebuilds in
+  place; the strip stays open with the direction you chose lit and "Reset tuning" beside it. The Tune button carries a
+  sparkle and a blue-to-pink edge in every theme, and lights up while the Mix is tuned.
+
+- **Audiobooks has a book icon** in the sidebar and the command palette, in place of the microphone.
+
+- **New installs start in the WinUI theme.** A first run opens in WinUI, and the setup dialog's theme step shows it
+  selected. An install that already ran keeps its theme.
+
+- **One page per show and per audiobook.** A show or a book picked in the library opens the same page it has
+  everywhere else, fitted to the library's column, instead of an older second design of it.
+
+- **Zune shows "busy" as a train of dots.** Where progress cannot say how far it is (a search still answering, a
+  track still loading, a download finding its size), five small dots rush in, drift through the middle and rush out,
+  in place of the sliding block.
+
+- **Concerts follows each theme.** The page's title stands on the page instead of in a card, the filters are one row of
+  the theme's own controls (place and dates are drop-down buttons beside the toggles, no longer capsules) with the
+  event count at its end, and the shelves are titled like Home's. The filter row stays under the title bar as you
+  scroll (Classic, WinUI). A concert's page and an artist's tour dates open with their picture beside the name, as an
+  album does, with "Play the lineup", "Interested" and share under it; their sections are titled like Home's, and the
+  trail ends on the concert or the artist ("Browse > Concerts > The Wavee Collective") instead of a second
+  "Concerts". In Zune, "view event" is a ring like the event page's, the place is the hub's own control and the
+  months are lowercase.
+
+- **Setup asks for light or dark, the language and the audio quality.** The theme step now has the app mode and the
+  app language under the theme cards, and the playback step has the audio quality: the same rows as in Settings.
+
+- **A larger first-run setup.** The setup dialog is much bigger (1040 x 680 on a normal window). "Is this you?" shows
+  the account as a head and says what Wavee does with it, and signing in shows its four steps as a list, each with
+  what it does.
+
+- **"See all" opens in place.** A section's "See all" page grows out of the section instead of replacing Home
+  with a new page: it opens on the cards the section already showed, holds a place for the ones still loading, and
+  Back shrinks it away again.
+
+- **The WinUI title bar is layered like Windows 11's tabbed apps.** The tab row sits a shade deeper than the toolbar,
+  still tinted by the wallpaper, and the selected tab is the toolbar itself rising into it: the same surface, with no
+  seam along its foot and a hairline round its top. With the backdrop set to None the tab is the window's own colour.
+
+- **Pinned bars show the window behind them (WinUI, Zune).** The bar that stays at the top of an album or playlist
+  page in WinUI no longer paints a lighter band across the page.
+
 ### Removed
 
 - **The daylist's "Live updates" switch and "Pause live updates" menu item.** Neither ever did anything for the daylist.
@@ -201,6 +249,26 @@ versions separately under `v*` and is not tracked in this file.)
   desktop; it now stays asleep until it shows again.
 - **Video podcasts that are not copy-protected play their video.** Such an episode played as audio only, as if it had no
   video; it now plays its picture the way a music video does.
+
+- **An audiobook opened from Home started out as a podcast's page.** It showed a show's layout until the book's details
+  arrived, then turned into the book's page; it opens as the book from its first frame.
+
+- **Podcast and audiobook covers did not fly into their page (WinUI).** The show, audiobook and episode pages now take
+  the cover a card lifts, as album pages do. A show or book still loading shows the card's cover at once while the rest
+  of its page loads, and the cover stays where it is when the page fills in.
+
+- **Expanders open and close in one motion.** On a podcast's page, "About the show" no longer leaves the episode list
+  jumping ahead as it opens or rising over its text as it closes: the list follows the panel's edge both ways. Every
+  expander (Settings too) now slides its panel out from under its header and back, as Windows' own does, so no half
+  line of text is left cut under the header.
+
+- **"See all" on "From artists you follow" opened an empty page titled "Home".** It opens the whole list of releases.
+
+- **Dragging a card on Home moved its whole section (WinUI), and pressing one tilted the whole section (Zune).** A
+  card inside a section is pressed and dragged as itself; the section moves from its own heading.
+
+- **Picking a theme during setup closed the setup dialog.** The dialog vanished, the app stayed dimmed and only a
+  restart brought it back. The dialog now stays on its theme step in the new theme, with its illustration.
 
 ## [0.3.10] - 2026-11-18
 

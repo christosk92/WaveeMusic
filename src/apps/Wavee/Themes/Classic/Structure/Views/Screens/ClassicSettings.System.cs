@@ -28,9 +28,10 @@ internal static partial class ClassicSettings
     static void SeedSystem()
         => s_language.Value = Dial("system.language").Current is int language ? language : 0;
 
-    /// <summary>The App language row: the stock choices, the ones this build cannot show greyed in the list (their dial refuses them too).</summary>
-    static Element LanguageRow(SettingsBodyRow row)
-        => CardRow(row, Combo(LanguageLabels(), s_language, width: ClassicSettingsRules.GeneralComboWidth, onChange: SetLanguage,
+    /// <summary>The App language row: the stock choices, the ones this build cannot show greyed in the list (their dial refuses them too), its combo on
+    /// <paramref name="selected"/> (the page's signal, or the setup wizard's own, seeded from the dial).</summary>
+    static Element LanguageRow(SettingsBodyRow row, Signal<int> selected)
+        => CardRow(row, Combo(LanguageLabels(), selected, width: ClassicSettingsRules.GeneralComboWidth, onChange: SetLanguage,
             itemEnabled: Settings.Language.Enabled));
 
     static string[] LanguageLabels() =>

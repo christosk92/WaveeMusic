@@ -9,8 +9,8 @@
 //                    the 14/20 secondary sub, the 12/18 lines.
 //   Ledger(...)      the listened bar: played, in progress, to go, new, each a segment drawn to its count, and its words under it.
 //   Primary(...)     the full-width button in the cover's own colour (the page accent, Classic's artwork policy), its menu on the chevron.
-//   PinnedBar(...)   a row that pins in the list column (the list bar, a group label): nothing painted at rest; while pinned it takes the page ground
-//                    and a hairline (owner 2026-11-18: no bands at rest).
+//   PinnedBar(...)   a row that pins in the list column (the list bar): it paints no plate, at rest or pinned (owner 2026-11-18: what is behind the
+//                    page shows through it); while pinned it draws a hairline at its foot, and the list cuts what scrolls under it at that edge.
 //   EpisodeRow(...)  the row: its words (title semibold while unplayed, the meta line, one line of description), the saved heart at rest, the ⋯ always,
 //                    the play button at its end (the ring while in progress, a check once played); a click opens the episode's page;
 //                    right-click opens its menu.
@@ -452,6 +452,46 @@ internal static class ClassicPodcastKit
         ],
     };
 
+    /// <summary>"View details": the link an embedded page (the library's column) ends its command row on, to the subject's own page, drawn as the album
+    /// column's "Open album" is (accent words and the open glyph, a hyperlink, not a button).</summary>
+    public static Element ViewDetails(Action open) => new BoxEl
+    {
+        Key = "cmd:view-details", Direction = 0, Gap = ClassicLibraryPaneRules.OpenLinkGap, AlignItems = FlexAlign.Center, Corners = Radii.ControlAll, Shrink = 0f,
+        Padding = new Edges4(Spacing.S, ClassicLibraryPaneRules.OpenLinkPadY, Spacing.S, ClassicLibraryPaneRules.OpenLinkPadY),
+        Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, BrushTransitionMs = Design.Motion.Faster,
+        Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
+        Children =
+        [
+            R.Type.DenseMeta(Loc.Get(Strings.Library.ViewDetails)) with { Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap },
+            Icon(Icons.OpenInNewWindow, ClassicLibraryPaneRules.OpenGlyph, Tok.AccentTextPrimary),
+        ],
+    };
+
+    /// <summary>A row's own bar: <see cref="MiniBar"/> at <paramref name="width"/> where the lane has the room, narrower where it has not (never under
+    /// <paramref name="floor"/>), its fill keeping its share of whatever width it gets. The bar is the lane that gives way: the "left" label beside it
+    /// stays whole, and neither runs into the row's end (a 220 bar plus its label was wider than a narrow row's text column and drew over the length).</summary>
+    public static Element RowBar(float value, ColorF accent, float width, float floor)
+    {
+        float share = Math.Clamp(value, 0f, 1f);
+        return new BoxEl
+        {
+            ZStack = true, Width = width, MinWidth = floor, Height = P.MiniBarH, Shrink = 1f,
+            Children =
+            [
+                new BoxEl { Height = P.MiniBarTrack, AlignSelf = FlexAlign.Center, Fill = Tok.StrokeControlStrongDefault },
+                new BoxEl
+                {
+                    Direction = 0, Height = P.MiniBarH, MinWidth = 0f,
+                    Children =
+                    [
+                        new BoxEl { Grow = share, Basis = 0f, MinWidth = P.MiniBarH, Height = P.MiniBarH, Corners = CornerRadius4.All(P.MiniBarRadius), Fill = accent },
+                        new BoxEl { Grow = 1f - share, Basis = 0f, MinWidth = 0f },
+                    ],
+                },
+            ],
+        };
+    }
+
     /// <summary>A live bar (the fill follows <paramref name="value"/>, 0..1, through a compositor scale).</summary>
     public static BoxEl LiveBar(Func<float> value, ColorF accent) => new()
     {
@@ -477,19 +517,16 @@ internal static class ClassicPodcastKit
 
     // ══ 5. A PINNED ROW ═════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A row that pins <paramref name="top"/> below the list scroller's edge: nothing painted at rest; while pinned (<paramref name="stuck"/>) the
-    /// page ground behind it (<paramref name="tone"/>, read live) and a hairline at its foot, so what scrolls under it is covered by the colour it scrolls
-    /// over. The row must be the sticky root itself (a sticky root returned from a component never pins).</summary>
-    public static BoxEl PinnedBar(string key, Element content, float height, float top, Signal<bool> stuck, Func<uint> tone, string? scope = null)
+    /// <summary>A row that pins <paramref name="top"/> below the list scroller's edge. It paints NO plate, at rest or pinned: the list cuts what scrolls
+    /// under it at its lower edge (its item clip), so what is behind the page (the window's backdrop, the page's ground) shows through it. An opaque
+    /// backing stood out as a solid band wherever the backdrop tints the page (owner, 2026-11-18). While pinned (<paramref name="stuck"/>) it draws a
+    /// hairline at its foot. The row must be the sticky root itself (a sticky root returned from a component never pins).</summary>
+    public static BoxEl PinnedBar(string key, Element content, float height, float top, Signal<bool> stuck, string? scope = null)
         => new BoxEl
         {
             Key = key, ZStack = true, Direction = 1, Height = height, MinWidth = 0f,
             Children =
             [
-                new BoxEl
-                {
-                    Key = key + ":back", HitTestVisible = false, Fill = Prop.Of(() => stuck.Value ? Backing(tone()) : ColorF.Transparent),
-                },
                 content,
                 new BoxEl
                 {
@@ -498,12 +535,6 @@ internal static class ClassicPodcastKit
                 },
             ],
         }.Sticky(top, scope, stuck);
-
-    /// <summary>A pinned row's backing: the page ground over the shell's content surface, opaque.</summary>
-    public static ColorF Backing(uint tone) => Flatten(Ground(tone));
-
-    /// <summary>The ground over the shell's content surface, opaque (a pinned row's backing must hide what scrolls under it).</summary>
-    static ColorF Flatten(ColorF ground) => ColorContrast.Flatten(ground, R.Layer.ContentSurface);
 
     // ══ 6. THE EPISODE ROW ══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -556,9 +587,10 @@ internal static class ClassicPodcastKit
             bool playing = v.Playing.Value == id;
             bool played = vm.State == PodcastRowState.Played, progress = vm.State == PodcastRowState.InProgress;
             bool hover = _hover.Value;
-            // The row's form follows what the episode is to the listener: the lead is a headline, a row at rest is two lines, a row in progress
-            // carries its bar, a played row is one quiet line. Compact keeps the stacked form (the words, then the meta line).
-            bool lead = p.Lead && !played && !progress;
+            // The row's form follows what the episode is to the listener: a row at rest is two lines, a row in progress carries its bar, a played
+            // row is one quiet line. Compact keeps the stacked form (the words, then the meta line). The first episode of each month is the
+            // month's CARD, whatever its state: its cover, a headline and what it is about (its bar once started), on a card.
+            bool lead = p.Lead && !vm.Trailer;
             bool wide = !p.Compact;
             float pb = lead ? P.LeadPlay : p.Compact ? P.PlayButtonCompact : P.PlayButton;
             float act = p.Compact ? P.RowActionCompact : P.RowAction;
@@ -566,27 +598,44 @@ internal static class ClassicPodcastKit
             TextEl title = lead
                 ? R.Type.Heading(vm.ShortTitle) with
                 {
-                    MaxLines = P.LeadTitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Color = Tok.TextPrimary,
+                    MaxLines = P.LeadTitleLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    Color = played ? Tok.TextSecondary : Tok.TextPrimary,
                 }
                 : Body(vm.ShortTitle) with
                 {
                     MaxLines = p.Compact ? 2 : 1, Trim = TextTrim.CharacterEllipsis, Wrap = p.Compact ? TextWrap.Wrap : TextWrap.NoWrap, MinWidth = 0f,
                     Weight = played ? (ushort)400 : P.Strong, Color = played ? Tok.TextSecondary : Tok.TextPrimary,
                 };
-            // The numeral stands in its lane where the row is wide; the meta line carries it at Compact.
-            bool lane = p.Numbered && wide;
-            string lineNumeral = p.Numbered && !wide ? vm.Numeral : "";
+            // The numeral stands in its lane where the row is wide; the meta line carries it at Compact and on the card.
+            bool lane = p.Numbered && wide && !lead;
+            string lineNumeral = p.Numbered && (!wide || lead) ? vm.Numeral : "";
+            Element Bar() => new BoxEl
+            {
+                Key = "row:bar", Direction = 0, Gap = P.RowBarGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Children =
+                [
+                    RowBar(vm.Progress, p.Accent, P.RowBarW, P.RowBarMinW),
+                    Meta(vm.Left) with { Color = Design.Palette.ReadableInk(p.Accent), Weight = P.Strong, Shrink = 0f },
+                ],
+            };
             var text = new List<Element>(3);
+            // The card's description: under its title where the card is wide; under the whole line at Compact, where the column between the cover
+            // and the buttons is too narrow to read two lines in.
+            Element? under = null;
             if (lead)
             {
                 text.Add(MetaLine(vm, accent: p.Accent, numeral: lineNumeral));
                 text.Add(title);
-                if (vm.Blurb.Length > 0)
-                    text.Add(new TextEl(vm.Blurb)
+                if (progress) text.Add(Bar());
+                else if (vm.Blurb.Length > 0)
+                {
+                    Element blurb = new TextEl(vm.Blurb)
                     {
                         Size = P.LineSize, LineHeight = P.LineHeight, MaxLines = P.LeadBlurbLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
-                        Color = Tok.TextSecondary, MinWidth = 0f, MaxWidth = P.LeadBlurbW,
-                    });
+                        Color = played ? Tok.TextTertiary : Tok.TextSecondary, MinWidth = 0f, MaxWidth = P.LeadBlurbW,
+                    };
+                    if (p.Compact) under = blurb; else text.Add(blurb);
+                }
             }
             else if (!wide)
             {
@@ -596,16 +645,7 @@ internal static class ClassicPodcastKit
             else
             {
                 text.Add(TitleWithTags(title, vm));
-                if (progress)
-                    text.Add(new BoxEl
-                    {
-                        Key = "row:bar", Direction = 0, Gap = P.RowBarGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                        Children =
-                        [
-                            MiniBar(vm.Progress, p.Accent, P.RowBarW),
-                            Meta(vm.Left) with { Color = Design.Palette.ReadableInk(p.Accent), Weight = P.Strong },
-                        ],
-                    });
+                if (progress) text.Add(Bar());
                 else if (!played && p.Description && vm.Blurb.Length > 0)
                     text.Add(new TextEl(vm.Blurb)
                     {
@@ -625,35 +665,51 @@ internal static class ClassicPodcastKit
             };
             Element more = ClassicDetailKit.MoreButton(_menu, act);
             var cells = new List<Element>(5);
+            if (lead)
+            {
+                // The episode's own picture leads the card: a video episode's still, wide as it was shot (cut square at Compact, where the card
+                // has no room for it); else its cover (a show that gives its episodes none shows the show's).
+                float cover = p.Compact ? P.LeadCoverCompact : P.LeadCover;
+                float coverW = vm.StillUrl is not null && !p.Compact ? cover * P.StillAspect : cover;
+                cells.Add(new BoxEl
+                {
+                    Key = "row:cover", Width = coverW, Height = cover, Shrink = 0f, AlignSelf = FlexAlign.Start,
+                    Children = [Controls.Artwork(vm.StillUrl ?? vm.ArtUrl, coverW, cover, P.LeadCoverRadius, decodePx: P.LeadCoverDecode)],
+                });
+            }
             if (lane)
                 cells.Add(R.Type.Numeral(vm.Numeral) with
                 {
                     Key = "row:numeral", Width = P.NumeralW, Shrink = 0f, TextAlign = TextAlign.End, Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap,
-                    // Beside the lead's meta line (its first line); centred on a row.
-                    AlignSelf = lead ? FlexAlign.Start : FlexAlign.Center,
+                    AlignSelf = FlexAlign.Center,
                 });
             cells.Add(new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = lead ? P.LeadGap : 0f, Children = text.ToArray() });
             // The date over the length at the row's end (the lead and Compact write them as their meta line).
             if (wide && !lead) cells.Add(RowAside(vm, p.Accent));
             cells.Add(new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [save, more] });
-            cells.Add(PlayButton(vm, pb, playing, hover, p.Accent, _play, strong: lead));
+            cells.Add(PlayButton(vm, pb, playing, hover, p.Accent, _play, strong: lead && !played && !progress));
             Element line = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = P.RowColGap, MinWidth = 0f, Children = cells.ToArray() };
 
             // Keyed `ep` (one family): the row is the instance its verbs act on (the lint's subject: each row's More acts on its own episode, never
             // on the page's show), and the inspector's click and drag target.
             BoxEl row = new()
             {
-                Key = "ep", Direction = 1, MinWidth = 0f, Corners = Radii.ControlAll, Focusable = true, Role = AutomationRole.Button, Cursor = CursorId.Hand,
-                // The plate bleeds into the gutter: the row's words stand on the column line the list bar and the group labels stand on.
-                Margin = p.Compact ? new Edges4(-P.RowPadCompact, 0f, -P.RowPadCompact, 0f) : new Edges4(-P.RowPadStart, 0f, -P.RowPadEnd, 0f),
+                Key = "ep", Direction = 1, MinWidth = 0f, Focusable = true, Role = AutomationRole.Button, Cursor = CursorId.Hand,
+                Corners = lead ? CornerRadius4.All(P.LeadCardRadius) : Radii.ControlAll,
+                // The plate bleeds into the gutter: the row's words (the card's cover) stand on the column line the list bar and the group labels
+                // stand on. The card keeps a little air above and under it.
+                Margin = p.Compact ? new Edges4(-P.RowPadCompact, lead ? P.LeadCardTop : 0f, -P.RowPadCompact, lead ? P.LeadCardBottom : 0f)
+                    : new Edges4(-P.RowPadStart, lead ? P.LeadCardTop : 0f, -P.RowPadEnd, lead ? P.LeadCardBottom : 0f),
                 Padding = p.Compact ? Edges4.All(P.RowPadCompact)
-                    : lead ? new Edges4(P.RowPadStart, P.LeadPadTop, P.RowPadEnd, P.LeadPadBottom)
+                    : lead ? new Edges4(P.RowPadStart, P.LeadCardPad, P.RowPadEnd, P.LeadCardPad)
                     : played ? new Edges4(P.RowPadStart, P.PlayedPadY, P.RowPadEnd, P.PlayedPadY)
                     : new Edges4(P.RowPadStart, P.RowPadTop, P.RowPadEnd, P.RowPadBottom),
-                Fill = Tok.FillSubtleTransparent,
-                HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
+                Fill = lead ? Tok.FillCardDefault : Tok.FillSubtleTransparent,
+                HoverFill = lead ? Tok.FillCardSecondary : Tok.FillSubtleSecondary, PressedFill = lead ? Tok.FillCardSecondary : Tok.FillSubtleTertiary,
+                BorderWidth = lead ? 1f : 0f, BorderColor = lead ? Tok.StrokeCardDefault : ColorF.Transparent,
+                BrushTransitionMs = Design.Motion.Faster,
                 OnClick = _click, OnHoverMove = _move, OnPointerExit = _exit, OnKeyDown = _key, Draggable = _drag,
-                Children = [line],
+                Gap = under is null ? 0f : P.LeadCardGap, Children = under is null ? [line] : [line, under],
             };
             return Controls.IsNullOverlay(overlay) ? row : ContextSheets.Attach(row, overlay!, _menu);
         }

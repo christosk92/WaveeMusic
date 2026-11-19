@@ -1,49 +1,32 @@
 // ── Platform/Controls.Podcast.cs ───────────────────────────────────────────────────────────────────────────────────
-// the podcast pages' small controls: the badge CHIP, the STAR row, the RATE flyout, the start-here / next-in-the-story DOOR (+ its
-// `DoorData`), and the reader's FIND box
+// the podcast pages' small controls: the badge CHIP, the STAR row, the RATE flyout, the WORD line, and the FIND box (the
+// people list's)
 //
 // Role: UI
 // Owner: O
 // Wave: P1 (the podcast rework — nothing mounts these yet; waves P3/P5 do)
 // Budget: 420 lines
 // Spec: podcast-show-rework-implementation.md §5.5 (the surface), §2 W1-W4 (placement), §7 (motion), §4 (keyboard);
-//       the approved prototype docs/plans/wavee/podcast-show-episode-mica.html (.chip, .ledger, .flyout .stars, .door,
-//       .find)
+//       the approved prototype docs/plans/wavee/podcast-show-episode-mica.html (.chip, .ledger, .flyout .stars, .find)
 //
 // ── THE TONE IS A LIVE READ ──────────────────────────────────────────────────────────────────────────────────────────
 //
 // Every control here takes the show's tone as a `Func<ColorF>` and binds it (`Prop.Of(tone)`), so a palette that lands
-// after the page mounted re-fires the binds instead of re-rendering anything. The one exception is the lead door's
-// GRADIENT: `BoxEl.Gradient` is a plain value, so `Door` reads the tone ONCE while building — called from a component's
-// render, that read subscribes the caller, which re-renders on the (rare) tone change.
+// after the page mounted re-fires the binds instead of re-rendering anything.
 //
 // ── WHAT IS NOT HERE ─────────────────────────────────────────────────────────────────────────────────────────────────
 //
-// No caps transform. The prototype sets the door label in capitals via CSS; this file does NOT upper-case a localized
-// string (R.Type.Eyebrow's rule — a caps transform mangles Turkish dotted i and German ß): the label keeps its own
-// casing at 11/700 with +90 tracking. The stars never format a number: their callers pass values.
+// No caps transform: this file does NOT upper-case a localized string (R.Type.Eyebrow's rule — a caps transform mangles
+// Turkish dotted i and German ß). The stars never format a number: their callers pass values.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Localization;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
-
-/// <summary>One door (W2's "start here" cards, W4's "next in the story"): a card that OPENS on click and carries its own
-/// play disc. <paramref name="Label"/> is the small toned word ("begin here", "latest", "next"); <paramref name="Why"/>
-/// and <paramref name="Meta"/> ("38 min", "Sep 15 · 28 min") are optional; <paramref name="Lead"/> paints the tone
-/// gradient (the door the show wants you to take); <paramref name="Numeral"/> is the 64-px ghost numeral top-right (the
-/// episode number, null for a trailer); a null <paramref name="Play"/> drops the disc. <paramref name="Tone"/> is the
-/// show's tone (label ink, disc fill, lead gradient). <paramref name="Menu"/> is the door's context menu (built at OPEN
-/// time, null = none) — right-click anywhere on the card; <see cref="Controls.Door"/> attaches it when it is handed an
-/// overlay service. <see cref="PlayUri"/> names what the disc plays, so its glyph can read Pause while that episode is the one playing.</summary>
-public sealed record DoorData(string Label, string Title, string? Why, string? Meta, bool Lead, string? Numeral,
-                              Action? Play, Action Open, Func<ColorF> Tone, Func<ContextMenuModel?>? Menu = null, string? PlayUri = null);
 
 public static partial class Controls
 {
@@ -315,162 +298,13 @@ public static partial class Controls
         }
     }
 
-    // ══ 3. THE DOOR ══════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 3. THE FIND BOX ══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The door's metrics: min 132 high (a caller's grid keeps it ≥ 230 wide), 14 padding, the 64-px ghost
-    /// numeral at 9 % ink 10 from the right and 6 above the top, the 32 disc with a 14 glyph, the lead gradient's 26 %.</summary>
-    public const float DoorMinHeight = 132f, DoorMinWidth = 230f, DoorPad = 14f, DoorNumeralSize = 64f,
-                       DoorNumeralInk = 0.09f, DoorDisc = 32f, DoorDiscGlyph = 14f, DoorLeadTone = 0.26f;
-
-    const string DoorFace = "Segoe UI Variable Display";
-    static readonly MotionTarget s_doorLift = new() { OffsetY = -1f };
-
-    /// <summary>A door (W2 / W4): an r8 card — the tone gradient when it LEADS — lifting 1 DIP on hover (150 ms, off
-    /// under reduced motion) with a subtle plate. The label 11/700 in the tone, the title 15/600 (≤ 2 lines), the why 12
-    /// (≤ 2 lines), then the foot: a 32 tone disc that PLAYS and the meta line. The whole card OPENS; the disc is its own
-    /// tab stop (plan §4). The numeral is a ghost behind the copy, clipped by the card's corners. A (B) surface: it keeps its
-    /// own tree and takes only the shared rules — the click owner's hand / role / tab stop and the title's trim tooltip.
-    /// With a <see cref="DoorData.Menu"/> and a live <paramref name="overlay"/> the card also answers a right-click.</summary>
-    public static Element Door(DoorData d, IOverlayService? overlay = null)
-    {
-        var title = new TextEl(d.Title)
-        {
-            Size = 15f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary,
-            MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-        };
-        var copy = new List<Element>(5)
-        {
-            R.Type.Eyebrow(d.Label) with
-            {
-                Color = Prop.Of(d.Tone),
-                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            },
-            TrimmedTitle(title, d.Title),   // a tooltip only while the title is cut at two lines
-        };
-        if (d.Why is { Length: > 0 } why)
-            copy.Add(new TextEl(why)
-            {
-                Size = 12f, LineHeight = 17f, Color = Tok.TextSecondary,
-                MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            });
-        copy.Add(new BoxEl { Grow = 1f });   // the foot sits on the card's floor (the prototype's margin-top: auto)
-        copy.Add(DoorFoot(d));
-
-        var layers = new List<Element>(3)
-        {
-            // The hover plate: a sibling UNDER the copy, faded in by the card's hover (a gradient card has no fill to
-            // ramp, so a HoverFill would do nothing on the lead door).
-            new BoxEl
-            {
-                HitTestVisible = false, Opacity = 0f, HoverOpacity = 1f, HoverDurationMs = MotionTok.ControlFast.DurationMs,
-                Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary,
-            },
-        };
-        if (d.Numeral is { Length: > 0 } numeral)
-            layers.Add(new BoxEl
-            {
-                // Its own clipping layer, so the card root stays unclipped (its focus rect draws outside it).
-                ZStack = true, HitTestVisible = false, ClipToBounds = true, Corners = Radii.CardAll,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, 0f, 10f, 0f),
-                        OffsetY = -6f, Opacity = DoorNumeralInk,
-                        Children =
-                        [
-                            new TextEl(numeral)
-                            {
-                                FontFamily = DoorFace, Size = DoorNumeralSize, LineHeight = DoorNumeralSize, Weight = 300,
-                                Color = Tok.TextPrimary, MaxLines = 1,
-                            },
-                        ],
-                    },
-                ],
-            });
-        layers.Add(new BoxEl
-        {
-            Direction = 1, Gap = Spacing.S, Padding = Edges4.All(DoorPad), MinWidth = 0f, Children = copy.ToArray(),
-        });
-
-        // The whole card opens, so it owns its click: the hand, the Button role and the tab stop are the shared surface rule's.
-        var mode = SurfaceRules.Ownership(inSlot: false, hasClick: true);
-        var card = new BoxEl
-        {
-            ZStack = true, MinHeight = DoorMinHeight, MinWidth = 0f,
-            Corners = Radii.CardAll, Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            Gradient = d.Lead ? LeadGradient(d.Tone()) : (GradientSpec?)null,
-            Role = mode.Role, Focusable = mode.OwnsFocus, Cursor = SurfaceRules.Cursor(in mode), OnClick = d.Open,
-            WhileHover = s_doorLift, Transition = MotionTok.ControlFast,
-            Children = layers.ToArray(),
-        };
-        return d.Menu is { } menu && overlay is not null && !IsNullOverlay(overlay) ? ContextSheets.Attach(card, overlay, menu) : card;
-    }
-
-    /// <summary>The lead door's wash: the tone at 26 % in the top-left corner fading into the card fill by 70 % of the
-    /// diagonal (the prototype's <c>linear-gradient(135deg, …)</c> — the engine's 45° runs top-left to bottom-right).</summary>
-    static GradientSpec LeadGradient(in ColorF tone) => new(GradientShape.Linear, 45f,
-    [
-        new GradientStop(0f, ToneAt(tone, DoorLeadTone)),
-        new GradientStop(0.7f, Tok.FillCardDefault),
-    ]);
-
-    static Element DoorFoot(DoorData d)
-    {
-        var kids = new List<Element>(2);
-        if (d.Play is { } play) kids.Add(DoorPlay(play, d.Tone, d.PlayUri));
-        if (d.Meta is { Length: > 0 } meta)
-            kids.Add(new TextEl(meta)
-            {
-                Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                MinWidth = 0f, Shrink = 1f,
-            });
-        return new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray(),
-        };
-    }
-
-    /// <summary>The door's 32 disc: the tone, a contrast-picked play glyph, the emphatic scale tier, its own tab stop and
-    /// its name ("Play"). It blocks a drag arm so a door that ever becomes a drag source still plays.</summary>
-    static Element DoorPlay(Action play, Func<ColorF> tone, string? playUri)
-    {
-        EntityId playId = playUri is { Length: > 0 } ? EntityId.Parse(playUri) : default;   // parsed once, at build
-        return Named(new BoxEl
-    {
-        Width = DoorDisc, Height = DoorDisc, Shrink = 0f, Corners = Radii.Circle(DoorDisc),
-        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Fill = Prop.Of(tone),
-        Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered, Cursor = CursorId.Hand,
-        HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
-        BlocksDragArm = true, OnClick = play,
-        Children =
-        [
-            new BoxEl
-            {
-                Width = DoorDiscGlyph, Height = DoorDiscGlyph, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Children =
-                [
-                    Icon(Icons.Play, DoorDiscGlyph) with
-                    {
-                        // Pause while THIS episode is the one playing (a coarse-first subscribing read: the glyph node
-                        // re-skins, the door does not re-render).
-                        Text = Prop.Of(() => PlayRelation.ShowsPause(playId) ? Icons.Pause : Icons.Play),
-                        Color = Prop.Of(() => ColorContrast.PickContrast(tone())),
-                    },
-                ],
-            },
-        ],
-    }, Loc.Get(Strings.Detail.Play));
-    }
-
-    // ══ 4. THE FIND BOX ══════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The find box's width in the reader's sticky rail (the prototype's 120-DIP input + its chrome).</summary>
+    /// <summary>The find box's width (the prototype's 120-DIP input + its chrome).</summary>
     public const float FindBoxWidth = 180f;
 
-    /// <summary>The reader's in-show find (W1): a stock single-line TextBox writing <paramref name="query"/> on every
-    /// edit — the reader filters on it and never persists it (plan §4). It is reached by Tab from the rail; Ctrl+F stays
-    /// the omnibar.</summary>
+    /// <summary>A list's own find (the people list's): a stock single-line TextBox writing <paramref name="query"/> on every
+    /// edit — the list filters on it and never persists it (plan §4). Ctrl+F stays the omnibar.</summary>
     public static Element FindBox(Signal<string> query, string placeholder)
         => TextBox.Create(query, null, new TextBox.TextBoxOptions { Placeholder = placeholder, Width = FindBoxWidth });
 }

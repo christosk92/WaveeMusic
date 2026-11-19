@@ -276,12 +276,13 @@ internal static partial class ZunePlayerBar
             body,
             new BoxEl { Key = "seek-layer", Grow = 1f, Direction = 1, HitTestPassThrough = true, Children = [seekRow] },
         };
-        // A load past the core's sweep delay: the line becomes a sweep (the rail fades under it, keeping its scrub state).
+        // A load past the core's sweep delay: the line becomes the train of dots (the rail fades under it, keeping its scrub state). The slot is
+        // the line's and does not clip: the dots are taller than the line and ride on it whole.
         if (v.TopEdgeSweeps)
             layers.Add(new BoxEl
             {
                 Key = "sweep", Grow = 1f, Direction = 1, HitTestVisible = false, Animate = L.ItemMotion,
-                Children = [new BoxEl { Height = T.LineH, Shrink = 0f, ClipToBounds = true, Direction = 0, Children = [ProgressBar.Indeterminate(m.TopEdgeWidth)] }],
+                Children = [new BoxEl { Height = T.LineH, Shrink = 0f, Direction = 0, Children = [ProgressBar.Indeterminate(m.TopEdgeWidth)] }],
             });
 
         // The slot (72, 88 at Huge 4K) and the bar in it (the mini 64 at Compact) change height on a crossing: both ease through real layout (a

@@ -53,6 +53,8 @@ internal static class ClassicPodcastRules
 
     // ── the list bar (filters, search, sort) and the group labels ──
     public const float ListBarH = 52f, ListBarGap = 8f, SearchW = 208f, SearchWSmall = 160f;
+    /// <summary>The hairline at the foot of the pinned group label.</summary>
+    public const float PinnedRule = 1f;
     public const float GroupH = 36f, GroupGap = 6f, GroupLabelSize = 12f, GroupLabelLine = 16f;
     public const float FilterPadX = 10f, FilterH = 32f, FilterGap = 4f, FilterCountGap = 4f, FilterUnderline = 3f, FilterUnderlineW = 16f;
 
@@ -67,10 +69,16 @@ internal static class ClassicPodcastRules
     /// <summary>The lead: a section-head title over two lines of what the episode is about, more air, the 44 accent play.</summary>
     public const float LeadPadTop = 14f, LeadPadBottom = 16f, LeadGap = 2f, LeadPlay = 44f, LeadBlurbW = 560f, LeadPlayHover = 0.90f, LeadPlayPressed = 0.80f;
     public const int LeadTitleLines = 2, LeadBlurbLines = 2;
+    /// <summary>The month's card (the first episode of each month): its cover, the card's inset and corner, the air above and under it.</summary>
+    public const float LeadCover = 88f, LeadCoverCompact = 64f, LeadCoverRadius = 6f, LeadCardPad = 12f, LeadCardRadius = 8f, LeadCardTop = 4f, LeadCardBottom = 8f,
+        LeadCardGap = 8f;
+    public const int LeadCoverDecode = 320;
     /// <summary>A played row's vertical padding (one line, the play button's height).</summary>
     public const float PlayedPadY = 2f;
     /// <summary>A row in progress: its bar under the title, the time left beside it.</summary>
     public const float RowBarW = 220f, RowBarGap = 10f;
+    /// <summary>The narrowest a row's own progress bar gets where its text column is narrower than the bar and its "left" label.</summary>
+    public const float RowBarMinW = 64f;
 
     // ── sections, cards ──
     public const float SectionTop = 28f, SectionBottom = 12f, SectionGap = 8f;
@@ -78,7 +86,7 @@ internal static class ClassicPodcastRules
     public const float EmptyPad = 32f;
     /// <summary>The list's seeded extents (the measured ones replace them): a row (one line, with its line of description or its bar, played, the
     /// lead), a group label's foot, the stacked column, the foot with More like this; the recycle pools of the page's own parts start here.</summary>
-    public const float RowEstimate = 56f, RowEstimateTall = 58f, RowPlayedEstimate = 40f, RowLeadEstimate = 116f, FootEstimate = 64f,
+    public const float RowEstimate = 56f, RowEstimateTall = 58f, RowPlayedEstimate = 40f, RowLeadEstimate = 124f, FootEstimate = 64f,
         ColumnEstimate = 720f, SimilarEstimate = 320f;
     public const int PartType = 16;
     public const float JumpCellH = 56f, JumpGap = 4f, JumpPad = 12f, JumpW = 340f;

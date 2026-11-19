@@ -26,7 +26,7 @@ internal static partial class ClassicSettings
             case "appearance.theme": card = ThemePickerView(); return true;
             case "appearance.zoom": card = CardRow(row, Embed.Comp(static () => new ZoomPicker())); return true;
             // Sound
-            case "sound.quality": card = CardRow(row, QualityCombo()); return true;
+            case "sound.quality": card = CardRow(row, QualityCombo(s_quality)); return true;
             // The description IS the detector's verdict: every state says something, "Unknown" included (never blank).
             case "sound.meteredQuality": card = CardRow(row, MeteredQualityCombo(), sub: MeteredStatus()); return true;
             case "sound.equalizer": card = EqualizerGroup(row); return true;
@@ -43,7 +43,7 @@ internal static partial class ClassicSettings
             case "lyrics.stage.sensitivity": card = CardRow(row, Embed.Comp(static () => new StageSensitivitySlider())); return true;
             case "lyrics.stage.syncOffset": card = CardRow(row, Embed.Comp(static () => new StageSyncSlider())); return true;
             // Startup & system
-            case "system.language": card = LanguageRow(row); return true;
+            case "system.language": card = LanguageRow(row, s_language); return true;
             case "system.gpu": card = Embed.Comp(static () => new GpuPickerCard()); return true;
             // Account & privacy
             case "account.identity": card = IdentityRow(row, group); return true;

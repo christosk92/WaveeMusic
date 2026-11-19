@@ -128,6 +128,7 @@ internal static class ClassicTitleBar
         return new BoxEl
         {
             Key = "chrome-tabs-lane", Animate = ClassicChromeLayout.TabLaneMotion,
+            DropTarget = props.NewTabDrop,   // the tab lane: what is dropped on it opens in a new tab
             Direction = 0, AlignItems = FlexAlign.Center, Height = TitleBar.ExpandedHeight,
             Width = l.TabIslandWidth, Shrink = 0f, ClipToBounds = true, Children = kids.ToArray(),
         };

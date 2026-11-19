@@ -74,12 +74,13 @@ internal static class ZuneConcertSchedule
         var cell = ctx.Hooks.UseRef(new Cell()).Value;
         var facts = ctx.Tier();
         var lay = ZuneConcertTiers.Of(in facts);
+        var rings = ZuneConcertDetail.RingLayoutOf(in facts);   // the event page's command rings, for "view event"
         float gutter = ZuneTiers.FrameOf(in facts).Gutter;
         Func<Element> content = () => props.Empty
             ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Concerts.Schedule.NoUpcoming),
                 subtitle: Loc.Get(Strings.Concerts.Schedule.NoUpcomingSubtitle))
-            : Dashboard(props, cell, props.Model(), lay);
-        Element region = Cells.Region(props.Pending, props.Failed, content, () => Dashboard(props, cell, props.Seed(), lay),
+            : Dashboard(props, cell, props.Model(), lay, rings);
+        Element region = Cells.Region(props.Pending, props.Failed, content, () => Dashboard(props, cell, props.Seed(), lay, rings),
             () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry), "artist-schedule:" + props.RouteKey);
         Element scroll = Cells.SubPageScroll(props.ScrollScope + "artist-schedule:" + props.RouteKey, region, gutter) with
         {
@@ -93,9 +94,9 @@ internal static class ZuneConcertSchedule
     }
 
     /// <summary>The loaded (or seeded) dashboard in the tier's record.</summary>
-    static Element Dashboard(ConcertScheduleProps props, Cell cell, ConcertScheduleModel m, ZuneConcertLayout lay)
+    static Element Dashboard(ConcertScheduleProps props, Cell cell, ConcertScheduleModel m, ZuneConcertLayout lay, ZuneDetailLayout rings)
     {
-        var sections = new List<Element>(2) { Hero(props, m, lay) };
+        var sections = new List<Element>(2) { Hero(props, m, lay, rings) };
         if (m.Selected >= 0)
         {
             var group = m.Groups[m.Selected];
@@ -124,9 +125,11 @@ internal static class ZuneConcertSchedule
 
     // ══ THE HERO ══════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>"on tour" · the name (≤ 2 lines) · the stats line; with a spotlight a hairline, the next-show row and "view event" beside the round
-    /// location control (stacked when narrow). Without one the location control stands alone at full width and the photo's plate is untinted.</summary>
-    static Element Hero(ConcertScheduleProps props, ConcertScheduleModel m, ZuneConcertLayout lay)
+    /// <summary>"on tour" · the name (≤ 2 lines) · the stats line; with a spotlight a hairline, the next-show row, then "view event" (a ring, Zune's command,
+    /// as the event page's "interested · share · play the lineup") and the place (the hub's where control, square on the wash), stacked when narrow.
+    /// Without a spotlight the place stands alone and the photo's plate is untinted. "View event" was an accent capsule and the place a round outlined
+    /// box, two shapes no other Zune command takes (owner, 2026-11-18: the concert pages "look out of pattern").</summary>
+    static Element Hero(ConcertScheduleProps props, ConcertScheduleModel m, ZuneConcertLayout lay, ZuneDetailLayout rings)
     {
         var blocks = new List<Element>(6)
         {
@@ -171,20 +174,15 @@ internal static class ZuneConcertSchedule
                 ],
             });
         }
-        BoxEl location = Cells.LocationButton(m.LocationLabel, props.OpenPicker, lay.HubPill) with { OnRealized = props.CaptureAnchor };
+        BoxEl location = Cells.WherePill(m.LocationLabel, props.OpenPicker, lay.HubPill) with { Key = "zune-schedule:where", OnRealized = props.CaptureAnchor };
+        Element viewEvent = K.Ring("view-event", Icons.Calendar, Loc.Get(Strings.Concerts.Schedule.ViewEvent), true, null, props.OpenSpotlight, rings);
         blocks.Add(m.Spotlight is null
-            ? location
-            : lay.ScheduleWide
-                ? new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                    Children =
-                    [
-                        Button.Accent(Loc.Get(Strings.Concerts.Schedule.ViewEvent), props.OpenSpotlight) with { Shrink = 0f },
-                        new BoxEl { Width = Rules.ScheduleLocationW, MinWidth = 0f, Children = [location] },
-                    ],
-                }
-                : new BoxEl { Direction = 1, Gap = Spacing.S, Children = [Button.Accent(Loc.Get(Strings.Concerts.Schedule.ViewEvent), props.OpenSpotlight), location] });
+            ? new BoxEl { Direction = 0, Children = [location] }
+            : new BoxEl
+            {
+                Direction = (byte)(lay.ScheduleWide ? 0 : 1), AlignItems = lay.ScheduleWide ? FlexAlign.Center : FlexAlign.Start, Gap = Spacing.M,
+                Children = [viewEvent, location],
+            });
         var copy = new BoxEl { Direction = 1, MinWidth = 0f, Gap = Spacing.M, Children = blocks.ToArray() };
         Element photo = Photo(m.HeroImageUrl, m.SpotlightAccent, lay);
         return lay.ScheduleWide
@@ -228,7 +226,8 @@ internal static class ZuneConcertSchedule
     static Element TourDates(ConcertScheduleProps props, Cell cell, ConcertScheduleModel m, ZuneConcertLayout lay)
     {
         var groups = m.Groups;
-        var labels = ConcertScheduleShaping.MonthTabLabels(groups, CultureInfo.CurrentCulture);
+        // The months are a pivot of ours: in the navigation case, as every Zune pivot ("sep '26 · oct · nov").
+        var labels = ConcertScheduleShaping.MonthTabLabels(groups, CultureInfo.CurrentCulture).Select(static l => ZuneText.Word(l, LabelKind.Navigation)).ToArray();
         Element tabs = ScrollView(new BoxEl
         {
             Direction = 0,

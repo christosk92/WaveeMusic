@@ -305,7 +305,9 @@ public readonly partial struct Playlist
         Detail.FrameActions? _actionsShown;
         readonly Func<ColorF> _accent;
         readonly Func<PageStamp> _stamp;
-        readonly Action _demand, _demandRows, _observe, _activated, _tune, _holdExpired, _toYourEpisodes;
+        readonly Action _demand, _demandRows, _observe, _activated, _tune, _holdExpired, _toYourEpisodes, _bindTune;
+        /// <summary>Tune's strip and its state on this page (the strip opens inline under the list bar).</summary>
+        readonly TuneSession _tuneSession = new();
         string _routeKey = "";
         /// <summary>The open hold's deadline wake (<see cref="HoldExpired"/>), re-armed from its own fire while the hold
         /// still has budget — a wake that lands a frame early must not be the last one.</summary>
@@ -345,7 +347,8 @@ public readonly partial struct Playlist
             _holdExpired = HoldExpired;
             _toYourEpisodes = ToYourEpisodes;
             _activated = Activated;
-            _tune = () => { if (!Controls.IsNullOverlay(_overlay)) OpenTune(_overlay, _playlist); };
+            _tune = _tuneSession.Toggle;
+            _bindTune = () => _tuneSession.Bind(_playlist);
             _editable = () => _playlist.Editable;
             _deposit = Deposit;
             _moveRows = (rows, at) => Spotify.PlaylistEdits.MoveRows(_playlist, rows, at);
@@ -452,6 +455,8 @@ public readonly partial struct Playlist
             _chromeNext = ChromeOf(pl);
             UseEffect(_syncChrome, DepKey.From(_chromeNext.GetHashCode()));
             UseEffect(_publishChrome);
+            // Another playlist on this page starts with Tune shut and nothing applying.
+            UseEffect(_bindTune, DepKey.From(pl.Slot));
 
             if (!pl.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
@@ -477,6 +482,8 @@ public readonly partial struct Playlist
                     RemoveRows = editable ? _removeRows : null,
                     Recommendations = recs ? _recs : null,
                     Tune = tune ? _tune : null,
+                    TuneStrip = tune ? _tuneSession.Strip : null,
+                    TuneLit = tune ? _tuneSession.Lit : null,
                     LensHeader = _lensHeader,
                     LensExtent = lensExtent,
                     Drawer = Track.DrawerSeam,
@@ -531,7 +538,7 @@ public readonly partial struct Playlist
         /// presence only, so the instance is kept while the presence holds.</summary>
         Detail.FrameActions ActionsFor(Detail.FrameActions basis, bool tune, bool invite)
         {
-            var next = basis with { Tune = tune ? _tune : null, Invite = invite ? _inviteAction : null };
+            var next = basis with { Tune = tune ? _tune : null, TuneLit = tune ? _tuneSession.Lit : null, Invite = invite ? _inviteAction : null };
             if (_actionsShown is { } shown && shown.Equals(next) && ReferenceEquals(shown.DepositOnPage, basis.DepositOnPage)) return shown;
             return _actionsShown = next;
         }

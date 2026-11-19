@@ -129,7 +129,8 @@ public sealed record LibraryPageProps
     /// <see cref="Wavee.Theming.ShellCapabilities.LibraryFamily"/>): the page draws its columns only. Default false: a page that finds a head draws it. Contract 1.109.</summary>
     public bool HeadHosted { get; init; }
 
-    /// <summary>The selected row's pane: the album pane, the show pane or the artists' reader, mounted without a key so a selection re-skins it in place.</summary>
+    /// <summary>The selected row's pane: the album pane, the show or audiobook page (<c>PodcastPages.LibraryPane</c>, keyed per subject) or the artists' reader, the album pane and
+    /// the reader mounted without a key so a selection re-skins them in place.</summary>
     public required Func<Element> Pane { get; init; }
 
     /// <summary>The albums' artist grouping (null unless the structure asked for it through <see cref="Wavee.Theming.LibraryTierPolicy.GroupAlbumsByArtist"/>, this is the albums

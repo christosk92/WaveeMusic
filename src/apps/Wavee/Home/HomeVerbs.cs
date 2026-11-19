@@ -118,6 +118,15 @@ public static class HomeVerbs
     {
         // A followed release's section holds its one album, which the Release Spotlight already shows whole: nothing more to see.
         if (zone.SectionSlot < 0 || zone.Kind == ZoneKind.ReleaseSpotlight) return null;
+        // "From artists you follow" is ONE list made of many sections (each followed release is a section of its own, holding its one album), so
+        // it has no section to drill into: its slot is only the first of them, and that section's page is one album or nothing (owner's recording,
+        // 2026-11-18: "See all 36" opened a page titled "Home" that said "Nothing here yet"). It opens the list itself (SectionScreen).
+        if (zone.Kind == ZoneKind.ReleaseList)
+        {
+            string title = zone.Title ?? "";
+            return () => Shell.GoTo(new Shell.Route(Shell.RouteKind.HomeSection, EntityUri.Parse(HomeProjection.FollowingReleasesKey),
+                title.Length == 0 ? FluentGpu.Foundation.StringId.Empty : Entities.Strings.Intern(title)), HomeCardNav.HomeOrigin);
+        }
         int slot = zone.SectionSlot;
         return () =>
         {

@@ -77,6 +77,10 @@ public sealed record ShellTitleBarProps
     /// <summary>The "+" was pressed: a new tab on Home.</summary>
     public required Action OnNewTab { get; init; }
 
+    /// <summary>The bar as a drop target: what is dropped on it opens in a new tab (core decides what it takes). The structure puts it on its bar
+    /// (the whole bar, or the tab lane); null where the shell offers none.</summary>
+    public DropTargetSpec? NewTabDrop { get; init; }
+
     /// <summary>The strip measured its content extent (DIP): the allocator's tab input.</summary>
     public required Action<float> OnTabExtent { get; init; }
 

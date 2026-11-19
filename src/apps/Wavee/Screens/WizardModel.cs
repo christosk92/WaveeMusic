@@ -51,7 +51,8 @@ public static partial class Setup
     public static class Wizard
     {
         /// <summary>The model decided at boot, or null when the wizard is not due this launch. Never consumed: the open is
-        /// guarded by the shown flag, so a remounted chrome cannot open a second plate.</summary>
+        /// guarded by the shown flag, so a remounted chrome cannot open a second plate; a chrome that mounts under a session
+        /// that is still live opens the session's plate again (<see cref="WizardRules.ReopensPlate"/>).</summary>
         public static WizardModel? Due { get; private set; }
 
         /// <summary>PURE: is the wizard due, and which entry? Null when neither the pending marker nor a terms re-arm asks
@@ -155,11 +156,13 @@ public static partial class Setup
 
         static void Inline(Action action) => action();
 
-        /// <summary>The plate is about to open: the launch's one open is spent.</summary>
+        /// <summary>The plate is about to open: the launch's one open is spent. A second call is the session's plate opening again
+        /// under a new root (<see cref="WizardRules.ReopensPlate"/>).</summary>
         public void BeginOpen()
         {
+            bool again = s_wizardShown;
             s_wizardShown = true;
-            Log.Info("setup", "setup wizard opened (" + Entry + ", on " + Page.Peek() + ")");
+            Log.Info("setup", (again ? "setup wizard opened again under a new root (" : "setup wizard opened (") + Entry + ", on " + Page.Peek() + ")");
         }
 
         /// <summary>The plate is up: the shell dims behind it and the wizard owns sign-in.</summary>

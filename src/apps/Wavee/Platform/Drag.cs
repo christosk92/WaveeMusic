@@ -127,6 +127,9 @@ public readonly record struct DragChipModel(string? Title, string? Subtitle, str
 /// other source. It is the payload's self-identification as a REORDER gesture — see <see cref="FromQueue"/> and
 /// <see cref="Drag.Depositable"/>.</para>
 ///
+/// <para><see cref="FromTab"/> marks a lifted TAB of the title bar's strip (it stands for its page): a surface that opens what is dropped on it in a
+/// new tab does not take it.</para>
+///
 /// <para>A record, not a struct: a payload is built ONCE per gesture at drag promotion (the source's factory is cold by
 /// contract) and then read from event handlers, never per pointer move (P1).</para></summary>
 public sealed record DragPayload(
@@ -142,7 +145,8 @@ public sealed record DragPayload(
     bool RootlistItem = false,
     string? ArtUrl = null,
     RootRef[]? RootlistItems = null,
-    ulong? SourceQueueItemId = null)
+    ulong? SourceQueueItemId = null,
+    bool FromTab = false)
 {
     /// <summary>This drag lifted a row out of the queue panel. The gesture is a reorder of that list; no playlist, tab,
     /// sidebar row or player-bar surface may read it as a track to deposit (<see cref="CanCopyTracks"/> is false).</summary>

@@ -220,43 +220,17 @@
     "episodeCount": "{count, plural, other {에피소드 #개}}",
     "listenNext": "다음에 들을 에피소드",
     "continueListening": "이어 듣기",
-    "resume": "이어 듣기",
     "noEpisodes": "이 필터에 맞는 에피소드가 없어요",
-    "loadMore": "에피소드 더 불러오기",
-    "loadingMore": "불러오는 중…",
     "filter": {
       "all": "전체",
       "unplayed": "안 들음",
       "inProgress": "듣는 중",
       "played": "들음"
     },
-    "sort": {
-      "newest": "최신순",
-      "oldest": "오래된순"
-    },
     "minutes": "{n}분",
-    "empty": "이 팟캐스트에는 아직 에피소드가 없어요",
-    "startHere": "여기서 시작하기",
-    "beginHere": "여기서 시작",
-    "whereItBegan": "첫 에피소드",
-    "latest": "최신 에피소드",
-    "trailer": "예고편",
-    "serialHint": "연재물이에요 — 순서대로 들어 보세요",
-    "episodicHint": "에피소드마다 독립적이에요 — 어디서든 시작하세요",
-    "about": "소개",
-    "continue": "이어 듣기",
-    "upNextFromProgress": "진행 상황에 따른 다음 에피소드",
     "startFromBeginning": "처음부터 시작",
-    "newSince": "마지막 방문 이후 새 에피소드",
-    "markAllPlayed": "모두 들음으로 표시",
-    "caughtUp": "모두 들었어요",
-    "caughtUpNext": "새 에피소드는 보통 {day, select, monday {월요일마다} tuesday {화요일마다} wednesday {수요일마다} thursday {목요일마다} friday {금요일마다} saturday {토요일마다} sunday {일요일마다} other {정기적으로}} 올라와요.",
-    "episodesCount": "에피소드 {count}",
-    "countOf": "{total}개 중 {shown}개",
     "left": "{time} 남음",
-    "leftOf": "{total} 중 {left} 남음",
     "played": "들음",
-    "new": "신규",
     "ledger": "{played}개 들음 · {progress}개 듣는 중 · {togo}개 남음",
     "ledgerNew": "새 에피소드 {count}개",
     "cadence": {
@@ -265,7 +239,6 @@
       "fortnightly": "격주",
       "monthly": "매월"
     },
-    "since": "{when}부터",
     "ratings": "{count, plural, other {평가 #개}}",
     "yours": "내 평가 {stars}★",
     "rate": {
@@ -275,9 +248,6 @@
     "notify": {
       "unavailable": "Wavee에서는 아직 새 에피소드 알림을 받을 수 없어요."
     },
-    "find": "이 팟캐스트에서 찾기",
-    "nothingMatches": "일치하는 항목 없음",
-    "nothingMatchesHint": "다른 단어로 찾아보거나 필터를 전체로 되돌려 보세요.",
     "moreLikeThis": "비슷한 팟캐스트",
     "alsoFollow": "{name} 청취자들이 함께 팔로우하는 팟캐스트",
     "tabs": {
@@ -316,20 +286,17 @@
       "bonus": "보너스",
       "trailer": "예고편",
       "subscribers": "구독자 전용",
-      "previewAvailable": "구독자 전용 · 미리 듣기 가능",
-      "episode": "에피소드 {n}"
+      "previewAvailable": "구독자 전용 · 미리 듣기 가능"
     },
     "menu": {
       "markPlayed": "들음으로 표시",
       "markUnplayed": "안 들음으로 표시",
       "goToShow": "팟캐스트로 이동"
     },
-    "progressUnavailable": "지금은 청취 진행 상황을 불러올 수 없어요",
     "reader": {
       "jumpDate": "날짜로 이동",
       "undated": "날짜 없음",
       "audiobook": "오디오북",
-      "chaptersCount": "{count, plural, other {챕터 #개}}",
       "findBook": "이 책에서 찾기",
       "chapterOrder": "챕터 순서",
       "reverseChapterOrder": "챕터 역순",
@@ -337,7 +304,6 @@
       "chapters": "챕터",
       "transcript": "스크립트",
       "comments": "댓글",
-      "related": "비슷한 콘텐츠",
       "showAll": "모두 보기",
       "showLess": "간단히 보기",
       "retry": "다시 시도",
@@ -842,6 +808,7 @@
     "play": "재생"
   },
   "menu": {
+    "openInNewTab": "새 탭에서 열기",
     "artistUnavailable": "이 앨범의 아티스트를 찾지 못했습니다",
     "moveManyToFolder": "{count}개를 폴더로 이동…",
     "moveUp": "위로 이동",

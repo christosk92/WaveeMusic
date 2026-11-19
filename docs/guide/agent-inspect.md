@@ -731,7 +731,9 @@ rating or cover; its rows stay), and `state kind=head-land` puts them back on th
 in place (`Entities.Fake.Cold.cs`; the next `mount` puts it back too). An **artist** uri (`ar3`) stages the late chart instead: everything is
 known but the charted rows' fields, asked and in flight (the page on its skeleton); `head-land` lands them as an answer does, and nothing else moves.
 **A real request, settled by hand** (`Entities.Fake.Answer.cs`): `state kind=head uri=<album|playlist|show|episode|artist> answer=hold` (an artist: its overview
-and chart bit instead of the late chart) also swaps a scripted
+and chart bit instead of the late chart; `keep=card` keeps what a card's thin row stages, the title and the cover, as live Home and search cards leave
+them; `go=false` stages it without opening the page, so a card click opens it and its cover flies: `state kind=head uri=spotify:show:sh9 answer=hold
+keep=card go=false` on `search long`, `click x=800 y=467 trace=40 flights=true`, then `head-land answer=fill trace=40`) also swaps a scripted
 transport in for the subject's provider, so the page's OWN ask for its head goes through the fetch layer (plan, bucket, drain, send) and is held in
 flight (the reply's `held`); `state kind=head-land answer=fill|omit|unfilled|fail|cancel` settles it: `fill` lands the head, `omit` answers without it
 (the fetch layer's miss retries are omitted too, then the group is Failed), `unfilled` answers it as a route that did not answer, `fail` is a terminal

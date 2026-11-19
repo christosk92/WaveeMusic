@@ -7,7 +7,7 @@
 //
 // EQUALITY. The hosts build a record per render and are themselves gated by a stamp of what they paint, so a record never compares equal to another
 // instance (its members are rebuilt per render, and a view that skipped on an "equal" record would keep the old closures). The one plain-data record
-// is the Tune panel's, which is built once per open.
+// is the Tune strip's, whose verbs are the session's own (built once), so equal values may skip.
 //
 // WRITABLE CELLS travel as `Func<Signal<T>>` (WVTH006 keeps a writable `Signal<T>` out of a props member): the control binds the cell once at mount.
 
@@ -131,10 +131,15 @@ public sealed record PlaylistAccessProps(float Width, bool Admin, bool EditableM
     public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
 }
 
-/// <summary>The props of <see cref="ViewKeys.PlaylistTune"/>: the options as the pure model's input, which one is selected and the pick verb (it closes the
-/// dialog and writes). The model (`PlaylistTuneMenuModel`) decides which choices show and whether a reset row stands.</summary>
-/// <param name="Width">The panel's measure (the dialog's content width).</param>
-public sealed record PlaylistTuneProps(float Width, IReadOnlyList<TuneOption> Options, string? Selected, Action<string> Pick);
+/// <summary>The props of <see cref="ViewKeys.PlaylistTune"/>: the inline Tune strip under the list bar. The options as the pure model's input, the direction
+/// the mix follows now, the one being applied, whether the last pick failed, and the verbs. A pick applies at once and the strip stays open, so the next
+/// direction is one click away. The model (`PlaylistTuneMenuModel`) decides which choices show and whether Reset stands.</summary>
+/// <param name="Selected">The direction the list follows now; null while untuned.</param>
+/// <param name="Applying">The direction being applied (the list is rebuilding); null at rest. Every choice waits while one applies.</param>
+/// <param name="Failed">The last pick did not land (the list is as it was).</param>
+/// <param name="Pick">Apply a choice's (or Reset's) identifier.</param>
+/// <param name="Close">Shut the strip.</param>
+public sealed record PlaylistTuneProps(IReadOnlyList<TuneOption> Options, string? Selected, string? Applying, bool Failed, Action<string> Pick, Action Close);
 
 /// <summary>The props of <see cref="ViewKeys.PlaylistDaylist"/>: the strip's face this second. The clock (the wall-clock anchor re-anchored against the
 /// frame clock, the one-second interval, the expiry timer, the rollover ladder) is the host's.</summary>

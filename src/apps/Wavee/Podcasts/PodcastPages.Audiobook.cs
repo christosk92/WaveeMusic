@@ -131,6 +131,9 @@ public sealed class AudiobookScreen : Component
 
         // ══ THE SNAPSHOT ════════════════════════════════════════════════════════════════════════════════════════════════════════
 
+        /// <summary>The book's cover, once any answer has named it (a card's thin row does).</summary>
+        static string? ArtOf(Show show) => show.Knows(ShowFields.Image) && !show.ImageId.IsEmpty ? Controls.ArtUrl(show.ImageId) : null;
+
         public Snapshot Compute()
         {
             _ = Entities.ScopeEpoch.Value;
@@ -139,7 +142,9 @@ public sealed class AudiobookScreen : Component
             var show = scope.Shows.TryGetSlot(subject.Id, out int showSlot) ? new Show(showSlot) : default;
             if (!show.IsValid) return Snapshot.Empty with { View = AudiobookView.Empty with { Uri = UriText } };
             var book = PodcastPages.AudiobookOf(show);                    // reactive: the tables, the library, the book stores
-            if (!book.Loaded || book.Title.Length == 0) return Snapshot.Empty with { View = AudiobookView.Empty with { Uri = UriText } };
+            // Still loading, the page holds what it already knows: the cover a card staged stands in the hero at once (the place a card's cover
+            // flies to), the rest shimmers until the book lands.
+            if (!book.Loaded || book.Title.Length == 0) return Snapshot.Empty with { View = AudiobookView.Empty with { Uri = UriText, ArtUrl = ArtOf(show) } };
 
             // ── the chapters ──
             var toc = book.Toc.Chapters;
@@ -281,7 +286,7 @@ public sealed class AudiobookScreen : Component
             var view = new AudiobookView(
                 Load: PodcastLoad.Ready,
                 Uri: UriText, Title: book.Title, Subtitle: book.Subtitle,
-                ArtUrl: show.Knows(ShowFields.Image) && !show.ImageId.IsEmpty ? Controls.ArtUrl(show.ImageId) : null,
+                ArtUrl: ArtOf(show),
                 Tone: show.Knows(ShowFields.Rating) ? show.Tone : 0u,
                 Kind: Loc.Get(PP.KindAudiobook), Genres: [.. genres.Take(2)], Included: included,
                 IncludedTag: book.Access.Signifier.Length > 0 ? book.Access.Signifier : Loc.Get(PP.Premium),

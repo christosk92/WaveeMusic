@@ -111,8 +111,11 @@ internal static partial class WinUiSettings
     ];
 
     /// <summary>The app language: the languages that cannot be picked are greyed (the verb refuses them too).</summary>
-    static Element LanguageCard(RowCtx x)
-        => DialCard(BaseCard(x, DialCombo(x.Row, LanguageLabels(), WinUiSettingsRules.GeneralComboWidth, itemEnabled: Settings.Language.Enabled)));
+    static Element LanguageCard(RowCtx x) => LanguageCard(x.Row, BaseCard(x, null));
+
+    /// <summary>The app language card over <paramref name="card"/> (the page's base card, or a card outside the page: <see cref="LanguageRow"/>).</summary>
+    static Element LanguageCard(SettingsBodyRow row, Card card)
+        => DialCard(card with { Control = DialCombo(row, LanguageLabels(), WinUiSettingsRules.GeneralComboWidth, itemEnabled: Settings.Language.Enabled) });
 
     /// <summary>The render GPU (see the file header): its own component, so the adapter walk happens once, at its mount.</summary>
     static Element GpuCard(RowCtx x) => Embed.Comp(new GpuProps(x), static () => new GpuPickerCard());

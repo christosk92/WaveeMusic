@@ -108,10 +108,11 @@ internal sealed class ZuneConcertFilterBar : Component
         };
         return new BoxEl
         {
+            // It scrolls with the page, as Zune's other toolbars do. (It asked for Sticky on its own root, which a component's root never takes: it never
+            // pinned.)
             Key = "concert-filter-bar:row", Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Padding = new Edges4(0f, Spacing.S, 0f, Spacing.S),
-            Fill = Prop.Of(static () => R.Layer.Content),
             Children = [caption, scroller],
-        }.Sticky(0f);
+        };
     }
 
     /// <summary>Rest: [📅 Dates ▾] + the "This weekend" chip. Active: the SAME "when-pill" node fused (§0 #3).</summary>
@@ -121,7 +122,7 @@ internal sealed class ZuneConcertFilterBar : Component
             ?
             [
                 Cells.RestDatePill(_openWhen, _pill) with { OnRealized = _captureWhen },
-                Cells.FilterToken(Loc.Get(Strings.Concerts.Filter.ThisWeekend), false, _thisWeekend, animate: Cells.ChipExit, size: TokenSize) with { Key = "when-chip" },
+                Cells.FilterToken(Loc.Get(Strings.Concerts.Filter.ThisWeekend), false, _thisWeekend, animate: Cells.ChipExit, size: TokenSize, command: true) with { Key = "when-chip" },
             ]
             : [Cells.FusedPill("when-pill", ZuneSegmentedPillStyle.AccentAt(_pill), when.Name, ConcertHub.WhenLabel(when.Range, CultureInfo.CurrentCulture), _openWhen) with { OnRealized = _captureWhen }];
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Children = kids };
@@ -130,7 +131,7 @@ internal sealed class ZuneConcertFilterBar : Component
     Element Genres(IReadOnlyList<ConcertConcept> all, IReadOnlyList<string> selected, bool expanded)
     {
         var shown = ConcertHub.TopConcepts(all, selected, expanded);
-        var kids = new List<Element>(shown.Count + 2) { Cells.FilterToken(Loc.Get(Strings.Concerts.AllGenres), selected.Count == 0, _clearGenres, size: TokenSize) };
+        var kids = new List<Element>(shown.Count + 2) { Cells.FilterToken(Loc.Get(Strings.Concerts.AllGenres), selected.Count == 0, _clearGenres, size: TokenSize, command: true) };
         for (int i = 0; i < shown.Count; i++)
         {
             string uri = shown[i].Uri;

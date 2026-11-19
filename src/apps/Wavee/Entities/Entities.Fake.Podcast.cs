@@ -1,5 +1,5 @@
 // ── Entities/Entities.Fake.Podcast.cs ──────────────────────────────────────────────────────────────────────────────
-// SEED-SURFACES for the podcast rework: the three VISITS the show reader's head switches on
+// SEED-SURFACES for the podcast rework: the listener states a show page meets (returning, new, caught up, new episodes, a first visit)
 //
 // Role: CORE
 // Owner: F (podcast rework, wave P1)
@@ -10,7 +10,7 @@
 // (`StageTrailer`). The same rules as every seed partial: rows go through `Staging` at `Authority.Seed`, every value is
 // a pure function of the fixture index and `now0` (no clock, no `Random`), and nothing publishes.
 //
-// WHAT IT SEEDS (the three first screens are told apart by the COLUMNS alone — `Show.Rules` derives the visit):
+// WHAT IT SEEDS (the states are told apart by the COLUMNS alone — the podcast pages derive them):
 //   · sh0 — SERIAL, RETURNING. `Order = Sequential`; 14 episodes numbered 14 → 1 (newest first); 1-8 played, 9 at 46 %
 //     and played 9 days before now0 — the show's last play; 13 and 14 were published after it ("new since you were
 //     here"); a trailer episode row OUTSIDE the membership; ★ 4.8 from 12,431; an amber tone.
@@ -176,6 +176,7 @@ public static partial class Entities
                     ep.Flags = (uint)(i == PaywalledEpisode
                         ? EpisodeFlags.Video | EpisodeFlags.Paywalled | EpisodeFlags.PreviewOnly | EpisodeFlags.Unplayable
                         : EpisodeFlags.Video);
+                    ep.Still = Text(s, Cover(sh + 11 + i));          // each video episode's own still (the show's cover is its square one)
                     Played(ref ep, ep.PublishedAt + Day);
                     break;
                 case FreshShow:
