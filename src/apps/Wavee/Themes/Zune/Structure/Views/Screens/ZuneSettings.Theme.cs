@@ -44,17 +44,18 @@ internal static partial class ZuneSettings
 
     static readonly Dictionary<ZuneSettingsLayout, TemplateParts> s_pickerParts = new();
 
-    /// <summary>The group's row and columns in the tier's form: fixed tiles that wrap (Standard up), or fluid tiles that wrap two to a line at the least (Compact, Small).</summary>
+    /// <summary>The group's row and columns in the tier's form: the Compact grid (two up, each tile the share its <see cref="Tile"/> is given), fixed tiles that wrap
+    /// (Standard), or tiles that grow from the record's width along the line (Small, Huge). A wrapping row sizes its items by their measured width (a flex basis plays no
+    /// part there), so the record's width is the columns' minimum.</summary>
     static TemplateParts PickerParts(ZuneSettingsLayout lay)
     {
         if (!s_pickerParts.TryGetValue(lay, out var parts))
             s_pickerParts[lay] = parts = new TemplateParts
             {
                 [RadioButtons.PartGrid] = g => g with { Wrap = true, Gap = lay.PickerGap },
-                [RadioButtons.PartColumn] = c => c with
-                {
-                    Shrink = 0f, Grow = lay.PickerGrows ? 1f : 0f, Basis = lay.PickerCardW, MinWidth = 0f, MaxWidth = lay.PickerGrows ? Z.PickerFluidMax : lay.PickerCardW,
-                },
+                [RadioButtons.PartColumn] = c => lay.PickerGrid
+                    ? c with { Shrink = 0f }
+                    : c with { Shrink = 0f, Grow = lay.PickerGrows ? 1f : 0f, MinWidth = lay.PickerCardW, MaxWidth = lay.PickerGrows ? Z.PickerFluidMax : lay.PickerCardW },
             };
         return parts;
     }
@@ -66,9 +67,11 @@ internal static partial class ZuneSettings
         public override Element Render()
         {
             var lay = UseLayout();
+            var viewport = UseContext(Viewport.Size);   // the Compact grid's tiles follow the window live inside the tier
             var entries = ThemePickerFacts.State.Value.Entries(Platform.Developer.Enabled.Value);   // tracked: a switch or Developer mode re-renders
             if (entries.Count == 0)
                 return ZuneText.Prose(Loc.Get(Strings.Settings.ThemePicker.None)) with { Key = "zs:picker:none" };
+            float gridTile = lay.PickerGridTileW(viewport.Width);
 
             int selected = -1;
             for (int i = 0; i < entries.Count; i++)
@@ -80,7 +83,7 @@ internal static partial class ZuneSettings
                 Key = "zs:picker:lane", Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
                 Children =
                 [
-                    Controls.PickerStrip(entries.Count, selected, (i, on) => Tile(entries[i], on, busyId == entries[i].Id, lay), Pick, parts: PickerParts(lay)),
+                    Controls.PickerStrip(entries.Count, selected, (i, on) => Tile(entries[i], on, busyId == entries[i].Id, lay, gridTile), Pick, parts: PickerParts(lay)),
                 ],
             };
         }
@@ -95,8 +98,9 @@ internal static partial class ZuneSettings
 
     const string ThemeDial = "appearance.theme";
 
-    /// <summary>One tile: the thumbnail (with the selection's ring), the name (the accent when picked) and the line under it.</summary>
-    static Element Tile(ThemePickerEntry entry, bool on, bool busy, ZuneSettingsLayout lay)
+    /// <summary>One tile: the thumbnail (with the selection's ring), the name (the accent when picked) and the line under it. <paramref name="gridWidth"/>: the Compact
+    /// grid's share (NaN elsewhere: the column's width).</summary>
+    static Element Tile(ThemePickerEntry entry, bool on, bool busy, ZuneSettingsLayout lay, float gridWidth)
     {
         var name = new List<Element>(3)
         {
@@ -120,11 +124,14 @@ internal static partial class ZuneSettings
         };
         if (lay.PickerShowsText && entry.DescriptionKey is { } descriptionKey)
             kids.Add(ZuneText.Hint(Loc.Get(descriptionKey)) with { MaxLines = Z.PickerTextLines, Trim = TextTrim.WordEllipsis, AlignSelf = FlexAlign.Stretch });
-        return new BoxEl
+        var tile = new BoxEl
         {
-            Key = "zs:picker:card:" + entry.Id, Direction = 1, Gap = Z.PickerCardGap, MinWidth = 0f, ClipToBounds = false, Cursor = CursorId.Hand,
+            Key = "zs:picker:card:" + entry.Id, Direction = 1, Gap = Z.PickerCardGap, Width = gridWidth, MinWidth = 0f, ClipToBounds = false, Cursor = CursorId.Hand,
             Animate = ZuneMotion.PivotSlide, Children = kids.ToArray(),
         };
+        // Outside the grid the tile fills its column (the tier's width, `PickerParts`): the radio item is a row, and a tile sized by its content would be as wide as its
+        // words (as wide as its name where the tier shows no line, a sliver of the thumbnail), so the tiles of one picker would not even match.
+        return float.IsNaN(gridWidth) ? tile with { Grow = 1f, Basis = 0f } : tile;
     }
 
     /// <summary>The preview: the theme's preview image over a UI-native miniature of THAT theme's frame (so a missing asset, the state of every theme until it ships

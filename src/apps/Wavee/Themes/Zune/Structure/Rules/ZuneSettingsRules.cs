@@ -125,10 +125,15 @@ public sealed record ZuneSettingsLayout
     /// <summary>The Appearance tab draws the options' preview (beside the column where there is room, under it where there is not).</summary>
     public required bool ShowsAside { get; init; }
 
+    /// <summary>The picker is a grid of <see cref="ZuneSettingsRules.PickerGridColumns"/> tiles to a line, each an equal share of the lane, so the tiles follow the window
+    /// (Compact: <see cref="PickerGridTileW"/>); elsewhere the tiles hold <see cref="PickerCardW"/> or grow from it along the line.</summary>
+    public required bool PickerGrid { get; init; }
+
     /// <summary>The picker's tiles grow to share the line (fluid) instead of holding their width.</summary>
     public required bool PickerGrows { get; init; }
 
-    /// <summary>A picker tile's width (its basis where it grows).</summary>
+    /// <summary>A picker tile's width (its least where it grows, the narrowest share in the grid). A wrapping row sizes its items by their measured width (a flex basis
+    /// plays no part there), so the picker gives it as the columns' minimum.</summary>
     public required float PickerCardW { get; init; }
 
     /// <summary>A picker tile's thumbnail height.</summary>
@@ -143,6 +148,12 @@ public sealed record ZuneSettingsLayout
 
     /// <summary>The page lays its controls out for touch (the Compact rule: every hit target is at least 40).</summary>
     public bool Touch => Target > 0f;
+
+    /// <summary>A grid tile's width in a window <paramref name="viewportWidth"/> wide: the lane (the window less the gutters) less the gaps between the columns, over the
+    /// columns, never under <see cref="PickerCardW"/>. NaN outside the grid (the columns size the tiles there).</summary>
+    public float PickerGridTileW(float viewportWidth) => PickerGrid
+        ? MathF.Max(PickerCardW, MathF.Floor((viewportWidth - 2f * Gutter - (ZuneSettingsRules.PickerGridColumns - 1) * PickerGap) / ZuneSettingsRules.PickerGridColumns))
+        : float.NaN;
 }
 
 /// <summary>The Settings page's tier records.</summary>
@@ -153,14 +164,14 @@ public static class ZuneSettingsTiers
         bool strip, float listW, float listItemH, float navSize, float navLineH, float searchH, float searchAbove, float searchBelow, float resultPadY, int summaryLines,
         float bodyGap,
         float columnW, bool columnGrows, bool stacks, bool rowsWrap, float labelW, float sliderLength, bool aside,
-        bool pickerGrows, float cardW, float thumbH, float pickerGap, bool pickerText, float swatch) => new()
+        bool pickerGrid, bool pickerGrows, float cardW, float thumbH, float pickerGap, bool pickerText, float swatch) => new()
     {
         Tier = tier, Gutter = ZuneTiers.Frame(tier).Gutter, Target = target, CompactTitle = compactTitle,
         TitleSize = titleSize, TitleLineH = titleLineH, TitleH = titleH, TitleTop = titleTop,
         ListIsStrip = strip, ListW = listW, ListItemH = listItemH, NavSize = navSize, NavLineH = navLineH,
         SearchH = searchH, SearchR = searchH / 2f, SearchAbove = searchAbove, SearchBelow = searchBelow, ResultPadY = resultPadY, SummaryLines = summaryLines,
         BodyGap = bodyGap, ColumnW = columnW, ColumnGrows = columnGrows, StacksRows = stacks, RowsWrap = rowsWrap, LabelW = labelW,
-        SliderLength = sliderLength, ShowsAside = aside, PickerGrows = pickerGrows, PickerCardW = cardW, PickerThumbH = thumbH, PickerGap = pickerGap,
+        SliderLength = sliderLength, ShowsAside = aside, PickerGrid = pickerGrid, PickerGrows = pickerGrows, PickerCardW = cardW, PickerThumbH = thumbH, PickerGap = pickerGap,
         PickerShowsText = pickerText, SwatchSize = swatch,
     };
 
@@ -173,33 +184,33 @@ public static class ZuneSettingsTiers
             strip: true, listW: 0f, listItemH: 60f, navSize: 26f, navLineH: 32f, searchH: 40f, searchAbove: 8f, searchBelow: 12f, resultPadY: 10f, summaryLines: 2,
             bodyGap: 8f,
             columnW: 1000f, columnGrows: true, stacks: true, rowsWrap: false, labelW: ZuneSettingsRules.LabelW, sliderLength: 200f, aside: false,
-            pickerGrows: true, cardW: 120f, thumbH: 88f, pickerGap: 16f, pickerText: true, swatch: 40f),
+            pickerGrid: true, pickerGrows: false, cardW: 120f, thumbH: 88f, pickerGap: 16f, pickerText: true, swatch: 40f),
         // Small (Z-Settings-Appearance-Small, Z-Theme-Options-Small): a 180 section column of 30-tall 18/24 words, a 520 column, rows beside their labels (140 | rest), the picker 4-up
         // (68 tall, the name alone, 12 apart), the swatches 28.
         Make(WidthTier.Small, target: 0f, compactTitle: true, titleSize: 0f, titleLineH: 0f, titleH: ZuneSettingsRules.TitleZoneSmall, titleTop: ZuneSettingsRules.TitleTopSmall,
             strip: false, listW: 180f, listItemH: 30f, navSize: 18f, navLineH: 24f, searchH: 32f, searchAbove: 0f, searchBelow: 14f, resultPadY: 8f, summaryLines: 0,
             bodyGap: 32f,
             columnW: 520f, columnGrows: false, stacks: false, rowsWrap: true, labelW: 140f, sliderLength: 220f, aside: false,
-            pickerGrows: true, cardW: 118f, thumbH: 68f, pickerGap: 12f, pickerText: false, swatch: 28f),
+            pickerGrid: false, pickerGrows: true, cardW: 118f, thumbH: 68f, pickerGap: 12f, pickerText: false, swatch: 28f),
         // Standard: the tuned design (the 32-tall pill over the 220 list of 40-tall 20/28 words, the 660 column, the 200 | rest rows, 150 x 100 tiles, 32 swatches).
         Make(WidthTier.Standard, target: 0f, compactTitle: false, titleSize: 0f, titleLineH: 0f, titleH: ZuneSettingsRules.TitleZone, titleTop: ZuneSettingsRules.TitleTop,
             strip: false, listW: 220f, listItemH: 40f, navSize: 20f, navLineH: 28f, searchH: 32f, searchAbove: 0f, searchBelow: 14f, resultPadY: 8f, summaryLines: 0,
             bodyGap: 48f,
             columnW: 660f, columnGrows: false, stacks: false, rowsWrap: false, labelW: ZuneSettingsRules.LabelW, sliderLength: 220f, aside: true,
-            pickerGrows: false, cardW: 150f, thumbH: 100f, pickerGap: 16f, pickerText: true, swatch: 32f),
+            pickerGrid: false, pickerGrows: false, cardW: 150f, thumbH: 100f, pickerGap: 16f, pickerText: true, swatch: 32f),
         // Huge (Z-Settings-Appearance-Huge, Z-Theme-Options-Huge): the 150 / 160 panorama, a 36-tall pill over a 260 list of 52-tall 24/32 words 40 from a 760 column, rows
         // 220 | rest, the picker 4-up (120 tall), the swatches 36.
         Make(WidthTier.Huge, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleLineHuge, titleH: ZuneSettingsRules.TitleZoneHuge, titleTop: ZuneSettingsRules.TitleTopHuge,
             strip: false, listW: 260f, listItemH: 52f, navSize: 24f, navLineH: 32f, searchH: 36f, searchAbove: 0f, searchBelow: 16f, resultPadY: 8f, summaryLines: 0,
             bodyGap: 40f,
             columnW: 760f, columnGrows: false, stacks: false, rowsWrap: false, labelW: 220f, sliderLength: 260f, aside: true,
-            pickerGrows: true, cardW: 176f, thumbH: 120f, pickerGap: 16f, pickerText: true, swatch: 36f),
+            pickerGrid: false, pickerGrows: true, cardW: 176f, thumbH: 120f, pickerGap: 16f, pickerText: true, swatch: 36f),
         // Huge 4K: Huge's (pages cap at 2400, owner 6.2; the page holds its 760 column and the frame's 64 gutter).
         Make(WidthTier.Huge4K, target: 0f, compactTitle: false, titleSize: ZuneSettingsRules.TitleSizeHuge, titleLineH: ZuneSettingsRules.TitleLineHuge, titleH: ZuneSettingsRules.TitleZoneHuge, titleTop: ZuneSettingsRules.TitleTopHuge,
             strip: false, listW: 260f, listItemH: 52f, navSize: 24f, navLineH: 32f, searchH: 36f, searchAbove: 0f, searchBelow: 16f, resultPadY: 8f, summaryLines: 0,
             bodyGap: 40f,
             columnW: 760f, columnGrows: false, stacks: false, rowsWrap: false, labelW: 220f, sliderLength: 260f, aside: true,
-            pickerGrows: true, cardW: 176f, thumbH: 120f, pickerGap: 16f, pickerText: true, swatch: 36f),
+            pickerGrid: false, pickerGrows: true, cardW: 176f, thumbH: 120f, pickerGap: 16f, pickerText: true, swatch: 36f),
     ];
 
     /// <summary>The record of content tier <paramref name="content"/>.</summary>
@@ -428,6 +439,9 @@ public static class ZuneSettingsRules
     /// <summary>A fluid tile's cap and the gap inside a tile (the gap between tiles is the tier's), and the lines the text may take.</summary>
     public const float PickerFluidMax = 220f, PickerCardGap = 8f;
     public const int PickerTextLines = 2;
+
+    /// <summary>The Compact grid's tiles to a line (Z-Settings-Appearance-Compact: two up).</summary>
+    public const int PickerGridColumns = 2;
 
     /// <summary>The selection ring (the thumbnail's border, clear at rest, so nothing shifts) and the gap it keeps from the picture.</summary>
     public const float SelectRing = 2f, SelectGap = 2f;
