@@ -162,9 +162,14 @@ public static partial class AiLyrics
             var track = Track.Value;
             string playing = PlayingLyricsId();
             var root = new BoxEl { Direction = 1, Shrink = 0f, MinWidth = 0f };
-            // The lyrics surface's hint slot (Hints.UI.cs): a zero box at rest, the AI lyrics hint while it qualifies. Never on the
-            // small box's face (a picture, never a target).
-            Element? hint = compact ? null : Hints.Slot(HintSurfaces.LyricsFooter);
+            // The lyrics surface's hint slot (Hints.UI.cs): a zero box at rest, the AI lyrics hint while it qualifies, on the lyrics' own
+            // gutter (the surface's side pad, so every theme's hint lines up with the lines above it). Never on the small box's face (a
+            // picture, never a target).
+            Element? hint = compact ? null : new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, Shrink = 0f, Padding = new Edges4(_sidePad, 0f, _sidePad, 0f),
+                Children = [Hints.Slot(HintSurfaces.LyricsFooter)],
+            };
             // A status that still names the previous track (the host re-evaluates on its own effect) never captions the
             // next track's lyrics.
             if (!Rules.ShowsFooter(track) || track.TrackId.Length == 0 || !string.Equals(track.TrackId, playing, StringComparison.Ordinal))

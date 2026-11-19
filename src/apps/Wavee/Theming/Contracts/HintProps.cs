@@ -1,4 +1,4 @@
-// ── Theming/Contracts/HintProps.cs — the props of the hint, the explanation badge and the in-context dials (contract 1.115) ─────────
+// ── Theming/Contracts/HintProps.cs — the props of the hint, the explanation badge and the in-context dials (contract 1.115, 2.2) ────
 //
 // Settings rework phase 3 (handoff/settings-2026-11-18/DESIGN.md 5.2, 6.1-6.5). The STATE stays core: which hint qualifies (the
 // table `Hints`, `Shell/Hints.cs`), the budget (one on screen, one new per session, the show count and days, the 30-day snooze, the
@@ -7,6 +7,7 @@
 // accent word), and calls the verbs handed to it; it never keeps a value of its own and never reaches the store (WVTH002).
 
 using System.Collections.Immutable;
+using FluentGpu.Foundation;
 
 namespace Wavee.Theming.Contracts;
 
@@ -96,11 +97,25 @@ public sealed record HintProps
     /// <summary>The dial the hint is about (a registry id), or null for a feature pointer (the sleep timer).</summary>
     public string? DialId { get; init; }
 
-    /// <summary>For <see cref="HintAction.Point"/>: the node key of the control it points at (a TeachingTip's target), or null.</summary>
+    /// <summary>For <see cref="HintAction.Point"/>: the core's name for the control it points at (informational: a template aims at
+    /// <see cref="Target"/>, the node the surface captured), or null.</summary>
     public string? Anchor { get; init; }
 
     /// <summary>Shown by the inspector's <c>hint show</c> (its trigger forced for one mount), not by its trigger.</summary>
     public bool Forced { get; init; }
+
+    /// <summary>The control the hint points at, captured by the surface that mounted the slot (the play button, the volume slider, the
+    /// queue's Crossfade switch, the back button, the title bar): a TeachingTip's target, a line's anchor. Null where the hint sits in a
+    /// place of its own (a footer, a flyout's foot, Home's top). Contract 2.2.</summary>
+    public Func<NodeHandle>? Target { get; init; }
+
+    /// <summary>A click elsewhere closed it (a TeachingTip's light dismiss), or its confirmation is done: it goes for the rest of this
+    /// session with no snooze (the budget's show was already counted). Null for a state line. Contract 2.2.</summary>
+    public Action? SetAside { get; init; }
+
+    /// <summary>A short heading for a template that titles its hint (a TeachingTip): the dial's own name ("Crossfade", "Audio
+    /// normalization"), or null where the hint has no dial name. Contract 2.2.</summary>
+    public string? Title { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.Explainer"/> (design 6.5): a dial's explanation badge and the tip it opens. The core

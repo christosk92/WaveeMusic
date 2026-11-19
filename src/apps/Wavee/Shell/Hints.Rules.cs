@@ -23,6 +23,8 @@ public static class HintRules
     public const long BlockedRecheckMs = 2_000;
     /// <summary>A slot never asks again sooner than this (a timed gate measured on the wall clock, its timer on the frame clock).</summary>
     public const long MinRecheckMs = 500;
+    /// <summary>An inline action's confirmation ("On · Change") stays this long, then goes (its own close goes sooner).</summary>
+    public const long ConfirmationMs = 8_000;
 
     // ── Recently changed (3.3, owner decision 11) ──────────────────────────────────────────────────────────────────────────
     /// <summary>The ring: the last five dials written, persisted across restarts.</summary>

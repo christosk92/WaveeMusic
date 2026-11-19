@@ -1,7 +1,8 @@
 // ── Theming/Contracts/ViewKeys.Hints.cs — the hint, the explanation badge and the in-context dials (contract 1.115) ─────────────
 //
 // Settings rework phase 3 (handoff/settings-2026-11-18/DESIGN.md 5.2, 6). Three keys, each ONE key for every place it appears: the
-// surface travels in the props. Every theme gets the Common stand-ins (`Themes\Common\CommonHint.cs`) until it draws its own (phases 4-6).
+// surface travels in the props. Each theme draws its own (phases 4-6); the Common stand-ins (`Themes\Common\CommonHint.cs`) are the neutral
+// fallback for a structure, or a surface, that draws none.
 
 using FluentGpu.Theming;
 

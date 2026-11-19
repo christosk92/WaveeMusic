@@ -335,6 +335,9 @@
 // Crossfade pair, `IStageSettingsVerbs.SetLyricsBlur`, `PanelLyricsHeaderProps.Options`, `DevicePickerEntryKind.Link`,
 // `NotificationsProps.OpenSettings`, `ShellTitleBarProps.WindowMenuRequest`, `ThemeOption.Contexts`) land on the 2.x line; phase 5 was
 // built on 1.116, beside the 2.0 removals, so nothing it adds names a removed member.
+// 2.2 (settings rework phase 6, the hints drawn in every theme): `HintProps.Target` (the control a hint points at, captured by the surface
+// that mounts the slot: a TeachingTip's target, a line's anchor), `HintProps.SetAside` (a light dismiss or a done confirmation: gone for the
+// session, no snooze) and `HintProps.Title` (the dial's name, a TeachingTip's heading).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -350,7 +353,7 @@ public static class ContractVersion
     public const int Major = 2;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 1;
+    public const int Minor = 2;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

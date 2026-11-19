@@ -1,9 +1,9 @@
 // ── Themes/Common/CommonHint.cs — the plain stand-ins for the hint, the explanation badge and the in-context dials (contract 1.115) ────
 //
-// Settings rework phase 3 (handoff/settings-2026-11-18/DESIGN.md 5.2, 6). Every theme registers these through `CommonBlocks.Register`, so
-// each of the three keys mounts SOMETHING in every theme until its own picture lands (the badge and the page in phase 4, the panels in
-// phase 5, the hints in phase 6), when a theme registers its own template for the key instead. Plain on purpose: the stock controls at
-// the tier's hit target, an opaque plate (a hint may float over the page), no motion of its own, no look a theme would call its own.
+// Settings rework phase 3 (handoff/settings-2026-11-18/DESIGN.md 5.2, 6). `CommonBlocks.Register` registers each for a structure that draws
+// none of its own (the badge and the page since phase 4, the panels since phase 5, the hints since phase 6: every shipped theme now draws
+// its own hint, and its template hands a surface it does not draw to `Hint` here). Plain on purpose: the stock controls at the tier's hit
+// target, an opaque plate (a hint may float over the page), no motion of its own, no look a theme would call its own.
 //
 //   Hint          a card keyed `hint:<id>`: the line, then its button (`hint:<id>:act`) and "Not now" (`:dismiss`); after an inline
 //                 write, the confirmation and "Change" (`:change`); a state line keeps its link and has no "Not now".

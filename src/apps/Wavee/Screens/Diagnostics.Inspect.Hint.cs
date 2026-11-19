@@ -61,6 +61,15 @@ public static partial class Diagnostics
                     if (!a.Has("id")) return Inspect.Reply.Fail(id, name, "hint show needs id=<hint> (hint list names them)");
                     if (Hints.Find(a.Str("id")) is not { } def)
                         return Inspect.Reply.Fail(id, name, "no hint '" + a.Str("id") + "' (" + string.Join("|", Hints.All.Select(static h => h.Id)) + ")");
+                    // Drawn in place by its surface (the devices flyout's "Sound settings" row): no slot mounts it, nothing to force.
+                    if (def.InPlace)
+                        return Inspect.Reply.Ok(id, name, w =>
+                        {
+                            w.WriteString("id", def.Id);
+                            w.WriteString("surface", def.Surface);
+                            w.WriteBoolean("inPlace", true);
+                            w.WriteString("note", "drawn in place by its surface at rest (no slot): open the surface to see it");
+                        });
                     Hints.Force(def);
                     Action<Utf8JsonWriter> body = w =>
                     {
@@ -103,6 +112,7 @@ public static partial class Diagnostics
                 w.WriteString("surface", def.Surface);
                 w.WriteString("action", Camel(def.Action.ToString()));
                 w.WriteNumber("priority", def.Priority);
+                if (def.InPlace) w.WriteBoolean("inPlace", true);
                 if (def.IsState) w.WriteBoolean("state", true);
                 else
                 {

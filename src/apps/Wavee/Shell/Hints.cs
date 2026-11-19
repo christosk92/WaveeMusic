@@ -20,14 +20,23 @@
 // order (`Suggestions`): there the on-screen, per-session and never-when gates do not apply (the person opened Settings to look), the
 // rest of the budget does, and a show counts against the same show budget.
 //
-// PHASE 3 SHIPS NO VISIBLE HINT. A hint whose theme placement is not drawn yet (`HintDef.Drawn`, false for every row until phase 6)
-// never mounts from its trigger; only the inspector's `hint show id=<hint>` (`Force`) mounts it, on the Common stand-in, for one mount.
+// DRAWN (phase 6). A row whose placement every theme it applies to draws is `Drawn`: its slot mounts it from its trigger. A row whose
+// surface is not on this line (the daylist tile's menu, the sleep timer) stays undrawn: only the inspector's `hint show id=<hint>`
+// (`Force`) would mount it, and no slot asks for its surface. A row the surface draws IN PLACE, without the slot (the devices flyout's
+// last row, "Sound settings", states the equalizer at rest), is `InPlace`: no slot picks it.
+//
+// ON SCREEN. A hint that appeared keeps its place until it is answered, set aside or its surface goes: the never-when gates decide
+// whether a hint may APPEAR, not whether one already up must leave (a TeachingTip is itself an open overlay; a track starting under a
+// hint must not pull it away). A click elsewhere (a TeachingTip's light dismiss) and a followed link set it aside for the session
+// (`SetAside`, no snooze: its show was counted); an inline action turns it into its confirmation, which goes after
+// `HintRules.ConfirmationMs` or with its own close.
 //
 // COST. Nothing here runs per frame: a slot re-evaluates when `Epoch` moves (a fact crossing its threshold, a show, a dismissal, a
 // retirement, a force) or when the time gate it waits on runs out; `Pick` walks the fifteen rows over plain fields and allocates
 // nothing; props (strings) are built only for a hint that shows.
 
 using FluentGpu.Dsl;
+using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming;
@@ -57,6 +66,9 @@ public sealed record HintDef
 
     /// <summary>The button's word (a loc key), or null.</summary>
     public string? ActionKey { get; init; }
+
+    /// <summary>A heading for a template that titles its hint (a TeachingTip), a loc key; null = the dial's own title.</summary>
+    public string? TitleKey { get; init; }
 
     /// <summary>The line with its value ("Your playback cache is almost full (30.4 of 32 GB)."), or null for <see cref="TextKey"/>.</summary>
     public Func<string>? Words { get; init; }
@@ -88,8 +100,12 @@ public sealed record HintDef
     /// <summary>The hint can exist here at all (its dial is shown: fast navigation is not Zune's; the sleep timer must exist).</summary>
     public Func<bool> Applies { get; init; } = static () => true;
 
-    /// <summary>A theme draws its placement (phase 6). Until then only <c>hint show</c> mounts it.</summary>
+    /// <summary>Every theme it applies to draws its placement (phase 6): its slot mounts it from its trigger. Otherwise only
+    /// <c>hint show</c> would.</summary>
     public bool Drawn { get; init; }
+
+    /// <summary>The surface draws it itself, in place, without the slot (the devices flyout's "Sound settings" row): no slot picks it.</summary>
+    public bool InPlace { get; init; }
 
     /// <summary>A state line: shown every time, never counted against the budget.</summary>
     public bool IsState => Action == HintAction.State;
@@ -132,28 +148,28 @@ public static partial class Hints
             new()
             {
                 Id = "ai-lyrics", Target = "lyrics.ai", Surface = HintSurfaces.LyricsFooter, Action = HintAction.Link, Priority = 4,
-                TextKey = Strings.Hints.AiLyrics.Text, ActionKey = Strings.Hints.AiLyrics.Action, MaxShows = 3,
+                TextKey = Strings.Hints.AiLyrics.Text, ActionKey = Strings.Hints.AiLyrics.Action, MaxShows = 3, Drawn = true,
                 Trigger = HintFacts.AiLyricsWanted, Satisfied = static () => Platform.Settings.Get(Platform.Keys.AiLyricsEnabled),
             },
             // 2 — the devices flyout's quality row: a second line under what plays.
             new()
             {
                 Id = "lossless", Target = "sound.quality", Surface = HintSurfaces.DevicePicker, Action = HintAction.Link, Priority = 2,
-                TextKey = Strings.Hints.Lossless.Text, ActionKey = Strings.Hints.Lossless.Action, MaxShows = 3,
+                TextKey = Strings.Hints.Lossless.Text, ActionKey = Strings.Hints.Lossless.Action, MaxShows = 3, Drawn = true,
                 Trigger = HintFacts.LosslessOffered, Satisfied = HintFacts.LosslessChosen,
             },
             // 3 — the same row, when the metered cap is what lowers the quality now: state, every time.
             new()
             {
                 Id = "metered-cap", Target = "sound.meteredQuality", Surface = HintSurfaces.DevicePicker, Action = HintAction.State,
-                Priority = 0, TextKey = Strings.Hints.MeteredCap.Text, ActionKey = Strings.Hints.MeteredCap.Action,
+                Priority = 0, TextKey = Strings.Hints.MeteredCap.Text, ActionKey = Strings.Hints.MeteredCap.Action, Drawn = true,
                 Trigger = HintFacts.MeteredLowers,
             },
             // 4 — the queue panel, pointing at its own Crossfade switch (it draws no second control on that screen).
             new()
             {
                 Id = "crossfade", Target = "playback.crossfade", Surface = HintSurfaces.QueuePanel, Action = HintAction.Point, Priority = 7,
-                TextKey = Strings.Hints.Crossfade.Text, Anchor = "queue:crossfade", MaxShows = 2,
+                TextKey = Strings.Hints.Crossfade.Text, Anchor = "queue:crossfade", MaxShows = 2, Drawn = true,
                 Trigger = HintFacts.CuttingTails, Satisfied = static () => Platform.Settings.Get(Platform.Keys.CrossfadeEnabled),
             },
             // 5 — by the player bar's volume slider.
@@ -161,14 +177,15 @@ public static partial class Hints
             {
                 Id = "normalization", Target = "sound.normalization", Surface = HintSurfaces.PlayerVolume, Action = HintAction.Inline,
                 Priority = 6, TextKey = Strings.Hints.Normalization.Text, ActionKey = Strings.Hints.Normalization.Action,
-                ChangeTarget = "sound.normalization.mode", MaxShows = 2,
+                ChangeTarget = "sound.normalization.mode", MaxShows = 2, Drawn = true,
                 Trigger = HintFacts.UnevenLoudness, Satisfied = static () => Platform.Settings.Get(Platform.Keys.NormalizationEnabled),
             },
-            // 6 — the devices flyout's last row: the equalizer's state at rest, a door to its dial.
+            // 6 — the devices flyout's last row: the equalizer's state at rest, a door to its dial. Phase 5's "Sound settings" row IS it (the
+            // equalizer and normalization at rest, a link into Sound), drawn in place by every theme's picker, never through the slot.
             new()
             {
                 Id = "equalizer-state", Target = "sound.equalizer", Surface = HintSurfaces.DevicePicker, Action = HintAction.State,
-                Priority = 0, TextKey = Strings.Hints.EqualizerState.Off, Words = HintFacts.EqualizerWords,
+                Priority = 0, TextKey = Strings.Hints.EqualizerState.Off, Words = HintFacts.EqualizerWords, Drawn = true, InPlace = true,
                 Trigger = static () => true,
             },
             // 7 — the bell flyout's header.
@@ -176,7 +193,7 @@ public static partial class Hints
             {
                 Id = "windows-notifications", Target = "notifications.windows", Surface = HintSurfaces.BellHeader, Action = HintAction.Inline,
                 Priority = 5, TextKey = Strings.Hints.WindowsNotifications.Text, ActionKey = Strings.Hints.WindowsNotifications.Action,
-                ChangeTarget = "notifications", MaxShows = 2,
+                ChangeTarget = "notifications", MaxShows = 2, Drawn = true,
                 Trigger = HintFacts.WantsBanners, Satisfied = static () => Platform.Settings.Get(Platform.Keys.NotifyWindows),
             },
             // 8 — an InfoBar line at the top of Home, on a later launch.
@@ -184,7 +201,7 @@ public static partial class Hints
             {
                 Id = "close-to-tray", Target = "system.tray.closeToTray", Surface = HintSurfaces.HomeBanner, Action = HintAction.Inline,
                 Priority = 3, TextKey = Strings.Hints.CloseToTray.Text, ActionKey = Strings.Hints.CloseToTray.Action,
-                MaxShows = 1, DismissRetires = true,
+                MaxShows = 1, DismissRetires = true, Drawn = true,
                 Trigger = HintFacts.QuitsByAccident, Satisfied = static () => Platform.Settings.Get(Platform.Keys.TrayCloseToTray),
             },
             // 9 — the same InfoBar slot; never in the same session as #8 (one new hint per session holds it).
@@ -192,7 +209,7 @@ public static partial class Hints
             {
                 Id = "start-with-windows", Target = "system.startOnLogin", Surface = HintSurfaces.HomeBanner, Action = HintAction.Inline,
                 Priority = 8, TextKey = Strings.Hints.StartWithWindows.Text, ActionKey = Strings.Hints.StartWithWindows.Action,
-                MaxShows = 1, DismissRetires = true,
+                MaxShows = 1, DismissRetires = true, Drawn = true,
                 Trigger = HintFacts.OpensAtSignIn, Satisfied = static () => Platform.Settings.Get(Platform.Keys.StartOnLogin),
             },
             // 10 — the back button (WinUI) / a line under the page head (Classic); only where the dial is shown (not Zune).
@@ -200,7 +217,7 @@ public static partial class Hints
             {
                 Id = "fast-navigation", Target = "appearance.fastNavigation", Surface = HintSurfaces.PageHead, Action = HintAction.Inline,
                 Priority = 11, TextKey = Strings.Hints.FastNavigation.Text, ActionKey = Strings.Hints.FastNavigation.Action,
-                MaxShows = 1, DismissRetires = true,
+                MaxShows = 1, DismissRetires = true, Drawn = true,
                 Trigger = HintFacts.WaitsForSwaps, Satisfied = static () => Platform.Settings.Get(Platform.Keys.FastNavigation),
                 Applies = static () => !ShellCaps.Now.DefersPageMount,
             },
@@ -209,10 +226,11 @@ public static partial class Hints
             new()
             {
                 Id = "backdrop", Target = SettingsSpec.ThemeOptionPrefix + "style.backdrop", Surface = HintSurfaces.TitleBar,
-                Action = HintAction.Point, Priority = 12, TextKey = Strings.Hints.Backdrop.Text, Anchor = "titlebar", MaxShows = 1,
+                Action = HintAction.Point, Priority = 12, TextKey = Strings.Hints.Backdrop.Text, Anchor = "titlebar", MaxShows = 1, Drawn = true,
                 Trigger = HintFacts.AdjustingTheLook, Satisfied = HintFacts.BackdropChanged, Applies = HintFacts.BackdropOffered,
             },
-            // 12 — the daylist tile's "..." menu: a one-time dot on its options item.
+            // 12 — the daylist tile's "..." menu: a one-time dot on its options item. Not drawn on this line: the daylist tile and its
+            // menu are feat/pinned-home's.
             new()
             {
                 Id = "daylist-options", Target = "appearance.daylistClock", Surface = HintSurfaces.DaylistMenu, Action = HintAction.Badge,
@@ -223,7 +241,8 @@ public static partial class Hints
             new()
             {
                 Id = "shortcuts", Target = "help.shortcuts.playPause", Surface = HintSurfaces.PlayButton, Action = HintAction.Link,
-                Priority = 13, TextKey = Strings.Hints.Shortcuts.Text, ActionKey = Strings.Hints.Shortcuts.Action, MaxShows = 2,
+                Priority = 13, TextKey = Strings.Hints.Shortcuts.Text, ActionKey = Strings.Hints.Shortcuts.Action, MaxShows = 2, Drawn = true,
+                TitleKey = Strings.Settings.Groups.Help.Shortcuts,
                 Trigger = HintFacts.ClicksPlayALot,
             },
             // 14 — the player bar while an audiobook plays late. The sleep timer (Podcasts/SleepTimer.cs, its only home) is not on this
@@ -234,11 +253,11 @@ public static partial class Hints
                 Priority = 9, TextKey = Strings.Hints.SleepTimer.Text, ActionKey = Strings.Hints.SleepTimer.Action, MaxShows = 2,
                 Trigger = HintFacts.ListeningAtBedtime, Applies = static () => false,
             },
-            // 16 — the Settings home's Suggestions only, until resolved.
+            // 16 — the Settings home's Suggestions only, until resolved (drawn by every theme's Settings home since phase 4b).
             new()
             {
                 Id = "cache-full", Target = "storage.cache.budget", Surface = HintSurfaces.SettingsHome, Action = HintAction.Link,
-                Priority = 1, TextKey = Strings.Hints.CacheFull.TextKey, ActionKey = Strings.Hints.CacheFull.Action, Words = HintFacts.CacheWords,
+                Priority = 1, Drawn = true, TextKey = Strings.Hints.CacheFull.TextKey, ActionKey = Strings.Hints.CacheFull.Action, Words = HintFacts.CacheWords,
                 Trigger = HintFacts.CacheAlmostFull,
             },
         ];
@@ -280,6 +299,9 @@ public static partial class Hints
     static object? s_onScreen;          // the slot that holds the one on-screen hint
     static string? s_onScreenId;
     static string? s_done;              // the hint whose inline action ran on the slot showing it
+    static bool[]? s_aside;             // set aside for this session, by index in All
+
+    static bool IsAside(int i) => s_aside is { } aside && aside[i];
 
     static int Today => DateOnly.FromDateTime(DateTime.Now).DayNumber;
 
@@ -303,6 +325,8 @@ public static partial class Hints
         Satisfied,
         NotDrawn,
         Blocked,
+        /// <summary>Set aside for this session (a click elsewhere closed it, its link was followed, its confirmation is done).</summary>
+        SetAside,
     }
 
     /// <summary>The budget's verdict for <paramref name="def"/> (see the file header). <paramref name="inApp"/> applies the gates that
@@ -315,6 +339,7 @@ public static partial class Hints
         if (!TipsOn) return Verdict.TipsOff;
         int i = IndexOf(def.Id);
         if (HintState.Retired(i)) return Verdict.Retired;
+        if (inApp && IsAside(i)) return Verdict.SetAside;
         int today = Today;
         if (HintState.SnoozedUntil(i) > today) return Verdict.Snoozed;
         bool thisSession = string.Equals(s_sessionHint, def.Id, StringComparison.Ordinal);
@@ -352,15 +377,18 @@ public static partial class Hints
     {
         recheckMs = 0;
         var all = All;
-        if (s_forced is { } forced && Find(forced) is { } f && f.Surface == surface) return f;
+        if (s_forced is { } forced && Find(forced) is { } f && f.Surface == surface && !f.InPlace) return f;
         if (s_done is { } done && ReferenceEquals(s_onScreen, slot) && Find(done) is { } d && d.Surface == surface) return d;
         HintDef? best = null;
         for (int i = 0; i < all.Count; i++)
         {
             HintDef def = all[i];
-            if (!string.Equals(def.Surface, surface, StringComparison.Ordinal)) continue;
+            if (def.InPlace || !string.Equals(def.Surface, surface, StringComparison.Ordinal)) continue;
             if (best is not null && Rank(best) <= Rank(def)) continue;
             Verdict verdict = Judge(def, inApp: true, overlayOpen);
+            // Already up on this slot: the never-when gates decide whether a hint may appear, they never pull one that is up.
+            if (verdict == Verdict.Blocked && ReferenceEquals(s_onScreen, slot) && string.Equals(s_onScreenId, def.Id, StringComparison.Ordinal))
+                verdict = Verdict.Qualifies;
             // Shown before and its state now reached: retired for good (the blob only: no signal is written in a render, and no slot
             // shows it to need a re-run).
             if (verdict == Verdict.Satisfied) { if (HintState.Shows(i) > 0) HintState.MarkRetired(i); continue; }
@@ -433,20 +461,36 @@ public static partial class Hints
     {
         s_sessionHint = s_forced = s_onScreenId = s_done = null;
         s_onScreen = null;
+        if (s_aside is { } aside) Array.Clear(aside);
         HintFacts.ResetSession();
         Bump();
     }
 
     // ── the verbs a hint hands its view ──────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>"×" / "Not now".</summary>
+    /// <summary>"×" / "Not now". On a confirmation (the inline action ran) it only closes it: the hint is retired already.</summary>
     public static void Dismiss(HintDef def)
     {
         if (def.IsState) return;
+        if (IsDone(def)) { SetAside(def); return; }
         HintState.MarkDismissed(IndexOf(def.Id), Today, def.SnoozeDays, def.DismissRetires);
         if (IsForced(def)) s_forced = null;
         Bump();
     }
+
+    /// <summary>A click elsewhere closed it (a TeachingTip's light dismiss), its link was followed, or its confirmation is done: gone for
+    /// the rest of this session, with no snooze (its show was counted when it appeared).</summary>
+    public static void SetAside(HintDef def)
+    {
+        if (def.IsState) return;
+        (s_aside ??= new bool[All.Count])[IndexOf(def.Id)] = true;
+        if (IsDone(def)) s_done = null;
+        if (IsForced(def)) s_forced = null;
+        Bump();
+    }
+
+    /// <summary>The confirmation of <paramref name="def"/> is up (its inline action ran on the slot showing it).</summary>
+    public static bool IsDone(HintDef def) => string.Equals(s_done, def.Id, StringComparison.Ordinal);
 
     /// <summary>"Don't show tips": the global switch off, through its dial's writer.</summary>
     public static void NeverTips()
@@ -468,7 +512,10 @@ public static partial class Hints
                 Bump();
                 break;
             default:
-                if (DialOf(def) is { } dial) SettingsLinks.Open(dial);   // a pointer's place opens from its own surface (phase 6)
+                // A followed link has done its job for this session (the surface that carried it closes as Settings opens). The in-context
+                // door: an overlaid rail or the full screen steps aside for Settings, as every other "open in Settings" does.
+                if (DialOf(def) is { } dial) InContextDoors.OpenSettings(dial);   // a pointer's place opens from its own surface
+                if (!def.IsState) SetAside(def);
                 break;
         }
     }
@@ -524,20 +571,33 @@ public static partial class Hints
 
     // ── props ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    static Action[]? s_act, s_dismiss, s_change;
+    static Action[]? s_act, s_dismiss, s_change, s_setAside;
     static readonly Action s_neverTips = NeverTips;
 
     /// <summary>The props of <paramref name="def"/> on <paramref name="surface"/> (built only for a hint that shows). The verbs are one
-    /// delegate per hint, built once, so an unchanged hint re-pushes an equal record.</summary>
-    public static HintProps PropsFor(HintDef def, string surface)
+    /// delegate per hint, built once, so an unchanged hint re-pushes an equal record. <paramref name="target"/> is the control the
+    /// surface's slot points at (null where the hint sits in a place of its own); <paramref name="close"/> closes the flyout the hint sits in
+    /// (the devices picker's), so a door to Settings never leaves it open over the page (the bell's panel closes through its own closer).</summary>
+    public static HintProps PropsFor(HintDef def, string surface, Func<NodeHandle>? target = null, Action? close = null)
     {
         int i = IndexOf(def.Id);
         s_act ??= new Action[All.Count];
         s_dismiss ??= new Action[All.Count];
         s_change ??= new Action[All.Count];
+        s_setAside ??= new Action[All.Count];
         Action act = s_act[i] ??= () => Act(def);
         Action dismiss = s_dismiss[i] ??= () => Dismiss(def);
-        Action change = s_change[i] ??= () => SettingsLinks.Open(def.ChangeTarget ?? def.Target);
+        Action setAside = s_setAside[i] ??= () => SetAside(def);
+        // The confirmation's "Change" opens the dial and the confirmation goes with it (its word was said).
+        Action change = s_change[i] ??= () => { InContextDoors.OpenSettings(def.ChangeTarget ?? def.Target); SetAside(def); };
+        // A door out of a flyout closes the flyout first (an inline write stays: its confirmation shows in place).
+        close ??= surface == HintSurfaces.BellHeader ? NotificationVerbs.PanelCloser : null;
+        if (close is { } closer)
+        {
+            if (def.Action != HintAction.Inline) { Action open = act; act = () => { closer(); open(); }; }
+            Action changeThere = change;
+            change = () => { closer(); changeThere(); };
+        }
         bool done = string.Equals(s_done, def.Id, StringComparison.Ordinal);
         bool button = def.ActionKey is not null && def.Action is HintAction.Inline or HintAction.Link or HintAction.State;
         // On the Settings home every suggestion is a door: a pointer's or a dot's row opens its dial.
@@ -551,11 +611,32 @@ public static partial class Hints
             Dismiss = def.IsState ? null : dismiss,
             NeverTips = def.IsState ? null : s_neverTips,
             Done = done,
-            DoneText = done ? Loc.Get(Strings.Hints.Done.On) : null,
+            DoneText = done ? DoneWords(def) : null,
             ChangeLabel = done ? Loc.Get(Strings.Hints.Done.Change) : null,
             Change = done ? change : null,
             Anchor = def.Anchor,
             Forced = IsForced(def),
+            Target = target,
+            SetAside = def.IsState ? null : setAside,
+            Title = TitleOf(def),
         };
+    }
+
+    /// <summary>The confirmation after an inline write (design 6.3): "On", and the value the "Change" link opens when that is a dial with a
+    /// value of its own ("On · Normal" for normalization's level).</summary>
+    static string DoneWords(HintDef def)
+    {
+        string on = Loc.Get(Strings.Hints.Done.On);
+        if (def.ChangeTarget is not { } id || !SettingsSpec.TryDial(id, out SettingsDial dial)) return on;
+        string value = SettingsPageModel.ValueWords(dial, dial.Current);
+        return value.Length == 0 ? on : on + " · " + value;
+    }
+
+    /// <summary>The heading of <paramref name="def"/>: its own title key, else its dial's title (a live theme option's included), else null.</summary>
+    static string? TitleOf(HintDef def)
+    {
+        if (def.TitleKey is { } key) return Loc.Get(key);
+        if (DialOf(def) is not { } id) return null;
+        return SettingsSpec.TryResolve(id, out SettingsDial dial, out _) ? Loc.Get(dial.TitleKey) : null;
     }
 }

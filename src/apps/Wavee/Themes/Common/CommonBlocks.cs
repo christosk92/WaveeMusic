@@ -10,7 +10,7 @@
 //   Pages.Diagnostics.*    the playback, connect and capture pages         CommonDiagnostics
 //   Pages.Logs             the log files page                              CommonLogs
 //   Pages.Module           a module's page                                 CommonModulePage
-//   Hint.Line              a hint on its surface (stand-in, phase 3)       CommonHint
+//   Hint.Line              a hint on its surface (the neutral fallback)    CommonHint
 //   Hint.Explainer         a dial's explanation badge (stand-in, phase 3)  CommonHint
 //   Settings.Dials         a feature panel's dials (stand-in, phase 3)     CommonHint
 //
@@ -30,12 +30,14 @@ public static class CommonBlocks
 {
     /// <summary>Adds every Common view to <paramref name="views"/>. Called by a structure's <c>Register</c>. A structure that draws the module page in its own page
     /// column passes its template (and a template id) as <paramref name="module"/>: the view registry refuses a second template for a key, so the choice is made here.
-    /// So does a structure that draws History (<paramref name="history"/>), the Home customizer (<paramref name="customize"/>) or the explanation badge
-    /// (<paramref name="explainer"/>, settings rework phase 4) in its own voice.</summary>
+    /// So does a structure that draws History (<paramref name="history"/>), the Home customizer (<paramref name="customize"/>), the explanation badge
+    /// (<paramref name="explainer"/>, settings rework phase 4) or the hints (<paramref name="hint"/>, phase 6) in its own voice. A hint template hands a
+    /// surface it does not draw to the neutral <c>CommonHint.Hint</c>, which is registered itself only for a structure that draws no hint at all.</summary>
     public static void Register(ViewRegistryBuilder views, ViewTemplate<ModulePageProps>? module = null, string moduleTemplateId = "common.module.page",
         ViewTemplate<HistoryPageProps>? history = null, string historyTemplateId = "common.history",
         ViewTemplate<HomeCustomizeProps>? customize = null, string customizeTemplateId = "common.customize",
-        ViewTemplate<ExplainerProps>? explainer = null, string explainerTemplateId = "common.hint.explainer")
+        ViewTemplate<ExplainerProps>? explainer = null, string explainerTemplateId = "common.hint.explainer",
+        ViewTemplate<HintProps>? hint = null, string hintTemplateId = "common.hint")
     {
         views.Add(ViewKeys.HistoryPage, history ?? CommonHistory.Template, historyTemplateId);
         views.Add(ViewKeys.HomeCustomize, customize ?? CommonCustomize.Template, customizeTemplateId);
@@ -44,7 +46,7 @@ public static class CommonBlocks
         CommonLogs.Register(views);
         views.Add(ViewKeys.ModulePage, module ?? CommonModulePage.Template, moduleTemplateId);
         // The settings rework's three keys (contract 1.115): plain stand-ins until each theme draws its own (phases 4-6).
-        views.Add(ViewKeys.Hint, CommonHint.Hint, "common.hint");
+        views.Add(ViewKeys.Hint, hint ?? CommonHint.Hint, hintTemplateId);
         views.Add(ViewKeys.Explainer, explainer ?? CommonHint.Explainer, explainerTemplateId);
         views.Add(ViewKeys.SettingsDials, CommonHint.SettingsDials, "common.settings.dials");
     }

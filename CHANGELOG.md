@@ -99,6 +99,22 @@ versions separately under `v*` and is not tracked in this file.)
   (no devices list on a narrow Zune window) is named without a link. Changes made in the mini player's options and the
   Liked Songs cover picker now show under Recently changed too.
 
+- **Gentle tips, at the moment a setting would help (every theme).** When the way you use Wavee shows a setting could
+  help, a short tip appears where it applies, in your theme's own look: word-by-word lyrics under the lyrics after a
+  while of reading along, Lossless in the devices list, Crossfade at the queue's switch when you keep skipping the end of
+  songs, normalization by the volume when you keep adjusting it at the start of tracks, Windows banners in the
+  notifications panel, keeping Wavee playing in the taskbar corner (or starting it with Windows) at the top of Home, the
+  keyboard shortcuts by the play button, and in WinUI where to change the window's backdrop and how to make pages switch
+  at once. A tip that can switch its setting on does it in place and then says so, with a "Change" link to the details;
+  the others open the setting in Settings. Tips never take focus, make no sound and never move what you are looking at:
+  WinUI shows an InfoBar or a TeachingTip, Classic a slim strip, Zune a single lowercase line. They never appear at
+  launch, while a dialog or menu is open or as a song starts.
+- **Tips stay rare.** At most one tip on screen and one new tip per session, each shown at most two or three times on
+  different days; "Not now" (or ×) hides it for 30 days and a third dismissal retires it, and using the setting
+  anywhere retires its tip for good. Every tip's ⋯ (Zune's "more") offers "Don't show tips", the same switch as
+  Settings > Notifications > Tips about features, which turns them all off until you turn it back on. When a metered
+  connection is what lowers the audio quality, the devices list says so every time ("Lowered on a metered connection").
+
 ### Changed
 
 - **The sidebar's menu offers only what the theme has.** Right-clicking the sidebar offers Layout and Density only in a
