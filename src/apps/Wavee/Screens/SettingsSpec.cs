@@ -307,6 +307,9 @@ public static class SettingsSurfaces
         NowPlayingPicker = "nowPlaying.picker", WhatsNew = "whatsNew.dialog", CrashPrompt = "crash.prompt", LogsMenu = "logs.menu",
         TrayMenu = "tray.menu", VideoMenu = "video.menu", SidebarMenu = "sidebar.menu";
 
+    /// <summary>The setup wizard's Terms page (its crash-consent card writes the crash-reports dial, owner decision 10): a source, not a context.</summary>
+    public const string SetupWizard = "setup.wizard";
+
     /// <summary>Sources of a write that are not a dial's in-context home: the Settings page (the default), a hint's inline action, the
     /// command palette, the inspector's <c>setting</c> verb.</summary>
     public const string Settings = "settings", Hint = "hint", Palette = "palette", Inspector = "inspector";

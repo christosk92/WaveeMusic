@@ -2214,7 +2214,8 @@
         "logs.menu": "from the logs",
         "tray.menu": "from the notification area",
         "video.menu": "from the video",
-        "sidebar.menu": "from the sidebar"
+        "sidebar.menu": "from the sidebar",
+        "setup.wizard": "from setup"
       }
     },
     "alsoIn": {
@@ -3585,9 +3586,6 @@
       "crashTitle": "Help fix crashes",
       "crashOptional": "Optional",
       "crashLead": "If Wavee crashes, send a report?",
-      "crashNo": "No",
-      "crashAsk": "Ask me first",
-      "crashAlways": "Always send",
       "crashSub": "Reports contain the error, Wavee and Windows versions and the last log lines, with personal details removed. Never your Spotify account or files. Change this any time in Settings."
     },
     "signIn": {

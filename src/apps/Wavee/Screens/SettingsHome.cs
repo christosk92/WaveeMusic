@@ -143,7 +143,7 @@ public static class SettingsHome
         SettingsSurfaces.StageOptions, SettingsSurfaces.StageGallery, SettingsSurfaces.PlayerBar, SettingsSurfaces.DevicePicker,
         SettingsSurfaces.MiniPlayerOptions, SettingsSurfaces.LikedCover, SettingsSurfaces.TrackListMenu, SettingsSurfaces.NowPlayingPicker,
         SettingsSurfaces.WhatsNew, SettingsSurfaces.CrashPrompt, SettingsSurfaces.LogsMenu, SettingsSurfaces.TrayMenu, SettingsSurfaces.VideoMenu,
-        SettingsSurfaces.SidebarMenu,
+        SettingsSurfaces.SidebarMenu, SettingsSurfaces.SetupWizard,
     ];
 
     /// <summary>The "from …" words of a write's source (a loc key), or null for a source with none (a panel added later says nothing
