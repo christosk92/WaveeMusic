@@ -42,7 +42,11 @@ internal static class WinUiHomeTileMenu
         bool tail = false;
         if (e.HasOptions)
         {
-            items.Add(new MenuFlyoutItem(Loc.Get(Strings.Theme.Winui.Home.Board.Customize), Icons.Edit, Invoke: () => verbs.Open(id)));
+            // Hint #12: "Customize widget" wears WinUI's InfoBadge dot the first time the daylist rolls over on Home.
+            items.Add(new MenuFlyoutItem(Loc.Get(Strings.Theme.Winui.Home.Board.Customize), Icons.Edit, Invoke: () => { HomeTileMenus.OptionsChosen(f); verbs.Open(id); })
+            {
+                Attention = HomeTileMenus.OptionsAttention(f),
+            });
             tail = true;
         }
         if (e.Live)

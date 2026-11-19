@@ -198,21 +198,24 @@ internal static class ZuneContextSheet
                     ? () => onSub(item)
                     : () => { close(); item.Invoke?.Invoke(); };
                 into.Add(Row(default, item.Label, item.AcceleratorText, item.Enabled, trailGlyph.Length > 0 ? trailGlyph : null, click, key: ZuneOverlayRules.SheetRowKeyPrefix + i,
-                    role: AutomationRole.MenuItem, literal: item.Literal));
+                    role: AutomationRole.MenuItem, literal: item.Literal, attention: item.Attention));
             }
         }
 
         /// <summary>A 48-DIP row of words: the label, an accelerator where the menu has one, and a trailing chevron or check. Zune's menus carry no leading icons (the board's rows are
         /// words); the back row keeps its chevron.</summary>
-        static BoxEl Row(IconRef icon, string label, string? accelerator, bool enabled, string? trail, Action? onClick, string key, AutomationRole role, bool literal = false)
+        static BoxEl Row(IconRef icon, string label, string? accelerator, bool enabled, string? trail, Action? onClick, string key, AutomationRole role, bool literal = false,
+            bool attention = false)
         {
             ColorF ink = enabled ? Tok.TextPrimary : Tok.TextDisabled;
+            // A row that asks for attention (hint #12's "options") says it in the accent, as the menu does (ZuneControls.Menu's attention ink).
+            ColorF labelInk = attention && enabled ? R.Ink.AccentDecor : ink;
             var kids = new List<Element>(4);
             if (icon.Glyph is { Length: > 0 } || icon.ThemedName is { Length: > 0 })
                 kids.Add(ZuneOverlayParts.GlyphOf(icon, ZuneOverlayRules.SheetRowTrail, ink));
             kids.Add(R.Type.TrackTitle(label) with
             {
-                Color = ink, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                Color = labelInk, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 Case = literal ? TextCase.AsWritten : R.Case.For(LabelKind.Command),   // the menu's words are lowercase (Z-Overlays); a name is content
             });
             if (accelerator is { Length: > 0 }) kids.Add(R.Type.DenseMeta(accelerator) with { Color = Tok.TextTertiary, Shrink = 0f });

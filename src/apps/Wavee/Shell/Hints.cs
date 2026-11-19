@@ -21,8 +21,9 @@
 // rest of the budget does, and a show counts against the same show budget.
 //
 // DRAWN (phase 6). A row whose placement every theme it applies to draws is `Drawn`: its slot mounts it from its trigger. A row whose
-// surface is not on this line (the daylist tile's menu, the sleep timer) stays undrawn: only the inspector's `hint show id=<hint>`
-// (`Force`) would mount it, and no slot asks for its surface. A row the surface draws IN PLACE, without the slot (the devices flyout's
+// surface is not on this line (the sleep timer) stays undrawn: only the inspector's `hint show id=<hint>` (`Force`) would mount it, and no
+// slot asks for its surface. A menu's dot (`HintAction.Badge`, the daylist tile's options row) has no slot: the menu asks when it builds its
+// rows (`BadgeOnOpen`), and the dot goes with the menu. A row the surface draws IN PLACE, without the slot (the devices flyout's
 // last row, "Sound settings", states the equalizer at rest), is `InPlace`: no slot picks it.
 //
 // ON SCREEN. A hint that appeared keeps its place until it is answered, set aside or its surface goes: the never-when gates decide
@@ -229,12 +230,12 @@ public static partial class Hints
                 Action = HintAction.Point, Priority = 12, TextKey = Strings.Hints.Backdrop.Text, Anchor = "titlebar", MaxShows = 1, Drawn = true,
                 Trigger = HintFacts.AdjustingTheLook, Satisfied = HintFacts.BackdropChanged, Applies = HintFacts.BackdropOffered,
             },
-            // 12 — the daylist tile's "..." menu: a one-time dot on its options item. Not drawn on this line: the daylist tile and its
-            // menu are feat/pinned-home's.
+            // 12 — the daylist tile's "..." menu: a one-time dot on its options item ("Customize widget" / "Options" / "options": WinUI's
+            // InfoBadge dot, Classic's dot, Zune's accent word), asked by each theme's tile rows as the menu opens (HomeTileMenus.OptionsAttention).
             new()
             {
                 Id = "daylist-options", Target = "appearance.daylistClock", Surface = HintSurfaces.DaylistMenu, Action = HintAction.Badge,
-                Priority = 10, TextKey = Strings.Hints.DaylistOptions.Text, MaxShows = 1, RetiredBy = s_daylistDials,
+                Priority = 10, TextKey = Strings.Hints.DaylistOptions.Text, MaxShows = 1, RetiredBy = s_daylistDials, Drawn = true,
                 Trigger = HintFacts.DaylistRolledOnHome,
             },
             // 13 — by the play button, after many mouse clicks on it.
@@ -406,6 +407,31 @@ public static partial class Hints
     static long MinPositive(long a, long b) => a <= 0 ? b : b <= 0 ? a : Math.Min(a, b);
 
     // ── what a slot reports ──────────────────────────────────────────────────────────────────────────────────────────────
+
+    static readonly object s_menuBadge = new();   // the "slot" a menu's dot is picked for: it never holds the on-screen place
+
+    /// <summary>A one-time dot on a menu item (<see cref="HintAction.Badge"/>) on <paramref name="surface"/>, asked when that menu builds its rows
+    /// (open time): true when its hint qualifies (or is forced), and then the show is recorded (the session's one hint, once a day against its
+    /// budget). A menu is a flyout of its own: the dot holds no on-screen place and goes with the menu; it yields to a hint already on screen.</summary>
+    public static bool BadgeOnOpen(string surface)
+    {
+        if (Pick(surface, s_menuBadge, overlayOpen: true, out _) is not { Action: HintAction.Badge } def) return false;
+        if (!IsForced(def))
+        {
+            s_sessionHint ??= def.Id;
+            HintState.MarkShown(IndexOf(def.Id), Today);
+        }
+        return true;
+    }
+
+    /// <summary>The item that carried the dot on <paramref name="surface"/> was chosen: it opened the place the dot pointed at, so the dot has done
+    /// its job for this session (set aside; a write of its dials retires it for good).</summary>
+    public static void BadgeFollowed(string surface)
+    {
+        var all = All;
+        for (int i = 0; i < all.Count; i++)
+            if (all[i].Action == HintAction.Badge && string.Equals(all[i].Surface, surface, StringComparison.Ordinal)) { SetAside(all[i]); return; }
+    }
 
     /// <summary>The slot mounted <paramref name="def"/>: it holds the one on-screen place, and (unless forced) the show is recorded: the
     /// session's one hint, once per day against its show budget.</summary>

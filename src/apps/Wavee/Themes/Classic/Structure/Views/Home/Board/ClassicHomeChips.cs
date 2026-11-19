@@ -152,7 +152,12 @@ internal static class ClassicHomeChips
         }
         if (e.Source is { } src && src.Sizes.Length > 1 && !e.OnlyHide)
             items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Theme.Classic.Home.Board.Size), SizeItems(f)));
-        if (e.HasOptions) items.Add(new MenuFlyoutItem(Loc.Get(Strings.Theme.Classic.Home.Board.Options), Icons.Settings, Invoke: () => verbs.Open(id)));
+        // Hint #12: Options wears the dot the first time the daylist rolls over on Home.
+        if (e.HasOptions)
+            items.Add(new MenuFlyoutItem(Loc.Get(Strings.Theme.Classic.Home.Board.Options), Icons.Settings, Invoke: () => { HomeTileMenus.OptionsChosen(f); verbs.Open(id); })
+            {
+                Attention = HomeTileMenus.OptionsAttention(f),
+            });
         if (e.Live) items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Theme.Classic.Home.Board.PauseLive), e.Paused, () => verbs.ToggleLive(id)));
         if (items.Count > 0 && items[^1].Kind != MenuItemKind.Separator) items.Add(MenuFlyoutItem.Separator);
         items.Add(new MenuFlyoutItem(Loc.Get(Strings.Theme.Classic.Home.Board.MoveUp), Invoke: () => verbs.MoveBy(id, -1)));

@@ -223,11 +223,13 @@ internal static class ZuneHomeTiles
             return [new MenuFlyoutItem(Loc.Get(Strings.Home.Customize), Icons.Edit,
                 Invoke: () => ZuneHomeBoard.Customize(f.View, f.Verbs, Shown?.Invoke() ?? new BoardModel([f.Entry], 0), f.Entry.Id))];
         if (!ZuneHomeBoard.HasBack(f.Entry)) return [];
+        // Hint #12: "options" is said in the accent (the menu style's attention ink) the first time the daylist rolls over on Home.
         return [new MenuFlyoutItem(Loc.Get(Strings.Theme.Zune.Home.Options), Icons.Settings, Invoke: () =>
         {
+            HomeTileMenus.OptionsChosen(f);
             ZuneHomeBoard.Pick(f.View, f.Verbs, Shown?.Invoke() ?? new BoardModel([f.Entry], 0), f.Entry.Id);
             if (f.View.SelectedId.Peek() == f.Entry.Id) ZuneHomeBoard.ToggleOptions(f.View, f.Verbs);
-        })];
+        }) { Attention = HomeTileMenus.OptionsAttention(f) }];
     };
 
     internal sealed record ChromeProps(HomeTileFrame Frame, Element Face, bool Plate);

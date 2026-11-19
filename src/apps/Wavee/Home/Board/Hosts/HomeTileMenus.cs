@@ -46,6 +46,18 @@ public static class HomeTileMenus
     /// <summary>The tile the content stands in (null outside the pinned board).</summary>
     public static readonly Context<HomeTileMenuSlot?> Current = new(null);
 
+    /// <summary>Hint #12 (settings design 6.3): the daylist tile's options row carries a one-time dot in the menu opening now (the first time the
+    /// daylist rolled over while Home was on screen; `Hints`, surface <see cref="HintSurfaces.DaylistMenu"/>). A theme's tile rows ask it when they
+    /// build, at open time, and set <c>MenuFlyoutItem.Attention</c> on their options row; a yes records the show. Every other tile: false.</summary>
+    public static bool OptionsAttention(HomeTileFrame frame)
+        => frame.Entry.Source?.Id == HomeSourceRegistry.Daylist && Hints.BadgeOnOpen(HintSurfaces.DaylistMenu);
+
+    /// <summary>A theme's options row was chosen (it opens the tile's options): for the daylist, the dot has done its job for this session.</summary>
+    public static void OptionsChosen(HomeTileFrame frame)
+    {
+        if (frame.Entry.Source?.Id == HomeSourceRegistry.Daylist) Hints.BadgeFollowed(HintSurfaces.DaylistMenu);
+    }
+
     static readonly Dictionary<string, HomeTileMenuSlot> s_live = new(StringComparer.Ordinal);
 
     /// <summary><paramref name="content"/> as the content of <paramref name="frame"/>'s tile, whose Home rows are <paramref name="rows"/>: the content's ⋯
