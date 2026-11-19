@@ -89,6 +89,7 @@ public static partial class Diagnostics
             if (_shell is not null && target.Kind != SettingsRowKind.Action && !_settingsWritten.Exists(e => ReferenceEquals(e.Dial, target)))
                 _settingsWritten.Add((target, target.Current));
             if (_shell is null) _settingsForNext = true;
+            using var source = SettingsWrites.From(SettingsSurfaces.Inspector);   // Recently changed says "from the inspector"
             switch (target.Kind)
             {
                 case SettingsRowKind.Action:
@@ -137,6 +138,7 @@ public static partial class Diagnostics
             bool keep = _settingsForNext;
             _settingsForNext = false;
             if (keep) { _settingsWritten.Clear(); return; }
+            using var quiet = SettingsWrites.Quiet();   // putting values back is not a change anyone made: no Recently changed, no retirement
             bool reread = false;
             foreach (var (dial, was) in _settingsWritten)
             {

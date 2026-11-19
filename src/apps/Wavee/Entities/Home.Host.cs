@@ -400,7 +400,8 @@ public readonly partial struct Home
                     if ((PlaylistFormat)playlists.Format[slot] != PlaylistFormat.Daylist) continue;
                     int expires = playlists.DaylistExpiresAt[slot];
                     if (expires <= 0 || (slot == s_daylistSlot && expires == s_daylistExpiresAt)) continue;
-                    // A new (card, window): a fresh ladder.
+                    // A new (card, window): a fresh ladder. A known window replaced by the next is the daylist rolling over (hints #12).
+                    if (s_daylistExpiresAt != 0) HintFacts.DaylistRolled();
                     s_daylistSlot = slot;
                     s_daylistExpiresAt = expires;
                     s_daylistHome = homeSlot;

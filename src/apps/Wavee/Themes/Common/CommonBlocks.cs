@@ -10,6 +10,9 @@
 //   Pages.Diagnostics.*    the playback, connect and capture pages         CommonDiagnostics
 //   Pages.Logs             the log files page                              CommonLogs
 //   Pages.Module           a module's page                                 CommonModulePage
+//   Hint.Line              a hint on its surface (stand-in, phase 3)       CommonHint
+//   Hint.Explainer         a dial's explanation badge (stand-in, phase 3)  CommonHint
+//   Settings.Dials         a feature panel's dials (stand-in, phase 3)     CommonHint
 //
 // TIERS (themes plan 3.2, TC10): every block is tiered once for every theme, from the content tier and the height tier alone (`Rules\Tiers.cs`, `CommonTouch.cs`,
 // `CommonTierComponent.cs`); no theme has a board for them (owner Q18), so a block never names an edge of the ladder its theme draws.
@@ -38,5 +41,9 @@ public static class CommonBlocks
         CommonDiagnostics.Register(views);
         CommonLogs.Register(views);
         views.Add(ViewKeys.ModulePage, module ?? CommonModulePage.Template, moduleTemplateId);
+        // The settings rework's three keys (contract 1.115): plain stand-ins until each theme draws its own (phases 4-6).
+        views.Add(ViewKeys.Hint, CommonHint.Hint, "common.hint");
+        views.Add(ViewKeys.Explainer, CommonHint.Explainer, "common.hint.explainer");
+        views.Add(ViewKeys.SettingsDials, CommonHint.SettingsDials, "common.settings.dials");
     }
 }

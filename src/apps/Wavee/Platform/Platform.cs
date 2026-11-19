@@ -253,6 +253,15 @@ public static partial class Platform
         public static readonly SettingKey<long> NotificationsWhatsNewLastSeenMs = new("notifications.whatsnew.lastSeenMs", 0L);
         public static readonly SettingKey<string> NotificationsReadIds = new("notifications.readIds", "");
 
+        // ── hints and tips (settings rework phase 3, handoff/settings-2026-11-18/DESIGN.md 6.2) ──
+        /// <summary>"Tips about features" (Settings › Notifications › Tips, and every hint's "Don't show tips"): off, no hint shows at all until
+        /// it is turned back on. State lines are state, not hints, and keep showing.</summary>
+        public static readonly SettingKey<bool> TipsEnabled = new("notifications.tips", true);
+        /// <summary>The hint service's ONE blob: per hint its show count, last-shown day, snoozed-until day, dismissals and retired; the few
+        /// use facts that must outlive a launch; and the last five dial writes (Recently changed). Never a key per hint. Read and written
+        /// ONLY through <see cref="HintState"/>, which owns the format.</summary>
+        public static readonly SettingKey<string> HintsState = new("hints.state", "");
+
         // ── now playing / deck ──
         /// <summary>The now-playing player style (`Rail.PlayerCatalog` id; 0 = Cover). Copied once from the retired presentation and
         /// preset keys by the "NowPlayingStyle" bootstrap step (`ThemeBootstrap.cs`).</summary>

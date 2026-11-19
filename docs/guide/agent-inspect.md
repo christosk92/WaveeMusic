@@ -696,6 +696,43 @@ settings focus=lyrics.ai                    # opens Lyrics (Appearance in Classi
 goto deeplink="wavee://open?route=settings&arg=playback/playback.crossfade"   # the same door from a link
 ```
 
+### `hint {do, id?, blob?}` and `recent {clear?}`
+
+The in-app hints (settings rework phase 3: `Shell/Hints.cs`, the table of design 6.3, and the budget of 6.2) and Recently changed.
+Neither needs a mount.
+
+- `hint list` (the default `do`): every hint of the table in order, `{id, target, surface, action, priority, maxShows, snoozeDays,
+  dismissRetires?, state?, drawn, shows, lastDay, snoozedUntil, dismissals, retired, trigger, verdict, home}`, plus `tipsOn`, `today`
+  (the local day number the budget counts in), `session` (the one counted hint this session showed), `onScreen`, `forced` and
+  `suggestions` (the Settings home's top three, ids). `verdict` is the budget's answer in the app, `home` on the Settings home
+  (`qualifies`, `waiting` (the trigger does not hold), `notHere` (the hint cannot exist here: no such option in this theme, no sleep
+  timer yet), `notDrawn` (no theme draws its placement yet: every hint until phase 6), `tipsOff`, `retired`, `snoozed`, `shownOut`,
+  `shownToday`, `otherThisSession`, `satisfied` (the state it suggests is reached), `blocked` (a never-when gate: the wizard, another
+  overlay, a hidden window, the first two minutes, a track's first seconds)). `trigger` is the trigger fact alone.
+- `hint show id=<hint>` forces the hint's trigger true for ONE mount: the slot of its surface mounts the hint (the Common stand-in, key
+  `hint:<id>`, its button `hint:<id>:act`, "Not now" `hint:<id>:dismiss`, after an inline write "Change" `hint:<id>:change`) whatever its
+  trigger and budget say, and no show is counted. On a live mount it shows at once and the reply says `shown`; with nothing mounted it
+  waits for the next mount. The mount after that clears it. The surface must be on screen: the lyrics footer (open the lyrics pane or the
+  full screen's lyrics) or the Home banner (route `home`); the other surfaces mount their slot with their placement (phase 6).
+- `hint reset` forgets every hint's budget, the use facts (bell opens, quick relaunches, sign-in launches) and the session, as a fresh
+  launch with no blob. Recently changed stays (`recent clear=true` empties it).
+- `hint state` replies the persisted blob (`hints.state`); `hint state blob="<blob>"` writes it to the store and reads it back as a
+  launch does. The server's settings live in memory, so this is how a run carries the hints and Recently changed over a server restart:
+  read the blob, start a new server, load it.
+- `recent` lists the last five dial writes, newest first: `{count, writes:[{dial, title, value, surface, from, atMs, agoMs}]}` (`value`
+  is the dial's value now; `from` the words for the source: "from the inspector", "from a tip"). Every value writer of the registry
+  records into it, from any surface; `setting` writes record as the inspector, and the values a mount puts back record nothing.
+
+A mount keeps the hint blob (it is the profile's state); a dial written through `setting` stays retired after the mount puts its value
+back. `hint reset` is the clean slate.
+
+```text
+hint show id=ai-lyrics          # with the lyrics pane open: the stand-in in the lyrics footer
+setting id=crossfade value=true # retires the crossfade hint, and appears in `recent`
+hint list
+recent
+```
+
 ### `find {key | prefix, visibleOnly?, depth?}`
 
 `find <key>` (or `key=`) lists the live nodes keyed exactly so; `prefix=` lists those whose key starts with it. The list is
