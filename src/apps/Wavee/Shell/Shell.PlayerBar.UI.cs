@@ -439,9 +439,9 @@ public static partial class Shell
     internal static List<MenuFlyoutItem> DevicePickerMenuItems(
         Playback.Owner owner, int activeSlot, ReadOnlySpan<Playback.Devices.Row> connect,
         ReadOnlySpan<Playback.Audio.LocalAudioDevice> local, string? selectedLocalId, bool localSupported,
-        Playback.Audio.Opened observed, Spotify.Audio.Quality asked)
+        Playback.Audio.Opened observed, Spotify.Audio.Quality asked, SoundState sound)
     {
-        var picker = DevicePicker.Items(owner, activeSlot, connect, local, selectedLocalId, localSupported, observed, asked);
+        var picker = DevicePicker.Items(owner, activeSlot, connect, local, selectedLocalId, localSupported, observed, asked, sound);
         var items = new List<MenuFlyoutItem>(picker.Count);
         foreach (var item in picker)
         {
@@ -452,8 +452,12 @@ public static partial class Shell
                 DevicePickerRowKind.Separator => MenuFlyoutItem.Separator,
                 // A disabled command row stands in as the section header (MenuFlyout has no header kind; neither does WinUI).
                 // Quality rides the same disabled-row shape: it is informational, never a radio.
-                DevicePickerRowKind.Header or DevicePickerRowKind.Empty or DevicePickerRowKind.Quality
+                DevicePickerRowKind.Header or DevicePickerRowKind.Empty
                     => new MenuFlyoutItem(row.Label, default, false),
+                // The two links (design 5.4): what plays, to the quality dial; the sound settings' state, to the Sound category.
+                DevicePickerRowKind.Quality => new MenuFlyoutItem(row.Label, Icons.Settings, true, DevicePicker.OpenQuality),
+                DevicePickerRowKind.SoundSettings => new MenuFlyoutItem(row.Label, Icons.Equalizer, true, DevicePicker.OpenSound)
+                    with { AcceleratorText = row.Accelerator },
                 DevicePickerRowKind.LocalDefault => new MenuFlyoutItem(row.Label, Icons.ThisPc, row.Enabled,
                         row.Enabled ? () => DeviceVerbs.Run(intent) : null)
                     with { AcceleratorText = row.Accelerator },

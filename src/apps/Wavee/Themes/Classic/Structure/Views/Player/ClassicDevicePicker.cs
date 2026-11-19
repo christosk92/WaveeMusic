@@ -54,6 +54,8 @@ internal static class ClassicDevicePicker
         DevicePickerEntryKind.Command => new MenuFlyoutItem(e.Label, e.Glyph, e.Enabled, e.Invoke)
             with { AcceleratorText = e.Accelerator },
         DevicePickerEntryKind.Radio => MenuFlyoutItem.RadioItem(e.Label, e.IsChecked, e.Invoke, e.Glyph),
+        // A link into Settings (the quality echo, "Sound settings"): a plain command row, its state as the right-hand note.
+        DevicePickerEntryKind.Link => new MenuFlyoutItem(e.Label, e.Glyph, true, e.Invoke) with { AcceleratorText = e.Accelerator },
         _ => new MenuFlyoutItem(e.Label, default, false),
     };
 }

@@ -57,12 +57,13 @@ public static partial class Shell
             string? selectedLocalId,
             bool localSupported,
             Playback.Audio.Opened observed,
-            Spotify.Audio.Quality askedQuality)
+            Spotify.Audio.Quality askedQuality,
+            SoundState sound)
         {
             bool remote = IsRemote(owner, activeSlot, connect);
             string? activeId = (uint)activeSlot < (uint)connect.Length ? connect[activeSlot].Id : null;
             var rows = DevicePickerRows(local, selectedLocalId, localSupported, weAreActiveOutput: !remote, connect, activeId,
-                observed, askedQuality);
+                observed, askedQuality, sound);
             bool takeOver = NeedsTakeOver(owner);
 
             var items = new List<DevicePickerItem>(rows.Count);
@@ -86,6 +87,12 @@ public static partial class Shell
         /// when it is the active one), each with the glyph the roster rules give it and the verb that executes its intent. A disabled
         /// command row stands in as the section header (a menu has no header kind); the quality echo rides the same shape: informational,
         /// never a radio. The roster, owner and outputs are read by the caller; nothing here subscribes.</summary>
+        /// <summary>The quality row's link: Settings at the audio quality dial (the deep link highlights it).</summary>
+        public static readonly Action OpenQuality = static () => InContextDoors.OpenSettings("sound.quality");
+
+        /// <summary>The last row's link: Settings at the Sound category.</summary>
+        public static readonly Action OpenSound = static () => InContextDoors.OpenSettings("sound");
+
         public static DevicePickerEntry[] Entries(IReadOnlyList<DevicePickerItem> items)
         {
             var entries = new DevicePickerEntry[items.Count];
@@ -103,6 +110,10 @@ public static partial class Shell
                         row.Enabled, row.IsChecked, row.Accelerator, row.Enabled ? () => DeviceVerbs.Run(intent) : null) { Chosen = row.Chosen },
                     DevicePickerRowKind.ConnectDevice => new DevicePickerEntry(DevicePickerEntryKind.Radio, row.Label,
                         DeviceRoster.ConnectGlyph(row.ConnectKind), true, row.IsChecked, null, () => DeviceVerbs.Run(intent)),
+                    // The two links (design 5.4): what plays, to the quality dial; the sound settings' state, to the Sound category.
+                    DevicePickerRowKind.Quality => new DevicePickerEntry(DevicePickerEntryKind.Link, row.Label, Icons.Settings, true, false, null, OpenQuality),
+                    DevicePickerRowKind.SoundSettings => new DevicePickerEntry(DevicePickerEntryKind.Link, row.Label, Icons.Equalizer, true, false,
+                        row.Accelerator, OpenSound) { Word = true },
                     _ => new DevicePickerEntry(DevicePickerEntryKind.Info, row.Label, "", false, false, null, null),
                 };
             }

@@ -152,5 +152,5 @@ public static partial class Stage
     static List<MenuFlyoutItem> DeviceItems()
         => Shell.DevicePickerMenuItems(Playback.OwnerSignal.Peek(), Playback.ActiveDeviceSlot.Peek(), Playback.Devices.Rows,
             Playback.Audio.Devices.Peek(), Playback.Audio.SelectedOutputId.Peek(), Playback.Audio.Supported.Peek(),
-            Playback.Audio.PlayingOpened, Shell.DevicePickerFacts.Quality);
+            Playback.Audio.PlayingOpened, Shell.DevicePickerFacts.Quality, Shell.DevicePickerFacts.Sound);
 }

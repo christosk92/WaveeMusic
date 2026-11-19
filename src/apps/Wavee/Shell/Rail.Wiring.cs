@@ -279,12 +279,14 @@ internal static class RailWiring
 
         var observed = Playback.Audio.PlayingOpened;
         var asked = Shell.DevicePickerFacts.Quality;
-        var picker = Shell.DevicePicker.Items(owner, activeSlot, Playback.Devices.Rows, local, selected, supported, observed, asked);
+        _ = Platform.SettingsChanged.Value;                                   // the last row states the equalizer and normalization at rest
+        var sound = Shell.DevicePickerFacts.Sound;
+        var picker = Shell.DevicePicker.Items(owner, activeSlot, Playback.Devices.Rows, local, selected, supported, observed, asked, sound);
 
         var entries = Shell.DevicePicker.Entries(picker);
 
         int stamp = HashCode.Combine(roster, (byte)owner, activeSlot, local.Length, selected, supported,
-            HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked));
+            HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked, sound));
         return new DevicePickerView(entries, stamp);
     }
 
