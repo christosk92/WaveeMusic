@@ -50,8 +50,9 @@ internal static class WinUiSettingsRules
     /// <summary>The ring goes back to rest a beat after its fade lands (the next press's hover then cross-fades at the card's own speed).</summary>
     public const float HighlightSettleMs = 60f;
 
-    /// <summary>The strip's selected item glides to the middle of its sideways scroller (Compact, Small), its neighbours in view on both sides.</summary>
-    public const float StripAlign = 0.5f;
+    /// <summary>The strip's selected item glides into its sideways scroller (Compact, Small) with this much of the strip kept beyond it, so the next
+    /// category's word shows too (a minimal move: nothing scrolls while the item and its gutter are in view).</summary>
+    public const float StripGutter = 64f;
 
     /// <summary>Where the arrival puts its row in the scroller (design 4.9: a third of the way down).</summary>
     public const float ArrivalAlign = 0.3f;
@@ -80,6 +81,9 @@ internal static class WinUiSettingsRules
     /// <summary>The results page: the heading (Subtitle 20 / 28), the gap under its count line, and the breadcrumb's gap above its card.</summary>
     public const float ResultsTitleSize = 20f, ResultsTitleLine = 28f, ResultsHeadGap = 4f, ResultBreadcrumbGap = 6f;
 
+    /// <summary>A result's breadcrumb (a link to the dial in its category) reaches the Compact 40 target past its 12-DIP line.</summary>
+    public static readonly Edges4 BreadcrumbTouchSlop = new(10f, 10f, 10f, 10f);
+
     /// <summary>The space between the count line and the first result (the concept board W-Search: 22).</summary>
     public const float ResultsListGap = 20f;
 
@@ -96,9 +100,10 @@ internal static class WinUiSettingsRules
     public const float RecentWhenGap = 12f;
 
     /// <summary>The explanation badge (design 6.5): the info glyph after a row's label, its cell, the gap after the label, and the hit slop that lifts the
-    /// 20-DIP cell to the Compact 40 target without growing the label's line.</summary>
+    /// 20-DIP cell to the 32 floor (Small and up) and to the Compact 40 target without growing the label's line. At Compact it reaches further down
+    /// than up: the label sits 8 under an expander item's top edge, where the expander's clip would cut a slop that reached 10 above it.</summary>
     public const float ExplainGlyph = 14f, ExplainCell = 20f, ExplainGap = 6f;
-    public static readonly Edges4 ExplainTouchSlop = new(10f, 10f, 10f, 10f), ExplainSlop = new(6f, 6f, 6f, 6f);
+    public static readonly Edges4 ExplainTouchSlop = new(10f, 6f, 10f, 14f), ExplainSlop = new(6f, 6f, 6f, 6f);
 
     /// <summary>The explanation tip's clip: 320 x 180 (the clips are recorded at twice that), its play glyph over the poster or the placeholder.</summary>
     public const float ExplainClipW = 320f, ExplainClipH = 180f, ExplainPlayGlyph = 28f, ExplainPlayCell = 56f;

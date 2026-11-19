@@ -245,7 +245,7 @@ internal static partial class WinUiSettings
                 new BoxEl
                 {
                     Direction = 0, AlignSelf = FlexAlign.Start, MinWidth = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true,
-                    HitSlop = s_layout.Touch ? WinUiSettingsRules.ExplainTouchSlop : default,
+                    HitSlop = s_layout.Touch ? WinUiSettingsRules.BreadcrumbTouchSlop : default,
                     OnClick = () => model.Open(at),
                     Children = [Caption(hit.Place) with { Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f }],
                 },

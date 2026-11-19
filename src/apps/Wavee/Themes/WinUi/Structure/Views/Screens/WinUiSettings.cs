@@ -169,7 +169,7 @@ internal static partial class WinUiSettings
     // ══ THE STRIP ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The strip (the concept boards: Home and the nine short names under the head, a hairline under the row). A SelectorBar in a sideways scroller:
-    /// where the ten labels run past the page (Compact, Small) it scrolls, its end fades where more wait, and the selected item glides to the scroller's middle.
+    /// where the ten labels run past the page (Compact, Small) it scrolls, its end fades where more wait, and the selected item glides into view with the next word.
     /// A click writes the category cell (a switch in place, no history step) and leaves a results page; no item is selected while the results page shows.
     /// ONE tree at every tier: the tier sets the scroller's height and fade, so a crossing keeps the SAME selector bar (its pill, its focus).</summary>
     static Element TabStrip(WinUiSettingsLayout layout, SettingsPageProps props, int selected, Signal<bool> results)
@@ -213,7 +213,7 @@ internal static partial class WinUiSettings
             UseLayoutEffect(() =>
             {
                 if (key is not null && _items.TryGetValue(key, out var item) && !item.IsNull && Context.Scene is { } scene)
-                    scene.BringIntoView(item, WinUiSettingsRules.StripAlign, _seeded && !Design.Reduced ? ScrollMove.Glide : ScrollMove.Immediate);
+                    scene.BringIntoView(item, float.NaN, _seeded && !Design.Reduced ? ScrollMove.Glide : ScrollMove.Immediate, WinUiSettingsRules.StripGutter);
                 _seeded = true;
             }, DepKey.From(selected));
             var style = layout.TabHeight > 0f ? new SelectorBarStyle { ItemHeight = layout.TabHeight } : null;

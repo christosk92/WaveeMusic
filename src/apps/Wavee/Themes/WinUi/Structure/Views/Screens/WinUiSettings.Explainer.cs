@@ -3,7 +3,7 @@
 // WinUI's template of `ViewKeys.Explainer` (registered through `CommonBlocks.Register`). A dial whose effect you see or hear carries an InfoBadge-style info
 // glyph right after its label (the row card's label line, `WinUiSettings.Kit.cs`), keyed `settings:explain:<dialId>`:
 //   · hover (or keyboard focus) shows the "Show me" tooltip only; a click, a tap or Enter opens the TEACHING TIP, targeted at the badge, light-dismiss and
-//     with no focus trap (the keyboard stays where it was): the 320 x 180 clip as its hero over the one-line caption (the clip's alt text). The open
+//     with no focus trap (the keyboard stays where it was): the 320 x 180 clip as its hero, the dial's name, the one-line caption (the clip's alt text). The open
 //     badge is the filled accent dot of the board; a second press closes the tip;
 //   · the clip (an animated WebP on disk) plays only while the tip is open, looping; with Windows' animation effects off it shows its poster frame and a
 //     play button instead (`ExplainerProps.ReducedMotion` is a value: the clip's `Animate` reads it). Where the clip is not on disk yet (the recording
@@ -54,8 +54,12 @@ internal static partial class WinUiSettings
                 }
                 if (overlay is null) return;
                 var props = p;
+                // The dial's own words title the tip (the board's "Covers fly into their page" line sits over the caption), so the tip's close button
+                // has its row and the caption runs the tip's full width under it.
+                string title = SettingsSpec.TryResolve(props.DialId, out var dial, out _) ? Loc.Get(dial.TitleKey) : "";
                 _tip = TeachingTip.Show(overlay, () => _node, t =>
                 {
+                    t.Title = title;
                     t.IsLightDismissEnabled = true;
                     t.PreferredPlacement = TeachingTip.PlacementMode.Bottom;
                     t.HeroContent = Embed.Comp(props, static () => new ExplainerClip());
@@ -110,7 +114,7 @@ internal static partial class WinUiSettings
             return new BoxEl
             {
                 // The tip's own width (320 to 336) is the hero's: the clip covers it at 180 tall (16 : 9 at 320).
-                Key = "settings:explain:clip:" + p.DialId, ZStack = true, AlignSelf = FlexAlign.Stretch, MinWidth = WinUiSettingsRules.ExplainClipW, Height = WinUiSettingsRules.ExplainClipH,
+                Key = "settings:explain:clip:" + p.DialId, ZStack = true, Grow = 1f, MinWidth = WinUiSettingsRules.ExplainClipW, Height = WinUiSettingsRules.ExplainClipH,
                 ClipToBounds = true, Fill = Tok.FillCardSecondary,
                 Children = layers.ToArray(),
             };
