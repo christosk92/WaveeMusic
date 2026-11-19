@@ -122,7 +122,7 @@ public static partial class SettingsSpec
             Make("lyrics.mini.face", K.Picker, Strings.Mini.Face,
                 SettingsWriter.OfChoice("mini.face", SettingsVerbs.SetMiniFace), glyph: "Picture",
                 value: s => MiniPlayer.ClampFaceIndex(s.Get(Platform.Keys.MiniPlayerFace)), contexts: [SettingsSurfaces.MiniPlayerOptions],
-                aliases: ["pip"]),
+                aliases: ["pip"], choices: MiniPlayer.FaceNameKeys()),
             Make("lyrics.mini.onTop", K.Toggle, Strings.Mini.OnTop,
                 SettingsWriter.OfToggle("mini.onTop", SettingsVerbs.SetMiniOnTop), glyph: "Pin",
                 value: BoolOf(Platform.Keys.MiniPlayerOnTop), contexts: [SettingsSurfaces.MiniPlayerOptions], aliases: ["pip"]),

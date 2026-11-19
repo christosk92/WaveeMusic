@@ -228,6 +228,15 @@ public static partial class MiniPlayer
     /// <summary>A stored face index clamped onto the faces (an unknown one reads as Cover): the Settings dial's value.</summary>
     public static int ClampFaceIndex(int stored) => ClampFace(stored);
 
+    /// <summary>The faces' names as loc keys, in flip order: the Settings dial's choices (the words a page draws and the search indexes).</summary>
+    public static string[] FaceNameKeys()
+    {
+        var keys = new string[s_faces.Length];
+        for (int i = 0; i < keys.Length; i++)
+            keys[i] = s_faces[i].Kind == MiniFaceKind.Lyrics ? Strings.Mini.Lyrics : Rail.PlayerCatalog.ById(s_faces[i].StyleId).NameKey;
+        return keys;
+    }
+
     static string FaceName(int i)
     {
         var f = s_faces[ClampFace(i)];
