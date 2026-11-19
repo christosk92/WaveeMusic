@@ -84,15 +84,18 @@ public static partial class Shell
                 return slot < 0 ? null : rows[slot].Name ?? "";
             },
             // the stage's format chip rule (Stage.Transport.ShowsQualityBadge), narrowed to a lossless badge; held under the stage like the title
+            // Lossless is the OPENED format (the device picker's quality words read the same fact); the badge is only the tooltip's text.
             LosslessFormat = HeldUnderStage(static () =>
             {
+                // Read first, every time: the badge changes with every open, so this keeps the bind subscribed to the opened format too.
                 var fmt = Playback.StreamFormat.Value;
                 if (fmt.IsEmpty || Theming.InspectSwitches.RemoteDevice is not null) return null;
                 _ = Playback.Devices.Changed.Value;
                 bool remote = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows) >= 0;
                 if (!Stage.Transport.ShowsQualityBadge(true, remote)) return null;
-                string label = Entities.Strings.Resolve(fmt);
-                return Playback.Audio.IsLosslessLabel(label) ? label : null;
+                return Playback.Audio.PlayingOpened.Format is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24
+                    ? Entities.Strings.Resolve(fmt)
+                    : null;
             }),
             DevicePickerRequest = Playback.DevicePickerRequest,
             Muted = Playback.Muted,

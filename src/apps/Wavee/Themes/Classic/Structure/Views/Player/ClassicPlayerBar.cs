@@ -182,7 +182,9 @@ internal static partial class ClassicPlayerBar
             if (v.ShowArtistLine)
             {
                 // The names hug their own width (Grow 0, shrinking) so the lossless mark sits right after them; a long line still
-                // shrinks to the column and scrolls, the mark held at the end.
+                // shrinks to the column and scrolls, the mark held at the end. The mark is Standard and wider only: below it (Small's
+                // 800) its 51 DIP cut the names mid-word, and the names are what the line is for.
+                bool losslessRoom = barTier.MinLevel >= ClassicPlayerTiers.Comfortable && props.LosslessFormat is not null;
                 BoxEl names = v.Marquee
                     ? Marquee.Content(Embed.Comp(() => new Credits(props, compact: false)), Prop.Of(() => props.Credits().Line(ClassicTransportLayout.CreditSeparator)),
                         new Marquee.Style
@@ -197,11 +199,13 @@ internal static partial class ClassicPlayerBar
                 metaKids.Add(new BoxEl
                 {
                     Key = artistsKey, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
-                    Children =
-                    [
-                        names with { Key = "np-artists-line", Grow = 0f, Shrink = 1f },
-                        Embed.Comp(() => new LosslessMark(props)) with { Key = "np-lossless" },
-                    ],
+                    Children = losslessRoom
+                        ?
+                        [
+                            names with { Key = "np-artists-line", Grow = 0f, Shrink = 1f },
+                            Embed.Comp(() => new LosslessMark(props)) with { Key = "np-lossless" },
+                        ]
+                        : [names with { Key = "np-artists-line", Grow = 0f, Shrink = 1f }],
                 });
             }
         }
@@ -701,7 +705,7 @@ internal static partial class ClassicPlayerBar
     {
         public override Element Render()
         {
-            string? format = props.LosslessFormat();
+            string? format = props.LosslessFormat?.Invoke();
             if (format is null) return new BoxEl { HitTestVisible = false };
             var mark = new BoxEl
             {
@@ -712,7 +716,7 @@ internal static partial class ClassicPlayerBar
                     {
                         Size = ClassicTransportLayout.CreditSize, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap,
                     },
-                    new TextEl(Loc.Get(Strings.Settings.Playback.QualityLossless))
+                    new TextEl(Loc.Get(Strings.Player.LosslessMark))
                     {
                         Size = ClassicTransportLayout.CreditSize, Weight = ClassicTransportLayout.LosslessTextWeight,
                         Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap,
