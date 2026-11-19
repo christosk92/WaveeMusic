@@ -132,6 +132,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Player bar transport.** In Classic, previous and next are filled like the play button, and the three are evenly
+  spaced. Clicking the bar in Classic or Zune no longer outlines the whole bar. (#228)
+
 - **Where Wavee plays: a new device picker (every theme).** The Devices button opens a "Playing on" card (the device
   in use, how it is connected, what plays, its volume) above two lists: This PC, with Match Windows first, and Other
   devices (Spotify Connect), which comes first while one of them plays, with a button that brings playback back to

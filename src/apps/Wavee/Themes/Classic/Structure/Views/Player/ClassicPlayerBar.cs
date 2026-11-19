@@ -281,8 +281,10 @@ internal static partial class ClassicPlayerBar
         // ── CENTRE — transport + seek (empty while a full-bleed surface owns the transport) ─────────────────────
         // The mini bar keeps the play disc alone, 40 x 40.
         var transportKids = new List<Element>(5);
+        // The skips: the disc's solid family in the primary ink, so the three read as one set (the disc stays the one accent).
+        float skipGlyph = MathF.Round(glyph * ClassicPlayerBarLayout.SkipGlyphScale);
         if (!mini && v.OwnsTransport && v.ShowPrevNext)
-            transportKids.Add(BarButton(Icons.Previous, () => verbs.Previous(), v.PrevEnabled, false, box, glyph)
+            transportKids.Add(BarButton(ClassicPlayerBarLayout.PreviousSolid, () => verbs.Previous(), v.PrevEnabled, false, box, skipGlyph, primaryInk: true)
                 with { Key = "prev" });
         if (!mini && v.OwnsTransport && v.Episode)
             transportKids.Add(SeekStepButton(props, -ClassicPlayerBarLayout.SeekStepMs, box, v.SeekStepEnabled) with { Key = "seek-back-10" });
@@ -292,7 +294,7 @@ internal static partial class ClassicPlayerBar
                     v.Primary, mini ? ClassicPlayerTiers.MiniButton : m.PrimaryBox, mini ? ClassicPlayerTiers.MiniPlayGlyph : m.PrimaryGlyph)
                 with { Key = "primary", Animate = ClassicPlayerBarLayout.MoveMotion, OnRealized = anchors.OnPlay });
         if (!mini && v.OwnsTransport && v.ShowPrevNext)
-            transportKids.Add(BarButton(Icons.Next, () => verbs.Next(), v.NextEnabled, false, box, glyph)
+            transportKids.Add(BarButton(ClassicPlayerBarLayout.NextSolid, () => verbs.Next(), v.NextEnabled, false, box, skipGlyph, primaryInk: true)
                 with { Key = "next" });
 
         if (!mini && v.OwnsTransport && v.Episode)
@@ -337,6 +339,7 @@ internal static partial class ClassicPlayerBar
         var transport = new BoxEl
         {
             Key = "transport", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Gap = mini ? 0f : ClassicPlayerBarLayout.TransportGap,
             Animate = ClassicPlayerBarLayout.MoveMotion, Children = transportKids.ToArray(),
         };
         var centre = new BoxEl
@@ -601,7 +604,8 @@ internal static partial class ClassicPlayerBar
                             Direction = 1, Grow = 1f, MinHeight = 0f,
                             Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
                             OnRealized = node => barNode.Value = node,
-                            OnClick = mini ? null : () => input.FocusNode?.Invoke(barNode.Value, true),
+                            // A pointer click takes the bar's key map without drawing its focus ring round the whole bar; Tab still shows it.
+                            OnClick = mini ? null : () => input.FocusNode?.Invoke(barNode.Value, false),
                             OnKeyDown = e => props.OnKey(e, input.GetFocus?.Invoke() == barNode.Value),
                             Children =
                             [
@@ -695,9 +699,10 @@ internal static partial class ClassicPlayerBar
     /// wears <see cref="CheckedPlate"/> across both of them.</para></summary>
     private static BoxEl BarButton(string glyphText, Action onClick, bool enabled, bool latched, float box, float glyphSize,
         Action<NodeHandle>? onRealized = null, string? font = null, float boxHeight = float.NaN,
-        bool platedWhenLatched = true)
+        bool platedWhenLatched = true, bool primaryInk = false)
     {
-        ColorF ink = !enabled ? Tok.TextDisabled : latched ? Tok.AccentDefault : Tok.TextSecondary;
+        // primaryInk: the transport's skips rest in the primary ink beside the disc, not the secondary of the bar's other commands.
+        ColorF ink = !enabled ? Tok.TextDisabled : latched ? Tok.AccentDefault : primaryInk ? Tok.TextPrimary : Tok.TextSecondary;
         ColorF inkHover = !enabled ? Tok.TextDisabled : latched ? Tok.AccentDefault : Tok.TextPrimary;
         var (plate, plateHover) = CheckedPlate(latched && enabled && platedWhenLatched);
         return new BoxEl
