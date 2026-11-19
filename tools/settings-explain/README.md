@@ -71,13 +71,14 @@ build's default when the entry says `withoutDial: record`.
 ## Budget
 
 At most **120 KB per clip** and **9 MB for the whole folder** (it ships inside every package). The encoder retries at
-lower quality (from the entry's quality down to 55 at 15 fps, then 12 fps from 55 down to 25) until a clip fits; `--check` fails on a clip over
-120 KB, a total over 9 MB, a file that is not a 640x360 animated WebP, a loop outside 2-4 s or a frame faster than 15 fps,
-and warns on a file the manifest does not name or one carrying alpha. With `--strict` a clip the manifest expects and a
-non-pending entry lacks is an error too (a badge shows only where its clip exists; the Release build fails on a missing
-one).
+lower quality (from the entry's quality down to 55 at 15 fps, then 12 fps from 55 down to 25) until a clip fits.
+
+`--check` fails on a clip over 120 KB, a total over 9 MB, a file that is not a 640x360 animated WebP, a loop outside 2-4 s
+or a frame faster than 15 fps, and warns on a file the manifest does not name. With `--strict` a clip the manifest expects
+for a non-pending entry and lacks is an error too (a badge shows only where its clip exists; the Release build fails on a
+missing one). The VP8X alpha flag is reported, not judged: WebPAnimEncoder sets it whenever a sub-rectangle frame leaves
+pixels transparent, as on the shipped What's new motions; the source frames are RGB.
 
 The manifest expands to 122 clips (`--list`), so the folder can average about 75 KB a clip; the 84 this branch can record
-measured about 3.4 MB together (41 KB on average). Most recorded clips run
-10-60 KB; the heavy ones are a page swap filmed twice (Fast navigation, about 70-120 KB), the waveform diagram (50-70 KB)
-and the spinning player styles (55-80 KB).
+measured about 3.4 MB together (41 KB on average). Most recorded clips run 10-60 KB; the heavy ones are a page swap filmed
+twice (Fast navigation, about 70-120 KB), the waveform diagram (50-70 KB) and the spinning player styles (55-80 KB).
