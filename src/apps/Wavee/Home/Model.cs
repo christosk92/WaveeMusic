@@ -24,8 +24,23 @@ namespace Wavee.HomeUi;
 /// (plan "Zone → controls → metrics").</summary>
 public enum ZoneKind : byte
 {
-    Daylist, RecentGrid, CoverShelf, WideTiles, ReleaseList, ClusterCards, MixedCovers, RadioShelf,
+    Daylist, RecentGrid, CoverShelf, WideTiles, ReleaseList, SpineShelf, MixedCovers, RadioShelf,
     BrowseTiles, EpisodeLead, ContinueEpisodes, ShowGrid, VideoTiles, EpisodeRows, PodcastGroups, EmptyFacet,
+    /// <summary>Colour-plate mixes ("Soundtrack your Monday afternoon", format <c>descripto</c>): flat plates with the mix name (home-gap P6).</summary>
+    MoodPlates,
+    /// <summary>Audiobooks as books: author, rating, length and what the plan covers under each cover (home-gap P8).</summary>
+    BookShelf,
+    /// <summary>A personal set ("Made For"): one lead card (its header art, name, line and Play) beside a small grid of the rest (Home rhythm A).</summary>
+    LeadGrid,
+    /// <summary>Small tiles with the cover beside the text, two to five columns by width (Home rhythm A: top mixes, station lists).</summary>
+    CompactGrid,
+    /// <summary>A row of round covers, the name centred under each (Home rhythm A: artist sets and artist stations).</summary>
+    ArtistCircles,
+    /// <summary>One capped row of cards, two title lines, "See all N" instead of a sideways scroll (Home rhythm A: long mixed lists, shows).</summary>
+    CappedShelf,
+    /// <summary>A followed artist's new release as one spotlight card (cover, words, canvas, song previews), a run of them as its pages
+    /// (Home/ReleaseSpotlight). <see cref="Zone.Clusters"/> carries one cluster per release: its album card and its preview songs.</summary>
+    ReleaseSpotlight,
 }
 
 /// <summary>One server band, read straight off <see cref="SectionTable"/> by <see cref="SectionReader"/>. Never
@@ -34,15 +49,51 @@ public enum ZoneKind : byte
 /// <see cref="SectionKind.HomeBaseline"/> band (<c>Edges.SectionPreviewTracks</c>), empty until the lookup answers
 /// and empty forever for every other band kind. <see cref="ZonePlanner"/>'s <c>ClusterFold</c> is the one reader.</para></summary>
 public sealed record SectionInput(int Slot, string Uri, string? Title, string? Subtitle, SectionKind Kind,
-    IReadOnlyList<HomeCard> Cards, int TotalCount, IReadOnlyList<HomeCard> Preview);
+    IReadOnlyList<HomeCard> Cards, int TotalCount, IReadOnlyList<HomeCard> Preview)
+{
+    /// <summary>The wire's <c>data.__typename</c> as sent ("HomeGenericSectionData"), "" when no Home fold wrote it.
+    /// <see cref="Kind"/> is the folded form; this keeps an unknown typename visible (pinned-home design 2.1).</summary>
+    public string TypeName { get; init; } = "";
+    /// <summary>The title template (<c>translatedBaseText</c>, "More like {0}"). An opaque identity token
+    /// (<c>SectionIdentity</c>): hashed, never matched against words, never displayed.</summary>
+    public string? TitleBase { get; init; }
+    /// <summary>The server's <c>iconName</c> ("" in every capture so far).</summary>
+    public string? Icon { get; init; }
+    /// <summary>The header entity: an artist ("For fans of {0}"), a show or book ("More like {0}"), a genre.</summary>
+    public string? HeaderUri { get; init; }
+    public string? HeaderName { get; init; }
+    public string? HeaderImage { get; init; }
+    /// <summary>The header entity's dark colour (ARGB), 0 for none.</summary>
+    public uint HeaderAccent { get; init; }
+}
 
 /// <summary>One rendered chapter of the Home screen. <see cref="Lead"/> is the wide/2-cell lead item (Discover
 /// Weekly, the first radio station with a header image, a podcast's newest video episode); <see cref="Clusters"/> is
-/// only set for <see cref="ZoneKind.ClusterCards"/>/<see cref="ZoneKind.PodcastGroups"/>.</summary>
+/// only set for <see cref="ZoneKind.SpineShelf"/>/<see cref="ZoneKind.PodcastGroups"/>.</summary>
 public sealed record Zone(ZoneKind Kind, string Key, string? Title, string? Subtitle, IReadOnlyList<HomeCard> Items,
-    HomeCard? Lead = null, IReadOnlyList<ZoneCluster>? Clusters = null, int SectionSlot = -1, int TotalCount = 0);
+    HomeCard? Lead = null, IReadOnlyList<ZoneCluster>? Clusters = null, int SectionSlot = -1, int TotalCount = 0)
+{
+    /// <summary>The thing the section hangs off ("Popular with listeners of {show}", "More like {book}"): its uri, name and
+    /// cover, from the section's <c>headerEntity</c>. Null when the section has none; the header then draws the plain title.</summary>
+    public HeaderEntity? Header { get; init; }
+}
 
-/// <summary>One grouped-list card inside a <see cref="ZoneKind.ClusterCards"/>/<see cref="ZoneKind.PodcastGroups"/>
+/// <summary>A section's header entity as a chapter header draws it: the lead words of the title (the title with the entity's
+/// name taken off its end: "More like"), the name as a link, the cover.</summary>
+public sealed record HeaderEntity(string Uri, string Name, string? Image, string Lead)
+{
+    /// <summary>The entity of <paramref name="s"/> when its title ends with the entity's name (the template filled with it), else
+    /// null: a title that does not name the entity keeps its plain form.</summary>
+    public static HeaderEntity? Of(SectionInput s)
+    {
+        if (s.HeaderUri is not { Length: > 0 } uri || s.HeaderName is not { Length: > 0 } name || s.Title is not { Length: > 0 } title) return null;
+        if (!title.EndsWith(name, StringComparison.Ordinal) || title.Length == name.Length) return null;
+        string lead = title[..^name.Length].TrimEnd();
+        return lead.Length == 0 ? null : new HeaderEntity(uri, name, s.HeaderImage, lead);
+    }
+}
+
+/// <summary>One item of a <see cref="ZoneKind.SpineShelf"/> (a card and its preview songs) or a <see cref="ZoneKind.PodcastGroups"/> card
 /// zone — "More like {Name}" / "For fans of {Name}" / "Popular with listeners of {Name}". Named <c>ZoneCluster</c>,
 /// not <c>Cluster</c>: a protobuf <c>Cluster</c> type already exists in this codebase.
 /// <para><see cref="Header"/> (D2) is the card the cluster itself opens to — the baseline section's own card (a
@@ -50,7 +101,12 @@ public sealed record Zone(ZoneKind Kind, string Key, string? Title, string? Subt
 /// <see cref="SectionKind.HomeBaseline"/> band, a show's episodes for a podcast group). Null for the pre-D2 rows a
 /// singleton/untitled fold produced, which open nothing of their own.</para></summary>
 public sealed record ZoneCluster(string Over, string Name, IReadOnlyList<HomeCard> Rows,
-    IReadOnlyList<HomeCard>? FooterShows = null, int FooterSectionSlot = -1, int FooterTotal = 0, HomeCard? Header = null);
+    IReadOnlyList<HomeCard>? FooterShows = null, int FooterSectionSlot = -1, int FooterTotal = 0, HomeCard? Header = null)
+{
+    /// <summary>Why the cluster is here as an entity ("For fans of {artist}"): the artist's uri, name and picture from the section's
+    /// <c>headerEntity</c>, the reason line's lead words before the name. Null for a reason with no entity ("Based on your recent listening").</summary>
+    public HeaderEntity? Reason { get; init; }
+}
 
 /// <summary>One facet-pivot word (or its Following sub-chip), read off <see cref="Home.ChipIds"/>/etc.</summary>
 public sealed record ChipInput(string Id, string Label, string? SubId, string? SubLabel);
@@ -126,6 +182,9 @@ public static class SectionReader
             fold = fold * 31 + section.CardVersion;
             fold = fold * 31 + section.PreviewVersion;
         }
+        // Presentation mode redacts the account's name from Spotify's own titles ("Made For <name>"): a SUBSCRIBING read, so
+        // the bands re-read when a recording or a listing shot turns it on or off.
+        fold = fold * 31 + (Diagnostics.StoreShot.Presenting.Value ? 1u : 0u);
         if (cache.HomeVersion == hv && cache.SectionEdgeVersion == sv && cache.CardFold == fold) return cache.Sections;
 
         // Always a fresh array: a published ScreenModel may still hold the previous one.
@@ -133,6 +192,9 @@ public static class SectionReader
         for (int i = 0; i < slots.Length; i++) result[i] = Of(new Section(slots[i]));
 
         cache.Sections = result;
+        // Phase 0's identity log (Home/Board/HomeIdentLog.cs): every answer read is noted; it upserts per (day, facet,
+        // section), so the reads a landing card or preview causes refine the line instead of adding one.
+        HomeIdentLog.Note(h.FacetId.IsEmpty ? "" : Entities.Strings.Resolve(h.FacetId), result, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         cache.HomeVersion = hv;
         cache.SectionEdgeVersion = sv;
         cache.CardFold = fold;
@@ -144,10 +206,47 @@ public static class SectionReader
     /// without staging a whole Home row).</summary>
     public static SectionInput Of(Section s)
     {
-        string uri = s.Id is { IsEmpty: false } id ? id.Text : "";
+        // A facet's band row is `<uri>#<facet>` (Home.FacetSectionMark): the input speaks for the section, so its uri is the bare one.
+        string uri = s.Id is { IsEmpty: false } id ? Home.SectionUriOf(id.Text) : "";
         string? title = s.TitleId.IsEmpty ? null : Entities.Strings.Resolve(s.TitleId);
         string? subtitle = s.SubtitleId.IsEmpty ? null : Entities.Strings.Resolve(s.SubtitleId);
-        return new SectionInput(s.Slot, uri, title, subtitle, s.Kind, CardsOf(s), s.Total, PreviewOf(s));
+        var cards = CardsOf(s);
+        string? headerName = TextOrNull(s.HeaderNameId);
+        title = FillTemplate(title, headerName, cards);
+        if (Diagnostics.StoreShot.Presenting.Peek()) { title = Diagnostics.StoreShot.RedactAccount(title); subtitle = Diagnostics.StoreShot.RedactAccount(subtitle); }
+        return new SectionInput(s.Slot, uri, title, subtitle, s.Kind, cards, s.Total, PreviewOf(s))
+        {
+            TypeName = s.TypeNameId.IsEmpty ? "" : Entities.Strings.Resolve(s.TypeNameId),
+            TitleBase = TextOrNull(s.TitleBaseId),
+            Icon = TextOrNull(s.IconId),
+            HeaderUri = TextOrNull(s.HeaderUriId),
+            HeaderName = headerName,
+            HeaderImage = TextOrNull(s.HeaderImageId),
+            HeaderAccent = s.HeaderAccent,
+        };
+
+        static string? TextOrNull(FluentGpu.Foundation.StringId id) => id.IsEmpty ? null : Entities.Strings.Resolve(id);
+    }
+
+    /// <summary>A title the server sent as its bare template (<c>transformedLabel: null</c>: "New episode from {0}") filled the
+    /// way the server fills the rest: the header entity's name, or, when the header is an <c>UnknownType</c> (the live
+    /// episode spotlight), the name the lead card hangs off (an episode's show, else the card's owner). With nothing to fill
+    /// it, the placeholder and the words that lead into it are kept out of sight: the template's own text up to the slot.
+    /// Structure only; no words are matched.</summary>
+    internal static string? FillTemplate(string? title, string? headerName, IReadOnlyList<HomeCard> cards)
+    {
+        if (title is null || title.IndexOf("{0}", StringComparison.Ordinal) < 0) return title;
+        string? fill = headerName;
+        for (int i = 0; fill is null && i < cards.Count; i++)
+        {
+            var c = cards[i];
+            if (c.IsBlank) continue;
+            fill = c.ShowName ?? c.OwnerName;
+            break;
+        }
+        if (fill is { Length: > 0 }) return title.Replace("{0}", fill, StringComparison.Ordinal);
+        string head = title[..title.IndexOf("{0}", StringComparison.Ordinal)].TrimEnd();
+        return head.Length > 0 ? head : null;
     }
 
     static IReadOnlyList<HomeCard> CardsOf(Section s)

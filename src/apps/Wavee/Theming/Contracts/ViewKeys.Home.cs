@@ -36,10 +36,6 @@ public static partial class ViewKeys
     /// <summary>The Browse tiles' Charts block (Charts, Top 50, Viral 50). Mounted by `ChartsBlockView`. Props: <see cref="HomeChartsProps"/>.</summary>
     public static readonly ViewKey<HomeChartsProps> HomeCharts = new("Home.Charts");
 
-    /// <summary>The quickplay strip at the head of Home (contract 1.28, P5 Z5): the user's pins, the listening history and what is new from
-    /// the artists they follow, side by side. Mounted by `QuickplayHost` where a structure places it (Zune's Home on the All facet); a
-    /// structure with no quickplay registers Nothing for it (Classic). Props: <see cref="HomeQuickplayProps"/>.</summary>
-    public static readonly ViewKey<HomeQuickplayProps> HomeQuickplay = new("Home.Quickplay");
 
     /// <summary>A cover shelf's body. Props: <see cref="HomeZoneProps"/>.</summary>
     public static readonly ViewKey<HomeZoneProps> HomeZoneCoverShelf = new("Home.Zone.CoverShelf");
@@ -47,8 +43,8 @@ public static partial class ViewKeys
     public static readonly ViewKey<HomeZoneProps> HomeZoneWideTiles = new("Home.Zone.WideTiles");
     /// <summary>The release list's body ("From artists you follow"). Props: <see cref="HomeZoneProps"/>.</summary>
     public static readonly ViewKey<HomeZoneProps> HomeZoneReleaseList = new("Home.Zone.ReleaseList");
-    /// <summary>The cluster cards' body ("Because you like"). Props: <see cref="HomeZoneProps"/>.</summary>
-    public static readonly ViewKey<HomeZoneProps> HomeZoneClusterCards = new("Home.Zone.ClusterCards");
+    /// <summary>The Spine Shelf ("Because you like"): one open card and its preview songs, the rest as spines. Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneSpineShelf = new("Home.Zone.SpineShelf");
     /// <summary>A mixed-covers shelf's body ("Jump back in"). Props: <see cref="HomeZoneProps"/>.</summary>
     public static readonly ViewKey<HomeZoneProps> HomeZoneMixedCovers = new("Home.Zone.MixedCovers");
     /// <summary>A radio shelf's body. Props: <see cref="HomeZoneProps"/>.</summary>
@@ -69,12 +65,24 @@ public static partial class ViewKeys
     public static readonly ViewKey<HomeZoneProps> HomeZonePodcastGroups = new("Home.Zone.PodcastGroups");
     /// <summary>The empty facet's vacancy. Props: <see cref="HomeZoneProps"/>.</summary>
     public static readonly ViewKey<HomeZoneProps> HomeZoneEmptyFacet = new("Home.Zone.EmptyFacet");
+    /// <summary>Colour-plate mixes as flat plates with the mix name (home-gap P6). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneMoodPlates = new("Home.Zone.MoodPlates");
+    /// <summary>Audiobooks with author, rating, length and plan, every card the same caption lines (home-gap P8). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneBookShelf = new("Home.Zone.BookShelf");
+    /// <summary>A personal set as one lead card beside a small grid (Home rhythm A). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneLeadGrid = new("Home.Zone.LeadGrid");
+    /// <summary>Small tiles with the cover beside the text, two to five columns (Home rhythm A). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneCompactGrid = new("Home.Zone.CompactGrid");
+    /// <summary>A row of round covers with the names centred (Home rhythm A). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneArtistCircles = new("Home.Zone.ArtistCircles");
+    /// <summary>One capped row of two-line cards, "See all N" instead of paging (Home rhythm A). Props: <see cref="HomeZoneProps"/>.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneCappedShelf = new("Home.Zone.CappedShelf");
+    /// <summary>A followed artist's new release (a run of them as pages): the Release Spotlight (Home/ReleaseSpotlight) in the theme's own skin.</summary>
+    public static readonly ViewKey<HomeZoneProps> HomeZoneReleaseSpotlight = new("Home.Zone.ReleaseSpotlight");
 
     /// <summary>The "See all" / charts drill page: the "N items" line over the bound card grid in a skeleton region. Mounted by `SectionScreen`. Props: <see cref="HomeSectionProps"/>.</summary>
     public static readonly ViewKey<HomeSectionProps> HomeSection = new("Pages.HomeSection");
 
-    /// <summary>The Home customizer: the header with Reset and the reorderable zone rows. Mounted by `CustomizeScreen`. Props: <see cref="HomeCustomizeProps"/>.</summary>
-    public static readonly ViewKey<HomeCustomizeProps> HomeCustomize = new("Pages.HomeCustomize");
 }
 
 /// <summary>The map from a <see cref="ZoneKind"/> to the key of its body view. The daylist and the Recents grid are not in it: they have
@@ -89,7 +97,7 @@ public static class HomeZoneKeys
             case ZoneKind.CoverShelf: key = ViewKeys.HomeZoneCoverShelf; return true;
             case ZoneKind.WideTiles: key = ViewKeys.HomeZoneWideTiles; return true;
             case ZoneKind.ReleaseList: key = ViewKeys.HomeZoneReleaseList; return true;
-            case ZoneKind.ClusterCards: key = ViewKeys.HomeZoneClusterCards; return true;
+            case ZoneKind.SpineShelf: key = ViewKeys.HomeZoneSpineShelf; return true;
             case ZoneKind.MixedCovers: key = ViewKeys.HomeZoneMixedCovers; return true;
             case ZoneKind.RadioShelf: key = ViewKeys.HomeZoneRadioShelf; return true;
             case ZoneKind.BrowseTiles: key = ViewKeys.HomeZoneBrowseTiles; return true;
@@ -100,6 +108,13 @@ public static class HomeZoneKeys
             case ZoneKind.EpisodeRows: key = ViewKeys.HomeZoneEpisodeRows; return true;
             case ZoneKind.PodcastGroups: key = ViewKeys.HomeZonePodcastGroups; return true;
             case ZoneKind.EmptyFacet: key = ViewKeys.HomeZoneEmptyFacet; return true;
+            case ZoneKind.MoodPlates: key = ViewKeys.HomeZoneMoodPlates; return true;
+            case ZoneKind.BookShelf: key = ViewKeys.HomeZoneBookShelf; return true;
+            case ZoneKind.LeadGrid: key = ViewKeys.HomeZoneLeadGrid; return true;
+            case ZoneKind.CompactGrid: key = ViewKeys.HomeZoneCompactGrid; return true;
+            case ZoneKind.ArtistCircles: key = ViewKeys.HomeZoneArtistCircles; return true;
+            case ZoneKind.CappedShelf: key = ViewKeys.HomeZoneCappedShelf; return true;
+            case ZoneKind.ReleaseSpotlight: key = ViewKeys.HomeZoneReleaseSpotlight; return true;
             default: key = default; return false;
         }
     }

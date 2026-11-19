@@ -35,8 +35,8 @@
 //
 // Once per (playlist slot, scope epoch): PlaylistFields.All + the membership through THE OPEN RULE (§6: ListOpen.Open,
 // Surface.Page) — the first open of a session revalidates (an Unknown list comes off the disk and the edge door chains its
-// /diff), a fresh list paints, a stale one holds the reveal on its /diff for at most ListFreshness.BlockingBudgetMs. The
-// hold reaches the table through its own readiness (HeldRows: the reveal gate reads State/Count), never a page probe. A
+// /diff), a fresh list paints, a stale one paints what it holds and revalidates behind it; only a rolling list (a daylist)
+// holds the reveal on its /diff, for at most ListFreshness.BlockingBudgetMs (ListOpenPolicy.HoldsReveal). The hold reaches the table through its own readiness (HeldRows: the reveal gate reads State/Count), never a page probe. A
 // parked page coming back opens again as a Revisit (asks, never holds). As the membership lands: the member rows
 // (Row | Audio | Tags | Video), the owner + adders' profiles, and the facts refold (Playlist.Refold — the Added-by / Date /
 // Video column facts and the meta line's duration, written only when they moved).
@@ -77,6 +77,7 @@ public readonly partial struct Playlist
         Shell.OnNewPlaylist ??= static () => Sidebar.LibraryWrites?.CreatePlaylist?.Invoke(null, true);
         Shell.OnNewFolder ??= static () => Sidebar.LibraryWrites?.NewFolderWith?.Invoke(null, Array.Empty<RootlistItemRef>());
         Controls.Library ??= User.LibrarySeam;
+        User.InstallSaveVerb();   // the container menus' Save / Follow, through that same seam
         Drag.LikedChipArt ??= User.LikedChipArt();
         Shell.OnFilesDropped ??= PlayFiles;
         Shell.PickAndPlayFile ??= PickAndPlay;
@@ -279,6 +280,9 @@ public readonly partial struct Playlist
         Playlist _playlist;
         string? _visibleCover;
         IOverlayService? _overlay;
+        /// <summary>The open's revalidation holds the list (<see cref="PageStamp.Holding"/>), and with it the parts of the head that turn over with
+        /// the list (<see cref="HeldCover"/>, <see cref="IdentityOf"/>).</summary>
+        bool _headHeld;
 
         // value caches: an equal re-render costs the frame and the table nothing
         HeldRows? _source;
@@ -301,11 +305,17 @@ public readonly partial struct Playlist
         Detail.FrameActions? _actionsShown;
         readonly Func<ColorF> _accent;
         readonly Func<PageStamp> _stamp;
-        readonly Action _demand, _demandRows, _observe, _activated, _tune, _holdExpired, _toYourEpisodes;
+        readonly Action _demand, _demandRows, _observe, _activated, _tune, _holdExpired, _toYourEpisodes, _bindTune;
+        /// <summary>Tune's strip and its state on this page (the strip opens inline under the list bar).</summary>
+        readonly TuneSession _tuneSession = new();
         string _routeKey = "";
         /// <summary>The open hold's deadline wake (<see cref="HoldExpired"/>), re-armed from its own fire while the hold
         /// still has budget — a wake that lands a frame early must not be the last one.</summary>
         TimerHandle _holdWake;
+        /// <summary>The demand's dep key as the last render keyed it, and as the demand last ran it: unequal while a run of the demand is QUEUED
+        /// (keyed effects drain after the frame's present, so a render that moved the key has an open on its way). <see cref="HoldExpired"/>
+        /// reads the pair: a pre-open window whose open is queued is not spent.</summary>
+        DepKey _demandKey, _demandRan;
         readonly Func<bool> _editable;
         readonly Func<DragPayload, int?, bool> _deposit;
         readonly Func<ReadOnlySpan<RowRef>, int, bool> _moveRows;
@@ -337,7 +347,8 @@ public readonly partial struct Playlist
             _holdExpired = HoldExpired;
             _toYourEpisodes = ToYourEpisodes;
             _activated = Activated;
-            _tune = () => { if (!Controls.IsNullOverlay(_overlay)) OpenTune(_overlay, _playlist); };
+            _tune = _tuneSession.Toggle;
+            _bindTune = () => _tuneSession.Bind(_playlist);
             _editable = () => _playlist.Editable;
             _deposit = Deposit;
             _moveRows = (rows, at) => Spotify.PlaylistEdits.MoveRows(_playlist, rows, at);
@@ -346,8 +357,9 @@ public readonly partial struct Playlist
             _recs = () => RecommendationsSection(_playlist);
             _recsAside = () => RecommendationsSection(_playlist);
             _lensHeader = () => User.LensHeader(_lens, DetailKind.Playlist);
-            _cover = size => CoverSlot(_playlist, size);
-            _compactCover = size => CoverArt(_playlist, size);
+            _cover = size => HeldCover(size, CoverSlot(_playlist, size));
+            // The rail's strip cover (Classic, Zune) hands over in place like the hero's (a regenerated Mix's new cover).
+            _compactCover = size => HeldCover(size, CoverArt(_playlist, size, handOver: true));
             _attribution = w => AttributionSlot(_playlist, w);
             _description = w => DescriptionSlot(_playlist, w);
             _facts = w => User.FactsPanel(_source!, DetailKind.Playlist, _lens, w, false);
@@ -402,7 +414,8 @@ public readonly partial struct Playlist
             // when that row lands — so without the arm a cold navigation stranded the open behind that guard forever
             // and the page kept its PRE-open reveal rule for good. Re-running the demand is cheap (HeldRows.Opened is
             // idempotent; an open that joins its own record asks nothing and stamps nothing).
-            UseEffect(_demand, DepKey.From(pl.Slot, (int)scopeEpoch, (int)PageRules.DemandArmFor(pl.IsValid, _local), 0));
+            _demandKey = DepKey.From(pl.Slot, (int)scopeEpoch, (int)PageRules.DemandArmFor(pl.IsValid, _local), 0);
+            UseEffect(_demand, _demandKey);
             UseEffect(_demandRows);
             // The open's revalidation: subscribed to the tables that publish its answer, settled when the model says how it ended.
             UseEffect(_observe);
@@ -442,6 +455,8 @@ public readonly partial struct Playlist
             _chromeNext = ChromeOf(pl);
             UseEffect(_syncChrome, DepKey.From(_chromeNext.GetHashCode()));
             UseEffect(_publishChrome);
+            // Another playlist on this page starts with Tune shut and nothing applying.
+            UseEffect(_bindTune, DepKey.From(pl.Slot));
 
             if (!pl.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
@@ -467,6 +482,8 @@ public readonly partial struct Playlist
                     RemoveRows = editable ? _removeRows : null,
                     Recommendations = recs ? _recs : null,
                     Tune = tune ? _tune : null,
+                    TuneStrip = tune ? _tuneSession.Strip : null,
+                    TuneLit = tune ? _tuneSession.Lit : null,
                     LensHeader = _lensHeader,
                     LensExtent = lensExtent,
                     Drawer = Track.DrawerSeam,
@@ -502,6 +519,8 @@ public readonly partial struct Playlist
                 identity = IdentityOf(pl, editableMeta, stamp.Holding);
                 _identity = identity;
             }
+            // The cover slot reads it when the frame invokes it (the identity moves with it, so the hero re-renders).
+            _headHeld = stamp.Holding && !_local;
 
             return Detail.Frame(new Detail.FrameSpec
             {
@@ -519,10 +538,21 @@ public readonly partial struct Playlist
         /// presence only, so the instance is kept while the presence holds.</summary>
         Detail.FrameActions ActionsFor(Detail.FrameActions basis, bool tune, bool invite)
         {
-            var next = basis with { Tune = tune ? _tune : null, Invite = invite ? _inviteAction : null };
+            var next = basis with { Tune = tune ? _tune : null, TuneLit = tune ? _tuneSession.Lit : null, Invite = invite ? _inviteAction : null };
             if (_actionsShown is { } shown && shown.Equals(next) && ReferenceEquals(shown.DepositOnPage, basis.DepositOnPage)) return shown;
             return _actionsShown = next;
         }
+
+        /// <summary>The cover, behind the head's hold (<see cref="IdentityOf"/>: the held copy's art is never shown): its skeleton square while the
+        /// list is held on its revalidation, then the cover, crossfading in over it. ONE region in both states, so a page that was never held
+        /// mounts its cover directly and a held one dissolves (never a cut).</summary>
+        Element HeldCover(float size, Element cover)
+            => new SkelRegionEl(
+                Pending: _headHeld ? s_held : s_free, Failed: s_free, Content: () => cover,
+                ShimmerSource: () => new BoxEl { Width = size, Height = size, Corners = CornerRadius4.All(Radii.Card) },
+                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false);
+
+        static readonly Func<bool> s_held = static () => true, s_free = static () => false;
 
         /// <summary>The invite affordance's gate, the owner menu's (<see cref="AppendOwnerItems"/>): an owner who can administrate the permissions, on a live edit
         /// path (item 58: absent under <c>--fake</c>).</summary>
@@ -619,9 +649,17 @@ public readonly partial struct Playlist
         /// <summary>The identity snapshot every arm renders (ch 06 §7's table, read off the columns and the membership).
         /// Called only when the <see cref="PageStamp"/> moved (the cache in Render). <paramref name="holding"/>: the open's
         /// revalidation holds the list, and the meta line's count and duration ARE the list's — they shimmer with it
-        /// rather than paint yesterday's numbers and then change.</summary>
+        /// rather than paint yesterday's numbers and then change.
+        /// <para>THE HEAD WAITS WITH THE LIST (the owner's recording, 2026-11-15, Heartbreak Mix): the head the disk restores came with the list it
+        /// describes (the membership answer owns the playlist-v2 header), so while the list is held on its revalidation the head is as unconfirmed
+        /// as the rows. A personalised Mix regenerates under the same uri: its page showed yesterday's cover and description ("Justin Bieber, Avril
+        /// Lavigne, Huh Gak and more"), then blanked the cover to grey and swapped both when the fresh answer landed. So the parts that turn over
+        /// with the list (the cover, a followed list's description, the meta line) hold on their skeletons with the rows and land with them; the
+        /// title, the owner and the verbs, which identify the list, paint at once. The hold is bounded by its budget
+        /// (<see cref="ListFreshness.BlockingBudgetMs"/>): past it the held copy paints, and a later answer that moves it crossfades.</para></summary>
         Detail.Identity IdentityOf(Playlist pl, bool editableMeta, bool holding)
         {
+            bool headHeld = holding && !_local;
             var slots = pl.TrackSlots;
             var state = pl.MembershipState;
             // THE reveal discipline the rest of the app already reads (EdgeTableBase.Readiness, G-050): an Unknown list
@@ -656,8 +694,9 @@ public readonly partial struct Playlist
             string? meta = arm != MetaArm.Text ? null
                 : Detail.Text.PlaylistMeta(count, totalMs, durationsKnown && slots.Length > 0, pl.Knows(PlaylistFields.Saves) ? pl.Saves : 0, pl.EpisodeCount);
 
+            // While the head waits with the list, no cover is latched: the held copy's art is never shown, so it can never be swapped out.
             string? incoming = Controls.ArtUrl(pl.ImageId);
-            _visibleCover = Detail.CoverLatch.PreferVisible(incoming, _visibleCover);
+            if (!headHeld) _visibleCover = Detail.CoverLatch.PreferVisible(incoming, _visibleCover);
 
             var owner = pl.Owner;
             bool spotify = pl.Uri.Provider == EntityProvider.Spotify;
@@ -675,7 +714,7 @@ public readonly partial struct Playlist
                 HeaderPending = !_local && !pl.Knows(PlaylistFields.Identity)
                                 && !Entities.Current.Playlists.IsFailed(pl.Slot, (uint)PlaylistFields.Identity),
                 Title = _local && title.Length == 0 ? Loc.Get("localFile.playlistTitle") : title,
-                CoverUrl = _visibleCover,
+                CoverUrl = headHeld ? null : _visibleCover,
                 CardAccent = pl.Accent,
                 Eyebrow = _local ? Loc.Get(Strings.Nav.LocalFiles)
                     : Detail.Text.Eyebrow(DetailKind.Playlist, BadgeStyle.OwnerRow, AlbumKind.Album, 0, pl.IsCollaborative, pl.IsPublic,
@@ -688,7 +727,8 @@ public readonly partial struct Playlist
                 Owner = owner.IsValid ? owner.Uri : default,
                 Collaborative = pl.IsCollaborative,
                 IsPublic = !_local && pl.Knows(PlaylistFields.Visibility) && pl.IsPublic,
-                DescriptionHtml = _local && pl.DescriptionId.IsEmpty ? Loc.Get("localFile.playlistDescription") : Entities.Strings.Resolve(pl.DescriptionId),
+                DescriptionHtml = _local && pl.DescriptionId.IsEmpty ? Loc.Get("localFile.playlistDescription")
+                                : headHeld && !editableMeta ? null : Entities.Strings.Resolve(pl.DescriptionId),
                 ChartNewEntries = pl.ChartNewEntries,
                 ChartUpdatedAtMs = pl.ChartUpdatedAt * 1000L,
                 DaylistExpiresAtMs = pl.DaylistExpiresAt * 1000L,
@@ -703,6 +743,7 @@ public readonly partial struct Playlist
 
         void Demand()
         {
+            _demandRan = _demandKey;
             var pl = _playlist;
             if (!pl.IsValid) return;
             if (_local) { SettleLocalFiles(); return; }
@@ -710,7 +751,8 @@ public readonly partial struct Playlist
             // an unconditional full read against the list-open disk/diff path.
             Entities.Ensure(pl, PlaylistFields.Visibility | PlaylistFields.Saves | PlaylistFields.Accent);
             // The list goes through THE open rule (§6): an Unknown one is asked once — the disk leg, then the /diff the edge
-            // door chains itself — a fresh one paints, a stale one is revalidated and holds the reveal on the answer.
+            // door chains itself — a fresh one paints, a stale one paints and is revalidated behind it (a rolling one holds the
+            // reveal on the answer: ListOpenPolicy.HoldsReveal).
             ListOpen.Open(pl, ListOpenPolicy.Surface.Page);
             _source?.Opened();
         }
@@ -753,7 +795,12 @@ public readonly partial struct Playlist
         {
             int slot = _playlist.Slot;
             ListOpen.ExpireHold(slot);
-            if (_source is { } source && !source.OpenRan && source.HeldForMs > 0) source.PreOpenSpent();
+            // Not while the open is QUEUED: a render keyed a run of the demand that has not drained yet (the window was parked, covered or
+            // minimized, so no frame presented and no effect ran), and it runs at the end of this very frame. Latching here painted the
+            // copy the open is about to hold, and the open then took it back to its skeleton (the owner's log, 2026-11-15: a launch into a
+            // restored playlist under a covered window, uncovered five minutes later: the list, then its skeleton, then the list).
+            bool openQueued = _demandRan != _demandKey;
+            if (_source is { } source && !source.OpenRan && !openQueued && source.HeldForMs > 0) source.PreOpenSpent();
             int left = _source?.HeldForMs ?? 0;
             if (left > 0) _holdWake.RestartIn(left + ListOpenPolicy.HoldWakeSlackMs);
         }
@@ -905,13 +952,14 @@ public readonly partial struct Playlist
                 return false;
             if (_local) return false;
             int slot = pl.Slot;
+            string[] episodes = payload.EpisodeUris();
             Task<Track[]> resolving;
             try { resolving = payload.ResolveTracksAsync(); }
             catch (Exception ex) { Log.Warn("playlist", "a deposit's tracks could not be resolved", ex); return false; }
             resolving.ContinueWith(t =>
             {
                 Track[] tracks = t.IsCompletedSuccessfully ? t.Result : [];
-                Spotify.Post(() => Spotify.PlaylistEdits.AddTracks(new Playlist(slot), tracks, at));
+                Spotify.Post(() => Spotify.PlaylistEdits.AddTracks(new Playlist(slot), tracks, at, episodes: episodes));
             }, TaskScheduler.Default);
             return true;
         }
@@ -978,7 +1026,17 @@ public readonly partial struct Playlist
         /// (<see cref="Subscribe"/>, or <see cref="ListOpen.Changed"/>, is that half). Before the open the re-decide
         /// only stands for its own bound (<see cref="PreOpenSpent"/>).</summary>
         internal bool Held => _opened.Value ? ListOpen.Holding(_playlist.Slot)
-                            : !_preOpenSpent.Value && ListOpen.WouldHold(_playlist, ListOpenPolicy.Surface.Page);
+                            : !_preOpenSpent.Value && PreOpenStamps() && ListOpen.WouldHold(_playlist, ListOpenPolicy.Surface.Page);
+
+        /// <summary>The pre-open re-decide reads the list's freshness stamps (<see cref="ListStamps"/>), so the memo that asks it subscribes to
+        /// them: a revalidation that lands for this list before the page's own open (the library's, a queue's) turns the re-decide's hold
+        /// into a paint, and a memo that did not hear it kept the hold with nothing left to end it (the pre-open wake finds no hold to
+        /// latch). Always true.</summary>
+        static bool PreOpenStamps()
+        {
+            _ = ListStamps.Changed.Value;
+            return true;
+        }
 
         /// <summary>HOW LONG THE CURRENT <see cref="Held"/> ANSWER MAY STAND, in milliseconds — what the page arms its
         /// one deadline wake with, on either side of the open: the record's remaining budget after it
@@ -992,6 +1050,8 @@ public readonly partial struct Playlist
         public override EntityUri Context => _rows.Context;
         public override int Count => Held ? 0 : _rows.Count;
         public override int Total => Held ? 0 : _rows.Total;
+        /// <summary>The rows the hold keeps back still prefetch their covers: an unchanged answer (the common one) reveals them with their art.</summary>
+        public override int PrefetchCount => _rows.Count;
         public override EdgeState State => Held ? EdgeState.Unknown : _rows.State;
         public override uint Version => _rows.Version;
         // Index reads are gated by Count (0 while held), so they go straight through.
@@ -1010,6 +1070,7 @@ public readonly partial struct Playlist
             _ = ListOpen.Changed.Value;
             _ = _opened.Value;          // the other edge of Held: a consumer that subscribes here and reads Count later
             _ = _preOpenSpent.Value;    // …and the pre-open window's bound, which ends a hold no table publishes
+            if (!_opened.Value) _ = ListStamps.Changed.Value;   // …and, before the open, the stamps the re-decide reads
         }
         internal override void Retry() => _rows.Retry();
         internal override Playlist HostPlaylist => _rows.HostPlaylist;

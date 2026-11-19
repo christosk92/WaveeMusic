@@ -452,16 +452,14 @@ public static partial class Shell
                 var hooks = s_hooks;
                 Action<int> onNav = static which => { if (which == 0) GoBack(); else GoForward(); };
                 Func<float, bool> onWheel = static notch => { ZoomStep(notch > 0f ? +1 : -1); return true; };
-                Action<string> onRedirect = _ => post(s_drainActivation);
                 Action onColors = Appearance.OnSystemColorsChanged;
                 FluentApp.AppNavigationCommand += onNav;
-                FluentApp.ActivationRedirected += onRedirect;
                 FluentApp.SystemColorsChanged += onColors;
                 if (hooks is not null) hooks.ZoomWheel = onWheel;
                 Diagnostics.SidebarPaneFrame = s_paneFrame;
                 // The toast activation → deep-link hop: a toast reaches exactly the destinations a link can.
                 Notify.HostInstall(post, static raw => ApplyDeepLink(raw));
-                DrainActivation();   // a payload parked before the window existed
+                DrainActivation();   // a payload parked before the window existed (later ones: Shell.Host.OnActivationRedirected posts the drain)
                 // G-010: the window is guaranteed to exist by the time the frame's mount effect runs (this component
                 // IS the window's content), so activation no longer waits on the FIRST reducer effect to happen to
                 // land after it. `Activate` itself is idempotent (`s_active` gate) and self-heals a hwnd of 0.
@@ -469,7 +467,6 @@ public static partial class Shell
                 return () =>
                 {
                     FluentApp.AppNavigationCommand -= onNav;
-                    FluentApp.ActivationRedirected -= onRedirect;
                     FluentApp.SystemColorsChanged -= onColors;
                     if (hooks is not null && ReferenceEquals(hooks.ZoomWheel, onWheel)) hooks.ZoomWheel = null;
                     if (ReferenceEquals(Diagnostics.SidebarPaneFrame, s_paneFrame)) Diagnostics.SidebarPaneFrame = null;
@@ -588,11 +585,10 @@ public static partial class Shell
             // for the process: the props freeze at mount, and every live value reaches the template through a signal or a Func.
             var frame = ViewSlots.View(ViewKeys.ShellFrame, FrameProps(vp, policies));
 
-            // HomeLayout (F29): one app-wide document signal, provided at the shell root beside the material cell so
-            // HomeScreen and CustomizeScreen both read it and a customize edit is visible on Home the same frame.
+            // HomeBoardStore (pinned Home): the per-account Home document, provided at the shell root beside the material cell.
             // The engine's toast lane reads its geometry (side margin, card widths, the action's size) from the band the window is in: a thunk over the
             // facts, so the lane follows a tier crossing although this root renders once (`OverlayFit.ToastLane`, the structure's `ToastDock.Lane`).
-            return Ctx.Provide(HomeLayout.Slot, HomeLayout.Instance,
+            return Ctx.Provide(HomeBoardStore.Slot, HomeBoardStore.Instance,
                 Ctx.Provide(ShellMaterial.Slot, MaterialState,
                     Ctx.Provide(Toast.Lane, OverlayFit.ToastLane, OverlayHost.Create(frame))));
         }
@@ -711,7 +707,8 @@ public static partial class Shell
     {
         Sidebar.SidebarMenus.Overlay = overlay;
         return new ContextMenuModel(Sidebar.SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
-            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames(), Sidebar.LibraryView.Peek())));
+            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames(), Theming.ThemeHost.Declares(Theming.NavPaneOptionIds.Layout),
+            Theming.ThemeHost.Declares(Theming.NavPaneOptionIds.Density), Sidebar.LibraryView.Peek())));
     }
 
     /// <summary>The rail seam's guide: the splitter's 2-DIP thumb, bound to the drag so it shows while the pointer is down
@@ -837,7 +834,7 @@ public static partial class Shell
     static readonly DragChipProps s_dragChipProps = new() { Preview = static state => Drag.Preview(state) };
 
     /// <summary>The FPS HUD's rule: developer mode AND the overlay toggle, never in presentation mode.</summary>
-    static readonly FpsProps s_fpsProps = new() { Shown = static () => Diagnostics.FpsOverlayOn() };
+    static readonly FpsProps s_fpsProps = new() { Shown = static () => Diagnostics.FpsOverlayOn(), DriveCursor = static () => Diagnostics.DriveCursorLayer() };
 
     // ══ 3. THE CONTENT HOST ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -879,6 +876,8 @@ public static partial class Shell
             // below for every commit — the effect subscribes to the route, this render body never does. The lag is the
             // exit leg exactly; the instant cut and reduced motion run no exit leg, so there it lands on the next tick.
             var land = UseTimeout(s_landShown, TabLabelStaging.DelayMs(reducedMotion: false));
+            s_beginNav = UseContext(SharedTransition.BeginNav);   // the connected flight's trigger (Shell.Connected.cs), read by the nav verbs
+            s_navOrigin = UseContext(SharedTransition.NavOriginRect);   // where a growing page grows from (Shell.Connected.cs)
             // The band's chrome lands from the host's after-animations phase (PageChromeChannel.ArmLanding), so its height eases instead of snapping.
             UseContext(InputHooks.Current).SetAfterAnimations(s_chromeLanding, PageChromeChannel.LandIfDue);
             UseSignalEffect(() =>
@@ -927,6 +926,7 @@ public static partial class Shell
                             new BoxEl
                             {
                                 Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
+                                OnRealized = static h => s_pageBox = h,   // the pages' box: a growing page's pivot is measured against it
                                 Children = [Flow.KeepAlive(static () => Current.Value, static r => SlotKey(r), static r => PageBody(r), s_keepAlive)],
                             },
                             new BoxEl
@@ -964,6 +964,9 @@ public static partial class Shell
         // time the facet pivot is clicked).
         if (oldToken is Route prevHome && prevHome.Kind == RouteKind.Home && next.Kind == RouteKind.Home && prevHome.Tab == next.Tab)
             return null;
+        // Two library kinds in one family (ShellCapabilities.LibraryFamily): one slot, so this is a kind switch inside the mounted family, whose head
+        // stays and whose body slides by the pivot's order (User.LibraryFamily). A page transition here would move the head with it.
+        if (oldToken is Route prevKind && SameLibraryFamily(prevKind, next)) return null;
         var motion = Motion.Peek();
         bool videoSafe = oldToken is Route prev ? NeedsVideoSafe(prev, next) : next.Kind == RouteKind.Module;
         var pageMotion = Theming.ThemeHost.Facts.Peek().Policies.PageMotion;
@@ -971,10 +974,24 @@ public static partial class Shell
         // would wash out a composited video hole, so a video-safe swap cuts.
         if (FgMotion.ReducedMotion) return videoSafe ? null : pageMotion.ReducedFade;
         if (videoSafe) return RecipeForVideoSafe(motion);
+        // An artist from an artist grows out of its card without the overlap (Shell.Connected.cs, GrowTransition); Back keeps the plain fade.
+        if (IsSameKindSwap(oldToken, next)) return GrowTransition(in next, Design.Nav.SameKindSwap, sameKind: true) ?? Design.Nav.SameKindSwap;
         // A structure with per-kind motion (WinUI's navigation transitions) answers by the kind of swap; null keeps the core's.
-        if (pageMotion.Recipe is { } recipe && recipe(SwapOf(oldToken is Route from ? from : Route.None, next, motion)) is { } own) return own;
-        return RecipeFor(motion);
+        LayoutTransition chosen = pageMotion.Recipe is { } recipe && recipe(SwapOf(oldToken is Route from ? from : Route.None, next, motion)) is { } own
+            ? own : RecipeFor(motion);
+        // A page that grows out of its item (the artist) scales from it, the other page keeping its fade (Shell.Connected.cs). Under a connected
+        // flight the page keeps its recipe's fades and loses its travel: the cover is the only thing that moves.
+        if (oldToken is Route && GrowTransition(in next, in chosen, sameKind: false) is { } grown) chosen = grown;
+        else if (oldToken is Route && SwapsUnderFlight(in next)) chosen = Design.Nav.Quiet(in chosen);
+        return SwapsWithoutOverlap(oldToken) ? Design.Nav.NoOverlap(in chosen) : chosen;
     }
+
+    /// <summary>Does this swap take <see cref="Design.Nav.NoOverlap(in LayoutTransition)"/>: only with Fast navigation on (Settings ▸ Appearance ▸
+    /// Display, <see cref="Platform.Keys.FastNavigation"/>; off keeps the authored hand-over, the owner's default), a swap from one page to another
+    /// (a first activation has no outgoing page), outside a structure that mounts its incoming page at the end of the exit leg (Zune's sequenced
+    /// swap never overlapped). Read at the swap, untracked.</summary>
+    static bool SwapsWithoutOverlap(object oldToken)
+        => oldToken is Route && !ShellCaps.Now.DefersPageMount && Platform.Settings.Get(Platform.Keys.FastNavigation);
 
     /// <summary>The incoming page's staggered entrance (<see cref="Theming.PageMotionPolicy.Cascade"/>), asked on the same edges as
     /// <see cref="PageTransition"/>: none for a facet switch inside Home, a video-safe swap, under reduced motion, or under a structure
@@ -984,10 +1001,23 @@ public static partial class Shell
         if (newToken is not Route next || FgMotion.ReducedMotion) return null;
         if (oldToken is Route prevHome && prevHome.Kind == RouteKind.Home && next.Kind == RouteKind.Home && prevHome.Tab == next.Tab)
             return null;
+        if (oldToken is Route prevKind && SameLibraryFamily(prevKind, next)) return null;   // the family plays the switch (PageTransition)
         Route from = oldToken is Route r ? r : Route.None;
         if (oldToken is Route ? NeedsVideoSafe(from, next) : next.Kind == RouteKind.Module) return null;
-        return Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Cascade is { } cascade ? cascade(SwapOf(from, next, Motion.Peek())) : null;
+        if (IsSameKindSwap(oldToken, next)) return null;   // the same-kind swap is one quick fade: no stagger
+        if (oldToken is Route && SwapsUnderFlight(in next)) return null;   // the quiet swap under a flight: no staggered rise
+        if (oldToken is Route && GrowsAsOneBlock(in next)) return null;    // a section's drill grows as one block (Shell.Connected.cs)
+        if (Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Cascade is not { } cascade || cascade(SwapOf(from, next, Motion.Peek())) is not { } units)
+            return null;
+        return SwapsWithoutOverlap(oldToken) ? Design.Nav.NoOverlap(in units) : units;
     }
+
+    /// <summary>A swap between two entity pages of the same kind (playlist to playlist, album to album, artist to artist), which takes
+    /// <see cref="Design.Nav.SameKindSwap"/>: no overlap, no travel, a 100 ms fade in. A structure that mounts its incoming page at the end of the
+    /// exit leg (<c>ShellCapabilities.DefersPageMount</c>: Zune) keeps its own sequenced swap, which never shows two pages at once and lands
+    /// with its band's chrome.</summary>
+    static bool IsSameKindSwap(object oldToken, in Route next)
+        => oldToken is Route prev && prev.Kind == next.Kind && IsDetail(next.Kind) && !ShellCaps.Now.DefersPageMount;
 
     /// <summary>The body for a route: the content region's state (<see cref="FrameRules.ContentBodyFor"/>) as the props of the
     /// structure's <c>Shell.ContentState</c> view, which draws it (T4a). The core decides which state and builds the page; the
@@ -1003,14 +1033,22 @@ public static partial class Shell
     /// incoming slot is an empty placeholder (it already carries the enter, seeded with its 90 ms delay) until <see cref="Shown"/> reaches its
     /// route, which is when the exit leg has run and the leaving page is gone: the page mounts then, under an opacity 0 enter, and fades in. A
     /// page mounted once stays mounted (a revisit, or a facet switch inside the slot, never waits). The first frame and a slot that is already
-    /// the shown one are ready at once.</summary>
+    /// the shown one are ready at once. Whenever it mounts, the page arrives whole (<c>Context.ArriveWhole</c>): the swap presents it, and no part
+    /// inside fades in on its own under that.
+    ///
+    /// <para>It also owns the slot's <see cref="LoadingScope"/>: every <c>Skel.Region</c> of the page reports to it, and the theme's content
+    /// state draws one thin loading bar while <see cref="UseDelayedPending"/> says the page has been pending for
+    /// <see cref="Design.LoadingBarShowAfterMs"/> (then for at least <see cref="Design.LoadingBarMinVisibleMs"/>). While the mount itself is
+    /// deferred the slot holds a claim of its own, so the delay counts from the click, not from the mount.</para></summary>
     sealed class DeferredPage : Component
     {
-        bool _ready;
+        bool _ready, _mounted;
+        readonly LoadingScope _loading = new();   // one per keep-alive slot
 
         public override Element Render()
         {
             var route = UseProps<DeferredPageProps>().Route;
+            var busy = UseDelayedPending(_loading.IsPending, Design.LoadingBarShowAfterMs, Design.LoadingBarMinVisibleMs);
             if (!_ready)
             {
                 var shown = PageChromeChannel.Landed.Value;   // the page mounts with the band's chrome: both follow the same landing
@@ -1018,7 +1056,12 @@ public static partial class Shell
                 // The mount lands as a keep-alive activation does: the page's first layouts are placed, not animated in from zero.
                 if (_ready && !shown.IsNone && ShellCaps.Now.DefersPageMount) Context.SuppressLayoutTransitions?.Invoke();
             }
-            return _ready ? PageBodyNow(route) : s_pendingPage;
+            UsePendingClaim(!_ready, _loading);   // released after the paint of the mount frame, when the page's own regions hold theirs
+            if (!_ready) return s_pendingPage;
+            // The page's first mount arrives whole: the swap's entrance (or its cut) presents it, so no part inside fades in from 0 under it (a
+            // detail frame's arm did, and the new page read as a near-empty card for two frames). Parts that come later still enter.
+            if (!_mounted) { _mounted = true; Context.ArriveWhole?.Invoke(); }
+            return PageBodyNow(route, _loading, busy);
         }
     }
 
@@ -1041,10 +1084,17 @@ public static partial class Shell
         {
             case "none": case "":
                 s_inspectState.Value = "";
+                HomeProjection.FeedOverride.Value = null;
                 InspectOffline.Value = false;
                 LeaveInspectPending();
                 return true;
             case "offline-rows": InspectOffline.Value = true; return true;
+            // On Home, a failed or offline answer and a pending one are the board's own vacancy (the feed slot), not the page's: pins and
+            // local widgets keep working beside it.
+            case "error" or "offline" or "loading" when Current.Peek().Kind == RouteKind.Home:
+                s_inspectState.Value = "";
+                HomeProjection.FeedOverride.Value = kind switch { "error" => HomeFeedState.Error, "offline" => HomeFeedState.Offline, _ => HomeFeedState.Loading };
+                return true;
             case "empty": case "nomatch": case "error": case "offline": s_inspectState.Value = kind; return true;
             case "loading":
                 s_inspectState.Value = "";
@@ -1057,9 +1107,30 @@ public static partial class Shell
             case "cold-rows": Entities.StageColdRows(); return true;
             case "cold-warm": Entities.StageColdWarm(); return true;
             case "cold-faces": Entities.StageColdFaces(); return true;
+            // The cold book (Entities.Fake.Cold.cs): sh9 loads one answer per step (`goto uri=spotify:show:sh9` after cold-book).
+            case "cold-book": s_inspectState.Value = ""; Entities.StageColdBook(); return true;
+            case "cold-book-chapters": Entities.StageColdBookChapters(); return true;
+            case "cold-book-facts": Entities.StageColdBookFacts(); return true;
+            // A regenerated Mix's fresh answer over the copy the page holds (`goto` pl6 first): Entities.Fake.Cold.cs.
+            case "regen": Entities.StageRegen(); return true;
+            // A small remote edit over the membership the page shows (another device; `goto` pl6 first): Entities.Fake.Cold.cs.
+            case "regen-edit": Entities.StageRegenEdit(); return true;
+            // A login's scope switch under the page (Entities.Fake.Cold.cs): a new, empty table set, then the seed landing in it as from disk.
+            case "rescope": Entities.StageRescope(); return true;
+            case "rescope-land": Entities.StageRescopeLand(); return true;
             // The album's credits (Entities.Fake.Album.cs): al2's members' credits asked and unanswered, then answered (`goto` al2 first).
             case "cold-credits": Entities.StageColdCredits(); return true;
             case "credits-land": Entities.LandFakeCredits(); return true;
+            // Home's next answer over the one the page shows (Entities.Fake.Home.cs): identity across answers.
+            case "home-refresh": return Entities.StageHomeRefresh();
+            // Home's live open, one answer per step (Entities.Fake.Home.cs): cold, then the All answer, the Following answer, the lookup.
+            case "home-cold": HomeUi.HomeHost.StageLaunchWords(); return Entities.StageHomeCold();
+            case "home-land": return Entities.StageHomeAnswer("");
+            case "home-following": return Entities.StageHomeAnswer("music-following-chip");
+            case "home-previews": return Entities.StageHomePreviews();
+            // A daylist rollover as the live feed serves it (Entities.Fake.Home.cs): the generic pre-title card, then the header's edition.
+            case "daylist-generic": return Entities.StageDaylistGeneric();
+            case "daylist-land": return Entities.StageDaylistLand();
             default: return false;
         }
     }
@@ -1097,19 +1168,20 @@ public static partial class Shell
                               actionLabel: "New releases", onAction: static () => { }),
     };
 
-    static Element PageBodyNow(Route route)
+    static Element PageBodyNow(Route route, LoadingScope loading, IReadSignal<bool> busy)
     {
         if (s_inspectState.Value is { Length: > 0 } probe) return InspectStateBody(probe);
         var factory = PageFor(route);
         switch (FrameRules.ContentBodyFor(route, factory is not null, FrameFacts.DeveloperNow))
         {
             case ContentStateKind.Page:
-                return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab),
+                return Ctx.Provide(LoadingScope.Current, loading,
+                    Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab),
                     Ctx.Provide(MeasureMemory.Scope, MeasureScopeOf(route),
                         Ctx.Provide(PageChromeSink.Context, PageChromeChannel.SinkFor(route),
                             // P5 Z2b: the content host names the page's main scroller to the page-scroll signal (Shell.PageScrollFollower.cs).
                             FollowPageScroll(route, ViewSlots.View(ViewKeys.ShellContentState,
-                                ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, NameOf(route), null), factory!(route)))))));
+                                ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, SlotNameOf(route), null), factory!(route), busy)))))));
             case ContentStateKind.EmptyBody:
                 return ViewSlots.View(ViewKeys.ShellContentState,
                     ContentStateProps.ForEmptyBody(FrameRules.ContentKey(ContentStateKind.EmptyBody, NameOf(route), null)));
@@ -1270,6 +1342,31 @@ public static partial class Shell
             springLoadOnly: true);
     }
 
+    /// <summary>The menu row "Open in new tab" for <paramref name="route"/> (one wording and one glyph wherever a menu offers it).</summary>
+    internal static MenuFlyoutItem OpenInNewTabRow(Route route)
+        => new(Loc.Get(Strings.Menu.OpenInNewTab), Icons.OpenInNewWindow, true, () => WorkspaceVerbs.Shared.OpenTab(route));
+
+    /// <summary>THE TITLE BAR TAKES A DROP (owner, 2026-11-18): anything with a page of its own (a card, a row, a sidebar item) dropped on the bar
+    /// opens in a new tab. A tab that takes a deposit (an editable playlist's) keeps its own target, which sits above this one. A lifted TAB is not
+    /// taken (it would open a second copy of itself), nor a track (it has no page), nor a queue row.</summary>
+    static readonly DropTargetSpec s_newTabDrop = Drop.Target<DragPayload>(Drag.Resource,
+        accepts: static p => ShellCaps.Now.Tabs && !NewTabRouteOf(p).IsNone,
+        onDrop: static (p, _) =>
+        {
+            var route = NewTabRouteOf(p);
+            if (!route.IsNone) WorkspaceVerbs.Shared.OpenTab(route);
+        },
+        caption: static _ => Loc.Get(Strings.Menu.OpenInNewTab),
+        settleOnDrop: false);
+
+    /// <summary>The page a dropped payload opens, or none.</summary>
+    static Route NewTabRouteOf(DragPayload p)
+    {
+        if (p.FromTab || p.FromQueue || p.Kind is DragKind.Track or DragKind.Folder) return new Route(RouteKind.NotFound);
+        var uri = EntityUri.Parse(p.Uri);
+        return uri.IsValid ? For(uri, p.Name) : new Route(RouteKind.NotFound);
+    }
+
     static ContextMenuModel? TabMenu(int tabId)
     {
         int index = Tabs.IndexOf(tabId);
@@ -1420,6 +1517,14 @@ public static partial class Shell
 
     static INotificationVerbs PanelVerbs => NotificationVerbs.Shared;
 
+    /// <summary>The panel's settings door: close the panel first (its focus restore must not land on a closing popup), then Settings at the
+    /// Notifications category.</summary>
+    static readonly Action s_openNotificationSettings = static () =>
+    {
+        NotificationVerbs.PanelCloser?.Invoke();
+        SettingsLinks.Open("notifications");
+    };
+
     /// <summary>THE one open path for the panel, shared by the bell and the profile menu's row (installed into
     /// <see cref="NotificationsLauncher"/>): same placement and chrome, and the open is the panel's DEMAND — it refetches
     /// the stale feeds and advances the watermarks every time. A second press closes it.</summary>
@@ -1441,6 +1546,7 @@ public static partial class Shell
             if (ReferenceEquals(NotificationVerbs.PanelCloser, close)) NotificationVerbs.PanelCloser = null;
         };
         Notify.PanelOpened(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        HintFacts.BellOpened();   // hints #7
     }
 
     /// <summary>The panel's host: the feed's signals, the filter, the expanded row, the relative-time tick and the update-progress mirror.
@@ -1487,6 +1593,7 @@ public static partial class Shell
                 UpdateProgress = Notify.UpdateProgress,
                 PendingEdits = Notify.PendingEdits,
                 Host = _host ??= new NotificationsHost(expanded),
+                OpenSettings = s_openNotificationSettings,
             });
         }
     }

@@ -5,7 +5,7 @@
 // owner row (the reserved height, the pile, the invite pill, the collaborator flyout), the access panel's rows, the Tune panel, the daylist colons and the
 // recommendations' row. They are data, not decisions (WVTH003 allows literals and colour constructors only in `Rules\**`).
 //
-// WHAT IS NOT HERE, AND WHY. The popups' measures (`Playlist.AccessPanelWidth`, `TunePanelWidth`) belong to the hosts that open the popup and the dialog (the
+// WHAT IS NOT HERE, AND WHY. The popups' measures (`Playlist.AccessPanelWidth`) belong to the hosts that open the popup and the dialog (the
 // dialog is that much wider than its content) and travel on the props; the editors' size decisions (`Detail.VerticalLayout`'s title rule) and the clock modes
 // (`DaylistClockShows`) stay core.
 
@@ -102,17 +102,36 @@ public static class ClassicPlaylistLayout
     /// <summary>A switch row's gap between its label and caption.</summary>
     public const float SwitchLabelGap = 2f;
 
-    // ── the Tune panel (W24) ──
+    // ── Tune: the AI action and its strip (owner, 2026-11-18: "not a dialog", "a lot more prevalent like an AI button") ──
 
-    /// <summary>The header: gap, side padding, top and bottom padding; the accent tile's edge, radius, wash and glyph; the subtitle's size.</summary>
-    public const float TuneHeaderGap = 12f, TuneHeaderPadX = 14f, TuneHeaderPadTop = 9f, TuneHeaderPadBottom = 11f, TuneTile = 36f, TuneTileRadius = 10f,
-        TuneTileWash = 0.13f, TuneTileGlyph = 18f, TuneSubtitleSize = 12f;
+    /// <summary>Tune's AI stroke in Classic: blue → violet → pink on the pill and the strip.</summary>
+    public static readonly GradientSpec TuneStroke = new(GradientShape.Linear, 0f,
+    [
+        new GradientStop(0f, ColorF.FromRgba(0x3B, 0x82, 0xF6)),
+        new GradientStop(0.5f, ColorF.FromRgba(0x8B, 0x5C, 0xF6)),
+        new GradientStop(1f, ColorF.FromRgba(0xEC, 0x48, 0x99)),
+    ]);
 
-    /// <summary>The panel's vertical padding and its dividers' margin.</summary>
-    public const float TunePadTop = 8f, TunePadBottom = 6f, TuneDividerX = 8f, TuneDividerTop = 3f, TuneDividerBottom = 4f;
+    /// <summary>The same hues, faint: the lit pill's ground and the strip's.</summary>
+    public static readonly GradientSpec TuneWash = new(GradientShape.Linear, 0f,
+    [
+        new GradientStop(0f, ColorF.FromRgba(0x3B, 0x82, 0xF6, 0x24)),
+        new GradientStop(0.5f, ColorF.FromRgba(0x8B, 0x5C, 0xF6, 0x24)),
+        new GradientStop(1f, ColorF.FromRgba(0xEC, 0x48, 0x99, 0x24)),
+    ]);
 
-    /// <summary>A choice row: height, left and right padding, the radio's edge and its dot, the label and the "Current" tag.</summary>
-    public const float TuneRowH = 36f, TuneRowPadL = 12f, TuneRowPadR = 14f, RadioEdge = 14f, RadioDot = 6f, TuneRowText = 14f, TuneCurrentText = 12f;
+    /// <summary>The sparkle's ink: the stroke's middle hue.</summary>
+    public static readonly ColorF TuneSparkle = ColorF.FromRgba(0x9B, 0x6B, 0xFF);
+
+    /// <summary>The stroke's width; the strip's padding, the gap between its head and its chips, the head's gaps and the chips' gap.</summary>
+    public const float TuneStrokeWidth = 1f, TuneStripPad = 14f, TuneStripGap = 12f, TuneHeadGap = 12f, TuneChipGap = 8f;
+
+    /// <summary>The head's sparkle tile (edge, radius, glyph), the title's and the line's sizes, the gap under the title, the close button and the working ring.</summary>
+    public const float TuneTile = 36f, TuneTileRadius = 10f, TuneTileGlyph = 18f, TuneTitleSize = 14f, TuneLineSize = 12f, TuneLineGap = 2f, TuneClose = 32f,
+        TuneRing = 14f, TuneRingGap = 6f;
+
+    /// <summary>The list bar's Tune pill: its padding before the sparkle and after the word.</summary>
+    public const float TunePillPadL = 9f, TunePillPadR = 12f;
 
     // ── the daylist strip (W26) ──
 

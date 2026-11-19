@@ -58,8 +58,10 @@ public sealed partial class NavModel
             }) is { } entity)
             return WithOpen(entity, open, unpin);
 
-        // A route pin (Your Episodes, a browse page): Open · Unpin, then the moves.
-        var rows = new List<MenuFlyoutItem>(5) { open, unpin };
+        // A route pin (Your Episodes, a browse page): Open · Open in new tab (where the structure has tabs) · Unpin, then the moves.
+        var rows = new List<MenuFlyoutItem>(6) { open };
+        if (routeKey.Length > 0 && ShellCaps.Now.Tabs && Shell.Parse(routeKey) is { IsNone: false } tabRoute) rows.Add(Shell.OpenInNewTabRow(tabRoute));
+        rows.Add(unpin);
         if (moves is { Count: > 0 })
         {
             Actions.Menu.OpenGroup(rows);
@@ -205,5 +207,44 @@ public sealed partial class NavModel
             last = i;
         }
         return last + 1;
+    }
+
+    // ── Home's pins as band pins (Zune: BandPinsFrom = Home, design 1.6) ─────────────────────────────────────────────────
+
+    IReadOnlyList<BandPin> _homeBandPins = [];
+    int _homeBandPinsVersion = -1, _homeBandPinsMax = -1;
+
+    /// <summary>The user's pins of Home's Pinned group, in order, as band pins: open and play verbs and the playing fact as
+    /// <see cref="BandPins"/> builds them. Cached on <see cref="HomeBoardStore.PinsVersion"/> (subscribes the caller).</summary>
+    public IReadOnlyList<BandPin> HomeBandPins(int max)
+    {
+        var store = HomeBoardStore.Instance;
+        int version = store.PinsVersion.Value;
+        max = Math.Max(0, max);
+        if (version == _homeBandPinsVersion && max == _homeBandPinsMax) return _homeBandPins;
+        _homeBandPinsVersion = version;
+        _homeBandPinsMax = max;
+        _homeBandPins = BandPinsFromHome(store.PinnedSources(max));
+        return _homeBandPins;
+    }
+
+    /// <summary>Band pins for Home pin sources (no cache).</summary>
+    public IReadOnlyList<BandPin> BandPinsFromHome(IReadOnlyList<PinSource> pins)
+    {
+        if (pins.Count == 0) return [];
+        var list = new List<BandPin>(pins.Count);
+        foreach (var p in pins)
+        {
+            string routeKey = HomePinId.RouteOf(p.PinId), uri = HomePinId.UriOf(p.PinId), name = p.NameHint;
+            if (routeKey.Length == 0) continue;
+            var kind = SidebarPinId.KindOf(p.PinId);
+            bool playable = uri.Length > 0 && kind is SidebarEntryKind.Playlist or SidebarEntryKind.Album or SidebarEntryKind.Artist or SidebarEntryKind.Show;
+            if (name.Length == 0) name = PinName(p.PinId);
+            list.Add(new BandPin(p.PinId, name, p.CoverHint.Length > 0 ? p.CoverHint : null, kind == SidebarEntryKind.Artist,
+                Go: () => Navigate(routeKey, name),
+                Play: playable ? () => Play(uri) : null,
+                Playing: uri.Length > 0 ? () => ReadPlaying().Active && PlayingRelatesTo(uri) : static () => false));
+        }
+        return list;
     }
 }

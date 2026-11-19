@@ -61,6 +61,9 @@ public readonly partial struct Track
         /// <summary>How many rows the loading table should shimmer before any is resident: what the source already knows of its length (the album's own track
         /// count before its track list answers, else the declared total), 0 when nothing does.</summary>
         public virtual int ExpectedRows => Total;
+        /// <summary>The rows whose covers the table may decode AHEAD of showing them (the first screen's art, prefetched with the track data so the
+        /// thumbnails land with their rows): the resident rows, and for a source that holds its rows back, the rows it holds.</summary>
+        public virtual int PrefetchCount => Count;
         /// <summary>Unknown ⇒ shimmer, never "Nothing here yet"; Failed only while nothing is resident (G-050).</summary>
         public abstract EdgeState State { get; }
         /// <summary>The edge version for this parent.</summary>
@@ -323,8 +326,13 @@ public readonly partial struct Track
         public Action<IReadOnlyList<int>>? RemoveRows { get; init; }
         /// <summary>Appended section (O, Wave 5); null = absent.</summary>
         public Func<Element?>? Recommendations { get; init; }
-        /// <summary>Playlist tuning button; null = absent.</summary>
+        /// <summary>Playlist tuning button (it opens and shuts the Tune strip); null = absent.</summary>
         public Action? Tune { get; init; }
+        /// <summary>The Tune strip under the list bar (the structure's `Playlist.Tune` view) while it is open, else null. A tracked read: the strip's
+        /// slot follows it. Null member = no strip. Appended (contract 1.120).</summary>
+        public Func<Element?>? TuneStrip { get; init; }
+        /// <summary>Is Tune lit (the mix is tuned, or its strip is open)? A tracked read. Appended (contract 1.120).</summary>
+        public Func<bool>? TuneLit { get; init; }
         /// <summary>Expanded-row BODY (Track.Drawer.cs, M Wave 5), handed the row's track and DISPLAY index; the host pads it
         /// by <see cref="RowMetrics.DrawerIndent"/>. Null = no chevron lane.</summary>
         public Func<Track, int, Element?>? Drawer { get; init; }
@@ -600,15 +608,37 @@ public readonly partial struct Track
         readonly Signal<bool> _rampActive = new(false);
         bool _rampPending, _rampDecided, _sawUnknown;
         int _rampEpoch;
+        /// <summary>The ramp's first step: the rows the viewport shows (<see cref="Design.RevealRamp.FirstBand"/>), fixed when the ramp arms.</summary>
+        int _rampFirst = Design.RevealRamp.Chunk;
+        /// <summary>The list column's measured height (<see cref="OnColumnBounds"/>): the cold reveal's first band and the skeleton's row count.</summary>
+        float _lastH;
+        /// <summary>When the last COLD reveal released (the skeleton gave way to rows), and how many rows its band covers: a row slot that first
+        /// mounts real inside <see cref="RevealWindowMs"/> of it, within the band, takes the band's staggered crossfade
+        /// (<see cref="Design.RevealRamp.RowEnter"/>); a row realized later (a scroll) mounts as it always did, with no entrance.</summary>
+        long _revealAtMs = long.MinValue;
+        int _revealBand;
+        const long RevealWindowMs = 400;
 
         // ── membership choreography + re-deal (ch 04 §5) ───────────────────────────────────────────────────────────
         readonly Signal<int> _dispVer = new(0);
         readonly Dictionary<int, (float dx, float dy)> _flip = new();
         readonly Dictionary<int, (float from, float delayMs)> _fade = new();
-        readonly Dictionary<string, int> _keyIndex = new(StringComparer.Ordinal);
+        /// <summary>A membership change's leavers: OLD display index → exit delay (ms). The engine retires their slots (CommitMembership).</summary>
+        readonly Dictionary<int, float> _exit = new();
+        /// <summary>A membership change's gliders that wait for the leavers: NEW display index → delay (ms) of their FLIP seed.</summary>
+        readonly Dictionary<int, float> _glideDelay = new();
+        /// <summary>The last diff's index maps (display space; -1 none) and lengths, read by the engine-facing delegates during the commit.</summary>
+        int[] _oldToNew = [], _newToOld = [];
+        int _choreoOldLen, _choreoNewLen;
+        /// <summary>The rows a same-list drop just moved (old display indices): the change it lands places them where they were let go.</summary>
+        readonly HashSet<int> _dropped = new();
+        /// <summary>A membership change's glides, (first, last) screen row in new rows: an arrival waits for a glide passing its place.</summary>
+        readonly List<(int From, int To)> _glidePaths = new();
+        /// <summary>The list's realized window, ITEM space, last exclusive (<see cref="ListOptions.OnVisibleRange"/>): the live rows of a change.</summary>
+        int _liveFirst, _liveLast;
         EntityId _contextSeen;
         string _contextText = "";
-        bool _contextSeeded, _settled, _dealtThisFrame, _orderSeeded;
+        bool _contextSeeded, _dealtThisFrame, _orderSeeded;
         int _resetEpoch, _dealEpoch, _lastDealtTier = -1;
         long _lastDealtAtMs;
         global::Wavee.Theming.Contracts.DetailForm _formSeen;
@@ -655,6 +685,7 @@ public readonly partial struct Track
 
         // ── cached delegates (mount-stable; list options freeze at mount and must read live state) ─────────────────
         readonly Action<RectF> _onBounds;
+        readonly Action _prefetchArt;
         readonly Action<float> _onHeroMeasured;
         readonly Action _playAll, _shuffle;
         Detail.VerticalSpec? _heroSpecFrom, _heroSpec;
@@ -662,11 +693,17 @@ public readonly partial struct Track
         readonly Func<ColorF> _accent;
         readonly Func<int, (float dx, float dy)?> _flipFrom, _verticalFlipFrom;
         readonly Func<int, (float from, float delayMs)?> _fadeFrom, _verticalFadeFrom;
+        readonly Func<int, float> _glideDelayOf, _verticalGlideDelayOf, _exitDelayOf;
+        readonly Func<int, int> _newIndexOf;
+        readonly Func<int, bool> _leavesLive;
+        readonly Action _onMembership, _trackOrderNow;
+        readonly Action<int, int> _onVisibleRange;
         readonly Func<float> _leadInset, _trailInset;
 
         public TableHost()
         {
             _onBounds = OnColumnBounds;
+            _prefetchArt = PrefetchBandArt;
             // Unknown (no seed) is the widest tier, as the table always opened.
             _listSeed = () => _latest is { WidthSeed: > 0f } a ? a.WidthSeed : float.PositiveInfinity;
             _onHeroMeasured = h =>
@@ -705,6 +742,14 @@ public readonly partial struct Track
             _fadeFrom = display => _fade.TryGetValue(display, out var f) ? f : null;
             _verticalFlipFrom = item => IsVerticalRow(item) ? _flipFrom(item - Detail.VerticalLayout.PrefixCount) : null;
             _verticalFadeFrom = item => IsVerticalRow(item) ? _fadeFrom(item - Detail.VerticalLayout.PrefixCount) : null;
+            _glideDelayOf = display => _glideDelay.TryGetValue(display, out float d) ? d : 0f;
+            _verticalGlideDelayOf = item => IsVerticalRow(item) ? _glideDelayOf(item - Detail.VerticalLayout.PrefixCount) : 0f;
+            _exitDelayOf = item => _exit.TryGetValue(item - TrackStart, out float d) ? d : 0f;
+            _leavesLive = item => _exit.ContainsKey(item - TrackStart);
+            _newIndexOf = NewItemIndexOf;
+            _onMembership = OnMembership;
+            _trackOrderNow = () => { if (_snapshot is { } snap && _shape is { } shape) TrackOrder(snap.Peek(), shape.Peek().RowH); };
+            _onVisibleRange = (first, last) => { _liveFirst = first; _liveLast = last; };
             _leadInset = () => InsetsNow().Lead;
             _trailInset = () => InsetsNow().Trail;
             InitChrome();
@@ -758,6 +803,7 @@ public readonly partial struct Track
             bool dataDependent = sort != SortSpec.Default || query.Length > 0 || !filters.IsDefault;
             uint data = dataDependent
                 ? Entities.Current.Tracks.Changed.Value + (sort.Column == SortColumn.Album ? Entities.Current.Albums.Changed.Value : 0u)
+                  + (args.Profile.Config.Content == DetailContent.Episodes ? Entities.Current.Episodes.Changed.Value : 0u)   // an episode's title and length sort it
                 : 0u;
             uint likes = filters.LikedOnly ? Entities.Current.Edges.Liked.Changed.Value : 0u;
             var cfg = ConfigOf(args);
@@ -868,6 +914,7 @@ public readonly partial struct Track
         {
             if (r.W <= 0f) return;
             _lastW = r.W;
+            _lastH = r.H;
             if (MathF.Abs(_colW.Peek() - r.W) > 4f) _colW.Value = r.W;
             if (r.W != _tableW.Peek()) _tableW.Value = r.W;
             if (VerticalArm)
@@ -972,9 +1019,9 @@ public readonly partial struct Track
                 var src = _src!;
                 int c = _sort.Column switch
                 {
-                    SortColumn.Title => string.Compare(src.At(a).Title, src.At(b).Title, StringComparison.OrdinalIgnoreCase),
+                    SortColumn.Title => string.Compare(TitleOf(src, a), TitleOf(src, b), StringComparison.OrdinalIgnoreCase),
                     SortColumn.Album => string.Compare(src.At(a).Album.Title, src.At(b).Album.Title, StringComparison.OrdinalIgnoreCase),
-                    SortColumn.Duration => src.At(a).DurationMs.CompareTo(src.At(b).DurationMs),
+                    SortColumn.Duration => DurationOf(src, a).CompareTo(DurationOf(src, b)),
                     SortColumn.Artist => string.Compare(Entities.Strings.Resolve(src.At(a).ArtistLineId),
                                                         Entities.Strings.Resolve(src.At(b).ArtistLineId), StringComparison.OrdinalIgnoreCase),
                     SortColumn.DateAdded => src.AddedAt(a).CompareTo(src.AddedAt(b)),
@@ -984,6 +1031,13 @@ public readonly partial struct Track
                 if (_sort.Descending) c = -c;
                 return c != 0 ? c : a.CompareTo(b);
             }
+
+            // An episode member (a playlist's, Your Episodes') has no track row: `At` answers an empty track for it, so a title or length sort compared
+            // nothing and left the list in its own order. Its title is the one its row shows (the "#11 " prefix its number already states taken off,
+            // or "11 Loose Ends" sorted before "8 First Principles"), its length the episode's.
+            static string TitleOf(TableSource src, int i) => src.KindAt(i) == EntityKind.Episode ? Episode.ShownTitle(src.EpisodeAt(i)) : src.At(i).Title;
+
+            static int DurationOf(TableSource src, int i) => src.KindAt(i) == EntityKind.Episode ? src.EpisodeAt(i).DurationMs : src.At(i).DurationMs;
         }
 
         int OriginalOf(int display)
@@ -1236,10 +1290,9 @@ public readonly partial struct Track
                 _contextSeeded = true;
                 _contextSeen = snap.Context;
                 _contextText = context.IsValid ? context.Text : "";
-                _settled = false;
                 _orderSeeded = false;
                 _curLen = _prevLen = 0;
-                _flip.Clear(); _fade.Clear();
+                _flip.Clear(); _fade.Clear(); _exit.Clear(); _glideDelay.Clear();
                 _resetEpoch++;
                 _rampDecided = false;
                 _sawUnknown = false;
@@ -1262,21 +1315,30 @@ public readonly partial struct Track
                 // shimmer on the gate (TableRowContent), so a ramp there would only turn rows past the first chunk back into blank placeholders for a frame:
                 // the arm releases every row at once instead.
                 bool together = vertical && !trailing && ShellPolicy.Tracked.Lists.RowsRevealTogether;
-                if ((_sawUnknown || trailing) && !together) { _rampPending = true; _rampEpoch++; }
+                // The first step covers every row on screen (the owner's recording: rows 13-15 a frame after 1-12, through a grey placeholder);
+                // only the overscan past the screen ramps on.
+                int band = Design.RevealRamp.FirstBand(_lastH, shape.RowH);
+                if ((_sawUnknown || trailing) && !together) { _rampPending = true; _rampEpoch++; _rampFirst = band; }
+                // A cold reveal (the list stood on its skeleton): the rows on screen crossfade in, top-down (TableRowContent).
+                if (_sawUnknown) { _revealAtMs = Environment.TickCount64; _revealBand = band; }
             }
             UseLayoutEffect(ArmRamp, DepKey.From(_rampEpoch));
 
-            // ── membership choreography (§4.6) + the breakpoint re-deal, seeded in the render that commits the order ──
+            // ── membership choreography (§4.6) + the breakpoint re-deal, seeded in the flush that commits the order ──
+            // A membership change is the list's own structural observer's (OnMembership, ahead of every row); this call serves a table with no
+            // list mounted and is a no-op for a snapshot the observer already took.
             int resetBefore = _resetEpoch;
             int dealBefore = _dealEpoch;
             TrackOrder(in snap, shape.RowH);
             if (_latest.Form != _formSeen) { _formSeen = _latest.Form; _formChangedAtMs = Environment.TickCount64; }
             ReDeal(shape.Set.Tier, shape.RowH);
-            // A row-height change no deal narrates glides the rows to their new places (a deal owns the rows when one ran).
-            if (_dealEpoch == dealBefore) ReRow(shape.RowH, trailing);
+            // A row-height change no deal narrates glides the rows to their new places (a deal, or a membership change, owns the rows when one ran).
+            if (_dealEpoch == dealBefore && !_dealtThisFrame) ReRow(shape.RowH, trailing);
             else _rowHSeen = shape.RowH;
             _dealtThisFrame = false;
-            UseLayoutEffect(BumpDisplacement, DepKey.From(_dealEpoch));
+            // The list reads the version in THIS flush, so its seeds land on the frame that lays the deal out (from a layout effect they landed a
+            // frame late: the rows stood at their new places for one frame, then jumped back to glide). This render never reads the signal.
+            if (_dealEpoch != dealBefore) BumpDisplacement();
             bool narrate = _resetEpoch != resetBefore;
 
             if (args.PlayAllCell is { Length: > 0 } cell) cell[0] = _playAll;
@@ -1310,6 +1372,8 @@ public readonly partial struct Track
                       DepKey.From(listCount.Shown, listCount.Total, (int)(listCount.ShownMs / 1000L),
                                   (listCount.Filtered ? 1 : 0) | (listCount.DurationsKnown ? 2 : 0) | (listCount.EmptyLead ? 4 : 0)));
             UseEffect(InstallBenchHook, DepKey.Empty);
+            // The first screen's covers decode with the track data, ahead of the rows' reveal (the owner's recording: empty squares, then pictures).
+            UseEffect(_prefetchArt);
 
             float rowH = shape.RowH;
             // An episode-capable source has rows of more than one height, so the fixed `MeasuredStackVirtualLayout`
@@ -1327,13 +1391,16 @@ public readonly partial struct Track
                 : listState == PlaylistRowsState.Rows ? FlatList(layout, trailing, narrate)
                 : Placeholder(listState, in shape);
 
+            // A list of rows owns its reveal (SkelReveal.None): the band on screen crossfades in row by row (TableRowContent,
+            // Design.RevealRamp.RowEnter) while the skeleton dissolves under it, so each row turns from its bones to its content in place (the
+            // whole list used to cut in at once, owner video 2026-11-15). The hero arm's region holds the hero band too, which fades as one.
             Element region = new SkelRegionEl(
                 Pending: vertical && !trailing ? VerticalPending : RowsPending,
                 Failed: vertical && !trailing ? VerticalFailed : RowsFailed,
                 Content: () => realList,
                 ShimmerSource: vertical && !trailing ? () => VerticalShimmer(in shape, chips, lens) : () => RowsShimmer(in shape),
                 OnFailed: FailedPanel,
-                Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+                Reveal: vertical && !trailing ? SkelReveal.FadeOnly : SkelReveal.None, Style: Design.Skeleton, Group: null, SmoothResize: false);
 
             // Density · skin · (two-column only) query+filter · reset epoch · recs, and `vh:` for the vertical arm. NOT the
             // tier and NOT the sort (ch 04 §0.3/§0.5, ch 30 §5.3).
@@ -1402,7 +1469,7 @@ public readonly partial struct Track
         void ArmRamp()
         {
             if (!_rampPending) return;
-            _reveal.Value = Design.RevealRamp.Chunk;
+            _reveal.Value = _rampFirst;
             _rampActive.Value = true;
             _rampPending = false;
         }
@@ -1423,11 +1490,53 @@ public readonly partial struct Track
 
         /// <summary>Is this display row REAL yet? Reads the signal (subscribing the caller's per-row bool memo) and, on the
         /// render that arms a ramp, the pending chunk — so rows mounting before the arming layout effect already agree.</summary>
+        /// <summary>Warm the image cache with the covers of the rows the first screen will show, at the rows' own decode
+        /// (<see cref="Track.RowArtDecodePx"/>: the same cache key the row's image then pins), as soon as their faces are known: the rows' data and
+        /// their thumbnails arrive together instead of the rows first and their covers a beat later. Auto-tracked (the source and the track table);
+        /// a cover already requested is a cache hit, and a row already prefetched is skipped, so a publication that adds nothing costs a compare.</summary>
+        void PrefetchBandArt()
+        {
+            var src = _latest.Source;
+            src.Subscribe();
+            _ = Entities.Current.Tracks.Changed.Value;
+            if (!src.Context.Equals(_prefetchFor)) { _prefetchFor = src.Context; _prefetched = 0; }
+            int n = Math.Min(src.PrefetchCount, Design.RevealRamp.FirstBand(_lastH, _shape!.Peek().RowH));
+            for (int i = _prefetched; i < n; i++)
+            {
+                var t = src.At(i);
+                string? url = t.IsValid ? Track.RowArtUrl(t.ForDisplay) : null;
+                if (url is not { Length: > 0 }) break;          // the rows below it wait for their faces: the next publication resumes here
+                PrefetchImage(url, Track.RowArtDecodePx);
+                _prefetched = i + 1;
+            }
+        }
+
+        EntityUri _prefetchFor;
+        int _prefetched;
+
         internal bool RowRevealed(int displayIndex)
         {
             int reveal = _reveal.Value;
-            if (_rampPending) reveal = Design.RevealRamp.Chunk;
+            if (_rampPending) reveal = _rampFirst;
             return Design.RevealRamp.Revealed(displayIndex, reveal);
+        }
+
+        /// <summary>The entrance of a row slot that FIRST mounts real at <paramref name="displayIndex"/>: the cold reveal's staggered crossfade while
+        /// the reveal that just released the skeleton is fresh and the row is in its band (on screen), else none (a row a scroll realizes later
+        /// mounts as it always did). An untracked read: a slot's entrance is decided once, at its first render.</summary>
+        internal LayoutTransition? RevealEntrance(int displayIndex)
+        {
+            if ((uint)displayIndex >= (uint)_revealBand) return null;
+            if (Environment.TickCount64 - _revealAtMs > RevealWindowMs) return null;
+            return Design.RevealRamp.RowEnter(displayIndex);
+        }
+
+        /// <summary>The hero arm's rows hold their own skeletons until the table's gate opens (<see cref="RowGateClosed"/>): a row mounted behind
+        /// that gate crossfades in with the band when it opens (<see cref="Design.RevealRamp.RowEnter"/>), the rows on screen top-down. Untracked.</summary>
+        internal LayoutTransition? GatedEntrance(int displayIndex)
+        {
+            int band = Design.RevealRamp.FirstBand(_lastH, _shape!.Peek().RowH);
+            return (uint)displayIndex < (uint)band ? Design.RevealRamp.RowEnter(displayIndex) : null;
         }
 
         /// <summary>What the list shows against what it has (tuned Classic D4): the shown rows' length is summed only while a find or a
@@ -1540,8 +1649,15 @@ public readonly partial struct Track
                     Scroll = new ScrollOptions { AutoEdgeFade = !trailing, ScrollKey = ListScrollKey, Handle = _listScroll },
                     Reorder = new ReorderOptions { DisplacementVersion = _dispVer },
                     Insertion = Insertion(),
-                    Entrance = new EntranceOptions { ItemFlipFrom = _flipFrom, ItemFadeFrom = _fadeFrom },
+                    Entrance = new EntranceOptions { ItemFlipFrom = _flipFrom, ItemFadeFrom = _fadeFrom, ItemDelayMs = _glideDelayOf },
+                    Membership = new MembershipOptions { Observe = _onMembership },
+                    Removal = s_rowRemoval,
+                    OnVisibleRange = _onVisibleRange,
                 });
+
+        /// <summary>A leaving row (<see cref="Choreograph"/>): the removal recipe's default pose (a fade and a <c>Spacing.XS</c> rise) on the
+        /// fast control token, whose length <see cref="Design.Membership.ExitMs"/> reads.</summary>
+        static readonly RemovalOptions s_rowRemoval = new() { Motion = MotionTokenId.ControlFast };
 
         /// <summary>Track rows, then ONE appended item: the recommendations section (owner O's element, header and states
         /// included). The COUNT carries the section only while the page has rows or is empty — never over a shimmer.</summary>
@@ -1562,7 +1678,10 @@ public readonly partial struct Track
                     Scroll = new ScrollOptions { AutoEdgeFade = !trailing, ScrollKey = ListScrollKey, Handle = _listScroll },
                     Reorder = new ReorderOptions { DisplacementVersion = _dispVer },
                     Insertion = Insertion(),
-                    Entrance = new EntranceOptions { ItemFlipFrom = _flipFrom, ItemFadeFrom = _fadeFrom },
+                    Entrance = new EntranceOptions { ItemFlipFrom = _flipFrom, ItemFadeFrom = _fadeFrom, ItemDelayMs = _glideDelayOf },
+                    Membership = new MembershipOptions { Observe = _onMembership },
+                    Removal = s_rowRemoval,
+                    OnVisibleRange = _onVisibleRange,
                 });
 
         /// <summary>The sticky scope of the hero arm's list (named on the list's own box, which encloses the scroller: a
@@ -1623,7 +1742,10 @@ public readonly partial struct Track
                     },
                     Reorder = new ReorderOptions { DisplacementVersion = _dispVer },
                     Insertion = Insertion(),
-                    Entrance = new EntranceOptions { ItemFlipFrom = _verticalFlipFrom, ItemFadeFrom = _verticalFadeFrom },
+                    Entrance = new EntranceOptions { ItemFlipFrom = _verticalFlipFrom, ItemFadeFrom = _verticalFadeFrom, ItemDelayMs = _verticalGlideDelayOf },
+                    Membership = new MembershipOptions { Observe = _onMembership },
+                    Removal = s_rowRemoval,
+                    OnVisibleRange = _onVisibleRange,
                 });
         }
 
@@ -1674,7 +1796,7 @@ public readonly partial struct Track
                 });
                 Element trailBlock = InsetList(new BoxEl { Direction = 1, Children = kids.ToArray() })
                     .StickyClip(line);
-                // A structure with its own band (WinUI's opaque 48 bar) also clips the block at the band's line: the chrome that the block's end pushes up must
+                // A structure with its own band (WinUI's 48 bar, which paints no plate) also clips the block at the band's line: the chrome that the block's end pushes up must
                 // not paint over the bar it passes under. The shell's transparent 56 band leaves it as it was.
                 if (ShellPolicy.Tracked.DetailTiers.For(TiersNow()).BandHeight > 0f) tableBlock = tableBlock.StickyClip(line);
                 children = [TrailHero(spec), tableBlock, trailBlock];
@@ -1861,12 +1983,30 @@ public readonly partial struct Track
             // The placeholder's key sits on a CHILD: this item and row 1 are one slot (the first suffix slot becomes the first track row when the rows
             // land), and a slot root ignores its key, so a keyed root patched the shimmer's nodes into row 1, which then glided in from the
             // placeholder's layout (the one row that slid in from the right on a playlist load). Under an unkeyed root the row mounts fresh.
+            // The loading skeleton LEAVES as the rows arrive: it dissolves under them in the same place (an exit orphan draws under the live rows)
+            // while the rows crossfade in top-down (Design.RevealRamp.RowEnter). It used to vanish on the frame the membership landed, so the rows
+            // faded in over bare ground (owner video 2026-11-15).
+            bool loading = state == PlaylistRowsState.Loading;
             return new BoxEl
             {
                 Direction = 1, HitTestPassThrough = true,
-                Children = [new BoxEl { Key = "vitem:empty", MinHeight = 160f, Direction = 1, Children = [InsetList(Placeholder(state, in shape))] }],
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "vitem:empty", MinHeight = 160f, Direction = 1, Animate = loading && !Design.Reduced ? s_skeletonLeave : null,
+                        Children = [InsetList(Placeholder(state, in shape))],
+                    },
+                ],
             };
         }
+
+        /// <summary>The hero list's loading skeleton leaving: an opacity exit a little longer than the rows' staggered crossfade, easing IN so the
+        /// bones hold under the lower rows until those rows' own fades have begun over them (a linear exit thinned them out before the last rows
+        /// started, and those rows stood blank for a frame or two).</summary>
+        static readonly LayoutTransition s_skeletonLeave = new(TransitionChannels.Opacity,
+            TransitionDynamics.Tween(Design.RevealRamp.RowSpanMs + Design.RevealRamp.RowFadeMs + Design.RevealRamp.RowStepMs * 6f, Easing.EaseIn),
+            Exit: new EnterExit(Opacity: 0f, Active: true));
 
         internal int VisibleCountValue => _rowItems!.Count.Value;
         /// <summary>The hero arm's list carries the recommendations section after its rows (a tracked read: the slot map follows it).</summary>
@@ -1901,14 +2041,20 @@ public readonly partial struct Track
             if (state == PlaylistRowsState.Loading)
             {
                 var geometry = shape;
+                // Pending for as long as this placeholder stands: a Loading list is pending by definition (RowsPending is true while the edge is
+                // Unknown), and when the rows land the placeholder itself leaves (the hero list's item exits under the arriving rows; the
+                // two-column list swaps it for the rows). Re-reading RowsPending here made the region dissolve its own skeleton on the landing
+                // frame, inside the leaving item, so the bones were gone before the lower rows began to fade in.
                 return new SkelRegionEl(
-                    Pending: RowsPending, Failed: RowsFailed, Content: static () => new BoxEl(),
+                    Pending: s_pending, Failed: RowsFailed, Content: static () => new BoxEl(),
                     ShimmerSource: () => RowsShimmer(in geometry), OnFailed: FailedPanel,
-                    Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false)
+                    Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false)
                     with { Key = "rows:loading" };
             }
             return Message(Loc.Get(state == PlaylistRowsState.Empty ? Strings.Detail.Empty.NoTracks : Strings.Detail.Empty.NoMatch));
         }
+
+        static readonly Func<bool> s_pending = static () => true;
 
         static Element Message(string text) => new BoxEl
         {
@@ -1929,7 +2075,7 @@ public readonly partial struct Track
             ],
         };
 
-        /// <summary>12 copies of the REAL row grid over an empty track — the deriver shimmers the row's own shape (one
+        /// <summary>A screenful of copies of the REAL row grid over an empty track — the deriver shimmers the row's own shape (one
         /// source; the shimmer can never drift from the rows). A two-column Modern row sits inside its skin's plate inset
         /// (<see cref="RowMetrics.RowInset"/> either side), so its copy does too (tuned Classic X2: the bars used to start 8 DIP
         /// left of the cells and run 16 wider). A list that groups by date (Liked Songs, D16, sorted by when its songs were added — its
@@ -1940,16 +2086,18 @@ public readonly partial struct Track
             Edges4 inset = !shape.Set.Classic && (!VerticalArm || ColumnsForm) ? new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f) : default;
             bool groups = _snapshot is { } memo && GroupsOn(memo.Peek());
             // As many rows as the source already knows it has (a 2-song single shimmered a 12-row chunk, and the section under it climbed 400 DIP when the
-            // rows landed: "About this album", owner video 2026-10-25), a full chunk when nothing is known yet.
+            // rows landed: "About this album", owner video 2026-10-25), else every row the screen shows: the skeleton stands wherever a row on screen
+            // will land (it stopped at 12, and rows 13-15 landed below it on bare ground, owner video 2026-11-15).
             int expected = _latest.Source.ExpectedRows;
-            var rows = new Element[expected > 0 ? Math.Min(expected, Design.RevealRamp.Chunk) : Design.RevealRamp.Chunk];
+            int band = Design.RevealRamp.FirstBand(_lastH, shape.RowH);
+            var rows = new Element[expected > 0 ? Math.Min(expected, band) : band];
             for (int i = 0; i < rows.Length; i++)
             {
                 rows[i] = ShimmerGrid(in shape, i);
                 if (inset != default) rows[i] = new BoxEl { Direction = 1, Margin = inset, Children = [rows[i]] };
             }
             if (groups) rows[0] = new BoxEl { Direction = 1, Children = [GroupHeader(s_pendingGroupHead, in shape), rows[0]] };
-            return new BoxEl { Direction = 1, Children = rows };
+            return new BoxEl { Key = "rows:skeleton", Direction = 1, Children = rows };
         }
 
         /// <summary>One copy of the REAL row grid over an empty track: what the deriver shimmers.</summary>
@@ -2330,8 +2478,8 @@ public readonly partial struct Track
         {
             AcceptKinds = [Drag.Resource],
             CanAccept = payload => Verdict(payload) == DropRefusal.None,
-            // An album/show table sits the gesture out silently; a read-only PLAYLIST says why (ch 04 §9.9).
-            Transparent = _ => Cfg.Kind is DetailKind.Album or DetailKind.Show && !Editable,
+            // An album table sits the gesture out silently; a read-only PLAYLIST says why (ch 04 §9.9).
+            Transparent = _ => Cfg.Kind is DetailKind.Album && !Editable,
             IsSameList = IsSameList,
             // A same-list reorder never dims the app; a cross-list deposit keeps the scrim.
             SpotlightWhen = session => !IsSameList(session.Payload),
@@ -2430,7 +2578,13 @@ public readonly partial struct Track
                     Notify.Say(Loc.Get(Strings.Drag.StillSyncing), InfoBarSeverity.Warning);
                     return Task.FromResult(false);
                 }
-                return Task.FromResult(P.MoveRows is { } move && move(rows, at));
+                // The dropped rows land where the user let go (the drag held them there): the membership change the move lands next does not
+                // glide them in from their old places (Choreograph). Natural order only, so a membership index is a display index.
+                _dropped.Clear();
+                foreach (var row in rows) _dropped.Add(row.Index);
+                bool moved = P.MoveRows is { } move && move(rows, at);
+                if (!moved) _dropped.Clear();
+                return Task.FromResult(moved);
             }
             return Task.FromResult(P.Deposit is { } deposit && deposit(d, at >= src.Count ? null : at));
         }
@@ -2677,9 +2831,21 @@ public readonly partial struct Track
 
         // ══ 9. CHOREOGRAPHY ══════════════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>Track the displayed order and narrate a LIVE membership change. The FIRST complete landing of a context is
-        /// a load and never choreographs (`_settled`); paging (Partial) never narrates either — a 300-row page would read as
-        /// a re-cut and remount at the top.</summary>
+        /// <summary>The list's structural observer (<see cref="ListOptions.Membership"/>): it runs AHEAD of every row of the list in the flush
+        /// that lands a new membership, so <see cref="Choreograph"/> can keep each slot with its item and retire the gone rows with their old
+        /// content before any row re-renders as its new track. A navigation (another context) is the render's. Subscribes to the snapshot
+        /// only; the rest runs untracked. It diffs, calls the controller and bumps the version, nothing else.</summary>
+        void OnMembership()
+        {
+            if (_snapshot is not { } memo) return;
+            var snap = memo.Value;   // subscribe: the membership (and the view) this list shows
+            if (!_contextSeeded || !snap.Context.Equals(_contextSeen)) return;
+            Reactive.Untrack(_trackOrderNow);
+        }
+
+        /// <summary>Track the displayed order and narrate a LIVE membership change: once the rows are released (the cold reveal decided), from one
+        /// complete membership to another. A change landing on the skeleton is a load; paging (Partial) never narrates. Idempotent per snapshot:
+        /// the list's observer (<see cref="OnMembership"/>) and the render both call it.</summary>
         void TrackOrder(in Snapshot snap, float rowH)
         {
             if (_orderSeeded && _orderSeen.Equals(snap)) return;
@@ -2702,61 +2868,122 @@ public readonly partial struct Track
             _curState = snap.State;
             _orderSeen = snap;
             _orderSeeded = true;
-            if (!membershipChanged || previousState != EdgeState.Complete || snap.State != EdgeState.Complete) return;
+            if (!membershipChanged) return;
             // The FLIP/fade reorder animation keys rows by Track identity (`MembershipDiff.Keys`) — an episode-
             // capable source (mixed Track/Episode) skips the choreography rather than mis-keying it; its rows still
             // reflow (Track.Table's plain layout pass), just without the fancy displacement narration.
-            if (src.HasEpisodes) { _settled = true; return; }
-            if (_prevLen > 0 && _settled)
-                Choreograph(new ReadOnlySpan<Track>(_prevTracks, 0, _prevLen), new ReadOnlySpan<StringId>(_prevIds, 0, _prevLen),
-                            new ReadOnlySpan<Track>(_curTracks, 0, _curLen), new ReadOnlySpan<StringId>(_curIds, 0, _curLen), rowH);
-            _settled = true;
+            if (!_rampDecided || previousState != EdgeState.Complete || snap.State != EdgeState.Complete || _prevLen <= 0 || src.HasEpisodes)
+            {
+                _dropped.Clear();
+                return;
+            }
+            Choreograph(new ReadOnlySpan<Track>(_prevTracks, 0, _prevLen), new ReadOnlySpan<StringId>(_prevIds, 0, _prevLen),
+                        new ReadOnlySpan<Track>(_curTracks, 0, _curLen), new ReadOnlySpan<StringId>(_curIds, 0, _curLen), rowH);
             _dealtThisFrame = true;   // a membership narration outranks a breakpoint re-deal
         }
 
+        /// <summary>Narrate one membership change row by row (<see cref="Design.Membership"/>: leave, close up, arrive), over the LIVE rows only (the
+        /// list's realized window on screen, moved by the anchor shift): a live row that is gone, or whose new place is outside the live rows,
+        /// leaves where it stands (the engine retires its slot with its old content); a survivor whose old and new places are both live glides;
+        /// every other live row arrives. A re-cut is the same three steps. The list keeps its node, its scroll offset and its selection. Reduced
+        /// motion (a value): nothing leaves animated, no delay, and the placement token snaps the seeds, so the list changes in place.</summary>
         void Choreograph(ReadOnlySpan<Track> oldTracks, ReadOnlySpan<StringId> oldIds,
                          ReadOnlySpan<Track> newTracks, ReadOnlySpan<StringId> newIds, float rowH)
         {
             var oldKeys = MembershipDiff.Keys(oldTracks, oldIds);
             var newKeys = MembershipDiff.Keys(newTracks, newIds);
-            var delta = MembershipDiff.Diff(oldKeys, newKeys);
-            if (delta.IsEmpty) return;
-            if (delta.IsReset)
-            {
-                // A curated re-cut: ONE crossfade — the keyed remount replays the slots' mount entrance at a fresh scroll.
-                _flip.Clear(); _fade.Clear();
-                _resetEpoch++;
-                return;
-            }
-            float offset = _listCtl.ScrollOffset;
-            int firstVisible = rowH > 0f ? Math.Max(0, (int)(offset / rowH)) : 0;
+            int oldLen = oldKeys.Length, newLen = newKeys.Length;
+            if (_oldToNew.Length < oldLen) _oldToNew = new int[Math.Max(oldLen, _oldToNew.Length * 2)];
+            if (_newToOld.Length < newLen) _newToOld = new int[Math.Max(newLen, _newToOld.Length * 2)];
+            var delta = MembershipDiff.Diff(oldKeys, newKeys, _oldToNew, _newToOld);
+            if (delta.IsEmpty) { _dropped.Clear(); return; }
+            _choreoOldLen = oldLen;
+            _choreoNewLen = newLen;
+            var oldToNew = new ReadOnlySpan<int>(_oldToNew, 0, oldLen);
 
-            // (1) Anchor: the first visible SURVIVOR keeps its screen Y; at the start edge the engine declines.
-            _keyIndex.Clear();
-            for (int i = 0; i < newKeys.Length; i++) _keyIndex[newKeys[i]] = i;
-            int shift = 0;
-            for (int i = Math.Clamp(firstVisible, 0, Math.Max(0, oldKeys.Length - 1)); i < oldKeys.Length; i++)
-                if (_keyIndex.TryGetValue(oldKeys[i], out int ni)) { shift = ni - i; break; }
+            // (1) The live rows (old display space): the list's realized window. No row outside it is realized to animate.
+            int start = TrackStart;
+            int liveFirst = Math.Clamp(_liveFirst - start, 0, oldLen);
+            int liveLast = Math.Clamp(_liveLast - start, liveFirst, oldLen);
+
+            // (2) Anchor: the first visible survivor keeps its screen Y when the live survivors move together; at the start edge the engine declines.
+            int shift = MembershipWindow.AnchorShift(oldToNew, liveFirst, liveLast, FirstShownRow());
             if (shift != 0 && !_listCtl.PreserveAnchor(shift * rowH)) shift = 0;
+            int newFirst = Math.Clamp(liveFirst + shift, 0, newLen), newLast = Math.Clamp(liveLast + shift, newFirst, newLen);
 
-            // (2) FLIP residuals for every survivor, and a rise + fade for adds, 20 ms/row capped at 8.
-            _flip.Clear(); _fade.Clear();
-            _keyIndex.Clear();
-            for (int i = 0; i < oldKeys.Length; i++) _keyIndex[oldKeys[i]] = i;
-            for (int n = 0; n < newKeys.Length; n++)
-                if (_keyIndex.TryGetValue(newKeys[n], out int o))
-                {
-                    float residual = (o - n + shift) * rowH;
-                    if (MathF.Abs(residual) > 0.5f) _flip[n] = (0f, residual);
-                }
-            int ord = 0;
-            foreach (var add in delta.Adds)
+            // (3) Leave, close up, arrive.
+            bool reduced = Design.Reduced;
+            _flip.Clear(); _fade.Clear(); _exit.Clear(); _glideDelay.Clear();
+            int leavers = 0;
+            for (int o = liveFirst; o < liveLast; o++)
             {
-                if (add.NewIndex is not { } n) continue;
-                _flip[n] = (0f, -6f);
-                _fade[n] = (0f, Math.Min(ord++, 8) * 20f);
+                int n = oldToNew[o];
+                if (n >= newFirst && n < newLast) continue;
+                _exit[o] = reduced ? 0f : MembershipWindow.ExitDelay(leavers, Design.Membership.ExitStaggerMs, Design.Membership.ExitStaggerCap);
+                leavers++;
             }
-            _dealEpoch++;
+            float exitEnd = reduced ? 0f
+                : MembershipWindow.ExitEnd(leavers, Design.Membership.ExitMs, Design.Membership.ExitStaggerMs, Design.Membership.ExitStaggerCap);
+            float glide = MembershipWindow.GlideDelay(exitEnd, Design.Membership.GlideLeadBackMs);
+            _glidePaths.Clear();
+            for (int n = newFirst; n < newLast; n++)
+            {
+                int o = _newToOld[n];
+                if (o < liveFirst || o >= liveLast) continue;
+                float residual = (o - n + shift) * rowH;
+                if (MathF.Abs(residual) <= 0.5f || _dropped.Contains(o)) continue;   // a dropped row is already where it was let go
+                _flip[n] = (0f, residual);
+                if (glide > 0f) _glideDelay[n] = glide;
+                _glidePaths.Add((o + shift, n));   // the screen rows it passes, in new rows
+            }
+            _dropped.Clear();
+            // An arrival takes its place once the place is free (text never crosses text): after the row that left it is gone, and after a
+            // glider passing it has gone by; a place nothing leaves keeps the plain stagger. Top-down, so a re-cut refills as a wave and the
+            // list never stands empty. A change with no leaver keeps the timing it always had (arrivals at once, staggered).
+            int arrivals = 0;
+            float clear = leavers > 0 ? glide + Design.Membership.GlideClearMs : 0f;
+            for (int n = newFirst; n < newLast; n++)
+            {
+                int o = _newToOld[n];
+                if (o >= liveFirst && o < liveLast) continue;
+                float free = 0f;
+                if (_exit.TryGetValue(n - shift, out float leaving)) free = leaving + Design.Membership.ExitMs;
+                foreach (var (from, to) in _glidePaths)
+                    if (n >= Math.Min(from, to) && n <= Math.Max(from, to)) { free = MathF.Max(free, clear); break; }
+                _flip[n] = (0f, -Design.Membership.EnterRise);
+                _fade[n] = (0f, reduced ? 0f
+                    : MembershipWindow.ArriveDelay(arrivals, free, Design.Membership.EnterStaggerMs, Design.Membership.EnterStaggerCap));
+                arrivals++;
+            }
+
+            // A row mounted for an added track must not also take the cold reveal's crossfade.
+            _revealAtMs = long.MinValue;
+            _listCtl.CommitMembership(_newIndexOf, _leavesLive, shift * rowH, _exitDelayOf, animate: !reduced);
+            BumpDisplacement();
+        }
+
+        /// <summary>The commit's item map (<see cref="ItemsViewController.CommitMembership"/>): a prefix item (the hero, the chrome) maps to
+        /// itself, a row to its new place (-1 gone), and an item past the rows (the appended recommendations, the placeholder) keeps its place
+        /// after them, so it is never retired.</summary>
+        int NewItemIndexOf(int item)
+        {
+            int start = TrackStart;
+            if (item < start) return item;
+            int o = item - start;
+            if (o >= _choreoOldLen) return start + _choreoNewLen + (o - _choreoOldLen);
+            int n = _oldToNew[o];
+            return n < 0 ? -1 : start + n;
+        }
+
+        /// <summary>The first display row on screen (the hero list's rows start under its pinned band), from the list's own geometry before the
+        /// change applies; 0 when the list has no viewport yet.</summary>
+        int FirstShownRow()
+        {
+            var vp = _listCtl.Viewport;
+            if (Context.Scene is not { } scene || vp.IsNull || !scene.IsLive(vp) || !scene.TryGetScroll(vp, out var sc) || sc.ViewportH <= 1f)
+                return 0;
+            float band = VerticalArm && !Cfg.HasTrailing ? MathF.Max(0f, _itemBandSig?.Peek() ?? 0f) : 0f;
+            return _listCtl.TryGetItemIndex(0.5f, Math.Clamp((band + 1f) / sc.ViewportH, 0f, 1f), out int item) ? Math.Max(0, item - TrackStart) : 0;
         }
 
         /// <summary>A breakpoint cross narrated as ONE deal: realized rows rise 6 DIP and fade in top-down behind a capped
@@ -2845,10 +3072,10 @@ public readonly partial struct Track
             // (track / episode), which is all its shape depends on; the display index is peeked where it is needed.
             var kind = UseComputed(() => _host.RowKindAt(_scope.Index.Value - _start)).Value;
 
-            // An episode row is never wrapped by Skin — it IS the show reader's own row (Episode.ReaderRow), self-
+            // An episode row is never wrapped by Skin — it IS the episode reader row (Episode.ReaderRow), self-
             // contained (click, hover, check lane, "…"), built through Episode.RowContext from this host's own
-            // tone/play/overlay/menu/selection seams (Track.Table.EpisodeRow.cs). Looks and behaves identically to a
-            // row in the show reader, whether it's hosted in a mixed playlist or Your Episodes.
+            // tone/play/overlay/menu/selection seams (Track.Table.EpisodeRow.cs), whether it's hosted in a mixed
+            // playlist or Your Episodes.
             if (kind == RowTemplate.Episode)
             {
                 _episodeItem ??= _host.BindEpisodeItemFor(_scope, _start);
@@ -2916,6 +3143,8 @@ public readonly partial struct Track
         int _likeSlot;
         bool _likeSaved;
         byte _latch;   // 0 = unrendered · 1 = first render was a placeholder (the crossing fades) · 2 = mounted real
+        bool _entranceTaken;
+        LayoutTransition? _entrance;
         Track.BoundRow? _row;
 
         static readonly LayoutTransition s_rampReveal = new(TransitionChannels.Opacity,
@@ -2970,6 +3199,11 @@ public readonly partial struct Track
             // grid. The gate opens for every row on the same frame, so the list swaps in as one block; covers then fade in inside rows already laid out.
             var host = _host;
             var geometry = shape;
+            int display = _scope.Index.Peek() - _start;
+            // A row mounted behind the hero arm's closed gate crossfades in with the band when the gate opens, top-down (the rows used to swap in as
+            // one block, owner video 2026-11-15): its content owns the entrance and the row's skeleton dissolves under it. A row whose own data lands
+            // later (scrolled to before its page) keeps the plain cross-dissolve.
+            var gated = TableHost.RowsTogether() && host.RowGateClosed() ? host.GatedEntrance(display) : null;
             Element body = !TableHost.RowsTogether()
                 ? Flow.Show(() => { var t = row.Presentation.Value.Track; return TableRules.RowHasData(t.IsValid, t.Knows(TrackFields.Face)); }, grid,
                     _host.PlaceholderRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)))
@@ -2982,12 +3216,18 @@ public readonly partial struct Track
                     return !TableRules.RowHasData(t.IsValid, paints) || host.RowGateClosed();
                 },
                 Failed: static () => false,
-                Content: () => grid,
-                ShimmerSource: () => host.ShimmerRow(in geometry),
-                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+                Content: gated is null ? () => grid : () => new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Animate = gated, Children = [grid] },
+                // A box root: the derived skeleton takes its exit (the cross-dissolve) only on a BoxEl root, and the row grid is a GridEl, so
+                // the row's bones used to vanish on the frame its content landed.
+                ShimmerSource: () => new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [host.ShimmerRow(in geometry)] },
+                OnFailed: null, Reveal: gated is null ? SkelReveal.FadeOnly : SkelReveal.None, Style: Design.Skeleton, Group: null, SmoothResize: false);
+            // A slot whose first render was the ramp's placeholder fades as it turns real (off screen: the overscan past the first band); one that
+            // mounts real in a cold reveal's band takes the band's staggered crossfade (Design.RevealRamp.RowEnter).
+            // Decided once, at the slot's first real render, and kept (the node's transition stays the one its entrance started on).
+            if (!_entranceTaken) { _entranceTaken = true; _entrance = _latch == 1 ? s_rampReveal : host.RevealEntrance(display); }
             return new BoxEl
             {
-                Key = "row:real", Direction = 0, Grow = 1f, Animate = _latch == 1 ? s_rampReveal : null, Children = [body],
+                Key = "row:real", Direction = 0, Grow = 1f, Animate = _entrance, Children = [body],
             };
         }
     }

@@ -433,4 +433,8 @@ public interface IStageSettingsVerbs
 
     /// <summary>Pick a visualizer face (the stored face and the always-on pick line).</summary>
     void PickFace(Visualizer.Kind face);
+
+    /// <summary>The lyrics' depth blur, 0 (off) ..100: the popover's "Background blur" row, the Settings dial's own writer (every theme's
+    /// popover draws it, design 5.4). Read the value with <c>Lyrics.Prefs.BlurStrength(onStage: false)</c>. Appended (contract 1.117).</summary>
+    void SetLyricsBlur(int strength);
 }

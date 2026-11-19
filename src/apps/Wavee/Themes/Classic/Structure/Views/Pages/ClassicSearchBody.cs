@@ -312,7 +312,7 @@ internal static class ClassicSearchBody
             HitTestVisible = false, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Card),
             // Unscaled decode (no explicit decodePx): buckets to the 300x260 slot's own aspect, same as 0.2.10 — the
             // square decodePx: 512 this replaced forced a 512x512 decode/upload (~3.4x the bytes) for one hero image.
-            Children = [Controls.Artwork(url, ClassicSearchRules.HeroCoverW, ClassicSearchRules.HeroCoverH, Search.RoundArt(hit.Kind) ? ClassicSearchRules.HeroCoverRoundCorners : Radii.Card)],
+            Children = [Search.ArtOf(hit, url, ClassicSearchRules.HeroCoverW, ClassicSearchRules.HeroCoverH, Search.RoundArt(hit.Kind) ? ClassicSearchRules.HeroCoverRoundCorners : Radii.Card)],
         };
         return new BoxEl { Direction = 0, MinWidth = 0f, Height = height, AlignSelf = FlexAlign.Stretch, Children = [copy, cover] };
     }
@@ -336,7 +336,7 @@ internal static class ClassicSearchBody
                 {
                     Width = art, Height = art, Shrink = 0f, ClipToBounds = true, Corners = CornerRadius4.All(corners),
                     Margin = new Edges4(0f, 0f, 0f, ClassicSearchTiers.AvatarTitleGap),
-                    Children = [Controls.Artwork(url, art, art, corners)],
+                    Children = [Search.ArtOf(hit, url, art, art, corners)],
                 },
                 R.Type.HeroTitle(title) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, AlignSelf = FlexAlign.Stretch },
                 new TextEl(Search.SubtitleOf(hit, flags))

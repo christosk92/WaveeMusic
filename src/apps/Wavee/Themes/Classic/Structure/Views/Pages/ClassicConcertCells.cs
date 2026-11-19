@@ -43,7 +43,7 @@ internal sealed record SegmentedPillStyle(
     public static SegmentedPillStyle AccentAt(float height)
         => height.Equals(Rules.AccentPillH) ? Accent : Accent with { Height = height, SegmentHeight = height - 2f * Rules.AccentPillPadT };
 
-    /// <summary>The Concerts register: a 32-DIP accent capsule carrying an OPAQUE raised segment (<c>FillControlSolid</c>
+    /// <summary>The Concerts register: a 32-DIP accent control carrying an OPAQUE raised segment (<c>FillControlSolid</c>
     /// — never <c>FillCardDefault</c>, which in dark is 5 % white and read as accent-on-accent ink).</summary>
     public static SegmentedPillStyle Accent => new(
         Height: Rules.AccentPillH, SegmentHeight: Rules.AccentPillSegmentH,
@@ -194,9 +194,15 @@ internal static class ClassicConcertCells
         }.Interactive(Interaction.Subtle);
     }
 
-    /// <summary>The accent eyebrow every concert section heads with (§4 row 11).</summary>
+    /// <summary>The accent caption a row labels itself with ("Next show · in 2 weeks", the month the board scrolled to). Sections are titled in
+    /// <see cref="ShelfTitle"/>, page heads in the detail pages' eyebrow (<c>ClassicDetailKit.EyebrowRun</c>).</summary>
     public static TextEl SectionCaption(string label)
         => R.Type.Eyebrow(label) with { Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+
+    /// <summary>A shelf's title on the hub ("Near you", "All events"): the structure's own section voice, the one Home's shelves are titled in
+    /// (<c>R.Type.ModuleHeader</c>). They were accent eyebrows, a voice no other page titles a shelf in (owner, 2026-11-18: "out of pattern").</summary>
+    public static TextEl ShelfTitle(string label)
+        => R.Type.ModuleHeader(label) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
     // ══ 2. DATE BLOCKS, THE SPLIT HERO, THE LOCATION BUTTON (W13, W13b/c, W19) ════════════════════════════════════════
 
@@ -217,15 +223,16 @@ internal static class ClassicConcertCells
         };
     }
 
-    /// <summary>The grounded split card (§0 #8): copy on <c>FillCardDefault</c>, the photo in an adjacent clipped pane with a
-    /// seam gradient only. Wide is a 56/44 row at 320; narrow stacks a 180-DIP pane above the copy. No photo ⇒ the
-    /// accent-tinted plate with ONE centred 52-DIP calendar (W13c); no accent ⇒ the flat base (W13b).</summary>
-    public static Element SplitHero(string? imageUrl, uint accent, Element copy, bool wide)
-        => SplitHero(imageUrl, accent, copy, ClassicConcertTiers.EditorialHero(wide));
+    /// <summary>The page's head ON THE PAGE'S GROUND, as the album and artist pages draw theirs: a square picture beside the copy when wide, a banner
+    /// over it when narrow. It was a card (the copy on <c>FillCardDefault</c>, the photo a pane of it), a frame no other page puts round its head (owner,
+    /// 2026-11-18: the concert pages "look out of pattern"). No photo ⇒ the accent-tinted plate with ONE centred calendar (W13c); no accent ⇒ the flat
+    /// base (W13b).</summary>
+    public static Element GroundHero(string? imageUrl, uint accent, Element copy, bool wide)
+        => GroundHero(imageUrl, accent, copy, ClassicConcertTiers.EditorialHero(wide));
 
-    /// <summary>The split card at the tier's <paramref name="metrics"/> (the event page's records, TC6: split at 240 at Small and at 400 at Huge, the 220 stacked
-    /// pane at Compact): a row when the metrics have a height of their own, the stacked pane otherwise.</summary>
-    public static Element SplitHero(string? imageUrl, uint accent, Element copy, EditorialHeroMetrics metrics)
+    /// <summary>The head at the tier's <paramref name="metrics"/> (the event page's records, TC6: a 200 picture at Small and a 300 one at Huge, the 220 banner
+    /// at Compact).</summary>
+    public static Element GroundHero(string? imageUrl, uint accent, Element copy, EditorialHeroMetrics metrics)
     {
         bool wide = metrics.Split;
         ColorF baseFill = R.Layer.EventHeroPlate;
@@ -243,29 +250,17 @@ internal static class ClassicConcertCells
                 // The calendar stands in for the photograph: art (keyed `deco:`, the lint's decorative intent).
                 Children = [new BoxEl { Key = "deco:event-art", Children = [Icon(Icons.Calendar, Rules.HeroGlyph, Tok.TextSecondary with { A = Rules.GlyphAlpha })] }],
             };
-        Element seam = new BoxEl
+        Element picture = new BoxEl
         {
-            HitTestPassThrough = true,
-            Gradient = wide
-                ? LinearGradient(0f, new GradientStop(0f, Tok.FillCardDefault), new GradientStop(Rules.HeroSeamWide, Tok.FillCardDefault with { A = 0f }))
-                : GradientDown(new GradientStop(Rules.HeroSeamNarrow, Tok.FillCardDefault with { A = 0f }), new GradientStop(1f, Tok.FillCardDefault)),
+            Key = "concert-hero:picture", Width = wide ? metrics.Picture : float.NaN, Height = wide ? metrics.Picture : metrics.Banner, Shrink = 0f, MinWidth = 0f,
+            ZStack = true, ClipToBounds = true, Corners = Radii.CardAll, Children = [photo],
         };
-        Element media = new BoxEl
-        {
-            Grow = wide ? metrics.MediaFraction : 0f, Basis = wide ? 0f : float.NaN, MinWidth = 0f,
-            Height = metrics.MediaHeight, ZStack = true, ClipToBounds = true, Children = [photo, seam],
-        };
-        Element grounded = new BoxEl
-        {
-            Direction = 1, Grow = wide ? Rules.HeroCopyGrow : 0f, Basis = wide ? 0f : float.NaN, MinWidth = 0f,
-            Padding = Edges4.All(metrics.Padding), Justify = FlexJustify.Center, Children = [copy],
-        };
+        Element text = new BoxEl { Direction = 1, Grow = wide ? 1f : 0f, Basis = wide ? 0f : float.NaN, MinWidth = 0f, Justify = FlexJustify.Center, Children = [copy] };
         return new BoxEl
         {
-            Direction = (byte)(wide ? 0 : 1), MinWidth = 0f, Height = wide ? metrics.Height : float.NaN,
-            ClipToBounds = true, Corners = Radii.CardAll,
-            Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            Children = wide ? [grounded, media] : [media, grounded],
+            Key = "concert-hero", Direction = (byte)(wide ? 0 : 1), MinWidth = 0f, Gap = wide ? Spacing.XL : Spacing.L,
+            AlignItems = wide ? FlexAlign.Center : FlexAlign.Stretch,
+            Children = [picture, text],
         };
     }
 
@@ -345,12 +340,13 @@ internal static class ClassicConcertCells
         ],
     };
 
-    /// <summary>The where pill: MapPin 14, the label (BodyStrong), chevron 10; <paramref name="height"/> tall (the tier's: 32, the Compact 40), fully
-    /// rounded, the control ramp.</summary>
+    /// <summary>The where control: MapPin 14, the label (BodyStrong), chevron 10; <paramref name="height"/> tall (the tier's: 32, the Compact 40), on the
+    /// control ramp with the CONTROL'S corner. ONE FAMILY (owner, 2026-11-18): the row's place and dates were capsules beside the stock toggles of
+    /// "This weekend" and the genres, two shapes in one row; they are drop-down buttons now, the toggles' own height, corner and ramp.</summary>
     public static BoxEl WherePill(string label, Action onClick, float height) => new()
     {
         Direction = 0, Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Rules.PillGap,
-        Padding = new Edges4(Rules.PillPadX, Rules.PillPadY, Rules.PillPadX, Rules.PillPadY), Corners = Radii.FullAll,
+        Padding = new Edges4(Rules.PillPadX, Rules.PillPadY, Rules.PillPadX, Rules.PillPadY), Corners = Radii.ControlAll,
         Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
         BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
@@ -368,7 +364,7 @@ internal static class ClassicConcertCells
     {
         Key = "when-pill", Animate = s_pillReflow,
         Direction = 0, Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Rules.PillGap,
-        Padding = new Edges4(Rules.PillPadX, Rules.PillPadY, Rules.PillPadX, Rules.PillPadY), Corners = Radii.FullAll,
+        Padding = new Edges4(Rules.PillPadX, Rules.PillPadY, Rules.PillPadX, Rules.PillPadY), Corners = Radii.ControlAll,
         Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
         BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
@@ -387,7 +383,7 @@ internal static class ClassicConcertCells
     {
         Key = key, Animate = s_pillReflow,
         Direction = 0, Height = s.Height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = s.Gap,
-        Padding = s.Padding, Corners = Radii.FullAll,
+        Padding = s.Padding, Corners = Radii.ControlAll,
         Fill = s.Fill, HoverFill = s.HoverFill, PressedFill = s.PressedFill,
         BorderWidth = s.BorderWidth, BorderColor = s.BorderColor,
         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
@@ -397,7 +393,7 @@ internal static class ClassicConcertCells
             {
                 Key = key + ":seg", Animate = s_segmentDock,
                 Direction = 0, Height = s.SegmentHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = s.SegmentGap,
-                Padding = s.SegmentPadding, Corners = CornerRadius4.All(s.SegmentHeight / 2f),
+                Padding = s.SegmentPadding, Corners = CornerRadius4.All(Rules.AccentPillSegmentRadius),
                 Fill = s.SegmentFill, Shadow = s.SegmentShadow,
                 Children =
                 [
@@ -422,6 +418,12 @@ internal static class ClassicConcertCells
     public static Element UnderBand(BoxEl node)
         => (node with { EdgeFade = new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) { WhileStuck = true } })
             .StickyClip(ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero));
+
+    /// <summary>The hub's feed, which scrolls under the pinned filter row: cut at the row's foot (the trail's reserve + the row), feathered like
+    /// <see cref="UnderBand"/>. The row paints no plate, so without the cut the cards would show through its controls.</summary>
+    public static Element UnderFilterBar(BoxEl node)
+        => (node with { EdgeFade = new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) { WhileStuck = true } })
+            .StickyClip(ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero) + Rules.BarScrollerH);
 
     /// <summary>The schedule/detail page frame (§1.2, §1.3): the trail's reserve + 12 as a SPACER (the page's hero is its title), then
     /// the body inset by the page <paramref name="gutter"/> and cut under the band, one vertical viewport.</summary>

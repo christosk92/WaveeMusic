@@ -46,7 +46,7 @@ internal static class ClassicProfileHero
             new(ScrollEffect.Fade(ArtistHeroLayout.ExpandedFadeStart(collapse), collapse, 1f, 0f)),
         ];
 
-        Element avatar = Avatar(in t, m.Avatar);
+        Element avatar = Avatar(in t, m.Avatar, Design.MorphKeys.ForUri(uri));
         Element copy = CopyBlock(in t, uri, in m, form, acts);
         Element content = form.Arm switch
         {
@@ -96,8 +96,8 @@ internal static class ClassicProfileHero
 
     /// <summary>The photo in a clipped circle (`ClassicArtistPick`'s pick-avatar precedent: <c>Controls.Artwork</c>, so the tile is
     /// the WATCHED placeholder, not PersonPicture's frozen fill); no photo → PersonPicture initials on the person's own
-    /// colour.</summary>
-    static Element Avatar(in ProfileHeroText t, float edge)
+    /// colour. <paramref name="connect"/>: the photo's flight key, for a structure that flies it (WinUI shows this hero); inert under Classic.</summary>
+    static Element Avatar(in ProfileHeroText t, float edge, string? connect)
     {
         if (t.Placeholder)
             return new BoxEl { Width = edge, Height = edge, Shrink = 0f, Corners = Radii.Circle(edge), Fill = Tok.FillSubtleSecondary };
@@ -106,7 +106,7 @@ internal static class ClassicProfileHero
             {
                 Width = edge, Height = edge, Shrink = 0f, ZStack = true, ClipToBounds = true,
                 Corners = Radii.Circle(edge), BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Shadow = Elevation.Card,
-                Children = [Controls.Artwork(url, edge, edge, edge / 2f, decodePx: ProfileHeroLayout.AvatarDecodePx)],
+                Children = [Controls.Artwork(url, edge, edge, edge / 2f, decodePx: ProfileHeroLayout.AvatarDecodePx, connect: connect)],
             };
         ColorF? fill = t.PersonArgb != 0 ? ColorScience.ToColor(t.PersonArgb) : null;
         return PersonPicture.Create("", edge, displayName: t.Name, fill: fill) with { Shrink = 0f, Shadow = Elevation.Card };

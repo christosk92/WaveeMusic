@@ -32,7 +32,9 @@ internal static partial class ClassicPlaylist
     static Element CoverArt(PlaylistCoverArtProps p)
         => p.Mosaic is { } tiles
             ? Controls.Mosaic(tiles, p.Size, p.Size, Radii.Card)
-            : Controls.Artwork(p.Single, p.Size, p.Size, Radii.Card, decodePx: p.DecodePx, saturation: ClassicPlaylistLayout.CoverSaturation);
+            : p.HandOver
+                ? Controls.ArtworkHandOver(p.Single, p.Size, p.Size, Radii.Card, decodePx: p.DecodePx, saturation: ClassicPlaylistLayout.CoverSaturation, connect: p.Connect)
+                : Controls.Artwork(p.Single, p.Size, p.Size, Radii.Card, decodePx: p.DecodePx, saturation: ClassicPlaylistLayout.CoverSaturation, connect: p.Connect);
 
     // ══ 2. THE EDITABLE COVER ═══════════════════════════════════════════════════════════════════════════════════════════
 

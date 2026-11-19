@@ -52,6 +52,7 @@ internal static partial class ClassicLibraryPage
         // A structure that borrows this page may draw its own choice controls here (contract 1.85; WinUI's sort, pivots and view pair). Classic registers none.
         var registry = ctx.Hooks.UseContext(ViewRegistry.Context);
         cache.Controls = registry is not null && registry.TryGetStyle(StyleKeys.LibraryControls, out var controls) ? controls : null;
+        cache.Nav = cache.Controls?.Nav is { } nav ? nav(ctx.Tier()) : null;   // the borrowing structure's column leads (contract 1.109); Classic: none
         // The layout tier's record: the structure's ladder (the host's tier signal, `props.Collapsed`) decides the one-column drill-in, the content tier the split's numbers.
         cache.Layout = ClassicLibraryTiers.Of(ctx.Tier(), props.Collapsed);
         cache.Prepare();
@@ -63,13 +64,19 @@ internal static partial class ClassicLibraryPage
         if (props.Collapsed)
             inner = Collapsed(props, cache);
         // Your Episodes (A2 plan §3.5): the standard toolbar's row-1 words ARE the mode switch for Podcasts. Selecting the word swaps the WHOLE body for the flat episode table, but
-        // the toolbar (and so the word that switches back) stays put.
+        // the toolbar (and so the word that switches back) stays put. Under a borrowing structure's leads (contract 1.109) the toolbar AND the table stand in ONE led column, as
+        // the one-column arm's do: a led row grows along its parent's axis, and in this column that is DOWN, so a led toolbar alone took half the free height above the table.
         else if (props.SavedEpisodesMode)
             inner = new BoxEl
             {
                 Key = "lib:wide:saved", Animate = s_arm,
                 Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [Toolbar(props, cache), props.SavedEpisodes()],
+                Children = cache.Nav is null
+                    ? [Toolbar(props, cache), props.SavedEpisodes()]
+                    : [Led(cache, "lib:savedrow", new BoxEl
+                    {
+                        Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Children = [Toolbar(props, cache), SavedBody(props, cache)],
+                    }, fills: true)],
             };
         else
         {
@@ -83,12 +90,12 @@ internal static partial class ClassicLibraryPage
                 // Shrink and MinHeight 0 (and on the root): the card owns the page's height, so a height easing inside a pane never grows the page past it.
                 Key = "lib:wide", Animate = s_arm,
                 Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [LeftColumn(props, cache), cache.LeftGrip ??= LeftGrip(props, cache.Dragging), right],
+                Children = [Led(cache, "lib:navrow", LeftColumn(props, cache), fills: false), cache.LeftGrip ??= LeftGrip(props, cache.Dragging), right],
             };
         }
         // The page publishes no shell material and tints nothing: the library is the app's accent-neutral browser. A borrowing structure's head (contract 1.88) stands
-        // over the columns at every arm; Classic registers none.
-        Element[] page = cache.Controls?.Head is { } head ? [head(new LibraryHeadArgs(props.Kinds(), props.Title)), inner] : [inner];
+        // over the columns at every arm, unless its library family's host draws it once over every kind (`HeadHosted`); Classic registers none.
+        Element[] page = cache.Controls?.Head is { } head && !props.HeadHosted ? [head(new LibraryHeadArgs(props.Kinds(), props.Title)), inner] : [inner];
         return new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = cache.OnBounds, Children = page };
     }
 
@@ -102,6 +109,8 @@ internal static partial class ClassicLibraryPage
         public ClassicLibraryLayout Layout = null!;
         /// <summary>The borrowing structure's choice controls (contract 1.85), null in Classic.</summary>
         public LibraryControlsStyle? Controls;
+        /// <summary>The borrowing structure's navigator leads for this tier (contract 1.109), null in Classic.</summary>
+        public LibraryNavMetrics? Nav;
         public Element? Picker, PickerCompact, PickerSort, LeftGrip, MidGrip, Sticky, Strip;
         public Action<RectF>? OnBounds;
         public Func<int, Element>? NavContent;
@@ -125,7 +134,7 @@ internal static partial class ClassicLibraryPage
             NavNoMatch ??= () => Props.Filter().Value.Length > 0 ? EmptyCompact(Loc.Get(Strings.Library.NoMatch)) : EmptyKind(Props);
             // The persisted view cell, never the mount: a pending navigator is never asked for its mount. The grid's cell floor is the tier record's (the host's
             // mount floor for the same tier: 96 at Small), read off the cache's current record.
-            NavShimmer ??= () => ClassicLibraryPage.NavShimmer(Props.View().Value, Props.Size().Value, Props.Entity, Layout.CardCellMin, Layout.GridGaps);
+            NavShimmer ??= () => ClassicLibraryPage.NavShimmer(Props.View().Value, Props.Size().Value, Props.Entity, Layout.CardCellMin, Layout.GridGaps, Nav);
         }
 
         /// <summary>The page's measured bounds, reported to the host: its layout ladder (`ClassicLibraryTiers.Layout`) over this width decides the one-column drill-in, in the
@@ -141,10 +150,10 @@ internal static partial class ClassicLibraryPage
             var entity = Props.Entity;
             return template switch
             {
-                LibraryNavTemplate.RowCompact => _slotCompactT ??= scope => NavSlot(scope, entity, compact: true),
+                LibraryNavTemplate.RowCompact => _slotCompactT ??= scope => NavSlot(scope, entity, compact: true, Nav),
                 LibraryNavTemplate.Card => _cardT ??= scope => NavCard(scope, entity, compact: false),
                 LibraryNavTemplate.CardCompact => _cardCompactT ??= scope => NavCard(scope, entity, compact: true),
-                _ => _slotT ??= scope => NavSlot(scope, entity, compact: false),
+                _ => _slotT ??= scope => NavSlot(scope, entity, compact: false, Nav),
             };
         }
     }
@@ -162,9 +171,37 @@ internal static partial class ClassicLibraryPage
         Width = p.LeftW(), Shrink = 1f, MinWidth = ClassicLibraryRules.LeftMin, Animate = Design.Reveal.Resize,
         // C-Library-Huge tints the navigator column over the card (the record's `NavTinted`); the tuned tiers leave it clear. A STATIC fill both ways (never a
         // bound one: a static <-> bound flip on this keyed node would never re-wire), eased across a crossing.
-        Fill = c.Layout.NavTinted ? ClassicLibraryRules.NavTint : ColorF.Transparent, BrushTransitionMs = Design.Motion.Fast,
+        Fill = c.Layout.NavTinted && c.Nav is null ? ClassicLibraryRules.NavTint : ColorF.Transparent, BrushTransitionMs = Design.Motion.Fast,
         Children = [Toolbar(p, c), p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c)],
     };
+
+    /// <summary>A borrowing structure's column (contract 1.109, <see cref="LibraryNavMetrics"/>): its lead air before <paramref name="column"/>, in ONE row that carries the navigator's
+    /// tint, so the column's edge stands on the structure's page column and a tier crossing glides it; <paramref name="fills"/> stretches a column that has no width of its own
+    /// across the rest of the row. Without one (Classic) the column is returned as it is.</summary>
+    static Element Led(PageCache c, string key, Element column, bool fills) => c.Nav is not { } nav ? column : new BoxEl
+    {
+        Key = key, Direction = 0, Grow = fills ? 1f : 0f, Shrink = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+        Fill = c.Layout.NavTinted && !fills ? ClassicLibraryRules.NavTint : ColorF.Transparent, BrushTransitionMs = Design.Motion.Fast,
+        Children = [nav.LeadAir, fills ? new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Children = [column] } : column],
+    };
+
+    /// <summary>Your Episodes' table in a borrowing structure's led column (contract 1.109): its row plates hang <see cref="LibraryNavMetrics.EpisodeArtLead"/> left of G so
+    /// their art stands on G (the column's edge is <see cref="LibraryNavMetrics.ItemLead"/> short of it), and its last ink ends on the page trail, an eased spacer as the reader's
+    /// is, so a tier crossing glides the right edge (contract 1.112). Without one (Classic) the table is returned as it is.</summary>
+    static Element SavedBody(LibraryPageProps p, PageCache c)
+    {
+        if (c.Nav is not { } nav) return p.SavedEpisodes();
+        float hang = nav.EpisodeArtLead > 0f ? nav.EpisodeArtLead : nav.RowArtLead;
+        return new BoxEl
+        {
+            Key = "lib:episodes", Direction = 0, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Margin = new Edges4(nav.ItemLead - hang, 0f, 0f, 0f),
+            Children =
+            [
+                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Children = [p.SavedEpisodes()] },
+                ClassicLibraryArtistReader.TrailAir(nav.PaneTrail),
+            ],
+        };
+    }
 
     /// <summary>The two column seams, each built ONCE into its cached field — so the key goes on at construction rather than through a per-render <c>with</c> clone. Both carry a bound
     /// <c>Fill</c> and a <c>Splitter</c> bound to their own width signal, which is the reason they may not be paired by ordinal with anything else.</summary>
@@ -254,14 +291,14 @@ internal static partial class ClassicLibraryPage
         bool artists = p.Entity == EntityKind.Artist;
         Element body;
         if (depth == 0)
-            body = new BoxEl
+            body = Led(c, "col:navrow", new BoxEl
             {
                 Key = "col:nav",   // keyed like its three alternatives; the "depth:N" wrapper already separates them
                 Direction = 1, Grow = 1f,
                 Children = [Toolbar(p, c), p.SavedEpisodesMode
-                    ? p.SavedEpisodes()
+                    ? SavedBody(p, c)
                     : (p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c))],
-            };
+            }, fills: true);
         else if (depth >= 2)
             body = Section with { Key = "col:tracks", Grow = 1f, Basis = 0f, Children = [TrackHits(p)] };
         else if (artists)

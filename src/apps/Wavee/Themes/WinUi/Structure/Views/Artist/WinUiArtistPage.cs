@@ -10,7 +10,7 @@
 //            └─ keyed child artist-body:<scope epoch>
 //               └─ SkelRegionEl (Reveal.Soft)
 //                  ├─ Content  Column [ the hero card · (Compact: the actions row) · the PIVOT (sticky) · the overview · the sections ]
-//                  └─ Shimmer  the SAME card over placeholders, the pivot's height, the overview's rows
+//                  └─ Shimmer  the SAME card over placeholders, the pivot's tabs as words, the overview's arrangement (WinUiArtistOverview.Skeleton)
 //
 // THE PIVOT (`WinUiArtistPivot`): a SelectorBar of Overview · Albums · Singles & EPs · Compilations · Appears on · About, sticky under the card (painting nothing: the content under it cuts itself at its foot) with a hairline,
 // the lit tab the core's scroll spy's answer. Its height, 41 with the hairline, is the tier policy's `BandClearance`: a pivot click parks the section's top exactly under it
@@ -59,8 +59,9 @@ internal static class WinUiArtistPage
 
         Element? body = p.BodyReady ? Compose(p, latch, tier, in facts) : null;
         // ONE region, and the shimmer is DERIVED (a representative tree at the loaded page's geometry, never mounted directly).
+        var shimmerFacts = facts;
         Element region = new SkelRegionEl(
-            Pending: p.Pending, Failed: p.Failed, Content: () => body ?? new BoxEl(), ShimmerSource: () => Shimmer(p, chart, tier),
+            Pending: p.Pending, Failed: p.Failed, Content: () => body ?? new BoxEl(), ShimmerSource: () => Shimmer(p, chart, tier, in shimmerFacts),
             OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: p.Retry),
             Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
 
@@ -155,9 +156,10 @@ internal static class WinUiArtistPage
 
     // ── the skeleton ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The derived shimmer's SOURCE: the same card over placeholders at the tier's real height, the pivot's row and the chart's own skeleton, so nothing shifts when
-    /// the content lands.</summary>
-    static Element Shimmer(ArtistPageProps p, ArtistChartStyle? chart, WidthTier tier)
+    /// <summary>The derived shimmer's SOURCE: the same card over placeholders at the tier's real height, the pivot's tabs as words in the pivot's height,
+    /// and the overview in its loaded arrangement (Popular as the chart's own skeleton beside the side column's cards, <see cref="WinUiArtistOverview.Skeleton"/>),
+    /// so the placeholders stand where the content lands, the right column included.</summary>
+    static Element Shimmer(ArtistPageProps p, ArtistChartStyle? chart, WidthTier tier, in TierFacts facts)
     {
         float inset = WinUiDetailRules.InsetOf(tier);
         float cardW = MathF.Max(1f, p.Width - 2f * inset);
@@ -168,16 +170,46 @@ internal static class WinUiArtistPage
             Padding = new Edges4(inset, WinUiDetailRules.InsetTopOf(tier), inset, WinUiArtistRules.HeroToPivot),
             Children = [WinUiArtistHero.Card(Artist.HeroText.Placeholder, "", null, cardW, tier, in acts)],
         };
-        Element chartShape = chart is null ? new BoxEl()
-            : chart.Skeleton(ArtistChartSkeletonArgs.For(0, !WinUiOptions.ArtworkInRows(), WinUiOptions.ArtworkInRows(), WinUiArtistTiers.ChartColumnsOf(tier), WinUiArtistTiers.ChartRowsOf(tier)));
         return new BoxEl
         {
             Direction = 1, EntranceGroup = true,   // a page that opens on its skeleton enters with the same stagger (WinUiPageMotion)
             Children =
             [
                 hero,
-                new BoxEl { Height = WinUiArtistRules.PivotClearance },
-                new BoxEl { Direction = 1, Padding = new Edges4(inset, WinUiArtistRules.OverviewTop, inset, 0f), Children = [chartShape] },
+                PivotShimmer(inset),
+                new BoxEl
+                {
+                    Direction = 1, Padding = new Edges4(inset, WinUiArtistRules.OverviewTop, inset, 0f),
+                    Children = [WinUiArtistOverview.Skeleton(p.Artist, p.Width, inset, tier, in facts, chart)],
+                },
+            ],
+        };
+    }
+
+    /// <summary>The pivot's shimmer: its tabs' words at the SelectorBar's item geometry (the item height, padding and gap; the word on the pill's lift),
+    /// over the hairline, in the pivot's clearance.</summary>
+    static Element PivotShimmer(float inset)
+    {
+        string[] labels =
+        [
+            Loc.Get(Strings.Theme.Winui.Detail.Overview), Loc.Get(Strings.Artist.Albums), Loc.Get(Strings.Artist.SinglesEps),
+            Loc.Get(Strings.Artist.Compilations), Loc.Get(Strings.Theme.Winui.Detail.About),
+        ];
+        var items = new Element[labels.Length];
+        for (int i = 0; i < labels.Length; i++)
+            items[i] = new BoxEl
+            {
+                Direction = 1, Height = WinUiArtistRules.PivotItemHeight, Padding = WinUiArtistRules.PivotItemPadding with { Bottom = WinUiArtistRules.PivotPillLift },
+                Justify = FlexJustify.End, Shrink = 0f,
+                Children = [R.Type.PivotLabel(labels[i]) with { MaxLines = 1 }],
+            };
+        return new BoxEl
+        {
+            Direction = 1, Height = WinUiArtistRules.PivotClearance, Padding = new Edges4(inset, 0f, inset, 0f), MinWidth = 0f,
+            Children =
+            [
+                new BoxEl { Direction = 0, Gap = WinUiArtistRules.PivotGap, Height = WinUiArtistRules.PivotItemHeight, MinWidth = 0f, ClipToBounds = true, Children = items },
+                new BoxEl { Height = WinUiArtistRules.PivotHairline, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) }.Skeletonized(false),
             ],
         };
     }

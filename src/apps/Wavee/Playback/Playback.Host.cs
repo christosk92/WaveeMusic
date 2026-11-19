@@ -338,6 +338,24 @@ public static partial class Playback
             Changed.Value = ++s_version;
         }
 
+        /// <summary>`--fake`'s roster (<see cref="UseFakeConnect"/>): the rows a cluster would put, every device inactive.</summary>
+        internal static void Seed(ReadOnlySpan<FakeConnectDevice> devices)
+        {
+            if (devices.Length > s_rows.Length) Array.Resize(ref s_rows, devices.Length);
+            for (int i = 0; i < devices.Length; i++)
+                s_rows[i] = new Row { Hash = DeviceHash(devices[i].Id), Id = devices[i].Id, Name = devices[i].Name, Kind = devices[i].Kind, Volume = devices[i].Volume };
+            for (int i = devices.Length; i < s_count; i++) s_rows[i] = default;
+            s_count = devices.Length;
+            Changed.Value = ++s_version;
+        }
+
+        /// <summary>`--fake`: the cluster's active flag moves to <paramref name="hash"/>.</summary>
+        internal static void MarkActive(ulong hash)
+        {
+            for (int i = 0; i < s_count; i++) s_rows[i].IsActive = s_rows[i].Hash == hash;
+            Changed.Value = ++s_version;
+        }
+
         static string Text(Spotify.Decode.ClusterBuffer buffer, TextRef reference)
         {
             var utf8 = buffer.Utf8(reference);
@@ -353,7 +371,7 @@ public static partial class Playback
     public static void Boot()
     {
         s_state = State.Initial;
-        s_state.EpisodeRate = ValidEpisodeSpeed(Platform.Settings.Get(s_episodeSpeedKey));
+        s_state.EpisodeRate = ValidEpisodeSpeed(Platform.Settings.Get(EpisodeSpeedKey));
         EpisodeSpeed.SetIfChanged(s_state.EpisodeRate);
         s_state.Us = DeviceHash(Platform.DeviceId);
         s_identity = new DeviceIdentity(
@@ -425,6 +443,15 @@ public static partial class Playback
         Snapshot snapshot = SnapshotForConnect(PublishReason.PickerOpened);
         Spotify.Connect.PublishNow(in snapshot, Spotify.Connect.PutReason.PickerOpened);
         Spotify.Api.Run(() => Spotify.Connect.WakeDevices(CancellationToken.None));
+    }
+
+    /// <summary>A device fact the wire reads changed outside the reducer (the private-session switch, <c>SettingsVerbs.SetPrivateSession</c>):
+    /// put this device's state again so the cluster sees it now, not at the next state change. Silent without a connection (the next
+    /// hello carries it). UI THREAD: the snapshot reads the reducer's state (C1).</summary>
+    public static void RepublishDeviceState()
+    {
+        if (Spotify.Current.ConnectionId.IsEmpty) return;
+        Announce(PublishReason.PlayerStateChanged);
     }
 
     static int s_hellos;
@@ -534,6 +561,7 @@ public static partial class Playback
         ClaimPhase claimBefore = s_state.Own.Claim;
         if (i.Kind == InputKind.Play && !i.Context.Equals(s_wireOriginContext)) s_wireOrigin = null;
         uint loadBefore = s_state.LoadEpoch;
+        if (i.Kind == InputKind.Next) HintFacts.Skipped();   // a local Next, read before the step moves the position (hints #4)
         Step(ref s_state, in i, ref s_fx);
         if (s_state.LoadEpoch != loadBefore && (s_fx.Load || s_fx.Adopt))
             WireStarted(PlayerSession.CauseOf(i.Kind == InputKind.Play, (ClaimCause)(byte)(i.LongArg & 0xFF), s_fx.TakeoverSeed));
@@ -1149,6 +1177,7 @@ public static partial class Playback
     /// second transfer while this one is in flight discards the first answer (C4).</summary>
     static void SendTransfer()
     {
+        if (FakeConnectActive) { AnswerFakeTransfer(s_fx.TransferTo, s_fx.TransferEpoch); return; }
         string target = Devices.IdOf(s_fx.TransferTo);
         if (target.Length == 0)
         {
@@ -1461,12 +1490,19 @@ public static partial class Playback
             Input.ExplicitPositionBit, nowMs: FrameNowMs()));
     }
 
-    public static void Next() => Post(Input.Next(FrameNowMs()));
-    public static void Previous()
+    /// <summary>Next and Previous take a <c>cause</c> like play/pause (below): the UI entry that pressed it. ALWAYS-ON
+    /// attribution, one line per press. A skip is the one transport change a log could not otherwise tell from a natural end or a
+    /// fault: on 2026-11-17 two audiobook chapter changes right after a seek read as "a seek advanced the chapter", and only the
+    /// reducer's end position (the playhead, where a natural end reports the duration) said a skip had run.</summary>
+    public static void Next(string cause) { LogSkip(cause, "next"); Post(Input.Next(FrameNowMs())); }
+    public static void Previous(string cause)
     {
+        LogSkip(cause, "previous");
         s_previousPressedMs = Environment.TickCount64;
         Post(Input.Prev(FrameNowMs()));
     }
+
+    static void LogSkip(string cause, string action) => Log.Info("playback", "skip cause=" + cause + " action=" + action);
 
     static long s_previousPressedMs = long.MinValue / 2;
 
@@ -1488,6 +1524,7 @@ public static partial class Playback
     public static void Resume(string cause) { LogPlayPause(cause, resume: true); Post(Input.Resume(FrameNowMs())); }
     public static void TogglePlay(string cause)
     {
+        HintFacts.PlayPauseAsked(cause);   // the bar button's clicks (hints #13)
         bool resume = !s_state.IsPlaying;
         LogPlayPause(cause, resume);
         Post(resume ? Input.Resume(FrameNowMs()) : Input.Pause(FrameNowMs()));
@@ -1506,7 +1543,24 @@ public static partial class Playback
     public static void ScrubEnd(int ms) => Post(Input.ScrubEnd(ms, FrameNowMs()));
     public static void ScrubCancel() => Post(Input.ScrubCancel());
     public static void GoLive() => Post(Input.GoLive(FrameNowMs()));
-    public static void SetVolume(float linear01) => Post(Input.Volume(linear01, FrameNowMs()));
+    public static void SetVolume(float linear01)
+    {
+        HintFacts.VolumeMoved();   // only user actions call this (hints #5)
+        Post(Input.Volume(linear01, FrameNowMs()));
+    }
+
+    /// <summary>THIS device's own volume, 0..1 linear (the slider's while we play; ours, not the foreign owner's, while another device
+    /// does). The shelf's song preview plays at its taper. A read of the reducer's state: one float.</summary>
+    public static float LocalVolume => s_state.Volume;
+
+    /// <summary>The song preview's duck on THIS device's output (Home/SpineShelf/PreviewAudio.cs): a gain stage multiplied onto the local
+    /// audio and video players' amplitude. It never goes through the reducer, so it is never persisted, published or sent to a Connect
+    /// device, and the user's volume (the slider, <see cref="Volume"/>, the saved setting) never sees it. 1 = none.</summary>
+    public static void SetPreviewDuck(float gain)
+    {
+        Audio.SetDuck(gain);
+        Video.SetDuck(gain);
+    }
 
     /// <summary>The exit tail's one call (V-PA11): write a volume change the reducer's 500 ms debounce has not persisted yet,
     /// so the last slider move before closing the window is never lost. A no-op when nothing is pending. After the loop

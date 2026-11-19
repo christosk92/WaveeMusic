@@ -43,16 +43,18 @@ public readonly partial struct User
         => picker
             ? ViewSlots.View(Contracts.ViewKeys.LikedCoverPicker, new Contracts.LikedCoverPickerProps
             {
-                Size = size, Radius = radius, MorphKey = morphKey,
+                Size = size, Radius = radius, MorphKey = null,   // the art carries the flight tag (below), whole
                 Art = LikedCover(size, radius, picker: false, morphKey),
                 Flyout = static () => Embed.Comp(static () => new LikedCoverStyleFlyout()),
             }) with
             {
                 Key = "liked-cover-pick" + (morphKey is { Length: > 0 } pm ? ":" + pm : ""),
             }
-            : Embed.Comp(new LikedArtProps(size, radius, morphKey), static () => new LikedCoverArt()) with
+            : Embed.Comp(new LikedArtProps(size, radius, null), static () => new LikedCoverArt()) with
             {
                 Key = "liked-cover" + (morphKey is { Length: > 0 } cm ? ":" + cm : ""),
+                // The connected navigation flight carries the cover whole (its gradient, heart and tiles are one picture).
+                MorphId = Design.MorphKeys.Whole(morphKey),
             };
 
     /// <summary>The cover's geometry, re-pushed on every parent render (equal values coalesce).</summary>
@@ -75,6 +77,16 @@ public readonly partial struct User
     }
 
     static readonly string[] s_anchorScratch = new string[LikedCoverRules.MaxTiles];
+
+    /// <summary>The newest liked cover's url (the first distinct tile), or null: Liked Songs' art where a slot holds one image of no known size (a fill
+    /// cell collapses a cover-less container to its first tile, <c>Controls.ArtworkFill</c>). Subscribes the calling render to the liked relation, so
+    /// the cell follows a new like. UI thread.</summary>
+    public static string? LikedNewestTileUrl()
+    {
+        _ = Entities.ScopeEpoch.Value;
+        _ = Entities.Current.Edges.Liked.Changed.Value;
+        return FillLikedTiles(s_anchorScratch) > 0 ? s_anchorScratch[0] : null;
+    }
 
     /// <summary>The newest-first distinct liked cover urls, written into <paramref name="into"/>. UI thread.</summary>
     static int FillLikedTiles(string[] into)
@@ -199,6 +211,8 @@ public readonly partial struct User
     /// <summary>A component so it re-renders on the appearance bump and the checked card tracks the value that PERSISTED (E15).</summary>
     sealed class LikedCoverStyleFlyout : Component
     {
+        static readonly SettingsDial s_likedCoverDial = SettingsSpec.Dial("appearance.likedCover");
+
         readonly string[] _scratch = new string[LikedCoverRules.MaxTiles];
         LikedSnapshot? _last;
         readonly Func<LikedSnapshot> _compute;
@@ -222,7 +236,9 @@ public readonly partial struct User
             };
             // E4: opening the picker is the SECOND thing that charges the liked-list warm.
             _demand = DemandLikedCover;
-            _apply = Apply;
+            // The Settings dial's own writer, recorded as written from Liked Songs (idempotent and cheap: the strip roves, and a rove's record is a
+            // ring slot updated in place).
+            _apply = static i => s_likedCoverDial.WriteChoice(i, SettingsSurfaces.LikedCover);
         }
 
         public override Element Render()
@@ -232,29 +248,8 @@ public readonly partial struct User
             return ViewSlots.View(Contracts.ViewKeys.LikedCoverStyleFlyout, new Contracts.LikedCoverStyleFlyoutProps
             {
                 Tiles = snap.Tiles, TileKey = snap.TileKey, TrackCount = snap.TrackCount,
-                Selected = IndexOf(LikedCoverRules.PickerOrder, snap.Requested), Apply = _apply,
+                Selected = LikedCoverRules.PickerIndexOf(snap.Requested), Apply = _apply,
             });
-        }
-
-        /// <summary>Idempotent and cheap, which it MUST be: the strip fires on every keyboard rove (selection follows focus),
-        /// and roving IS the preview — the cover behind the flyout repaints on the bump.</summary>
-        static void Apply(int i)
-        {
-            var order = LikedCoverRules.PickerOrder;
-            if ((uint)i >= (uint)order.Length) return;
-            Prefs.Appearance.Set(Platform.Keys.LikedCoverStyle, LikedCoverRules.ToSetting(order[i]));
-        }
-
-        /// <summary>The persisted style's slot, or Stock's (a hand-edited value this build does not define reads as Stock).</summary>
-        static int IndexOf(LikedCoverStyle[] order, LikedCoverStyle style)
-        {
-            int stock = 0;
-            for (int i = 0; i < order.Length; i++)
-            {
-                if (order[i] == style) return i;
-                if (order[i] == LikedCoverStyle.Stock) stock = i;
-            }
-            return stock;
         }
     }
 }

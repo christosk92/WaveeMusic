@@ -7,13 +7,13 @@
 // check lane. `StyleKeys.EpisodeRow` carries the three pieces the core row composes: the CONTENT (a bound slot's tree), the SEED (the
 // cold skeleton's twin, figure-space bars in the real geometry) and the FAILURE row (the unavailable copy and Retry).
 //
-// ONE ROW, BOUND. The content is built ONCE per slot (the list's template, re-run only when the slot's kind or the reader's width arm
+// ONE ROW, BOUND. The content is built ONCE per slot (the list's template, re-run only when the slot's kind or the list's width arm
 // flips), and every per-episode value is a bind over the slot's equality-gated `RowItem` (the handle, its row version and the host's
-// marks), so a recycle re-binds and allocates nothing. The visit head's handful of eager rows reuse the SAME template over a fixed
-// scope (`Episode.Fixed`), so they are the list's pixels.
+// marks), so a recycle re-binds and allocates nothing. The seed and failure rows reuse the SAME template over a fixed scope
+// (`Episode.Fixed`), so they are the list's pixels.
 //
 // WHAT THE CORE KEEPS. `Episode.ReaderRow` (the reveal gate: pending -> the seed, failed -> the failure row, ready -> the content;
-// `SkelRegionEl` over `ReaderLoadState`), the row's own decisions (`PlayedOf`, `InProgressOf`, `LeftOf`, `IsNew`, `ShownTitle`, the
+// `SkelRegionEl` over `ReaderLoadState`), the row's own decisions (`PlayedOf`, `InProgressOf`, `LeftOf`, `ShownTitle`, the
 // completion rule `ReaderPct`: a completed episode reads 1, so "played", the rule and the host's filter and ledger never disagree),
 // the verbs (`RowContext`: the disc's play, the row's open, the menu, the selection seam) and the host that builds the context. The
 // template draws and never names `Playback`, `Entities` or `Store` (WVTH002); numbers are `Rules\WinUiEpisodeRowLayout.cs` (WVTH003).
@@ -35,13 +35,15 @@ namespace Wavee.Themes.WinUi;
 
 using RowContext = global::Wavee.Episode.RowContext;
 using RowItem = global::Wavee.Episode.RowItem;
-using RowMarks = global::Wavee.Episode.RowMarks;
 
 /// <summary>WinUI's style for the episode row.</summary>
 internal static class WinUiEpisodeRow
 {
     /// <summary>The style WinUI registers under <c>StyleKeys.EpisodeRow</c>. Stateless: every host and a test share it.</summary>
     public static readonly EpisodeRowStyle Style = new(Content, Seed, Failure);
+
+    /// <summary>Where the row stands its art in from its plate: the tone bar's lane and its air (the library's Your Episodes hangs the plate this far left of G).</summary>
+    public const float ArtLead = Episode.RowPadX + Episode.ToneBarWidth + WinUiEpisodeRowLayout.ToneAir;
 
     static readonly ContextMenuOptions s_menuOptions = new();
 
@@ -82,7 +84,7 @@ internal static class WinUiEpisodeRow
     static BoxEl RowGrid(Element art, Element copy, Element actions) => new()
     {
         Direction = 0, Gap = Episode.RowGap, AlignItems = FlexAlign.Start, MinWidth = 0,
-        Padding = new Edges4(Episode.RowPadX + Episode.ToneBarWidth + 8f, Episode.RowPadY, Episode.RowPadX, Episode.RowPadY), Children = [art, copy, actions],
+        Padding = new Edges4(ArtLead, Episode.RowPadY, Episode.RowPadX, Episode.RowPadY), Children = [art, copy, actions],
     };
 
     static Element ReaderRowContent(in BoundItemScope<RowItem> item, RowContext ctx, bool narrow, bool seed)
@@ -109,11 +111,11 @@ internal static class WinUiEpisodeRow
             OnClick = item.Invoke(r => open(r.Episode)),
             Children =
             [
-                // The top hairline, dropped under a month header (the prototype's `.group + .erow`).
+                // The top hairline.
                 new BoxEl
                 {
                     Height = 1f, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                    Fill = Tok.StrokeDividerDefault, Visible = item.Show(static r => (r.Marks & RowMarks.NoRule) == 0),
+                    Fill = Tok.StrokeDividerDefault,
                 },
                 // NOW PLAYING: the 3-DIP tone bar on the row's left edge, inset by the row's own padding.
                 new BoxEl
@@ -227,8 +229,6 @@ internal static class WinUiEpisodeRow
                 with { Visible = item.Show(static r => (Episode.FlagsOf(r.Episode) & EpisodeFlags.Video) != 0) },
             Controls.Chip(Loc.Get(Strings.Podcast.Badge.Subscribers), LockGlyph)
                 with { Visible = item.Show(static r => (Episode.FlagsOf(r.Episode) & EpisodeFlags.Paywalled) != 0) },
-            // "New" on the subtle chip (W-Show), never the letter-spaced bold word.
-            Controls.Chip(Loc.Get(Strings.Podcast.New)) with { Visible = item.Show(static r => Episode.IsNew(in r)) },
             new TextEl(item.Text(static r => Episode.LeftOf(r.Episode)))
             {
                 Size = Ui.Caption("").Size, LineHeight = Ui.Caption("").LineHeight,

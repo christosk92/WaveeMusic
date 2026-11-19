@@ -116,6 +116,9 @@ public static class ClassicQueueRules
     /// <summary>The Autoplay rows' dim on the stage.</summary>
     public const float StageAutoplayDim = 0.68f;
 
+    /// <summary>The stage column's crossfade length link: as tall as a switch's touch row.</summary>
+    public const float StageLinkMinH = 40f;
+
     /// <summary>The Autoplay switch's least width, and the empty sentence's text (size, line height).</summary>
     public const float SwitchMinW = 40f, EmptySize = 14f, EmptyLine = 20f;
 }

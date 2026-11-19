@@ -35,6 +35,67 @@ public static partial class Entities
 {
     static partial void SeedLibrarySurfaces(long now0) => LibrarySeed.Run(now0);
 
+    // ── the fake Tune (Spotify.PlaylistEdits.Tune under --fake) ─────────────────────────────────────────────────────────────────
+    // There is no account to POST /signals with, so the seed's tunable mix rebuilds itself the way the reply would: after the reply's
+    // flight (wall clock, as the fake catalogue answers), a choice swaps the list for other seed tracks (the seed song stays first) and
+    // lights that choice; the reset puts the seed's own list back, untuned.
+
+    /// <summary>The wall-clock flight of a fake Tune reply: long enough that the strip's working state shows.</summary>
+    const int FakeTuneMs = 700;
+
+    /// <summary>Each tuned playlist's seed list, kept at its first tune, for the reset.</summary>
+    static readonly Dictionary<int, int[]> s_fakeTuneSeed = [];
+
+    /// <summary>Rebuild the fake mix <paramref name="p"/> toward <paramref name="identifier"/> (a choice, or the reset) after
+    /// <see cref="FakeTuneMs"/>; <paramref name="settled"/> hears whether it landed. UI THREAD in and out.</summary>
+    internal static void FakeTune(global::Wavee.Playlist p, string identifier, Action<bool>? settled)
+    {
+        if (!p.IsValid || identifier.Length == 0) { settled?.Invoke(false); return; }
+        int slot = p.Slot;
+        var scope = Current;
+        _ = System.Threading.Tasks.Task.Delay(FakeTuneMs).ContinueWith(_ => Spotify.Post(() =>
+        {
+            if (!ReferenceEquals(scope, Current)) return;
+            settled?.Invoke(ApplyFakeTune(new global::Wavee.Playlist(slot), identifier));
+        }), System.Threading.Tasks.TaskScheduler.Default);
+    }
+
+    static bool ApplyFakeTune(global::Wavee.Playlist p, string identifier)
+    {
+        if (!p.IsValid) return false;
+        // Copied out first: the options run is replaced by the write below (the Edges.cs span rule).
+        var options = p.TuningOptions.ToArray();
+        int choice = -1;
+        bool reset = false;
+        for (int i = 0; i < options.Length; i++)
+        {
+            if (Strings.Resolve(options[i].Identifier) != identifier) continue;
+            if ((TuningOptionKind)options[i].Kind == TuningOptionKind.Reset) reset = true; else choice = i;
+            break;
+        }
+        if (choice < 0 && !reset) return false;
+        if (!s_fakeTuneSeed.TryGetValue(p.Slot, out var seed)) s_fakeTuneSeed[p.Slot] = seed = p.TrackSlots.ToArray();
+        var targets = new int[seed.Length];
+        if (reset || seed.Length == 0) seed.CopyTo(targets, 0);
+        else
+        {
+            targets[0] = seed[0];
+            for (int k = 1; k < targets.Length; k++)
+            {
+                int slot = ResolveSeedSlot(EntityKind.Track, TrackUri(FakeTunePoolStart + (k * 7 + choice * 13) % FakeTunePool));
+                targets[k] = slot > Table.None ? slot : seed[k];
+            }
+        }
+        p.ApplyMembership(targets, default);
+        p.Refold();
+        p.ApplyTuning(options, reset ? StringId.Empty : options[choice].Identifier, 0u);
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>Where a fake tune draws its tracks from: a run of the liked seed past the mixes' own.</summary>
+    const int FakeTunePoolStart = 40, FakeTunePool = 100;
+
     /// <summary>Owner O's seed, namespaced so its helpers cannot collide with the other owners' seed partials. Inside it
     /// <c>Track</c>, <c>Playlist</c>, <c>User</c> … are Entities' FACTORY METHODS, so the handle types are spelled
     /// <c>global::Wavee.*</c>.</summary>

@@ -1,20 +1,19 @@
 // ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Theme.cs — the theme picker and the active theme's options (themes plan 8.1-8.2, T1b; T11b) ──
 //
 // From `Screens\Settings.UI.Theme.cs`. Settings › Appearance, the theme half: the THEME PICKER (one card per installed theme, driven by `ThemePickerFacts`) and
-// the ACTIVE THEME'S OPTIONS (one expander: "‹Theme› options", its rows grouped; the grouping, the visibility and the legacy rows a structure still binds are the
-// core's `SettingsThemeOptions`, this file draws them). The setup wizard's Theme step draws the same two views through their own keys
-// (`Settings.ThemePicker`, `Settings.ThemeOptions`); the sidebar layout is a generated Cards row of the options (M7a), drawn with the preview cards of
-// `ClassicSettings.Appearance.cs`.
+// the ACTIVE THEME'S OPTIONS (one expander: "‹Theme› options", its rows grouped by the option's own group). On the page the options are the registry's "‹Theme›
+// options" group (`SettingsPageProps.Body`: each option a dial keyed as its row, the legacy rows the structure lists, the sidebar notes riding their rows);
+// the setup wizard's Theme step draws the same two views through their own keys (`Settings.ThemePicker`, `Settings.ThemeOptions`, the wizard's rows from
+// `SettingsThemeOptions`). The sidebar layout is a generated Cards row of the options (M7a), drawn with the preview cards of `ClassicSettings.Appearance.cs`.
 //
-// WHAT THIS FILE NEVER DOES: name a theme. The picker draws `ThemePickerEntry` data; the options expander draws whatever `SettingsOptionsView` holds (a theme
-// with no options gets one quiet row; one with only legacy rows gets them). A legacy row is drawn by its SettingsDoc id (`LegacyItem`): the id is the theme's,
-// the control is the page's.
+// WHAT THIS FILE NEVER DOES: name a theme. The picker draws `ThemePickerEntry` data; the options expander draws whatever the group holds. A legacy row is drawn
+// by its dial id (`LegacyItem`): the id is the theme's, the control is the page's.
 //
-// NO LAYOUT JUMPS. A picker card has one fixed size whatever its text (name: one line, description: two, ellipsised) and whatever its preview (a miniature when
-// the preview asset is missing, the image over it when present). When a row appears or disappears (the rail rows follow the page layout, a `VisibleWhen`
+// NO LAYOUT JUMPS. A picker card has one fixed size whatever its text (name: one line, description: two, ellipsised) and whether or not its still has decoded
+// yet (the still fades in over the thumbnail's plate, in a box of the same size). When a row appears or disappears (the rail rows follow the page layout, a `VisibleWhen`
 // option follows its condition) the group around it tweens its height, so everything below eases instead of snapping; an expander opens and closes on the
-// engine's own motion. Rows carry no Enter/Exit of their own: the engine seeds an Enter on every MOUNT, which would fade the whole tab in on each tab switch
-// (production swaps tab bodies with no transition).
+// engine's own motion. Rows carry no Enter/Exit of their own: the engine seeds an Enter on every MOUNT, which would fade the whole category in on each switch
+// (the page swaps category bodies with its own cross-fade).
 //
 // FROZEN CONTROL INPUTS. A ComboBox freezes its items, signal and onChange at mount, a Slider its signal: the option combo, slider and colour picker are
 // therefore tiny components that keep one stable signal in step with the live option value through an effect (`GeneratedOptionRow.Live`), exactly as the zoom and
@@ -30,7 +29,6 @@ using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
-using Tab = Wavee.Settings.Tab;
 
 namespace Wavee.Themes.Classic;
 
@@ -41,10 +39,10 @@ internal static partial class ClassicSettings
     /// <summary>The registered template of <see cref="ViewKeys.SettingsThemePicker"/>.</summary>
     public static Element ThemePickerTemplate(SettingsThemePickerProps props, in ViewContext ctx) => ThemePickerView();
 
-    /// <summary>The registered template of <see cref="ViewKeys.SettingsThemeOptions"/>: the page's expander, or the wizard's plate rows (an empty
-    /// element while the theme has nothing to pick there; the wizard step does not place it then).</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.SettingsThemeOptions"/>: the wizard's plate rows (an empty element while the theme has nothing
+    /// to pick there; the wizard step does not place it then). The Settings page draws its options from the registry's group (<see cref="ThemeOptionsBlock"/>).</summary>
     public static Element ThemeOptionsTemplate(SettingsThemeOptionsProps props, in ViewContext ctx)
-        => props.Wizard ? WizardThemeOptions() ?? new BoxEl() : ThemeOptionsExpander();
+        => props.Wizard ? WizardThemeOptions() ?? new BoxEl() : new BoxEl();
 
     // ══ 1. THE THEME PICKER ═══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -113,12 +111,12 @@ internal static partial class ClassicSettings
     }
 
     /// <summary>The pick. The picked theme's root mounts fresh (owner Q26: nothing carried), so the Settings page opens again ON Appearance, with the
-    /// picker as its first row, instead of on General.</summary>
+    /// picker as its first row, instead of on its home.</summary>
     static void PickTheme(int index)
     {
         if (SettingsVerbs.ThemeIndex() == index) return;
-        Settings.OpenNextMountOn(Settings.Area.Appearance);
-        if (D(Tab.Appearance, "themePicker").Writer.Choose!(index)) Settings.Bump();
+        Settings.OpenNextMountOn("appearance");
+        if (Dial("appearance.theme").Writer.Choose!(index)) Settings.Bump();
     }
 
     /// <summary>The group's row and columns in the tier's form: the same nodes in every form, only their props differ.</summary>
@@ -206,73 +204,29 @@ internal static partial class ClassicSettings
 
     static Element DeveloperTag() => Tag(Loc.Get(Strings.Settings.ThemePicker.Developer), Tok.FillSubtleSecondary, Tok.TextSecondary);
 
-    /// <summary>The preview: the theme's preview image over a UI-native miniature (so a missing asset, the state of every theme
-    /// until it ships one, leaves a thumbnail of the same size, and the image fades in over it instead of replacing a blank).</summary>
+    /// <summary>The preview: the theme's still for this app mode (<see cref="ThemePreviews"/>: its Home from the window's top-left corner), fading in over the
+    /// box's plate when the decode lands, in a box of the same size.</summary>
     static Element ThemeThumbnail(ThemePreview preview, ClassicSettingsLayout layout)
     {
-        var layers = new List<Element>(2) { ThemeMiniature(layout.PickerThumbH) };
-        string asset = R.IsLight ? preview.LightAsset : preview.DarkAsset;
-        if (PreviewPath(asset) is { } path)
-            layers.Add(new ImageEl
+        Element[] still = ThemePreviews.PathOf(preview, R.IsLight) is { } path
+            ? [ThemePreviews.Layer(path) with
             {
-                Source = path, Fit = ImageFit.Cover, Height = layout.PickerThumbH, AlignSelf = FlexAlign.Stretch,
-                DecodePx = ClassicSettingsRules.PreviewDecodePx, Placeholder = ColorF.Transparent,
-                RevealTransition = ImageTransition.Fade(ClassicSettingsRules.PreviewFadeMs),
-            });
+                Height = layout.PickerThumbH, DecodePx = ClassicSettingsRules.PreviewDecodePx, RevealTransition = ImageTransition.Fade(ClassicSettingsRules.PreviewFadeMs),
+            }]
+            : [];
         return new BoxEl
         {
             ZStack = true, Height = layout.PickerThumbH, Shrink = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true,
-            Fill = Tok.FillSolidBase, Children = layers.ToArray(),
-        };
-    }
-
-    static readonly Dictionary<string, string?> s_previewPaths = new(StringComparer.Ordinal);
-
-    /// <summary>The full path of a preview asset when it ships next to the exe, else null. Looked up once per asset.</summary>
-    static string? PreviewPath(string asset)
-    {
-        if (asset.Length == 0) return null;
-        if (s_previewPaths.TryGetValue(asset, out var known)) return known;
-        string? path = null;
-        try
-        {
-            string candidate = Path.Combine(AppContext.BaseDirectory, "assets", asset.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(candidate)) path = candidate;
-        }
-        catch (Exception) { path = null; }
-        s_previewPaths[asset] = path;
-        return path;
-    }
-
-    /// <summary>A window in miniature drawn from the live tokens: a navigation column, a content plate with a title bar in
-    /// the accent and two skeleton lines (the board's thumbnail). Proportions are flex ratios, so it fills any card.</summary>
-    static Element ThemeMiniature(float height)
-    {
-        Element Line(float fillGrow, float restGrow, ColorF fill) => new BoxEl
-        {
-            Direction = 0, Height = Spacing.S, Shrink = 0f, AlignSelf = FlexAlign.Stretch,
-            Children = [new BoxEl { Grow = fillGrow, Basis = 0f, Corners = CornerRadius4.All(2f), Fill = fill }, new BoxEl { Grow = restGrow, Basis = 0f }],
-        };
-        return new BoxEl
-        {
-            Direction = 0, Height = height, AlignSelf = FlexAlign.Stretch, Shrink = 0f,
-            Children =
-            [
-                new BoxEl { Grow = 26f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillLayerAlt },
-                new BoxEl
-                {
-                    Grow = 74f, Basis = 0f, MinWidth = 0f, Direction = 1, Gap = Spacing.S, Fill = Tok.FillCardDefault,
-                    Padding = new Edges4(Spacing.M, Spacing.L, Spacing.M, 0f), Corners = new CornerRadius4(6f, 0f, 0f, 0f),
-                    Children = [Line(40f, 60f, Tok.AccentDefault), Line(80f, 20f, Tok.TextTertiary with { A = 0.3f }), Line(55f, 45f, Tok.TextTertiary with { A = 0.3f })],
-                },
-            ],
+            Fill = Tok.FillSolidBase, Children = still,
         };
     }
 
     // ══ 2. THE ACTIVE THEME'S OPTIONS ═════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The options expander (or its quiet one-row stand-in for a theme with nothing to configure).</summary>
-    static Element ThemeOptionsExpander() => Embed.Comp(static () => new ThemeOptionsCard());
+    /// <summary>The page's "‹Theme› options" group as Classic's one expander (C-Settings): its rows grouped by the option's own group, each keyed as its dial.</summary>
+    static Element ThemeOptionsBlock(SettingsBodyGroup group) => Embed.Comp(new OptionsProps(group), static () => new ThemeOptionsCard());
+
+    sealed record OptionsProps(SettingsBodyGroup Group);
 
     /// <summary>The wizard's options: the same rows as plate cards under their group labels, without the actions (a wizard step
     /// resets nothing) and without the legacy rows. Null when the theme offers nothing to pick. Call it from a render: it subscribes
@@ -303,40 +257,57 @@ internal static partial class ClassicSettings
         public List<(string Key, Element Row)> Rows { get; } = new(4);
     }
 
+    /// <summary>The options expander: a group label per option group, its rows under it with a hairline between neighbours, the sidebar's notes riding their
+    /// rows, "Reset options" last. It opens at its first draw and a link to an option opens it again.</summary>
     sealed class ThemeOptionsCard : SettingsComponent
     {
         public override Element Render()
         {
             UseLayout();
+            var group = UseProps<OptionsProps>().Group;
             var facts = SettingsFacts.Live;
-            SettingsOptionsView view = SettingsThemeOptions.Current(wizard: false);
-            string title = Strings.Settings.ThemeOptions.Title(Loc.Get(view.NameKey));
-            string glyph = SectionGlyph(Tab.Appearance, ThemeOptionsSection.SectionTitle);
-            List<OptionGroup> groups = DrawGroups(view, facts, wizard: false);
-
-            // A theme with nothing to configure keeps the row (and its height) and says so; no chevron to nowhere.
-            if (groups.Count == 0)
-                return Row(title, Loc.Get(Strings.Settings.ThemeOptions.None), null, glyph) with { Key = "settings:theme:options" };
+            var groups = new List<OptionGroup>(6);
+            Element? reset = null;
+            foreach (SettingsBodyRow row in group.Rows)
+            {
+                if (row.Subgroup is not { } title)
+                {
+                    if (row.Dial.Confirm is not null) reset = Framed(row, ResetItem(row.Dial, facts), item: true);
+                    continue;
+                }
+                OptionGroup? into = null;
+                foreach (OptionGroup g in groups)
+                    if (string.Equals(g.Title, title, StringComparison.Ordinal)) { into = g; break; }
+                if (into is null) groups.Add(into = new OptionGroup(title));
+                if (row.NoteBefore is { } before) into.Rows.Add((before.Key, NoteItem(before)));
+                Element? item = row.Option is { } generated ? GeneratedItem(generated, facts, wizard: false, row.Explain) : LegacyItem(row.Id, row.Dial, facts);
+                if (item is { } drawn) into.Rows.Add(("opt:" + row.Id, Framed(row, drawn, item: true)));
+                if (row.NoteAfter is { } after) into.Rows.Add((after.Key, NoteItem(after)));
+            }
 
             var items = new List<Element>(groups.Count + 1);
             var titles = new List<string>(groups.Count);
-            foreach (OptionGroup group in groups)
+            foreach (OptionGroup g in groups)
             {
-                titles.Add(group.Title);
-                items.Add(GroupBox(group));
+                titles.Add(g.Title);
+                items.Add(GroupBox(g));
             }
-            if (view.Reset is { } reset) items.Add(ResetItem(reset, facts));
+            if (reset is { } r) items.Add(r);
 
             return SettingsExpander.Create(new SettingsExpander.Options
             {
-                Header = title,
+                Header = group.Title,
                 Description = string.Join("  ·  ", titles),
-                HeaderIcon = glyph,
+                HeaderIcon = Icons.Design,
                 Items = items,
-                InitiallyExpanded = true,
+                IsExpanded = ExpandCell(OptionsCell, true),
             }) with { Key = "settings:theme:options" };
         }
     }
+
+    /// <summary>A note an option row carries (the sidebar layout file could not be read, what a migration dropped).</summary>
+    static Element NoteItem(SettingsBodyNote note)
+        => Item(note.Title, note.Text ?? "", null, icon: note.Glyph == "Warning" ? Icons.Warning : Icons.Info);
 
     /// <summary>The core's grouped options drawn: a row per entry (a legacy row by its document id, a generated row by its kind, the sidebar's two notes).
     /// A legacy id this page has no control for is left out (and logged once by <see cref="LegacyItem"/>) rather than drawn blank.</summary>
@@ -358,7 +329,7 @@ internal static partial class ClassicSettings
                         break;
                     case SettingsOptionItemKind.Legacy:
                     {
-                        SettingsRow row = item.Row!;
+                        SettingsDial row = item.Row!;
                         if (LegacyItem(row.Id, row, facts) is { } legacy) group.Rows.Add((item.Key, legacy));
                         break;
                     }
@@ -400,7 +371,7 @@ internal static partial class ClassicSettings
     };
 
     /// <summary>"Reset options": confirmed like every destructive action (N11), greyed while nothing is stored.</summary>
-    static Element ResetItem(SettingsRow reset, ISettingsFacts facts)
+    static Element ResetItem(SettingsDial reset, ISettingsFacts facts)
     {
         bool enabled = reset.Enabled(facts).Enabled;
         string? sub = reset.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
@@ -408,7 +379,7 @@ internal static partial class ClassicSettings
         Element button = StdButton(Loc.Get(confirm.PrimaryKey), () =>
             ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey),
                 () => { if (reset.Writer.Run!()) Settings.Bump(); }), isEnabled: enabled);
-        return OptionRowBox("opt:reset", Item(Loc.Get(reset.TitleKey), sub, button, isEnabled: enabled, icon: Icons.Undo), divider: false);
+        return Item(Loc.Get(reset.TitleKey), sub, button, isEnabled: enabled, icon: Icons.Undo);
     }
 
     // ── a card in the expander (Item) or on the wizard's plate (Row) ────────────────────────────────────────────────────
@@ -422,24 +393,31 @@ internal static partial class ClassicSettings
             : Item(title, sub, control, align, isEnabled, clickable, onClick, icon);
     }
 
-    // ── the legacy rows (SettingsDoc rows bound to today's keys) ────────────────────────────────────────────────────────
-
-    /// <summary>The control of a row a structure still binds to a legacy key. An id this page has no control for is left out
-    /// (and logged) rather than drawn blank.</summary>
-    static Element? LegacyItem(string id, SettingsRow row, ISettingsFacts facts)
+    /// <summary>An option's control with its explanation badge in front (a picker's cards under the badge).</summary>
+    static Element? OptionBadged(GeneratedOptionRow g, SettingsExplainInfo? explain, Element? control, bool vertical)
     {
-        string title = Loc.Get(row.TitleKey);
-        string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
-        string? icon = row.GlyphRole is { } glyph ? Glyph(glyph) : null;
-        bool enabled = row.Enabled(facts).Enabled;
+        if (explain is null || control is null || !vertical) return Badged(g.Row.Id, explain, control);
+        return new BoxEl
+        {
+            Direction = 1, Gap = Spacing.S, AlignItems = FlexAlign.Start, MinWidth = 0f,
+            Children = [Badged(g.Row.Id, explain, null)!.Value, control.Value],
+        };
+    }
+
+    // ── the legacy rows (the dials a structure lists, bound to today's keys) ────────────────────────────────────────────────────────
+
+    /// <summary>The control of a row a structure still binds to a legacy key (by its dial id). An id this page has no control for is left out
+    /// (and logged) rather than drawn blank.</summary>
+    static Element? LegacyItem(string id, SettingsDial row, ISettingsFacts facts)
+    {
         switch (id)
         {
-            case "sidebarReset":
-                return Embed.Comp(static () => new SidebarActionItem("sidebarReset", Icons.Undo));
-            case "sidebarCustomize":
-                return Embed.Comp(static () => new SidebarActionItem("sidebarCustomize", Icons.Edit));
-            case "sidebarResetEverything":
-                return Embed.Comp(static () => new SidebarActionItem("sidebarResetEverything", Icons.Delete));
+            case "appearance.option.sidebar.reset":
+                return Embed.Comp(static () => new SidebarActionItem("appearance.option.sidebar.reset", Icons.Undo));
+            case "appearance.option.sidebar.customize":
+                return Embed.Comp(static () => new SidebarActionItem("appearance.option.sidebar.customize", Icons.Edit));
+            case "appearance.option.sidebar.resetEverything":
+                return Embed.Comp(static () => new SidebarActionItem("appearance.option.sidebar.resetEverything", Icons.Delete));
 
             default:
                 Log.Warn("settings", "theme options: no control for the legacy row '" + id + "'; it is left out");
@@ -450,7 +428,7 @@ internal static partial class ClassicSettings
     /// <summary>The sidebar layout option (<see cref="ClassicStructure.Sidebar"/>): the preview cards (Classic · Library) under the row's title instead of the
     /// generic text cards. Subscribes to the sidebar's layout signals, so a change made on the pane itself shows here live; while the sidebar is being edited the
     /// cards say why they do not switch.</summary>
-    sealed class SidebarLayoutOption(GeneratedOptionRow g, bool wizard) : SettingsComponent
+    sealed class SidebarLayoutOption(GeneratedOptionRow g, bool wizard, SettingsExplainInfo? explain) : SettingsComponent
     {
         public override Element Render()
         {
@@ -460,7 +438,7 @@ internal static partial class ClassicSettings
             bool editing = Sidebar.Editing.Value;
             var facts = SettingsFacts.Live;
             return OptionCard(wizard, Loc.Get(g.Row.TitleKey), g.Row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null,
-                SidebarLayoutCards(layout, editing), Icons.SplitView, vertical: true);
+                OptionBadged(g, explain, SidebarLayoutCards(layout, editing), vertical: true), Icons.SplitView, vertical: true);
         }
     }
 
@@ -478,7 +456,7 @@ internal static partial class ClassicSettings
             _ = Sidebar.Editing.Value;
             _ = Sidebar.LayoutVersion.Value;
             var facts = SettingsFacts.Live;
-            var row = D(Tab.Appearance, id);
+            var row = Dial(id);
             return Item(Loc.Get(row.TitleKey), row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null, null,
                 isClickEnabled: row.Enabled(facts).Enabled, onClick: () => row.Writer.Run!(), icon: icon);
         }
@@ -488,55 +466,56 @@ internal static partial class ClassicSettings
 
     static readonly Controls.PickerShell OptionCardShell = new(ClassicSettingsRules.OptionCardWidth, ClassicSettingsRules.OptionCardHeight, 8f, 4f);
 
-    /// <summary>One generated row as a card: the control for its kind (themes plan 8.2).</summary>
-    static Element GeneratedItem(GeneratedOptionRow g, ISettingsFacts facts, bool wizard)
+    /// <summary>One generated row as a card: the control for its kind (themes plan 8.2), its explanation badge in front where it has one.</summary>
+    static Element GeneratedItem(GeneratedOptionRow g, ISettingsFacts facts, bool wizard, SettingsExplainInfo? explain = null)
     {
-        SettingsRow row = g.Row;
+        SettingsDial row = g.Row;
         string title = Loc.Get(row.TitleKey);
         string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
-        string? icon = row.GlyphRole is { } glyph ? Glyph(glyph) : OptionGlyph(g.QualifiedId);
+        string? icon = row.Glyph is { } glyph ? Glyph(glyph) : OptionGlyph(g.QualifiedId);
         bool enabled = row.Enabled(facts).Enabled;
 
         if (g.Pref is { } pref) return PrefItem(pref, row, title, sub, icon, wizard);
-        if (g.QualifiedId == ClassicStructure.SidebarOptionId) return Embed.Comp(() => new SidebarLayoutOption(g, wizard)) with { Key = "opt:sidebar-layout" };
+        if (g.QualifiedId == ClassicStructure.SidebarOptionId) return Embed.Comp(() => new SidebarLayoutOption(g, wizard, explain)) with { Key = "opt:sidebar-layout" };
 
         switch (row.Kind)
         {
             case SettingsRowKind.Toggle:
                 return OptionCard(wizard, title, sub,
-                    Toggle(new Signal<bool>(g.Current is true), onChange: on =>
+                    OptionBadged(g, explain, Toggle(new Signal<bool>(g.Current is true), onChange: on =>
                     {
                         if (row.Writer.Toggle!(on)) Settings.Bump();
-                    }, isEnabled: enabled), icon, isEnabled: enabled);
+                    }, isEnabled: enabled), vertical: false), icon, isEnabled: enabled);
 
             case SettingsRowKind.Segmented:
                 return OptionCard(wizard, title, sub,
-                    Selector(ChoiceLabels(g), new Signal<int>(g.Current is int at ? at : -1), onChange: i =>
+                    OptionBadged(g, explain, Selector(ChoiceLabels(g), new Signal<int>(g.Current is int at ? at : -1), onChange: i =>
                     {
                         if (row.Writer.Choose!(i)) Settings.Bump();
-                    }), icon, isEnabled: enabled);
+                    }), vertical: false), icon, isEnabled: enabled);
 
             case SettingsRowKind.Choice:
                 return OptionCard(wizard, title, sub,
-                    Embed.Comp(() => new OptionCombo(g)) with { Key = "opt:combo:" + g.QualifiedId + ":" + string.Join('|', g.ChoiceTitleKeys) },
+                    OptionBadged(g, explain, Embed.Comp(() => new OptionCombo(g)) with { Key = "opt:combo:" + g.QualifiedId + ":" + string.Join('|', g.ChoiceTitleKeys) },
+                        vertical: false),
                     icon, isEnabled: enabled);
 
             case SettingsRowKind.Picker when g.IsColor:
-                return OptionCard(wizard, title, sub, OptionColorControl(g), icon, vertical: true, isEnabled: enabled);
+                return OptionCard(wizard, title, sub, OptionBadged(g, explain, OptionColorControl(g), vertical: true), icon, vertical: true, isEnabled: enabled);
 
             case SettingsRowKind.Picker:
             {
                 int selected = g.Current is int chosen ? chosen : -1;
                 return OptionCard(wizard, title, sub,
-                    Controls.PickerStrip(g.ChoiceTitleKeys.Count, selected, (i, on) => OptionChoiceCard(g, i, on), i =>
+                    OptionBadged(g, explain, Controls.PickerStrip(g.ChoiceTitleKeys.Count, selected, (i, on) => OptionChoiceCard(g, i, on), i =>
                     {
                         if (row.Writer.Choose!(i)) Settings.Bump();
-                    }), icon, vertical: true, isEnabled: enabled);
+                    }), vertical: true), icon, vertical: true, isEnabled: enabled);
             }
 
             case SettingsRowKind.Slider:
-                return OptionCard(wizard, title, sub, Embed.Comp(() => new OptionSlider(g)) with { Key = "opt:slider:" + g.QualifiedId },
-                    icon, isEnabled: enabled);
+                return OptionCard(wizard, title, sub, OptionBadged(g, explain, Embed.Comp(() => new OptionSlider(g)) with { Key = "opt:slider:" + g.QualifiedId },
+                    vertical: false), icon, isEnabled: enabled);
 
             case SettingsRowKind.Action when row.Confirm is { } confirm:
                 // A destructive action (M8's "Clear all remembered sizes"): a button that asks first, as the row it replaced did.
@@ -605,7 +584,7 @@ internal static partial class ClassicSettings
     }
 
     /// <summary>A reference to a core preference: the core row's own control, so there is one writer for it.</summary>
-    static Element PrefItem(CorePref pref, SettingsRow row, string title, string? sub, string? icon, bool wizard)
+    static Element PrefItem(CorePref pref, SettingsDial row, string title, string? sub, string? icon, bool wizard)
     {
         Element? control = pref switch
         {

@@ -49,4 +49,8 @@ public sealed record FpsProps
     /// <summary>Is the overlay on? The core's rule: developer mode AND the diagnostics toggle, never in presentation mode. Bound by the
     /// template; the HUD is mounted only while it holds.</summary>
     public required Func<bool> Shown { get; init; }
+
+    /// <summary>The live driver's drawn pointer lane (Diagnostics.Drive.Cursor.cs), laid over the HUD in the same top overlay slot;
+    /// null draws none. Mounted by the core, empty unless a `wavee://diag?cmd=drive` script runs.</summary>
+    public Func<FluentGpu.Dsl.Element>? DriveCursor { get; init; }
 }

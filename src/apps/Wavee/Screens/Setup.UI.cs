@@ -128,7 +128,9 @@ public static partial class Setup
 
     /// <summary>Zero-size chrome, mounted in the overlay layer FIRST (before the report and after-update chromes). Once per
     /// launch it opens the plate when the boot decision (<see cref="Wizard.Due"/>) says the wizard is due: <c>setup.pending</c>
-    /// armed or a terms re-arm.</summary>
+    /// armed or a terms re-arm. A ROOT THAT MOUNTS UNDER A LIVE SESSION (a theme picked on the wizard's Theme page remounts the root,
+    /// and the plate was an overlay of the root that went away) opens the plate again over the same session, in its mount effect:
+    /// the frame the theme transaction settles and dissolves to already has the plate, on the page the user was on.</summary>
     // MOUNT POINT (owner R contract — Shell.OverlaysLayer, first of the three chromes)
     public static Element WizardChrome() => Embed.Comp(static () => new WizardChromeView());
 
@@ -140,9 +142,16 @@ public static partial class Setup
             var post = UsePost();
             UseEffect(() =>
             {
-                if (s_wizardShown || Wizard.Due is not { } model) return;
-                model.Bind(post, OpenExternal);
+                if (Wizard.Due is not { } model) return;
+                bool reopen = WizardRules.ReopensPlate(s_wizardShown, WizardOpen.Peek(), s_wizard is not null);
+                if (s_wizardShown && !reopen) return;
+                model.Bind(post, OpenExternal);   // this root's poster: the one a previous root bound went with it
                 WizardHeroes.Bind(post);
+                if (reopen)
+                {
+                    OpenWizard(overlay, model);
+                    return;
+                }
                 WizardHeroes.Warm();
                 model.ScheduleOpen(() => OpenWizard(overlay, model));
             }, DepKey.Empty);
@@ -164,7 +173,9 @@ public static partial class Setup
             cause == OverlayCloseCause.Programmatic || WizardRules.EscapeClosesPlate(false, session.Entry, session.IsBusy);
         handle.ClosedAction = () =>
         {
-            if (ReferenceEquals(s_wizard, handle)) s_wizard = null;
+            // Only the mounted root's plate ends the session: a plate of a root that went away is not the session's any more.
+            if (!ReferenceEquals(s_wizard, handle)) return;
+            s_wizard = null;
             session.Closed();
         };
         session.RequestClose = handle.Close;
@@ -199,7 +210,10 @@ public static partial class Setup
             {
                 Session = session,
                 OpenPrivacy = static () => OpenExternal(PrivacyUrl),
-                Consent = new SetupConsent(Crash.ConsentPolicy.Offered(canSend).Count, () => WizardModel.CrashReportingChoice(canSend), WizardModel.SetCrashReporting),
+                Consent = new SetupConsent(Crash.ConsentPolicy.Offered(canSend).Count, () => WizardModel.CrashReportingChoice(canSend), WizardModel.SetCrashReporting)
+                {
+                    Labels = WizardModel.CrashReportingLabels(),
+                },
             },
             SignIn = new SetupSignInPageProps { Session = session, Host = SignInHost.Instance },
             Theme = ThemeProps,

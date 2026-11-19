@@ -118,6 +118,9 @@ public struct StagedCanvas
     public ushort PosterW, PosterH;
     public int CacheTtl, OfflineTtl;
     public bool None;
+    /// <summary>A canvas another answer mentions (a Home preview song's, feedBaselineLookup): it lands only on a track whose canvas is not
+    /// answered yet, never over a kind 16 answer (which carries the artist and the etag this one lacks).</summary>
+    public bool Seed;
 }
 
 public sealed partial class Staging
@@ -148,6 +151,7 @@ public static partial class Entities
         {
             int parent = s.Slot(Current.Tracks, in c.Track);
             if (parent == Table.None) continue;
+            if (c.Seed && edges.TrackCanvas.State(parent) == EdgeState.Complete) continue;
             int cacheTtl = c.CacheTtl > 0 ? c.CacheTtl : CanvasEdge.DefaultCacheTtl;
             if (c.None || c.Url.IsEmpty)
             {

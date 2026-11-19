@@ -15,6 +15,12 @@ public static class ThemeCatalog
     /// <summary>The theme every unresolvable id falls back to.</summary>
     public const string FallbackId = "classic";
 
+    /// <summary>The theme a NEW install starts in (owner, 2026-11-18: WinUI). The install bootstrap stores it as the install's
+    /// <c>theme.id</c> once, on the launch that finds no trace of an earlier run (<c>Setup.Bootstrap.Run</c>); the setup wizard's
+    /// Theme page then shows it as the active card. An install that already ran keeps what it has: with nothing stored that is
+    /// still <see cref="FallbackId"/>, so an update never changes anyone's theme.</summary>
+    public const string NewInstallId = "winui";
+
     private static ThemeComposition[] s_installed = [];
 
     /// <summary>The manifests of the installed compositions, in install order. Empty before <c>ThemeHost.Install</c>.</summary>

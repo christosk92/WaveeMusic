@@ -44,6 +44,12 @@ public readonly record struct AudioBodyCacheStatus(
     long ReserveBytes,
     bool WriteEnabled);
 
+/// <summary>The cache's occupancy without a directory walk: its running byte counter (it undercounts until the off-path warm scan
+/// lands) and the effective budget.</summary>
+/// <param name="Bytes">The running count of bytes stored.</param>
+/// <param name="BudgetBytes">The effective budget, or null when unlimited.</param>
+public readonly record struct AudioCacheOccupancy(long Bytes, long? BudgetBytes);
+
 /// <summary>The settings-free snapshot a <see cref="ChunkDiskCache"/> re-reads on every operation. Hosts that keep
 /// their cache configuration in user settings hand the cache a provider that builds one of these on demand.</summary>
 /// <param name="WriteEnabled">False = read-only (existing chunks still serve).</param>
@@ -802,6 +808,15 @@ public sealed class ChunkDiskCache : IDisposable
         var cap = Capacity(root, policy);
         return new AudioBodyCacheStatus(root, cap.Available, DirectoryBytes(), cap.BudgetBytes,
             cap.FreeBytes, cap.ReserveBytes, policy.WriteEnabled);
+    }
+
+    /// <summary>Occupancy and budget right now, cheaply: the running counter (no directory walk) and the budget from the cached drive
+    /// read. What a fact that asks "is the cache nearly full?" reads (<see cref="Status"/> measures the directory).</summary>
+    public AudioCacheOccupancy Occupancy()
+    {
+        var policy = CurrentPolicy();
+        var cap = Capacity(EnsureActiveDirectory(policy.Directory), policy);
+        return new AudioCacheOccupancy(Volatile.Read(ref _approxBytes), cap.BudgetBytes);
     }
 
     readonly record struct CapacityState(bool Available, long FreeBytes, long ReserveBytes, long? BudgetBytes);

@@ -182,6 +182,11 @@ public static partial class Setup
         /// shown and closed the sign-in door takes it back (a later sign-out must still get a surface).</summary>
         public static bool OwnsSignIn(bool pending, bool open, bool shownThisLaunch) => open || (pending && !shownThisLaunch);
 
+        /// <summary>Does a root that just mounted open the plate again? Yes while a session is live (its plate opened this launch and never
+        /// closed) and this root holds no plate: the plate was an overlay of the root that went away (a theme picked on the wizard's own
+        /// Theme page remounts the root), and the session is still on its page. Without it the shell stays dimmed under no plate.</summary>
+        public static bool ReopensPlate(bool shownThisLaunch, bool sessionLive, bool rootHasPlate) => shownThisLaunch && sessionLive && !rootHasPlate;
+
         /// <summary>Escape (a USER dismissal) may close the plate only on an idle terms re-arm; a programmatic close always
         /// goes through and never reaches this.</summary>
         public static bool EscapeClosesPlate(bool nestedOpen, WizardEntry entry, bool busy) => !nestedOpen && Gating.CanDismiss(entry, busy);
@@ -594,7 +599,7 @@ public static partial class Setup
             => !disk.LibraryDb && !disk.StoredCredential && !disk.History
                && !settings.Get(Platform.Keys.SidebarWidthUserSetLegacy) && !settings.Get(Platform.Keys.SidebarCollapsedLegacy);
 
-        /// <summary>Arm the wizard for a fresh install, suppress it for an existing one — ONCE per install — then the two
+        /// <summary>Arm the wizard for a fresh install (and store the theme a new install starts in), suppress it for an existing one — ONCE per install — then the two
         /// every-launch checks: a wiped data folder resets a "completed" install, and a terms bump re-arms a completed one.
         /// On a fresh install the wizard is the one onboarding prompt (0.2.9's rule).</summary>
         public static void Run(IAppSettings settings, in InstallWitnesses disk)
@@ -615,6 +620,8 @@ public static partial class Setup
                 settings.Set(Platform.Keys.SetupPending, fresh);
                 settings.Set(Platform.Keys.SetupCompleted, !fresh);
                 settings.Set(Platform.Keys.SetupBootstrapVersion, TargetVersion);
+                // A new install starts in the new-install theme; an existing one keeps the theme it has (stored, or the fallback).
+                if (fresh) Wavee.Theming.ThemeHost.SeedNewInstall(settings);
                 Log.Info("setup", fresh ? "fresh install: first-run setup wizard armed" : "existing install: first-run setup wizard suppressed");
             }
 

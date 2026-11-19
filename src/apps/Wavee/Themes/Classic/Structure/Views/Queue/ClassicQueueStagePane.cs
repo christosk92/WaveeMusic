@@ -46,7 +46,8 @@ internal sealed class ClassicQueueStagePane : Component
 {
     readonly Signal<bool> _autoplay = new(true);   // seeded once, mirrored from the fact by the effect — never a new signal per render
     Func<QueueSlot, float>? _extentOf;
-    Action<bool>? _setAutoplay;
+    Action<bool>? _setAutoplay, _setCrossfade;
+    readonly Signal<bool> _crossfade = new(false);   // the Crossfade switch's cell, mirrored from the props like Autoplay's
     QueueProps _queue = null!;
     float _s = 1f;
     bool _video;
@@ -94,6 +95,9 @@ internal sealed class ClassicQueueStagePane : Component
         var lane = props.Lane;
         _queue = props.Queue;
         _setAutoplay ??= props.Verbs.SetAutoplay;
+        _setCrossfade ??= props.Verbs.SetCrossfade;
+        bool crossfadeOn = props.Crossfade;
+        UseEffect(() => _crossfade.SetIfChanged(crossfadeOn), DepKey.From(crossfadeOn));
         var ctx = UseContext(Stage.StageContext)!;
         var set = ctx.Accent.Value;
         bool autoplay = _queue.Autoplay.Enabled;
@@ -142,15 +146,15 @@ internal sealed class ClassicQueueStagePane : Component
             [
                 new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Margin = new Edges4(0f, 0f, 0f, Spacing.M),
+                    // the title, then the "between songs" pair (design 5.4); a narrow column wraps the pair under the title instead of crowding it
+                    Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Gap = Spacing.S, Margin = new Edges4(0f, 0f, 0f, Spacing.M),
                     Children =
                     [
                         new TextEl(Loc.Get(Strings.Stage.UpNext)) { Size = MathF.Round(28f * s), LineHeight = MathF.Round(36f * s), Weight = 600, FontFamily = ClassicStageLayerGeometry.DisplayFace, Color = Ink.Ink },
                         new BoxEl
                         {
-                            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                            Children = [new TextEl(Loc.Get(Strings.Player.Autoplay)) { Size = MathF.Round(14f * s), LineHeight = MathF.Round(20f * s), Color = Ink.Ink },
-                                        ToggleSwitch.Create(_autoplay, _setAutoplay, style: toggle)],
+                            Key = "stage:upnext:between", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+                            Children = BetweenSongs(props, toggle, MathF.Round(14f * s), MathF.Round(20f * s), length: true),
                         },
                     ],
                 },
@@ -196,11 +200,36 @@ internal sealed class ClassicQueueStagePane : Component
                     new BoxEl { Grow = 1f, MinWidth = 0f, HitTestVisible = false },
                     Ui.Caption(Loc.Get(Strings.Player.Autoplay)) with { Color = Ink.InkSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap },
                     ToggleSwitch.Create(_autoplay, _setAutoplay, style: toggle),
+                    // the pair's second switch; the open list's one-line header has no room for the length (the column's own header carries it)
+                    Ui.Caption(Loc.Get(Strings.Player.Crossfade)) with { Color = Ink.InkSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap },
+                    ToggleSwitch.Create(_crossfade, _setCrossfade, style: toggle) with { Key = "stage:upnext:crossfade" },
                 ],
             },
             rows,
         ],
     };
+
+    /// <summary>The "between songs" pair (design 5.4): "Autoplay" and its switch, then "Crossfade" and its switch, and (where asked) its length as a
+    /// small link to the duration in Settings. The words are the column's own (14/20 at the stage's scale).</summary>
+    Element[] BetweenSongs(QueueStagePaneProps props, ToggleSwitch.Style toggle, float size, float line, bool length)
+    {
+        var kids = new List<Element>(5)
+        {
+            new TextEl(Loc.Get(Strings.Player.Autoplay)) { Size = size, LineHeight = line, Color = Ink.Ink },
+            ToggleSwitch.Create(_autoplay, _setAutoplay, style: toggle),
+            new TextEl(Loc.Get(Strings.Player.Crossfade)) { Size = size, LineHeight = line, Color = Ink.Ink },
+            ToggleSwitch.Create(_crossfade, _setCrossfade, style: toggle) with { Key = "stage:upnext:crossfade" },
+        };
+        if (length && props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } open)
+            kids.Add(ToolTip.Wrap(new BoxEl
+            {
+                Key = "stage:upnext:crossfade:length", MinHeight = ClassicQueueRules.StageLinkMinH, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+                Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Corners = Radii.ControlAll, HoverFill = Ink.GlassHover,
+                Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
+                Children = [new TextEl(props.CrossfadeLength) { Size = size, LineHeight = line, Color = props.Crossfade ? Ink.InkSecondary : Ink.InkTertiary, HoverColor = Ink.Ink }],
+            }, Loc.Get(Strings.Player.CrossfadeLengthTip)));
+        return kids.ToArray();
+    }
 
     /// <summary>The first section that has rows (the order the list shows them in), or none.</summary>
     static QueueSection? LeadSection(in QueueCounts c)

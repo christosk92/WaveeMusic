@@ -564,6 +564,7 @@ public static partial class Playback
         static bool s_faultRetryable;
         static string? s_reopenedKey;
         static double s_volume = 1.0;
+        static double s_duck = 1.0;   // the preview duck (Playback.Audio.SetDuck's twin): multiplied on at the player, never stored in s_volume
         static bool s_muted;
         static long s_switchAtMs;                // FrameNowMs at switch.begin — first.frame's sinceSwitchMs
         static long s_switchAtQpc;               // F215: the same instant as a Stopwatch (QPC) timestamp: the origin the NATIVE first-frame stamp is measured from
@@ -1070,14 +1071,31 @@ public static partial class Playback
         /// an attach's). Diagnostics: the probe's silent-run gate reads it.</summary>
         public static (double Volume, bool Muted) Level()
         {
-            lock (s_gate) return (s_volume, s_muted || s_previewMuted || s_attachMuted);
+            lock (s_gate) return (s_volume * s_duck, s_muted || s_previewMuted || s_attachMuted);
         }
 
         public static void SetVolume(float volume)
         {
             MediaPlayer? p;
-            lock (s_gate) { s_volume = Math.Clamp(volume, 0f, 1f); p = s_player; }
-            try { p?.SetVolume(s_volume); } catch { /* fail-soft */ }
+            double applied;
+            lock (s_gate) { s_volume = Math.Clamp(volume, 0f, 1f); applied = s_volume * s_duck; p = s_player; }
+            try { p?.SetVolume(applied); } catch { /* fail-soft */ }
+        }
+
+        /// <summary>The preview duck on the video host's audio (1 = none): a separate stage, multiplied onto the user's volume at the player.</summary>
+        public static void SetDuck(float gain)
+        {
+            MediaPlayer? p;
+            double applied;
+            lock (s_gate)
+            {
+                double g = Math.Clamp(gain, 0f, 1f);
+                if (s_duck == g) return;
+                s_duck = g;
+                applied = s_volume * s_duck;
+                p = s_player;
+            }
+            try { p?.SetVolume(applied); } catch { /* fail-soft */ }
         }
 
         public static void SetMuted(bool muted)
@@ -1741,7 +1759,7 @@ public static partial class Playback
             {
                 double volume;
                 bool muted;
-                lock (s_gate) { volume = s_volume; muted = s_muted || s_previewMuted || s_attachMuted; }
+                lock (s_gate) { volume = s_volume * s_duck; muted = s_muted || s_previewMuted || s_attachMuted; }
                 built.SetVolume(volume);
                 built.SetMuted(muted);
             }).ConfigureAwait(false);

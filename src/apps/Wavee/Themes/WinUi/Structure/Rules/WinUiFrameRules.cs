@@ -84,6 +84,10 @@ public static class WinUiFrameRules
     /// <summary>The offline lane's inset in the card: the tier's inset either side and on top, nothing below.</summary>
     public static Edges4 OfflineLanePadding(float insetX, float insetTop) => new(insetX, insetTop, insetX, 0f);
 
+    /// <summary>The page loading bar's height on the content card's top edge (<c>CommonPageBusy</c>): WinUI's busy-bar height, the
+    /// same as Home's facet bar.</summary>
+    public const float PageBusyH = WinUiHomeRules.BarH;
+
     // ── the title bar (Shell-Top) ────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A toolbar button: 40 wide, 36 tall, the control radius (Shell-Top `tool`).</summary>
@@ -150,6 +154,12 @@ public static class WinUiFrameRules
 
     /// <summary>The Wavee mark (tabs off): a 16 accent square with r4, 8 before the word (12), 8 from the Forward button.</summary>
     public const float MarkSize = 16f, MarkRadius = 4f, MarkGap = 8f, MarkLeadPad = 8f, MarkTextSize = 12f;
+
+    /// <summary>The tab strip's TONE over the window's material: black at 6 % in light, at 35 % in dark. It makes the strip the BASE of Windows 11's
+    /// tabbed window (Mica Alt under the commanding layer) without a solid colour: the wallpaper's tint still shows through it, and it stands about as
+    /// far under the toolbar as Mica Alt stands under a stock selected tab (some 14 levels in light, 11 in dark, on the neutral Mica). The selected
+    /// tab does not paint over it: it cuts it out (<c>TabStrip.RailFill</c>), so the tab is the toolbar's own surface.</summary>
+    public static ColorF TabStripTone => Tok.Theme == ThemeKind.Light ? ColorF.FromRgba(0, 0, 0, 0x0F) : ColorF.FromRgba(0, 0, 0, 0x59);
 
     // ── the search popup (W-Flyouts: AutoSuggestBox suggestions) ────────────────────────────────────────────────────────
 
@@ -251,7 +261,7 @@ public static class WinUiFrameRules
         Enter: new EnterExit(Opacity: 0f, Active: true),
         Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(Design.Nav.ExitDurationMs, Easing.FluentAccelerate),
-        DelayMs: Design.Nav.EnterDelayMs, ExitDelayMs: 0f);
+        DelayMs: Design.Nav.HandOverDelayMs, ExitDelayMs: 0f);
 
     // ── node keys ────────────────────────────────────────────────────────────────────────────────────────────────────────
 

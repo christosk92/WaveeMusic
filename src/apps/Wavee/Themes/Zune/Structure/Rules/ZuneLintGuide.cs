@@ -122,7 +122,8 @@ public sealed class ZuneLintGuide : IThemeLintGuide
         var policies = new List<LintPolicy>(8);
         if (string.Equals(context.Route, HomeRoute, StringComparison.Ordinal))
         {
-            policies.Add(new(LintIntent.TrimOk, ZuneHomeRules.PinTilePrefix, "pin captions: " + HomeCaptions));
+            policies.Add(new(LintIntent.TrimOk, "home:tile:", "the board's tiles: a name over its scrim (two lines), a line under it, list rows: " + HomeCaptions));
+            policies.Add(new(LintIntent.TrimOk, "home:add:row:", "all items' rows: a name and one line: " + HomeCaptions));
             policies.Add(new(LintIntent.TrimOk, "zune-history:", "history rows and tiles: " + HomeCaptions));
             policies.Add(new(LintIntent.TrimOk, ZuneListRules.ShelfBodyKey, "shelf card titles and descriptions: " + HomeCaptions));
             policies.Add(new(LintIntent.TrimOk, "zune-shelf-card:", "shelf cards: " + HomeCaptions));

@@ -1,7 +1,7 @@
 // ── Theming/Contracts/ViewKeys.Common.cs — the Common blocks' published view keys (themes plan 6.0 / 6.5, T11c) ────────────────────
 //
 // T11c writes the utility pages every theme shares from today's code (`Themes\Common\`, registered by every structure): the History page here;
-// the diagnostics and logs pages (ViewKeys.Diagnostics.cs), the Home customizer (`Pages.HomeCustomize`, ViewKeys.Home.cs), the frame-rate
+// the diagnostics and logs pages (ViewKeys.Diagnostics.cs), the frame-rate
 // overlay (`Shell.Fps`, ViewKeys.FrameBits.cs) and the not-found page (the content state's NotFound arm) are the other Common blocks.
 //
 // What stays core (`Shell.HistoryPage` + `Shell.History`, `Shell\HistoryVerbs.cs`): the navigation log, the filter, the search, the sort, the most-visited

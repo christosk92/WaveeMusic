@@ -1,7 +1,8 @@
 // ── Themes/Zune/Structure/Views/Home/ZuneHomePage.cs — Zune's `Pages.Home` (themes plan 6.3; P5 Z5) ──────────────────────────────────
 //
-// Board Z-Home (and Z-Home-Podcasts, Z-Light-Home; the Compact / Small / Huge boards are ZT4's). The page has NO title and no facet row of its
-// own: Zune's band is the page head, and the facet words are its row 2 (the core host publishes them, `HomeHost`; `Home.FacetRow` is Nothing).
+// Board Z-Home (and Z-Home-Podcasts, Z-Light-Home; the Compact / Small / Huge boards are ZT4's). No facet row of its own: Zune's band is the
+// page head, and the facet words are its row 2 (the core host publishes them, `HomeHost`; `Home.FacetRow` is Nothing). On All the pinned board
+// (`Views\Home\Board`, `Home.Board`) stands where the zone column stands on the other facets; it draws the page title.
 //
 //   Pages.Home
 //   └─ ZStack [ Wash (the host's shell-tint claim),
@@ -10,12 +11,10 @@
 //           └─ ZStack [ SkelRegionEl (the zone column; the shimmer is the SAME column over the seed),
 //                       the status layer (the busy bar over the top edge, the failed-switch bar: neither moves the zones) ] ]
 //
-//   THE COLUMN (`ZuneHomePlan.Rows`): on All the quickplay strip first (pins · history · new: `Home.Quickplay` through its core host, with the
-//   Recents zone as its history; under the daylist's height rung the one-row daylist leads instead and the strip follows it, Z-Shell-Short: the
-//   two chapters glide past each other on the crossing, `H.ChapterMove`), then the zones in the planner's order, 28 apart; two neighbours that pair (the release list and the
+//   THE COLUMN (`ZuneHomePlan.Rows`, every facet but All): the zones in the planner's order, 28 apart; two neighbours that pair (the release list and the
 //   clusters, the new and continue episodes) share a row 1 : 1 where the tier has room (`PairBeside`, `PairGap` apart), and stack where it has not (the same
 //   two nodes: only the row's direction is a live prop). Every zone is a chapter keyed by its zone: the entrance row rides its inner box
-//   (`Design.Entrance.Row`, production motion), and a tier crossing reflows it (`H.ChapterResize`). On All "customize home" closes the page.
+//   (`Design.Entrance.Row`, production motion), and a tier crossing reflows it (`H.ChapterResize`).
 //   THE BODIES are the `Home.Zone.<Kind>` slots (`ZuneHomeZones`: a body draws its own heading row), the daylist and the history their core hosts
 //   (`DaylistCard`, `RecentGrid`). Each slot and host carries a SkeletonProxy that is the SAME static builder its template runs.
 //   THE FACET SWAP is the production one: the content is one keyed subtree per published facet that fades out and in, over ONE dim host whose
@@ -72,10 +71,15 @@ internal static class ZuneHomePage
         // at-top test (FacetSwitch.Landed).
         Element scroll = Ui.ScrollView(new BoxEl { Direction = 0, MinWidth = 0f, Children = [column] }) with
         {
-            Key = props.Facet.Length > 0 ? "zune-home-scroll:" + props.Facet : "zune-home-scroll", Grow = 1f, MinWidth = 0f, ScrollKey = props.ScrollKey, Handle = props.Scroll,
+            Key = props.Facet.Length > 0 ? "zune-home-scroll:" + props.Facet : "zune-home-scroll", Grow = 1f, MinWidth = 0f, ScrollKey = props.ScrollKey, Handle = props.Scroll, Anchoring = true,
         };
 
-        return new BoxEl { Grow = 1f, Direction = 1, ZStack = true, Children = [props.Wash, scroll] };
+        // On All the board's app bar lies over the page's foot (outside the scroller: it stays put while the page scrolls; the board reserves its height).
+        return new BoxEl
+        {
+            Grow = 1f, Direction = 1, ZStack = true,
+            Children = props.BoardTools is { } tools ? [props.Wash, scroll, new BoxEl { AlignSelf = FlexAlign.End, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [tools()] }] : [props.Wash, scroll],
+        };
     }
 
     /// <summary>The facet content: one keyed subtree per published facet (the swap is the keyed Exit/Enter fade) over the dim host.</summary>
@@ -95,7 +99,9 @@ internal static class ZuneHomePage
                     Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                     Opacity = Prop.Of(() => FacetDimPlan.Of(props.Switch.Value.Phase).Opacity),
                     HitTestVisible = Prop.Of(() => !props.Switch.Value.Dim),
-                    Children = [Column(m, props.Overlay, lay)],
+                    // On All the pinned board stands where the zone column stood (the scroller, the wash, the status layer and the facet swap stay
+                    // the page's); every other facet keeps its zones.
+                    Children = [props.Board is { } board ? board() : Column(m, props.Overlay, lay)],
                 },
             ],
         };
@@ -103,42 +109,20 @@ internal static class ZuneHomePage
 
     // ══ THE COLUMN ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The page's rows (<see cref="ZuneHomePlan.Rows"/>), then "customize home" on All.</summary>
+    /// <summary>The page's rows (<see cref="ZuneHomePlan.Rows"/>): every facet but All (All is the pinned board).</summary>
     internal static Element Column(ScreenModel m, IOverlayService? overlay, ZuneHomeLayout lay)
     {
         var zones = m.Zones;
         var kinds = new ZoneKind[zones.Count];
         for (int i = 0; i < kinds.Length; i++) kinds[i] = zones[i].Kind;
-        bool all = ZuneHomePlan.HasQuickplay(m.Facet);
-        var rows = ZuneHomePlan.Rows(kinds, all, daylistLeads: lay.DaylistForm == ZuneDaylistForm.OneRow);
+        var rows = ZuneHomePlan.Rows(kinds);
 
-        var kids = new List<Element>(rows.Length * 2 + 1);
+        var kids = new List<Element>(rows.Length * 2);
         for (int r = 0; r < rows.Length; r++)
         {
             var row = rows[r];
             if (r > 0) kids.Add(ZoneAir(r, lay));
-            switch (row.Kind)
-            {
-                case ZuneHomeRowKind.Quickplay:
-                    kids.Add(Quickplay(row.First >= 0 ? zones[row.First] : null, row.Second >= 0 ? zones[row.Second] : null, overlay, lay, r));
-                    break;
-                case ZuneHomeRowKind.Pair:
-                    kids.Add(Pair(zones[row.First], zones[row.Second], overlay, lay, r));
-                    break;
-                default:
-                    kids.Add(Chapter(zones[row.First], overlay, lay, r));
-                    break;
-            }
-        }
-        if (all)
-        {
-            if (rows.Length > 0) kids.Add(ZoneAir(rows.Length, lay));
-            // A chapter like the zones: its link's target grows to 40 at Compact, and the row's height eases with it.
-            kids.Add(Box(H.CustomizeKey, new BoxEl
-            {
-                Direction = 0, MinWidth = 0f,
-                Children = [K.Link("zune-home-customize-link", Loc.Get(Strings.Home.Customizer.Title), HomeVerbs.OpenCustomize, lay.LinkTarget)],
-            }, rows.Length));
+            kids.Add(row.Kind == ZuneHomeRowKind.Pair ? Pair(zones[row.First], zones[row.Second], overlay, lay, r) : Chapter(zones[row.First], overlay, lay, r));
         }
         return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
     }
@@ -147,15 +131,6 @@ internal static class ZuneHomePage
     /// ease: every crossing moved every chapter below the first by the difference at once).</summary>
     static Element ZoneAir(int row, ZuneHomeLayout lay)
         => ZuneMotion.Air(H.ZoneAirPrefix + row.ToString(System.Globalization.CultureInfo.InvariantCulture), lay.ZoneGap);
-
-    /// <summary>The quickplay strip's chapter: its core host (pins, the Recents zone's host as the history, the release zone), its skeleton the view's
-    /// own static tree.</summary>
-    static Element Quickplay(Zone? history, Zone? fresh, IOverlayService? overlay, ZuneHomeLayout lay, int index)
-    {
-        Element host = Embed.Comp(new QuickplayHostProps(history, fresh, overlay), static () => new QuickplayHost())
-            with { SkeletonProxy = () => ZuneHomeQuickplay.Skeleton(history, fresh, lay) };
-        return Box(H.QuickplayKey, host, index, layout: H.ChapterMove);
-    }
 
     /// <summary>Two zones side by side (1 : 1, 48 apart) where the tier has room, stacked at the zone gap where it has not: the SAME two chapters
     /// either way, so a crossing moves them.</summary>
@@ -195,7 +170,7 @@ internal static class ZuneHomePage
 
     /// <summary>A zone's body: the daylist and the history through their core hosts, every other kind through its `Home.Zone.<Kind>` slot. Each
     /// carries a SkeletonProxy (the deriver cannot run a component's render): the SAME static tree its template builds.</summary>
-    static Element Body(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay)
+    internal static Element Body(Zone zone, IOverlayService? overlay, ZuneHomeLayout lay)
     {
         switch (zone.Kind)
         {
@@ -204,7 +179,7 @@ internal static class ZuneHomePage
                     with { SkeletonProxy = () => ZuneHomeDaylist.Skeleton(lay) };
             case ZoneKind.RecentGrid:
                 return Embed.Comp(new RecentGridProps(zone), static () => new RecentGrid())
-                    with { SkeletonProxy = () => ZuneHomeQuickplay.HistorySkeleton(zone, lay) };
+                    with { SkeletonProxy = () => ZuneHomeHistory.HistorySkeleton(zone, lay) };
             default:
                 if (!HomeZoneKeys.TryKeyOf(zone.Kind, out var key)) return new BoxEl();
                 Element slot = Slots.View(key, new HomeZoneProps(zone, overlay));
