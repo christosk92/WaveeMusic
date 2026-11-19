@@ -464,7 +464,7 @@ public static partial class Stage
                 OpenArtist = () => ctx.SetMode(Mode.Artist),
                 TopBar = new StageTopBarProps { Stage = ctx },
                 Transport = TransportProps(ctx),
-                Gallery = new StageGalleryProps { Stage = ctx, Verbs = StageSettingsVerbs.Shared },
+                Gallery = new StageGalleryProps { Stage = ctx, Verbs = StageSettingsVerbs.Gallery },
                 Backdrop = BackdropProps(ctx),
                 Hero = HeroProps(ctx),
                 Face = new StageLayerProps { Stage = ctx },

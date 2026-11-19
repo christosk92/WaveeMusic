@@ -4619,7 +4619,9 @@
       "heroMotion": "Slow pan and zoom",
       "heroMotionReduced": "Off while Windows reduces motion",
       "heroDim": "Photo dimming",
-      "heroNote": "Uses the artist's header image from Spotify. Artists without one fall back to the Large cover layout."
+      "heroNote": "Uses the artist's header image from Spotify. Artists without one fall back to the Large cover layout.",
+      "backgroundBlur": "Background blur",
+      "blurOff": "Off"
     },
     "layout": {
       "card": "Visualizer first",
