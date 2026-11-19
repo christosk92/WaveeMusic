@@ -239,7 +239,9 @@ internal static partial class WinUiSettings
             Element bar = SelectorBar.Create(p.Labels, new Signal<int>(selected), onChange: _choose, parts: _parts, style: style, itemKeys: p.Keys);
             var strip = ScrollView(new BoxEl { Direction = 0, Children = [bar] }, horizontal: true) with
             {
-                Grow = 0f, Shrink = 0f, MinWidth = 0f, Height = layout.TabHeight > 0f ? layout.TabHeight : float.NaN, SuppressScrollBar = true,
+                // The bar's own height (the tier's item height plus the SelectorBar's 4-DIP padding above and below), never the item height alone: a
+                // scroller held to the item height clipped the bar's foot, and the selected item's pill with it (Compact, Small).
+                Grow = 0f, Shrink = 0f, MinWidth = 0f, SuppressScrollBar = true,
                 AutoEdgeFade = layout.TabsScroll, ScrollKey = "settings:tabs",
             };
             return new BoxEl
