@@ -73,7 +73,36 @@ versions separately under `v*` and is not tracked in this file.)
   no row before (output device, podcast speed, the Liked Songs cover, the list columns, the mini player's options,
   private session) are here too.
 
+- **Crossfade in the queue (every theme).** The queue now has Crossfade right beside Autoplay, as the same kind of
+  switch, with its length ("5 s") next to it; the length opens Settings at the crossfade duration. A flip here shows in
+  Settings at once, and Settings' home lists it under Recently changed as "from the queue".
+
+- **Background blur in every full-screen options popover.** Classic's and Zune's full-screen options now have the
+  Background blur slider WinUI's already had (on the Layout tab), the same setting as Settings > Lyrics > Lyrics blur.
+
+- **A ⋯ in the lyrics pane (every theme; Zune's "options").** It opens a small card with the Lyrics blur slider and,
+  on a PC that can time lyrics with on-device AI, a status line ("Word-by-word: on") with a link to its settings.
+
+- **App mode with System, and Private session, in the profile menu.** The profile menu's light/dark toggle is now
+  App mode with System, Light and Dark, so picking from the menu no longer drops System. Private session (nothing you
+  play is added to your listening history) has its switch there too.
+
+- **Right-click the title bar for the window's look (WinUI).** Right-clicking the empty part of the title bar offers
+  Backdrop (Mica, Mica Alt, Acrylic, None) and Tabs in the title bar, the same settings as Settings > Appearance.
+
+- **More ways from a setting to where it lives, and back.** The devices list's quality line opens the Audio quality
+  setting, and a new last row, "Sound settings", shows the equalizer and normalization at a glance and opens Sound. The
+  notifications panel has a settings button (a gear; Zune's "settings") that opens Notifications. In Settings, "Also
+  in" now opens the lyrics pane, the devices list, the profile menu, the mini player, a track list, the player bar (the
+  remaining-time label takes keyboard focus) and WinUI's title bar menu.
+
 ### Changed
+
+- **The sidebar's menu offers only what the theme has.** Right-clicking the sidebar offers Layout and Density only in a
+  theme that has them (Classic); WinUI's sidebar no longer offers a Classic choice that lasted until the next start.
+
+- **The remaining time on the player bar is reachable by keyboard.** Tab reaches the time label that switches between the
+  remaining and the total time, and Enter or Space flips it.
 
 - **Playlists open at once.** A playlist you have opened before shows its saved copy the moment you click, Mixes
   included, and checks for changes behind it; only the daylist waits for its fresh answer. No more placeholder rows for
