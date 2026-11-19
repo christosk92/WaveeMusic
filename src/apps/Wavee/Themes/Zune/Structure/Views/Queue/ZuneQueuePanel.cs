@@ -47,6 +47,17 @@ internal static class ZuneQueue
 internal sealed class ZuneQueuePanelView : Component
 {
     readonly ScrollHandle _scroll = new();
+    // The crossfade word's node: the crossfade hint's line floats at it (design 6.3 #4: at the panel's own switch, no second control).
+    NodeHandle _crossfadeNode;
+    readonly Action<NodeHandle> _onCrossfade;
+    readonly Func<NodeHandle> _crossfadeTarget;
+
+    public ZuneQueuePanelView()
+    {
+        _onCrossfade = h => _crossfadeNode = h;
+        _crossfadeTarget = () => _crossfadeNode;
+    }
+
     // The body is ONE virtualized list (only the rows the viewport shows, and its overscan, are built): the lead ("playing from", the
     // now-playing row), the lane's slots, then the vacancy. Every item's extent is stated EXACTLY (the vacancy's is measured), so the
     // list's geometry matches the lane's drag maths and nothing jumps as rows realize.
@@ -119,7 +130,8 @@ internal sealed class ZuneQueuePanelView : Component
             ZunePlayerBar.Word(Loc.Get(Strings.Player.Shuffle), _toggleShuffle, true, queue.Shuffle, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:shuffle" },
             ZunePlayerBar.Word(Loc.Get(Strings.Player.Repeat), _cycleRepeat, true, props.RepeatOn, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:repeat" },
             ZunePlayerBar.Word(Loc.Get(Strings.Player.Autoplay), _toggleAutoplay, true, queue.Autoplay.Enabled, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:autoplay" },
-            ZunePlayerBar.Word(Loc.Get(Strings.Player.Crossfade), _toggleCrossfade, true, props.Crossfade, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:crossfade" },
+            ZunePlayerBar.Word(Loc.Get(Strings.Player.Crossfade), _toggleCrossfade, true, props.Crossfade, modeH, Q.WordSize, _onCrossfade, latchedInk: _ink?.Accent)
+                with { Key = "mode:crossfade" },
         };
         if (props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } openLength)
             modes.Add(ToolTip.Wrap(ZunePlayerBar.Word(props.CrossfadeLength, openLength, true, false, modeH, Q.WordSize) with { Role = AutomationRole.Hyperlink },
@@ -135,6 +147,7 @@ internal sealed class ZuneQueuePanelView : Component
                     Children = modes.ToArray(),
                 },
                 body,
+                Hints.Pointer(HintSurfaces.QueuePanel, _crossfadeTarget),   // the crossfade hint's line floats at the word (a zero box: no room)
             ],
         };
     }

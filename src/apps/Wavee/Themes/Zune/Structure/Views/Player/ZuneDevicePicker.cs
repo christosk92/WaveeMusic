@@ -35,8 +35,19 @@ internal static class ZuneDevicePicker
         var view = props.Read();
         float windowH = ctx.Hooks.UseContextSignal(Viewport.Size).Value.Height;
         var entries = view.Entries;
-        var rows = new List<Element>(entries.Count + 1) { Small(Loc.Get(Strings.Theme.Zune.Player.PlayOn), P.PickerHeadH) };
-        for (int i = 0; i < entries.Count; i++) rows.Add(Row(entries[i], props.Close, i));
+        var rows = new List<Element>(entries.Count + 2) { Small(Loc.Get(Strings.Theme.Zune.Player.PlayOn), P.PickerHeadH) };
+        bool hinted = false;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            rows.Add(Row(entries[i], props.Close, i));
+            // The quality row's second line (design 6.3: Lossless available, the metered cap's state line): the picker's hint slot right under
+            // the first link, which is the quality echo (the last one, "sound settings", states the equalizer at rest itself).
+            if (!hinted && entries[i].Kind == DevicePickerEntryKind.Link)
+            {
+                hinted = true;
+                rows.Add(Hints.Slot(HintSurfaces.DevicePicker, props.Close));
+            }
+        }
         return new BoxEl
         {
             Key = Key, Width = P.PickerW, Direction = 1,

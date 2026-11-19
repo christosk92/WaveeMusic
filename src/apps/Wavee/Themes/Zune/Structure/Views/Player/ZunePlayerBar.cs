@@ -88,6 +88,10 @@ internal static partial class ZunePlayerBar
         float artScale = rc.UseContext(Viewport.Scale);
         var marquees = rc.UseRef<Marquee.Group?>(null);   // the title and the artists: one line moves at a time, the title first
         marquees.Value ??= new Marquee.Group();
+        // The play disc and the volume control: the shortcuts and normalization hints' lines float at them (design 6.3 #5, #13).
+        var hintAnchors = rc.UseRef<HintAnchors?>(null);
+        hintAnchors.Value ??= new HintAnchors();
+        var anchors = hintAnchors.Value;
 
         // The heart pops on the same playable's save edge only, on the captured node (a keyed remount would reset its hover mid-toggle).
         int playingSlot = v.Face.IsNone ? 0 : v.Face.Slot;
@@ -154,7 +158,7 @@ internal static partial class ZunePlayerBar
             if (v.Episode && !mini) transport.Add(StepWord(props, -L.SeekStepMs, look, v.SeekStepEnabled) with { Key = "seek-back-10" });
             if (!v.Episode && v.ShowPrevNext && !mini)
                 transport.Add(ToolTip.Wrap(Glyph(Icons.Previous, () => verbs.Previous(), v.PrevEnabled, Tok.TextPrimary, look.Button, look.Glyph), Loc.Get(Strings.Player.Previous)) with { Key = "prev" });
-            transport.Add(Disc(props, v, look) with { Key = DiscKey });
+            transport.Add(Disc(props, v, look) with { Key = DiscKey, OnRealized = anchors.OnPlay });
             if (!v.Episode && v.ShowPrevNext)
                 transport.Add(ToolTip.Wrap(Glyph(Icons.Next, () => verbs.Next(), v.NextEnabled, Tok.TextPrimary, look.Button, look.Glyph), Loc.Get(Strings.Player.Next)) with { Key = "next" });
             if (v.Episode) transport.Add(StepWord(props, L.SeekStepMs, look, v.SeekStepEnabled) with { Key = "seek-forward-10" });
@@ -203,7 +207,11 @@ internal static partial class ZunePlayerBar
             var tools = new List<Element>(10);
             foreach (var slot in RightSlotOrder.All)
             {
-                if ((v.Slots & slot) != 0) tools.Add(Tool(props, v, look, slot, begin, overlay, videoAnchor, videoMenu));
+                if ((v.Slots & slot) == 0) continue;
+                var tool = Tool(props, v, look, slot, begin, overlay, videoAnchor, videoMenu);
+                // The normalization hint points at the slider, or at the volume glyph where the level has no slider.
+                bool volumeAnchor = slot == RightSlot.VolumeSlider || (slot == RightSlot.Volume && (v.Slots & RightSlot.VolumeSlider) == 0);
+                tools.Add(volumeAnchor && tool is BoxEl box ? box with { OnRealized = anchors.OnVolume } : tool);
             }
             var right = new BoxEl
             {
@@ -281,11 +289,33 @@ internal static partial class ZunePlayerBar
         // reflow-shove rule snaps a position slide while the title bar reflows on the same crossing). The slot is NOT the view's root: a component's
         // root lands its size at once on a crossing (its anchor is laid out at the final size), so the frame's column snapped by 16 at 3200 while the
         // bar eased inside; under a plain root the slot's reflow drives the column frame by frame.
+        // The hints that point at the play disc and the volume: zero boxes after the slot (no room), only where the control is drawn.
+        bool volumeShown = !mini && (v.Slots & (RightSlot.Volume | RightSlot.VolumeSlider)) != 0;
         return new BoxEl
         {
             Direction = 1, Shrink = 0f,
-            Children = [Slot(tier, reduced, layers, barNode, input, props)],
+            Children = v.OwnsTransport && volumeShown
+                ? [Slot(tier, reduced, layers, barNode, input, props), Hints.Pointer(HintSurfaces.PlayButton, anchors.Play), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume)]
+                : v.OwnsTransport ? [Slot(tier, reduced, layers, barNode, input, props), Hints.Pointer(HintSurfaces.PlayButton, anchors.Play)]
+                : volumeShown ? [Slot(tier, reduced, layers, barNode, input, props), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume)]
+                : [Slot(tier, reduced, layers, barNode, input, props)],
         };
+    }
+
+    /// <summary>The play disc's and the volume control's nodes, captured once per bar with stable delegates (a hint line's anchor).</summary>
+    private sealed class HintAnchors
+    {
+        NodeHandle _play, _volume;
+        public readonly Action<NodeHandle> OnPlay, OnVolume;
+        public readonly Func<NodeHandle> Play, Volume;
+
+        public HintAnchors()
+        {
+            OnPlay = h => _play = h;
+            OnVolume = h => _volume = h;
+            Play = () => _play;
+            Volume = () => _volume;
+        }
     }
 
     static BoxEl Slot(ZunePlayerBarTier tier, bool reduced, List<Element> layers, Ref<NodeHandle> barNode, InputHooks input, PlayerBarProps props)
