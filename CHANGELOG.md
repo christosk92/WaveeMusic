@@ -12,6 +12,23 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Added
 
+- **A Home you arrange in place (every theme).** Home is a board of tiles: drag one to a new place, give it another
+  size or turn it over to its back. Pin anything to it from the title bar's Pin button ("Pin to Home", beside "Pin to
+  sidebar"), and a card that is already on Home shows a pin mark. In WinUI a tile moves whenever you drag it; Classic
+  and Zune arrange while customizing, right on Home, with Undo, Redo and Reset in the edit bar. A tile also lifts and
+  moves with the keyboard, and its new place is read out.
+- **New sections on Home.** Your shortcuts is one grid with pages (touch and pen swipe turn them). Release Spotlight
+  shows a followed artist's new release. The Spine Shelf replaces "Because you like": one open card and the rest as
+  narrow spines, whose songs play their Canvas on hover, muted until you turn the sound on. Home also gains mood plates,
+  a book shelf, artist circles and a daylist card. Grids never leave an empty slot, a shelf remembers the page you left
+  it on, and resizing the window glides instead of jumping.
+- **New podcast, episode and audiobook pages (every theme).** A show's page has one button that names what plays next
+  (Resume, Play newest, Play part 3), episodes that show at rest whether they are new, unplayed, in progress or played,
+  filters with counts, search, sort and "New since your last visit". An episode's page has a chapter map drawn to scale
+  that seeks on click and a transcript that follows playback. An audiobook's page shows its authors and narrator, genres
+  and rating, one Continue button with your progress through the whole book, a sleep timer, its contents, and your
+  Premium listening hours with links to Spotify's site to check or top them up.
+
 - **Album covers fly into their page (WinUI).** Clicking an album card on Home, an artist's discography, search or
   "More by" lifts its cover out of the card and flies it into the album page's header while the page fades in quietly
   underneath; Back flies it home into the same card. Press Back mid-flight and the cover turns around where it is; go
@@ -132,8 +149,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
-- **Player bar transport.** In Classic, previous and next are filled like the play button, and the three are evenly
-  spaced. Clicking the bar in Classic or Zune no longer outlines the whole bar. (#228)
+- **Solid player controls in Classic.** Previous and next are filled like the play button and evenly spaced, and
+  clicking the player bar no longer outlines the whole bar (Classic and Zune). A community contribution from @0dm,
+  thank you. (#228)
 
 - **Where Wavee plays: a new device picker (every theme).** The Devices button opens a "Playing on" card (the device
   in use, how it is connected, what plays, its volume) above two lists: This PC, with Match Windows first, and Other
@@ -251,6 +269,9 @@ versions separately under `v*` and is not tracked in this file.)
   page in WinUI no longer paints a lighter band across the page.
 
 ### Removed
+
+- **Home's separate customize page and the Quickplay strip.** Home is arranged on Home itself, and its pinned tiles take
+  Quickplay's place.
 
 - **The daylist's "Live updates" switch and "Pause live updates" menu item.** Neither ever did anything for the daylist.
   Its clock is the only part that moves every second, and Clock > Update time only stills it.

@@ -258,7 +258,7 @@ public static partial class Playback
 
         /// <summary>One local render endpoint, as the picker offers it.</summary>
         /// <param name="Id">The endpoint id.</param>
-        /// <param name="Name">The plain name (<see cref="AudioDeviceNaming.Label"/>: "Chris's AirPods Max", "Built-in speakers").</param>
+        /// <param name="Name">The plain name (<see cref="AudioDeviceNaming.Label"/>: "Alex's AirPods Max", "Built-in speakers").</param>
         /// <param name="Kind">The form factor folded to the wire's output type (<c>audio_output_device_info</c>); never an icon.</param>
         /// <param name="IsDefault">Windows plays on it by default.</param>
         public readonly record struct LocalAudioDevice(string Id, string Name, byte Kind, bool IsDefault)

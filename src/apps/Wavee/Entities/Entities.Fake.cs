@@ -271,7 +271,7 @@ public static partial class Entities
     /// offloads for them (same container, hidden), a USB-C adapter, the built-in speakers and a display over HDMI.</summary>
     internal static Playback.AudioDeviceNaming.Facts[] FakeOutputs() =>
     [
-        new("fake:out:airpods", "Headphones (Chris’s AirPods Max - Find My)", "Chris’s AirPods Max - Find My", "Headphones", 3,
+        new("fake:out:airpods", "Headphones (Alex’s AirPods Max - Find My)", "Alex’s AirPods Max - Find My", "Headphones", 3,
             Playback.OutputConnection.Bluetooth, FakeAirPodsContainer, MachineContainer: false, IsDefault: true),
         new("fake:out:airpods-handsfree", "Headset (Qualcomm(R) Aqstic(TM) Audio Adapter Device)", "Qualcomm(R) Aqstic(TM) Audio Adapter Device", "Headset", 5,
             Playback.OutputConnection.Unknown, FakeAirPodsContainer, MachineContainer: false, IsDefault: false),
@@ -291,7 +291,7 @@ public static partial class Entities
     [
         new("fake:connect:tv", "Living room TV", Spotify.Decode.DeviceKind.Tv, 26214),
         new("fake:connect:speaker", "Kitchen speaker", Spotify.Decode.DeviceKind.Speaker, 39321),
-        new("fake:connect:phone", "Chris’s iPhone", Spotify.Decode.DeviceKind.Phone, 45875),
+        new("fake:connect:phone", "Alex’s iPhone", Spotify.Decode.DeviceKind.Phone, 45875),
     ];
 
     static string AlbumUri(int i) => "spotify:album:al" + Wrap(i, AlbumCount);

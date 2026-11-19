@@ -1903,11 +1903,11 @@ public static partial class Playback
     public enum OutputLook : byte { Speakers, Headphones, Display, Usb, Laptop }
 
     /// <summary>How an OS audio endpoint is NAMED, which ones the picker offers and which icon each wears (the owner's complaint,
-    /// 2026-11-19: Windows' raw endpoint names such as "Headphones (Chris's AirPods Max - Find My)" and "Speakers (Qualcomm(R)
+    /// 2026-11-19: Windows' raw endpoint names such as "Headphones (Alex's AirPods Max - Find My)" and "Speakers (Qualcomm(R)
     /// Aqstic(TM) Audio Adapter Device)", a headphones icon on speakers, and a hands-free twin of every Bluetooth headset). Pure:
     /// the facts in, the rows out, so the fake roster and a real machine take the same rules.
     /// <list type="bullet">
-    /// <item>The label is the DEVICE's own name (its interface name, "Chris's AirPods Max"), cleaned of driver noise ("(R)", "(TM)",
+    /// <item>The label is the DEVICE's own name (its interface name, "Alex's AirPods Max"), cleaned of driver noise ("(R)", "(TM)",
     /// "Audio Adapter Device", " - Find My"); a part of this PC is "Built-in speakers" or "Headphone jack"; a display is its model
     /// name (the endpoint's description); two outputs that would read the same add their description.</item>
     /// <item>A hands-free twin is hidden: a headset endpoint that shares its device's container with a stereo endpoint (the
@@ -1919,8 +1919,8 @@ public static partial class Playback
     {
         /// <summary>The OS facts of one active render endpoint.</summary>
         /// <param name="Id">The endpoint id.</param>
-        /// <param name="FriendlyName">Windows' endpoint name ("Headphones (Chris's AirPods Max - Find My)").</param>
-        /// <param name="DeviceName">The device's own name ("Chris's AirPods Max - Find My"), or "".</param>
+        /// <param name="FriendlyName">Windows' endpoint name ("Headphones (Alex's AirPods Max - Find My)").</param>
+        /// <param name="DeviceName">The device's own name ("Alex's AirPods Max - Find My"), or "".</param>
         /// <param name="Description">The endpoint's description ("Headphones", a display's model), or "".</param>
         /// <param name="FormFactor">The Windows EndpointFormFactor (1 speakers, 3 headphones, 5 headset, 8 SPDIF, 9 digital display).</param>
         /// <param name="Connection">How it reaches the machine.</param>
@@ -1942,7 +1942,7 @@ public static partial class Playback
         ];
 
         /// <summary>A device or adapter name without its driver noise: "Qualcomm(R) Aqstic(TM) Audio Adapter Device" is "Qualcomm Aqstic",
-        /// "Chris's AirPods Max - Find My" is "Chris's AirPods Max". Null or blank in, "" out.</summary>
+        /// "Alex's AirPods Max - Find My" is "Alex's AirPods Max". Null or blank in, "" out.</summary>
         public static string Clean(string? name)
         {
             if (string.IsNullOrWhiteSpace(name)) return "";

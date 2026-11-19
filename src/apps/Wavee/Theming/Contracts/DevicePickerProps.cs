@@ -58,7 +58,7 @@ public readonly record struct DevicePickerEntry(
 
     /// <summary>The row's second line: how the device is connected ("Bluetooth", "USB", "HDMI", "This PC", "Spotify Connect"), with "Windows
     /// default" on the default output while another device plays; Match Windows says what it follows ("Follows the Windows default · now
-    /// Chris's AirPods Max"). Null when there is nothing to say. Appended (contract 2.3).</summary>
+    /// Alex's AirPods Max"). Null when there is nothing to say. Appended (contract 2.3).</summary>
     public string? Detail { get; init; }
 
     /// <summary>The output did not open the last time Wavee tried it: <see cref="Detail"/> says "Not responding". Appended (contract 2.3).</summary>
@@ -72,7 +72,7 @@ public readonly record struct DevicePickerEntry(
 /// <summary>The "Playing on" card: the device in use (contract 2.3).</summary>
 public sealed record DevicePickerCard
 {
-    /// <summary>The device's plain name, as written ("Chris's AirPods Max", "Built-in speakers", "Living room TV").</summary>
+    /// <summary>The device's plain name, as written ("Alex's AirPods Max", "Built-in speakers", "Living room TV").</summary>
     public required string Name { get; init; }
 
     /// <summary>The device kind's icon glyph.</summary>
