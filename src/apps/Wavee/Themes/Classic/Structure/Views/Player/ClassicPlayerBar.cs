@@ -127,9 +127,6 @@ internal static partial class ClassicPlayerBar
         // THE LINK IS THE TEXT, never the slot: the title's slot spans the whole text column, so a link on it lit the title and took the
         // press anywhere on the row beside a short title. The link box is the run's own width (the credits' links do the same).
         bool titleLink = v.TitleNav && !mini;
-        // The plain title's slot hugs the run in the full bar (the text block is its own width), and the trim tip reads the slot on a 4-DIP grid
-        // (rounded to the nearest), so a fitting title could read as cut by up to 2: a trailing pad of one grid step keeps it honest.
-        Edges4 titlePad = mini ? default : new Edges4(0f, 0f, ClassicPlayerBarLayout.TitleTrimPad, 0f);
         var marqueeStyle = new Marquee.Style
         {
             FontSize = ClassicPlayerBarLayout.TitleSize, Weight = ClassicPlayerBarLayout.TitleWeight, Foreground = titleInk,
@@ -146,8 +143,8 @@ internal static partial class ClassicPlayerBar
                 : Marquee.Of(Prop.Of<string>(props.TitleText), marqueeStyle, marquees.Value, order: 0, identity: face)
             : titleLink
                 // The slot stays the column's width (the trim tip measures it); the link inside it is a shrinking row child, cut at the slot.
-                ? new BoxEl { ClipToBounds = true, MinWidth = 0f, Direction = 0, Padding = titlePad, Children = [TitleLink(titleRun)] }
-                : new BoxEl { ClipToBounds = true, MinWidth = 0f, Padding = titlePad, Children = [titleRun] };
+                ? new BoxEl { ClipToBounds = true, MinWidth = 0f, Direction = 0, Children = [TitleLink(titleRun)] }
+                : new BoxEl { ClipToBounds = true, MinWidth = 0f, Children = [titleRun] };
         titleEl = titleEl with { Key = titleKey };
 
         BoxEl TitleLink(TextEl run) => new()
@@ -259,6 +256,14 @@ internal static partial class ClassicPlayerBar
             ? Loc.Get(v.Liked ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save)
             : Loc.Get(v.Liked ? Strings.Menu.Saved : Strings.Menu.SaveToLiked));
         var likeSlot = Slot("like", likeBox, likeBox, v.LikeLit, saveFace);
+        // THE HEART RIDES THE TEXT'S GLIDE. Its x follows the text block's width (the full bar's block hugs its lines), and the block eases with
+        // MoveMotion on a track change; the slot fades its face only (FaceMotion: no bounds channel, so lighting never reflows the row), so this
+        // wrapper carries the block's own glide and the two land together instead of the heart jumping on the first frame.
+        var likeRide = new BoxEl
+        {
+            Key = "like-ride", Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+            Animate = ClassicPlayerBarLayout.MoveMotion, Children = [likeSlot],
+        };
 
         // The cover and the text block; the heart rides beside them in the identity zone. In the mini bar this flow IS the door (C-PlayerBar
         // mini): the 48-tall identity that opens the now-playing sheet, its subtle plate under the cover and the two lines, never under the heart.
@@ -289,7 +294,7 @@ internal static partial class ClassicPlayerBar
             // The factory PEEKS at promotion time: the mounted cluster outlives every track change. An idle bar is
             // not a drag handle at all. (The mini bar's door carries its own.)
             Draggable = v.Draggable && !mini ? Drag.Source(props.DragPayload) : null,
-            Children = mini || (v.ShowTitleBlock && v.ShowLikeSlot) ? [leftFlow, likeSlot] : [leftFlow],
+            Children = mini || (v.ShowTitleBlock && v.ShowLikeSlot) ? [leftFlow, likeRide] : [leftFlow],
         };
         // Right-click / Menu key / long-press: the track menu over the now-playing target, with its header. ONE seam
         // feeds this cluster AND the immersive stage (`Stage.NowPlayingMenu`, installed by the track menu's owner);

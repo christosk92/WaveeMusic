@@ -23,7 +23,9 @@
 // never be a shrinking ROW child (the fluentgpu skill's rule 11). The width it measures is the SLOT's — the host's
 // rendered root — so a link wrapped around the text with its own horizontal padding leaves the text up to that padding
 // less room than the slot (the album head's link is 4 DIP narrower on the text side). `UseMeasuredWidth` rounds to
-// 4 DIP, so a name within ~2 DIP of the edge may be decided either way; neither is a layout error.
+// the 4-DIP `MeasureGrid`, so a slot that HUGS its run (a content-sized slot) can read up to 2 DIP narrower than the
+// text that exactly fills it: a single-line run therefore counts as cut only when it overflows the measured width by more
+// than one grid step. A run cut by less than a grid step gets no tip (the ellipsis shows the cut; the tip was noise there).
 //
 // ── ZERO ALLOCATION AFTER MOUNT ──────────────────────────────────────────────────────────────────────────────────────
 //
@@ -71,8 +73,8 @@ public static partial class Controls
     /// <summary>The ONE "title inside <see cref="TrimTip"/>" wrapper — every surface's trimmable title (the media surface's
     /// cards and rows, a text-first (B) panel's record title, a podcast door) goes through it, so the slot it measures and
     /// the skeleton it leaves cannot drift. The run sits in a column box that fills a stretched wrapper, so the slot the
-    /// tooltip measures is the card's text column (never a shrink-wrapped run: a content-sized wrapper reads a fitting
-    /// title, rounded to the 4-DIP grid, as overflowing); the skeleton deriver — which cannot see into the tooltip's
+    /// tooltip measures is the card's text column (a run cut by less than the 4-DIP measuring grid gets no tip, so the
+    /// column, not a shrink-wrapped run, keeps a nearly-fitting title's tip); the skeleton deriver — which cannot see into the tooltip's
     /// component boundary — is handed the same column, so a derived shimmer keeps the title's bar. Put it where the flex
     /// algorithm sizes it: a COLUMN child, never a shrinking row child.
     /// <para><paramref name="run"/> is what is DRAWN when it is not <paramref name="style"/> itself (the search-highlight
@@ -116,6 +118,10 @@ public static partial class Controls
         readonly Signal<TrimTipProps?> _props = new(null);
         string? _memKey;   // the keyed-measurement role (E17c), composed once from the first text: a remount starts measured
 
+        /// <summary>The measured width's grid (<c>UseMeasuredWidth</c> rounds to the nearest step) and the single-line slack: a run within one
+        /// step of the measured width fits, so a fitting run in a content-sized slot is never read as cut.</summary>
+        const float MeasureGrid = 4f;
+
         public void ApplyProps(object props) { _p = (TrimTipProps)props; _props.Value = _p; }
 
         public override Element Render()
@@ -125,7 +131,7 @@ public static partial class Controls
             // The measured width (written during layout) feeds a MEMO of the one bit the tree reads: a width that keeps the
             // run trimmed (or fitting) re-renders nothing, so a reflow tick that narrows every card re-lays them out and only
             // a title that starts or stops overflowing re-renders (audit B3bc: 88 hosts per tick of a Classic dock).
-            var width = UseMeasuredWidth(_memKey, 4f);
+            var width = UseMeasuredWidth(_memKey, MeasureGrid);
             var trimmed = UseComputed(() =>
             {
                 float w = width.Value;
@@ -160,7 +166,7 @@ public static partial class Controls
                 int n = fonts.GetRangeRects(p.Text, in one, float.PositiveInfinity, 0, p.Text.Length, rects);
                 float natural = 0f;
                 for (int i = 0; i < n; i++) natural += rects[i].W;
-                return TextFit.Overflows(natural, w);
+                return TextFit.Overflows(natural, w + MeasureGrid);
             }
             var many = new TextStyle(family, size, p.Weight, p.Wrap, TextTrim.None, 0, p.CharSpacing, p.LineHeight);
             int lines = fonts.GetRangeRects(p.Text, in many, w, 0, p.Text.Length, rects);
