@@ -8,8 +8,8 @@
 // THE PATH. Every setting is a `SettingsDial` (Screens/SettingsSpec.cs) with ONE writer, the verb a Settings view calls: a toggle's
 // bool, a choice's index, a slider's number, an action's press. `setting id=<dial> value=<v>` calls that writer, and when it answers
 // "re-read" bumps the page epoch as a view does (`Settings.Bump`), so a mounted Settings page, the lyrics stage or the bar reads the new
-// value exactly as after a click. A dial answers to its registry id (`playback.crossfade`) and to its old row id (`crossfade`); `tab=`
-// (an old tab slug) picks between old ids two tabs shared. The active theme's options are dials too (`appearance.option.<qualifiedId>`);
+// value exactly as after a click. A dial answers to its registry id (`playback.crossfade`) and to its old row id (`crossfade`). The
+// active theme's options are dials too (`appearance.option.<qualifiedId>`);
 // `option` stays the verb that writes a theme option by its own grammar.
 
 using System.Globalization;
@@ -21,17 +21,10 @@ public static partial class Diagnostics
 {
     public sealed partial class InspectSession
     {
-        /// <summary>`setting {category?, tab?, id?, value?, + the settle args}`: no `id` lists every dial (of `category` or old `tab`), else
+        /// <summary>`setting {category?, id?, value?, + the settle args}`: no `id` lists every dial (of `category`), else
         /// reads or sets one.</summary>
         string Setting(int id, string name, Inspect.Args a)
         {
-            Settings.Tab? tab = null;
-            if (a.Has("tab"))
-            {
-                int t = Array.FindIndex(Settings.TabSlugs, s => string.Equals(s, a.Str("tab"), StringComparison.OrdinalIgnoreCase));
-                if (t < 0) return Inspect.Reply.Fail(id, name, "unknown tab '" + a.Str("tab") + "' (" + string.Join("|", Settings.TabSlugs) + ")");
-                tab = (Settings.Tab)t;
-            }
             SettingsCategory? only = null;
             if (a.Has("category"))
             {
@@ -52,11 +45,10 @@ public static partial class Diagnostics
                         {
                             foreach (var dial in group.Dials)
                             {
-                                if (tab is { } t && !(SettingsDoc.TryAddress(dial, out var was, out _) && was == t)) continue;
                                 WriteDial(w, dial, category, group);
                                 count++;
                             }
-                            if (group.Live is { } liveDials && tab is null)
+                            if (group.Live is { } liveDials)
                                 foreach (var dial in liveDials())
                                 {
                                     WriteDial(w, dial, category, group, live: true);
@@ -71,12 +63,11 @@ public static partial class Diagnostics
             }
             string dialName = a.Str("id");
             SettingsDial target;
-            if (tab is { } oldTab && SettingsDoc.TryRow(oldTab, dialName, out var onTab)) target = onTab;
-            else if (!SettingsSpec.TryResolve(dialName, out target, out var matches))
+            if (!SettingsSpec.TryResolve(dialName, out target, out var matches))
             {
                 if (matches.Count == 0)
-                    return Inspect.Reply.Fail(id, name, "no Settings dial '" + dialName + "'" + (tab is null ? "" : " on " + Settings.TabSlugs[(int)tab]) + " (setting lists them)");
-                return Inspect.Reply.Fail(id, name, "'" + dialName + "' is the old id of several dials: name one (" + string.Join("|", matches.Select(static d => d.Id)) + ") or add tab=");
+                    return Inspect.Reply.Fail(id, name, "no Settings dial '" + dialName + "' (setting lists them)");
+                return Inspect.Reply.Fail(id, name, "'" + dialName + "' is the old id of several dials: name one (" + string.Join("|", matches.Select(static d => d.Id)) + ")");
             }
             if (!a.Has("value") && target.Kind != SettingsRowKind.Action)   // `setting id=<dial>`: read it
                 return Inspect.Reply.Ok(id, name, w => WriteDial(w, target, named: "dial"));
@@ -174,7 +165,6 @@ public static partial class Diagnostics
             if (group is not null) w.WriteString("group", group.Id);
             if (dial.Parent is { } parent) w.WriteString("parent", parent);
             if (dial.Tier != SettingsTier.Common) w.WriteString("tier", dial.Tier.ToString().ToLowerInvariant());
-            if (SettingsDoc.TryAddress(dial, out var tab, out var rowId)) w.WriteString("was", Settings.TabSlugs[(int)tab] + "/" + rowId);
             w.WriteString("kind", dial.Kind.ToString().ToLowerInvariant());
             w.WritePropertyName("value");
             switch (dial.Current)

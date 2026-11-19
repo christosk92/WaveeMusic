@@ -88,7 +88,7 @@ internal static partial class ZuneSettings
         static void Pick(int index)
         {
             if (SettingsVerbs.ThemeIndex() == index) return;
-            Settings.OpenNextMountOn(Settings.Area.Appearance);
+            Settings.OpenNextMountOn("appearance");
             if (SettingsSpec.Dial(ThemeDial).Writer.Choose?.Invoke(index) == true) Settings.Bump();
         }
     }

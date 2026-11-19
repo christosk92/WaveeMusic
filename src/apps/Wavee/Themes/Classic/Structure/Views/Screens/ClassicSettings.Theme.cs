@@ -115,7 +115,7 @@ internal static partial class ClassicSettings
     static void PickTheme(int index)
     {
         if (SettingsVerbs.ThemeIndex() == index) return;
-        Settings.OpenNextMountOn(Settings.Area.Appearance);
+        Settings.OpenNextMountOn("appearance");
         if (Dial("appearance.theme").Writer.Choose!(index)) Settings.Bump();
     }
 

@@ -565,7 +565,6 @@ public static partial class Diagnostics
             {
                 Positional = ["id", "value"],
                 Args = Join([Arg("category", ArgType.String, "only this category's dials (home|appearance|sound|playback|lyrics|notifications|system|storage|account|help, or an old slug)"),
-                             Arg("tab", ArgType.String, "only the dials an old tab drew (general|appearance|playback|notifications|storage|privacy|about|account|devices|keyboard|feedback); picks between old ids two tabs shared"),
                              Arg("id", ArgType.String, "the dial: its registry id (playback.crossfade) or its old row id (crossfade), any case"),
                              Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none (naming an action presses it)")], s_settleArgs),
             },

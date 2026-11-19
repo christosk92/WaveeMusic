@@ -1,5 +1,5 @@
 // ── Screens/Settings.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// The tab model, and the page's pure decisions: the equalizer gain vector + presets, the quality and
+// The page's pure decisions: the equalizer gain vector + presets, the quality and
 // video ladders, the metered status line, the storage formatting and budget ladders, the notification-block banner
 // decision, the app-language options, the About receipts' formatting, the Storage/About hero and meter rules
 //
@@ -27,27 +27,6 @@ namespace Wavee;
 
 public static partial class Settings
 {
-    // ══ 1. THE TAB MODEL ════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The old pages' document tabs: where a row sat before the registry (`SettingsDoc` reads a dial's old address through; a dial
-    /// lives in `SettingsSpec`). The first seven are the original pivot; Account, Devices, Keyboard and Feedback hold the rows of the four
-    /// sections the Zune boards add. What the PAGE shows is the twelve <see cref="Area"/>s (`Settings.Areas.cs`), each a composition of
-    /// document sections.</summary>
-    public enum Tab : byte { General, Appearance, Playback, Notifications, Storage, PrivacyDiagnostics, About, Account, Devices, Keyboard, Feedback }
-
-    /// <summary>Must stay 1:1 with <see cref="Tab"/> — a missing slug made About IndexOutOfRange in 0.2.9. The log viewer
-    /// is no longer a tab (it is the route <c>logs</c>), so the old <c>logs</c> slug now falls back to General.</summary>
-    public static readonly string[] TabSlugs = ["general", "appearance", "playback", "notifications", "storage", "privacy", "about", "account", "devices", "keyboard", "feedback"];
-
-    /// <summary>A deep link's tab name → the tab, General when unknown (a bad arg lands on the page, never nowhere).</summary>
-    public static Tab TabFromSlug(string? slug)
-    {
-        if (slug is { Length: > 0 })
-            for (int i = 0; i < TabSlugs.Length; i++)
-                if (string.Equals(TabSlugs[i], slug, StringComparison.OrdinalIgnoreCase)) return (Tab)i;
-        return Tab.General;
-    }
-
     // ══ 2. THE EQUALIZER (0.2.9 `App/EqualizerSettings.cs` + the preset table of `SettingsPage.Playback.cs:20-29`) ══
 
     public static class Eq

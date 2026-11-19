@@ -3,7 +3,7 @@
 // Role: CORE (themes plan §5.1, PR C13; extraction X34-X36). The Settings views read these inline: `PackageIdentity` for
 // the spotify: row, the tray mode for four rows' enablement, `ToastNotifier` for the OS-block banner, a cold DXGI walk for
 // the GPU picker, `File.Exists` and a notices read on the render path. They are `ISettingsFacts` now — one narrow
-// interface the `SettingsDoc` rows ask (`Enabled`, `Caption`, `Visible`), with the live producers here and a fake in the
+// interface the registry's dials ask (`Enabled`, `Caption`, `Visible`), with the live producers here and a fake in the
 // tests — plus the producers that touch the OS or the disk, kept off the render path:
 //   · `RefreshGpus()` enumerates the adapters (a cold walk) when the GPU card mounts, never during a render;
 //   · `ToastDelivery()` is the one OS query behind the Notifications banner;

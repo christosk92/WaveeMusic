@@ -1,8 +1,8 @@
 // ── Screens/SettingsSpec.cs — the settings registry: category › group › dial, each dial with its ONE writer ─────────────────
 //
 // Role: CORE (settings rework phase 1, handoff/settings-2026-11-18/DESIGN.md 3.7). ONE table decides where a setting lives. It
-// replaced the document tabs and sections (`SettingsDoc.Rows.*.cs`), the glyph catalogue (`Settings.Catalog`) and the developer gate;
-// `SettingsDoc` is a thin read-through of the old address for the views until each theme draws the registry (phase 4).
+// replaced the document tabs and sections, the page areas and the structures' grouping of them into tabs, the glyph catalogue
+// (`Settings.Catalog`) and the developer gate; every theme draws the registry (`SettingsPageModel.cs`).
 //
 // A DIAL is today's Settings row with a stable address of its own: `SettingsDial { Id, LegacyIds, Parent, Glyph, Tier, Contexts,
 // Aliases, ChoiceKeys, Kind, TitleKey, Caption, Value, Writer, Enabled, Visible, Confirm, SilentWhenDisabled }`:

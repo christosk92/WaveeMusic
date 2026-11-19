@@ -86,8 +86,8 @@ public static partial class LogsPage
             else Settings.Open("help.logs.viewer");
         }
 
-        /// <summary>Settings › Privacy &amp; diagnostics › Logs. The first crumb opens Settings on its remembered tab; the
-        /// second lands on the dial this page belongs to (the Log viewer); the last is this page and does nothing.</summary>
+        /// <summary>Settings › Help &amp; about › Logs. The first crumb opens Settings; the second lands on the dial this page belongs to
+        /// (the Log viewer); the last is this page and does nothing.</summary>
         public void OpenCrumb(int index)
         {
             if (index == 0) Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));

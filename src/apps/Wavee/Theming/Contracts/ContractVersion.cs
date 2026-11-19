@@ -317,6 +317,12 @@
 // suggestions as `HintProps`, `SettingsRecentRow`s) and `Body` (`SettingsBodySource`: `SettingsBody`, `SettingsBodyGroup`, `SettingsBodyRow`
 // with `SettingsExplainInfo`, `SettingsAlsoIn` and `SettingsBodyNote`); `SettingsKeys` (the page's node keys); `ThemePolicies.SettingsPage`
 // (`SettingsPagePolicy.HighlightMs`, from the structure's Rules); `SetupConsent.Labels` (the wizard's crash-consent words are the dial's).
+// 2.0 (settings rework phase 4c, MAJOR: every theme draws the registry's page): REMOVED the old Settings page's model. `SettingsPageProps`
+// loses `Area`, `AreaCell`, `OpenArea` (the twelve areas), `Tab`, `TabCell`, `OpenTab` (the document tabs) and `Grouping`, `Group`, `OpenGroup`
+// (the structure's grouping), and keeps `OpenSection`, `CloseSection`, `Revision`, `Storage` and the 1.116 members; `ThemePolicies.Settings`
+// and `SettingsGrouping` / `SettingsTab` are gone, with the core's `Settings.Tab`, `TabSlugs`, `Area`, `AreaSlugs`, `AreaTitleKeys`, `PartsOf`,
+// `HomeArea`, `FirstTab`, `AreaOf`, `AreaFromSlug`, `SettingsDoc` / `SettingsSection` and `Settings.OpenNextMountOn(Area)` / `(Tab)` (a theme
+// pick names the category: `Settings.OpenNextMountOn("appearance")`). Every old slug and row id still lands through `SettingsSpec`'s aliases.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -329,10 +335,10 @@ namespace Wavee.Theming.Contracts;
 public static class ContractVersion
 {
     /// <summary>Breaking changes to the published keys, props records or verbs.</summary>
-    public const int Major = 1;
+    public const int Major = 2;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 116;
+    public const int Minor = 0;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

@@ -77,7 +77,7 @@ public interface IStructureLayer
     /// <summary>The roles the style must define for this structure.</summary>
     RoleSet RequiredRoles { get; }
 
-    /// <summary>The rows of the theme's options that are not options yet: still <c>SettingsDoc</c> rows bound to their legacy keys,
+    /// <summary>The rows of the theme's options that are not options yet: still registry dials bound to their legacy keys,
     /// in display order. Empty for a theme whose every option is in <see cref="Options"/>.</summary>
     IReadOnlyList<LegacyOptionRow> LegacyRows => Array.Empty<LegacyOptionRow>();
 }

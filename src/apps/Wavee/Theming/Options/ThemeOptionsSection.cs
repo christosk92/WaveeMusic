@@ -147,10 +147,6 @@ public static class ThemeVerbs
 /// <summary>Builds the options section of a composition.</summary>
 public static class ThemeOptionsSection
 {
-    /// <summary>The old Appearance-tab section the options sit in on the old pages (its glyph is <c>SettingsDoc.SectionGlyph</c>'s; the
-    /// view prints "‹theme› options").</summary>
-    public const string SectionTitle = "Theme options";
-
     private const int SegmentedMax = 4;
 
     /// <summary>The section of the ACTIVE theme with its live option values. <see cref="ThemeOptionsModel.None"/> before install.</summary>

@@ -465,7 +465,6 @@
       "subtitle": "트랙 목록과 세부 정보 페이지의 배치 방식"
     },
     "lyrics": {
-      "title": "가사",
       "subtitle": "동기화된 가사를 읽는 화면",
       "ai": {
         "lang": {
@@ -490,7 +489,6 @@
       }
     },
     "nowPlaying": {
-      "title": "재생 중",
       "subtitle": "고정된 커버 아트 뒤의 플레이어 스타일"
     },
     "themePicker": {
@@ -503,7 +501,6 @@
     "themeOptions": {
       "title": "{theme} 옵션",
       "none": "이 테마에는 옵션이 없습니다",
-      "displayTitle": "표시",
       "animationEffects": "애니메이션 효과",
       "animationEffectsSub": "Windows 애니메이션 설정을 따릅니다",
       "reset": "옵션 재설정",
@@ -527,22 +524,10 @@
         "surfaces": "표면"
       }
     },
-    "home": {
-      "title": "홈",
-      "subtitle": "홈에서 데일리스트를 표시하는 방식"
-    },
     "links": {
       "subtitle": "다른 앱에서 Wavee가 여는 항목"
     },
-    "tabs": {
-      "general": "일반",
-      "playback": "재생",
-      "storage": "저장 공간 및 캐시",
-      "privacy": "개인정보 및 진단",
-      "about": "정보"
-    },
     "language": {
-      "title": "언어 및 지역",
       "subtitle": "Wavee 자체 인터페이스에 사용하는 언어",
       "label": "앱 언어",
       "restartSub": "변경 사항은 Wavee를 다시 시작할 때 적용됩니다.",
@@ -876,7 +861,6 @@
     "unplayableToast": "체부된 비디오를 재생할 수 없어 원본을 재생합니다.",
     "dropHint": ".mp4를 놓으면 이 곡에 체부됩니다",
     "customLabel": "사용자 비디오 보기",
-    "settingsTitle": "비디오 재정의",
     "settingsHeader": "체부된 비디오",
     "settingsSub": "이 컴퓨터의 모든 계정에 적용됩니다. 파일은 복사되지 않고 연결되며, 체부를 제거해도 파일은 삭제되지 않습니다.",
     "settingsCount": "{count, plural, other {체부 #개}}",
@@ -1137,7 +1121,6 @@
       "breath": "대기"
     },
     "settings": {
-      "title": "전체 화면",
       "subtitle": "전체 화면 지금 재생 중 보기와 비주얼라이저",
       "visualizer": "비주얼라이저",
       "visualizerSub": "전체 화면 보기가 시작될 때 사용할 비주얼라이저",

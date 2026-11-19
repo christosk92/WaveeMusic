@@ -60,10 +60,6 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     /// A structure that declares nothing keeps the key's own default.</summary>
     public LibraryTierPolicy LibraryTiers { get; init; } = LibraryTierPolicy.Default;
 
-    /// <summary>How the structure groups the Settings page's twelve areas into tabs (P6 WK, owner Q3; <see cref="SettingsGrouping"/>). A structure that declares
-    /// nothing draws one tab per area, as the page shipped.</summary>
-    public SettingsGrouping Settings { get; init; } = SettingsGrouping.Default;
-
     /// <summary>What the structure decides for the registry's Settings page (contract 1.116, <see cref="SettingsPagePolicy"/>: the arrival's highlight
     /// duration, from the structure's Rules). A structure that declares nothing gets the design's 1.6 s.</summary>
     public SettingsPagePolicy SettingsPage { get; init; } = SettingsPagePolicy.Default;
@@ -89,7 +85,6 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (DetailTiers is null) problems.Add("DetailTiers is missing");
         if (ArtistTiers is null) problems.Add("ArtistTiers is missing");
         if (LibraryTiers is null) problems.Add("LibraryTiers is missing");
-        if (Settings is null) problems.Add("Settings is missing"); else problems.AddRange(Settings.Validate());
         if (SettingsPage is null) problems.Add("SettingsPage is missing"); else problems.AddRange(SettingsPage.Validate());
         if (PageMotion is null) problems.Add("PageMotion is missing");
         return problems;
