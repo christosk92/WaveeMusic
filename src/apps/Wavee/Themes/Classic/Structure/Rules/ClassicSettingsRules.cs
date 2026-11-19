@@ -1,9 +1,11 @@
 // ── Themes/Classic/Structure/Rules/ClassicSettingsRules.cs — the numbers the Settings page owns (themes plan 6.1, T11b) ───────────────────────────
 //
-// From `Screens\Settings.UI*.cs`: the page's measures (the 1000-DIP left-aligned column, the 4-DIP card spacing, the section glyphs, the tab swap), the widths of
-// the combos and number boxes, the theme picker's fixed card, the miniatures the sidebar, track-list and page-layout cards draw, the Storage tab's hues and meter,
-// the Privacy tab's report rows, the About hero, the attached-videos manager. WVTH003 allows literal looks only here. The page's TIERS (the column cap, the two Huge
-// columns, the stacked Compact rows, the picker's forms) are `Tiers.Settings.cs` (TC8): nothing here is compared with a window width (WVTH013).
+// From `Screens\Settings.UI*.cs`: the page's measures (the 1000-DIP left-aligned column, the 4-DIP card spacing, the section glyphs, the category swap), the
+// masthead's search box and its popup, the arrival highlight, the "Also in" line, the Settings home's tiles, rows and notice card, the explanation badge and its
+// tip, the widths of the combos and number boxes, the theme picker's fixed card, the miniatures the sidebar, track-list and page-layout cards draw, Storage's hues
+// and meter, the saved reports' rows, the About hero, the attached-videos manager. WVTH003 allows literal looks only here. The page's TIERS (the column cap, the
+// two Huge columns, the stacked Compact rows, the box under the title, the tiles per row, the picker's forms) are `Tiers.Settings.cs` (TC8): nothing here is
+// compared with a window width (WVTH013).
 
 using FluentGpu.Animation;
 using FluentGpu.Foundation;
@@ -18,11 +20,11 @@ internal static class ClassicSettingsRules
     /// <summary>N2: cards 4 DIP apart.</summary>
     public const float CardSpacing = 4f;
 
-    /// <summary>A tab switch swaps the tab's body with the page cross-fade (the neutral page swap's recipe), the leaving body fading under the
-    /// arriving one.</summary>
+    /// <summary>A category switch (and the results page arriving or leaving) swaps the body with the page cross-fade (the neutral page swap's
+    /// recipe), the leaving body fading under the arriving one.</summary>
     public static LayoutTransition TabSwap => Design.Nav.RecipeFor(Design.NavTransitionKind.Neutral);
 
-    /// <summary>The tab strip's first label sits on the page gutter: the item's own 12-DIP padding pulled back out (board: margin 0 0 0 -12).</summary>
+    /// <summary>The category strip's first label sits on the page gutter: the item's own 12-DIP padding pulled back out (board: margin 0 0 0 -12).</summary>
     public const float TabLeadingInset = -12f;
 
     /// <summary>A section header's glyph and how far it drops to sit on the title's first line.</summary>
@@ -34,8 +36,88 @@ internal static class ClassicSettingsRules
     /// <summary>The page title's gear glyph where the tier draws one (C-Settings-Compact / -Small / -Huge: 24, 12 before the title).</summary>
     public const float TitleGlyph = 24f, TitleGlyphGap = 12f;
 
-    /// <summary>The keyboard page's key chip: its padding.</summary>
+    /// <summary>The keyboard shortcuts' key chip: its padding.</summary>
     public const float KeyChipPadX = 8f, KeyChipPadY = 2f;
+
+    // ── the masthead's search box and its suggestion popup (settings rework 7.1; board C-Home) ──
+
+    /// <summary>The box's width beside the title (right-aligned in the masthead row). At Compact it is the row's width, under the title
+    /// (<see cref="ClassicSettingsLayout.SearchUnder"/>).</summary>
+    public const float SearchWidth = 340f;
+
+    /// <summary>The space between the title and the box under it (Compact).</summary>
+    public const float SearchUnderGap = 12f;
+
+    /// <summary>The popup lists the top results (design 7.1: the top 8).</summary>
+    public const int SuggestionRows = 8;
+
+    /// <summary>A popup row: its least height (two lines, the board's 48) and its glyph.</summary>
+    public const float SuggestionRowHeight = 48f, SuggestionGlyph = 16f;
+
+    /// <summary>A popup row's padding and the popup's own inset (the board's 4).</summary>
+    public static readonly Edges4 SuggestionRowPadding = new(12f, 4f, 12f, 4f), SuggestionPopupPadding = new(4f, 4f, 4f, 4f);
+
+    /// <summary>The "All results" row under the suggestions (the board's 36).</summary>
+    public const float SuggestionFootHeight = 36f;
+
+    /// <summary>A result's breadcrumb above its card and the gap between them; the gap between two results.</summary>
+    public const float BreadcrumbGap = 4f, ResultGap = 12f;
+
+    // ── the arrival highlight (design 4.9, 7.1: the accent border and the accent at the subtle-fill alpha, fading back) ──
+
+    /// <summary>How long the highlight fades back: the structure's <c>SettingsPagePolicy.HighlightMs</c> (<c>ClassicPolicies</c>).</summary>
+    public const int HighlightMs = 1600;
+
+    /// <summary>How long the highlight holds lit before it fades (the glide's own length).</summary>
+    public const float HighlightHoldMs = 450f;
+
+    /// <summary>The highlight's fill: the accent at the subtle-fill alpha (C-Arrival: 0.16).</summary>
+    public const float HighlightFillAlpha = 0.16f;
+
+    /// <summary>The highlight's border (C-Arrival: 2, hanging 1 outside the card).</summary>
+    public const float HighlightBorder = 2f, HighlightOutset = -1f;
+
+    /// <summary>Where the arrival brings its row in the scroller (0.3 from the top, design 4.9).</summary>
+    public const float ArrivalAlign = 0.3f;
+
+    // ── "Also in" (design 5.1: the line under a row whose dial a panel draws too) ──
+
+    /// <summary>The line under the card: on the card's text column (its glyph's column plus its gap, 58), 4 under it.</summary>
+    public static readonly Edges4 AlsoInPadding = new(58f, 0f, 16f, 4f);
+
+    /// <summary>The line's least height (a place's link, so a line of plain words takes the same room) and the gap between "Also in" and its places.</summary>
+    public const float AlsoInMinHeight = 32f, AlsoInGap = 6f;
+
+    // ── the Settings home (design 3.3, 7.1; board C-Home) ──
+
+    /// <summary>An at-a-glance tile's least height (the board's 68).</summary>
+    public const float GlanceMinHeight = 68f;
+
+    /// <summary>A Recently changed row's least height (the board's 52).</summary>
+    public const float RecentMinHeight = 52f;
+
+    /// <summary>The suggestion notice card's padding (the board's 12 8 12 16) and its glyph.</summary>
+    public static readonly Edges4 NoticePadding = new(16f, 8f, 8f, 8f);
+
+    /// <summary>The notice card's glyph and its edge (the toast card's 1-DIP surface stroke).</summary>
+    public const float NoticeGlyph = 16f, NoticeBorder = 1f;
+
+    // ── the explanation badge (design 6.5: an info glyph button and its flyout card in Classic's plate) ──
+
+    /// <summary>The badge: its round button and its glyph (C-Arrival: 20 and 14).</summary>
+    public const float ExplainBadge = 20f, ExplainGlyph = 14f;
+
+    /// <summary>The tip: its width and padding (C-Arrival: 352 and 16), the clip's box (320 x 180), the gap between the clip and the caption.</summary>
+    public const float ExplainTipWidth = 352f, ExplainTipPadding = 16f, ExplainClipWidth = 320f, ExplainClipHeight = 180f, ExplainGap = 10f;
+
+    /// <summary>The clip's decode width (twice the tip's 320: the clips are recorded at 640 x 360).</summary>
+    public const float ExplainClipDecodePx = 640f;
+
+    /// <summary>The poster's play glyph (no clip recorded yet, or reduced motion before the play button is pressed).</summary>
+    public const float ExplainPosterGlyph = 28f;
+
+    /// <summary>The placeholder's dashed edge (C-Arrival: 1).</summary>
+    public const float ExplainPosterBorder = 1f;
 
     /// <summary>The title glyph arrives and leaves on a tier crossing with the form fade (opacity over <c>Design.Motion.Fast</c>), while the title beside it
     /// slides (<see cref="HeadSlide"/>).</summary>
