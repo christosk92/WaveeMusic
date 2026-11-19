@@ -9,6 +9,7 @@
 //   profile.menu     the title bar chip's menu (`Shell.ProfileMenuRequest`)
 //   miniPlayer       the mini player (its ⋯ › Options holds the face, keep on top and the colour)
 //   trackList.menu   Liked Songs, a track list whose ⋯ holds the columns
+//   stage.upNext     the full screen on its Up next column (its Autoplay and Crossfade switches)
 //   playerBar        the bar is always on screen: keyboard focus lands on the remaining-time flip (`Shell.PlayerBarFocusRequest`)
 //   titleBar.menu    the title bar's own window menu under the bar (`Shell.TitleBarMenuRequest`; only a theme whose option names it has one)
 // A surface with no door here (the tray menu, a dialog, the video's menu) prints its place without a link.
@@ -38,6 +39,12 @@ internal static class InContextDoors
 
     static readonly Action s_trackList = static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked));
 
+    static readonly Action s_stageUpNext = static () =>
+    {
+        Prefs.Stage.SetMode((int)Stage.Mode.Queue);
+        PlayerVerbs.Default.OpenStage(null, "settings-also-in");
+    };
+
     static readonly Action s_playerBar = static () => Shell.PlayerBarFocusRequest.Value = Shell.PlayerBarFocusRequest.Peek() + 1;
 
     static readonly Action s_titleBar = static () => Shell.TitleBarMenuRequest.Value = Shell.TitleBarMenuRequest.Peek() + 1;
@@ -58,6 +65,7 @@ internal static class InContextDoors
         SettingsSurfaces.ProfileMenu => s_profileMenu,
         SettingsSurfaces.MiniPlayerOptions => s_miniPlayer,
         SettingsSurfaces.TrackListMenu => s_trackList,
+        SettingsSurfaces.StageUpNext => s_stageUpNext,
         SettingsSurfaces.PlayerBar => s_playerBar,
         SettingsSurfaces.TitleBarMenu => s_titleBar,
         _ => null,

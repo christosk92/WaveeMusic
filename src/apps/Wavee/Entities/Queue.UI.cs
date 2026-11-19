@@ -279,10 +279,10 @@ public static partial class Queue
         /// <see cref="SetMetrics"/> before it builds the lane.</summary>
         float _rowExtent;
 
-        protected QueueSurface(Shell.QueuePages pages)
+        protected QueueSurface(Shell.QueuePages pages, string surface = SettingsSurfaces.QueuePanel)
         {
             Pages = pages;
-            Verbs = new Shell.QueueVerbs(pages);
+            Verbs = new Shell.QueueVerbs(pages, surface);
             Reorder = new Reorderable(Drag.Resource)
             {
                 ItemExtent = 0f,
@@ -691,11 +691,12 @@ public static partial class Queue
     {
         readonly bool _aside, _video;
 
-        public StagePaneHost(bool aside = false, bool video = false) : base(new Shell.QueuePages(unified: true)) { _aside = aside; _video = video; }
+        public StagePaneHost(bool aside = false, bool video = false) : base(new Shell.QueuePages(unified: true), SettingsSurfaces.StageUpNext) { _aside = aside; _video = video; }
 
         public override Element Render()
         {
             Prologue(rail: false);
+            var crossfade = UseComputed(s_crossfade).Value;   // the "between songs" pair's second switch and its length, as the rail reads them
             UseEffect(() => Pages.Reset(), DepKey.From(ContextId.GetHashCode()));
             int pages = Pages.Of(QueueSection.Queue).Value;
             var counts = Model.Counts;
@@ -710,6 +711,9 @@ public static partial class Queue
                 Aside = _aside,
                 Video = _video,
                 Player = PlayerVerbs.Default,
+                Crossfade = crossfade.On,
+                CrossfadeLength = crossfade.Length,
+                OpenCrossfadeLength = Shell.QueueVerbs.OpenCrossfadeLength,
             });
         }
     }

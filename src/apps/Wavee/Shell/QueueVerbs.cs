@@ -24,7 +24,9 @@ namespace Wavee;
 
 public static partial class Shell
 {
-    public sealed class QueueVerbs(QueuePages pages) : IQueueVerbs
+    /// <summary>The queue's verbs over <paramref name="pages"/>; <paramref name="surface"/> is what a write of the Autoplay or Crossfade dial records as
+    /// its source (the queue panel, or the full screen's Up next column).</summary>
+    public sealed class QueueVerbs(QueuePages pages, string surface = SettingsSurfaces.QueuePanel) : IQueueVerbs
     {
         /// <summary>Verbs over a private page counter, for a caller with no surface of its own.</summary>
         public static readonly QueueVerbs Default = new(new QueuePages());
@@ -132,11 +134,11 @@ public static partial class Shell
 
         public void ToggleAutoplay() => SetAutoplay(!QueueModel.AutoplayEnabled());
 
-        public void SetAutoplay(bool on) => SettingsSpec.Dial(AutoplayDial).WriteToggle(on, SettingsSurfaces.QueuePanel);
+        public void SetAutoplay(bool on) => SettingsSpec.Dial(AutoplayDial).WriteToggle(on, surface);
 
         public void ToggleCrossfade() => SetCrossfade(!CrossfadeEnabled());
 
-        public void SetCrossfade(bool on) => SettingsSpec.Dial(CrossfadeDial).WriteToggle(on, SettingsSurfaces.QueuePanel);
+        public void SetCrossfade(bool on) => SettingsSpec.Dial(CrossfadeDial).WriteToggle(on, surface);
 
         /// <summary>The registry ids of the pair, and of the duration the panel links to.</summary>
         public const string AutoplayDial = "playback.autoplay", CrossfadeDial = "playback.crossfade", CrossfadeLengthDial = "playback.crossfade.duration";

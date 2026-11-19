@@ -274,6 +274,17 @@ public sealed record QueueStagePaneProps
     /// thumbnail (the video's still for a track that has one while <c>Stage.StageCtx.VideosPlay</c>, else the cover inset on a plate;
     /// <see cref="IQueueLane.VideoOf"/>). Appended (contract 1.97).</summary>
     public bool Video { get; init; }
+
+    /// <summary>Crossfade is on: the switch beside Autoplay (the "between songs" pair, design 5.4), written through the verbs, recorded as written from
+    /// the full screen's Up next. Appended (contract 1.117).</summary>
+    public bool Crossfade { get; init; }
+
+    /// <summary>The crossfade's length in words ("6 s"), a link to the duration in Settings where the column has room for it; "" for none. Appended
+    /// (contract 1.117).</summary>
+    public string CrossfadeLength { get; init; } = "";
+
+    /// <summary>Opens Settings at the crossfade's duration (it leaves the full screen first); null for no link. Appended (contract 1.117).</summary>
+    public Action? OpenCrossfadeLength { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.QueueStageShelf"/>: the stage's Up next SHELF over the music video (Video mode, Cinema): the next

@@ -315,6 +315,9 @@ public static class SettingsSurfaces
     /// own <c>ThemeOption.Contexts</c>).</summary>
     public const string LyricsPane = "lyrics.pane", ProfileMenu = "profile.menu", TitleBarMenu = "titleBar.menu";
 
+    /// <summary>The full screen's Up next column (its Autoplay and Crossfade switches, design 5.4's "Queue / Up next").</summary>
+    public const string StageUpNext = "stage.upNext";
+
     /// <summary>The setup wizard's Terms page (its crash-consent card writes the crash-reports dial, owner decision 10): a source, not a context.</summary>
     public const string SetupWizard = "setup.wizard";
 
