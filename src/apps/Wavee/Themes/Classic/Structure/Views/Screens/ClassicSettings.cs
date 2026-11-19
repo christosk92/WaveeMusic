@@ -220,7 +220,8 @@ internal static partial class ClassicSettings
             Key = "settings:tabs", Direction = 1, Shrink = 0f,
             Children =
             [
-                Embed.Comp(new StripProps(lane, keys.Length > 0 ? keys[Math.Clamp(category, 0, keys.Length - 1)] ?? "" : ""), static () => new StripScroller()),
+                Embed.Comp(new StripProps(lane, keys.Length > 0 ? keys[Math.Clamp(category, 0, keys.Length - 1)] ?? "" : "", layout.Touch ? layout.Target : float.NaN),
+                    static () => new StripScroller()),
                 Divider() with { Margin = layout.TabsScroll ? default : new Edges4(gutter, 0f, gutter, 0f) },
             ],
         };
@@ -234,10 +235,13 @@ internal static partial class ClassicSettings
         [SelectorBar.PartItem] = static b => b.Key is { } key ? b with { OnRealized = h => s_stripItems[key] = h } : b,
     };
 
-    sealed record StripProps(Element Lane, string SelectedKey);
+    /// <summary>The strip's lane, the open category's key, and its pagers' hit target (Compact's 40; NaN keeps the stock button).</summary>
+    sealed record StripProps(Element Lane, string SelectedKey, float PagerTarget);
 
     /// <summary>The strip's scroller. Where the names run off the edge, the open category's name is brought into view whenever the category changes (a link,
-    /// a door, the home's tile), gliding (a cut the first time and with reduced motion), so the selection is never hidden past the fade.</summary>
+    /// a door, the home's tile), gliding (a cut the first time and with reduced motion), so the selection is never hidden past the fade. A mouse has no
+    /// sideways wheel, so hovering a strip that runs off the edge shows the shelves' ‹ › pager over its ends at the side that hides names (owner report
+    /// 2026-11-19: "without trackpad this is not scrollable"), at the tier's hit target.</summary>
     sealed class StripScroller : Component
     {
         NodeHandle _viewport;
@@ -256,7 +260,7 @@ internal static partial class ClassicSettings
                 scene.BringIntoView(_viewport, item, float.NaN, _seeded && !Design.Reduced ? ScrollMove.Glide : ScrollMove.Immediate, Spacing.S);
                 _seeded = true;
             }, DepKey.From(selected.GetHashCode()));
-            return ScrollView(p.Lane, horizontal: true) with
+            var strip = ScrollView(p.Lane, horizontal: true) with
             {
                 // The bar's own height (its items plus its 4-DIP padding above and below), never the tier's item height: a scroller held to the item height
                 // clipped the bar's foot, and the selected item's pill with it.
@@ -264,6 +268,7 @@ internal static partial class ClassicSettings
                 // Every tier: the fade draws only where names wait past the edge.
                 AutoEdgeFade = true, ScrollKey = "settings:tabs", OnRealized = _capture,
             };
+            return Controls.StripPager.Create(strip, "settings:tabs", p.PagerTarget);
         }
     }
 
