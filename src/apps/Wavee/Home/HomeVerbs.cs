@@ -39,6 +39,33 @@ public static class HomeVerbs
         else HomeBoardInspect.CustomizeOnMount = true;
     }
 
+    /// <summary>The board's daylist item (its id), or null when Home holds none: then "Also in: Home › Daylist tile" is plain text (no dead door). A
+    /// subscribing read of the Home document, so a Settings row that asks re-reads when the daylist tile comes or goes.</summary>
+    public static string? DaylistItemId() => DaylistIn(HomeBoardStore.Instance.Doc.Value);
+
+    static string? DaylistIn(HomeDoc doc)
+    {
+        foreach (var group in doc.Groups)
+            foreach (var item in group.Items)
+                if (item.Source is WidgetSource { Widget: DaylistWidget }) return item.Id;
+        return null;
+    }
+
+    /// <summary>The daylist widget's name in the Home document (<see cref="WidgetSource.Widget"/>).</summary>
+    const string DaylistWidget = "daylist";
+
+    /// <summary>"Also in: Home › Daylist tile" (settings design 5.1, 5.3): Home's All facet with the daylist tile's options open, where they draw the
+    /// daylist's Clock and "Tell me when it refreshes". On Home already, at once; elsewhere Home opens and the board opens them (a board kept alive
+    /// behind the page at once, else as it mounts). Nothing when Home holds no daylist tile.</summary>
+    public static void OpenDaylistOptions()
+    {
+        if (DaylistIn(HomeBoardStore.Instance.Doc.Peek()) is not { } id) return;
+        var cur = Shell.Current.Peek();
+        if (!(cur.Kind == Shell.RouteKind.Home && Entities.Strings.Resolve(cur.Arg).Length == 0)) Shell.GoTo(new Shell.Route(Shell.RouteKind.Home));
+        if (HomeBoardInspect.Current is { } board) board.OpenOptions(id);
+        else HomeBoardInspect.OptionsOnMount = id;
+    }
+
     /// <summary>Whether this build offers "Customize Home" at all: the theme's way into changing Home is its edit mode or its add surface, and
     /// both can be switched off (<see cref="HomeCustomize"/>, owner 2026-11-18). The facets' link and the palette command show only while true.</summary>
     public static bool CanCustomize => HomeCustomize.EditMode || HomeCustomize.AddSurface;

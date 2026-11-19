@@ -23,7 +23,7 @@ public static partial class SettingsSpec
             topics.Add(Make(id, K.Segmented, TopicTitleKey(topic),
                 SettingsWriter.OfChoice("notify.topicLevel", i => SettingsVerbs.SetTopicLevel(captured, i)),
                 legacy: ["topic:" + topic], captionKey: TopicCaptionKey(topic), value: _ => (int)Notify.Prefs.Level(captured),
-                choices: TopicLevelChoices));
+                choices: TopicLevelChoices, contexts: TopicContexts(topic)));
             // Developer surface: the dial stays where it is; the chevron reveals "Send a test event" (enabled at every level, Off
             // included: "nothing happens, as configured" is otherwise unverifiable).
             topics.Add(Make(id + ".test", K.Action, Strings.Settings.Notify.Send,
@@ -68,6 +68,9 @@ public static partial class SettingsSpec
                     captionKey: Strings.Settings.Notify.ResetTipsSub)),
         ]);
     }
+
+    /// <summary>The in-context homes of a topic's ladder: the daylist's refresh is drawn by the daylist tile's options too (HomeTileDials).</summary>
+    static string[]? TopicContexts(NotifyTopic topic) => topic == NotifyTopic.DaylistRefresh ? [SettingsSurfaces.HomeDaylist] : null;
 
     /// <summary>Every topic ladder's three levels.</summary>
     static readonly string[] TopicLevelChoices = [Strings.Settings.Notify.LevelOff, Strings.Settings.Notify.LevelInApp, Strings.Settings.Notify.LevelWindows];

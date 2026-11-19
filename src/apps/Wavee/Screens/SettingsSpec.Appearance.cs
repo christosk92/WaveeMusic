@@ -83,6 +83,7 @@ public static partial class SettingsSpec
             Make("appearance.daylistClock", K.Choice, Strings.Settings.Appearance.DaylistClock,
                 SettingsWriter.OfChoice("lists.daylistClock", SettingsVerbs.SetDaylistClock), legacy: ["daylistClock"], glyph: "Clock",
                 captionKey: Strings.Settings.Appearance.DaylistClockSub, value: _ => (int)Prefs.Appearance.DaylistClock(),
+                contexts: [SettingsSurfaces.HomeDaylist],   // the daylist tile's options draw it (HomeTileDials)
                 choices: [Strings.Settings.Appearance.DaylistClockBoth, Strings.Settings.Appearance.DaylistClockUpdateTime,
                     Strings.Settings.Appearance.DaylistClockCountdown]),
             // The Liked Songs cover: the same writer as the cover's "Cover style" flyout; its value is the slot in the picker's order.

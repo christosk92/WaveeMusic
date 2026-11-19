@@ -124,6 +124,13 @@ internal sealed class HomeBoardInspector : IHomeBoardInspect
         return faults.Count;
     }
 
+    /// <summary>The tile brought into view (no ring: the options opening is the answer), then its options open.</summary>
+    public void OpenOptions(string entryId)
+    {
+        Verbs.Reveal(entryId, ring: false);
+        Verbs.Open(entryId);
+    }
+
     public string? Edit(bool on, string? itemId)
     {
         if (View.NoEditMode is { } refusal) return refusal;

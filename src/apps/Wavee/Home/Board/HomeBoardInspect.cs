@@ -64,6 +64,10 @@ public interface IHomeBoardInspect
     /// <summary>Reset; Classic's "everything" asks in its bar: <paramref name="confirm"/> answers it.</summary>
     void Reset(HomeResetScope scope, bool confirm);
 
+    /// <summary>Open <paramref name="entryId"/>'s options where its tile stands (a Settings "Also in" door, settings design 5.1): the board's own
+    /// <see cref="Open"/>; a board that can also brings the tile into view.</summary>
+    void OpenOptions(string entryId) => Open(entryId);
+
     /// <summary>The theme's way into changing Home ("Customize Home"): its edit mode (Classic's Edit Home, Zune's customize), or, where the
     /// theme has none (WinUI), its add band.</summary>
     void Customize()
@@ -80,6 +84,11 @@ public static class HomeBoardInspect
     public static void Register(IHomeBoardInspect board)
     {
         Current = board;
+        if (OptionsOnMount is { } open)
+        {
+            OptionsOnMount = null;
+            board.OpenOptions(open);
+        }
         if (!CustomizeOnMount) return;
         CustomizeOnMount = false;
         board.Customize();
@@ -87,6 +96,10 @@ public static class HomeBoardInspect
 
     /// <summary>"Customize Home" asked from another page: the board enters the theme's way into changing Home when it next mounts.</summary>
     public static bool CustomizeOnMount { get; set; }
+
+    /// <summary>A tile's options asked from another page (a Settings door, "Also in: Home › Daylist tile"): the entry whose options the board opens
+    /// when it next mounts.</summary>
+    public static string? OptionsOnMount { get; set; }
 
     public static void Unregister(IHomeBoardInspect board)
     {

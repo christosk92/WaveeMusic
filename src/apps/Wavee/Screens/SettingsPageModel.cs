@@ -354,6 +354,8 @@ public static class SettingsPageModel
             SettingsSurfaces.StageOptions or SettingsSurfaces.StageGallery => static () => PlayerVerbs.Default.OpenStage(null, "settings-also-in"),
             SettingsSurfaces.LikedCover => static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked)),
             SettingsSurfaces.LogsMenu => static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.Logs)),
+            // The preview sound's button stands on Home's shelves (the Spine Shelf, the Release Spotlight): the place is Home, which always opens.
+            SettingsSurfaces.HomeShelf => static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.Home)),
             _ => null,
         };
         s_doors[surface] = door;

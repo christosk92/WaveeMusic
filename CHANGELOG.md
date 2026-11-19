@@ -17,6 +17,10 @@ versions separately under `v*` and is not tracked in this file.)
   underneath; Back flies it home into the same card. Press Back mid-flight and the cover turns around where it is; go
   somewhere else and it steps aside. With Windows animations off, or from a card that is mostly out of view, nothing
   flies.
+- **Connected animations and the preview sound are in Settings.** Settings > Appearance > Motion has a "Connected
+  animations" switch wherever pictures fly into their pages (WinUI today): off, nothing flies and pages swap as before.
+  Settings > Playback > Previews on Home turns the sound of the song previews on Home's shelves on or off, the same
+  setting as the shelf's sound button ("Also in: Home"); search finds both ("preview sound", "connected animations").
 
 - **Fast navigation (Classic and WinUI).** A new switch in Settings > Appearance swaps pages without the cross-fade: the
   new page replaces the old one at once and settles in from 40 %. It is off by default, which keeps the calm hand-over
@@ -173,6 +177,11 @@ versions separately under `v*` and is not tracked in this file.)
 - **Zune's app bar offers options for a tile.** Press and hold (or right-click) a Home tile that has options and the app
   bar comes up with "options" and "done"; "options" turns the tile over to its settings. The daylist strip turns over
   too, and its own menu ends in "options".
+
+- **The daylist's settings and its tile point at each other.** In Settings, the daylist clock and "Your daylist
+  refreshed" say "Also in: Home > Daylist tile", a link that opens Home with the daylist's options open; a pick made in
+  those options shows in Settings' Recently changed as made on Home. The first time the daylist refreshes while Home is
+  on screen, the options item in the daylist's ⋯ menu carries a one-time dot (Zune says "options" in the accent).
 
 ### Removed
 

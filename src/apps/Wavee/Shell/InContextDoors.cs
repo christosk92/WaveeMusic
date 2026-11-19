@@ -12,6 +12,7 @@
 //   stage.upNext     the full screen on its Up next column (its Autoplay and Crossfade switches)
 //   playerBar        the bar is always on screen: keyboard focus lands on the remaining-time flip (`Shell.PlayerBarFocusRequest`)
 //   titleBar.menu    the title bar's own window menu under the bar (`Shell.TitleBarMenuRequest`; only a theme whose option names it has one)
+//   home.daylist     Home's All facet with the daylist tile's options open (its Clock and "Tell me when it refreshes", `HomeVerbs.OpenDaylistOptions`)
 // A surface with no door here (the tray menu, a dialog, the video's menu) prints its place without a link.
 //
 // NO DEAD DOOR (owner rule: no dead controls). A door is handed out only while its place can open in the window as it is now; otherwise the
@@ -23,6 +24,7 @@
 //   playerBar      a remaining-time label that takes the door is mounted: the bar's, else the now-playing panel's (the door then shows the panel on
 //                  Now playing first); a Compact bar has none
 //   titleBar.menu  the title bar answers the window menu request (only a structure with such a menu subscribes to it)
+//   home.daylist   Home holds a daylist tile (the Home document, a subscribing read: the row re-reads when the tile comes or goes)
 // Whatever mounts or unmounts one of these moves `Epoch` (from an effect), and `Of` reads it, so a Settings body that asks re-reads its doors.
 //
 // The other way, a link from an in-context surface INTO Settings (the device picker's quality row and "Sound settings", the queue's crossfade
@@ -113,6 +115,8 @@ internal static class InContextDoors
 
     static readonly Action s_titleBar = static () => Shell.TitleBarMenuRequest.Value = Shell.TitleBarMenuRequest.Peek() + 1;
 
+    static readonly Action s_homeDaylist = HomeUi.HomeVerbs.OpenDaylistOptions;
+
     /// <summary>Follow a settings link (<see cref="SettingsLinks"/>: a dial or a category) from an in-context surface (see the file header).</summary>
     public static void OpenSettings(string link)
     {
@@ -124,7 +128,7 @@ internal static class InContextDoors
     /// <summary>The surfaces whose door is decided here (asked every time: their places come and go with the window).</summary>
     public static bool Handles(string surface) => surface is SettingsSurfaces.LyricsPane or SettingsSurfaces.DevicePicker or SettingsSurfaces.ProfileMenu
         or SettingsSurfaces.MiniPlayerOptions or SettingsSurfaces.TrackListMenu or SettingsSurfaces.StageUpNext or SettingsSurfaces.PlayerBar
-        or SettingsSurfaces.TitleBarMenu;
+        or SettingsSurfaces.TitleBarMenu or SettingsSurfaces.HomeDaylist;
 
     /// <summary>The door to <paramref name="surface"/> (a <see cref="SettingsSurfaces"/> name) while its place can open now, else null (the entry is
     /// plain text). Subscribes the caller to <see cref="Epoch"/>.</summary>
@@ -141,6 +145,7 @@ internal static class InContextDoors
             SettingsSurfaces.StageUpNext => s_stageUpNext,
             SettingsSurfaces.PlayerBar => s_barLabels + s_panelLabels > 0 ? s_playerBar : null,
             SettingsSurfaces.TitleBarMenu => Shell.TitleBarMenuRequest.HasSubscribers ? s_titleBar : null,
+            SettingsSurfaces.HomeDaylist => HomeUi.HomeVerbs.DaylistItemId() is not null ? s_homeDaylist : null,
             _ => null,
         };
     }
