@@ -67,8 +67,6 @@ internal static partial class ClassicSettings
                 return group is not null;
             case "help.links.website" or "help.links.thirdPartyNotices" or "help.links.openDataFolder":
                 return group is not null;   // the links card draws them (a result draws its own clickable row)
-            case "help.links.privacyPolicy":
-                return true;   // a duplicate of Account & privacy › Privacy policy: it left with the old About page (one home per verb)
             case "help.links.licenses":
                 card = new BoxEl
                 {
@@ -304,7 +302,7 @@ internal static partial class ClassicSettings
         var kids = new List<Element>(group.Rows.Length + 3);
         foreach (SettingsBodyRow row in group.Rows)
         {
-            if (row.Kind != SettingsRowKind.Action || string.Equals(row.Id, "help.links.privacyPolicy", StringComparison.Ordinal)) continue;
+            if (row.Kind != SettingsRowKind.Action) continue;
             SettingsDial dial = row.Dial;
             kids.Add(Framed(row, LinkButton(row.Label, () => dial.Writer.Run!())));
         }

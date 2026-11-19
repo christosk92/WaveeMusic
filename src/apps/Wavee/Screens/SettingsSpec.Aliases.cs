@@ -53,7 +53,7 @@ public static partial class SettingsSpec
 
     /// <summary>The dial <paramref name="name"/> names: its registry id, else an old row id, among the declared dials and then the
     /// active theme's live options (case-insensitive, as the inspector always matched). False when nothing answers, or when an old id
-    /// is shared (About's and Privacy's "privacyPolicy"): <paramref name="matches"/> then lists every dial that answers.</summary>
+    /// is shared by two dials: <paramref name="matches"/> then lists every dial that answers.</summary>
     public static bool TryResolve(string name, out SettingsDial dial, out IReadOnlyList<SettingsDial> matches)
     {
         s_byIdFolded ??= IndexFolded();

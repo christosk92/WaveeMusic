@@ -1452,7 +1452,6 @@
       "help.developer.sendTestCrashReport": "crash test",
       "help.links.allIssues": "github issues bugs",
       "help.links.website": "website homepage",
-      "help.links.privacyPolicy": "gdpr data",
       "help.links.thirdPartyNotices": "licenses open+source",
       "help.links.openDataFolder": "data+folder appdata",
       "help.links.licenses": "open+source",
@@ -1953,7 +1952,6 @@
       "updateAvailable": "Wavee {version} is available",
       "updateCheckFailed": "Couldn't check for updates",
       "devBuild": "Development build — not for distribution",
-      "privacyPolicy": "Privacy policy",
       "thirdPartyNotices": "Third-party notices",
       "unofficial": "Wavee is an independent client and is not affiliated with or endorsed by Spotify AB.",
       "noticesMissing": "Third-party notices are generated at packaging time."
