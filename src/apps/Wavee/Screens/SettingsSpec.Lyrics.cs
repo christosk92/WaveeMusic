@@ -60,7 +60,7 @@ public static partial class SettingsSpec
                 SettingsWriter.OfChoice("npv.finish", SettingsVerbs.SetNpvFinish), parent: "lyrics.playerStyle", glyph: "Brush",
                 captionKey: Strings.Settings.NowPlaying.FinishSub, value: _ => Rail.PlayerPrefs.Finish(Rail.PlayerPrefs.Style()),
                 visible: static _ => Rail.PlayerCatalog.ById(Rail.PlayerPrefs.StylePeek()).HasFinish,
-                contexts: [SettingsSurfaces.NowPlayingPicker])),
+                contexts: [SettingsSurfaces.NowPlayingPicker], liveChoices: FinishNames)),
 
         Group("fullScreen", Strings.Settings.Groups.Lyrics.FullScreen, Strings.Stage.Settings.Subtitle,
             Make("lyrics.stage.visualizer", K.Choice, Strings.Stage.Settings.Visualizer,
@@ -131,6 +131,16 @@ public static partial class SettingsSpec
                 SettingsWriter.OfToggle("mini.artColour", SettingsVerbs.SetMiniArtColour), glyph: "Brush",
                 value: s => MiniPlayer.ArtColourForActiveTheme(s.Get(Platform.Keys.MiniPlayerArtColour)), contexts: [SettingsSurfaces.MiniPlayerOptions])),
     ]);
+
+    /// <summary>The finish dial's words: the chosen player style's finishes, in their persisted order (the indexes its value and writer use; none for a
+    /// style without one, where the dial is not composed).</summary>
+    static IReadOnlyList<string> FinishNames()
+    {
+        var finishes = Rail.PlayerCatalog.ById(Rail.PlayerPrefs.StylePeek()).Finishes;
+        var names = new string[finishes.Length];
+        for (int i = 0; i < names.Length; i++) names[i] = FluentGpu.Localization.Loc.Get(finishes[i].LabelKey);
+        return names;
+    }
 
     /// <summary>The faces the visualizer dial offers (the gallery's shown faces, in gallery order), as loc keys.</summary>
     static string[] VisualizerChoices()

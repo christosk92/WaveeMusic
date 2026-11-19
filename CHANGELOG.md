@@ -62,6 +62,16 @@ versions separately under `v*` and is not tracked in this file.)
   Enter for a page of results where every setting can be changed in place. A link to a setting opens its category,
   unfolds its group, scrolls it into view and highlights it briefly. Settings whose effect is easier to see than to
   describe carry an info badge after their name that opens a short explanation.
+- **A new Settings page (Classic).** Settings opens on a home that shows your setup at a glance (theme, audio quality,
+  notifications, storage, lyrics, account; each tile opens its setting), any suggestions and the last five settings you
+  changed, wherever you changed them. Nine categories replace the old tabs: Appearance, Sound, Playback, Lyrics &
+  Now playing, Notifications, Startup & system, Storage, Account & privacy and Help & about, with the cards, glyphs and
+  motion Classic always had. "Find a setting" beside the title lists the best matches as you type and shows them as
+  the real, working settings; Enter or a click opens a setting where it lives, its section opening and the setting
+  gliding into view with a short highlight. Settings that also live elsewhere say where ("Also in: Queue"), settings
+  whose effect is easier to see than to describe carry an info button that says what changes, and the settings that had
+  no row before (output device, podcast speed, the Liked Songs cover, the list columns, the mini player's options,
+  private session) are here too.
 
 ### Changed
 

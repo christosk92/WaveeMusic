@@ -1,8 +1,9 @@
-// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Playback.cs — the Playback tab (themes plan 6.1, T11b) ────────────────────────────
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Playback.cs — Sound's and Playback's own cards (settings rework 7.1) ────────────────────
 //
-// From `Screens\Settings.UI.Playback.cs`. The runtime card (ready expander / not-set-up bar / problem bar) · Audio (quality with the D7 lossless rung, the metered
-// cap + its live status line, remember volume, autoplay, normalization) · Sound (the equalizer curve, crossfade — both bound to the live DSP) · Video (quality,
-// the metered cap, the attached-videos row + its "Manage" flyout anchor, `ClassicSettings.VideoOverrides.cs`) · Player bar.
+// From `Screens\Settings.UI.Playback.cs`. Sound: the audio quality (the D7 lossless rung, each rung's sentence), the metered cap and its live status line, the
+// loudness level's combo, the equalizer (the curve bound to the live DSP, the preset, Reset). Playback: crossfade (its slider and number box in lock-step), the
+// video quality and metered cap combos, the playback runtime card (ready expander / not-set-up bar / problem bar). The attached videos' row and its "Manage"
+// flyout are `ClassicSettings.VideoOverrides.cs`; every other Sound and Playback dial is the generic grammar.
 //
 // THE LIVE DSP is the verbs'. Every equalizer / crossfade write persists and then pushes the WHOLE state to the live graph (`SettingsVerbs.SetEqBand`,
 // `CommitCrossfade`), so the ear follows the curve while it is dragged; this view keeps only the mirrors of its frozen controls (a combo's selection signal).
@@ -13,7 +14,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using Tab = Wavee.Settings.Tab;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
 
@@ -57,21 +58,20 @@ internal static partial class ClassicSettings
     static OverlayHandle? s_voHandle { get => s_voHandleState.Value; set => s_voHandleState.Value = value; }
     static NodeHandle s_voAnchor { get => s_voAnchorState.Value; set => s_voAnchorState.Value = value; }
 
-    /// <summary>The page mount: every frozen control's signal from the document's value.</summary>
+    /// <summary>The page mount: every frozen control's signal from its dial's value.</summary>
     static void SeedPlayback()
     {
-        if (D(Tab.Playback, "audioQuality").Current is int quality) s_quality.Value = quality;
-        if (D(Tab.Playback, "normalizationMode").Current is int normMode) s_normMode.Value = normMode;
-        if (D(Tab.Playback, "videoQuality").Current is int videoQuality) s_videoQuality.Value = videoQuality;
-        if (D(Tab.Playback, "videoMetered").Current is int meteredVideo) s_meteredVideo.Value = meteredVideo;
-        if (D(Tab.Playback, "eqPreset").Current is int eqPreset) s_eqPreset.Value = eqPreset;
+        if (Dial("sound.quality").Current is int quality) s_quality.Value = quality;
+        if (Dial("sound.normalization.mode").Current is int normMode) s_normMode.Value = normMode;
+        if (Dial("playback.video.quality").Current is int videoQuality) s_videoQuality.Value = videoQuality;
+        if (Dial("playback.video.meteredQuality").Current is int meteredVideo) s_meteredVideo.Value = meteredVideo;
+        if (Dial("sound.equalizer.preset").Current is int eqPreset) s_eqPreset.Value = eqPreset;
         double seconds = SettingsFacts.CrossfadeSeconds();
         s_crossSecs.Value = seconds;
         s_crossSlider.Value = (float)seconds;
     }
 
-    /// <summary>Leaving the tab closes the manager and drops the (about-to-be-destroyed) anchor, but KEEPS an armed deep
-    /// link — that request is what flips the page back to this tab.</summary>
+    /// <summary>Leaving Playback closes the manager and drops the (about-to-be-destroyed) anchor.</summary>
     static void EnterPlayback(bool active)
     {
         if (active) return;
@@ -80,58 +80,12 @@ internal static partial class ClassicSettings
         s_voHandle = null;
     }
 
-    // ══ 2. THE TAB ════════════════════════════════════════════════════════════════════════════════════════════════════
-
-    private static Element[] PlaybackTab() =>
-    [
-        Mark("Runtime"),
-        RuntimeCard(),
-
-        // The board's playback section: what the queue does by itself.
-        Mark("Playback"),
-        SectionHeader(Loc.Get(Strings.Settings.Tabs.Playback), SectionGlyph(Tab.Playback, "Playback")),
-        CrossfadeGroup(),
-        DocRow(D(Tab.Playback, "autoplay"), RowToggle(D(Tab.Playback, "autoplay"))),
-        DocRow(D(Tab.Playback, "rememberVolume"), RowToggle(D(Tab.Playback, "rememberVolume"))),
-
-        Mark("Audio"),
-        SectionHeader(Loc.Get(Strings.Settings.Playback.AudioTitle), SectionGlyph(Tab.Playback, "Audio")),
-        DocRow(D(Tab.Playback, "audioQuality"), QualityCombo()),
-        // The description IS the detector's verdict: every state says something, "Unknown" included (never blank).
-        DocRow(D(Tab.Playback, "meteredQuality"), MeteredQualityCombo(), sub: MeteredStatus()),
-        // G-132: the switch 0.2.9 persisted but never showed. D5: it, the mode and album mode all apply LIVE to the playing track.
-        DocRow(D(Tab.Playback, "normalization"), RowToggle(D(Tab.Playback, "normalization"))),
-        DocRow(D(Tab.Playback, "normalizationMode"),
-            Combo([Loc.Get(Strings.Settings.Playback.NormQuiet), Loc.Get(Strings.Settings.Playback.NormNormal), Loc.Get(Strings.Settings.Playback.NormLoud)],
-                s_normMode, width: ClassicSettingsRules.NarrowComboWidth,
-                itemDescriptions: [Loc.Get(Strings.Settings.Playback.NormQuietSub), Loc.Get(Strings.Settings.Playback.NormNormalSub), Loc.Get(Strings.Settings.Playback.NormLoudSub)],
-                onChange: static i => D(Tab.Playback, "normalizationMode").Writer.Choose!(i))),
-        DocRow(D(Tab.Playback, "normalizationAlbum"), RowToggle(D(Tab.Playback, "normalizationAlbum"))),
-
-        Mark("Sound"),
-        SectionHeader(Loc.Get(Strings.Settings.Sound.Title), SectionGlyph(Tab.Playback, "Sound")),
-        EqualizerGroup(),
-
-        Mark("Video"),
-        SectionHeader(Loc.Get(Strings.VideoOverride.SettingsTitle), SectionGlyph(Tab.Playback, "Video")),
-        DocRow(D(Tab.Playback, "videoQuality"), VideoQualityCombo()),
-        DocRow(D(Tab.Playback, "videoMetered"), MeteredVideoCombo()),
-        VideoPrepareAheadRow(),
-        DocRow(D(Tab.Playback, "showCanvas"), RowToggle(D(Tab.Playback, "showCanvas"))),
-        DocRow(D(Tab.Playback, "videoEndCountdown"), RowToggle(D(Tab.Playback, "videoEndCountdown"))),
-        VideoOverridesRow(),
-
-        Mark("Player bar"),
-        SectionHeader(Loc.Get(Strings.Settings.Playback.PlayerBar), SectionGlyph(Tab.Playback, "Player bar")),
-        DocRow(D(Tab.Playback, "playerBarRemaining"), RowToggle(D(Tab.Playback, "playerBarRemaining"))),
-    ];
-
     // ══ 3. THE RUNTIME CARD (W7 ready · W10 problem · the not-set-up bar) ═══════════════════════════════════════════
 
     /// <summary>Three rendered shapes over <see cref="Setup.Runtime.Status"/> — never a skeleton, never blank. Nothing known
     /// yet (<c>NotApplicable</c>) and a runtime that was never set up (<c>Missing</c>) are the Informational "Not set up"
     /// bar; the other issues are the Error bar with the diagnostics doors.</summary>
-    static Element RuntimeCard()
+    static Element RuntimeCard(SettingsBodyRow row)
     {
         var facts = Setup.Runtime.Status.Value;
         if (facts.IsReady)
@@ -141,13 +95,14 @@ internal static partial class ClassicSettings
                 Header = Loc.Get(Strings.Settings.Common.Ready),
                 Description = Loc.Get(Strings.Settings.Playback.RuntimeReadySub),
                 HeaderIcon = Icons.StatusSuccess,
-                Content = StdButton(Loc.Get(Strings.Settings.Common.Manage), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!()),
+                Content = StdButton(Loc.Get(Strings.Settings.Common.Manage), static () => Dial("playback.runtime").Writer.Run!()),
+                IsExpanded = ExpandCell(row.Id, false),
                 Items =
                 [
                     RuntimeFact(Loc.Get(Strings.Playback.Runtime.DetailVersion),
                         facts.PackId is { Length: > 0 } pack ? facts.Version + " (" + pack + ")" : facts.Version),
                     RuntimeFact(Loc.Get(Strings.Playback.Runtime.DetailArch), facts.Arch),
-                    RuntimeSignatureItem(facts),
+                    RuntimeSignatureItem(row, facts),
                     RuntimeFact(Loc.Get(Strings.Playback.Runtime.DetailLocation), facts.Location),
                     // ch 27 §9.6: Connect diagnostics must not be reachable ONLY from a failure banner.
                     Item(Loc.Get("settings.playback.runtimeDiagnostics"), null, DiagnosticsLinks()),
@@ -159,7 +114,7 @@ internal static partial class ClassicSettings
             return InfoBar.Create(InfoBarSeverity.Informational,
                 Loc.Get(Strings.Settings.Playback.RuntimeNotSetUp), Loc.Get(Strings.Settings.Playback.RuntimeNotSetUpSub),
                 isClosable: false,
-                actionButton: AccentButton(Loc.Get(Strings.Playback.Runtime.SetUp), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!()))
+                actionButton: AccentButton(Loc.Get(Strings.Playback.Runtime.SetUp), static () => Dial("playback.runtime").Writer.Run!()))
                 with { Key = "playback.runtime:setup" };
 
         // The typed issue's own sentence — the banner used to show one static line and drop the reason.
@@ -170,21 +125,21 @@ internal static partial class ClassicSettings
             actionButton: new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                Children = [links, AccentButton(Loc.Get(Strings.Settings.Common.RetrySetup), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!())],
+                Children = [links, AccentButton(Loc.Get(Strings.Settings.Common.RetrySetup), static () => Dial("playback.runtime").Writer.Run!())],
             }) with { Key = "playback.runtime:problem" };
     }
 
     /// <summary>"View diagnostics" (the runtime report) + "Connect diagnostics" (who owns playback — orthogonal to whether
-    /// local playback is provisioned, so it rides the same row in every state). The two doors are the Privacy & diagnostics tab's Tools rows.</summary>
+    /// local playback is provisioned, so it rides the same row in every state). The two doors are Help & about's Diagnostics rows.</summary>
     static Element DiagnosticsLinks() => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
         Children =
         [
             LinkButton(Loc.Get(Strings.Playback.Runtime.ViewDiagnostics),
-                static () => D(Tab.PrivacyDiagnostics, "playbackRuntime").Writer.Run!()),
+                static () => Dial("help.tools.playbackRuntime").Writer.Run!()),
             LinkButton(Loc.Get(Strings.Nav.ConnectDiagnostics),
-                static () => D(Tab.Devices, "connectDiagnostics").Writer.Run!()),
+                static () => Dial("help.connectDiagnostics").Writer.Run!()),
         ],
     };
 
@@ -195,15 +150,16 @@ internal static partial class ClassicSettings
         return Item(label, known ? value : null, isEnabled: known);
     }
 
-    /// <summary>The signature summary, plus "View signature" ONLY while the signed file still exists on disk.</summary>
-    static Element RuntimeSignatureItem(Setup.RuntimeFacts facts)
+    /// <summary>The signature summary, plus "View signature" ONLY while the signed file still exists on disk (the runtime's child dial, keyed as its row).</summary>
+    static Element RuntimeSignatureItem(SettingsBodyRow row, Setup.RuntimeFacts facts)
     {
         string summary = Setup.RuntimeSignatureSummary(facts);
         bool canView = facts.Signature is { FilePath: { Length: > 0 } path } && File.Exists(path);
         Element? link = canView
-            ? LinkButton(Loc.Get(Strings.Playback.Runtime.ViewSignature), static () => D(Tab.Playback, "runtimeSignature").Writer.Run!())
+            ? LinkButton(Loc.Get(Strings.Playback.Runtime.ViewSignature), static () => Dial("playback.runtime.signature").Writer.Run!())
             : null;
-        return Item(Loc.Get(Strings.Playback.Runtime.DetailSignature), summary.Length > 0 ? summary : null, link);
+        Element item = Item(Loc.Get(Strings.Playback.Runtime.DetailSignature), summary.Length > 0 ? summary : null, link);
+        return ChildRow(row, "playback.runtime.signature") is { } signature ? Framed(signature, item, item: true) : item;
     }
 
     // ══ 4. AUDIO (G-130: the D7 rung, the live metered cap) ═══════════════════════════════════════════════════════════
@@ -244,7 +200,7 @@ internal static partial class ClassicSettings
         return Combo(QualityLabels(count), s_quality, width: ClassicSettingsRules.WideComboWidth, itemDescriptions: QualityDescriptions(count),
             onChange: static i =>
             {
-                if (D(Tab.Playback, "audioQuality").Writer.Choose!(i)) Settings.Bump();
+                if (Dial("sound.quality").Writer.Choose!(i)) Settings.Bump();
             }) with { Key = count == Settings.Quality.AudioRungCount(true) ? "playback.quality:lossless" : "playback.quality" };
     }
 
@@ -265,11 +221,19 @@ internal static partial class ClassicSettings
         return Combo(QualityLabels(count), Platform.Network.MeteredQualityCap, width: ClassicSettingsRules.WideComboWidth,
             itemDescriptions: QualityDescriptions(count), onChange: static i =>
             {
-                if (D(Tab.Playback, "meteredQuality").Writer.Choose!(i)) Settings.Bump();   // persist, then publish
+                if (Dial("sound.meteredQuality").Writer.Choose!(i)) Settings.Bump();   // persist, then publish
             }) with { Key = count == Settings.Quality.AudioRungCount(true) ? "playback.meteredCap:lossless" : "playback.meteredCap" };
     }
 
     // ══ 5. SOUND — THE EQUALIZER (W7, W8, N10) ════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The loudness level (Quiet · Normal · Loud) as the normalization expander's item: each level's sentence in the list.</summary>
+    static Element NormalizationModeItem(SettingsBodyRow row)
+        => Item(row.Label, row.Description, Badged(row,
+            Combo([Loc.Get(Strings.Settings.Playback.NormQuiet), Loc.Get(Strings.Settings.Playback.NormNormal), Loc.Get(Strings.Settings.Playback.NormLoud)],
+                s_normMode, width: ClassicSettingsRules.NarrowComboWidth, isEnabled: row.Enabled,
+                itemDescriptions: [Loc.Get(Strings.Settings.Playback.NormQuietSub), Loc.Get(Strings.Settings.Playback.NormNormalSub), Loc.Get(Strings.Settings.Playback.NormLoudSub)],
+                onChange: static i => Dial("sound.normalization.mode").Writer.Choose!(i))), isEnabled: row.Enabled, icon: GlyphOf(row.Dial));
 
     static string[] EqPresetLabels() =>
     [
@@ -291,46 +255,50 @@ internal static partial class ClassicSettings
         Loc.Get(Strings.Settings.Sound.Presets.ProofSub),
     ];
 
-    /// <summary><c>InitiallyExpanded = eqOn</c> is read at MOUNT (33c): turning the EQ off leaves the open expander open.
+    /// <summary>The expander opens with the EQ on the first time the page asks (33c): turning the EQ off leaves the open expander open.
     /// The curve item is <c>Vertical</c> at every width — the full 898-DIP lane at card 1000 (parity 11a, 24).
     /// <para>The card's content slot is a ROW that shrink-wraps its child (<c>SettingsCard.BuildContent</c>), so the
     /// curve's column claims the lane with <c>Grow 1 / Basis 0 / MinWidth 0</c>. Without them the column takes its
     /// CONTENT's width — and the curve, which measures the slot it is handed, measured its own guess back and held it
     /// (the chart overran the card, and "Reset curve to flat" was cut off at the card's right edge).</para></summary>
-    static Element EqualizerGroup()
+    static Element EqualizerGroup(SettingsBodyRow row)
     {
         bool eqOn = SettingsFacts.Live.EqualizerEnabled;
         int preset = Math.Clamp(s_eqPreset.Value, 0, Settings.Eq.PresetIds.Length - 1);
         string[] descriptions = EqPresetDescriptions();
-        return SettingsExpander.Create(new SettingsExpander.Options
-        {
-            Header = Loc.Get(Strings.Settings.Sound.Equalizer),
-            Description = Loc.Get(Strings.Settings.Sound.EqualizerSub),
-            HeaderIcon = RowGlyph(Tab.Playback, "equalizer"),
-            Content = RowToggle(D(Tab.Playback, "equalizer")),
-            InitiallyExpanded = eqOn,
-            Items =
-            [
-                // The item's own description is the SELECTED preset's sentence.
-                Item(Loc.Get(Strings.Settings.Sound.Preset), descriptions[preset],
-                    Combo(EqPresetLabels(), s_eqPreset, width: ClassicSettingsRules.NarrowComboWidth, itemDescriptions: descriptions,
-                        isEnabled: eqOn, onChange: static i => ApplyEqPreset(i))),
-                Item(Loc.Get(Strings.Settings.Sound.Curve),
-                    Loc.Get(eqOn ? Strings.Settings.Sound.CurveOn : Strings.Settings.Sound.CurveOff),
+        // The item's own description is the SELECTED preset's sentence.
+        Element presetItem = Item(Loc.Get(Strings.Settings.Sound.Preset), descriptions[preset],
+            Combo(EqPresetLabels(), s_eqPreset, width: ClassicSettingsRules.NarrowComboWidth, itemDescriptions: descriptions,
+                isEnabled: eqOn, onChange: static i => ApplyEqPreset(i)));
+        Element reset = LinkButton(Loc.Get(Strings.Settings.Sound.ResetCurve), static () => ResetEqCurve(), isEnabled: eqOn);
+        Element curveItem = Item(Loc.Get(Strings.Settings.Sound.Curve),
+            Loc.Get(eqOn ? Strings.Settings.Sound.CurveOn : Strings.Settings.Sound.CurveOff),
+            new BoxEl
+            {
+                Direction = 1, Gap = Spacing.S, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                Children =
+                [
+                    Controls.EqualizerCurve(EqGains(), s_onEqBand, eqOn),
                     new BoxEl
                     {
-                        Direction = 1, Gap = Spacing.S, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                        Children =
-                        [
-                            Controls.EqualizerCurve(EqGains(), s_onEqBand, eqOn),
-                            new BoxEl
-                            {
-                                Direction = 0, Justify = FlexJustify.End,
-                                Children = [LinkButton(Loc.Get(Strings.Settings.Sound.ResetCurve), static () => ResetEqCurve(), isEnabled: eqOn)],
-                            },
-                        ],
+                        Direction = 0, Justify = FlexJustify.End,
+                        Children = [ChildRow(row, "sound.equalizer.reset") is { } resetRow ? Framed(resetRow, reset) : reset],
                     },
-                    align: SettingsCard.ContentAlignment.Vertical),
+                ],
+            },
+            align: SettingsCard.ContentAlignment.Vertical);
+        return SettingsExpander.Create(new SettingsExpander.Options
+        {
+            Header = row.Label,
+            Description = row.Description,
+            HeaderIcon = GlyphOf(row.Dial),
+            Content = Badged(row, RowToggle(row.Dial)),
+            Style = ToggleHeaderStyle(RowToggle(row.Dial)),
+            IsExpanded = ExpandCell(row.Id, eqOn),
+            Items =
+            [
+                ChildRow(row, "sound.equalizer.preset") is { } presetRow ? Framed(presetRow, presetItem, item: true) : presetItem,
+                ChildRow(row, "sound.equalizer.curve") is { } curveRow ? Framed(curveRow, curveItem, item: true) : curveItem,
             ],
         }) with { Key = "playback.equalizer" };
     }
@@ -358,7 +326,7 @@ internal static partial class ClassicSettings
     {
         int idx = Math.Clamp(index, 0, Settings.Eq.PresetIds.Length - 1);
         s_eqPreset.Value = idx;
-        D(Tab.Playback, "eqPreset").Writer.Choose!(idx);
+        Dial("sound.equalizer.preset").Writer.Choose!(idx);
         Settings.Bump();
     }
 
@@ -368,20 +336,18 @@ internal static partial class ClassicSettings
 
     /// <summary>The slider and the NumberBox stay in lock-step through ONE commit. The duration row is re-keyed on the
     /// switch (ch 27 §1.2's documented NumberBox cure), so both controls follow the toggle on the same frame.</summary>
-    static Element CrossfadeGroup()
+    static Element CrossfadeGroup(SettingsBodyRow row)
     {
         bool crossOn = SettingsFacts.Live.CrossfadeEnabled;
         string seconds = s_crossSecs.Value.ToString("0.#", CultureInfo.InvariantCulture);
-        return SettingsExpander.Create(new SettingsExpander.Options
+        SettingsBodyRow? durationRow = ChildRow(row, "playback.crossfade.duration");
+        Element durationItem = Item(Loc.Get(Strings.Settings.Sound.CrossfadeDuration), Strings.Settings.Sound.Seconds(seconds), new BoxEl
         {
-            Header = Loc.Get(Strings.Settings.Sound.Crossfade),
-            Description = Loc.Get(Strings.Settings.Sound.CrossfadeSub),
-            HeaderIcon = RowGlyph(Tab.Playback, "crossfade"),
-            Content = RowToggle(D(Tab.Playback, "crossfade")),
-            InitiallyExpanded = crossOn,
-            Items =
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Wrap = true,
+            Children =
             [
-                Item(Loc.Get(Strings.Settings.Sound.CrossfadeDuration), Strings.Settings.Sound.Seconds(seconds), new BoxEl
+                durationRow?.Explain is not null ? Badged(durationRow, null)!.Value : new BoxEl { Width = 0f, Height = 0f },
+                new BoxEl
                 {
                     Key = crossOn ? "crossfade-duration-on" : "crossfade-duration-off",
                     Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Wrap = true,
@@ -390,8 +356,18 @@ internal static partial class ClassicSettings
                         SliderControl(s_crossSlider, static v => CommitCrossfade(v), s_crossSliderOptions, length: ClassicSettingsRules.CrossSliderLength, isEnabled: crossOn),
                         NumberField(s_crossSecs, static v => CommitCrossfade(v), crossOn ? s_crossBoxOn : s_crossBoxOff, "crossfade-seconds"),
                     ],
-                }),
+                },
             ],
+        });
+        return SettingsExpander.Create(new SettingsExpander.Options
+        {
+            Header = row.Label,
+            Description = row.Description,
+            HeaderIcon = GlyphOf(row.Dial),
+            Content = Badged(row, RowToggle(row.Dial)),
+            Style = ToggleHeaderStyle(RowToggle(row.Dial)),
+            IsExpanded = ExpandCell(row.Id, crossOn),
+            Items = [durationRow is { } d ? Framed(d, durationItem, item: true) : durationItem],
         }) with { Key = "playback.crossfade" };
     }
 
@@ -412,7 +388,7 @@ internal static partial class ClassicSettings
             s_videoQuality, width: ClassicSettingsRules.WideComboWidth, onChange: static i =>
             {
                 // Stored as a height (0 = Auto); the verb persists, then pins live: the ABR ceiling + the engine's selection.
-                if (D(Tab.Playback, "videoQuality").Writer.Choose!(i)) Settings.Bump();
+                if (Dial("playback.video.quality").Writer.Choose!(i)) Settings.Bump();
             });
 
     /// <summary>A stored height that matches nothing reads as 480p (index 1). Persisted and published through the
@@ -421,13 +397,6 @@ internal static partial class ClassicSettings
         => Combo([Loc.Get(Strings.Settings.Playback.VideoQualityUnlimited), "480p", "720p", "1080p"],
             s_meteredVideo, width: ClassicSettingsRules.WideComboWidth, onChange: static i =>
             {
-                if (D(Tab.Playback, "videoMetered").Writer.Choose!(i)) Settings.Bump();
+                if (Dial("playback.video.meteredQuality").Writer.Choose!(i)) Settings.Bump();
             });
-
-    /// <summary>D15's off switch, DEFAULT ON. On, the video host fetches the licence for the playing video-capable track
-    /// and the next queued one before the user asks (about 140 ms of a switch, and it keeps the native runtime warm). Off, nothing is fetched
-    /// ahead and the native component's preload is the only warm left, which is why the sentence promises data and not
-    /// speed. The write persists and then re-decides the keeper's beat immediately, rather than at the next track.</summary>
-    static Element VideoPrepareAheadRow()
-        => DocRow(D(Tab.Playback, "videoPrepareAhead"), RowToggle(D(Tab.Playback, "videoPrepareAhead")));
 }

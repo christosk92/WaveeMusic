@@ -235,9 +235,9 @@ public sealed class ClassicStructure : IStructureLayer
         // T10c1: the library page (the navigator, the grips, the detail pane, the search columns, the collapsed drill-in) and its four panes (album, show, artists' reader, Your Episodes).
         // The library data, the shape memo, the selection and its persistence, the search matcher, the collapse state and every pane model and demand stay core.
         ClassicLibrary.Register(views);
-        // T11b: the Settings page (the masthead, the seven-tab pivot, the keyed scroll lane and every tab's sections and rows, drawn from `SettingsDoc`) and the three Settings
-        // surfaces the setup wizard shares with it: the theme picker, the active theme's options and the sidebar layout cards. The document, the verbs, the facts, the page
-        // epoch, the Storage census, the deep link and the legacy-row binding stay core.
+        // T11b, settings rework 7.1: the Settings page over the settings registry (the masthead with its "Find a setting" box, the strip of the Settings home and the nine
+        // categories, the home, a category's groups and rows, the results page, the arrival's highlight) and the Settings surfaces the setup wizard shares with it: the theme
+        // picker and the active theme's options. The registry, the bodies, the search, the home's facts, the links, the verbs, the page epoch and the Storage census stay core.
         ClassicSettings.Register(views);
         // T10c2: Recents, the profile page and the Following / Followers list page (`Views\Pages`). The shapes, demands, accents, scroll spies, load rules and every verb stay core.
         views.Add(ViewKeys.RecentsPage, ClassicRecents.Template, "classic.recents.page");
@@ -290,7 +290,8 @@ public sealed class ClassicStructure : IStructureLayer
 
         // T11c: the Common blocks every theme shares (history, the Home customizer, the frame-rate overlay, diagnostics, logs: today's views
         // converted, one copy), then Classic's own screens: the setup wizard, the release notes, the feedback and crash dialogs' bodies.
-        CommonBlocks.Register(views);
+        // Classic draws a dial's explanation badge in its own grammar (an info glyph button and its tip in Classic's plate, settings rework 6.5).
+        CommonBlocks.Register(views, explainer: ClassicSettings.Explainer, explainerTemplateId: "classic.screens.settings.explainer");
         ClassicSetup.Register(views);
         ClassicReleaseNotes.Register(views);
         views.Add(ViewKeys.DialogFeedback, ClassicFeedback.Template, "classic.dialog.feedback");
