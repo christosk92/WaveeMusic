@@ -278,7 +278,7 @@ internal static partial class ClassicSettings
     {
         var items = new List<Element>(group.Rows.Length);
         foreach (SettingsBodyRow row in group.Rows)
-            items.Add(Framed(row, Item(row.Label, row.Description, KeyChip(row.Value as string ?? ""))));
+            items.Add(Framed(row, Item(row.Label, row.Description, KeyChip(row.Value as string ?? "")), item: true));
         return SettingsExpander.Create(new SettingsExpander.Options
         {
             Header = group.Title,

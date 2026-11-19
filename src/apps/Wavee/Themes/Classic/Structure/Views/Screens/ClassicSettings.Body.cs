@@ -234,7 +234,7 @@ internal static partial class ClassicSettings
     static Element? ChildElement(SettingsBodyRow child)
     {
         if (!TryCustomItem(child, out Element? item)) item = GenericItem(child);
-        return item is { } i ? Framed(child, i) : null;
+        return item is { } i ? Framed(child, i, item: true) : null;
     }
 
     /// <summary>A child dial's generic item.</summary>
@@ -369,7 +369,7 @@ internal static partial class ClassicSettings
 
     /// <summary>"Also in: Queue · Full screen › Options" under a row whose dial a panel draws too: each place a link where the core can open it, a word where it
     /// has no door of its own (a menu, the bar that is always on screen).</summary>
-    static Element AlsoInLine(SettingsBodyRow row)
+    static Element AlsoInLine(SettingsBodyRow row, bool item)
     {
         bool anyDoor = false;
         foreach (SettingsAlsoIn place in row.AlsoIn) anyDoor |= place.Open is not null;
@@ -392,7 +392,7 @@ internal static partial class ClassicSettings
         {
             // A place's link keeps its own side padding as the space after the words before it (no gap: the boxes never overlap).
             Key = "settings:also-in:" + row.Id, Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = anyDoor ? 0f : ClassicSettingsRules.AlsoInGap,
-            Padding = ClassicSettingsRules.AlsoInPadding, MinHeight = MathF.Max(ClassicSettingsRules.AlsoInMinHeight, s_layout.Target),
+            Padding = item ? ClassicSettingsRules.AlsoInItemPadding : ClassicSettingsRules.AlsoInPadding, MinHeight = MathF.Max(ClassicSettingsRules.AlsoInMinHeight, s_layout.Target),
             MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
             Children = kids.ToArray(),
         };
@@ -400,12 +400,13 @@ internal static partial class ClassicSettings
 
     // ══ 5. THE FRAME: THE ROW'S KEY, ITS "ALSO IN" AND THE ARRIVAL ═════════════════════════════════════════════════════
 
-    /// <summary>A row in its frame: keyed `settings:dial:&lt;id&gt;`, its "Also in" line under it, and the arrival when a link names this dial.</summary>
-    static Element Framed(SettingsBodyRow row, Element card)
+    /// <summary>A row in its frame: keyed `settings:dial:&lt;id&gt;`, its "Also in" line under it (on an expander item's text column for an
+    /// <paramref name="item"/>), and the arrival when a link names this dial.</summary>
+    static Element Framed(SettingsBodyRow row, Element card, bool item = false)
     {
         Element content = row.AlsoIn.IsDefaultOrEmpty
             ? card
-            : new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = [card, AlsoInLine(row)] };
+            : new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = [card, AlsoInLine(row, item)] };
         return FrameOf(row.Id, content);
     }
 

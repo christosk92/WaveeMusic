@@ -85,6 +85,9 @@ internal static class ClassicSettingsRules
     /// <summary>The line under the card: on the card's text column (its glyph's column plus its gap, 58), 4 under it.</summary>
     public static readonly Edges4 AlsoInPadding = new(58f, 0f, 16f, 4f);
 
+    /// <summary>The same line under an expander's item: on the item's text column (the item's 58 inset, its glyph and its gap).</summary>
+    public static readonly Edges4 AlsoInItemPadding = new(100f, 0f, 16f, 4f);
+
     /// <summary>The line's least height (a place's link, so a line of plain words takes the same room) and the gap between "Also in" and its places.</summary>
     public const float AlsoInMinHeight = 32f, AlsoInGap = 6f;
 

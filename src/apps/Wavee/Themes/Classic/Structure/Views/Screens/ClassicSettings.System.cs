@@ -135,7 +135,7 @@ internal static partial class ClassicSettings
                 StdButton(Loc.Get(Strings.Settings.Notify.SendButton), () =>
                 {
                     if (test.Writer.Run!()) Settings.Bump();
-                }))));
+                })), item: true));
         }
         return SettingsExpander.Create(new SettingsExpander.Options
         {

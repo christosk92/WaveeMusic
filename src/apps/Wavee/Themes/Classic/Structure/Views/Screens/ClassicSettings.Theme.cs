@@ -318,7 +318,7 @@ internal static partial class ClassicSettings
             {
                 if (row.Subgroup is not { } title)
                 {
-                    if (row.Dial.Confirm is not null) reset = Framed(row, ResetItem(row.Dial, facts));
+                    if (row.Dial.Confirm is not null) reset = Framed(row, ResetItem(row.Dial, facts), item: true);
                     continue;
                 }
                 OptionGroup? into = null;
@@ -327,7 +327,7 @@ internal static partial class ClassicSettings
                 if (into is null) groups.Add(into = new OptionGroup(title));
                 if (row.NoteBefore is { } before) into.Rows.Add((before.Key, NoteItem(before)));
                 Element? item = row.Option is { } generated ? GeneratedItem(generated, facts, wizard: false, row.Explain) : LegacyItem(row.Id, row.Dial, facts);
-                if (item is { } drawn) into.Rows.Add(("opt:" + row.Id, Framed(row, drawn)));
+                if (item is { } drawn) into.Rows.Add(("opt:" + row.Id, Framed(row, drawn, item: true)));
                 if (row.NoteAfter is { } after) into.Rows.Add((after.Key, NoteItem(after)));
             }
 

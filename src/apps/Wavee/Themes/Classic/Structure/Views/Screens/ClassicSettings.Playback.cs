@@ -159,7 +159,7 @@ internal static partial class ClassicSettings
             ? LinkButton(Loc.Get(Strings.Playback.Runtime.ViewSignature), static () => Dial("playback.runtime.signature").Writer.Run!())
             : null;
         Element item = Item(Loc.Get(Strings.Playback.Runtime.DetailSignature), summary.Length > 0 ? summary : null, link);
-        return ChildRow(row, "playback.runtime.signature") is { } signature ? Framed(signature, item) : item;
+        return ChildRow(row, "playback.runtime.signature") is { } signature ? Framed(signature, item, item: true) : item;
     }
 
     // ══ 4. AUDIO (G-130: the D7 rung, the live metered cap) ═══════════════════════════════════════════════════════════
@@ -297,8 +297,8 @@ internal static partial class ClassicSettings
             IsExpanded = ExpandCell(row.Id, eqOn),
             Items =
             [
-                ChildRow(row, "sound.equalizer.preset") is { } presetRow ? Framed(presetRow, presetItem) : presetItem,
-                ChildRow(row, "sound.equalizer.curve") is { } curveRow ? Framed(curveRow, curveItem) : curveItem,
+                ChildRow(row, "sound.equalizer.preset") is { } presetRow ? Framed(presetRow, presetItem, item: true) : presetItem,
+                ChildRow(row, "sound.equalizer.curve") is { } curveRow ? Framed(curveRow, curveItem, item: true) : curveItem,
             ],
         }) with { Key = "playback.equalizer" };
     }
@@ -367,7 +367,7 @@ internal static partial class ClassicSettings
             Content = Badged(row, RowToggle(row.Dial)),
             Style = ToggleHeaderStyle(RowToggle(row.Dial)),
             IsExpanded = ExpandCell(row.Id, crossOn),
-            Items = [durationRow is { } d ? Framed(d, durationItem) : durationItem],
+            Items = [durationRow is { } d ? Framed(d, durationItem, item: true) : durationItem],
         }) with { Key = "playback.crossfade" };
     }
 
