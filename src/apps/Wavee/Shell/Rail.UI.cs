@@ -199,19 +199,65 @@ public static partial class Rail
     internal static NextUpRow[] NextUpRows()
     {
         if (!Shell.PageShown.Value) return s_heldNextUp;   // held under the stage (see the shared reads)
+        Span<int> window = stackalloc int[Shell.NextUpWindow.Max];
+        return s_heldNextUp = RowsOf(window, film: true);
+    }
+
+    /// <summary>The Home Up next widget's rows: the "Next up" window at <paramref name="max"/> rows (the widget lists as many as its tile
+    /// holds), without the film mark (a widget's row has no room for the list's markers). A row whose track the table does not know yet is
+    /// THE seed (<see cref="Controls.CardData.Seed"/>): a flat placeholder at the row's size, never a bare cover square with no text.
+    /// The tile host asks the catalog for those rows (<see cref="EnsureTileRows"/>). Held under the stage like the rail's.</summary>
+    internal static NextUpRow[] TileRows(int max)
+    {
+        if (!Shell.PageShown.Value) return s_heldTileRows;
+        Span<int> window = stackalloc int[Math.Clamp(max, 0, TileRowsMax)];
+        return s_heldTileRows = RowsOf(window, film: false);
+    }
+
+    /// <summary>The most rows the Up next widget asks for (a tall wide tile's two columns).</summary>
+    internal const int TileRowsMax = 16;
+
+    static NextUpRow[] s_heldTileRows = [];
+
+    /// <summary>How many items are up next (the queue and the context's continuation): the widget's "n in the queue", not its window.</summary>
+    internal static int UpNextCount()
+    {
+        _ = Entities.ScopeEpoch.Value;
+        _ = Entities.Current.Edges.Queue.Changed.Value;
+        return Queue.UpNext(out _, out int length) ? length : 0;
+    }
+
+    /// <summary>The Up next widget's demand: the identities of the tracks its window shows (the queue panel asks for the whole queue only
+    /// while it is mounted; a remote device's queue arrives as bare ids). A signal effect's body: it reads the queue edge and the scope.</summary>
+    internal static void EnsureTileRows()
+    {
+        _ = Entities.ScopeEpoch.Value;
+        _ = Entities.Current.Edges.Queue.Changed.Value;
+        Span<int> window = stackalloc int[TileRowsMax];
+        int n = Shell.NextUpWindow.Fill(window);
+        if (n == 0) return;
+        Span<int> slots = stackalloc int[n];
+        for (int k = 0; k < n; k++) slots[k] = Queue.RefAt(window[k]).Slot;
+        Entities.Ensure(Entities.Current.Tracks, slots, (uint)(TrackFields.Identity | TrackFields.Availability | TrackFields.Video), FetchPriority.Visible);
+    }
+
+    /// <summary>The rows of the window <paramref name="window"/> holds room for: it subscribes the queue edge, the track table (a title or an
+    /// artist line landing late) and the artwork preference.</summary>
+    static NextUpRow[] RowsOf(Span<int> window, bool film)
+    {
         _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table reads below
         _ = Entities.Current.Edges.Queue.Changed.Value;
+        _ = Entities.Current.Tracks.Changed.Value;
         bool art = ShellPolicy.Tracked.Lists.TrackArtwork;
-        Span<int> window = stackalloc int[Shell.NextUpWindow.Max];
         int n = Shell.NextUpWindow.Fill(window);
         var rows = new NextUpRow[n];
         var items = Queue.Rows;
         for (int k = 0; k < n; k++)
         {
             int i = window[k];
-            rows[k] = NextUpRowOf(new Track(Queue.RefAt(i).Slot), i, items[i].ItemId, art);
+            rows[k] = NextUpRowOf(new Track(Queue.RefAt(i).Slot), i, items[i].ItemId, art, film);
         }
-        return s_heldNextUp = rows;
+        return rows;
     }
 
     /// <summary>One "Next up" row's data for the shared media surface (<c>Track.RowData</c>): the hand, the play FAB over the art, a track
@@ -222,15 +268,18 @@ public static partial class Rail
     /// a captured index would go stale. The key carries
     /// the queue item and the artwork flag, so a settings flip REMOUNTS rather than re-binds. Like every queue row it has
     /// no "…" button (<see cref="QueueRowRules.ShowsMenuButton"/>): the menu is the right-click.</summary>
-    static NextUpRow NextUpRowOf(Track t, int queueIndex, ulong itemId, bool art)
+    static NextUpRow NextUpRowOf(Track t, int queueIndex, ulong itemId, bool art, bool film)
     {
+        string key = (itemId != 0 ? "vrp:i" + itemId : "vrp:e" + queueIndex) + (art ? ":art" : ":noart");
+        // Not known yet (a remote device's queue lands as ids; the demand is in flight): the seed, at the row's own size.
+        if (!t.IsValid || !t.Knows(TrackFields.Title)) return new NextUpRow(key, art, Controls.CardData.Seed);
         // The queue panel's own skip (IQueueVerbs.Play): resolves the item in the LIVE queue at click time, trims
         // the rows skipped over and plays — so a rail click and a queue-panel click are the same act.
         Action play = () => Shell.QueueVerbs.Default.Play(itemId, queueIndex, new EntityRef(EntityKind.Track, t.Slot));
         Action click = () => Track.Invoke(t, play);
         var data = Track.RowData(t, new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: art,
-                                                             ShowExplicit: false,
+                                                             ShowExplicit: false, ShowVideo: film,
                                                              ShowMenu: QueueRowRules.ShowsMenuButton));
-        return new NextUpRow((itemId != 0 ? "vrp:i" + itemId : "vrp:e" + queueIndex) + (art ? ":art" : ":noart"), art, data);
+        return new NextUpRow(key, art, data);
     }
 }

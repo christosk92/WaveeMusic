@@ -54,7 +54,7 @@ public static partial class Shell
     {
         // s_exact (15) — ApiConsole DELETED, plan §9.6 Q7, 2026-09-12; SidebarCustomize deleted with the customizer (sidebar rework P3)
         Home, Browse, Search, LibraryAlbums, LibraryArtists, LibraryPodcasts, LibraryAudiobooks, LibraryPlaylists, Liked, Local,
-        History, Recents, Settings, PlaybackDiagnostics, WhatsNew, HomeCustomize,
+        History, Recents, Settings, PlaybackDiagnostics, WhatsNew,
         // s_prefixes (10) — "<prefix><entity uri>"; a bare prefix addresses nothing and is NOT a route
         Album, Playlist, Artist, Show, Prerelease, Discography, Module, BrowseCategory, HomeSection, BrowseSection,
         // ConcertRoutes (3)
@@ -171,7 +171,6 @@ public static partial class Shell
         new(RouteKind.Settings,            "settings",             false, Strings.Nav.Settings,         Icons.Settings,    false, false, false, PlaceByArg: true),
         new(RouteKind.PlaybackDiagnostics, "playback-diagnostics", false, Strings.Nav.PlaybackRuntime,  Icons.MusicNote,   true,  false, false),
         new(RouteKind.WhatsNew,            "whatsnew",             false, Strings.WhatsNew.Title,       Icons.RefineSparkle, false, false, true, PlaceByArg: true),
-        new(RouteKind.HomeCustomize,       "home-customize",       false, Strings.Home.Customizer.Title, Icons.Edit,       false, false, true, PlaceByArg: true),
 
         new(RouteKind.Album,               "album:",               true,  Strings.Nav.Album,            Icons.Album,       false, true,  false),
         new(RouteKind.Playlist,            "pl:",                  true,  Strings.Nav.Playlist,         Icons.MusicNote,   false, true,  false),
@@ -246,7 +245,7 @@ public static partial class Shell
     // ── 1.3 lazy page-factory groups ────────────────────────────────────────────────────────────────────────────────
     //
     // Three of the nine App.cs page-owner installs moved off the boot path and onto this miss arm: Home.InstallPages
-    // (8 kinds: Home/Search/Browse/Recents + the two section prefixes + HomeCustomize), Album.InstallPages (4: Album/
+    // (8 kinds: Home/Search/Browse/Recents + the two section prefixes ), Album.InstallPages (4: Album/
     // Prerelease/Show/Episode — Episode joined in the podcast rework's wave P2, plan §5.11) and Playlist.InstallPages
     // (6: Playlist/Local/Liked + the three library kinds) — 18 of the 30 renderable kinds, and most of the boot.pages
     // cost. Each group installs at most ONCE (the bool below), then every kind in it resolves the ordinary way.
@@ -270,7 +269,7 @@ public static partial class Shell
     {
         switch (kind)
         {
-            case RouteKind.Home or RouteKind.HomeSection or RouteKind.BrowseSection or RouteKind.HomeCustomize
+            case RouteKind.Home or RouteKind.HomeSection or RouteKind.BrowseSection
                 or RouteKind.Search or RouteKind.Browse or RouteKind.BrowseCategory or RouteKind.Recents:
                 if (s_homeGroupInstalled) return;
                 s_homeGroupInstalled = true;
@@ -372,7 +371,7 @@ public static partial class Shell
     /// <summary>Kinds whose <c>Arg</c> is a DISPLAY NAME rather than a slot discriminator. <c>search</c> is in both
     /// camps on purpose: the query is the label AND the keep-alive discriminator, exactly as 0.2.9 has it.</summary>
     static bool CarriesDisplayName(RouteKind k) => k is not (RouteKind.Discography or RouteKind.ProfileList or RouteKind.WhatsNew
-        or RouteKind.HomeCustomize or RouteKind.Home   // Home's arg is a facet id
+        or RouteKind.Home   // Home's arg is a facet id
         or RouteKind.Browse   // Browse's arg is a band id (BrowseBands), never a title
         or RouteKind.Settings);   // Settings' arg, when present, is a tab slug (`route=settings&arg=privacy`), never a display name; it is also the Compact section page (PlaceByArg)
 

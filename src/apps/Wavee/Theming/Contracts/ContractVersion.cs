@@ -339,6 +339,24 @@
 // that mounts the slot: a TeachingTip's target, a line's anchor), `HintProps.Bounds` (the surface the target lives in: a floating line stays
 // inside it), `HintProps.SetAside` (a light dismiss or a done confirmation: gone for the session, no snooze) and `HintProps.Title` (the dial's
 // name, a TeachingTip's heading).
+// The pinned-home line (feat/pinned-home) numbered its own minors on 1.114 while the settings rework numbered the same ones; its notes as
+// written there (merged as 2.3):
+// pinned-home 1.115 (connected navigation, every kind): `PageMotionPolicy.ConnectedInto` (the forward flight into a page of a kind when it differs from
+// `Connected`: the artist header's fading hand-off) and `PageMotionPolicy.ConnectedKeepsCascade` (a kind whose sections keep their staggered
+// rise under a flight).
+// pinned-home 1.116 (the artist grows, nothing flies): `PageMotionPolicy.GrowInto` (a kind whose page scales out of the item it was opened from and back
+// into it, `GrowNav`). `PageMotionPolicy.ConnectedInto` and `ConnectedKeepsCascade` are gone (the artist was their only kind; removed before any
+// external theme existed, as 1.2 did).
+// pinned-home 1.117 (the pinned Home board): `Home.Board` and the `Home.Tile.*` keys (`ViewKeys.HomeBoard.cs`, `HomeBoardProps.cs`: the board's props,
+// `IHomeBoardVerbs`, the catalogue view, the tile frame and one props record per tile source, `HomeTileForm`, `HomeTileVacancy`), the node
+// keys `HomeBoardKeys`, `Home.BoardTools` (the board's tools in the page's head row), and the optional `HomePageProps.Board` / `BoardTools` (what the page mounts
+// where its zone column stood and in its head row, on the All facet). `Pages.HomeCustomize` (`HomeCustomizeProps`) and `Home.Quickplay`
+// (`HomeQuickplayProps`) are gone: the board's own edit flows and its Pinned group replaced them (removed before any external theme existed, as 1.2 did).
+// 2.3 (feat/pinned-home merged onto 2.2): the pinned-home line's 1.115-1.117 land on the 2.x line: `PageMotionPolicy.GrowInto`, the
+// pinned Home board (`Home.Board`, the `Home.Tile.*` keys and their props, `IHomeBoardVerbs`, `HomeBoardKeys`, `Home.BoardTools`,
+// `HomePageProps.Board` / `BoardTools`). Its removals (`PageMotionPolicy.ConnectedInto` / `ConnectedKeepsCascade`, `Pages.HomeCustomize` with
+// `HomeCustomizeProps`, `Home.Quickplay` with `HomeQuickplayProps`) were made before any external theme existed, as 1.2 did, so they ride a
+// minor; nothing the settings rework added names them.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -354,7 +372,7 @@ public static class ContractVersion
     public const int Major = 2;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 2;
+    public const int Minor = 3;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

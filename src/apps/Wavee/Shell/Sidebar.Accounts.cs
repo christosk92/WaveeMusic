@@ -34,6 +34,7 @@ public static partial class Sidebar
         string key = SidebarAccountKey.Of(scope);
         if (s_accountLoaded && string.Equals(key, s_account.Key, StringComparison.Ordinal)) return false;
         SwapAccount(key);
+        if (HomeBoardStore.Booted) HomeBoardStore.Instance.EnsureAccount(scope);   // Home's document follows the same account edge (design 1.2.2)
         return true;
     }
 

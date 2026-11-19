@@ -22,6 +22,9 @@ namespace Wavee;
 /// rejected (<see cref="Read"/> answers the defaults, <see cref="Write"/> returns the blob unchanged). status/order are
 /// the caller's enums as non-negative decimal ints (<c>Episode.Rules.Status</c>; 0 newest · 1 oldest) — the caller
 /// clamps a value its enum does not define, since the store is hand-editable.</para>
+/// <para>TWO SURFACES share it: the library pane's reader (status <c>Episode.Rules.Status</c> 0..3, order 0/1, clamping anything else to 0) and
+/// the podcast show page (<c>PodcastPages.Show.cs</c> ShowModel: the same 0..2 and 0/1, its Saved filter as 4 and "the order follows the show" as
+/// 2, which the reader reads as its defaults; the reader's Played opens the page on All).</para>
 /// <para>MALFORMED input never throws: an entry that is not exactly three fields, an empty id, or a non-digit number is
 /// skipped (and dropped by the next write); a blob with no valid entry for the show answers the defaults (0, 0).</para></summary>
 public static class ShowViewPrefs
@@ -51,15 +54,26 @@ public static class ShowViewPrefs
 
     /// <summary>The show's stored (status, order); (0, 0) when absent, malformed or the id is invalid. Allocation-free.</summary>
     public static (int Status, int Order) Read(string? blob, ReadOnlySpan<char> showId)
+        => TryRead(blob, showId, out int status, out int order) ? (status, order) : (0, 0);
+
+    /// <summary>The show's stored (status, order) and whether the blob holds an entry for it at all (a page whose default depends on the show,
+    /// such as the podcast page's order, tells "never chosen" from a stored 0). Allocation-free.</summary>
+    public static bool TryRead(string? blob, ReadOnlySpan<char> showId, out int status, out int order)
     {
-        if (!IsValidId(showId)) return (0, 0);
+        status = order = 0;
+        if (!IsValidId(showId)) return false;
         var rest = blob.AsSpan();
         while (!rest.IsEmpty)
         {
             var entry = Next(ref rest);
-            if (TryParse(entry, out var id, out int status, out int order) && id.SequenceEqual(showId)) return (status, order);
+            if (TryParse(entry, out var id, out int st, out int or) && id.SequenceEqual(showId))
+            {
+                status = st;
+                order = or;
+                return true;
+            }
         }
-        return (0, 0);
+        return false;
     }
 
     /// <summary>The blob with this show's entry FIRST (negative values stored as 0), every other valid entry after it in

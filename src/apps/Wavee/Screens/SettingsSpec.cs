@@ -318,6 +318,10 @@ public static class SettingsSurfaces
     /// <summary>The full screen's Up next column (its Autoplay and Crossfade switches, design 5.4's "Queue / Up next").</summary>
     public const string StageUpNext = "stage.upNext";
 
+    /// <summary>Home's places (design 5.3, 5.4): the Spine Shelf's and the Release Spotlight's preview sound button, and the daylist tile's
+    /// options (its Clock and "Tell me when it refreshes" under "For every daylist").</summary>
+    public const string HomeShelf = "home.shelf", HomeDaylist = "home.daylist";
+
     /// <summary>The setup wizard's Terms page (its crash-consent card writes the crash-reports dial, owner decision 10): a source, not a context.</summary>
     public const string SetupWizard = "setup.wizard";
 

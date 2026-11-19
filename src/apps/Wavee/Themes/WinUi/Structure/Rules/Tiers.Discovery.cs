@@ -5,13 +5,14 @@
 //
 //   tier      greeting   daylist                                         Jump back in           shelves (covers)          pairs
 //   Compact   28/36      stack: 96 cover, copy, 40 buttons, clock footer  1 column, 4 apart      2 columns, 12 apart       none
-//   Small     28/36      120 cover, copy, the clock a line on the eyebrow 2 columns, 8 apart     4 columns, 12 apart       none
-//   Standard  40/52      272 cover | copy | 300 clock rows (24 apart)     4 columns, 8 apart     6 columns, 16 apart       none
+//   Small     28/36      120 cover, copy, the clock a line on the eyebrow 2 columns, 8 apart     120-180 covers, 12 apart  none
+//   Standard  40/52      272 cover | copy | 300 clock rows (24 apart)     4 columns, 8 apart     150-200 covers, 16 apart  none
 //   Huge      40/52      288 cover | copy | 320 clock rows                6 columns, 8 apart     10 columns, 20 apart;     daylist 2 : releases 1;
 //                                                                                                 14 once the page is wide  clusters 1 : continue 1
 //
 // NO PAGE CAP at Huge or 4K (owner Q2): the grids fill the region, and the shelves' column counts are floor-fits inside the tier (`WinUiShelfBand`: a
-// minimum card and a most-columns cap), so 2560 holds 10 covers and 3840 with a docked pane holds 14. The page's insets are the frame's
+// minimum card and a most-columns cap), so 2560 holds 10 covers and 3840 with a docked pane holds 14. A cover never grows past the band's widest card
+// (the concept's shelf: six ~160 covers across at 1440, more covers, not bigger ones, on a wider page; owner 2026-11-16 "4 huge cards per row"). The page's insets are the frame's
 // (`WinUiTiers.InsetOf`: 16 / 24 / 36 / 48 by window tier), never a number here.
 //
 // A COLUMN CHANGE FLIPS: every grid cell and zone carries `WinUiDiscoveryMotion.Shove` / `Reflow` (250 ms), so a width change moves the cards to their new
@@ -59,6 +60,14 @@ public readonly record struct WinUiGridBand(float MinCol, int MaxCols)
 /// <param name="Gap">The gap between cards.</param>
 /// <param name="Pager">The shelf's chevrons and pips are shown.</param>
 public readonly record struct WinUiShelfBand(float MinCardW, float MaxCardW, int MaxColumns, float FixedCardW, float Gap, bool Pager);
+
+/// <summary>The lead grid (Home rhythm A) in one tier: the lead card BESIDE the grid (half each) or stacked over it, and the grid's fixed
+/// columns and rows (the lead's set shows its first card as the lead and the next <c>Cols x Rows</c> in the grid).</summary>
+public readonly record struct WinUiLeadGridBand(bool Beside, int Cols, int Rows);
+
+/// <summary>A capped grid (Home rhythm A's compact tiles, circles and capped shelf) in one tier: the column rule and the rows it shows, so
+/// it shows <c>columns x Rows</c> cards and never a ragged row.</summary>
+public readonly record struct WinUiCappedBand(WinUiGridBand Columns, int Rows);
 
 /// <summary>How the daylist card is built in a tier.</summary>
 public enum WinUiDaylistForm : byte
@@ -217,6 +226,28 @@ public sealed record WinUiHomeLayout
 
     /// <summary>The browse tiles' columns.</summary>
     public required WinUiGridBand Tiles { get; init; }
+    /// <summary>The time-of-day mood plates (home-gap P6): the plates' column rule and how many plates the shelf shows (two rows of the
+    /// widest fit; the concept's five across at 1440).</summary>
+    public required WinUiGridBand Plates { get; init; }
+    public required int PlatesMax { get; init; }
+
+    /// <summary>A personal set's lead card and grid (Home rhythm A).</summary>
+    public required WinUiLeadGridBand LeadGrid { get; init; }
+
+    /// <summary>The compact tiles: their columns and rows, the tile's art and height.</summary>
+    public required WinUiCappedBand Compact { get; init; }
+
+    /// <inheritdoc cref="Compact"/>
+    public required float CompactArt { get; init; }
+
+    /// <inheritdoc cref="Compact"/>
+    public required float CompactRowH { get; init; }
+
+    /// <summary>The round covers' columns and rows.</summary>
+    public required WinUiCappedBand Circles { get; init; }
+
+    /// <summary>The capped shelf's columns and rows (one row of six at Standard).</summary>
+    public required WinUiCappedBand Capped { get; init; }
 
     /// <summary>The episode rows' columns (a lead and a list).</summary>
     public required WinUiGridBand Episodes { get; init; }
@@ -282,8 +313,10 @@ public static class WinUiHomeTiers
         Shelf = new WinUiShelfBand(120f, 9999f, 2, FixedCardW: 0f, Gap: 12f, Pager: false), ShelfLead = false,
         WideShelf = new WinUiShelfBand(220f, 9999f, 1, FixedCardW: 0f, Gap: 12f, Pager: false),
         Recents = WinUiGridBand.Fixed(1), RecentsRows = 4, RecentsGap = 4f, RecentsArt = 48f, RecentsRowH = 64f,
-        Releases = WinUiGridBand.Fixed(1), Clusters = WinUiGridBand.Fixed(1), Tiles = WinUiGridBand.Fixed(2),
+        Releases = WinUiGridBand.Fixed(1), Clusters = WinUiGridBand.Fixed(1), Tiles = WinUiGridBand.Fixed(2), Plates = WinUiGridBand.Fixed(2), PlatesMax = 6,
         Episodes = WinUiGridBand.Fixed(1), Continue = WinUiGridBand.Fixed(1),
+        LeadGrid = new WinUiLeadGridBand(Beside: false, Cols: 2, Rows: 2), Compact = new WinUiCappedBand(WinUiGridBand.Fixed(2), 3), CompactArt = 40f, CompactRowH = 64f,
+        Circles = new WinUiCappedBand(WinUiGridBand.Fixed(3), 2), Capped = new WinUiCappedBand(WinUiGridBand.Fixed(2), 2),
         SectionMinCell = 124f,
     };
 
@@ -299,11 +332,13 @@ public static class WinUiHomeTiers
             Buttons = ControlSize.Medium, IconBox = 32f, Clock = WinUiClockForm.Line, Ring = 16f, LabelW = 0f, PlayGrows = false,
         },
         DaylistBeside = false, ClustersBeside = false,
-        Shelf = new WinUiShelfBand(120f, 9999f, 4, FixedCardW: 0f, Gap: 12f, Pager: true), ShelfLead = false,
-        WideShelf = new WinUiShelfBand(180f, 9999f, 3, FixedCardW: 0f, Gap: 12f, Pager: true),
+        Shelf = new WinUiShelfBand(120f, 180f, 8, FixedCardW: 0f, Gap: 12f, Pager: true), ShelfLead = false,
+        WideShelf = new WinUiShelfBand(180f, 260f, 6, FixedCardW: 0f, Gap: 12f, Pager: true),
         Recents = WinUiGridBand.Fixed(2), RecentsRows = 2, RecentsGap = 8f, RecentsArt = 48f, RecentsRowH = 64f,
-        Releases = new WinUiGridBand(280f, 2), Clusters = new WinUiGridBand(260f, 2), Tiles = new WinUiGridBand(180f, 3),
+        Releases = new WinUiGridBand(280f, 2), Clusters = new WinUiGridBand(260f, 2), Tiles = new WinUiGridBand(180f, 3), Plates = new WinUiGridBand(160f, 4), PlatesMax = 8,
         Episodes = new WinUiGridBand(280f, 2), Continue = new WinUiGridBand(260f, 2),
+        LeadGrid = new WinUiLeadGridBand(Beside: true, Cols: 2, Rows: 2), Compact = new WinUiCappedBand(new WinUiGridBand(180f, 3), 2), CompactArt = 48f, CompactRowH = 64f,
+        Circles = new WinUiCappedBand(new WinUiGridBand(96f, 6), 1), Capped = new WinUiCappedBand(new WinUiGridBand(130f, 4), 1),
         SectionMinCell = 156f,
     };
 
@@ -319,11 +354,13 @@ public static class WinUiHomeTiers
             Buttons = ControlSize.Medium, IconBox = 32f, Clock = WinUiClockForm.Rows, Ring = 28f, LabelW = 92f, PlayGrows = false,
         },
         DaylistBeside = false, ClustersBeside = false,
-        Shelf = new WinUiShelfBand(150f, 9999f, 6, FixedCardW: 0f, Gap: CoverGap, Pager: true), ShelfLead = false,
-        WideShelf = new WinUiShelfBand(220f, 9999f, 4, FixedCardW: 0f, Gap: CoverGap, Pager: true),
+        Shelf = new WinUiShelfBand(150f, 200f, 12, FixedCardW: 0f, Gap: CoverGap, Pager: true), ShelfLead = false,
+        WideShelf = new WinUiShelfBand(220f, 300f, 8, FixedCardW: 0f, Gap: CoverGap, Pager: true),
         Recents = new WinUiGridBand(240f, 4), RecentsRows = 2, RecentsGap = 8f, RecentsArt = 48f, RecentsRowH = 64f,
-        Releases = new WinUiGridBand(320f, 2), Clusters = new WinUiGridBand(300f, 3), Tiles = new WinUiGridBand(220f, 4),
+        Releases = new WinUiGridBand(320f, 2), Clusters = new WinUiGridBand(300f, 3), Tiles = new WinUiGridBand(220f, 4), Plates = new WinUiGridBand(180f, 5), PlatesMax = 10,
         Episodes = new WinUiGridBand(320f, 2), Continue = new WinUiGridBand(300f, 3),
+        LeadGrid = new WinUiLeadGridBand(Beside: true, Cols: 3, Rows: 2), Compact = new WinUiCappedBand(new WinUiGridBand(200f, 5), 2), CompactArt = 56f, CompactRowH = 72f,
+        Circles = new WinUiCappedBand(new WinUiGridBand(110f, 8), 1), Capped = new WinUiCappedBand(new WinUiGridBand(150f, 6), 1),
         SectionMinCell = 176f,
     };
 
@@ -340,11 +377,13 @@ public static class WinUiHomeTiers
             Buttons = ControlSize.Medium, IconBox = 32f, Clock = WinUiClockForm.Rows, Ring = 28f, LabelW = 92f, PlayGrows = false,
         },
         DaylistBeside = true, ClustersBeside = true,
-        Shelf = new WinUiShelfBand(190f, 9999f, 14, FixedCardW: 0f, Gap: 20f, Pager: true), ShelfLead = false,
-        WideShelf = new WinUiShelfBand(300f, 9999f, 8, FixedCardW: 0f, Gap: 20f, Pager: true),
+        Shelf = new WinUiShelfBand(190f, 240f, 14, FixedCardW: 0f, Gap: 20f, Pager: true), ShelfLead = false,
+        WideShelf = new WinUiShelfBand(300f, 380f, 10, FixedCardW: 0f, Gap: 20f, Pager: true),
         Recents = new WinUiGridBand(300f, 6), RecentsRows = 2, RecentsGap = 8f, RecentsArt = 48f, RecentsRowH = 64f,
-        Releases = WinUiGridBand.Fixed(1), Clusters = new WinUiGridBand(260f, 3), Tiles = new WinUiGridBand(220f, 7),
+        Releases = WinUiGridBand.Fixed(1), Clusters = new WinUiGridBand(260f, 3), Tiles = new WinUiGridBand(220f, 7), Plates = new WinUiGridBand(200f, 5), PlatesMax = 10,
         Episodes = new WinUiGridBand(320f, 3), Continue = new WinUiGridBand(260f, 3),
+        LeadGrid = new WinUiLeadGridBand(Beside: true, Cols: 4, Rows: 2), Compact = new WinUiCappedBand(new WinUiGridBand(220f, 5), 2), CompactArt = 56f, CompactRowH = 72f,
+        Circles = new WinUiCappedBand(new WinUiGridBand(130f, 10), 1), Capped = new WinUiCappedBand(new WinUiGridBand(170f, 8), 1),
         SectionMinCell = 190f,
     };
 
@@ -405,6 +444,22 @@ public static class WinUiDiscoveryMotion
     /// line): the height eases through real layout, so the facet row and the zones under it ride it instead of stepping in one frame.</summary>
     public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
+    /// <summary>A Home body whose rows the width decides (a grid that gains or loses a row as its columns change, a shelf whose cards step a size):
+    /// its height eases through real layout and keeps easing while the window is dragged, so each step glides and the rows under it ride it. A
+    /// critically damped spring on the reflow's clock, not the tween: a drag re-aims it every frame, and a spring carries its speed into each new
+    /// target where a re-started ease-out would leap at its steep start every time.</summary>
+    public static readonly LayoutTransition RowsReflow = HeightReflow with
+    {
+        Dynamics = TransitionDynamics.Spring(ReflowMs / 1000f, RowsDamping), AnimateDuringResize = true,
+    };
+
+    /// <summary><see cref="RowsReflow"/>'s damping: critical, so the height never overshoots its rows.</summary>
+    const float RowsDamping = 1f;
+
+    /// <summary>A head whose height a WRAP decides (Home's greeting, which takes a second line as the row narrows): <see cref="HeightReflow"/> that keeps
+    /// easing while the window is dragged, so the line it gains or drops glides and the page under it rides it instead of stepping by a line.</summary>
+    public static readonly LayoutTransition HeadReflow = HeightReflow with { AnimateDuringResize = true };
 
     /// <summary>A part whose WIDTH steps with the tier (a page inset): it eases through real layout, so what follows it rides it.</summary>
     public static readonly LayoutTransition WidthReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),

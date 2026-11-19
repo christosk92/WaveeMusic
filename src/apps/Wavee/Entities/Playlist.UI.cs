@@ -134,16 +134,36 @@ public readonly partial struct Playlist
     /// tier crossing that resizes the cover keeps the editor's node (owner rule: no tier, form or count in a key).</summary>
     public static Element CoverSlot(Playlist p, float size)
         => p.IsValid && p.EditableMetadata && p.Uri.Provider == EntityProvider.Spotify
-            ? Embed.Comp(new CoverProps(p.Slot, size), static () => new CoverEditor()) with { Key = "pl-cover" }
-            : CoverArt(p, size, handOver: true);
+            ? Embed.Comp(new CoverProps(p.Slot, size), static () => new CoverEditor()) with { Key = "pl-cover", MorphId = GeneratedConnect(p) }
+            : CoverArt(p, size, handOver: true, connect: true) with { MorphId = GeneratedConnect(p) };
+
+    /// <summary>The hero's flight tag when its cover is GENERATED (a mosaic of member covers, a member's cover standing in, the placeholder): the
+    /// whole cover is the connected navigation flight's dest (<see cref="Design.MorphKeys.Whole"/>). Null when the cover is the playlist's own
+    /// picture, whose image carries the tag (<see cref="HeadFace"/>).</summary>
+    static string? GeneratedConnect(Playlist p)
+    {
+        if (!p.IsValid) return null;
+        var face = CoverFace(p, 0f, 0);
+        bool own = face.Single is { Length: > 0 } single && string.Equals(single, Controls.ArtUrl(p.ImageId), StringComparison.Ordinal);
+        return own ? null : Design.MorphKeys.Whole(Design.MorphKeys.ForUri(p.Uri.Text));
+    }
 
     /// <summary>The playlist's own cover (the `Playlist.CoverArt` view) — a provider <c>spotify:mosaic:</c> token (a profile card's cover-less public
     /// playlist) paints as the server-composed 2×2 — else a 2×2 mosaic of member album covers (≥ 4), else the first,
     /// else the neutral placeholder (0.2.9 <c>PlaylistPicker.CoverOf</c> minus the generated art).
     /// <paramref name="handOver"/>: the page's head, where a fresh answer can change the art in place (a regenerated Mix): it crossfades from the
-    /// shown cover (<see cref="PlaylistCoverArtProps.HandOver"/>).</summary>
-    internal static Element CoverArt(Playlist p, float size, int decodePx = 0, bool handOver = false)
-        => ViewSlots.View(ViewKeys.PlaylistCoverArt, CoverFace(p, size, decodePx) with { HandOver = handOver });
+    /// shown cover (<see cref="PlaylistCoverArtProps.HandOver"/>).
+    /// <paramref name="connect"/>: the hero's cover, the connected navigation flight's dest (<see cref="HeadFace"/>); never the rail's strip cover.</summary>
+    internal static Element CoverArt(Playlist p, float size, int decodePx = 0, bool handOver = false, bool connect = false)
+        => ViewSlots.View(ViewKeys.PlaylistCoverArt, connect ? HeadFace(p, size, decodePx) : CoverFace(p, size, decodePx) with { HandOver = handOver });
+
+    /// <summary>The hero's face: it hands over, and its own picture is the connected navigation flight's dest (<see cref="PlaylistCoverArtProps.Connect"/>).</summary>
+    static PlaylistCoverArtProps HeadFace(Playlist p, float size, int decodePx)
+    {
+        var face = CoverFace(p, size, decodePx);
+        bool own = face.Single is { Length: > 0 } single && string.Equals(single, Controls.ArtUrl(p.ImageId), StringComparison.Ordinal);
+        return face with { HandOver = true, Connect = own ? Design.MorphKeys.ForUri(p.Uri.Text) : null };
+    }
 
     /// <summary>Which image the cover paints (the model's side of the picture): the server mosaic's four tiles, the art, the first four distinct member
     /// album covers, or the first one.</summary>
@@ -226,7 +246,7 @@ public readonly partial struct Playlist
             float scale = UseContext(Viewport.Scale);
             int decodePx = HeaderCoverDecodePx(size, scale);
             return ViewSlots.View(ViewKeys.PlaylistCoverEditor,
-                new PlaylistCoverEditorProps(CoverFace(new Playlist(props.Slot), size, decodePx) with { HandOver = true }, _busy, _pick, _apply));
+                new PlaylistCoverEditorProps(HeadFace(new Playlist(props.Slot), size, decodePx), _busy, _pick, _apply));
         }
 
         void Pick() => PlaylistCover.Pick(new Playlist(_slot));

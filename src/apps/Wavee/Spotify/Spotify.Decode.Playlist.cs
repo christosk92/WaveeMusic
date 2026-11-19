@@ -166,6 +166,10 @@ public static partial class Spotify
                 if (key.IsEmpty || value.IsEmpty) continue;
                 if (daylist && Is(key, "expires")) row.DaylistExpiresAt = InstantSeconds(value);
                 else if (daylist && Is(key, "created")) row.DaylistCreatedAt = InstantSeconds(value);
+                // The edition's words (the Home card's tags and "Based on" line), as the feed's daylist card carries them.
+                else if (daylist && Is(key, "localized_terms")) row.DaylistTerms = s.AddText(value);
+                else if (daylist && Is(key, "nicheMixLinks")) row.DaylistLinks = s.AddText(value);
+                else if (daylist && Is(key, "recsplanation_localized_terms")) row.DaylistBasis = s.AddText(value);
                 else if (chart && Is(key, "new_entries_count"))
                     row.ChartNewEntries = (ushort)Math.Clamp(Number(value), 0, ushort.MaxValue);
                 else if (chart && Is(key, "last_updated")) row.ChartUpdatedAt = InstantSeconds(value);

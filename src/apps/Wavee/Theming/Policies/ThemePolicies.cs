@@ -89,6 +89,11 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (PageMotion is null) problems.Add("PageMotion is missing");
         return problems;
     }
+
+    /// <summary>What the structure decides for the pinned Home (design 1.6): the menus' Home row (a row, or Classic's groups submenu), how a pin
+    /// from anywhere is confirmed (a toast with Undo, or nothing: Zune shows the tile), and where a band strip reads its pins. Default: a row, a
+    /// toast, the sidebar's pins. Appended (pinned Home).</summary>
+    public HomePolicy Home { get; init; } = HomePolicy.Default;
 }
 
 /// <summary>What the shell offers under the active structure.</summary>
@@ -192,4 +197,19 @@ public static class ThemeFactsContext
 {
     /// <summary>The provided signal. Null only where no root provides it (a bare unit test of a view).</summary>
     public static readonly Context<IReadSignal<ThemeFacts>?> Signal = new(null);
+}
+
+/// <summary>The menus' "Pin to Home" row: one toggle row, or a submenu of Home's groups with Pinned first (Classic).</summary>
+public enum HomePinMenu : byte { Row, GroupsSubmenu }
+
+/// <summary>How a pin from anywhere is confirmed: a toast with Undo (WinUI, Classic), or nothing (Zune: the tile is the answer).</summary>
+public enum HomeConfirm : byte { Toast, None }
+
+/// <summary>Where a band strip reads its pins: the sidebar's (WinUI, Classic) or Home's Pinned group (Zune).</summary>
+public enum BandPinsSource : byte { Sidebar, Home }
+
+/// <summary>The pinned Home's per-structure choices (design 1.6). The defaults are today's behaviour.</summary>
+public sealed record HomePolicy(HomePinMenu PinMenu, HomeConfirm Confirm, BandPinsSource BandPinsFrom)
+{
+    public static HomePolicy Default { get; } = new(HomePinMenu.Row, HomeConfirm.Toast, BandPinsSource.Sidebar);
 }

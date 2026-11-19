@@ -44,7 +44,6 @@ public readonly partial struct Home
         Shell.SetPage(Shell.RouteKind.Home, Wavee.HomeUi.HomeScreen.PageFor);
         Shell.SetPage(Shell.RouteKind.HomeSection, HomeSectionPageFor);
         Shell.SetPage(Shell.RouteKind.BrowseSection, BrowseSectionPageFor);
-        Shell.SetPage(Shell.RouteKind.HomeCustomize, CustomizePageFor);
         Shell.SetPage(Shell.RouteKind.Search, Search.PageFor);
         Shell.SetPage(Shell.RouteKind.Browse, Browse.DirectoryPageFor);
         Shell.SetPage(Shell.RouteKind.BrowseCategory, Browse.CategoryPageFor);
@@ -58,7 +57,6 @@ public readonly partial struct Home
 
     static Element HomeSectionPageFor(in Shell.Route route) => Wavee.HomeUi.SectionScreen.For(SectionRouteUri(route), SectionRouteTitle(route), route, browse: false);
     static Element BrowseSectionPageFor(in Shell.Route route) => Wavee.HomeUi.SectionScreen.For(SectionRouteUri(route), SectionRouteTitle(route), route, browse: true);
-    static Element CustomizePageFor(in Shell.Route route) => Wavee.HomeUi.CustomizeScreen.For();
 
     static string SectionRouteUri(in Shell.Route route) => SectionRouteSubject.Of(route.Subject);
     static string? SectionRouteTitle(in Shell.Route route) => route.Arg.IsEmpty ? null : Entities.Strings.Resolve(route.Arg);
@@ -375,6 +373,8 @@ public readonly partial struct Home
                 s_daylistHome = Table.None;
                 s_daylistSection = Table.None;
                 s_rolloverAttempts = 0;
+                s_hydratedSlot = Table.None;
+                s_hydratedExpiresAt = 0;
             }
             ScanDaylist(scope);
             ArmRollover();
@@ -399,6 +399,7 @@ public readonly partial struct Home
                     if (slot <= Table.None || slot >= playlists.Count) continue;
                     if ((PlaylistFormat)playlists.Format[slot] != PlaylistFormat.Daylist) continue;
                     int expires = playlists.DaylistExpiresAt[slot];
+                    if (expires > 0) HydrateDaylist(scope, slot, expires);
                     if (expires <= 0 || (slot == s_daylistSlot && expires == s_daylistExpiresAt)) continue;
                     // A new (card, window): a fresh ladder. A known window replaced by the next is the daylist rolling over (hints #12).
                     if (s_daylistExpiresAt != 0) HintFacts.DaylistRolled();
@@ -413,6 +414,32 @@ public readonly partial struct Home
                     return;
                 }
             }
+        }
+
+        // ── the daylist's own header, once per (card, window) ──────────────────────────────────────────────────────────────
+        //
+        // The feed card is not the daylist's last word. Around a rollover the feed serves the playlist in its GENERIC pre-title state (the name
+        // equals `daylist_pretitle`, "daylist", with empty `localized_terms` / `recsplanation_localized_terms` and a provisional window), and
+        // its window can differ from the one the playlist's own header states. The playlist page re-asks that header on open, so the page
+        // and the Home card disagreed: the card kept the feed's generic name, no tags, no basis and the feed's window. The 0.2.9
+        // HomeDaylistHydrator asked the header for the card; this is that ask: the same groups the rollover ladder re-asks, once per
+        // (card, window), so both surfaces read one header (a later window from it is a new (card, window): one more ask, then it settles).
+
+        static int s_hydratedSlot = Table.None;
+        static int s_hydratedExpiresAt;
+
+        static void HydrateDaylist(Scope scope, int slot, int expires)
+        {
+            if (slot == s_hydratedSlot && expires == s_hydratedExpiresAt) return;
+            s_hydratedSlot = slot;
+            s_hydratedExpiresAt = expires;
+            var playlists = scope.Playlists;
+            bool generic = playlists.Title[slot].IsEmpty || playlists.Title[slot] == playlists.GenericTitle[slot]
+                || playlists.DaylistTerms[slot].IsEmpty;
+            Log.Info("home", "daylist header: window " + expires.ToString(CultureInfo.InvariantCulture)
+                + (generic ? " generic or without words" : " from the feed") + " — asking the playlist's own header");
+            Entities.Invalidate(playlists, new ReadOnlySpan<int>(in slot), (uint)DaylistRollover.Groups,
+                generic ? FetchPriority.Visible : FetchPriority.Prefetch);
         }
 
         // ── the rollover ladder (DaylistRollover decides; this owns the clock, the timer and the attempts) ───────────

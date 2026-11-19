@@ -21,12 +21,62 @@ public static class HomeVerbs
     /// <summary>The empty facet's action: Browse.</summary>
     public static void OpenBrowse() => Shell.GoTo(new Shell.Route(Shell.RouteKind.Browse));
 
-    /// <summary>The "Customize Home" link's navigation (and the palette command's one line).</summary>
-    public static void OpenCustomize() => Shell.GoTo(new Shell.Route(Shell.RouteKind.HomeCustomize));
+    /// <summary>"Customize Home" (the facets' link, the palette command): Home's All facet with the theme's own way to change it open: WinUI's
+    /// add band, Classic's Edit Home, Zune's customize (<see cref="IHomeBoardInspect.Customize"/>). On Home already, at once; elsewhere Home
+    /// opens and the board enters it as it mounts. Nothing while <see cref="CanCustomize"/> is false.</summary>
+    public static void OpenCustomize()
+    {
+        if (!CanCustomize) return;
+        var cur = Shell.Current.Peek();
+        if (cur.Kind == Shell.RouteKind.Home && Entities.Strings.Resolve(cur.Arg).Length == 0 && HomeBoardInspect.Current is { } board)
+        {
+            board.Customize();
+            return;
+        }
+        Shell.GoTo(new Shell.Route(Shell.RouteKind.Home));
+        // A board kept alive behind another page is still registered: it enters at once. A first visit enters as the board mounts.
+        if (HomeBoardInspect.Current is { } kept) kept.Customize();
+        else HomeBoardInspect.CustomizeOnMount = true;
+    }
+
+    /// <summary>Whether this build offers "Customize Home" at all: the theme's way into changing Home is its edit mode or its add surface, and
+    /// both can be switched off (<see cref="HomeCustomize"/>, owner 2026-11-18). The facets' link and the palette command show only while true.</summary>
+    public static bool CanCustomize => HomeCustomize.EditMode || HomeCustomize.AddSurface;
+
+    /// <summary>What the inspector answers when "Customize Home" is switched off.</summary>
+    public const string CustomizeOff = "home customization is switched off for this release (HomeCustomize.EditMode and HomeCustomize.AddSurface)";
+
+    /// <summary>What the inspector answers when the edit mode is switched off (<see cref="HomeCustomize.EditMode"/>).</summary>
+    public const string EditOff = "home's edit mode is switched off for this release (HomeCustomize.EditMode)";
+
+    /// <summary>What the inspector answers when the add surface is switched off (<see cref="HomeCustomize.AddSurface"/>).</summary>
+    public const string AddOff = "home's add surface is switched off for this release (HomeCustomize.AddSurface)";
 
     /// <summary>A daylist tag opens Search for it.</summary>
     public static void OpenTag(string tag)
         => Shell.GoTo(new Shell.Route(Shell.RouteKind.Search, default, Entities.Strings.Intern(tag)));
+
+    /// <summary>A daylist tag opens its own mix (<paramref name="link"/>, the tag's <c>nicheMixLinks</c> playlist), else Search for it.</summary>
+    public static void OpenTag(string tag, string? link)
+    {
+        if (link is { Length: > 0 })
+        {
+            var route = Shell.For(EntityUri.Parse(link.AsSpan()), tag);
+            if (route.Kind != Shell.RouteKind.NotFound) { Shell.GoTo(route, HomeCardNav.HomeOrigin); return; }
+        }
+        OpenTag(tag);
+    }
+
+    /// <summary>An entity a section hangs off (a header's "The Pog State", a cluster's "Henry Moodie") opens as itself.</summary>
+    public static void OpenEntity(string uri, string name)
+    {
+        var route = Shell.For(EntityUri.Parse(uri.AsSpan()), name);
+        if (route.Kind != Shell.RouteKind.NotFound) Shell.GoTo(route, HomeCardNav.HomeOrigin);
+    }
+
+    /// <summary>A zone header's "See all" words: "See all 36" when the section says how many it holds, else "See all".</summary>
+    public static string SeeAllLabel(Zone zone)
+        => zone.TotalCount > 1 ? Strings.Home.SeeAllN(zone.TotalCount) : Loc.Get(Strings.Home.SeeAll);
 
     /// <summary>Shuffle STARTS the daylist shuffled; it never toggles (<c>HomeCardNav.Play</c> pauses a daylist that already plays).</summary>
     public static void ShuffleContext(string uri)
@@ -39,7 +89,8 @@ public static class HomeVerbs
     /// zone with no single backing section) — the header's tools then carry no "See all" link.</summary>
     public static Action? SeeAll(Zone zone)
     {
-        if (zone.SectionSlot < 0) return null;
+        // A followed release's section holds its one album, which the Release Spotlight already shows whole: nothing more to see.
+        if (zone.SectionSlot < 0 || zone.Kind == ZoneKind.ReleaseSpotlight) return null;
         int slot = zone.SectionSlot;
         return () =>
         {

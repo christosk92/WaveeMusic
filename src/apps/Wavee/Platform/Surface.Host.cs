@@ -88,6 +88,7 @@ public static partial class Controls
         // The label block / text column, built once per GATED props instance: the hot edge re-renders this host to mount
         // its chrome, and handing the title's trim tooltip the SAME element keeps it (and its ToolTip) from re-rendering.
         SurfaceProps? _textFor;
+        bool _textPinned;   // the pin-to-Home state the cached text was built with (it changes with no new props)
         Element? _text;
         // Trampolines and handlers are built ONCE per host: reference-stable across renders, reading `_latest` at
         // invocation time.
@@ -133,6 +134,10 @@ public static partial class Controls
             if (p is null) return new BoxEl();
             var d = p.Data;
             var s = p.Shape;
+            // State at rest (pinned Home): a card whose entity is on Home carries the mark. Reading the store subscribes this host to the
+            // pin set's version, so a pin from anywhere re-renders the cards it touches.
+            if (!d.IsSeed && d.Uri.Length > 0 && HomePinId.Canonical(d.Uri) is { } homePin && HomeBoardStore.Instance.IsPinned(homePin))
+                d = d with { PinnedToHome = true };
             IReadSignal<float> liveWidth = shelfWidth ?? _width;
 
             // A seed is the shape's bone face: disabled, no plate, no chrome, no handlers. In a bound slot its owner also
@@ -158,9 +163,10 @@ public static partial class Controls
             // Presence is the adapter's (a surface with nothing to play grows no dead FAB); the handler is the trampoline.
             Action? play = d.OnPlay is null ? null : _onPlay;
 
-            if (!ReferenceEquals(_textFor, p))
+            if (!ReferenceEquals(_textFor, p) || _textPinned != d.PinnedToHome)
             {
                 _textFor = p;
+                _textPinned = d.PinnedToHome;
                 // The stack's label block is width-free (its column sizes it), so a shelf's width change keeps it and its trim tooltip.
                 _text = s.IsRow ? style.RowText(d, in s) : style.Labels(d, in s, float.NaN);
             }

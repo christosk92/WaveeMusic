@@ -110,14 +110,11 @@ internal sealed class WinUiPaneLyricsRow : Component
         _onClick = () => host.SeekToLine(index);
     }
 
-    /// <summary>The row's fade for its packed emphasis: none on a transcript the reader browses (neutral), the mini player's flat picture where
-    /// its mount asks for one (<see cref="Lyrics.MiniRows.Opacity"/>), else the pane's distance ladder (<see cref="PR.RowOpacity"/>).</summary>
+    /// <summary>The row's fade for its packed emphasis: the mini player's flat picture where its mount asks for one
+    /// (<see cref="Lyrics.MiniRows.Opacity"/>), else the pane's distance ladder (<see cref="PR.RowOpacity"/>).</summary>
     float RowOpacity(int emphasis)
     {
-        bool podcast = _host.IsPodcast;
-        bool ownsPlayback = !podcast || _host.ObservedPlaybackOwner;
-        if (Lyrics.TranscriptPresentation.Neutral(podcast, ownsPlayback)) return 1f;
-        float flat = Lyrics.MiniRows.Opacity(_host, podcast, ownsPlayback, emphasis, 1f);
+        float flat = Lyrics.MiniRows.Opacity(_host, emphasis, 1f);
         if (!float.IsNaN(flat)) return flat;
         return _host.FlatRows ? 1f : PR.RowOpacity(Lyrics.Emphasis.DistOf(emphasis), (emphasis & Lyrics.Emphasis.PastBit) != 0);
     }
@@ -140,10 +137,8 @@ internal sealed class WinUiPaneLyricsRow : Component
         int shape = UseComputed(_shape).Value;
         UseSignalEffect(_retargetOpacity);
         bool podcast = host.IsPodcast;
-        bool ownsPlayback = !podcast || host.ObservedPlaybackOwner;
-        bool neutral = Lyrics.TranscriptPresentation.Neutral(podcast, ownsPlayback);
-        bool active = !neutral && (shape & ActiveBit) != 0;
-        bool past = !neutral && !active && (shape & PastBit) != 0;
+        bool active = (shape & ActiveBit) != 0;
+        bool past = !active && (shape & PastBit) != 0;
         float reserve = (shape & ReserveBit) != 0 ? Lyrics.Interlude.ReserveDip(host.Large) : 0f;
 
         // The active line grows (a spring on the scale, never a re-layout).
@@ -165,7 +160,7 @@ internal sealed class WinUiPaneLyricsRow : Component
         // The mini player's picture of the song (ILyricsHost.FlatRows): every line but the active one at one ink, sung or not: the primary ink,
         // faded by the row's opacity (the contract's Lyrics.MiniRows.Opacity). A 42 % ink at full opacity drew the same pixels but declared
         // the context lines body copy, which no veil can hold at 4.5:1 (white at 42 % reads 3.9:1 even on black).
-        ColorF rest = neutral ? ink.Secondary : host.FlatRows ? ink.Primary : past ? ink.Tertiary : ink.Secondary;
+        ColorF rest = host.FlatRows ? ink.Primary : past ? ink.Tertiary : ink.Secondary;
         if (float.IsNaN(_seedOpacity)) _seedOpacity = RowOpacity(_emphasis.Peek());
         // The depth blur's σ as the core's ramp holds it now (0 while the user owns the scroll), so a shape render re-asserts the live value.
         float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(_index) : 0f;
@@ -174,8 +169,7 @@ internal sealed class WinUiPaneLyricsRow : Component
         {
             // Always a wiped run (an in-place update when the line leaves the voice slot, never a node swap); off the active line both sides
             // carry the same ink, so the core's settled split shows nothing.
-            bool highlight = active && Lyrics.TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line);
-            float split = highlight ? Lyrics.Wipe.SplitOf(host, _index, line, (long)host.Now.Peek(), lead: !podcast) : 0f;
+            float split = active ? Lyrics.Wipe.SplitOf(host, _index, line, (long)host.Now.Peek(), lead: !podcast) : 0f;
             ColorF sung = active ? ink.Primary : rest;
             // The active line's unsung words in the tertiary ink on the pane: in the secondary (the upcoming lines' ink) the sung and unsung
             // halves of the line differed by a fifth of white and the wipe did not read; the upcoming lines' fade keeps them under these words.

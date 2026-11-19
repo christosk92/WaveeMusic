@@ -139,6 +139,10 @@ public static partial class Platform
         /// on the click and brings the new one in on its own cue (<c>Design.Nav.NoOverlap</c>). Read at each swap, so it applies from the next
         /// navigation.</summary>
         public static readonly SettingKey<bool> FastNavigation = new("appearance.fastNavigation", false);
+        /// <summary>Connected animations (Settings ▸ Appearance ▸ Display, WinUI today): TRUE (the default) lets the picture you click fly
+        /// into the page it opens and back (<c>Shell.Connected</c>); FALSE flies nothing and every swap plays the theme's own recipe. The
+        /// owner asked for the switch on 2026-11-16. Read at each navigation, so it applies from the next one.</summary>
+        public static readonly SettingKey<bool> ConnectedAnimations = new("appearance.connectedAnimations", true);
         /// <summary>App-wide UI zoom (effective scale = OS DPI × zoom). Seeded into the window BEFORE it comes up and
         /// SNAPPED on that read: a hand-edited value must never seed a non-ladder scale, because off-rung zooms alias the
         /// glyph-atlas raster buckets — which is the whole reason the ladder is discrete.</summary>
@@ -182,6 +186,8 @@ public static partial class Platform
         /// recent first, <see cref="ShowViewPrefs.Cap"/> shows), never a key per uri (podcast plan D-6). Read and written
         /// ONLY through <see cref="ShowViewPrefs"/>, which owns the format.</summary>
         public static readonly SettingKey<string> PodcastViews = new("podcast.views", "");
+        /// <summary>Per-show "last visit" stamps for "new since last visit" (PodcastPages, VisitStamps).</summary>
+        public static readonly SettingKey<string> PodcastVisits = new("podcast.visits", "");
 
         // ── video surfaces ──
         public static readonly SettingKey<string> VideoPreferredPlacement = new("video.placement", "");
@@ -222,6 +228,8 @@ public static partial class Platform
         public static readonly SettingKey<bool> RememberVolume = new("playback.volume.remember", true);
         /// <summary>First-launch volume ≈ −6 dB (D6): 0.794³ = 0.5005 through the cubic taper. <c>Playback.UnmuteDefault</c> is the same number.</summary>
         public static readonly SettingKey<float> SavedVolume = new("playback.volume", 0.794f);
+        /// <summary>The Spine Shelf's song previews are heard (the shelf's sound button). Off by default: a hovered song's preview plays muted.</summary>
+        public static readonly SettingKey<bool> PreviewSound = new("playback.preview.sound", false);
         public static readonly SettingKey<string> OutputDeviceId = new("playback.output.deviceId", "");
         public static readonly SettingKey<string> OutputDeviceName = new("playback.output.deviceName", "");
         public static readonly SettingKey<bool> EqualizerEnabled = new("playback.eq.enabled", false);

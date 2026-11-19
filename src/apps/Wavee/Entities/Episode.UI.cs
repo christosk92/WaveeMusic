@@ -63,9 +63,10 @@ public readonly partial struct Episode
     /// <summary>What one bound row slot binds: the handle, its row version and the host's marks — so a data change to
     /// THIS episode (or its marks) re-fires the slot's binds and a publish of any other row does not (the slot item is
     /// equality-gated).</summary>
-    /// <param name="Number">A number the HOST states for this row, 0 = "the episode's own". An audiobook's chapters
-    /// carry no <c>number</c> on the wire (<see cref="AudiobookOrder"/>), so the reader numbers them by POSITION and
-    /// hands the number down here — the row never recomputes an order it cannot see.</param>
+    /// <param name="Number">A number the HOST states for this row, 0 = "the episode's own". An audiobook's chapter
+    /// number comes from the wire (field 65) or, for a row cached without it, from POSITION
+    /// (<see cref="AudiobookOrder.ChapterNumber(Episode,int,int)"/>); the host hands it down here — the row never
+    /// recomputes an order it cannot see.</param>
     public readonly record struct RowItem(Episode Episode, uint Version, RowMarks Marks = RowMarks.None, int Number = 0)
     {
         public static RowItem Of(Episode e, RowMarks marks = RowMarks.None, int number = 0)
@@ -115,8 +116,10 @@ public readonly partial struct Episode
     internal const int SeedDateKey = 20000101;
     internal const int SeedDurationMs = 180_000;
 
-    /// <summary>The row's default verb: the episode page. A template reads it as the open action when the host states none.</summary>
-    internal static readonly Action<Episode> OpenPageAction = OpenPage;
+    /// <summary>The row's default verb: the episode page. A template reads it as the open action when the host states none. The reader's
+    /// rows are bound templates and cannot carry a per-item flight tag, so the row's own picture (its art, the largest picture in the
+    /// activated row) flies into the episode's header (<see cref="Shell.ConnectFromActivated"/>).</summary>
+    internal static readonly Action<Episode> OpenPageAction = static e => Shell.ConnectFromActivated(OpenPage, e);
 
     // ══ 2. THE PURE PIECES (pinned by EpisodeRowRulesTests) ══════════════════════════════════════════════════════════
 
@@ -478,6 +481,16 @@ public readonly partial struct Episode
     /// right-click funnel; <c>Drag</c> is the episode's own drag (kind
     /// <see cref="DragKind.Episode"/>, the row's episode — never a selection) wherever the handle resolves.</item>
     /// </list></summary>
+    /// <summary>An episode as a drag (kind <see cref="DragKind.Episode"/>): it drops onto a playlist (added as an item) and onto the queue or the
+    /// player bar (queued), as a track does. Null when the handle does not resolve. Built at drag promotion (a cold factory), never per frame.</summary>
+    public static DragPayload? DragPayloadOf(Episode e)
+    {
+        if (!e.IsValid || !e.Uri.IsValid) return null;
+        string uri = e.Uri.Text;
+        var row = new EntityRef(EntityKind.Episode, e.Slot);
+        return new DragPayload(DragKind.Episode, uri, uri, TitleOf(e), row, ArtUrl: ArtOf(e)) { Episodes = [row] };
+    }
+
     public static Controls.CardData RowData(Episode e, in RowFacts f, in RowOptions o)
     {
         var episode = e;                                   // a copy the handlers can hold (an `in` cannot be captured)
@@ -504,9 +517,9 @@ public readonly partial struct Episode
 
         string dragUri = f.Uri, dragTitle = f.Title;
         string? dragCover = f.Cover;
+        var dragRow = new EntityRef(EntityKind.Episode, episode.Slot);
         DragSource? drag = e.IsValid && dragUri.Length > 0
-            ? Drag.Source(() => new DragPayload(DragKind.Episode, dragUri, dragUri, dragTitle,
-                                                new EntityRef(EntityKind.Episode, episode.Slot), ArtUrl: dragCover))
+            ? Drag.Source(() => new DragPayload(DragKind.Episode, dragUri, dragUri, dragTitle, dragRow, ArtUrl: dragCover) { Episodes = [dragRow] })
             : null;
 
         return new Controls.CardData(f.Uri, f.Title, f.Show is { Length: > 0 } show ? RowCaption(show) : null, f.Cover,

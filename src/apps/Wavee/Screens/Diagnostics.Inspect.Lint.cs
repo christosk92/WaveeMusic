@@ -67,6 +67,13 @@ public static partial class Diagnostics
                 OverlayNarrow = "overlay.narrow", TextRuled = "text.ruled", EdgeGutter = "edge.gutter", EdgeHuge = "edge.huge",
                 TypeVoice = "type.voice", StateRest = "state.rest", PlayingStatus = "playing.status", ControlRequired = "control.required",
                 EdgeWindow = "edge.window", SpaceHuge = "space.huge", PictureText = "picture.text";
+
+            // the pinned Home (Diagnostics.Inspect.Lint.Pack.cs): a grid with an empty cell gates; edit tools over content are todo
+            public const string PackHole = "pack.hole", PackTools = "pack.tools";
+
+            // the pinned Home's sections (Diagnostics.Inspect.Home.Explain.cs): one title drawn over two sections (todo until the fixtures are
+            // clean: the mock Home draws "More like", "For fans of" and "Jump back in" twice, live1 "Because you like" twice)
+            public const string HomeDuplicate = "home.duplicate";
         }
 
         /// <summary>Today's nine rule names, in the order the report lists them (each is an alias of one or two ids).</summary>
@@ -124,6 +131,9 @@ public static partial class Diagnostics
             new(Rules.EdgeWindow, "", Level.Todo, "content laid out past the window's right edge, outside any rail"),
             new(Rules.SpaceHuge, "", Level.Todo, "a band of the page at Huge or Huge4K with nothing in it, as wide as a column"),
             new(Rules.PictureText, "", Level.Todo, "text the scene shows that never reaches the frame (its box paints one colour), less edge fades and sticky plates"),
+            new(Rules.PackHole, "", Level.Gate, "a pack grid group with an empty cell, an overlap, a ragged band or a tile below its class (PackLayout.Verify over the whole board), or a settled tile off its packed rect"),
+            new(Rules.PackTools, "", Level.Todo, "a tile's edit tools (home:tile:<id>:tools) drawn over text or a control of its own content"),
+            new(Rules.HomeDuplicate, "", Level.Gate, "two Home sections drawn under one title (two folds both 'Because you like'; Spotify's own same-titled sections exempt); home do=explain says why"),
         ];
 
         /// <summary>Every rule id, in report order.</summary>
@@ -567,6 +577,12 @@ public static partial class Diagnostics
 
             /// <summary>The rendered frame the grounds under the text are read from; null when nothing was rendered.</summary>
             public Pixels? Backdrop { get; init; }
+
+            /// <summary>The pack grids the page mounts (the pinned Home's board), as <c>pack.hole</c> reads them; empty in an old snapshot.</summary>
+            public IReadOnlyList<PackShot> Packs { get; init; } = [];
+
+            /// <summary>The Home sections the board renders, in reading order (entry id, drawn title), as <c>home.duplicate</c> reads them; empty off Home.</summary>
+            public IReadOnlyList<(string Entry, string Title)> HomeSections { get; init; } = [];
 
             /// <summary>The overlays a `state` verb opened that are still open (<c>overlay.open</c>); empty in a saved snapshot.</summary>
             public IReadOnlyList<StagedOverlay> StagedOverlays { get; init; } = [];
@@ -1155,6 +1171,9 @@ public static partial class Diagnostics
                     Rules.EdgeWindow => PastWindowRule(s, found),
                     Rules.SpaceHuge => HugeSpaceRule(s, found),
                     Rules.PictureText => UnpaintedTextRule(s, found),
+                    Rules.PackHole => PackHoleRule(s, found),
+                    Rules.PackTools => PackToolsRule(s, found),
+                    Rules.HomeDuplicate => HomeDuplicateRule(s, found),
                     _ => 0,
                 };
                 checks[spec.Id] = looked;
@@ -1402,6 +1421,8 @@ public static partial class Diagnostics
             Rules.TextPlaceholder => "a missing string or argument: add the loc key or pass the argument; never blank the text",
             Rules.PictureBlank => "look at the render: nothing painted (a surface with no picture, a page that never drew); find what should draw there, never call a blank frame done",
             Rules.PictureUnpainted => "look at the render: the region's nodes are laid out but never reach the screen (a layer or clip covers them, or a pass stops painting); fix the paint, never move the text",
+            Rules.PackHole => "a bento has no empty cell: fix the packer input (a span the theme's rules record gives, an Extent) or the tile's box, never hide the tile",
+            Rules.PackTools => "move the tools into the tile's reserved corner or tool strip; edit tools never sit on content",
             Rules.OverlayOpen => "close the overlay before judging the state (key esc), or stage the state a way that opens none; the page under it is not what the frame shows",
             Rules.KeyHygiene => "key the node by its entity or slot id, without tier, form, count or run-id parts (keys must be stable selectors)",
             Rules.TextDuplicate => "say it once: keep the heading and drop the repeat inside the section (or give the repeat its own words); the section stays",
@@ -1793,20 +1814,22 @@ public static partial class Diagnostics
 
         /// <summary>Is the run's visible box inside the feather of its nearest scroller's edge fade, on an edge that fades now (content beyond it): a
         /// run sliding under the fade is on its way out of view and is read once it is scrolled in (audit B8: WinUI's concert "Buy tickets" read
-        /// 1.05 : 1 half-dissolved under the list's foot fade). A scroller with no recorded band is never skipped.</summary>
+        /// 1.05 : 1 half-dissolved under the list's foot fade). Every scroller up the chain is asked, not only the nearest: a run in a horizontal
+        /// shelf strip (no band of its own) can slide under the PAGE's top fade (Zune Home's Spine Shelf Play disc read 1.72 : 1 half under it).
+        /// A scroller with no recorded band excuses nothing.</summary>
         static bool UnderScrollFade(Snapshot s, Node n)
         {
             for (int a = n.Parent; a >= 0; a = s.Nodes[a].Parent)
             {
                 Node up = s.Nodes[a];
-                if (up.ScrollAxis == 0) continue;
-                if (up.FadeBand <= 0f || up.Visible.IsEmpty) return false;
+                if (up.ScrollAxis == 0 || up.FadeBand <= 0f || up.Visible.IsEmpty) continue;
                 RectF v = n.Visible, sv = up.Visible;
-                if (up.ScrollAxis == 2)
-                    return (Fades(up, EdgeMask.Bottom) && up.ScrollOffset < up.ScrollMax - Slack && v.Bottom > sv.Bottom - up.FadeBand)
-                        || (Fades(up, EdgeMask.Top) && up.ScrollOffset > Slack && v.Y < sv.Y + up.FadeBand);
-                return (Fades(up, EdgeMask.Right) && up.ScrollOffset < up.ScrollMax - Slack && v.Right > sv.Right - up.FadeBand)
-                    || (Fades(up, EdgeMask.Left) && up.ScrollOffset > Slack && v.X < sv.X + up.FadeBand);
+                bool under = up.ScrollAxis == 2
+                    ? (Fades(up, EdgeMask.Bottom) && up.ScrollOffset < up.ScrollMax - Slack && v.Bottom > sv.Bottom - up.FadeBand)
+                        || (Fades(up, EdgeMask.Top) && up.ScrollOffset > Slack && v.Y < sv.Y + up.FadeBand)
+                    : (Fades(up, EdgeMask.Right) && up.ScrollOffset < up.ScrollMax - Slack && v.Right > sv.Right - up.FadeBand)
+                        || (Fades(up, EdgeMask.Left) && up.ScrollOffset > Slack && v.X < sv.X + up.FadeBand);
+                if (under) return true;
             }
             return false;
         }

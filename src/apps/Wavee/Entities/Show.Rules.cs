@@ -661,6 +661,12 @@ public static class AudiobookOrder
 
     /// <summary>The chapter number of reader position <paramref name="index"/> over <paramref name="count"/> chapters:
     /// the reader runs last-chapter-first, so position 0 is the last chapter and the final position is chapter 1. The
-    /// provider states no <c>number</c> on an audiobook item, which is why the reader numbers by POSITION.</summary>
+    /// POSITION fallback for a chapter whose row carries no wire number (<see cref="ChapterNumber(Episode,int,int)"/>).</summary>
     public static int ChapterNumber(int index, int count) => (uint)index < (uint)count ? count - index : 0;
+
+    /// <summary>The chapter's own number when the wire stated it (<c>Episode.number</c>, field 65, stored 1-based by
+    /// <c>Spotify.Decode.EpisodeV4</c>), else the position fallback. A row cached by a decoder that read field 89 holds
+    /// 0 and keeps the position number until its next identity answer.</summary>
+    public static int ChapterNumber(Episode chapter, int index, int count)
+        => chapter.IsValid && chapter.Number > 0 ? chapter.Number : ChapterNumber(index, count);
 }

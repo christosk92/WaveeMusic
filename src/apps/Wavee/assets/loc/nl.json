@@ -113,6 +113,8 @@
     "listeningHistory": "Luistergeschiedenis",
     "plays": "{n} keer beluisterd",
     "save": "Bewaren",
+    "previewSoundOn": "Previewgeluid aanzetten",
+    "previewSoundOff": "Previewgeluid uitzetten",
     "more": "Meer",
     "couldntLoad": "Kon {what} niet laden",
     "couldntLoadHome": "Kon Start niet laden",
@@ -133,6 +135,15 @@
       "onItsWay": "{daypart} komt eraan",
       "late": "Je volgende daylist laat op zich wachten",
       "checkAgain": "Opnieuw controleren"
+    },
+    "spotlight": {
+      "newSingle": "Nieuwe single van {artist}",
+      "newEp": "Nieuwe EP van {artist}",
+      "newAlbum": "Nieuw album van {artist}",
+      "newRelease": "Nieuwe release van {artist}",
+      "upcoming": "Binnenkort van {artist}",
+      "moreReleases": "Meer nieuwe releases",
+      "showRelease": "{title} tonen"
     },
     "zone": {
       "becauseYouLike": "Omdat je dit leuk vindt",
@@ -202,6 +213,7 @@
     }
   },
   "podcast": {
+    "pages": { "chapterN": "Hoofdstuk {number}" },
     "episodes": "Afleveringen",
     "show": "Podcast",
     "inProgress": "Bezig",
@@ -258,7 +270,9 @@
     "yours": "jouw score {stars}★",
     "rate": {
       "title": "{name} beoordelen",
-      "unavailable": "Beoordelen kan nog niet in Wavee — het gemiddelde en je eigen score worden getoond zoals Spotify ze heeft.",
+      "closed": "Spotify neemt voor dit account geen beoordelingen aan.",
+      "demo": "In de demo worden beoordelingen niet opgeslagen. Log in om te beoordelen.",
+      "saving": "Je beoordeling wordt opgeslagen…",
       "stars": "{count, plural, one {# ster} other {# sterren}}"
     },
     "notify": {

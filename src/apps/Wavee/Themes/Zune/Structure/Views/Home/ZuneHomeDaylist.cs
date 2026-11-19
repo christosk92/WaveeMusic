@@ -61,7 +61,8 @@ internal static class ZuneHomeDaylist
         if (zone.Items.Count == 0) return new BoxEl();
         var card = zone.Items[0];
         string uri = card.Uri;
-        if (uri.Length == 0) return new BoxEl();
+        // The blank seed card (a board tile whose answer is on its way): the cold-load shape, which the tile's loading region derives.
+        if (uri.Length == 0) return Skeleton(lay);
 
         var c = card;
         string title = card.Title;
@@ -80,10 +81,11 @@ internal static class ZuneHomeDaylist
             MoreRing(lay),
         ];
 
-        var root = Strip(props.Eyebrow, title, Strings.Home.DaylistMeta(card.TrackCount), rings, props.Clock ?? new BoxEl(),
+        // The board's page title is the greeting ("good evening"), so the eyebrow says only what the card is (owner/integrator, 2026-11-16).
+        var root = Strip(Loc.Get(Strings.Home.YourDaylist), title, Strings.Home.DaylistMeta(card.TrackCount), rings, props.Clock ?? new BoxEl(),
                          DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl), lay,
                          ArtWidth(lay, stripH), r => { if (!lay.DaylistBleed && MathF.Abs(stripH.Peek() - r.H) > 0.5f) stripH.Value = r.H; },
-                         rendered ? ZuneMotion.SwapThrough : null)
+                         rendered ? ZuneMotion.SwapThrough : null, Tags(in card), SectionCopy.DaylistBasis(in card))
             .Interactive(Interaction.Tile) with
             {
                 OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
@@ -132,8 +134,13 @@ internal static class ZuneHomeDaylist
                               lay.ClockInline);
         string eyebrow = Loc.Get(Strings.Home.YourDaylist);
         return Swap(Strip(eyebrow, Loc.Get(Strings.Home.Layout.Daylist), Strings.Home.DaylistMeta(50), rings, clock, null, lay,
-                     lay.DaylistBleed ? float.NaN : lay.DaylistArtW, null, wordsIn: null), lay, rendered: false);
+                     SkeletonArtWidth(lay), null, wordsIn: null), lay, rendered: false);
     }
+
+    /// <summary>The skeleton's art width: the loaded strip's (<see cref="ArtWidth"/>) at the strip's floor height (<see cref="Extent"/>), the height a
+    /// strip stands at until a longer title grows it.</summary>
+    static float SkeletonArtWidth(ZuneHomeLayout lay)
+        => lay.DaylistBleed ? float.NaN : lay.DaylistArtAspect <= 0f ? lay.DaylistArtW : lay.DaylistArtWidthAt(Extent(lay));
 
     /// <summary>The art's width: the strip's height times the tier's aspect, between the board's width and the tier's cap (a fixed width where the
     /// tier has no aspect). A bound prop: a strip that grows with its title re-lays the art, nothing re-renders.</summary>
@@ -146,9 +153,34 @@ internal static class ZuneHomeDaylist
         return Prop.Of(() => lay.DaylistArtWidthAt(stripH.Value));
     }
 
+    /// <summary>The strip's height at its TALLEST (the title at its full line count, the tags, the basis, the meta, the countdown and the rings row): the strip
+    /// never lays out shorter (its floor where it grows), so the skeleton and the landed strip are one height and the board's row, packed at this before the
+    /// answer lands, never moves when it does. The one-row form is its fixed height. Compact's bled title takes the lines the name needs (never cut), so
+    /// there the floor counts one line and a longer name still grows the strip.</summary>
+    internal static float Extent(ZuneHomeLayout lay)
+    {
+        if (!lay.DaylistGrows) return lay.DaylistH;
+        bool parked = lay.DaylistBleed && lay.DaylistRingsParked;
+        float target = MathF.Max(lay.RingSize, lay.RingTarget);
+        float meta = R.Type.DenseMeta("").LineHeight, micro = R.Type.MicroMeta("").LineHeight;
+        float gap = H.DaylistCopyGap;
+        // The text block: the eyebrow's row, the title's lines, the tags, the basis and the meta line, the inline countdown's row, the copy's gap between each.
+        float text = (parked ? MathF.Max(target, meta) : meta) + gap + MathF.Max(1, lay.DaylistTitleLines) * TitleText("", lay).LineHeight;
+        if (lay.DaylistMeta) text += 3f * (gap + meta);
+        if (lay.ClockInline) text += gap + (parked ? MathF.Max(target, micro) : micro);
+        // The rings row under it, the copy's gap and its own top margin above it (parked rings stand over the text block's rows instead): the disc or its
+        // target, beside its word where the tier has words.
+        float rings = MathF.Max(target, lay.RingLabels ? R.Type.TrackTitle("").LineHeight : 0f);
+        float copy = parked || lay.PlayAtEnd ? MathF.Max(text, rings) : text + gap + H.DaylistActionsTop + rings;
+        if (lay.DaylistBleed) copy += 2f * lay.DaylistPadY;
+        // The clock column (the strip's): the count line, the bars, the dayparts (two lines at most in the column); shorter than the copy in every tier.
+        float clock = lay.ClockW > 0f ? micro + H.ClockGap + H.BarLitH + H.ClockGap + 2f * micro : 0f;
+        return MathF.Max(lay.DaylistH, MathF.Max(copy, clock));
+    }
+
     /// <summary>The save ring: the shared heart (it subscribes to the saved set on its own) inside the outlined ring, with its word where the tier
     /// has words.</summary>
-    static Element SaveRing(string uri, string title, ZuneHomeLayout lay)
+    internal static Element SaveRing(string uri, string title, ZuneHomeLayout lay, string key = "zune-daylist-save")
     {
         // The picture (the outlined disc, no glyph of its own) under the heart button, which is the target: its box is `SaveHitBox` (40) at every
         // tier (the button freezes its props at mount, so the size cannot follow the tier; where the stack is the disc's 36 it fits the stack).
@@ -175,7 +207,7 @@ internal static class ZuneHomeDaylist
             });
         return new BoxEl
         {
-            Key = "zune-daylist-save", Direction = 0, AlignItems = FlexAlign.Center, Gap = H.DaylistActionLabelGap, Shrink = 0f, BlocksDragArm = true,
+            Key = key, Direction = 0, AlignItems = FlexAlign.Center, Gap = H.DaylistActionLabelGap, Shrink = 0f, BlocksDragArm = true,
             Justify = lay.RingTarget > 0f ? FlexJustify.Center : FlexJustify.Start, MinWidth = lay.RingTarget, MinHeight = lay.RingTarget,
             Children = kids.ToArray(),
         };
@@ -196,17 +228,31 @@ internal static class ZuneHomeDaylist
         return Controls.Named(ring, Loc.Get(Strings.Home.More));
     }
 
+    /// <summary>The tags as one line of lowercase words, " · " between them, each opening its own mix (its niche link, else Search).</summary>
+    static Element? Tags(in HomeCard card)
+    {
+        var (tags, links) = SectionCopy.DaylistTags(in card, H.DaylistMaxTags);
+        if (tags.Length == 0) return null;
+        var spans = new TextSpan[tags.Length * 2 - 1];
+        for (int i = 0; i < tags.Length; i++)
+        {
+            if (i > 0) spans[2 * i - 1] = new TextSpan(" · ", Color: Tok.TextTertiary);
+            spans[2 * i] = new TextSpan(ZuneText.Word(tags[i]), Color: Tok.TextSecondary, IsLink: true);
+        }
+        var meta = R.Type.DenseMeta("");
+        return new SpanTextEl(spans)
+        {
+            Size = meta.Size, LineHeight = meta.LineHeight, Color = Tok.TextSecondary,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            OnSpanClick = i => { if ((i & 1) == 0 && (i >> 1) < tags.Length) HomeVerbs.OpenTag(tags[i >> 1], links[i >> 1]); },
+        };
+    }
+
     /// <summary>The title in the tier's role (the quickplay head, the heading, the daylist title or the hero), on its lines. Its box scales from the
     /// left edge when the role changes across a crossing (the panorama's recipe).</summary>
     static Element TitleBox(string title, ZuneHomeLayout lay)
     {
-        TextEl text = lay.DaylistTitle switch
-        {
-            ZuneDaylistTitle.Group => R.Type.QuickplayHead(title),
-            ZuneDaylistTitle.Heading => R.Type.Heading(title),
-            ZuneDaylistTitle.Hero => R.Type.Hero(title),
-            _ => R.Type.HeroTitle(title),
-        };
+        var text = TitleText(title, lay);
         bool one = lay.DaylistTitleLines == 1;   // 0 = no cap (the bled form)
         return new BoxEl
         {
@@ -215,17 +261,28 @@ internal static class ZuneHomeDaylist
             [
                 text with
                 {
-                    MaxLines = lay.DaylistTitleLines, Wrap = one ? TextWrap.NoWrap : TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    MaxLines = lay.DaylistTitleLines, Wrap = one ? TextWrap.NoWrap : TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    // Each line exactly the role's line height: the strip's height (Extent) counts the role's lines.
+                    LineStacking = LineStacking.BlockLineHeight,
                 },
             ],
         };
     }
 
+    /// <summary>The title's role in the tier.</summary>
+    static TextEl TitleText(string title, ZuneHomeLayout lay) => lay.DaylistTitle switch
+    {
+        ZuneDaylistTitle.Group => R.Type.QuickplayHead(title),
+        ZuneDaylistTitle.Heading => R.Type.Heading(title),
+        ZuneDaylistTitle.Hero => R.Type.Hero(title),
+        _ => R.Type.HeroTitle(title),
+    };
+
     /// <summary>The strip in the tier's form: ONE tree (art, copy, clock, and the play ring at the end where the tier puts it) whose direction
     /// and sizes are live props. <paramref name="wordsIn"/>: the enter of the copy and the clock column when this form mounts by a crossing (the words
     /// wait out the leaving form's leg, so its title is gone before this one shows; the plate and the art cross-fade with the form's layer).</summary>
     static BoxEl Strip(string eyebrow, string title, string meta, Element[] rings, Element clock, string? art, ZuneHomeLayout lay,
-                       Prop<float> artWidth, Action<RectF>? onBounds, EnterExit? wordsIn)
+                       Prop<float> artWidth, Action<RectF>? onBounds, EnterExit? wordsIn, Element? tags = null, string basis = "")
     {
         var wordsMotion = ZuneMotion.SwapThroughMotion;
         bool bleed = lay.DaylistBleed;
@@ -253,6 +310,25 @@ internal static class ZuneHomeDaylist
             },
             TitleBox(title, lay),
         };
+        // The tags (each opens its own mix) and what the pick is based on, two lines under the title where the strip has its meta line. Both lines
+        // are reserved whether or not the card carries them (the skeleton too), so nothing in the strip moves when they arrive.
+        if (lay.DaylistMeta)
+        {
+            var line = R.Type.DenseMeta(" ");
+            textKids.Add(new BoxEl
+            {
+                Key = "zune-daylist-tags", Direction = 1, MinWidth = 0f, MinHeight = line.LineHeight,
+                Children = tags is { } t ? [t] : [],
+            });
+            textKids.Add(new BoxEl
+            {
+                Key = "zune-daylist-basis", Direction = 1, MinWidth = 0f, MinHeight = line.LineHeight,
+                Children = [R.Type.DenseMeta(basis.Length > 0 ? basis : " ") with
+                {
+                    Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                }],
+            });
+        }
         if (lay.DaylistMeta)
             textKids.Add(R.Type.DenseMeta(meta) with
             {
@@ -337,7 +413,8 @@ internal static class ZuneHomeDaylist
         return new BoxEl
         {
             Key = H.DaylistKey, Direction = 0, ZStack = bleed, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true, OnBoundsChanged = onBounds,
-            Height = lay.DaylistGrows ? float.NaN : lay.DaylistH, MinHeight = lay.DaylistGrows ? lay.DaylistH : 0f,
+            // Where it grows, its floor is its height at its tallest (Extent): a short title or a card with no tags lays out at the skeleton's height.
+            Height = lay.DaylistGrows ? float.NaN : lay.DaylistH, MinHeight = lay.DaylistGrows ? Extent(lay) : 0f,
             // The strip's own height (176 / 160 / 112 / 56 across the tiers and the height rung) lands at once: its HOST (`Swap`) glides it on a SIZE channel,
             // so it holds a track on the crossing frame whatever the chapter around it does (a position-only slide would snap beside a live reflow), and one
             // track carries both a crossing inside a form and the cross-fade between forms (a second track here left the host short of the new height).
@@ -401,6 +478,8 @@ internal static class ZuneHomeDaylist
         {
             Color = strong ? Tok.TextPrimary : Tok.TextSecondary, MaxLines = strong ? 0 : 1, Wrap = strong ? TextWrap.Wrap : TextWrap.NoWrap,
             Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            // Each line exactly the role's line height: the strip's height (Extent) counts the inline countdown's row at it.
+            LineStacking = LineStacking.BlockLineHeight,
         };
 
     static Element StaticLine(string s, bool strong = false) => LineText(s, strong) with { Case = R.Case.For(LabelKind.Label) };

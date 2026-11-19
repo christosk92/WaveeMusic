@@ -226,13 +226,46 @@ internal static class ClassicTitleBar
     /// an unpinnable destination gets an invisible placeholder of the same width — the tree stays honest to the budget.</summary>
     private static Element PinButton(ShellTitleBarProps props)
     {
-        if (props.Pin() is not { } pin)
+        var pin = props.Pin();
+        var home = props.HomePin?.Invoke();
+        if (pin is null && home is null)
             return new BoxEl
             {
                 Key = "chrome-pin-placeholder", Width = ShellPolicy.Now.Chrome.Budget.NavButtonW, Height = TitleBar.ExpandedHeight,
                 Shrink = 0f, HitTestVisible = false, Opacity = 0f,
             };
-        return ChromeButton(pin.Glyph, pin.Invoke, pin.Label, "chrome-pin");
+        if (home is null) return ChromeButton(pin!.Glyph, pin.Invoke, pin.Label, "chrome-pin");
+        if (pin is null) return ChromeButton(home.Glyph, home.Invoke, home.Label, "chrome-pin");
+        // Both Home and the sidebar can hold the destination (pinned Home, design 1.6): the one Pin opens the two toggles, Home first.
+        return Embed.Comp(() => new PinMenuButton(props)) with { Key = "chrome-pin-host" };
+    }
+
+    /// <summary>The Pin that opens the two toggles ("Pin to Home" / "Unpin from Home", then the sidebar's), read at open.</summary>
+    private sealed class PinMenuButton(ShellTitleBarProps props) : Component
+    {
+        public override Element Render()
+        {
+            var overlay = UseContext(Overlay.Service);
+            var anchor = UseRef<NodeHandle>(default);
+            var handle = UseRef<OverlayHandle?>(null);
+
+            void Open()
+            {
+                if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+                var rows = new List<MenuFlyoutItem>(2);
+                if (props.HomePin?.Invoke() is { } h) rows.Add(new MenuFlyoutItem(h.Label, h.Glyph, true, h.Invoke));
+                if (props.Pin() is { } p) rows.Add(new MenuFlyoutItem(p.Label, p.Glyph, true, p.Invoke));
+                ToolTip.CloseOpen();
+                var o = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(rows, () => handle.Value?.Close()), FlyoutPlacement.BottomEdgeAlignedRight,
+                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss));
+                handle.Value = o;
+                o.ClosedAction = () => handle.Value = null;
+            }
+
+            return ToolTip.Wrap(IconButton.Create(Icons.Pin, Open, ChromeButtonStyle)
+                with { Key = "chrome-pin", Margin = ClassicChromeLayout.ButtonMargin, OnRealized = h => anchor.Value = h },
+                Loc.Get(Strings.Theme.Classic.Home.Board.PinMenu));
+        }
     }
 
     /// <summary>The Compact title bar's tab count (board C-TitleBar: "N tabs open, switch tabs"): a chrome button whose face is the open

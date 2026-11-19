@@ -107,7 +107,10 @@ public static class App
         // full-screen stage on real hardware in a given theme): --fake keeps the setting in memory.
         bool fakeBench = Array.IndexOf(argv, "--fake") >= 0
             && Array.Exists(argv, static a => a == "--frame-bench" || a == "--stage-demo" || a.StartsWith("--frame-bench=", StringComparison.Ordinal));
-        if (themeAt >= 0 && themeAt + 1 < argv.Length && (Array.IndexOf(argv, "--screenshot") >= 0 || fakeBench))
+        // Any other `--fake` demo takes it as well (a recorder rehearsal, Record-Feature.ps1 -Fake): its settings live in memory, so the
+        // theme is the run's from its first frame and never switched at run time.
+        bool fakeDemo = Array.IndexOf(argv, "--fake") >= 0;
+        if (themeAt >= 0 && themeAt + 1 < argv.Length && (Array.IndexOf(argv, "--screenshot") >= 0 || fakeBench || fakeDemo))
         {
             Wavee.Theming.ThemeHost.SelectForRun(argv[themeAt + 1]);
         }
@@ -164,8 +167,10 @@ public static class App
         Video.Install();                 // the video host: resolver tiers (chained after the module tier), demotion, engine log sink, attachments, placement preference (B7)
         Video.InstallMirror();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.VideoOverride/LocalVideo; after Install, which loads the roster
         Sidebar.Boot();                  // design, pane state, the layout document and pins; before its action seams and the UI (B6)
-        HomeUi.HomeLayout.Boot();        // home-layout.json v2 loaded once, before the first Home/Customize render (F29)
+        HomeBoardStore.Boot();           // the pinned Home's per-account document (home.acct-<hash>.json); after Sidebar.Boot: its folder and pins
         Sidebar.InstallActionSeams();    // Actions.Services.IsPinned / SetPinned (J1)
+        HomePinVerbs.InstallActionSeams();   // Actions.Services.IsHomePinned / SetHomePinned (pinned Home)
+        Spotify.Books.Install();         // the audiobook-hours allowance's chapter-start PutConsumption (podcast pages data)
         Spotify.Library.Install();       // library writes + sync on Online + the pin bridge; after Sidebar.Boot, before the pane mounts (B2)
         Log.Event(WaveeLogLevel.Info, "app", "boot.playback", "", null, Log.SinceStartMs);
         StartupTimeline.Mark("playback");

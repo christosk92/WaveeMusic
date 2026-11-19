@@ -368,6 +368,8 @@ public static partial class Tray
             FluentApp.SetWindowVisible(true);
             nint hwnd = FluentApp.WindowHandle;
             if (hwnd == 0) return;
+            // A test run's window (FluentApp.NeverActivates: --window-monitor / --no-activate) is shown, never activated.
+            if (FluentApp.NeverActivates) { if (IsIconic(hwnd)) NativeShowWindow(hwnd, 4 /*SW_SHOWNOACTIVATE*/); return; }
             if (IsIconic(hwnd)) NativeShowWindow(hwnd, SwRestore);   // a window hidden while minimized comes back minimized
             SetForegroundWindow(hwnd);
         }
@@ -428,8 +430,8 @@ public static partial class Tray
                 case TrayAction.ShowMenu: ShowMenuAt(x, y, in w, anyHide); break;
                 case TrayAction.Refresh: Refresh(force: true); SyncPresence(); break;
                 case TrayAction.TogglePlay: Playback.TogglePlay("tray"); break;
-                case TrayAction.Next: Playback.Next(); break;
-                case TrayAction.Previous: Playback.Previous(); break;
+                case TrayAction.Next: Playback.Next("tray"); break;
+                case TrayAction.Previous: Playback.Previous("tray"); break;
                 case TrayAction.ToggleLike: ToggleCurrentSaved?.Invoke(); break;
                 case TrayAction.ShowDevices: ShowWindow(); Playback.RequestDevicePicker(); break;
                 case TrayAction.HideIcon:

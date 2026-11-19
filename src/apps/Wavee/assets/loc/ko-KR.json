@@ -113,6 +113,8 @@
     "listeningHistory": "재생 기록",
     "plays": "재생 {n}회",
     "save": "저장",
+    "previewSoundOn": "미리 듣기 소리 켜기",
+    "previewSoundOff": "미리 듣기 소리 끄기",
     "more": "더 보기",
     "couldntLoad": "{what}을(를) 불러올 수 없어요",
     "couldntLoadHome": "홈을 불러올 수 없어요",
@@ -133,6 +135,15 @@
       "onItsWay": "{daypart}이(가) 곧 도착해요",
       "late": "다음 데일리스트가 늦어지고 있어요",
       "checkAgain": "다시 확인"
+    },
+    "spotlight": {
+      "newSingle": "{artist}의 새 싱글",
+      "newEp": "{artist}의 새 EP",
+      "newAlbum": "{artist}의 새 앨범",
+      "newRelease": "{artist}의 새 발매",
+      "upcoming": "{artist}의 발매 예정",
+      "moreReleases": "더 많은 새 발매",
+      "showRelease": "{title} 보기"
     },
     "zone": {
       "becauseYouLike": "좋아하실 만한 음악",
@@ -202,6 +213,7 @@
     }
   },
   "podcast": {
+    "pages": { "chapterN": "{number}장" },
     "episodes": "에피소드",
     "show": "팟캐스트",
     "inProgress": "듣는 중",
@@ -258,7 +270,6 @@
     "yours": "내 평가 {stars}★",
     "rate": {
       "title": "{name} 평가하기",
-      "unavailable": "Wavee에서는 아직 평가할 수 없어요 — 평균 평점과 내 평가는 Spotify에 있는 그대로 표시돼요.",
       "stars": "{count, plural, other {별 #개}}"
     },
     "notify": {

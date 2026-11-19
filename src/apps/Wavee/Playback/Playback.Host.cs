@@ -1471,12 +1471,19 @@ public static partial class Playback
             Input.ExplicitPositionBit, nowMs: FrameNowMs()));
     }
 
-    public static void Next() => Post(Input.Next(FrameNowMs()));
-    public static void Previous()
+    /// <summary>Next and Previous take a <c>cause</c> like play/pause (below): the UI entry that pressed it. ALWAYS-ON
+    /// attribution, one line per press. A skip is the one transport change a log could not otherwise tell from a natural end or a
+    /// fault: on 2026-11-17 two audiobook chapter changes right after a seek read as "a seek advanced the chapter", and only the
+    /// reducer's end position (the playhead, where a natural end reports the duration) said a skip had run.</summary>
+    public static void Next(string cause) { LogSkip(cause, "next"); Post(Input.Next(FrameNowMs())); }
+    public static void Previous(string cause)
     {
+        LogSkip(cause, "previous");
         s_previousPressedMs = Environment.TickCount64;
         Post(Input.Prev(FrameNowMs()));
     }
+
+    static void LogSkip(string cause, string action) => Log.Info("playback", "skip cause=" + cause + " action=" + action);
 
     static long s_previousPressedMs = long.MinValue / 2;
 
@@ -1521,6 +1528,19 @@ public static partial class Playback
     {
         HintFacts.VolumeMoved();   // only user actions call this (hints #5)
         Post(Input.Volume(linear01, FrameNowMs()));
+    }
+
+    /// <summary>THIS device's own volume, 0..1 linear (the slider's while we play; ours, not the foreign owner's, while another device
+    /// does). The shelf's song preview plays at its taper. A read of the reducer's state: one float.</summary>
+    public static float LocalVolume => s_state.Volume;
+
+    /// <summary>The song preview's duck on THIS device's output (Home/SpineShelf/PreviewAudio.cs): a gain stage multiplied onto the local
+    /// audio and video players' amplitude. It never goes through the reducer, so it is never persisted, published or sent to a Connect
+    /// device, and the user's volume (the slider, <see cref="Volume"/>, the saved setting) never sees it. 1 = none.</summary>
+    public static void SetPreviewDuck(float gain)
+    {
+        Audio.SetDuck(gain);
+        Video.SetDuck(gain);
     }
 
     /// <summary>The exit tail's one call (V-PA11): write a volume change the reducer's 500 ms debounce has not persisted yet,

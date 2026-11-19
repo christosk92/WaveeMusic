@@ -56,6 +56,7 @@ public sealed class WinUiLintGuide : IThemeLintGuide
     /// <summary>The intents, built once: none depends on the window.</summary>
     private static readonly LintPolicy[] s_policies =
     [
+        new(LintIntent.Allow, Wavee.HomeUi.SpineShelfView.SpineKey, Wavee.HomeUi.SpineShelfView.SpineLintReason, Rule: "text.clip"),
         new(LintIntent.Allow, FacetWordsKey,
             "the facet words are a stock SelectorBar: each item pads its words in from the column (W-Home draws 'All' one item padding right of the greeting)",
             Rule: "align.inset"),

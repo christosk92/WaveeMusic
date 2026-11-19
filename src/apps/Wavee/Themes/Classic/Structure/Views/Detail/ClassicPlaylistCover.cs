@@ -33,8 +33,8 @@ internal static partial class ClassicPlaylist
         => p.Mosaic is { } tiles
             ? Controls.Mosaic(tiles, p.Size, p.Size, Radii.Card)
             : p.HandOver
-                ? Controls.ArtworkHandOver(p.Single, p.Size, p.Size, Radii.Card, decodePx: p.DecodePx, saturation: ClassicPlaylistLayout.CoverSaturation)
-                : Controls.Artwork(p.Single, p.Size, p.Size, Radii.Card, decodePx: p.DecodePx, saturation: ClassicPlaylistLayout.CoverSaturation);
+                ? Controls.ArtworkHandOver(p.Single, p.Size, p.Size, Radii.Card, decodePx: p.DecodePx, saturation: ClassicPlaylistLayout.CoverSaturation, connect: p.Connect)
+                : Controls.Artwork(p.Single, p.Size, p.Size, Radii.Card, decodePx: p.DecodePx, saturation: ClassicPlaylistLayout.CoverSaturation, connect: p.Connect);
 
     // ══ 2. THE EDITABLE COVER ═══════════════════════════════════════════════════════════════════════════════════════════
 

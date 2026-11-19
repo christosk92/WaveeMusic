@@ -11,13 +11,14 @@
 //     holding the page's aside body and, on a facts page, the insights (the toggle shows them there instead of a sheet or a dock). Its slot is in the
 //     row at EVERY tier (width 0 where none docks), so a crossing never re-parents the list: the slot eases its width open and closed and the list
 //     yields to it, the column inside keeping its full width while the slot reveals it;
-//   · a SHOW / EPISODE page (no table) keeps its two arms: the vertical arm's fixed show header over its episodes, or the two-column row [rail |
-//     episodes] with the grip in a seam layer above it and the collapsed 96-DIP strip in the rail's place; a mode crossing cross-fades the arms.
+//   · a page with no table keeps its two arms: the vertical arm (its content alone: Classic draws the show and episode pages as the podcast pages v2,
+//     `Views\Podcast\`, so no show header reaches it), or the two-column row [rail | content] with the grip in a seam layer above it and the
+//     collapsed 96-DIP strip in the rail's place; a mode crossing cross-fades the arms.
 
 // WHAT THE HOST DECIDED (core, `Detail.FrameHost`): the page mode and both anti-flicker fail-safes, the Hero page-layout override, which rail cell
 // and its live width and collapsed flag, the page-aware cap, the rung that picks the title cap and the description clamp, the accent, the tint and
 // tone claim leaves, the notice, the table or the episodes, the drop target and the insights toggle with its facts latch. The view arranges what it
-// is handed and mounts the rail, the strip, the show header and the sheet through their own keys.
+// is handed and mounts the rail, the strip and the sheet through their own keys.
 //
 // The content column keeps its key across a collapse so the table reconciles in place and keeps its scroll. The grip lives in the seam layer in BOTH
 // rail states: a drag collapses (and re-opens) mid-gesture, and a grip that changed parent would remount and drop the pointer capture.
@@ -48,7 +49,7 @@ internal static partial class ClassicDetailFrame
         // ── a TRACK page: one tree at every width (audit B9) ──
         if (p.Vertical && p.VerticalTracks) return OneTree(p, ctx, gutter, detailTier, accent);
 
-        // ── a show / episode page (no table): the vertical arm's fixed show header over its episodes, or the two-column row [rail | episodes] ──
+        // ── a page with no table: the vertical arm, or the two-column row [rail | content] ──
         // The content column. Its Key is the host's (`right:eps`) and survives a rail collapse.
         BoxEl right = new BoxEl
         {
@@ -61,8 +62,8 @@ internal static partial class ClassicDetailFrame
             {
                 Direction = 1, Grow = 1f, ClipToBounds = true,
                 DropTarget = p.Drop,
-                // A show in the vertical arm is the fixed ShowHeader above its episodes — never the hero system.
-                Children = p.ShowHeader is { } header ? [ctx.View(ViewKeys.DetailShowHeader, header), right] : [right],
+                // Classic draws the show and episode pages as the podcast pages v2 (`Views\Podcast\`): no show header reaches this frame.
+                Children = [right],
             };
             Element verticalPage = new BoxEl
             {

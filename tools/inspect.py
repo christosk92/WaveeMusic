@@ -7,6 +7,7 @@ and prints the one reply line it gets back. Standard library only; runs under `p
     python -I tools/inspect.py -f audit.jsonl --pretty
     python -I tools/inspect.py --findings -c "mount w=400 h=860 theme=zune" -c "lint min=warn"
     python -I tools/inspect.py --trace -c "mount w=1440 h=900 theme=zune" -c "goto album:spotify:album:x settle=false trace=90"
+    python -I tools/inspect.py --gate-perf -c "mount ... gpu=warp" -c "perf on" -c "home do=page key=nmf page=2" -c "perf report"   # exit 1 on a frame over budget
     python -I tools/inspect.py --gate error -f lint.txt   # exit 1 on a failed gate-rule lint error, a jump or a rebuild; 2 on any ok:false or no lint
     python -I tools/inspect.py --gate warn --gate-todo -f lint.txt   # the todo rules (align, space, placeholder, keys, duplicate text, inkless targets) count too
     python -I tools/inspect.py --findings --gate error -c "mount w=1920 h=960 theme=zune route=home" -c "resize 1904 960" -c "crossing from=1904x960 to=1888x960"
@@ -349,12 +350,15 @@ class Gate:
     - a lint (or a crossing's lint) has a fail of a gate-level rule at or above the gate severity, counted from the reply's `fails`
       (every fail of the rules that ran, listed or not: `min`, `outcomes` and `limit` choose only what is listed; with --gate-todo the
       todo-level rules count too). A review, a suppressed finding and a report never count;
-    - a crossing moved more than --max-moved nodes (default 0) past its control step (`counts.excessSnapped + excessJumped`), or
+    - a crossing moved more than --max-moved nodes (default 0) past its control step on the screen (`counts.excessSnapped + excessJumped -
+      excessOffscreen`; the off-screen ones count with --gate-todo), or
       remounted a key outside a swap family (`counts.remountedOutside`);
     - a trace (`trace` or `trace=N` on an acting verb) moved more than --max-moved watched keys at once (`counts.movedAtOnce`: a snap
       with no track, or an instant run of tracked moves one frame carried), or remounted a watched key outside a swap family.
     - a trace with `flights=true` whose connected navigation flight took off or handed off more than 0.5 DIP from its source or dest
-      (`flight.takeoffDelta`, `flight.handoffDelta`), or started and neither handed off nor was abandoned (`flight.unfinished`).
+      (`flight.takeoffDelta`, `flight.handoffDelta`), handed off with its radius more than 0.5 DIP from the dest's (`flight.radiusDelta`) or
+      its two pictures still mixed (`flight.mixAtHandOff` between 0.01 and 0.99), or started and neither handed off nor was abandoned
+      (`flight.unfinished`; a flyer standing in for a picture still loading at the trace's end is `standingIn`, not unfinished).
     Warnings (printed, not counted): a lint whose listing or judgement was narrowed (rules, min, outcomes, limit, root), a crossing that
     crossed no edge or ran without its control, a trace that watched no nodes. Else 0."""
 
@@ -406,8 +410,15 @@ class Gate:
     def _crossing(self, obj, where):
         c = obj.get("counts", {})
         moved = c.get("excessSnapped", c.get("snapped", 0)) + c.get("excessJumped", c.get("jumped", 0))
-        if moved > self.max_moved:
-            self.motion.append("%s moved %d node%s at once past its control (max %d)" % (where, moved, "" if moved == 1 else "s", self.max_moved))
+        # A move off the screen on both frames is a weight, like a late reflow: nobody saw it, and the same part moved on screen is explained
+        # by the plain resize (2026-11-17: Zune's feed sections follow a 16 DIP width step at once whether or not a tier edge is crossed; on
+        # screen the control step explains them, off screen the control's classification of the same nodes differs). --gate-todo counts it.
+        offscreen = c.get("excessOffscreen", 0)
+        seen = moved - offscreen
+        if seen > self.max_moved:
+            self.motion.append("%s moved %d node%s at once past its control (max %d)" % (where, seen, "" if seen == 1 else "s", self.max_moved))
+        if self.todo and offscreen > self.max_moved:
+            self.motion.append("%s moved %d node%s at once past its control off the screen (todo)" % (where, offscreen, "" if offscreen == 1 else "s"))
         outside = c.get("remountedOutside", c.get("remounted", 0))
         if outside > 0:
             keys = [r["key"] for r in obj.get("remounted", []) if r.get("family") is None][:4]
@@ -437,9 +448,12 @@ class Gate:
         fl = t.get("flight")
         if isinstance(fl, dict) and fl.get("startedAt", -1) >= 0:
             # a connected navigation flight (`flights=true`): it takes off on the source and hands off on the dest, within half a DIP, and ends
-            for name in ("takeoffDelta", "handoffDelta"):
+            for name in ("takeoffDelta", "handoffDelta", "radiusDelta"):
                 if fl.get(name, 0) > 0.5:
                     self.motion.append("%s: the flight's %s is %.2f DIP (max 0.5)" % (where, name, fl[name]))
+            mix = fl.get("mixAtHandOff", -1)
+            if fl.get("handedOffAt", -1) >= 0 and 0.01 < mix < 0.99:
+                self.motion.append("%s: the flight handed off with its two pictures mixed at %.2f (a dissolve must finish first)" % (where, mix))
             if fl.get("unfinished"):
                 self.motion.append("%s: a flight started at frame %d and neither handed off nor was abandoned" % (where, fl["startedAt"]))
 
@@ -497,6 +511,71 @@ class Gate:
         return "\n".join(lines)
 
 
+class PerfGate:
+    """--gate-perf [MS]: a verdict over every `perf report` reply (the server judges; Diagnostics.Inspect.Perf.cs). Exit 1 when a report
+    has a frame over budget (its judged ui cost, JIT subtracted, past `budgetMs`) or a steady animation frame that allocated on the hot
+    phases (`gate.failed`); 2 when a reply was ok:false or no perf report ran (a gate over nothing is no verdict). MS sets the budget of every
+    `perf report` text line that names none (default: the server's, the display the mount's dt stands for: 16.67 ms at dt=16)."""
+
+    def __init__(self, budget):
+        self.budget = budget
+        self.reports = 0
+        self.failed = []
+        self.over = 0
+        self.alloc = 0
+        self.dropped = 0
+        self.lines = []
+
+    def rewrite(self, line):
+        """A `perf report` text line without budget= gets the gate's budget."""
+        if self.budget is None:
+            return line
+        words = line.strip().split()
+        if len(words) >= 2 and words[0] == "perf" and ("report" in words[1:2] or "do=report" in words) and not any(w.startswith("budget=") for w in words):
+            return line.rstrip() + " budget=%g" % self.budget
+        if len(words) == 1 and words[0] == "perf":
+            return "perf report budget=%g" % self.budget
+        return line
+
+    def see(self, reply):
+        obj = _object(reply) if reply else None
+        if obj is None:
+            return
+        if not obj.get("ok", False):
+            self.failed.append((obj.get("cmd", "?"), obj.get("error", "")))
+            return
+        if obj.get("cmd") != "perf" or not isinstance(obj.get("gate"), dict):
+            return
+        self.reports += 1
+        g = obj["gate"]
+        self.over += g.get("over", 0)
+        self.alloc += g.get("alloc", 0)
+        self.dropped += g.get("dropped", 0)
+        for o in obj.get("over", [])[:8]:
+            self.lines.append("over budget %.2f ms: frame %s of %s: %.2f ms, top %s %.2f ms: %s" % (
+                obj.get("budgetMs", 0), o.get("frame"), o.get("verb"), o.get("ms", 0), o.get("top"), o.get("topMs", 0), o.get("why", "")))
+        for a in obj.get("alloc", [])[:8]:
+            self.lines.append("hot alloc: frame %s of %s: %s bytes on a steady animation frame" % (a.get("frame"), a.get("verb"), a.get("bytes")))
+        for d in obj.get("dropped", [])[:8]:
+            self.lines.append("dropped: frame %s of %s: %s glyph quads not drawn (text missing for a frame)" % (d.get("frame"), d.get("verb"), d.get("glyphs")))
+
+    def code(self):
+        if self.failed or self.reports == 0:
+            return 2
+        return 1 if self.over or self.alloc or self.dropped else 0
+
+    def summary(self):
+        code = self.code()
+        text = "gate-perf: %d perf report%s, %d frame%s over budget, %d hot-alloc frame%s, %d frame%s with dropped glyphs; %d ok:false repl%s -> exit %d" % (
+            self.reports, "" if self.reports == 1 else "s", self.over, "" if self.over == 1 else "s", self.alloc, "" if self.alloc == 1 else "s",
+            self.dropped, "" if self.dropped == 1 else "s", len(self.failed), "y" if len(self.failed) == 1 else "ies", code)
+        if self.failed:
+            text += " (first: %s: %s)" % self.failed[0]
+        elif self.reports == 0:
+            text += " (no perf report ran: put `perf on` before the verbs and `perf report` after them)"
+        return chr(10).join(["gate-perf PERF: " + l for l in self.lines] + [text])
+
+
 def show(reply, pretty, findings=False, trace=False):
     if reply is None:
         return
@@ -543,6 +622,10 @@ def main():
     ap.add_argument("--gate-todo", action="store_true",
                     help="with --gate: failures of the todo-level rules (align, space, placeholder, keys, duplicate text, inkless targets, "
                          "target.size above Compact) count too")
+    ap.add_argument("--gate-perf", nargs="?", const=-1.0, type=float, default=None, metavar="MS",
+                    help="a frame-cost verdict over every `perf report` reply: exit 1 on a frame over budget or hot-phase allocation on a "
+                         "steady animation frame, 2 on ok:false or no perf report; MS sets the budget of a `perf report` line that names none "
+                         "(default: the server's, 16.67 ms at dt=16). Combines with --gate (the larger exit wins)")
     ap.add_argument("--max-moved", type=int, default=0, metavar="N",
                     help="with --gate: the most nodes a crossing may move at once past its control step (counts.excessSnapped + "
                          "excessJumped), and the most watched keys a trace may move at once (counts.movedAtOnce); default 0")
@@ -553,6 +636,7 @@ def main():
     if args.max_moved < 0:
         ap.error("--max-moved is 0 or more")
     gate = Gate(args.gate, args.gate_todo, args.max_moved) if args.gate else None
+    perf_gate = PerfGate(None if args.gate_perf is None or args.gate_perf < 0 else args.gate_perf) if args.gate_perf is not None else None
     server = None
     code = 0
     try:
@@ -569,10 +653,14 @@ def main():
             if server.ended:
                 left += 1 if line.strip() and not line.strip().startswith("#") else 0
                 continue
+            if perf_gate is not None:
+                line = perf_gate.rewrite(line)
             reply = server.send(line)
             show(reply, args.pretty, args.findings, args.trace)
             if gate is not None:
                 gate.see(reply)
+            if perf_gate is not None:
+                perf_gate.see(reply)
             obj = _object(reply) if reply else None
             if obj is not None and obj.get("ok") and obj.get("cmd", "").lower() in ("quit", "exit"):
                 server.ended = True   # the server is gone: the lines after `quit` are not sent
@@ -584,10 +672,12 @@ def main():
     except (SystemExit, Exception) as e:
         # The server did not come up, died or closed the stream, or a reply did not parse. Without --gate this ends the run as it
         # always did; with --gate it is a failed reply (exit 2), never a lint verdict, and the summary still prints.
-        if gate is None:
+        if gate is None and perf_gate is None:
             raise
         why = (str(e) or e.__class__.__name__).strip()
-        gate.failed.append(("server", why if len(why) <= 300 else why[:300] + "..."))
+        for g in (gate, perf_gate):
+            if g is not None:
+                g.failed.append(("server", why if len(why) <= 300 else why[:300] + "..."))
         if server is not None:
             server.ended = True
     finally:
@@ -597,6 +687,10 @@ def main():
         print(gate.summary())
         sys.stdout.flush()
         code = max(code, gate.code())
+    if perf_gate is not None:
+        print(perf_gate.summary())
+        sys.stdout.flush()
+        code = max(code, perf_gate.code())
     sys.exit(code)
 
 

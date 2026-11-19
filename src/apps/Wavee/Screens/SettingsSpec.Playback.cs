@@ -2,7 +2,7 @@
 //
 // Role: CORE (settings rework phase 1). Between songs (autoplay, crossfade bound to the live DSP) · Player bar · Podcasts and
 // audiobooks (the episode speed the speed menus set) · Videos and Canvas (quality, the metered cap, prepare-ahead, Canvas, the
-// end countdown, the attached videos) · Playback runtime (the runtime card's doors).
+// end countdown, the attached videos) · Previews on Home (the Home shelf's preview sound) · Playback runtime (the runtime card's doors).
 //
 // Every crossfade write persists and then pushes the WHOLE state to `Playback.Audio` (`SetCrossfade`), so the ear follows the slider.
 
@@ -79,6 +79,14 @@ public static partial class SettingsSpec
             Make("playback.videoOverrides.item", K.Composite, Strings.VideoOverride.Manage,
                 SettingsWriter.Owned("SettingsVerbs.RemoveVideoOverride/PickVideoOverride/RevealInExplorer"),
                 legacy: ["videoOverrideItem"], parent: "playback.videoOverrides")),
+
+        // Home's song previews (the Spine Shelf and the Release Spotlight play a song's preview on hover, muted by default): their sound, the
+        // same writer as the shelf's sound button (`PreviewAudio.SetSound`; the button writes the dial from Home).
+        Group("previewsOnHome", Strings.Settings.Groups.Playback.PreviewsOnHome, null,
+            Make(HomeUi.PreviewAudio.SoundDial, K.Toggle, Strings.Settings.Playback.PreviewSound,
+                SettingsWriter.OfToggle("home.previewSound", HomeUi.PreviewAudio.SetSound), glyph: "Volume",
+                captionKey: Strings.Settings.Playback.PreviewSoundSub, value: BoolOf(Platform.Keys.PreviewSound),
+                contexts: [SettingsSurfaces.HomeShelf])),
 
         // The runtime card has no heading of its own in the old pages; its two doors are dials so a theme can draw them anywhere.
         Group("runtime", Strings.Settings.Groups.Playback.Runtime, null,

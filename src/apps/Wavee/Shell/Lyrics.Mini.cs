@@ -111,10 +111,10 @@ public static partial class Lyrics
         public const float Ink = 0.42f;
 
         /// <summary>The opacity a style gives a row whose own ink is <paramref name="rowInk"/> (its alpha: the secondary ink, the word wipe's unsung
-        /// alpha, or 1 for a row drawn in full ink) so it shows <see cref="Ink"/>; NaN where the mount keeps its ladder (not flat, a podcast reader
-        /// that does not play, or the active line).</summary>
-        public static float Opacity(Wavee.Theming.Contracts.ILyricsHost host, bool podcast, bool ownsPlayback, int emphasis, float rowInk)
-            => host.FlatRows && !TranscriptPresentation.Neutral(podcast, ownsPlayback) && Emphasis.DistOf(emphasis) > 0
+        /// alpha, or 1 for a row drawn in full ink) so it shows <see cref="Ink"/>; NaN where the mount keeps its ladder (not flat, or the active
+        /// line).</summary>
+        public static float Opacity(Wavee.Theming.Contracts.ILyricsHost host, int emphasis, float rowInk)
+            => host.FlatRows && Emphasis.DistOf(emphasis) > 0
                 ? MathF.Min(1f, Ink / MathF.Max(rowInk, 0.01f))
                 : float.NaN;
 

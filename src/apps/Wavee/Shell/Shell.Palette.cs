@@ -44,7 +44,7 @@ public static partial class Shell
 
     public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library, ThemeOption, Dial }
     public enum PalettePlaybackVerb : byte { PlayPause, Next, Previous, Shuffle, Repeat }
-    public enum PaletteSettingsVerb : byte { ZoomIn, ZoomOut, ZoomReset, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar }
+    public enum PaletteSettingsVerb : byte { ZoomIn, ZoomOut, ZoomReset, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar, CustomizeHome }
 
     /// <summary>"New folder" lives here because the only other way to reach it is a right-click on a sidebar row — and
     /// a pane with no folders yet has no such row.</summary>
@@ -115,7 +115,8 @@ public static partial class Shell
             HomeFacetRow("home.audiobooks", Loc.Get(Strings.Palette.HomeAudiobooks), Icons.Microphone, "audiobooks-chip"),
             SetRow("home.followingOn", Loc.Get(Strings.Palette.HomeFollowingOn), Icons.Friends, PaletteSettingsVerb.HomeFollowingOn),
             SetRow("home.followingOff", Loc.Get(Strings.Palette.HomeFollowingOff), Icons.Friends, PaletteSettingsVerb.HomeFollowingOff),
-            NavRow("home.customize", Loc.Get(Strings.Home.Customizer.Title), Icons.Edit, RouteKind.HomeCustomize),
+            // The theme's own way to change Home: WinUI's add band, Classic's Edit Home, Zune's customize (HomeVerbs.OpenCustomize).
+            SetRow("home.customize", Loc.Get(Strings.Home.Customizer.Title), Icons.Edit, PaletteSettingsVerb.CustomizeHome),
         ];
 
         /// <summary>A fresh index for one open: the builtins, then the active theme's option commands
@@ -130,6 +131,8 @@ public static partial class Shell
             var builtins = Builtins();
 
             if (caps is { } c && (!c.NavTree || !c.Tabs)) builtins = Array.FindAll(builtins, r => !HiddenBy(r.Id, c));
+            // "Customize Home" only while this build offers a way to change Home (HomeCustomize, owner 2026-11-18: off for the release).
+            if (!HomeUi.HomeVerbs.CanCustomize) builtins = Array.FindAll(builtins, static r => r.Id != "home.customize");
             int themeCount = themeCommands?.Count ?? 0;
             int extra = 0;
             if (registryActions is not null)
@@ -322,8 +325,8 @@ public static partial class Shell
                 switch (e.PlaybackVerb)
                 {
                     case PalettePlaybackVerb.PlayPause: PlayerVerbs.Default.TogglePlay("palette"); break;
-                    case PalettePlaybackVerb.Next: Playback.Next(); break;
-                    case PalettePlaybackVerb.Previous: Playback.Previous(); break;
+                    case PalettePlaybackVerb.Next: Playback.Next("palette"); break;
+                    case PalettePlaybackVerb.Previous: Playback.Previous("palette"); break;
                     case PalettePlaybackVerb.Shuffle: PlayerVerbs.Default.ToggleShuffle(); break;
                     case PalettePlaybackVerb.Repeat: PlayerVerbs.Default.CycleRepeat(); break;
                 }
@@ -348,6 +351,9 @@ public static partial class Shell
                     case PaletteSettingsVerb.EditSidebar:
                         Sidebar.EnterEdit();
                         break;
+                    case PaletteSettingsVerb.CustomizeHome:
+                        HomeUi.HomeVerbs.OpenCustomize();
+                        break;
                 }
                 break;
             case PaletteKind.Library:
@@ -359,7 +365,8 @@ public static partial class Shell
             case PaletteKind.Registry:
                 if (e.RegistryKey is not { Length: > 0 } key) return;
                 var binding = new ActionBinding(Actions.Key.PublisherOf(key), key, e.RegistryTarget);
-                Actions.Registry.Current?.Execute(Actions.Services, in binding);
+                if (Actions.Registry.Current?.Execute(Actions.Services, in binding) is { } refused && refused != ActionUnavailable.None)
+                    Log.Info("palette", "palette.action.refused key=" + key + " reason=" + refused);
                 break;
         }
     }

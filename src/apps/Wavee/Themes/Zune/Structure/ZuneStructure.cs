@@ -95,7 +95,6 @@ public sealed partial class ZuneStructure : IStandInStructure
         // explanation badge's clip itself (the "see it" clip under a Settings row, design 6.5).
         CommonBlocks.Register(views, ZuneModulePage.Template, "zune.module.page",
             history: ZuneHistory.Template, historyTemplateId: "zune.screens.history",
-            customize: ZuneHomeCustomize.Template, customizeTemplateId: "zune.home.customize",
             explainer: ZuneSettings.ExplainerTemplate, explainerTemplateId: "zune.screens.settings.explainer",
             hint: ZuneHint.Template, hintTemplateId: "zune.hint");
         // No drawer (the band is the navigation at every tier) and no masthead (a page's title and views are the band's row 2).

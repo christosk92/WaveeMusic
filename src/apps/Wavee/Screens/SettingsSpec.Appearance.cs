@@ -68,6 +68,12 @@ public static partial class SettingsSpec
                 SettingsWriter.OfToggle("appearance.fastNavigation", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.FastNavigation, on)),
                 legacy: ["fastNavigation"], glyph: "Forward",
                 captionKey: Strings.Settings.Appearance.FastNavigationSub, value: BoolOf(Platform.Keys.FastNavigation)),
+            // Connected animations (the owner's switch, 2026-11-16): off, nothing flies or grows (`Shell.Connected`, read per navigation). Only a
+            // structure whose pages fly or grow lists it (WinUI today; Classic and Zune when they fly).
+            Make("appearance.connectedAnimations", K.Toggle, Strings.Settings.Appearance.ConnectedAnimations,
+                SettingsWriter.OfToggle("appearance.connectedAnimations", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.ConnectedAnimations, on)),
+                legacy: ["connectedAnimations"], glyph: "Picture", visible: static f => f.PagesFly,
+                captionKey: Strings.Settings.Appearance.ConnectedAnimationsSub, value: BoolOf(Platform.Keys.ConnectedAnimations)),
             // Animation effects follow Windows: a fact (a theme's `PrefReferenceOption` for reduced motion draws this dial).
             Make("appearance.animationEffects", K.Fact, Strings.Settings.ThemeOptions.AnimationEffects, SettingsWriter.ReadOnly,
                 legacy: ["pref.reducedMotion"], glyph: "RefineSparkle", captionKey: Strings.Settings.ThemeOptions.AnimationEffectsSub)),

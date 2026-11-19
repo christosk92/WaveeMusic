@@ -241,7 +241,8 @@ internal static partial class WinUiShow
         var cover = new BoxEl
         {
             Width = edge, Height = edge, Shrink = 0f, Corners = CornerRadius4.All(ArtCorner), ClipToBounds = true,
-            Children = [Controls.Artwork(e.Knows(EpisodeFields.Image) ? Controls.ArtUrl(e.ImageId) : null, edge, edge, ArtCorner)],
+            Children = [Controls.Artwork(e.Knows(EpisodeFields.Image) ? Controls.ArtUrl(e.ImageId) : null, edge, edge, ArtCorner,
+                                         connect: Design.MorphKeys.ForUri(e.Uri.Text, edge))],
         };
         Element pill = new BoxEl
         {
@@ -341,7 +342,9 @@ internal static partial class WinUiShow
             kids.Add(new BoxEl
             {
                 Width = MiniArt, Height = MiniArt, Shrink = 0f, Corners = CornerRadius4.All(ArtCorner), ClipToBounds = true,
-                Children = [Controls.Artwork(artUrl, MiniArt, MiniArt, ArtCorner)],
+                // It flies into the episode's page (the plate's click opens it; a seed plate has no episode and no key).
+                Children = [Controls.Artwork(artUrl, MiniArt, MiniArt, ArtCorner,
+                                             connect: onClick is null || !episode.IsValid ? null : Design.MorphKeys.ForUri(episode.Uri.Text, MiniArt))],
             });
         kids.Add(new BoxEl
         {

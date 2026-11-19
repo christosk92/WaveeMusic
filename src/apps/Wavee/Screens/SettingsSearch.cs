@@ -157,8 +157,10 @@ public static class SettingsSearch
         },
         new SettingsPointer
         {
+            // The theme's own way to change Home (WinUI's add band, Classic's Edit Home, Zune's customize: the palette's verb), offered only
+            // while this build has one (`HomeCustomize`, owner 2026-11-18: off for the release).
             Id = "pointer.customizeHome", TitleKey = Strings.Home.Customizer.Title,
-            Go = static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.HomeCustomize)),
+            Go = HomeUi.HomeVerbs.OpenCustomize, Visible = static () => HomeUi.HomeVerbs.CanCustomize,
         },
         new SettingsPointer
         {
