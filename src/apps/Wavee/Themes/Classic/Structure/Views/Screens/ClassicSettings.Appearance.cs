@@ -1,20 +1,12 @@
-// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Appearance.cs — the Appearance tab (themes plan 8.1, T1b; T11b) ───────────────────
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Appearance.cs — Appearance's and Lyrics & Now playing's own controls (settings rework 7.1) ──
 //
-// From `Screens\Settings.UI.Appearance.cs`. Theme (the picker, `ClassicSettings.Theme.cs`) · the active theme's options (one expander, its rows grouped) ·
-// App mode · Zoom · Marquee, then what is not a theme option and has no other home yet: Lyrics (blur, the on-device AI lyrics card) · Fullscreen (visualizer,
-// layout, sensitivity, lyrics overlay, sync offset, calm motion, change with the music — the fullscreen stage's gallery settings, mirrored through the
-// document) · Now playing (hero*, player style) · Home (the daylist clock). The sidebar, track-list and surface cards (the picture of the legacy rows a structure
-// still binds) are in this file's §4-§5.
+// From `Screens\Settings.UI.Appearance.cs`. The controls the generic grammar cannot draw: the Zoom combo ("Auto (N%)" with the LIVE resolved percent, then the
+// twelve rungs), the lyrics blur slider, the full screen's sensitivity, sync and photo-dimming sliders and the spectrum's segments, the episode speed; and the
+// preview faces the theme options and the setup wizard draw (row density, track-list style, page layout, surfaces, the sidebar layout cards). Every control
+// writes through its dial's writer, which bumps the epoch it always bumped (ch 27 W2 "three facts"), so a write re-renders this page once.
 //
-// * DEVELOPER-ONLY rows (the dial's `Tier` and `Visible`): the Cover/‹Player› hero switch is composed away while the
-// developer switch is off. "Lyrics second line" and "Animated lyrics backdrop" are not gated but GONE — neither is a setting any more.
-//
-// EVERY ROW WRITES THROUGH ITS DOCUMENT ROW'S WRITER (which bumps the epoch it always bumped: ch 27 W2 "three facts"). The tab body reads the document, never a
-// foreign epoch it does not need, so a write re-renders this page once, through `Settings.Bump()`.
-//
-// FROZEN CONTROL INPUTS. A ComboBox freezes its items, its signal AND its onChange at mount: the zoom and player-style combos are therefore tiny child
-// components that keep one stable signal in step through an effect, and every handler reads the store at invocation (through the row), never a render local.
-// SelectorBar / Slider / CheckBox re-push their props.
+// FROZEN CONTROL INPUTS. A ComboBox freezes its items, its signal AND its onChange at mount, a Slider its signal: the zoom combo and the sliders are tiny child
+// components that keep one stable signal in step through an effect, and every handler reads the store at invocation (through the dial), never a render local.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -23,7 +15,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
-using Tab = Wavee.Settings.Tab;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
 
@@ -35,11 +27,6 @@ internal static partial class ClassicSettings
     static readonly FloatSignal s_lyricsBlurSlider = new(Platform.Keys.LyricsBlurStrength.Default);
     /// <summary>The zoom combo's selection, kept in step with the LIVE zoom by <see cref="ZoomPicker"/>.</summary>
     static readonly Signal<int> s_zoomIndex = new(0);
-    /// <summary>The daylist-clock combo's selection (the <see cref="DaylistClockMode"/> int), kept in step with the store by
-    /// <see cref="DaylistClockPicker"/>.</summary>
-    static readonly Signal<int> s_daylistClock = new((int)DaylistClockMode.Both);
-    /// <summary>The player-style combo's selection, kept in step with every other style writer by <see cref="NpvStylePicker"/>.</summary>
-    static readonly Signal<int> s_npvStyle = new(Rail.PlayerCatalog.DefaultStyleId);
 
     static readonly Slider.SliderOptions s_lyricsBlurOptions = new()
     {
@@ -47,14 +34,11 @@ internal static partial class ClassicSettings
         ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%",
     };
 
-    // The fullscreen stage's three value controls (a ComboBox and two sliders). Each is bound for the control's life, so a
-    // child component re-seeds it from the document on every epoch (StageVisualizerPicker / StageSensitivitySlider /
-    // StageSyncSlider below) and a pick made in the stage's gallery shows here live. The combo's value is an INDEX into
-    // Visualizer.Catalog.Shown (the gallery's order), never the persisted Kind int.
+    // The full screen's value controls the generic grammar cannot draw (the setup wizard's face combo, the sliders). Each is bound for the control's life, so
+    // a child component re-seeds it from its dial on every epoch (StageVisualizerPicker / StageSensitivitySlider / StageSyncSlider / StageDimSlider below) and a
+    // pick made in the stage's gallery shows here live. The combo's value is an INDEX into Visualizer.Catalog.Shown (the gallery's order), never the Kind int.
     static readonly Signal<int> s_stageVisualizer = new(Visualizer.Catalog.IndexOf(Visualizer.Catalog.Default));
-    /// <summary>The stage's visualizer layout (Card · Large art · Centered · Artist) as the combo's index — the persisted int itself.</summary>
-    static readonly Signal<int> s_stageLayout = new(0);
-    static readonly FloatSignal s_stageSensitivity = new(1f), s_stageSyncOffset = new(0f);
+    static readonly FloatSignal s_stageSensitivity = new(1f), s_stageSyncOffset = new(0f), s_heroDim = new(0f), s_episodeSpeed = new(1f);
     static readonly Slider.SliderOptions s_stageSensitivityOptions = new()
     {
         Min = 0.3f, Max = 1.5f, Step = 0.05f, TickFrequency = 0.3f, IsThumbToolTipEnabled = true,
@@ -65,82 +49,34 @@ internal static partial class ClassicSettings
         Min = -500f, Max = 500f, Step = 10f, TickFrequency = 250f, IsThumbToolTipEnabled = true,
         ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture) + " ms",
     };
+    /// <summary>The Artist layout's photo dimming: the options popover's own range and step.</summary>
+    static readonly Slider.SliderOptions s_heroDimOptions = new()
+    {
+        Min = ClassicStageOptionsGeometry.DimMin, Max = ClassicStageOptionsGeometry.DimMax, Step = ClassicStageOptionsGeometry.DimStep,
+        TickFrequency = (ClassicStageOptionsGeometry.DimMax - ClassicStageOptionsGeometry.DimMin) / 4f, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%",
+    };
+    /// <summary>The podcast and audiobook speed: the player bar's speed panel's own range and steps.</summary>
+    static readonly Slider.SliderOptions s_episodeSpeedOptions = new()
+    {
+        Min = ClassicPlayerBarLayout.SpeedMin, Max = ClassicPlayerBarLayout.SpeedMax, Step = ClassicPlayerBarLayout.SpeedStep,
+        SmallChange = ClassicPlayerBarLayout.SpeedStep, LargeChange = ClassicPlayerBarLayout.SpeedLargeStep,
+        TickFrequency = ClassicPlayerBarLayout.SpeedLargeStep * 2f, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "\u00D7",
+    };
 
     /// <summary>The ladder rungs as labels, hoisted once — digits and '%' never change with culture.</summary>
     static readonly string[] s_zoomRungLabels = BuildZoomRungLabels();
 
-    /// <summary>The page mount: every frozen control's signal from the document's value (`row.Current`).</summary>
+    /// <summary>The page mount: every frozen control's signal from its dial's value (`dial.Current`).</summary>
     static void SeedAppearance()
     {
-        s_lyricsBlurSlider.Value = D(Tab.Appearance, "lyricsBlur").Current is float blur ? blur : s_lyricsBlurSlider.Value;
-        s_stageVisualizer.Value = D(Tab.Appearance, "stageVisualizer").Current is int visualizer ? visualizer : s_stageVisualizer.Value;
-        s_stageLayout.Value = D(Tab.Appearance, "stageLayout").Current is int layout ? layout : s_stageLayout.Value;
-        s_stageSensitivity.Value = D(Tab.Appearance, "stageSensitivity").Current is float sensitivity ? sensitivity : s_stageSensitivity.Value;
-        s_stageSyncOffset.Value = D(Tab.Appearance, "stageSyncOffset").Current is float offset ? offset : s_stageSyncOffset.Value;
-    }
-
-    // ══ 2. THE TAB ════════════════════════════════════════════════════════════════════════════════════════════════════
-
-    private static Element[] AppearanceTab()
-    {
-        var facts = SettingsFacts.Live;   // developer mode is read reactively here, as the tab always did
-
-        // T1b (themes plan 8.1): Theme (the picker) · the active theme's options · App mode · Zoom, then what is not a theme
-        // option and has no other home yet. The picker and the options are keyed views that re-render on their own signals.
-        var kids = new List<Element>(24)
-        {
-            Mark("Theme"),
-            SectionHeader(Loc.Get(Strings.Settings.Appearance.Title), SectionGlyph(Tab.Appearance, "Theme"),
-                Loc.Get(Strings.Settings.ThemePicker.Subtitle)),
-            ThemePickerView(),
-            Mark("Theme options"),
-            ThemeOptionsExpander(),
-            // The core presentation prefs every theme honours: no header, so they read as the board's rows under the options.
-            Mark("Display"),
-            DocRow(D(Tab.Appearance, "appMode"),
-                Selector(ThemeLabels(), new Signal<int>((int)Appearance.Mode), onChange: static m => SetTheme(m))),
-            // A ComboBox, not a SelectorBar: thirteen items (Auto + twelve rungs) would be thirteen segments wide.
-            DocRow(D(Tab.Appearance, "zoom"), Embed.Comp(static () => new ZoomPicker())),
-            DocRow(D(Tab.Appearance, "marquee"), RowToggle(D(Tab.Appearance, "marquee"))),
-            DocRow(D(Tab.Appearance, "fastNavigation"), RowToggle(D(Tab.Appearance, "fastNavigation"))),
-        };
-
-        // The blur dial, then the on-device AI lyrics card (its own component: setup progress re-renders only the card).
-        // The second line and the animated backdrop are no longer settings at all.
-        kids.Add(Mark("Lyrics"));
-        kids.Add(SectionHeader(Loc.Get(Strings.Settings.Lyrics.Title), SectionGlyph(Tab.Appearance, "Lyrics"),
-            Loc.Get(Strings.Settings.Lyrics.Subtitle)));
-        kids.Add(DocRow(D(Tab.Appearance, "lyricsBlur"), LyricsBlurControl()));
-        kids.Add(DocRow(D(Tab.Appearance, "lyricsSeekTip"), RowToggle(D(Tab.Appearance, "lyricsSeekTip"))));
-        kids.Add(AiLyricsCard());
-
-        // ── the fullscreen stage: the gallery's four settings, mirrored here with the rest of Appearance ──
-        kids.Add(Mark("Fullscreen"));
-        kids.Add(SectionHeader(Loc.Get(Strings.Stage.Settings.Title), SectionGlyph(Tab.Appearance, "Fullscreen"), Loc.Get(Strings.Stage.Settings.Subtitle)));
-        kids.Add(DocRow(D(Tab.Appearance, "stageVisualizer"), Embed.Comp(static () => new StageVisualizerPicker())));
-        kids.Add(DocRow(D(Tab.Appearance, "stageLayout"), Embed.Comp(static () => new StageLayoutPicker())));
-        kids.Add(DocRow(D(Tab.Appearance, "stageSensitivity"), Embed.Comp(static () => new StageSensitivitySlider())));
-        kids.Add(DocRow(D(Tab.Appearance, "stageLyricsOverlay"), RowToggle(D(Tab.Appearance, "stageLyricsOverlay"))));
-        kids.Add(DocRow(D(Tab.Appearance, "stageSyncOffset"), Embed.Comp(static () => new StageSyncSlider())));
-        kids.Add(DocRow(D(Tab.Appearance, "stageCalm"), RowToggle(D(Tab.Appearance, "stageCalm"))));
-        kids.Add(DocRow(D(Tab.Appearance, "stageMoments"), RowToggle(D(Tab.Appearance, "stageMoments"))));
-
-        // The player style: a normal user setting (the same one the now-playing style chip changes).
-        if (D(Tab.Appearance, "npvStyle").Visible(facts))
-        {
-            kids.Add(Mark("Now playing"));
-            kids.Add(SectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title), SectionGlyph(Tab.Appearance, "Now playing"),
-                Loc.Get(Strings.Settings.NowPlaying.Subtitle)));
-            kids.Add(DocRow(D(Tab.Appearance, "npvStyle"), Embed.Comp(static () => new NpvStylePicker())));
-        }
-
-        kids.Add(Mark("Home"));
-        kids.Add(SectionHeader(Loc.Get(Strings.Settings.Home.Title), SectionGlyph(Tab.Appearance, "Home"),
-            Loc.Get(Strings.Settings.Home.Subtitle)));
-        // A ComboBox in its own component, the zoom/player-style shape: the items, signal and onChange freeze at mount.
-        kids.Add(DocRow(D(Tab.Appearance, "daylistClock"), Embed.Comp(static () => new DaylistClockPicker())));
-
-        return kids.ToArray();
+        s_lyricsBlurSlider.Value = Dial("lyrics.blur").Current is float blur ? blur : s_lyricsBlurSlider.Value;
+        s_stageVisualizer.Value = Dial("lyrics.stage.visualizer").Current is int visualizer ? visualizer : s_stageVisualizer.Value;
+        s_stageSensitivity.Value = Dial("lyrics.stage.sensitivity").Current is float sensitivity ? sensitivity : s_stageSensitivity.Value;
+        s_stageSyncOffset.Value = Dial("lyrics.stage.syncOffset").Current is float offset ? offset : s_stageSyncOffset.Value;
+        s_heroDim.Value = Dial("lyrics.stage.heroDim").Current is float dim ? dim : s_heroDim.Value;
+        s_episodeSpeed.Value = Dial("playback.episodeSpeed").Current is float speed ? speed : s_episodeSpeed.Value;
     }
 
     // ══ 3. THEME + ZOOM ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -152,11 +88,12 @@ internal static partial class ClassicSettings
         Loc.Get(Strings.Settings.Choice.Dark),
     ];
 
-    /// <summary>0 System · 1 Light · 2 Dark: the row's writer swaps the installed Wavee palette IN PLACE (System re-reads the OS theme and
-    /// accent now), persists, and asks the host for the 250 ms re-theme cross-fade (ch 27 §5); this page then re-reads its rows.</summary>
+    /// <summary>0 System · 1 Light · 2 Dark: the dial's writer swaps the installed Wavee palette IN PLACE (System re-reads the OS theme and
+    /// accent now), persists, and asks the host for the 250 ms re-theme cross-fade (ch 27 §5); this page then re-reads its rows. The setup wizard's
+    /// options draw it (a theme option that refers to App mode).</summary>
     static void SetTheme(int mode)
     {
-        if (D(Tab.Appearance, "appMode").Writer.Choose!(mode)) Settings.Bump();
+        if (Dial("appearance.appMode").Writer.Choose!(mode)) Settings.Bump();
     }
 
     static string[] BuildZoomRungLabels()
@@ -198,15 +135,20 @@ internal static partial class ClassicSettings
                 _labels[0] = Strings.Settings.Appearance.ZoomAuto(percent);
                 Array.Copy(s_zoomRungLabels, 0, _labels, 1, s_zoomRungLabels.Length);
             }
-            // The combo's ITEMS freeze at mount: the head label changes only on a plateau change, so re-key on that.
-            return Combo(_labels, s_zoomIndex, width: ClassicSettingsRules.ZoomComboWidth, onChange: Pick) with { Key = "appearance.zoom:" + percent };
+            // The combo's ITEMS freeze at mount: the head label changes only on a plateau change, so re-key on that (inside a box: a component's
+            // root ignores its key).
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, Grow = s_layout.Touch ? 1f : 0f, AlignSelf = s_layout.Touch ? FlexAlign.Stretch : FlexAlign.Auto,
+                Children = [Combo(_labels, s_zoomIndex, width: ClassicSettingsRules.ZoomComboWidth, onChange: Pick) with { Key = "appearance.zoom:" + percent }],
+            };
         }
 
         /// <summary>A deliberate pick writes at once (the chords' debounce exists for key repeats). The head item writes
         /// mode = Auto — never Dense — and applies THIS render's suggestion; a rung writes Manual.</summary>
         void Pick(int i)
         {
-            if (D(Tab.Appearance, "zoom").Writer.Choose!(i)) Settings.Bump();
+            if (Dial("appearance.zoom").Writer.Choose!(i)) Settings.Bump();
         }
     }
 
@@ -245,26 +187,6 @@ internal static partial class ClassicSettings
         return Controls.PickerTitled(
             Controls.PickerCard(on, Controls.PickerTile, RowOf(), RowOf(), RowOf()) with { Justify = FlexJustify.Center },
             TrackListStyleLabel(value), on);
-    }
-
-    /// <summary>The "Daylist clock" combo (#185): Countdown and update time · Update time only · Countdown only, in
-    /// <see cref="DaylistClockMode"/>'s order — the index IS the store. Its own component so the frozen combo's signal
-    /// follows the appearance epoch; the write goes through the ONE appearance writer, so the playlist hero strip and the
-    /// Home card swap their clock live, with no page bump (nothing else on this tab reads it).</summary>
-    sealed class DaylistClockPicker : SettingsComponent
-    {
-        public override Element Render()
-        {
-            UseLayout();
-            UseSignalEffect(static () => s_daylistClock.Value = D(Tab.Appearance, "daylistClock").Current is int clock ? clock : (int)DaylistClockMode.Both);
-            return Combo(
-                [
-                    Loc.Get(Strings.Settings.Appearance.DaylistClockBoth),
-                    Loc.Get(Strings.Settings.Appearance.DaylistClockUpdateTime),
-                    Loc.Get(Strings.Settings.Appearance.DaylistClockCountdown),
-                ],
-                s_daylistClock, width: ClassicSettingsRules.StageComboWidth, onChange: static i => D(Tab.Appearance, "daylistClock").Writer.Choose!(i));
-        }
     }
 
     /// <summary>A wireframe of the page SYSTEM each choice selects — Automatic: a narrow metadata rail beside full-width
@@ -462,7 +384,7 @@ internal static partial class ClassicSettings
         ],
     };
 
-    // ══ 6. LYRICS + NOW PLAYING ═══════════════════════════════════════════════════════════════════════════════════════
+    // ══ 6. LYRICS ═══════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The one lyrics-blur control: the 0..100 slider (0 turns the blur off). There is no Auto link any more.</summary>
     static Element LyricsBlurControl()
@@ -472,33 +394,16 @@ internal static partial class ClassicSettings
             Children = [SliderControl(s_lyricsBlurSlider, static v => SetLyricsBlur(v), s_lyricsBlurOptions, length: ClassicSettingsRules.SliderLength)],
         };
 
-    /// <summary>Writes the 0..100 value through the row's writer, then re-seeds the slider from the document.</summary>
+    /// <summary>Writes the 0..100 value through the dial's writer, then re-seeds the slider from the dial.</summary>
     static void SetLyricsBlur(float v)
     {
-        var row = D(Tab.Appearance, "lyricsBlur");
+        var row = Dial("lyrics.blur");
         if (!row.Writer.Slide!(v)) return;
         if (row.Current is float blur) s_lyricsBlurSlider.Value = blur;
         Settings.Bump();
     }
 
-    /// <summary>The player-style combo: the eleven styles in catalog order, index == id. The selection follows every
-    /// other style writer through one effect on the now-playing epoch; the write goes through the rail's adapter (it logs the
-    /// source) and never bumps the page.</summary>
-    sealed class NpvStylePicker : SettingsComponent
-    {
-        public override Element Render()
-        {
-            UseLayout();
-            UseSignalEffect(static () => s_npvStyle.Value = D(Tab.Appearance, "npvStyle").Current is int style ? style : Rail.PlayerCatalog.DefaultStyleId);
-            var styles = Rail.PlayerCatalog.Styles;
-            var labels = new string[styles.Length];
-            for (int i = 0; i < styles.Length; i++) labels[i] = Loc.Get(styles[i].NameKey);
-            return Combo(labels, s_npvStyle, width: ClassicSettingsRules.NpvComboWidth,
-                onChange: static i => D(Tab.Appearance, "npvStyle").Writer.Choose!(i));
-        }
-    }
-
-    // ══ 7. FULLSCREEN STAGE ═══════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 7. FULL SCREEN ═══════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The shown faces' names in the gallery's order (the combo's items).</summary>
     static string[] VisualizerLabels()
@@ -515,24 +420,9 @@ internal static partial class ClassicSettings
         {
             UseLayout();
             // the gallery's pick lands here live
-            UseSignalEffect(static () => s_stageVisualizer.Value = D(Tab.Appearance, "stageVisualizer").Current is int index ? index : 0);
+            UseSignalEffect(static () => s_stageVisualizer.Value = Dial("lyrics.stage.visualizer").Current is int index ? index : 0);
             return Combo(VisualizerLabels(), s_stageVisualizer, width: ClassicSettingsRules.StageComboWidth,
-                onChange: static i => D(Tab.Appearance, "stageVisualizer").Writer.Choose!(i));
-        }
-    }
-    /// <summary>The layouts' names in the persisted order (the combo's items: the index IS the stored int).</summary>
-    static string[] LayoutLabels() =>
-    [
-        Loc.Get(Strings.Stage.Layout.Card), Loc.Get(Strings.Stage.Layout.Large), Loc.Get(Strings.Stage.Layout.Centered), Loc.Get(Strings.Stage.Layout.Artist),
-    ];
-    sealed class StageLayoutPicker : SettingsComponent
-    {
-        public override Element Render()
-        {
-            UseLayout();
-            // the options popover's and the [ ] keys' picks land here live
-            UseSignalEffect(static () => { if (D(Tab.Appearance, "stageLayout").Current is int layout) s_stageLayout.SetIfChanged(layout); });
-            return Combo(LayoutLabels(), s_stageLayout, width: ClassicSettingsRules.StageComboWidth, onChange: static i => D(Tab.Appearance, "stageLayout").Writer.Choose!(i));
+                onChange: static i => Dial("lyrics.stage.visualizer").Writer.Choose!(i));
         }
     }
     sealed class StageSensitivitySlider : SettingsComponent
@@ -540,8 +430,8 @@ internal static partial class ClassicSettings
         public override Element Render()
         {
             UseLayout();
-            UseSignalEffect(static () => { if (D(Tab.Appearance, "stageSensitivity").Current is float sensitivity) s_stageSensitivity.SetIfChanged(sensitivity); });
-            return SliderControl(s_stageSensitivity, static v => D(Tab.Appearance, "stageSensitivity").Writer.Slide!(v), s_stageSensitivityOptions, length: ClassicSettingsRules.SliderLength);
+            UseSignalEffect(static () => { if (Dial("lyrics.stage.sensitivity").Current is float sensitivity) s_stageSensitivity.SetIfChanged(sensitivity); });
+            return SliderControl(s_stageSensitivity, static v => Dial("lyrics.stage.sensitivity").Writer.Slide!(v), s_stageSensitivityOptions, length: ClassicSettingsRules.SliderLength);
         }
     }
     sealed class StageSyncSlider : SettingsComponent
@@ -549,8 +439,47 @@ internal static partial class ClassicSettings
         public override Element Render()
         {
             UseLayout();
-            UseSignalEffect(static () => { if (D(Tab.Appearance, "stageSyncOffset").Current is float offset) s_stageSyncOffset.SetIfChanged(offset); });
-            return SliderControl(s_stageSyncOffset, static v => D(Tab.Appearance, "stageSyncOffset").Writer.Slide!(v), s_stageSyncOptions, length: ClassicSettingsRules.SliderLength);
+            UseSignalEffect(static () => { if (Dial("lyrics.stage.syncOffset").Current is float offset) s_stageSyncOffset.SetIfChanged(offset); });
+            return SliderControl(s_stageSyncOffset, static v => Dial("lyrics.stage.syncOffset").Writer.Slide!(v), s_stageSyncOptions, length: ClassicSettingsRules.SliderLength);
+        }
+    }
+
+    /// <summary>The Artist layout's photo dimming (the options popover's slider): snapped to its step; the stage's own pick lands here live.</summary>
+    sealed class StageDimSlider : SettingsComponent
+    {
+        public override Element Render()
+        {
+            UseLayout();
+            UseSignalEffect(static () => { if (Dial("lyrics.stage.heroDim").Current is float dim) s_heroDim.SetIfChanged(dim); });
+            return SliderControl(s_heroDim, static v => Dial("lyrics.stage.heroDim").Writer.Slide!(v), s_heroDimOptions, length: ClassicSettingsRules.SliderLength);
+        }
+    }
+
+    /// <summary>The spectrum under the cover (Large art, Centered): the options popover's four segments, the index IS the stored style.</summary>
+    static Element SpectrumItem(SettingsBodyRow row)
+    {
+        SettingsDial dial = row.Dial;
+        string[] labels =
+        [
+            Loc.Get(Strings.Stage.Spectrum.Bars), Loc.Get(Strings.Stage.Spectrum.Ring), Loc.Get(Strings.Stage.Spectrum.Line), Loc.Get(Strings.Stage.Spectrum.Off),
+        ];
+        return Item(row.Label, row.Description, Badged(row, Selector(labels, new Signal<int>(row.Value is int at ? at : 0), onChange: i =>
+        {
+            if (dial.Writer.Choose!(i)) Settings.Bump();
+        })), isEnabled: row.Enabled, icon: GlyphOf(dial));
+    }
+
+    // ══ 8. PODCASTS AND AUDIOBOOKS ════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The podcast and audiobook speed: the speed menus' writer (the account's speed, synced to every device; a song always plays at 1x). The player
+    /// bar's own change lands here live.</summary>
+    sealed class EpisodeSpeedSlider : SettingsComponent
+    {
+        public override Element Render()
+        {
+            UseLayout();
+            UseSignalEffect(static () => { if (Dial("playback.episodeSpeed").Current is float speed) s_episodeSpeed.SetIfChanged(speed); });
+            return SliderControl(s_episodeSpeed, static v => Dial("playback.episodeSpeed").Writer.Slide!(v), s_episodeSpeedOptions, length: ClassicSettingsRules.SliderLength);
         }
     }
 }

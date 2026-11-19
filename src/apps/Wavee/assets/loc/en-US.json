@@ -3197,7 +3197,18 @@
     "$comment": "Installed themes: their names and one-line descriptions, referenced by each theme's manifest (Theming/Composition/ThemeManifest.cs).",
     "classic": {
       "name": "Wavee Classic",
-      "description": "Today’s Wavee: sidebar, tabs, washes"
+      "description": "Today’s Wavee: sidebar, tabs, washes",
+      "settings": {
+        "$comment": "Classic's Settings page (Themes/Classic/Structure/Views/Screens/ClassicSettings*.cs, settings rework 7.1): the masthead's box, the results page, the Settings home's captions and the explanation badge's tooltip.",
+        "find": "Find a setting",
+        "resultsFor": "Results for “{query}”",
+        "allResults": "All results for “{query}”",
+        "glanceSub": "Your setup right now. Each opens its setting.",
+        "suggestionsSub": "At most three, and never one you closed",
+        "recentSub": "Wherever you changed them",
+        "showMe": "Show me",
+        "play": "Play"
+      }
     },
     "zune": {
       "$comment": "Zune (P5, Developer-only). Z0 owns name, description and options; each family lane writes only inside its own object below.",

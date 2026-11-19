@@ -1,11 +1,13 @@
-// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.AiLyrics.cs — the on-device AI lyrics card (themes plan 6.1, T11b) ──────────────────
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.AiLyrics.cs — the on-device AI lyrics card (themes plan 6.1, T11b; settings rework 7.1) ──
 //
-// From `AiLyrics\AiLyrics.UI.Settings.cs` (plan docs/plans/wavee/ai-lyrics-sync-implementation.md §4.3): the Appearance › Lyrics card, right after the blur row.
+// From `AiLyrics\AiLyrics.UI.Settings.cs` (plan docs/plans/wavee/ai-lyrics-sync-implementation.md §4.3): the `lyrics.ai` dial's card in Lyrics & Now playing ›
+// Lyrics, right after the blur row.
 //
 // ONE component bound to AiLyrics.Current. It only reads signals and calls the host's verbs: no file, no task, no wait. It is built with the page's own row grammar (Item,
-// RowGlyph, ConfirmThen, CardSpacing) and the catalog's glyphs; the master switch is the AI module's own verb and the three behaviour switches are the document's rows
-// (`aiWordSync`, `aiPlainText`, `aiBatterySaver`), their per-language and per-file verbs stay the module's (`AiLyrics.InstallLanguage` / `RemoveLanguage` /
-// `OpenFolder` / `RemoveFiles`).
+// the dials' glyphs, ConfirmThen, CardSpacing); the master switch is the AI module's own verb and the three behaviour switches are their dials
+// (`lyrics.ai.wordSync`, `.plainText`, `.batterySaver`), their per-language and per-file verbs stay the module's (`AiLyrics.InstallLanguage` / `RemoveLanguage` /
+// `OpenFolder` / `RemoveFiles`). The Ready expander's items are keyed as their dials and its open state is the page's cell for `lyrics.ai`, so a link to one of
+// them opens the expander and glides the item in.
 //
 // THREE RATES, THREE BINDINGS (a 10 Hz download never re-renders the page, and never even re-renders this card):
 //   • the card's SHAPE (phase, error, sizes, the file label…) is a UseComputed over Current: an equality-gated memo, so
@@ -29,7 +31,7 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 using AiS = Wavee.Strings.Settings.Lyrics.Ai;
-using Tab = Wavee.Settings.Tab;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
 
@@ -37,8 +39,11 @@ internal static partial class ClassicSettings
 {
     /// <summary>The Settings card (Appearance › Lyrics, right after the blur row). Its own component: progress and phase
     /// changes re-render only the card.</summary>
-    static Element AiLyricsCard()
-        => Embed.Comp(static () => new AiLyricsCardView()) with { Key = "appearance.ai-lyrics" };
+    static Element AiLyricsCard(SettingsBodyRow row)
+        => Embed.Comp(new AiCardProps(row.Explain), static () => new AiLyricsCardView()) with { Key = "appearance.ai-lyrics" };
+
+    /// <summary>The card's props: the master dial's explanation badge (the card draws it beside the switch).</summary>
+    sealed record AiCardProps(SettingsExplainInfo? Explain);
 
     /// <summary>The card. Every static it needs lives here, so nothing runs in the page's own type initializer.</summary>
     sealed class AiLyricsCardView : SettingsComponent
@@ -87,6 +92,9 @@ internal static partial class ClassicSettings
         static readonly Action<bool> s_aiOnRemoved = static deferred => { if (deferred) s_aiRemoveDeferred.Value = true; };
         static readonly Action s_aiDismissDeferred = static () => s_aiRemoveDeferred.Value = false;
 
+        /// <summary>The master dial's badge this render (set from the props before an arm builds).</summary>
+        static SettingsExplainInfo? s_aiExplain;
+
         static string[]? s_aiLangOrder;
         static long[]? s_aiLangBytes;
 
@@ -118,6 +126,8 @@ internal static partial class ClassicSettings
         public override Element Render()
         {
             UseLayout();
+            var props = UseProps<AiCardProps>();
+            s_aiExplain = props.Explain;
             // UNCONDITIONAL hooks, fixed order.
             UseEffect(s_aiMarkVisible, DepKey.Empty);
             UseActivation(onActivated: s_aiOnActivated, onDeactivated: s_aiMarkHidden);
@@ -133,9 +143,9 @@ internal static partial class ClassicSettings
             });
             var (details, setDetails) = UseState(false);
             var (langDetails, setLangDetails) = UseState(false);
-            // The Ready expander's open state lives with this card: it survives the arm swap (a language download swaps the arm out
-            // and back) but not a remount, so a theme switch mounts the page collapsed like a fresh navigation (Q26).
-            var expanded = UseSignal(false);
+            // The Ready expander's open state is the page's cell for the dial: it survives the arm swap (a language download swaps the arm out and back)
+            // but not a page remount, so a theme switch mounts the page collapsed like a fresh navigation (Q26); a link to one of its items opens it.
+            var expanded = ExpandCell("lyrics.ai", false);
             _ = SettingsFacts.AiLyricsEpoch.Value;
             bool deferred = s_aiRemoveDeferred.Value;
 
@@ -248,27 +258,25 @@ internal static partial class ClassicSettings
             {
                 Header = Loc.Get(AiS.Title),
                 Description = description,
-                HeaderIcon = RowGlyph(Tab.Appearance, "aiLyrics"),
-                Content = AiSwitch(true, enabled: true),
+                HeaderIcon = AiGlyph("lyrics.ai"),
+                Content = Badged("lyrics.ai", s_aiExplain, AiSwitch(true, enabled: true)),
+                Style = ToggleHeaderStyle(AiSwitch(true, enabled: true)),
                 IsExpanded = expanded,
                 Items =
                 [
-                    Item(Loc.Get(AiS.WordSync), Loc.Get(AiS.WordSyncSub),
-                        AiPrefSwitch(D(Tab.Appearance, "aiWordSync")),
-                        icon: RowGlyph(Tab.Appearance, "aiWordSync")),
-                    Item(Loc.Get(AiS.PlainText), Loc.Get(AiS.PlainTextSub),
-                        AiPrefSwitch(D(Tab.Appearance, "aiPlainText")),
-                        icon: RowGlyph(Tab.Appearance, "aiPlainText")),
-                    Item(Loc.Get(AiS.BatterySaver), Loc.Get(AiS.BatterySaverSub),
-                        AiPrefSwitch(D(Tab.Appearance, "aiBatterySaver")),
-                        icon: RowGlyph(Tab.Appearance, "aiBatterySaver")),
-                    Item(Loc.Get(AiS.Languages), AiS.LanguagesSub(AiLyrics.Rules.FormatBytes(AiAverageLanguageBytes())),
-                        AiLanguages(st.Languages), icon: RowGlyph(Tab.Appearance, "aiLanguages")),
-                    Item(Loc.Get(AiS.Files), AiS.FilesSub(AiLyrics.Rules.FormatBytes(installed)),
+                    FrameOf("lyrics.ai.wordSync", Item(Loc.Get(AiS.WordSync), Loc.Get(AiS.WordSyncSub),
+                        AiPrefSwitch(Dial("lyrics.ai.wordSync")), icon: AiGlyph("lyrics.ai.wordSync"))),
+                    FrameOf("lyrics.ai.plainText", Item(Loc.Get(AiS.PlainText), Loc.Get(AiS.PlainTextSub),
+                        AiPrefSwitch(Dial("lyrics.ai.plainText")), icon: AiGlyph("lyrics.ai.plainText"))),
+                    FrameOf("lyrics.ai.batterySaver", Item(Loc.Get(AiS.BatterySaver), Loc.Get(AiS.BatterySaverSub),
+                        AiPrefSwitch(Dial("lyrics.ai.batterySaver")), icon: AiGlyph("lyrics.ai.batterySaver"))),
+                    FrameOf("lyrics.ai.languages", Item(Loc.Get(AiS.Languages), AiS.LanguagesSub(AiLyrics.Rules.FormatBytes(AiAverageLanguageBytes())),
+                        AiLanguages(st.Languages), icon: AiGlyph("lyrics.ai.languages"))),
+                    FrameOf("lyrics.ai.files", Item(Loc.Get(AiS.Files), AiS.FilesSub(AiLyrics.Rules.FormatBytes(installed)),
                         AiRow(
                             LinkButton(Loc.Get(AiS.OpenFolder), static () => AiLyrics.OpenFolder()),
                             StdButton(Loc.Get(AiS.Remove), () => AiConfirmRemove(installed))),
-                        icon: RowGlyph(Tab.Appearance, "aiFiles")),
+                        icon: AiGlyph("lyrics.ai.files"))),
                 ],
             });
         }
@@ -361,11 +369,14 @@ internal static partial class ClassicSettings
             {
                 Header = header,
                 Description = description,
-                HeaderIcon = RowGlyph(Tab.Appearance, "aiLyrics"),
-                Content = content,
+                HeaderIcon = AiGlyph("lyrics.ai"),
+                Content = Badged("lyrics.ai", s_aiExplain, content),
                 IsActionIconVisible = false,
                 Parts = parts,
             });
+
+        /// <summary>A dial's glyph (the Windows AI sparkle for the card itself).</summary>
+        static string? AiGlyph(string dialId) => GlyphOf(Dial(dialId));
 
         static Element AiRow(params Element[] children) => new BoxEl
         {
