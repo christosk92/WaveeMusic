@@ -83,9 +83,9 @@ internal sealed class ClassicQueuePanel : Component
     Func<QueueSlot, float>? _extentOf;
     float _rowExtent;
     // The Crossfade pair's node: the crossfade hint's line floats at it (design 6.3 #4: at the panel's own switch, no second control).
-    NodeHandle _crossfadeNode;
-    readonly Action<NodeHandle> _onCrossfade;
-    readonly Func<NodeHandle> _crossfadeTarget;
+    NodeHandle _crossfadeNode, _panelNode;
+    readonly Action<NodeHandle> _onCrossfade, _onPanel;
+    readonly Func<NodeHandle> _crossfadeTarget, _panel;   // the line stays inside the panel
     ClassicPanelContentLayout _tier = ClassicStageTiers.Panel(WidthTier.Standard);   // this render's: the window tier's targets
 
     // The body is ONE virtualized list (only the rows the viewport shows, and its overscan, are built): the lead ("Playing from", the
@@ -104,6 +104,8 @@ internal sealed class ClassicQueuePanel : Component
     {
         _onCrossfade = h => _crossfadeNode = h;
         _crossfadeTarget = () => _crossfadeNode;
+        _onPanel = h => _panelNode = h;
+        _panel = () => _panelNode;
         _pushChip = () => _chipAccent.Value = _chipPending;
         _closeSwipeOnScroll = () =>
         {
@@ -178,7 +180,7 @@ internal sealed class ClassicQueuePanel : Component
 
         return new BoxEl
         {
-            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Padding = new Edges4(14f, 4f, 14f, 0f),
+            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Padding = new Edges4(14f, 4f, 14f, 0f), OnRealized = _onPanel,
             Children =
             [
                 new BoxEl
@@ -202,7 +204,7 @@ internal sealed class ClassicQueuePanel : Component
                     ],
                 },
                 body,
-                Hints.Pointer(HintSurfaces.QueuePanel, _crossfadeTarget),   // the crossfade hint's line floats at the pair (a zero box: no room)
+                Hints.Pointer(HintSurfaces.QueuePanel, _crossfadeTarget, _panel),   // the crossfade hint's line floats at the pair (a zero box: no room)
             ],
         };
     }

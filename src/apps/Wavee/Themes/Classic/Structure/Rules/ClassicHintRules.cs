@@ -40,6 +40,12 @@ public static class ClassicHintRules
     /// <summary>A strip that floats by a control (the player bar's, the queue's, the page head's) is a reading line, not the window.</summary>
     public const float FloatMaxWidth = 420f;
 
+    /// <summary>A floating strip keeps this far from its surface's edges (the player bar's).</summary>
+    public const float FloatInset = 12f;
+
+    /// <summary>In the queue panel it keeps to the panel's content column (the panel's own 14 side padding).</summary>
+    public const float QueueInset = 14f;
+
     /// <summary>A floating strip's ring (the notice card's 1-DIP surface stroke).</summary>
     public const float FloatBorder = 1f;
 

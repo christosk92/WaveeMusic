@@ -9,7 +9,9 @@
 //                bell panel under its header: the bare line on the surface.
 //   floating     by a control (the play button, the volume, the queue's crossfade word) and at the top of Home: the same line on a band of the
 //                player bar's own ink (no ring, no corners, no shadow: the bar grows a line), floating in the overlay layer at that control
-//                (`CommonHintFloat`), so the page under it never moves.
+//                (`CommonHintFloat`), so the page under it never moves. It stays inside the surface the control lives in: in the queue panel the
+//                band runs under the modes row from edge to edge, its words on the panel's content column; above the player bar it keeps Zune's
+//                inset from the bar's ends, centred on the play disc or ending at the volume.
 //
 // A state line (the metered cap) keeps its "change" word and has no "not now". After an inline write: the confirmation ("on · normal") and its
 // accent "change". Keys: `hint:<id>`, the words `:act`, `:change`, `:dismiss`, `:more`. The entrance slides the line in from the right as it
@@ -40,13 +42,12 @@ internal static class ZuneHint
         float viewport = ctx.Hooks.UseContextSignal(Viewport.Size).Value.Width;
         if (p.Target is not null)
         {
-            // Never wider than the window less the band's margin (a 400 window), its reading width otherwise.
-            float floatWidth = band.PanelWidth(ZuneHintRules.FloatMaxWidth, viewport);
-            return CommonHintFloat.Create(p, PlacementOf(p.Surface), h => Band(h, lay, floatWidth));
+            Edges4 padding = p.Surface == HintSurfaces.QueuePanel ? ZuneHintRules.QueueBandPadding : ZuneHintRules.BandPadding;
+            return CommonHintFloat.Create(p, PlaceOf(p.Surface), (int)tier.Window, (h, width) => Band(h, lay, width, padding));
         }
         return p.Surface switch
         {
-            HintSurfaces.HomeBanner => Band(p, lay, band.PanelWidth(ZuneHintRules.BannerMaxWidth, viewport)) with
+            HintSurfaces.HomeBanner => Band(p, lay, band.PanelWidth(ZuneHintRules.BannerMaxWidth, viewport), ZuneHintRules.BandPadding) with
             {
                 Margin = new Edges4(0f, ZuneHintRules.BannerTop(tier), 0f, 0f),   // under the title bar and the band, never over the pivots
             },
@@ -57,18 +58,19 @@ internal static class ZuneHint
         };
     }
 
-    /// <summary>Which side of its control a floating line opens on: above the player bar's controls, under the queue's crossfade word.</summary>
-    static FlyoutPlacement PlacementOf(string surface) => surface switch
+    /// <summary>Where a floating line sits in its surface: under the queue's modes row, edge to edge in the panel (it covers the list, not the
+    /// words); above the player bar's play disc (centred) and volume (end-aligned), Zune's inset from the bar's ends.</summary>
+    static HintFloatPlace PlaceOf(string surface) => surface switch
     {
-        HintSurfaces.QueuePanel => FlyoutPlacement.BottomEdgeAlignedLeft,
-        HintSurfaces.PlayerVolume => FlyoutPlacement.TopEdgeAlignedRight,
-        _ => FlyoutPlacement.Top,
+        HintSurfaces.QueuePanel => new(Below: true, HintFloatAlign.Start, ZuneHintRules.QueueInset, ZuneHintRules.FloatMaxWidth),
+        HintSurfaces.PlayerVolume => new(Below: false, HintFloatAlign.End, ZuneHintRules.FloatInset, ZuneHintRules.FloatMaxWidth),
+        _ => new(Below: false, HintFloatAlign.Center, ZuneHintRules.FloatInset, ZuneHintRules.FloatMaxWidth),
     };
 
     /// <summary>The line on a band of the player bar's ink, <paramref name="width"/> wide (its words wrap inside it).</summary>
-    static BoxEl Band(HintProps p, ZuneSettingsLayout lay, float width) => new BoxEl
+    static BoxEl Band(HintProps p, ZuneSettingsLayout lay, float width, Edges4 padding) => new BoxEl
     {
-        Key = "hint:" + p.Id + ":band", Width = width, Direction = 1, Padding = ZuneHintRules.BandPadding, Fill = R.Layer.PlayerBar,
+        Key = "hint:" + p.Id + ":band", Width = width, Direction = 1, Padding = padding, Fill = R.Layer.PlayerBar,
         Enter = new EnterExit(Dx: ZuneHintRules.EnterDx, Opacity: 0f, Active: true),
         Children = [Line(p, lay, default) with { Enter = default }],
     };

@@ -9,8 +9,10 @@
 //                the line (the same order, never squeezing the line to a word a row).
 //   floating     by a control (the play button, the volume, the queue's Crossfade pill, the page head) and at the top of Home: Classic's notice
 //                card (the toast card's plate the Settings home's suggestions wear), opaque with the flyout elevation, because it lies over the
-//                page; one row at its reading width (two at Compact, as in place: a 400 window leaves the line no room beside its action). A
-//                strip by a control floats in the overlay layer at that control (`CommonHintFloat`): the page under it never moves.
+//                page. A strip by a control floats in the overlay layer at that control (`CommonHintFloat`): the page under it never moves, and it
+//                stays inside the surface the control lives in (the queue panel, under the Crossfade pair on its content column; the player bar,
+//                above the play button or the volume; the page head's band, on the page's gutter), as wide as that surface less Classic's inset
+//                at most, in the two-row form. Home's banner is one row at its reading width (two at Compact).
 //
 // A state line (the metered cap) keeps its "Change" and has no close. After an inline write: the check, the confirmation ("On · Normal"), its
 // "Change" link and the close. Keys: `hint:<id>`, the parts `:act`, `:change`, `:more`, `:dismiss`. The entrance is the notification card's
@@ -38,11 +40,8 @@ internal static class ClassicHint
         var band = ClassicOverlayTiers.For(ctx.Tier().Window);
         float viewport = ctx.Hooks.UseContextSignal(Viewport.Size).Value.Width;
         if (p.Target is not null)
-        {
-            // Never wider than the window less the band's margin (a 400 window), its reading width otherwise.
-            float floatWidth = band.PanelWidth(ClassicHintRules.FloatMaxWidth, viewport);
-            return CommonHintFloat.Create(p, PlacementOf(p.Surface), h => Floating(h, target, floatWidth));
-        }
+            return CommonHintFloat.Create(p, PlaceOf(p.Surface, ctx), (int)ctx.Tier().Window,
+                (h, width) => Stacked(h, target, floating: true, default) with { Width = width });
         return p.Surface switch
         {
             HintSurfaces.HomeBanner => Floating(p, target, band.PanelWidth(ClassicHintRules.BannerMaxWidth, viewport)),
@@ -53,13 +52,14 @@ internal static class ClassicHint
         };
     }
 
-    /// <summary>Which side of its control a floating strip opens on: above the player bar's controls, under the page head and the queue's pill.</summary>
-    static FlyoutPlacement PlacementOf(string surface) => surface switch
+    /// <summary>Where a floating strip sits in its surface: under the queue's Crossfade pair on the panel's content column (it covers the list,
+    /// not the pills), under the page head on the page's gutter, above the player bar's play button (centred) and volume (end-aligned).</summary>
+    static HintFloatPlace PlaceOf(string surface, in ViewContext ctx) => surface switch
     {
-        HintSurfaces.PageHead => FlyoutPlacement.BottomEdgeAlignedLeft,
-        HintSurfaces.QueuePanel => FlyoutPlacement.BottomEdgeAlignedLeft,
-        HintSurfaces.PlayerVolume => FlyoutPlacement.TopEdgeAlignedRight,
-        _ => FlyoutPlacement.Top,
+        HintSurfaces.QueuePanel => new(Below: true, HintFloatAlign.Start, ClassicHintRules.QueueInset, ClassicHintRules.FloatMaxWidth),
+        HintSurfaces.PageHead => new(Below: true, HintFloatAlign.Start, ClassicTiers.PageOf(ctx.Tier()).Gutter, ClassicHintRules.FloatMaxWidth),
+        HintSurfaces.PlayerVolume => new(Below: false, HintFloatAlign.End, ClassicHintRules.FloatInset, ClassicHintRules.FloatMaxWidth),
+        _ => new(Below: false, HintFloatAlign.Center, ClassicHintRules.FloatInset, ClassicHintRules.FloatMaxWidth),
     };
 
     /// <summary>The strip on the notice card's plate, <paramref name="width"/> wide (its line wraps inside it): one row, two at Compact.</summary>

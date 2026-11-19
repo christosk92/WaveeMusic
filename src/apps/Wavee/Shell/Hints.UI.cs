@@ -46,17 +46,18 @@ public static partial class Hints
     /// <summary>The hint slot of <paramref name="surface"/> where the hint POINTS at a control the surface draws (the play button, the volume
     /// slider, the queue's Crossfade switch, the back button, the title bar): a zero box that takes no room (place it where a gap does not count
     /// it: a ZStack layer, a gapless column, after the keyed children so it shifts no index), the theme opening its TeachingTip or anchored line
-    /// at <paramref name="target"/>, a stable delegate the surface captures with <c>OnRealized</c>. (Not <c>Visible = false</c>: a hidden subtree
-    /// runs no effects, so the tip would never open.)</summary>
-    public static Element Pointer(string surface, Func<NodeHandle> target)
+    /// at <paramref name="target"/>, a stable delegate the surface captures with <c>OnRealized</c>; <paramref name="bounds"/> is the surface the
+    /// target lives in (the queue panel, the player bar), which a floating line stays inside. (Not <c>Visible = false</c>: a hidden subtree runs
+    /// no effects, so the tip would never open.)</summary>
+    public static Element Pointer(string surface, Func<NodeHandle> target, Func<NodeHandle>? bounds = null)
         => new BoxEl
         {
             Key = "hint-pointer:" + surface, Width = 0f, Height = 0f, Shrink = 0f, Grow = 0f, ClipToBounds = true, HitTestVisible = false,
-            Children = [Core(surface, target, null)],
+            Children = [Core(surface, target, null, bounds)],
         };
 
-    static Element Core(string surface, Func<NodeHandle>? target, Action? close)
-        => Embed.Comp(new HintSlotProps(surface, target, close), static () => new HintSlot()) with { Key = "hint-slot:" + surface };
+    static Element Core(string surface, Func<NodeHandle>? target, Action? close, Func<NodeHandle>? bounds = null)
+        => Embed.Comp(new HintSlotProps(surface, target, close, bounds), static () => new HintSlot()) with { Key = "hint-slot:" + surface };
 
     /// <summary>An in-place slot's height eases through real layout (the lyrics footer's own clip box grows the same way).</summary>
     static readonly LayoutTransition s_reveal = new(TransitionChannels.Size, MotionTok.ControlNormal.ToDynamics(),
@@ -68,7 +69,7 @@ public static partial class Hints
     /// <summary>The fact watcher (one, in the overlay layer).</summary>
     public static Element Watcher() => Embed.Comp(static () => new HintWatcher());
 
-    sealed record HintSlotProps(string Surface, Func<NodeHandle>? Target, Action? Close);
+    sealed record HintSlotProps(string Surface, Func<NodeHandle>? Target, Action? Close, Func<NodeHandle>? Bounds);
 
     [CoreHost]
     sealed class HintSlot : Component
@@ -114,7 +115,7 @@ public static partial class Hints
             UseTimeout(() => { if (doneDef.Value is { } d) SetAside(d); }, doneDef.Value is null ? 0 : HintRules.ConfirmationMs,
                 DepKey.From(doneDef.Value is { } shown ? IndexOf(shown.Id) + 1 : 0));
 
-            return def is null ? Nothing : ViewSlots.View(ViewKeys.Hint, PropsFor(def, p.Surface, p.Target, p.Close));
+            return def is null ? Nothing : ViewSlots.View(ViewKeys.Hint, PropsFor(def, p.Surface, p.Target, p.Close) with { Bounds = p.Bounds });
         }
     }
 

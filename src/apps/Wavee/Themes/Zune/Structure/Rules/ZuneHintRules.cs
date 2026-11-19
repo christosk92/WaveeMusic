@@ -31,6 +31,14 @@ public static class ZuneHintRules
     /// <summary>A floating line is a reading line, not the window.</summary>
     public const float FloatMaxWidth = 480f;
 
+    /// <summary>Above the player bar a floating line keeps the bar's own row inset from the bar's ends.</summary>
+    public const float FloatInset = 24f;
+
+    /// <summary>In the queue panel the band runs from edge to edge (no inset) and its words sit on the panel's content column (the panel's own
+    /// inset as the band's padding).</summary>
+    public const float QueueInset = 0f;
+    public static readonly Edges4 QueueBandPadding = new(ZunePanelBodies.Inset.Left, BandPadding.Top, ZunePanelBodies.Inset.Right, BandPadding.Bottom);
+
     /// <summary>The Home banner's widest (the runtime banner's lane cell).</summary>
     public const float BannerMaxWidth = ZuneOverlayRules.BannerMaxWidth;
 

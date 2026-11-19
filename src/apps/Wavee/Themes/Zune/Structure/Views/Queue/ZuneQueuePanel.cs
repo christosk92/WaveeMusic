@@ -48,14 +48,16 @@ internal sealed class ZuneQueuePanelView : Component
 {
     readonly ScrollHandle _scroll = new();
     // The crossfade word's node: the crossfade hint's line floats at it (design 6.3 #4: at the panel's own switch, no second control).
-    NodeHandle _crossfadeNode;
-    readonly Action<NodeHandle> _onCrossfade;
-    readonly Func<NodeHandle> _crossfadeTarget;
+    NodeHandle _crossfadeNode, _panelNode;
+    readonly Action<NodeHandle> _onCrossfade, _onPanel;
+    readonly Func<NodeHandle> _crossfadeTarget, _panel;   // the line stays inside the panel
 
     public ZuneQueuePanelView()
     {
         _onCrossfade = h => _crossfadeNode = h;
         _crossfadeTarget = () => _crossfadeNode;
+        _onPanel = h => _panelNode = h;
+        _panel = () => _panelNode;
     }
 
     // The body is ONE virtualized list (only the rows the viewport shows, and its overscan, are built): the lead ("playing from", the
@@ -138,7 +140,7 @@ internal sealed class ZuneQueuePanelView : Component
                 Loc.Get(Strings.Player.CrossfadeLengthTip)) with { Key = "mode:crossfade:length" });
         return new BoxEl
         {
-            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true,
+            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, OnRealized = _onPanel,
             Children =
             [
                 new BoxEl
@@ -147,7 +149,7 @@ internal sealed class ZuneQueuePanelView : Component
                     Children = modes.ToArray(),
                 },
                 body,
-                Hints.Pointer(HintSurfaces.QueuePanel, _crossfadeTarget),   // the crossfade hint's line floats at the word (a zero box: no room)
+                Hints.Pointer(HintSurfaces.QueuePanel, _crossfadeTarget, _panel),   // the crossfade hint's line floats at the word (a zero box: no room)
             ],
         };
     }

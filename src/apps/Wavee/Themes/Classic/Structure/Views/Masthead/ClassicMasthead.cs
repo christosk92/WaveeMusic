@@ -33,8 +33,9 @@ internal static class ClassicMasthead
         float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the band's title sits on the page's column (F3)
         // The band's node: the fast navigation hint's line floats under the page head (design 6.3 #10), wherever a page shows one.
         var band = ctx.Hooks.UseRef<NodeHandle>(default);
-        var anchor = ctx.Hooks.UseRef<(Action<NodeHandle> OnRealized, Func<NodeHandle> Target)?>(null);
-        anchor.Value ??= (h => band.Value = h, () => band.Value);
+        var column = ctx.Hooks.UseRef<NodeHandle>(default);   // the band's host: the page column the line stays inside
+        var anchor = ctx.Hooks.UseRef<(Action<NodeHandle> OnRealized, Func<NodeHandle> Target, Action<NodeHandle> OnColumn, Func<NodeHandle> Column)?>(null);
+        anchor.Value ??= (h => band.Value = h, () => band.Value, h => column.Value = h, () => column.Value);
         // One stable host; the band is its only child while live, so a band mounts (enters) and unmounts (exits) with its page.
         if (!props.Live || props.Held is not { } chrome)
             return new BoxEl { MinWidth = 0f, Direction = 1, HitTestPassThrough = true };
@@ -47,7 +48,7 @@ internal static class ClassicMasthead
 
         return new BoxEl
         {
-            MinWidth = 0f, Direction = 1, HitTestPassThrough = true,
+            MinWidth = 0f, Direction = 1, HitTestPassThrough = true, OnRealized = anchor.Value.Value.OnColumn,
             Children =
             [
                 new BoxEl
@@ -58,7 +59,7 @@ internal static class ClassicMasthead
                     Animate = ClassicFrameBitsRules.MastheadSwap, OnRealized = anchor.Value.Value.OnRealized,
                     Children = [ctx.View(ViewKeys.PageHead, new PageHeadProps(chrome)), tools],
                 },
-                Hints.Pointer(HintSurfaces.PageHead, anchor.Value.Value.Target),   // a zero box: the band keeps its height
+                Hints.Pointer(HintSurfaces.PageHead, anchor.Value.Value.Target, anchor.Value.Value.Column),   // a zero box: the band keeps its height
             ],
         };
     }

@@ -78,7 +78,7 @@ internal static partial class ClassicPlayerBar
         marquees.Value ??= new Marquee.Group();
         // The play disc and the volume control: the shortcuts and normalization hints' lines float at them (design 6.3 #5, #13).
         var hintAnchors = rc.UseRef<HintAnchors?>(null);
-        hintAnchors.Value ??= new HintAnchors();
+        hintAnchors.Value ??= new HintAnchors(barNode);
         var anchors = hintAnchors.Value;
 
         const string titleKey = "np-title";
@@ -581,9 +581,9 @@ internal static partial class ClassicPlayerBar
         // The hints that point at the play disc and the volume: zero boxes under the slot (no room), only where the control is drawn.
         bool volumeShown = !mini && (v.Slots & (RightSlot.Volume | RightSlot.VolumeSlider)) != 0;
         Element[] hints = v.OwnsTransport && volumeShown
-            ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume)]
-            : v.OwnsTransport ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play)]
-            : volumeShown ? [Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume)] : [];
+            ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)]
+            : v.OwnsTransport ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar)]
+            : volumeShown ? [Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)] : [];
         return new BoxEl
         {
             Direction = 1, Shrink = 0f,
@@ -730,14 +730,15 @@ internal static partial class ClassicPlayerBar
     {
         NodeHandle _play, _volume;
         public readonly Action<NodeHandle> OnPlay, OnVolume;
-        public readonly Func<NodeHandle> Play, Volume;
+        public readonly Func<NodeHandle> Play, Volume, Bar;   // Bar: the line stays inside the bar's band
 
-        public HintAnchors()
+        public HintAnchors(Ref<NodeHandle> bar)
         {
             OnPlay = h => _play = h;
             OnVolume = h => _volume = h;
             Play = () => _play;
             Volume = () => _volume;
+            Bar = () => bar.Value;
         }
     }
 

@@ -109,6 +109,11 @@ public sealed record HintProps
     /// place of its own (a footer, a flyout's foot, Home's top). Contract 2.2.</summary>
     public Func<NodeHandle>? Target { get; init; }
 
+    /// <summary>The surface <see cref="Target"/> lives in (the queue panel, the player bar, the page head's band), captured by the same
+    /// surface: a line that floats at the target stays inside it, inset from its edges, never hanging over the page beside it. Null = the
+    /// window. Contract 2.2.</summary>
+    public Func<NodeHandle>? Bounds { get; init; }
+
     /// <summary>A click elsewhere closed it (a TeachingTip's light dismiss), or its confirmation is done: it goes for the rest of this
     /// session with no snooze (the budget's show was already counted). Null for a state line. Contract 2.2.</summary>
     public Action? SetAside { get; init; }
