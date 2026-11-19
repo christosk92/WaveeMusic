@@ -11,7 +11,7 @@ Source: `src/apps/Wavee/App/DeepLink.cs`. Boot wiring: `src/apps/Wavee/Program.c
 | URI | Kind | Fields |
 |---|---|---|
 | `wavee://open?route=<name>&arg=<value>` | `DeepLinkKind.Open` | `Route`, optional `Arg` |
-| `wavee://open?route=settings&arg=<tab-slug>` | `DeepLinkKind.Open` | the Settings tab named by the slug (`privacy` = Privacy & diagnostics) |
+| `wavee://open?route=settings&arg=<link>` | `DeepLinkKind.Open` | a settings link (`Settings.Open`): `category`, `category/dialId` (`playback/playback.crossfade`), `dialId` (`lyrics.ai`), or any old slug or row id (`privacy`, `crossfade`); a dial link records the `Settings.Focus` its arrival plays from |
 | `wavee://open?route=logs` | `DeepLinkKind.Open` | the log viewer page |
 | `wavee://play?ctx=<spotify-context-uri>` | `DeepLinkKind.Play` | `Context` |
 | `wavee://play?link=<http(s)-url>` | `DeepLinkKind.Play` | `Link` — the playback-module intake (YouTube / Twitch / radio), same router as Play ▸ Link… |

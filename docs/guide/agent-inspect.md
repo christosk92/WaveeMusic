@@ -12,6 +12,7 @@ The server code is in `src/apps/Wavee/Screens/Diagnostics.Inspect*.cs`, and the 
 ```powershell
 # from WaveeMusic\, after `dotnet build src/apps/Wavee/Wavee.csproj`
 python -I tools/inspect.py -c "mount w=400 h=860 theme=zune" -c "tiers"     # the client starts and stops the server
+python -I tools/inspect.py --gate-perf -c "mount w=1440 h=960 theme=winui gpu=warp" -c "perf on" -c "resize 1200 900" -c "perf report"   # a frame-cost verdict
 src\apps\Wavee\bin\Debug\net11.0\Wavee.exe --inspect      # or talk to it yourself on stdin/stdout
 Wavee.exe --inspect --pipe wavee-inspect                                      # or over \\.\pipe\wavee-inspect
 ```
@@ -199,6 +200,34 @@ Keys name the nearest keyed ancestor when the node itself has none.
 
 ### `mount {w, h, scale?, theme?, kind?, route? | uri? | deeplink?, gpu?, keepRoute?}`
 
+The pinned Home's two mount args: `home=mock|capture|new|free|podcast|region|synthetic|second` (the fixture the Home tables are
+seeded from) and `homedoc=default|keep|pins0|pins200|gonepin|custom|mixed|v2hidden|toonew|corrupt|unknown` (the document the
+mount starts from, written into the profile's `WaveeMusic/home.acct-<hash>.json` and loaded; default `default`; `keep` loads
+the profile's file as it is, for a second process on one `--profile`). `pins0`: an empty Pinned group; `pins200`: 200 items;
+`gonepin`: a pin the catalogue never answers; `custom`: the feed taken control of, two sections hidden, mixed sizes; `mixed`:
+every size of every MVP source; `v2hidden`: no v3 file and a `home-layout.json` v2 with hidden zones (the migration runs);
+`toonew`: a version 4 file (Home shows the default, the file stays byte for byte, `readOnly: true`); `corrupt`: an unreadable
+file (set aside as `.corrupt`); `unknown`: an unknown source kind, option key and members (they round-trip byte for byte).
+`reset` puts the default document back. `home=live1` and `home=live2` are redacted live answers (2026-11-16, 2026-11-17; live2's lookup
+was asked for its own answer's cards, so all 20 baseline cards carry their preview songs); `tools/home-fixture.py` makes
+the next one from a `cmd=homecap` folder (the procedure, with its safety rules: the fgpu skill's `verify/debug-home.md`).
+
+`media=fake` builds every media player over a fake backend (`Diagnostics.Inspect.Media.cs`): the Spotify Canvas player and any
+`MediaPlayer` built without its own backend (an audio preview, a tile's video). `mediaOpenMs` (default 120: the open's latency to
+its first frame on the 16 ms clock, metadata at half), `mediaStartCostMs` (a synchronous UI-thread stall inside each open: the start
+hiccup), `mediaFrameCostMs` (UI-thread work in every video pump while it plays), `mediaFailMs` (every session fails that long
+after its first frame: a crashed engine). Each open logs `[inspect.media] open #n` (`status log=inspect.media`); the next mount ends it.
+
+`home do=preview` reads the Spine Shelf's song preview (`Home/SpineShelf/PreviewAudio.cs`): the claim (the tile that owns the
+preview), both voices (tile, heard gain, player state), the sound button (`sound`, `soundGain`), the duck on the user's music
+(`duck`, and `playerDuck` as the local player has it), the user's own volume and amplitude, what the local player applies
+(`applied` = the user's amplitude × the duck), the saved volume, and why the last claim ended (`lastRelease`: `leave`, or
+`lost:<why>` when the ownership check ended it: `pointer-off-tile`, `pointer-left-window`, `window-inactive`, `minimized`,
+`unmounted`, ...). It acts first when asked: `sound=on|off|toggle` (the button), `volume=0..1` (the slider), `music=pause|play|stop`.
+`samples=true` lists the per-tick levels since the last read (`[ms, voice0 fade, voice1 fade, sound, duck, userAmp, applied]`) and
+each curve's largest one-tick change (`maxStep`). It runs no frames (`frames N` does). `home do=shelf tile=N` stands for a pointer
+resting on the tile (the ownership check counts it as held until `tile=0`); `hover key=` and `pointer path=` drive the real pointer.
+
 Mounts the whole app at `w` × `h` DIP. Any mount that is already up is replaced, and a mount after the first does not
 inherit what the last one changed. It puts back:
 
@@ -234,6 +263,7 @@ without `theme` or `kind` keeps the active ones.
 | `marquee=on` or `off` | Sets the app's marquee setting (Settings > Appearance) before the mount. |
 | `remote=<name>` | The play bar says it is playing on a remote output of that name (`--fake` has no Connect cluster). To turn the output remote on a live mount, use `play remote=<name>`. |
 | `panelW=<dip>` | The side panel's stored width (clamped to the theme's drag range when it opens), e.g. `panelW=280` for WinUI's narrowest pane. |
+| `lyrics=word` or `line` | The shape the fake lyrics answer in: `word` (default) word-synced, `line` line-synced with no word timing (the same lines and times), the shape the AI lyrics time word by word (`state kind=ai ai=timed words=on`). Every mount sets it; a change empties the lyrics store, so every track is answered again. |
 | `video=fullscreen`, `docked`, `floating` or `pip` | Puts the video surface up (`pip` is `floating`) with `spotify:track:tr26` playing: the rich album's first row, which has a music video (`HasVideo`), so the play bar shows its video split and the placement menu opens from it (WinUI: the split's chevron is unkeyed, `click x=1324 y=924` at 1440x960 opens "Where to play the video"). No frames decode offline: the inspector's video resolver never answers while the mount lives, so the join stays in flight (the poster, then the ring and "Loading...") instead of failing to audio; the next mount lets it go. Beside it, `fromMs` sets the track's position (74000), `player=fake` binds an idle engine player (`player=scripted` a source that plays, below), and `join=` picks the join poster's state; without `video` all three are refused. |
 | `join=poster`, `working` or `failed` | The join poster as the host's switch events would leave it (`Playback.Video.Phase`, folded into `Video.JoinNow`): `working` the ring and "Loading..." (the default offline), `failed` the fault line ("Can't play this track"), `poster` the artwork alone (a player bound, nothing in flight; it binds the fake player). |
 | `player=scripted` (`videoOpenMs=`) | A video source that behaves like a real one, for the video joins and switches: a real engine `MediaPlayer` over a scripted session that follows the deck. Every video track the deck lands on (the deck's video facts) is a fresh open on the SAME player, an in-place switch as the host's Switch plan does: Opening and the declared size at once, metadata (Buffering) at half of `videoOpenMs` (default 240, on the 16 ms frame clock), then the first frame (the natural size, the surface, Playing) at `videoOpenMs`; a deck that leaves video stops it. tr26 is 1920x1080 and every other video track 1440x1080, so a held frame's geometry can be told from its successor's. It carries a play intent, so the presenter's chrome idles and hides; it keeps the resolved source published while it opens (the inspector's resolver never answers); its geometry half binds, sizes and places the slot like the clear session, deferring a slot that shows another picture until its own first frame. `[inspect.video] open|defer|take.over|first.frame|stop` lines say what it did, and while it lives the engine's `[media.chrome]`, `[video] pump` and `[video.surface]` lines are copied into the app log, so `status log=` reads them. `status log=` reads the lines since the LAST `status log=`, whatever its text: read one filter per step (`status log="video"` takes the join, pump and source lines together). Example: `mount gpu=none w=1440 h=960 theme=classic route=home video=docked player=scripted`, `transport do=add uri=spotify:track:tr39`, `transport do=next trace=60 prefix=media`, `status log="video"`. |
@@ -363,7 +393,10 @@ Home, and makes Classic dark the active theme.
 - `quit` unmounts and ends the server. A refused `quit` (`quit now=1`: it takes no args) ends nothing. `tools/inspect.py`
   sends nothing after a `quit` and says how many lines it left.
 
-### `click`, `hover {key | x,y, nth?, force?, stableMax?, mods?, button?}`
+### `click`, `hover {key | x,y, nth?, force?, stableMax?, mods?, button?, dwell?}`
+
+`hover ... dwell=700` rests the pointer 700 ms on the frame clock after it arrives, then settles: a rest-to-open timer or a hover
+preview fires inside the rest. `pointer` (below) moves through several targets.
 
 These aim at a node keyed exactly `key`, or at a point (`x`, `y`, window DIP, no checks). Not both: `x` or `y` beside
 `key` is refused, and so are `nth` and `force` without `key`.
@@ -425,7 +458,7 @@ Protocol).
    "actionable":false,"reason":"notShown","why":"...","hit":"about:link"}]}
 ```
 
-### `key {key, repeat?}` and `type {text}`
+### `key {key, repeat?}` and `type {text, key? | x,y, nth?, force?}`
 
 `key` takes these names:
 
@@ -435,13 +468,18 @@ Protocol).
 - any of these with `ctrl+`, `shift+`, `alt+` or `win+` in front, such as `ctrl+f`
 
 `type` sends character input to whatever has focus. The text form takes the rest of the line, spaces kept; to add args
-(`settle=false`, `trace=N`), quote the text or use `text=`:
+(`settle=false`, `trace=N`), quote the text or use `text=`. `type key=<node>` (or `x`, `y`) presses that node first, as a user puts
+the caret in a box (the same actionability checks as `click`; `force=true` skips them), then types; a line that starts with `key=`
+reads as args, so quote text with spaces after it. This is how a run types into the Settings page's box (`settings:search`):
 
 ```text
 key ctrl+f
 type daft punk
 type "daft punk" settle=false
+type key=settings:search crossfade      # the Settings page's box (every theme binds it)
+type key=settings:search "dark mode"
 key enter
+key esc                                 # in the Settings box: the first Escape clears it (and closes its list), a second leaves it
 ```
 
 ### `scroll {key | x,y, dy?, dx?}`
@@ -451,7 +489,7 @@ is checked and picked as `click` does (`nth`, `force`), except that nothing need
 the scroller under the pointer either way. The settle waits for the scroller to stop, so the reply's
 `scroll {offset, max}` (with `key`: the first scroll viewport under that node) is where the glide ended.
 
-### `drag {key | x,y, dx?, dy?, steps?, button?, mods?}`
+### `drag {key | x,y, dx?, dy?, to?, holdMs?, pauseMs?, pointer?, steps?, button?, mods?}`
 
 A mouse drag as one command, the way a hand makes it: the pointer moves onto the press point (`key`'s visible centre, checked
 and picked as `click` does: `nth`, `force`, `stableMax`; or `x`,`y`), the button goes down, the pointer travels `dx`,`dy` DIP in
@@ -460,8 +498,83 @@ and picked as `click` does: `nth`, `force`, `stableMax`; or `x`,`y`), the button
 itself use `trace`'s own `drag=` args (`drag`, `dragFrames`, `dragStart`, `dragKey`/`dragX`/`dragY`, `dragDy`: DIP per frame,
 cycled).
 
+`to=<key>` ends on that node's presented centre instead of `dx`,`dy` (a drag onto a tile); `holdMs` keeps the button down and
+the pointer still that long before it moves (a touch lift's hold); `pauseMs` dwells at the end, button down, before the release
+(a reorder's 140 ms dwell); `pointer=touch` sends touch events (no hover move first).
+
 ```text
 drag key=winui-bar-volume-slider dx=-60 steps=6      # the WinUI volume thumb to 0 (the glyph turns muted)
+drag key=home:tile:<a> to=home:tile:<b> pauseMs=200 trace=90 prefix=home:tile max=400   # a pinned Home reorder
+```
+
+### `hold {key | x,y, ms?, pointer?, then?, dx?, dy?, steps?}`
+
+Press and hold: the pointer presses on the node's visible centre (picked as `click` does) or a point and stays down, still, for
+`ms` (600) on the frame clock; then (`then=release`, the default) it comes up where it pressed, or (`then=drag`) it travels
+`dx`,`dy` over `steps` frames and comes up there. `pointer=touch` sends touch events (a touch hold opens a card's menu today;
+the pinned Home's tiles lift on it). Reply: `at`, `ms`, `pointer`, `then`, `to` (a drag), then the settle and `after`.
+
+```text
+hold key=home:tile:d-recents ms=600 pointer=mouse          # Zune: customize on that tile
+hold key=home:tile:<a> ms=500 pointer=touch then=drag dy=160   # WinUI: lift and move
+```
+
+### `pointer {path, steps?, dwell?}`
+
+Pointer realism for hover-driven UI. The pointer glides from where it is to each waypoint over `steps` frames (default 6), one
+real `PointerMove` per frame through the window's input queue (hover enter and exit, rest timers, previews all see it), rests the
+waypoint's `@ms` on the 16 ms clock (or `dwell`), then goes on. Waypoints: a key (its visible centre; refused like `hover` when
+not actionable), `at:x:y` (window DIP) or `leave` (off the window: the pointer-left-window edge). Then it settles (`trace=N`
+works). Reply `legs[{target, x, y, hit, frames, note?}]`.
+
+```text
+pointer path=[home:tile:d-daylist@300,home:tile:d-recents@700,leave@200] steps=6
+```
+
+### `focus {key, nth?}` and `said {clear?}`
+
+`focus` moves keyboard focus to a node (the focus ring shows, as after Tab) without a click; `after.focused` names it. `said`
+returns the announcements (the screen-reader text the app sends through `Announcer`) since the last `said`: `said[{text,
+assertive, frame}]`, `count`; `clear=false` keeps them for the next read. Every acting verb's `after{}` also carries its own
+`said[]` (what was announced during that verb).
+
+### `home {do, ...}`: the pinned Home
+
+The pinned Home's board, read back and driven through the same verbs the themes call (the board host registers them while
+the board is mounted; with none mounted the acting ones go through the store, and the reply says `via: "store"`: the model and
+its undo are proved, the motion and the view state are not). Acting ones settle (`trace=`, `prefix=`, `max=` work) and reply
+`changed`, `item` (the entry acted on), `rev`, `undoDepth` and `after`.
+
+| `do=` | Args | Does |
+|---|---|---|
+| `status` | | the board as the user has it: `theme, editing, selected, open, add{surface, kind, query, results}, columns, undo{can, label, at, depth}, redo{can, depth}, readOnly, rev, items, hidden, legacyHidden, seededFromSidebar, file{path, outcome, exists, bytes, fnv, bak, corrupt}, groups[{id, title, items[{id, key, kind, source, title, size, auto, template?, hidden?, form?, span?, rect?, realized?, hasOptions, live, paused}]}]` |
+| `doc` | `path=` | the document's JSON (and writes it, indented, to the file) and `file{}` |
+| `plan` | `facet=` | the planner dump: per section `index, key, fp, family, typename, title, counts{cards, usable, unsupported, duplicates, total}, template, zone, reason, entry, placed, hidden`, then the identity log's readings |
+| `explain` | `facet=` | why Home shows what it shows: per rendered section (feed, placed, fold) `entry, key, kind, group, drawnTitle, template, zone, zoneKind, form?, span?, realized?, pager{page, pages}?`, Spotify's identity `spotify{uri, index, typename, title, titleBase, headerUri, kind, cards, total, firstCard}`, `identity{key, fp, family}`, the chooser's `chooser{template, zone, reason, alternates[]}` and `rhythm{decision: kept\|moved, why, final}`; a fold has `fold{members, why, runStartsAfter, runEndsBefore, rule}` and its members' sections; then `findings[]` (`duplicate-title`, `duplicate-family`: `what, entries[], hint`). The lint rule `home.duplicate` (todo, error) fails the same titles on any lint of Home |
+| `verify` | | the board's own proof: `PackLayout.Verify` over every group at the live width, and the realized rects against the pack: `columns, count, faults[]` |
+| `edit` | `on=`, `item=` | Classic's Edit Home / Zune's customize (a selected tile); WinUI refuses |
+| `pin` / `unpin` | `uri=` (an entity uri or a route key), `group=` | the verb the menus call, confirmation included |
+| `add` | `source=` (a catalogue id: `widget.upNext`, `pin:<pin id>`, `section:<key>`), `group=`, `at=` (index in the group), `size=` | add at a place |
+| `remove` | `item=` | remove a widget, unpin a pin, hide a section or a shortcut |
+| `size` | `item=`, `size=s\|m\|l\|full\|next` | resize, or cycle the sizes the source declares |
+| `move` | `item=` and one of `by=±n`, `to=start\|end`, `onto=<item>`, `dir=left\|right\|up\|down` | the command twins (`by` steps are tagged `step:<id>`: steps within 2 s are one undo step) |
+| `open` / `close` | `item=` / `refocus=` | open a tile for its options (one visit is one undo step) |
+| `option` | `key=`, `value=` | a choice on the open tile |
+| `surface` | `open=`, `kind=band\|allitems\|addrow\|find`, `arg=` | the theme's add surface |
+| `search` | `q=`, `items=` | types into the add surface's search: `spoken`, `counts{total, widgets, spotify, library, extensions, onHome, toAdd}`, `hits[]`; an empty `q` lists everything |
+| `undo` / `redo` | | one step; the reply carries `undo{}` and `redo{}` |
+| `reset` | `scope=page\|everything`, `confirm=` | reset (Classic's "everything" asks in its bar: `confirm=true` answers it) |
+
+An entry id is what `status` lists: a document item (`d-recents`, `i7f3a…`), a feed section (`feed:<section key>`), a fill cell
+(`fill:<pin id>`), a fold (`fold:<first key>`) or a group head (the group id). Taking control or keeping a shortcut keeps the id.
+Node keys: `home:board`, `home:group:<groupId>`, `home:tile:<entryId>`, `home:tile:<entryId>:tools`, `home:slot`, `home:add`,
+`home:edit`, `home:undo`.
+
+```text
+mount w=1440 h=960 theme=winui route=home gpu=none home=capture homedoc=custom
+home do=move item=feed:<key> by=1          # takes control: every section an item, the feed item last; one undo step
+home do=search q=mix                       # hits across groups with counts; q=zzzz says "Nothing to add matches zzzz."
+home do=undo
 ```
 
 ### `play {uri?, fromMs?, next?, ago?, remote?, context?, at?}`
@@ -499,6 +612,19 @@ transport do=end                                                       # deck=tr
 
 ### `state {kind, page?, ai?, error?, lang?}` and `dialog {kind}`
 
+`state kind=home-refresh` lands the pinned Home's next answer (the `second` fixture) over the one the page shows: a removed
+section keeps its place as a hidden entry, a new one sits after its server neighbour, a hidden one stays hidden.
+
+`state kind=home-cold`, then `home-land`, `home-following` and `home-previews` (any order) stage a live open one answer at a time: cold
+forgets the All answer, the Following facet's answer and the baseline lookup the tables hold and seats All and Following in flight (the
+board shows its placeholders), each land step concludes one of them. Mount from another route (`route=browse`), stage `home-cold`, then
+`goto route=home`, and trace each step (`trace=90 prefix=home:tile:`): the proof that a load moves nothing at once.
+
+`state kind=daylist-generic`, then `daylist-land`, stage a daylist rollover as the live feed serves it: the All answer's daylist in its
+generic pre-title state (the name "daylist", no tags, no basis, a provisional window), then the playlist's own header read landing the
+edition (a descriptive name, tags with links, a basis and a window 8 minutes later). The card must follow the land (its row gate) and
+its countdown must name the header's window, the one the playlist page shows.
+
 `state kind=empty|nomatch|error|offline|none` shows the shared vacancy in place of the page (`none` puts the page back, and steps back off the
 pending search a `loading` opened while it still shows: its skeleton never lands, so every verb on it would settle to `max`); `loading` opens a search for
 `zzqx`, which the fake catalogue never answers: its request stays in flight, so the page stays on its skeleton (the chips, the top result and the
@@ -514,7 +640,8 @@ The reply's `leftOpen[{key, first}]` lists the overlays the state opened (Zune C
 **The AI lyrics settings card: `state kind=ai`.** The server never starts the AI lyrics module, so the card is always "not
 started" (the switch off and disabled). `state kind=ai ai=<case> error=<kind> lang=<iso>` stages the card's one status model
 (`AiLyrics.Current`, through `AiLyrics.Stage`; `Diagnostics.Inspect.AiLyrics.cs`) on the Settings page that shows the card
-(Classic and WinUI: `route=settings arg=appearance`, the card `appearance.ai-lyrics`; Zune: `arg=lyrics`, the card `zs:ai`), with
+(`route=settings arg=lyrics` in every theme, Lyrics & Now playing › Lyrics; the card is `appearance.ai-lyrics` in Classic and WinUI,
+the rows `zs:ai:rows` in Zune), with
 no module behind it: while it stands every module verb is inert, so a click on Try again, Remove, a language or the switch downloads
 nothing, loads nothing and never touches the profile's `ai\lyrics` folder. The cases: `off`, `unavailable` (not an Arm64 PC: the
 switch off and disabled), `setup` (needs its download), `downloading` (40 %, a speed and a file), `paused`, `preparing` (the first
@@ -524,7 +651,11 @@ on a language's file: the whole card is the error, naming it), `error` (the whol
 compile; the bar is `ai:error` / `zs:ai:error`), `timed` and `timing` (ready, and the PLAYING track timed by it: a finished job, or
 one running at a third of its lines, so the lyrics surfaces draw the AI disclosure, `ai-lyrics-footer-clip`, or its progress line;
 stage it after a `play`, e.g. the mini player: `mount w=420 h=420 mini=true face=1`, `play spotify:track:tr3 30000`,
-`state kind=ai ai=timed`) and `none` ("not started" again). `error=notfound|offline|network|hash|diskfull|unknown`
+`state kind=ai ai=timed`) and `none` ("not started" again). `ai=timed words=on` also gives the playing track's lyrics a finished job's
+word timing (each line's words share its span: no aligner runs) through the store upgrade a cached result takes, so the lyrics surfaces
+draw the song word by word; on a line-synced fake (`mount lyrics=line`) that is the AI dial's whole effect. A view takes the upgrade at
+once only while no line is lit (paused, or before the first line), else at the next hand-off: stage it, then seek to the line. The next
+mount empties the lyrics store. `error=notfound|offline|network|hash|diskfull|unknown`
 (`runtime|nonpu|compile` too, for `ai=error`) picks the failure kind, with the detail the real download writes for it (the URL, the
 file, the drive); `lang=` the failed language (`ja` by default; a pack language). The bars' buttons are keyed: `ai:details` /
 `zs:ai:details` (reveals the raw detail in place) and `ai:retry` / `zs:ai:retry`. The reply names the `phase`, `error` and
@@ -563,6 +694,13 @@ state kind=loading page=library      # W-SkeletonList: the Albums navigator's sk
 state kind=empty page=podcasts       # W-EmptyLibrary: Library, Podcasts with no followed show
 state kind=loading page=show
 ```
+
+**A staged book load.** The audiobook page's cold open, one answer per command, on `spotify:show:sh9` (The Long Book, a hundred chapters;
+`Entities.Fake.Cold.cs`): `state cold-book` (the show's own answer: the title and subtitle joined in one string, no membership, no credits, no
+lengths), then `goto uri=spotify:show:sh9 loops=skeletons` (the page stands; the chapters' place, the line and what is under the contents are
+held), then `state cold-book-chapters` (the membership lands: names, no lengths, so no start times and no line yet), then
+`state cold-book-facts` (the credits and every chapter's length land: the start times, the line, the listener's place). Each takes `trace=`:
+watch `cpa-ch:N` / `ab-row:N` / `zb-row:N` and the hero's keys; nothing readable may snap.
 
 **Staged playlist loads.** Every fake list is seeded whole, so a fake page never shows the real client's staging. The cold playlist
 (`Entities.Fake.Cold.cs`, `spotify:playlist:pl6`) stages one, one step per command: `state cold-list` (header known, length and rows not:
@@ -645,25 +783,139 @@ Which `value` each option kind takes:
 | Slider | A number. |
 | Colour | `"#RRGGBB"` or `"#RRGGBBAA"`. |
 
-### `setting {tab?, id?, value?}`
+### `setting {category?, id?, value?}`
 
-The app's own settings (a theme's options are `option`). `setting` lists every Settings row as data (`SettingsDoc`): `{tab, section,
-id, kind, value, writer, readOnly?, enabled?, reason?}`; `tab=appearance` lists one tab's. `setting id=<row>` reads one row;
-`setting id=<row> value=<v>` sets it through the row's own writer, the verb a Settings view calls (a toggle's `true`/`false`, a
-slider's number, a choice's, a segmented row's or a picker's index; an action runs with no value), and bumps the page epoch when the
-writer asks the page to re-read, as a view does: a mounted Settings page, the lyrics stage and the bar read the new value as after a
-click. A value set on a live mount is that mount's: the next `mount` (or `reset`) puts it back through the row's writer (toggles,
-sliders, choices). One set with nothing mounted is for the next mount, which keeps it. An id on several tabs wants `tab=`; a read-only row or a module's own card (`aiLyrics`' per-file verbs) is refused.
+The app's own settings: every dial of the settings registry (`SettingsSpec`, `Screens/SettingsSpec*.cs`). `setting` lists them in
+registry order, then the active theme's option dials (`live: true`): `{id, legacy?, category, group, parent?, tier?, kind, value,
+writer, readOnly?, enabled?, reason?, visible?, live?}` plus `count` (the registry's dials) and `live`. `legacy` lists the old row ids
+a dial answers to; `visible: false` marks one the facts compose away right now (it is still listed). `category=sound` (or an old slug,
+`audio`) lists one category. `setting id=<dial>`
+reads one dial, named by its registry id (`playback.crossfade`) or its old row id (`crossfade`), any case; `setting id=<dial> value=<v>`
+sets it through the dial's own writer, the verb a Settings view calls (a toggle's `true`/`false`, a slider's number, a choice's, a
+segmented dial's or a picker's index; naming an action presses it, with no value), and bumps the page epoch when the writer asks the
+page to re-read, as a view does: a mounted Settings page, the lyrics stage and the bar read the new value as after a click. A value set
+on a live mount is that mount's: the next `mount` (or `reset`) puts it back through the dial's writer (toggles, sliders, choices). One
+set with nothing mounted is for the next mount, which keeps it. An old id two dials shared would want the registry id (none does
+today); a read-only dial or a module's own card (`lyrics.ai.files`) is refused. A theme option is a dial too
+(`appearance.option.style.density`); `option` writes it by its own grammar.
 
 ```text
-setting id=lyricsBlur value=0        # the lyrics blur off (0..100)
-setting id=marquee value=false
-setting tab=appearance               # the tab's rows with their values
+setting id=lyrics.blur value=0       # the lyrics blur off (0..100)
+setting id=marquee value=false       # an old row id still names its dial
+setting category=sound               # one category's dials with their values
 ```
 
-The Settings tab strips key their items (`settings:tabitem:<slug>`: Classic's areas, WinUI's tabs; Zune's section list is
-`zs:link:<slug>`), so `click key=settings:tabitem:appearance` switches the tab the way a user does (`goto route=settings
-arg=appearance` opens it directly).
+**The Settings page (settings rework phase 4; contract 2.0 removed the old areas and tabs).** Settings opens on its home; the strip
+(Classic, WinUI) or the section list (Zune) holds the home and nine categories: `home`, `appearance`, `sound`, `playback`, `lyrics`,
+`notifications`, `system`, `storage`, `account`, `help`. `goto route=settings arg=<slug>` opens one directly, and every slug the page
+ever answered to still lands on the category that now holds what it opened (`SettingsSpec.Aliases.cs`): `general`, `language`,
+`graphics`, `links`, `tray` -> system; `audio`, `devices`, `devices-connect`, `connect` -> sound; `video` -> playback; `fullscreen`,
+`nowplaying` -> lyrics; `storage-cache`, `downloads`, `downloads-storage`, `cache` -> storage; `privacy`, `privacy-diagnostics` ->
+account; `about`, `feedback`, `feedback-help`, `keyboard`, `shortcuts`, `logs`, `diagnostics` -> help; an unknown slug opens the home.
+Through the deep-link door an old row id names its dial too (`goto deeplink="wavee://open?route=settings&arg=crossfade"` opens
+Playback and plays the arrival on Crossfade; `goto route=settings arg=<slug>` commits the route itself, with no arrival). The old
+strip keys (`settings:tabitem:<slug>`) are gone: Classic and WinUI key their strip items `settings:cat:<slug>`. Each theme keys its
+nodes from `SettingsKeys` (`Theming/Contracts/SettingsPageModel.cs`), so a link's arrival, these verbs and `lint` find the same node
+in every theme:
+
+| Key | What | Theme |
+|---|---|---|
+| `settings:search` | the page's search box (`SettingsPageProps.Search.Box(frame)` keys the theme's box node and binds it) | all |
+| `settings:cat:<slug>` | a category's strip item or list word (`home`, `appearance`, `sound`, `playback`, `lyrics`, `notifications`, `system`, `storage`, `account`, `help`) | Classic, WinUI |
+| `zs:link:<slug>` | a section word of the lowercase list (the same ten slugs) | Zune |
+| `settings:dial:<dialId>` | a dial's row in a category body (`settings:dial:playback.crossfade`) | Classic, WinUI |
+| `zs:row:<dialId>` | a dial's row | Zune |
+| `settings:result:<id>` | a search result (a dial's id, or a pointer's: `settings:result:pointer.downloads`) | all |
+| `settings:explain:<dialId>` | a dial's explanation badge (only where its clips exist for the theme in both app modes: the registered dials per theme are listed in `tools/settings-explain/README.md`, Status; in every theme, Lyrics blur, Crossfade and its duration, Normalization, Loudness level, the next-video countdown, the AI lyrics, Player style and its finish, Full-screen layout, Spectrum, the mini player's face and colour) | all |
+
+`click key=settings:cat:sound` (Zune `click key=zs:link:sound`) opens a category, `type key=settings:search crossfade` types into the
+box, `key down` / `key enter` walk and open the results, `key esc` clears the box (an open suggestion list closes with it) and a second
+one leaves it (the box takes Escape ahead of its field while the caret is in it, `SettingsSearchModel.Box`), `key ctrl+f` on Settings
+focuses the box instead of the app's search, and `key ctrl+188` (Ctrl+,) opens Settings on its home with the box focused.
+`settings model=` reads what the page is handed and `settings press=` runs the box's keys without a caret.
+
+### `settings {q? | focus? | model? | press?, limit?}`
+
+The settings search (`Screens/SettingsSearch.cs`): the one index the Settings box, the command palette's Settings group and this verb
+ask. `settings q=<text>` ranks the dials of the active theme and the feature pointers for a query as typed (folded, stemmed, prefix
+and typo matches, phrases, AND then OR) and replies `{q, count, close, allocBytes, results:[{id, pointer?, score, fields, title,
+place, under?}]}`: `fields` are where the best hits came from (`title`, `alias`, `terms`, `choice`, `caption`, `group`, `category`,
+`phrase`, `english`), `under` names the result's parent when the parent is a result too, `close: true` (with `note`) means no dial
+matched every word and the list is close matches, and `allocBytes` is what the query allocated (a second run, so the first use's
+index build is not counted: it must be 0). No result adds `noMatch`, `didYouMean` (up to three indexed words two or three edits away)
+and `searchApp`, the lines the results page shows. `limit` (default 8, up to 30) caps the list. `settings focus=<link>` hands a
+settings link (`category`, `category/dialId`, `dialId`, or any old slug or row id) to the deep-link door exactly as
+`wavee://open?route=settings&arg=<link>` does, settles, and replies with what it named (`known`, `category`, `dial`), the focus it
+recorded (`{dial, seq}`: `seq` grows on every dial link, so the same dial twice replays the arrival) and the route; a feature
+pointer's id (`focus=pointer.downloads`) opens the pointer's place instead. It needs a mount. An old slug lands on the category that
+now holds what it opened. `settings` alone reports the index (`entries`, `tokens`, `postings`, `trigrams`,
+`phrases`, `buildMs`, `culture`) and `missingTerms`: every composed dial and pointer with no `settings.terms.<id>` in the loc files
+(it must be empty).
+
+`settings model=<category>` prints what the page is handed: with Settings mounted, the props the page host
+last pushed (`source: "page"`), else the same members built now (`source: "built"`). `category` (the open one's index), `categories`
+(`{index, slug, title, strip, glyph}`: the home and the nine), `focus` (the arrival: `{dial, seq, category, group, parent, expand,
+highlightMs}`), `home` (`glance` `{id, title, value, dial, glyph}`, `suggestions` `{id, text, action, actionLabel, dial, act, dismiss}`,
+`recent` `{dial, title, value, from, agoMs, door}`), `body` (the named category, or the open one for `model=`: `groups` of `{id, title,
+subtitle, rows}`, a row `{id, kind, label, description, subgroup, glyph, value, choices, writer, enabled, reason, silent, tier, explain
+{clip, caption, path}, alsoInLine, alsoIn [{surface, place, door}], option, noteBefore, noteAfter, children}`) and `search` (the page box:
+`{q, active, count, close, highlight, focusTicket, box, allocBytes, results [{id, key, title, breadcrumb, spans [[start, length]], marked,
+under, pointer, row {kind, value, enabled, children}}], noMatch, didYouMean, searchApp}`). With `q=`, the query is written to the box's
+cell and ranked as a keystroke does (`allocBytes` is a second ranking's: it must be 0); `marked` shows the matched letters in brackets.
+`settings press=down|up|enter|esc` runs the box's key handler as a key in the bound box does (Down/Up move the highlight, Enter opens the
+highlighted dial (the first when none is) in its category through the deep-link door, Escape clears, a second Escape leaves) and replies
+the box's state, the focus and the route.
+
+```text
+settings model=playback q=crosfade         # the categories, the home, Playback's body and the box's results
+settings press=down                        # highlight the first result
+settings press=enter                       # open it: route settings playback, focus playback.crossfade
+settings model= q=xyzzy                    # the no-match state: noMatch, didYouMean, searchApp
+```
+
+```text
+settings q="dark mode"                      # appearance.appMode first, by its phrase
+settings q=crosfade                         # a typo: playback.crossfade, then its duration
+settings focus=lyrics.ai                    # opens Lyrics & Now playing on the AI lyrics card, as the AI sparkle does
+goto deeplink="wavee://open?route=settings&arg=playback/playback.crossfade"   # the same door from a link
+```
+
+### `hint {do, id?, blob?}` and `recent {clear?}`
+
+The in-app hints (settings rework phase 3: `Shell/Hints.cs`, the table of design 6.3, and the budget of 6.2) and Recently changed.
+Neither needs a mount.
+
+- `hint list` (the default `do`): every hint of the table in order, `{id, target, surface, action, priority, maxShows, snoozeDays,
+  dismissRetires?, state?, drawn, shows, lastDay, snoozedUntil, dismissals, retired, trigger, verdict, home}`, plus `tipsOn`, `today`
+  (the local day number the budget counts in), `session` (the one counted hint this session showed), `onScreen`, `forced` and
+  `suggestions` (the Settings home's top three, ids). `verdict` is the budget's answer in the app, `home` on the Settings home
+  (`qualifies`, `waiting` (the trigger does not hold), `notHere` (the hint cannot exist here: no such option in this theme, no sleep
+  timer yet), `notDrawn` (no theme draws its placement yet: every hint until phase 6), `tipsOff`, `retired`, `snoozed`, `shownOut`,
+  `shownToday`, `otherThisSession`, `satisfied` (the state it suggests is reached), `blocked` (a never-when gate: the wizard, another
+  overlay, a hidden window, the first two minutes, a track's first seconds)). `trigger` is the trigger fact alone.
+- `hint show id=<hint>` forces the hint's trigger true for ONE mount: the slot of its surface mounts the hint (the Common stand-in, key
+  `hint:<id>`, its button `hint:<id>:act`, "Not now" `hint:<id>:dismiss`, after an inline write "Change" `hint:<id>:change`) whatever its
+  trigger and budget say, and no show is counted. On a live mount it shows at once and the reply says `shown`; with nothing mounted it
+  waits for the next mount. The mount after that clears it. The surface must be on screen: the lyrics footer (open the lyrics pane or the
+  full screen's lyrics) or the Home banner (route `home`); the other surfaces mount their slot with their placement (phase 6).
+- `hint reset` forgets every hint's budget, the use facts (bell opens, quick relaunches, sign-in launches) and the session, as a fresh
+  launch with no blob. Recently changed stays (`recent clear=true` empties it).
+- `hint state` replies the persisted blob (`hints.state`); `hint state blob="<blob>"` writes it to the store and reads it back as a
+  launch does. The server's settings live in memory, so this is how a run carries the hints and Recently changed over a server restart:
+  read the blob, start a new server, load it.
+- `recent` lists the last five dial writes, newest first: `{count, writes:[{dial, title, value, surface, from, atMs, agoMs}]}` (`value`
+  is the dial's value now; `from` the words for the source: "from the inspector", "from a tip"). Every value writer of the registry
+  records into it, from any surface; `setting` writes record as the inspector, and the values a mount puts back record nothing.
+
+A mount keeps the hint blob (it is the profile's state); a dial written through `setting` stays retired after the mount puts its value
+back. `hint reset` is the clean slate.
+
+```text
+hint show id=ai-lyrics          # with the lyrics pane open: the stand-in in the lyrics footer
+setting id=crossfade value=true # retires the crossfade hint, and appears in `recent`
+hint list
+recent
+```
 
 ### `find {key | prefix, visibleOnly?, depth?}`
 
@@ -936,7 +1188,9 @@ settles, and steps back to `from` the same way the crossing will step on (narrow
 Every node that step snaps or jumps is recorded by key with how far it moved. At the edge, a move of a key the control moved
 as far (within 1 DIP; each control move explains one edge move, largest with largest) is the plain resize's own; every other
 is **excess** (`counts.excessSnapped`, `excessJumped`), what the edge adds: `inspect.py --gate` fails a crossing whose excess
-is above `--max-moved` (default 0). `control:null` with `controlNote` when no same-tier step exists (every move is then
+ON THE SCREEN (`excessSnapped + excessJumped - excessOffscreen`) is above `--max-moved` (default 0); the off-screen excess
+counts only under `--gate-todo` (2026-11-17: a part moved wholly off the screen is classified by what drew it, which the control
+step and the edge can see differently; on screen the same part is explained by the control). `control:null` with `controlNote` when no same-tier step exists (every move is then
 excess); `control=false` skips it.
 
 Reading a crossing:
@@ -983,9 +1237,9 @@ Reading a crossing:
 | `committed` | The window or height tier or a rung changed (the content tier is not compared). `heldOldTier`: the resized frames still read the old tier (the engine's rule). |
 | `contentCommitted` | Where the content tier first differed from `tierBefore.content`: `resized`, `commit`, `settle` or `none`. |
 | `control` | `{from{w,h}, snapped, jumped}`: the control step (above), or null (`controlNote` says why), or `"off"`. |
-| `counts` | `tracked`, `changedOnCommit`, `glided`, `snapped`, `jumped`, `excessSnapped`, `excessJumped` (past the control: what `--gate` counts), `unpainted` (changed at once but draws nothing, nor does anything under it that moved with it: a container whose children glide), `remounted`, `remountedSwap`, `remountedOutside` (what `--gate` fails on), `vanished`, `appeared`, `recounted`. Read the counts, not the length of a list. |
+| `counts` | `tracked`, `changedOnCommit`, `glided`, `snapped`, `jumped`, `excessSnapped`, `excessJumped` (past the control; `--gate` counts them less `excessOffscreen`), `unpainted` (changed at once but draws nothing, nor does anything under it that moved with it: a container whose children glide), `remounted`, `remountedSwap`, `remountedOutside` (what `--gate` fails on), `vanished`, `appeared`, `recounted`. Read the counts, not the length of a list. |
 | `remounted` | Keyed nodes (unique before) that are a different node after the settle: identity, state and motion lost. Each has `family`: the key of the swap it sits under (the nearest node this step mounted whose registered enter AND exit are a DECLARED swap cross-fade: opacity only, and carrying the family id `SwapFamilies.Declare` gave it; the four theme helpers `ClassicTierMotion.SwapFade`, `ZuneMotion.SwapFade`, `WinUiDiscoveryMotion.SwapFade` and `WinUiScreenMotion.SwapFade` declare theirs; owner rule "a tier crossing keeps its parts" lets only such a genuinely different tree remount), or null: a rebuilt part. An undeclared opacity fade (an arm cross-fade such as Zune's `ArmFade`, a control's appear) is no family: Zune album W640's 76 arm parts count outside. Listed outside a family first. |
-| `late` | Weights (report-only): `counts.excessOffscreen` is how many of the excess moves happened wholly off the screen (below the fold, scrolled out of their viewport: nobody saw them; Classic home H680 narrowing: 142 of 167), and `late[{key, frame, d}]` / `counts.late` the parts whose laid-out rect changed in the 20 settle frames after the commit with nothing easing them (a part landing late, which the commit-frame compare misses). `--gate` reads neither; `--gate-todo` fails on late reflows. A container that changes at once while its children glide is `unpainted` already. |
+| `late` | Weights (report-only): `counts.excessOffscreen` is how many of the excess moves happened wholly off the screen (below the fold, scrolled out of their viewport: nobody saw them; Classic home H680 narrowing: 142 of 167; `--gate` subtracts them, `--gate-todo` fails on them), and `late[{key, frame, d}]` / `counts.late` the parts whose laid-out rect changed in the 20 settle frames after the commit with nothing easing them (a part landing late, which the commit-frame compare misses). `--gate` reads neither (it subtracts the off-screen excess); `--gate-todo` fails on both. A container that changes at once while its children glide is `unpainted` already. |
 | `vanished` | Keyed nodes that are gone or no longer shown after the settle. A tier that drops a part on purpose shows up here. |
 | `appeared` | Keys shown after that were not before. |
 | `recounted` | Keys that repeat (rows) whose count changed: `{key, before, after}`. |
@@ -1085,6 +1339,7 @@ frame clock: frames are not real time, and the `ms` fields are the CPU cost of e
 | `keys`, `prefix` | Nodes to watch: exact keys and key prefixes (comma list or JSON array; a prefix may carry control characters, so use the JSON form for `"2"`). Matches are re-resolved every frame, so a page that mounts mid-trace is picked up. At most `max` nodes (20 by default, 500 at most); duplicates of a key are `key#1`, `key#2`, and each node keeps its label from frame to frame (a node mounting or leaving earlier in reading order renumbers nothing; a new node takes a label no node held the frame before, or a lone key's replaced node's). |
 | `scroll` | `main` (the shown vertical scroller with the most room, re-picked each frame) or a node key (the first scroller under it). |
 | `every` | Emit every Nth row; the summary always covers every frame. `rows=false` leaves only the summary. |
+| `curves` | `curves=true`: per watched key its motion curve (`curves[{key, frames, x\|y\|w\|h\|opacity: {v[], spark}}]`, only the channels that moved) and `motionFindings[{key, channel, kind, frame, delta, before, after}]`: `step` (one frame moves over 2.5x both neighbours), `reversal` (it turns back within 2 frames: a spring's overshoot does on purpose), `stall` (a still frame between visible moves), `snap` (the whole change in one frame); `motionCounts`. |
 | `jump`, `snap` | Thresholds in DIP: 2 and 0.5. |
 | `census` | `true` turns the host's render census on: a slow frame's row then carries `census`, the components that made it slow. Off by default (it costs frame time). |
 | `flights` | `true`: each row carries the connected navigation flights (a card's cover flying into its page's hero, and back) and the summary their take-off and hand-off (`flight`, below). Off by default. |
@@ -1102,15 +1357,27 @@ Each **row**: `f` (frame in the trace), `abs`, `animating`, `ms` (`wall`, `cpu` 
 `fullLayoutInferred`, `components`, `reactiveUnits`, `bindingFires`, `bindingWrites`, `textShapes`, `textShapeMisses`, `nodesVisited`,
 `drawNodes`, `imageApplied`, `gc0/1/2`), `nodes` (`w` = index into `watch`, `lay` and `pres` = `[x,y,w,h]` laid-out and presented rects,
 `track` = a track is live on the node or an ancestor, `shown`, `op` = opacity multiplied up the chain) and `scroll` (`offset`,
-`lastShown`, `velocity`, `max`, `content`, `viewport`, `motion`, `user`). With `flights=true`, `flights[{key, phase, back, pres, dest, shadow, srcHidden, destHidden, img}]`:
-the flight's key (the album uri), `pending|flying|landed|abandoned`, Back or forward, the flyer's presented rect, the dest's rest rect,
-the shadow's opacity, whether each end's slot is hidden, and the texture the flyer draws (it cuts to the dest's own rendition once ready).
+`lastShown`, `velocity`, `max`, `content`, `viewport`, `motion`, `user`). With `flights=true`, `flights[{key, phase, back, pres, dest, shadow, srcHidden, destHidden, img, radius, destRadius, mix, standIn, clip, refinds}]`:
+the flight's key (any entity's uri: an album, playlist, show, episode or user; `spotify:collection:tracks` for Liked Songs; an artist never flies),
+`pending|flying|landed|handingOff|abandoned`, Back or forward, the flyer's presented rect, the dest's rest rect, the shadow's opacity,
+whether each end's slot is hidden, the texture the flyer shows (it cuts to the dest's own rendition of the same picture once ready), the
+flyer's corner radius this frame and the dest's (a circle opening into a square cover travels with the size), the dest picture's share when the
+two ends show different pictures (a Home card's wide art becoming the square cover, a generated cover: they dissolve on the flight's spring; -1 one
+picture), whether a landed flyer stands in for a dest picture not drawable yet (a cold page), the flyer's visible part (a card a
+scroller's edge cuts), and how often the dest was found again (`refinds`: the loaded header replacing the skeleton's plate).
+
+An artist's page flies nothing: it GROWS out of the item that opened it (WinUI, `PageMotionPolicy.GrowInto`), and on Back shrinks toward it.
+Watch the page roots (`prefix=page:`): a node's `pres` composes every scale on its chain about each node's own transform origin, so the
+pivot of a scaled page is `(pres.x - s*lay.x) / (1 - s)` with `s = pres.w / lay.w` (and the same in y), and on a forward grow it is the
+clicked item's centre on every frame (`flights=true` shows none).
 
 The **summary**: `settledAt`, `rootSolveFrames`, `escapeFrames`, `fullLayoutFramesInferred` (measures with no dirty marks), measure and component
 totals, the `max` frame for layout/cpu/wall/record/flush/submit, `cpuOver8ms/16ms`, `snaps` (laid-out and presented rect changed with no track),
 `jumps` (presented rect moved over `jump` DIP in a frame under a track; every eased glide has some), `instants` (a run of jumps on
 consecutive frames whose largest frame moves at least `instant`=4 DIP and carries 60 % of the run: the change landed at once
-while something above it animated, a page reflowing in one frame beside a sliding pane), and `scroll`:
+while something above it animated, a page reflowing in one frame beside a sliding pane; a node whose own rect stands still while
+an animating ancestor's clip uncovers or covers it, a FlowReveal opening over a control, is no jump and no instant: those frames
+carry its run on and are counted as `uncovered`), and `scroll`:
 `reversals`, `overshoots` (runs outside [0, max], with the deepest point), `stalls`, `uneven` deltas, `layoutDuringScroll` and `deltas`
 statistics. Beside the summary, `counts{watched, snaps, snappedKeys, instants, movedAtOnce, remounted, remountedSwap,
 remountedOutside}` and `remounted[{key, frame, family}]`: a lone watched key that is a different node from one frame to the
@@ -1120,15 +1387,79 @@ that watched nothing (pass `prefix=`/`keys=`, and `max=` above 20 for a page). `
 prints the summary as text: the motion counts, the remounts, the snaps, instants and jumps (30 each), `after`.
 
 With `flights=true` the reply also carries `flight{flights, startedAt, landedAt, handedOffAt, takeoffDelta, handoffDelta,
-maxStepDip, abandoned, unfinished}`: the frame the flyer first showed, landed and handed off (the flyer gone, the real cover shown),
-the largest edge difference between the flyer and its source on the first frame that drew it (the engine's record) and its dest on its
-last frame, the largest edge step between two frames, and whether a flight was abandoned (a new navigation mid-flight) or never
-ended. `inspect.py --gate` fails a flight whose `takeoffDelta` or `handoffDelta` is over 0.5 DIP, or that is `unfinished`. `status`
+maxStepDip, radiusDelta, mixAtHandOff, stoodInFrames, refound, standingIn, abandoned, unfinished}`: the frame the flyer first showed,
+landed and handed off (the real node shown: the flyer gone on a cut, or `handingOff` starting its fade over a header whose copy lies on it), the largest
+edge difference between the flyer and its source on the first frame that drew it (the engine's record) and its dest on the hand-off frame,
+the largest edge step between two frames, the radius and mix on the hand-off frame, the frames it stood in, whether the dest was found
+again, whether the trace ended while it stood in (`standingIn`: not `unfinished`), and whether a flight was abandoned (a new navigation
+mid-flight, a dest scrolled under half visible) or never ended. `inspect.py --gate` fails a flight whose `takeoffDelta`, `handoffDelta` or
+`radiusDelta` is over 0.5 DIP, that handed off with its two pictures still mixed (`mixAtHandOff` between 0.01 and 0.99), or that is
+`unfinished`. `status`
 carries `connected{flights, pending}`. A forward flight: `click key=lazy-cell:8 trace=60 keys=hero-cover flights=true` on
 `disco:0:spotify:artist:ar3`; Back: `key alt+left trace=45 keys=hero-cover,lazy-cell:8 flights=true`. Click a card on its label, not its
 centre: the centre of a WinUI card's cover is its play button.
 
+### `perf {do, budget?, judge?, census?, rows?, items?, path?, reset?}`
+
+A frame-cost capture around any verbs (`Diagnostics.Inspect.Perf.cs`). `perf on` (needs a mount; later mounts are followed) records
+every frame any later verb runs, its own frames and its settle, under that verb's label; `perf report` judges them; `perf off`
+stops. The milliseconds are real CPU wall time of the frame's phases on the UI thread, while the motion plays on the 16 ms clock:
+a Debug build's numbers, relative, not the shipped ones. JIT time (`FrameStats.JitMs`) is subtracted (NativeAOT ships none);
+`submit` and `gpu` on `gpu=warp` are WARP's CPU rasteriser, reported apart (`gpuMaxMsWarp`), never judged as GPU numbers.
+
+| Arg | Meaning |
+|---|---|
+| `do` | `on`, `off`, `report` (default), `status` (positional: `perf on`) |
+| `budget` | ms. Default: the display the mount's `dt` stands for (16.67 at dt=16; dt=8.333 for 120 Hz) |
+| `judge` | `ui` (default: flush + layout + anim + record + postSubmit, JIT subtracted) or `total` (adds submit) |
+| `census` | `on`: the host's render census names the components of a slow flush (costs frame time: judge with it off) |
+| `rows`, `items`, `path` | report: the rows listed (`over`, default: the over-budget and alloc frames; `all`; `none`), the most per list, and a JSON file of every row |
+| `reset` | report: forget the frames after it |
+
+`perf report` replies `frames, budgetMs, budgetFrom, judged, devices, note, gate{over, alloc, dropped, failed}`, `glyphsDroppedSession`, `dropped[{frame, verb, glyphs}]` (glyph quads the GPU backend did not draw: text missing for a frame), `verbs[{verb, frames,
+animating, presents, over, maxMs, p95Ms, medianMs, maxFrame, jitMs, submitMaxMs, gpuMaxMs|gpuMaxMsWarp, measures, hotAllocBytes}]`,
+`over[{frame, verb, ms, top, topMs, why}]` (the top phase and what is behind it: the relayout scopes and their measures for a
+layout, the components for a flush, the effect owner for postSubmit), `alloc[{frame, verb, bytes, why}]` (a STEADY animation frame,
+something animating and no component, reactive unit, bind write or measure, that allocated on the hot phases 6-13),
+`allocOtherFrames` and `rows[{f, verb, ms{ui, jit, flush, layout, anim, record, postSubmit, submit, gpu}, measures, scopedMarks,
+escapes, components, hotAlloc, animating, presented, scopes[{key, measures, kind}], census?}]`. A scope's key is the node's own, or
+`key >n` for the keyed node n levels above it. `tools/inspect.py --gate-perf [MS]` exits 1 on any over, alloc or dropped frame (a row with a GC carries `gc:[g0,g1,g2]`: a GC reads as up to 8 KB of alloc) (2 on
+`ok:false` or no report); `MS` sets the budget of every `perf report` line that names none. Warm the path first (run the
+interaction once before `perf on`) and compare against a base build: in Debug, Home's full relayouts on a resize run near 16 ms.
+
+```text
+mount w=1440 h=960 theme=winui route=home gpu=warp
+home do=page key=nmf page=2
+home do=page key=nmf page=1                # warm: JIT and decodes paid here
+perf on
+home do=page key=nmf page=2
+perf report                                # gate{over:0, alloc:0}: a 2.2 ms worst frame (Debug, WARP)
+```
+
+### `film {frames, every?, path, cols?, scale?, crop?, framesDir?, keys?, prefix?, ...}`
+
+Motion you can look at (`Diagnostics.Inspect.Film.cs`). Traces `frames` frames from where the host stands, so start the motion
+with the acting verb's `settle=false`, and keeps every `every`-th frame (and the last) in ONE contact-sheet PNG at `path`: `cols`
+cells per row, each frame scaled by `scale` (default 0.5) and labelled `f12 +208ms` (frame and time on the 16 ms clock). `crop=<key>`
+keeps that node's drawn rect (8 DIP around it, as it stood when the film began; it must be on the window); `framesDir=<dir>` also
+writes each kept frame whole (that allocates per kept frame; without it film reuses one capture buffer and may share a `perf` window). With `keys`/`prefix` (and every trace option) the reply carries the motion `curves` (see `trace
+curves=true`). Needs pixels: `gpu=warp` or `gpu=hardware`. Reply: `path, traced, cells, crop?, every, clock, cellFrames[], watch[],
+curves[]?, motionFindings[]?, motionCounts?, settledAt, snaps, instants, remounted`.
+
+```text
+scroll key=home:scroll dy=14
+home do=page key=nmf page=2 settle=false
+film frames=36 every=3 cols=4 scale=0.6 crop=home:tile:feed:spotify:section:wavee-mockup-nmf path=C:/WAVEE/scratch/x/pager.png keys=[home-shelf-card:spotify:playlist:37i9dQZEVXbp4UblnlhiEI]
+```
+
 ## Typical workflows
+
+### Hunt a hiccup
+
+The recipe for any Home motion (the fgpu skill's `verify/debug-home.md`; `fg hiccup "<acting verb>" --undo "<verb>"` writes and
+runs it): warm the path, `perf on`, the interaction, `perf report` under `--gate-perf --gate error`; then the interaction with
+`settle=false` and a `film` of it; `media=fake mediaStartCostMs=40` stages a slow video start; `home do=explain` says why a
+section is there.
 
 ### Audit a page at four sizes
 

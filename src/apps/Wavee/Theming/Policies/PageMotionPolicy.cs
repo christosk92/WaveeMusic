@@ -56,15 +56,30 @@ public sealed record PageMotionPolicy(Func<PageSwap, LayoutTransition?>? Recipe 
     /// <c>Design.Nav.SameKindSwap</c> fade.</summary>
     public Func<bool, TierFacts, LayoutTransition?>? LibraryPivot { get; init; }
 
-    /// <summary>The connected navigation flight (<c>SharedTransition.BeginNav</c>): an album card's cover flies into the album page's hero,
-    /// and back into the card on Back. Null = this structure flies nothing (the swap plays as authored).</summary>
+    /// <summary>The connected navigation flight (<c>SharedTransition.BeginNav</c>): a picture flies into the header of the page it opens (a
+    /// card's cover into an album's, a playlist's or a show's, an artist's round photo into the artist's header), and back into the card on
+    /// Back. Null = this structure flies nothing (the swap plays as authored).</summary>
     public FluentGpu.Animation.ConnectedNavSpec? Connected { get; init; }
+
+    /// <summary>A page of a kind that grows out of the item the user opened it from instead of flying a picture (the artist: its header photograph
+    /// is not the card's round avatar, so a copied picture would morph into another one). Null, or a null answer, = the kind flies (or swaps as
+    /// authored when nothing flies). Honoured where <see cref="Connected"/> is: off with Settings' Connected animations, never under reduced motion.</summary>
+    public Func<EntityKind, GrowNav?>? GrowInto { get; init; }
 
     /// <summary>Under a flight, the page swap keeps its recipe's opacity legs and timings and loses its slide, zoom and stagger
     /// (<c>Design.Nav.Quiet</c>): the cover is the only thing that travels (Microsoft: a connected animation "does not work well" over a
     /// translating page transition). False keeps the authored recipe under the flight.</summary>
     public bool ConnectedQuietPage { get; init; } = true;
 }
+
+/// <summary>How a page grows out of the item it was opened from (<see cref="PageMotionPolicy.GrowInto"/>): the incoming page scales from
+/// <paramref name="EnterScale"/> to 1 about that item's centre and fades in from <paramref name="EnterOpacity"/>, on a critically damped spring of
+/// <paramref name="Response"/> seconds; the old page keeps the recipe's opacity leg only. Back shrinks the page to <paramref name="BackScale"/> about
+/// the same item (or about the page's centre when it is no longer at least <paramref name="MinVisible"/> on screen, or its page's box changed) and
+/// fades it out on <paramref name="Response"/> x <paramref name="BackResponseScale"/>, while the restored page fades in on the recipe's opacity leg.
+/// The scale is a pivot only in effect: the page's own transform origin stays its centre, and an offset of (1 - scale) x (item centre - page centre)
+/// rides the same spring, so the item's centre holds still on every frame.</summary>
+public sealed record GrowNav(float EnterScale, float BackScale, float EnterOpacity, float Response, float BackResponseScale, float MinVisible);
 
 /// <summary>How a tab INSIDE a page (the artist page's pivot) moves the page to its section, by the distance <c>d</c> to it and the page viewport's
 /// height <c>vh</c>. Near (<c>d</c> &lt;= <see cref="NearViewports"/> x <c>vh</c>) the page glides there. Far, it cuts to a lead short of the section

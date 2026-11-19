@@ -2473,8 +2473,8 @@ public readonly partial struct Track
         {
             AcceptKinds = [Drag.Resource],
             CanAccept = payload => Verdict(payload) == DropRefusal.None,
-            // An album/show table sits the gesture out silently; a read-only PLAYLIST says why (ch 04 §9.9).
-            Transparent = _ => Cfg.Kind is DetailKind.Album or DetailKind.Show && !Editable,
+            // An album table sits the gesture out silently; a read-only PLAYLIST says why (ch 04 §9.9).
+            Transparent = _ => Cfg.Kind is DetailKind.Album && !Editable,
             IsSameList = IsSameList,
             // A same-list reorder never dims the app; a cross-list deposit keeps the scrim.
             SpotlightWhen = session => !IsSameList(session.Payload),

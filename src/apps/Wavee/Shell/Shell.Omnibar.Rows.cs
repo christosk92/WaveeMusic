@@ -39,6 +39,7 @@ public static class OmnibarRowRules
     public static bool Drags(Shell.Omnibar.ItemKind kind) => SearchHitRules.Drags(EntityKindOf(kind));
 
     /// <summary>The row's surface shape: a 44 art square in a 58 floor, its "…" in a lane of its own after the heart /
-    /// Follow pill — the search page's rule (<see cref="SearchHitRules.RowMenu"/>), for the same reason.</summary>
-    public static SurfaceShape RowShape => Shape.Row(44f) with { MinHeight = 58f, Menu = SearchHitRules.RowMenu };
+    /// Follow pill — the search page's rule (<see cref="SearchHitRules.RowMenu"/>), for the same reason. Its art never flies:
+    /// the popup closes on the click (<see cref="SurfaceShape.Connect"/>).</summary>
+    public static SurfaceShape RowShape => Shape.Row(44f) with { MinHeight = 58f, Menu = SearchHitRules.RowMenu, Connect = false };
 }

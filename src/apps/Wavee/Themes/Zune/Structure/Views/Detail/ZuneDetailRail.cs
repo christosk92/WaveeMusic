@@ -1,4 +1,4 @@
-// ── Themes/Zune/Structure/Views/Detail/ZuneDetailRail.cs — Zune's identity column, its collapsed strip and the show header (P5 Z6a1) ─────────
+// ── Themes/Zune/Structure/Views/Detail/ZuneDetailRail.cs — Zune's identity column and its collapsed strip (P5 Z6a1) ────────────────────────
 //
 // Z-Album's left column (240 at Standard, 160 Small, 320 Huge, 400 Huge 4K): the cover at the column's width, the artist in the 18/24 voice,
 // the meta line ("album · may 17, 2013 · 13 songs · 74 min", the label case lowering the words; two lines at Small, broken only
@@ -8,14 +8,10 @@
 // folds the panorama and the column leads with the title in the heading voice instead).
 //
 // One skeleton boundary (the core's header-pending gate): the loading column reserves the same rows at the same heights (the cover, the artist
-// line, the meta line, the ring row), so the reveal is a dissolve. A podcast or playlist page's own slots (the owner block, badges, rating, the
-// ledger, topics, a primary or satellites) keep their places in the column; their pages' lanes refine them.
+// line, the meta line, the ring row), so the reveal is a dissolve. A playlist page's own slots (the owner block) keep their places in the column.
 //
 // THE COLLAPSED STRIP. Zune draws no grip (the column is the tier's width), so it never collapses the column itself; a collapse stored by another
 // theme reaches it, and the strip (`Detail.CompactRail`) is the cover and a 40 expand target, so the stored state is one click from undone.
-//
-// THE SHOW HEADER (`Detail.ShowHeader`): a show's or an episode's vertical arm, built from the same parts (no board draws it under Zune, Q18). Since audit
-// B9 it IS the rail drawn stacked (`DetailRailProps.Stacked`): one identity at every width, so a crossing glides the cover, the facts and the rings.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -32,8 +28,7 @@ using Z = Wavee.Themes.Zune.ZuneDetailRules;
 
 namespace Wavee.Themes.Zune;
 
-/// <summary>Zune's identity column (<see cref="ViewKeys.DetailRail"/>), its strip (<see cref="ViewKeys.DetailCompactRail"/>) and the show header
-/// (<see cref="ViewKeys.DetailShowHeader"/>).</summary>
+/// <summary>Zune's identity column (<see cref="ViewKeys.DetailRail"/>) and its strip (<see cref="ViewKeys.DetailCompactRail"/>).</summary>
 internal static class ZuneDetailRail
 {
     // ── the identity column ──────────────────────────────────────────────────────────────────────────────────────────
@@ -97,20 +92,16 @@ internal static class ZuneDetailRail
         if (!fold)
         {
             var info = new List<Element>(6);
-            // The stacked header leads its facts with the badges; the column states them after the artists.
-            if (stacked && slots.Badges is { } badgesLead) info.Add(K.LateRow("rail:badges", badgesLead()));
             if (id.OwnerName is { Length: > 0 } && id.Kind != DetailKind.Album && slots.Attribution is null)
                 info.Add(K.LateRow("rail:owner", K.ArtistText(id.OwnerName, w, lay)));
             // The artists' line: the column's always (the page's attribution, else the billed artists); the stacked header's only where the page has an
-            // attribution of its own (a show's publisher).
+            // attribution of its own.
             if (!stacked || slots.Attribution is not null)
                 info.Add(K.LateRow("rail:artists", new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, MinHeight = stacked ? 0f : lay.ArtistLine, Width = w, MinWidth = 0f,
                     Children = [slots.Attribution?.Invoke(w) ?? K.Artists(id, w, lay)],
                 }) with { Enter = enter ?? K.FadeUp, Exit = ZuneMotion.SwapFade });
-            if (!stacked && slots.Badges is { } badges) info.Add(K.LateRow("rail:badges", badges()));
-            if (slots.Rating is { } rating) info.Add(K.LateRow("rail:rating", rating(w)));
             int metaLines = stacked ? Z.ShowMetaLines : lay.MetaLines;
             info.Add(K.LateRow("rail:meta", p.Shown is { } shown
                 ? Embed.Comp(new MetaProps(id, w, lay, metaLines), () => new MetaLine(shown))
@@ -142,20 +133,17 @@ internal static class ZuneDetailRail
             });
         }
 
-        // The status rows (a show's played ledger, the daylist's pulse, the chart's news) stand between the facts and the rings; on a Short window the
-        // column's follow the rings, so the verbs and their state stay above the play bar at rest (V4). The stacked header draws the ledger alone.
-        var status = new List<Element>(3);
-        if (!fold && slots.Ledger is { } ledger) status.Add(K.LateRow("rail:ledger", ledger(w)));
+        // The status rows (the daylist's pulse, the chart's news) stand between the facts and the rings; on a Short window the column's follow the
+        // rings, so the verbs and their state stay above the play bar at rest (V4).
+        var status = new List<Element>(2);
         if (!stacked && id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) status.Add(K.LateRow("rail:daylist", pulse()));
         if (!stacked && id.ChartNewEntries > 0 && slots.Chart is { } chart) status.Add(K.LateRow("rail:chart", chart()));
         bool statusAfter = !stacked && shortWindow;
         if (!statusAfter) kids.AddRange(status);
         // The ring row eases its height (a Short window's play and saved can wrap it onto a second line), so the rows under it glide. Across the page
         // (stacked) it springs its trailing rings to the far edge.
-        kids.Add(K.Row("rail:actions", K.Rings(Z.ActionsKey, id, cfg, acts, slots, p.Accent, p.Play, lay, spring: stacked)) with { Layout = K.GrowShove });
+        kids.Add(K.Row("rail:actions", K.Rings(Z.ActionsKey, id, cfg, acts, p.Accent, p.Play, lay, spring: stacked)) with { Layout = K.GrowShove });
         if (statusAfter) kids.AddRange(status);
-        if (!stacked && slots.Topics is { } topics) kids.Add(K.LateRow("rail:topics", topics(w)) with { Exit = ZuneMotion.SwapFade });
-        if (!stacked && slots.About is { } about) kids.Add(K.LateRow("rail:about", about(w)) with { Exit = ZuneMotion.SwapFade });
         if (!fold && id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(K.LateRow("rail:prerelease", pre()));
         if (!fold && cfg.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
             kids.Add(new BoxEl
@@ -192,7 +180,7 @@ internal static class ZuneDetailRail
         kids.Add(K.CoverSkeleton(id.CoverUrl, w));
         kids.Add(new BoxEl { Height = lay.ArtistLine, Direction = 0, AlignItems = FlexAlign.Center, Children = [K.Bar(w * Z.SkelArtistFraction, lay.ArtistSize)] });
         kids.Add(new BoxEl { Height = lay.MetaLine, Direction = 0, AlignItems = FlexAlign.Center, Children = [K.Bar(w * Z.SkelMetaFraction, lay.MetaSize)] });
-        kids.Add(K.RingsSkeleton("skel:actions", K.RingCount(id, spec.Config, spec.Actions, spec.Slots, lay), lay));
+        kids.Add(K.RingsSkeleton("skel:actions", K.RingCount(id, spec.Config, spec.Actions, lay), lay));
         return new BoxEl { Direction = 1, Gap = lay.RailGap, Width = w, Shrink = 0f, Children = kids.ToArray() };
     }
 
@@ -260,18 +248,4 @@ internal static class ZuneDetailRail
         };
         return ToolTip.Wrap(strip, id.Title, grow: 1f);
     }
-
-    // ── the show header ──────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The registered template of <see cref="ViewKeys.DetailShowHeader"/>: the identity drawn STACKED (<see cref="RailTemplate"/>; Zune's own frame
-    /// draws the rail stacked at every show and episode page below the mode edge, audit B9, and the panorama in its band). The cover beside the facts
-    /// (the publisher or the show, the rating, the meta line), the ledger, then the ring row full width; the prerelease card and the release facts under
-    /// it. ONE HOME PER VERB (audit A4): the rings' own gates read the WINDOW's band, so a show's follow and save leave the row where the band's row 2
-    /// carries "follow". A SHORT window folds it to the show's name in the heading voice over the ring row.</summary>
-    public static Element ShowHeaderTemplate(DetailShowHeaderProps p, in ViewContext ctx)
-        => RailTemplate(new DetailRailProps
-        {
-            Spec = p.Spec, Actions = p.Actions, RailWidth = 0f, TitleSize = 0f, DescriptionLines = 0, Accent = p.Accent, Play = p.Play,
-            Pending = K.Never, Stacked = true,
-        }, ctx);
 }

@@ -11,6 +11,12 @@
 //   TABS OFF (48)  the toolbar alone, the captions at its end; after Forward the Wavee mark (not at Compact). The strip is hidden, not the
 //                  tabs: the workspace is kept (`ShellCapabilities.HiddenTabStrip`) and comes back in place.
 //
+// THE WINDOW MENU (settings rework phase 5, design 5.4). A right-click on the bar's empty drag space opens WinUI's own menu (as the engine routes a
+// caption right-click to the nearest `OnContextRequested`, it replaces the system menu there; Alt+Space keeps that): "Backdrop" with Mica ·
+// Mica Alt · Acrylic · None as radio rows, then "Tabs in the title bar" as a toggle. Each row is the option's generated Settings dial itself,
+// written through its one writer (`ThemeHost.Apply`) with the title bar menu as the source; the options name the menu as their in-context home
+// (`ThemeOption.Contexts`), so Settings says "Also in", and that door (`ShellTitleBarProps.WindowMenuRequest`) opens the same menu under the bar.
+//
 // Every interactive child is a keyed `TitleBarItem` (its own Client region; the gaps stay drag space, re-reported in the frame they move), the
 // mark is non-interactive drag space. The bar's row count follows `ShowsTabStrip` live; the frame's slot eases its height (88 <-> 48), so the
 // toolbar row never jumps. Self-updating content (the history buttons, the bell's badge, the pin, the chip) is its own component.
@@ -37,19 +43,93 @@ internal static class WinUiTitleBar
     {
         var tiers = ctx.TierReader();
         var facts = TierContext.DrawnIn(ctx.Hooks.UseContext(ThemeFactsContext.Signal));
-        return Embed.Comp(() => Bar(props, tiers, facts));
+        return Embed.Comp(() => new WindowMenu(props, tiers, facts));
     }
 
+    /// <summary>The registry ids of the two options the window menu draws (the active theme's generated dials).</summary>
+    internal const string BackdropDial = SettingsSpec.ThemeOptionPrefix + "style.backdrop", TabsDial = SettingsSpec.ThemeOptionPrefix + WinUiStructure.TabsQualifiedId;
 
-    private static TitleBar Bar(ShellTitleBarProps props, Func<TierFacts> tiers, IReadSignal<ThemeFacts> facts)
+    /// <summary>The window menu's rows: "Backdrop" over its four looks as radio rows, then "Tabs in the title bar" as a toggle; each the
+    /// option's dial, written with the title bar menu as its source. Built when the menu opens (the values are read then).</summary>
+    internal static List<MenuFlyoutItem> WindowMenuItems()
+    {
+        var items = new List<MenuFlyoutItem>(7);
+        if (SettingsSpec.TryResolve(BackdropDial, out SettingsDial backdrop, out _))
+        {
+            items.Add(MenuFlyoutItem.Header(Loc.Get(backdrop.TitleKey)));
+            int at = backdrop.Current is int i ? i : 0;
+            for (int c = 0; c < backdrop.ChoiceKeys.Count; c++)
+            {
+                int index = c;
+                items.Add(MenuFlyoutItem.RadioItem(Loc.Get(backdrop.ChoiceKeys[c]), c == at, () => backdrop.WriteChoice(index, SettingsSurfaces.TitleBarMenu)));
+            }
+        }
+        if (SettingsSpec.TryResolve(TabsDial, out SettingsDial tabs, out _))
+        {
+            if (items.Count > 0) items.Add(MenuFlyoutItem.Separator);
+            bool on = tabs.Current is true;
+            items.Add(MenuFlyoutItem.Toggle(Loc.Get(tabs.TitleKey), on, () => tabs.WriteToggle(!on, SettingsSurfaces.TitleBarMenu)));
+        }
+        return items;
+    }
+
+    /// <summary>The bar's host: it holds the overlay service the window menu opens on, the toolbar row the door's menu stands under, and the
+    /// door's request; it mounts the bar once.</summary>
+    private sealed class WindowMenu(ShellTitleBarProps props, Func<TierFacts> tiers, IReadSignal<ThemeFacts> facts) : Component
+    {
+        readonly Ref<NodeHandle> _anchor = new(default);
+        OverlayHandle? _handle;
+        IOverlayService? _svc;
+        int _asked;
+        Func<ContextMenuModel?>? _model;
+
+        public override Element Render()
+        {
+            _svc = UseContext(Overlay.Service);
+            _model ??= static () => new ContextMenuModel(WindowMenuItems());
+            if (props.WindowMenuRequest is { } request)
+            {
+                _asked = request.Peek();
+                UseSignalEffect(() =>
+                {
+                    int asked = request.Value;
+                    if (asked == _asked) return;
+                    _asked = asked;
+                    OpenUnderBar();
+                });
+            }
+            var svc = _svc;
+            var model = _model;
+            var anchor = _anchor;
+            return Embed.Comp(() => Bar(props, tiers, facts, svc, model, anchor));
+        }
+
+        /// <summary>The door's open: the same rows under the toolbar row's start (a second ask while it is open closes it).</summary>
+        void OpenUnderBar()
+        {
+            if (_handle is { IsOpen: true } open) { open.Close(); return; }
+            if (_svc is not { } svc || _anchor.Value.IsNull) return;
+            OverlayHandle? opened = null;
+            opened = svc.Open(() => _anchor.Value, () => MenuFlyout.Create(WindowMenuItems(), () => opened?.Close(), size: OverlayFit.MenuSize),
+                FlyoutPlacement.BottomEdgeAlignedLeft,
+                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Flyout) { ConstrainToRootBounds = false });
+            _handle = opened;
+            opened.ClosedAction = () => { if (ReferenceEquals(_handle, opened)) _handle = null; };
+        }
+    }
+
+    private static TitleBar Bar(ShellTitleBarProps props, Func<TierFacts> tiers, IReadSignal<ThemeFacts> facts, IOverlayService svc,
+        Func<ContextMenuModel?> windowMenu, Ref<NodeHandle> toolbar)
     {
         WinUiTitleBarLayout Tier() => WinUiTiers.TitleBarOf(tiers());
         bool Strip() => facts.Value.Capabilities.ShowsTabStrip;
 
         var parts = new TemplateParts();
-        // Row 1 is the Mica Alt strip (Shell-Top `strip`); the toolbar row lies on the window's Mica.
-        parts[TitleBar.PartTopRow] = static b => b with { Key = WinUiFrameRules.TabRowKey, Fill = Tok.FillSolidBaseAlt };
-        parts[TitleBar.PartToolbarRow] = static b => b with { Key = WinUiFrameRules.ToolbarKey };
+        // Row 1 is the Mica Alt strip (Shell-Top `strip`); the toolbar row lies on the window's Mica. A right-click on either row's empty drag space
+        // opens the window menu (a child with a menu of its own, a tab or Back's history, keeps its own).
+        parts[TitleBar.PartTopRow] = b => (b with { Key = WinUiFrameRules.TabRowKey, Fill = Tok.FillSolidBaseAlt }).WithContextMenu(svc, windowMenu);
+        parts[TitleBar.PartToolbarRow] = b => (b with { Key = WinUiFrameRules.ToolbarKey, OnRealized = TemplateParts.Chain(b.OnRealized, h => toolbar.Value = h) })
+            .WithContextMenu(svc, windowMenu);
         parts[TitleBar.PartPaneToggle] = static b => b with { Key = "winui.titlebar.pane" };
 
         var bar = new TitleBar
@@ -65,7 +145,7 @@ internal static class WinUiTitleBar
             Tabs = () => Embed.Comp(() => new StripHost(props, tiers)),
             TabsVersion = props.TabsVersion,
             ContentVersion = props.ContentVersion,
-            Lead = () => LeadItems(props, Tier()),
+            Lead = () => LeadItems(props, Tier(), toolbar),
             Wordmark = () => !Strip() && Tier().Mark ? Mark() : new BoxEl { Width = 0f, Height = 0f },
             TrailingItems = () => TrailItems(props, Tier()),
             CenterAlign = Prop.Of(() => Tier().AlignWith(Strip())),
@@ -146,11 +226,11 @@ internal static class WinUiTitleBar
 
     // ── the toolbar's clusters ───────────────────────────────────────────────────────────────────────────────────────────
 
-    private static IReadOnlyList<TitleBarItem> LeadItems(ShellTitleBarProps props, WinUiTitleBarLayout tier)
+    private static IReadOnlyList<TitleBarItem> LeadItems(ShellTitleBarProps props, WinUiTitleBarLayout tier, Ref<NodeHandle> toolbar)
     {
-        var back = new TitleBarItem("back", () => Embed.Comp(() => new HistoryButton(props, forward: false)) with { Key = WinUiFrameRules.BackKey });
+        var back = new TitleBarItem("back", () => Embed.Comp(() => new HistoryButton(props, forward: false, toolbar)) with { Key = WinUiFrameRules.BackKey });
         if (!tier.Forward) return [back];
-        return [back, new TitleBarItem("forward", () => Embed.Comp(() => new HistoryButton(props, forward: true)) with { Key = WinUiFrameRules.ForwardKey })];
+        return [back, new TitleBarItem("forward", () => Embed.Comp(() => new HistoryButton(props, forward: true, toolbar)) with { Key = WinUiFrameRules.ForwardKey })];
     }
 
     private static IReadOnlyList<TitleBarItem> TrailItems(ShellTitleBarProps props, WinUiTitleBarLayout tier)
@@ -190,8 +270,10 @@ internal static class WinUiTitleBar
 
     // ── the self-updating children ───────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Back or Forward: the primary on click, the history flyout on right-click / touch-hold.</summary>
-    private sealed class HistoryButton(ShellTitleBarProps props, bool forward) : Component
+    /// <summary>Back or Forward: the primary on click, the history flyout on right-click / touch-hold. Back also carries two hints' pointers (out of
+    /// layout, their TeachingTips float): fast navigation's at the button itself, and the backdrop's at the toolbar row, whose right-click menu
+    /// offers Backdrop (design 6.3 #10, #11).</summary>
+    private sealed class HistoryButton(ShellTitleBarProps props, bool forward, Ref<NodeHandle> toolbar) : Component
     {
         public override Element Render()
         {
@@ -216,7 +298,15 @@ internal static class WinUiTitleBar
 
             var button = IconButton.Create(forward ? Icons.Forward : Icons.Back, forward ? props.GoForward : props.GoBack, style, isEnabled: canDo)
                 with { OnRealized = h => anchor.Value = h, OnContextRequested = OpenHistory };
-            return ToolTip.Wrap(button, Loc.Get(forward ? Strings.Theme.Winui.Frame.Forward : Strings.Theme.Winui.Frame.Back));
+            var face = ToolTip.Wrap(button, Loc.Get(forward ? Strings.Theme.Winui.Frame.Forward : Strings.Theme.Winui.Frame.Back));
+            var targets = UseRef<(Func<NodeHandle> Back, Func<NodeHandle> Bar)?>(null);
+            targets.Value ??= (() => anchor.Value, () => toolbar.Value);
+            if (forward) return face;
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center,
+                Children = [face, Hints.Pointer(HintSurfaces.PageHead, targets.Value.Value.Back), Hints.Pointer(HintSurfaces.TitleBar, targets.Value.Value.Bar)],
+            };
         }
     }
 
@@ -259,15 +349,39 @@ internal static class WinUiTitleBar
         }
     }
 
-    /// <summary>The direct Pin / Unpin for the destination on screen; an unpinnable destination keeps the button's place, disabled.</summary>
+    /// <summary>The destination's Pin: the direct Pin / Unpin when only one list can hold it; when both Home and the sidebar can (pinned Home,
+    /// design 1.6), the one button opens the two toggles. An unpinnable destination keeps the button's place, disabled.</summary>
     private sealed class PinButton(ShellTitleBarProps props) : Component
     {
         public override Element Render()
         {
+            var overlay = UseContext(Overlay.Service);
+            var anchor = UseRef<NodeHandle>(default);
+            var handle = UseRef<OverlayHandle?>(null);
             var pin = props.Pin();
+            var home = props.HomePin?.Invoke();
             var style = WinUiSearch.ToolStyleFor(TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal)).Value.Tiers);
-            if (pin is null) return IconButton.Create(Icons.Pin, static () => { }, style, isEnabled: false);
-            return ToolTip.Wrap(IconButton.Create(pin.Glyph, pin.Invoke, style), pin.Label);
+            if (pin is null && home is null) return IconButton.Create(Icons.Pin, static () => { }, style, isEnabled: false);
+            if (home is null) return ToolTip.Wrap(IconButton.Create(pin!.Glyph, pin.Invoke, style), pin.Label);
+            if (pin is null) return ToolTip.Wrap(IconButton.Create(home.Glyph, home.Invoke, style), home.Label);
+
+            void Open()
+            {
+                if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+                // Read at open: the two toggles as they stand now.
+                var rows = new List<MenuFlyoutItem>(2);
+                if (props.HomePin?.Invoke() is { } h) rows.Add(new MenuFlyoutItem(h.Label, h.Glyph, true, h.Invoke));
+                if (props.Pin() is { } p) rows.Add(new MenuFlyoutItem(p.Label, p.Glyph, true, p.Invoke));
+                var o = overlay.Open(() => anchor.Value,
+                    () => ViewSlots.View(ViewKeys.ShellHistoryMenu, new HistoryMenuProps { Items = rows, Close = () => handle.Value?.Close() }),
+                    FlyoutPlacement.BottomEdgeAlignedRight,
+                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
+                handle.Value = o;
+                o.ClosedAction = () => handle.Value = null;
+            }
+
+            return ToolTip.Wrap(IconButton.Create(Icons.Pin, Open, style) with { OnRealized = h => anchor.Value = h },
+                Loc.Get(Strings.Theme.Winui.Home.Board.PinMenu));
         }
     }
 
@@ -322,6 +436,7 @@ internal static class WinUiTitleBar
             {
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
                 var rows = new List<MenuFlyoutItem>(2);
+                if (props.HomePin?.Invoke() is { } home) rows.Add(new MenuFlyoutItem(home.Label, home.Glyph, true, home.Invoke));
                 if (props.Pin() is { } pin) rows.Add(new MenuFlyoutItem(pin.Label, pin.Glyph, true, pin.Invoke));
                 rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Shell.Friends), Icons.Friends, true, props.ToggleFriends));
                 var h = overlay.Open(() => anchor.Value,

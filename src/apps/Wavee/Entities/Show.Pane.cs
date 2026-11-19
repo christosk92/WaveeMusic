@@ -1,8 +1,7 @@
 // ── Entities/Show.Pane.cs ──────────────────────────────────────────────────────────────────────────────────────────
 // A1 (plan §3.5, report 2c/2d): the library pane's right column for a show/audiobook — the sibling of Album.Pane. The
-// header never skeletons past Knows(ShowFields.Title) (Album's own rule), the body below it is the SAME
-// Show.EpisodeReaderBody the route page mounts (Show.Page.cs), so a click into the library and the standalone show
-// page render byte-identical rows.
+// header never skeletons past Knows(ShowFields.Title) (Album's own rule), the body below it is the show reader
+// (`Show.ReaderHost`, Show.Page.cs).
 //
 // Role: UI
 // Wave: A1 (S-reader)
@@ -144,7 +143,7 @@ public readonly partial struct Show
                 return Slots.View(ViewKeys.LibraryShowPane, new LibraryShowPaneProps { HeaderReady = false, Open = _open, HeartShown = _heartShown, More = _more });
             var f = m.Facts?.Value ?? default;
             var id = IdentityOf(show, in f);
-            // The pane hosts the SAME reader the route page mounts (Show.Page.cs) — one list stack, not a pane-only twin. The scroll key scopes its position per library slot.
+            // The pane hosts the show reader (Show.Page.cs). The scroll key scopes its position per library slot.
             return Slots.View(ViewKeys.LibraryShowPane, new LibraryShowPaneProps
             {
                 HeaderReady = true, CoverUrl = id.CoverUrl, Eyebrow = id.Eyebrow, Title = id.Title,
@@ -188,13 +187,8 @@ public readonly partial struct Show
                 Ghost: ShowReaderRules.GhostOf(serial, firstKnown),
                 ResumeLeft: resumable ? Episode.LeftMinutes(resume.ProgressMs, resume.DurationMs) : 0,
                 FirstNumber: 1,
-                Publisher: known && show.Knows(ShowFields.Publisher) && !show.PublisherId.IsEmpty,
-                Flags: known ? show.Flags : ShowFlags.None,
-                RatingX100: 0, RatingCount: 0, MyRating: 0,
-                HasTrailer: false,
                 ToneArgb: known && show.Knows(ShowFields.Appearance) ? show.Tone : 0u,
                 Meta: show.IsAudiobook ? Strings.Podcast.Reader.ChaptersCount(s.Total) : MetaOf(s.Total, s.Cadence, s.OldestYear),
-                Topics: false,
                 Empty: s.EmptyShow);
         }
 

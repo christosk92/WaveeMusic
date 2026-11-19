@@ -5,7 +5,8 @@ namespace Wavee;
 public static partial class Playback
 {
     public static readonly Signal<float> EpisodeSpeed = new(1f);
-    static readonly SettingKey<float> s_episodeSpeedKey = new("playback.episodeSpeed", 1f);
+    /// <summary>The episode speed (podcasts and audiobooks): the speed menus and the Settings dial read and write it.</summary>
+    public static readonly SettingKey<float> EpisodeSpeedKey = new("playback.episodeSpeed", 1f);
     public static float ValidEpisodeSpeed(float rate) => float.IsFinite(rate) ? Math.Clamp(rate, .5f, 3f) : 1f;
     /// <summary>Playback speed is an EPISODE property, and a music video is a TRACK (its video is an association of the
     /// song), so a song plays at 1x whether its video is on or not. This is the official client's rule, which Wavee's own
@@ -20,7 +21,7 @@ public static partial class Playback
     {
         rate = ValidEpisodeSpeed(rate);
         ApplyEpisodeSpeed(rate);
-        Platform.Settings.Set(s_episodeSpeedKey, rate);
+        Platform.Settings.Set(EpisodeSpeedKey, rate);
         if (!Spotify.Current.IsOnline) return;
         float value = rate;
         Spotify.Api.Run(() =>

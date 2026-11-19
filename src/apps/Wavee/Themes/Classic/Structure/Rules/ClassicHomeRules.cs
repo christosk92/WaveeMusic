@@ -9,6 +9,7 @@
 //
 // Public, because the Recents grid's fact (632 DIP fits three columns, 836 four) is pinned by `ControlsTests` over `RecentsMinCol`.
 
+using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 
@@ -64,6 +65,14 @@ public static class ClassicHomeRules
     /// <summary>The feather the body dissolves through while its clip is engaged (the shelf fade rung, as Browse).</summary>
     public static float ClipFadeBand => R.Space.FadeShelf;
 
+    /// <summary>The curve of a chapter body's feather under its pinned header: cubic, so a line of words the cut slices (a card's subtitle just
+    /// under the header, at rest) is all but gone where it is sliced (5 % at 9 DIP into the 24 band; the smoothstep left it at 32 %, a faint
+    /// sliced line of glyph feet under the header), and the content comes up to full only at the band's foot.</summary>
+    public const FadeFalloff ClipFadeFalloff = FadeFalloff.Cubic;
+
+    /// <summary>A pinned chapter header's fade out while the next zone pushes it across the facet row's cut (and back in when it pins again).</summary>
+    public static MotionTokenDef HeaderPushFade => MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
+
     /// <summary>The viewport line a zone body is cut at while its header is pinned.</summary>
     public static float BodyClipInset => StuckBottom + HeaderH + HeaderGap;
 
@@ -89,8 +98,37 @@ public static class ClassicHomeRules
 
     /// <summary>How many release rows, cluster cards and cluster rows a body shows.</summary>
     public const int ReleaseRowsMax = 6;
-    public const int ClusterMax = 6;
-    public const int ClusterRows = 3;
+    public const int ClusterRows = 4;
+
+    /// <summary>A lone preview card on the last row takes the row in its wide form, its rows in this many columns beside the offer.</summary>
+    public const int WideClusterRowCols = 2;
+    public const float PreviewCover = 72f, ReasonAvatar = 32f;
+
+    /// <summary>A section header that hangs off an entity: its height (the cover beside two lines) and the cover.</summary>
+    public const float EntityHeaderH = 44f, EntityCover = 40f;
+
+    /// <summary>A mood plate (home-gap P6): its height, its inset, how many a shelf shows; the plate's colour fades to this share toward its right edge.</summary>
+    public const float MoodPlateH = 88f, MoodPlatePad = 16f, MoodPlateFadeTo = 0.45f;
+    public const int MoodPlatesMax = 8;
+
+    /// <summary>The Home rhythm lead card's copy band (home-rhythm.html #a-classic): the inset, the name's 28 line over two 16 caption lines,
+    /// Play at its end. Fixed, so the card's height is known before it lays out.</summary>
+    public const float LeadCopyH = 88f, LeadCopyPadX = 16f, LeadCopyPadTop = 12f, LeadCopyPadBottom = 16f, LeadCopyGap = 12f;
+
+    /// <summary>The lead's art: never under this height beside the grid; stacked (Compact) it is this wide for one tall (16 : 8).</summary>
+    public const float LeadArtMin = 120f, LeadArtAspect = 2f;
+
+    /// <summary>The lead art's decode target.</summary>
+    public const int LeadArtDecodePx = 960;
+
+    /// <summary>A capped card's title lines (two title lines over one caption line).</summary>
+    public const int CappedTitleLines = 2;
+
+    /// <summary>A book card's caption lines (home-gap P8): author, rating and length, the plan pill.</summary>
+    public const int BookCaptionLines = 4;
+
+    /// <summary>The video card: the still's width in a row, the badges' inset, the progress hairline.</summary>
+    public const float VideoStillW = 380f, VideoBadgeInset = 8f, VideoProgressH = 3f;
 
     /// <summary>The Recents cell's equalizer height, the history tile's 7-day strip box, the header tools' divider.</summary>
     public const float EqualizerH = 12f;

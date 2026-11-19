@@ -22,10 +22,9 @@
 // "never trim a title" report): the title plan no longer leans on engine auto-fit or a size hysteresis — it is ONE
 // size per (bucketed width, title), drawn exactly, wrapping freely up to TitleLineCap (StableTitleSize is gone).
 //
-// Podcast rework wave P2 (podcast-show-rework-implementation.md §5.4): `DetailKind.Episode` + `Config.Episode` (the show's
-// frame, sharing the show's rail pair), the Episode eyebrow arm, and the rail's ROW MODEL — `RailSlotSet` (which rail
-// slots a page declared), `RailLayout.RowsFor` (the loaded rail's row decisions as data), `Skeleton.RailPlanFor` (the
-// skeleton's prediction, now slot-aware) and `RailLayout.HeightOf` (the one nominal height both are measured by).
+// The rail's ROW MODEL — `RailSlotSet` (which rail slots a page declared), `RailLayout.RowsFor` (the loaded rail's row
+// decisions as data), `Skeleton.RailPlanFor` (the skeleton's prediction, slot-aware) and `RailLayout.HeightOf` (the one
+// nominal height both are measured by).
 //
 // Already elsewhere — not restated here: DetailNotice (Entities/Playlist.cs), the reveal ramp (Design.RevealRamp), the
 // list state (Playlist.RowsStateOf). Deleted, not ported: DetailLiveRefresh, DetailOwnerIds, HeroCta,
@@ -42,9 +41,8 @@ using FluentGpu.Localization;
 namespace Wavee;
 
 /// <summary>Which detail surface a route resolves to. A single / compilation is the Album kind with a different
-/// <see cref="Detail.Config"/> (<see cref="Detail.Config.For"/>). <see cref="Episode"/> is a podcast episode's page: the
-/// show's frame (<see cref="Detail.Config.Episode"/>), its rail led by the show link rather than an eyebrow.</summary>
-public enum DetailKind : byte { Album, Playlist, Liked, Show, Episode }
+/// <see cref="Detail.Config"/> (<see cref="Detail.Config.For"/>). <see cref="Show"/> is the library podcast pane's identity (its eyebrow).</summary>
+public enum DetailKind : byte { Album, Playlist, Liked, Show }
 
 /// <summary>The right-column content: music tracks, or podcast episodes.</summary>
 public enum DetailContent : byte { Tracks, Episodes }
@@ -52,14 +50,14 @@ public enum DetailContent : byte { Tracks, Episodes }
 /// <summary>The identity header's badge row style.</summary>
 public enum BadgeStyle : byte { None, TypeYear, OwnerRow }
 
-/// <summary>The heart affordance: absent (Liked), save (album), follow (playlist, show).</summary>
+/// <summary>The heart affordance: absent (Liked), save (album), follow (playlist).</summary>
 public enum HeartMode : byte { None, Save, Follow }
 
 /// <summary>Which persisted rail pair (width + collapsed) a two-column surface reads and writes. One scope per surface
 /// family, so Liked never shares the album's pair by fallthrough; <see cref="Uniform"/> is the fifth, synthetic scope
-/// "Keep left-rail same size" resolves every surface to (<see cref="Detail.RailPolicy.ScopeFor"/>). The podcast family is
-/// ONE scope: an episode's page reads and writes the show's pair (<see cref="Detail.Config.Episode"/>), so dragging the
-/// rail on either moves both. The ordinal is the frame's rail-cell index — append only.</summary>
+/// "Keep left-rail same size" resolves every surface to (<see cref="Detail.RailPolicy.ScopeFor"/>). <see cref="Show"/> was the older
+/// show and episode pages' pair: no page requests it any more, but its stored pair is still read by Settings' "Clear all remembered
+/// sizes" gate (<see cref="Detail.RailPolicy.HasCustomizedRailPrefs"/>). The ordinal is the frame's rail-cell index — append only.</summary>
 public enum RailScope : byte { Album, Playlist, Liked, Show, Uniform }
 
 /// <summary>Identity of one slot in the vertical (hero-system) list viewport. <see cref="VerticalItemRole.Recommendations"/>: the playlist's "Recommended songs"
@@ -701,7 +699,7 @@ public static partial class Detail
         public static float ContentWidthFor(float pageWidth, float railWidth, float gripWidth)
             => MathF.Min(pageWidth, R.Space.PageMaxW) - railWidth - gripWidth;
 
-        /// <summary>Album-like (album, show — and so an episode) 280; list-like (playlist, Liked) and Uniform 240.</summary>
+        /// <summary>Album-like (album, show) 280; list-like (playlist, Liked) and Uniform 240.</summary>
         public static float DefaultWidthFor(RailScope scope) => scope switch
         {
             RailScope.Album or RailScope.Show => Design.Size.RailAlbum,
@@ -717,8 +715,7 @@ public static partial class Detail
 
         /// <summary>The requested scope, or <see cref="RailScope.Uniform"/> when the structure's "Keep left-rail same size" is on
         /// (<see cref="Wavee.Theming.DetailPolicy.RailUniform"/>). THE persisted pair a scope reads and writes is one theme-state pair per scope
-        /// (<see cref="DetailRailPrefs.WidthKey"/>), never another scope's by fallthrough (G-190). The
-        /// Episode arm is its config's: <see cref="Config.Episode"/> requests <see cref="RailScope.Show"/>.</summary>
+        /// (<see cref="DetailRailPrefs.WidthKey"/>), never another scope's by fallthrough (G-190).</summary>
         public static RailScope ScopeFor(RailScope requested, bool uniform) => uniform ? RailScope.Uniform : requested;
 
         /// <summary>Has any of the four per-scope pairs moved from its authored default? The enable gate for Settings'
@@ -1071,11 +1068,6 @@ public static partial class Detail
         /// <summary>The accent-rule placeholder: 20 × 2 at radius 1, 2-DIP top margin.</summary>
         public const float RuleWidth = Controls.AccentRuleWidth, RuleHeight = Controls.AccentRuleHeight,
                            RuleGap = Controls.AccentRuleGap, RuleRadius = 1f;
-        /// <summary>A page's own primary (a podcast's Follow / Resume capsule): 120 wide (<see cref="Controls.PrimaryMinWidth"/>).
-        /// The default Play is the split, <see cref="RailLayout.PlaySplitWidth"/>. Renamed from <c>PlayPillWidth</c>
-        /// (Workstream B migration group C).</summary>
-        public const float PlayButtonWidth = 120f;
-
         public static float BarWidth(float measure, float fraction) => MathF.Max(BarFloor, MathF.Round(measure * fraction));
 
         /// <summary>An opaque component that only DRAWS (a list bar's command button, its insights toggle), as a loading region derives it: mounted in
@@ -1096,81 +1088,51 @@ public static partial class Detail
         public const int RailTitleLines = 2, RailDescriptionLines = 3;
         public const float OwnerAvatar = 24f;
 
-        /// <summary>The podcast rows' skeleton shapes: the badge placeholder beside (or instead of) the eyebrow bar, the
-        /// rating run, the ledger's counts line.</summary>
-        public const float BadgeBarWidth = 48f, RatingFraction = 0.55f, LedgerLineFraction = 0.80f;
-
         /// <summary>The rail's rows top to bottom — what the skeleton RESERVES (<see cref="RailPlanFor"/>) and, through
         /// <see cref="RailLayout.RowsFor"/>, what the loaded column LAYS OUT; <see cref="RailLayout.HeightOf"/> measures
-        /// either. <c>Detail.RailColumn</c> / <c>RailSkeletonColumn</c> walk it row for row: cover · eyebrow (TypeYear;
-        /// <c>Badges</c> may share its line) or the LEAD row (<c>Owner</c>: an OwnerRow owner block, or an episode's show
-        /// link) · title · attribution (<c>Artists</c>: billed artists; a podcast's Attribution slot) · <c>Rating</c> ·
-        /// meta (everything but a TypeYear album) · an episode's badges · <c>Ledger</c> · the CTA cluster (a primary +
-        /// <c>Fabs</c> actions: the fixed Shuffle / heart / Share / ⋯ group, or a page's <c>Satellites</c>) · <c>Topics</c> · the blurb
-        /// (clamped to the rail's own description lines). The trailing fields default to "absent", so every rail without
-        /// the podcast slots is the plan it always was. <c>ArtistFaces</c>: the <c>Artists</c> row is the artist line (an
-        /// album-family page, whether the line comes from its Attribution slot or the default), whose reserved height is
-        /// <see cref="RailArtistLine.ReservedHeight"/> of the rail's width; false = a plain text row (a podcast's publisher).</summary>
+        /// either. <c>Detail.RailColumn</c> / <c>RailSkeletonColumn</c> walk it row for row: cover · eyebrow (TypeYear)
+        /// or the LEAD row (<c>Owner</c>: an OwnerRow owner block) · title · attribution (<c>Artists</c>: billed artists) ·
+        /// meta (everything but a TypeYear album) · the CTA cluster (the Play split + <c>Fabs</c> actions: the fixed Shuffle /
+        /// heart / Share / ⋯ group) · the blurb (clamped to the rail's own description lines). <c>ArtistFaces</c>: the
+        /// <c>Artists</c> row is the artist line (an album-family page, whether the line comes from its Attribution slot or the
+        /// default), whose reserved height is <see cref="RailArtistLine.ReservedHeight"/> of the rail's width.</summary>
         public readonly record struct RailPlan(bool Eyebrow, bool Owner, bool Artists, bool Meta, int TitleLines, int Fabs,
-                                               int DescriptionLines, RailBadgeRow Badges = RailBadgeRow.None,
-                                               bool Rating = false, bool Ledger = false, bool Satellites = false,
-                                               bool Topics = false, bool ArtistFaces = false);
+                                               int DescriptionLines, bool ArtistFaces = false);
 
         /// <summary>The blurb's reserved lines: the rail's own cap, never more than the window's, never negative.</summary>
         public static int RailDescriptionLinesFor(int descriptionMaxLines)
             => Math.Min(RailDescriptionLines, Math.Max(0, descriptionMaxLines));
 
-        /// <summary>The skeleton's PREDICTION, made before any data: per kind and badge style, plus the rail slots the page
-        /// declared (<paramref name="slots"/> — presence is known at mount, the data is not). Default slots ⇒ exactly the
-        /// pre-podcast plan. An episode with an Attribution slot is led by it (the <see cref="RailPlan.Owner"/> shape), and
-        /// has no eyebrow and no after-title attribution. <paramref name="fixedActions"/> is how many buttons the fixed action group (tuned
+        /// <summary>The skeleton's PREDICTION, made before any data: per kind and badge style. <paramref name="fixedActions"/> is how many buttons the fixed action group (tuned
         /// Classic D1: Shuffle · heart · Share · ⋯) will lay out — the caller counts them off the page's identity and verbs, which are known
         /// before the data (a Share needs the page's web link, which a Spotify uri always has and a local one never does), so a page without
         /// a link or a heart reserves no square for it (tuned Classic X2). Liked Songs has no rail (tuned Classic D16), so no plan here is
         /// Liked's.</summary>
-        public static RailPlan RailPlanFor(DetailKind kind, BadgeStyle badges, int fixedActions, int descriptionMaxLines,
-                                           RailSlotSet slots = default)
+        public static RailPlan RailPlanFor(DetailKind kind, BadgeStyle badges, int fixedActions, int descriptionMaxLines)
         {
             bool typeYear = badges == BadgeStyle.TypeYear;
-            bool lead = RailLayout.LeadsWithAttribution(kind, slots);
-            bool eyebrow = typeYear && !lead;
-            bool blurb = kind is DetailKind.Playlist or DetailKind.Show or DetailKind.Episode;
+            bool blurb = kind is DetailKind.Playlist;
             return new RailPlan(
-                Eyebrow: eyebrow,
-                Owner: lead || badges == BadgeStyle.OwnerRow,
-                Artists: typeYear && kind != DetailKind.Episode,
-                ArtistFaces: typeYear && !RailLayout.IsPodcast(kind),
-                Meta: !typeYear || RailLayout.IsPodcast(kind),
+                Eyebrow: typeYear,
+                Owner: badges == BadgeStyle.OwnerRow,
+                Artists: typeYear,
+                ArtistFaces: typeYear,
+                Meta: !typeYear,
                 TitleLines: RailTitleLines,
-                Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount) : Math.Max(0, fixedActions),
-                DescriptionLines: blurb ? RailDescriptionLinesFor(descriptionMaxLines) : 0,
-                Badges: RailLayout.BadgeRowFor(kind, slots.Badges, eyebrow),
-                Rating: slots.Rating,
-                Ledger: slots.Ledger,
-                Satellites: slots.Satellites,
-                Topics: slots.Topics);
+                Fabs: Math.Max(0, fixedActions),
+                DescriptionLines: blurb ? RailDescriptionLinesFor(descriptionMaxLines) : 0);
         }
     }
 
     // ══ 8b. THE RAIL'S ROW MODEL ═════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Which rail slots a page declared — <c>FrameSlots</c> PRESENCE (the same bits its equality compares), plus
-    /// the length of the array its <c>Satellites</c> builder returned. The one input the loaded rail's row decision
-    /// (<see cref="RailLayout.RowsFor"/>) and the skeleton's prediction (<see cref="Skeleton.RailPlanFor"/>) share.
-    /// Default = none: every rail exactly as it was before the podcast seams.</summary>
-    public readonly record struct RailSlotSet(bool Attribution = false, bool Badges = false, bool Rating = false,
-                                              bool Ledger = false, bool Topics = false, bool Satellites = false,
-                                              int SatelliteCount = 0);
-
-    /// <summary>Where the <c>Badges</c> slot's row sits: beside the eyebrow on its line (a show: "Podcast [exclusive] [E]"),
-    /// on its own line where the eyebrow would be (a kind with no eyebrow), or under the meta line (an episode, W4).</summary>
-    public enum RailBadgeRow : byte { None, BesideEyebrow, OwnRow, AfterMeta }
+    /// <summary>Which rail slots a page declared — <c>FrameSlots</c> PRESENCE (the same bits its equality compares), the loaded rail's row
+    /// decision's input (<see cref="RailLayout.RowsFor"/>). Default = none.</summary>
+    public readonly record struct RailSlotSet(bool Attribution = false);
 
     /// <summary>The two-column rail's column metrics and its NOMINAL row heights — one number per row, shared by the loaded
     /// column, its skeleton twin and <see cref="HeightOf"/>. A row whose content wraps (a three-line title, a two-line
-    /// meta, a third topic line, a longer primary label) grows BELOW its reservation: nothing above it ever moves. The
-    /// frame gives each single-line podcast slot row (badges on their own line, rating, ledger) a MinHeight of its nominal,
-    /// so a slot body shorter than its row never pulls the rows under it up on reveal.</summary>
+    /// meta) grows BELOW its reservation: nothing above it ever moves.</summary>
     public static class RailLayout
     {
         /// <summary>Between rows, and the column's own padding above and below.</summary>
@@ -1187,69 +1149,34 @@ public static partial class Detail
         public const float PlaySplitWidth = PlayHalf + SplitDivider + MenuHalf;
         /// <summary>The split's trailing margin: the 4 that, with the wrap's 8, set it 12 from the first action.</summary>
         public const float SplitTrail = CtaGap - FabGap;
-        /// <summary>A page's Satellites (W1's "36 FABs", now the standard 32 ladder): [primary][each satellite] in ONE
-        /// wrap, 8 apart both ways.</summary>
+        /// <summary>A satellite action beside a primary (the library's show pane: the heart and the ⋯ at the standard 32), 8 apart.</summary>
         public const float SatelliteSize = 32f, SatelliteGap = 8f;
         /// <summary>The CTA primary's height — Workstream B's 32/r4 <see cref="Controls.PrimaryButton"/>.</summary>
         public const float PillHeight = Controls.ButtonHeight;
         public const float EyebrowHeight = VerticalLayout.EyebrowRowHeight;
-        /// <summary>The lead row: the owner block's 24 avatar, or an episode's show link (a 24 swatch + 13/600 name).</summary>
+        /// <summary>The lead row: the owner block's 24 avatar.</summary>
         public const float LeadHeight = Skeleton.OwnerAvatar;
         public const float AttributionHeight = VerticalLayout.AttributionRowHeight;
         public const float MetaHeight = VerticalLayout.MetaRowHeight;
-        /// <summary>One line of <c>Controls.Chip</c>s, 6 apart (also 6 from the eyebrow they share a line with).</summary>
-        public const float BadgeHeight = Controls.BadgeHeight, BadgeGap = 6f;
-        /// <summary>The rating row: ★ 4.8 · 12,431 ratings at 12.5 on a 2-DIP padded hit box.</summary>
-        public const float RatingHeight = 20f;
-        /// <summary>The ledger: the 4-DIP <c>Controls.LedgerBar</c>, 6, then one 12/16 counts line.</summary>
-        public const float LedgerBarHeight = PodcastLedgerRules.Height, LedgerGap = 6f, LedgerLineHeight = 16f;
-        public const float LedgerHeight = LedgerBarHeight + LedgerGap + LedgerLineHeight;
-        /// <summary>The topic words (<c>Controls.Words.Links</c>): two nominal lines of 18, 4 between.</summary>
-        public const int TopicLines = 2;
-        public const float TopicLineHeight = Controls.Words.LinkLine, TopicLineGap = Controls.Words.LinkGapY;
-        public const float TopicsHeight = TopicLines * TopicLineHeight + (TopicLines - 1) * TopicLineGap;
         public const float DescriptionLineHeight = VerticalLayout.DescriptionLineHeight;
-
-        /// <summary>The podcast family (show, episode): its meta line is always drawn and its Attribution slot is a row of
-        /// its own, whatever the billed-artist list says.</summary>
-        public static bool IsPodcast(DetailKind kind) => kind is DetailKind.Show or DetailKind.Episode;
-
-        /// <summary>An episode's rail is LED by its Attribution slot (the show link, W4) — above the title, where every
-        /// other TypeYear kind shows its eyebrow.</summary>
-        public static bool LeadsWithAttribution(DetailKind kind, in RailSlotSet slots)
-            => kind == DetailKind.Episode && slots.Attribution;
-
-        /// <summary>Where a declared Badges row sits (<see cref="RailBadgeRow"/>).</summary>
-        public static RailBadgeRow BadgeRowFor(DetailKind kind, bool declared, bool eyebrow)
-            => !declared ? RailBadgeRow.None
-             : kind == DetailKind.Episode ? RailBadgeRow.AfterMeta
-             : eyebrow ? RailBadgeRow.BesideEyebrow
-             : RailBadgeRow.OwnRow;
 
         /// <summary>The rows the LOADED rail lays out — <c>Detail.RailColumn</c>'s row decisions as data (it walks this
         /// plan; its album-only / playlist-only late rows — daylist, chart, prerelease, release panel, liked facts — are
         /// outside the model, as they are outside the skeleton). <paramref name="fabs"/> is the fixed group's count;
         /// <paramref name="description"/> whether a blurb (or its inline editor) exists.</summary>
-        public static Skeleton.RailPlan RowsFor(DetailKind kind, BadgeStyle badges, bool eyebrowText, bool ownerKnown,
+        public static Skeleton.RailPlan RowsFor(BadgeStyle badges, bool eyebrowText, bool ownerKnown,
             bool artists, bool metaShown, int fabs, bool description, int descriptionMaxLines, RailSlotSet slots)
         {
             bool typeYear = badges == BadgeStyle.TypeYear;
-            bool lead = LeadsWithAttribution(kind, slots);
-            bool eyebrow = typeYear && eyebrowText && !lead;
             return new Skeleton.RailPlan(
-                Eyebrow: eyebrow,
-                Owner: lead || (badges == BadgeStyle.OwnerRow && (slots.Attribution || ownerKnown)),
-                Artists: typeYear && !lead && (artists || (IsPodcast(kind) && slots.Attribution)),
-                ArtistFaces: typeYear && !lead && artists && !IsPodcast(kind),
-                Meta: (!typeYear || IsPodcast(kind)) && metaShown,
+                Eyebrow: typeYear && eyebrowText,
+                Owner: badges == BadgeStyle.OwnerRow && (slots.Attribution || ownerKnown),
+                Artists: typeYear && artists,
+                ArtistFaces: typeYear && artists,
+                Meta: !typeYear && metaShown,
                 TitleLines: Skeleton.RailTitleLines,
-                Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount) : Math.Max(0, fabs),
-                DescriptionLines: description ? Skeleton.RailDescriptionLinesFor(descriptionMaxLines) : 0,
-                Badges: BadgeRowFor(kind, slots.Badges, eyebrow),
-                Rating: slots.Rating,
-                Ledger: slots.Ledger,
-                Satellites: slots.Satellites,
-                Topics: slots.Topics);
+                Fabs: Math.Max(0, fabs),
+                DescriptionLines: description ? Skeleton.RailDescriptionLinesFor(descriptionMaxLines) : 0);
         }
 
         /// <summary>The column's nominal height for a plan: the padding, the cover square, each row at its nominal (the title
@@ -1260,17 +1187,12 @@ public static partial class Detail
             float h = 0f;
             int rows = 0;
             Add(MathF.Max(0f, coverEdge));
-            if (p.Eyebrow) Add(p.Badges == RailBadgeRow.BesideEyebrow ? MathF.Max(EyebrowHeight, BadgeHeight) : EyebrowHeight);
+            if (p.Eyebrow) Add(EyebrowHeight);
             if (p.Owner) Add(LeadHeight);
-            if (p.Badges == RailBadgeRow.OwnRow) Add(BadgeHeight);
             Add(Skeleton.LineCount(p.TitleLines) * titleLineHeight);
             if (p.Artists) Add(p.ArtistFaces ? RailArtistLine.ReservedHeight(coverEdge) : AttributionHeight);
-            if (p.Rating) Add(RatingHeight);
             if (p.Meta) Add(MetaHeight);
-            if (p.Badges == RailBadgeRow.AfterMeta) Add(BadgeHeight);
-            if (p.Ledger) Add(LedgerHeight);
             Add(CtaHeight(p, coverEdge));
-            if (p.Topics) Add(TopicsHeight);
             if (p.DescriptionLines > 0) Add(p.DescriptionLines * DescriptionLineHeight);
             return PadTop + h + (rows - 1) * Gap + PadBottom;
 
@@ -1278,13 +1200,12 @@ public static partial class Detail
         }
 
         /// <summary>The CTA cluster: its top margin plus its wrapped lines, laid out as the engine's flex wrap does (greedy,
-        /// the gap on both axes). Both arms wrap the primary and every action one by one: the fixed arm's primary is the
-        /// Play split with its trailing margin, the satellites arm's the page's 120 capsule.</summary>
+        /// the gap on both axes): the Play split with its trailing margin, then every action one by one.</summary>
         public static float CtaHeight(in Skeleton.RailPlan p, float coverEdge)
         {
             int fabs = Math.Max(0, p.Fabs);
-            float gap = p.Satellites ? SatelliteGap : FabGap, size = p.Satellites ? SatelliteSize : FabSize;
-            float used = p.Satellites ? Skeleton.PlayButtonWidth : PlaySplitWidth + SplitTrail, line = PillHeight, closed = 0f;
+            float gap = FabGap, size = FabSize;
+            float used = PlaySplitWidth + SplitTrail, line = PillHeight, closed = 0f;
             for (int i = 0; i < fabs; i++)
             {
                 if (used + gap + size <= coverEdge + WrapSlack)
@@ -1407,26 +1328,12 @@ public static partial class Detail
             ShowTempo: true, ShowVersions: true, PlaysColumnOptIn: true,
             RailScope: RailScope.Liked, Rail: false, QuietRows: true, DateGroups: true);
 
-        /// <summary>A podcast show: the album-style rail with EPISODES in the right column.</summary>
-        public static Config Show => new(
-            Kind: DetailKind.Show, TwoColumn: true, RailWidth: Design.Size.RailAlbum, Badges: BadgeStyle.TypeYear,
-            ShowArtThumb: false, ShowAlbumColumn: false,
-            Selection: ItemsSelectionMode.None, HasTrailing: false, Heart: HeartMode.Follow,
-            Content: DetailContent.Episodes, RailScope: RailScope.Show);
-
-        /// <summary>A podcast EPISODE (podcast rework §5.4): the show's frame with three knobs turned — its own kind (the
-        /// rail is led by the show link, its eyebrow reads "Episode"), no heart in the fixed group (the episode page's ♥ is
-        /// one of its Satellites), and the SHOW's rail pair, so the podcast family persists one rail width.</summary>
-        public static Config Episode => Show with { Kind = DetailKind.Episode, Heart = HeartMode.None, RailScope = RailScope.Show };
-
-        /// <summary>0.2.9's <c>DetailPage.ResolveConfig</c>: playlist / liked / show / episode are fixed by route; the album
+        /// <summary>0.2.9's <c>DetailPage.ResolveConfig</c>: playlist / liked are fixed by route; the album
         /// route branches Single → Single, Compilation → Compilation, and Album AND EP → Album.</summary>
         public static Config For(DetailKind kind, AlbumKind releaseKind) => kind switch
         {
             DetailKind.Playlist => Playlist,
             DetailKind.Liked => Liked,
-            DetailKind.Show => Show,
-            DetailKind.Episode => Episode,
             _ => releaseKind switch
             {
                 AlbumKind.Single => Single,
@@ -1471,14 +1378,11 @@ public static partial class Detail
                 _ => Loc.Get(Strings.Nav.YourLibrary),
             };
 
-        /// <summary>The kind-aware form: a SHOW's TypeYear badge is "Podcast" (0.2.9 <c>MapShow</c>), an EPISODE's is
-        /// "Episode" — never an album kind. (The episode's two-column rail leads with its show link instead; the vertical
-        /// header, the band's byline fallback and an episode page without a show link still read this.)</summary>
+        /// <summary>The kind-aware form: a SHOW's TypeYear badge is "Podcast" (0.2.9 <c>MapShow</c>) — never an album kind.</summary>
         public static string Eyebrow(DetailKind kind, BadgeStyle badges, AlbumKind releaseKind, int year, bool collaborative,
                                      bool isPublic, bool visibilityKnown)
             => badges != BadgeStyle.TypeYear ? Eyebrow(badges, releaseKind, year, collaborative, isPublic, visibilityKnown)
              : kind == DetailKind.Show ? WithYear(Loc.Get(Strings.Podcast.Show), year)
-             : kind == DetailKind.Episode ? WithYear(Loc.Get(Strings.Nav.Episode), year)
              : Eyebrow(badges, releaseKind, year, collaborative, isPublic, visibilityKnown);
 
         static string WithYear(string kind, int year)

@@ -3,7 +3,7 @@
 // Role: CORE (themes plan §5.1, PR C13; extraction X34-X36). The Settings views read these inline: `PackageIdentity` for
 // the spotify: row, the tray mode for four rows' enablement, `ToastNotifier` for the OS-block banner, a cold DXGI walk for
 // the GPU picker, `File.Exists` and a notices read on the render path. They are `ISettingsFacts` now — one narrow
-// interface the `SettingsDoc` rows ask (`Enabled`, `Caption`, `Visible`), with the live producers here and a fake in the
+// interface the registry's dials ask (`Enabled`, `Caption`, `Visible`), with the live producers here and a fake in the
 // tests — plus the producers that touch the OS or the disk, kept off the render path:
 //   · `RefreshGpus()` enumerates the adapters (a cold walk) when the GPU card mounts, never during a render;
 //   · `ToastDelivery()` is the one OS query behind the Notifications banner;
@@ -73,6 +73,10 @@ public interface ISettingsFacts
 
     /// <summary>A test crash report is being written.</summary>
     bool TestCrashBusy { get; }
+
+    /// <summary>The active structure's pages fly a picture into the page it opens or grow a page out of its item (its page motion's
+    /// <c>Connected</c> or <c>GrowInto</c>): the Connected animations dial shows only where there is something to switch off.</summary>
+    bool PagesFly { get; }
 }
 
 /// <summary>The live <see cref="ISettingsFacts"/> and the producers that touch the OS or the disk.</summary>
@@ -104,6 +108,8 @@ public sealed class LiveSettingsFacts : ISettingsFacts
            != Crash.Reporting.Off;
 
     public bool TestCrashBusy => SettingsFacts.TestCrashBusy.Value;
+
+    public bool PagesFly => ShellPolicy.Now.PageMotion is { } motion && (motion.Connected is not null || motion.GrowInto is not null);
 }
 
 /// <summary>What the settings page hands its verbs from the component context (the overlay host, the input hooks, the UI

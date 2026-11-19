@@ -320,8 +320,7 @@ non-Standard rows). No discovery page draws a title or a facet row: the band is 
 
 | Key | Zune's picture (boards) |
 |---|---|
-| `Pages.Home` | Z-Home: the column on the frame's gutter, 8 under the band, capped at the style's page width, zones 28 apart. On All the quickplay strip leads; two neighbours that pair (release list + clusters, new + continue episodes) share a row 1 : 1 where the tier has room (`ZuneHomePlan.Rows`, pure). The facet swap is the production keyed fade over the dim host; the busy bar and a failed switch's bar lie over the content's top (they never move it); "customize home" closes All. |
-| `Home.Quickplay` (new, contract 1.28) | pins (132 art, the band's own pins, the name in the accent while it plays) · history (`Home.Zone.RecentGrid`, through its core host) · new (the release list's first covers, its "see all"), 32 apart, wrapping. Mounted by the core host `QuickplayHost` (`Home\Quickplay.Host.cs`); Classic registers Nothing. |
+| `Pages.Home` | Z-Home: the column on the frame's gutter, 8 under the band, capped at the style's page width, zones 28 apart. On All the pinned board takes the zone column's place; two neighbours that pair (release list + clusters, new + continue episodes) share a row 1 : 1 where the tier has room (`ZuneHomePlan.Rows`, pure). The facet swap is the production keyed fade over the dim host; the busy bar and a failed switch's bar lie over the content's top (they never move it); "customize home" closes All. |
 | `Home.Zone.RecentGrid` | The history group: the tier's 100 tiles, the playing one in the accent with "playing" as its line, "listening history" to Recents. |
 | `Home.Zone.<Kind>` (14) | A body draws its own heading row (26/32 light, subtitle, "see all"): shelves of 154 covers (`PagedShelf`, chevrons in the heading), the wide tiles the tier's columns of 16:9, the release list's 64 rows, the clusters' 28-title columns of 48 rows, the Browse tiles as flat 88 plates 2 : 1 beside the charts, the shared episode rows, the empty facet's vacancy. |
 | `Home.Charts` | A numbered list: 40 rows, the 22 light rank, the chart's caption. |
@@ -331,7 +330,7 @@ non-Standard rows). No discovery page draws a title or a facet row: the band is 
 | `Pages.BrowseCategory` | Z-Browse-Category: the accent banner (200) with the name as a panorama and its kind, then shelves of 154 covers and six-across tile plates; the flattened modes keep the banner over a grid that owns its scroll. |
 | `Pages.Search` | Z-Search: the facet body alone. All: top result (heading + kind, the tier's art beside the 40/48 name, its line, the matched words in the accent, the play ring and the hit's own control) beside best matches (two columns of 56 rows), the playlist shelf, genres and related searches as inline words. The other facets: the songs in columns, the Albums / Playlists virtual grid, the hit rows. |
 
-**Nothing:** `Home.FacetRow`. **Common:** `Pages.HomeCustomize`.
+**Nothing:** `Home.FacetRow`.
 
 **Row 2.** Home: the core host (`HomeHost.SyncFacetIndex`) publishes the facet words as `PageView`s ("all" first, the target's word lit, Go the
 facet row's select path with its Following memory), a "following" / "all" action where the lit word has a Following sub-chip, and the shown
@@ -494,7 +493,7 @@ The account chip and menu, the context menu's header and round-verb strip, the C
 Settings, the theme picker and its options, the setup wizard, the release notes, and the report and crash dialogs. All fifteen keys are Zune's own
 (`Structure\ZuneStructure.Screens.cs`); Zune's registrations win over Classic's stand-in key by key.
 
-**Files.** `Structure\Views\Screens\ZuneSettings*.cs` (the page and its seven tabs), `ZuneSetup*.cs`, `ZuneReleaseNotes*.cs`, `ZuneFeedback.cs`,
+**Files.** `Structure\Views\Screens\ZuneSettings*.cs` (the page, its home and nine categories, the results), `ZuneSetup*.cs`, `ZuneReleaseNotes*.cs`, `ZuneFeedback.cs`,
 `ZuneCrash.cs`; numbers and tier records in `Structure\Rules\ZuneSettingsRules.cs` (settings) and `Rules\ZuneSetupRules.cs` (setup, release notes
 and the two dialogs); loc `theme.zune.screens`.
 
@@ -502,13 +501,16 @@ and the two dialogs); loc `theme.zune.screens`.
 LocalPlayback / SignInDoor / RuntimeCard`, `Pages.WhatsNew`, `ReleaseNotes.Viewer`, `ReleaseNotes.AfterUpdatePlate`, `Dialog.Feedback`,
 `Dialog.Crash`. Template ids: `zune.screens.settings[.theme-picker|.theme-options]`, `zune.setup.*`, `zune.release-notes.*`, `zune.dialog.*`.
 
-**Settings.** A panorama title ("settings"), a lowercase section list (the seven core tabs: the page state and every deep link name a tab), and the
-open tab's column. The column is the document drawn: every `SettingsDoc` section of the tab is a group (a 26/300 heading over label | control rows), so a
-new document row shows up with its words and its writer; the controls that need labels or ranges (combos, chips, sliders) are built per row in
-`ZuneSettings.<Tab>.cs`. Controls are the engine's, drawn by `ZuneControls`; the stateful ones (`ZuneKit.ChoiceCell`, `SliderCell`) keep one signal for
-their life and re-read the document on `Settings.PageEpoch`. Appearance mounts the picker and the options through the registry (`Slots.View`), and
-beside the column (or under it, by flex wrap) a live preview built from the roles. Node identity: the list, lane, groups and rows are the same nodes in
-every tier; a tier changes their direction, wrap and widths only.
+**Settings** (settings rework phase 4). A panorama title ("settings", never shrunk), the "find a setting" pill (`props.Search.Box`, `settings:search`) over
+a lowercase section list of ten words (the home, "your setup", and the nine categories, keyed `zs:link:<slug>`), and the open category's column: every group
+of `props.Body.Of(category)` is a 26/32 heading over label | control rows keyed `zs:row:<dialId>` (`ZuneSettings.Body.cs`; the composite blocks in
+`ZuneSettings.Composites.cs` and the per-category files). Typing in the pill replaces the column with the two-line results (`ZuneSettings.Results.cs`: the
+label with the matched letters in the accent over the breadcrumb). A dial whose clip exists for the theme and app mode carries an accent "see it" word that
+opens the clip under the row (`ZuneSettings.Explain.cs`); a link's arrival lights the row's label in the accent and fades it back. At Compact the page is the
+drill-in list of the categories with a summary line each; a category opens as its own page (the route's open section, `props.OpenSection`, closed by
+`props.CloseSection`). Controls are the engine's, drawn by `ZuneControls`; the stateful ones (`ZuneKit.ChoiceCell`, `SliderCell`) keep one signal for their
+life and re-read on `Settings.PageEpoch`. Appearance mounts the picker and the options through the registry (`Slots.View`), with a live preview beside the
+column. Node identity: the pill, list, lane and column are the same nodes in every tier; a tier changes their direction, wrap and widths only.
 
 **Theme options.** `ZuneSettings.Theme.cs` draws the core's `SettingsOptionsView` by row kind: toggles as switches, short selects as chips (a combo
 past four or when the structure asks for one), the accent as a row of square swatches, sliders, confirmed actions, "reset" beside the heading. The
@@ -527,11 +529,10 @@ at open. Compact folds the preview behind a 40 row, Huge is a two-pane card.
 **Numbers.** `ZuneSettingsTiers.For/Of` (content tier), `ZuneSetupTiers`, `ZuneReleaseNotesTiers` (page: content tier; overlays: window tier),
 `ZuneDialogTiers`. The sizes the lane covers are Standard; the others are sane variations ZT8 tunes against the -Compact, -Small and -Huge boards.
 
-**Conflicts with the boards (the plan and the owner win).** The board lists twelve sections; the core page is a seven-tab cell, so account, devices and
-keyboard have no document rows and are not built, and audio, lyrics, feedback & help are groups of Playback, Appearance, About and Privacy. No downloads
-(Q29 / NQ4): the core Storage cache settings stay. The board's "add a theme" tile and community-themes line are not built (nothing installs a theme
-from a folder). Compact and Small draw the section list as a wrapping row above the column, not a drill-in. The Standard preview column wraps under the
-options when the window is too narrow for both.
+**Conflicts with the boards (the plan and the owner win).** The repo boards list twelve sections; the page draws the settings rework's nine categories
+and the home (the concept boards Z-Home, Z-Results, Z-Compact), so the boards' account, devices, keyboard and feedback sections are groups of Account &
+privacy, Sound and Help & about. No downloads (Q29 / NQ4): the core Storage cache settings stay. The board's "add a theme" tile and community-themes line
+are not built (nothing installs a theme from a folder). The Standard preview column wraps under the options when the window is too narrow for both.
 
 ## Z9: the states, "on this PC", the light pass and the completeness rule
 

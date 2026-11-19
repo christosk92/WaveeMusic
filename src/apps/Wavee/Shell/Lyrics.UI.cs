@@ -9,8 +9,8 @@
 // Spec: ch 22 §9, restated under A12 (2,600 + the dropped Lyrics.Stage.UI.cs's 1,400, less the ~500 already inside Stage.UI.cs's 1,150)
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// T7b MOVED THE PICTURE TO THE STRUCTURE. The layer stack, the overlays (the breathing dots, the resync pill, the video note), the stage's
-// reading column and the podcast peek's gate are `Lyrics.View` (`Themes\Classic\Structure\Views\Lyrics\ClassicLyrics.cs`); the state
+// T7b MOVED THE PICTURE TO THE STRUCTURE. The layer stack, the overlays (the breathing dots, the resync pill, the video note) and the
+// stage's reading column are `Lyrics.View` (`Themes\Classic\Structure\Views\Lyrics\ClassicLyrics.cs`); the state
 // line, the loading bars, the unsynced block, the synced list and its rows are the `StyleKeys.LyricsLines` style
 // (`Themes\Classic\Structure\Lists\ClassicLyricsLines.cs`). `ViewCore` below is the core host: it keeps the document slot, the clock, the
 // follow and resync machine, the cascade, the depth-of-field ramp, the word wipe and the nodes they write, and is the `ILyricsHost`
@@ -273,41 +273,34 @@ public static partial class Lyrics
         readonly IReadSignal<float>? _typeScale;
         float _band;   // the ctor's surface band; a rail under a style's `LyricsRailForm` takes the form's (Render)
 
-        /// <summary>The side pane's mount: neither the stage nor the podcast reader (P6 fix, <c>ILyricsHost.OnRail</c>).</summary>
-        internal bool OnRail => !Large && !OnStage && !_readerEpisode.IsValid;
+        /// <summary>The side pane's mount: not the stage (P6 fix, <c>ILyricsHost.OnRail</c>).</summary>
+        internal bool OnRail => !Large && !OnStage;
 
         /// <summary>The surface's MODEL (C5): the document slot, the clock, the active / voice lines, the follow state machine,
         /// the interlude bookkeeping, the second line, the AI state and the verbs. This view draws and drives nodes from it.</summary>
         internal readonly LyricsModel M;
 
-        readonly EntityId _readerEpisode;
         EntityId _subject { get => M.Subject; set => M.Subject = value; }
         uint _subjectEpoch { get => M.SubjectEpoch; set => M.SubjectEpoch = value; }
         internal bool IsPodcast => M.IsPodcast;
         internal bool OwnsPlayback => M.OwnsPlayback;
 
-        internal bool ObservedPlaybackOwner => M.ObservedPlaybackOwner;
-
-        // `accent` and `onStage` are APPENDED after `readerEpisode`: `Lyrics.Transcript.cs` calls this POSITIONALLY with four
-        // arguments (`new ViewCore(false, false, static () => true, episode)`).
-        internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default,
+        internal ViewCore(bool large, bool onMedia, Func<bool> visible,
             IReadSignal<ColorF>? accent = null, bool onStage = false, IReadSignal<float>? typeScale = null, float band = -1f, float gutter = -1f,
             bool darkArm = false, bool onPicture = false, bool lightArm = false)
         {
             OnPicture = onPicture;
             _bandOverride = band;
             _gutter = gutter;
-            _readerEpisode = readerEpisode;
             Large = large;
             _typeScale = typeScale;
             InkMode = new Ink(onMedia, darkArm, lightArm);
             Accent = accent;
             OnStage = onStage;
             _visible = visible;
-            _band = readerEpisode.IsValid ? 0.05f : Surface.FocalBand(large);
+            _band = Surface.FocalBand(large);
             _wakeTick = WakeTick;
-            _reseedOwnership = ReseedForOwnership;
-            M = new LyricsModel(new LyricsSurface(large, onMedia, onStage, typeScale?.Peek() ?? 1f), readerEpisode) { Sink = this };
+            M = new LyricsModel(new LyricsSurface(large, onMedia, onStage, typeScale?.Peek() ?? 1f)) { Sink = this };
             _activeLine = M.ActiveLine;
             _voiceLine = M.VoiceLine;
             NowMs = M.NowMs;
@@ -431,8 +424,6 @@ public static partial class Lyrics
         readonly Signal<MotionWake> _motionWake = new(new MotionWake(0, -1f));
         readonly WakeArm _wakeArm = new();
         internal readonly Action _wakeTick;
-        /// <summary>Hoisted so the per-render <c>UseEffect</c> hands the SAME delegate every time (no per-render alloc).</summary>
-        readonly Action _reseedOwnership;
 
         // ── the developer surface (gated by `diag.developerMode`, never by an env var — plan §9.6 Q1) ─────────────────
         internal readonly Signal<bool> DebugOpen = new(false);
@@ -541,22 +532,15 @@ public static partial class Lyrics
             // A HIDDEN view (its gate down: the rail's lyrics under the full-screen stage, the stage's Lyrics pane parked under the picture, the
             // audio face's column over a video) holds what it drew last and follows no track: a track change behind the cover loads, mounts and
             // scrolls nothing. The gate's rise re-renders it on the frame it shows, on the playing track at once (no swap: see `_heldHidden`).
-            // Not the podcast reader: its subject is its own episode.
-            if (!open && _heldView is { } heldView && !_readerEpisode.IsValid) { _heldHidden = true; return heldView; }
+            if (!open && _heldView is { } heldView) { _heldHidden = true; return heldView; }
             bool caughtUp = _heldHidden;
             _heldHidden = false;
             var current = Playback.Current.Value;
-            _subject = _readerEpisode.IsValid ? _readerEpisode : Playback.CurrentId.Value;
+            _subject = Playback.CurrentId.Value;
             bool anything = _subject.IsValid;
             string trackId = IsPodcast ? _subject.Text
                 : current.Kind == EntityKind.Track && !current.IsNone ? Store.IdOf(new Track(current.Slot)) : "";
             uint accountEpoch = Entities.ScopeEpoch.Value;
-            // THE PEEK's one gate (podcast-episode-peek §2). Reading it here is also this component's SUBSCRIPTION to
-            // playback identity — the reader's subject is frozen, so nothing else in this render reads CurrentId — and
-            // a flip re-seeds the follow state over the document we already hold instead of clearing and re-fetching it
-            // (PrepareDocument short-circuits on the same instance, so the re-seed is its own step).
-            bool owns = !IsPodcast || ObservedPlaybackOwner;
-            UseEffect(_reseedOwnership, DepKey.From(owns));
 
             if (!anything)
             {
@@ -580,10 +564,7 @@ public static partial class Lyrics
             _trackId = trackId;
 
             // The document lives under a track-keyed boundary, so chrome re-renders reconcile it in place instead of
-            // rebuilding the virtual list and remounting every line. A reader open on an episode that is NOT the one
-            // playing still mounts (and still fetches) it: the transcript is what the peek shows behind its veil —
-            // `TranscriptContent` chooses the peek over the following list, and everything downstream of here already
-            // treats a non-owning podcast as neutral (no active line, no wipe, no follow, no σ ladder).
+            // rebuilding the virtual list and remounting every line.
             Element body = IsPodcast
                 ? Embed.Comp(() => new TranscriptHost(this, _subject)) with { Key = "transcript-doc:" + accountEpoch + ":" + trackId }
                 : Embed.Comp(() => new DocHost(this, trackId)) with
@@ -591,16 +572,13 @@ public static partial class Lyrics
                     Key = "lyrics-doc:" + trackId,
                     Layout = Stage.TrackSwapText(swapped, drift: false),   // the old lines go first, then the next document fades in
                 };
-            // …and the frame stepper stays UNMOUNTED while the gate is up: OnFrame returns immediately for a
-            // non-owning podcast, so a subscription to panel-rate frames would buy nothing but battery.
-            Element? ticker = open && owns ? Embed.Comp(() => new Ticker(this)) with { Key = "lyrics-ticker:" + trackId } : null;
+            Element? ticker = open ? Embed.Comp(() => new Ticker(this)) with { Key = "lyrics-ticker:" + trackId } : null;
             // The developer pill never rides a mount whose lines are a picture (the mini player's): it is the main window's affordance.
             Element? debug = _gutter >= 0f ? null : Embed.Comp(() => new DebugLayer(this)) with { Key = "lyrics-debug:" + trackId };
 
-            // The layers, the overlays and the AI disclosure are the structure's (`Lyrics.View`). The podcast reader never carries the
-            // on-device AI disclosure (episodes are never timed): mount config, so the root's shape never flips for a mounted instance.
+            // The layers, the overlays and the AI disclosure are the structure's (`Lyrics.View`).
             // The disclosure sits BELOW the reading layers — never a virtual-list item, the follow geometry assumes ItemCount == Lines.Count.
-            Element? footer = _readerEpisode.IsValid ? null : AiLyrics.Footer(InkMode, Surface.Timed(Large).SidePad);
+            Element? footer = AiLyrics.Footer(InkMode, Surface.Timed(Large).SidePad);
             return MountView(body: body, ticker: ticker, debug: debug, footer: footer);
         }
 
@@ -797,24 +775,6 @@ public static partial class Lyrics
             return true;
         }
 
-        /// <summary>Playback identity moved onto — or off — the episode this reader is open on (the peek's gate
-        /// lifting, or another episode taking over). <see cref="PrepareDocument"/> short-circuits on the same document
-        /// instance, so the follow state is re-seeded HERE over the document we already hold: no clear, no re-fetch,
-        /// no remount — the peek's blocks are replaced by the following list and the active line is already right.</summary>
-        void ReseedForOwnership()
-        {
-            var doc = _doc;
-            if (doc is null) return;
-            long posMs = OwnsPlayback ? Playback.PositionMs.Peek() : 0L;
-            M.PublishSeed(doc, M.SeedActive(doc, posMs));
-            PushEmphasis();
-            NowMs.Value = posMs;
-            _scrollSnapped = false;
-            _dofRampPending = true;
-            RebaseClock(posMs);
-            WakeMotion();
-        }
-
         /// <summary>The header toggle's capability. Gated on a TIMED document: an unsynced block has no rows to render a
         /// second line in, so offering the toggle there would be a control that visibly does nothing (parity 69).</summary>
         void PublishSecondaryAvailability(Doc? doc) => M.PublishSecondaryAvailability(doc);
@@ -880,13 +840,6 @@ public static partial class Lyrics
         /// video starts or stops; the frame lane peeks the same state.</summary>
         bool SyncSuppressedNow() => SyncGate.SyncSuppressed(Playback.VideoActive.Value, IsPodcast);
 
-        /// <summary>Which transcript the pane shows: the PEEK while the reader is browsing an episode that is not the
-        /// one playing, the normal following transcript otherwise. Reading <see cref="ObservedPlaybackOwner"/> here is
-        /// deliberate — this runs inside the skeleton region's own tracked effect, so the gate lifts (and a DIFFERENT
-        /// episode's stays up) the moment playback identity changes, wherever in the app it changed from.</summary>
-        internal Element TranscriptContent(Doc doc)
-            => TranscriptPeek.Gated(IsPodcast, ObservedPlaybackOwner, doc.Lines.Count) ? PeekContent(doc) : LyricsContent(doc);
-
         internal Element LyricsContent(Doc doc)
         {
             // A suppressed timed document renders exactly like an untimed one — no active line to be far from.
@@ -904,9 +857,6 @@ public static partial class Lyrics
                 _layout = new MeasuredLayout(estimate, band);
             return _layout;
         }
-
-        /// <summary>The podcast peek (the structure's picture).</summary>
-        Element PeekContent(Doc doc) => _linesStyle?.Peek(this, doc) ?? NoLines();
 
         /// <summary>An untimed (or suppressed) document (the structure's picture).</summary>
         internal Element UnsyncedContent(Doc doc) => _linesStyle?.Unsynced(this, doc) ?? NoLines();
@@ -1058,8 +1008,7 @@ public static partial class Lyrics
         /// mid-ramp re-asserts the in-flight σ instead of stomping the node back to the rest target.</summary>
         internal float DofDeclaredFor(int index)
         {
-            if (TranscriptPresentation.Neutral(IsPodcast, OwnsPlayback)) return 0f;
-            float cur = (uint)index < (uint)_dofCurrent.Length ? _dofCurrent[index] : float.NaN;
+            float cur =(uint)index < (uint)_dofCurrent.Length ? _dofCurrent[index] : float.NaN;
             if (!float.IsNaN(cur)) return cur;
             return DofTarget(index, _activeLine.Peek(), SuppressesDof(Follow_.Peek()));
         }
@@ -1120,7 +1069,7 @@ public static partial class Lyrics
             _dofJudged = geometry;
 
             // Strength 0 ⇒ the effect is OFF: snap every σ to 0 in ONE pass and quiesce — not the 65 ms decrease.
-            if (TranscriptPresentation.Neutral(IsPodcast, OwnsPlayback) || !BlurPolicy.Enabled(_strength))
+            if (!BlurPolicy.Enabled(_strength))
             {
                 for (int i = 0; i < cur.Length; i++)
                 {

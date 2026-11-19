@@ -18,6 +18,8 @@ namespace Wavee;
 public enum ContainerVerb : byte
 {
     Play, PlayNext, AddToQueue, Save, AddToPlaylist, Open, Pin, GoToArtist, ArtistRadio, Share,
+    /// <summary>Pin to Home / Unpin from Home: directly under the sidebar's pin row (design 1.6).</summary>
+    PinHome,
 }
 
 /// <summary>One kind's menu: the labeled <see cref="Strip"/> (the Win11 command bar) over the <see cref="Rows"/>.</summary>
@@ -47,13 +49,13 @@ public static class ContainerMenuRules
     static readonly ContainerVerb[] s_listStripOwn =
         [ContainerVerb.Play, ContainerVerb.PlayNext, ContainerVerb.AddToQueue];
     static readonly ContainerVerb[] s_albumRows =
-        [ContainerVerb.AddToPlaylist, ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.GoToArtist, ContainerVerb.Share];
+        [ContainerVerb.AddToPlaylist, ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.PinHome, ContainerVerb.GoToArtist, ContainerVerb.Share];
     static readonly ContainerVerb[] s_playlistRows =
-        [ContainerVerb.AddToPlaylist, ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.Share];
+        [ContainerVerb.AddToPlaylist, ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.PinHome, ContainerVerb.Share];
     static readonly ContainerVerb[] s_artistStrip = [ContainerVerb.Play, ContainerVerb.Save];
     static readonly ContainerVerb[] s_artistRows =
-        [ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.ArtistRadio, ContainerVerb.Share];
-    static readonly ContainerVerb[] s_showRows = [ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.Share];
+        [ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.PinHome, ContainerVerb.ArtistRadio, ContainerVerb.Share];
+    static readonly ContainerVerb[] s_showRows = [ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.PinHome, ContainerVerb.Share];
 
     // The on-page variants are DERIVED from the card tables (not restated) so the two cannot drift.
     static readonly ContainerMenuPlan s_album = new(s_listStrip, s_albumRows);
@@ -204,6 +206,8 @@ public static partial class Menus
                 return OpenRow(in ctx, in x);
             case ContainerVerb.Pin:
                 return x.Pin is { } pin ? pin() : PinRow(in ctx);
+            case ContainerVerb.PinHome:
+                return HomePinRow(in ctx);
             default:
                 return Actions.Menu.Row(IdOf(verb), in ctx);
         }
@@ -216,6 +220,32 @@ public static partial class Menus
         var route = ActionRules.RouteFor(in target);
         return new MenuFlyoutItem(Loc.Get(Strings.Menu.Open), ActionIcons.Resolve(ActionIcons.Open), !route.IsNone,
             () => Shell.GoTo(route, origin));
+    }
+
+    /// <summary>The Home pin pair: "Unpin from Home" when the target is on Home; else "Pin to Home" as one row, or (Classic,
+    /// <see cref="Theming.HomePinMenu.GroupsSubmenu"/>) a submenu of Home's groups with Pinned first. Built from the target's route
+    /// (HomePinVerbs), so every container menu carries it.</summary>
+    static MenuFlyoutItem? HomePinRow(in ActionContext ctx)
+    {
+        var target = ctx.Target;
+        var route = ActionRules.RouteFor(in target);
+        if (route.IsNone || HomePinVerbs.TargetFor(route) is not { } t) return null;
+        string pinId = t.PinId, title = target.Name is { Length: > 0 } n ? n : t.Title;
+        if (t.Pinned)
+            return new MenuFlyoutItem(Loc.Get(Strings.Home.Board.Pin.Unpin), ActionIcons.Resolve(ActionIcons.Unpin), true, () => HomePinVerbs.Unpin(pinId));
+        if (ShellPolicy.Now.Home.PinMenu != Theming.HomePinMenu.GroupsSubmenu)
+            return new MenuFlyoutItem(Loc.Get(Strings.Home.Board.Pin.PinTo), ActionIcons.Resolve(ActionIcons.Pin), true, () => HomePinVerbs.Pin(pinId, title, ""));
+        var doc = HomeBoardStore.Instance.Doc.Peek();
+        var items = new List<MenuFlyoutItem>(doc.Groups.Length);
+        int pinned = doc.GroupIndex(HomeDocs.Pinned);
+        if (pinned >= 0) items.Add(GroupItem(doc.Groups[pinned].Id, pinId, title, first: true));
+        for (int g = 0; g < doc.Groups.Length; g++)
+            if (g != pinned) items.Add(GroupItem(doc.Groups[g].Id, pinId, title, first: false));
+        return MenuFlyoutItem.SubMenu(Loc.Get(Strings.Home.Board.Pin.PinTo), items, ActionIcons.Resolve(ActionIcons.Pin));
+
+        static MenuFlyoutItem GroupItem(string groupId, string pinId, string title, bool first)
+            => new MenuFlyoutItem(HomePinVerbs.GroupTitle(groupId), first ? ActionIcons.Resolve(ActionIcons.Pin) : default, true,
+                () => HomePinVerbs.Pin(pinId, title, "", groupId));
     }
 
     /// <summary>The absolute pin pair: only the one that can run is offered.</summary>

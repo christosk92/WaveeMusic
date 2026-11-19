@@ -40,7 +40,10 @@ internal static class WinUiDevicePicker
         return new BoxEl
         {
             Direction = 1,
-            Children = [MenuFlyout.Create(items, props.Close, parts: parts, size: OverlayFit.MenuSize) with { Key = "devices:" + version }],
+            // Under the menu, the devices flyout's hint (design 6.3: Lossless available, the metered cap's state line), an InfoBar on the menu's foot:
+            // a MenuFlyout row holds no InfoBar, so the quality row's second line sits under the rows, in the flyout's own plate.
+            Children = [MenuFlyout.Create(items, props.Close, parts: parts, size: OverlayFit.MenuSize) with { Key = "devices:" + version },
+                Hints.Slot(HintSurfaces.DevicePicker, props.Close)],
         };
     }
 
@@ -54,6 +57,8 @@ internal static class WinUiDevicePicker
         DevicePickerEntryKind.Command => new MenuFlyoutItem(e.Label, e.Glyph, e.Enabled, e.Invoke)
             with { AcceleratorText = e.Accelerator },
         DevicePickerEntryKind.Radio => MenuFlyoutItem.RadioItem(e.Label, e.IsChecked, e.Invoke, e.Glyph),
+        // A link into Settings (the quality echo, "Sound settings"): a plain command row, its state as the right-hand note.
+        DevicePickerEntryKind.Link => new MenuFlyoutItem(e.Label, e.Glyph, true, e.Invoke) with { AcceleratorText = e.Accelerator },
         _ => new MenuFlyoutItem(e.Label, default, false),
     };
 }

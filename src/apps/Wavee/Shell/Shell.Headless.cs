@@ -41,6 +41,9 @@ public static partial class Shell
     /// <summary>Set once by <see cref="Headless.Boot"/>: the process is the shell test host.</summary>
     static bool s_headless;
 
+    /// <summary>The process is the shell test host (the headless inspector): no window, so nothing decodes video or plays sound for the page.</summary>
+    public static bool IsTestHost => s_headless;
+
     /// <summary>The shell test host's boot options.</summary>
     /// <param name="ProfileDir">The temporary profile folder (documents, the credential slot, the sidebar store). Created
     /// when missing. Never the user's profile.</param>

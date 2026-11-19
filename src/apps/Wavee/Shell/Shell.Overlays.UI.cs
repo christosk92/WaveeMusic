@@ -96,6 +96,8 @@ public static partial class Shell
                 Children =
                 [
                     Embed.Comp(() => new RuntimeBannerChrome()),
+                    Hints.HomeBanner(),                               // the Home InfoBar hints (#8, #9): floats under the banner, never reflows the page
+                    Hints.Watcher(),                                  // the hint facts that follow signals (Shell/Hints.UI.cs)
                     Embed.Comp(() => new UpdateToastWatcher()),
                     Embed.Comp(() => new RuntimeToastWatcher()),
                     Embed.Comp(() => new PlaybackFailureToastWatcher()),
@@ -358,6 +360,23 @@ public static partial class Shell
                 handle.Value.ClosedAction = () => handle.Value = null;
             }
 
+            // A Settings "Also in" door asks for the menu (design 5.4): the title bar's chip opens it where it stands; with no title bar chip
+            // mounted the door opened the narrow drawer, and the drawer's chip opens it. Every chip says it is mounted, so the door is handed out
+            // only while one is (InContextDoors: no dead door).
+            UseEffect(() =>
+            {
+                InContextDoors.ChipMounted(drawer, +1);
+                return () => InContextDoors.ChipMounted(drawer, -1);
+            }, DepKey.Empty);
+            var asked = UseRef(ProfileMenuRequest.Peek());
+            UseSignalEffect(() =>
+            {
+                int n = ProfileMenuRequest.Value;
+                if (n == asked.Value) return;
+                asked.Value = n;
+                if (drawer == ProfileMenuViaDrawer && !anchor.Value.IsNull && handle.Value is not { IsOpen: true }) OpenMenu();
+            });
+
             return ViewSlots.View(ViewKeys.OverlayProfileChip, new ProfileChipProps
             {
                 Known = identity.Known, Name = identity.Name, AvatarUrl = identity.AvatarUrl,
@@ -368,6 +387,12 @@ public static partial class Shell
     }
 
     readonly record struct AccountIdentity(bool Known, string Name, string? AvatarUrl);
+
+    /// <summary>Asks the title bar's profile chip to open its menu (a Settings "Also in" door to App mode or Private session, design 5.4).</summary>
+    public static readonly FluentGpu.Signals.Signal<int> ProfileMenuRequest = new(0);
+
+    /// <summary>Which chip answers the request: the narrow drawer's (the door opened the drawer) or the title bar's.</summary>
+    internal static bool ProfileMenuViaDrawer;
 
     /// <summary>The signed-in account's display identity, from its user row — known only once the row carries the
     /// Identity group (the readiness predicate).</summary>
@@ -428,7 +453,6 @@ public static partial class Shell
     {
         var table = Actions.ProfileRules.Rows(PickAndPlayFile is not null, actionsInMenu, NotificationsLauncher is not null,
             hasProfile: User.Me.IsValid);
-        bool dark = Theme.Dark;
         var items = new List<MenuFlyoutItem>(table.Length);
         for (int i = 0; i < table.Length; i++)
         {
@@ -459,10 +483,16 @@ public static partial class Shell
                     items.Add(new MenuFlyoutItem(Loc.Get(Strings.Shell.Friends), Icons.Friends,
                         Invoke: () => { close(); Ui.Toggle(RailMode.Friends); }));
                     break;
-                case Actions.ProfileRow.Theme:
-                    bool light = Actions.ProfileRules.OffersLightTheme(dark);   // labelled with the TARGET theme
-                    items.Add(new MenuFlyoutItem(Loc.Get(light ? Strings.Shell.LightTheme : Strings.Shell.DarkTheme),
-                        light ? Icons.Sun : Icons.Moon, Invoke: () => { close(); Appearance.ToggleMode(); }));
+                case Actions.ProfileRow.AppMode:
+                    // App mode as the three-way choice Settings offers (design 5.4): the SAME dial and writer, so System is never lost
+                    // to a light/dark flip.
+                    AppModeItems(items);
+                    break;
+                case Actions.ProfileRow.PrivateSession:
+                    // Private session (owner decision 7): the Settings switch's own writer; its state shows at rest.
+                    bool privateOn = s_privateSession.Current is true;
+                    items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Profile.PrivateSession), privateOn,
+                        () => s_privateSession.WriteToggle(!privateOn, SettingsSurfaces.ProfileMenu), Icons.RevealPassword));
                     break;
                 case Actions.ProfileRow.LogOut:
                     items.Add(new MenuFlyoutItem(Loc.Get(Strings.Auth.LogOut), Icons.SignOut,
@@ -477,6 +507,24 @@ public static partial class Shell
             ShowsTier = Actions.ProfileRules.ShowsTier(tier), Premium = tier == Spotify.Tier.Premium,
             Items = items, Close = close,
         });
+    }
+
+    static readonly SettingsDial s_appMode = SettingsSpec.Dial("appearance.appMode"), s_privateSession = SettingsSpec.Dial("account.privateSession");
+
+    /// <summary>The App mode group: its name, then System · Light · Dark as radio rows (the dial's own choices, its value checked), each
+    /// written through the dial with the profile menu as the source.</summary>
+    static void AppModeItems(List<MenuFlyoutItem> items)
+    {
+        int mode = s_appMode.Current is int m ? m : 0;
+        items.Add(MenuFlyoutItem.Header(Loc.Get(s_appMode.TitleKey)));
+        var choices = s_appMode.ChoiceKeys;
+        IconRef[] glyphs = [Icons.ThisPc, Icons.Sun, Icons.Moon];
+        for (int i = 0; i < choices.Count; i++)
+        {
+            int index = i;
+            items.Add(MenuFlyoutItem.RadioItem(Loc.Get(choices[i]), i == mode, () => s_appMode.WriteChoice(index, SettingsSurfaces.ProfileMenu),
+                i < glyphs.Length ? glyphs[i] : default));
+        }
     }
 
     /// <summary>"Play ▸" — File… and Link…, then (behind a separator, only when any qualify) one Globe row per installed

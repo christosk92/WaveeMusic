@@ -199,7 +199,10 @@ public static partial class Setup
             {
                 Session = session,
                 OpenPrivacy = static () => OpenExternal(PrivacyUrl),
-                Consent = new SetupConsent(Crash.ConsentPolicy.Offered(canSend).Count, () => WizardModel.CrashReportingChoice(canSend), WizardModel.SetCrashReporting),
+                Consent = new SetupConsent(Crash.ConsentPolicy.Offered(canSend).Count, () => WizardModel.CrashReportingChoice(canSend), WizardModel.SetCrashReporting)
+                {
+                    Labels = WizardModel.CrashReportingLabels(),
+                },
             },
             SignIn = new SetupSignInPageProps { Session = session, Host = SignInHost.Instance },
             Theme = ThemeProps,

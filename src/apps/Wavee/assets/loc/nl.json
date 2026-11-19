@@ -113,6 +113,8 @@
     "listeningHistory": "Luistergeschiedenis",
     "plays": "{n} keer beluisterd",
     "save": "Bewaren",
+    "previewSoundOn": "Previewgeluid aanzetten",
+    "previewSoundOff": "Previewgeluid uitzetten",
     "more": "Meer",
     "couldntLoad": "Kon {what} niet laden",
     "couldntLoadHome": "Kon Start niet laden",
@@ -133,6 +135,15 @@
       "onItsWay": "{daypart} komt eraan",
       "late": "Je volgende daylist laat op zich wachten",
       "checkAgain": "Opnieuw controleren"
+    },
+    "spotlight": {
+      "newSingle": "Nieuwe single van {artist}",
+      "newEp": "Nieuwe EP van {artist}",
+      "newAlbum": "Nieuw album van {artist}",
+      "newRelease": "Nieuwe release van {artist}",
+      "upcoming": "Binnenkort van {artist}",
+      "moreReleases": "Meer nieuwe releases",
+      "showRelease": "{title} tonen"
     },
     "zone": {
       "becauseYouLike": "Omdat je dit leuk vindt",
@@ -202,6 +213,7 @@
     }
   },
   "podcast": {
+    "pages": { "chapterN": "Hoofdstuk {number}" },
     "episodes": "Afleveringen",
     "show": "Podcast",
     "inProgress": "Bezig",
@@ -258,7 +270,9 @@
     "yours": "jouw score {stars}★",
     "rate": {
       "title": "{name} beoordelen",
-      "unavailable": "Beoordelen kan nog niet in Wavee — het gemiddelde en je eigen score worden getoond zoals Spotify ze heeft.",
+      "closed": "Spotify neemt voor dit account geen beoordelingen aan.",
+      "demo": "In de demo worden beoordelingen niet opgeslagen. Log in om te beoordelen.",
+      "saving": "Je beoordeling wordt opgeslagen…",
       "stars": "{count, plural, one {# ster} other {# sterren}}"
     },
     "notify": {
@@ -465,7 +479,6 @@
       "subtitle": "Hoe nummerlijsten en detailpagina's worden ingedeeld"
     },
     "lyrics": {
-      "title": "Songtekst",
       "subtitle": "Het leesoppervlak voor gesynchroniseerde songteksten",
       "ai": {
         "lang": {
@@ -490,7 +503,6 @@
       }
     },
     "nowPlaying": {
-      "title": "Nu speelt",
       "subtitle": "De spelerstijlen achter de vastgezette hoes"
     },
     "themePicker": {
@@ -503,7 +515,6 @@
     "themeOptions": {
       "title": "Opties voor {theme}",
       "none": "Dit thema heeft geen opties",
-      "displayTitle": "Weergave",
       "animationEffects": "Animatie-effecten",
       "animationEffectsSub": "Volgt de animatie-instelling van Windows",
       "reset": "Opties herstellen",
@@ -527,22 +538,10 @@
         "surfaces": "Vlakken"
       }
     },
-    "home": {
-      "title": "Start",
-      "subtitle": "Hoe Start je daylist laat zien"
-    },
     "links": {
       "subtitle": "Wat Wavee opent vanuit andere apps"
     },
-    "tabs": {
-      "general": "Algemeen",
-      "playback": "Afspelen",
-      "storage": "Opslag en cache",
-      "privacy": "Privacy en diagnostiek",
-      "about": "Over"
-    },
     "language": {
-      "title": "Taal en regio",
       "subtitle": "De taal van de interface van Wavee zelf",
       "label": "App-taal",
       "restartSub": "Wijzigingen worden toegepast wanneer Wavee opnieuw wordt gestart.",
@@ -876,7 +875,6 @@
     "unplayableToast": "De gekoppelde video kan niet worden afgespeeld — het origineel wordt afgespeeld.",
     "dropHint": "Zet een .mp4 neer om die aan dit nummer te koppelen",
     "customLabel": "BEKIJK DE EIGEN VIDEO",
-    "settingsTitle": "Video-overschrijvingen",
     "settingsHeader": "Gekoppelde video’s",
     "settingsSub": "Geldt op deze computer, voor elk account. Bestanden worden gekoppeld, niet gekopieerd — een koppeling verwijderen wist het bestand nooit.",
     "settingsCount": "{count, plural, one {# koppeling} other {# koppelingen}}",
@@ -1137,7 +1135,6 @@
       "breath": "Rust"
     },
     "settings": {
-      "title": "Volledig scherm",
       "subtitle": "De weergave Nu speelt op volledig scherm en de visualisaties",
       "visualizer": "Visualisatie",
       "visualizerSub": "Met welke visualisatie de volledig-schermweergave opent",

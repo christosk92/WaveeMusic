@@ -165,8 +165,27 @@ internal static class WinUiHomeRecents
     static Element HistoryTile(in HistoryKey k)
     {
         var week = k.Week;
+        var subtitle = new BoxEl
+        {
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Children = [WeekStrip(week, k.Today), WinUiHomeZones.Meta(Strings.Home.PlaysThisWeek(week.Total)) with { Shrink = 1f }],
+        };
+        var data = new Controls.CardData("home:history", Loc.Get(Strings.Home.ListeningHistory), subtitle, null,
+            HomeVerbs.OpenRecents, OnPlay: null, ShowMenu: false,
+            CoverOverride: Controls.IconPlate(Icons.Headphones, k.Art, Tok.AccentSubtle, Tok.AccentTextPrimary))
+        { Trailing = Ui.Icon(Icons.ChevronRight, 14f, Tok.TextTertiary) with { Shrink = 0f } };
+        return new BoxEl
+        {
+            Key = "recent:history", Direction = 1, MinWidth = 0f,
+            Children = [Controls.Surface(data, k.Shape)],
+        };
+    }
+
+    /// <summary>The week's strip: the stock <see cref="SparkBars"/> over seven days (left = six days ago, right = today in the full accent), each bar named
+    /// for its day and count. The history tile's, in the Recently played grid and in the shortcuts grid.</summary>
+    internal static Element WeekStrip(RecentsWeek week, DateTime today)
+    {
         var culture = System.Globalization.CultureInfo.CurrentCulture;
-        var today = k.Today;
         var bars = new SparkBar[7];
         for (int i = 0; i < bars.Length; i++)
         {
@@ -175,7 +194,7 @@ internal static class WinUiHomeRecents
             string day = culture.DateTimeFormat.GetAbbreviatedDayName(today.AddDays(-daysAgo).DayOfWeek);
             bars[i] = new SparkBar(n, day + " · " + Strings.Home.Plays(n), Accent: daysAgo == 0);
         }
-        var strip = new BoxEl
+        return new BoxEl
         {
             Direction = 0, Width = WinUiHomeRules.HistoryStripW, Height = WinUiHomeRules.HistoryStripH, Shrink = 0f,
             Children =
@@ -186,20 +205,6 @@ internal static class WinUiHomeRecents
                                      Height = WinUiHomeRules.HistoryStripH, Gap = WinUiHomeRules.SparkGap, MinBar = WinUiHomeRules.SparkMinBar,
                                  }),
             ],
-        };
-        var subtitle = new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            Children = [strip, WinUiHomeZones.Meta(Strings.Home.PlaysThisWeek(week.Total)) with { Shrink = 1f }],
-        };
-        var data = new Controls.CardData("home:history", Loc.Get(Strings.Home.ListeningHistory), subtitle, null,
-            HomeVerbs.OpenRecents, OnPlay: null, ShowMenu: false,
-            CoverOverride: Controls.IconPlate(Icons.Headphones, k.Art, Tok.AccentSubtle, Tok.AccentTextPrimary))
-        { Trailing = Ui.Icon(Icons.ChevronRight, 14f, Tok.TextTertiary) with { Shrink = 0f } };
-        return new BoxEl
-        {
-            Key = "recent:history", Direction = 1, MinWidth = 0f,
-            Children = [Controls.Surface(data, k.Shape)],
         };
     }
 }

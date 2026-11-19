@@ -86,9 +86,10 @@ public static partial class Shell
     }
 
     /// <summary>An OPEN verb's arrival, shared by the activation door (<see cref="ApplyDeepLink"/>) and a link click.
-    /// <c>route=settings&amp;arg=&lt;tab&gt;</c>: the arg is a TAB SLUG, never a place of its own (D4) — it is handed to
-    /// Settings, not committed as a route with an Arg (<c>Dest</c> would title the tab with it, <c>SameSlot</c> would
-    /// swallow a re-open of the same page on another tab).</summary>
+    /// <c>route=settings&amp;arg=&lt;link&gt;</c>: the arg is a SETTINGS LINK (a category, <c>category/dialId</c>, a dial or
+    /// any old slug), never a place of its own (D4) — it is handed to Settings (<c>Settings.Open</c>), not committed as a
+    /// route with an Arg (<c>Dest</c> would title the tab with it, <c>SameSlot</c> would swallow a re-open of the same page
+    /// on another tab).</summary>
     static void GoToLinked(in Route route)
     {
         if (route.Kind == RouteKind.Settings && ArgOf(route) is { } slug && OnSettingsTabRequested is { } openTab)

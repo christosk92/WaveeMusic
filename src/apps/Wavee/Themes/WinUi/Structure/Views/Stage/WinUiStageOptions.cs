@@ -10,7 +10,7 @@
 //   Open gallery (G)   the gallery lives behind the options (W-Tiers): the stage's one gallery rule.
 //
 // The core opener mounts this view inside the overlay layer, outside the stage subtree, and hands it the stage context on the props. Every
-// write goes through `IStageSettingsVerbs`, the blur through the lyrics' own writer (`Lyrics.Prefs`). The popover's mirrored cells live in the
+// write goes through `IStageSettingsVerbs` (the blur too: `SetLyricsBlur`, the Settings dial's writer). The popover's mirrored cells live in the
 // slot's hook cells.
 
 using FluentGpu.Controls;
@@ -119,7 +119,7 @@ internal static class WinUiStageOptions
                         new TextEl(blurNow.ToString(System.Globalization.CultureInfo.InvariantCulture)) { Size = G.CaptionSize, LineHeight = G.CaptionLine, Color = Ink.InkSecondary },
                     ],
                 },
-                Slider.Create(blur, v => Lyrics.Prefs.SetBlurStrength((int)MathF.Round(v / G.BlurStep) * (int)G.BlurStep), s_blurOptions, length: inner, thickness: G.SliderThickness, style: sliderStyle),
+                Slider.Create(blur, v => verbs.SetLyricsBlur((int)MathF.Round(v / G.BlurStep) * (int)G.BlurStep), s_blurOptions, length: inner, thickness: G.SliderThickness, style: sliderStyle),
                 new BoxEl
                 {
                     Direction = 0, Justify = FlexJustify.SpaceBetween,

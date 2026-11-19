@@ -32,5 +32,8 @@ public sealed class ClassicLintGuide : IThemeLintGuide
 
     /// <inheritdoc />
     public IReadOnlyList<LintPolicy> Policies(LintContext context)
-        => context.Window >= WidthTier.Small && context.Route is { } route && Array.IndexOf(s_bothShuffles, route) >= 0 ? s_shuffles : [];
+        => context.Window >= WidthTier.Small && context.Route is { } route && Array.IndexOf(s_bothShuffles, route) >= 0 ? s_shuffles : s_shelf;
+
+    /// <summary>The Spine Shelf's turned words (Home/SpineShelf): laid out unturned, drawn along the spine.</summary>
+    static readonly LintPolicy[] s_shelf = [new(LintIntent.Allow, Wavee.HomeUi.SpineShelfView.SpineKey, Wavee.HomeUi.SpineShelfView.SpineLintReason, Rule: "text.clip")];
 }

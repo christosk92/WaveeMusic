@@ -33,8 +33,7 @@ public sealed partial class WinUiStructure
 The registrars are `RegisterFrame` (W2a), `RegisterNav` (W2b), `RegisterLists` (W3), `RegisterPlayer` (W4a), `RegisterStage` (W4b),
 `RegisterStageMore` (W4c), `RegisterDiscovery` (W5), `RegisterDetail` (W6a: album, artist, discography), `RegisterEntities` (W6b: playlist,
 Liked, show, episode, concerts), `RegisterCollection` (W7), `RegisterOverlays` (W8a) and `RegisterScreens` (W8b). `WinUiStructure.RegisterOwn`
-runs them all, then `CommonBlocks.Register` (W8b may hand it WinUI's own module page through the `ModulePage` partial) and Nothing for
-`Home.Quickplay` (WinUI's pins are the nav pane's; W5 removes that line if it draws one). Template ids start with `winui.`.
+runs them all, then `CommonBlocks.Register` (W8b may hand it WinUI's own module page through the `ModulePage` partial). Template ids start with `winui.`.
 
 **The stand-in (until W9).** `WinUiTheme.Create()` gives the structure Classic's registration as a stand-in: `Register` registers WinUI's
 own views, then copies every key WinUI does not draw from Classic (`ViewRegistryBuilder.AddMissing`). Picking WinUI in Developer mode shows
@@ -211,16 +210,20 @@ Settings, the theme picker and WinUI's six options, the setup wizard, the What's
 
 **Files.** `Structure\WinUiStructure.Screens.cs` (`RegisterScreens`: 15 keys), `Structure\Views\Screens\WinUiSettings*.cs`, `WinUiSetup*.cs`,
 `WinUiReleaseNotes*.cs`, `WinUiFeedback.cs`, `WinUiCrash.cs`; `Structure\Rules\Tiers.Screens.cs` (the `winui.screens.stack` rung and the screens' motion),
-`Tiers.Screens.Settings.cs` / `.Setup.cs` / `.ReleaseNotes.cs` / `.Dialogs.cs` (the records), `WinUiSettingsRules.cs` and the other `WinUi*Rules.cs`, and
-`WinUiSettingsGrouping.cs`. Loc is `theme.winui.screens`. WinUI cannot name Classic (WVTH001), so these are WinUI's own views, written from the shared document
-(`SettingsDoc`) and the core hosts, in WinUI's row grammar.
+`Tiers.Screens.Settings.cs` / `.Setup.cs` / `.ReleaseNotes.cs` / `.Dialogs.cs` (the records), `WinUiSettingsRules.cs` and the other `WinUi*Rules.cs`. Loc is
+`theme.winui.screens`. WinUI cannot name Classic (WVTH001), so these are WinUI's own views, drawn from the settings registry (`SettingsSpec`, handed over as
+`SettingsPageProps.Body`) and the core hosts, in WinUI's row grammar.
 
-**Settings.** The seven tabs are the grouping WinUI publishes (`WinUiPolicies` -> `ThemePolicies.Settings` = `WinUiSettingsGrouping.Seven`): General (account,
-devices, keyboard and the window rows), Appearance (+ lyrics), Playback (+ audio), Notifications, Storage & cache, Privacy & diagnostics (+ feedback), About. The page
-draws `props.Grouping.PartsOf(props.Group)`; a tab click calls `props.OpenGroup(i)`. Every old slug lands. Title 28 / 36 at Compact and
-Small, 40 / 52 above; inset = the frame's; the SettingsCards cap at 1000 (1200 at Huge) on the left edge; below 560 CONTENT width a card puts its control under the label
-(`WinUiScreenRules.StackRung`, a content-axis rung). Rows carry no glyphs except the Theme, App mode and Zoom cards. Toggles show their On / Off word. The keyboard list
-gets a Ctrl+Tab row where the structure cycles tabs (`ShellCaps.Tracked.TabCycleChord`).
+**Settings** (settings rework phase 4, `WinUiSettings*.cs`). The head is the title (28 / 36 at Compact and Small, 40 / 52 above) with Windows Settings' "Find a
+setting" AutoSuggestBox beside it (360 wide; under it at Compact and Small), bound through `props.Search.Box(frame)` (`settings:search`). Under it a SelectorBar
+of Home and the nine categories' short names (Appearance, Sound, Playback, Lyrics, Notifications, System, Storage, Account, Help), keyed `settings:cat:<slug>`,
+writing `props.CategoryCell` (no history step). The body is the Settings home (`WinUiSettings.Home.cs`: the six at-a-glance cards, the suggestions, Recently
+changed), a category's SettingsCards over `props.Body.Of(category)` (`WinUiSettings.Rows.cs`, the composite cards in `WinUiSettings.Body.*.cs`, each dial keyed
+`settings:dial:<id>`), or the results page after Enter in the box (`WinUiSettings.Search.cs`: each result the dial's real card under its breadcrumb). A link's
+arrival opens the category, unfolds the parent expander, glides the card into view and highlights it for `WinUiSettingsRules.HighlightMs`. A dial whose clip
+exists for the theme and app mode carries an info badge after its label that opens a TeachingTip with the clip (`WinUiSettings.Explainer.cs`). Every old slug
+lands through the core's aliases. Inset = the frame's; the SettingsCards cap at 1000 (1200 at Huge) on the left edge; below 560 CONTENT width a card puts its
+control under the label (`WinUiScreenRules.StackRung`, a content-axis rung). Toggles show their On / Off word.
 
 **The Theme card.** One SettingsExpander (current theme name in its header): the picker (four fluid columns at Standard and Huge, one row at Small, a two-up grid at
 Compact) and "WinUI theme options": exactly the six, flattened and ordered as the board (`WinUiScreenRules.OptionOrder`). Backdrop, Density and Artwork apply by

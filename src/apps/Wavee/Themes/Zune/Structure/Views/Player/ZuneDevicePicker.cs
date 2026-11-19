@@ -4,9 +4,10 @@
 // upward, light dismiss, the picker-opened side effect). A 340 column: the "play on" head, then the core's decided entries as Zune rows,
 // a device row 52 tall with an 8 dot (the accent on the device in use, a dim dot on the chosen output, a dim ring elsewhere), its name (14/20, the accent in use; a name keeps its own casing, the core's
 // "system default" takes Zune's) over
-// its note (12/16), an information row (a section's header, the quality echo, "no devices") as a small cased line, a divider between the
-// sections. It scrolls well before the window edge (`props.MaxHeight`) and re-renders while open, so a transfer landing moves the accent in
-// place. Choosing a row runs its verb and closes the picker.
+// its note (12/16), an information row (a section's header, "no devices") as a small cased line, a divider between the sections. A link into
+// Settings (design 5.4: the quality echo, "sound settings" with the equalizer and normalization at rest) is a device row without a dot: the
+// words in the row's voice over the note, a target as tall as a device row. It scrolls well before the window edge (`props.MaxHeight`) and
+// re-renders while open, so a transfer landing moves the accent in place. Choosing a row runs its verb and closes the picker.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -34,8 +35,19 @@ internal static class ZuneDevicePicker
         var view = props.Read();
         float windowH = ctx.Hooks.UseContextSignal(Viewport.Size).Value.Height;
         var entries = view.Entries;
-        var rows = new List<Element>(entries.Count + 1) { Small(Loc.Get(Strings.Theme.Zune.Player.PlayOn), P.PickerHeadH) };
-        for (int i = 0; i < entries.Count; i++) rows.Add(Row(entries[i], props.Close, i));
+        var rows = new List<Element>(entries.Count + 2) { Small(Loc.Get(Strings.Theme.Zune.Player.PlayOn), P.PickerHeadH) };
+        bool hinted = false;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            rows.Add(Row(entries[i], props.Close, i));
+            // The quality row's second line (design 6.3: Lossless available, the metered cap's state line): the picker's hint slot right under
+            // the first link, which is the quality echo (the last one, "sound settings", states the equalizer at rest itself).
+            if (!hinted && entries[i].Kind == DevicePickerEntryKind.Link)
+            {
+                hinted = true;
+                rows.Add(Hints.Slot(HintSurfaces.DevicePicker, props.Close));
+            }
+        }
         return new BoxEl
         {
             Key = Key, Width = P.PickerW, Direction = 1,
@@ -54,6 +66,7 @@ internal static class ZuneDevicePicker
     {
         DevicePickerEntryKind.Separator => new BoxEl { Key = "sep:" + index, Height = 1f, Margin = P.PickerDividerMargin, Fill = Tok.StrokeDividerDefault },
         DevicePickerEntryKind.Info => Small(e.Label, P.PickerHeadH) with { Key = "info:" + index },
+        DevicePickerEntryKind.Link => Link(e, close) with { Key = "link:" + index },
         _ => Device(e, close) with { Key = "dev:" + index },
     };
 
@@ -70,6 +83,36 @@ internal static class ZuneDevicePicker
             },
         ],
     };
+
+    /// <summary>A link into Settings: a device row whose dot column stays empty (the words line up with the devices), the label in the
+    /// secondary ink (the core's word takes Zune's case) over its note; it runs its verb and closes the picker.</summary>
+    static BoxEl Link(DevicePickerEntry e, Action close)
+    {
+        var invoke = e.Invoke;
+        var text = new List<Element>(2)
+        {
+            new TextEl(e.Label)
+            {
+                Size = P.PickerNameSize, LineHeight = P.PickerNameLine, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary,
+                Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            },
+        };
+        if (e.Accelerator is { Length: > 0 } note)
+            text.Add(new TextEl(note) { Size = P.PickerSmallSize, LineHeight = P.PickerSmallLine, Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
+        return new BoxEl
+        {
+            Height = P.PickerRowH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = P.PickerGap,
+            Padding = new Edges4(P.PickerPadX, 0f, P.PickerPadX, 0f),
+            HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
+            Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand,
+            OnClick = invoke is null ? null : () => { invoke(); close(); },
+            Children =
+            [
+                new BoxEl { Width = P.PickerDot, Height = P.PickerDot, Shrink = 0f },
+                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = text.ToArray() },
+            ],
+        };
+    }
 
     /// <summary>A device or an output: the dot, the name over its note; the accent while it is the one in use.</summary>
     static BoxEl Device(DevicePickerEntry e, Action close)

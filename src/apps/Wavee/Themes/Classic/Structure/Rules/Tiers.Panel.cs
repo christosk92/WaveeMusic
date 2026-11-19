@@ -46,6 +46,10 @@ public static class ClassicPanelTiers
     /// <summary>The Huge panes' widths: 380 at 2560 and below, 420 at 3840 and above (C-Shell-Huge, C-Home-Huge4K).</summary>
     public const float HugeW = 380f, HugeAt = 2560f, Huge4KW = 420f, Huge4KAt = 3840f;
 
+    /// <summary>The panel header's glyph buttons in window tier <paramref name="window"/>: the sheet's 40 target at Compact (the Compact hit floor),
+    /// the rail's 32 above it.</summary>
+    public static float HeaderButtonBox(WidthTier window) => window == WidthTier.Compact ? SheetHeaderButton : Controls.IconButtonSize;
+
     /// <summary>Compact: the bottom sheet.</summary>
     public static ClassicPanelTier Compact { get; } = new(WidthTier.Compact, new PanelTierRule(PanelPlacement.Sheet), FloatW, Gap);
 

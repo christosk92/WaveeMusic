@@ -235,6 +235,8 @@ public static class ZuneControls
         MarkColumnWidth = 20f, RadioMark = MenuRadioMark.Dot, DotSize = 8f, RingAtRest = true, RingWidth = 1f, RingColor = Tok.TextTertiary,
         MarkColor = R.Ink.AccentSelection, MarkHoverColor = R.Ink.AccentSelection, MarkPressedColor = R.Ink.AccentSelection,
         SelectedLabelColor = R.Ink.AccentDecor,
+        // A row that asks for attention (a one-time pointer: the daylist's "options") says it in the accent, as the choice is written; no dot.
+        AttentionMark = MenuAttentionMark.Ink, AttentionColor = R.Ink.AccentDecor,
         SubMenuGlyph = IconGlyphs.CaretRightSolid8, SubMenuGlyphSize = 6f, SubMenuGlyphColor = Tok.TextTertiary,
     };
 

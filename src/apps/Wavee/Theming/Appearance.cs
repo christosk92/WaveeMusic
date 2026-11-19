@@ -14,7 +14,7 @@
 //                           (ramp, else the plain accent colour).
 //   Seed(kind)              the shell test host: a fixed kind, NO OS read, the token-default accent.
 //   SetMode(mode)           the Settings selector: palette; System re-reads the OS accent; persist; cross-fade.
-//   ToggleMode()            the flip verb (palette row, profile menu): the other kind, persist the
+//   ToggleMode()            the flip verb (the menu bench probe's theme flip): the other kind, persist the
 //                           explicit mode (Light = 1, Dark = 2), cross-fade. The accent is not touched.
 //   OnSystemColorsChanged() the OS colours changed: the accent ramp follows ALWAYS; the kind only while the mode is System.
 //   OnWindowCreated()       the window exists: the engine installed the OS accent as a `Tok.SetAccent` override while creating it;
@@ -197,7 +197,8 @@ public static class Appearance
     /// <summary>Settings > Appearance > Theme.</summary>
     public static void SetMode(ThemeMode mode) => s_model.SetMode(mode);
 
-    /// <summary>The ONE theme-flip verb: the palette row, the profile menu's Theme row (and Settings › App mode sets the mode itself).</summary>
+    /// <summary>The theme-flip verb the menu bench probe drives. Every user surface sets the mode itself through the App mode dial (Settings, the
+    /// profile menu's System · Light · Dark), so System is never dropped by a flip.</summary>
     public static void ToggleMode() => s_model.ToggleMode();
 
     /// <summary><c>FluentApp.SystemColorsChanged</c>: follow the OS accent always and the OS theme while the mode is System.</summary>

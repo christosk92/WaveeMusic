@@ -15,6 +15,9 @@ internal static class ClassicNavEditLayout
     /// <summary>The edit bar's height.</summary>
     public const float BarHeight = 36f;
 
+    /// <summary>The edit bar's pencil (the sidebar's bar and Home's share it, `ClassicEditBarParts`).</summary>
+    public const float PencilSize = 14f;
+
     /// <summary>The gap between the edit bar's children and between a row's children.</summary>
     public const float Gap = 4f;
 

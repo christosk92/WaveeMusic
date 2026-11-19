@@ -52,10 +52,15 @@ public sealed record SetupTermsProps
 }
 
 /// <summary>The crash-reporting consent card's facts and verb. The offered choices are a prefix of Off / Ask / Auto, so a choice index IS the stored mode.</summary>
-/// <param name="Choices">How many choices this build offers (3, or 2 on a build that cannot send: "Always send" would be a promise it cannot keep).</param>
+/// <param name="Choices">How many choices this build offers (3, or 2 on a build that cannot send: "Automatic" would be a promise it cannot keep).</param>
 /// <param name="Seed">The index the card opens on (read once at mount: the stored mode, EFFECTIVE for a build that cannot send).</param>
-/// <param name="Set">Writes the choice the instant it changes (never waits for Continue).</param>
-public sealed record SetupConsent(int Choices, Func<int> Seed, Action<int> Set);
+/// <param name="Set">Writes the choice the instant it changes (never waits for Continue), through Settings' crash-reports dial.</param>
+public sealed record SetupConsent(int Choices, Func<int> Seed, Action<int> Set)
+{
+    /// <summary>The choices' words (contract 1.116, owner decision 10): Settings' own, the crash-reports dial's choices in order (Off · Ask each
+    /// time · Automatic); the card draws the first <see cref="Choices"/>.</summary>
+    public System.Collections.Immutable.ImmutableArray<string> Labels { get; init; } = [];
+}
 
 /// <summary>The props of <see cref="ViewKeys.SetupSignIn"/>.</summary>
 public sealed record SetupSignInPageProps

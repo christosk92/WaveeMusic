@@ -218,7 +218,7 @@ internal static class WinUiSearchBody
         Element art = new BoxEl
         {
             Width = cover, Height = cover, Shrink = 0f, ClipToBounds = true, Corners = CornerRadius4.All(corners), HitTestVisible = false,
-            Children = [Search.ArtOf(hit, url, cover, cover, corners)],
+            Children = [Search.ArtOf(hit, url, cover, cover, corners, Design.MorphKeys.ForUri(uri, cover))],
         };
         Element titleEl = (layout.Beside ? R.Type.FoldTitle(title) : R.Type.ModuleHeader(title)) with
         {

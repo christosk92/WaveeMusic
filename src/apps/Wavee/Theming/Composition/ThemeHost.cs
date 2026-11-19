@@ -457,6 +457,11 @@ public static class ThemeHost
         Notify.Say(Loc.Get(Strings.Settings.ThemePicker.SwitchFailed), FluentGpu.Controls.InfoBarSeverity.Error, dedupeKey: "theme.switch.failed");
     }
 
+    /// <summary>Does the ACTIVE theme declare an option with the plain id <paramref name="optionId"/> (<see cref="NavPaneOptionIds"/>)? What a core
+    /// menu asks before it offers a choice only some structures make (the sidebar pane menu's Layout and Density, settings design 5.4): by the
+    /// structure's declared options, never by theme identity. False before <see cref="Install"/>.</summary>
+    public static bool Declares(string optionId) => s_installed && s_current.Peek() is { } active && active.Find(optionId) is not null;
+
     /// <summary>A core verb (a pane menu row, a migration, an undo) asks the ACTIVE theme to set one of its options by plain id, without knowing
     /// which layer declares it or which theme is active (<see cref="NavPaneOptionIds"/> are the ids the sidebar asks for). A theme that declares no such
     /// option ignores the request (logged); a value the option refuses is logged and changes nothing. A no-op before <see cref="Install"/>.</summary>

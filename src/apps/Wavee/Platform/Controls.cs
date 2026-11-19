@@ -276,10 +276,11 @@ public static partial class Controls
     /// the cover blanked to grey for a frame, then the new one popped in. A first cover (nothing shown yet) arrives as <see cref="Artwork"/>'s
     /// does, over its cover tile. For a slot that never changes art (cards, rows) <see cref="Artwork"/> is the one to use: this keeps a
     /// component and, for the length of a hand-over, a second decoded cover.</summary>
-    public static Element ArtworkHandOver(string? url, float width, float height, float corners, int decodePx = 0, float saturation = 1f)
-        => Embed.Comp(new HandOverProps(url ?? "", width, height, corners, decodePx, saturation), static () => new CoverHandOver()) with { Key = "art:handover" };
+    /// <remarks><paramref name="connect"/>: the shown cover's flight key (<see cref="Artwork"/>'s); the arriving layer is never tagged.</remarks>
+    public static Element ArtworkHandOver(string? url, float width, float height, float corners, int decodePx = 0, float saturation = 1f, string? connect = null)
+        => Embed.Comp(new HandOverProps(url ?? "", width, height, corners, decodePx, saturation, connect), static () => new CoverHandOver()) with { Key = "art:handover" };
 
-    sealed record HandOverProps(string Url, float Width, float Height, float Corners, int DecodePx, float Saturation);
+    sealed record HandOverProps(string Url, float Width, float Height, float Corners, int DecodePx, float Saturation, string? Connect);
 
     /// <summary><see cref="ArtworkHandOver"/>'s two layers: the shown cover under, the arriving one over it while it decodes and fades in. Phase 1:
     /// the arriving cover decodes and reveals (<see cref="HandOverFadeMs"/>); phase 2: the shown layer takes the arriving cover UNDER the
@@ -324,7 +325,8 @@ public static partial class Controls
             float wait = _phase == 1 ? HandOverFadeMs + HandOverSlackMs : HandOverSlackMs;
             UseTimeout(_advance, wait, DepKey.From(_top.GetHashCode(), _phase, ready ? 1 : 0, 0));
 
-            Element bottom = Artwork(_shown.Length > 0 ? _shown : null, p.Width, p.Height, p.Corners, decodePx: p.DecodePx, saturation: p.Saturation);
+            Element bottom = Artwork(_shown.Length > 0 ? _shown : null, p.Width, p.Height, p.Corners, decodePx: p.DecodePx, saturation: p.Saturation,
+                                     connect: string.Equals(_shown, p.Url, StringComparison.Ordinal) ? p.Connect : null);
             // The arriving layer fades in as a whole (a cover already decoded elsewhere, the home card's, lands at once and still crossfades), and
             // its image reveals on its own decode inside it.
             Element top = _phase == 0

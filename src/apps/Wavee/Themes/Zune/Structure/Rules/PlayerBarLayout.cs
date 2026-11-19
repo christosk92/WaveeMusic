@@ -261,6 +261,11 @@ public static class ZunePanelBodies
     /// <summary>The meta row's height in a window tier: the Compact touch floor, else the board's 28.</summary>
     public static float MetaRow(WidthTier window) => window == WidthTier.Compact ? MetaRowCompactH : MetaRowH;
 
+    /// <summary>The "options" word's card (settings rework phase 5): its width, its 16 inset, the gap between its blocks and inside one, the
+    /// slider's thickness (at least the word's row); the blur slider runs 0 (off) - 100 in steps of five, as the full screen's popover.</summary>
+    public const float LyricsOptionsW = 300f, LyricsOptionsPad = 16f, LyricsOptionsGap = 16f, LyricsOptionsInnerGap = 6f, LyricsSliderThickness = 24f,
+        LyricsBlurMax = 100f, LyricsBlurStep = 5f;
+
     // ── "next up" ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A row: the 36 square art, the 52 floor (the board's grid row).</summary>

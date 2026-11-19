@@ -8,7 +8,9 @@
 // each phase the card draws, through `AiLyrics.Stage`, which also makes every module verb inert while it stands: a click on Try again,
 // Remove or the switch downloads nothing, loads nothing and never touches the profile's `ai\lyrics` folder. The details are what the
 // real download writes for each failure kind (`AiLyrics.Pack.cs`: the URL, the file, the drive). The next `mount` (or `reset`) puts
-// "not started" back.
+// "not started" back. `ai=timed words=on` also gives the playing track's lyrics word timing (`AiLyrics.StageWordTiming`: the store upgrade
+// a cached result takes), so the lyrics surfaces draw a timed song word by word (on a line-synced fake: `mount lyrics=line`); the next
+// mount empties the lyrics store, so the next play is answered by the fixture again.
 
 namespace Wavee;
 
@@ -26,6 +28,9 @@ public static partial class Diagnostics
         /// <summary>True while a `state kind=ai` status stands: the next mount puts "not started" back.</summary>
         bool _aiStaged;
 
+        /// <summary>The track `ai=timed words=on` gave word timing ("" when none): the next mount empties the lyrics store.</summary>
+        string _aiWordsTrack = "";
+
         /// <summary>`state kind=ai ai=<case> error=<kind> lang=<iso>`: stage the AI lyrics card (<see cref="AiStatus"/>).</summary>
         string AiState(int id, string name, Inspect.Args a)
         {
@@ -39,8 +44,15 @@ public static partial class Diagnostics
             // timed / timing: the feature ready AND the playing track timed by it (a finished job, or one running: the lyrics surfaces'
             // AI disclosure, its progress line). Stage after a `play`: the status names the track playing then.
             var trackPhase = c switch { "timed" => AiLyrics.TrackPhase.Done, "timing" => AiLyrics.TrackPhase.Working, _ => AiLyrics.TrackPhase.Idle };
+            if (a.Bool("words", false) && c != "timed") return Inspect.Reply.Fail(id, name, "state kind=ai words=on goes with ai=timed (a finished job's word timing)");
             AiLyrics.Stage(c == "none" ? null : AiStatus(c, error, lang), trackPhase);
             _aiStaged = c != "none";
+            if (a.Bool("words", false))
+            {
+                string timed = AiLyrics.StageWordTiming();
+                if (timed.Length == 0) return Inspect.Reply.Fail(id, name, "state kind=ai words=on: the playing track has no line-synced lyrics to time (play one first)");
+                _aiWordsTrack = timed;
+            }
             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
             return Settled(id, name, a, w =>
             {
@@ -50,12 +62,14 @@ public static partial class Diagnostics
                 w.WriteString("phase", st.Phase.ToString());
                 if (st.Error != AiLyrics.SetupError.None) w.WriteString("error", st.Error.ToString());
                 if (st.LanguageFailure.IsSet) w.WriteString("failedLanguage", st.LanguageFailure.Language);
+                if (_aiWordsTrack.Length > 0) w.WriteString("wordsTrack", _aiWordsTrack);
             });
         }
 
         /// <summary>A mount puts the module's "not started" back after a staged status.</summary>
         void RestoreAiLyrics()
         {
+            if (_aiWordsTrack.Length > 0) { Lyrics.Store.Clear(); _aiWordsTrack = ""; }   // the next play asks the fixture again
             if (!_aiStaged) return;
             _aiStaged = false;
             AiLyrics.Stage(null);

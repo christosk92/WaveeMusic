@@ -11,12 +11,12 @@
 // `StyleKeys.TrackTable` style; T8b its chrome, `ClassicTrackChrome.cs`), T8c the other list surfaces (`Lists\ClassicEagerRow.cs`,
 // `ClassicEpisodeRow.cs`, `ClassicSurface.cs`, `ClassicArtistChart.cs`, `ClassicTrackDrawer.cs`, with the shared cells in `ClassicRowCells.cs`:
 // the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
-// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T7c the video surfaces (`Views\Video`: the docked card, the in-window overlay and its chrome, the pop-out, the fullscreen exit chrome, the poster and join notice, the placement flyout, the panel's video body), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10b2 the rest of the artist family (the gallery lightbox `ClassicArtistLightbox.cs`, the discography page `ClassicDiscographyPage.cs`, the discography style `Lists\ClassicDiscography.cs` and the chart's frame), T10b3 the concert surfaces (`Views\Pages\ClassicConcert*.cs`: the hub with its filter bar, tail and location picker, an artist's tour dashboard, the event page) and the Common module page (`Themes\Common\CommonModulePage.cs`), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes), T11a the overlays and the dialog bodies (`Views\Overlays`: the account chip and menu, the notification panel, the runtime banner, the update toast's card, the offline strip, the context menu's tile; `Views\Dialogs`: the log-out card, the play-a-link card, the signature sheet, the destination picker, the credits sheet), T11b the Settings page (`Views\Screens\ClassicSettings*.cs`: the page, its seven tabs, the theme picker, the options and the sidebar layout cards), T11c the screens (`Views\Screens`: the setup wizard, the release notes, the feedback and crash dialogs' bodies) and the Common blocks it registers (`Themes\Common`); every other surface is still core code. It
+// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T7c the video surfaces (`Views\Video`: the docked card, the in-window overlay and its chrome, the pop-out, the fullscreen exit chrome, the poster and join notice, the placement flyout, the panel's video body), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10b2 the rest of the artist family (the gallery lightbox `ClassicArtistLightbox.cs`, the discography page `ClassicDiscographyPage.cs`, the discography style `Lists\ClassicDiscography.cs` and the chart's frame), T10b3 the concert surfaces (`Views\Pages\ClassicConcert*.cs`: the hub with its filter bar, tail and location picker, an artist's tour dashboard, the event page) and the Common module page (`Themes\Common\CommonModulePage.cs`), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes), T11a the overlays and the dialog bodies (`Views\Overlays`: the account chip and menu, the notification panel, the runtime banner, the update toast's card, the offline strip, the context menu's tile; `Views\Dialogs`: the log-out card, the play-a-link card, the signature sheet, the destination picker, the credits sheet), T11b the Settings page (`Views\Screens\ClassicSettings*.cs`: the page, its Settings home and nine categories, the theme picker, the options and the sidebar layout cards), T11c the screens (`Views\Screens`: the setup wizard, the release notes, the feedback and crash dialogs' bodies) and the Common blocks it registers (`Themes\Common`); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
-// T1b: the options Classic will own (plan 6.1) that are still TODAY's switches are bound to their legacy keys through `SettingsDoc`
-// rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
+// T1b: the options Classic will own (plan 6.1) that are still TODAY's switches are bound to their legacy keys through registry
+// dials (`appearance.option.sidebar.*`). `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
 // final shape; each M-PR deletes its rows from the list and declares the option in `Options` (the generated row takes the
 // same place in the same group). M2 declared `rowStyle`, M4 `hideTrackArt`, M6 `Surfaces` (the colour washes; CT9 added Rich and the `AccentFromArtwork` / `NowPlayingColors` toggles), M7a `Sidebar` and `LibraryDensity` and M8 `PageLayout`, `RailUniform` and
 // `ClearRememberedSizes`; M3's `density` is the style's.
@@ -172,7 +172,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.HomeZoneCoverShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.cover-shelf");
         views.Add(ViewKeys.HomeZoneWideTiles, ClassicHomeZones.BodyTemplate, "classic.home.zone.wide-tiles");
         views.Add(ViewKeys.HomeZoneReleaseList, ClassicHomeZones.BodyTemplate, "classic.home.zone.release-list");
-        views.Add(ViewKeys.HomeZoneClusterCards, ClassicHomeZones.BodyTemplate, "classic.home.zone.cluster-cards");
+        views.Add(ViewKeys.HomeZoneSpineShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.spine-shelf");
         views.Add(ViewKeys.HomeZoneMixedCovers, ClassicHomeZones.BodyTemplate, "classic.home.zone.mixed-covers");
         views.Add(ViewKeys.HomeZoneRadioShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.radio-shelf");
         views.Add(ViewKeys.HomeZoneBrowseTiles, ClassicHomeZones.BodyTemplate, "classic.home.zone.browse-tiles");
@@ -183,16 +183,33 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.HomeZoneEpisodeRows, ClassicHomeZones.BodyTemplate, "classic.home.zone.episode-rows");
         views.Add(ViewKeys.HomeZonePodcastGroups, ClassicHomeZones.BodyTemplate, "classic.home.zone.podcast-groups");
         views.Add(ViewKeys.HomeZoneEmptyFacet, ClassicHomeZones.BodyTemplate, "classic.home.zone.empty-facet");
+        views.Add(ViewKeys.HomeZoneMoodPlates, ClassicHomeZones.BodyTemplate, "classic.home.zone.mood-plates");
+        views.Add(ViewKeys.HomeZoneBookShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.book-shelf");
+        views.Add(ViewKeys.HomeZoneLeadGrid, ClassicHomeZones.BodyTemplate, "classic.home.zone.lead-grid");
+        views.Add(ViewKeys.HomeZoneCompactGrid, ClassicHomeZones.BodyTemplate, "classic.home.zone.compact-grid");
+        views.Add(ViewKeys.HomeZoneArtistCircles, ClassicHomeZones.BodyTemplate, "classic.home.zone.artist-circles");
+        views.Add(ViewKeys.HomeZoneCappedShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.capped-shelf");
+        views.Add(ViewKeys.HomeZoneReleaseSpotlight, ClassicHomeZones.BodyTemplate, "classic.home.zone.release-spotlight");
         views.Add(ViewKeys.HomeSection, ClassicHomeSection.Template, "classic.home.section");
-        CommonNothing.Register(views, ViewKeys.HomeQuickplay);   // P5 Z5: Classic has no quickplay strip (its pins are the sidebar's)
+        // The pinned Home board (contract 1.117; spec 8.3): Edit Home on the tiles, the sidebar's edit bar in the facet row's end.
+        views.Add(ViewKeys.HomeBoard, ClassicHomeBoard.Template, "classic.home.board");
+        views.Add(ViewKeys.HomeBoardTools, ClassicHomeEditBar.Template, "classic.home.board-tools");
+        views.Add(ViewKeys.HomeTilePin, ClassicHomeTiles.Pin, "classic.home.tile.pin");
+        views.Add(ViewKeys.HomeTileNowPlaying, ClassicHomeTiles.NowPlaying, "classic.home.tile.now-playing");
+        views.Add(ViewKeys.HomeTileUpNext, ClassicHomeTiles.UpNext, "classic.home.tile.up-next");
+        views.Add(ViewKeys.HomeTileRecents, ClassicHomeTiles.Recents, "classic.home.tile.recents");
+        views.Add(ViewKeys.HomeTileReleases, ClassicHomeTiles.Releases, "classic.home.tile.releases");
+        views.Add(ViewKeys.HomeTileDaylist, ClassicHomeTiles.Daylist, "classic.home.tile.daylist");
+        views.Add(ViewKeys.HomeTileSection, ClassicHomeTiles.Section, "classic.home.tile.section");
+        views.Add(ViewKeys.HomeTileOptions, ClassicHomeTileOptions.Template, "classic.home.tile.options");
+        views.Add(ViewKeys.HomeTileVacant, ClassicHomeTiles.Vacant, "classic.home.tile.vacant");
         // T9a: the shared detail frame. The scaffold (notice, content column, rail | grip | content row, the vertical page), the rail and its collapsed
-        // strip, the vertical show header, the vertical arm's hero (and its loading band, a style the table reads) and the insights sheet with its two
+        // strip, the vertical arm's hero (and its loading band, a style the table reads) and the insights sheet with its two
         // entry points. The mode ladder, the rail cells and prefs, the accent, the tint and tone claims, the table, the drop target and the insights
         // toggle stay core (`Detail.FrameHost`); the per-kind pages (T9b, T9c) hand the frame their slots.
         views.Add(ViewKeys.DetailFrame, ClassicDetailFrame.Template, "classic.detail.frame");
         views.Add(ViewKeys.DetailRail, ClassicDetailFrame.RailTemplate, "classic.detail.rail");
         views.Add(ViewKeys.DetailCompactRail, ClassicDetailFrame.CompactRailTemplate, "classic.detail.compact-rail");
-        views.Add(ViewKeys.DetailShowHeader, ClassicDetailFrame.ShowHeaderTemplate, "classic.detail.show-header");
         views.Add(ViewKeys.DetailHero, ClassicDetailFrame.HeroTemplate, "classic.detail.hero");
         views.AddStyle(StyleKeys.DetailHero, ClassicDetailFrame.HeroStyle);
         views.Add(ViewKeys.DetailInsights, ClassicInsights.SheetTemplate, "classic.detail.insights");
@@ -235,12 +252,16 @@ public sealed class ClassicStructure : IStructureLayer
         // T10c1: the library page (the navigator, the grips, the detail pane, the search columns, the collapsed drill-in) and its four panes (album, show, artists' reader, Your Episodes).
         // The library data, the shape memo, the selection and its persistence, the search matcher, the collapse state and every pane model and demand stay core.
         ClassicLibrary.Register(views);
-        // T11b: the Settings page (the masthead, the seven-tab pivot, the keyed scroll lane and every tab's sections and rows, drawn from `SettingsDoc`) and the three Settings
-        // surfaces the setup wizard shares with it: the theme picker, the active theme's options and the sidebar layout cards. The document, the verbs, the facts, the page
-        // epoch, the Storage census, the deep link and the legacy-row binding stay core.
+        // T11b, settings rework 7.1: the Settings page over the settings registry (the masthead with its "Find a setting" box, the strip of the Settings home and the nine
+        // categories, the home, a category's groups and rows, the results page, the arrival's highlight) and the Settings surfaces the setup wizard shares with it: the theme
+        // picker and the active theme's options. The registry, the bodies, the search, the home's facts, the links, the verbs, the page epoch and the Storage census stay core.
         ClassicSettings.Register(views);
         // T10c2: Recents, the profile page and the Following / Followers list page (`Views\Pages`). The shapes, demands, accents, scroll spies, load rules and every verb stay core.
         views.Add(ViewKeys.RecentsPage, ClassicRecents.Template, "classic.recents.page");
+        // The podcast pages v2 (the concept winui-podcast-v2, theme=classic): the show, the episode and the audiobook (`Views\Podcast\`).
+        views.Add(ViewKeys.PodcastShowPage, ClassicPodcastShow.Template, "classic.podcast.show");
+        views.Add(ViewKeys.PodcastEpisodePage, ClassicPodcastEpisode.Template, "classic.podcast.episode");
+        views.Add(ViewKeys.AudiobookPage, ClassicPodcastAudiobook.Template, "classic.podcast.audiobook");
         ClassicProfile.Register(views);
         ClassicProfileList.Register(views);
         // T9b: the album and playlist sub-contracts of the detail frame. The notice strip and the vertical arm's trailing body (the frame's two leaves only an album or a
@@ -290,7 +311,9 @@ public sealed class ClassicStructure : IStructureLayer
 
         // T11c: the Common blocks every theme shares (history, the Home customizer, the frame-rate overlay, diagnostics, logs: today's views
         // converted, one copy), then Classic's own screens: the setup wizard, the release notes, the feedback and crash dialogs' bodies.
-        CommonBlocks.Register(views);
+        // Classic draws a dial's explanation badge in its own grammar (an info glyph button and its tip in Classic's plate, settings rework 6.5).
+        CommonBlocks.Register(views, explainer: ClassicSettings.Explainer, explainerTemplateId: "classic.screens.settings.explainer",
+            hint: ClassicHint.Template, hintTemplateId: "classic.hint");
         ClassicSetup.Register(views);
         ClassicReleaseNotes.Register(views);
         views.Add(ViewKeys.DialogFeedback, ClassicFeedback.Template, "classic.dialog.feedback");
@@ -494,7 +517,10 @@ public sealed class ClassicStructure : IStructureLayer
             structure.Get(AccentFromArtwork.Key), structure.Get(NowPlayingColors.Key));
 
     /// <inheritdoc />
-    public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted with { ContinuousPageSwap = true };
+    public ShellCapabilities Capabilities(OptionValues structure) => s_capabilities;
+
+    /// <summary>Every feature on; the continuous page swap.</summary>
+    static readonly ShellCapabilities s_capabilities = ShellCapabilities.Unrestricted with { ContinuousPageSwap = true };
 
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;

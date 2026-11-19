@@ -5,7 +5,7 @@
 // album's face pile are this ONE look). Moved verbatim with their numbers (`Rules\ClassicDetailKitLayout.cs`); what DECIDES stays core
 // (`Detail.RailArtistLine`: the width ladder and its hysteresis, the reserved heights, the "+N" arithmetic).
 //
-// The class is PARTIAL: the rail satellites only the show and episode pages use (T9c) are in `ClassicDetailKit.Satellites.cs`.
+// The class is PARTIAL: the save and more satellites the library's show pane draws (T9c) are in `ClassicDetailKit.Satellites.cs`.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;

@@ -50,7 +50,7 @@ public sealed class WinUiStyle : IStyleLayer
     // ── the options (W-ThemeOptions) ────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary><c>style.backdrop</c>: Mica (the default), Mica Alt, Acrylic or None. A ComboBox; the material is not a colour, so it applies on the
-    /// theme transaction.</summary>
+    /// theme transaction. Also in the title bar's window menu (right-click the empty title bar, design 5.4).</summary>
     public static SelectOption<WinUiBackdrop> BackdropOption { get; } = new(
         Id: "backdrop",
         TitleKey: Strings.Theme.Winui.Style.Backdrop,
@@ -65,6 +65,7 @@ public sealed class WinUiStyle : IStyleLayer
         Picker: PickerStyle.Combo)
     {
         Apply = ApplyMode.Transaction,
+        Contexts = [SettingsSurfaces.TitleBarMenu],
     };
 
     /// <summary><c>style.rowDensity</c>: Default or Compact (<see cref="WinUiDensityOption"/>). Transaction.</summary>

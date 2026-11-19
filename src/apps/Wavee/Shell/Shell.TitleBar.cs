@@ -23,12 +23,16 @@ public static partial class Shell
 
     static ShellTitleBarProps? s_titleBarProps;
 
+    /// <summary>Asks the title bar to open its own window menu (a Settings "Also in" door to a theme option that lives there, design 5.4).</summary>
+    public static readonly FluentGpu.Signals.Signal<int> TitleBarMenuRequest = new(0);
+
     /// <summary>The props of the structure's title bar: one frozen instance for the process (every member is a delegate over the
     /// shell's statics, read lazily, so a root remount mounts the same props on a fresh tree).</summary>
     static ShellTitleBarProps TitleBarProps() => s_titleBarProps ??= new()
     {
         Layout = static () => RowStateOf(ChromeLayout.Value),
         PeekLayout = static () => RowStateOf(ChromeLayout.Peek()),
+        WindowMenuRequest = TitleBarMenuRequest,
         TabsVersion = TitleBarTabsVersion,
         ContentVersion = ChromeContentVersion,
         TabItemsVersion = TabStripItemsVersion,
@@ -52,6 +56,7 @@ public static partial class Shell
         BellUnread = static () => Diagnostics.StoreShot.Presenting.Value ? 0 : Notify.Unread.Value,
         ToggleNotifications = OpenNotificationPanel,
         Pin = CurrentPin,
+        HomePin = CurrentHomePin,
         OpenFullScreen = static begin => PlayerVerbs.Default.OpenStage(begin, "titlebar"),
         Search = SearchProps(),
         OnSearchRoute = static () => Current.Value.Kind == RouteKind.Search,
@@ -99,6 +104,17 @@ public static partial class Shell
     {
         if (PinRow(Current.Value) is not { Invoke: { } invoke } row) return null;
         return new TitleBarPin(row.Icon.Glyph ?? Icons.Pin, row.Label, invoke);
+    }
+
+    /// <summary>The direct Pin to Home / Unpin from Home for the destination on screen, or null when Home cannot hold it
+    /// (<see cref="HomePinVerbs.TargetFor"/>, read tracked: the pin set's version).</summary>
+    static TitleBarPin? CurrentHomePin()
+    {
+        if (HomePinVerbs.TargetFor(Current.Value) is not { } t) return null;
+        string id = t.PinId, title = t.Title;
+        return t.Pinned
+            ? new TitleBarPin(ActionIcons.Resolve(ActionIcons.Unpin).Glyph ?? Icons.Pin, Loc.Get(Strings.Home.Board.Pin.Unpin), () => HomePinVerbs.Unpin(id))
+            : new TitleBarPin(ActionIcons.Resolve(ActionIcons.Pin).Glyph ?? Icons.Pin, Loc.Get(Strings.Home.Board.Pin.PinTo), () => HomePinVerbs.Pin(id, title, ""));
     }
 
     // ══ THE SEARCH'S PROPS ══════════════════════════════════════════════════════════════════════════════════════════

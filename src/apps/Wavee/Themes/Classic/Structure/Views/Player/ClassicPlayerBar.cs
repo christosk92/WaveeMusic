@@ -76,6 +76,10 @@ internal static partial class ClassicPlayerBar
         // a pass on hover, one line moving at a time, the title first; nothing moves while the window is covered).
         var marquees = rc.UseRef<Marquee.Group?>(null);
         marquees.Value ??= new Marquee.Group();
+        // The play disc and the volume control: the shortcuts and normalization hints' lines float at them (design 6.3 #5, #13).
+        var hintAnchors = rc.UseRef<HintAnchors?>(null);
+        hintAnchors.Value ??= new HintAnchors(barNode);
+        var anchors = hintAnchors.Value;
 
         const string titleKey = "np-title";
         const string artistsKey = "np-artists";
@@ -286,7 +290,7 @@ internal static partial class ClassicPlayerBar
             transportKids.Add(PrimaryButton(props,
                     v.Errored ? ClassicPlayerBarLayout.PlaySolid : v.PauseGlyph ? ClassicPlayerBarLayout.PauseSolid : ClassicPlayerBarLayout.PlaySolid,
                     v.Primary, mini ? ClassicPlayerTiers.MiniButton : m.PrimaryBox, mini ? ClassicPlayerTiers.MiniPlayGlyph : m.PrimaryGlyph)
-                with { Key = "primary", Animate = ClassicPlayerBarLayout.MoveMotion });
+                with { Key = "primary", Animate = ClassicPlayerBarLayout.MoveMotion, OnRealized = anchors.OnPlay });
         if (!mini && v.OwnsTransport && v.ShowPrevNext)
             transportKids.Add(BarButton(Icons.Next, () => verbs.Next(), v.NextEnabled, false, box, glyph)
                 with { Key = "next" });
@@ -439,13 +443,15 @@ internal static partial class ClassicPlayerBar
                     bool popup = v.VolumePopup;
                     return Slot("volume", w, box, lit,
                         Embed.Comp(() => new VolumeButton(props, popup, box, glyph))
-                            with { Key = (popup ? "volume-popup-" : "volume-inline-") + box + "-" + glyph });
+                            with { Key = (popup ? "volume-popup-" : "volume-inline-") + box + "-" + glyph })
+                        with { OnRealized = (v.Slots & RightSlot.VolumeSlider) == 0 ? anchors.OnVolume : null };   // no slider: the button
                 }
                 case RightSlot.VolumeSlider:
                     // The STOCK slider style — a 22-DIP ring, not 0.2.9's old 12-DIP grab; thickness clears the ring.
                     return Slot("volume-slider", w, box, lit,
                         VolumeSlider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
-                            length: huge ? ClassicPlayerTiers.HugeVolumeW : m.VolumeSliderW, thickness: Slider.DefaultStyle.ThumbRingDiameter));
+                            length: huge ? ClassicPlayerTiers.HugeVolumeW : m.VolumeSliderW, thickness: Slider.DefaultStyle.ThumbRingDiameter))
+                        with { OnRealized = anchors.OnVolume };
                 case RightSlot.Lyrics:
                     return Slot("lyrics", w, box, lit,
                         ToolTip.Wrap(BarButton(WaveeIcons.Lyrics, props.OpenLyrics, lit, v.LyricsOpen, box, glyph, font: WaveeIcons.Font),
@@ -572,6 +578,12 @@ internal static partial class ClassicPlayerBar
         // with the edge. The slot is the layout firewall (a title change re-solves THIS subtree only). It sits under an auto-sized root: the
         // view's anchor mirrors its root's DECLARED height, so a slot that was the root left the anchor (and the page above) at the new height
         // at once while the slot eased inside it.
+        // The hints that point at the play disc and the volume: zero boxes under the slot (no room), only where the control is drawn.
+        bool volumeShown = !mini && (v.Slots & (RightSlot.Volume | RightSlot.VolumeSlider)) != 0;
+        Element[] hints = v.OwnsTransport && volumeShown
+            ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)]
+            : v.OwnsTransport ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar)]
+            : volumeShown ? [Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)] : [];
         return new BoxEl
         {
             Direction = 1, Shrink = 0f,
@@ -609,6 +621,7 @@ internal static partial class ClassicPlayerBar
                         },
                     ],
                 },
+                .. hints,
             ],
         };
     }
@@ -712,6 +725,23 @@ internal static partial class ClassicPlayerBar
     /// whose <paramref name="face"/> is either lit (opaque, hit-testable) or dark (transparent, inert) — cross-faded over
     /// the control token, never entered/exited, so a face lighting up moves NOTHING around it. The face's own
     /// <c>IsEnabled</c> should follow <paramref name="lit"/> too, so a dark face is not a focus stop.</summary>
+    /// <summary>The play disc's and the volume control's nodes, captured once per bar with stable delegates (a hint line's anchor).</summary>
+    private sealed class HintAnchors
+    {
+        NodeHandle _play, _volume;
+        public readonly Action<NodeHandle> OnPlay, OnVolume;
+        public readonly Func<NodeHandle> Play, Volume, Bar;   // Bar: the line stays inside the bar's band
+
+        public HintAnchors(Ref<NodeHandle> bar)
+        {
+            OnPlay = h => _play = h;
+            OnVolume = h => _volume = h;
+            Play = () => _play;
+            Volume = () => _volume;
+            Bar = () => bar.Value;
+        }
+    }
+
     private static BoxEl Slot(string key, float w, float h, bool lit, Element face, LayoutTransition? motion = null) => new()
     {
         Key = key, Width = w, Height = h, Shrink = 0f,

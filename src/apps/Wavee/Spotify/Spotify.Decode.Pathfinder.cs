@@ -162,17 +162,23 @@ public static partial class Spotify
         /// <summary>`{ transformedLabel, translatedBaseText }` — the TRANSFORMED label has the name already
         /// substituted ("Made For Christos"); the base text still carries the "{0}" placeholder and is only the
         /// fallback. A bare string is itself.</summary>
-        static TextRef Label(ref Utf8JsonReader r, Staging s)
+        static TextRef Label(ref Utf8JsonReader r, Staging s) => Label(ref r, s, out _);
+
+        /// <summary><see cref="Label(ref Utf8JsonReader, Staging)"/> that also hands back the BASE text, the template
+        /// ("More like {0}"): a Home section keeps it as its own column, an opaque token for identity and never matched
+        /// against words (pinned-home design 2.1). A bare string has no base text.</summary>
+        static TextRef Label(ref Utf8JsonReader r, Staging s, out TextRef baseText)
         {
+            baseText = default;
             if (r.TokenType == JsonTokenType.String) return s.AddJson(ref r);
-            TextRef label = default, fallback = default;
+            TextRef label = default;
             for (int d = Fields(ref r); Next(ref r, d);)
             {
                 if (r.ValueTextEquals("transformedLabel"u8)) { r.Read(); label = s.AddJson(ref r); }
-                else if (r.ValueTextEquals("translatedBaseText"u8)) { r.Read(); fallback = s.AddJson(ref r); }
+                else if (r.ValueTextEquals("translatedBaseText"u8)) { r.Read(); baseText = s.AddJson(ref r); }
                 else SkipValue(ref r);
             }
-            return label.IsEmpty ? fallback : label;
+            return label.IsEmpty ? baseText : label;
         }
 
         /// <summary>An ISO-8601 date at whatever precision the provider states (ch 05 D2). "2019" stays a year; only

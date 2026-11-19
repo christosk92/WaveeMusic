@@ -1,12 +1,14 @@
 // ── Themes/Classic/Structure/Views/Screens/ClassicSettings.VideoOverrides.cs — the attached-videos row and its "Manage" flyout (themes plan 6.1, T11b) ────
 //
+// Settings rework 7.1: the `playback.videoOverrides` dial's card in Playback › Videos and Canvas; "Manage" is its child dial (`playback.videoOverrides.item`).
+//
 // From `Screens\Settings.UI.Playback.cs` §7 (`VideoOverridesRow`, `ToggleVideoOverrideManager`) and `Screens\Settings.UI.Video.cs` (the flyout body, written by K in
-// Wave 4, mounted by R's Playback tab in Wave 6; spec ch 24 §9).
+// Wave 4, mounted on Playback in Wave 6; spec ch 24 §9).
 //
 // THE "MANAGE" FLYOUT (ch 24 W20-W22, §6). Presentational over `Video.OverrideUx` (every decision) and `Video.Overrides` (the warm roster): a ROOT (search box →
 // the newest few + "Browse all…", or the live results) and a LEAF (the whole roster with the full repair verbs), two views on ONE keyed child riding the page slide.
 // The roster is rebuilt only when its epoch bumps (disk probes run once per load, never per keystroke). The search box stays MOUNTED across every section swap
-// except Empty, so retyping never loses focus. The Playback tab anchors it (BottomEdgeAlignedLeft, FocusTrap, LightDismiss, PopupChrome.Popup). The repair verbs
+// except Empty, so retyping never loses focus. The Playback category anchors it (BottomEdgeAlignedLeft, FocusTrap, LightDismiss, PopupChrome.Popup). The repair verbs
 // (replace · locate · show in Explorer · remove) and the track-title adapters are the core's (`SettingsVerbs`, `SettingsFacts`).
 
 using FluentGpu;
@@ -17,7 +19,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
-using Tab = Wavee.Settings.Tab;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
 
@@ -27,12 +29,12 @@ internal static partial class ClassicSettings
     /// 0 rows → "No videos attached yet" + Manage and no "Remove all"; N rows → the count + Manage + Remove all. The roster
     /// is warm and synchronous (<see cref="Video.Overrides"/>), so there is no cold-load spinner to show — and the Manage
     /// wrapper node never swaps out under an open flyout.</summary>
-    static Element VideoOverridesRow()
+    static Element VideoOverridesRow(SettingsBodyRow row)
     {
         _ = Video.Overrides.Epoch.Value;   // an attach/remove anywhere (the track menu, an undo toast, the flyout) re-reads
-        string header = Loc.Get(Strings.VideoOverride.SettingsHeader);
+        string header = row.Label;
         string sub = Loc.Get(Strings.VideoOverride.SettingsSub);   // the trust disclosure: device-wide, linked not copied
-        string glyph = RowGlyph(Tab.Playback, "videoOverrides");
+        string? glyph = GlyphOf(row.Dial);
         if (!Video.Overrides.Present)
         {
             s_voAnchor = NodeHandle.Null;
@@ -45,18 +47,18 @@ internal static partial class ClassicSettings
         {
             Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary,
         };
-        kids[1] = new BoxEl
+        // "Manage" is the dial's child (the manager flyout), keyed as its row; the realized wrapper is the anchor.
+        kids[1] = ChildFrame(row, "playback.videoOverrides.item", new BoxEl
         {
             Direction = 0, Shrink = 0f,
-            // The realized wrapper is the anchor.
             OnRealized = static h => s_voAnchor = h,
             Children = [StdButton(Loc.Get(Strings.VideoOverride.Manage), static () => ToggleVideoOverrideManager())],
-        };
+        });
         if (count > 0)
             // Bulk detach is the ONE place a confirm earns its keep here: N links at once, no per-row undo (N11).
             kids[2] = StdButton(Loc.Get(Strings.VideoOverride.ClearAll), static () =>
             {
-                var clear = D(Tab.Playback, "videoOverrides");
+                var clear = Dial("playback.videoOverrides");
                 ConfirmThen(Loc.Get(clear.Confirm!.TitleKey), Loc.Get(clear.Confirm.BodyKey), Loc.Get(clear.Confirm.PrimaryKey),
                     () => clear.Writer.Run!());
             });
@@ -85,7 +87,7 @@ internal static partial class ClassicSettings
     /// <summary>The video-override manager flyout body (420 wide).</summary>
     static Element VideoOverridesBody() => Embed.Comp(static () => new VideoOverrideManager());
 
-    /// <summary>The manager component. Every helper is nested here so the other tabs' helpers cannot collide with a name.</summary>
+    /// <summary>The manager component. Every helper is nested here so the other cards' helpers cannot collide with a name.</summary>
     sealed class VideoOverrideManager : Component
     {
         const float ManagerW = ClassicSettingsRules.ManagerWidth;

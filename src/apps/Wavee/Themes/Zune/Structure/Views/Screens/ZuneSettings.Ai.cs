@@ -1,8 +1,9 @@
-// ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Ai.cs — the on-device AI lyrics rows (themes plan 6.3, Z8b) ────────────────────────────────
+// ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Ai.cs — the on-device AI lyrics card (themes plan 6.3, Z8b; settings rework phase 4) ─────────────
 //
-// Appearance › Lyrics, after the blur row. ONE component bound to `AiLyrics.Current`: it only reads signals and calls the module's verbs (no file, no task, no
-// wait). The master switch is the module's own verb and the three behaviour switches are the document's rows (`aiWordSync`, `aiPlainText`, `aiBatterySaver`);
-// the per-language and per-file verbs stay the module's (`InstallLanguage`, `RemoveLanguage`, `OpenFolder`, `RemoveFiles`).
+// Lyrics & Now playing › Lyrics, where the `lyrics.ai` dial lives. ONE component bound to `AiLyrics.Current`: it only reads signals and calls the module's verbs
+// (no file, no task, no wait). The master switch is the module's own verb and the three behaviour switches are the dial's children (`lyrics.ai.wordSync`,
+// `lyrics.ai.plainText`, `lyrics.ai.batterySaver`, each keyed as its row); the per-language and per-file verbs stay the module's (`InstallLanguage`,
+// `RemoveLanguage`, `OpenFolder`, `RemoveFiles`), drawn as the `lyrics.ai.languages` and `lyrics.ai.files` rows.
 //
 // The phase decides the main row's words and controls: off / unavailable (the switch alone, greyed with its reason), the one-time download offer, downloading
 // (the live line, the bar, pause and cancel), paused, preparing (the first compile, by weight), ready (the switch on, then the three behaviour switches, the
@@ -18,17 +19,22 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming;
 using static FluentGpu.Dsl.Ui;
+using Wavee.Theming.Contracts;
 using AiS = Wavee.Strings.Settings.Lyrics.Ai;
-using Tab = Wavee.Settings.Tab;
 using Z = Wavee.Themes.Zune.ZuneSettingsRules;
 
 namespace Wavee.Themes.Zune;
 
 internal static partial class ZuneSettings
 {
+    sealed record AiArgs(SettingsBodyRow Row, SettingsArrival Focus);
+
     /// <summary>The AI lyrics rows. Its own component: progress and phase changes re-render only these rows.</summary>
     sealed class AiLyricsRow : ZuneScreenComponent
     {
+        AiArgs _args = null!;
+        SettingsArrival _mainFocus = SettingsArrival.None;
+
         static string[]? s_langOrder;
         static long[]? s_langBytes;
 
@@ -39,6 +45,7 @@ internal static partial class ZuneSettings
         public override Element Render()
         {
             var k = new ZuneKit(UseLayout());
+            _args = UseProps<AiArgs>();
             // The module paints its status only while this card is visible, so it can stop work nobody is watching.
             UseEffect(static () =>
             {
@@ -48,6 +55,11 @@ internal static partial class ZuneSettings
             UseActivation(onActivated: static () => AiLyrics.SettingsCardVisible = true, onDeactivated: static () => AiLyrics.SettingsCardVisible = false);
             _ = SettingsFacts.AiLyricsEpoch.Value;
             var st = AiLyrics.Current.Value;
+            // A link to one of the card's switches while the card is in a phase that does not draw them lands on the main row (the arrival's fallback), so
+            // the main row's label is the one that lights.
+            var focus = _args.Focus;
+            _mainFocus = st.Phase != AiLyrics.SetupPhase.Ready && string.Equals(focus.Parent, _args.Row.Id, StringComparison.Ordinal)
+                ? focus with { DialId = _args.Row.Id } : focus;
             bool unknown = st == AiLyrics.Status.Unknown;
             var kids = new List<Element>(8);
 
@@ -76,15 +88,14 @@ internal static partial class ZuneSettings
                     kids.Add(MainRow(k, Loc.Get(AiS.Title),
                         st.NpuName.Length > 0 ? Loc.Get(AiS.Ready.Title) + " · " + AiS.Ready.Sub(st.NpuName, st.NpuDriver) : Loc.Get(AiS.Ready.Title),
                         Master(k, true, true)));
-                    kids.Add(k.DocRow(D(Tab.Appearance, "aiWordSync"), k.Toggle(D(Tab.Appearance, "aiWordSync")), Loc.Get(AiS.WordSyncSub)));
-                    kids.Add(k.DocRow(D(Tab.Appearance, "aiPlainText"), k.Toggle(D(Tab.Appearance, "aiPlainText")), Loc.Get(AiS.PlainTextSub)));
-                    kids.Add(k.DocRow(D(Tab.Appearance, "aiBatterySaver"), k.Toggle(D(Tab.Appearance, "aiBatterySaver")), Loc.Get(AiS.BatterySaverSub)));
-                    kids.Add(k.Row("zs:row:ai-languages", Loc.Get(AiS.Languages), AiS.LanguagesSub(AiLyrics.Rules.FormatBytes(AverageLanguageBytes())),
+                    foreach (var child in _args.Row.Children)
+                        if (child.Kind == SettingsRowKind.Toggle) kids.Add(ChildToggle(k, child));
+                    kids.Add(ChildRow(k, LanguagesDial, Loc.Get(AiS.Languages), AiS.LanguagesSub(AiLyrics.Rules.FormatBytes(AverageLanguageBytes())),
                         Languages(k, st.Languages)));
                     // a language whose download failed says so right under the languages (the installed ones keep working)
                     if (st.LanguageFailure.IsSet) kids.Add(LanguageFailureBar(k, st.LanguageFailure));
                     long installed = st.InstalledBytes;
-                    kids.Add(k.Row("zs:row:ai-files", Loc.Get(AiS.Files), AiS.FilesSub(AiLyrics.Rules.FormatBytes(installed)),
+                    kids.Add(ChildRow(k, FilesDial, Loc.Get(AiS.Files), AiS.FilesSub(AiLyrics.Rules.FormatBytes(installed)),
                         new BoxEl
                         {
                             Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, Wrap = true, MinWidth = 0f,
@@ -118,16 +129,41 @@ internal static partial class ZuneSettings
             };
         }
 
-        /// <summary>The main row: ONE node in every phase (its words and controls change).</summary>
-        static Element MainRow(ZuneKit k, string title, string? hint, params Element[] controls)
-            => k.Row("zs:row:ai", title, hint, new BoxEl
+        /// <summary>The main row: ONE node in every phase (its words and controls change), keyed as the dial's row, with its "see it" and its clip.</summary>
+        Element MainRow(ZuneKit k, string title, string? hint, params Element[] controls)
+        {
+            var row = _args.Row;
+            string key = SettingsKeys.ZuneRow(row.Id);
+            BoxEl line = k.Row(key, LabelOf(_mainFocus, row.Id, ZuneText.Label(title)), hint, new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, Wrap = true, MinWidth = 0f, Children = controls,
-            });
+            }, after: row.Explain is not null ? SeeIt(k, row.Id) : null);
+            if (row.Explain is not { } info) return line with { OnRealized = NoteRow(row.Id) };
+            return new BoxEl
+            {
+                Key = key, Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, OnRealized = NoteRow(row.Id),
+                Children = [line with { Key = key + ":line" }, ExplainSlot(info)],
+            };
+        }
+
+        /// <summary>A behaviour switch (a child dial): its words, its switch through its writer, keyed as its row.</summary>
+        Element ChildToggle(ZuneKit k, SettingsBodyRow child)
+        {
+            var writer = child.Writer;
+            return k.Row(SettingsKeys.ZuneRow(child.Id), LabelOf(_args.Focus, child.Id, ZuneText.Label(child.Label)), child.Description,
+                k.Switch(child.Value is true, on => { if (writer.Toggle?.Invoke(on) == true) Settings.Bump(); }, child.Enabled), child.Enabled)
+                with { OnRealized = NoteRow(child.Id) };
+        }
+
+        /// <summary>A row of the card's own (the languages, the files), keyed as its dial's row.</summary>
+        Element ChildRow(ZuneKit k, string dialId, string title, string? hint, Element control)
+            => k.Row(SettingsKeys.ZuneRow(dialId), LabelOf(_args.Focus, dialId, ZuneText.Label(title)), hint, control) with { OnRealized = NoteRow(dialId) };
 
         /// <summary>The master switch: the module's own verb. A fresh signal per render carries the live value.</summary>
         static Element Master(ZuneKit k, bool on, bool enabled)
             => k.Switch(on, enabled ? static v => AiLyrics.SetEnabled(v) : null, enabled);
+
+        const string LanguagesDial = "lyrics.ai.languages", FilesDial = "lyrics.ai.files";
 
         /// <summary>The failure. A first setup that stopped on one language's file names that language and says why.</summary>
         Element ErrorBar(ZuneKit k, in AiLyrics.Status st)

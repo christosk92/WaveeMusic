@@ -118,6 +118,11 @@ public sealed record ShellTitleBarProps
     /// <summary>The direct Pin / Unpin for the destination on screen, or null when it is not pinnable; read tracked.</summary>
     public required Func<TitleBarPin?> Pin { get; init; }
 
+    /// <summary>The direct Pin to Home / Unpin from Home for the destination on screen, or null when Home cannot hold it; read tracked
+    /// (pinned Home, design 1.6). Classic and WinUI draw one Pin button that opens the two toggles, Home and Sidebar, when both apply;
+    /// Zune draws no chrome pin. Null on a host that offers none.</summary>
+    public Func<TitleBarPin?>? HomePin { get; init; }
+
     /// <summary>Open the app's full screen, the stage (contract 1.94). The argument is the caller's shared-transition begin (the art's
     /// flight is captured before the stage mounts; null headless). Null: the core offers no door. A structure that draws it states the
     /// extra action in its <c>ChromeBudget.RowActions</c>.</summary>
@@ -131,4 +136,8 @@ public sealed record ShellTitleBarProps
     /// <summary>The Search route is on screen (contract 1.30), read tracked: the exact flag a title bar that moves the omnibar's field into
     /// its lead island at the touch tier keys on, where it used to guess from "the omnibar holds a query". False by default (a fixture).</summary>
     public Func<bool> OnSearchRoute { get; init; } = static () => false;
+
+    /// <summary>Moves when something asks the title bar to open its own window menu (a Settings "Also in" door to a theme option that lives
+    /// there, design 5.4): a structure with such a menu opens it under the bar on a change. Null: nothing asks. Appended (contract 1.117).</summary>
+    public IReadSignal<int>? WindowMenuRequest { get; init; }
 }

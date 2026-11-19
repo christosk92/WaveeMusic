@@ -53,6 +53,23 @@ public static class ClassicTierMotion
     public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
+    /// <summary>A part whose WIDTH steps with the tier (the page's gutter, 16 / 32 / 36): it eases through real layout, so what stands beside it
+    /// rides it instead of stepping by the difference.</summary>
+    public static readonly LayoutTransition WidthReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
+    /// <summary>A Home body whose rows the width decides (a grid that gains or loses a row as its columns change, a shelf whose cards step a size):
+    /// its height eases through real layout and keeps easing while the window is dragged, so each step glides and the rows under it ride it. A
+    /// critically damped spring on the reflow's clock, not the tween: a drag re-aims it every frame, and a spring carries its speed into each new
+    /// target where a re-started ease-out would leap at its steep start every time.</summary>
+    public static readonly LayoutTransition RowsReflow = HeightReflow with
+    {
+        Dynamics = TransitionDynamics.Spring(ReflowMs / 1000f, RowsDamping), AnimateDuringResize = true,
+    };
+
+    /// <summary><see cref="RowsReflow"/>'s damping: critical, so the height never overshoots its rows.</summary>
+    const float RowsDamping = 1f;
+
     /// <summary>A part a tier ADDS to a column or drops from it (the narrow drawer's account row, which the Compact tier moves out of the title
     /// bar): it opens or closes its height through real layout as it fades, so what follows it slides instead of stepping by its height.</summary>
     public static readonly LayoutTransition MakeRoom = new(TransitionChannels.Size | TransitionChannels.Opacity,

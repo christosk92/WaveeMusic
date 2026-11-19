@@ -78,17 +78,12 @@ internal static partial class ZuneSetup
         public override Element Render()
         {
             var layout = ZuneSetupTiers.Of(ReadTier());
-            // A build that can't send (no ingest URL / key / quad) offers only no / ask me first: "always send" would be a promise it cannot keep. The offered list is a prefix
+            // A build that can't send (no ingest URL / key / quad) offers only off / ask each time: "automatic" would be a promise it cannot keep. The offered list is a prefix
             // of off / ask / auto, so the radio index stays the stored mode; the seed is the EFFECTIVE mode (a stored auto reads ask there).
             var index = UseSignal(consent.Seed());   // seeded once from the store
             var labels = new List<string>(3);
-            for (int mode = 0; mode < consent.Choices; mode++)
-                labels.Add(Loc.Get(mode switch
-                {
-                    0 => Strings.Setup.Terms.CrashNo,
-                    1 => Strings.Setup.Terms.CrashAsk,
-                    _ => Strings.Setup.Terms.CrashAlways,
-                }));
+            for (int mode = 0; mode < consent.Choices && mode < consent.Labels.Length; mode++)
+                labels.Add(consent.Labels[mode]);   // Settings' own words, the crash-reports dial's (owner decision 10)
             var set = consent.Set;
             return SetupText.Group(
                 new BoxEl

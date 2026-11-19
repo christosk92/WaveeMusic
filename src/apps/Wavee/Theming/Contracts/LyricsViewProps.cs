@@ -41,7 +41,7 @@ public sealed record LyricsViewProps
     /// <summary>The developer layer (the lyrics-search debug pill and overlay; zero size unless developer mode is on).</summary>
     public Element? Debug { get; init; }
 
-    /// <summary>The on-device AI disclosure under the reading layers; null on the podcast reader (episodes are never timed).</summary>
+    /// <summary>The on-device AI disclosure under the reading layers; null on a podcast transcript (episodes are never timed).</summary>
     public Element? Footer { get; init; }
 }
 
@@ -55,9 +55,6 @@ public sealed record LyricsBox(EdgeFadeSpec Fade, float Gutter)
     /// <summary>Null everywhere but inside a small box: the rail and the stage keep their own fades and the full disclosure.</summary>
     public static readonly Context<LyricsBox?> Context = new(null);
 }
-
-/// <summary>What the podcast peek's gate needs: the quiet "length · language" line and the verb that starts the episode.</summary>
-public readonly record struct LyricsPeekGate(string Meta, Action Play);
 
 /// <summary>The core lyrics host as a theme sees it (<c>Lyrics.ViewCore</c> implements it).</summary>
 public interface ILyricsHost
@@ -82,7 +79,7 @@ public interface ILyricsHost
     /// <summary>The focal band (where the active row's content centres, as a fraction of the viewport).</summary>
     float Band { get; }
 
-    /// <summary>P6 fix: this mount is the side pane's (the rail's: neither the stage nor the podcast reader). A style with a
+    /// <summary>P6 fix: this mount is the side pane's (the rail's, not the stage's). A style with a
     /// <see cref="LyricsLinesStyle.Rail"/> form draws the pane's rows here. Default false.</summary>
     bool OnRail => false;
 
@@ -118,14 +115,8 @@ public interface ILyricsHost
     /// <summary>The row type and rhythm of the document on screen (the timed surface's, at the stage's scale).</summary>
     Lyrics.RowMetrics Metrics { get; }
 
-    /// <summary>The surface shows a podcast transcript.</summary>
+    /// <summary>The surface shows a podcast transcript (the playing episode's).</summary>
     bool IsPodcast { get; }
-
-    /// <summary>The surface's subject is the playing playable.</summary>
-    bool OwnsPlayback { get; }
-
-    /// <summary>Same as <see cref="OwnsPlayback"/>, read so the caller subscribes to playback identity.</summary>
-    bool ObservedPlaybackOwner { get; }
 
     // ── the lines (the style's) ────────────────────────────────────────────────────────────────────────────────────
 
@@ -174,12 +165,6 @@ public interface ILyricsHost
 
     /// <summary>A line was tapped: back to live, commit the seek.</summary>
     void SeekToLine(int index);
-
-    /// <summary>The depth blur is on (the strength is above 0; the stage's is always 0).</summary>
-    bool BlurEnabled { get; }
-
-    /// <summary>The podcast peek's gate facts (read at build time).</summary>
-    LyricsPeekGate PeekGate();
 
     // ── the overlays ───────────────────────────────────────────────────────────────────────────────────────────────
 

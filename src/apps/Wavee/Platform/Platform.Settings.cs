@@ -8,7 +8,7 @@
 // Wave: 6
 // Budget: 700 lines
 // Spec: ch 29 §2 W9/W25, §5.4, §8 (NetworkPolicy, ReadPlugged); ch 27 §8 (LogCapturePolicy, WaveeLogSessions), §9.3
-//       item 3 (DeveloperMode); ch 22 §9 (b) (StageRects); ch 28 DATA GAP D3 (ProvisioningOutcome); gaps G-094, G-198,
+//       item 3 (DeveloperMode); ch 28 DATA GAP D3 (ProvisioningOutcome); gaps G-094, G-198,
 //       G-199, the settings-isolation row (orchestrator, 2026-09-13)
 //
 // THE NAMED PARTIAL `Platform.cs` NEEDS (G-199): that file's 1,100 is spent by the Wave-0 first cut, so everything owner
@@ -34,10 +34,6 @@ public static partial class Platform
 {
     public static partial class Keys
     {
-        /// <summary>The immersive lyrics stage's geometry log (ch 22 §9 (b): `FG_STAGE_RECTS` retired into a Developer
-        /// row). Off: the seven OnBoundsChanged callbacks stay null, which is what keeps the cost at zero.</summary>
-        public static readonly SettingKey<bool> StageRects = new("diag.stageRects", false);
-
         // ── the fullscreen stage (docs/plans/wavee/fullscreen-flagship-implementation.md §2.11) — all written through Prefs.Stage ──
         /// <summary>Stage.Mode as an int (0 Lyrics · 1 Visualizer · 2 Queue · 3 Artist); unknown ⇒ Lyrics.</summary>
         public static readonly SettingKey<int> StageMode = new("stage.mode", 0);
@@ -141,19 +137,15 @@ public static partial class Platform
     {
         public static readonly Signal<bool> Enabled = new(false);
         public static readonly Signal<bool> FpsOverlay = new(false);
-        /// <summary>`Diagnostics.StageRects` in ch 22 §9 (b): the stage reads it with <c>.Value</c> inside Render.</summary>
-        public static readonly Signal<bool> StageRects = new(false);
 
         public static void Load(IAppSettings settings)
         {
             Enabled.Value = settings.Get(Keys.DeveloperMode);
             FpsOverlay.Value = settings.Get(Keys.FpsOverlay);
-            StageRects.Value = settings.Get(Keys.StageRects);
         }
 
         public static void Set(bool on) { Settings.Set(Keys.DeveloperMode, on); Enabled.Value = on; }
         public static void SetFpsOverlay(bool on) { Settings.Set(Keys.FpsOverlay, on); FpsOverlay.Value = on; }
-        public static void SetStageRects(bool on) { Settings.Set(Keys.StageRects, on); StageRects.Value = on; }
 
         /// <summary>The HUD shows only when BOTH switches are on (ch 27 W26). Pure, so the gate is a fact.</summary>
         public static bool ShowsFpsOverlay(bool developerMode, bool overlay) => developerMode && overlay;

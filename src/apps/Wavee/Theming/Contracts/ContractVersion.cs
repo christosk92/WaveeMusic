@@ -305,6 +305,62 @@
 // 1.114 (the connected navigation flight): `PageMotionPolicy.Connected` (the structure's `ConnectedNavSpec`: an album card's cover flies into
 // the album page's hero and back; null flies nothing) and `PageMotionPolicy.ConnectedQuietPage` (the page under a flight swaps with the
 // recipe's opacity legs only, `Design.Nav.Quiet`).
+// 1.115 (settings rework phase 3: hints, explanation badges, in-context dials): `ViewKeys.Hint` with `HintProps` (one key for every surface, the
+// surface in the props; `HintAction`, `HintSurfaces`), `ViewKeys.Explainer` with `ExplainerProps` (a dial's badge and its clip tip) and
+// `ViewKeys.SettingsDials` with `SettingsDialsProps` (a feature panel's dials, written with the panel as their source). Every theme gets the
+// Common stand-ins (`CommonHint`) until it draws its own.
+// 1.116 (settings rework phase 4a: the registry's Settings page, ADDED beside the area members the three pages still draw): `SettingsPageProps`
+// gains `Category`, `Categories` (`SettingsCategoryEntry`: slug, full title, short strip name, subtitle, glyph), `CategoryCell`, `OpenCategory`,
+// `Focus` (`SettingsArrival`: the dial, its sequence, its category and group, the expanders to open, the highlight's duration), `Search`
+// (`SettingsSearchModel`: the query cell, the ranked results with breadcrumbs, matched-letter spans (`SettingsTextSpan`) and parents, the
+// no-match state, the keyboard, the focus tickets, `Box`), `Home` (`SettingsHomeSource`: `SettingsHomeFacts` with `SettingsGlanceTile`s, the
+// suggestions as `HintProps`, `SettingsRecentRow`s) and `Body` (`SettingsBodySource`: `SettingsBody`, `SettingsBodyGroup`, `SettingsBodyRow`
+// with `SettingsExplainInfo`, `SettingsAlsoIn` and `SettingsBodyNote`); `SettingsKeys` (the page's node keys); `ThemePolicies.SettingsPage`
+// (`SettingsPagePolicy.HighlightMs`, from the structure's Rules); `SetupConsent.Labels` (the wizard's crash-consent words are the dial's).
+// 1.117 (settings rework phase 5: settings in context, design 5.4): the queue's "between songs" pair, `QueuePanelProps.Crossfade`,
+// `CrossfadeLength` and `OpenCrossfadeLength` (and the same on `QueueStagePaneProps`, the full screen's Up next) with
+// `IQueueVerbs.ToggleCrossfade` / `SetCrossfade`; `IStageSettingsVerbs.SetLyricsBlur` (every
+// theme's full-screen popover draws Background blur); the lyrics header's ⋯, `PanelLyricsHeaderProps.Options` (`LyricsPaneOptions`: the blur and
+// the AI lyrics status line); `DevicePickerEntryKind.Link` (the quality echo and "Sound settings" link into Settings); the bell panel's settings
+// door, `NotificationsProps.OpenSettings`; the title bar's window menu door, `ShellTitleBarProps.WindowMenuRequest`; `ThemeOption.Contexts` (a
+// theme option's in-context home in its own theme, WinUI's title bar menu).
+// 2.0 (settings rework phase 4c, MAJOR: every theme draws the registry's page): REMOVED the old Settings page's model. `SettingsPageProps`
+// loses `Area`, `AreaCell`, `OpenArea` (the twelve areas), `Tab`, `TabCell`, `OpenTab` (the document tabs) and `Grouping`, `Group`, `OpenGroup`
+// (the structure's grouping), and keeps `OpenSection`, `CloseSection`, `Revision`, `Storage` and the 1.116 members; `ThemePolicies.Settings`
+// and `SettingsGrouping` / `SettingsTab` are gone, with the core's `Settings.Tab`, `TabSlugs`, `Area`, `AreaSlugs`, `AreaTitleKeys`, `PartsOf`,
+// `HomeArea`, `FirstTab`, `AreaOf`, `AreaFromSlug`, `SettingsDoc` / `SettingsSection` and `Settings.OpenNextMountOn(Area)` / `(Tab)` (a theme
+// pick names the category: `Settings.OpenNextMountOn("appearance")`). Every old slug and row id still lands through `SettingsSpec`'s aliases.
+// `SettingsExplainInfo` is non-null only where the dial's clip exists for the theme and app mode (`ClipPath` and `Props` are never null).
+// 2.1 (settings rework phase 5 merged onto 2.0, additive): the 1.117 members above (the queue's and the full screen's Up next
+// Crossfade pair, `IStageSettingsVerbs.SetLyricsBlur`, `PanelLyricsHeaderProps.Options`, `DevicePickerEntryKind.Link`,
+// `NotificationsProps.OpenSettings`, `ShellTitleBarProps.WindowMenuRequest`, `ThemeOption.Contexts`) land on the 2.x line; phase 5 was
+// built on 1.116, beside the 2.0 removals, so nothing it adds names a removed member.
+// 2.2 (settings rework phase 6, the hints drawn in every theme): `HintProps.Target` (the control a hint points at, captured by the surface
+// that mounts the slot: a TeachingTip's target, a line's anchor), `HintProps.Bounds` (the surface the target lives in: a floating line stays
+// inside it), `HintProps.SetAside` (a light dismiss or a done confirmation: gone for the session, no snooze) and `HintProps.Title` (the dial's
+// name, a TeachingTip's heading).
+// The pinned-home line (feat/pinned-home) numbered its own minors on 1.114 while the settings rework numbered the same ones; its notes as
+// written there (merged as 2.3):
+// pinned-home 1.115 (connected navigation, every kind): `PageMotionPolicy.ConnectedInto` (the forward flight into a page of a kind when it differs from
+// `Connected`: the artist header's fading hand-off) and `PageMotionPolicy.ConnectedKeepsCascade` (a kind whose sections keep their staggered
+// rise under a flight).
+// pinned-home 1.116 (the artist grows, nothing flies): `PageMotionPolicy.GrowInto` (a kind whose page scales out of the item it was opened from and back
+// into it, `GrowNav`). `PageMotionPolicy.ConnectedInto` and `ConnectedKeepsCascade` are gone (the artist was their only kind; removed before any
+// external theme existed, as 1.2 did).
+// pinned-home 1.117 (the pinned Home board): `Home.Board` and the `Home.Tile.*` keys (`ViewKeys.HomeBoard.cs`, `HomeBoardProps.cs`: the board's props,
+// `IHomeBoardVerbs`, the catalogue view, the tile frame and one props record per tile source, `HomeTileForm`, `HomeTileVacancy`), the node
+// keys `HomeBoardKeys`, `Home.BoardTools` (the board's tools in the page's head row), and the optional `HomePageProps.Board` / `BoardTools` (what the page mounts
+// where its zone column stood and in its head row, on the All facet). `Pages.HomeCustomize` (`HomeCustomizeProps`) and `Home.Quickplay`
+// (`HomeQuickplayProps`) are gone: the board's own edit flows and its Pinned group replaced them (removed before any external theme existed, as 1.2 did).
+// 2.3 (feat/pinned-home merged onto 2.2): the pinned-home line's 1.115-1.117 land on the 2.x line: `PageMotionPolicy.GrowInto`, the
+// pinned Home board (`Home.Board`, the `Home.Tile.*` keys and their props, `IHomeBoardVerbs`, `HomeBoardKeys`, `Home.BoardTools`,
+// `HomePageProps.Board` / `BoardTools`). Its removals (`PageMotionPolicy.ConnectedInto` / `ConnectedKeepsCascade`, `Pages.HomeCustomize` with
+// `HomeCustomizeProps`, `Home.Quickplay` with `HomeQuickplayProps`) were made before any external theme existed, as 1.2 did, so they ride a
+// minor; nothing the settings rework added names them.
+// pinned-home 1.118 (settings in context: the daylist panel, #242 on feat/pinned-home): the optional `HomeTileOptionsProps.Dials` (`HomeTileDial`: an app-wide setting the open tile draws
+// after its own options, with its Settings row's value and writer) and `HomeTileOptionsProps.DialsLabelKey` (the "For every daylist" label over them).
+// 2.4 (#242 merged onto 2.3, additive): the daylist panel's `HomeTileOptionsProps.Dials` and `DialsLabelKey` (pinned-home 1.118 above) land on
+// the 2.x line.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -317,10 +373,10 @@ namespace Wavee.Theming.Contracts;
 public static class ContractVersion
 {
     /// <summary>Breaking changes to the published keys, props records or verbs.</summary>
-    public const int Major = 1;
+    public const int Major = 2;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 114;
+    public const int Minor = 4;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
