@@ -2515,6 +2515,8 @@
       "appearance.fastNavigation": "The old page leaves at once and the new one comes in on its own, with no cross-fade between them.",
       "lyrics.stage.calm": "The full screen moves slowly and gently instead of pulsing with the beat.",
       "appearance.daylistClock": "What the daylist's clock shows: a countdown to its next refresh, the time it refreshes, or both.",
+      "appearance.connectedAnimations": "The cover you click lifts out of its card and flies into the page it opens, and back when you go back. Off, the page just swaps.",
+      "playback.previewSound": "Pointing at a song on Home's shelf plays a short preview. With the sound on you hear it, your music turned down under it.",
       "appearance.likedCover": "How the Liked Songs cover is made from the artwork of the music you saved.",
       "appearance.option.style.backdrop": "The material behind the window: Mica tints it with your desktop, Acrylic blurs what is behind it.",
       "appearance.option.structure.navigationPane": "Whether the navigation pane shows its labels, only its icons, or follows the window's width.",

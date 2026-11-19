@@ -51,12 +51,12 @@ public static class SettingsExplain
     }
 
     /// <summary>The registered badges, in the order of design 6.5: each exactly where its clips are committed for both app modes. Not
-    /// registered yet (clips.json says why): Calm motion, WinUI's Backdrop and Canvas (no honest headless recording yet), the Daylist clock,
-    /// Previews on Home and Connected animations (their surface or dial is on feat/pinned-home), the Liked Songs cover in Classic and
-    /// Zune (their Liked page draws no cover at the default layout), and Classic's Tinted surfaces (no visible change in light mode).</summary>
+    /// registered yet (clips.json says why): Calm motion, WinUI's Backdrop and Canvas (no honest headless recording yet), the Liked Songs cover
+    /// in Classic and Zune (their Liked page draws no cover at the default layout), and Classic's Tinted surfaces (no visible change in light mode).</summary>
     static readonly Clip[] s_clips =
     [
         // Appearance
+        new("appearance.connectedAnimations", ["winui"]),   // only WinUI's pages fly: Classic and Zune have no connected flight, the dial does not show
         new("appearance.fastNavigation", ["classic", "winui"]),   // Zune defers its page mount: nothing overlaps, the dial does not show
         new("appearance.likedCover", ["winui"]),
         new(SettingsSpec.ThemeOptionPrefix + "structure.navigationPane", ["winui"]),
@@ -65,6 +65,7 @@ public static class SettingsExplain
         new(SettingsSpec.ThemeOptionPrefix + "structure.rowStyle", ["classic"]),
         new(SettingsSpec.ThemeOptionPrefix + "structure.sidebar", ["classic"]),
         new("appearance.marquee", ["classic"]),
+        new("appearance.daylistClock"),
         new(SettingsSpec.ThemeOptionPrefix + "structure.background", ["zune"]),
         // Sound (animated diagrams: tips never make a sound)
         new("sound.normalization"),
@@ -73,6 +74,7 @@ public static class SettingsExplain
         new("playback.crossfade"),
         new("playback.crossfade.duration", SharesWith: "playback.crossfade"),
         new("playback.video.endCountdown"),
+        new("playback.previewSound"),
         // Lyrics & Now playing
         new("lyrics.blur"),
         new("lyrics.ai"),

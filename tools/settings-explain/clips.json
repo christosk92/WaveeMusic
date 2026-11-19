@@ -31,15 +31,14 @@
    "dial": "appearance.connectedAnimations",
    "kind": "motion",
    "themes": ["winui"],
-   "status": "needs feat/pinned-home: the dial (3952551e4) is on feat/pinned-home, so no badge here; the entry records as written there (WinUI, the one theme whose pages fly)",
-   "why": "only a theme whose PageMotionPolicy.Connected is set flies (WinUI today); Classic and Zune fly nothing, so the dial and its badge do not show there",
-   "pending": {"branch": "feat/pinned-home", "part": "dial", "why": "the switch is 3952551e4 on feat/pinned-home; without it the flight is always on, so this branch has no dial to badge"},
-   "withoutDial": "record",
-   "value": true,
+   "status": "recorded (winui)",
+   "why": "only a theme whose PageMotionPolicy.Connected or GrowInto is set flies (WinUI today); Classic and Zune fly nothing, so the dial (ISettingsFacts.PagesFly) and its badge do not show there. Two takes, as Fast navigation's: off, the discography's album card opens its page with the swap alone; on, its cover lifts out of the card and flies into the page's header (slowed 2x)",
    "route": "disco:0:spotify:artist:ar0",
+   "takes": [{"value": false}, {"value": true}],
    "action": ["click key=album"],
    "region": {"keys": ["album#0", "hero-cover"], "pad": 16, "within": "shell.content.card"},
-   "slow": 2
+   "slow": 2,
+   "hold": 0.3
   },
   {
    "clip": "lyrics.stage.calm",
@@ -77,14 +76,14 @@
    "dial": "appearance.daylistClock",
    "kind": "state",
    "themes": "all",
-   "status": "needs feat/pinned-home: the daylist tile's clock faces land with the pinned Home",
-   "pending": {"branch": "feat/pinned-home", "part": "surface", "why": "the daylist tile's clock faces land with the pinned Home"},
+   "status": "recorded",
+   "why": "the daylist tile's clock line steps through the three faces (countdown and update time, update time only, countdown only). The fake answer's daylist window has passed (\"running late\" shows the same in every face), so the setup stages a window that has not: the generic pre-title edition (now + 2 h 52 min), then its land (8 min later, the edition's own title). The clock's own node key carries its window, so the crop holds each theme's static clock slot",
    "route": "home",
+   "setup": ["state kind=daylist-generic", "state kind=daylist-land"],
    "before": 0,
    "after": [1, 2],
    "capture": 0.5,
-   "region": {"keys": ["daylist-clock"], "pad": 24, "within": "shell.content.card"},
-   "todo": "confirm the clock's node key on feat/pinned-home (daylist-clock is a placeholder)"
+   "region": {"keys": {"winui": ["daylist-clock-col"], "classic": ["daylist-clock:copy", "daylist-clock:plate"], "zune": ["zune-daylist-clock"]}, "pad": 24, "fit": {"winui": "width", "zune": "width", "default": "contain"}, "anchor": {"winui": "top"}, "within": "shell.content.card"}
   },
   {
    "clip": "appearance.likedCover",
@@ -257,15 +256,18 @@
   {
    "clip": "playback.previewSound",
    "dial": "playback.previewSound",
-   "kind": "motion",
+   "kind": "state",
    "themes": "all",
-   "status": "needs feat/pinned-home: the Home shelf's song previews and their sound dial land with the pinned Home",
-   "pending": {"branch": "feat/pinned-home", "part": "surface", "why": "the Home shelf's song previews and their sound dial land with the pinned Home"},
+   "status": "recorded",
+   "why": "a tip never makes a sound, so the clip shows the place the sound is turned on: the Spine Shelf's open card with a song previewing (live2's \"Because you like\", whose cards carry their preview songs; media=fake gives the canvas its frames), its sound button going from mute to the speaker. The crop centres on the button over the card's head and its first tiles; stillness is judged on the button alone (the previews keep moving)",
    "route": "home",
-   "value": true,
-   "action": [],
-   "region": {"keys": []},
-   "todo": "the clip shows a preview starting on Home (no sound: the tip is silent); pick the shelf card and its keys on feat/pinned-home"
+   "mountArgs": {"home": "live2", "media": "fake"},
+   "setup": [{"winui": "scroll x=800 y=500 dy=58", "classic": "scroll x=800 y=500 dy=57", "zune": "scroll x=800 y=500 dy=61"}, "home do=shelf tile=2", "frames 60"],
+   "before": false,
+   "after": true,
+   "capture": 1.0,
+   "watch": "region",
+   "region": {"keys": {"zune": ["zune-shelf-sound"], "default": ["shelf:sound:spotify:playlist:37i9dQZF1EiKcJTyRuYM2q"]}, "pad": 16, "minWidth": 520, "within": "home:tile:fold:spotify:section:0JQ5KskvsLe3uTeisPkjK3"}
   },
   {
    "clip": "playback.video.endCountdown",
