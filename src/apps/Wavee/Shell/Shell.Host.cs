@@ -932,7 +932,8 @@ public static partial class Shell
     /// history entry. `+Shell.Overlays.UI.cs` installs it.</summary>
     public static Action<string>? OnReportRequested;
 
-    /// <summary>`wavee://open?route=settings&amp;arg=&lt;tab slug&gt;`: Settings opens on that tab; set by Settings.InstallScreens.</summary>
+    /// <summary>`wavee://open?route=settings&amp;arg=&lt;link&gt;`: Settings opens on that category or dial (`Settings.Open`); set by
+    /// Settings.InstallScreens.</summary>
     public static Action<string>? OnSettingsTabRequested;
 
     // ══ 4. THE NAV VERBS (the SHELL half — the reducer is Shell.cs) ═════════════════════════════════════════════════

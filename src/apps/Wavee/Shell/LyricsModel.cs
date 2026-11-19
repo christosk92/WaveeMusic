@@ -508,7 +508,7 @@ public sealed class LyricsVerbs(LyricsModel? model) : ILyricsVerbs
         AiLyrics.SetPreferAi(id, !AiLyrics.PrefersAi(id));
     }
 
-    public void OpenAiSettings() => Settings.Open(Settings.Area.Lyrics);
+    public void OpenAiSettings() => Settings.Open("lyrics.ai");
 
     public void ExpandToStage(Action<string>? begin, string cause) => Stage.Open(begin, cause);
 }

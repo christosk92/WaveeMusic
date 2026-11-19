@@ -79,19 +79,19 @@ public static partial class LogsPage
         public bool IsActive => Shell.Current.Peek().Kind == Shell.RouteKind.Logs;
 
         /// <summary>The ONE exit, shared by Back and Esc: the shell's real Back when there is a stack; a page with none (a deep
-        /// link, a restored tab) lands on the tab that owns it.</summary>
+        /// link, a restored tab) lands on the dial that opens it (Help &amp; about › Diagnostics › Log viewer).</summary>
         public void GoBack()
         {
             if (Shell.CanBack.Peek()) Shell.GoBack();
-            else Settings.Open(Settings.Area.Feedback);
+            else Settings.Open("help.logs.viewer");
         }
 
         /// <summary>Settings › Privacy &amp; diagnostics › Logs. The first crumb opens Settings on its remembered tab; the
-        /// second lands on the tab this page belongs to; the last is this page and does nothing.</summary>
+        /// second lands on the dial this page belongs to (the Log viewer); the last is this page and does nothing.</summary>
         public void OpenCrumb(int index)
         {
             if (index == 0) Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
-            else if (index == 1) Settings.Open(Settings.Area.Feedback);
+            else if (index == 1) Settings.Open("help.logs.viewer");
         }
 
         public void OpenLogFolder() => Diagnostics.OpenFolder(Path.GetDirectoryName(Log.FilePath ?? ""));

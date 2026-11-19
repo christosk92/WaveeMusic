@@ -40,7 +40,7 @@ namespace Wavee;
 public static partial class AiLyrics
 {
     // THE SPARKLE (the `Panel.LyricsHeader` view draws it)
-    static readonly Action s_openSettings = static () => Settings.Open(Settings.Area.Lyrics);
+    static readonly Action s_openSettings = static () => Settings.Open("lyrics.ai");
 
     /// <summary>The lyrics header sparkle's verdict for this render: the status, the track's status and the playing entity through
     /// <see cref="Rules.Header"/>, with the track's preference. Subscribes all three (and the preference epoch).</summary>

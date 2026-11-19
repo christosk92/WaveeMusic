@@ -192,6 +192,17 @@ public static class SettingsDoc
         return found;
     }
 
+    /// <summary>The old section that drew <paramref name="dial"/> (where a deep link lands on the old pages), or false for a dial the old
+    /// pages never drew.</summary>
+    public static bool TryPart(SettingsDial dial, out Settings.Part part)
+    {
+        foreach (var (place, section) in Built.Sections)
+            foreach (var row in section.Rows)
+                if (ReferenceEquals(row, dial)) { part = new Settings.Part(place.Tab, place.Section); return true; }
+        part = default;
+        return false;
+    }
+
     /// <summary>The topic ladder's old row id.</summary>
     public static string TopicRowId(NotifyTopic topic) => "topic:" + topic;
 

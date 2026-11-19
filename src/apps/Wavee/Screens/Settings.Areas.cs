@@ -6,8 +6,9 @@
 // changing its identity (its `(Tab, Id)`, its writer, its tests). Both themes draw the same area from the same parts: Zune as a column of groups beside the section
 // list, Classic as its cards under the tab strip.
 //
-// DEEP LINKS. The settings route carries a slug (`wavee://open?route=settings&arg=<slug>`, the route arg, the palette): `AreaFromSlug` takes the area's own slug and
-// every slug the page ever answered to (the seven old tab slugs, plus the boards' spellings), so an old link lands on the area that now holds what it opened.
+// DEEP LINKS. The settings route carries a link (`wavee://open?route=settings&arg=<link>`, the route arg, the palette): `AreaFromSlug` takes the area's own slug and
+// every slug the page ever answered to (the seven old tab slugs, plus the boards' spellings), so an old link lands on the area that now holds what it opened; a
+// link to a registry dial or category (`Settings.Open(string)`, design 4.9) lands on the area that draws that dial (`Settings.Page.cs`, section 4).
 
 namespace Wavee;
 
@@ -84,6 +85,16 @@ public static partial class Settings
                 if (string.Equals(alias, slug, StringComparison.OrdinalIgnoreCase)) return area;
         }
         return Area.Appearance;
+    }
+
+    /// <summary>An area's own slug or one of the old aliases <see cref="AreaFromSlug"/> answers to.</summary>
+    public static bool IsAreaSlug(string slug)
+    {
+        for (int i = 0; i < AreaSlugs.Length; i++)
+            if (string.Equals(AreaSlugs[i], slug, StringComparison.OrdinalIgnoreCase)) return true;
+        foreach (var (alias, _) in s_slugAliases)
+            if (string.Equals(alias, slug, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
     }
 
     /// <summary>The document tab of <paramref name="area"/>'s first section.</summary>

@@ -450,7 +450,7 @@ public static partial class AiLyrics
             Notify.Say(language.IsSet
                     ? Strings.Settings.Lyrics.Ai.Toast.LanguageFailed(LanguageName(language.Language), Loc.Get(Rules.LanguageErrorKey(kind)))
                     : Strings.Settings.Lyrics.Ai.Toast.Failed(Loc.Get(Rules.ErrorKey(kind))), InfoBarSeverity.Error,
-                actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open(Settings.Area.Lyrics),
+                actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open("lyrics.ai"),
                 dedupeKey: "ai-lyrics-error");
     }
 
@@ -465,7 +465,7 @@ public static partial class AiLyrics
         if (Rules.ToastOnError(SettingsCardVisible, failure.Kind))
             Notify.Say(Strings.Settings.Lyrics.Ai.Toast.LanguageFailed(LanguageName(failure.Language), Loc.Get(Rules.LanguageErrorKey(failure.Kind))),
                 InfoBarSeverity.Error,
-                actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open(Settings.Area.Lyrics),
+                actionLabel: Loc.Get(Strings.Settings.Lyrics.Ai.OpenSettings), onAction: static () => Settings.Open("lyrics.ai"),
                 dedupeKey: "ai-lyrics-error");
     }
 
