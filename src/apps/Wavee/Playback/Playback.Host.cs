@@ -383,11 +383,18 @@ public static partial class Playback
             SpircVersion, Spotify.Audio.CanDerive);
 
         if (Platform.Settings.Get(Platform.Keys.RememberVolume))
+        {
             s_state.Volume = Math.Clamp(Platform.Settings.Get(Platform.Keys.SavedVolume), 0f, 1f);
+            // A remembered mute is the sink's (the level stays for the unmute). The audio session applies `Muted` as it opens; the boot's
+            // publish sets it.
+            s_state.SinkMuted = Platform.Settings.Get(Platform.Keys.SavedMuted);
+        }
         // The video host's level follows the reducer only through the volume EFFECT, which fires on a change - and setting
         // the level it already has is no change. Seeded here, or every video opened at Video.s_volume's 1.0 (full volume,
         // whatever the slider and the stored volume said - a stored 0 included) until the slider was moved (2026-11-07).
+        // Its mute likewise: the mute effect fires on a change only.
         Video.SetVolume(Audio.VolumeTaper.Amplitude(s_state.Volume));
+        Video.SetMuted(s_state.SinkMuted);
 
         // The dealer's mailbox wakes us; the drain reads it. One closure, made once.
         Spotify.Connect.Wake = static () => ToUi(s_drain);
@@ -845,6 +852,9 @@ public static partial class Playback
         {
             Audio.SetMuted(s_fx.MuteOn);
             Video.SetMuted(s_fx.MuteOn);
+            // Remembered with the volume (a mute is rare: written at once, no debounce). Only this device's sink mute reaches here: a foreign
+            // owner's mute is its volume.
+            if (Platform.Settings.Get(Platform.Keys.RememberVolume)) Platform.Settings.Set(Platform.Keys.SavedMuted, s_fx.MuteOn);
         }
         if (s_fx.PublishState) Announce(s_fx.PublishWhy);
         if (s_fx.SendRemote) SendRemote();
@@ -1571,9 +1581,9 @@ public static partial class Playback
         if (Platform.Settings.Get(Platform.Keys.RememberVolume))
             Platform.Settings.Set(Platform.Keys.SavedVolume, s_state.Volume);
     }
-    /// <summary>Mute or unmute whoever is audible: the local sink, or — while another device owns playback, where the wire
+    /// <summary>Mute or unmute whoever is audible: this device's sink, or — while another device owns playback, where the wire
     /// has no mute flag — that device's volume (0, remembering the level to come back to). Routed like <see cref="SetVolume"/>.</summary>
-    public static void SetMuted(bool muted) => Post(Input.Mute(muted, Audio.Supported.Peek()));
+    public static void SetMuted(bool muted) => Post(Input.Mute(muted));
     /// <summary>Flip <see cref="Muted"/>.</summary>
     public static void ToggleMute() => SetMuted(!Muted.Peek());
     public static void SetShuffle(bool on) => Post(Input.Shuffle(on));

@@ -1399,13 +1399,11 @@ public static partial class Playback
             => new(InputKind.Transfer, intArg: rosterSlot, longArg: (long)device, nowMs: nowMs);
         /// <summary>Pull playback to this device. Unlike <see cref="Transfer"/> it names no device: the claim IS the request.</summary>
         public static Input TakeOver(long nowMs = 0) => new(InputKind.TakeOver, nowMs: nowMs);
-        /// <summary>Mute or unmute whoever is audible: the local sink (<paramref name="hasSink"/>), else volume 0 with the
-        /// previous level remembered — the wire carries no mute flag, so a foreign owner is muted the same way.</summary>
-        public static Input Mute(bool muted, bool hasSink) => new(InputKind.SetMute, intArg: (muted ? MuteBit : 0) | (hasSink ? SinkBit : 0));
+        /// <summary>Mute or unmute whoever is audible: this device's sink, else (a foreign owner: the wire carries no mute flag) volume 0
+        /// with the previous level remembered.</summary>
+        public static Input Mute(bool muted) => new(InputKind.SetMute, intArg: muted ? MuteBit : 0);
         /// <summary>The bit of a SetMute's <c>IntArg</c> that asks for mute (clear = unmute).</summary>
         public const int MuteBit = 1;
-        /// <summary>The bit of a SetMute's <c>IntArg</c> that says a local output exists to mute.</summary>
-        public const int SinkBit = 2;
         public static Input Cluster(in ClusterFrame frame, in RemoteState remote, long nowMs = 0)
             => new(InputKind.Cluster, frame: frame, remote: remote, nowMs: nowMs);
         /// <summary>A controller's verb. (Named <c>Controller</c> and not <c>Remote</c> because
@@ -2949,14 +2947,14 @@ public static partial class Playback
     /// (<c>SavedVolume</c>'s default): through the cubic taper 0.794³ = 0.5005, which is −6.01 dB (D6).</summary>
     public const float UnmuteDefault = 0.794f;
 
-    /// <summary>Mute whoever is audible, routed like <see cref="DoVolume"/>: a real local sink is muted as a sink (the
-    /// volume stays where it was); a foreign owner — the wire has no mute flag — and a sinkless local session are muted
-    /// as volume 0, and unmuted back to the level they left (<see cref="State.MuteRestoreVolume"/>).</summary>
+    /// <summary>Mute whoever is audible, routed like <see cref="DoVolume"/>: this device is muted as a sink (the volume stays
+    /// where it was, and is remembered with it), also before its audio has booted: the session applies the flag as it opens, so a
+    /// mute pressed before the first play no longer set the volume itself to 0. A foreign owner — the wire has no mute flag — is
+    /// muted as volume 0, and unmuted back to the level it left (<see cref="State.MuteRestoreVolume"/>).</summary>
     static void DoMute(ref State s, in Input i, ref Effects fx)
     {
         bool muted = (i.IntArg & Input.MuteBit) != 0;
-        bool foreign = !s.RoutesLocal;
-        if (!foreign && (i.IntArg & Input.SinkBit) != 0)
+        if (s.RoutesLocal)
         {
             fx.Mute = true;
             fx.MuteOn = muted;
@@ -2972,7 +2970,7 @@ public static partial class Playback
             }
             return;
         }
-        float current = foreign ? (s.MirrorVolume >= 0f ? s.MirrorVolume : 0f) : s.Volume;
+        float current = s.MirrorVolume >= 0f ? s.MirrorVolume : 0f;
         float target;
         if (muted)
         {

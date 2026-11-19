@@ -228,6 +228,9 @@ public static partial class Platform
         public static readonly SettingKey<bool> RememberVolume = new("playback.volume.remember", true);
         /// <summary>First-launch volume ≈ −6 dB (D6): 0.794³ = 0.5005 through the cubic taper. <c>Playback.UnmuteDefault</c> is the same number.</summary>
         public static readonly SettingKey<float> SavedVolume = new("playback.volume", 0.794f);
+        /// <summary>This device's mute, remembered beside <see cref="SavedVolume"/> (both follow <see cref="RememberVolume"/>): a muted Wavee
+        /// starts muted, its level kept for the unmute.</summary>
+        public static readonly SettingKey<bool> SavedMuted = new("playback.muted", false);
         /// <summary>The Spine Shelf's song previews are heard (the shelf's sound button). Off by default: a hovered song's preview plays muted.</summary>
         public static readonly SettingKey<bool> PreviewSound = new("playback.preview.sound", false);
         public static readonly SettingKey<string> OutputDeviceId = new("playback.output.deviceId", "");

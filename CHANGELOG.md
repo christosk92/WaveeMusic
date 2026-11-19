@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.12] - unreleased
+
+### Changed
+
+- **The volume slider follows mute.** It glides to 0 on mute and back to your volume on unmute, and a volume step from
+  the keys or another device glides too. 0% and 100% sit on the ends of the slider, and a muted slider no longer shows a
+  sliver of volume. (#256)
+
+### Fixed
+
+- **The volume slider showed 0% at launch, and the mouse wheel over it closed Wavee.** It starts at your volume, and the
+  wheel steps it. (#256)
+- **Mute is remembered.** A muted Wavee starts muted, and unmuting brings back your volume, also when you muted before
+  the first song. (#256)
+
 ## [0.3.11] - 2026-11-19
 
 ### Added
