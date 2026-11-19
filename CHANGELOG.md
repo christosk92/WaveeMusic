@@ -45,6 +45,15 @@ versions separately under `v*` and is not tracked in this file.)
   setting is. The palette's Theme and Crossfade toggles are gone: both settings come up this way, so a setting is
   changed in one place.
 
+- **A new Settings page in WinUI, laid out like Windows 11 Settings.** It opens on a home that shows your setup at a
+  glance (theme, audio quality, notifications, storage, lyrics, account: each card opens its setting), suggestions and
+  the settings you changed most recently. Nine categories sit in the strip under the title (Appearance, Sound,
+  Playback, Lyrics, Notifications, System, Storage, Account, Help) in place of the old seven tabs. "Find a setting"
+  beside the title lists the closest matches as you type, typos included; pick one to jump straight to it, or press
+  Enter for a page of results where every setting can be changed in place. A link to a setting opens its category,
+  unfolds its group, scrolls it into view and highlights it briefly. Settings whose effect is easier to see than to
+  describe carry an info badge after their name that opens a short explanation.
+
 ### Changed
 
 - **Playlists open at once.** A playlist you have opened before shows its saved copy the moment you click, Mixes
