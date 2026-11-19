@@ -64,7 +64,7 @@ public static partial class Actions
     // ══ 2. THE PROFILE MENU'S ROW TABLE (ch 19 §6.2) ════════════════════════════════════════════════════════════════
 
     /// <summary>One row slot of the profile menu, in order.</summary>
-    public enum ProfileRow : byte { Settings, Play, Separator, Notifications, Friends, Theme, LogOut, Profile }
+    public enum ProfileRow : byte { Settings, Play, Separator, Notifications, Friends, AppMode, LogOut, Profile, PrivateSession }
 
     public static class ProfileRules
     {
@@ -77,7 +77,8 @@ public static partial class Actions
         /// profile's "Open account" button now, not a row — then Settings always; <c>Play ▸</c> only
         /// when the build can play something of its own (ABSENT, never disabled); Notifications and Friends only once the
         /// chrome ladder has folded them out of the trailing island (never both places, never neither), behind a
-        /// separator that exists only for them; then Theme and Log out, each behind its own separator.</summary>
+        /// separator that exists only for them; then App mode (System · Light · Dark, the Settings dial itself) with Private session, and
+        /// Log out, each group behind its own separator (design 5.4).</summary>
         public static ProfileRow[] Rows(bool canPlay, bool actionsInMenu, bool hasNotifications, bool hasProfile)
         {
             var rows = new List<ProfileRow>(10);
@@ -89,15 +90,12 @@ public static partial class Actions
             if (notifications) rows.Add(ProfileRow.Notifications);
             if (actionsInMenu) rows.Add(ProfileRow.Friends);
             rows.Add(ProfileRow.Separator);
-            rows.Add(ProfileRow.Theme);
+            rows.Add(ProfileRow.AppMode);
+            rows.Add(ProfileRow.PrivateSession);
             rows.Add(ProfileRow.Separator);
             rows.Add(ProfileRow.LogOut);
             return rows.ToArray();
         }
-
-        /// <summary>The theme row names the TARGET theme: a dark app offers "Light theme" (Sun), a light one "Dark
-        /// theme" (Moon).</summary>
-        public static bool OffersLightTheme(bool currentlyDark) => currentlyDark;
 
         /// <summary>The tier row renders only once the tier is KNOWN — 0.3 never prints "Spotify Free" speculatively
         /// (ch 19 §7; 0.2.9 did).</summary>

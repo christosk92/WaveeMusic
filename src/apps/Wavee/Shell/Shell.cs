@@ -1447,9 +1447,10 @@ public static partial class Shell
         Separator,       // divider between sections
         LocalDefault,    // the "System default" radio (DeviceId == "")
         LocalDevice,     // a specific this-computer output radio
-        Quality,         // disabled: the ACTUAL playing quality, echoed from the player — never a setting loopback
+        Quality,         // the ACTUAL playing quality, echoed from the player (never a setting loopback); a link to the quality dial (design 5.4)
         ConnectDevice,   // a Spotify Connect device radio (click = transfer)
         Empty,           // a disabled placeholder row (no-devices / hint)
+        SoundSettings,   // the last row: "Sound settings" with the equalizer and normalization state at rest, a link to the Sound category
     }
 
     /// <summary>One row in the two-section device picker — a POD the UI maps to a menu item.</summary>
@@ -1488,9 +1489,10 @@ public static partial class Shell
         ReadOnlySpan<Playback.Devices.Row> connect,
         string? activeConnectId,
         Playback.Audio.Opened observed,
-        Spotify.Audio.Quality askedQuality)
+        Spotify.Audio.Quality askedQuality,
+        SoundState sound)
     {
-        var rows = new List<DevicePickerRow>(local.Length + connect.Length + 6);
+        var rows = new List<DevicePickerRow>(local.Length + connect.Length + 8);
         // stale-truthful "Unavailable" only when local playback is genuinely unsupported
         string? acc = localSupported ? null : Loc.Get(Strings.Player.Unavailable);
 
@@ -1527,6 +1529,9 @@ public static partial class Shell
             rows.Add(new DevicePickerRow(DevicePickerRowKind.Empty, Loc.Get(Strings.Player.NoDevices), Enabled: false));
             rows.Add(new DevicePickerRow(DevicePickerRowKind.Empty, Loc.Get(Strings.Player.NoDevicesHint), Enabled: false));
         }
+        // The last row (design 5.4): the sound settings' state at rest, a link to the Sound category (a link, not a control).
+        rows.Add(new DevicePickerRow(DevicePickerRowKind.Separator, ""));
+        rows.Add(new DevicePickerRow(DevicePickerRowKind.SoundSettings, Loc.Get(Strings.Player.SoundSettings), Accelerator: sound.Words));
         return rows;
     }
 
@@ -1540,7 +1545,7 @@ public static partial class Shell
     static DevicePickerRow QualityRow(Playback.Audio.Opened observed, Spotify.Audio.Quality askedQuality)
     {
         if (string.IsNullOrEmpty(observed.Label))
-            return new DevicePickerRow(DevicePickerRowKind.Quality, Loc.Get(Strings.Player.QualityIdle), Enabled: false);
+            return new DevicePickerRow(DevicePickerRowKind.Quality, Loc.Get(Strings.Player.QualityIdle));
 
         int observedRung = Spotify.Audio.Rung(observed.Format);
         int askedRung = Spotify.Audio.TargetRung(askedQuality);
@@ -1548,7 +1553,7 @@ public static partial class Shell
         string text = observedRung >= 0 && observedRung < askedRung
             ? Strings.Player.QualityBelowSetting(quality, Loc.Get(AskedQualityLabel(askedQuality)))
             : Strings.Player.QualityPlaying(quality);
-        return new DevicePickerRow(DevicePickerRowKind.Quality, text, Enabled: false);
+        return new DevicePickerRow(DevicePickerRowKind.Quality, text);
     }
 
     /// <summary>The observed format in the setting's own words (the boards' "very high · 320 kbps", audit B8), not the codec

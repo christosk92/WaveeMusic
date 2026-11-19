@@ -27,6 +27,11 @@ public enum DevicePickerEntryKind : byte
     Command,
     /// <summary>A Spotify Connect device: a radio, checked when it is the active device (choosing it transfers playback).</summary>
     Radio,
+
+    /// <summary>A link into Settings (design 5.4): the quality echo (what plays, opening the audio quality dial) and the last row, "Sound settings"
+    /// with the equalizer and normalization state at rest in <see cref="DevicePickerEntry.Accelerator"/> (opening the Sound category). Always
+    /// enabled, never checked; choosing it closes the picker. Appended (contract 1.117).</summary>
+    Link,
 }
 
 /// <summary>One row of the picker.</summary>

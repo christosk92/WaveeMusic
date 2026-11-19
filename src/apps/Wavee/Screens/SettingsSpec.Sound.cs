@@ -23,7 +23,7 @@ public static partial class SettingsSpec
                 SettingsWriter.OfChoice("audio.quality", SettingsVerbs.SetAudioQuality), legacy: ["audioQuality"], glyph: "Headphones",
                 captionKey: Strings.Settings.Playback.AudioSub,
                 value: s => Settings.Quality.AudioIndex(s.Get(Platform.Keys.PlaybackQuality), Spotify.Audio.CanDerive),
-                aliases: ["flac", "hires", "hi-res", "kbps", "320"], choices: QualityChoices),
+                aliases: ["flac", "hires", "hi-res", "kbps", "320"], choices: QualityChoices, contexts: [SettingsSurfaces.DevicePicker]),
             // The description IS the detector's verdict (a live sentence, `Settings.MeteredStatusLine`): every state says something,
             // "Unknown" included. The view words it; the dial carries no static caption.
             Make("sound.meteredQuality", K.Choice, Strings.Settings.Playback.MeteredQuality,

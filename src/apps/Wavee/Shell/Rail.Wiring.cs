@@ -208,6 +208,17 @@ internal static class RailWiring
             Diagnostics.LyricsInspector.Open(overlay, Diagnostics.LyricsInspector.CurrentTrackId());
         },
         Close = static () => Shell.PanelHost.Shared.Close(),
+        Options = s_lyricsOptions,
+    };
+
+    // The lyrics header's ⋯ (design 5.4): the blur is the Settings dial itself, written with the lyrics pane as its source.
+    static readonly SettingsDial s_lyricsBlur = SettingsSpec.Dial("lyrics.blur");
+    static readonly LyricsPaneOptions s_lyricsOptions = new()
+    {
+        Blur = static () => Prefs.Lyrics.BlurStrength(),
+        SetBlur = static v => s_lyricsBlur.WriteSlider(v, SettingsSurfaces.LyricsPane),
+        AiLine = static () => AiLyrics.StatusLine(),
+        OpenAiSettings = static () => InContextDoors.OpenSettings("lyrics.ai"),
     };
 
     // ══ THE FRIENDS PANEL ════════════════════════════════════════════════════════════════════════════════════════════
@@ -268,12 +279,14 @@ internal static class RailWiring
 
         var observed = Playback.Audio.PlayingOpened;
         var asked = Shell.DevicePickerFacts.Quality;
-        var picker = Shell.DevicePicker.Items(owner, activeSlot, Playback.Devices.Rows, local, selected, supported, observed, asked);
+        _ = Platform.SettingsChanged.Value;                                   // the last row states the equalizer and normalization at rest
+        var sound = Shell.DevicePickerFacts.Sound;
+        var picker = Shell.DevicePicker.Items(owner, activeSlot, Playback.Devices.Rows, local, selected, supported, observed, asked, sound);
 
         var entries = Shell.DevicePicker.Entries(picker);
 
         int stamp = HashCode.Combine(roster, (byte)owner, activeSlot, local.Length, selected, supported,
-            HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked));
+            HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked, sound));
         return new DevicePickerView(entries, stamp);
     }
 
@@ -325,7 +338,7 @@ internal static class RailWiring
         Facts = ReadSheetTransport,
         Verbs = PlayerVerbs.Default,
         SeekBar = static () => Shell.SeekBar(reveal: Shell.PageShown),
-        TimeText = static remaining => Shell.TimeText(remaining, reveal: Shell.PageShown),
+        TimeText = static remaining => Shell.TimeText(remaining, reveal: Shell.PageShown, door: Shell.TimeDoor.Panel),
         Source = ReadSheetSource,
         Device = ReadSheetDevice,
         ToggleDevicePicker = Shell.BarToggleDevicePicker,

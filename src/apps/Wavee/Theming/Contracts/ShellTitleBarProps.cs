@@ -131,4 +131,8 @@ public sealed record ShellTitleBarProps
     /// <summary>The Search route is on screen (contract 1.30), read tracked: the exact flag a title bar that moves the omnibar's field into
     /// its lead island at the touch tier keys on, where it used to guess from "the omnibar holds a query". False by default (a fixture).</summary>
     public Func<bool> OnSearchRoute { get; init; } = static () => false;
+
+    /// <summary>Moves when something asks the title bar to open its own window menu (a Settings "Also in" door to a theme option that lives
+    /// there, design 5.4): a structure with such a menu opens it under the bar on a change. Null: nothing asks. Appended (contract 1.117).</summary>
+    public IReadSignal<int>? WindowMenuRequest { get; init; }
 }

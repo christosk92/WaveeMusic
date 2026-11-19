@@ -124,6 +124,9 @@ internal static class WinUiNotificationRules
     /// <summary>The header link: the padding, the radius and the text size.</summary>
     public const float LinkRadius = 6f, LinkTextSize = 12f;
 
+    /// <summary>The header's settings gear (W-Notifications: a 32 square, a 16 glyph, 4 corners).</summary>
+    public const float GearSize = 32f, GearGlyph = 16f, GearRadius = 4f;
+
     /// <summary>The header link's padding.</summary>
     public static readonly Edges4 LinkPadding = new(8f, 3f, 8f, 3f);
 }

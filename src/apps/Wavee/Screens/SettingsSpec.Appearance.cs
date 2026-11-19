@@ -51,7 +51,7 @@ public static partial class SettingsSpec
             Make("appearance.appMode", K.Segmented, Strings.Settings.Appearance.AppMode,
                 SettingsWriter.OfChoice("appearance.mode", SettingsVerbs.SetThemeMode), legacy: ["appMode"], glyph: "Sun",
                 captionKey: Strings.Settings.Appearance.ThemeSub, value: s => (int)Appearance.ModeOf(s.Get(Platform.Keys.ThemeMode)),
-                choices: [Strings.Settings.Choice.System, Strings.Settings.Choice.Light, Strings.Settings.Choice.Dark])),
+                choices: [Strings.Settings.Choice.System, Strings.Settings.Choice.Light, Strings.Settings.Choice.Dark], contexts: [SettingsSurfaces.ProfileMenu])),
 
         Group("sizeAndText", Strings.Settings.Groups.Appearance.SizeAndText, null,
             // A combo, not segments: thirteen items (Auto + twelve rungs). Index 0 is "Auto (N%)" for both Auto and Dense.

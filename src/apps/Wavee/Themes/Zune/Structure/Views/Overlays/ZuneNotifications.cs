@@ -138,6 +138,8 @@ internal static class ZuneNotifications
             kit.Cmd(Loc.Get(Strings.Notifications.MarkAllRead), props.Host.Verbs.MarkAllRead),
         };
         if (props.Clear is { } clear) commands.Add(kit.Cmd(Loc.Get(Strings.Notifications.Clear), clear));
+        // "settings" (design 5.4): a word like the others (Z-Overlays' commands are words), opening Settings at notifications.
+        if (props.OpenSettings is { } openSettings) commands.Add(kit.Cmd(Loc.Get(Strings.Auth.Settings), openSettings) with { Key = "notify:settings" });
         return new BoxEl
         {
             Key = "zn:header", Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = ZuneOverlayRules.HeaderWordsGap, MinWidth = 0f,

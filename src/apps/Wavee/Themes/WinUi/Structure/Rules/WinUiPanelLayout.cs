@@ -152,6 +152,11 @@ public static class WinUiPanelBodies
     /// <summary>The header's button size in a window tier: the Compact touch floor, else 32.</summary>
     public static float MetaRow(WidthTier window) => window == WidthTier.Compact ? MetaRowCompactH : MetaRowH;
 
+    /// <summary>The header ⋯'s options card (settings rework phase 5): its width, the FlyoutPresenter's 16 inset, the gap between its blocks and
+    /// inside one, the slider's thickness; the blur slider runs 0 (off) - 100 in steps of five, as the full screen's popover.</summary>
+    public const float LyricsOptionsW = 288f, LyricsOptionsPad = 16f, LyricsOptionsGap = 12f, LyricsOptionsInnerGap = 4f, LyricsSliderThickness = 24f,
+        LyricsBlurMax = 100f, LyricsBlurStep = 5f;
+
     // ── "next up" ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A row: the 40 cover, the 56 floor (W-Queue's rows).</summary>

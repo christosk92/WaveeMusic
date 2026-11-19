@@ -209,6 +209,8 @@ public readonly partial struct User
     /// <summary>A component so it re-renders on the appearance bump and the checked card tracks the value that PERSISTED (E15).</summary>
     sealed class LikedCoverStyleFlyout : Component
     {
+        static readonly SettingsDial s_likedCoverDial = SettingsSpec.Dial("appearance.likedCover");
+
         readonly string[] _scratch = new string[LikedCoverRules.MaxTiles];
         LikedSnapshot? _last;
         readonly Func<LikedSnapshot> _compute;
@@ -232,7 +234,9 @@ public readonly partial struct User
             };
             // E4: opening the picker is the SECOND thing that charges the liked-list warm.
             _demand = DemandLikedCover;
-            _apply = static i => SettingsVerbs.SetLikedCover(i);   // the Settings dial's writer (idempotent and cheap: the strip roves)
+            // The Settings dial's own writer, recorded as written from Liked Songs (idempotent and cheap: the strip roves, and a rove's record is a
+            // ring slot updated in place).
+            _apply = static i => s_likedCoverDial.WriteChoice(i, SettingsSurfaces.LikedCover);
         }
 
         public override Element Render()

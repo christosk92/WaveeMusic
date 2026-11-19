@@ -2,7 +2,8 @@
 //
 // Boards Z-Part-Panel (pivot "queue") and Queue: the panel's queue body under the pivot head, on the ground, no plates.
 //
-//   modes        shuffle · repeat · autoplay as words (13/18), the accent while on; 28 tall (40 at Compact, the touch floor)
+//   modes        shuffle · repeat · autoplay · crossfade as words (13/18), the accent while on; 28 tall (40 at Compact, the touch floor); after
+//                crossfade its length ("6 s") as a word that opens the duration in Settings (the "between songs" pair, design 5.4)
 //   scroll       "playing from …" (the label cased, the name its own; it opens the context) · the now-playing row (72: the 56 art, the
 //                title 17 and the artists 13 in the accent; it opens where the track plays from) · the lane: each section's header at the
 //                foot of its 32 (40 at Compact): "next in queue" with "clear", "next up from …", "autoplay"; the rows (the shared media
@@ -56,7 +57,7 @@ internal sealed class ZuneQueuePanelView : Component
     /// <summary>The vacancy's estimate until its first measure.</summary>
     const float VacancyEstimate = 120f;
     Func<QueueSlot, float>? _extentOf;
-    Action? _toggleShuffle, _cycleRepeat, _toggleAutoplay, _clear;
+    Action? _toggleShuffle, _cycleRepeat, _toggleAutoplay, _toggleCrossfade, _clear;
     WidthTier _window = WidthTier.Standard;
     ZunePanelInk? _ink;   // the panel's ink while its cover wash is drawn (null: the roles' own)
 
@@ -88,6 +89,7 @@ internal sealed class ZuneQueuePanelView : Component
         _toggleShuffle ??= props.Player.ToggleShuffle;
         _cycleRepeat ??= props.Player.CycleRepeat;
         _toggleAutoplay ??= props.Verbs.ToggleAutoplay;
+        _toggleCrossfade ??= props.Verbs.ToggleCrossfade;
         _clear ??= props.Verbs.Clear;
         _queue = queue;
         lane.SetMetrics(Q.RowExtent, _extentOf ??= ExtentOf);
@@ -112,6 +114,16 @@ internal sealed class ZuneQueuePanelView : Component
         var body = lane.List(list, "lane:upcoming", lead).As<BoxEl>() with { Grow = 1f, MinHeight = 0f };
 
         float modeH = Q.ModeRow(_window);
+        var modes = new List<Element>(5)
+        {
+            ZunePlayerBar.Word(Loc.Get(Strings.Player.Shuffle), _toggleShuffle, true, queue.Shuffle, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:shuffle" },
+            ZunePlayerBar.Word(Loc.Get(Strings.Player.Repeat), _cycleRepeat, true, props.RepeatOn, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:repeat" },
+            ZunePlayerBar.Word(Loc.Get(Strings.Player.Autoplay), _toggleAutoplay, true, queue.Autoplay.Enabled, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:autoplay" },
+            ZunePlayerBar.Word(Loc.Get(Strings.Player.Crossfade), _toggleCrossfade, true, props.Crossfade, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:crossfade" },
+        };
+        if (props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } openLength)
+            modes.Add(ToolTip.Wrap(ZunePlayerBar.Word(props.CrossfadeLength, openLength, true, false, modeH, Q.WordSize) with { Role = AutomationRole.Hyperlink },
+                Loc.Get(Strings.Player.CrossfadeLengthTip)) with { Key = "mode:crossfade:length" });
         return new BoxEl
         {
             Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true,
@@ -120,12 +132,7 @@ internal sealed class ZuneQueuePanelView : Component
                 new BoxEl
                 {
                     Key = ZuneQueue.ModesKey, Height = modeH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = Q.ModeRowPadding,
-                    Children =
-                    [
-                        ZunePlayerBar.Word(Loc.Get(Strings.Player.Shuffle), _toggleShuffle, true, queue.Shuffle, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:shuffle" },
-                        ZunePlayerBar.Word(Loc.Get(Strings.Player.Repeat), _cycleRepeat, true, props.RepeatOn, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:repeat" },
-                        ZunePlayerBar.Word(Loc.Get(Strings.Player.Autoplay), _toggleAutoplay, true, queue.Autoplay.Enabled, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:autoplay" },
-                    ],
+                    Children = modes.ToArray(),
                 },
                 body,
             ],

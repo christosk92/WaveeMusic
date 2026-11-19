@@ -711,7 +711,8 @@ public static partial class Shell
     {
         Sidebar.SidebarMenus.Overlay = overlay;
         return new ContextMenuModel(Sidebar.SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
-            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames(), Sidebar.LibraryView.Peek())));
+            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames(), Theming.ThemeHost.Declares(Theming.NavPaneOptionIds.Layout),
+            Theming.ThemeHost.Declares(Theming.NavPaneOptionIds.Density), Sidebar.LibraryView.Peek())));
     }
 
     /// <summary>The rail seam's guide: the splitter's 2-DIP thumb, bound to the drag so it shows while the pointer is down
@@ -1468,6 +1469,14 @@ public static partial class Shell
 
     static INotificationVerbs PanelVerbs => NotificationVerbs.Shared;
 
+    /// <summary>The panel's settings door: close the panel first (its focus restore must not land on a closing popup), then Settings at the
+    /// Notifications category.</summary>
+    static readonly Action s_openNotificationSettings = static () =>
+    {
+        NotificationVerbs.PanelCloser?.Invoke();
+        SettingsLinks.Open("notifications");
+    };
+
     /// <summary>THE one open path for the panel, shared by the bell and the profile menu's row (installed into
     /// <see cref="NotificationsLauncher"/>): same placement and chrome, and the open is the panel's DEMAND — it refetches
     /// the stale feeds and advances the watermarks every time. A second press closes it.</summary>
@@ -1536,6 +1545,7 @@ public static partial class Shell
                 UpdateProgress = Notify.UpdateProgress,
                 PendingEdits = Notify.PendingEdits,
                 Host = _host ??= new NotificationsHost(expanded),
+                OpenSettings = s_openNotificationSettings,
             });
         }
     }

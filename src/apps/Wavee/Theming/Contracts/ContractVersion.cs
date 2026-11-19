@@ -317,6 +317,13 @@
 // suggestions as `HintProps`, `SettingsRecentRow`s) and `Body` (`SettingsBodySource`: `SettingsBody`, `SettingsBodyGroup`, `SettingsBodyRow`
 // with `SettingsExplainInfo`, `SettingsAlsoIn` and `SettingsBodyNote`); `SettingsKeys` (the page's node keys); `ThemePolicies.SettingsPage`
 // (`SettingsPagePolicy.HighlightMs`, from the structure's Rules); `SetupConsent.Labels` (the wizard's crash-consent words are the dial's).
+// 1.117 (settings rework phase 5: settings in context, design 5.4): the queue's "between songs" pair, `QueuePanelProps.Crossfade`,
+// `CrossfadeLength` and `OpenCrossfadeLength` (and the same on `QueueStagePaneProps`, the full screen's Up next) with
+// `IQueueVerbs.ToggleCrossfade` / `SetCrossfade`; `IStageSettingsVerbs.SetLyricsBlur` (every
+// theme's full-screen popover draws Background blur); the lyrics header's ⋯, `PanelLyricsHeaderProps.Options` (`LyricsPaneOptions`: the blur and
+// the AI lyrics status line); `DevicePickerEntryKind.Link` (the quality echo and "Sound settings" link into Settings); the bell panel's settings
+// door, `NotificationsProps.OpenSettings`; the title bar's window menu door, `ShellTitleBarProps.WindowMenuRequest`; `ThemeOption.Contexts` (a
+// theme option's in-context home in its own theme, WinUI's title bar menu).
 // 2.0 (settings rework phase 4c, MAJOR: every theme draws the registry's page): REMOVED the old Settings page's model. `SettingsPageProps`
 // loses `Area`, `AreaCell`, `OpenArea` (the twelve areas), `Tab`, `TabCell`, `OpenTab` (the document tabs) and `Grouping`, `Group`, `OpenGroup`
 // (the structure's grouping), and keeps `OpenSection`, `CloseSection`, `Revision`, `Storage` and the 1.116 members; `ThemePolicies.Settings`
@@ -324,6 +331,10 @@
 // `HomeArea`, `FirstTab`, `AreaOf`, `AreaFromSlug`, `SettingsDoc` / `SettingsSection` and `Settings.OpenNextMountOn(Area)` / `(Tab)` (a theme
 // pick names the category: `Settings.OpenNextMountOn("appearance")`). Every old slug and row id still lands through `SettingsSpec`'s aliases.
 // `SettingsExplainInfo` is non-null only where the dial's clip exists for the theme and app mode (`ClipPath` and `Props` are never null).
+// 2.1 (settings rework phase 5 merged onto 2.0, additive): the 1.117 members above (the queue's and the full screen's Up next
+// Crossfade pair, `IStageSettingsVerbs.SetLyricsBlur`, `PanelLyricsHeaderProps.Options`, `DevicePickerEntryKind.Link`,
+// `NotificationsProps.OpenSettings`, `ShellTitleBarProps.WindowMenuRequest`, `ThemeOption.Contexts`) land on the 2.x line; phase 5 was
+// built on 1.116, beside the 2.0 removals, so nothing it adds names a removed member.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -339,7 +350,7 @@ public static class ContractVersion
     public const int Major = 2;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 0;
+    public const int Minor = 1;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

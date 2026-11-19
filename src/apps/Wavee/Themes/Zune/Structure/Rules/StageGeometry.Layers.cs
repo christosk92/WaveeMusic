@@ -180,6 +180,9 @@ public static partial class ZuneStageGeometry
 
     public const float DimMin = 0f, DimMax = 100f, DimStep = 5f;
 
+    /// <summary>The background blur slider (the lyrics' depth blur, 0 = off): 0-100 in steps of five, as WinUI's popover.</summary>
+    public const float BlurMin = 0f, BlurMax = 100f, BlurStep = 5f;
+
     /// <summary>The layout row's 84 x 48 schematic (the face's first colour at 0.55 under the stage veil) and its marks.</summary>
     public const float ThumbW = 84f, ThumbH = 48f, ThumbPlateMix = 0.55f, ThumbArtistPlateA = 0.45f, ThumbArtistDotA = 0.85f;
 

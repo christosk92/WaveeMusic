@@ -343,6 +343,7 @@ public static class SettingsPageModel
     /// a flyout that needs its anchor). Built once per surface.</summary>
     static Action? DoorOf(string surface)
     {
+        if (InContextDoors.Handles(surface)) return InContextDoors.Of(surface);   // asked every time: those places come and go with the window
         if (s_doors.TryGetValue(surface, out Action? known)) return known;
         Action? door = surface switch
         {

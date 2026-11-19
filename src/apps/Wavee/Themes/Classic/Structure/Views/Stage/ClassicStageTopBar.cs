@@ -136,7 +136,7 @@ internal static class ClassicStageTopBar
                                         ? Button.Create(Loc.Get(Strings.Player.SwitchToAudio), toAudio, ButtonAppearance.Subtle, ControlSize.Small, glyph: Icons.MusicNote,
                                             style: armKind == Tok.Theme ? null : OnArm(arm)) with { Shrink = 0f, HitSlop = ClassicStageGeometry.LabelledButtonSlop, Key = "stage:bar:audio", Enter = s_formSwap, Exit = s_formSwap, Transition = ClassicTierMotion.SwapFadeMotion }
                                         : ToolTip.Wrap(BarGlyph(Icons.MusicNote, toAudio, lit: false, onRealized: null, targetH, arm), Loc.Get(Strings.Player.SwitchToAudio)) with { Key = "stage:bar:audio", Enter = s_formSwap, Exit = s_formSwap, Transition = ClassicTierMotion.SwapFadeMotion }
-                                    : ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n), targetH, arm), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
+                                    : ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n), targetH, arm), Loc.Get(Strings.Stage.Options.Button)) with { Key = "stage:bar:options" },   // the TeachingTip's anchor SIGNAL (V-U16)
                                 // the audio modes' way out (Video mode's is the control bar's). Labelled only where the allocator says the column holds it
                                 // (never "Ex…"); else the glyph with the label as its tooltip.
                                 videoMode

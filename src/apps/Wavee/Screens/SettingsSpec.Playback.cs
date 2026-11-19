@@ -21,10 +21,11 @@ public static partial class SettingsSpec
             Make("playback.autoplay", K.Toggle, Strings.Settings.Playback.Autoplay,
                 SettingsWriter.OfToggle("audio.autoplay", WriteBool(Platform.Keys.AutoplayEnabled)), legacy: ["autoplay"], glyph: "Play",
                 captionKey: Strings.Settings.Playback.AutoplaySub, value: BoolOf(Platform.Keys.AutoplayEnabled),
-                contexts: [SettingsSurfaces.QueuePanel]),
+                contexts: [SettingsSurfaces.QueuePanel, SettingsSurfaces.StageUpNext]),
             Make("playback.crossfade", K.Toggle, Strings.Settings.Sound.Crossfade,
                 SettingsWriter.OfToggle("crossfade.enabled", SettingsVerbs.SetCrossfadeEnabled), legacy: ["crossfade"], glyph: "Audio",
-                captionKey: Strings.Settings.Sound.CrossfadeSub, value: BoolOf(Platform.Keys.CrossfadeEnabled), aliases: ["crossfade", "x-fade"]),
+                captionKey: Strings.Settings.Sound.CrossfadeSub, value: BoolOf(Platform.Keys.CrossfadeEnabled), aliases: ["crossfade", "x-fade"],
+                contexts: [SettingsSurfaces.QueuePanel, SettingsSurfaces.StageUpNext]),
             // The slider and the number box commit through ONE verb (seconds; the verb snaps to a millisecond).
             Make("playback.crossfade.duration", K.Slider, Strings.Settings.Sound.CrossfadeDuration,
                 SettingsWriter.OfSlider("crossfade.duration", v => SettingsVerbs.CommitCrossfade(v)),

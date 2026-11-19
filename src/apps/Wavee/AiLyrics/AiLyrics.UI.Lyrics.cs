@@ -64,6 +64,22 @@ public static partial class AiLyrics
         else FluentGpu.Input.Announcer.Say(facts.Tip);
     }
 
+    /// <summary>The lyrics header ⋯'s status line (design 5.4): "Word-by-word: on" / "off" / "setting up" / "needs attention" from the setup
+    /// phase, or "" where the feature cannot run on this PC. Subscribes the AI status.</summary>
+    internal static string StatusLine()
+    {
+        var phase = Current.Value.Phase;
+        string? state = phase switch
+        {
+            SetupPhase.Unavailable => null,
+            SetupPhase.Off => Strings.Player.AiStateOff,
+            SetupPhase.Ready => Strings.Player.AiStateOn,
+            SetupPhase.Error => Strings.Player.AiStateAttention,
+            _ => Strings.Player.AiStateSettingUp,
+        };
+        return state is null ? "" : Strings.Player.AiLine(Loc.Get(state));
+    }
+
     // MOUNT POINT (Lyrics.ViewCore root column)
     /// <summary>The end-of-lyrics disclosure strip. <paramref name="ink"/> and <paramref name="sidePad"/> are the mounting
     /// surface's mount config (the rail's theme ink and gutter, or the stage's media ink and gutter) — frozen at mount,
