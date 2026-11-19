@@ -15,6 +15,7 @@ namespace Wavee.Theming;
 /// rail's start to the thumb's centre (gone outright at 0: a shrunk fill rasterised as a 1 % sliver). The stock slider is handed a range
 /// stretched by the inset (<see cref="Insets"/>), so its thumb and its pointer mapping land on the same centre line; a press or a key
 /// past an end clamps to 0 or 1.</para>
+/// <para>Every caller feeds it the HEARD level (<c>Playback.HeardVolume</c>: 0 while muted), so a mute takes every rail to 0.</para>
 /// <para>THE GLIDE. The rail draws its own shown level. A change that comes from OUTSIDE it (a mute or an unmute, the volume keys, another
 /// device moving the level) moves the thumb there over the Slow beat, eased in and out (a heavy ease-out read as a snap, and FluentStandard's
 /// steep middle as a jump), on the host's timer queue: one timer re-armed for the NEXT frame while it moves (the queue defers a re-arm made

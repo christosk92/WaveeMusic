@@ -185,8 +185,8 @@ public static partial class Shell
             // EVERY catalog write anywhere in the scope (a page loading its rows, the queue asking its own) and rebuilt the whole bar, its
             // buttons and their tooltips (the owner's census, 2026-11-07). The memo's equality cut-off re-renders it only when a fact moves.
             var face = hooks.UseComputed(s_barFace);
-            // The rail shows what is heard: 0 while muted, the kept level otherwise (the rail itself glides a mute or an unmute: VolumeSlider).
-            hooks.UseSignalEffect(static () => s_barVolume.SetIfChanged(Playback.Muted.Value ? 0f : Playback.Volume.Value));
+            // The rail shows what is heard (Playback.HeardVolume: 0 while muted); the rail itself glides a mute or an unmute (VolumeSlider).
+            hooks.UseSignalEffect(static () => s_barVolume.SetIfChanged(Playback.HeardVolume.Value));
 
             // ── 4. the facts ──
             var level = levelSignal.Value;

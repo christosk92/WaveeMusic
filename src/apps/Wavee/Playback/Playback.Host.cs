@@ -165,6 +165,10 @@ public static partial class Playback
     /// <summary>0..1, LINEAR — the SLIDER's value (<see cref="State.SliderVolume"/>): the foreign owner's volume while
     /// one owns playback, ours otherwise. The cubic taper is the audio host's.</summary>
     public static readonly Signal<float> Volume = new(1f);
+    /// <summary>0..1, LINEAR — what is HEARD: 0 while <see cref="Muted"/>, else <see cref="Volume"/>. Every volume rail shows this (the bar,
+    /// the on-media overlays, the full screen, the device picker), so a mute takes each of them to 0 and an unmute back; a rail's own writes
+    /// still go to <see cref="SetVolume"/>, which unmutes a raise.</summary>
+    public static readonly Signal<float> HeardVolume = new(1f);
     /// <summary>Is whoever is audible muted — the foreign owner at volume 0 while one owns playback, else our sink muted
     /// or our volume at 0? The ONE fact every mute glyph reads (<see cref="ToggleMute"/> flips it).</summary>
     public static readonly Signal<bool> Muted = new(false);
@@ -392,9 +396,11 @@ public static partial class Playback
         // The video host's level follows the reducer only through the volume EFFECT, which fires on a change - and setting
         // the level it already has is no change. Seeded here, or every video opened at Video.s_volume's 1.0 (full volume,
         // whatever the slider and the stored volume said - a stored 0 included) until the slider was moved (2026-11-07).
-        // Its mute likewise: the mute effect fires on a change only.
+        // Its mute likewise, and the audio host's too: the mute effect fires on a change only, and an audio session opens with
+        // `Audio.Muted` (not the reducer's), so a remembered mute left unseeded played the first song audibly.
         Video.SetVolume(Audio.VolumeTaper.Amplitude(s_state.Volume));
         Video.SetMuted(s_state.SinkMuted);
+        Audio.SetMuted(s_state.SinkMuted);
 
         // The dealer's mailbox wakes us; the drain reads it. One closure, made once.
         Spotify.Connect.Wake = static () => ToUi(s_drain);
@@ -1229,6 +1235,7 @@ public static partial class Playback
         DurationMs.Value = s_state.DurationMs;
         Volume.Value = s_state.SliderVolume;
         Muted.Value = s_state.Own.Kind == Owner.Foreign ? s_state.SliderVolume <= MuteFloor : s_state.SinkMuted || s_state.Volume <= MuteFloor;
+        HeardVolume.Value = Muted.Peek() ? 0f : s_state.SliderVolume;
         SeekGen.Value = s_state.SeekGen;
         LastSeekLandedGen.Value = s_state.LastSeekLandedGen;
         ScrubPositionMs.Value = s_state.Scrub.Current != ScrubModel.State.Idle ? s_state.ScrubPosMs : -1;
