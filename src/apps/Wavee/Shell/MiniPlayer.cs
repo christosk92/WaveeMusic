@@ -518,6 +518,14 @@ public static partial class MiniPlayer
         if (ActiveArtSlot(out int slot, out _)) SetArtColour(slot, on);
     }
 
+    /// <summary>The Options panel's "Colour from album art": the active theme's slot is the Settings dial's (its writer, recorded as written from the
+    /// mini player); another slot (none today: the panel draws in the active theme) is written as it was.</summary>
+    static void SetArtColourFromOptions(int slot, bool on)
+    {
+        if (ActiveArtSlot(out int active, out _) && active == slot) SettingsSpec.Dial("lyrics.mini.artColour").WriteToggle(on, SettingsSurfaces.MiniPlayerOptions);
+        else SetArtColour(slot, on);
+    }
+
     static void SetArtColour(int slot, bool on)
     {
         if ((uint)slot > 7u) return;
@@ -589,8 +597,6 @@ public static partial class MiniPlayer
         SetFace(index);
     }
 
-    static void ToggleOnTop() => SetOnTop(!s_onTop.Peek());
-
     /// <summary>Keep on top (the Options panel's writer): persisted and published, so an open window follows at once.</summary>
     public static void SetOnTop(bool on)
     {
@@ -644,15 +650,16 @@ public static partial class MiniPlayer
         ToggleRemaining = static () => PlayerVerbs.Default.ToggleRemaining(),
         ArtistText = ArtistText,
         DetailText = DetailText,
-        SetFace = SetFace,
+        // The Options panel's three rows are the Settings dials themselves (one writer each), recorded as written from the mini player.
+        SetFace = static i => SettingsSpec.Dial("lyrics.mini.face").WriteChoice(i, SettingsSurfaces.MiniPlayerOptions),
         BackToWavee = static () => Close("back"),
         OnTop = s_onTop,
-        ToggleOnTop = ToggleOnTop,
+        ToggleOnTop = static () => SettingsSpec.Dial("lyrics.mini.onTop").WriteToggle(!s_onTop.Peek(), SettingsSurfaces.MiniPlayerOptions),
         SetShape = static shape => s_shapeRequest.Value = (shape, s_shapeRequest.Peek().Seq + 1),
         WheelVolume = WheelVolume,
         UseMaterial = static (m, dark) => s_material.Value = (m, dark),
         ArtColour = ArtColour,
-        SetArtColour = SetArtColour,
+        SetArtColour = SetArtColourFromOptions,
         ArtUrl = NowArtUrl,
         AlbumAccent = AlbumAccent,
         SeekRail = static draw => Shell.SeekBarDrawn(draw),
