@@ -28,6 +28,7 @@
 // Public, so `Wavee.Tests` can pin the rules (the assembly has no InternalsVisibleTo).
 
 using System.Collections.Immutable;
+using FluentGpu.Foundation;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
@@ -94,8 +95,37 @@ public static class ZunePlaylistRules
     /// <summary>The hint's lines.</summary>
     public const int HintLines = 3;
 
-    /// <summary>A switch row's label gap, and the tune panel's row (44), its pad, its current mark (a 2-dip bar) and the inset under the header.</summary>
-    public const float SwitchLabelGap = 2f, TuneRowH = 44f, TuneRowPad = 16f, TuneMark = 2f, TuneHeaderPad = 16f, TuneWidthFallback = 320f;
+    /// <summary>A switch row's label gap.</summary>
+    public const float SwitchLabelGap = 2f;
+
+    // ── Tune: the AI action and its strip (owner, 2026-11-18: "not a dialog", "a lot more prevalent like an AI button") ─────────────────────
+
+    /// <summary>Tune's AI mark in Zune: blue → violet → pink, top to bottom, on the strip's lead bar and under the bar command's word.</summary>
+    public static readonly GradientSpec TuneBar = new(GradientShape.Linear, 90f,
+    [
+        new GradientStop(0f, ColorF.FromRgba(0x3B, 0x82, 0xF6)),
+        new GradientStop(0.5f, ColorF.FromRgba(0x8B, 0x5C, 0xF6)),
+        new GradientStop(1f, ColorF.FromRgba(0xEC, 0x48, 0x99)),
+    ]);
+
+    /// <summary>The same hues left to right: the bar command's underline.</summary>
+    public static readonly GradientSpec TuneUnderline = new(GradientShape.Linear, 0f,
+    [
+        new GradientStop(0f, ColorF.FromRgba(0x3B, 0x82, 0xF6)),
+        new GradientStop(0.5f, ColorF.FromRgba(0x8B, 0x5C, 0xF6)),
+        new GradientStop(1f, ColorF.FromRgba(0xEC, 0x48, 0x99)),
+    ]);
+
+    /// <summary>The sparkle's ink: the mark's middle hue.</summary>
+    public static readonly ColorF TuneSparkle = ColorF.FromRgba(0x9B, 0x6B, 0xFF);
+
+    /// <summary>The strip: its lead bar's width, the gap after it, the gap between its head and its chips, the head's gaps, the chips' gap, the gap under the
+    /// title, the working ring and its gap, the close button.</summary>
+    public const float TuneBarW = 3f, TuneBarGap = 16f, TuneStripGap = 14f, TuneHeadGap = 16f, TuneChipGap = 8f, TuneLineGap = 2f, TuneRing = 16f, TuneRingGap = 8f,
+        TuneClose = 40f;
+
+    /// <summary>The bar command's underline: its height and the gap over it.</summary>
+    public const float TuneUnderlineH = 2f;
 
     // ── the daylist ──────────────────────────────────────────────────────────────────────────────────────────────────
 

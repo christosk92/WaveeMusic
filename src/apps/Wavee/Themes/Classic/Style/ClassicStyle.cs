@@ -25,7 +25,7 @@ public sealed class ClassicStyle : IStyleLayer
     // Built once: Tok.Use compares definitions by value, but the composition's identity rule (an unchanged pairing installs exactly
     // the style's own instance) and ThemeHost.ApplyDefinition's reference check both want a stable instance.
     // Classic's control styles over the house table: the avatar's initials floor (ClassicControlRoles.Avatar) and the menu's choice
-    // (ClassicControlRoles.Menu: C-Flyouts, C-Video).
+    // (ClassicControlRoles.Menu: the ComboBox item's pill on a radio row, the accent check on a toggle).
     private static readonly ThemeDefinition s_definition = Design.Definition with
     {
         AppRoles = ClassicRoles.Table,

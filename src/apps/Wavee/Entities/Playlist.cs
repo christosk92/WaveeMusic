@@ -214,6 +214,11 @@ public sealed class PlaylistTable : Table
 
     // Late and rare.
     public Column<int> Saves, DaylistExpiresAt, DaylistCreatedAt, ChartUpdatedAt;
+    /// <summary>The daylist edition's own words, written with <see cref="PlaylistFields.Daylist"/> (so a newer window replaces them with
+    /// the window): its tags (<c>localized_terms</c>, a comma list), the tags' playlists (<c>nicheMixLinks</c>, anchors) and what the
+    /// pick is based on (<c>recsplanation_localized_terms</c>, a comma list). The Home card reads them before the feed card's own facts,
+    /// which are an answer older than any later header read.</summary>
+    public Column<StringId> DaylistTerms, DaylistLinks, DaylistBasis;
     public Column<ushort> ChartNewEntries;
     public Column<StringId> ChartRankType, TuningSelected;
     /// <summary>The options are only valid while this hash still matches the membership revision they came with.</summary>
@@ -273,6 +278,9 @@ public sealed class PlaylistTable : Table
         Saves.EnsureCapacity(capacity);
         DaylistExpiresAt.EnsureCapacity(capacity);
         DaylistCreatedAt.EnsureCapacity(capacity);
+        DaylistTerms.EnsureCapacity(capacity);
+        DaylistLinks.EnsureCapacity(capacity);
+        DaylistBasis.EnsureCapacity(capacity);
         ChartUpdatedAt.EnsureCapacity(capacity);
         ChartNewEntries.EnsureCapacity(capacity);
         ChartRankType.EnsureCapacity(capacity);
@@ -300,6 +308,9 @@ public sealed class PlaylistTable : Table
         ClearText(ref ShareUrl, slot);
         ClearText(ref HeaderImage, slot);
         ClearText(ref GenericTitle, slot);
+        ClearText(ref DaylistTerms, slot);
+        ClearText(ref DaylistLinks, slot);
+        ClearText(ref DaylistBasis, slot);
         ClearText(ref ChartRankType, slot);
         ClearText(ref TuningSelected, slot);
         ClearText(ref Revision, slot);
@@ -472,6 +483,12 @@ public readonly partial struct Playlist(int slot) : IEquatable<Playlist>
     /// <summary>UNIX seconds, 0 = not a daylist (as are <see cref="DaylistCreatedAt"/> and <see cref="ChartUpdatedAt"/>).</summary>
     public int DaylistExpiresAt => T.DaylistExpiresAt[Slot];
     public int DaylistCreatedAt => T.DaylistCreatedAt[Slot];
+    /// <summary>The edition's tags as a comma list (<c>localized_terms</c>); empty when the answer that wrote the window had none.</summary>
+    public StringId DaylistTermsId => T.DaylistTerms[Slot];
+    /// <summary>The tags' playlists as anchors (<c>nicheMixLinks</c>).</summary>
+    public StringId DaylistLinksId => T.DaylistLinks[Slot];
+    /// <summary>What the pick is based on, a comma list (<c>recsplanation_localized_terms</c>).</summary>
+    public StringId DaylistBasisId => T.DaylistBasis[Slot];
     public int ChartNewEntries => T.ChartNewEntries[Slot];
     public int ChartUpdatedAt => T.ChartUpdatedAt[Slot];
     public StringId ChartRankTypeId => T.ChartRankType[Slot];
@@ -609,6 +626,8 @@ public struct StagedPlaylist : IStagedRow
     /// <summary>The owning account — resolved to a user SLOT at commit, so a byline binds before the profile lands.</summary>
     public StagedId OwnerUri;
     public TextRef ChartRankType, TuningSelected;
+    /// <summary>The daylist edition's words (<see cref="PlaylistTable.DaylistTerms"/>), written with <see cref="PlaylistFields.Daylist"/>.</summary>
+    public TextRef DaylistTerms, DaylistLinks, DaylistBasis;
     /// <summary>The membership revision in its wire spelling; written whenever present (no group gate).</summary>
     public TextRef Revision;
     public int TrackCount, Saves, DaylistExpiresAt, DaylistCreatedAt, ChartUpdatedAt;
@@ -757,6 +776,9 @@ public static partial class Entities
             {
                 t.DaylistExpiresAt[slot] = row.DaylistExpiresAt;
                 t.DaylistCreatedAt[slot] = row.DaylistCreatedAt;
+                t.SetText(ref t.DaylistTerms, slot, s.Intern(row.DaylistTerms));
+                t.SetText(ref t.DaylistLinks, slot, s.Intern(row.DaylistLinks));
+                t.SetText(ref t.DaylistBasis, slot, s.Intern(row.DaylistBasis));
                 t.Applied(slot, (uint)PlaylistFields.Daylist, editionGate, ref t.ExtrasAuthority);
             }
 
@@ -813,6 +835,22 @@ public static partial class Entities
         => ownerSlot > Table.None && meSlot > Table.None
             ? ownerSlot == meSlot
             : (caps & (byte)(PlaylistCaps.CanAdministratePermissions | PlaylistCaps.IsOwner)) != 0;
+
+    /// <summary>Is <paramref name="uri"/> the account's own collection, which it can neither follow nor save: Liked Songs (any
+    /// collection uri: the fake answers it as a playlist, Spotify as a collection), Your Episodes (<see cref="YourEpisodesRules"/>)
+    /// or a playlist the account owns (<see cref="IsOwnPlaylist"/>, asked directly because a row met in search or on a card often
+    /// knows its owner before its capabilities, and the derived <see cref="Playlist.IsOwner"/> bit waits on those). The one rule
+    /// behind search's trailing control and the container menu's Save (the owner saw "Following" on the Liked Songs top result,
+    /// 2026-11-16).</summary>
+    internal static bool IsOwnCollection(EntityUri uri)
+    {
+        if (!uri.IsValid) return false;
+        if (uri.Kind == EntityKind.Collection || EntityUri.IsLikedCollection(uri.Text)) return true;
+        if (uri.Kind != EntityKind.Playlist) return false;
+        if (!Current.Playlists.TryGetSlot(uri.Id, out int slot)) return YourEpisodesRules.Is(PlaylistFormat.None, uri.Text, Spotify.Podcasts.KnownSavedUri);
+        var pl = new Playlist(slot);
+        return pl.IsYourEpisodes || IsOwnPlaylist(pl.Owner.Slot, Current.MeSlot, (byte)pl.Caps);
+    }
 
     /// <summary>The derived owner fact (<see cref="IsOwnPlaylist"/>): an owner administers; a playlist someone else owns carries no
     /// owner bit (a stale one, derived from a grant before the owner row landed or kept on disk, is cleared). The server's own

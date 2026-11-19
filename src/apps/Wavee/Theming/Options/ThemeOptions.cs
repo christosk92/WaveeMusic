@@ -60,6 +60,10 @@ public abstract record ThemeOption(string Id, string TitleKey, string? Descripti
     OptionVisibility Visibility = OptionVisibility.Always, OptionCondition? VisibleWhen = null, bool Command = false,
     ApplyMode Apply = ApplyMode.Live)
 {
+    /// <summary>The surfaces of the SAME theme that draw this option in place (design 3.6, 5.4: WinUI's backdrop in its title bar's menu): the
+    /// generated dial's <c>Contexts</c>, so Settings says "Also in" and a write from there records that surface. Empty for none.</summary>
+    public IReadOnlyList<string> Contexts { get; init; } = Array.Empty<string>();
+
     /// <summary>False for a command or a reference: nothing is stored under its id.</summary>
     internal abstract bool HoldsValue { get; }
 

@@ -75,6 +75,12 @@ internal static partial class WinUiPlayerBar
         float artScale = rc.UseContext(Viewport.Scale);
         var marquees = rc.UseRef<Marquee.Group?>(null);   // the title and the artists: one line moves at a time, the title first
         marquees.Value ??= new Marquee.Group();
+        // The play button and the volume control: the shortcuts and normalization hints' TeachingTips point at them (design 6.3 #5, #13).
+        var playNode = rc.UseRef<NodeHandle>(default);
+        var volumeNode = rc.UseRef<NodeHandle>(default);
+        var hintAnchors = rc.UseRef<HintAnchors?>(null);
+        hintAnchors.Value ??= new HintAnchors(playNode, volumeNode);
+        var anchors = hintAnchors.Value;
 
         // The heart pops on the same playable's save edge only, on the captured node.
         int playingSlot = v.Face.IsNone ? 0 : v.Face.Slot;
@@ -118,6 +124,7 @@ internal static partial class WinUiPlayerBar
         // The bar's slot: its height (the Mini's 64 at Compact, 72 elsewhere; it eases through real layout on the 641 crossing, anchored at the
         // foot), the layout firewall, the bar's focus and key map, the Mica layer, the 1-px divider on top and, in the Mini bar, the 2-px accent
         // progress edge over the divider (it fades in and out with the form).
+        Element[] hints = [];
         Element Bar(Element body) => new BoxEl
         {
             // The slot changes height on the 641 crossing (64 <-> 72) through real layout (a size channel, anchored at the foot): the page above
@@ -136,8 +143,8 @@ internal static partial class WinUiPlayerBar
                     OnClick = () => input.FocusNode?.Invoke(barNode.Value, false),
                     OnKeyDown = e => props.OnKey(e, input.GetFocus?.Invoke() == barNode.Value),
                     Children = mini
-                        ? [Body(body), Divider(), ProgressEdge(props, v)]
-                        : [Body(body), Divider()],
+                        ? [Body(body), Divider(), ProgressEdge(props, v), .. hints]
+                        : [Body(body), Divider(), .. hints],
                 },
             ],
         };
@@ -189,7 +196,7 @@ internal static partial class WinUiPlayerBar
                 transport.Add(Item(PL.PrevKey, ToolTip.Wrap(
                     Button(Icons.Previous, () => verbs.Previous(), v.PrevEnabled, false, PL.TransportW, PL.TransportH, PL.Glyph), Loc.Get(Strings.Player.Previous))));
             if (!mini && v.Episode) transport.Add(Item("seek-back-10", StepButton(props, -PL.SeekStepMs, v.SeekStepEnabled, PL.TransportH)));
-            transport.Add(PlayCircle(props, v, mini ? PL.ToolBox : PL.Play) with { Key = PL.PlayKey });
+            transport.Add(PlayCircle(props, v, mini ? PL.ToolBox : PL.Play) with { Key = PL.PlayKey, OnRealized = anchors.OnPlay });
             if (v.Episode) transport.Add(Item("seek-forward-10", StepButton(props, PL.SeekStepMs, v.SeekStepEnabled, transportH)));
             if (!v.Episode && (mini || v.ShowPrevNext))
                 transport.Add(Item(PL.NextKey, ToolTip.Wrap(
@@ -256,7 +263,7 @@ internal static partial class WinUiPlayerBar
                             Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(PL.VolumeLead, 0f, 0f, 0f),
                             Children = [VolumeSlider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
                                 length: look.VolumeW, thickness: PL.VolumeThickness)],
-                        }), look.VolumeW + PL.VolumeLead);
+                        }) with { OnRealized = anchors.OnVolume }, look.VolumeW + PL.VolumeLead);
                         break;
                     case RightSlot.Video:
                         // The level's slot whatever the track: disabled in place while the track has no video (never a hole, never a reflow).
@@ -265,6 +272,9 @@ internal static partial class WinUiPlayerBar
                         break;
                     case RightSlot.More:
                         AddTool(Lit(PL.MoreKey, (v.Lit & slot) != 0, MoreMenu(props, v, mini: false)), PL.ToolBox);
+                        break;
+                    case RightSlot.Volume when (v.Slots & RightSlot.VolumeSlider) == 0 && Tool(props, v, slot, begin) is BoxEl volume:
+                        AddTool(volume with { OnRealized = anchors.OnVolume }, PL.ToolBox);   // no slider at this level: the hint points at the button
                         break;
                     default:
                         AddTool(Tool(props, v, slot, begin), PL.ToolBox);
@@ -299,7 +309,28 @@ internal static partial class WinUiPlayerBar
             Padding = mini ? PL.MiniPadding : PL.RowPadding,
             Children = [left, centre, rightColumn],
         };
+        // The hints that point at the play button and the volume (out of layout: their tips float), only where the control is drawn.
+        bool volumeShown = !mini && (v.Slots & (RightSlot.Volume | RightSlot.VolumeSlider)) != 0;
+        hints = v.OwnsTransport && volumeShown
+            ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume)]
+            : v.OwnsTransport ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play)]
+            : volumeShown ? [Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume)] : [];
         return Bar(row);
+    }
+
+    /// <summary>The play button's and the volume control's nodes, captured once per bar with stable delegates (a TeachingTip's target).</summary>
+    private sealed class HintAnchors
+    {
+        public readonly Action<NodeHandle> OnPlay, OnVolume;
+        public readonly Func<NodeHandle> Play, Volume;
+
+        public HintAnchors(Ref<NodeHandle> play, Ref<NodeHandle> volume)
+        {
+            OnPlay = h => play.Value = h;
+            OnVolume = h => volume.Value = h;
+            Play = () => play.Value;
+            Volume = () => volume.Value;
+        }
     }
 
     /// <summary>The bar's row layer.</summary>

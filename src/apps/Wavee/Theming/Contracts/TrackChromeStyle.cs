@@ -52,6 +52,13 @@ internal sealed class TrackHeaderArgs
 
     /// <summary>A header was clicked: the core applies <c>TableRules.NextSort</c> to the live sort. The flag is "the artist column's own cell".</summary>
     public required Action<Track.SortColumn, bool> OnSort { get; init; }
+
+    /// <summary>Every row is an EPISODE row (<c>DetailContent.Episodes</c>: Your Episodes): the rows are the structure's episode row (art, the copy column, the
+    /// cluster), not the track lanes, so a header stands its words over that row's own layout instead of <see cref="Tracks"/>. Contract 1.113.</summary>
+    public bool EpisodeRows { get; init; }
+
+    /// <summary>The episode rows draw their narrow form (the smaller art): where their copy column starts.</summary>
+    public bool NarrowEpisode { get; init; }
 }
 
 // ── the command bar ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -94,6 +101,10 @@ internal interface ITrackCommandKit
 
     /// <summary>The 32 x 32 glyph button: active takes the accent plate, idle is ghost.</summary>
     Element IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized);
+
+    /// <summary>The list bar's Tune: the structure's AI action (a sparkle and its word, in the structure's own AI picture), <paramref name="lit"/> while the mix
+    /// is tuned or its strip is open. Appended (contract 1.120); a structure without one draws the labelled command.</summary>
+    Element TuneCommand(string label, bool lit, Action onClick) => Labeled(Icons.RefineSparkle, label, lit, onClick, null);
 
     /// <summary>The disclosure chevron after a command that opens a flyout (the Sort button's one chevron, tuned Classic D6).</summary>
     Element Chevron();

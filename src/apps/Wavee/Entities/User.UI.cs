@@ -191,8 +191,73 @@ public readonly partial struct User
     /// albums, artists and shows go through <see cref="Add"/>/<see cref="Remove"/>; a playlist follows through the
     /// rootlist (<c>Spotify.Library.FollowPlaylist</c>); a user follows through <c>Spotify.Library.FollowUser</c> (read off
     /// <c>User.IsFollowedByViewer</c>, subscribed through the users table's <c>Changed</c>); the liked collection reads
-    /// saved and is not toggled.</summary>
+    /// saved and is not toggled.
+    /// <para>An album is read and written at its SAVE ADDRESS (<see cref="SaveAddressOf"/>): one that is not out yet is the
+    /// <c>spotify:prerelease:</c> entity the album page's heart pre-saves, so every heart and Save on an album (the search top
+    /// result and rows, cards, the "…" menus, the player's) reads and writes the same thing the page does.</para></summary>
     public static Controls.LibrarySeam LibrarySeam { get; } = new(IsSavedUri, ToggleSavedUri);
+
+    /// <summary>The container menu's Save / Follow (<see cref="ActionId.SaveContext"/>, every "…" on a card, row, hero, search hit,
+    /// the sidebar and the band) and the bound descriptors' saved pair (<see cref="ActionServices.IsSaved"/> /
+    /// <see cref="ActionServices.SetSaved"/>). Both run the hearts' and Follow buttons' own seam, <see cref="Controls.Library"/>, read
+    /// when the menu opens and written on the click, so the optimistic edge, its rollback on a failed write and the rootlist
+    /// follow are theirs: there is no second write path (an album not out yet included: the seam pre-saves it). Called once by
+    /// <c>Playlist.InstallPages</c> after it connects the seam.</summary>
+    internal static void InstallSaveVerb()
+    {
+        Actions.Services.IsSaved ??= static uri => uri.IsValid && Controls.Library is { } lib && lib.IsSaved(uri.Text);
+        Actions.Services.SetSaved ??= static (uri, saved) =>
+        {
+            if (uri.IsValid && Controls.Library is { } lib && lib.IsSaved(uri.Text) != saved) lib.ToggleSaved(uri.Text, null);
+        };
+        AppActions.Register(new AppAction
+        {
+            Id = ActionId.SaveContext, IconKey = ActionIcons.Save,
+            Label = static c => Loc.Get(SaveWordOf(c.Target.Kind, c.Target.Uri, c.S.IsSaved?.Invoke(c.Target.Uri) ?? false)),
+            IsEnabled = static c => c.S.SetSaved is not null && Controls.Library is not null && CanSave(c.Target),
+            IsChecked = static c => c.S.IsSaved?.Invoke(c.Target.Uri) ?? false,
+            Execute = static c => c.S.SetSaved?.Invoke(c.Target.Uri, !(c.S.IsSaved?.Invoke(c.Target.Uri) ?? false)),
+        });
+    }
+
+    /// <summary>The word the kind's own button says, as the strip's other toggle (the track menu's Save / Saved) does: an album or
+    /// playlist is Save / Saved (its heart and Save button), an artist or show Follow / Following (its Follow toggle). The strip's
+    /// four labels share one row, where "Remove from Your Library" trimmed to "Remove ..." (WinUI, 1440). An AUDIOBOOK is a show the user does not
+    /// follow but keeps (owner 2026-11-18: a book's card said "Follow"): Save / Saved, the album's words. The book page's own "Add to Your Library"
+    /// trimmed to "Add to Y..." in the strip's cell, as the long remove label did.</summary>
+    static string SaveWordOf(TargetKind kind, EntityUri uri, bool saved)
+    {
+        if (kind == TargetKind.Show && IsAudiobook(uri))
+            return saved ? Strings.Menu.Saved : Strings.Menu.Save;
+        return kind is TargetKind.Artist or TargetKind.Show
+            ? (saved ? Strings.Artist.Following : Strings.Artist.Follow)
+            : (saved ? Strings.Menu.Saved : Strings.Menu.Save);
+    }
+
+    /// <summary>Is this show uri a book (the show flag, or a resident chapter: <see cref="Show.IsAudiobook"/>)? A peek: a menu label, not a render.</summary>
+    static bool IsAudiobook(EntityUri uri)
+    {
+        var scope = Entities.Current;
+        return scope is not null && uri.IsValid && scope.Shows.TryGetSlot(uri.Id, out int slot) && new Show(slot).IsAudiobook;
+    }
+
+    /// <summary>Can the library seam save or follow this container? Its own collections cannot (<see cref="Entities.IsOwnCollection"/>:
+    /// Liked Songs, Your Episodes, a playlist the account owns), nor the imported files (Local Files) or a playback module's
+    /// stream, which have no library relation; an artist, album, playlist or show of any other source can.</summary>
+    static bool CanSave(in ActionTarget t)
+    {
+        var uri = t.Uri;
+        if (!uri.IsValid || uri.Provider is EntityProvider.None or EntityProvider.Local or EntityProvider.Module) return false;
+        bool kindOk = t.Kind switch
+        {
+            TargetKind.Album => uri.Kind == EntityKind.Album,
+            TargetKind.Artist => uri.Kind == EntityKind.Artist,
+            TargetKind.Playlist => uri.Kind == EntityKind.Playlist,
+            TargetKind.Show => uri.Kind == EntityKind.Show,
+            _ => false,
+        };
+        return kindOk && !Entities.IsOwnCollection(uri);
+    }
 
     static bool IsSavedUri(string uri)
     {
@@ -200,6 +265,7 @@ public readonly partial struct User
         var scope = Entities.Current;
         if (scope is null || string.IsNullOrEmpty(uri) || scope.MeSlot <= Table.None) return false;
         if (EntityUri.IsLikedCollection(uri)) return true;
+        uri = SaveAddressOf(uri, scope, track: true, out _);
         var id = EntityUri.Parse(uri).Id;
         var table = RelationOf(id.Kind, scope);
         if (id.Kind == EntityKind.Playlist)
@@ -222,6 +288,50 @@ public readonly partial struct User
     {
         var scope = Entities.Current;
         if (scope is null || string.IsNullOrEmpty(uri) || EntityUri.IsLikedCollection(uri)) return;
+        string address = SaveAddressOf(uri, scope, track: false, out bool needsLink);
+        // An album the page never opened has not asked kind 138 (a card, a search hit): resolve it first, as PreSaveButton does,
+        // and toggle what it answers on the UI thread; a release that is out, or no answer, toggles the album, as the page's heart
+        // does while it has no link.
+        if (needsLink && Controls.PreSave is { } resolve)
+        {
+            resolve(uri, System.Threading.CancellationToken.None).ContinueWith(t =>
+            {
+                string resolved = t.IsCompletedSuccessfully && t.Result is { Length: > 0 } r ? r : uri;
+                Store.Post(() => ToggleAt(resolved, name));
+            }, System.Threading.Tasks.TaskScheduler.Default);
+            return;
+        }
+        ToggleAt(address, name);
+    }
+
+    /// <summary>THE save address: what a heart, a Save or a menu on <paramref name="uri"/> reads and writes. An album whose
+    /// kind-138 link is still upcoming is its <c>spotify:prerelease:</c> entity (<see cref="Album.Upcoming.SaveTarget"/>, the
+    /// target the album page keys its heart on, with <see cref="Album.Upcoming.PreSaveTarget"/>'s polarity); every other uri,
+    /// a released album and a prerelease uri included, is its own. <paramref name="needsLink"/>: an album that is or may be
+    /// upcoming with no link known yet (the page's own gate for asking kind 138, <see cref="Album.Upcoming.NeedsLink"/>).
+    /// <paramref name="track"/> subscribes the albums table for such a row, so a heart re-reads when its link lands; a released
+    /// album's heart never subscribes it. One hash lookup; a non-album uri returns at the kind test.</summary>
+    static string SaveAddressOf(string uri, Scope scope, bool track, out bool needsLink)
+    {
+        needsLink = false;
+        var span = uri.AsSpan();
+        if (EntityUri.KindOf(span) != EntityKind.Album || EntityUri.IsPrerelease(span)) return uri;
+        if (!scope.Albums.TryGetSlot(EntityUri.Parse(span).Id, out int slot)) return uri;
+        var a = new Album(slot);
+        long now = Store.ToUnix(Entities.Now);
+        if (!Album.Upcoming.NeedsLink(a, now) && a.PreReleaseUriId.IsEmpty) return uri;
+        if (track) _ = scope.Albums.Changed.Value;
+        var target = Album.Upcoming.SaveTarget(a, now);
+        if (target.Id.IsPrerelease || EntityUri.IsPrerelease(target.Text.AsSpan())) return target.Text;
+        needsLink = a.PreReleaseUriId.IsEmpty && Album.Upcoming.NeedsLink(a, now);
+        return uri;
+    }
+
+    /// <summary>The toggle itself, on an address <see cref="SaveAddressOf"/> already chose.</summary>
+    static void ToggleAt(string uri, string? name)
+    {
+        var scope = Entities.Current;
+        if (scope is null || string.IsNullOrEmpty(uri)) return;
         var me = Me;
         if (!me.IsValid) return;
         var id = EntityUri.Parse(uri).Id;

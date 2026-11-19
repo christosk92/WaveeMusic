@@ -286,8 +286,109 @@
 // the mini player's mount) and `ILyricsHost.FlatRows` (the mini player's mount reads as a picture: every line but the active one at
 // `Lyrics.MiniRows.Ink`, no ladder, no depth blur); both default to the old behaviour. `MiniPlayerStyle.LyricScale` takes the window's width
 // (the mini player is unreleased: its three styles moved with it).
-// 1.109 (the resizable aside): the optional `DetailAsideProps.StoredWidth` / `.CommitWidth` (the aside's remembered width per kind, the
-// active theme's state: a structure draws a grip on the aside's edge and commits the width on release; 0 = never dragged, its own width).
+// 1.109 (the WinUI library family): `ShellCapabilities.LibraryFamily` (the four library kinds share one keep-alive slot, `page:library`, under
+// one head the core host draws once, `User.LibraryFamily`), `PageMotionPolicy.LibraryPivot` (the body's slide under that head),
+// `LibraryPageProps.HeadHosted` (the borrowed page leaves the head to the host) and `LibraryControlsStyle.Nav` with `LibraryNavMetrics`
+// (the navigator column's leads: every left edge of the page on the head's own lead, the panes' right edge on its trail).
+// 1.110 (the artist page's tabs scroll): `PageMotionPolicy.SectionJump` (`SectionJump`: a tab glides to a near section and arrives at a far one
+// from a lead short of it, fading what shows in) replaces 1.87's `PageMotionPolicy.Pivot` (the jump and the sideways slide of the sections;
+// removed before any external theme existed, as 1.2 did). A structure that declares none keeps the full glide.
+// 1.111 (the WinUI pane's lyrics follow the blur setting): `LyricsRailForm.Crisp` is gone (the pane's "never depth-blur, whatever the
+// setting says"; removed before any external theme existed, as 1.2 did): every rail follows the user's blur strength.
+// 1.112 (WinUI's Your Episodes on the library column): `LibraryPageProps.SavedCountText` (the listen-later list's episode count, which a borrowing
+// structure's count row shows over Your Episodes instead of the followed shows' count) and `LibraryNavMetrics.EpisodeArtLead` (where the
+// structure's episode row stands its art in from its plate, so Your Episodes' rows hang their plates and stand their art on the column G).
+// 1.113 (Podcasts' counts word its modes): `LibraryModesArgs.FollowedCount` and `LibraryModesArgs.EpisodesCount` (each mode's count, live, for a
+// structure that words its modes "Followed shows · 7", "Your Episodes · 8", as the show page words its filter); a borrowing structure's
+// Podcasts page draws no count row under them. `LibraryPageProps.SavedCountText` now feeds the Your Episodes word. The track table's header
+// args say when every row is an episode row (`TrackHeaderArgs.EpisodeRows`, `NarrowEpisode`), so a header can stand over that row's own layout.
+// 1.114 (the connected navigation flight): `PageMotionPolicy.Connected` (the structure's `ConnectedNavSpec`: an album card's cover flies into
+// the album page's hero and back; null flies nothing) and `PageMotionPolicy.ConnectedQuietPage` (the page under a flight swaps with the
+// recipe's opacity legs only, `Design.Nav.Quiet`).
+// 1.115 (settings rework phase 3: hints, explanation badges, in-context dials): `ViewKeys.Hint` with `HintProps` (one key for every surface, the
+// surface in the props; `HintAction`, `HintSurfaces`), `ViewKeys.Explainer` with `ExplainerProps` (a dial's badge and its clip tip) and
+// `ViewKeys.SettingsDials` with `SettingsDialsProps` (a feature panel's dials, written with the panel as their source). Every theme gets the
+// Common stand-ins (`CommonHint`) until it draws its own.
+// 1.116 (settings rework phase 4a: the registry's Settings page, ADDED beside the area members the three pages still draw): `SettingsPageProps`
+// gains `Category`, `Categories` (`SettingsCategoryEntry`: slug, full title, short strip name, subtitle, glyph), `CategoryCell`, `OpenCategory`,
+// `Focus` (`SettingsArrival`: the dial, its sequence, its category and group, the expanders to open, the highlight's duration), `Search`
+// (`SettingsSearchModel`: the query cell, the ranked results with breadcrumbs, matched-letter spans (`SettingsTextSpan`) and parents, the
+// no-match state, the keyboard, the focus tickets, `Box`), `Home` (`SettingsHomeSource`: `SettingsHomeFacts` with `SettingsGlanceTile`s, the
+// suggestions as `HintProps`, `SettingsRecentRow`s) and `Body` (`SettingsBodySource`: `SettingsBody`, `SettingsBodyGroup`, `SettingsBodyRow`
+// with `SettingsExplainInfo`, `SettingsAlsoIn` and `SettingsBodyNote`); `SettingsKeys` (the page's node keys); `ThemePolicies.SettingsPage`
+// (`SettingsPagePolicy.HighlightMs`, from the structure's Rules); `SetupConsent.Labels` (the wizard's crash-consent words are the dial's).
+// 1.117 (settings rework phase 5: settings in context, design 5.4): the queue's "between songs" pair, `QueuePanelProps.Crossfade`,
+// `CrossfadeLength` and `OpenCrossfadeLength` (and the same on `QueueStagePaneProps`, the full screen's Up next) with
+// `IQueueVerbs.ToggleCrossfade` / `SetCrossfade`; `IStageSettingsVerbs.SetLyricsBlur` (every
+// theme's full-screen popover draws Background blur); the lyrics header's ⋯, `PanelLyricsHeaderProps.Options` (`LyricsPaneOptions`: the blur and
+// the AI lyrics status line); `DevicePickerEntryKind.Link` (the quality echo and "Sound settings" link into Settings); the bell panel's settings
+// door, `NotificationsProps.OpenSettings`; the title bar's window menu door, `ShellTitleBarProps.WindowMenuRequest`; `ThemeOption.Contexts` (a
+// theme option's in-context home in its own theme, WinUI's title bar menu).
+// 2.0 (settings rework phase 4c, MAJOR: every theme draws the registry's page): REMOVED the old Settings page's model. `SettingsPageProps`
+// loses `Area`, `AreaCell`, `OpenArea` (the twelve areas), `Tab`, `TabCell`, `OpenTab` (the document tabs) and `Grouping`, `Group`, `OpenGroup`
+// (the structure's grouping), and keeps `OpenSection`, `CloseSection`, `Revision`, `Storage` and the 1.116 members; `ThemePolicies.Settings`
+// and `SettingsGrouping` / `SettingsTab` are gone, with the core's `Settings.Tab`, `TabSlugs`, `Area`, `AreaSlugs`, `AreaTitleKeys`, `PartsOf`,
+// `HomeArea`, `FirstTab`, `AreaOf`, `AreaFromSlug`, `SettingsDoc` / `SettingsSection` and `Settings.OpenNextMountOn(Area)` / `(Tab)` (a theme
+// pick names the category: `Settings.OpenNextMountOn("appearance")`). Every old slug and row id still lands through `SettingsSpec`'s aliases.
+// `SettingsExplainInfo` is non-null only where the dial's clip exists for the theme and app mode (`ClipPath` and `Props` are never null).
+// 2.1 (settings rework phase 5 merged onto 2.0, additive): the 1.117 members above (the queue's and the full screen's Up next
+// Crossfade pair, `IStageSettingsVerbs.SetLyricsBlur`, `PanelLyricsHeaderProps.Options`, `DevicePickerEntryKind.Link`,
+// `NotificationsProps.OpenSettings`, `ShellTitleBarProps.WindowMenuRequest`, `ThemeOption.Contexts`) land on the 2.x line; phase 5 was
+// built on 1.116, beside the 2.0 removals, so nothing it adds names a removed member.
+// 2.2 (settings rework phase 6, the hints drawn in every theme): `HintProps.Target` (the control a hint points at, captured by the surface
+// that mounts the slot: a TeachingTip's target, a line's anchor), `HintProps.Bounds` (the surface the target lives in: a floating line stays
+// inside it), `HintProps.SetAside` (a light dismiss or a done confirmation: gone for the session, no snooze) and `HintProps.Title` (the dial's
+// name, a TeachingTip's heading).
+// The pinned-home line (feat/pinned-home) numbered its own minors on 1.114 while the settings rework numbered the same ones; its notes as
+// written there (merged as 2.3):
+// pinned-home 1.115 (connected navigation, every kind): `PageMotionPolicy.ConnectedInto` (the forward flight into a page of a kind when it differs from
+// `Connected`: the artist header's fading hand-off) and `PageMotionPolicy.ConnectedKeepsCascade` (a kind whose sections keep their staggered
+// rise under a flight).
+// pinned-home 1.116 (the artist grows, nothing flies): `PageMotionPolicy.GrowInto` (a kind whose page scales out of the item it was opened from and back
+// into it, `GrowNav`). `PageMotionPolicy.ConnectedInto` and `ConnectedKeepsCascade` are gone (the artist was their only kind; removed before any
+// external theme existed, as 1.2 did).
+// pinned-home 1.117 (the pinned Home board): `Home.Board` and the `Home.Tile.*` keys (`ViewKeys.HomeBoard.cs`, `HomeBoardProps.cs`: the board's props,
+// `IHomeBoardVerbs`, the catalogue view, the tile frame and one props record per tile source, `HomeTileForm`, `HomeTileVacancy`), the node
+// keys `HomeBoardKeys`, `Home.BoardTools` (the board's tools in the page's head row), and the optional `HomePageProps.Board` / `BoardTools` (what the page mounts
+// where its zone column stood and in its head row, on the All facet). `Pages.HomeCustomize` (`HomeCustomizeProps`) and `Home.Quickplay`
+// (`HomeQuickplayProps`) are gone: the board's own edit flows and its Pinned group replaced them (removed before any external theme existed, as 1.2 did).
+// 2.3 (feat/pinned-home merged onto 2.2): the pinned-home line's 1.115-1.117 land on the 2.x line: `PageMotionPolicy.GrowInto`, the
+// pinned Home board (`Home.Board`, the `Home.Tile.*` keys and their props, `IHomeBoardVerbs`, `HomeBoardKeys`, `Home.BoardTools`,
+// `HomePageProps.Board` / `BoardTools`). Its removals (`PageMotionPolicy.ConnectedInto` / `ConnectedKeepsCascade`, `Pages.HomeCustomize` with
+// `HomeCustomizeProps`, `Home.Quickplay` with `HomeQuickplayProps`) were made before any external theme existed, as 1.2 did, so they ride a
+// minor; nothing the settings rework added names them.
+// pinned-home 1.118 (settings in context: the daylist panel, #242 on feat/pinned-home): the optional `HomeTileOptionsProps.Dials` (`HomeTileDial`: an app-wide setting the open tile draws
+// after its own options, with its Settings row's value and writer) and `HomeTileOptionsProps.DialsLabelKey` (the "For every daylist" label over them).
+// 2.4 (#242 merged onto 2.3, additive): the daylist panel's `HomeTileOptionsProps.Dials` and `DialsLabelKey` (pinned-home 1.118 above) land on
+// the 2.x line.
+// The podcast-row-open line (feat/podcast-row-open: the show reader removed, Tune inline) numbered its own minors on pinned-home 1.117,
+// beside the daylist panel's 1.118; its notes as written there (merged as 2.5):
+// podcast-row-open 1.118 (the library's show column is the route's page): `Library.ShowPane` (`LibraryShowPaneProps`) and `StyleKeys.ShowReader` (`ShowReaderStyle`,
+// its templates and their args: `ShowPrimaryArgs`, `ShowTopicsArgs`, `ShowToolbarArgs`, `ShowHeadArgs`, `ShowEpisodesHeaderArgs`, `ShowGroupArgs`,
+// `ShowJumpList`, `ShowFootArgs`, `ShowAsideArgs`, `ShowDetail`) are gone with the old show reader: the library mounts the podcast pages' own show and
+// audiobook page (`PodcastPages.LibraryPane`: `Pages.PodcastShow` / `Pages.Audiobook`) (removed before any external theme existed, as 1.2 did).
+// podcast-row-open 1.119 (the episode row's host marks): `Episode.RowItem` loses `Marks` and `Number`, and `Episode.RowMarks` and `Episode.IsNew` are gone: the show
+// reader was the one host that set them, so no row has drawn its "New" mark or dropped its hairline since (removed before any external theme existed,
+// as 1.2 did).
+// podcast-row-open 1.120 (Tune inline): `Playlist.Tune` is the strip under the list bar, no longer a dialog's content: `PlaylistTuneProps` loses `Width` and gains
+// `Applying`, `Failed` and `Close` (changed before any external theme existed, as 1.2 did); the optional `ITrackCommandKit.TuneCommand` (the list bar's
+// Tune as the structure's AI action, lit while tuned or open), `Detail.FrameActions.TuneLit` and `TableProfile.TuneStrip` / `TuneLit`.
+// 2.5 (feat/podcast-row-open merged onto 2.4): the podcast-row-open line's 1.118-1.120 land on the 2.x line: Tune inline
+// (`PlaylistTuneProps.Applying` / `Failed` / `Close`, the optional `ITrackCommandKit.TuneCommand`, `Detail.FrameActions.TuneLit`,
+// `TableProfile.TuneStrip` / `TuneLit`). Its removals (`Library.ShowPane` with `LibraryShowPaneProps`, `StyleKeys.ShowReader` with its
+// templates and args, `Episode.RowItem.Marks` / `Number`, `Episode.RowMarks`, `Episode.IsNew`, `PlaylistTuneProps.Width`) were made before
+// any external theme existed, as 1.2 did, so they ride a minor; nothing the settings rework added names them.
+// 2.6 (feat/podcast-pages-zune merged onto 2.5, additive): `PodcastFact.IsName` (the value is the data's, a name a theme never re-cases) and
+// `PodcastRateVm.Name` (the rated subject's name alone, drawn as written while the picker cases the title's other words).
+// 2.7 (feat/device-picker merged onto 2.6; the device picker redesign, "where Wavee plays", numbered 2.3 on its branch): `DevicePickerView.Card` (`DevicePickerCard`: the device in use, its connection, what
+// plays, the way back while another device plays), `.ThisPc` / `.Others` (the two sections), `.OthersFirst`, `.WindowsDefault` and `.Footer`
+// (`DevicePickerFooter`: the quality chip and "Sound settings"); `DevicePickerEntry.Detail` (a row's second line), `.Unresponsive` (an output
+// that did not open) and `.Id`; `DevicePickerProps.Playing`, `.Volume`, `.VolumeCell`, `.SetVolume` and `.LookForDevices`. The quality echo
+// left the flat `Entries` (it is the footer's chip), and the system-default row became Match Windows (changed before any external theme
+// existed, as 1.2 did).
+// 2.9 (the resizable aside, #229; numbered 1.109 on its branch): the optional `DetailAsideProps.StoredWidth` / `.CommitWidth` (the aside's
+// remembered width per kind, the active theme's state: a structure draws a grip on the aside's edge and commits the width on release; 0 =
+// never dragged, its own width).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -300,10 +401,10 @@ namespace Wavee.Theming.Contracts;
 public static class ContractVersion
 {
     /// <summary>Breaking changes to the published keys, props records or verbs.</summary>
-    public const int Major = 1;
+    public const int Major = 2;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 109;
+    public const int Minor = 9;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

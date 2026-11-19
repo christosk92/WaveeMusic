@@ -38,24 +38,35 @@ internal static class WinUiArtistOverview
         var accentFn = p.AccentFn;
         var overlay = p.Overlay;
         var surface = latch.Surface;
+        // The latest release's slot stands from the moment the overview names one: its card fields (an answer of their own, often a few frames after
+        // the overview's) land in place over its placeholder, so the side column has its final height when the page lands (the owner's recording,
+        // 2026-11-15: the column grew under the chart, and the chart grew rows to match).
+        bool latestSlot = latest || a.Latest.IsValid;
         long stamp = PreviewStamp(a);
         int tierRows = WinUiArtistTiers.ChartRowsOf(tier);
         int fitMax = Math.Max(tierRows, Math.Min(a.PopularSlots.Length, WinUiArtistRules.PopularFitMaxRows));
         float pitch = WinUiOptions.ArtworkInRows() ? WinUiArtistChartLayout.RowHeight : WinUiArtistChartLayout.OneLineRowHeight;
-        Func<int, float, PreviewState, PopularHold, ChartFit, Element> build = (rung, slot, state, hold, fit) =>
+        Func<int, float, PreviewState, PopularHold, ChartFit, bool, Element> build = (rung, slot, state, hold, fit, landing) =>
         {
             int columns = latch.Columns = WinUiArtistTiers.OverviewColumnsOf(rung, tier);
-            // Beside the side column (two columns) Popular takes as many rows as fill the side column's height, never fewer than the tier's (owner
-            // 2026-11-07: a tall side column left a large empty area under five rows; balanced columns keep five). The fit is measured, not tiered.
-            bool fits = columns == 2 && popular;
-            fit.Arm(fits, tierRows, fitMax, pitch);
-            Element? chart = popular
-                ? new BoxEl { Key = "ov:chart", Direction = 1, MinWidth = 0f, OnBoundsChanged = fits ? fit.OnChart : null, Children = [Artist.Chart(a, accentSignal, rows: fits ? fit.Rows : null)] }
-                : null;
             // W-Artist: the latest release, then Discography; the upcoming card and the artist's pick (no board draws one) follow under Discography, the pick
             // compact (no photograph band) so it never outweighs the column.
             float target = WinUiDetailRules.TargetOf(tier);
-            Element? latestCard = latest ? LatestCard(a, target) with { Layout = WinUiArtistMotion.Block } : null;
+            // Beside the side column (two columns) Popular takes as many rows as fill the side column's height, never fewer than the tier's (owner
+            // 2026-11-07: a tall side column left a large empty area under five rows; balanced columns keep five). The chart MOUNTS at the rows the
+            // side column's arithmetic predicts (SeedRows) and the measured fit corrects a wrong prediction: measured alone, the chart mounted at the
+            // tier's rows and re-fitted a frame or three later, which drew the rows growing into place on every landing.
+            bool fits = columns == 2 && popular;
+            int seed = fits ? SeedRows(PreviewWidth(slot, columns), target, latestSlot, upcoming, a.HasPick, tierRows, fitMax, pitch) : 0;
+            fit.Arm(fits, tierRows, fitMax, pitch, seed);
+            Element? chart = popular
+                ? new BoxEl
+                {
+                    Key = "ov:chart", Direction = 1, MinWidth = 0f, OnBoundsChanged = fits ? fit.OnChart : null,
+                    Children = [Artist.Chart(a, accentSignal, rows: fits ? fit.Rows : null, seedRows: seed)],
+                }
+                : null;
+            Element? latestCard = latestSlot ? LatestBlock(a, target, known: latest) with { Layout = WinUiArtistMotion.Block } : null;
             var after = new List<Element>(2);
             if (upcoming)
             {
@@ -83,8 +94,8 @@ internal static class WinUiArtistOverview
                 side.AddRange(after);
                 return Grid(0, WinUiArtistRules.HugeColumnGap,
                     Popular(PopularWidth(slot, columns), chart, hold, row: true),
-                    Column("ov:col:discography", WinUiArtistRules.PopularGrow, [preview]),
-                    Column(SideKey(columns), WinUiArtistRules.OtherGrow, side.ToArray()));
+                    Column("ov:col:discography", WinUiArtistRules.PopularGrow, [preview], landing),
+                    Column(SideKey(columns), WinUiArtistRules.OtherGrow, side.ToArray(), landing));
             }
 
             // One column and two are one grid: it turns from a row into a column and Popular keeps its node (it resizes in place). The side column is keyed
@@ -94,7 +105,7 @@ internal static class WinUiArtistOverview
             side.AddRange(after);
             bool two = columns == 2;
             float grow = two ? 1f : 0f;
-            Element sideColumn = Column(SideKey(columns), grow * WinUiArtistRules.OtherGrow, side.ToArray()) with { OnBoundsChanged = two ? fit.OnSide : null };
+            Element sideColumn = Column(SideKey(columns), grow * WinUiArtistRules.OtherGrow, side.ToArray(), landing) with { OnBoundsChanged = two ? fit.OnSide : null };
             // Stacked without a chart, an empty Popular column would add a section gap above the side column.
             if (!two && chart is null) return Grid(1, WinUiArtistRules.SectionGap, sideColumn);
             return Grid((byte)(two ? 0 : 1), two ? WinUiArtistRules.ColumnGap : WinUiArtistRules.SectionGap,
@@ -105,6 +116,45 @@ internal static class WinUiArtistOverview
         Func<int, float, float> popularWidth = (rung, slot) => popular ? PopularWidth(slot, WinUiArtistTiers.OverviewColumnsOf(rung, tier)) : float.NaN;
         return Embed.Comp(new GridProps(build, popularWidth, inset, p.Width, WinUiArtistTiers.OverviewRungOf(in facts)),
             static () => new GridHost()) with { Key = "artist:overview" };
+    }
+
+    /// <summary>The overview's shimmer source for the page's skeleton (<c>WinUiArtistPage.Shimmer</c>): the loaded overview's arrangement through the same
+    /// grid, columns and widths, Popular as the chart's own skeleton at the rows the side column holds (<see cref="SeedRows"/>), and the side column as
+    /// the latest release card and the Discography preview over placeholder words and covers. What the skeleton cannot know yet (an upcoming card, a
+    /// pick) is not drawn, so the column stands at the height a page without them lands at.</summary>
+    internal static Element Skeleton(Artist a, float pageWidth, float inset, WidthTier tier, in TierFacts facts, ArtistChartStyle? chartStyle)
+    {
+        float slot = MathF.Max(1f, pageWidth - 2f * inset);
+        int columns = WinUiArtistTiers.OverviewColumnsOf(WinUiArtistTiers.OverviewRungOf(in facts), tier);
+        float target = WinUiDetailRules.TargetOf(tier);
+        int tierRows = WinUiArtistTiers.ChartRowsOf(tier);
+        float pitch = WinUiOptions.ArtworkInRows() ? WinUiArtistChartLayout.RowHeight : WinUiArtistChartLayout.OneLineRowHeight;
+        int rows = columns == 2 ? SeedRows(PreviewWidth(slot, columns), target, latest: true, upcoming: false, pick: false, tierRows, WinUiArtistRules.PopularFitMaxRows, pitch) : tierRows;
+        Element chart = chartStyle is null ? new BoxEl()
+            : new BoxEl
+            {
+                Direction = 1, MinWidth = 0f,
+                Children = [chartStyle.Skeleton(ArtistChartSkeletonArgs.For(0, !WinUiOptions.ArtworkInRows(), WinUiOptions.ArtworkInRows(), WinUiArtistTiers.ChartColumnsOf(tier), rows))],
+            };
+        float previewW = PreviewWidth(slot, columns);
+        Element preview = columns >= 3
+            ? PreviewHost.RowsPlaceholder(target, previewW, Loc.Get(Strings.Theme.Winui.Detail.Newest), a)
+            : PreviewHost.Preview(target, PreviewHost.Combo(target, Artist.FacetTitle(DiscoFacet.Albums), [], null),
+                PreviewHost.Combo(target, Loc.Get(Strings.Theme.Winui.Detail.Newest), [], null), PreviewHost.Placeholders(PreviewCell(previewW)),
+                PreviewHost.Link(Loc.Get(Strings.Theme.Winui.Detail.ShowAll), a, DiscoFacet.Albums));
+        Element latestCard = LatestCard(a, target, placeholder: true);
+        var hold = new PopularHold(float.NaN, false, false);
+        // Unkeyed: a placeholder that carried the content's keys handed each key from its shimmer node to the content's in one frame where the
+        // reveal cuts (reduced motion), which reads as a remount of the overview's columns.
+        if (columns >= 3)
+            return Grid(0, WinUiArtistRules.HugeColumnGap,
+                Popular(PopularWidth(slot, columns), chart, hold, row: true) with { Key = null },
+                Column("ov:col:discography", WinUiArtistRules.PopularGrow, [preview]) with { Key = null },
+                Column(SideKey(columns), WinUiArtistRules.OtherGrow, [latestCard]) with { Key = null }) with { Key = null };
+        bool two = columns == 2;
+        Element side = Column(SideKey(columns), (two ? 1f : 0f) * WinUiArtistRules.OtherGrow, [latestCard, preview]) with { Key = null };
+        return Grid((byte)(two ? 0 : 1), two ? WinUiArtistRules.ColumnGap : WinUiArtistRules.SectionGap,
+            Popular(two ? PopularWidth(slot, columns) : float.NaN, chart, hold, two) with { Key = null }, side) with { Key = null };
     }
 
     /// <summary>Popular's width in a <paramref name="slot"/>-wide overview of <paramref name="columns"/> columns: the slot stacked; the slot less the
@@ -139,13 +189,14 @@ internal static class WinUiArtistOverview
         Layout = WinUiArtistMotion.OverviewHeight, Children = columns, EntranceGroup = true,   // its columns' blocks stagger in (WinUiPageMotion)
     };
 
-    /// <summary>A column: in a row it grows by its weight from a zero basis; stacked (<paramref name="grow"/> 0) it takes its content's height.</summary>
-    static BoxEl Column(string key, float grow, Element[] kids) => new BoxEl
+    /// <summary>A column: in a row it grows by its weight from a zero basis; stacked (<paramref name="grow"/> 0) it takes its content's height.
+    /// <paramref name="landing"/>: the overview's first arrangement (the page landing), whose side column stands with the page instead of fading in.</summary>
+    static BoxEl Column(string key, float grow, Element[] kids, bool landing = false) => new BoxEl
     {
         Key = key, Direction = 1, Gap = WinUiArtistRules.SectionGap, Grow = grow, Basis = grow > 0f ? 0f : float.NaN, MinWidth = 0f,
         // Popular's height never follows its width (the chart's rows are fixed), so it re-lays at the eased width once the side column has faded; the side
-        // column fades through a restack (it is keyed by the arrangement).
-        Layout = key == PopularKey ? WinUiArtistMotion.Column : WinUiArtistMotion.Side, Children = kids, EntranceGroup = true,
+        // column fades through a restack (it is keyed by the arrangement). On the landing nothing has to make room: the column is there with the page.
+        Layout = key == PopularKey ? WinUiArtistMotion.Column : landing ? WinUiArtistMotion.SideLanding : WinUiArtistMotion.Side, Children = kids, EntranceGroup = true,
         // Popular holds its old width while the side column fades out (laid out at it when the restack widens it, presented at it when the restack
         // narrows it): the clip keeps the chart's far edge (the count, the durations) inside the held width instead of over the outgoing column.
         ClipToBounds = key == PopularKey,
@@ -192,6 +243,69 @@ internal static class WinUiArtistOverview
     /// <summary>The side column's key in an arrangement of <paramref name="columns"/> columns: a restack replaces it, which is the fade-through.</summary>
     static string SideKey(int columns) => columns switch { <= 1 => "ov:col:side:1", 2 => "ov:col:side:2", _ => "ov:col:side:3" };
 
+    /// <summary>The rows Popular takes beside the side column, worked out before any layout from the rules and what the column holds: the latest
+    /// release card (<paramref name="latest"/>: its slot, reserved while its fields come), the discography preview at <paramref name="previewW"/> (its
+    /// header, the covers at their cell size, the link; reserved while a facet's releases come), the upcoming card and the compact pick, a section gap
+    /// apart; then as many of the chart's rows as fit under its head, from the tier's <paramref name="tierRows"/> to <paramref name="fitMax"/>. A text
+    /// the arithmetic cannot know (a pick's quote wrapping past <see cref="WinUiArtistRules.PickQuoteSeedLines"/>) leaves the measured fit
+    /// (<see cref="ChartFit"/>) a row or two to correct, which it does in place.</summary>
+    static int SeedRows(float previewW, float target, bool latest, bool upcoming, bool pick, int tierRows, int fitMax, float pitch)
+    {
+        float side = 0f;
+        int blocks = 0;
+        if (latest) Stack(ref side, ref blocks, LatestHeight(target));
+        Stack(ref side, ref blocks, PreviewHeight(previewW, target));
+        if (upcoming) Stack(ref side, ref blocks, UpcomingHeight());
+        if (pick) Stack(ref side, ref blocks, PickHeight());
+        float head = WinUiArtistChartLayout.ChevronBox + WinUiArtistChartLayout.HeaderGap;
+        int rows = (int)MathF.Floor((side - head) / MathF.Max(1f, pitch));
+        return Math.Clamp(rows, tierRows, Math.Max(tierRows, fitMax));
+    }
+
+    static void Stack(ref float side, ref int blocks, float h)
+    {
+        side += (blocks > 0 ? WinUiArtistRules.SectionGap : 0f) + h;
+        blocks++;
+    }
+
+    /// <summary>The latest release card's height (<see cref="LatestCard"/>): its padding around the tallest of the cover, the copy's three lines and Play.</summary>
+    static float LatestHeight(float target)
+    {
+        float copy = WinUiArtistRules.LatestEyebrowLine + WinUiArtistRules.LatestTitleLine + WinUiArtistRules.LatestSubLine + 2f * WinUiArtistRules.CopyGap;
+        return 2f * WinUiArtistRules.LatestPad + MathF.Max(WinUiArtistRules.LatestCoverEdge, MathF.Max(copy, target));
+    }
+
+    /// <summary>The two-column preview's height at <paramref name="w"/> (<see cref="PreviewHost"/>): the header (the title beside the combos), the covers
+    /// (a shelf card of one caption line at the cell width <see cref="Cards"/> takes) and the Small "Show all" link, a block gap apart.</summary>
+    static float PreviewHeight(float w, float target)
+    {
+        float header = MathF.Max(LineOf(R.Type.RailHeader(" ")), MathF.Max(WinUiArtistRules.ComboHeight, target));
+        float card = SurfaceGeometry.ShelfHeight(PreviewCell(w), 1f, captionLines: 1, metaLine: false);
+        var link = ControlMetrics.For(ControlSize.Small).Padding;
+        return header + WinUiArtistRules.BlockGap + card + WinUiArtistRules.BlockGap + link.Top + link.Bottom + WinUiArtistRules.PreviewLinkLine;
+    }
+
+    /// <summary>The upcoming section's height (its header over the band arm: the 88 cover inside the band's padding).</summary>
+    static float UpcomingHeight()
+        => LineOf(R.Type.RailHeader(" ")) + WinUiArtistRules.BlockGap + WinUiArtistRules.UpcomingCover + 2f * Spacing.L;
+
+    /// <summary>The compact pick's height (<see cref="WinUiArtistPick.Card"/> without its photograph): the head (the avatar beside the name and the
+    /// eyebrow), the quote at <see cref="WinUiArtistRules.PickQuoteSeedLines"/> lines, the foot (the cover beside the title).</summary>
+    static float PickHeight()
+    {
+        float head = Spacing.L + MathF.Max(WinUiArtistRules.PickAvatar, LineOf(BodyStrong(" ")) + LineOf(Caption(" ")));
+        float quote = Spacing.S + Spacing.L + WinUiArtistRules.PickQuoteSeedLines * LineOf(R.Type.PickQuote(" "));
+        float foot = 2f * Spacing.M + WinUiArtistRules.PickCover;
+        return head + quote + foot;
+    }
+
+    /// <summary>A text role's line height.</summary>
+    static float LineOf(TextEl t) => t.LineHeight > 0f ? t.LineHeight : t.Size * WinUiArtistRules.NameNaturalLine;
+
+    /// <summary>A preview cover's cell width in a <paramref name="w"/>-wide preview: three columns, a preview gap apart.</summary>
+    static float PreviewCell(float w)
+        => MathF.Max(1f, (w - (WinUiArtistRules.PreviewColumns - 1f) * WinUiArtistRules.PreviewGap) / WinUiArtistRules.PreviewColumns);
+
     /// <summary>Popular's rows beside the side column (two columns): the chart takes as many rows as the side column's measured height holds, from the
     /// tier's five up to <see cref="WinUiArtistRules.PopularFitMaxRows"/> and the tracks there are, and the pager's pages follow. The grid aligns both
     /// columns at the top, so the chart's own box (never the Popular column, whose height eases through a layout transition and reports its eased
@@ -208,7 +322,7 @@ internal static class WinUiArtistOverview
         public readonly Signal<int> Rows = new(0);
         public readonly Action<RectF> OnChart, OnSide;
         float _chart = float.NaN, _side = float.NaN, _pitch = 1f, _asked = float.NaN;
-        int _base = 5, _max = 5;
+        int _base = 5, _max = 5, _seed;
         bool _armed, _frozen;
 
         public ChartFit()
@@ -233,26 +347,30 @@ internal static class WinUiArtistOverview
         /// <summary>Ends <see cref="Freeze"/> and fits to the settled measures.</summary>
         public readonly Action Thaw;
 
-        /// <summary>Called by the arrangement's render: whether the fit applies (two columns with a chart), the tier's rows, the cap and a row's pitch.
-        /// Leaving the fit forgets the measures (the next arrangement measures afresh); the chart then reads the tier's rows (its rows prop is null).</summary>
-        public void Arm(bool on, int tierRows, int max, float pitch)
+        /// <summary>Called by the arrangement's render: whether the fit applies (two columns with a chart), the tier's rows, the cap, a row's pitch and the
+        /// predicted rows the chart mounts with (<see cref="SeedRows"/>; 0: the tier's). Leaving the fit forgets the measures (the next arrangement
+        /// measures afresh); the chart then reads the tier's rows (its rows prop is null).</summary>
+        public void Arm(bool on, int tierRows, int max, float pitch, int seed)
         {
             if (!on && _armed) { _chart = float.NaN; _side = float.NaN; _asked = float.NaN; }
             _armed = on;
             _base = tierRows;
             _max = Math.Max(tierRows, max);
             _pitch = MathF.Max(1f, pitch);
+            _seed = seed;
         }
 
         void Fit()
         {
             if (!_armed || _frozen || !float.IsNaN(_asked) || float.IsNaN(_chart) || float.IsNaN(_side)) return;
             int now = Rows.Peek();
-            int cur = now > 0 ? now : _base;
+            // 0 is the chart's own count: the seed it mounted with, else the tier's.
+            int shown = _seed > 0 ? _seed : _base;
+            int cur = now > 0 ? now : shown;
             float room = _side - _chart;
             int next = room >= 0f ? cur + (int)MathF.Floor(room / _pitch) : cur - (int)MathF.Ceiling(-room / _pitch);
             next = Math.Clamp(next, _base, _max);
-            int want = next == _base ? 0 : next;
+            int want = next == shown ? 0 : next;
             if (want == now) return;
             _asked = _chart;
             Rows.Value = want;
@@ -271,7 +389,7 @@ internal static class WinUiArtistOverview
     /// <summary>The grid host's props: the arrangement for a column rung, the page inset (the page is the slot plus the inset either side), the page
     /// width the host measured (the slot's seed before the first measure) and the committed column rung (<see cref="WinUiArtistTiers.OverviewRung"/>).
     /// The builder is a live closure (a fresh one rebuilds with the page).</summary>
-    sealed record GridProps(Func<int, float, PreviewState, PopularHold, ChartFit, Element> Build, Func<int, float, float> PopularWidth, float Inset, float Seed,
+    sealed record GridProps(Func<int, float, PreviewState, PopularHold, ChartFit, bool, Element> Build, Func<int, float, float> PopularWidth, float Inset, float Seed,
         int Rung);
 
     /// <summary>The overview's arrangement. The column rung is the policy's content-axis mark, which the core resolves from the content width the shell
@@ -293,6 +411,7 @@ internal static class WinUiArtistOverview
         float _hold = float.NaN;   // Popular's old width, held through a widening restack's fade-out (NaN: none)
         bool _holdReleased, _following;   // _following: a restack's rung is ahead of the page's width (the overview follows the live width)
         bool _restacking;   // a restack's resize is running: Popular carries the restack's transition (WinUiArtistMotion.RestackSpanMs)
+        bool _landed;   // the first arrangement has rendered (the page's landing): every later side column is a restack's
         int _rung = -1, _holds, _restackRenders, _fitHolds;   // _restackRenders: a version, bumped by every render while a restack runs
 
         public GridHost()
@@ -365,28 +484,53 @@ internal static class WinUiArtistOverview
                 Children = [new BoxEl
                 {
                     Direction = 1, MinWidth = 0f,
-                    Children = [props.Build(_rung, slot, _state, new PopularHold(_hold, _holdReleased, _restacking), _fit)],
+                    Children = [props.Build(_rung, slot, _state, new PopularHold(_hold, _holdReleased, _restacking), _fit, Landing())],
                 }],
             };
+        }
+
+        /// <summary>True for the overview's first render (the arrangement the page lands in), false ever after.</summary>
+        bool Landing()
+        {
+            bool landing = !_landed;
+            _landed = true;
+            return landing;
         }
     }
 
     // ── the latest release ───────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The latest release card (W-Artist): r8 on the card fill, a 64 cover, "Latest release" over the title over "Single · 12 Jun 2026", Play at 32; the card opens the release.</summary>
-    static Element LatestCard(Artist a, float target)
+    /// <summary>The latest release's slot: the card, over its placeholder while its fields are still coming (<paramref name="known"/> false). The slot
+    /// has the card's geometry from the first frame and the card fades in over its placeholder in place when its fields land.</summary>
+    static Element LatestBlock(Artist a, float target, bool known) => new BoxEl
+    {
+        Key = "ov:latest", Direction = 1, MinWidth = 0f,
+        Children =
+        [
+            new SkelRegionEl(
+                Pending: known ? s_known : s_pending, Failed: s_known, Content: () => LatestCard(a, target, placeholder: false),
+                ShimmerSource: () => LatestCard(a, target, placeholder: true), OnFailed: null,
+                Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false),
+        ],
+    };
+
+    static readonly Func<bool> s_known = static () => false, s_pending = static () => true;
+
+    /// <summary>The latest release card (W-Artist): r8 on the card fill, a 64 cover, "Latest release" over the title over "Single · 12 Jun 2026", Play at 32; the card opens the release.
+    /// <paramref name="placeholder"/>: the shimmer's source (placeholder words where the release's own are still coming).</summary>
+    static Element LatestCard(Artist a, float target, bool placeholder)
     {
         Album al = a.Latest;
-        string title = al.Title;
-        string uri = al.Uri.Text;
-        string? cover = Controls.ArtUrl(al.ImageId);
-        string date = DiscoCardText.ReleaseDateLabel(al);
-        string sub = Detail.Text.KindLabel(al.Kind) + (date.Length > 0 ? WinUiDetailRules.MetaLead + date : "");
+        string title = placeholder ? Loc.Get(Strings.Artist.LatestRelease) : al.Title;
+        string uri = al.IsValid ? al.Uri.Text : "";
+        string? cover = placeholder ? null : Controls.ArtUrl(al.ImageId);
+        string date = placeholder ? "" : DiscoCardText.ReleaseDateLabel(al);
+        string sub = placeholder ? Loc.Get(Strings.Theme.Winui.Detail.Newest) : Detail.Text.KindLabel(al.Kind) + (date.Length > 0 ? WinUiDetailRules.MetaLead + date : "");
         var album = al;
         var id = al.Id;
         return new BoxEl
         {
-            Key = "ov:latest:" + uri, Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiArtistRules.LatestGap, MinWidth = 0f,
+            Key = placeholder ? null : "ov:latest:" + uri, Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiArtistRules.LatestGap, MinWidth = 0f,
             Padding = Edges4.All(WinUiArtistRules.LatestPad), Corners = CornerRadius4.All(WinUiDetailRules.CardRadius),
             Fill = Prop.Of(static () => Tok.FillCardDefault), HoverFill = Prop.Of(static () => Tok.FillCardSecondary),
             BorderWidth = 1f, BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
@@ -398,7 +542,8 @@ internal static class WinUiArtistOverview
                 {
                     Width = WinUiArtistRules.LatestCoverEdge, Height = WinUiArtistRules.LatestCoverEdge, Shrink = 0f,
                     Corners = CornerRadius4.All(WinUiArtistRules.LatestCoverRadius), ClipToBounds = true,
-                    Children = [Controls.Artwork(cover, WinUiArtistRules.LatestCoverEdge, WinUiArtistRules.LatestCoverEdge, WinUiArtistRules.LatestCoverRadius, decodePx: WinUiArtistRules.LatestDecode)],
+                    Children = [Controls.Artwork(cover, WinUiArtistRules.LatestCoverEdge, WinUiArtistRules.LatestCoverEdge, WinUiArtistRules.LatestCoverRadius,
+                                                 decodePx: WinUiArtistRules.LatestDecode, connect: Design.MorphKeys.ForUri(uri))],
                 },
                 new BoxEl
                 {
@@ -410,7 +555,7 @@ internal static class WinUiArtistOverview
                         Line(sub, WinUiArtistRules.LatestSub, WinUiArtistRules.LatestSubLine, 400, Tok.TextSecondary),
                     ],
                 },
-                Button.Create(Loc.Get(Strings.Artist.Play), () => ArtistVerbs.PlayOrToggle(id), ButtonAppearance.Standard) with { Key = "ov:latest:play", Shrink = 0f, Height = target },
+                Button.Create(Loc.Get(Strings.Artist.Play), () => ArtistVerbs.PlayOrToggle(id), ButtonAppearance.Standard) with { Key = placeholder ? null : "ov:latest:play", Shrink = 0f, Height = target },
             ],
         };
     }
@@ -427,6 +572,9 @@ internal static class WinUiArtistOverview
     {
         var h = new HashCode();
         h.Add(a.Slot);
+        h.Add(Artist.FacetPresent(a, DiscoFacet.Albums));
+        h.Add(Artist.FacetPresent(a, DiscoFacet.Singles));
+        h.Add(Artist.FacetPresent(a, DiscoFacet.Compilations));
         foreach (int s in a.AlbumSlots) { h.Add(s); h.Add(new Album(s).Version); }
         foreach (int s in a.SingleSlots) { h.Add(s); h.Add(new Album(s).Version); }
         foreach (int s in a.CompilationSlots) { h.Add(s); h.Add(new Album(s).Version); }
@@ -458,24 +606,40 @@ internal static class WinUiArtistOverview
             if (p.Rows)
             {
                 var rows = new List<Element>(2);
+                bool rowsPending = false;
                 for (int f = 0; f < WinUiArtistRules.HugePreviewRows; f++)
-                    if (pools[f].Length > 0) rows.Add(Group(Artist.FacetTitle(facets[f]), Cards(pools[f], oldest, p.Width), f));
-                Element more = Link(Loc.Get(Strings.Theme.Winui.Detail.ShowAll), a, DiscoFacet.Albums);
-                return new BoxEl
                 {
-                    Direction = 1, Gap = WinUiArtistRules.BlockGap, MinWidth = 0f,
-                    Children =
-                    [
-                        Header(Loc.Get(Strings.Theme.Winui.Detail.Discography), order, more),
-                        new BoxEl { Direction = 1, Gap = WinUiArtistRules.BlockGap, MinWidth = 0f, Children = rows.ToArray() },
-                    ],
-                };
+                    if (pools[f].Length == 0) continue;
+                    rows.Add(Group(Artist.FacetTitle(facets[f]), Cards(pools[f], oldest, p.Width), f));
+                    rowsPending |= CardsPending(pools[f], oldest);
+                }
+                Element more = Link(Loc.Get(Strings.Theme.Winui.Detail.ShowAll), a, DiscoFacet.Albums);
+                Element[] groups = rows.ToArray();
+                float rowsTarget = p.Target, rowsW = p.Width;
+                string rowsOrder = Loc.Get(oldest ? Strings.Theme.Winui.Detail.Oldest : Strings.Theme.Winui.Detail.Newest);
+                // Like the two-column preview: over its placeholder while the covers' fields (or the facets themselves) are still coming.
+                bool rowsComing = groups.Length == 0 && (Artist.FacetPresent(a, DiscoFacet.Albums) || Artist.FacetPresent(a, DiscoFacet.Singles));
+                return Reserved(rowsPending || rowsComing, () => RowsPreview(rowsTarget, order, more, groups),
+                    () => RowsPlaceholder(rowsTarget, rowsW, rowsOrder, a));
             }
 
-            // The facets that have releases, in the core's order; the chosen one clamps when the data shrinks.
+            // The facets that have releases, in the core's order; the chosen one clamps when the data shrinks. While a facet's releases are still
+            // coming the preview stands over its placeholder (the side column has its height when the page lands); with none to come it is gone.
             var present = new List<int>(3);
-            for (int f = 0; f < 3; f++) if (pools[f].Length > 0) present.Add(f);
-            if (present.Count == 0) return new BoxEl { Key = "ov:preview:none" };
+            bool coming = false;
+            for (int f = 0; f < 3; f++)
+            {
+                if (pools[f].Length > 0) present.Add(f);
+                else coming |= Artist.FacetPresent(a, facets[f]);
+            }
+            if (present.Count == 0 && !coming) return new BoxEl { Key = "ov:preview:none" };
+            if (present.Count == 0)
+            {
+                float cell = PreviewCell(p.Width);
+                string orderWord = Loc.Get(oldest ? Strings.Theme.Winui.Detail.Oldest : Strings.Theme.Winui.Detail.Newest);
+                return Reserved(true, () => new BoxEl(), () => Preview(p.Target, Combo(p.Target, Artist.FacetTitle(facets[0]), [], null),
+                    Combo(p.Target, orderWord, [], null), Placeholders(cell), Link(Loc.Get(Strings.Theme.Winui.Detail.ShowAll), a, DiscoFacet.Albums)));
+            }
             int chosen = present.Contains(facetSignal.Value) ? facetSignal.Value : present[0];
             var typeItems = new MenuFlyoutItem[present.Count];
             for (int i = 0; i < typeItems.Length; i++)
@@ -486,25 +650,91 @@ internal static class WinUiArtistOverview
             Element type = Combo(p.Target, Artist.FacetTitle(facets[chosen]), typeItems, "ov:type:" + chosen);
             int total = Artist.FacetTotal(a, facets[chosen]);
             Element all = Link(Strings.Theme.Winui.Detail.ShowAllAlbums(count: Math.Max(total, pools[chosen].Length)), a, facets[chosen]);
-            return new BoxEl
-            {
-                Direction = 1, Gap = WinUiArtistRules.BlockGap, MinWidth = 0f,
-                Children =
-                [
-                    Header(Loc.Get(Strings.Theme.Winui.Detail.Discography), new BoxEl
-                    {
-                        Direction = 0, Gap = WinUiArtistRules.ActionsGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [type, order],
-                    }, null),
-                    Cards(pools[chosen], oldest, p.Width),
-                    new BoxEl { Direction = 0, Children = [all] },
-                ],
-            };
+            int[] shown = pools[chosen];
+            float w = p.Width;
+            // The covers' own fields (an answer per release, often after the overview's): the preview stands over its placeholder until they land.
+            bool pending = CardsPending(shown, oldest);
+            float target = p.Target;
+            // The shimmer's combos are the same words, unkeyed (the placeholder never shares a key with the content it stands for).
+            string typeWord = Artist.FacetTitle(facets[chosen]), orderLabel = Loc.Get(oldest ? Strings.Theme.Winui.Detail.Oldest : Strings.Theme.Winui.Detail.Newest);
+            return Reserved(pending, () => Preview(target, type, order, Cards(shown, oldest, w), all),
+                () => Preview(target, Combo(target, typeWord, [], null), Combo(target, orderLabel, [], null), Placeholders(PreviewCell(w)), all));
+        }
+
+        /// <summary>The Huge preview's tree (W-Artist-Huge): the Discography header with the order combo and "Show all", over the titled rows.</summary>
+        static Element RowsPreview(float target, Element order, Element more, Element[] groups) => new BoxEl
+        {
+            Direction = 1, Gap = WinUiArtistRules.BlockGap, MinWidth = 0f,
+            Children =
+            [
+                // The combo's slot holds its height (the placeholder derives it as a bar of its own size).
+                Header(Loc.Get(Strings.Theme.Winui.Detail.Discography),
+                    new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, MinHeight = MathF.Max(WinUiArtistRules.ComboHeight, target), Children = [order] }, more),
+                new BoxEl { Direction = 1, Gap = WinUiArtistRules.BlockGap, MinWidth = 0f, Children = groups },
+            ],
+        };
+
+        /// <summary>The Huge preview's shimmer source at <paramref name="w"/>: its header and two titled rows over placeholder covers, unkeyed.</summary>
+        internal static Element RowsPlaceholder(float target, float w, string orderWord, Artist a)
+        {
+            float cell = PreviewCell(w);
+            DiscoFacet[] facets = [DiscoFacet.Albums, DiscoFacet.Singles];
+            var groups = new Element[WinUiArtistRules.HugePreviewRows];
+            for (int f = 0; f < groups.Length; f++) groups[f] = Group(Artist.FacetTitle(facets[f]), Placeholders(cell), f) with { Key = null };
+            return RowsPreview(target, Combo(target, orderWord, [], null), Link(Loc.Get(Strings.Theme.Winui.Detail.ShowAll), a, DiscoFacet.Albums), groups);
+        }
+
+        /// <summary>The preview's tree: the Discography header beside the type and order combos, the covers, the link. The combos' row holds their
+        /// height (a placeholder derives a component as one bar of its own size, which stood the row 4 short of the combos).</summary>
+        internal static Element Preview(float target, Element type, Element order, Element cards, Element all) => new BoxEl
+        {
+            Direction = 1, Gap = WinUiArtistRules.BlockGap, MinWidth = 0f,
+            Children =
+            [
+                Header(Loc.Get(Strings.Theme.Winui.Detail.Discography), new BoxEl
+                {
+                    Direction = 0, Gap = WinUiArtistRules.ActionsGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [type, order],
+                    MinHeight = MathF.Max(WinUiArtistRules.ComboHeight, target),
+                }, null),
+                cards,
+                new BoxEl { Direction = 0, Children = [all] },
+            ],
+        };
+
+        /// <summary>The preview over its placeholder while <paramref name="pending"/>: one region in every state, so the landing fades the covers in over
+        /// their placeholders in place.</summary>
+        static Element Reserved(bool pending, Func<Element> content, Func<Element> shimmer) => new BoxEl
+        {
+            Direction = 1, MinWidth = 0f,
+            Children =
+            [
+                new SkelRegionEl(
+                    Pending: pending ? s_pending : s_known, Failed: s_known, Content: content, ShimmerSource: shimmer, OnFailed: null,
+                    Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false),
+            ],
+        };
+
+        /// <summary>Whether any of the first covers the preview shows still lacks its card fields.</summary>
+        static bool CardsPending(int[] slots, bool oldest)
+        {
+            int count = Math.Min(slots.Length, (int)WinUiArtistRules.PreviewColumns);
+            for (int i = 0; i < count; i++)
+                if (!new Album(slots[oldest ? slots.Length - 1 - i : i]).Knows(AlbumFields.DiscoCard)) return true;
+            return false;
+        }
+
+        /// <summary>Three placeholder covers at <paramref name="cell"/>, the covers' shimmer source.</summary>
+        internal static Element Placeholders(float cell)
+        {
+            var kids = new Element[(int)WinUiArtistRules.PreviewColumns];
+            for (int i = 0; i < kids.Length; i++) kids[i] = WinUiArtistSections.AlbumCardPlaceholder(cell);
+            return new BoxEl { Direction = 0, Gap = WinUiArtistRules.PreviewGap, MinWidth = 0f, Children = kids };
         }
 
         static MenuFlyoutItem Item(string label, Action invoke) => new(label, default, true, invoke);
 
         /// <summary>A combo: the current word and a chevron on the control fill; the menu is the choices. Keyed on the word (the label freezes at mount).</summary>
-        static Element Combo(float target, string label, IReadOnlyList<MenuFlyoutItem> items, string key)
+        internal static Element Combo(float target, string label, IReadOnlyList<MenuFlyoutItem> items, string? key)
             => Embed.Comp(() => new DropDownButton
             {
                 Label = label, Items = items,
@@ -529,7 +759,7 @@ internal static class WinUiArtistOverview
             ],
         };
 
-        static Element Link(string text, Artist a, DiscoFacet facet)
+        internal static Element Link(string text, Artist a, DiscoFacet facet)
         {
             string key = DiscoRoute.Key(facet, a.Uri.Text);
             return HyperlinkButton.Create(text, () => ArtistVerbs.OpenRoute(key), size: ControlSize.Small);
@@ -540,7 +770,7 @@ internal static class WinUiArtistOverview
         {
             int count = Math.Min(slots.Length, (int)WinUiArtistRules.PreviewColumns);
             float gap = WinUiArtistRules.PreviewGap;
-            float cell = MathF.Max(1f, (w - (WinUiArtistRules.PreviewColumns - 1f) * gap) / WinUiArtistRules.PreviewColumns);
+            float cell = PreviewCell(w);
             var kids = new Element[(int)WinUiArtistRules.PreviewColumns];
             for (int i = 0; i < kids.Length; i++)
             {

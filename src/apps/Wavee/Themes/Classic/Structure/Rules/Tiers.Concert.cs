@@ -10,13 +10,13 @@
 // themselves (WVTH013). THE EVENT PAGE'S RECORDS per window tier (boards C-Concert, C-Concert-Compact, -Small, -Huge; the hub and the schedule have no boards
 // of their own and keep the tuned design built from Classic's parts, owner Q18):
 //
-//   tier       split hero                                    tickets                                 targets
-//   Compact    stacked, a 220 photo pane                     inline after the facts                  40 (Buy, the lineup rows, the hub's
+//   tier       hero, on the page's ground                    tickets                                 targets
+//   Compact    stacked: a 220 banner over the copy           inline after the facts                  40 (Buy, the lineup rows, the hub's
 //                                                                                                    filter pills)
-//   Small      split 56 / 44 at 240, pad 20                  inline                                  32
-//   Standard   the tuned arms (a 320 split from 920, else    the 320 rail from 920                   32
-//              the 180 stacked pane)
-//   Huge       split at 400, pad 40                          a 360 rail from 920                     32
+//   Small      a 200 picture beside the copy                 inline                                  32
+//   Standard   the tuned arms (a 240 picture beside the      the 320 rail from 920                   32
+//              copy from 920, else the 180 banner)
+//   Huge       a 300 picture beside the copy                 a 360 rail from 920                     32
 //              the lineup a 640 column beside the dates grid (four date cards a row; C-Concert-Huge's "Tour dates" geometry, filled with the
 //              related concerts: the app has no tour-dates feed, so the grid carries them under their own header and the related shelf folds into it)
 //
@@ -51,42 +51,42 @@ public static class ClassicConcertTiers
     public static bool DetailWide(float width, bool wasWide, bool initialized = true)
         => Detail.Resolve(width, initialized ? (wasWide ? 1 : 0) : -1) == 1;
 
-    /// <summary>The tuned split hero: the 320 row when wide, the 180 stacked pane when narrow.</summary>
+    /// <summary>The tuned hero: a 240 picture beside the copy when wide, the 180 banner over it when narrow.</summary>
     public static EditorialHeroMetrics EditorialHero(bool wide) => wide
-        ? new EditorialHeroMetrics(Height: 320f, MediaHeight: 320f, MediaFraction: 0.44f, Padding: 28f)
-        : new EditorialHeroMetrics(Height: 0f, MediaHeight: 180f, MediaFraction: 1f, Padding: 20f);
+        ? new EditorialHeroMetrics(Picture: 240f, Banner: 0f)
+        : new EditorialHeroMetrics(Picture: 0f, Banner: 180f);
 
-    /// <summary>The event page's split hero in <paramref name="layout"/>'s tier at the page's arm (<paramref name="wide"/>).</summary>
+    /// <summary>The event page's hero in <paramref name="layout"/>'s tier at the page's arm (<paramref name="wide"/>).</summary>
     public static EditorialHeroMetrics EventHero(ClassicConcertLayout layout, bool wide) => layout.Hero switch
     {
-        ClassicConcertHero.Split => new EditorialHeroMetrics(Height: layout.HeroHeight, MediaHeight: layout.HeroHeight, MediaFraction: 0.44f, Padding: layout.HeroPad),
-        ClassicConcertHero.Stacked => new EditorialHeroMetrics(Height: 0f, MediaHeight: layout.HeroHeight, MediaFraction: 1f, Padding: layout.HeroPad),
+        ClassicConcertHero.Split => new EditorialHeroMetrics(Picture: layout.HeroPicture, Banner: 0f),
+        ClassicConcertHero.Stacked => new EditorialHeroMetrics(Picture: 0f, Banner: layout.HeroBanner),
         _ => EditorialHero(wide),
     };
 
     /// <summary>Compact (C-Concert-Compact; the hub's filter pills at the 40 target).</summary>
     public static ClassicConcertLayout Compact { get; } = new()
     {
-        Tier = WidthTier.Compact, Hero = ClassicConcertHero.Stacked, HeroHeight = 220f, HeroPad = 16f, RailWidth = 0f, Target = ClassicArtistTiers.CompactTarget,
+        Tier = WidthTier.Compact, Hero = ClassicConcertHero.Stacked, HeroBanner = 220f, RailWidth = 0f, Target = ClassicArtistTiers.CompactTarget,
         HubPill = ClassicArtistTiers.CompactTarget,
     };
 
-    /// <summary>Small (C-Concert-Small): the split hero at 240 while the tickets stay inline.</summary>
+    /// <summary>Small (C-Concert-Small): a 200 picture beside the copy while the tickets stay inline.</summary>
     public static ClassicConcertLayout Small { get; } = new()
     {
-        Tier = WidthTier.Small, Hero = ClassicConcertHero.Split, HeroHeight = 240f, HeroPad = 20f, RailWidth = 0f, Target = ClassicArtistTiers.Target,
+        Tier = WidthTier.Small, Hero = ClassicConcertHero.Split, HeroPicture = 200f, RailWidth = 0f, Target = ClassicArtistTiers.Target,
     };
 
     /// <summary>Standard: the tuned arms.</summary>
     public static ClassicConcertLayout Standard { get; } = new()
     {
-        Tier = WidthTier.Standard, Hero = ClassicConcertHero.Tuned, HeroHeight = 320f, HeroPad = 28f, RailWidth = 320f, Target = ClassicArtistTiers.Target,
+        Tier = WidthTier.Standard, Hero = ClassicConcertHero.Tuned, RailWidth = 320f, Target = ClassicArtistTiers.Target,
     };
 
-    /// <summary>Huge (C-Concert-Huge): the split hero at 400 with 40 of air, a 360 tickets rail, the lineup a 640 column beside the four-column dates grid.</summary>
+    /// <summary>Huge (C-Concert-Huge): a 300 picture beside the copy, a 360 tickets rail, the lineup a 640 column beside the four-column dates grid.</summary>
     public static ClassicConcertLayout Huge { get; } = new()
     {
-        Tier = WidthTier.Huge, Hero = ClassicConcertHero.Split, HeroHeight = 400f, HeroPad = 40f, RailWidth = 360f, Target = ClassicArtistTiers.Target,
+        Tier = WidthTier.Huge, Hero = ClassicConcertHero.Split, HeroPicture = 300f, RailWidth = 360f, Target = ClassicArtistTiers.Target,
         LineupWidth = 640f, DateColumns = 4,
     };
 
@@ -113,11 +113,11 @@ public static class ClassicConcertTiers
     public const float GridRowExtra = EventChrome + GridRowGap;
 }
 
-/// <summary>The split hero's measures: the wide row's height and the narrow pane's media height, the photo's share and the copy padding.</summary>
-public readonly record struct EditorialHeroMetrics(float Height, float MediaHeight, float MediaFraction, float Padding)
+/// <summary>The hero's measures: the square picture's side beside the copy, or (0 there) the banner's height over it.</summary>
+public readonly record struct EditorialHeroMetrics(float Picture, float Banner)
 {
-    /// <summary>The hero is the split row (it has a height of its own), not the stacked pane.</summary>
-    public bool Split => Height > 0f;
+    /// <summary>The picture stands beside the copy, not over it.</summary>
+    public bool Split => Picture > 0f;
 }
 
 /// <summary>How the event page's hero is built in a tier.</summary>
@@ -125,9 +125,9 @@ public enum ClassicConcertHero : byte
 {
     /// <summary>The tuned arms: split from the tickets rail's edge, stacked under it.</summary>
     Tuned,
-    /// <summary>Always the split row.</summary>
+    /// <summary>Always the picture beside the copy.</summary>
     Split,
-    /// <summary>Always the stacked pane.</summary>
+    /// <summary>Always the banner over the copy.</summary>
     Stacked,
 }
 
@@ -140,11 +140,11 @@ public sealed record ClassicConcertLayout
     /// <summary>The hero's arm rule.</summary>
     public required ClassicConcertHero Hero { get; init; }
 
-    /// <summary>The split row's height or the stacked pane's media height.</summary>
-    public required float HeroHeight { get; init; }
+    /// <summary>The picture's side where the hero splits (<see cref="ClassicConcertHero.Split"/>).</summary>
+    public float HeroPicture { get; init; }
 
-    /// <summary>The hero copy's padding.</summary>
-    public required float HeroPad { get; init; }
+    /// <summary>The banner's height where the hero stacks (<see cref="ClassicConcertHero.Stacked"/>).</summary>
+    public float HeroBanner { get; init; }
 
     /// <summary>The tickets rail's width when the page is wide; 0 keeps the tickets inline at every width.</summary>
     public required float RailWidth { get; init; }

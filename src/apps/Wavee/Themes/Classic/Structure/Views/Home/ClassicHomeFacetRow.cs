@@ -50,6 +50,9 @@ namespace Wavee.Themes.Classic;
 /// <summary>Wavee Classic's facet row.</summary>
 internal static class ClassicHomeFacetRow
 {
+    /// <summary>The pinned board's tools for the row's end (All only; Classic's page provides them): Home's ⋯ at rest, Edit Home's bar in its slot.</summary>
+    internal static readonly Context<Func<Element>?> BoardTools = new(null);
+
     static readonly MotionTokenDef s_fade =
         MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
 
@@ -119,7 +122,9 @@ internal static class ClassicHomeFacetRow
         // runs past fading (C-Home-Compact's masked tablist), and the selected word is brought whole into view, so "Audiobooks" picked at 400 is
         // never the cut word. The line is pulled out by the style's leading inset and padded back, so the first word's hover plate is inside
         // it. Elsewhere the same line sizes to the bar (the tuned row, unchanged): one node at every tier.
-        bool yieldWords = showFriends;
+        // The board's tools (All) end the row; the words yield to them too, so Edit Home's bar never pushes the row past its width.
+        var boardTools = ctx.Hooks.UseContext(BoardTools);
+        bool yieldWords = showFriends || boardTools is not null;
         // The two type rungs are two trees: a width that crosses the title edge (a docking panel's slide across 600) cross-fades the words in the
         // other rung over the leaving ones (the declared tier swap), never a 152-DIP step in one frame. Each form keys its own words; the words that
         // arrive with the page arrive with the page's entrance (no fade on the row's first build).
@@ -147,6 +152,7 @@ internal static class ClassicHomeFacetRow
                     new BoxEl { Grow = yieldWords ? 0f : 1f, MinWidth = 0f },
                     Flow.Show(() => hasFollowing, following),
                     Flow.Show(() => showFriends, friends),
+                    boardTools is { } tools ? tools() : new BoxEl(),
                 ],
             };
         }, fallback: firstWidth);

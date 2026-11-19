@@ -1,7 +1,7 @@
 // ── Themes/Classic/Structure/Rules/ClassicLyricsRules.cs — the numbers of Classic's lyrics surface (themes plan 6.1, T7b) ───────
 //
 // What `Shell/Lyrics.UI.cs` held as literals beside the picture, moved verbatim with it: the stage's reading column, the centred state
-// line, the "no sync during video" note, the resync pill and its ring, the podcast peek's gate, the breathing dots' entrance, the
+// line, the "no sync during video" note, the resync pill and its ring, the breathing dots' entrance, the
 // accent pill on the stage's active row and the secondary line's weight. The surface metrics (row type and rhythm, gutters, the
 // loading bars, the focal band, the halo sigmas, the scale ladder) are `Lyrics.Surface`'s and the ladders, ramps and clocks are the
 // core's: the frame driver and the follow are budgeted from them, so the views read them by name.
@@ -54,11 +54,6 @@ internal static class ClassicLyricsRules
 
     /// <summary>The pill rises from this far below when it comes and sinks back when it goes.</summary>
     public const float ResyncRiseDy = 4f;
-
-    // ── the podcast peek's gate ────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The quiet "length · language" line under the primary pill.</summary>
-    public const float PeekMetaSize = 12f, PeekMetaLineHeight = 16f;
 
     // ── the breathing dots ─────────────────────────────────────────────────────────────────────────────────────────
 

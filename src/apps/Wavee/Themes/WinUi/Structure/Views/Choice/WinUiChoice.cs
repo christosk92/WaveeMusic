@@ -3,8 +3,8 @@
 // The two shapes every WinUI sort, filter and scope takes (W-Flyouts, W-Library, W-LibraryList, W-Show):
 //
 //   · a SORT is a DropDownButton saying the choice in force in sentence case ("Recently added ⌄"), opening a MenuFlyout whose groups are caption
-//     headers ("Sort by") over RadioMenuFlyoutItems (the engine's 36 rows, 14 text, 4 backplates, the radio bullet in the 28 check column) on the
-//     8-radius acrylic flyout plate; Down / F4 / Enter open it, the arrows rove, Escape closes and focus returns to the button.
+//     headers ("Sort by") over RadioMenuFlyoutItems (32 plates 36 apart, 14 text, 4 radius, the choice marked by the ComboBox item's accent pill
+//     and subtle fill: WinUiControls.Menu) on the 8-radius acrylic flyout plate; Down / F4 / Enter open it, the arrows rove, Escape closes and focus returns to the button.
 //   · a FILTER, MODE or SCOPE is a SelectorBar: sentence-case words on transparent items, the selected one marked by the 3 × 16 accent pill, one tab
 //     stop with the arrows moving the selection.
 //

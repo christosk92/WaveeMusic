@@ -874,9 +874,9 @@ public static partial class Spotify
         // batch, so neither the commit nor the write-behind (which coalesces values under a max authority) touches it.
         //
         // SETTLED WITHOUT AN ANSWER (plan §6.1). A session that cannot reach Spotify never syncs, so no hydrate is ever
-        // asked and the show page's visit head would wait on `ProgressSettled` for good. The session's own verdict
-        // (`ProgressUnreachable`: Reconnecting or Failed) settles it FAILED instead, for the current scope; that scope's
-        // next landed hydrate clears `ProgressFailed` without ever dropping `ProgressSettled` on the way.
+        // asked. The session's own verdict (`ProgressUnreachable`: Reconnecting or Failed) settles it FAILED instead, for the
+        // current scope, once per outage (`s_progressSettled` / `s_progressFailed` remember it); that scope's next landed
+        // hydrate clears the failure without ever dropping the settle on the way.
 
         const string CurrentStatesRoute = "/herodotus/spotify.resumption.v1.CurrentStateService/ListCurrentStates";
         const string EpisodePrefix = "spotify:episode:";
@@ -896,21 +896,19 @@ public static partial class Spotify
         /// before it, whatever an earlier sync landed. PURE.</summary>
         public static long HydrateSince(long nowMs) => nowMs - ProgressLookbackMs;
 
-        /// <summary>Has the hydrate answered — landed or failed — for the current account scope, or has the session said
-        /// it cannot reach Spotify (<see cref="SettleProgressUnreachable"/>)? The show page's visit head waits for it
-        /// (plan §6.1: never flash New at a Returning listener). True at once under <c>--fake</c> (plan §9): there is
-        /// nothing to hydrate, and the seed's progress is the answer. UI thread only (C1). Read once at the type's first
-        /// touch, which <c>App.Main</c> orders after <c>Platform.Boot</c> parses argv.</summary>
-        public static readonly Signal<bool> ProgressSettled = new(Platform.Args.Fake);
+        /// <summary>Has the hydrate answered — landed or failed — for <see cref="s_progressScope"/>, or has the session said
+        /// it cannot reach Spotify (<see cref="SettleProgressUnreachable"/>)? True at once under <c>--fake</c> (plan §9):
+        /// there is nothing to hydrate. Read once at the type's first touch, which <c>App.Main</c> orders after
+        /// <c>Platform.Boot</c> parses argv. UI thread only (C1).</summary>
+        static bool s_progressSettled = Platform.Args.Fake;
 
-        /// <summary>The hydrate settled WITHOUT an answer for this account scope — it failed, or the session could not reach
-        /// Spotify to ask — and none has landed since: the ledger reads "progress unavailable" and rows show no state
-        /// rather than a false "unplayed" (plan §6.1). A reconnect's failed re-sync after a landed one does not raise it —
-        /// the rows it landed are still true — and the next landing clears it. UI thread only.</summary>
-        public static readonly Signal<bool> ProgressFailed = new(false);
+        /// <summary>The hydrate settled WITHOUT an answer for <see cref="s_progressScope"/> and none has landed since (a
+        /// reconnect's failed re-sync after a landed one does not raise it). With <see cref="s_progressSettled"/>, what keeps
+        /// <see cref="SettleProgressUnreachable"/> to one settle per outage. UI thread only.</summary>
+        static bool s_progressFailed;
 
         static Scope? s_hydrating;           // the scope whose hydrate is on the wire (UI thread)
-        static Scope? s_progressScope;       // the scope the two signals speak for
+        static Scope? s_progressScope;       // the scope the settle speaks for
         static bool s_progressLanded;        // an answer has landed for it
 
         /// <summary>The CEL filter <c>ListCurrentStates</c> takes (0d0429a0 <c>SpClient.cs:1418-1426</c>, verbatim): every
@@ -1036,10 +1034,10 @@ public static partial class Spotify
 
         /// <summary>Hydrate the account's podcast progress. UI THREAD; the login sync (<c>Spotify.Library.SyncNow</c>)
         /// calls it on every sync of an account scope — the first after sign-in and each reconnect's. One in flight per
-        /// scope; a new scope's is never held behind an old one's (whose landing is dropped, C7). A NEW scope drops
-        /// <see cref="ProgressSettled"/> first (what it said was about another account); a reconnect keeps it — as does
-        /// the recovery after <see cref="SettleProgressUnreachable"/>, which took this scope as its own — so a page never
-        /// falls back to its skeleton mid-visit. The window is <see cref="HydrateSince"/>'s: the whole 180 days.</summary>
+        /// scope; a new scope's is never held behind an old one's (whose landing is dropped, C7). A NEW scope drops the
+        /// settle first (what it said was about another account); a reconnect keeps it, as does the recovery after
+        /// <see cref="SettleProgressUnreachable"/>, which took this scope as its own. The window is <see cref="HydrateSince"/>'s:
+        /// the whole 180 days.</summary>
         public static void HydrateProgress(Scope scope)
         {
             if (ReferenceEquals(s_hydrating, scope)) return;
@@ -1048,11 +1046,12 @@ public static partial class Spotify
             {
                 s_progressScope = scope;
                 s_progressLanded = false;
-                ProgressSettled.Value = false;
-                ProgressFailed.Value = false;
+                s_progressSettled = false;
+                s_progressFailed = false;
             }
             ActivateOutbox(scope.Key.Account);
             SyncCompletion(scope);
+            Books.OnSessionStart(scope);   // capping-api PutConsumption, as the official client sends it at startup
             HydrateRecentEpisodes(scope);
             long since = HydrateSince(NowMs());
             uint epoch = scope.Epoch;
@@ -1153,13 +1152,13 @@ public static partial class Spotify
             return promoted;
         }
 
-        /// <summary>Settle the two signals for <see cref="s_progressScope"/>: settled either way; failed only while no
-        /// answer has landed for this scope.</summary>
+        /// <summary>Settle the hydrate for <see cref="s_progressScope"/>: settled either way; failed only while no answer has
+        /// landed for this scope.</summary>
         static void SettleProgress(bool landed)
         {
             if (landed) s_progressLanded = true;
-            ProgressFailed.Value = !s_progressLanded;
-            ProgressSettled.Value = true;
+            s_progressFailed = !s_progressLanded;
+            s_progressSettled = true;
         }
 
         /// <summary>Does the session's phase say this device cannot reach Spotify — the one fact that settles the hydrate
@@ -1187,18 +1186,18 @@ public static partial class Spotify
         public static bool SettlesUnreachable(SessionPhase phase, bool onTheWire, bool landed, bool alreadyFailed)
             => ProgressUnreachable(phase) && !onTheWire && !landed && !alreadyFailed;
 
-        /// <summary>UI THREAD: settle the two signals FAILED for <paramref name="scope"/> when the session cannot reach
+        /// <summary>UI THREAD: settle the hydrate FAILED for <paramref name="scope"/> when the session cannot reach
         /// Spotify (<see cref="SettlesUnreachable"/>). The library host posts it on every session transition into a phase
         /// <see cref="ProgressUnreachable"/> names (<c>Spotify.Library.WatchSession</c>). The scope becomes the one the
-        /// signals speak for, so the sync that follows the session's recovery is that scope's reconnect: it keeps
-        /// <see cref="ProgressSettled"/> (no skeleton mid-visit) and its landing clears <see cref="ProgressFailed"/>.
+        /// settle speaks for, so the sync that follows the session's recovery is that scope's reconnect: it keeps the settle and
+        /// its landing clears the failure.
         /// One always-on line per settle.</summary>
         public static void SettleProgressUnreachable(Scope scope)
         {
             var session = Current;                         // Spotify.Current (the session value), not the scope
             bool same = ReferenceEquals(scope, s_progressScope);
             if (!SettlesUnreachable(session.Phase, ReferenceEquals(s_hydrating, scope), same && s_progressLanded,
-                    same && ProgressSettled.Peek() && ProgressFailed.Peek()))
+                    same && s_progressSettled && s_progressFailed))
                 return;
             if (!same)
             {

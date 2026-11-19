@@ -11,7 +11,7 @@
 // host behind `ILogsHost` (`Screens\LogsPage.Host.cs`).
 //
 // FRAME: the page frame the old sidebar customizer used (deleted in the sidebar rework): a header (crumbs over the title, the picker cluster),
-// Esc → back (the host's one exit). The capture level and file level combos left the viewer (they are Settings › Privacy & diagnostics › Logs ›
+// Esc → back (the host's one exit). The capture level and file level combos left the viewer (they are Settings › Help & about › Diagnostics ›
 // Detail level); Verbose stays here as a checkable item of the "…" menu.
 //
 // TIERS (themes plan 3.2, TC10): the viewer reads `ctx.Tier()` through `CommonTierComponent` into a `CommonLogsLayout` (Rules\Tiers.cs). Compact draws a row as two lines
@@ -217,12 +217,12 @@ internal static class CommonLogs
             // Every child is keyed: the picker caption comes and goes, and a positional diff would otherwise slide the
             // combo's remount key onto the wrong sibling.
             var title = R.Type.PageHero(Loc.Get(Strings.Logs.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
-            // Settings › Privacy & diagnostics › Logs. The first crumb opens Settings on its remembered tab; the
-            // second lands on the tab this page belongs to; the last is this page and does nothing. At a hit target the crumbs are the Large ones (40 x 40); the bare
+            // Settings › Help & about › Logs. The first crumb opens Settings; the second lands on the dial this page
+            // belongs to (Help & about › Diagnostics › Log viewer); the last is this page and does nothing. At a hit target the crumbs are the Large ones (40 x 40); the bare
             // Short header drops them (the Back of the title bar stays).
             Element[] lane = !layout.ShowCrumbs
                 ? [title]
-                : [BreadcrumbBar.Create([Loc.Get(Strings.Nav.Settings), Loc.Get(Strings.Settings.Tabs.Privacy), Loc.Get(Strings.Logs.Title)],
+                : [BreadcrumbBar.Create([Loc.Get(Strings.Nav.Settings), Loc.Get(Strings.Settings.Categories.Help.Title), Loc.Get(Strings.Logs.Title)],
                     _onCrumb ??= host.OpenCrumb, size: layout.Target > 0f ? ControlSize.Large : ControlSize.Medium), title];
             BoxEl titleLane = new()
             {

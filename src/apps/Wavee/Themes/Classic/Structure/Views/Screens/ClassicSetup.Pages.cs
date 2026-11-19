@@ -29,10 +29,14 @@ internal static partial class ClassicSetup
     /// (or a change from the palette) shows at once.</summary>
     public static Element ThemeTemplate(SetupThemeProps props, in ViewContext ctx)
     {
-        var kids = new List<Element>(3)
+        // Light or dark and the language belong to a first run as much as the theme does (they were Settings-only): the rows Settings draws, on
+        // the wizard's own seeded signal.
+        var language = ctx.Hooks.UseRef(new Signal<int>(ClassicSettings.LanguageIndex())).Value;
+        var kids = new List<Element>(4)
         {
             SetupText.Body(Loc.Get(Strings.Setup.Theme.Body)),
             props.ThemePicker(),
+            SetupText.Group(ClassicSettings.AppModeRow(), ClassicSettings.LanguageRow(language)) with { Key = "setup:prefs" },
         };
         if (props.ThemeOptions() is { } options) kids.Add(options);
         return WizardFrame(Setup.WizardPage.Theme, Loc.Get(Strings.Setup.Theme.Title), SetupText.Stack(kids.ToArray()));
@@ -71,7 +75,7 @@ internal static partial class ClassicSetup
     }
 
     /// <summary>The Terms page's opt-in crash-reporting card (crash-diagnostics plan §D "Wizard consent"): title + an
-    /// "Optional" pill, the one-line question, a radio choice (No · Ask me first · Always send, default Off; only the first two on a build that can't send) and the scrub
+    /// "Optional" pill, the one-line question, a radio choice (Off · Ask each time · Automatic, Settings' own words, default Off; only the first two on a build that can't send) and the scrub
     /// summary (the page's fine print carries the Privacy link). The choice writes the setting the instant it changes — never waits for Continue, so a
     /// crash between the click and the wizard's own advance cannot lose it. Consent-asked itself is stamped once, on
     /// Continue, by <c>Setup.WizardRules.MarkConsentAsked</c> (<c>WizardModel.Primary</c>), not here.</summary>
@@ -80,18 +84,13 @@ internal static partial class ClassicSetup
         public override Element Render()
         {
             var layout = ClassicSetupTiers.Of(ReadTier());
-            // #165: a build that can't send (no ingest URL / key / quad) offers only No · Ask me first — "Always send"
+            // #165: a build that can't send (no ingest URL / key / quad) offers only Off · Ask each time — "Automatic"
             // would be a promise it cannot keep. The offered list is a prefix of Off/Ask/Auto, so the radio index stays
             // the stored Crash.Reporting value; the seed is the EFFECTIVE mode (a stored Auto reads Ask there).
             var index = UseSignal(consent.Seed());   // seeded once from the store
             var labels = new List<string>(3);
-            for (int mode = 0; mode < consent.Choices; mode++)
-                labels.Add(Loc.Get(mode switch
-                {
-                    0 => Strings.Setup.Terms.CrashNo,
-                    1 => Strings.Setup.Terms.CrashAsk,
-                    _ => Strings.Setup.Terms.CrashAlways,
-                }));
+            for (int mode = 0; mode < consent.Choices && mode < consent.Labels.Length; mode++)
+                labels.Add(consent.Labels[mode]);   // Settings' own words, the crash-reports dial's (owner decision 10)
 
             // A vertical radio group (the Windows privacy-settings shape), not a segmented switcher: three labels of
             // very different length never fit three equal-width segments, and a consent choice reads as a list.
@@ -128,14 +127,18 @@ internal static partial class ClassicSetup
     {
         var overlay = ctx.Hooks.UseContext(Overlay.Service);
         var layout = ClassicSetupTiers.Of(ctx.Tier());
+        // The quality the app streams at belongs to the first run's playback step (it was Settings-only): the row Settings draws, in every arm.
+        var quality = ctx.Hooks.UseRef(new Signal<int>(ClassicSettings.QualityIndex())).Value;
         if (props.Session.Model is not { } m)   // no provisioning host (D3): the model-null arm — no Key, no motion, no fine print
             return WizardFrame(Setup.WizardPage.LocalPlayback, Loc.Get(Setup.Commands.RuntimeHeaderKey(null)), SetupText.Stack(
                 SetupText.Lead(Loc.Get(Setup.Commands.RuntimeLeadKey(null))),
-                SetupText.Body(Loc.Get(Strings.Playback.Runtime.NotActive))));
+                SetupText.Body(Loc.Get(Strings.Playback.Runtime.NotActive)),
+                ClassicSettings.QualityRow(quality) with { Key = "setup:quality" }));
 
         RuntimePhase phase = m.Phase.Value;
         string arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString();
-        var kids = new List<Element>(3) { SetupText.Lead(Loc.Get(Setup.Commands.RuntimeLeadKey(phase))), LocalContent(props, m, phase, arch, overlay, layout) };
+        var kids = new List<Element>(4) { SetupText.Lead(Loc.Get(Setup.Commands.RuntimeLeadKey(phase))), LocalContent(props, m, phase, arch, overlay, layout) };
+        if (phase != RuntimePhase.Advanced) kids.Add(ClassicSettings.QualityRow(quality) with { Key = "setup:quality" });
         if (phase != RuntimePhase.Advanced)
             kids.Add(SetupText.Secondary(Loc.Get(Strings.Setup.LocalPlayback.FinePrint)) with { Key = "runtime:fineprint" });
         Element body = SetupText.Stack(kids.ToArray()) with

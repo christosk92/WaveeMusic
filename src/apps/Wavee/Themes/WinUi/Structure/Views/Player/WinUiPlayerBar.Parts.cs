@@ -141,8 +141,9 @@ internal static partial class WinUiPlayerBar
             [
                 new BoxEl
                 {
-                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [new TextEl(deltaMs < 0 ? PL.StepBackGlyph : PL.StepForwardGlyph) { Size = PL.StepGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = ink }],
+                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, TransformOriginX = 0.5f,
+                    Transform = deltaMs < 0 ? Affine2D.Scale(-1f, 1f) : Affine2D.Identity,
+                    Children = [new TextEl(PL.StepArcGlyph2) { Size = PL.StepArcGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = ink }],
                 },
                 new BoxEl
                 {

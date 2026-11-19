@@ -97,11 +97,16 @@ public static partial class Diagnostics
                 var skip = new List<RectF>();
                 foreach (Node n in nodes)
                 {
+                    if (n.Index <= sc.Index || n.Opacity < 0.05f || IsUnder(nodes, n, sc.Index)) continue;
+                    RectF r = n.Visible.IsEmpty ? n.Rect : n.Visible;
                     // a part that fills its box (a plate, an image, text, a drawn visual); a border alone paints only its edges
                     bool fills = n.Image || n.Text is not null || n.Gradient || n.Fill.A >= 0.05f || n.Visual.Length > 0;
-                    if (!fills || n.Index <= sc.Index || n.Opacity < 0.05f || IsUnder(nodes, n, sc.Index)) continue;
-                    RectF r = n.Visible.IsEmpty ? n.Rect : n.Visible;
-                    RectF part = new RectF(r.X - ShadowReach, r.Y - ShadowReach, r.W + 2f * ShadowReach, r.H + 2f * ShadowReach).Intersect(band);   // its shadow too
+                    // a ROW that owns the band (a dialog's footer under its scrolling page: Zune's setup draws its progress and its buttons on the
+                    // plate with no fill of their own): its whole box is laid out there, from the band's top to its foot, and something in it
+                    // paints. Only its parts were skipped, so the plate between them read as a page that stopped painting.
+                    bool owns = !fills && r.Y <= band.Y + Slack && r.Bottom >= band.Bottom - Slack && PaintsInside(nodes, n);
+                    if (!fills && !owns) continue;
+                    RectF part = (owns ? r : new RectF(r.X - ShadowReach, r.Y - ShadowReach, r.W + 2f * ShadowReach, r.H + 2f * ShadowReach)).Intersect(band);   // a part's shadow too
                     if (part.W > 0f && part.H > 0f) skip.Add(part);
                 }
                 if (!px.TryEmpty(band, skip, EmptyShare, out ColorF colour, out float judged) || judged < 0.5f) continue;
@@ -159,6 +164,18 @@ public static partial class Diagnostics
                 });
             }
             return looked;
+        }
+
+        /// <summary>Something under <paramref name="row"/> paints (text, an image, a fill, a drawn visual): the row is laid out with content, not an empty box.</summary>
+        static bool PaintsInside(IReadOnlyList<Node> nodes, Node row)
+        {
+            for (int i = row.Index + 1; i < nodes.Count; i++)
+            {
+                Node d = nodes[i];
+                if (!IsUnder(nodes, d, row.Index)) break;   // pre-order: the row's subtree is contiguous
+                if (d.Opacity >= 0.05f && (d.Image || d.Text is not null || d.Gradient || d.Fill.A >= 0.05f || d.Visual.Length > 0)) return true;
+            }
+            return false;
         }
 
         // ── overlay.translucent and picture.text (lane A3, report-only) ─────────────────────────────────────────────────

@@ -70,6 +70,11 @@ public readonly partial struct Concert
             }
             var c = _concert;
             UseEffect(_demand, DepKey.From(c.Slot, (int)epoch));
+            // The trail's last crumb: the concert's own name (its title, else its venue) once the row knows it.
+            var s = Entities.Strings;
+            string crumb = !c.IsValid ? "" : s.Resolve(c.TitleId) is { Length: > 0 } t ? t : s.Resolve(c.VenueId);
+            var route = p.Route;
+            UseEffect(() => PublishCrumb(route, crumb), DepKey.From(crumb.GetHashCode(), crumb.Length));
 
             // Settled = the whole row was asked and nothing is in flight: a group that never landed stays unknown (W22).
             bool all = c.IsValid && c.Knows(ConcertFields.All);

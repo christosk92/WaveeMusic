@@ -594,7 +594,7 @@ public static partial class Playback
             {
                 switch (id)
                 {
-                    case IdPrev: Post(Input.Prev(FrameNowMs())); break;
+                    case IdPrev: Playback.Previous("thumbbar"); break;
                     case IdPlayPause:
                     {
                         bool resume = PhaseSignal.Peek() != Phase.Playing;
@@ -602,7 +602,7 @@ public static partial class Playback
                         Post(resume ? Input.Resume(FrameNowMs()) : Input.Pause(FrameNowMs()));
                         break;
                     }
-                    case IdNext: Post(Input.Next(FrameNowMs())); break;
+                    case IdNext: Playback.Next("thumbbar"); break;
                 }
             }
         }

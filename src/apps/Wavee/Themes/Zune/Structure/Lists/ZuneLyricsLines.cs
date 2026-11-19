@@ -6,14 +6,14 @@
 //                wipe is set, so the core's frame driver, which writes a wipe only where one exists, leaves the lines alone).
 //   ACCENT       the line being sung is the accent (`R.Ink.AccentAction` on the theme surfaces, the stage's accent signal where the stage
 //                hands one); every other line is the surface's ink.
-//   RAMP         the distance is OPACITY (the board's 1 · .45 · .24 · .14 · .11 ramp is the core's `TranscriptPresentation.RowOpacity`
+//   RAMP         the distance is OPACITY (the board's 1 · .45 · .24 · .14 · .11 ramp is the core's `Lyrics.Emphasis.OpacityOf`
 //                springing on each line's emphasis); no scale, no blur ladder beyond the core's depth of field.
 //   TRANSLATION  the secondary line (translation or romanization, the user's choice) under its lyric at 0.625 of the line in the 300 weight,
 //                the secondary ink, travelling with its line.
 //   RESYNC       a tap on a line seeks there and re-attaches the follow (the host's verb); the "resync" pill itself is the lyrics VIEW's
 //                (`ViewKeys.LyricsView`, Z4c), which this style does not draw.
 //
-// The state line, the loading bars, the unsynced block and the podcast peek keep the reading surface's metrics (`host.Metrics`), in
+// The state line, the loading bars and the unsynced block keep the reading surface's metrics (`host.Metrics`), in
 // Zune's voice. WHAT THE CORE KEEPS: the document, the clock, the follow, the cascade, the depth of field and the node handles
 // (`Lyrics.ViewCore`).
 
@@ -36,7 +36,7 @@ namespace Wavee.Themes.Zune;
 internal static class ZuneLyricsLines
 {
     /// <summary>The style Zune registers under <c>StyleKeys.LyricsLines</c>. Stateless.</summary>
-    public static LyricsLinesStyle Style { get; } = new(Message, Shimmer, Skeleton, Unsynced, Lines, Peek) { Offline = Offline };
+    public static LyricsLinesStyle Style { get; } = new(Message, Shimmer, Skeleton, Unsynced, Lines) { Offline = Offline };
 
     static Element Message(ILyricsHost host, string text) => new BoxEl
     {
@@ -159,89 +159,6 @@ internal static class ZuneLyricsLines
             OnRealized = host.SetViewport,
         };
     }
-
-    /// <summary>The podcast peek: the transcript's opening lines, progressively blurred and transparent, with the gate on the dissolve.</summary>
-    static Element Peek(ILyricsHost host, Lyrics.Doc doc)
-    {
-        var m = host.Metrics;
-        bool blur = host.BlurEnabled;
-        int count = Lyrics.TranscriptPeek.LineCount(doc.Lines.Count);
-        var bands = new List<Element>(Lyrics.TranscriptPeek.Bands);
-        var rows = new List<Element>(count);
-        int band = 0;
-        for (int i = 0; i < count; i++)
-        {
-            int next = Lyrics.TranscriptPeek.BandOf(i, count);
-            if (next != band)
-            {
-                if (rows.Count > 0) bands.Add(PeekBand(band, rows, blur));
-                rows.Clear();
-                band = next;
-            }
-            rows.Add(PeekRow(host, doc.Lines[i].Text, m));
-        }
-        if (rows.Count > 0) bands.Add(PeekBand(band, rows, blur));
-        return new BoxEl
-        {
-            Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true, ZStack = true,
-            Children =
-            [
-                new BoxEl
-                {
-                    Grow = 1f, MinHeight = 0f, MinWidth = 0f, Direction = 1, Justify = FlexJustify.Start,
-                    Padding = new Edges4(0f, Lyrics.Surface.UnsyncedBlockPad(host.Large), 0f, 0f),
-                    Children = bands.ToArray(),
-                },
-                PeekGate(host),
-            ],
-        };
-    }
-
-    static Element PeekBand(int band, List<Element> rows, bool blur) => new BoxEl
-    {
-        Direction = 1, Shrink = 0f, MinWidth = 0f, HitTestVisible = false,
-        Blur = blur ? Lyrics.TranscriptPeek.SigmaOf(band) : 0f,
-        Opacity = Lyrics.TranscriptPeek.OpacityOf(band),
-        Children = rows.ToArray(),
-    };
-
-    static Element PeekRow(ILyricsHost host, string text, Lyrics.RowMetrics m) => new BoxEl
-    {
-        Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
-        Padding = new Edges4(m.SidePad, m.RowPad, m.SidePad, m.RowPad),
-        Children =
-        [
-            new TextEl(text)
-            {
-                Size = m.FontSize, Weight = m.Weight, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,
-                Color = host.Ink.Primary, MaxLines = 0, Trim = TextTrim.None,
-            },
-        ],
-    };
-
-    static Element PeekGate(ILyricsHost host)
-    {
-        var ink = host.Ink;
-        var facts = host.PeekGate();
-        var gate = new List<Element>(3)
-        {
-            R.Type.DenseMeta(Loc.Get(Strings.Podcast.PeekFollows)) with { Color = ink.Secondary, Wrap = TextWrap.Wrap, MaxLines = 0 },
-            Button.Accent(Loc.Get(Strings.Podcast.PeekPlay), facts.Play),
-        };
-        if (facts.Meta.Length > 0)
-            gate.Add(new TextEl(facts.Meta)
-            {
-                Size = ZuneListRules.LyricsPeekMetaSize, LineHeight = ZuneListRules.LyricsPeekMetaLine, Color = ink.Tertiary,
-                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            });
-        return new BoxEl
-        {
-            Grow = 1f, MinHeight = 0f, HitTestPassThrough = true,
-            Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
-            Padding = new Edges4(Spacing.L, 0f, Spacing.L, Spacing.XXL),
-            Children = [new BoxEl { Shrink = 0f, MinWidth = 0f, Direction = 1, AlignItems = FlexAlign.Center, Gap = Spacing.S, Children = gate.ToArray() }],
-        };
-    }
 }
 
 /// <summary>One lyric line of Zune's synced list. Frozen at mount: the host, its index, its line and its emphasis signal (a document change
@@ -284,16 +201,14 @@ internal sealed class ZuneLyricsRow : Component
 
     /// <summary>The row's opacity rung: the mini player's flat picture (<see cref="Lyrics.MiniRows"/>: Zune's rows not sung draw the full ink), else
     /// the theme's ladder.</summary>
-    static float RowOpacity(ILyricsHost host, bool podcast, bool ownsPlayback, int emphasis)
-        => Lyrics.MiniRows.Opacity(host, podcast, ownsPlayback, emphasis, 1f) is var flat && !float.IsNaN(flat)
+    static float RowOpacity(ILyricsHost host, int emphasis)
+        => Lyrics.MiniRows.Opacity(host, emphasis, 1f) is var flat && !float.IsNaN(flat)
             ? flat
-            : ZuneListRules.LyricRowOpacity(podcast, ownsPlayback, emphasis, R.IsLight);
+            : ZuneListRules.LyricRowOpacity(emphasis, R.IsLight);
 
     void RetargetOpacity()
     {
-        bool podcast = _host.IsPodcast;
-        bool ownsPlayback = !podcast || _host.ObservedPlaybackOwner;
-        float to = RowOpacity(_host, podcast, ownsPlayback, _emphasis.Value);
+        float to = RowOpacity(_host, _emphasis.Value);
         var ctx = Context;
         if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
         anim.Spring(ctx.HostNode, AnimChannel.Opacity, to, s_opacitySpring);
@@ -308,9 +223,7 @@ internal sealed class ZuneLyricsRow : Component
         UseSignalEffect(_retargetOpacity);
         int e = _emphasis.Peek();
         bool podcast = host.IsPodcast;
-        bool ownsPlayback = !podcast || host.ObservedPlaybackOwner;
-        bool isActive = Lyrics.TranscriptPresentation.Active(podcast, ownsPlayback, e);
-        bool neutral = Lyrics.TranscriptPresentation.Neutral(podcast, ownsPlayback);
+        bool isActive = Lyrics.Emphasis.DistOf(e) == 0;
         var ink = host.Ink;
         var m = host.Metrics;
         // the stage's lines in the board's rhythm (Z-Lyrics: the display face at 300, the line a ratio of the type, a tier's gap); the rail keeps the core's
@@ -320,17 +233,16 @@ internal sealed class ZuneLyricsRow : Component
         if (rhythm is not null)
             m = m with { FontSize = laid, LineHeight = MathF.Round(laid * rhythm.LineRatio), RowPad = rhythm.RowPad, Weight = rhythm.Weight, SidePad = rhythm.ActiveScale > 1f ? 0f : m.SidePad };
         float reserve = Lyrics.RowRender.HasReserve(shape) ? Lyrics.Interlude.ReserveDip(host.Large) : 0f;
-        if (float.IsNaN(_seedOpacity)) _seedOpacity = RowOpacity(host, podcast, ownsPlayback, e);
+        if (float.IsNaN(_seedOpacity)) _seedOpacity = RowOpacity(host, e);
         float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(index) : 0f;
 
-        // The active line is the accent: the stage's own accent signal where it hands one, else the style's. A neutral surface (a reader
-        // browsing an episode that does not play) highlights nothing.
-        ColorF accent = host.Accent is { } stageAccent && isActive && !neutral ? stageAccent.Value : R.Ink.AccentAction;
-        ColorF lineInk = ZuneListRules.LyricsLineInk(isActive && !neutral, accent, neutral ? ink.Secondary : ink.Primary);
+        // The active line is the accent: the stage's own accent signal where it hands one, else the style's.
+        ColorF accent = host.Accent is { } stageAccent && isActive ? stageAccent.Value : R.Ink.AccentAction;
+        ColorF lineInk = ZuneListRules.LyricsLineInk(isActive, accent, ink.Primary);
         // THE LINE STILL SUNG: the emphasis hands off on the LEAD-shifted clock (Lyrics.LeadMs before the next line starts), so the line the singer is still on
         // lost its accent early while the next one waited for its first word: for a moment no line was lit (owner video 2026-10-25). The line just left
         // keeps the accent on TRUE time, until the next line starts, then rests; a bound ink over the lyrics clock, so the flip costs no render.
-        bool justLeft = !neutral && !isActive && (e & Lyrics.Emphasis.PastBit) != 0 && Lyrics.Emphasis.DistOf(e) == 1 && _nextStart != long.MaxValue;
+        bool justLeft = !isActive && (e & Lyrics.Emphasis.PastBit) != 0 && Lyrics.Emphasis.DistOf(e) == 1 && _nextStart != long.MaxValue;
         Prop<ColorF> boundInk = justLeft ? Prop.Of(_justLeftInk) : lineInk;
         var weight = rhythm is null ? R.Type.LyricsLine("").ResolvedWeight : rhythm.Weight;
 
@@ -338,7 +250,7 @@ internal sealed class ZuneLyricsRow : Component
         // core's glyph wipe (the frame driver finds it on this node and drives the split from the lyrics clock). No halo and no per-word rise: Zune is flat. A line
         // that is not the sung one carries no wipe (its opacity rung is its whole look); a line-synced one is filled whole.
         GlyphWipe? wipe = null;
-        if (isActive && !neutral && Lyrics.TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line))
+        if (isActive && line.IsWordByWord && line.Syllables.Count > 0)
         {
             float split = Lyrics.Wipe.SplitOf(host, index, line, (long)host.Now.Peek(), lead: !podcast);
             wipe = new GlyphWipe(Before: accent, After: ink.Primary with { A = Lyrics.Wipe.UnsungAlpha }, Split: split, Softness: host.SoftnessOfLine(index), Lift: 0f);
@@ -369,8 +281,8 @@ internal sealed class ZuneLyricsRow : Component
               }];
 
         // a row that is not sung rests at the core's size: its scale springs 1 / ActiveScale <-> 1 from the left edge, the layout never moves (the row has no side padding while it scales, so its left edge is the text's)
-        float rest = rhythm is null || rhythm.ActiveScale <= 1f || isActive || neutral ? 1f : 1f / rhythm.ActiveScale;
-        var scaleKey = DepKey.From((isActive ? 2 : 0) | (neutral ? 16 : 0));
+        float rest = rhythm is null || rhythm.ActiveScale <= 1f || isActive ? 1f : 1f / rhythm.ActiveScale;
+        var scaleKey = DepKey.From(isActive ? 2 : 0);
         UseSpring(AnimChannel.ScaleX, rest, s_scaleSpring, scaleKey);
         UseSpring(AnimChannel.ScaleY, rest, s_scaleSpring, scaleKey);
 

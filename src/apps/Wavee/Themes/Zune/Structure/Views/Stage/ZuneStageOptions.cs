@@ -5,7 +5,8 @@
 // lowercase, no underline):
 //   visualizer   now showing (poster) · the group chips (square, the accent fill on the picked one) · the poster grid · "open gallery" (G)
 //   layout       four layout rows (square, a schematic, the accent border and a check on the picked one) · the spectrum under the cover
-//                (Large art, Centered) · the artist photo's options (lyrics over the photo, slow pan and zoom, dimming)
+//                (Large art, Centered) · the artist photo's options (lyrics over the photo, slow pan and zoom, dimming) · background blur (the
+//                lyrics' depth blur, 0 = off: the same dial as Settings › lyrics, written through `IStageSettingsVerbs.SetLyricsBlur`)
 // The behaviour is the stage's: the core opener mounts this view in the overlay layer and re-provides the stage context; every control
 // takes the context's signals (or a mirrored cell) and writes through `IStageSettingsVerbs`; the tabs are tabs (one stop, left / right),
 // the chips and the layout rows RadioButtons groups, the grid one focusable box whose arrows move a cursor. The popover's own state lives in
@@ -36,18 +37,33 @@ internal static class ZuneStageOptions
         ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%",
     };
 
+    static readonly Slider.SliderOptions s_blurOptions = new()
+    {
+        Min = G.BlurMin, Max = G.BlurMax, Step = G.BlurStep, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
+
+    static readonly string?[] s_blurNumbers = new string?[(int)G.BlurMax + 1];
+
+    /// <summary>The blur's value in words: "off" at 0, else the number (each number built once: a drag allocates nothing).</summary>
+    static string BlurWords(float v)
+    {
+        int n = Math.Clamp((int)MathF.Round(v), 0, (int)G.BlurMax);
+        return n == 0 ? Loc.Get(Strings.Stage.Options.BlurOff) : s_blurNumbers[n] ??= n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     /// <summary>The popover's state: hook cells of the slot.</summary>
-    sealed class Cells(Signal<int> spectrum, Signal<int> cursor, Signal<int> tab, Signal<int> group, Signal<int> layoutSel, FloatSignal dim)
+    sealed class Cells(Signal<int> spectrum, Signal<int> cursor, Signal<int> tab, Signal<int> group, Signal<int> layoutSel, FloatSignal dim, FloatSignal blur)
     {
         public readonly Signal<int> Spectrum = spectrum, Cursor = cursor, Tab = tab, Group = group, LayoutSel = layoutSel;
-        public readonly FloatSignal Dim = dim;
+        public readonly FloatSignal Dim = dim, Blur = blur;
     }
 
     /// <summary>The registered template of <see cref="ViewKeys.StageOptions"/>.</summary>
     public static Element Template(StageOptionsProps props, in ViewContext ctx)
     {
         var h = ctx.Hooks;
-        var cells = new Cells(h.UseSignal(0), h.UseSignal(-1), h.UseSignal(0), h.UseSignal(0), h.UseSignal(0), h.UseFloatSignal(Stage.HeroRules.DefaultDim));
+        var cells = new Cells(h.UseSignal(0), h.UseSignal(-1), h.UseSignal(0), h.UseSignal(0), h.UseSignal(0), h.UseFloatSignal(Stage.HeroRules.DefaultDim), h.UseFloatSignal(0f));
         var st = props.Stage;
         var verbs = props.Verbs;
         var L = st.Layout.Value;
@@ -56,6 +72,7 @@ internal static class ZuneStageOptions
         h.UseSignalEffect(() => cells.Spectrum.SetIfChanged((int)st.SpectrumPref.Value));
         h.UseSignalEffect(() => cells.LayoutSel.SetIfChanged((int)st.LayoutPref.Value));
         h.UseSignalEffect(() => cells.Dim.SetIfChanged(st.HeroDim.Value));
+        h.UseSignalEffect(() => cells.Blur.SetIfChanged(Lyrics.Prefs.BlurStrength(onStage: false)));
 
         float width = MathF.Min(G.OptionsMaxW, L.W - G.OptionsEdgeInset);
         float height = MathF.Min(G.OptionsMaxH, L.H - G.OptionsEdgeInset);
@@ -325,6 +342,25 @@ internal static class ZuneStageOptions
                     new TextEl(Loc.Get(Strings.Stage.Options.HeroNote)) { Size = G.CaptionSize, LineHeight = G.NoteLine, Color = Ink.InkSecondary, Wrap = TextWrap.Wrap },
                 ],
             });
+        // background blur: the lyrics' depth blur (0 = off), the same dial as Settings › lyrics, in the section voice over the dimming slider's grammar.
+        kids.Add(new BoxEl
+        {
+            Key = "zune-stage-options-blur", Direction = 1, Gap = G.SectionGap, Padding = G.SectionPadding, Shrink = 0f,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        new TextEl(Loc.Get(Strings.Stage.Options.BackgroundBlur)) { Size = G.BodySize, LineHeight = G.BodyLine, Color = Ink.InkSecondary, Case = R.Case.For(LabelKind.Heading) },
+                        new TextEl(Prop.Of(() => BlurWords(cells.Blur.Value))) { Size = G.CaptionSize, LineHeight = G.CaptionLine, Color = Ink.InkSecondary, Case = R.Case.For(LabelKind.Label) },
+                    ],
+                },
+                Slider.Create(cells.Blur, v => verbs.SetLyricsBlur((int)MathF.Round(v / G.BlurStep) * (int)G.BlurStep), s_blurOptions,
+                    length: width - G.HeroSliderInset, thickness: G.HeroSliderThickness, style: sliderStyle),
+            ],
+        });
         return new ScrollEl
         {
             Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "stageoptionslayout",

@@ -113,6 +113,8 @@
     "listeningHistory": "Luistergeschiedenis",
     "plays": "{n} keer beluisterd",
     "save": "Bewaren",
+    "previewSoundOn": "Previewgeluid aanzetten",
+    "previewSoundOff": "Previewgeluid uitzetten",
     "more": "Meer",
     "couldntLoad": "Kon {what} niet laden",
     "couldntLoadHome": "Kon Start niet laden",
@@ -133,6 +135,15 @@
       "onItsWay": "{daypart} komt eraan",
       "late": "Je volgende daylist laat op zich wachten",
       "checkAgain": "Opnieuw controleren"
+    },
+    "spotlight": {
+      "newSingle": "Nieuwe single van {artist}",
+      "newEp": "Nieuwe EP van {artist}",
+      "newAlbum": "Nieuw album van {artist}",
+      "newRelease": "Nieuwe release van {artist}",
+      "upcoming": "Binnenkort van {artist}",
+      "moreReleases": "Meer nieuwe releases",
+      "showRelease": "{title} tonen"
     },
     "zone": {
       "becauseYouLike": "Omdat je dit leuk vindt",
@@ -202,49 +213,24 @@
     }
   },
   "podcast": {
+    "pages": { "chapterN": "Hoofdstuk {number}" },
     "episodes": "Afleveringen",
     "show": "Podcast",
     "inProgress": "Bezig",
     "episodeCount": "{count, plural, one {# aflevering} other {# afleveringen}}",
     "listenNext": "Hierna luisteren",
     "continueListening": "VERDER LUISTEREN",
-    "resume": "Hervatten",
     "noEpisodes": "Geen afleveringen voor dit filter",
-    "loadMore": "Meer afleveringen laden",
-    "loadingMore": "Laden…",
     "filter": {
       "all": "Alle",
       "unplayed": "Niet beluisterd",
       "inProgress": "Bezig",
       "played": "Beluisterd"
     },
-    "sort": {
-      "newest": "Nieuwste",
-      "oldest": "Oudste"
-    },
     "minutes": "{n} min",
-    "empty": "Deze podcast heeft nog geen afleveringen",
-    "startHere": "Begin hier",
-    "beginHere": "Begin hier",
-    "whereItBegan": "Waar het begon",
-    "latest": "nieuwste",
-    "trailer": "trailer",
-    "serialHint": "Een serie — het best op volgorde te beluisteren",
-    "episodicHint": "Losse afleveringen — begin waar je wilt",
-    "about": "Over",
-    "continue": "Verder luisteren",
-    "upNextFromProgress": "Hierna, op basis van je voortgang",
     "startFromBeginning": "begin bij het begin",
-    "newSince": "Nieuw sinds je laatste bezoek",
-    "markAllPlayed": "alles als beluisterd markeren",
-    "caughtUp": "Je bent helemaal bij",
-    "caughtUpNext": "Nieuwe afleveringen verschijnen meestal {day, select, monday {op maandag} tuesday {op dinsdag} wednesday {op woensdag} thursday {op donderdag} friday {op vrijdag} saturday {op zaterdag} sunday {op zondag} other {op een vaste dag}}.",
-    "episodesCount": "Afleveringen {count}",
-    "countOf": "{shown} van {total}",
     "left": "nog {time}",
-    "leftOf": "nog {left} van {total}",
     "played": "beluisterd",
-    "new": "nieuw",
     "ledger": "{played} beluisterd · {progress} bezig · nog {togo} te gaan",
     "ledgerNew": "{count} nieuw",
     "cadence": {
@@ -253,20 +239,18 @@
       "fortnightly": "om de twee weken",
       "monthly": "maandelijks"
     },
-    "since": "sinds {when}",
     "ratings": "{count, plural, one {# beoordeling} other {# beoordelingen}}",
     "yours": "jouw score {stars}★",
     "rate": {
       "title": "{name} beoordelen",
-      "unavailable": "Beoordelen kan nog niet in Wavee — het gemiddelde en je eigen score worden getoond zoals Spotify ze heeft.",
+      "closed": "Spotify neemt voor dit account geen beoordelingen aan.",
+      "demo": "In de demo worden beoordelingen niet opgeslagen. Log in om te beoordelen.",
+      "saving": "Je beoordeling wordt opgeslagen…",
       "stars": "{count, plural, one {# ster} other {# sterren}}"
     },
     "notify": {
       "unavailable": "Meldingen over nieuwe afleveringen zijn nog niet beschikbaar in Wavee."
     },
-    "find": "Zoeken in deze podcast",
-    "nothingMatches": "Niets gevonden",
-    "nothingMatchesHint": "Probeer een ander woord, of zet het filter terug op alle.",
     "moreLikeThis": "meer zoals dit",
     "alsoFollow": "luisteraars van {name} volgen ook",
     "tabs": {
@@ -305,20 +289,17 @@
       "bonus": "bonus",
       "trailer": "trailer",
       "subscribers": "abonnees",
-      "previewAvailable": "alleen voor abonnees · voorproefje beschikbaar",
-      "episode": "aflevering {n}"
+      "previewAvailable": "alleen voor abonnees · voorproefje beschikbaar"
     },
     "menu": {
       "markPlayed": "Markeren als beluisterd",
       "markUnplayed": "Markeren als niet beluisterd",
       "goToShow": "Naar podcast"
     },
-    "progressUnavailable": "Je luistervoortgang is nu niet beschikbaar",
     "reader": {
       "jumpDate": "Naar datum",
       "undated": "Zonder datum",
       "audiobook": "Luisterboek",
-      "chaptersCount": "{count, plural, one {# hoofdstuk} other {# hoofdstukken}}",
       "findBook": "Zoeken in dit boek",
       "chapterOrder": "Hoofdstukvolgorde",
       "reverseChapterOrder": "Omgekeerde hoofdstukvolgorde",
@@ -326,7 +307,6 @@
       "chapters": "Hoofdstukken",
       "transcript": "Transcript",
       "comments": "Reacties",
-      "related": "Vergelijkbare podcasts",
       "showAll": "Alles tonen",
       "showLess": "Minder tonen",
       "retry": "Opnieuw proberen",
@@ -465,7 +445,6 @@
       "subtitle": "Hoe nummerlijsten en detailpagina's worden ingedeeld"
     },
     "lyrics": {
-      "title": "Songtekst",
       "subtitle": "Het leesoppervlak voor gesynchroniseerde songteksten",
       "ai": {
         "lang": {
@@ -490,7 +469,6 @@
       }
     },
     "nowPlaying": {
-      "title": "Nu speelt",
       "subtitle": "De spelerstijlen achter de vastgezette hoes"
     },
     "themePicker": {
@@ -503,7 +481,6 @@
     "themeOptions": {
       "title": "Opties voor {theme}",
       "none": "Dit thema heeft geen opties",
-      "displayTitle": "Weergave",
       "animationEffects": "Animatie-effecten",
       "animationEffectsSub": "Volgt de animatie-instelling van Windows",
       "reset": "Opties herstellen",
@@ -527,22 +504,10 @@
         "surfaces": "Vlakken"
       }
     },
-    "home": {
-      "title": "Start",
-      "subtitle": "Hoe Start je daylist laat zien"
-    },
     "links": {
       "subtitle": "Wat Wavee opent vanuit andere apps"
     },
-    "tabs": {
-      "general": "Algemeen",
-      "playback": "Afspelen",
-      "storage": "Opslag en cache",
-      "privacy": "Privacy en diagnostiek",
-      "about": "Over"
-    },
     "language": {
-      "title": "Taal en regio",
       "subtitle": "De taal van de interface van Wavee zelf",
       "label": "App-taal",
       "restartSub": "Wijzigingen worden toegepast wanneer Wavee opnieuw wordt gestart.",
@@ -846,6 +811,7 @@
     "play": "Afspelen"
   },
   "menu": {
+    "openInNewTab": "Openen in nieuw tabblad",
     "artistUnavailable": "De artiest van dit album is niet gevonden",
     "moveManyToFolder": "{count} verplaatsen naar map…",
     "moveUp": "Omhoog verplaatsen",
@@ -876,7 +842,6 @@
     "unplayableToast": "De gekoppelde video kan niet worden afgespeeld — het origineel wordt afgespeeld.",
     "dropHint": "Zet een .mp4 neer om die aan dit nummer te koppelen",
     "customLabel": "BEKIJK DE EIGEN VIDEO",
-    "settingsTitle": "Video-overschrijvingen",
     "settingsHeader": "Gekoppelde video’s",
     "settingsSub": "Geldt op deze computer, voor elk account. Bestanden worden gekoppeld, niet gekopieerd — een koppeling verwijderen wist het bestand nooit.",
     "settingsCount": "{count, plural, one {# koppeling} other {# koppelingen}}",
@@ -1137,7 +1102,6 @@
       "breath": "Rust"
     },
     "settings": {
-      "title": "Volledig scherm",
       "subtitle": "De weergave Nu speelt op volledig scherm en de visualisaties",
       "visualizer": "Visualisatie",
       "visualizerSub": "Met welke visualisatie de volledig-schermweergave opent",

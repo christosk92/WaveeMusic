@@ -1,13 +1,13 @@
-// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Storage.cs — the Storage tab (themes plan 6.1, T11b) ──────────────────────────────────
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Storage.cs — Storage's cards (settings rework 7.1) ──────────────────────────────────────
 //
-// From `Screens\Settings.UI.Storage.cs`. The census block (spinner / usage card / failed bar), the nine fixed hues on the bar, the legend and the row accents, the
-// playback-cache rows (the three-mode budget editor, the cache location), the metadata cache, reset. The census itself (the phase, the snapshot, the cache status,
-// the key count, the metadata stats; the first visit to the tab starts it; a clear re-runs it) is the core's (`Settings.Host.cs`) and arrives as
-// `SettingsPageProps.Storage`; the clears, the budget writes, the folder doors and the factory reset are the rows' writers.
+// From `Screens\Settings.UI.Storage.cs`. The census under On this PC's header (spinner / usage card / failed bar), the nine fixed hues on the bar, the legend and
+// the category rows' accents, the playback cache's rows (the three-mode budget editor, the cache location, the cached bodies and keys with their clears), the
+// metadata cache, the factory reset. The census itself (the phase, the snapshot, the cache status, the key count, the metadata stats; the first visit to Storage
+// starts it; a clear re-runs it) is the core's (`Settings.Host.cs`) and arrives as `SettingsPageProps.Storage`; the clears, the budget writes, the folder doors
+// and the factory reset are the dials' writers. A clear that is its own child dial is keyed as its row (`Framed`).
 //
 // RESIDENT CACHE (ch 27 G2, decided): 0.3 has no resident-playlist cache and no per-table census, so the "In memory" section and its "Resident library cache" row
-// are DELETED. `Settings.Catalog` still lists Storage › Memory › residentCache; the section and the row leave the catalog together (the every-section-has-a-row
-// invariant).
+// are DELETED, with their strings.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -17,7 +17,6 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Sdk.Streams;
 using Wavee.Theming.Contracts;
-using Tab = Wavee.Settings.Tab;
 
 namespace Wavee.Themes.Classic;
 
@@ -56,111 +55,101 @@ internal static partial class ClassicSettings
         Formatter = static v => v.ToString("0.###", CultureInfo.InvariantCulture) + " GB",
     };
 
-    /// <summary>The page mount: the budget editors' signals from the document's values. (The census phase is the core's: a fresh mount censuses again on
+    /// <summary>The page mount: the budget editors' signals from their dials' values. (The census phase is the core's: a fresh mount censuses again on
     /// its first Storage visit.)</summary>
     static void SeedStorage()
     {
-        if (D(Tab.Storage, "budget").Current is int mode) s_budgetMode.Value = mode;
+        if (Dial("storage.cache.budget").Current is int mode) s_budgetMode.Value = mode;
         long fixedBytes = SettingsFacts.AudioBudgetBytes();
         s_budgetGiB.Value = fixedBytes / (double)(1L << 30);
-        if (D(Tab.Storage, "budgetPreset").Current is int preset) s_budgetPreset.Value = preset;
-        if (D(Tab.Storage, "budgetPercent").Current is int percent) s_budgetPercent.Value = percent;
-        if (D(Tab.Storage, "metadataBudget").Current is int meta) s_metaBudget.Value = meta;
+        if (Dial("storage.cache.budget.preset").Current is int preset) s_budgetPreset.Value = preset;
+        if (Dial("storage.cache.budget.percent").Current is int percent) s_budgetPercent.Value = percent;
+        if (Dial("storage.metadata.budget").Current is int meta) s_metaBudget.Value = meta;
     }
 
-    // ══ 2. THE TAB (W15 loading · W16 ready · W18 failed) ══════════════════════════════════════════════════════════
+    // ══ 2. THE CENSUS AND THE ROWS (W15 loading · W16 ready · W18 failed) ═════════════════════════════════════════
 
-    private static Element[] StorageTab(SettingsStorageProps storage)
+    /// <summary>On this PC's census under its header: the spinner while it reads, the usage card when it lands, the failed bar with Retry.</summary>
+    static Element StorageCensus(SettingsStorageProps storage)
     {
-        var phase = storage.Phase;
         var s = storage.Snapshot;
-        string audioDir = storage.AudioDirectory;
-
-        Element census = phase == Settings.StorageLoadPhase.Failed
-            ? InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Settings.Storage.ReadFailed),
+        if (storage.Phase == Settings.StorageLoadPhase.Failed)
+            return InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Settings.Storage.ReadFailed),
                 storage.Error ?? Loc.Get(Strings.Common.ErrorTitle), isClosable: false,
-                actionButton: StdButton(Loc.Get(Strings.Common.Retry), static () => Settings.RefreshStorage()))
-            : s is null
-                ? new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(0f, Spacing.L, 0f, Spacing.L),
-                    Children =
-                    [
-                        ProgressRing.Indeterminate(size: ClassicSettingsRules.SpinnerSize),
-                        new TextEl(Loc.Get(Strings.Settings.Storage.Reading)) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary },
-                    ],
-                }
-                : StorageUsageCard(s);
-
-        string logsSub = s is null ? Loc.Get(Strings.Settings.Storage.LogsSubEmpty)
-            : s.LogFiles == 1 ? Loc.Get(Strings.Settings.Storage.LogsSubOne) : Strings.Settings.Storage.LogsSub(s.LogFiles);
-        string keysSub = storage.KeyCount is not { } keys ? Loc.Get(Strings.Settings.Storage.LicenseKeysSub)
-            : keys == 1 ? Loc.Get(Strings.Settings.Storage.LicenseKeysCountOne) : Strings.Settings.Storage.LicenseKeysCount(keys);
-        string aiSub = s is null ? Loc.Get(Strings.Settings.Storage.AiModelsSub)
-            : s.AiModels <= 0 ? Loc.Get(Strings.Settings.Storage.AiModelsNone)
-            : s.AiLanguages == 1 ? Loc.Get(Strings.Settings.Storage.AiModelsCountOne)
-            : s.AiLanguages > 1 ? Strings.Settings.Storage.AiModelsCount(s.AiLanguages) : Loc.Get(Strings.Settings.Storage.AiModelsSub);
-        var facts = SettingsFacts.Live;
-
-        return
-        [
-            Mark("On this PC"),
-            SectionHeader(Loc.Get(Strings.Settings.Storage.OnThisPc), SectionGlyph(Tab.Storage, "On this PC")),
-            census,
-            StorageRow(0, "library", Loc.Get(Strings.Settings.Storage.LibrarySub), s?.LibraryDb),
-            StorageRow(1, "runtime", Loc.Get(Strings.Settings.Storage.RuntimeSub), s?.Runtime),
-            StorageRow(2, "logs", logsSub, s?.Logs, StorageClearButton(D(Tab.Storage, "logsClear"), facts)),
-            StorageRow(3, "localStore", Loc.Get(Strings.Settings.Storage.LocalStoreSub), s?.Store),
-            StorageRow(6, "imageCache", Loc.Get(Strings.Settings.Storage.ImageCacheSub), s?.ImageCache),
-            StorageRow(7, "aiModels", aiSub, s?.AiModels, StorageClearButton(D(Tab.Storage, "aiModelsRemove"), facts)),
-            StorageRow(8, "otherData", Loc.Get(Strings.Settings.Storage.OtherDataSub), s?.Other),
-
-            Mark("Playback cache"),
-            SectionHeader(Loc.Get(Strings.Settings.Storage.PlaybackCache), SectionGlyph(Tab.Storage, "Playback cache")),
-            DocRow(D(Tab.Storage, "cacheAudio"), RowToggle(D(Tab.Storage, "cacheAudio"))),
-            DocRow(D(Tab.Storage, "cacheKeys"), RowToggle(D(Tab.Storage, "cacheKeys"))),
-            DocRow(D(Tab.Storage, "budget"), BodyBudgetControl(s, storage.Audio)),
-            // The PATH is the sub (W16). The row itself stays enabled; only the two relocation buttons need the cache.
-            Row(Loc.Get(Strings.Settings.Storage.CacheLocation), audioDir, new BoxEl
+                actionButton: StdButton(Loc.Get(Strings.Common.Retry), static () => Settings.RefreshStorage()));
+        if (s is null)
+            return new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Wrap = true,
+                Key = "storage:census", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(0f, Spacing.L, 0f, Spacing.L),
                 Children =
                 [
-                    StdButton(Loc.Get(Strings.Settings.Storage.ChooseLocation),
-                        static () => D(Tab.Storage, "cacheLocation").Writer.Run!(), isEnabled: D(Tab.Storage, "cacheLocation").Enabled(facts).Enabled),
-                    StdButton(Loc.Get(Strings.Settings.Storage.UseDefaultLocation),
-                        static () => D(Tab.Storage, "cacheLocationDefault").Writer.Run!(), isEnabled: D(Tab.Storage, "cacheLocationDefault").Enabled(facts).Enabled),
-                    LinkButton(Loc.Get(Strings.Settings.Storage.OpenFolder), static () => SettingsVerbs.OpenStorageFolder("cacheLocation")),
+                    ProgressRing.Indeterminate(size: ClassicSettingsRules.SpinnerSize),
+                    new TextEl(Loc.Get(Strings.Settings.Storage.Reading)) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary },
                 ],
-            }, RowGlyph(Tab.Storage, "cacheLocation")),
-            StorageRow(4, "audioBodies", Loc.Get(Strings.Settings.Storage.AudioBodiesSub), s?.AudioBody,
-                StorageClearButton(D(Tab.Storage, "audioBodiesClear"), facts)),
-            StorageRow(5, "licenseKeys", keysSub, s?.LicenseDb, StorageClearButton(D(Tab.Storage, "licenseKeysClear"), facts)),
+            };
+        return StorageUsageCard(s);
+    }
 
-            Mark("Metadata cache"),
-            SectionHeader(Loc.Get(Strings.Settings.Storage.MetadataCache), SectionGlyph(Tab.Storage, "Metadata cache")),
-            DocRow(D(Tab.Storage, "metadataBudget"),
+    /// <summary>A Storage dial's card (the category rows with their sizes and doors, the budget editor, the cache location, the metadata cache, the factory
+    /// reset); false for a Storage dial the generic grammar draws (the two cache switches).</summary>
+    static bool TryStorageCard(SettingsBodyRow row, SettingsStorageProps storage, out Element? card)
+    {
+        var s = storage.Snapshot;
+        var facts = SettingsFacts.Live;
+        card = row.Id switch
+        {
+            "storage.library" => StorageRow(row, 0, Loc.Get(Strings.Settings.Storage.LibrarySub), s?.LibraryDb),
+            "storage.runtime" => StorageRow(row, 1, Loc.Get(Strings.Settings.Storage.RuntimeSub), s?.Runtime),
+            "storage.logs" => StorageRow(row, 2, s is null ? Loc.Get(Strings.Settings.Storage.LogsSubEmpty)
+                : s.LogFiles == 1 ? Loc.Get(Strings.Settings.Storage.LogsSubOne) : Strings.Settings.Storage.LogsSub(s.LogFiles), s?.Logs),
+            "storage.localStore" => StorageRow(row, 3, Loc.Get(Strings.Settings.Storage.LocalStoreSub), s?.Store),
+            "storage.imageCache" => StorageRow(row, 6, Loc.Get(Strings.Settings.Storage.ImageCacheSub), s?.ImageCache),
+            "storage.aiModels" => StorageRow(row, 7, s is null ? Loc.Get(Strings.Settings.Storage.AiModelsSub)
+                : s.AiModels <= 0 ? Loc.Get(Strings.Settings.Storage.AiModelsNone)
+                : s.AiLanguages == 1 ? Loc.Get(Strings.Settings.Storage.AiModelsCountOne)
+                : s.AiLanguages > 1 ? Strings.Settings.Storage.AiModelsCount(s.AiLanguages) : Loc.Get(Strings.Settings.Storage.AiModelsSub), s?.AiModels),
+            "storage.otherData" => StorageRow(row, 8, Loc.Get(Strings.Settings.Storage.OtherDataSub), s?.Other),
+            "storage.cache.audioBodies" => StorageRow(row, 4, Loc.Get(Strings.Settings.Storage.AudioBodiesSub), s?.AudioBody),
+            "storage.cache.licenseKeys" => StorageRow(row, 5, storage.KeyCount is not { } keys ? Loc.Get(Strings.Settings.Storage.LicenseKeysSub)
+                : keys == 1 ? Loc.Get(Strings.Settings.Storage.LicenseKeysCountOne) : Strings.Settings.Storage.LicenseKeysCount(keys), s?.LicenseDb),
+            "storage.cache.budget" => CardRow(row, BodyBudgetControl(s, storage.Audio)),
+            "storage.cache.location" => CacheLocationRow(row, storage.AudioDirectory, facts),
+            "storage.metadata.budget" => CardRow(row,
                 Combo(Settings.StorageFormat.MetaBudgetLabels, s_metaBudget, width: ClassicSettingsRules.BudgetComboWidth, onChange: SetMetaBudget)),
-            Row(Loc.Get(Strings.Settings.Storage.MetadataCache), MetadataSub(storage.Meta),
-                StorageClearButton(D(Tab.Storage, "clearMetadata"), facts),
-                RowGlyph(Tab.Storage, "clearMetadata")),
+            "storage.metadata.clear" => CardRow(row, StorageClearButton(row.Dial, facts), sub: MetadataSub(storage.Meta)),
+            "storage.factoryReset" => CardRow(row, StdButton(Loc.Get(Strings.Settings.Storage.FactoryResetAction), static () =>
+            {
+                var reset = Dial("storage.factoryReset");
+                ConfirmThen(Loc.Get(reset.Confirm!.TitleKey), Loc.Get(reset.Confirm.BodyKey), Loc.Get(reset.Confirm.PrimaryKey),
+                    () => reset.Writer.Run!());
+            })),
+            _ => null,
+        };
+        return card is not null;
+    }
 
-            Mark("Reset"),
-            SectionHeader(Loc.Get(Strings.Settings.Storage.FactoryReset), SectionGlyph(Tab.Storage, "Reset"),
-                Loc.Get(Strings.Settings.Storage.FactoryResetSub)),
-            DocRow(D(Tab.Storage, "factoryReset"),
-                StdButton(Loc.Get(Strings.Settings.Storage.FactoryResetAction), static () =>
-                {
-                    var reset = D(Tab.Storage, "factoryReset");
-                    ConfirmThen(Loc.Get(reset.Confirm!.TitleKey), Loc.Get(reset.Confirm.BodyKey), Loc.Get(reset.Confirm.PrimaryKey),
-                        () => reset.Writer.Run!());
-                })),
-        ];
+    /// <summary>The cache location: the PATH is the description (W16). The row stays enabled; only the two relocation buttons need the cache (the default
+    /// is its own child dial, keyed as its row).</summary>
+    static Element CacheLocationRow(SettingsBodyRow row, string audioDir, ISettingsFacts facts)
+    {
+        Element useDefault = StdButton(Loc.Get(Strings.Settings.Storage.UseDefaultLocation),
+            static () => Dial("storage.cache.location.default").Writer.Run!(), isEnabled: Dial("storage.cache.location.default").Enabled(facts).Enabled);
+        return CardRow(row, new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Wrap = true,
+            Children =
+            [
+                StdButton(Loc.Get(Strings.Settings.Storage.ChooseLocation),
+                    static () => Dial("storage.cache.location").Writer.Run!(), isEnabled: row.Enabled),
+                ChildRow(row, "storage.cache.location.default") is { } defaultRow ? Framed(defaultRow, useDefault) : useDefault,
+                LinkButton(Loc.Get(Strings.Settings.Storage.OpenFolder), static () => SettingsVerbs.OpenStorageFolder("cacheLocation")),
+            ],
+        }, sub: audioDir);
     }
 
     /// <summary>N11: the verb opens the ONE confirm (Cancel default, the row's <see cref="SettingsConfirm"/>); the confirmed
     /// action — the row's writer — runs off-thread and toasts.</summary>
-    static Element StorageClearButton(SettingsRow row, ISettingsFacts facts)
+    static Element StorageClearButton(SettingsDial row, ISettingsFacts facts)
     {
         var confirm = row.Confirm!;
         return StdButton(Loc.Get(confirm.TitleKey),
@@ -169,15 +158,18 @@ internal static partial class ClassicSettings
     }
 
     /// <summary>A category row: the 3-DIP hue accent + the card, whose action lane carries the size (13 DIP secondary,
-    /// simply ABSENT until the census lands — never "—", never "0 B"), "Open folder", and an optional verb. The card sits
+    /// simply ABSENT until the census lands — never "—", never "0 B"), "Open folder", and its clear (its child dial, keyed as its row). The card sits
     /// in a COLUMN so a wrapping description grows the card and the accent with it (#132).</summary>
-    static Element StorageRow(int hue, string rowId, string sub, long? size, Element? extra = null)
+    static Element StorageRow(SettingsBodyRow row, int hue, string sub, long? size)
     {
         var actions = new List<Element>(3);
         if (size is { } bytes) actions.Add(R.Type.DenseMeta(Settings.StorageFormat.Bytes(bytes)) with { Color = Tok.TextSecondary, Shrink = 0f });
         // "Open folder" is the category row's writer (the folder door).
-        actions.Add(LinkButton(Loc.Get(Strings.Settings.Storage.OpenFolder), () => D(Tab.Storage, rowId).Writer.Run!()));
-        if (extra is not null) actions.Add(extra.Value);
+        SettingsDial door = row.Dial;
+        actions.Add(LinkButton(Loc.Get(Strings.Settings.Storage.OpenFolder), () => door.Writer.Run!()));
+        var facts = SettingsFacts.Live;
+        foreach (SettingsBodyRow child in row.Children)
+            if (child.Dial.Confirm is not null) actions.Add(Framed(child, StorageClearButton(child.Dial, facts)));
         return new BoxEl
         {
             Direction = 0, AlignSelf = FlexAlign.Stretch,
@@ -191,7 +183,7 @@ internal static partial class ClassicSettings
                     [
                         Row(Loc.Get(s_storagePartKeys[hue]), sub,
                             new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Children = actions.ToArray() },
-                            RowGlyph(Tab.Storage, rowId)),
+                            GlyphOf(row.Dial)),
                     ],
                 },
             ],
@@ -266,26 +258,33 @@ internal static partial class ClassicSettings
                 Key = "budget:fixed", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Wrap = true,
                 Children =
                 [
-                    Combo(Settings.StorageFormat.BodyBudgetLabels, s_budgetPreset, width: ClassicSettingsRules.BudgetComboWidth, onChange: static i =>
+                    FrameOf("storage.cache.budget.preset", Combo(Settings.StorageFormat.BodyBudgetLabels, s_budgetPreset, width: ClassicSettingsRules.BudgetComboWidth, onChange: static i =>
                     {
                         if ((uint)i >= (uint)Settings.StorageFormat.BodyBudgetBytes.Length) return;
                         s_budgetGiB.Value = Settings.StorageFormat.BodyBudgetBytes[i] / (double)(1L << 30);
-                        if (D(Tab.Storage, "budgetPreset").Writer.Choose!(i)) Settings.Bump();
-                    }),
-                    NumberField(s_budgetGiB, static v =>
+                        if (Dial("storage.cache.budget.preset").Writer.Choose!(i)) Settings.Bump();
+                    })),
+                    FrameOf("storage.cache.budget.size", NumberField(s_budgetGiB, static v =>
                     {
                         if (!double.IsFinite(v)) return;
                         long bytes = Settings.StorageFormat.GiBToBytes(v);
                         s_budgetPreset.Value = Settings.StorageFormat.BodyBudgetExactIndex(bytes);   // a typed value snaps to Custom
                         CommitBudgetBytes(bytes);
-                    }, s_gibBox, "budget:gib"),
+                    }, s_gibBox, "budget:gib")),
                 ],
             },
-            (int)AudioCacheBudgetMode.DriveShare => NumberField(s_budgetPercent, static v =>
+            (int)AudioCacheBudgetMode.DriveShare => new BoxEl
             {
-                s_budgetPercent.Value = SettingsVerbs.ClampBudgetPercent(v);
-                if (SettingsVerbs.SetBudgetPercent(v)) Settings.Bump();
-            }, s_percentBox, "budget:share"),
+                Key = "budget:share", Direction = 0, AlignItems = FlexAlign.Center,
+                Children =
+                [
+                    FrameOf("storage.cache.budget.percent", NumberField(s_budgetPercent, static v =>
+                    {
+                        s_budgetPercent.Value = SettingsVerbs.ClampBudgetPercent(v);
+                        if (SettingsVerbs.SetBudgetPercent(v)) Settings.Bump();
+                    }, s_percentBox, "budget:share")),
+                ],
+            },
             _ => new TextEl(Loc.Get(Strings.Settings.Storage.UnlimitedReserve)) { Key = "budget:unlimited", Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary },
         };
 
@@ -299,7 +298,7 @@ internal static partial class ClassicSettings
                     [Loc.Get(Strings.Settings.Storage.FixedSize), Loc.Get(Strings.Settings.Storage.DriveShare), Loc.Get(Strings.Settings.Storage.Unlimited)],
                     s_budgetMode, onChange: static m =>
                     {
-                        if (D(Tab.Storage, "budget").Writer.Choose!(m)) Settings.Bump();
+                        if (Dial("storage.cache.budget").Writer.Choose!(m)) Settings.Bump();
                     }),
                 editor,
                 ProgressBar.Determinate(fraction, width: ClassicSettingsRules.BudgetMeterWidth, state: over ? ProgressBarState.Error : ProgressBarState.Normal),
@@ -322,7 +321,7 @@ internal static partial class ClassicSettings
     /// <summary>The store sweep reads its budget on its next pass; the tick asks for that pass now, so a lowered ceiling trims without a restart.</summary>
     static void SetMetaBudget(int i)
     {
-        if (D(Tab.Storage, "metadataBudget").Writer.Choose!(i)) Settings.Bump();
+        if (Dial("storage.metadata.budget").Writer.Choose!(i)) Settings.Bump();
     }
 
     /// <summary>The generic sub until the census answers, then the stats sentence ("N extras", localized) plus the

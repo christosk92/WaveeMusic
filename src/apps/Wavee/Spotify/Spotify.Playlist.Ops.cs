@@ -1221,8 +1221,9 @@ public static class ListFreshness
     /// <summary>A list revalidated within this long, and not dirtied since, paints without asking.</summary>
     public const int WindowMs = 5 * 60 * 1000;
 
-    /// <summary>The most an open waits on a blocking revalidation before it paints what it has — so yesterday's copy is
-    /// never painted-then-swapped, and a slow network never holds a page blank.</summary>
+    /// <summary>The most a holding open (a page over a rolling list, <c>ListOpenPolicy.HoldsReveal</c>) waits on a blocking
+    /// revalidation before it paints what it has — so yesterday's daylist is not painted-then-swapped, and a slow network
+    /// never holds a page blank.</summary>
     public const int BlockingBudgetMs = 1500;
 
     public enum Verdict : byte
@@ -1231,8 +1232,10 @@ public static class ListFreshness
         Paint,
         /// <summary>Paint the held list now and revalidate behind it — the answer is almost certainly "unchanged".</summary>
         PaintThenRevalidate,
-        /// <summary>Revalidate FIRST, waiting at most <see cref="BlockingBudgetMs"/>; then paint (the diff's result, or
-        /// the held list if the budget ran out — the diff still lands after).</summary>
+        /// <summary>Revalidate FIRST, at the surface's urgency. A page over a rolling list waits at most
+        /// <see cref="BlockingBudgetMs"/>, then paints (the diff's result, or the held list if the budget ran out — the diff
+        /// still lands after); every other surface paints the held list now and takes the answer as an edit
+        /// (<c>ListOpenPolicy.HoldsReveal</c>).</summary>
         RevalidateThenPaint,
         /// <summary>Nothing held: the full read.</summary>
         FullRead,

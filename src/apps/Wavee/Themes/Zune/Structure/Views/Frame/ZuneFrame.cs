@@ -225,7 +225,8 @@ internal static class ZuneFrame
             return new BoxEl
             {
                 Key = ZuneFrameRules.BandSlotKey, Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
-                Animate = Design.Reduced || (tiedNow.Value && hasRow2.Value) ? null : folding ? ZuneBandRules.HeightMotionAfterFade : ZuneBandRules.HeightMotion,
+                Animate = Design.Reduced ? null : tiedNow.Value && hasRow2.Value ? ZuneBandRules.HeightFollow
+                    : folding ? ZuneBandRules.HeightMotionAfterFade : ZuneBandRules.HeightMotion,
                 // The floating panel hangs from the band's foot as it is NOW (ZT1): the slot's own height, 84 or 52 or easing between.
                 OnBoundsChanged = r => { if (bandH.Peek() != r.H) bandH.Value = r.H; },
                 Children = [p.Band],

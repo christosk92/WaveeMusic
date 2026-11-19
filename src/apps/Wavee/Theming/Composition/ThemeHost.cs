@@ -138,6 +138,10 @@ public static class ThemeHost
         Platform.Settings.Set(IdKey, themeId);
     }
 
+    /// <summary>Stores the theme a new install starts in (<see cref="ThemeCatalog.NewInstallId"/>) as its <c>theme.id</c>. Called by
+    /// the install bootstrap, before <see cref="Install"/> resolves the stored id.</summary>
+    public static void SeedNewInstall(IAppSettings settings) => settings.Set(IdKey, ThemeCatalog.NewInstallId);
+
     /// <summary>Installs the compositions and activates the stored one (<c>theme.id</c>; an unknown or unavailable id
     /// activates Classic). App.cs only. A second call replaces the installed set, which tests use; production calls once.</summary>
     public static void Install(params ThemeComposition[] themes)
@@ -456,6 +460,11 @@ public static class ThemeHost
         Log.Warn("theme", "switching to theme '" + id + "' failed; the current theme was kept", error);
         Notify.Say(Loc.Get(Strings.Settings.ThemePicker.SwitchFailed), FluentGpu.Controls.InfoBarSeverity.Error, dedupeKey: "theme.switch.failed");
     }
+
+    /// <summary>Does the ACTIVE theme declare an option with the plain id <paramref name="optionId"/> (<see cref="NavPaneOptionIds"/>)? What a core
+    /// menu asks before it offers a choice only some structures make (the sidebar pane menu's Layout and Density, settings design 5.4): by the
+    /// structure's declared options, never by theme identity. False before <see cref="Install"/>.</summary>
+    public static bool Declares(string optionId) => s_installed && s_current.Peek() is { } active && active.Find(optionId) is not null;
 
     /// <summary>A core verb (a pane menu row, a migration, an undo) asks the ACTIVE theme to set one of its options by plain id, without knowing
     /// which layer declares it or which theme is active (<see cref="NavPaneOptionIds"/> are the ids the sidebar asks for). A theme that declares no such

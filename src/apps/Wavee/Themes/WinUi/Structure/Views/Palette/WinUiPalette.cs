@@ -39,6 +39,10 @@ internal static class WinUiPalette
 /// <summary>The palette's card. The popup mounts it fresh per open; the session is allocated once per mount.</summary>
 internal sealed class WinUiPaletteCard : Component
 {
+    // The field takes Enter as its commit (it is consumed there and never bubbles to the card's key handler): this render's
+    // "run the selected row", read when Enter lands (the field's options are built at mount).
+    Action? _enter;
+
     public override Element Render()
     {
         var props = UseProps<PaletteProps>();
@@ -64,6 +68,8 @@ internal sealed class WinUiPaletteCard : Component
             }
             Announcer.SayThrottled(count == 0 ? Loc.Get(Strings.Palette.NoMatches) : Strings.Palette.Matches(count));
         }, (DepKey)q);
+
+        _enter = () => results.Invoke(selected);
 
         void OnKey(KeyEventArgs e)
         {
@@ -145,6 +151,8 @@ internal sealed class WinUiPaletteCard : Component
                 {
                     Placeholder = Loc.Get(Strings.Palette.Placeholder),
                     Width = WinUiFrameRules.PaletteW - WinUiFrameRules.PalettePad * 2f,
+                    // The field takes Enter as its commit (it never bubbles to the card's key handler): Enter runs the selected row.
+                    OnCommit = _ => _enter?.Invoke(),
                 }),
                 new ScrollEl
                 {

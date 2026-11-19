@@ -1,8 +1,7 @@
-// ── Themes/Classic/Structure/Rules/ClassicEpisodeRules.cs — the numbers of Classic's episode page, reader and discussion (themes plan 6.1, T9c) ──
+// ── Themes/Classic/Structure/Rules/ClassicEpisodeRules.cs — the numbers of Classic's episode discussion (themes plan 6.1, T9c) ──
 //
-// What `Entities\Episode.Page.cs`, `Episode.Reader.cs` and `Episode.Discussion.cs` wrote as literals beside their pictures, moved verbatim with
-// them: the reader's measure and transcript height, the chapter row's stamp, the comment grid's avatars and type, the reaction pill's emoji
-// cluster and tints, the palette and the flyout's clamp. They are data, not decisions: the views under `Views\Episode` read them (WVTH003
+// What `Entities\Episode.Discussion.cs` wrote as literals beside its pictures, moved verbatim with them: the thread's measure, the comment grid's
+// avatars and type, the reaction pill's emoji cluster and tints, the palette and the flyout's clamp. They are data, not decisions: the views under `Views\Episode` read them (WVTH003
 // allows literals only here, in `Rules\**`).
 
 namespace Wavee.Themes.Classic;
@@ -10,32 +9,10 @@ namespace Wavee.Themes.Classic;
 /// <summary>The constants of Classic's episode family.</summary>
 internal static class ClassicEpisodeRules
 {
-    // ── the reader ──
+    // ── the discussion ──
 
-    /// <summary>The reading measure of a section, of the chapters and of a comment thread.</summary>
-    public const float ReaderMeasure = 760f, ThreadMeasure = 760f;
-
-    /// <summary>The transcript section's height (its view scrolls inside the page's scroll).</summary>
-    public const float TranscriptHeight = 560f;
-
-    /// <summary>The reader scroll's edge fade band.</summary>
-    public const float EdgeFadeBand = 24f;
-
-    /// <summary>The rail's About block clamps to this many lines.</summary>
-    public const int RailAboutLines = 4;
-
-    // ── a chapter row ──
-
-    /// <summary>The fixed-width timestamp (and the playing row's equalizer beside it) and its type size.</summary>
-    public const float ChapterStampWidth = 64f, ChapterStampSize = 13f;
-
-    /// <summary>The chapter title's rung.</summary>
-    public const float ChapterTitleSize = 14f, ChapterTitleLine = 20f;
-
-    // ── the show rating popover ──
-
-    /// <summary>The popover's width and its stars' size.</summary>
-    public const float RatingWidth = 250f, RatingStar = 24f;
+    /// <summary>The reading measure of a comment thread.</summary>
+    public const float ThreadMeasure = 760f;
 
     // ── a comment ──
 

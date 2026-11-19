@@ -15,7 +15,7 @@ using System.Globalization;
 
 namespace Wavee;
 
-/// <summary>Settings › Privacy &amp; diagnostics › Log viewer opens this: route <c>logs</c>, a page of its own.</summary>
+/// <summary>Settings › Help &amp; about › Diagnostics › Log viewer opens this: route <c>logs</c>, a page of its own.</summary>
 public static partial class LogsPage
 {
     public static class Rules

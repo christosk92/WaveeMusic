@@ -10,7 +10,7 @@
 //
 // THE CONTROLS are the engine's, drawn by Zune's control table (`ZuneControls`): a switch, a chip row (`Segmented`), a ruled combo, a line slider, a
 // square check box. The stateful ones (a combo freezes its items, signal and handler at mount, a chip row and a slider keep one signal for their life)
-// are small cells that keep their signal in step with the document through an effect, and re-read it on the page epoch (`Settings.PageEpoch`): the
+// are small cells that keep their signal in step with the dial through an effect, and re-read it on the page epoch (`Settings.PageEpoch`): the
 // page never rebuilds them, a writer's `Settings.Bump()` reaches them.
 
 using FluentGpu;
@@ -80,15 +80,16 @@ internal abstract class ZuneScreenComponent : CommonTierComponent
 
 /// <summary>What a choice cell draws and writes.</summary>
 /// <param name="Labels">The choices' words, in order.</param>
-/// <param name="Current">The selected index NOW (read each render: the document is the truth).</param>
+/// <param name="Current">The selected index NOW (read each render: the dial is the truth).</param>
 /// <param name="Pick">The writer: called with the index picked.</param>
 /// <param name="Chips">The choices are short enough to sit as a row of chips (a row of chips; at a hit-target tier a wrapping row of buttons that tall).</param>
 /// <param name="Enabled">Whether the control is live (read each render).</param>
 /// <param name="Descriptions">A combo's per-item descriptions, or null.</param>
 /// <param name="ItemEnabled">A combo's per-item enablement, or null.</param>
 /// <param name="Width">The combo's width where the row does not stack.</param>
+/// <param name="Combo">Always the combo, however short the words (a list that grows: the output devices, the adapters).</param>
 internal sealed record ZuneChoice(IReadOnlyList<string> Labels, Func<int> Current, Action<int> Pick, bool Chips, Func<bool>? Enabled = null,
-    IReadOnlyList<string>? Descriptions = null, IReadOnlyList<bool>? ItemEnabled = null, float Width = Z.ComboWidth)
+    IReadOnlyList<string>? Descriptions = null, IReadOnlyList<bool>? ItemEnabled = null, float Width = Z.ComboWidth, bool Combo = false)
 {
     /// <summary>The node key a choice cell mounts under: the words it was built from (a combo freezes its items).</summary>
     public string KeyFor(string id) => "zs:choice:" + id + ":" + string.Join('|', Labels);
@@ -100,7 +101,7 @@ internal sealed record ZuneChoice(IReadOnlyList<string> Labels, Func<int> Curren
         get
         {
             if (Chips) return true;
-            if (Labels.Count < 2 || Labels.Count > Z.MaxChips || ItemEnabled is not null) return false;
+            if (Combo || Labels.Count < 2 || Labels.Count > Z.MaxChips || ItemEnabled is not null) return false;
             for (int i = 0; i < Labels.Count; i++) if (Labels[i].Length > Z.MaxChipChars) return false;
             return true;
         }
@@ -128,11 +129,25 @@ internal sealed class ZuneKit
     // ── rows ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>One row: the label column (label, hint) beside the control column; stacked where the tier says. ONE tree in every tier.</summary>
-    public Element Row(string key, string label, string? hint, Element? control, bool enabled = true)
+    public BoxEl Row(string key, string label, string? hint, Element? control, bool enabled = true) => Row(key, ZuneText.Label(label), hint, control, enabled);
+
+    /// <summary>One row with its label as an element (the arrival's lit label), <paramref name="after"/> beside the label (the "see it" word),
+    /// <paramref name="below"/> under the hint (the "also in" places) and <paramref name="onControl"/> told the control column's node (the arrival gives
+    /// the keyboard to the control, not to the words).</summary>
+    public BoxEl Row(string key, Element label, string? hint, Element? control, bool enabled = true, Element? after = null, Element? below = null,
+        Action<NodeHandle>? onControl = null)
     {
         bool stack = Lay.StacksRows;
-        var labelKids = new List<Element>(2) { ZuneText.Label(label) };
+        var labelKids = new List<Element>(3)
+        {
+            after is null ? label : new BoxEl
+            {
+                Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = Z.SeeItGap, MinWidth = 0f,
+                Children = [label.Is(out TextEl text) ? text with { Shrink = 1f } : label, after.Value],
+            },
+        };
         if (hint is { Length: > 0 }) labelKids.Add(ZuneText.Hint(hint));
+        if (below is not null) labelKids.Add(below.Value);
         var labels = new BoxEl
         {
             Key = key + ":label", Direction = 1, Gap = Z.LabelGap, MinWidth = 0f, Shrink = 0f,
@@ -141,7 +156,7 @@ internal sealed class ZuneKit
         var controls = new BoxEl
         {
             Key = key + ":control", Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinWidth = 0f,
-            Grow = 1f, Shrink = 1f, Basis = stack || Lay.RowsWrap ? float.NaN : 0f, AlignSelf = FlexAlign.Stretch,
+            Grow = 1f, Shrink = 1f, Basis = stack || Lay.RowsWrap ? float.NaN : 0f, AlignSelf = FlexAlign.Stretch, OnRealized = onControl,
             Children = control is null ? [] : [control.Value],
         };
         return new BoxEl
@@ -153,29 +168,18 @@ internal sealed class ZuneKit
         };
     }
 
-    /// <summary>A row drawn from a document row: its title, its description (the reason while it is greyed with one, else its caption; <paramref name="sub"/>
-    /// overrides it for a live sentence) and its enablement. The control is the view's.</summary>
-    public Element DocRow(SettingsRow row, Element? control, string? sub = null, bool? enabled = null)
+    /// <summary>A section: its heading (with the caption beside it on the baseline, and <paramref name="beside"/>: the theme options' "reset") over its rows.</summary>
+    public Element Block(string key, string? title, string? sub, IReadOnlyList<Element> rows, Element? beside = null)
     {
-        var facts = SettingsFacts.Live;
-        string? description = sub ?? (row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null);
-        return Row(RowKey(row), Loc.Get(row.TitleKey), description, control, enabled ?? row.Enabled(facts).Enabled);
-    }
-
-    /// <summary>The node key of a document row's row.</summary>
-    public static string RowKey(SettingsRow row) => "zs:row:" + (int)row.Tab + ":" + row.Id;
-
-    /// <summary>A section: its heading (with the caption beside it on the baseline) over its rows.</summary>
-    public Element Block(string key, string? title, string? sub, IReadOnlyList<Element> rows)
-    {
-        // A section whose title is the page's own heading (Feedback & help) has no heading of its own: its caption leads it as a sentence.
+        // A section with no title of its own has its caption lead it as a sentence.
         bool headed = title is { Length: > 0 };
-        var head = new List<Element>(2);
-        if (headed) head.Add(ZuneText.Heading(title!) with { Shrink = 0f, Wrap = TextWrap.NoWrap });
+        var head = new List<Element>(3);
+        if (headed) head.Add(ZuneText.Heading(title!) with { Shrink = 1f, Wrap = TextWrap.WrapWholeWords });
         if (sub is { Length: > 0 })
             head.Add(headed
                 ? ZuneText.Meta(sub) with { Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.WordEllipsis }
                 : ZuneText.Prose(sub) with { Key = key + ":sub" });
+        if (beside is not null) head.Add(beside.Value);
         var kids = new List<Element>(rows.Count + 1);
         if (head.Count > 0)
             kids.Add(new BoxEl
@@ -192,10 +196,6 @@ internal sealed class ZuneKit
     }
 
     // ── switches, checks, chips, combos, sliders ──────────────────────────────────────────────────────────────────────────
-
-    /// <summary>A switch over a document row: its value, its writer, then the page bump when the writer asks for it.</summary>
-    public Element Toggle(SettingsRow row, bool enabled = true)
-        => Switch(row.Current is true, on => { if (row.Writer.Toggle!(on)) Settings.Bump(); }, enabled);
 
     /// <summary>A switch with its own writer. A fresh signal per render carries the live value (the switch re-pushes its props).</summary>
     public Element Switch(bool on, Action<bool>? onChange, bool enabled = true) => new BoxEl
@@ -216,13 +216,6 @@ internal sealed class ZuneKit
     /// <summary>A choice cell: chips where the choices are short, else the ruled combo.</summary>
     public Element Choice(string id, ZuneChoice choice)
         => Embed.Comp(() => new ChoiceCell(choice)) with { Key = choice.KeyFor(id) };
-
-    /// <summary>A choice cell over a document row: the row's current index and its <c>Choose</c> writer, then the page bump when the writer asks for it.</summary>
-    public Element Choice(SettingsRow row, IReadOnlyList<string> labels, bool chips, IReadOnlyList<string>? descriptions = null, IReadOnlyList<bool>? itemEnabled = null, float width = Z.ComboWidth, bool? enabled = null)
-        => Choice(row.Tab + "." + row.Id, new ZuneChoice(labels,
-            () => row.Current is int at ? at : 0,
-            i => { if (row.Writer.Choose!(i)) Settings.Bump(); },
-            chips, enabled is { } e ? () => e : null, descriptions, itemEnabled, width));
 
     /// <summary>A slider cell with its value beside it.</summary>
     public Element Slide(string id, ZuneSlide slide) => Embed.Comp(() => new SliderCell(slide)) with { Key = "zs:slide:" + id };
@@ -315,7 +308,7 @@ internal sealed class ZuneKit
     // ══ the stateful cells ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>One choice: a row of chips, or the ruled combo. It keeps ONE signal for its life (the combo freezes items, signal and handler at mount)
-    /// and re-seeds it from the document on every page epoch.</summary>
+    /// and re-seeds it from the dial on every page epoch.</summary>
     sealed class ChoiceCell(ZuneChoice choice) : ZuneScreenComponent
     {
         readonly Signal<int> _selected = new(choice.Current());
@@ -323,7 +316,7 @@ internal sealed class ZuneKit
         public override Element Render()
         {
             var lay = UseLayout();
-            _ = Settings.PageEpoch.Value;   // a writer's Bump (and any other writer of the document) re-reads the choice
+            _ = Settings.PageEpoch.Value;   // a writer's Bump (and any other writer of the dial) re-reads the choice
             _ = ThemeHost.Options.EpochSignal.Value;   // so does a theme option written from the palette
             int current = choice.Current();
             UseEffect(() => _selected.SetIfChanged(current), DepKey.From(current));
@@ -370,7 +363,7 @@ internal sealed class ZuneKit
         ],
     };
 
-    /// <summary>One slider with its value: a line slider (one signal for its life, re-seeded from the document on every page epoch) and the formatted value.</summary>
+    /// <summary>One slider with its value: a line slider (one signal for its life, re-seeded from the dial on every page epoch) and the formatted value.</summary>
     sealed class SliderCell(ZuneSlide slide) : ZuneScreenComponent
     {
         readonly FloatSignal _value = new(slide.Current());

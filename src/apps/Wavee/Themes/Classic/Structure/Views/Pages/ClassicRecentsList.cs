@@ -241,7 +241,7 @@ internal sealed class ClassicRecentsRail(IRecentsHost host) : Component
 internal static class ClassicRecentsList
 {
     /// <summary><c>label ——— N items</c>, 48 tall. The inline copy is the day's one tab stop; the pinned copy
-    /// (<paramref name="overlay"/>) wears <c>FillLayerDefault</c> and keeps only the click. The hover ink is the page's
+    /// (<paramref name="overlay"/>) paints no plate (the rows are cut at its foot, so what is behind the page shows through it) and keeps only the click. The hover ink is the page's
     /// accent — a plain <c>ColorF</c> (TextEl.HoverColor takes no Prop), so the realized header re-renders on a crossing.</summary>
     internal static Element DayHeader(IRecentsHost host, RecentsShape shape, int dayIndex, bool overlay, Action onClick)
     {
@@ -252,7 +252,7 @@ internal static class ClassicRecentsList
         {
             Direction = 0, Height = RecentsLayout.DateHeaderHeight, Grow = overlay ? 1f : 0f, MinWidth = 0f,
             AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
-            Fill = overlay ? Tok.FillLayerDefault : ColorF.Transparent,
+            Fill = ColorF.Transparent, HoverFill = ColorF.Transparent, PressedFill = ColorF.Transparent,
             Role = overlay ? AutomationRole.None : AutomationRole.Button,
             Focusable = !overlay, Cursor = CursorId.Hand, OnClick = onClick,
             Children =

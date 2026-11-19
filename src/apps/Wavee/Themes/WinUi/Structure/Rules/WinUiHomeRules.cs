@@ -49,6 +49,9 @@ public static class WinUiHomeRules
     /// <summary>The header row's tools gap: the link, a 16-px divider and the pager.</summary>
     public const float ToolsDividerH = 16f;
 
+    /// <summary>A paging shelf's header tools (the pager's chevrons): 36 tall.</summary>
+    public const float PagerToolsH = 36f;
+
     /// <summary>The header row's gap between its text and its tools.</summary>
     public const float HeaderGap = 12f;
 
@@ -66,7 +69,49 @@ public static class WinUiHomeRules
     public const float ReleaseColGap = 24f, ReleaseRowGap = 4f, CardGap = 16f;
 
     /// <summary>How many release rows, cluster cards and cluster rows a body shows.</summary>
-    public const int ReleaseRowsMax = 6, ClusterMax = 6, ClusterRows = 3;
+    public const int ReleaseRowsMax = 6, ClusterRows = 4;
+
+    /// <summary>A lone preview card on the last row takes the row in its wide form, its rows in this many columns beside the offer.</summary>
+    public const int WideClusterRowCols = 2;
+
+    /// <summary>The pips row under paged preview cards.</summary>
+    public const float PipsRowH = 24f;
+
+    /// <summary>A preview card's playlist cover and the reason line's avatar (home-gap P4).</summary>
+    public const float PreviewCover = 96f, ReasonAvatar = 20f;
+
+    /// <summary>A mood plate (home-gap P6): its height and its inset. How many plates a shelf shows and their columns are the tier's
+    /// (<c>WinUiHomeLayout.Plates</c> / <c>PlatesMax</c>).</summary>
+    public const float MoodPlateH = 96f, MoodPlatePad = 14f;
+    /// <summary>A coloured plate's hover and press: that share of the way toward the on-media ink.</summary>
+    public const float PlateHoverMix = 0.08f, PlatePressMix = 0.14f;
+
+    /// <summary>A book card's caption lines (home-gap P8): author, rating and length, the plan pill. Every card reserves all of them.</summary>
+    public const int BookCaptionLines = 4;
+
+    // ── the rhythm templates (Home rhythm A: home-rhythm.html #a-winui) ────────────────────────────────────────────────
+
+    /// <summary>The lead card's copy band under its art: the inset, the name's 28 line over two 16 caption lines, Play at its end. Fixed, so
+    /// the card's height is known before it lays out.</summary>
+    public const float LeadCopyH = 88f, LeadCopyPadX = 16f, LeadCopyPadTop = 12f, LeadCopyPadBottom = 16f, LeadCopyGap = 12f;
+
+    /// <summary>The lead's art: never under this height beside the grid; stacked (Compact) it is this wide for one tall (16 : 8).</summary>
+    public const float LeadArtMin = 120f, LeadArtAspect = 2f;
+
+    /// <summary>The lead art's decode target.</summary>
+    public const int LeadArtDecodePx = 960;
+
+    /// <summary>The compact tiles' gap (the concept's 8).</summary>
+    public const float CompactGap = 8f;
+
+    /// <summary>The caption lines a capped card shows: two title lines over one caption line.</summary>
+    public const int CappedTitleLines = 2;
+
+    /// <summary>The section header's entity cover ("Popular with listeners of" + the show, home-gap P8).</summary>
+    public const float EntityCover = 40f;
+
+    /// <summary>The video card (an episode on All): the still's width in a row, its badges' inset, the progress hairline.</summary>
+    public const float VideoStillW = 380f, VideoBadgeInset = 8f, VideoProgressH = 3f;
 
     /// <summary>The Recents cell's equalizer height, the history tile's 7-day strip box.</summary>
     public const float EqualizerH = 12f, HistoryStripW = 56f, HistoryStripH = 14f;

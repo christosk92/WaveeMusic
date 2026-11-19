@@ -129,8 +129,11 @@ internal sealed class ZunePivotCarousel<TKey> where TKey : notnull
 
     /// <summary>Seeds the words' slide from the order last laid out to <see cref="Order"/>, after the commit's layout (a layout effect), and records
     /// where every word now stands. Returns the direction of travel: 1 when the strip moved left (the new lead came in from the right), -1 the other
-    /// way, 0 when nothing travelled (the first layout, <paramref name="animate"/> false now or at the last layout, the same order).</summary>
-    public int Slide(SceneStore scene, AnimEngine anim, bool animate, bool reduced)
+    /// way, 0 when nothing travelled (the first layout, <paramref name="animate"/> false now or at the last layout, the same order).
+    /// <paramref name="enterGlide"/>: a strip that BECOMES a carousel on this layout (the band at the 640 crossing, where its words rotate the lit one to
+    /// the front) glides every word from where it was drawn to its new place instead of landing it there at once; a strip whose last layout was off
+    /// canvas (the panel opening) leaves it false.</summary>
+    public int Slide(SceneStore scene, AnimEngine anim, bool animate, bool reduced, bool enterGlide = false)
     {
         var order = Order;
         var prev = _laid;
@@ -157,6 +160,11 @@ internal sealed class ZunePivotCarousel<TKey> where TKey : notnull
         _laidX = now;
         _nowX = before;
         _laidCycle = cycle;
+        if (animate && !wasOpen && enterGlide && prev.Length > 0 && order.Length > 0)
+        {
+            EnterGlide(scene, anim, before, now, reduced);
+            return 0;
+        }
         if (!animate || !wasOpen || prev.Length == 0 || order.Length == 0 || Same(prev, order)) return 0;
 
         float gutter = Gutter, ms = ZuneMotion.PivotSlideMs;
@@ -203,6 +211,27 @@ internal sealed class ZunePivotCarousel<TKey> where TKey : notnull
             Wrap(anim, node, new WrapLegs(from, drawnX, newX, w, shift, shows, gutter, leaves, arrives), ms);
         }
         return shift > 0f ? 1 : shift < 0f ? -1 : 0;
+    }
+
+    /// <summary>The strip has just become a carousel (<see cref="Slide"/>'s <c>enterGlide</c>): each word glides from where it was drawn (its last
+    /// recorded place plus whatever slide it was still in) to its new place on the pivot slide; under reduced motion it lands and fades in.</summary>
+    void EnterGlide(SceneStore scene, AnimEngine anim, Dictionary<TKey, float> before, Dictionary<TKey, float> now, bool reduced)
+    {
+        float ms = ZuneMotion.PivotSlideMs;
+        foreach (var (key, newX) in now)
+        {
+            if (!_words.TryGetValue(key, out var node) || !scene.IsLive(node) || !before.TryGetValue(key, out float oldX)) continue;
+            ref var paint = ref scene.Paint(node);
+            float from = oldX + paint.LocalTransform.Dx - newX;
+            if (MathF.Abs(from) < ZuneFrameRules.PanelPivotStill) continue;
+            if (reduced)
+            {
+                anim.Animate(node, AnimChannel.TranslateX, 0f, 0f, 1f, Easing.Linear);
+                anim.Animate(node, AnimChannel.Opacity, 0f, 1f, ms, Easing.SmoothOut);
+                continue;
+            }
+            anim.Animate(node, AnimChannel.TranslateX, from, 0f, ms, Easing.SmoothOut);
+        }
     }
 
     /// <summary>A word whose place did not change: any slide or fade it was in finishes from where it is drawn.</summary>

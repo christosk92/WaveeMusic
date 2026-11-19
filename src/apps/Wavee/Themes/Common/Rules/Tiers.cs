@@ -132,27 +132,6 @@ public readonly record struct CommonHistoryLayout(float Gutter, float MaxWidth, 
             CommonTiers.Short(tier.Height) || CommonTiers.Stacks(tier.Content), CommonTiers.Target(tier.Content));
 }
 
-/// <summary>The Home customizer's tier layout.</summary>
-/// <param name="Gutter">The page's side gutter.</param>
-/// <param name="MaxWidth">The widest the page grows (0 = fill).</param>
-/// <param name="StackHeader">Reset under the title instead of beside it.</param>
-/// <param name="Scrolls">The head and the list scroll as one page (the list alone does not fit a Compact or Short window).</param>
-/// <param name="RowHeight">One zone row's height, also the reorderable's item extent.</param>
-/// <param name="RowGap">The gap between a row's gripper, label and controls.</param>
-/// <param name="Target">The smallest hit target (0 = the control's own size).</param>
-public readonly record struct CommonCustomizeLayout(float Gutter, float MaxWidth, bool StackHeader, bool Scrolls, float RowHeight, float RowGap, float Target)
-{
-    /// <summary>The layout of <paramref name="tier"/>.</summary>
-    public static CommonCustomizeLayout For(in TierFacts tier)
-    {
-        bool compact = CommonTiers.Stacks(tier.Content);
-        return new CommonCustomizeLayout(
-            CommonTiers.Gutter(tier.Content, Spacing.XXXL), CommonTiers.ColumnMax, compact, compact || CommonTiers.Short(tier.Height),
-            compact ? CommonCustomizeRules.CompactRowH : CommonCustomizeRules.CustomizeRowH,
-            compact ? CommonCustomizeRules.CompactRowGap : CommonCustomizeRules.CustomizeRowGap, CommonTiers.Target(tier.Content));
-    }
-}
-
 /// <summary>The module page's tier layout.</summary>
 /// <param name="Gutter">The page's side gutter.</param>
 /// <param name="MaxWidth">The widest the page body grows (0 = fill).</param>

@@ -5,7 +5,10 @@
 //   Panel.LyricsHeader   under the pane's tabs: the track's title (Body Strong) at the left; at the right the "Translate" button (the standard
 //                        button, only when the document carries a second line; the accent while it is on), the AI sparkle (only where the
 //                        feature can run; it breathes while the track is being timed), the developer inspector and full screen (the stage on
-//                        lyrics) as 32 subtle buttons (40 at Compact, the touch floor). The pane's tabs carry "Lyrics" and the close.
+//                        lyrics) as 32 subtle buttons (40 at Compact, the touch floor), then ⋯ (settings rework phase 5, design 5.4): a
+//                        FlyoutPresenter card, "Lyrics blur" (Caption Strong) with its value over the slider (the SAME dial as Settings ›
+//                        Lyrics, written through `LyricsPaneOptions.SetBlur`), then the AI lyrics status line with a "Settings" hyperlink.
+//                        The pane's tabs carry "Lyrics" and the close.
 //   Panel.NextUp         the rows under "Next up": the shared media surface in its row shape at the 40 cover.
 //   Player.LyricsPeek    the now-playing pane's lyrics card (W-PaneNowPlaying): the card, "Lyrics" (Caption), the sung line in the primary ink
 //                        (Body Strong) over the next in the secondary, "Show lyrics" as an accent link; a playing video's one-row note. Each
@@ -19,6 +22,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -80,6 +84,8 @@ internal static class WinUiLyricsHeader
         kids.Add(Embed.Comp(new SparkleProps(props, h), static () => new WinUiLyricsInspector()) with { Key = "lyrics-inspector" });
         kids.Add(ToolTip.Wrap(WinUiPlayerBar.Button(Icons.FullScreen, () => props.Expand(begin), true, false, h, h, P.MetaGlyph),
             facts.ExpandTip) with { Key = "lyrics-expand" });
+        if (props.Options is { } options)
+            kids.Add(Embed.Comp(new WinUiLyricsOptions.Props(options, h), static () => new WinUiLyricsOptions()) with { Key = "lyrics-options" });
         return new BoxEl
         {
             Key = Key, Height = h + P.HeaderRowExtra, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = P.MetaGap, Padding = P.HeaderPadding,
@@ -136,6 +142,109 @@ internal sealed class WinUiLyricsSparkle : Component
             anim.Spring(ctx.HostNode, AnimChannel.Opacity, 1f, P.SparkleSettle);
             _pulsed = false;
         }
+    }
+}
+
+/// <summary>The header's ⋯: opens the lyrics options card under it (a FlyoutPresenter, light dismiss); a second press closes it.</summary>
+internal sealed class WinUiLyricsOptions : Component
+{
+    /// <summary>The options and the header's button size (the Compact touch floor included).</summary>
+    internal sealed record Props(LyricsPaneOptions Options, float Height);
+
+    readonly Ref<NodeHandle> _anchor = new(default);
+    readonly Action _toggle;
+    OverlayHandle? _handle;
+    IOverlayService? _overlay;
+    Props? _props;
+
+    public WinUiLyricsOptions() => _toggle = Toggle;
+
+    public override Element Render()
+    {
+        var p = _props = UseProps<Props>();
+        _overlay = UseContext(Overlay.Service);
+        return new BoxEl
+        {
+            Shrink = 0f, OnRealized = h => _anchor.Value = h,
+            Children = [ToolTip.Wrap(WinUiPlayerBar.Button(Icons.More, _toggle, true, false, p.Height, p.Height, P.MetaGlyph), Loc.Get(Strings.Player.LyricsOptions))],
+        };
+    }
+
+    void Toggle()
+    {
+        if (_handle is { IsOpen: true } open) { open.Close(); return; }
+        if (_overlay is not { } overlay || _props is not { } props) return;
+        var opened = overlay.Open(() => _anchor.Value, () => Embed.Comp(props, static () => new WinUiLyricsOptionsCard()),
+            FlyoutPlacement.BottomEdgeAlignedRight,
+            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = true });
+        _handle = opened;
+        opened.ClosedAction = () => { if (ReferenceEquals(_handle, opened)) _handle = null; };
+    }
+}
+
+/// <summary>The lyrics options card: "Lyrics blur" with its value over the slider, then the AI lyrics status line and its "Settings" hyperlink.</summary>
+internal sealed class WinUiLyricsOptionsCard : Component
+{
+    static readonly Slider.SliderOptions s_blurOptions = new()
+    {
+        Min = 0f, Max = P.LyricsBlurMax, Step = P.LyricsBlurStep, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
+
+    static readonly string?[] s_numbers = new string?[(int)P.LyricsBlurMax + 1];
+
+    /// <summary>"Off" at 0, else the number (each built once: a drag allocates nothing).</summary>
+    static string BlurWords(float v)
+    {
+        int n = Math.Clamp((int)MathF.Round(v), 0, (int)P.LyricsBlurMax);
+        return n == 0 ? Loc.Get(Strings.Stage.Options.BlurOff) : s_numbers[n] ??= n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    public override Element Render()
+    {
+        var p = UseProps<WinUiLyricsOptions.Props>();
+        var o = p.Options;
+        var blur = UseFloatSignal(o.Blur());
+        UseSignalEffect(() => blur.SetIfChanged(o.Blur()));
+        string ai = o.AiLine();
+        float inner = P.LyricsOptionsW - 2f * P.LyricsOptionsPad;
+        var kids = new List<Element>(2)
+        {
+            new BoxEl
+            {
+                Key = "lyrics-options:blur", Direction = 1, Gap = P.LyricsOptionsInnerGap,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.Center,
+                        Children =
+                        [
+                            Ui.Caption(Loc.Get(Strings.Settings.Appearance.LyricsBlur)) with { Weight = P.HeaderTitleWeight, Color = Tok.TextPrimary },
+                            Ui.Caption("") with { Text = Prop.Of(() => BlurWords(blur.Value)), Color = Tok.TextSecondary },
+                        ],
+                    },
+                    Slider.Create(blur, v => o.SetBlur((int)MathF.Round(v / P.LyricsBlurStep) * (int)P.LyricsBlurStep), s_blurOptions,
+                        length: inner, thickness: MathF.Max(P.LyricsSliderThickness, p.Height)),
+                ],
+            },
+        };
+        if (ai.Length > 0)
+            kids.Add(new BoxEl
+            {
+                Key = "lyrics-options:ai", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
+                Children =
+                [
+                    Ui.Caption(ai) with { Color = Tok.TextSecondary, Shrink = 1f, MinWidth = 0f, MaxLines = 2, Wrap = TextWrap.Wrap },
+                    HyperlinkButton.Create(Loc.Get(Strings.Auth.Settings), o.OpenAiSettings, size: ControlSize.Small).As<BoxEl>()
+                        with { Key = "lyrics-options:ai:settings", MinHeight = p.Height, Shrink = 0f },
+                ],
+            });
+        return new BoxEl
+        {
+            Key = "lyrics-options:card", Width = P.LyricsOptionsW, Direction = 1, Gap = P.LyricsOptionsGap,
+            Padding = Edges4.All(P.LyricsOptionsPad), Children = kids.ToArray(),
+        };
     }
 }
 

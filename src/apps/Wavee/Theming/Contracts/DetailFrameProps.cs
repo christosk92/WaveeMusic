@@ -114,9 +114,6 @@ public sealed record DetailFrameProps
     /// <summary>The page-body drop target (tracks only); null otherwise.</summary>
     public DropTargetSpec? Drop { get; init; }
 
-    /// <summary>The vertical arm of a show / episode page: the fixed header above the episodes (null on a track page).</summary>
-    public DetailShowHeaderProps? ShowHeader { get; init; }
-
     /// <summary>A TRACK page's insights sheet (null for a show / episode page): laid over the vertical arm's page, or over the two-column
     /// arm's list column (tuned Classic I1, contract 1.5). Its <c>Page</c> is set by the view.</summary>
     public DetailInsightsProps? Sheet { get; init; }
@@ -282,30 +279,6 @@ public sealed record DetailCompactRailProps
     public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
 }
 
-/// <summary>The props of <see cref="ViewKeys.DetailShowHeader"/>: the vertical show / episode header.</summary>
-public sealed record DetailShowHeaderProps
-{
-    /// <summary>The page's spec.</summary>
-    public required Detail.FrameSpec Spec { get; init; }
-
-    /// <summary>The page's verbs (trampolines).</summary>
-    public required Detail.FrameActions Actions { get; init; }
-
-    /// <summary>The page accent thunk.</summary>
-    public required Func<ColorF> Accent { get; init; }
-
-    /// <summary>The play-all trampoline.</summary>
-    public required Action Play { get; init; }
-
-    /// <summary>The page width estimate (NaN while unmeasured): the info column's measure derives from it.</summary>
-    public required float PageWidth { get; init; }
-
-    /// <inheritdoc />
-    public bool Equals(DetailShowHeaderProps? other) => ReferenceEquals(this, other);
-
-    /// <inheritdoc />
-    public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
-}
 
 /// <summary>The props of <see cref="ViewKeys.DetailHero"/>: the vertical arm's item 0 (the expanded hero and the 56-DIP context band).
 /// The spec gates on data; the table's pieces gate on geometry and on element / signal REFERENCE (chrome is not data: a rebuilt toolbar

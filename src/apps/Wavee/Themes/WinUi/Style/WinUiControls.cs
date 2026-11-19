@@ -11,8 +11,11 @@
 // 18 thumb and 12 accent core, the InfoBar per severity, the ContentDialog, the acrylic r8 MenuFlyout, the ProgressRing.
 //
 // THE DELTAS:
-//   · MenuFlyout   the rows are 36 apart, edge to edge in the plate (W-Flyouts: "Items 36 high"): the engine's 36-high row plus its 2 + 2 margin is 40
-//                  apart, so the margin goes vertically and the Large (touch) row keeps its 40.
+//   · MenuFlyout   the rows take the ComboBox item's plate (owner, 2026-11-15, "combo-box spacing"): 32 high on the stock 2 + 2 margin, so 36 apart
+//                  with a 4 gap between plates (W-Flyouts draws 36 rows edge to edge); the content padding is the combo item's 11,5,11,7, so a
+//                  menu row and a combo row centre their line alike. The Large (touch) row keeps its 40 plate, 44 apart. A radio row marks its
+//                  choice as the ComboBox item does (owner, 2026-11-15, over W-Flyouts' dot): the 3 x 16 accent pill on the plate's left edge
+//                  over the Subtle Secondary fill (Tertiary under the pointer and the keyboard cursor, Secondary pressed), no check column.
 //   · SelectorBar  the words rest in Text 2 and the selected one is Text 1 (W-Tokens: "Overview" #fff over its pill, "Albums" #c5c5c5); the items
 //                  are 40 tall (the SubPivotRow). The stock bar inks every word Text 1.
 
@@ -43,8 +46,16 @@ public static class WinUiControls
     /// <summary>The PersonPicture: the stock avatar, its initials never under <see cref="InitialsFloor"/> (where that fits in half the circle).</summary>
     public static PersonPicture.Style Avatar() => s_avatar;
 
-    /// <summary>The MenuFlyout: rows 36 apart (no vertical margin), the 4 side inset kept.</summary>
-    public static MenuFlyout.Style Menu() => MenuFlyout.FluentStyle() with { ItemMargin = new Edges4(4f, 0f, 4f, 0f) };
+    /// <summary>The menu row's plate: the ComboBox item's (32 high, content padding 11,5,11,7; ComboBox_themeresources ComboBoxItemThemePadding).</summary>
+    public const float MenuRowHeight = 32f;
+
+    /// <summary>The MenuFlyout: the ComboBox item's 32 plate on the stock margin (36 apart, a 4 gap), and its selection (the pill over the subtle fill).</summary>
+    public static MenuFlyout.Style Menu() => MenuFlyout.FluentStyle() with
+    {
+        RowHeight = MenuRowHeight, ItemPadding = new Edges4(11f, 5f, 11f, 7f),
+        RadioMark = MenuRadioMark.Pill,
+        SelectedFill = Tok.FillSubtleSecondary, SelectedHoverFill = Tok.FillSubtleTertiary, SelectedPressedFill = Tok.FillSubtleSecondary,
+    };
 
     /// <summary>The SelectorBar: Text 2 at rest, Text 1 selected, 40-tall items, the stock pill.</summary>
     public static SelectorBarStyle? Selector() => new()

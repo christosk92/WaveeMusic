@@ -4,8 +4,8 @@
 // content region is in (`Shell.FrameRules.ContentBodyFor` / `ShowsOfflineStrip`: a page, an empty body, the not-found page, the offline lane) and builds
 // the page; this template DRAWS the state it was handed. The elements, keys and numbers are what the shell built before the move:
 //
-//   Page / EmptyBody   one body box keyed `props.Key` (`page:<route>` / `page-empty:<route>`) that fills the card; the page, when
-//                      there is one, is its only child.
+//   Page / EmptyBody   one body box keyed `props.Key` (`page:<route>` / `page-empty:<route>`) that fills the card; a page stands in
+//                      it under the page's loading bar (`Themes\Common\CommonPageBusy`, 3 px on the card's top edge, clipped to its corners).
 //   NotFound           the Common not-found page (`Themes\Common\CommonNotFound`, T11c): a centred column keyed
 //                      `page-notfound:<route>|<arg>` with the destination's own glyph, the not-found line and Go home.
 //   OfflineLane        the strip in the flow ABOVE the kept content (tuned Classic X1, board C-Offline): the core stacks the lane over the
@@ -36,15 +36,9 @@ internal static class ClassicContentState
         {
             ContentStateKind.NotFound => CommonNotFound.Block(props.Key, props.Glyph, props.GoHome),
             ContentStateKind.OfflineLane => OfflineLane(props, gutter),
-            _ => PageBox(props.Key, props.Page),
+            _ => CommonPageBusy.PageBox(props.Key, props.Page, props.Busy, ClassicFrameRules.PageBusyH),
         };
     }
-
-    private static BoxEl PageBox(string key, Element? page) => new()
-    {
-        Key = key, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-        Children = page is null ? [] : [page.Value],
-    };
 
     /// <summary>The page-scale offline strip (ch 29 W9 C / W10) in the flow above the kept content: the page gutter either side, 16 from the
     /// card's top (tuned Classic X1).</summary>

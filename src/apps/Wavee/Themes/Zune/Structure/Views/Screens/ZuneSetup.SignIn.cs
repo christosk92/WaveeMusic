@@ -329,28 +329,45 @@ internal static partial class ZuneSetup
         return SetupText.Stack(lead, cards, PremiumRow(host, layout));
     }
 
+    /// <summary>Signing in: ONE sentence of what is awaited (it stood twice: as the lead's "waiting" and again in a notice under it) and what to do about it,
+    /// the bar, then the four steps as a ladder, each on its own line with what it does (they ran as one wrapping row, the fourth alone on a second line;
+    /// owner, 2026-11-18: "this too", of the busy page). On the plate, no panel: Zune draws its lists on the ground.</summary>
     private static Element BusyBody(ISetupSignInHost host, in SetupSignInFacts f) => SetupText.Stack(
-        SetupText.Lead(Loc.Get(Strings.Setup.SignIn.Waiting)),
-        ZuneKit.Notice(InfoBarSeverity.Informational, Loc.Get(Strings.Auth.SigningIn), Loc.Get(f.BusyMessageKey)),
+        SetupText.Group(
+            SetupText.Lead(Loc.Get(f.BusyMessageKey)),
+            SetupText.Secondary(Loc.Get(Strings.Setup.SignIn.BusyHint))),
         new BoxEl { AlignSelf = FlexAlign.Start, Children = [Embed.Comp(() => new LoginStepBar(host))] },
         new BoxEl
         {
-            Direction = 0, Wrap = true, Gap = Spacing.L, Stagger = Design.Reduced ? 0f : R.Motion.StaggerMs,
+            Key = "zsignin:steps", Direction = 1, Gap = Z.StepLadderGap, MinWidth = 0f, Stagger = Design.Reduced ? 0f : R.Motion.StaggerMs,
             Children = [StepRow(host, 0), StepRow(host, 1), StepRow(host, 2), StepRow(host, 3)],
         });
 
+    /// <summary>What a step of the ladder does, in a few words under its name.</summary>
+    private static string StepSub(int step) => Loc.Get(step switch
+    {
+        1 => Strings.Setup.SignIn.StepMetadataSub,
+        2 => Strings.Setup.SignIn.StepAudioSub,
+        3 => Strings.Setup.SignIn.StepProfileSub,
+        _ => Strings.Setup.SignIn.StepConnectingSub,
+    });
+
     private static Element StepRow(ISetupSignInHost host, int step) => Embed.Comp(() => new LoginStepRow(host, step)) with { Key = "zlogin-step:" + step };
 
-    /// <summary>"Is this you?": a plain account row (no auto-advance). The name arrives with the account's user row; until then the account id stands in.</summary>
+    /// <summary>"Is this you?": the account as the page's head (a 72 picture, the name as the account wrote it in the heading voice, the plan and "signed
+    /// in on this pc"), then what continuing means, as three facts with a glyph each: the library, the other devices, playback on this PC. It was one
+    /// row in an empty plate (owner, 2026-11-18: "a lot richer"), as Classic's and WinUI's were. "not me" is the footer's alone (the row carried a second
+    /// one: two homes for one verb). No auto-advance. The name arrives with the account's user row; until then the account id stands in.</summary>
     private static Element DoneBody(ISetupSignInHost host, ZuneSetupLayout layout)
     {
         SetupAccountFacts me = host.Account();   // subscribes: the account's identity lands a tick after Online
+        string plan = Loc.Get(me.Premium ? Strings.Auth.PremiumBadge : Strings.Setup.SignIn.Free);
         return SetupText.Stack(
             SetupText.Lead(Loc.Get(Strings.Setup.SignIn.ConfirmLead)),
             new BoxEl
             {
-                MinHeight = Z.CardMinHeight, Padding = Edges4.All(Z.CardPad), Fill = Tok.FillSolidTertiary,
-                Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center,
+                Key = "zsignin:account", Padding = Edges4.All(Z.CardPad), Fill = Tok.FillSolidTertiary,
+                Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center, MinWidth = 0f,
                 Children =
                 [
                     PersonPicture.Create("", Z.AccountPicture, displayName: me.Name, imageSourcePath: me.ImageUrl) with { Shrink = 0f },
@@ -359,15 +376,44 @@ internal static partial class ZuneSetup
                         Direction = 1, Gap = Z.CardWordsGap, Grow = 1f, Basis = 0f, MinWidth = 0f,
                         Children =
                         [
-                            R.Type.TrackTitle(me.Name) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                            ZuneText.Hint(Loc.Get(me.Premium ? Strings.Auth.PremiumBadge : Strings.Setup.SignIn.Free)),
+                            R.Type.Heading(me.Name) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                            ZuneText.Meta(plan + " \u00B7 " + Loc.Get(Strings.Setup.SignIn.SignedInHere)),
                         ],
                     },
-                    KitOf(layout).Cmd(Loc.Get(Strings.Setup.SignIn.NotMe), host.SwitchAccount),
+                ],
+            },
+            new BoxEl
+            {
+                Key = "zsignin:facts", Direction = 1, Gap = Z.FactRowGap, MinWidth = 0f,
+                Children =
+                [
+                    ZuneText.Label(Loc.Get(Strings.Setup.SignIn.FactsTitle)),
+                    Fact(Icons.Library, Strings.Setup.SignIn.FactLibraryTitle, Strings.Setup.SignIn.FactLibraryBody),
+                    Fact(Icons.Devices, Strings.Setup.SignIn.FactDevicesTitle, Strings.Setup.SignIn.FactDevicesBody),
+                    Fact(Icons.Download, Strings.Setup.SignIn.FactPlaybackTitle, Strings.Setup.SignIn.FactPlaybackBody),
                 ],
             },
             SetupText.Secondary(Loc.Get(Strings.Setup.SignIn.ConfirmHint)));
     }
+
+    /// <summary>One fact of "is this you?": the glyph in the accent, its name in the label voice over one sentence.</summary>
+    private static Element Fact(string glyph, string titleKey, string bodyKey) => new BoxEl
+    {
+        Direction = 0, Gap = Z.FactGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
+        Children =
+        [
+            new BoxEl
+            {
+                Width = Z.FactGlyphBox, Height = Z.FactGlyphBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Children = [Icon(glyph, Z.FactGlyph, R.Ink.AccentDecor)],
+            },
+            new BoxEl
+            {
+                Direction = 1, Gap = Z.CardWordsGap, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Children = [ZuneText.Label(Loc.Get(titleKey)), ZuneText.Prose(Loc.Get(bodyKey))],
+            },
+        ],
+    };
 
     /// <summary>One rung of the Busy ladder: a ring while current, an accent check when done, a tertiary bullet pending, a critical cross on failure.</summary>
     private sealed class LoginStepRow(ISetupSignInHost host, int step) : Component
@@ -391,16 +437,24 @@ internal static partial class ZuneSetup
                 Exit = new EnterExit(Sx: Z.MarkExitScale, Sy: Z.MarkExitScale, Opacity: 0f, Active: true),
                 Transition = MotionTok.ControlNormal,
             };
-            var word = R.Type.DenseMeta(Loc.Get(Setup.Commands.LoginStepKey(step)));
+            var word = ZuneText.Cased(R.Type.DenseTitle(Loc.Get(Setup.Commands.LoginStepKey(step))), LabelKind.Label);
             return new BoxEl
             {
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Height = Z.StepRowHeight,
-                Basis = Z.StepRowWidth, MaxWidth = Z.StepRowWidth, MinWidth = 0f, Shrink = 1f,
+                Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Start, MinHeight = Z.StepRowMinHeight, MinWidth = 0f,
                 Enter = new EnterExit(Dx: Z.StepEnterDx, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
                 Children =
                 [
-                    new BoxEl { Width = Z.StepMarkBox, Height = Z.StepMarkBox, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [mark] },
-                    word with { Weight = current ? Z.StepCurrentWeight : Z.StepRestWeight, Color = current ? Tok.TextPrimary : done ? Tok.TextSecondary : Tok.TextTertiary },
+                    new BoxEl { Width = Z.StepMarkBox, Height = Z.StepMarkBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [mark] },
+                    new BoxEl
+                    {
+                        Direction = 1, Gap = Z.StepWordsGap, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                        Children =
+                        [
+                            word with { Weight = current ? Z.StepCurrentWeight : Z.StepRestWeight, Color = current ? Tok.TextPrimary : done ? Tok.TextSecondary : Tok.TextTertiary,
+                                MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                            ZuneText.Hint(StepSub(step)),
+                        ],
+                    },
                 ],
             };
         }

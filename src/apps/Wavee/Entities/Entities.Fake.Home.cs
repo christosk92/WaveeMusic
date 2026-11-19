@@ -308,40 +308,35 @@ public static partial class Entities
             StageSectionIds(s, "spotify:section:wavee-mockup-releases", "From artists you follow", SectionKind.HomeGeneric,
                 [vaultboy, troye, puth, richBrianRelease, rose, henryMoodieRelease], total: 6, nextOffset: SectionPaging.Complete);
 
-            // -- "Because you like..." baseline clusters (ClusterFold, owned by A1, groups these at render time) --
+            // -- "Because you like...": four one-card baseline sections, as Spotify sends them (the filled title, ONE playlist card, its preview
+            //    songs from feedBaselineLookup): the board gathers them into the one Spine Shelf. --
             var troyeRadio = MockPlaylist(s, "spotify:playlist:37i9dQZF1E4ourTrQDXAVJ", "Troye Sivan Radio",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/artist/3WGpXCj9YhhfX11TToZcXP/en", 50, PlaylistFormat.Radio);
-            var popTerjineun = MockPlaylist(s, "spotify:playlist:37i9dQZF1DX8WYwNpUjJBr", "Pop 터지는 팝콘 한 입",
-                "https://i.scdn.co/image/ab67706f000000024b2cb319c9b6d646fdf27e8c", 50, PlaylistFormat.Editorial);
-            var emailsAlbum = MockAlbum(s, "spotify:album:2g4aJTa5ejGpp0O0GKzWAQ", "emails i can't send fwd:",
-                "https://i.scdn.co/image/ab67616d00001e020f45623be014a592a5815827", (int)(now0 - 200 * 86_400));
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-troye", "More like", SectionKind.HomeBaseline,
-                [MockArtist(s, troyeArtistUri, "Troye Sivan", Cover(35)), troyeRadio, popTerjineun, emailsAlbum], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 3);
+            MockArtist(s, troyeArtistUri, "Troye Sivan", Cover(35));
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-troye", "More like Troye Sivan", SectionKind.HomeBaseline,
+                [troyeRadio], total: 1, nextOffset: SectionPaging.Complete, firstPreviewTrack: 3, previewTracks: 5);
 
             var roseRadio = MockPlaylist(s, "spotify:playlist:37i9dQZF1E4vmmujp8nGFY", "ROSÉ Radio",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/artist/3eVa5w3URK5duf6eyVDbu9/en", 50, PlaylistFormat.Radio);
-            var romanticizing = MockPlaylist(s, "spotify:playlist:37i9dQZF1DWWAv76uXmtxB", "romanticizing life",
-                "https://i.scdn.co/image/ab67706f00000002939028c1e5124638af3ecaf1", 60, PlaylistFormat.Editorial);
             var rosieAlbumUri = "spotify:album:7kFyd5oyJdVX2pIi6P4iHE";
             var rosieAlbum = MockAlbum(s, rosieAlbumUri, "rosie",
                 "https://i.scdn.co/image/ab67616d00001e027be65ce6672ed7e5aac6e966", (int)(now0 - 150 * 86_400));
             albumArtistLinks.Add((rosieAlbumUri, roseArtistUri));
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-rose", "More like", SectionKind.HomeBaseline,
-                [MockArtist(s, roseArtistUri, "ROSÉ", Cover(37)), roseRadio, romanticizing, rosieAlbum], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 9);
+            MockArtist(s, roseArtistUri, "ROSÉ", Cover(37));
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-rose", "More like ROSÉ", SectionKind.HomeBaseline,
+                [roseRadio], total: 1, nextOffset: SectionPaging.Complete, firstPreviewTrack: 9);
 
-            var sadHour = MockPlaylist(s, "spotify:playlist:37i9dQZF1DWSqBruwoIXkA", "sad hour",
-                "https://i.scdn.co/image/ab67706f000000021ec2ef7e5cc1221d4b45354e", 150, PlaylistFormat.Editorial);
             var thisIsHenry = MockPlaylist(s, "spotify:playlist:37i9dQZF1DZ06evO4j9SIr", "This Is Henry Moodie",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/thisisv3/7hr9W3IjXcm3UlLY7guLk5/nl", 50, PlaylistFormat.Editorial);
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-henry", "For fans of", SectionKind.HomeBaseline,
-                [MockArtist(s, henryArtistUri, "Henry Moodie", Cover(38)), sadHour, thisIsHenry, dm4], total: 4, nextOffset: SectionPaging.Complete, firstPreviewTrack: 15);
+            MockArtist(s, henryArtistUri, "Henry Moodie", Cover(38));
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-henry", "For fans of Henry Moodie", SectionKind.HomeBaseline,
+                [thisIsHenry], total: 1, nextOffset: SectionPaging.Complete, firstPreviewTrack: 15);
 
             var thisIsSavage = MockPlaylist(s, "spotify:playlist:37i9dQZF1DZ06evO2drKmY", "This Is Savage Garden",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/thisisv3/3NRFinRTEqUCfaTTZmk8ek/en-GB", 50, PlaylistFormat.Editorial);
-            var guiltyPleasures = MockPlaylist(s, "spotify:playlist:37i9dQZF1DX4pUKG1kS0Ac", "Guilty Pleasures",
-                "https://i.scdn.co/image/ab67706f000000027773630113d067b9590817f4", 150, PlaylistFormat.Editorial);
-            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-savage", "For fans of", SectionKind.HomeBaseline,
-                [MockArtist(s, "spotify:artist:hmSavageGarden", "Savage Garden", Cover(40)), thisIsSavage, guiltyPleasures], total: 3, nextOffset: SectionPaging.Complete, firstPreviewTrack: 21);
+            MockArtist(s, "spotify:artist:hmSavageGarden", "Savage Garden", Cover(40));
+            StageSectionIds(s, "spotify:section:wavee-mockup-cluster-savage", "For fans of Savage Garden", SectionKind.HomeBaseline,
+                [thisIsSavage], total: 1, nextOffset: SectionPaging.Complete, firstPreviewTrack: 21);
 
             // -- RecentGrid support: WLUWD and 90's Nederlandstalig are two of the real uris `s_recentsSeed` (above)
             // points at, staged here (no section membership needed) purely so the RecentGrid renders a real title/
@@ -460,12 +455,25 @@ public static partial class Entities
             "wavee-mockup-cluster-troye", "wavee-mockup-cluster-rose", "wavee-mockup-cluster-henry",
             "wavee-mockup-cluster-savage", "wavee-mockup-jump-back-in", "wavee-mockup-radio",
         ];
+        // A capture section that a mockup band already stands for (the capture's own "Jump back in" beside the mockup's, whose cards include the
+        // long-titled album agents open) is left out: one Home never draws one title twice (lint home.duplicate).
         var home = HomeFeed();
         var existing = home.SectionSlots.ToArray();
-        var combined = new int[mockupUris.Length + existing.Length];
-        for (int i = 0; i < mockupUris.Length; i++) combined[i] = Section(("spotify:section:" + mockupUris[i]).AsSpan()).Slot;
-        existing.CopyTo(combined, mockupUris.Length);
-        Current.Edges.HomeSection.ReplaceRun(home.Slot, combined, default);
+        var combined = new List<int>(mockupUris.Length + existing.Length);
+        var mockTitles = new HashSet<StringId>();
+        for (int i = 0; i < mockupUris.Length; i++)
+        {
+            var band = Section(("spotify:section:" + mockupUris[i]).AsSpan());
+            combined.Add(band.Slot);
+            if (band.Kind == SectionKind.HomeGeneric && !band.TitleId.IsEmpty) mockTitles.Add(band.TitleId);
+        }
+        foreach (int slot in existing)
+        {
+            var band = new Section(slot);
+            if (band.IsValid && band.Kind == SectionKind.HomeGeneric && mockTitles.Contains(band.TitleId)) continue;
+            combined.Add(slot);
+        }
+        Current.Edges.HomeSection.ReplaceRun(home.Slot, combined.ToArray(), default);
         Current.Homes.Bump(home.Slot, (uint)HomeFields.All);
     }
 
@@ -538,7 +546,7 @@ public static partial class Entities
     /// batch as `StagedId` values -- every mockup card is a real entity `Mock*` already minted, so re-encoding its uri
     /// as text a second time (what `StageSection`'s `string[]` overload does) would just waste arena bytes.</summary>
     static StagedId StageSectionIds(Staging s, string sectionUri, string title, SectionKind kind,
-        ReadOnlySpan<StagedId> cardIds, int total, int nextOffset, int firstPreviewTrack = -1)
+        ReadOnlySpan<StagedId> cardIds, int total, int nextOffset, int firstPreviewTrack = -1, int previewTracks = 3)
     {
         var id = new StagedId(s.AddText(Utf8(sectionUri)));
         ref var row = ref s.Sections.RowFor(id, Authority.Seed, SeededSection);
@@ -554,11 +562,12 @@ public static partial class Entities
         s.Edges.Close(Relation.SectionCards, in id, mark);
 
         // A baseline ("because you like") band's rows are its PREVIEW TRACKS (ClusterFold reads `Edges.SectionPreviewTracks`; a live feed fills them
-        // from feedBaselineLookup). Without them every cluster folds to nothing and the "because you like" zone never stands. Three catalogue tracks.
+        // from feedBaselineLookup). Without them every cluster folds to nothing and the "because you like" zone never stands. Three catalogue tracks (a
+        // short answer), or the five Spotify usually sends (Troye's: three of them with a canvas, the hover's real-media path).
         if (firstPreviewTrack >= 0)
         {
             int pm = s.Edges.PendingMark;
-            for (int i = 0; i < 3; i++) s.Edges.Push().Target = new StagedId(s.AddText(Utf8(TrackUri(firstPreviewTrack + i))));
+            for (int i = 0; i < previewTracks; i++) s.Edges.Push().Target = new StagedId(s.AddText(Utf8(TrackUri(firstPreviewTrack + i))));
             s.Edges.Close(Relation.SectionPreviewTracks, in id, pm);
         }
         return id;
@@ -777,7 +786,8 @@ public static partial class Entities
         t.Seat(slot, stamp);                 // the simulated request seats the row; its conclusion gives the seat back
 
         string facetId = Entities.Strings.Resolve(h.FacetId);
-        bool fail = facetId.Length > 0 && FakeHomeFacetTiming.Failing.Contains(facetId);
+        // The failing facet is the mock's demo; a captured fixture answers every facet.
+        bool fail = HomeFixture == "mock" && facetId.Length > 0 && FakeHomeFacetTiming.Failing.Contains(facetId);
 
         if (s_fakeSwitchTimers.TryGetValue(slot, out var stale)) stale.Dispose();
         s_fakeSwitchTimers[slot] = new System.Threading.Timer(
@@ -1379,6 +1389,234 @@ public static partial class Entities
 
     /// <summary>A stable lowercase-hex <c>item_id</c> per fixture index (uris repeat in a real list; the id never does).</summary>
     static string ItemIdOf(int i) => "5eed" + ((uint)Wrap(i, 1 << 20)).ToString("x8");
+
+    // ── 7. Home fixtures by name (pinned-home design 2.6 step 3; the inspector's `mount … home=<name>`) ─────────────
+    //
+    // `mock` is the seed above (the bundled hybrid capture plus the mockup sections), so today's baselines keep their
+    // meaning. Every other name re-seeds the Home subjects from `assets/spotify/fixtures/`: the redacted answers of the
+    // official 1.3.8.620 client (All and every chip facet, `home.<facet>.json`), decoded by the SAME fold the live
+    // provider calls, and the `feedBaselineLookup` answers (`lookup.<facet>.json`) through the live preview fold. The
+    // derived and synthetic names replace only All (`home.all.<name>.json`; each file says in its `_fixture` header what
+    // was edited). `state kind=home-refresh` lands `home.all.second.json` over All: the next answer, for identity.
+
+    /// <summary>The fixture names <see cref="StageHomeFixture"/> takes.</summary>
+    public static readonly string[] HomeFixtures = ["mock", "capture", "new", "free", "podcast", "region", "synthetic", "second", "live1", "live2", "releases"];
+
+    /// <summary>The Home fixture the tables hold now.</summary>
+    public static string HomeFixture { get; private set; } = "mock";
+
+    static readonly string[] s_fixtureFacets =
+        ["", "music-chip", "music-following-chip", "podcasts-chip", "podcasts-following-chip", "audiobooks-chip"];
+
+    /// <summary>Re-seed the Home subjects from the named fixture. False for an unknown name or a fixture file that is
+    /// missing (a stripped build). A no-op when the tables already hold it.</summary>
+    public static bool StageHomeFixture(string name)
+    {
+        if (Array.IndexOf(HomeFixtures, name) < 0) return false;
+        if (name == HomeFixture) return true;
+        if (name == "mock")
+        {
+            long now0 = Platform.Clock.SeedEpoch;
+            SeedHomeDocument(now0);
+            SeedHomeMockupAll(now0);
+            SeedHomeFacets();
+            SeedHomeMockupFacets(now0);
+            HomeFixture = name;
+            Current.PublishAll();
+            return true;
+        }
+        foreach (string facet in s_fixtureFacets)
+        {
+            string file = facet.Length > 0 ? "home." + facet + ".json"
+                : name == "capture" ? "home.all.json" : "home.all." + name + ".json";
+            // A derived fixture may replace a facet too (`home.<facet>.<name>.json`: the synthetic following list carries a pre-save).
+            if (facet.Length > 0 && name != "capture" && ReadBundledCapture(Path.Combine("fixtures", "home." + facet + "." + name + ".json")) is not null)
+                file = "home." + facet + "." + name + ".json";
+            if (!LandHomeAnswer(facet, file, name)) return false;
+        }
+        HomeFixture = name;
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>`state kind=home-refresh`: the next answer for All (one section removed, one added, two swapped) lands
+    /// over the one the page shows, as a refresh would.</summary>
+    public static bool StageHomeRefresh()
+    {
+        if (!LandHomeAnswer("", "home.all.second.json")) return false;
+        Current.PublishAll();
+        return true;
+    }
+
+    // ── a daylist rollover as the live feed serves it (`state kind=daylist-generic`, then `daylist-land`): the feed answer carries the
+    // daylist in its GENERIC pre-title state (the name "daylist", the generic blurb, no localized_terms / recsplanation, a provisional
+    // window), then the playlist's own header read lands the edition (its name, a description with tag anchors, its terms, basis and a
+    // window a few minutes later than the feed's). Direct writes to the rows a live answer writes, so the card's row gate is what shows
+    // the edition (Home.Host.cs asks for that header on a live scope; the fake has no provider, so the land is its own step). --
+
+    static string? s_genericPretitle;
+
+    /// <summary>The All answer's daylist card (its playlist slot and section), or false.</summary>
+    static bool DaylistOfFeed(out int slot, out int section)
+    {
+        slot = section = Table.None;
+        var all = HomeFeed();
+        if (!all.IsValid) return false;
+        var found = HomeUi.DaylistSource.Find(HomeUi.SectionReader.Read(all));
+        if (found is not { } f || f.Card.Target.Kind is not (EntityKind.Playlist or EntityKind.Collection)) return false;
+        slot = f.Card.Target.Slot;
+        section = f.Card.SectionSlot;
+        return true;
+    }
+
+    static void SetDaylistRow(int slot, string title, string description, string terms, string links, string basis, long expiresUnixS, long createdUnixS)
+    {
+        var t = Current.Playlists;
+        t.SetText(ref t.Title, slot, Strings.Intern(title));
+        t.SetText(ref t.Description, slot, Strings.Intern(description));
+        t.SetText(ref t.DaylistTerms, slot, Strings.Intern(terms));
+        t.SetText(ref t.DaylistLinks, slot, Strings.Intern(links));
+        t.SetText(ref t.DaylistBasis, slot, Strings.Intern(basis));
+        t.DaylistExpiresAt[slot] = (int)expiresUnixS;
+        t.DaylistCreatedAt[slot] = (int)createdUnixS;
+        t.Bump(slot, (uint)(PlaylistFields.Identity | PlaylistFields.Daylist));
+    }
+
+    /// <summary>`state kind=daylist-generic`: the feed's answer serves the daylist in its generic pre-title state.</summary>
+    public static bool StageDaylistGeneric()
+    {
+        if (!DaylistOfFeed(out int slot, out int section)) return false;
+        var t = Current.Playlists;
+        s_genericPretitle = t.GenericTitle[slot].IsEmpty ? "daylist" : Strings.Resolve(t.GenericTitle[slot]);
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        SetDaylistRow(slot, s_genericPretitle, "Your daylist changes throughout the day.", "", "", "", now + 2 * 3600 + 52 * 60, now - 8 * 60);
+        // The feed card's own facts say nothing either: no seeds, no links, no basis.
+        var sections = Current.Sections;
+        int fact = sections.FactIndexOf(section, t.Kind, slot);
+        if (fact >= 0)
+        {
+            for (int k = 0; k < sections.FactSeedCount[fact]; k++) ReleaseText(ref sections.Seeds[sections.FactSeedAt[fact] + k]);
+            sections.FactSeedCount[fact] = 0;
+            ReleaseText(ref sections.FactLinks[fact]);
+            ReleaseText(ref sections.FactBasis[fact]);
+            sections.MarkDirty();
+        }
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>`state kind=daylist-land`: the playlist's own header read lands the edition (8 minutes later than the feed's window).</summary>
+    public static bool StageDaylistLand()
+    {
+        if (!DaylistOfFeed(out int slot, out _)) return false;
+        var t = Current.Playlists;
+        long expires = t.DaylistExpiresAt[slot] > 0 ? t.DaylistExpiresAt[slot] + 8 * 60 : DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3 * 3600;
+        const string a = "<a href=\"spotify:playlist:37i9dQZF1EIfakeTagA0000\">", b = "<a href=\"spotify:playlist:37i9dQZF1EIfakeTagB0000\">";
+        SetDaylistRow(slot, "sunlit bedroom pop daydream tuesday afternoon",
+            "Here's some " + a + "sunlit</a>, " + b + "bedroom pop</a>, daydream, lo-fi, mellow — inspired by your listening on Tuesdays in the afternoon",
+            "sunlit, bedroom pop, daydream, lo-fi, mellow",
+            a + "sunlit</a>, " + b + "bedroom pop</a>",
+            "indie, chill", expires, expires - 3 * 3600);
+        Current.PublishAll();
+        return true;
+    }
+
+    // ── the live open, one step per command (`state kind=home-cold`, then `home-land`, `home-following` and `home-previews` in any
+    // order): what a launch with no Home on disk shows while the answers arrive (a live log: the board first, the All answer
+    // ~0.7 s later, then the Following answer and the baseline lookup). Cold forgets the three answers the page holds (the rows
+    // stay: the land steps make them known again) and seats All and Following, so the fake's own demand (SimulateFacetFetch)
+    // waits for the step instead of landing them on its timer. --
+
+    static (int Section, int[] Targets)[] s_coldPreviews = [];
+    static uint s_coldStamp;
+
+    /// <summary>`state kind=home-cold`: All, the Following facet and the baseline lookup are not known yet, and in flight.</summary>
+    public static bool StageHomeCold()
+    {
+        var all = HomeFeed();
+        var following = HomeFeed("music-following-chip".AsSpan());
+        if (!all.IsValid || !following.IsValid || s_coldStamp != 0) return false;
+        var t = Current.Homes;
+        s_coldStamp = unchecked((uint)Environment.TickCount64) | 1u;
+        foreach (int slot in new[] { all.Slot, following.Slot })
+        {
+            t.Known[slot] &= ~(uint)HomeFields.All;   // the greeting, the chip strip and the sections: a launch has none of them yet
+            t.Seat(slot, s_coldStamp);
+            t.Bump(slot);
+        }
+        var previews = Current.Edges.SectionPreviewTracks;
+        var cold = new List<(int, int[])>();
+        foreach (int s in all.SectionSlots)
+        {
+            if (previews.State(s) == EdgeState.Unknown) continue;
+            cold.Add((s, previews.Targets(s).ToArray()));
+            previews.Clear(s);
+        }
+        s_coldPreviews = cold.ToArray();
+        Current.Edges.HomePreviews.Clear(all.Slot);
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>`state kind=home-land` (All) / `home-following`: that facet's answer concludes, as the live fetch's conclusion does.</summary>
+    public static bool StageHomeAnswer(string facet)
+    {
+        var h = HomeFeed(facet.AsSpan());
+        if (!h.IsValid || Current.Homes.Inflight[h.Slot] == 0) return false;
+        var t = Current.Homes;
+        t.Unseat(h.Slot);
+        t.Bump(h.Slot, (uint)HomeFields.All);
+        if (t.Inflight[HomeFeed().Slot] == 0 && t.Inflight[HomeFeed("music-following-chip".AsSpan()).Slot] == 0) s_coldStamp = 0;
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>`state kind=home-previews`: the baseline lookup answers (the preview songs `home-cold` took back).</summary>
+    public static bool StageHomePreviews()
+    {
+        var previews = Current.Edges.SectionPreviewTracks;
+        foreach (var (section, targets) in s_coldPreviews) previews.ReplaceRun(section, targets, default);
+        s_coldPreviews = [];
+        var all = HomeFeed();
+        if (all.IsValid) Current.Edges.HomePreviews.ReplaceRun(all.Slot, ReadOnlySpan<int>.Empty, default);
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>One facet's captured answer, then its baseline lookup (when the capture has one), through the live folds.</summary>
+    static bool LandHomeAnswer(string facet, string file, string fixture = "capture")
+    {
+        byte[]? answer = ReadBundledCapture(Path.Combine("fixtures", file));
+        if (answer is null) return false;
+        string subject = facet.Length == 0 ? Home.FeedUri : Home.FacetPrefix + facet;
+        var s = Staging.Rent();
+        try
+        {
+            Spotify.Decode.HomeFeed(answer, System.Text.Encoding.UTF8.GetBytes(subject), s);
+            Commit(s);
+        }
+        finally { Staging.Return(s); }
+
+        var home = HomeFeed(facet.AsSpan());
+        // A fixture of its own day carries its own lookups (`lookup.<facet>.<name>.json`); the derived ones share the capture's.
+        string facetName = facet.Length == 0 ? "all" : facet;
+        byte[]? lookup = (fixture != "capture" ? ReadBundledCapture(Path.Combine("fixtures", "lookup." + facetName + "." + fixture + ".json")) : null)
+            ?? ReadBundledCapture(Path.Combine("fixtures", "lookup." + facetName + ".json"));
+        HomePreviewLink[] links = home.IsValid ? home.BaselinePreviewLinks() : [];
+        if (lookup is not null && links.Length > 0)
+        {
+            var p = Staging.Rent();
+            try
+            {
+                Spotify.Decode.FeedBaselineLookup(lookup, links, p);
+                Commit(p);
+            }
+            finally { Staging.Return(p); }
+        }
+        // The lookup is answered (or there is none to make): the fake registers no provider that could answer it.
+        if (home.IsValid) Current.Edges.HomePreviews.ReplaceRun(home.Slot, ReadOnlySpan<int>.Empty, default);
+        return true;
+    }
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
 

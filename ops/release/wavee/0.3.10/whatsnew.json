@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.10",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "A fix for Wavee closing by itself shortly after it starts on x64 PCs.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "x64-crash-fix",
+      "title": "Wavee no longer closes by itself after starting",
+      "body": "On x64 PCs, 0.3.8 and 0.3.9 could close a few seconds after launch, or when the window came back after a long time hidden. The cause was a defect in the preview .NET compiler they were built with; this release is built with the final .NET 11 and does not have it.",
+      "kind": "fixed",
+      "issues": []
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

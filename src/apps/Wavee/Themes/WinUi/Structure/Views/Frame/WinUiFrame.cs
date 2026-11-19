@@ -125,6 +125,7 @@ internal static class WinUiFrame
         Height = Prop.Of(() => WinUiTiers.FrameOf(tiers()).TitleBarH(facts.Value.Capabilities.ShowsTabStrip)),
         Animate = reduced ? null : WinUiFrameRules.TitleSlotAnim,
         Visible = Prop.Of(props.ChromeMounted),
+        DropTarget = props.TitleBar.NewTabDrop,   // the whole bar: what is dropped on it opens in a new tab
         Children = [ctx.View(ViewKeys.ShellTitleBar, props.TitleBar)],
     };
 

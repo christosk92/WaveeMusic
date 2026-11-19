@@ -106,6 +106,7 @@ def decode_unknown(buf: bytes) -> Dict[str, Any]:
 PROVIDED_TRACK: Dict[int, Tuple[str, str]] = {
     1: ("uri", "string"),
     2: ("uid", "string"),
+    3: ("metadata", "map:string"),
     6: ("provider", "string"),
     8: ("album_uri", "string"),
     10: ("artist_uri", "string"),
@@ -119,11 +120,14 @@ CONTEXT_INDEX: Dict[int, Tuple[str, str]] = {
 PLAY_ORIGIN: Dict[int, Tuple[str, str]] = {
     1: ("feature_identifier", "string"),
     2: ("feature_version", "string"),
+    3: ("view_uri", "string"),
+    5: ("referrer_identifier", "string"),
 }
 
 PLAYER_STATE: Dict[int, Tuple[str, str]] = {
     1: ("timestamp", "int"),
     2: ("context_uri", "string"),
+    5: ("play_origin", "message:PLAY_ORIGIN"),
     6: ("index", "message:CONTEXT_INDEX"),
     7: ("track", "message:PROVIDED_TRACK"),
     8: ("playback_id", "string"),
@@ -134,6 +138,7 @@ PLAYER_STATE: Dict[int, Tuple[str, str]] = {
     14: ("is_buffering", "bool"),
     19: ("prev_tracks", "message:PROVIDED_TRACK*"),
     20: ("next_tracks", "message:PROVIDED_TRACK*"),
+    21: ("context_metadata", "map:string"),
     23: ("session_id", "string"),
     24: ("queue_revision", "string"),
     25: ("position", "int"),
@@ -208,6 +213,15 @@ _SCHEMAS: Dict[str, Dict[int, Tuple[str, str]]] = {
 
 
 def _decode_typed(wire_type: int, value: Any, typ: str) -> Any:
+    # A schema names a field by number only; a payload guessed against the wrong schema (a Cluster tried as a
+    # PutStateRequest first, say) carries a varint where the schema expects a message, or bytes where it expects a
+    # number. That is a schema miss, not a crash: raise the decode error the guess ladder falls through on.
+    is_len = isinstance(value, (bytes, bytearray))
+    if typ.startswith("message:") or typ in ("string", "bytes"):
+        if typ.startswith("message:") and not is_len:
+            raise ProtoDecodeError(f"wire type {wire_type} where {typ!r} expects a length-delimited field")
+    elif typ in ("bool", "int") and is_len:
+        raise ProtoDecodeError(f"length-delimited field where {typ!r} expects a number")
     if typ == "string":
         return value.decode("utf-8", errors="replace") if isinstance(value, (bytes, bytearray)) else str(value)
     if typ == "bytes":
@@ -244,6 +258,8 @@ def decode_message(buf: bytes, schema: Dict[int, Tuple[str, str]]) -> Dict[str, 
             decoded = _decode_typed(wire_type, value, typ)
             out.setdefault(name, []).append(decoded)
         elif typ.startswith("map:"):
+            if not isinstance(value, (bytes, bytearray)):
+                raise ProtoDecodeError(f"wire type {wire_type} where map field {name!r} expects a length-delimited entry")
             value_kind = typ[len("map:"):]
             entry_schema = {1: ("key", "string"), 2: ("value", "string" if value_kind == "string" else f"message:{value_kind}")}
             entry = decode_message(value, entry_schema)

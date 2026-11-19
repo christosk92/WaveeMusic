@@ -61,6 +61,14 @@ public readonly record struct ClassicGridBand(float MinCol, int MaxCols)
 /// <param name="Pager">The shelf's chevrons and pips are shown.</param>
 public readonly record struct ClassicShelfBand(float MinCardW, float MaxCardW, int MaxColumns, float FixedCardW, float Gap, bool Pager);
 
+/// <summary>The Home rhythm lead grid in one tier: the lead card BESIDE the grid (half each) or stacked over it, and the grid's fixed columns
+/// and rows.</summary>
+public readonly record struct ClassicLeadGridBand(bool Beside, int Cols, int Rows);
+
+/// <summary>A Home rhythm capped grid (the compact tiles, the circles, the capped shelf) in one tier: the column rule and the rows it shows, so it
+/// shows <c>columns x Rows</c> cards and never a ragged row.</summary>
+public readonly record struct ClassicCappedBand(ClassicGridBand Columns, int Rows);
+
 /// <summary>How the daylist card is built in a tier.</summary>
 public enum ClassicDaylistForm : byte
 {
@@ -191,6 +199,10 @@ public sealed record ClassicHomeLayout
     /// <summary>The first cover of a shelf may span two cells (E21) while the shelf has at least three columns; false where the cards are a fixed strip.</summary>
     public required bool ShelfLead { get; init; }
 
+    /// <summary>The Spine Shelf's open card stacks its head (Play, the heart and the sound under the cover and the words): Small, and Standard
+    /// under the <see cref="ClassicHomeTiers.ShelfHeadRung"/> rung, where the actions beside the words left the title a few letters.</summary>
+    public bool ShelfHeadStacked { get; init; }
+
     /// <summary>A wide shelf (the 16:9 tiles).</summary>
     public required ClassicShelfBand WideShelf { get; init; }
 
@@ -213,6 +225,28 @@ public sealed record ClassicHomeLayout
     public required ClassicGridBand Tiles { get; init; }
 
     /// <summary>The episode rows' columns (a lead and a list).</summary>
+    /// <summary>A paged section's header carries the previous and next buttons beside its "1 of 2" (false at Compact: its fixed header row
+    /// cannot hold the 40 target, and the pages swipe).</summary>
+    public bool PageArrows { get; init; } = true;
+
+    /// <summary>A personal set's lead card and grid (Home rhythm A).</summary>
+    public required ClassicLeadGridBand LeadGrid { get; init; }
+
+    /// <summary>The compact tiles: their columns and rows, the tile's art and height.</summary>
+    public required ClassicCappedBand Compact { get; init; }
+
+    /// <inheritdoc cref="Compact"/>
+    public required float CompactArt { get; init; }
+
+    /// <inheritdoc cref="Compact"/>
+    public required float CompactRowH { get; init; }
+
+    /// <summary>The round covers' columns and rows.</summary>
+    public required ClassicCappedBand Circles { get; init; }
+
+    /// <summary>The capped shelf's columns and rows (one row of six at Standard).</summary>
+    public required ClassicCappedBand Capped { get; init; }
+
     public required ClassicGridBand Episodes { get; init; }
 
     /// <summary>The continue-listening rows' columns.</summary>
@@ -244,8 +278,21 @@ public static class ClassicHomeTiers
         bool shortWindow = facts.Height == HeightTier.Short;
         // The strip is only for a window too short for the hero's own height (the `page.hero.full` rung: under 480 tall); a window of 480-679 keeps it.
         bool strip = shortWindow && facts.Policy.IndexOfRung(ClassicTiers.HeroFullRung) >= 0 && !facts.Rung(ClassicTiers.HeroFullRung);
-        return For(facts.Content, shortWindow, strip);
+        var layout = For(facts.Content, shortWindow, strip);
+        // Standard's narrow end (content under ShelfHeadBesideFrom) stacks the shelf's head, as Small always does.
+        if (layout.Tier == WidthTier.Standard && facts.Policy.IndexOfRung(ShelfHeadRung) >= 0 && !facts.Rung(ShelfHeadRung))
+            layout = layout with { ShelfHeadStacked = true };
+        return layout;
     }
+
+    /// <summary>The named content rung from which the Spine Shelf's open card keeps Play, the heart and the sound beside its words (C-Home at
+    /// 1000: "Warm Fuzzy Feeli…", the title 7 DIP short beside the three actions). Under it the head stacks (a declared swap: the shelf's form key
+    /// names the head's height).</summary>
+    public const string ShelfHeadRung = "classic.home.shelf.head.beside";
+
+    /// <summary>The content width the shelf head's actions sit beside the words from (eight items: the face's head row then holds about 250 DIP
+    /// of title), and the hold on narrowing.</summary>
+    public const float ShelfHeadBesideFrom = 1100f, ShelfHeadHold = 24f;
 
     /// <summary>The record for content tier <paramref name="content"/> (Huge 4K reads Huge's: Classic draws no 4K band). <paramref name="strip"/>: the window is too
     /// short for a hero at its own height, so the daylist is the 126 strip.</summary>
@@ -315,6 +362,9 @@ public static class ClassicHomeTiers
         Recents = new ClassicGridBand(100f, 2), RecentsArt = 40f, RecentsRowH = 56f,
         Releases = new ClassicGridBand(280f, 1), Clusters = new ClassicGridBand(280f, 1), Tiles = new ClassicGridBand(220f, 1),
         Episodes = new ClassicGridBand(280f, 1), Continue = new ClassicGridBand(280f, 1),
+        PageArrows = false,
+        LeadGrid = new ClassicLeadGridBand(Beside: false, Cols: 2, Rows: 2), Compact = new ClassicCappedBand(ClassicGridBand.Fixed(2), 3), CompactArt = 40f, CompactRowH = 56f,
+        Circles = new ClassicCappedBand(ClassicGridBand.Fixed(3), 2), Capped = new ClassicCappedBand(ClassicGridBand.Fixed(2), 2),
         SectionMinCell = 124f,
     };
 
@@ -331,7 +381,7 @@ public static class ClassicHomeTiers
             Buttons = ControlSize.Medium, IconBox = 32f, Clock = ClassicClockForm.Line, Details = true,
         },
         DaylistBeside = false,
-        Shelf = new ClassicShelfBand(R.Space.ShelfCardMin, R.Space.ShelfCardMax, 0, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true), ShelfLead = true,
+        Shelf = new ClassicShelfBand(R.Space.ShelfCardMin, R.Space.ShelfCardMax, 0, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true), ShelfLead = true, ShelfHeadStacked = true,
         WideShelf = new ClassicShelfBand(R.Space.WideTileMin, R.Space.WideTileMax, 0, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true),
         Recents = new ClassicGridBand(ClassicHomeRules.RecentsMinCol, 3), RecentsArt = Design.Size.Thumb48, RecentsRowH = ClassicHomeRules.RowH,
         Releases = new ClassicGridBand(ClassicHomeRules.ListMinCol, ClassicHomeRules.ListMaxCols),
@@ -339,6 +389,8 @@ public static class ClassicHomeTiers
         Tiles = new ClassicGridBand(ClassicHomeRules.TilesMinCol, ClassicHomeRules.TilesMaxCols),
         Episodes = new ClassicGridBand(ClassicHomeRules.ListMinCol, ClassicHomeRules.ListMaxCols),
         Continue = new ClassicGridBand(ClassicHomeRules.ListMinCol, ClassicHomeRules.ContinueMaxCols),
+        LeadGrid = new ClassicLeadGridBand(Beside: true, Cols: 2, Rows: 2), Compact = new ClassicCappedBand(new ClassicGridBand(180f, 3), 2), CompactArt = 48f, CompactRowH = 64f,
+        Circles = new ClassicCappedBand(new ClassicGridBand(96f, 6), 1), Capped = new ClassicCappedBand(new ClassicGridBand(130f, 4), 1),
         SectionMinCell = 156f,
     };
 
@@ -365,6 +417,8 @@ public static class ClassicHomeTiers
         Tiles = new ClassicGridBand(ClassicHomeRules.TilesMinCol, ClassicHomeRules.TilesMaxCols),
         Episodes = new ClassicGridBand(ClassicHomeRules.ListMinCol, ClassicHomeRules.ListMaxCols),
         Continue = new ClassicGridBand(ClassicHomeRules.ListMinCol, ClassicHomeRules.ContinueMaxCols),
+        LeadGrid = new ClassicLeadGridBand(Beside: true, Cols: 3, Rows: 2), Compact = new ClassicCappedBand(new ClassicGridBand(200f, 5), 2), CompactArt = 48f, CompactRowH = 64f,
+        Circles = new ClassicCappedBand(new ClassicGridBand(110f, 8), 1), Capped = new ClassicCappedBand(new ClassicGridBand(150f, 6), 1),
         SectionMinCell = ClassicHomeRules.SectionCardMinWidth,
     };
 
@@ -392,6 +446,8 @@ public static class ClassicHomeTiers
         Tiles = new ClassicGridBand(ClassicHomeRules.TilesMinCol, 6),
         Episodes = new ClassicGridBand(ClassicHomeRules.ListMinCol, 3),
         Continue = new ClassicGridBand(ClassicHomeRules.ListMinCol, 4),
+        LeadGrid = new ClassicLeadGridBand(Beside: true, Cols: 4, Rows: 2), Compact = new ClassicCappedBand(new ClassicGridBand(220f, 5), 2), CompactArt = 48f, CompactRowH = 64f,
+        Circles = new ClassicCappedBand(new ClassicGridBand(130f, 10), 1), Capped = new ClassicCappedBand(new ClassicGridBand(170f, 8), 1),
         SectionMinCell = 216f,
     };
 
@@ -434,13 +490,20 @@ public static class ClassicRegion
         return MathF.Max(0f, content - 2f * gutter);
     }
 
+    /// <summary>Home's page width on its first frame: the page region held to the tier's cap (the board's width).</summary>
+    public static float EstimateHomePage(in TierFacts facts, float viewportWidth)
+    {
+        var layout = ClassicHomeTiers.Of(facts);
+        float page = EstimateWidth(facts, viewportWidth);
+        return float.IsNaN(layout.PageMaxW) ? page : MathF.Min(page, MathF.Max(0f, layout.PageMaxW - 2f * ClassicTiers.PageOf(facts).Gutter));
+    }
+
     /// <summary>The width of one band of Home on its first frame: the page region held to the tier's cap, and at a tier whose daylist sits beside the Recently played
     /// tiles (Huge) the hero's or the tiles' share of it.</summary>
     public static float EstimateHomeBand(in TierFacts facts, float viewportWidth, bool hero)
     {
         var layout = ClassicHomeTiers.Of(facts);
-        float page = EstimateWidth(facts, viewportWidth);
-        if (!float.IsNaN(layout.PageMaxW)) page = MathF.Min(page, MathF.Max(0f, layout.PageMaxW - 2f * ClassicTiers.PageOf(facts).Gutter));
+        float page = EstimateHomePage(facts, viewportWidth);
         if (!layout.DaylistBeside) return page;
         float share = hero ? ClassicHomeTiers.HeroShare : 1f;
         return MathF.Max(0f, (page - ClassicHomeTiers.HeroGap) * share / (ClassicHomeTiers.HeroShare + 1f));

@@ -1,8 +1,9 @@
 // ── Themes/Classic/Structure/Views/Pages/ClassicConcertDetail.cs — Classic's `Pages.Concert` (themes plan 6.1, T10b3) ────────────────────────────
 //
-// From `Entities\Concert.Page.cs` §8 (`DetailPage`; 0.2.9 `ConcertDetailPage`): the split hero carries the identity and the provider's local-clock facts; tickets
+// From `Entities\Concert.Page.cs` §8 (`DetailPage`; 0.2.9 `ConcertDetailPage`): the hero (on the page's ground) carries the identity and the provider's local-clock facts; tickets
 // ride the tier's rail (320, Huge 360) at wide (920 enter / 860 leave, `ClassicConcertTiers.Detail`) ONLY when offers exist — else one full column — and move inline after the
-// hero when narrow; then the lineup card and the related shelf, each omitted when empty. `Concert.DetailHost` (core) demands the whole row, publishes the verdict
+// hero when narrow; then the lineup and the related shelf, each omitted when empty, each titled in the structure's section voice (`Cells.ShelfTitle`, the one Home's
+// shelves are titled in; owner, 2026-11-18: accent eyebrows titled no other page's sections). `Concert.DetailHost` (core) demands the whole row, publishes the verdict
 // and reads the row into the page's values (`ConcertDetailView`); the skeleton is the same builder over `ConcertDetailView.Seed` (§9 #4: facts + two offers +
 // three lineup rows, the exact silhouette of the loaded page).
 //
@@ -29,6 +30,10 @@ namespace Wavee.Themes.Classic;
 internal static class ClassicConcertDetail
 {
     static readonly Action s_goHub = static () => ConcertVerbs.OpenHub();
+    static readonly Action s_noop = static () => { };
+
+    /// <summary>The skeleton's view: the seed with every verb present, so the shimmer reserves the command row the loaded head draws.</summary>
+    static readonly ConcertDetailView s_seed = ConcertDetailView.Seed with { ToggleInterested = s_noop, PlayLineup = s_noop, ShareUrl = "https://seed.invalid/" };
 
     static readonly Func<ConcertShelfItem, int, string> s_itemKey = static (item, _) => item.Slot.ToString(CultureInfo.InvariantCulture);
 
@@ -55,7 +60,7 @@ internal static class ClassicConcertDetail
         var layout = ClassicConcertTiers.Of(in facts);
         float firstW = ClassicRegion.EstimateWidth(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width);
         Func<float, Element> build = w => Compose(props.Detail(), Wide(latch, w), layout);
-        Func<float, Element> buildSeed = w => Compose(ConcertDetailView.Seed, Wide(latch, w), layout);
+        Func<float, Element> buildSeed = w => Compose(s_seed, Wide(latch, w), layout);
         Func<Element> content = () => props.Unavailable
             ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Concerts.Detail.NotAvailable),
                 subtitle: Loc.Get(Strings.Concerts.Detail.NotAvailableSubtitle))
@@ -77,7 +82,7 @@ internal static class ClassicConcertDetail
     static Element Compose(ConcertDetailView d, bool wide, ClassicConcertLayout layout)
     {
         Element? tickets = d.Offers.Length > 0 ? Tickets(d.Offers, layout) : null;
-        var main = new List<Element>(4) { Cells.SplitHero(d.ImageUrl, d.Accent, Identity(d), ClassicConcertTiers.EventHero(layout, wide)) };
+        var main = new List<Element>(4) { Cells.GroundHero(d.ImageUrl, d.Accent, Identity(d, layout), ClassicConcertTiers.EventHero(layout, wide)) };
         // The rail docks only where the tier has one (C-Concert-Small keeps the tickets inline at every width).
         wide = wide && layout.RailWidth > 0f;
         if (!wide && tickets is not null) main.Add(tickets.Value);                  // narrow: inline, right after the facts
@@ -104,13 +109,14 @@ internal static class ClassicConcertDetail
         };
     }
 
-    /// <summary>The hero's copy: "Concert", the title (≤ 2 lines), the status pill when notable, then the facts — each
-    /// with its 16-DIP glyph and omitted when absent — in the PROVIDER's clock.</summary>
-    static Element Identity(ConcertDetailView d)
+    /// <summary>The hero's copy: "Concert" (the detail pages' eyebrow), the title (≤ 2 lines), the status pill when notable, the facts — each
+    /// with its 16-DIP glyph and omitted when absent — in the PROVIDER's clock, then the command row every detail head carries (the album's Play ·
+    /// Saved · share): "Play the lineup" (the accent), "Interested" with its heart filled while set (a state at rest, a standard button), share.</summary>
+    static Element Identity(ConcertDetailView d, ClassicConcertLayout layout)
     {
         var headline = new List<Element>(3)
         {
-            Cells.SectionCaption(Loc.Get(Strings.Concerts.Detail.Concert)),
+            ClassicDetailKit.EyebrowRun(Loc.Get(Strings.Concerts.Detail.Concert)),
             R.Type.PageHero(d.Title) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
         };
         if (d.Status is { } status)
@@ -123,15 +129,29 @@ internal static class ClassicConcertDetail
         if (d.Doors is { } doors) facts.Add(Fact(Icons.Clock, doors));
         if (d.Place.Length > 0) facts.Add(Fact(Icons.MapPin, d.Place));
         if (d.Ages is { } ages) facts.Add(Fact(Icons.Info, ages));
-        return new BoxEl
+        var blocks = new List<Element>(3)
         {
-            Direction = 1, Gap = Spacing.M, MinWidth = 0f,
-            Children =
-            [
-                new BoxEl { Direction = 1, Gap = Rules.HeadlineGap, MinWidth = 0f, Children = headline.ToArray() },
-                new BoxEl { Direction = 1, Gap = Spacing.S, MinWidth = 0f, Children = facts.ToArray() },
-            ],
+            new BoxEl { Direction = 1, Gap = Rules.HeadlineGap, MinWidth = 0f, Children = headline.ToArray() },
+            new BoxEl { Direction = 1, Gap = Spacing.S, MinWidth = 0f, Children = facts.ToArray() },
         };
+        if (Commands(d, layout.Target) is { } commands) blocks.Add(commands);
+        return new BoxEl { Direction = 1, Gap = Spacing.M, MinWidth = 0f, Children = blocks.ToArray() };
+    }
+
+    /// <summary>The head's command row (null when the view offers no verb).</summary>
+    static Element? Commands(ConcertDetailView d, float target)
+    {
+        var kids = new List<Element>(3);
+        if (d.PlayLineup is { } play)
+            kids.Add(Button.Create(Loc.Get(Strings.Concerts.Detail.PlayLineup), play, ButtonAppearance.Accent, glyph: Icons.Play)
+                with { Key = "cmd:play-lineup", Height = target, Shrink = 0f });
+        if (d.ToggleInterested is { } interested)
+            kids.Add(Button.Create(Loc.Get(Strings.Concerts.Detail.Interested), interested, glyph: d.Interested ? Icons.HeartFill : Icons.Heart)
+                with { Key = "cmd:interested", Height = target, Shrink = 0f });
+        if (ClassicDetailKit.ShareLinkAction(d.ShareUrl) is { } share)
+            kids.Add(ClassicPodcastKit.Glyph("cmd:share", Icons.Share, Loc.Get(Strings.Podcast.Pages.Share), share, target));
+        if (kids.Count == 0) return null;
+        return new BoxEl { Key = "concert-event:commands", Direction = 0, Wrap = true, Gap = Rules.CommandGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
     static Element Fact(string glyph, string text) => new BoxEl
@@ -144,13 +164,13 @@ internal static class ClassicConcertDetail
         ],
     };
 
-    /// <summary>"Tickets" + one card per offer: provider, availability, price, sale window, then Buy (a validated
+    /// <summary>"Tickets" (the section voice) + one card per offer: provider, availability, price, sale window, then Buy (a validated
     /// external link, lifted 4 DIP) or the quiet "Tickets not available online" — never a dead button (§0 #13).</summary>
     static Element Tickets(ConcertOfferView[] offers, ClassicConcertLayout layout)
     {
         var size = layout.Target >= ClassicArtistTiers.CompactTarget ? ControlSize.Large : ControlSize.Medium;
         var kids = new Element[offers.Length + 1];
-        kids[0] = Cells.SectionCaption(Loc.Get(Strings.Concerts.Detail.Tickets));
+        kids[0] = Cells.ShelfTitle(Loc.Get(Strings.Concerts.Detail.Tickets));
         for (int i = 0; i < offers.Length; i++)
         {
             var o = offers[i];
@@ -179,8 +199,8 @@ internal static class ClassicConcertDetail
         return new BoxEl { Direction = 1, Gap = Spacing.S, MinWidth = 0f, Children = kids };
     }
 
-    /// <summary>The Huge dates grid (C-Concert-Huge's "Tour dates" geometry): the related concerts' header over <paramref name="columns"/> date cards a row,
-    /// in the lineup's card. The app has no tour-dates feed, so the grid carries the related concerts under their own header.</summary>
+    /// <summary>The Huge dates grid (C-Concert-Huge's "Tour dates" geometry): the related concerts' title over <paramref name="columns"/> date cards a row, on the
+    /// page's ground (the cards are the frames). The app has no tour-dates feed, so the grid carries the related concerts under their own title.</summary>
     static BoxEl Dates(ConcertShelfItem[] related, int columns)
     {
         var tracks = new TrackSize[Math.Max(1, columns)];
@@ -189,12 +209,10 @@ internal static class ClassicConcertDetail
         for (int i = 0; i < cards.Length; i++) cards[i] = DateCard(related[i].Slot);
         return new BoxEl
         {
-            Key = "concert-event:dates", Direction = 1, Gap = Spacing.M, MinWidth = 0f, ClipToBounds = true,
-            Padding = Edges4.All(Spacing.L), Corners = Radii.CardAll,
-            Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            Key = "concert-event:dates", Direction = 1, Gap = Spacing.M, MinWidth = 0f,
             Children =
             [
-                Cells.SectionCaption(Loc.Get(Strings.Concerts.Detail.RelatedConcerts)),
+                Cells.ShelfTitle(Loc.Get(Strings.Concerts.Detail.RelatedConcerts)),
                 new GridEl
                 {
                     Columns = tracks, ColGap = Spacing.M, RowGap = Spacing.M, RowHeight = Rules.DateCardH, Children = cards,
@@ -246,8 +264,9 @@ internal static class ClassicConcertDetail
         };
     }
 
-    /// <summary>The lineup card: "Lineup" + "N artists", a divider, 60-DIP rows with 44 round avatars. Only a canonical
-    /// artist navigates; a billing-only act is inert — no fill, no chevron, arrow cursor, not focusable (parity 49).</summary>
+    /// <summary>The lineup: "Lineup" in the section voice on the page's ground over a card of 60-DIP rows with 44 round avatars (the rows are the list
+    /// the card frames; the title is the page's, as Home titles its shelves). Only a canonical artist navigates; a billing-only act is inert — no
+    /// fill, no chevron, arrow cursor, not focusable (parity 49).</summary>
     static BoxEl Lineup(ConcertActView[] acts)
     {
         var rows = new Element[acts.Length];
@@ -278,21 +297,15 @@ internal static class ClassicConcertDetail
         }
         return new BoxEl
         {
-            Direction = 1, MinWidth = 0f, ClipToBounds = true, Corners = Radii.CardAll,
-            Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            Key = "concert-event:lineup", Direction = 1, Gap = Spacing.S, MinWidth = 0f,
             Children =
             [
+                Cells.ShelfTitle(Loc.Get(Strings.Concerts.Detail.Lineup)),
                 new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
-                    Children =
-                    [
-                        new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [Cells.SectionCaption(Loc.Get(Strings.Concerts.Detail.Lineup))] },
-                        R.Type.Eyebrow(Strings.Concerts.Detail.ArtistCount(acts.Length)) with { Color = Tok.TextSecondary, MaxLines = 1 },
-                    ],
+                    Direction = 1, MinWidth = 0f, ClipToBounds = true, Corners = Radii.CardAll, Padding = Edges4.All(Spacing.S),
+                    Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Children = rows,
                 },
-                new BoxEl { Height = 1f, MinWidth = 0f, Fill = Tok.StrokeSurfaceDefault },
-                new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.S), Children = rows },
             ],
         };
     }
@@ -302,7 +315,7 @@ internal static class ClassicConcertDetail
     {
         var items = new ConcertShelfItem[related.Length + 1];
         Array.Copy(related, 0, items, 1, related.Length);
-        return PagedShelf.Create(items, s_relatedCard, header: Cells.SectionCaption(Loc.Get(Strings.Concerts.Detail.RelatedConcerts)),
+        return PagedShelf.Create(items, s_relatedCard, header: Cells.ShelfTitle(Loc.Get(Strings.Concerts.Detail.RelatedConcerts)),
             headerGap: Spacing.S, measured: true, keyOf: s_itemKey);
     }
 }

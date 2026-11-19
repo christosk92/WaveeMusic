@@ -3,7 +3,8 @@
 // The core content host decides WHICH state the content card is in (a page, an empty body, the not-found page, the offline lane) and builds the
 // page; this template draws the state it was handed:
 //
-//   Page / EmptyBody   one body box keyed `props.Key` that fills the card; the page, when there is one, is its only child.
+//   Page / EmptyBody   one body box keyed `props.Key` that fills the card; a page stands in it under the page's loading bar
+//                      (`CommonPageBusy`: the stock 3 px bar on the card's top edge).
 //   NotFound           the Common not-found page (the destination's glyph, the line and Go home).
 //   OfflineLane        the strip (W-Offline: an InfoBar in the page) in the flow above the kept content, on the tier's inset (16 / 24 / 36 / 48
 //                      either side, 16 / 20 / 24 / 32 from the card's top), so the page opens under it.
@@ -34,11 +35,7 @@ internal static class WinUiContentState
                 Padding = WinUiFrameRules.OfflineLanePadding(frame.InsetX, frame.InsetTop),
                 Children = [Slots.View(ViewKeys.OverlayOfflineStrip, props.Strip)],
             },
-            _ => new BoxEl
-            {
-                Key = props.Key, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-                Children = props.Page is { } page ? [page] : [],
-            },
+            _ => CommonPageBusy.PageBox(props.Key, props.Page, props.Busy, WinUiFrameRules.PageBusyH),
         };
     }
 }
