@@ -77,6 +77,7 @@ and warns on a file the manifest does not name or one carrying alpha. With `--st
 non-pending entry lacks is an error too (a badge shows only where its clip exists; the Release build fails on a missing
 one).
 
-The manifest expands to 126 clips (`--list`), so the folder can average about 73 KB a clip. Most recorded clips run
+The manifest expands to 122 clips (`--list`), so the folder can average about 75 KB a clip; the 84 this branch can record
+measured about 3.4 MB together (41 KB on average). Most recorded clips run
 10-60 KB; the heavy ones are a page swap filmed twice (Fast navigation, about 70-120 KB), the waveform diagram (50-70 KB)
 and the spinning player styles (55-80 KB).
