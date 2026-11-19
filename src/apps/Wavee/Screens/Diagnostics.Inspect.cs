@@ -1026,6 +1026,14 @@ public static partial class Diagnostics
                 Prefs.Appearance.Bump();
             }
             Wavee.Theming.InspectSwitches.RemoteDevice = a.Has("remote") ? a.Str("remote") : null;
+            // The Spotify Connect stand-in (Playback.UseFakeConnect): no device nearby, or the demo's TV, speaker and phone, which the device
+            // picker transfers to and comes back from through the reducer's own inputs.
+            string connect = a.Str("connect", "none").ToLowerInvariant();
+            if (connect is not ("none" or "nearby")) { error = "connect is none or nearby"; return false; }
+            Playback.UseFakeConnect(connect == "nearby" ? Entities.FakeConnect() : []);
+            // An output that did not open (the picker marks it "Not responding"): a fake output id, or its short name (display, usb, ...).
+            string stuck = a.Str("stuck", "");
+            Playback.Audio.Unresponsive.Value = stuck.Length == 0 ? null : stuck.StartsWith("fake:", StringComparison.Ordinal) ? stuck : "fake:out:" + stuck;
             if (a.Has("panelW"))
             {
                 float w = a.Float("panelW", 0f);

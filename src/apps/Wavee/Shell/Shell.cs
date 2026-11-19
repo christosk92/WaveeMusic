@@ -1438,35 +1438,10 @@ public static partial class Shell
         }
     }
 
-    // ── 7.1 the device picker's rows ────────────────────────────────────────────────────────────────────────────────
+    // ── 7.1 the device picker's words ───────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The role of a picker row (engine-free so the composition is unit-tested without a flyout type).</summary>
-    public enum DevicePickerRowKind : byte
-    {
-        Header,          // a disabled section-header row ("This computer" / "Spotify Connect")
-        Separator,       // divider between sections
-        LocalDefault,    // the "System default" radio (DeviceId == "")
-        LocalDevice,     // a specific this-computer output radio
-        Quality,         // the ACTUAL playing quality, echoed from the player (never a setting loopback); a link to the quality dial (design 5.4)
-        ConnectDevice,   // a Spotify Connect device radio (click = transfer)
-        Empty,           // a disabled placeholder row (no-devices / hint)
-        SoundSettings,   // the last row: "Sound settings" with the equalizer and normalization state at rest, a link to the Sound category
-    }
-
-    /// <summary>One row in the two-section device picker — a POD the UI maps to a menu item.</summary>
-    public readonly record struct DevicePickerRow(
-        DevicePickerRowKind Kind,
-        string Label,
-        bool IsChecked = false,
-        bool Enabled = true,
-        string DeviceId = "",
-        string? Accelerator = null,
-        byte LocalKind = 0,
-        Spotify.Decode.DeviceKind ConnectKind = Spotify.Decode.DeviceKind.Computer,
-        bool Chosen = false);
-
-    /// <summary>Hard cap on device labels — endpoint names are short (DeviceDesc-first) but Connect names and
-    /// duplicate-name fallbacks can be arbitrarily long, and the flyout sizes to its widest row.</summary>
+    /// <summary>Hard cap on device labels — Connect names and duplicate-name fallbacks can be arbitrarily long, and a row ellipsizes
+    /// past what its column holds.</summary>
     public const int DevicePickerMaxLabelChars = 48;
 
     internal static string CapLabel(string label)
@@ -1474,102 +1449,20 @@ public static partial class Shell
             ? label
             : label[..(DevicePickerMaxLabelChars - 1)].TrimEnd() + "…";
 
-    /// <summary>The two-section device picker: "This computer" (System default + the local render endpoints), then a
-    /// separator + "Spotify Connect" (the roster, with THIS device filtered out — this PC is section 1).
-    /// <para><b>The ownership contract, applied (ch 20 §9.11).</b> 0.2.9 checked a Connect row when its id matched the
-    /// active id <b>OR</b> when the cluster's own <c>IsActive</c> bit was set. That fallback contradicts the ownership
-    /// authority — the same fix the remote-device line already took after the 2026-09-11 Connect incident — so 0.3
-    /// checks against the ACTIVE ID ALONE. A deliberate divergence from 0.2.9, recorded here so a side-by-side
-    /// reviewer does not file it as a regression.</para></summary>
-    public static List<DevicePickerRow> DevicePickerRows(
-        ReadOnlySpan<Playback.Audio.LocalAudioDevice> local,
-        string? selectedLocalId,
-        bool localSupported,
-        bool weAreActiveOutput,
-        ReadOnlySpan<Playback.Devices.Row> connect,
-        string? activeConnectId,
-        Playback.Audio.Opened observed,
-        Spotify.Audio.Quality askedQuality,
-        SoundState sound)
-    {
-        var rows = new List<DevicePickerRow>(local.Length + connect.Length + 8);
-        // stale-truthful "Unavailable" only when local playback is genuinely unsupported
-        string? acc = localSupported ? null : Loc.Get(Strings.Player.Unavailable);
-
-        rows.Add(new DevicePickerRow(DevicePickerRowKind.Header, Loc.Get(Strings.Player.ThisComputer), Enabled: false));
-        rows.Add(new DevicePickerRow(DevicePickerRowKind.LocalDefault, Loc.Get(Strings.Player.SystemDefault),
-            IsChecked: localSupported && weAreActiveOutput && string.IsNullOrEmpty(selectedLocalId),
-            Enabled: localSupported, DeviceId: "", Accelerator: acc, Chosen: localSupported && string.IsNullOrEmpty(selectedLocalId)));
-        for (int i = 0; i < local.Length; i++)
-        {
-            ref readonly var d = ref local[i];
-            bool chosen = localSupported && !string.IsNullOrEmpty(selectedLocalId) && string.Equals(d.Id, selectedLocalId, StringComparison.OrdinalIgnoreCase);
-            rows.Add(new DevicePickerRow(DevicePickerRowKind.LocalDevice, CapLabel(d.Name),
-                IsChecked: chosen && weAreActiveOutput,
-                Enabled: localSupported, DeviceId: d.Id, Accelerator: acc, LocalKind: d.Kind, Chosen: chosen));
-        }
-
-        rows.Add(QualityRow(observed, askedQuality));
-
-        rows.Add(new DevicePickerRow(DevicePickerRowKind.Separator, ""));
-        rows.Add(new DevicePickerRow(DevicePickerRowKind.Header, Loc.Get(Strings.Player.SpotifyConnect), Enabled: false));
-        int connectCount = 0;
-        for (int i = 0; i < connect.Length; i++)
-        {
-            ref readonly var d = ref connect[i];
-            if (d.Kind == Spotify.Decode.DeviceKind.ThisDevice) continue;
-            connectCount++;
-            rows.Add(new DevicePickerRow(DevicePickerRowKind.ConnectDevice, CapLabel(d.Name ?? ""),
-                IsChecked: !string.IsNullOrEmpty(activeConnectId)
-                           && string.Equals(d.Id, activeConnectId, StringComparison.OrdinalIgnoreCase),
-                DeviceId: d.Id ?? "", ConnectKind: d.Kind));
-        }
-        if (connectCount == 0)
-        {
-            rows.Add(new DevicePickerRow(DevicePickerRowKind.Empty, Loc.Get(Strings.Player.NoDevices), Enabled: false));
-            rows.Add(new DevicePickerRow(DevicePickerRowKind.Empty, Loc.Get(Strings.Player.NoDevicesHint), Enabled: false));
-        }
-        // The last row (design 5.4): the sound settings' state at rest, a link to the Sound category (a link, not a control).
-        rows.Add(new DevicePickerRow(DevicePickerRowKind.Separator, ""));
-        rows.Add(new DevicePickerRow(DevicePickerRowKind.SoundSettings, Loc.Get(Strings.Player.SoundSettings), Accelerator: sound.Words));
-        return rows;
-    }
-
-    /// <summary>The verification row: what the player is ACTUALLY echoing, never a loopback of the setting (the
-    /// user's own wording — "so we can verify the quality is being selected and played"). <paramref name="observed"/>
-    /// is the player's own echo (<c>Playback.Audio.PlayingOpened</c>); its <c>Label</c> is empty exactly when
-    /// nothing has been opened yet (<see cref="Playback.Audio.Opened"/> default / the silent-endpoint open). The
-    /// "below setting" wording fires ONLY when the observed format sits on the quality ladder at all — an AAC/ICY
-    /// radio stream (<see cref="Spotify.Audio.Rung"/> = −1) is not a claim about the Spotify quality setting, so it
-    /// never disagrees with it.</summary>
-    static DevicePickerRow QualityRow(Playback.Audio.Opened observed, Spotify.Audio.Quality askedQuality)
-    {
-        if (string.IsNullOrEmpty(observed.Label))
-            return new DevicePickerRow(DevicePickerRowKind.Quality, Loc.Get(Strings.Player.QualityIdle));
-
-        int observedRung = Spotify.Audio.Rung(observed.Format);
-        int askedRung = Spotify.Audio.TargetRung(askedQuality);
-        string quality = ObservedQualityWords(observed);
-        string text = observedRung >= 0 && observedRung < askedRung
-            ? Strings.Player.QualityBelowSetting(quality, Loc.Get(AskedQualityLabel(askedQuality)))
-            : Strings.Player.QualityPlaying(quality);
-        return new DevicePickerRow(DevicePickerRowKind.Quality, text);
-    }
-
-    /// <summary>The observed format in the setting's own words (the boards' "very high · 320 kbps", audit B8), not the codec
-    /// label the stage badge prints ("ogg 320"): a Spotify Ogg rung names its rung and its nominal rate, a FLAC rung names
-    /// "lossless" and its depth; anything off the ladder (MP3, AAC radio, a local file) keeps the codec label. The rung words are
-    /// mid-sentence forms; each theme still applies its own case role to the line.</summary>
+    /// <summary>The observed format in the setting's own words (the boards' "Very high · 320 kbps"), not the codec label the stage badge
+    /// prints ("ogg 320"): a Spotify Ogg rung names its rung (the quality setting's own label) and its nominal rate, a FLAC rung names
+    /// "Lossless" and its depth; anything off the ladder (MP3, AAC radio, a local file) keeps the codec label. Each theme applies its own
+    /// case role to the line.</summary>
     static string ObservedQualityWords(Playback.Audio.Opened observed)
     {
         var f = observed.Format;
         if (f is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24)
-            return Strings.Player.QualityFormat(Loc.Get(Strings.Player.QualityRungLossless), observed.Label);
+            return Strings.Player.QualityFormat(Loc.Get(Strings.Settings.Playback.QualityLossless), observed.Label);
         string? rung = f switch
         {
-            Spotify.Audio.Format.OggVorbis96 => Strings.Player.QualityRungNormal,
-            Spotify.Audio.Format.OggVorbis160 => Strings.Player.QualityRungHigh,
-            Spotify.Audio.Format.OggVorbis320 => Strings.Player.QualityRungVeryHigh,
+            Spotify.Audio.Format.OggVorbis96 => Strings.Settings.Playback.QualityNormal,
+            Spotify.Audio.Format.OggVorbis160 => Strings.Settings.Playback.QualityHigh,
+            Spotify.Audio.Format.OggVorbis320 => Strings.Settings.Playback.QualityVeryHigh,
             _ => null,
         };
         return rung is { } k

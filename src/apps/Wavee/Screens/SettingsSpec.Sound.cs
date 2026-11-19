@@ -72,7 +72,7 @@ public static partial class SettingsSpec
                 enabled: EqOn, silent: true)),
 
         Group("output", Strings.Settings.Groups.Sound.Output, null,
-            // The output device: the device picker's this-computer rows (index 0 is the system default, then the endpoints in roster
+            // The output device: the device picker's this-PC rows (index 0 is Match Windows, then the outputs in roster
             // order), written through the picker's own door. Choosing it here changes the output; it does not pull playback here.
             Make("sound.outputDevice", K.Choice, Strings.Settings.Playback.OutputDevice,
                 SettingsWriter.OfChoice("audio.outputDevice", SettingsVerbs.SetOutputDevice), glyph: "Speakers",
@@ -90,13 +90,13 @@ public static partial class SettingsSpec
         Strings.Settings.Playback.QualityLossless,
     ];
 
-    /// <summary>The output device's words: the system default, then this PC's endpoints in roster order (the indexes the dial's value and writer use). Read
+    /// <summary>The output device's words: Match Windows, then this PC's outputs in roster order (named as the picker names them) (the indexes the dial's value and writer use). Read
     /// when a body row is built: the roster is tracked, so a plugged headset re-reads the page.</summary>
     static IReadOnlyList<string> OutputDeviceNames()
     {
         var devices = Playback.Audio.Devices.Value;
         var names = new string[devices.Length + 1];
-        names[0] = Loc.Get(Strings.Player.SystemDefault);
+        names[0] = Loc.Get(Strings.Player.DevicePicker.MatchWindows);
         for (int i = 0; i < devices.Length; i++) names[i + 1] = devices[i].Name;
         return names;
     }

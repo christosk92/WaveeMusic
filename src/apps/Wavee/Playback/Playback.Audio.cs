@@ -62,6 +62,7 @@ using System.Text;
 using System.Threading;
 
 using FluentGpu.Foundation;
+using FluentGpu.Localization;
 using FluentGpu.Media;
 using FluentGpu.Signals;
 using FluentGpu.Windows.Wasapi;
@@ -205,9 +206,13 @@ public static partial class Playback
 
         // ── 2. published state (ch 20 §7, ch 21 §7) ──────────────────────────────────────────────────────────────────
 
-        /// <summary>The output endpoints the picker offers. See <see cref="EnumerateEndpoints"/> for why this is one
-        /// row on a stock build.</summary>
+        /// <summary>The output endpoints the picker offers, named and filtered by <see cref="AudioDeviceNaming.Outputs"/> (hands-free twins
+        /// hidden). See <see cref="EnumerateEndpoints"/> for where they come from.</summary>
         public static readonly Signal<LocalAudioDevice[]> Devices = new([]);
+
+        /// <summary>The id of the output whose last open failed (the picker marks it "Not responding"), or null when the last open rendered
+        /// (<c>WasapiAudioDevice.OpenResultSink</c>; under <c>--fake</c> only an inspector stages it).</summary>
+        public static readonly Signal<string?> Unresponsive = new(null);
 
         /// <summary>The explicitly chosen endpoint id, or null for "follow the system default".</summary>
         public static readonly Signal<string?> SelectedOutputId = new(null);
@@ -251,11 +256,19 @@ public static partial class Playback
             lock (s_gate) { return s_session is { } s ? (s.OutputDelayFrames, s.SpectrumPublishes) : (0L, 0L); }
         }
 
-        /// <summary>One local render endpoint, as the picker renders it.</summary>
-        /// <param name="Id">The endpoint id, or "" for the system default row.</param>
-        /// <param name="Name">The short display name — `Playback.AudioDeviceNaming.Shorten`'s answer.</param>
-        /// <param name="Kind">The form factor, folded to the picker's glyph vocabulary.</param>
-        public readonly record struct LocalAudioDevice(string Id, string Name, byte Kind, bool IsDefault);
+        /// <summary>One local render endpoint, as the picker offers it.</summary>
+        /// <param name="Id">The endpoint id.</param>
+        /// <param name="Name">The plain name (<see cref="AudioDeviceNaming.Label"/>: "Chris's AirPods Max", "Built-in speakers").</param>
+        /// <param name="Kind">The form factor folded to the wire's output type (<c>audio_output_device_info</c>); never an icon.</param>
+        /// <param name="IsDefault">Windows plays on it by default.</param>
+        public readonly record struct LocalAudioDevice(string Id, string Name, byte Kind, bool IsDefault)
+        {
+            /// <summary>How it reaches this PC (the row's second line).</summary>
+            public OutputConnection Connection { get; init; }
+
+            /// <summary>The icon it wears.</summary>
+            public OutputLook Look { get; init; }
+        }
 
         public static LocalAudioDevice? CurrentEndpoint
         {
@@ -280,13 +293,44 @@ public static partial class Playback
         /// enumeration attaches and `SelectAsync` starts routing instead of only persisting.</summary>
         public static Func<LocalAudioDevice[]>? EnumerateEndpoints { get; set; }
 
-        /// <summary>`--fake`'s outputs (B4's device-picker fixture): the roster reads <paramref name="outputs"/>, local playback reads as possible (the
-        /// silent endpoint does play, paced to the wall clock) and every silent open echoes <see cref="FakeFormat"/>, so the picker draws what a
-        /// session playing on this computer draws: its outputs and the quality echo. Call it once at boot, before the first load.</summary>
-        public static void UseFake(LocalAudioDevice[] outputs)
+        /// <summary>The OS's active render endpoints as the picker's outputs: each endpoint's facts through <see cref="AudioDeviceNaming.Outputs"/>
+        /// (the plain name, the icon, the connection; hands-free twins hidden). What <c>App.cs</c> installs as <see cref="EnumerateEndpoints"/>.</summary>
+        public static LocalAudioDevice[] Outputs(WasapiEndpointInfo[] endpoints)
+        {
+            var facts = new AudioDeviceNaming.Facts[endpoints.Length];
+            for (int i = 0; i < facts.Length; i++)
+            {
+                var e = endpoints[i];
+                facts[i] = new AudioDeviceNaming.Facts(e.Id, e.Name, e.DeviceName, e.Description, e.FormFactor, ConnectionOf(e.Bus),
+                    e.ContainerId == Guid.Empty ? "" : e.ContainerId.ToString("D"), e.ContainerId == WasapiEndpointInfo.LocalMachineContainer, e.IsDefault);
+            }
+            return Outputs(facts);
+        }
+
+        /// <summary>Endpoint facts as the picker's outputs (the real roster and <c>--fake</c>'s take the same rules).</summary>
+        public static LocalAudioDevice[] Outputs(ReadOnlySpan<AudioDeviceNaming.Facts> facts)
+            => AudioDeviceNaming.Outputs(facts, Loc.Get(Strings.Player.DevicePicker.BuiltInSpeakers), Loc.Get(Strings.Player.DevicePicker.HeadphoneJack));
+
+        static OutputConnection ConnectionOf(AudioEndpointBus bus) => bus switch
+        {
+            AudioEndpointBus.BuiltIn => OutputConnection.BuiltIn,
+            AudioEndpointBus.Bluetooth => OutputConnection.Bluetooth,
+            AudioEndpointBus.Usb => OutputConnection.Usb,
+            AudioEndpointBus.Hdmi => OutputConnection.Hdmi,
+            AudioEndpointBus.DisplayPort => OutputConnection.DisplayPort,
+            AudioEndpointBus.Display => OutputConnection.Display,
+            _ => OutputConnection.Unknown,
+        };
+
+        /// <summary>`--fake`'s outputs (B4's device-picker fixture): the roster reads <paramref name="outputs"/>' facts through the same naming rules
+        /// a real machine's take, local playback reads as possible (the silent endpoint does play, paced to the wall clock) and every silent open
+        /// echoes <see cref="FakeFormat"/>, so the picker draws what a session playing on this computer draws: its outputs and the quality echo.
+        /// Call it once at boot, before the first load.</summary>
+        public static void UseFake(AudioDeviceNaming.Facts[] outputs)
         {
             s_fakeOutputs = true;
-            EnumerateEndpoints = () => outputs;
+            LocalAudioDevice[]? named = null;
+            EnumerateEndpoints = () => named ??= Outputs(outputs);
             RefreshDevices();
             ToUi(static () => Supported.Value = true);
         }
@@ -296,13 +340,34 @@ public static partial class Playback
 
         static bool s_fakeOutputs;
 
-        /// <summary>Refresh the roster. Called at boot and on the engine's default-device change.</summary>
+        /// <summary>Refresh the roster. Called at boot, on the engine's device rebuild and when a picker opens (<see cref="RefreshDevicesSoon"/>);
+        /// a roster that reads the same writes nothing, so an open picker does not re-render for it.</summary>
         public static void RefreshDevices()
         {
             LocalAudioDevice[] rows;
             try { rows = EnumerateEndpoints?.Invoke() ?? []; }
             catch (Exception ex) { Log.Warn("audio", "endpoint enumeration failed", ex); rows = []; }
-            ToUi(() => Devices.Value = rows);
+            ToUi(() =>
+            {
+                if (!Devices.Peek().AsSpan().SequenceEqual(rows)) Devices.Value = rows;
+            });
+        }
+
+        /// <summary>Re-read the roster off the UI thread (the endpoint enumeration is a COM round trip): a device plugged in since the last
+        /// notification shows in a picker that just opened.</summary>
+        public static void RefreshDevicesSoon() => ThreadPool.UnsafeQueueUserWorkItem(static _ => RefreshDevices(), null);
+
+        /// <summary>A WASAPI open's outcome (<c>WasapiAudioDevice.OpenResultSink</c>, the opening thread): an output that did not open is marked
+        /// "Not responding" until an open renders again.</summary>
+        static void NoteOpen(WasapiEndpointInfo? endpoint, bool ok)
+        {
+            string? id = endpoint?.Id;
+            if (ok) ToUi(static () => Unresponsive.Value = null);
+            else if (id is not null)
+            {
+                Log.Warn("audio", "output not responding: " + (endpoint!.Name.Length > 0 ? endpoint.Name : id));
+                ToUi(() => Unresponsive.Value = id);
+            }
         }
 
         /// <summary>Persist and apply an output choice. The ORDER is the whole content: route first so the first local
@@ -500,6 +565,7 @@ public static partial class Playback
             // lines, wired before the first open. A host that set its own (the headless arm) keeps them.
             WasapiAudioDevice.FormatSink ??= static line => Log.Info("audio", "device format " + line);
             WasapiAudioDevice.DiagSink ??= static line => Log.Info("audio", line);
+            WasapiAudioDevice.OpenResultSink ??= NoteOpen;
             try
             {
                 // The factory's only argument is the mix format; it answers the decoder the pump chose for the open or
