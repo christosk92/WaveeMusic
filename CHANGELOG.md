@@ -249,6 +249,8 @@ versions separately under `v*` and is not tracked in this file.)
   desktop; it now stays asleep until it shows again.
 - **Video podcasts that are not copy-protected play their video.** Such an episode played as audio only, as if it had no
   video; it now plays its picture the way a music video does.
+- **A Lyrics blur change showed one change late while paused.** Turning the blur off left the lyrics pane's lines
+  blurred until the next change, which then showed the old value; it now lands at once, playing or paused.
 
 - **An audiobook opened from Home started out as a podcast's page.** It showed a show's layout until the book's details
   arrived, then turned into the book's page; it opens as the book from its first frame.

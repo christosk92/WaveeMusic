@@ -506,8 +506,17 @@ public static partial class Lyrics
             }
             _haloScale = OnStage ? BlurPolicy.Scale(Prefs.BlurStrength(onStage: false)) : _gutter >= 0f ? miniHalo : newScale;
             HaloScale.Value = _haloScale;
-            // Re-arm the ramp IMMEDIATELY on a strength change — it does not ride the ticker, so it lands paused too.
-            UseEffect(() => { if (Context.Scene is { } scene) DriveDofRamp(scene, FrameTime.NowMs); }, DepKey.From(strength));
+            // Re-write every σ the strength scales IMMEDIATELY on a change: the DoF ramp, and the voice line's halo (word-synced, a
+            // paint-driven σ only the frame step writes). It does not ride the ticker, so it lands paused too. A LAYOUT effect
+            // (phase 6.5, before this frame records): a passive one runs after the paint and its writes wake no frame, so a paused
+            // surface showed them one change late, on the frame the next change painted.
+            UseLayoutEffect(() =>
+            {
+                if (Context.Scene is not { } scene) return;
+                DriveDofRamp(scene, FrameTime.NowMs);
+                int voice = _voiceLine.Peek();
+                if ((uint)voice < (uint)_glowNodes.Length) MaintainGlowSigma(scene, voice, _glowNodes[voice], runGlow: true);
+            }, DepKey.From(strength, BitConverter.SingleToInt32Bits(_haloScale)));
             // A mode flip changes EVERY row's height: re-arrange, then hard re-latch from the fresh geometry.
             UseEffect(() =>
             {
