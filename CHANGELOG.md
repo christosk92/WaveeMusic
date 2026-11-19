@@ -132,6 +132,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **The theme picker shows each theme as it looks.** Every card in Settings > Appearance > Theme, and in the first-run
+  setup's theme step, now shows a real picture of that theme's Home, in light or dark to match the app, instead of the
+  same plain blocks for every theme. Zune's theme tiles are now all one width, two to a line in a narrow window.
+
 - **The sidebar's menu offers only what the theme has.** Right-clicking the sidebar offers Layout and Density only in a
   theme that has them (Classic); WinUI's sidebar no longer offers a Classic choice that lasted until the next start.
 

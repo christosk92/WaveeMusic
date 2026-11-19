@@ -243,7 +243,7 @@ public static partial class Diagnostics
             Arg("homedoc", ArgType.Enum, "the pinned Home document the mount starts from (keep: the profile's file as it is)", "default", "default|keep|pins0|pins200|gonepin|custom|mixed|v2hidden|toonew|corrupt|unknown"),
             Arg("gpu", ArgType.Enum, "hardware (the default: the hardware adapter, WARP when the machine has none) or warp (WARP forced): the offscreen D3D12 surface (render works); none: no pixels", "hardware", "hardware|warp|none"),
             Arg("keepRoute", ArgType.Bool, "keep the current navigation (and tabs) instead of a fresh Home", "false"),
-            Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate (signin: ask for the sign-in page)", null, "true|false|signin"),
+            Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate (signin: on the sign-in page; theme: on the theme page)", null, "true|false|signin|theme"),
             Arg("feedback", ArgType.Enum, "open the report form over the page", null, "bug|feature"),
             Arg("home", ArgType.Enum, "the Home fixture: mock (the hybrid seed), capture (the redacted 1.3.8.620 answers, every facet), or a derived / synthetic All, or live1 / live2 (redacted live answers of 2026-11-16 and 2026-11-17, every facet; Entities.Fake.Home.cs), or releases (live2's All with four followed releases spliced in: the Release Spotlight's fold)", "mock", "mock|capture|new|free|podcast|region|synthetic|second|live1|live2|releases"),
             Arg("video", ArgType.Enum, "put the video surface up with a fake track playing", null, "fullscreen|docked|floating|pip"),

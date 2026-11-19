@@ -17,9 +17,9 @@
 // WHAT THIS FILE NEVER DOES: name a theme. The picker draws `ThemePickerEntry` data; the options draw the rows the registry composes. The board's "Browse
 // community themes" tile is not built: nothing in the core installs a theme from a folder.
 //
-// NO LAYOUT JUMPS. A picker card has one fixed footprint whatever its text (name: one line, caption: two, ellipsised) and whatever its preview (a miniature when
-// the preview asset is missing, the image over it when present); the selected card spends its 1-DIP border growth from its padding, so nothing moves when the
-// selection does.
+// NO LAYOUT JUMPS. A picker card has one fixed footprint whatever its text (name: one line, caption: two, ellipsised) and whether or not its still has decoded
+// yet (the still fades in over the thumbnail's plate, in a box of the same size); the selected card spends its 1-DIP border growth from its padding, so nothing
+// moves when the selection does.
 
 using System.Collections.Immutable;
 using FluentGpu.Controls;
@@ -238,70 +238,28 @@ internal static partial class WinUiSettings
         Children = [new TextEl(Loc.Get(Strings.Settings.ThemePicker.Developer)) { Size = WinUiSettingsRules.TagSize, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 }],
     };
 
-    /// <summary>The preview: the theme's preview image over a UI-native miniature (so a missing asset, the state of every theme until it ships one, leaves a thumbnail of
-    /// the same size, and the image fades in over it instead of replacing a blank). 16:9 where the width is fluid (Standard, Huge), the record's height at the Compact grid,
-    /// the fixed 48 x 32 beside the name at Small.</summary>
+    /// <summary>The preview: the theme's still for this app mode (<see cref="ThemePreviews"/>: its Home from the window's top-left corner), fading in over the box's
+    /// plate when the decode lands, in a box of the same size. 16:9 where the width is fluid (Standard, Huge), the record's height at the Compact grid, the fixed
+    /// 48 x 32 beside the name at Small.</summary>
     static BoxEl ThemeThumbnail(ThemePreview preview, WinUiSettingsLayout layout, float width)
     {
         bool row = layout.Picker == WinUiThemePickerForm.Row;
         bool grid = layout.Picker == WinUiThemePickerForm.Grid;
         float h = row ? layout.PickerThumbH : grid ? layout.PickerThumbH : float.NaN;
-        var layers = new List<Element>(2) { ThemeMiniature(h) };
-        string asset = R.IsLight ? preview.LightAsset : preview.DarkAsset;
-        if (PreviewPath(asset) is { } path)
-            layers.Add(new ImageEl
+        float aspect = float.IsNaN(h) ? WinUiSettingsRules.PreviewAspect : float.NaN;
+        Element[] still = ThemePreviews.PathOf(preview, R.IsLight) is { } path
+            ? [ThemePreviews.Layer(path) with
             {
-                Source = path, Fit = ImageFit.Cover, AspectRatio = float.IsNaN(h) ? WinUiSettingsRules.PreviewAspect : float.NaN, Height = h, AlignSelf = FlexAlign.Stretch,
-                DecodePx = WinUiSettingsRules.PreviewDecodePx, Placeholder = ColorF.Transparent,
-                RevealTransition = ImageTransition.Fade(WinUiSettingsRules.PreviewFadeMs),
-            });
+                AspectRatio = aspect, Height = h, DecodePx = WinUiSettingsRules.PreviewDecodePx, RevealTransition = ImageTransition.Fade(WinUiSettingsRules.PreviewFadeMs),
+            }]
+            : [];
         return new BoxEl
         {
-            ZStack = true, Width = width, Height = h, AspectRatio = float.IsNaN(h) ? WinUiSettingsRules.PreviewAspect : float.NaN, Shrink = 0f,
+            ZStack = true, Width = width, Height = h, AspectRatio = aspect, Shrink = 0f,
             AlignSelf = float.IsNaN(width) ? FlexAlign.Stretch : FlexAlign.Auto, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Control),
-            Fill = Tok.FillSolidBase, Children = layers.ToArray(),
+            Fill = Tok.FillSolidBase, Children = still,
         };
     }
-
-    static readonly Dictionary<string, string?> s_previewPaths = new(StringComparer.Ordinal);
-
-    /// <summary>The full path of a preview asset when it ships next to the exe, else null. Looked up once per asset.</summary>
-    static string? PreviewPath(string asset)
-    {
-        if (asset.Length == 0) return null;
-        if (s_previewPaths.TryGetValue(asset, out var known)) return known;
-        string? path = null;
-        try
-        {
-            string candidate = Path.Combine(AppContext.BaseDirectory, "assets", asset.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(candidate)) path = candidate;
-        }
-        catch (Exception) { path = null; }
-        s_previewPaths[asset] = path;
-        return path;
-    }
-
-    /// <summary>A window in miniature drawn from the live tokens, as the board's thumbnail: a title strip (10 %), a navigation column (22 %), a content plate and a
-    /// player bar (12 %) with a 2-px accent top edge. Proportions are flex ratios, so it fills any card. NaN <paramref name="height"/>: fills the 16:9 box it sits in.</summary>
-    static Element ThemeMiniature(float height)
-        => new BoxEl
-        {
-            Direction = 1, Height = height, Grow = float.IsNaN(height) ? 1f : 0f, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Fill = Tok.FillCardDefault,
-            Children =
-            [
-                new BoxEl { Grow = 10f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillLayerAlt },
-                new BoxEl
-                {
-                    Grow = 78f, Basis = 0f, Direction = 0,
-                    Children =
-                    [
-                        new BoxEl { Grow = 22f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillSolidBaseAlt },
-                        new BoxEl { Grow = 78f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillCardDefault, BorderWidth = 0f },
-                    ],
-                },
-                new BoxEl { Grow = 12f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillSolidBase, Direction = 1, Children = [new BoxEl { Height = WinUiSettingsRules.MiniEdge, AlignSelf = FlexAlign.Stretch, Fill = Tok.AccentDefault }] },
-            ],
-        };
 
     // ══ 3. THE OPTIONS (exactly the six W-ThemeOptions) ═══════════════════════════════════════════════════════════════
 

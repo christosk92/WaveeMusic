@@ -9,8 +9,8 @@
 // WHAT THIS FILE NEVER DOES: name a theme. The picker draws `ThemePickerEntry` data; the options expander draws whatever the group holds. A legacy row is drawn
 // by its dial id (`LegacyItem`): the id is the theme's, the control is the page's.
 //
-// NO LAYOUT JUMPS. A picker card has one fixed size whatever its text (name: one line, description: two, ellipsised) and whatever its preview (a miniature when
-// the preview asset is missing, the image over it when present). When a row appears or disappears (the rail rows follow the page layout, a `VisibleWhen`
+// NO LAYOUT JUMPS. A picker card has one fixed size whatever its text (name: one line, description: two, ellipsised) and whether or not its still has decoded
+// yet (the still fades in over the thumbnail's plate, in a box of the same size). When a row appears or disappears (the rail rows follow the page layout, a `VisibleWhen`
 // option follows its condition) the group around it tweens its height, so everything below eases instead of snapping; an expander opens and closes on the
 // engine's own motion. Rows carry no Enter/Exit of their own: the engine seeds an Enter on every MOUNT, which would fade the whole category in on each switch
 // (the page swaps category bodies with its own cross-fade).
@@ -204,66 +204,20 @@ internal static partial class ClassicSettings
 
     static Element DeveloperTag() => Tag(Loc.Get(Strings.Settings.ThemePicker.Developer), Tok.FillSubtleSecondary, Tok.TextSecondary);
 
-    /// <summary>The preview: the theme's preview image over a UI-native miniature (so a missing asset, the state of every theme
-    /// until it ships one, leaves a thumbnail of the same size, and the image fades in over it instead of replacing a blank).</summary>
+    /// <summary>The preview: the theme's still for this app mode (<see cref="ThemePreviews"/>: its Home from the window's top-left corner), fading in over the
+    /// box's plate when the decode lands, in a box of the same size.</summary>
     static Element ThemeThumbnail(ThemePreview preview, ClassicSettingsLayout layout)
     {
-        var layers = new List<Element>(2) { ThemeMiniature(layout.PickerThumbH) };
-        string asset = R.IsLight ? preview.LightAsset : preview.DarkAsset;
-        if (PreviewPath(asset) is { } path)
-            layers.Add(new ImageEl
+        Element[] still = ThemePreviews.PathOf(preview, R.IsLight) is { } path
+            ? [ThemePreviews.Layer(path) with
             {
-                Source = path, Fit = ImageFit.Cover, Height = layout.PickerThumbH, AlignSelf = FlexAlign.Stretch,
-                DecodePx = ClassicSettingsRules.PreviewDecodePx, Placeholder = ColorF.Transparent,
-                RevealTransition = ImageTransition.Fade(ClassicSettingsRules.PreviewFadeMs),
-            });
+                Height = layout.PickerThumbH, DecodePx = ClassicSettingsRules.PreviewDecodePx, RevealTransition = ImageTransition.Fade(ClassicSettingsRules.PreviewFadeMs),
+            }]
+            : [];
         return new BoxEl
         {
             ZStack = true, Height = layout.PickerThumbH, Shrink = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true,
-            Fill = Tok.FillSolidBase, Children = layers.ToArray(),
-        };
-    }
-
-    static readonly Dictionary<string, string?> s_previewPaths = new(StringComparer.Ordinal);
-
-    /// <summary>The full path of a preview asset when it ships next to the exe, else null. Looked up once per asset.</summary>
-    static string? PreviewPath(string asset)
-    {
-        if (asset.Length == 0) return null;
-        if (s_previewPaths.TryGetValue(asset, out var known)) return known;
-        string? path = null;
-        try
-        {
-            string candidate = Path.Combine(AppContext.BaseDirectory, "assets", asset.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(candidate)) path = candidate;
-        }
-        catch (Exception) { path = null; }
-        s_previewPaths[asset] = path;
-        return path;
-    }
-
-    /// <summary>A window in miniature drawn from the live tokens: a navigation column, a content plate with a title bar in
-    /// the accent and two skeleton lines (the board's thumbnail). Proportions are flex ratios, so it fills any card.</summary>
-    static Element ThemeMiniature(float height)
-    {
-        Element Line(float fillGrow, float restGrow, ColorF fill) => new BoxEl
-        {
-            Direction = 0, Height = Spacing.S, Shrink = 0f, AlignSelf = FlexAlign.Stretch,
-            Children = [new BoxEl { Grow = fillGrow, Basis = 0f, Corners = CornerRadius4.All(2f), Fill = fill }, new BoxEl { Grow = restGrow, Basis = 0f }],
-        };
-        return new BoxEl
-        {
-            Direction = 0, Height = height, AlignSelf = FlexAlign.Stretch, Shrink = 0f,
-            Children =
-            [
-                new BoxEl { Grow = 26f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillLayerAlt },
-                new BoxEl
-                {
-                    Grow = 74f, Basis = 0f, MinWidth = 0f, Direction = 1, Gap = Spacing.S, Fill = Tok.FillCardDefault,
-                    Padding = new Edges4(Spacing.M, Spacing.L, Spacing.M, 0f), Corners = new CornerRadius4(6f, 0f, 0f, 0f),
-                    Children = [Line(40f, 60f, Tok.AccentDefault), Line(80f, 20f, Tok.TextTertiary with { A = 0.3f }), Line(55f, 45f, Tok.TextTertiary with { A = 0.3f })],
-                },
-            ],
+            Fill = Tok.FillSolidBase, Children = still,
         };
     }
 

@@ -31,7 +31,7 @@ public static class ZuneTheme
         InheritsFrom: null,
         Availability: ThemeAvailability.Public,
         // No preview images ship yet: the picker draws its UI-native miniature where an asset is missing.
-        Preview: new ThemePreview("themes/zune-light.png", "themes/zune-dark.png"),
+        Preview: new ThemePreview("themes/zune-light.jpg", "themes/zune-dark.jpg"),
         DescriptionKey: Strings.Theme.Zune.Description);
 
     /// <summary>Builds the composition. <c>App.BootCore</c> installs it next to Classic. It also hands the `--inspect` lint Zune's edge

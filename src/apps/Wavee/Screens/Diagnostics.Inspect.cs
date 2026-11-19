@@ -891,13 +891,15 @@ public static partial class Diagnostics
             ClearLeaks(a.Bool("keepRoute", false));
             if (!a.Bool("keepRoute", false)) Wavee.Shell.Headless.ResetNavigation();
             // `setup=true` mounts a first run: the pending marker is armed in the (in-memory, `--fake`) store and the wizard's boot decision is taken again, so its plate opens on the mount.
-            if (a.Bool("setup", false) || a.Str("setup") == "signin")
+            if (a.Bool("setup", false) || a.Str("setup") is "signin" or "theme")
             {
                 Platform.Settings.Set(Platform.Keys.SetupPending, true);
                 Setup.Wizard.ResetForTests();
                 Setup.Wizard.Boot(Platform.Settings, false);
-                // `setup=signin` starts on the sign-in page (step 2) instead of the terms.
-                if (a.Str("setup") == "signin" && Setup.Wizard.Due is { } due) due.Page.Value = Setup.WizardPage.SignIn;
+                // `setup=signin` starts on the sign-in page (step 2) instead of the terms, `setup=theme` on the theme page (step 3: the picker and the active
+                // theme's options; a headless run cannot sign in to pass step 2).
+                if (Setup.Wizard.Due is { } due && a.Str("setup") is "signin" or "theme")
+                    due.Page.Value = a.Str("setup") == "theme" ? Setup.WizardPage.Theme : Setup.WizardPage.SignIn;
             }
             InspectKit.ActivateTheme(theme, kind ?? Tok.Theme);
             // `home=<fixture>`: the Home subjects re-seeded from that fixture; every mount names one (default mock), so a previous mount's never leaks.
