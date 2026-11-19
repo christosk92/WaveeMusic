@@ -2308,6 +2308,7 @@
     "title": "Notifications",
     "overflowTitle": "Notifications ({count})",
     "markAllRead": "Mark all read",
+    "settings": "Notification settings",
     "clear": "Clear",
     "undo": "Undo",
     "pendingSync": "{count, plural, one {# playlist change still syncing} other {# playlist changes still syncing}}",

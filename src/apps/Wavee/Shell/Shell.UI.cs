@@ -1469,6 +1469,14 @@ public static partial class Shell
 
     static INotificationVerbs PanelVerbs => NotificationVerbs.Shared;
 
+    /// <summary>The panel's settings door: close the panel first (its focus restore must not land on a closing popup), then Settings at the
+    /// Notifications category.</summary>
+    static readonly Action s_openNotificationSettings = static () =>
+    {
+        NotificationVerbs.PanelCloser?.Invoke();
+        SettingsLinks.Open("notifications");
+    };
+
     /// <summary>THE one open path for the panel, shared by the bell and the profile menu's row (installed into
     /// <see cref="NotificationsLauncher"/>): same placement and chrome, and the open is the panel's DEMAND — it refetches
     /// the stale feeds and advances the watermarks every time. A second press closes it.</summary>
@@ -1537,6 +1545,7 @@ public static partial class Shell
                 UpdateProgress = Notify.UpdateProgress,
                 PendingEdits = Notify.PendingEdits,
                 Host = _host ??= new NotificationsHost(expanded),
+                OpenSettings = s_openNotificationSettings,
             });
         }
     }

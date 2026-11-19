@@ -106,6 +106,16 @@ internal static class WinUiNotifications
         };
         if (props.Clear is { } clear)
             kids.Add(PanelLink(Loc.Get(Strings.Notifications.Clear), clear));
+        // W-Notifications' gear: "Notification settings" opens Settings at the Notifications category (design 5.4).
+        if (props.OpenSettings is { } openSettings)
+            kids.Add(ToolTip.Wrap(new BoxEl
+            {
+                Key = "notify:settings", Width = WinUiNotificationRules.GearSize, Height = WinUiNotificationRules.GearSize, Shrink = 0f,
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = CornerRadius4.All(WinUiNotificationRules.GearRadius),
+                HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = openSettings,
+                Children = [new TextEl(Icons.Settings) { Size = WinUiNotificationRules.GearGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextPrimary }],
+            }, Loc.Get(Strings.Notifications.Settings)));
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiNotificationRules.HeaderGap, Padding = WinUiNotificationRules.HeaderPadding,
