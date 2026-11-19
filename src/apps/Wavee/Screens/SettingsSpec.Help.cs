@@ -19,11 +19,13 @@ public static partial class SettingsSpec
 {
     static SettingsCategory HelpCategory()
     {
+        // The shortcuts are a read-only reference: Advanced, so a search ranks the setting ("Remember volume") before the chord that
+        // shares its word ("Volume up").
         var shortcuts = new List<SettingsDial>(Settings.Shortcuts.All.Length);
         foreach (var shortcut in Settings.Shortcuts.All)
         {
             var s = shortcut;
-            shortcuts.Add(Make("help.shortcuts." + s.Id, K.Fact, s.TitleKey, SettingsWriter.ReadOnly, legacy: [s.Id],
+            shortcuts.Add(Make("help.shortcuts." + s.Id, K.Fact, s.TitleKey, SettingsWriter.ReadOnly, legacy: [s.Id], tier: SettingsTier.Advanced,
                 captionKey: s.CaptionKey, value: _ => s.Chord, visible: s.NeedsTabs ? TabsOffered : null));
         }
 
