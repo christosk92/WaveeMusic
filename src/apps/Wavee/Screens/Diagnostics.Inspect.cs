@@ -1031,9 +1031,16 @@ public static partial class Diagnostics
             string connect = a.Str("connect", "none").ToLowerInvariant();
             if (connect is not ("none" or "nearby")) { error = "connect is none or nearby"; return false; }
             Playback.UseFakeConnect(connect == "nearby" ? Entities.FakeConnect() : []);
-            // An output that did not open (the picker marks it "Not responding"): a fake output id, or its short name (display, usb, ...).
+            // An output that did not open (the picker marks it "Not responding"): a fake output id, or its short name (display, usb, ...);
+            // `gone`: the chosen output left the roster (unplugged) and the Windows default plays, as `Playback.Audio.OpenOutput` decides.
             string stuck = a.Str("stuck", "");
-            Playback.Audio.Unresponsive.Value = stuck.Length == 0 ? null : stuck.StartsWith("fake:", StringComparison.Ordinal) ? stuck : "fake:out:" + stuck;
+            string? stuckId = stuck.Length == 0 ? null : stuck.StartsWith("fake:", StringComparison.Ordinal) ? stuck : "fake:out:" + stuck;
+            if (stuck == "gone")
+            {
+                Platform.Settings.Set(Platform.Keys.OutputDeviceName, "Desk DAC");
+                Playback.Audio.SelectedOutputId.Value = stuckId;
+            }
+            Playback.Audio.Unresponsive.Value = stuckId;
             if (a.Has("panelW"))
             {
                 float w = a.Float("panelW", 0f);

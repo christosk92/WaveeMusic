@@ -131,7 +131,7 @@ public static partial class Stage
     }
 
     /// <summary>"This PC ▾": the output device button's glyph and name: the Connect device while one plays, else the output this PC plays on
-    /// (the chosen one, else the Windows default), named as the picker names it.</summary>
+    /// (the chosen one while it opens, else the Windows default), named as the picker names it.</summary>
     static StageDeviceFacts DeviceFacts()
     {
         _ = Playback.Devices.Changed.Value;
@@ -139,7 +139,7 @@ public static partial class Stage
         int slot = Shell.DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
         if (slot >= 0) return new StageDeviceFacts(Icons.Devices, rows[slot].Name ?? "");
         var local = Playback.Audio.Devices.Value;
-        int inUse = Shell.DevicePicker.InUse(local, Playback.Audio.SelectedOutputId.Value, out _, out _);
+        int inUse = Shell.DevicePicker.InUse(local, Playback.Audio.SelectedOutputId.Value, Playback.Audio.Unresponsive.Value, out _, out _);
         return inUse >= 0
             ? new StageDeviceFacts(Shell.DeviceRoster.LookGlyph(local[inUse].Look), local[inUse].Name)
             : new StageDeviceFacts(Icons.Laptop, Loc.Get(Strings.Player.DevicePicker.ThisPc)) { Word = true };

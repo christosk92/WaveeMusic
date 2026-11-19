@@ -61,9 +61,11 @@ public static partial class Shell
         /// <summary>The identity of Match Windows' row.</summary>
         public const string MatchWindowsId = "match-windows";
 
-        /// <summary>The output this PC plays on: the chosen one while it is in the roster, else the Windows default, else the first; -1 with
-        /// no outputs. <paramref name="chosen"/> is the chosen one's index, -1 when it is Match Windows (or the chosen one left).</summary>
-        public static int InUse(ReadOnlySpan<Playback.Audio.LocalAudioDevice> local, string? selectedLocalId, out int chosen, out int windowsDefault)
+        /// <summary>The output this PC plays on (<c>Playback.Audio.OpenOutput</c>'s rule): the chosen one while it is in the roster and opens,
+        /// else the Windows default, else the first; -1 with no outputs. <paramref name="chosen"/> is the chosen one's index, -1 when it is Match
+        /// Windows or the chosen one left the roster (unplugged).</summary>
+        public static int InUse(ReadOnlySpan<Playback.Audio.LocalAudioDevice> local, string? selectedLocalId, string? unresponsiveId,
+            out int chosen, out int windowsDefault)
         {
             chosen = windowsDefault = -1;
             for (int i = 0; i < local.Length; i++)
@@ -71,8 +73,11 @@ public static partial class Shell
                 if (chosen < 0 && !string.IsNullOrEmpty(selectedLocalId) && string.Equals(local[i].Id, selectedLocalId, StringComparison.OrdinalIgnoreCase)) chosen = i;
                 if (windowsDefault < 0 && local[i].IsDefault) windowsDefault = i;
             }
-            return chosen >= 0 ? chosen : windowsDefault >= 0 ? windowsDefault : local.Length > 0 ? 0 : -1;
+            bool stuck = chosen >= 0 && Same(local[chosen].Id, unresponsiveId);
+            return chosen >= 0 && !stuck ? chosen : windowsDefault >= 0 ? windowsDefault : local.Length > 0 ? 0 : -1;
         }
+
+        static bool Same(string? a, string? b) => a is { Length: > 0 } && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>Where Wavee plays, decided (see the file header). The roster, owner and outputs are read by the caller; nothing here
         /// subscribes. <paramref name="stamp"/> is the caller's fingerprint of the inputs.</summary>
@@ -82,6 +87,7 @@ public static partial class Shell
             ReadOnlySpan<Playback.Devices.Row> connect,
             ReadOnlySpan<Playback.Audio.LocalAudioDevice> local,
             string? selectedLocalId,
+            string? selectedName,
             bool localSupported,
             string? unresponsiveId,
             Playback.Audio.Opened observed,
@@ -93,8 +99,11 @@ public static partial class Shell
             bool remote = remoteSlot >= 0;
             bool takeOver = NeedsTakeOver(owner);
             string? unavailable = localSupported ? null : Loc.Get(Strings.Player.Unavailable);
-            int inUse = InUse(local, selectedLocalId, out int chosen, out int windowsDefault);
+            int inUse = InUse(local, selectedLocalId, unresponsiveId, out int chosen, out int windowsDefault);
             string? defaultName = windowsDefault >= 0 ? local[windowsDefault].Name : null;
+            // The chosen output left the roster (unplugged, disabled): it stays the choice and keeps its row, saying so, while the default plays.
+            bool chosenGone = chosen < 0 && !string.IsNullOrEmpty(selectedLocalId);
+            bool matchWindows = chosen < 0 && !chosenGone;
 
             // ── This PC: Match Windows (while this PC plays), then the outputs ──
             var thisPc = new List<DevicePickerEntry>(local.Length + 1);
@@ -102,9 +111,9 @@ public static partial class Shell
             {
                 var follow = new DeviceIntent(DeviceIntentKind.SelectLocal, LocalId: "", TakeOver: takeOver);
                 thisPc.Add(new DevicePickerEntry(DevicePickerEntryKind.Command, Loc.Get(P.MatchWindows), Icons.ThisPc, localSupported,
-                    localSupported && chosen < 0, unavailable, localSupported ? () => DeviceVerbs.Run(follow) : null)
+                    localSupported && matchWindows, unavailable, localSupported ? () => DeviceVerbs.Run(follow) : null)
                 {
-                    Word = true, Chosen = localSupported && chosen < 0, Id = MatchWindowsId,
+                    Word = true, Chosen = localSupported && matchWindows, Id = MatchWindowsId,
                     Detail = defaultName is null ? null : P.FollowsWindows(defaultName),
                 });
             }
@@ -119,6 +128,15 @@ public static partial class Shell
                     localSupported && !remote && i == chosen, unavailable, localSupported ? () => DeviceVerbs.Run(pick) : null)
                 {
                     Chosen = localSupported && i == chosen, Detail = detail, Unresponsive = unresponsive, Id = d.Id,
+                });
+            }
+            if (chosenGone)
+            {
+                var retry = new DeviceIntent(DeviceIntentKind.SelectLocal, LocalId: selectedLocalId!, TakeOver: takeOver);
+                thisPc.Add(new DevicePickerEntry(DevicePickerEntryKind.Command, CapLabel(selectedName is { Length: > 0 } ? selectedName : selectedLocalId!),
+                    Icons.Speakers, localSupported, localSupported && !remote, unavailable, localSupported ? () => DeviceVerbs.Run(retry) : null)
+                {
+                    Chosen = localSupported, Detail = Loc.Get(P.NotResponding), Unresponsive = true, Id = selectedLocalId!,
                 });
             }
 
@@ -142,7 +160,7 @@ public static partial class Shell
             if (remote)
             {
                 ref readonly var r = ref connect[remoteSlot];
-                var home = new DeviceIntent(DeviceIntentKind.SelectLocal, LocalId: chosen >= 0 ? local[chosen].Id : "", TakeOver: true);
+                var home = new DeviceIntent(DeviceIntentKind.SelectLocal, LocalId: selectedLocalId ?? "", TakeOver: true);
                 card = new DevicePickerCard
                 {
                     Name = r.Name ?? "", Glyph = DeviceRoster.ConnectGlyph(r.Kind), Connection = connectWord, Remote = true,
@@ -158,7 +176,7 @@ public static partial class Shell
                 {
                     Name = d.Name, Glyph = DeviceRoster.LookGlyph(d.Look), Connection = ConnectionWords(d.Connection),
                     Quality = string.IsNullOrEmpty(observed.Label) ? null : ObservedQualityWords(observed),
-                    Unresponsive = unresponsiveId is { Length: > 0 } && string.Equals(d.Id, unresponsiveId, StringComparison.OrdinalIgnoreCase),
+                    Unresponsive = Same(d.Id, unresponsiveId),
                 };
             }
             else card = new DevicePickerCard { Name = Loc.Get(P.ThisPc), Glyph = Icons.Laptop, Connection = "" };

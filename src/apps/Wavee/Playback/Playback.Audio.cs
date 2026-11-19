@@ -284,13 +284,9 @@ public static partial class Playback
         }
 
 
-        /// <summary>How the endpoint roster is read. A SEAM with a one-row default, and the reason is a verified
-        /// engine fact rather than laziness: the engine's WASAPI leaf opens `GetDefaultAudioEndpoint` and FOLLOWS the
-        /// default — there is no per-endpoint open anywhere in it, so a picker that let the user choose an endpoint
-        /// could not honour the choice. 0.2.9 shipped exactly this shape for exactly this reason
-        /// (`OutputDeviceRouter` decides, `SetOutputDevice` was a documented no-op). Per-endpoint output is an engine
-        /// change (`WasapiAudioDevice` must accept a device id); when it lands, this seam is where the real
-        /// enumeration attaches and `SelectAsync` starts routing instead of only persisting.</summary>
+        /// <summary>How the endpoint roster is read (<c>App.cs</c> installs <see cref="Outputs(WasapiEndpointInfo[])"/> over the engine's
+        /// enumeration; <c>--fake</c> its fixed roster). The choice routes: <see cref="Select"/> reopens the sink on the chosen endpoint
+        /// (<see cref="OpenOutput"/>).</summary>
         public static Func<LocalAudioDevice[]>? EnumerateEndpoints { get; set; }
 
         /// <summary>The OS's active render endpoints as the picker's outputs: each endpoint's facts through <see cref="AudioDeviceNaming.Outputs"/>
@@ -357,21 +353,68 @@ public static partial class Playback
         /// notification shows in a picker that just opened.</summary>
         public static void RefreshDevicesSoon() => ThreadPool.UnsafeQueueUserWorkItem(static _ => RefreshDevices(), null);
 
-        /// <summary>A WASAPI open's outcome (<c>WasapiAudioDevice.OpenResultSink</c>, the opening thread): an output that did not open is marked
-        /// "Not responding" until an open renders again.</summary>
-        static void NoteOpen(WasapiEndpointInfo? endpoint, bool ok)
+        /// <summary>A WASAPI open's outcome (<c>WasapiAudioDevice.OpenResultSink</c>, the opening thread). An output that did not open is
+        /// marked "Not responding"; an open that renders clears the mark, unless it is the Windows default standing in for a chosen output that
+        /// did not open (the mark stays on the chosen row until it opens again).</summary>
+        static void NoteOpen(string? requested, WasapiEndpointInfo? endpoint, bool ok)
         {
-            string? id = endpoint?.Id;
-            if (ok) ToUi(static () => Unresponsive.Value = null);
-            else if (id is not null)
+            if (!ok)
             {
-                Log.Warn("audio", "output not responding: " + (endpoint!.Name.Length > 0 ? endpoint.Name : id));
+                string? id = requested ?? endpoint?.Id;
+                if (id is null) return;
+                Log.Warn("audio", "output not responding: " + (endpoint?.Name is { Length: > 0 } name ? name : id));
                 ToUi(() => Unresponsive.Value = id);
+                return;
             }
+            string? target = s_outputTarget;
+            if (target is null || string.Equals(endpoint?.Id, target, StringComparison.OrdinalIgnoreCase)) ToUi(static () => Unresponsive.Value = null);
         }
 
-        /// <summary>Persist and apply an output choice. The ORDER is the whole content: route first so the first local
-        /// audio lands on the just-chosen endpoint, and only then pull playback home from a foreign device.</summary>
+        // ── the output a session renders to (the device picker's choice, routed) ─────────────────────────────────────
+
+        /// <summary>The chosen output's endpoint id, or null for Match Windows (follow the Windows default). Written by <see cref="Select"/> and,
+        /// at startup, from the saved choice before the backend opens anything; read by <see cref="OpenOutput"/> on the opening thread.</summary>
+        static volatile string? s_outputTarget;
+
+        /// <summary>The live sink is the chosen output (false while Match Windows is chosen, or while the default stands in for a chosen output that
+        /// did not open).</summary>
+        static volatile bool s_onTarget;
+
+        /// <summary>The endpoint every session open and every device rebuild uses (<c>WasapiPcm.CreateBackend</c>'s <c>openEndpoint</c>). THE RULE:
+        /// the chosen output when one is chosen and it opens; else the Windows default. A chosen output that is missing at startup, unplugged
+        /// mid-play or refuses to open is never silence: playback moves to the Windows default, the chosen row says "Not responding"
+        /// (<see cref="NoteOpen"/>), the choice is kept, and playback moves back when that output returns (<see cref="ChosenOutputChanged"/>).</summary>
+        static IAudioEndpoint OpenOutput(MixFormat format)
+        {
+            string? target = s_outputTarget;
+            if (target is not null)
+            {
+                var chosen = new WasapiAudioDevice(format, target);
+                if (chosen.IsReady)
+                {
+                    s_onTarget = true;
+                    return chosen;
+                }
+                chosen.Dispose();
+                Log.Warn("audio", "the chosen output did not open: playing on the Windows default until it returns id=" + target);
+            }
+            s_onTarget = false;
+            return new WasapiAudioDevice(format);
+        }
+
+        /// <summary>A default-device change concerns the session unless it plays on the chosen output.</summary>
+        static bool FollowsDefault() => !s_onTarget;
+
+        /// <summary>An endpoint changed state or left: the session rebuilds when it is the chosen output (it left: move to the default; it came
+        /// back: move to it).</summary>
+        static bool ChosenOutputChanged(string endpointId)
+            => s_outputTarget is { } target && string.Equals(endpointId, target, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Persist and apply an output choice (null or "" = Match Windows). The ORDER is the whole content: route first so the first
+        /// local audio lands on the just-chosen endpoint, and only then pull playback home from a foreign device. A live session reopens its
+        /// sink on the new output through the device-recovery path a Windows default change takes (<c>RequestDeviceRebuild</c>: the graph,
+        /// the queue and the position survive; a new device rate rebuilds the graph in <see cref="OnDeviceFormatChanged"/>); with no session
+        /// the next open uses it.</summary>
         public static void Select(string? deviceId)
         {
             string? id = string.IsNullOrEmpty(deviceId) ? null : deviceId;
@@ -383,9 +426,14 @@ public static partial class Playback
             Platform.Settings.Set(Platform.Keys.OutputDeviceId, id ?? "");
             Platform.Settings.Set(Platform.Keys.OutputDeviceName, name);
             ToUi(() => SelectedOutputId.Value = id);
-            // The route itself waits on the engine change above; the intent round-trips so the picker is honest about
-            // what it remembered.
-            Log.Info("audio", $"output device intent id={id ?? "<default>"} name={name}");
+            // A new choice reopens; so does choosing again a chosen output the default stands in for (a retry after it came back).
+            bool reopen = !string.Equals(s_outputTarget, id, StringComparison.OrdinalIgnoreCase) || (id is not null && !s_onTarget);
+            s_outputTarget = id;
+            Log.Info("audio", $"output chosen id={id ?? "<match windows>"} name={name}" + (reopen ? " — reopening the sink there" : ""));
+            if (!reopen) return;
+            PcmAudioSession? live;
+            lock (s_gate) live = s_session;
+            live?.RequestDeviceRebuild();
         }
 
         public static void SetMuted(bool muted)
@@ -566,11 +614,17 @@ public static partial class Playback
             WasapiAudioDevice.FormatSink ??= static line => Log.Info("audio", "device format " + line);
             WasapiAudioDevice.DiagSink ??= static line => Log.Info("audio", line);
             WasapiAudioDevice.OpenResultSink ??= NoteOpen;
+            // The saved choice, before anything opens: the first session renders to it (or, when it is missing, to the default; see OpenOutput).
+            string persisted = Platform.Settings.Get(Platform.Keys.OutputDeviceId);
+            s_outputTarget = persisted.Length > 0 ? persisted : null;
             try
             {
                 // The factory's only argument is the mix format; it answers the decoder the pump chose for the open or
                 // prepare that is asking (FLAC plan §4.2) — `s_decoderForOpen`, which flows with that open's async context.
-                PcmAudioPlayer backend = s_forceSilent ? CreateSilentBackend() : WasapiPcm.CreateBackend(s_effects, decoderFactory: TakePendingDecoder);
+                PcmAudioPlayer backend = s_forceSilent
+                    ? CreateSilentBackend()
+                    : WasapiPcm.CreateBackend(s_effects, decoderFactory: TakePendingDecoder, openEndpoint: OpenOutput, followsDefault: FollowsDefault,
+                        endpointChanged: ChosenOutputChanged);
                 s_backend = backend;
                 Volatile.Write(ref s_player, MediaPlayer.Build().WithBackend(MediaKind.PcmAudio, backend).Build());
                 ToUi(static () => Supported.Value = true);
@@ -584,7 +638,6 @@ public static partial class Playback
                 ToUi(static () => Supported.Value = false);
             }
             RefreshDevices();
-            string persisted = Platform.Settings.Get(Platform.Keys.OutputDeviceId);
             if (persisted.Length > 0) ToUi(() => SelectedOutputId.Value = persisted);
             return Volatile.Read(ref s_player) is not null;
         }
