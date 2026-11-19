@@ -30,10 +30,12 @@ public static class CommonBlocks
 {
     /// <summary>Adds every Common view to <paramref name="views"/>. Called by a structure's <c>Register</c>. A structure that draws the module page in its own page
     /// column passes its template (and a template id) as <paramref name="module"/>: the view registry refuses a second template for a key, so the choice is made here.
-    /// So does a structure that draws History (<paramref name="history"/>) or the Home customizer (<paramref name="customize"/>) in its own voice.</summary>
+    /// So does a structure that draws History (<paramref name="history"/>), the Home customizer (<paramref name="customize"/>) or the explanation badge
+    /// (<paramref name="explainer"/>, settings rework phase 4) in its own voice.</summary>
     public static void Register(ViewRegistryBuilder views, ViewTemplate<ModulePageProps>? module = null, string moduleTemplateId = "common.module.page",
         ViewTemplate<HistoryPageProps>? history = null, string historyTemplateId = "common.history",
-        ViewTemplate<HomeCustomizeProps>? customize = null, string customizeTemplateId = "common.customize")
+        ViewTemplate<HomeCustomizeProps>? customize = null, string customizeTemplateId = "common.customize",
+        ViewTemplate<ExplainerProps>? explainer = null, string explainerTemplateId = "common.hint.explainer")
     {
         views.Add(ViewKeys.HistoryPage, history ?? CommonHistory.Template, historyTemplateId);
         views.Add(ViewKeys.HomeCustomize, customize ?? CommonCustomize.Template, customizeTemplateId);
@@ -43,7 +45,7 @@ public static class CommonBlocks
         views.Add(ViewKeys.ModulePage, module ?? CommonModulePage.Template, moduleTemplateId);
         // The settings rework's three keys (contract 1.115): plain stand-ins until each theme draws its own (phases 4-6).
         views.Add(ViewKeys.Hint, CommonHint.Hint, "common.hint");
-        views.Add(ViewKeys.Explainer, CommonHint.Explainer, "common.hint.explainer");
+        views.Add(ViewKeys.Explainer, explainer ?? CommonHint.Explainer, explainerTemplateId);
         views.Add(ViewKeys.SettingsDials, CommonHint.SettingsDials, "common.settings.dials");
     }
 }
