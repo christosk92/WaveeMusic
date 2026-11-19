@@ -60,7 +60,7 @@ internal sealed class PodcastRater
             : Rate is null ? Loc.Get(Strings.Podcast.Rate.Demo)
             : !f.CanRate ? Loc.Get(Strings.Podcast.Rate.Closed)
             : "";
-        return new PodcastRateVm(mine, writable && !busy, busy, failed && !busy, Strings.Podcast.Rate.Title(f.Name), line, note);
+        return new PodcastRateVm(mine, writable && !busy, busy, failed && !busy, Strings.Podcast.Rate.Title(f.Name), line, note) { Name = f.Name };
     }
 
     async void Submit(int value)

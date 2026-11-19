@@ -520,7 +520,7 @@ internal static class ZunePodcastAudiobook
         if (v.RatingsLine.Length > 0 || v.MyRating > 0) column.Add(K.MetaWord(v.RatingsLine) with { Text = Prop.Of(() => state.Value.Line) });
         Element rate = v.State == AudiobookState.InProgress
             ? Controls.RateFlyout("zb-rate-flyout", K.Button("zb-rate-btn", v.RateLabel, null, static () => { }, lay.Target), state, p.Rate, Z.RatingStar,
-                static () => R.Ink.AccentDecor)
+                static () => R.Ink.AccentDecor, PopupChrome.Flyout)
             : K.Button("zb-rate-btn", v.RateLabel, null, null, lay.Target);
         return new BoxEl
         {

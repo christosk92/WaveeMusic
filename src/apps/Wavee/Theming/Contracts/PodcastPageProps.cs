@@ -140,7 +140,12 @@ public sealed record PodcastLedger(int Played, int InProgress, int ToGo, int New
 public sealed record PodcastCardVm(string Uri, string Title, string Subtitle, string? ArtUrl);
 
 /// <summary>A fact of the About list ("Publisher · Halden Audio").</summary>
-public sealed record PodcastFact(string Label, string Value);
+public sealed record PodcastFact(string Label, string Value)
+{
+    /// <summary>The value is the DATA's (a publisher, authors, topics, genres, an edition: names, never re-cased by a theme); false = the app's own
+    /// words ("Weekly", "Newest first", a length, a date), which a theme cases with its case roles.</summary>
+    public bool IsName { get; init; }
+}
 
 /// <summary>The rate control's state, ONE shape for the show page and the audiobook page (their hosts share one rate verb). <see cref="Mine"/> is the
 /// listener's own stars (0 = not rated yet), shown at rest in <see cref="Line"/> ("12,431 ratings · yours 5★"; "" = no public rating and none of
@@ -150,6 +155,10 @@ public sealed record PodcastFact(string Label, string Value);
 public sealed record PodcastRateVm(int Mine, bool Enabled, bool Busy, bool Failed, string Title, string Line, string Note)
 {
     public static PodcastRateVm None { get; } = new(0, false, false, false, "", "", "");
+
+    /// <summary>The rated subject's name alone (inside <see cref="Title"/>): a picker draws it as written and the title's other words with the case
+    /// roles.</summary>
+    public string Name { get; init; } = "";
 }
 
 /// <summary>The show's identity and the About facts. <see cref="Tone"/> is the cover's dark colour (the wash), 0 = none. <see cref="RatingX100"/> 0 = no
