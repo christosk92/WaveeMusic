@@ -1,7 +1,7 @@
 // ── Screens/SettingsThemeOptions.cs — the active theme's options as the page shows them (themes plan 8.1-8.2, T1b; T11b) ───────────────
 //
-// Role: CORE. `ThemeOptionsSection.Current` turns the active composition's exposed schema into rows; THIS file groups them for display: the legacy rows
-// (the `SettingsDoc` rows a structure still binds to today's keys, listed by `IStructureLayer.LegacyRows`) and the generated ones, a group
+// Role: CORE. `ThemeOptionsSection.Current` turns the active composition's exposed schema into dials; THIS file groups them for display: the legacy rows
+// (the registry dials a structure still binds to today's keys, listed by `IStructureLayer.LegacyRows`) and the generated ones, a group
 // per label (the groups in the order their first legacy row, else their first generated row, arrives; inside a group the generated rows come first). A row the facts hide (developer only, composed away) does not exist. The sidebar's two notes (a layout file
 // the app could not read; what a migration dropped) ride the sidebar rows. The structure's `Settings.ThemeOptions` view draws what this returns (the Classic
 // expander, the wizard's plate rows); the wizard step asks `HasWizardOptions` to know whether to place it at all.
@@ -15,7 +15,7 @@ namespace Wavee;
 /// <summary>What one entry of an options group is.</summary>
 public enum SettingsOptionItemKind : byte
 {
-    /// <summary>A <see cref="SettingsRow"/> a structure still binds to a legacy key, drawn by its document id.</summary>
+    /// <summary>A <see cref="SettingsDial"/> a structure still binds to a legacy key, drawn by its old row id.</summary>
     Legacy,
 
     /// <summary>A row generated from the theme's schema.</summary>
@@ -38,7 +38,7 @@ public sealed class SettingsOptionItem
     public required SettingsOptionItemKind Kind { get; init; }
 
     /// <summary>The legacy row (<see cref="SettingsOptionItemKind.Legacy"/>).</summary>
-    public SettingsRow? Row { get; init; }
+    public SettingsDial? Row { get; init; }
 
     /// <summary>The generated row (<see cref="SettingsOptionItemKind.Generated"/>).</summary>
     public GeneratedOptionRow? Generated { get; init; }
@@ -61,7 +61,7 @@ public sealed class SettingsOptionGroup(string title)
 /// <param name="NameKey">The loc key of the theme's name (the section reads "‹name› options").</param>
 /// <param name="Groups">The groups; none means the theme has nothing to configure here.</param>
 /// <param name="Reset">"Reset options", or null when nothing is stored.</param>
-public sealed record SettingsOptionsView(string NameKey, IReadOnlyList<SettingsOptionGroup> Groups, SettingsRow? Reset);
+public sealed record SettingsOptionsView(string NameKey, IReadOnlyList<SettingsOptionGroup> Groups, SettingsDial? Reset);
 
 /// <summary>Builds <see cref="SettingsOptionsView"/>.</summary>
 public static class SettingsThemeOptions
@@ -105,12 +105,12 @@ public static class SettingsThemeOptions
         }
 
         // The legacy rows that show, with their group created now (so the groups keep the legacy order); they are appended after the group's generated rows.
-        var legacyItems = new List<(SettingsOptionGroup Group, SettingsRow Row, string RowId)>(model.Legacy.Count);
+        var legacyItems = new List<(SettingsOptionGroup Group, SettingsDial Row, string RowId)>(model.Legacy.Count);
         if (!wizard)
         {
             foreach (LegacyOptionRow legacy in model.Legacy)
             {
-                if (!SettingsDoc.TryRow(Settings.Tab.Appearance, legacy.RowId, out SettingsRow row) || !row.Visible(facts)) continue;
+                if (!SettingsSpec.TryResolve(legacy.RowId, out SettingsDial row, out _) || !row.Visible(facts)) continue;
                 legacyItems.Add((GroupFor(legacy.Group), row, legacy.RowId));
             }
         }

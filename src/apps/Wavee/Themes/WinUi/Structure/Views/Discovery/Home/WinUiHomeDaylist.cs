@@ -34,7 +34,7 @@ namespace Wavee.Themes.WinUi;
 internal static class WinUiHomeDaylist
 {
     /// <summary>The card's content, built once per render (or from placeholders for the skeleton) and laid out by <see cref="CardShape"/>.</summary>
-    readonly record struct Parts(string Title, Element Tags, string Meta, Element Actions, Element Clock, Element Cover);
+    readonly record struct Parts(string Title, Element Tags, string Meta, Element Actions, Element Clock, Element Cover, string Basis = "");
 
     /// <summary>The registered template of <see cref="ViewKeys.HomeDaylist"/>.</summary>
     public static Element Template(HomeDaylistProps props, in ViewContext ctx)
@@ -43,15 +43,22 @@ internal static class WinUiHomeDaylist
         var facts = ctx.Tier();
         var layout = WinUiHomeTiers.Of(facts);
         var dl = layout.Daylist;
+        // On the pinned board the card stands in a tile: its "..." and a right-click open ONE menu, the playlist's rows then the tile's Home rows
+        // (HomeTileMenus); the board's Menu key on the tile opens it at the "..." (anchored where the button last realized).
+        var tile = ctx.Hooks.UseContext(HomeTileMenus.Current);
+        var moreAnchor = ctx.Hooks.UseRef(default(NodeHandle));
+        if (tile is not null) tile.Open = null;
 
         var zone = props.Zone;
         if (zone.Items.Count == 0) return new BoxEl();
         var card = zone.Items[0];
         string uri = card.Uri;
-        if (uri.Length == 0) return new BoxEl();
+        // The blank seed card (a board tile whose answer is on its way): the cold-load shape, which the tile's loading region derives.
+        if (uri.Length == 0) return Skeleton(layout);
 
         var host = props.Overlay;
-        var menu = HomeCardNav.MenuOf(in card);
+        var menu = HomeTileMenus.Merge(HomeCardNav.MenuOf(in card), tile);
+        if (tile is not null) tile.Open = menu is not null && host is not null ? () => HomeTileMenus.OpenAt(host, moreAnchor.Value, menu) : null;
         var c = card;
         string title = card.Title;
 
@@ -68,21 +75,22 @@ internal static class WinUiHomeDaylist
             Controls.Named(Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Box = dl.IconBox }) with { Key = "save:" + uri },
                            Loc.Get(Strings.Home.Save)),
             // A STANDALONE icon button, not `Controls.MoreButton`: that one is the list-row overflow whose rest opacity lights up with its ANCESTOR's hover.
-            Controls.Named(Controls.IconAction(Icons.More, null, requestsContext: true, size: dl.IconBox) with { BlocksDragArm = true },
+            Controls.Named(Controls.IconAction(Icons.More, null, requestsContext: true, size: dl.IconBox) with { BlocksDragArm = true, OnRealized = h => moreAnchor.Value = h },
                            Loc.Get(Strings.Home.More)));
 
         string? artUrl = DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl) ?? card.ImageUrl;
-        Element cover = CoverTile(artUrl, dl);
+        Element cover = CoverTile(artUrl, dl, Design.MorphKeys.ForUri(uri));
 
         // The card IS the daylist: a click anywhere outside its buttons opens the playlist. The tile ramp is the card's hover/press feedback.
-        var root = CardShape(new Parts(title, Tags(card, dl), Strings.Home.DaylistMeta(card.TrackCount), actions, props.Clock ?? new BoxEl(), cover), dl)
+        var root = CardShape(new Parts(title, Tags(card, dl), Strings.Home.DaylistMeta(card.TrackCount), actions, props.Clock ?? new BoxEl(), cover,
+                                       SectionCopy.DaylistBasis(in card)), dl)
             .Interactive(Interaction.Tile) with
             {
                 OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand,
                 Role = AutomationRole.Button, Focusable = true,
             };
-        // The playlist menu rides the card root: a right-click anywhere on the card and the "..." button (which climbs to this handler through the context
-        // funnel) open the SAME menu, the button's anchored at itself.
+        // The playlist menu (with the tile's Home rows on the board) rides the card root: a right-click anywhere on the card and the "..." button (which
+        // climbs to this handler through the context funnel) open the SAME menu, the button's anchored at itself.
         return menu is not null && host is not null ? root.WithContextMenu(host, menu) : root;
     }
 
@@ -106,7 +114,51 @@ internal static class WinUiHomeDaylist
         var clock = WinUiHomeDaylistClock.Shape(ProgressRing.Determinate(0f, dl.Ring), line, caption, null, (int)current, dl, ClockWidthEstimate(dl, 1000f));
         // The cover slot as its watched placeholder (the real shape): a component the deriver cannot see into would shimmer as one stray bar.
         return CardShape(new Parts(Loc.Get(Strings.Home.Layout.Daylist), TagLine(new TextSpan[] { new(words) }, null, dl),
-                                   Strings.Home.DaylistMeta(50), actions, clock, CoverTile(null, dl)), dl);
+                                   Strings.Home.DaylistMeta(50), actions, clock, CoverTile(null, dl, null)), dl);
+    }
+
+    /// <summary>The card's height at the tier, from the same pieces the card lays out (the pinned board packs its row at it, so nothing moves at mount):
+    /// Triple, the cover's edge; Pair, the cover beside the copy (eyebrow row, the one-line title, the tags, the basis line, the spacer's floor, the
+    /// actions), the taller of the two; Stack, the cover beside the eyebrow, the title's two reserved lines and the meta line, then the tags and basis,
+    /// the actions and the clock footer, a gap of the card's rhythm between each; both paddings around.</summary>
+    internal static float Extent(WinUiHomeLayout layout) => Inner(layout.Daylist) + 2f * layout.Daylist.Pad;
+
+    /// <summary>The band inside the card's paddings at its TALLEST (every line the copy may draw: the title at its full line count, the tags, the basis,
+    /// the meta): the band never draws shorter (its floor), so a short title or a card with no basis lays out at the same height and the board's row,
+    /// packed at <see cref="Extent"/> before the answer lands, never moves when it does.</summary>
+    static float Inner(WinUiDaylistLayout dl)
+    {
+        float caption = Ui.Caption("").LineHeight, body = Ui.Body("").LineHeight;
+        float title = (dl.TitleLarge ? R.Type.HeroTitle("") : R.Type.ModuleHeader("")).LineHeight;
+        float actions = MathF.Max(ControlMetrics.For(dl.Buttons).MinHeight, dl.IconBox);
+        float inner;
+        switch (dl.Form)
+        {
+            case WinUiDaylistForm.Triple:
+            {
+                // Copy(): eyebrow · gap · the title's lines · gap · tags · basis · gap + meta · the spacer's floor · actions.
+                float gap = WinUiHomeRules.CopyGapLarge;
+                float copy = caption + gap + dl.TitleLines * title + gap + body + caption + gap + body + gap + actions;
+                inner = MathF.Max(dl.Cover, copy);
+                break;
+            }
+            case WinUiDaylistForm.Pair:
+            {
+                float gap = WinUiHomeRules.CopyGapSmall;
+                float eyebrow = MathF.Max(caption, WinUiHomeDaylistClock.Line((TextSpans)Array.Empty<TextSpan>(), dl).LineHeight);
+                float copy = eyebrow + gap + title + gap + body + caption + gap + actions;
+                inner = MathF.Max(dl.Cover, copy);
+                break;
+            }
+            default:
+            {
+                float head = MathF.Max(dl.Cover, caption + WinUiHomeRules.CopyGapSmall + dl.TitleLines * title + WinUiHomeRules.CopyGapSmall + caption);
+                float footer = 1f + WinUiHomeRules.FooterPad + MathF.Max(dl.Ring, body + caption);
+                inner = head + Spacing.M + body + caption + Spacing.M + actions + Spacing.M + footer;
+                break;
+            }
+        }
+        return inner;
     }
 
     /// <summary>The primary action at the tier's size; the Compact button is the board's 20-padded 40.</summary>
@@ -128,11 +180,18 @@ internal static class WinUiHomeDaylist
             WinUiDiscoveryMotion.AirV("daylist-pad:top", dl.Pad),
             new BoxEl
             {
-                Key = "daylist-band", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Key = "daylist-band", Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch, MinHeight = Inner(dl),
                 Children =
                 [
                     WinUiDiscoveryMotion.AirH("daylist-pad:lead", dl.Pad),
-                    Row(parts, dl) with { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f },
+                    // The Compact stack and the row forms are different trees: keyed apart, the crossing cross-fades them (Pair and Triple share
+                    // the row, which eases between them).
+                    Row(parts, dl) with
+                    {
+                        Key = dl.Form == WinUiDaylistForm.Stack ? "daylist-form:stack" : "daylist-form:row",
+                        Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                        Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+                    },
                     WinUiDiscoveryMotion.AirH("daylist-pad:end", dl.Pad),
                 ],
             },
@@ -142,10 +201,11 @@ internal static class WinUiHomeDaylist
         };
 
     /// <summary>The cover: a square r4 tile of the tier's edge (the board's `border-radius: 4px`). A crossing eases its edge through real layout (the art fills
-    /// the box, so it scales with it): the copy beside it and the card's height follow it frame by frame.</summary>
-    static Element CoverTile(string? url, WinUiDaylistLayout dl)
+    /// the box, so it scales with it): the copy beside it and the card's height follow it frame by frame. <paramref name="connect"/>: the
+    /// daylist's flight key (it flies into the playlist page's cover).</summary>
+    static Element CoverTile(string? url, WinUiDaylistLayout dl, string? connect)
     {
-        var art = Controls.Artwork(url, dl.Cover, dl.Cover, Radii.Control, decodePx: WinUiHomeRules.DaylistArtDecodePx);
+        var art = Controls.Artwork(url, dl.Cover, dl.Cover, Radii.Control, decodePx: WinUiHomeRules.DaylistArtDecodePx, connect: connect);
         return new BoxEl
         {
             Key = "daylist-cover", Width = dl.Cover, Height = dl.Cover, Shrink = 0f, Direction = 1, AlignItems = FlexAlign.Stretch,
@@ -232,18 +292,21 @@ internal static class WinUiHomeDaylist
                     new BoxEl
                     {
                         Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Gap = WinUiHomeRules.CopyGapSmall,
-                        Children = [Eyebrow(), Title(p.Title, dl), MetaLine(p.Meta, small: true)],
+                        // The title reserves its lines (a one-line name keeps the second empty), so the card's height is the tier's, never the name's.
+                        Children = [Eyebrow(), Title(p.Title, dl) with { MinHeight = dl.TitleLines * Title(p.Title, dl).LineHeight }, MetaLine(p.Meta, small: true)],
                     },
                 ],
             },
-            p.Tags,
+            new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [Opening("daylist-tags", p.Tags), BasisLine(p.Basis)] },
             p.Actions,
             p.Clock,
         ],
     };
 
-    /// <summary>The copy column of Standard, Huge and Small: eyebrow (the clock line trailing it at Small) · title · tags · meta (the tags carry it at Small)
-    /// · a spacer · the actions.</summary>
+    /// <summary>The copy column of Standard, Huge and Small: eyebrow (the clock line trailing it at Small) · title · tags · basis · meta (the tags carry it at
+    /// Small) · a spacer · the actions. The card keeps the height of its tallest copy (<see cref="Inner"/>); a shorter one (a one-line name, an edition
+    /// with no tags or no basis) centres its words in the room above the actions, which stay at the cover's foot, so what is missing leaves no hole
+    /// between the words and the buttons. The tags and the basis open and close their lines as they come and go, so the words never step.</summary>
     static BoxEl Copy(Parts p, WinUiDaylistLayout dl, Element? eyebrowTrail)
     {
         bool pair = dl.Form == WinUiDaylistForm.Pair;
@@ -252,8 +315,9 @@ internal static class WinUiHomeDaylist
         // KEYED children, one row for the eyebrow in every form: a Triple <-> Pair crossing drops the meta line and moves the clock, and position-matched
         // children would remount the actions (and the save heart).
         var eyebrow = Eyebrow() with { Key = "daylist-eyebrow", Grow = 1f, Shrink = 1f };
-        var kids = new List<Element>(8)
+        var kids = new List<Element>(10)
         {
+            new BoxEl { Key = "daylist-lead", Grow = 1f, MinWidth = 0f, MinHeight = 0f },
             new BoxEl
             {
                 Key = "daylist-eyebrow-row", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
@@ -264,13 +328,22 @@ internal static class WinUiHomeDaylist
             WinUiDiscoveryMotion.AirV("daylist-gap:eyebrow", gap),
             TitleSlot(p.Title, dl),
             WinUiDiscoveryMotion.AirV("daylist-gap:title", gap),
-            p.Tags with { Key = "daylist-tags" },
+            Opening("daylist-tags", p.Tags),
+            Opening("daylist-basis", BasisText(p.Basis)),
         };
         if (!pair) kids.Add(MetaSlot(p.Meta, gap));
         kids.Add(new BoxEl { Key = "daylist-spacer", Grow = 1f, MinWidth = 0f, MinHeight = gap });
         kids.Add(p.Actions with { Key = "daylist-actions" });
         return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids.ToArray() };
     }
+
+    /// <summary>A line that opens its height while it comes and closes it while it goes (a tag line or a basis an edition has, or has not).</summary>
+    static Element Opening(string key, Element line) => new BoxEl
+    {
+        Key = key, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
+        Layout = Design.Reduced ? null : WinUiDiscoveryMotion.HeightReflow,
+        Children = [line],
+    };
 
     /// <summary>The title's slot: its height eases through real layout (one line of 20/28 at Small, up to three of 40/52 at Standard), so the lines under it
     /// ride it; the two rungs are keyed alternatives that cross-fade inside it (a run's size cannot ease).</summary>
@@ -317,6 +390,9 @@ internal static class WinUiHomeDaylist
         => (dl.TitleLarge ? R.Type.HeroTitle(title) : R.Type.ModuleHeader(title)) with
         {
             MaxLines = dl.TitleLines, Wrap = dl.TitleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            // Each line exactly the rung's line height (40/52, 20/28): a font whose natural line is taller would add to every line, and the card's
+            // height (Inner) counts the rung's lines.
+            LineStacking = LineStacking.BlockLineHeight,
         };
 
     /// <summary>The meta line: body 14/20 secondary (caption at Compact), one line.</summary>
@@ -337,27 +413,33 @@ internal static class WinUiHomeDaylist
     /// indices, separators at the odd ones.</summary>
     static Element Tags(HomeCard card, WinUiDaylistLayout dl)
     {
-        int seedCount = Math.Min(card.SeedCount, WinUiHomeRules.DaylistMaxTags);
-        var tags = new List<string>(seedCount);
-        for (int i = 0; i < seedCount; i++)
-        {
-            string tag = card.SeedAt(i);
-            if (tag.Length > 0) tags.Add(tag);
-        }
+        var (tags, links) = SectionCopy.DaylistTags(in card, WinUiHomeRules.DaylistMaxTags);
         bool trailMeta = dl.Form == WinUiDaylistForm.Pair;
         string meta = trailMeta ? Strings.Home.DaylistMeta(card.TrackCount) : "";
-        if (tags.Count == 0 && meta.Length == 0) return new BoxEl();
+        if (tags.Length == 0 && meta.Length == 0) return new BoxEl();
 
-        var spans = new List<TextSpan>(tags.Count * 2 + 1);
-        for (int i = 0; i < tags.Count; i++)
+        var spans = new List<TextSpan>(tags.Length * 2 + 1);
+        for (int i = 0; i < tags.Length; i++)
         {
             if (i > 0) spans.Add(new TextSpan(" · ", Color: Tok.TextPrimary));
             spans.Add(new TextSpan(tags[i], Color: Tok.AccentTextPrimary, IsLink: true));
         }
-        if (meta.Length > 0) spans.Add(new TextSpan((tags.Count > 0 ? " · " : "") + meta, Color: Tok.TextSecondary));
-        int tagCount = tags.Count;
-        return TagLine(spans.ToArray(), i => { if ((i & 1) == 0 && (i >> 1) < tagCount) HomeVerbs.OpenTag(tags[i >> 1]); }, dl);
+        if (meta.Length > 0) spans.Add(new TextSpan((tags.Length > 0 ? " · " : "") + meta, Color: Tok.TextSecondary));
+        int tagCount = tags.Length;
+        return TagLine(spans.ToArray(), i => { if ((i & 1) == 0 && (i >> 1) < tagCount) HomeVerbs.OpenTag(tags[i >> 1], links[i >> 1]); }, dl);
     }
+
+    /// <summary>What the pick is based on ("Based on pop and western"), caption 12/16 tertiary, under the tags. Compact's stack reserves the line whether
+    /// or not the card says it (nothing under it moves when it arrives); the row forms open it (<see cref="Opening"/>).</summary>
+    static Element BasisLine(string basis)
+    {
+        var line = BasisText(basis.Length > 0 ? basis : " ");
+        return new BoxEl { Key = "daylist-basis", Direction = 1, MinWidth = 0f, MinHeight = Ui.Caption("").LineHeight, Children = [line] };
+    }
+
+    /// <summary>The basis line itself, nothing when the edition names no basis.</summary>
+    static Element BasisText(string basis) => basis.Length == 0 ? new BoxEl() : Ui.Caption(basis) with
+        { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
     /// <summary>The tag line's paragraph: the body rung's metrics (never a hand size), primary base.</summary>
     static SpanTextEl TagLine(TextSpan[] spans, Action<int>? onSpanClick, WinUiDaylistLayout dl)

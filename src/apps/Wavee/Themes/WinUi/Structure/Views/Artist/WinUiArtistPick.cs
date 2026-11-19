@@ -73,9 +73,8 @@ internal static class WinUiArtistPick
             [
                 // ch 08 BUG F: PersonPicture.Create's `imageSourcePath` arm paints its photo over a FROZEN `fill`
                 // ColorF (no watch subscription — the flat grey the pick avatar never repainted from once the
-                // palette grading landed). Controls.Artwork stacks Shimmer's Design.WatchedPlaceholder tile under
-                // the real photo instead — 32 DIP is below Design.ShimmerMinEdge (80f), so it takes the cheap
-                // static-but-LIVE-bound arm, not the breathing pulse. The no-photo arm keeps PersonPicture.Create
+                // palette grading landed). Controls.Artwork stacks its cover tile (a live-bound
+                // Design.WatchedPlaceholder fill) under the real photo instead. The no-photo arm keeps PersonPicture.Create
                 // (its initials/glyph fallback has no art to watch).
                 avatar is { Length: > 0 }
                     ? new BoxEl
@@ -132,7 +131,8 @@ internal static class WinUiArtistPick
             Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
             Children =
             [
-                new BoxEl { Shrink = 0f, Children = [Controls.Artwork(cover, WinUiArtistRules.PickCover, WinUiArtistRules.PickCover, Radii.Control, decodePx: 96)] },
+                new BoxEl { Shrink = 0f, Children = [Controls.Artwork(cover, WinUiArtistRules.PickCover, WinUiArtistRules.PickCover, Radii.Control, decodePx: 96,
+                                                                      connect: Design.MorphKeys.ForUri(target, WinUiArtistRules.PickCover))] },
                 new BoxEl
                 {
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
@@ -188,7 +188,7 @@ internal static class WinUiArtistPick
     /// ImageEl's own (<see cref="s_photoDecodeH"/>), so when the band mounts the image pins the SAME Ready entry and
     /// paints on its first frame.</para>
     ///
-    /// <para>LATCHED like <see cref="Controls.CoverShimmer"/>: Ready (shown) or a real failure (collapsed for good) stops
+    /// <para>LATCHED: Ready (shown) or a real failure (collapsed for good) stops
     /// the hook call, so a settled card unsubscribes and never re-renders again. A Canceled leftover is NOT a verdict —
     /// the next edge re-requests it. Nothing here polls or loops: the frame clock only runs for the one finite reveal.
     /// The image hook consumes no hook cell, so the conditional call is safe.</para>

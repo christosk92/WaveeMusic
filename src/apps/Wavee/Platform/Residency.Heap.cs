@@ -317,7 +317,8 @@ public static partial class Residency
         return last.Index == 0 ? 0 : last.HeapSizeBytes;
     }
 
-    static bool WindowOnScreen()
+    /// <summary>The main window is shown and not minimised (the heap governor's gate, and the hints' "never while hidden").</summary>
+    internal static bool WindowOnScreen()
     {
         nint hwnd = FluentApp.WindowHandle;
         return FluentApp.WindowVisible && hwnd != 0 && !IsIconic(hwnd);

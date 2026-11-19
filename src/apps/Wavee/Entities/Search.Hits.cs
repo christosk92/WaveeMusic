@@ -61,6 +61,16 @@ public readonly partial struct Search
     internal static string? CoverOf(EntityRef hit)
         => hit.Kind == EntityKind.User ? Controls.ArtUrl(new User(hit.Slot).ImageId) : new HomeCard(hit).ImageUrl;
 
+    /// <summary>A top-result card's art at a fixed size: <paramref name="url"/> (<see cref="CoverOf"/>) over its flat tile, or, for Liked Songs (a
+    /// playlist hit or a collection hit, told by its uri), its generated cover (the account's treatment, no picker). Liked Songs has no image url, so
+    /// the url alone drew an empty tile (the owner, 2026-11-15: "liked songs here in winui is empty blob"). The card clips the art to its corners.
+    /// <paramref name="connect"/>: the art's flight key (<c>Design.MorphKeys.ForUri</c>); the generated cover flies whole under Liked Songs' key.</summary>
+    internal static Element ArtOf(EntityRef hit, string? url, float width, float height, float corners, string? connect = null)
+        => url is not { Length: > 0 } && EntityUri.IsLikedCollection(hit.Id.Text)
+            ? User.LikedCover(MathF.Max(width, height), corners, picker: false,
+                              MathF.Min(width, height) >= Design.MorphKeys.MinSourceEdge ? EntityUri.LikedCollection : null)
+            : Controls.Artwork(url, width, height, corners, connect: connect);
+
     /// <summary>The kind word a hit's subtitle leads with — "Song" / "Music video" for a track (§9 gap 7: the loc keys,
     /// never the hardcoded English 0.2.9 used).</summary>
     internal static string KindWordOf(EntityKind kind, SearchHitFlags flags) => Loc.Get(kind switch
@@ -144,10 +154,12 @@ public readonly partial struct Search
         });
     }
 
-    /// <summary>The trailing control: Follow for an artist / playlist / show, the heart for a track / album, none else.
-    /// Keyed on the uri — the embed's props freeze by design (Controls.cs §4).</summary>
+    /// <summary>The trailing control: Follow for an artist / playlist / show, the heart for a track / album, none else, and
+    /// none for the account's own collection (<see cref="Entities.IsOwnCollection"/>: Liked Songs, Your Episodes, a playlist it
+    /// owns). Keyed on the uri — the embed's props freeze by design (Controls.cs §4).</summary>
     internal static Element? TrailingOf(EntityRef hit, string uri, string name)
-        => SearchHitRules.TrailingOf(hit.Kind, hasUri: uri.Length > 0) switch
+        => SearchHitRules.TrailingOf(hit.Kind, hasUri: uri.Length > 0,
+                own: hit.Kind is EntityKind.Playlist or EntityKind.Collection && Entities.IsOwnCollection(new EntityUri(hit.Id))) switch
         {
             SearchHitRules.Trailing.Follow
                 => Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name }) with { Key = "follow:" + uri },
@@ -198,7 +210,8 @@ public readonly partial struct Search
         => ((int)hit.Kind).ToString(CultureInfo.InvariantCulture) + ":" + hit.Slot.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>The surface's data for a hit: title, the owner / artist line, cover, open, play, drag and the context menu
-    /// (null for a hit with none — the "…" and the right-click then do not exist).</summary>
+    /// (null for a hit with none — the "…" and the right-click then do not exist). Liked Songs has no image url: its card takes its newest tile, as a fill
+    /// cell does for any cover-less container.</summary>
     internal static Controls.CardData CardDataOf(EntityRef hit, Shell.NavOrigin? origin)
     {
         var h = hit;
@@ -207,7 +220,7 @@ public readonly partial struct Search
         return new Controls.CardData(
             hit.Id.Text, TitleOf(hit),
             sub is { Length: > 0 } ? R.Type.TrackMeta(sub) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f } : null,
-            CoverOf(hit), () => OpenHit(h, origin), CanPlay(hit.Kind) ? () => PlayHit(h) : null,
+            CoverOf(hit) ?? (EntityUri.IsLikedCollection(hit.Id.Text) ? User.LikedNewestTileUrl() : null), () => OpenHit(h, origin), CanPlay(hit.Kind) ? () => PlayHit(h) : null,
             Circular: RoundArt(hit.Kind), Drag: DragOf(hit)) { Menu = MenuOf(hit) };
     }
 
@@ -246,7 +259,8 @@ public static class SearchHitRules
 
     /// <summary>Where a hit row's "…" goes: its OWN lane after the trailing control
     /// (<see cref="MenuPlacement.TrailingLane"/>), never the overlay over the row's end. Every kind that has a menu
-    /// (<see cref="Search.HasMenu"/>) also ends in a control (<see cref="TrailingOf"/>: the heart or the Follow pill), so
+    /// (<see cref="Search.HasMenu"/>) also ends in a control (<see cref="TrailingOf"/>: the heart or the Follow pill; the
+    /// account's own collections excepted), so
     /// the overlay would always land on that control — hiding and blocking the heart, cutting "Follow" to "Fol". The Top
     /// Result card already places its "…" in a slot of its own beside the same control; the rows (search page and the
     /// search flyout alike, <c>OmnibarRowRules.RowShape</c>) now do the same.</summary>
@@ -264,10 +278,11 @@ public static class SearchHitRules
     public enum Trailing : byte { None, Follow, Save }
 
     /// <summary>Follow for an artist / playlist / show, the heart (Save) for a track / album, none for the rest — and none
-    /// for a hit with no uri to act on.</summary>
-    public static Trailing TrailingOf(EntityKind kind, bool hasUri)
+    /// for a hit with no uri to act on, or for the account's <paramref name="own"/> collection (Liked Songs, Your Episodes,
+    /// a playlist it owns: <c>Entities.IsOwnCollection</c>), which is always yours.</summary>
+    public static Trailing TrailingOf(EntityKind kind, bool hasUri, bool own)
     {
-        if (!hasUri) return Trailing.None;
+        if (!hasUri || own) return Trailing.None;
         return kind switch
         {
             EntityKind.Artist or EntityKind.Playlist or EntityKind.Show => Trailing.Follow,

@@ -134,18 +134,14 @@ internal sealed class ClassicEditPane : Component
             Fill = Tok.FillLayerDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
             Children =
             [
-                Icon(Icons.Edit, 14f, Tok.TextSecondary),
-                Ui.Caption(Loc.Get("sidebar.edit.title")) with
-                {
-                    Weight = 600, Color = Tok.TextSecondary, MaxLines = 1, Shrink = 1f, MinWidth = 0f,
-                    Trim = TextTrim.CharacterEllipsis,
-                },
+                ClassicEditBarParts.Pencil(),
+                ClassicEditBarParts.Caption(Loc.Get("sidebar.edit.title")),
                 new BoxEl { Grow = 1f },
-                ToolTip.Wrap(IconButton.Create(Icons.Undo, Edit.Undo, isEnabled: canUndo), Loc.Get("sidebar.undo.undoAction")),
-                ToolTip.Wrap(IconButton.Create(Icons.Redo, Edit.Redo, isEnabled: canRedo), Loc.Get("sidebar.undo.redo")),
-                Button.Create(Loc.Get("sidebar.edit.reset"), static () => { }, ButtonAppearance.Subtle, ControlSize.Small)
+                ClassicEditBarParts.Undo(Edit.Undo, canUndo),
+                ClassicEditBarParts.Redo(Edit.Redo, canRedo),
+                ClassicEditBarParts.Reset(Loc.Get("sidebar.edit.reset"))
                     .WithContextMenu(owner.MenuOverlay, owner.ResetMenu) with { OnClick = null, ClickRequestsContext = true, Key = "edit-reset" },
-                Button.Accent(Loc.Get("sidebar.edit.done"), Edit.Exit) with { Key = "edit-done" },
+                ClassicEditBarParts.Done(Edit.Exit) with { Key = "edit-done" },
             ],
         };
     }

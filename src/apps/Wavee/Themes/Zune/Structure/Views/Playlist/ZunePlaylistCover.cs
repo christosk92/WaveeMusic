@@ -37,7 +37,9 @@ internal static partial class ZunePlaylist
     static Element CoverArt(PlaylistCoverArtProps p)
         => p.Mosaic is { } tiles
             ? Controls.Mosaic(tiles, p.Size, p.Size, R.Shape.For(ShapeRole.Cover))
-            : Controls.Artwork(p.Single, p.Size, p.Size, R.Shape.For(ShapeRole.Cover), decodePx: p.DecodePx);
+            : p.HandOver
+                ? Controls.ArtworkHandOver(p.Single, p.Size, p.Size, R.Shape.For(ShapeRole.Cover), decodePx: p.DecodePx)
+                : Controls.Artwork(p.Single, p.Size, p.Size, R.Shape.For(ShapeRole.Cover), decodePx: p.DecodePx);
 
     // ══ 2. THE EDITABLE COVER ═══════════════════════════════════════════════════════════════════════════════════════════
 

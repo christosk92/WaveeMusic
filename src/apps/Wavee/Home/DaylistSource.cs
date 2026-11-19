@@ -5,16 +5,9 @@
 // Wave: 1
 // Spec: docs/plans/wavee/home-rebuild-implementation.md §1 D6, §6.1
 //
-// D6: the live All feed has no `SectionKind.HomeSpotlight` band — the daylist card sits inside a Made-for-you
-// (Personal-role) shelf like any other daily mix. `ZonePlanner.PlanAll` used to build the Daylist zone ONLY from a
-// spotlight section (`ZonePlanner.cs:81`/`:306-311` pre-fix), so a feed with no spotlight band never showed a
-// daylist card at all, even though the decoder already stages the daylist window/header for any daylist-format
-// card (`Spotify.Decode.Home.cs:623-670`).
-//
-// `Find` is the pure lookup `ZonePlanner.PlanAll` calls BEFORE `PageDedupe` claims anything, so the hoisted card
-// leaves its original shelf for free: `PageDedupe.Place`/the cover-shelf builder both gate on `placed.Add`, so
-// claiming the card's `DedupeKey` here (in `ZonePlanner`, once `Find` has answered) removes it from wherever else
-// it would otherwise have been folded.
+// D6: the live All feed has no `SectionKind.HomeSpotlight` band: the daylist card sits inside a Made-for-you
+// (Personal-role) shelf like any other daily mix, so the daylist widget looks for it in every section, not only a
+// spotlight band. `Find` is the pure lookup the widget's zone (HomeProjection.WidgetZones) is built from.
 //
 // Order (the file banner's own words): the spotlight/daylist-role section's card first (matches the pre-fix
 // behaviour when a spotlight band DOES exist — 06-facet-design.md's captured fixtures); else the first usable card
@@ -25,7 +18,7 @@ using Wavee;
 namespace Wavee.HomeUi;
 
 /// <summary>Finds the one card the Daylist zone renders (D6). Engine-free and side-effect-free: it never mutates
-/// <paramref name="sections"/> or claims a dedupe key itself — the caller (<see cref="ZonePlanner"/>) does that once
+/// <paramref name="sections"/> or claims a dedupe key itself — the caller (HomeProjection.WidgetZones) does that once
 /// it has decided to use the answer.</summary>
 public static class DaylistSource
 {

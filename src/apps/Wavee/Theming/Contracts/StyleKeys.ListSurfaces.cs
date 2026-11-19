@@ -16,7 +16,7 @@ public static partial class StyleKeys
     public static readonly StyleKey<EagerRowStyle> EagerTrackRow = new("Track.EagerRow");
 
     /// <summary>The episode row's templates: the bound content, the cold seed and the failure row (<see cref="EpisodeRowStyle"/>). Read by
-    /// the show reader, the playlist table's episode kind and the cold skeletons.</summary>
+    /// the playlist table's episode kind and the cold skeletons.</summary>
     public static readonly StyleKey<EpisodeRowStyle> EpisodeRow = new("Episode.Row");
 
     /// <summary>The media surface's templates: the shell, the selected skin, the stack and row bodies and the labels

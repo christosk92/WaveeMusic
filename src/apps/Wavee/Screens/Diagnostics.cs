@@ -1,7 +1,7 @@
 // ── Screens/Diagnostics.cs ─────────────────────────────────────────────────────────────────────────────────────────
 // LogView, the runtime diagnostics report (the seam records + BuildRuntimeReport), the module / release-notes report
 // seams, the Connect traces, the crash-report file rule and frame parse, the frame-session totals and the sidebar-pane
-// invariant edge, Diagnostics.StageRects, the lyrics inspector's pure half (LyricsReport)
+// invariant edge, the lyrics inspector's pure half (LyricsReport)
 //
 // Role: CORE
 // Owner: S
@@ -384,11 +384,6 @@ public static partial class Diagnostics
     /// <summary>Log only on an edge: a new or different fault. A persistent bad state logs once, not once per navigation.</summary>
     public static bool PaneFaultEdge(SidebarPaneInvariantFault previous, SidebarPaneInvariantFault now)
         => now != SidebarPaneInvariantFault.None && now != previous;
-
-    // ══ 7. ch 22 §9 (b) ═════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>`Diagnostics.StageRects` by the name ch 22 gives it; the signal is <c>Platform.Developer.StageRects</c>.</summary>
-    public static Signal<bool> StageRects => Platform.Developer.StageRects;
 
     // ══ 8. THE LYRICS INSPECTOR'S PURE HALF (A14; ch 22 W17-W19b) ═══════════════════════════════════════════════════
     // Ported from 0.2.9 `Backend/Lyrics/LyricsInspectionExport.cs` and the dialog's row rules. The dialog

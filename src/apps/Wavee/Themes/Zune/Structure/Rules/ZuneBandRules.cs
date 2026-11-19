@@ -205,6 +205,11 @@ public static class ZuneBandRules
         Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
 
+    /// <summary>The height while Compact's row 2 is tied to the scroll: it follows the band at once (an ease would trail the scroll), but the slot
+    /// keeps a height motion of its own all the same, so the commit that unties it (a Compact to Small crossing with the page scrolled, row 2
+    /// opening from 52 to 84) eases on <see cref="HeightMotion"/>: a slot that had none snapped the page down by the row's 32.</summary>
+    public static readonly LayoutTransition HeightFollow = HeightMotion with { Dynamics = TransitionDynamics.Tween(0f, Easing.Linear) };
+
     /// <summary>The height motion while row 2 folds away: it waits for row 2's fade-out (<see cref="Row2FadeMs"/>), so the clip never cuts the row.</summary>
     public static readonly LayoutTransition HeightMotionAfterFade = HeightMotion with { DelayMs = Row2FadeMs };
 

@@ -72,4 +72,8 @@ internal static class ClassicFrameRules
     /// <summary>The offline lane's inset in the content card (tuned Classic X1, board C-Offline): the page <paramref name="gutter"/> either side,
     /// 16 from the card's top, nothing below (the page's own head opens under it).</summary>
     public static Edges4 OfflineLanePadding(float gutter) => new(gutter, 16f, gutter, 0f);
+
+    /// <summary>The page loading bar's height on the content card's top edge (<c>CommonPageBusy</c>): Classic's busy-bar height, the
+    /// same as Home's facet bar.</summary>
+    public const float PageBusyH = ClassicHomeRules.BarH;
 }

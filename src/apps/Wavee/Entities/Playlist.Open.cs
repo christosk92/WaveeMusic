@@ -85,7 +85,7 @@ public static class ListOpenPolicy
     /// <param name="Blocking">That revalidation checks a baseline that may be stale — the verdict was
     /// <see cref="ListFreshness.Verdict.RevalidateThenPaint"/>, or the disk is about to hand back yesterday's copy.</param>
     /// <param name="Hold">This surface keeps its reveal until the revalidation answers or <paramref name="HoldUntilMs"/>
-    /// passes, whichever is first.</param>
+    /// passes, whichever is first. Only a page, and only over a ROLLING list (<see cref="HoldsReveal"/>).</param>
     public readonly record struct Plan(ListFreshness.Verdict Verdict, Ask Ask, FetchPriority Priority, bool Stamp, bool Blocking,
                                        bool Hold, int HoldUntilMs);
 
@@ -100,11 +100,12 @@ public static class ListOpenPolicy
     /// <item><see cref="ListFreshness.Verdict.PaintThenRevalidate"/>: <see cref="Ask.Refresh"/> at Prefetch on every
     /// surface, stamped, never held.</item>
     /// <item><see cref="ListFreshness.Verdict.RevalidateThenPaint"/>: <see cref="Ask.Refresh"/> at the surface's urgency
-    /// (Visible; the queue Prefetch), stamped, blocking; a Page holds for <see cref="ListFreshness.BlockingBudgetMs"/>.</item>
-    /// </list></summary>
+    /// (Visible; the queue Prefetch), stamped, blocking; a Page over a rolling list holds for <see cref="ListFreshness.BlockingBudgetMs"/>.</item>
+    /// </list>
+    /// "Blocking" names the ask's urgency and what its answer settles; whether anything waits on it is <see cref="HoldsReveal"/>.</summary>
     public static Plan Decide(Surface surface, in Facts facts, int nowMs)
     {
-        bool holds = surface == Surface.Page;
+        bool holds = HoldsReveal(surface, facts.Rolling);
         FetchPriority urgent = surface == Surface.Queue ? FetchPriority.Prefetch : FetchPriority.Visible;
         if (!facts.Revisioned)
         {
@@ -134,6 +135,17 @@ public static class ListOpenPolicy
                 return Asking(verdict, Ask.Ensure, urgent, facts.DiskLeg, holds, nowMs);
         }
     }
+
+    /// <summary>WHO WAITS FOR A REVALIDATION (the owner, 2026-11-15: "i still see the playlist track shimmers for a split second").
+    /// Only a page, and only over a ROLLING list (a daylist): its copy on disk is likely wrong as a whole, since the server turns
+    /// its contents over, and painting yesterday's edition only to replace every row a quarter of a second later is the swap
+    /// a reader cannot keep up with. Every other list paints the copy it holds AT ONCE and revalidates behind it
+    /// (stale-while-revalidate): the open's <c>/diff</c> almost always answers "unchanged" (the owner's log: <c>ops=0</c>
+    /// after 264 and 276 ms, both opens), and when it does not, the table narrates the change the way it narrates a live
+    /// edit (<c>Track.Table</c>'s membership choreography: survivors glide, adds rise in, the first visible row keeps its
+    /// place). Holding every disk baseline was a wait for data on content that was already there: the rows' placeholder
+    /// stood for the length of a round trip on every first open of a session.</summary>
+    public static bool HoldsReveal(Surface surface, bool rolling) => surface == Surface.Page && rolling;
 
     static Plan Asking(ListFreshness.Verdict verdict, Ask ask, FetchPriority priority, bool blocking, bool holds, int nowMs)
     {

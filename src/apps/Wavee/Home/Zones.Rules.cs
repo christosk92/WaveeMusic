@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Globalization;
+using FluentGpu.Localization;
 
 namespace Wavee.HomeUi;
 
@@ -26,18 +27,45 @@ namespace Wavee.HomeUi;
 /// testable.</summary>
 public static class ReleaseListRules
 {
-    /// <summary>The row's type badge (sheet row 9 .rel: a small filled pill naming what kind of release this is).</summary>
-    public static string TypeLabel(HomeCardKind kind) => kind switch
+    /// <summary>The row's type badge (sheet row 9 .rel: a small filled pill naming what kind of release this is). An album says what
+    /// it is (Single, EP, Album, Compilation: <c>albumType</c>); a pre-save says Upcoming (home-gap P7).</summary>
+    public static string TypeLabel(in HomeCard card, Func<string, string>? localize = null, bool upcomingFirst = true)
     {
-        HomeCardKind.Album => "Album",
-        HomeCardKind.Playlist => "Playlist",
-        HomeCardKind.Artist => "Artist",
-        HomeCardKind.Track => "Song",
-        HomeCardKind.Episode => "Episode",
-        HomeCardKind.Podcast => "Podcast",
-        HomeCardKind.Audiobook => "Audiobook",
-        _ => "",
-    };
+        Func<string, string> resolve = localize ?? Loc.Get;
+        if (upcomingFirst && card.Kind == HomeCardKind.Album && card.IsPreRelease) return resolve(Strings.Home.Release.Upcoming);
+        if (card.Kind == HomeCardKind.Album && card.AlbumKind is { } k)
+            return resolve(k switch
+            {
+                AlbumKind.Single => Strings.Home.Release.Single,
+                AlbumKind.EP => Strings.Home.Release.Ep,
+                AlbumKind.Compilation => Strings.Home.Release.Compilation,
+                _ => Strings.Home.Release.Album,
+            });
+        return card.Kind switch
+        {
+            HomeCardKind.Album => resolve(Strings.Home.Release.Album),
+            HomeCardKind.Playlist => resolve(Strings.Home.Release.Playlist),
+            HomeCardKind.Artist => resolve(Strings.Home.Release.Artist),
+            HomeCardKind.Track => resolve(Strings.Home.Release.Song),
+            HomeCardKind.Episode => resolve(Strings.Home.Release.Episode),
+            HomeCardKind.Podcast => resolve(Strings.Home.Release.Podcast),
+            HomeCardKind.Audiobook => resolve(Strings.Home.Release.Audiobook),
+            _ => "",
+        };
+    }
+
+    /// <summary>The row's date column for <paramref name="card"/>: a pre-save's release day ("5 Dec", from <c>preReleaseEndDateTime</c>),
+    /// else <see cref="DateLabel(long, long, TimeZoneInfo, CultureInfo)"/> over the album's own release.</summary>
+    public static string DateLabel(in HomeCard card, long nowMs, TimeZoneInfo tz, CultureInfo culture)
+        => card.IsPreRelease && card.PreReleaseAtMs > 0
+            ? ShortDate(card.PreReleaseAtMs, tz, culture)
+            : DateLabel(card.ReleasedAtMs, nowMs, tz, culture);
+
+    static string ShortDate(long ms, TimeZoneInfo tz, CultureInfo culture)
+    {
+        DateTime local = TimeZoneInfo.ConvertTimeFromUtc(DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime, tz);
+        return $"{local.Day} {culture.DateTimeFormat.GetAbbreviatedMonthName(local.Month)}";
+    }
 
     /// <summary>The trailing 88-wide date column. <paramref name="releasedAtMs"/> ≤ 0 (unknown) renders blank. A
     /// FUTURE release (<see cref="HomeReleaseDetect"/>'s "Upcoming" case: the date is after <paramref name="nowMs"/>)
@@ -107,4 +135,96 @@ public static class EmptyFacetCopy
     /// says what the kind is and offers the way to find some, as Home's empty facet does (audit B7 r2, V22).</summary>
     public static (string Title, string Body, string Action) LibraryShows(bool podcasts)
         => podcasts ? Keys("podcasts:empty") : Keys("home:audiobooks:empty");
+}
+
+/// <summary>The caption lines the section templates of home-gap P4, P6, P8 and the video card draw, from data already decoded. Pure.</summary>
+public static class SectionCopy
+{
+    /// <summary>A book's facts line: "★ 4.7 · 20 hr 56 min" (the rating only where the server shows one, the length only when known).</summary>
+    public static string BookFacts(in HomeCard book, CultureInfo culture)
+    {
+        string rating = book.Rating > 0d ? Strings.Home.Rated(book.Rating.ToString("0.0", culture)) : "";
+        string length = HomeCardText.Duration(book.DurationMs);
+        return rating.Length > 0 && length.Length > 0 ? rating + " · " + length : rating + length;
+    }
+
+    /// <summary>A mood plate's small line: the first sentence of the mix's description ("Spring music for you."), "" when none.</summary>
+    public static string PlateLine(in HomeCard mix) => HomeCardText.FirstSentence(mix.Subtitle);
+
+    /// <summary>A preview card's facts line: "Playlist · Spotify · 50 songs" (the kind, the owner, the count, each where known).</summary>
+    public static string PreviewFacts(in HomeCard card, Func<string, string>? localize = null)
+    {
+        string kind = ReleaseListRules.TypeLabel(in card, localize);
+        string rest = CardMeta.Of(card.OwnerName, card.TrackCount) ?? "";
+        return kind.Length > 0 && rest.Length > 0 ? kind + " · " + rest : kind + rest;
+    }
+
+    /// <summary>An episode's facts line: "20 Jul · 1 hr 24 min · not started", or "… · 32 min left" while in progress.</summary>
+    public static string EpisodeFacts(in HomeCard e, long nowMs, TimeZoneInfo tz, CultureInfo culture)
+    {
+        var parts = new List<string>(3);
+        string date = EpisodeCaption.Date(e.ReleasedAtMs, nowMs, tz, culture);
+        if (date.Length > 0) parts.Add(date);
+        string length = EpisodeCaption.Duration(e.DurationMs);
+        if (length.Length > 0) parts.Add(length);
+        if (e.PlayedState == 2 && e.ResumeMs > 0 && e.DurationMs > 0) parts.Add(EpisodeCaption.Remaining(e.DurationMs, e.ResumeMs));
+        else if (e.PlayedState == 1) parts.Add(Loc.Get(Strings.Home.NotStarted));
+        return string.Join(" · ", parts);
+    }
+
+    /// <summary>The episode's progress, 0..1 (0 unless it is in progress).</summary>
+    public static float EpisodeProgress(in HomeCard e)
+        => e.PlayedState == 2 ? (float)EpisodeCaption.ProgressFraction(e.ResumeMs, e.DurationMs) : 0f;
+
+    /// <summary>A daylist's "Based on pop and western" line, "" when nothing says it. The playlist row's words first (written with the
+    /// edition's window by the newest answer: the feed card or the playlist's own header read), then the feed card's facts.</summary>
+    public static string DaylistBasis(in HomeCard daylist)
+    {
+        var terms = SplitTerms(daylist.DaylistBasisText);
+        if (terms.Length == 0 && daylist.Basis is { Count: > 0 } facts) terms = [.. facts];
+        if (terms.Length == 0) return "";
+        return terms.Length == 2 ? Strings.Home.BasedOnTwo(terms[0], terms[1]) : Strings.Home.BasedOn(string.Join(", ", terms));
+    }
+
+    /// <summary>A daylist's tags and the playlist each opens (null when a tag has none), at most <paramref name="max"/>, from the freshest
+    /// source that has any: the playlist row's <c>localized_terms</c> (the edition's own, written with its window), then the anchors of
+    /// the row's description (what the playlist page shows), then the feed card's facts (the answer the card came in, which a later
+    /// header read outdates). Cold: once per render of the card.</summary>
+    public static (string[] Tags, string?[] Links) DaylistTags(in HomeCard daylist, int max)
+    {
+        var tags = new List<string>(max);
+        var links = new List<string?>(max);
+        var terms = SplitTerms(daylist.DaylistTermsText);
+        if (terms.Length > 0)
+        {
+            var anchors = HomeCardText.AnchorLinks(daylist.DaylistLinksText);
+            for (int i = 0; i < terms.Length && tags.Count < max; i++) { tags.Add(terms[i]); links.Add(LinkOf(anchors, terms[i])); }
+            return (tags.ToArray(), links.ToArray());
+        }
+        var described = HomeCardText.AnchorLinks(daylist.PlaylistDescription);
+        if (described.Count > 0)
+        {
+            for (int i = 0; i < described.Count && tags.Count < max; i++) { tags.Add(described[i].Text); links.Add(described[i].Uri); }
+            return (tags.ToArray(), links.ToArray());
+        }
+        var seedLinks = daylist.SeedLinks;
+        for (int i = 0, n = daylist.SeedCount; i < n && tags.Count < max; i++)
+        {
+            string tag = daylist.SeedAt(i);
+            if (tag.Length == 0) continue;
+            tags.Add(tag);
+            links.Add(seedLinks is not null && i < seedLinks.Count ? seedLinks[i] : null);
+        }
+        return (tags.ToArray(), links.ToArray());
+    }
+
+    static string[] SplitTerms(string? csv)
+        => string.IsNullOrWhiteSpace(csv) ? [] : csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    static string? LinkOf(IReadOnlyList<(string Uri, string Text)> anchors, string tag)
+    {
+        for (int k = 0; k < anchors.Count; k++)
+            if (string.Equals(anchors[k].Text, tag, StringComparison.OrdinalIgnoreCase)) return anchors[k].Uri;
+        return null;
+    }
 }

@@ -497,7 +497,6 @@ public static partial class Settings
     internal const string SpotifyAccountUrl = "https://www.spotify.com/account/overview/";
     internal const string IssuesUrl = "https://github.com/christosk92/WaveeMusic/issues";
     internal const string WebsiteUrl = "https://github.com/christosk92/WaveeMusic";
-    internal const string PrivacyUrl = "https://github.com/christosk92/WaveeMusic/blob/main/PRIVACY.md";
 
     /// <summary>Staged beside Wavee.exe by ops/build/generate-third-party-notices.ps1 at publish/pack time; a plain
     /// `dotnet run` has none, which is exactly what <c>settings.about.noticesMissing</c> says.</summary>

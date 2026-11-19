@@ -7,8 +7,8 @@
 //     they fit beside it, top-aligned once they outgrow it: the eyebrow,
 //     the title (Title Large 40/52), the billed artists with their avatars and the meta on one line, the action row; under it the table's own list bar (Find,
 //     the order, Filter, Select). A SHORT window (under 720 tall, W-Shell-Short) draws the short form: a 104 cover, the title 28/36, no eyebrow.
-//   · THE STICKY BAR (W-Shell-Short): 48 tall, once the hero has collapsed: a 32 cover, the title over the byline and Play as an accent button, on a layer of its
-//     own with a hairline under it. The core's collapse distance is the hero's measured height less these 48 (`DetailTierLayout.BandHeight`); it reveals over the
+//   · THE STICKY BAR (W-Shell-Short): 48 tall, once the hero has collapsed: a 32 cover, the title over the byline and Play as an accent button, over the
+//     window's own ground (NO PLATE: the rows are cut under it, so nothing needs hiding; owner, 2026-11-18) with a hairline under it. The core's collapse distance is the hero's measured height less these 48 (`DetailTierLayout.BandHeight`); it reveals over the
 //     last 44 of the collapse and takes hits only once the table's chrome has stuck (the engaged edge, `CompactInteractive`).
 //
 // The numbers are `WinUiDetailRules` and the tier's `WinUiDetailTier`; the form (tall, short, stacked) is the tier's and the window's height (`TierFacts.Height`).
@@ -125,7 +125,7 @@ internal static partial class WinUiDetailFrame
                 if (id.EditableMetadata && spec.Slots.Description is { } editDescription)
                     rows.Add(Block("hero-description", editDescription(measure), late: true, formPiece: true));
                 else if (description.Length > 0)
-                    rows.Add(Block("hero-description", WinUiDetailKit.DescriptionRun(description, center), late: true, formPiece: true));
+                    rows.Add(Block("hero-description", Controls.TextHandOver(description, WinUiDetailKit.DescriptionRun(description, center)), late: true, formPiece: true));
             }
             // THE RESERVED LINES (the owner's recording: the title jumped 37 up when "50 songs · 519.6K saves" arrived, the buttons rode the facts after it). A line
             // the page can still fill (a meta loading, an owner, billed artists) holds its fixed box from the first frame; its words fade in inside it, and a
@@ -140,7 +140,7 @@ internal static partial class WinUiDetailFrame
                 rows.Add(Block("hero-attribution", Facts(faces, id.Meta, settled, metaLine, avatar, measure, form, center)));
             // A daylist's strip under the facts (its countdown, or "Your next daylist is running late"): the page's pulse slot, as Classic's rail draws it.
             if (Pulses(spec)) rows.Add(Block("hero-daylist", PulseRow(spec.Slots.Pulse!(), center)));
-            rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.Slots, spec.PlayAll, tier, form, words, center)));
+            rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.PlayAll, tier, form, words, center)));
 
             Element cover = Cover(spec.Identity, spec.Slots, spec.Actions, form);
             // A head not read yet (audit B7 r2: blank reserved lines beside a live Play) shimmers its words in place: the loading band's own rows at their
@@ -209,6 +209,11 @@ internal static partial class WinUiDetailFrame
         bool showNames = hasFaces && (center || filled);
         bool showMeta = hasMeta && settled && (center ? metaLine : filled);
         bool namesLine = !center || hasFaces;
+        // A row line that has not filled yet stands EMPTY in its reserved row: no lines at all. Its lines used to stand as empty boxes, so when
+        // the facts filled, the meta line glided from the row's start to its place beside the names, under the names fading in ("Spotify" over
+        // "50 songs" for two frames). Mounted together on the fill, the names and the meta fade up where they belong.
+        if (!center && !filled)
+            return new BoxEl { Key = "hero-facts", Direction = 0, Height = WinUiDetailRules.AttributionRow(avatar), Shrink = 0f, MinWidth = 0f, MaxWidth = measure };
         var kids = new List<Element>(3);
         if (!center && avatar > 0f && hasFaces && filled)
             kids.Add(WinUiDetailKit.AvatarPile(faces!, avatar) with
@@ -307,11 +312,14 @@ internal static partial class WinUiDetailFrame
         float art = form.Cover;
         BoxEl cover = new()
         {
+            Key = "hero-cover",
             Width = art, Height = art, Shrink = 0f,
             Corners = CornerRadius4.All(WinUiDetailRules.CoverRadius), Shadow = Elevation.Card, ClipToBounds = true,
             Animate = HeroGeometryMotion, TransformOriginX = 0f, TransformOriginY = 0f,
             Draggable = acts.CoverDrag is { } drag ? Drag.Source(drag) : null,
-            Children = [slots.Cover?.Invoke(art) ?? Controls.Artwork(id.CoverUrl, art, art, WinUiDetailRules.CoverRadius, decodePx: WinUiDetailRules.CoverDecode(art))],
+            // A page's own cover (a slot: the generated covers) is not tagged; the artwork is the connected navigation flight's dest (Design.MorphKeys.ForUri).
+            Children = [slots.Cover?.Invoke(art) ?? Controls.Artwork(id.CoverUrl, art, art, WinUiDetailRules.CoverRadius, decodePx: WinUiDetailRules.CoverDecode(art),
+                connect: Design.MorphKeys.ForUri(id.Subject.Text))],
         };
         var mode = SurfaceRules.Ownership(inSlot: false, hasClick: acts.CoverClick is not null);
         return !mode.OwnsClick ? cover : cover with
@@ -321,18 +329,14 @@ internal static partial class WinUiDetailFrame
         };
     }
 
-    /// <summary>The action row: the Play split, then Shuffle, Save, Share and "..." (the page's satellites replace the fixed group where it has them).</summary>
-    static Element Actions(Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Detail.FrameSlots slots, Action? playAll, WinUiDetailTier tier,
+    /// <summary>The action row: the Play split, then Shuffle, Save, Share and "...".</summary>
+    static Element Actions(Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Action? playAll, WinUiDetailTier tier,
         WinUiHeroForm form, bool words, bool center)
     {
         float target = tier.Target;
-        Element primary = slots.Primary is { } primaryOf
-            ? primaryOf(() => Tok.AccentDefault)
-            : WinUiDetailKit.PlaySplit(id.Subject, playAll ?? DetailVerbs.PlayContext(id.Subject), target, enabled: !id.Empty);
-        IReadOnlyList<Element> fixedGroup = slots.Satellites is { } satellites
-            ? satellites()
-            : WinUiDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, target, words,
-                shuffleGlyph: ShuffleGlyph(tier, id.Kind), invite: acts.Invite, tune: TuneInHero(tier) ? acts.Tune : null);
+        Element primary = WinUiDetailKit.PlaySplit(id.Subject, playAll ?? DetailVerbs.PlayContext(id.Subject), target, enabled: !id.Empty);
+        IReadOnlyList<Element> fixedGroup = WinUiDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, target, words,
+            shuffleGlyph: ShuffleGlyph(tier, id.Kind), invite: acts.Invite, tune: TuneInHero(tier) ? acts.Tune : null);
         return WinUiDetailKit.ActionRow("vhero-actions", primary, fixedGroup, form.ActionTop, center: center);
     }
 
@@ -358,6 +362,8 @@ internal static partial class WinUiDetailFrame
     /// <summary>The words' loading boundary: the words once the header has answered, else their shimmer (<see cref="SkeletonWords"/>), one cross-dissolve
     /// when it lands. Each side is the words' own column (the info box's gap and alignment); the rows the data brings (a description) open with the swap
     /// (SmoothResize: the region's height eases through real layout, so the list bar and the rows under the hero ride it).</summary>
+    static readonly Func<bool> s_never = static () => false;
+
     static Element Words(WinUiHeroForm form, bool center, Element[] words, Func<bool> pending, Func<Element[]> shimmer)
     {
         Element Column(Element[] kids) => new BoxEl
@@ -369,7 +375,7 @@ internal static partial class WinUiDetailFrame
             Pending: pending, Failed: s_never,
             Content: () => Column(words),
             ShimmerSource: () => Column(shimmer()),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: true);
     }
 
     /// <summary>The hero's arrangement from its parts: the cover beside the words (bottom-aligned while they fit beside it, top-aligned once taller), or over
@@ -413,7 +419,8 @@ internal static partial class WinUiDetailFrame
     // ══ 3. THE STICKY BAR ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The 48 bar: a 32 cover, the title (Body Strong 14/20) over the byline (Caption 12/16), the insights entry where the page has facts and Play as an
-    /// accent button, on the tier's inset, over a layer with a hairline at its foot (W-Shell-Short).</summary>
+    /// accent button, on the tier's inset, with a hairline at its foot (W-Shell-Short). It paints no plate: the table clips its rows at the bar's line, so the
+    /// window's material shows under the bar as it does under the page.</summary>
     static Element Bar(VerticalSpec spec, HeroParts parts, float width, float inset)
     {
         var id = spec.Identity;
@@ -429,7 +436,11 @@ internal static partial class WinUiDetailFrame
             {
                 Width = WinUiDetailRules.BandCover, Height = WinUiDetailRules.BandCover, Shrink = 0f,
                 Corners = CornerRadius4.All(WinUiDetailRules.BandCoverRadius), ClipToBounds = true,
-                Children = [Controls.Artwork(id.CoverUrl, WinUiDetailRules.BandCover, WinUiDetailRules.BandCover, WinUiDetailRules.BandCoverRadius, decodePx: WinUiDetailRules.BandCoverDecode)],
+                // The page's own small cover first: a generated one (Liked Songs' treatment, a playlist's mosaic) has no image url, and the url
+                // alone drew an empty tile (the owner, 2026-11-15: "liked songs here in winui is empty blob"). The playlist's slot hands over like
+                // the hero's (a regenerated Mix lands a new cover in place), as the url arm does: never a blank square between the two.
+                Children = [spec.Slots.CompactCover?.Invoke(WinUiDetailRules.BandCover)
+                    ?? Controls.ArtworkHandOver(id.CoverUrl, WinUiDetailRules.BandCover, WinUiDetailRules.BandCover, WinUiDetailRules.BandCoverRadius, decodePx: WinUiDetailRules.BandCoverDecode)],
             },
             new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Children = identity.ToArray() },
         };
@@ -441,7 +452,6 @@ internal static partial class WinUiDetailFrame
         return new BoxEl
         {
             Width = width, Height = h, ZStack = true, HitTestVisible = true,
-            Fill = Prop.Of(static () => Tok.FillCardDefault),
             Children =
             [
                 new BoxEl

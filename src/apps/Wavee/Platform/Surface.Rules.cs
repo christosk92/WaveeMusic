@@ -68,13 +68,16 @@ public readonly record struct SurfaceShape(
     bool Labels,
     float PadX = 8f,
     float ArtGap = 12f,
-    bool Flush = false)
+    bool Flush = false,
+    bool Connect = true)
 {
     public bool IsRow => Layout == SurfaceLayout.Row;
 
     // Flush (a STACK dial; false keeps every surface as it was): the cover meets the cell's left and right edges, so a shelf's first cover lines up with
     // its section title (WinUI's boards). The plate keeps its top and bottom padding and the cover → labels gap; the extent maths read the same bit
     // (`SurfaceGeometry.PlateInsetX`), so the estimators and the renderer still agree to the DIP.
+    // Connect (a ROW dial; true by default): the row's art flies into the page the row opens (Design.MorphKeys.ForUri). False on a row
+    // in a popup that closes on the click (the omnibar's suggestions): its picture leaves the screen as the page opens.
 
     /// <summary>The "top result" hero row: an art square above <see cref="Shape.LargeRowEdge"/> takes the page-hero title
     /// and the wider text gap — the same threshold <see cref="Shape.FabFor"/> reads for its 44 FAB.</summary>

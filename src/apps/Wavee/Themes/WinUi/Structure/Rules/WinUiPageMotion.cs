@@ -24,7 +24,6 @@
 //   · the drill's zoom in runs 500 ms, not 783 (DrillInScaleMs): the same spline, which is within a pixel of the end by 350 ms, while a zoom
 //     re-records the page every frame (a translate is a composite parameter, a scale is not);
 //   · the drill's outgoing zoom and fade run evenly (DrillAway): WinUI's fast spline moved the page edges half their way on the first frame;
-//   · the pivot slide has no exit leg and no fade: the page jumps to the section and what shows slides in, as WinUI's incoming slide does;
 //   · a sideways slide keeps every part inside the page (EntranceCascade.KeepInRoot): a part travels at most the room between it and the
 //     page's edge on the side it comes from (the gutter, for a part that starts at it; the whole 200 for one with room beside it), and parts
 //     side by side travel the same distance. WinUI slides the whole frame, which the frame's edge cuts; parted into sections, that edge cut
@@ -32,10 +31,16 @@
 //
 // Reduced motion ("Animation effects" off): a quick cross-fade (ControlFaster each way), no slide, no scale, no stagger.
 //
+// THE ARTIST PAGE'S TABS scroll (SectionJump): a section within two viewports glides there; a farther one cuts to a lead short of it on the side the
+// user comes from and decelerates in, while what the page shows fades in from 40 % over 100 ms (the same-kind swap's numbers). The pinned pivot
+// neither moves nor fades. Reduced motion jumps and keeps the fade. (They used to jump and slide the section in sideways: the owner, 2026-11-15:
+// "things just randomly scroll and appear. i would expect scrolls".)
+//
 // Literal numbers are allowed in this file (WVTH003 exempts `Rules\**`).
 
 using FluentGpu.Foundation;
 using Wavee.Theming;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.WinUi;
 
@@ -84,8 +89,10 @@ public static class WinUiPageMotion
     public const float RootFadeMs = 83f;
     /// <summary>A drilled page's units rise this far on top of the zoom.</summary>
     public const float DrillUnitDy = 40f;
-    /// <summary>A drilled page's units start this long after the zoom does (the old page's 100 ms fade is most of the way out).</summary>
-    public const float DrillUnitDelayMs = 60f;
+    /// <summary>A drilled page's units start this long after the zoom does: at once. They used to wait 60 ms for the old page's 100 ms fade to
+    /// be most of the way out, and in that window neither page covered the card (the owner's recording, 2026-11-15: a washed-out, near-blank
+    /// page between two playlists). Started with the zoom, the header is up as the old page leaves.</summary>
+    public const float DrillUnitDelayMs = 0f;
 
     static TransitionDynamics Tween(float ms, EasingSpec e) => TransitionDynamics.Tween(ms, e);
 
@@ -153,16 +160,133 @@ public static class WinUiPageMotion
         _ => null,
     };
 
-    /// <summary>A pivot inside a page bringing a sibling section in (the artist page's tabs): the visible units slide in from the side the
-    /// tab order points to, as <see cref="PageSwap.SlideFromRight"/> / <see cref="PageSwap.SlideFromLeft"/> do for pages, with no exit
-    /// leg (the page stays; the jump to the section is the hand-over).</summary>
-    public static EntranceCascade PivotCascade(bool fromRight) => fromRight ? s_pivotRight : s_pivotLeft;
+    // ── the artist page's tabs (SectionJump; see the header) ────────────────────────────────────────────────────────────
+    /// <summary>A section at most this many viewport heights away glides there: Overview to Albums is about 1.6 in the owner's session.</summary>
+    public const float SectionNearViewports = 2f;
+    /// <summary>A farther section arrives from this share of the viewport's height, clamped to [<see cref="SectionLeadMin"/>,
+    /// <see cref="SectionLeadMax"/>]: the tail of a real scroll, long enough to read as one.</summary>
+    public const float SectionLeadViewports = 0.4f;
+    public const float SectionLeadMin = 160f, SectionLeadMax = 320f;
 
-    // No fade: the jump to the section is the hand-over, so a unit that faded in from 0 left the frame after it blank. WinUI's slide does not
-    // fade its incoming page either (its opacity steps to 1 as the slide starts, ThemeTransitions.cpp:1571-1574).
-    static readonly EntranceCascade s_pivotRight = Units(new EnterExit(Dx: SlideInDx), 0f) with { KeepInRoot = true };
-    static readonly EntranceCascade s_pivotLeft = Units(new EnterExit(Dx: -SlideInDx), 0f) with { KeepInRoot = true };
+    static readonly SectionJump s_sectionJump = new(SectionNearViewports, SectionLeadViewports, SectionLeadMin, SectionLeadMax);
+
+    // ── the library's pivot (the body under a fixed head; winui library family) ─────────────────────────────────────────────
+    //
+    // The library's kinds share one head ("Library" over the kinds' SelectorBar): a switch moves only the body under it, as the SelectorBar sample
+    // navigates a Frame under the bar by the index's direction. WinUI's slide, cut short because only a body moves and the owner switches often:
+    // the old body fades out over ControlFaster, drifting half the travel toward the side it leaves by; the new one waits HandOverMs short of that
+    // (two frames of overlap, never a frame with neither), then slides in from the side the pivot order points to over 250 ms on the in spline,
+    // fading in on the same tween. The travel is the tier's page inset, at least 24: content coming from the left starts at the card's edge, as
+    // KeepInRoot keeps a part inside the page. Reduced motion: the quick cross-fade.
+    // The old body's leg runs evenly (LibraryPivotAway), as the drill's outgoing leg does: on WinUI's out spline five frames put 69 % of the drift in
+    // the last one, which read (and gated) as a jump.
+
+    /// <summary>The old body's fade (ControlFaster) and the new body's slide (ControlNormal), ms.</summary>
+    public const float LibraryPivotOutMs = RootFadeMs, LibraryPivotInMs = 250f;
+    /// <summary>The new body starts this long after the click: the old one's fade less the hand-over.</summary>
+    public const float LibraryPivotDelayMs = LibraryPivotOutMs - HandOverMs;
+    /// <summary>The smallest travel (the Compact and Small insets are 16 and 24).</summary>
+    public const float LibraryPivotMinTravel = 24f;
+    /// <summary>The old body's leg: even, as <see cref="DrillAway"/>.</summary>
+    public static EasingSpec LibraryPivotAway => Easing.Linear;
+
+    static LayoutTransition LibraryPivotBody(WidthTier tier, bool fromRight)
+    {
+        float travel = MathF.Max(WinUiDetailRules.InsetOf(tier), LibraryPivotMinTravel);
+        float side = fromRight ? 1f : -1f;
+        return new(Pose, Tween(LibraryPivotInMs, In),
+            Enter: new EnterExit(Dx: side * travel, Opacity: 0f, Active: true),
+            Exit: new EnterExit(Dx: -side * travel * 0.5f, Opacity: 0f, Active: true),
+            ExitDynamics: Tween(LibraryPivotOutMs, LibraryPivotAway), DelayMs: LibraryPivotDelayMs, ExitDelayMs: 0f);
+    }
+
+    /// <summary>Per window tier (Compact, Small, Standard, Huge) from the left, then from the right.</summary>
+    static readonly LayoutTransition[] s_libraryPivot =
+    [
+        LibraryPivotBody(WidthTier.Compact, false), LibraryPivotBody(WidthTier.Small, false), LibraryPivotBody(WidthTier.Standard, false), LibraryPivotBody(WidthTier.Huge, false),
+        LibraryPivotBody(WidthTier.Compact, true), LibraryPivotBody(WidthTier.Small, true), LibraryPivotBody(WidthTier.Standard, true), LibraryPivotBody(WidthTier.Huge, true),
+    ];
+
+    /// <summary>The library family's body switch (<see cref="PageMotionPolicy.LibraryPivot"/>) for the tier the host is drawn in.</summary>
+    public static LayoutTransition? LibraryPivot(bool fromRight, TierFacts facts)
+    {
+        if (FluentGpu.Dsl.Motion.ReducedMotion) return s_reduced;
+        int tier = Math.Clamp((int)WinUiDetailTiers.Of(in facts).Tier - (int)WidthTier.Compact, 0, 3);
+        return s_libraryPivot[(fromRight ? 4 : 0) + tier];
+    }
+
+    // ── THE CONNECTED NAVIGATION FLIGHT (a picture into the header of the page it opens, and back) ──────────────────────────────
+    // A card's, a row's or a tile's cover into an album's, a playlist's, a show's or an episode's header cover; a generated cover (Liked
+    // Songs, a playlist with no image) as one whole picture. Not the artist: its page grows out of the item instead (GrowInto, below). WinUI's ConnectedAnimation runs 300 ms on
+    // (0.8, 0, 0.2, 1), its Back (Direct) configuration 150-200 ms on (0.1, 0.9, 0.2, 1). Here a critically damped spring whose
+    // response grows with the distance (a turn-around keeps its velocity): 90 % of the way at 0.62 x the response, 99 % at 1.06 x,
+    // so forward reads as 250-340 ms and Back 15 % quicker. No arc, no dip, no overshoot.
+    /// <summary>The shortest response (s): a short hop.</summary>
+    public const float ConnectedResponseMin = 0.24f;
+    /// <summary>The longest response (s): across the window.</summary>
+    public const float ConnectedResponseMax = 0.32f;
+    /// <summary>The response added per DIP of centre-to-centre travel (s).</summary>
+    public const float ConnectedResponsePerDip = 0.00008f;
+    /// <summary>Back's response against forward's.</summary>
+    public const float ConnectedBackScale = 0.85f;
+    /// <summary>The least share of a cover on screen that flies (under it: the plain swap).</summary>
+    public const float ConnectedMinVisible = 0.5f;
+    /// <summary>The longest the flyer holds at the card for the page to mount: WinUI mounts it on the click frame.</summary>
+    public const float ConnectedPendingMs = 0f;
+    /// <summary>An abandoned flyer's fade where it stands (ControlFaster).</summary>
+    public const float ConnectedAbandonFadeMs = 83f;
+    /// <summary>The longest a landed flyer stands in for a header picture that is not drawable yet (a cold page loading its cover) before it
+    /// fades out and the page's own entrance takes over.</summary>
+    public const float ConnectedHandOffWaitMs = 2500f;
+    /// <summary>The smallest picture that flies (its shorter edge, DIP): rows' 40 px art and up; a sidebar's 16 px thumb does not.</summary>
+    public const float ConnectedMinSourceEdge = 40f;
+
+    static readonly FluentGpu.Animation.ConnectedNavSpec s_connected = new(ConnectedResponseMin, ConnectedResponseMax, ConnectedResponsePerDip,
+        ConnectedBackScale, ConnectedMinVisible, ConnectedPendingMs, ConnectedAbandonFadeMs, ConnectedHandOffWaitMs,
+        HandOffFadeMs: 0f, MinSourceEdge: ConnectedMinSourceEdge);
+
+    // ── THE ARTIST GROWS (nothing flies) ─────────────────────────────────────────────────────────────────────────────────────
+    // The owner, 2026-11-16, after the artist's round photo flew and morphed into the 1088x260 header photograph: "please think of something
+    // for artist navigation, maybe just scale. dont copy the image". So no picture leaves the card: the artist page grows out of the item that
+    // opened it (a top result, a circle card, a row, a tile). It scales from GrowEnterScale to 1 about that item's centre and fades in from 0,
+    // on the flights' spring family (critically damped, GrowResponse: 90 % in ~175 ms, settled to the pixel by ~300 ms), while the old page
+    // keeps only its recipe's fade (the quiet swap). The page's sections keep their rise (the owner: "keep blur rise"). Back shrinks the page
+    // to GrowBackScale toward the same item and fades it out on the spring x ConnectedBackScale while the restored page fades in; an item no
+    // longer half on screen (or a page box that changed size since) gives the page's centre: WinUI's own drill back, a page receding, which
+    // stays calm and never points at something the user cannot see. Mouse Forward after Back grows from the remembered item again.
+    // Material's container transform and iOS's zoom transition grow a page from its card the same way; WinUI's drill in scales 0.94 -> 1.
+    /// <summary>The artist page's scale as it starts to grow (WinUI's drill in is 0.94; a little more travel reads as coming out of the item).</summary>
+    public const float GrowEnterScale = 0.92f;
+    /// <summary>Where the artist page shrinks to on Back.</summary>
+    public const float GrowBackScale = 0.94f;
+    /// <summary>The grow's spring response (s): the flights' mid response for a half-window hop.</summary>
+    public const float GrowResponse = 0.28f;
+
+    static readonly GrowNav s_grow = new(GrowEnterScale, GrowBackScale, EnterOpacity: 0f, GrowResponse, ConnectedBackScale, ConnectedMinVisible);
+
+    /// <summary>The kinds whose page grows out of its item instead of flying a picture (<see cref="PageMotionPolicy.GrowInto"/>): the artist.</summary>
+    static GrowNav? GrowInto(EntityKind kind) => kind == EntityKind.Artist ? s_grow : null;
+
+    // ── A SECTION'S "SEE ALL" GROWS OUT OF THE SECTION ─────────────────────────────────────────────────────────────────────
+    // The owner, 2026-11-18, on a recording of "See all": "a LOT more smooth and less out of body experience, something with connected or
+    // expanding. now it feels too heavy and like we are leaving the page". The swap was the drill-in of any other page: Home left, a page
+    // arrived, its cards rose one after another. The drill is the section the user was looking at, with the rest of its cards: so the page
+    // grows out of the "See all" link it was opened from (0.96 to 1 about that point, fading in on the flights' spring, while Home only
+    // fades: no slide, no gap between the two), as one block with no stagger, and it opens on the cards the section already showed
+    // (SectionScreen holds a place for the rest). Back shrinks it toward the same point while Home fades back where it was left.
+    /// <summary>The section page's scale as it starts to grow: a short travel, it is the same content getting room.</summary>
+    public const float SectionGrowEnterScale = 0.96f;
+    /// <summary>Where the section page shrinks to on Back.</summary>
+    public const float SectionGrowBackScale = 0.97f;
+    /// <summary>The section grow's spring response (s): the flights' short hop.</summary>
+    public const float SectionGrowResponse = 0.24f;
+
+    static readonly GrowNav s_sectionGrow = new(SectionGrowEnterScale, SectionGrowBackScale, EnterOpacity: 0f, SectionGrowResponse, ConnectedBackScale, MinVisible: 0f);
 
     /// <summary>The policy WinUI publishes (<c>ThemePolicies.PageMotion</c>).</summary>
-    public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor) { ReducedFade = s_reduced, Pivot = static fromRight => FluentGpu.Dsl.Motion.ReducedMotion ? null : PivotCascade(fromRight) };
+    public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor)
+    {
+        ReducedFade = s_reduced, SectionJump = s_sectionJump, LibraryPivot = LibraryPivot, Connected = s_connected,
+        GrowInto = GrowInto, GrowIntoSection = s_sectionGrow,
+    };
 }

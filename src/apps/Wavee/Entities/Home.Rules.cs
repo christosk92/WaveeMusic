@@ -107,6 +107,36 @@ public static class HomeCardText
         return end > 20 ? plain[..(end + 1)] : plain;
     }
 
+    /// <summary>The anchors of a Spotify markup list (<c>&lt;a href="spotify:playlist:…"&gt;belter&lt;/a&gt;, …</c>, a daylist's
+    /// <c>nicheMixLinks</c>) as (uri, text) pairs in order; an anchor with no href or no text is skipped. Cold: built once per fact.</summary>
+    public static IReadOnlyList<(string Uri, string Text)> AnchorLinks(string? html)
+    {
+        var list = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html)) return list;
+        int i = 0;
+        while ((i = html.IndexOf("<a", i, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            int close = html.IndexOf('>', i);
+            if (close < 0) break;
+            int href = html.IndexOf("href=", i, close - i, StringComparison.OrdinalIgnoreCase);
+            int end = html.IndexOf("</a>", close, StringComparison.OrdinalIgnoreCase);
+            if (end < 0) break;
+            if (href >= 0)
+            {
+                int q = href + 5;
+                char quote = q < close ? html[q] : ' ';
+                bool quoted = quote is '"' or '\'';
+                int from = quoted ? q + 1 : q;
+                int to = quoted ? html.IndexOf(quote, from) : html.IndexOfAny([' ', '>'], from);
+                string uri = to > from ? html[from..to] : "";
+                string text = PlainText(html[(close + 1)..end])?.Trim() ?? "";
+                if (uri.Length > 0 && text.Length > 0) list.Add((uri, text));
+            }
+            i = end + 4;
+        }
+        return list;
+    }
+
     /// <summary>0.2.9 <c>SpotifyExportMapper.ToPlainText</c>: drop real tags (a letter, '/' or '!' after '&lt;'), keep the
     /// text around them, collapse whitespace. The markup-free common case returns the input.</summary>
     public static string? PlainText(string? html)
@@ -293,8 +323,11 @@ public static partial class HomeCardNav
         var section = new Section(s.Slot);
         if (section.Id.IsEmpty) return Shell.Route.None;
         var title = s.Title.AsSpan().Trim();
+        // A facet's band row (`<uri>#<facet>`) drills to the section itself: the bare uri is the row the walk fills.
+        string text = section.Id.Text;
+        var subject = text.IndexOf(Home.FacetSectionMark) < 0 ? new EntityUri(section.Id) : EntityUri.Parse(Home.SectionUriOf(text));
         return new Shell.Route(browse ? Shell.RouteKind.BrowseSection : Shell.RouteKind.HomeSection,
-            new EntityUri(section.Id), title.IsEmpty ? StringId.Empty : Entities.Strings.Intern(title));
+            subject, title.IsEmpty ? StringId.Empty : Entities.Strings.Intern(title));
     }
 }
 

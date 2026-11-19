@@ -79,9 +79,13 @@ internal sealed class ClassicQueuePanel : Component
     readonly Action _pushChip;
 
     // The verbs are the host's cached instances: one delegate each, never a fresh one per render.
-    Action? _toggleShuffle, _cycleRepeat, _toggleAutoplay, _clear, _togglePlay;
+    Action? _toggleShuffle, _cycleRepeat, _toggleAutoplay, _toggleCrossfade, _clear, _togglePlay;
     Func<QueueSlot, float>? _extentOf;
     float _rowExtent;
+    // The Crossfade pair's node: the crossfade hint's line floats at it (design 6.3 #4: at the panel's own switch, no second control).
+    NodeHandle _crossfadeNode, _panelNode;
+    readonly Action<NodeHandle> _onCrossfade, _onPanel;
+    readonly Func<NodeHandle> _crossfadeTarget, _panel;   // the line stays inside the panel
     ClassicPanelContentLayout _tier = ClassicStageTiers.Panel(WidthTier.Standard);   // this render's: the window tier's targets
 
     // The body is ONE virtualized list (only the rows the viewport shows, and its overscan, are built): the lead ("Playing from", the
@@ -98,6 +102,10 @@ internal sealed class ClassicQueuePanel : Component
 
     public ClassicQueuePanel()
     {
+        _onCrossfade = h => _crossfadeNode = h;
+        _crossfadeTarget = () => _crossfadeNode;
+        _onPanel = h => _panelNode = h;
+        _panel = () => _panelNode;
         _pushChip = () => _chipAccent.Value = _chipPending;
         _closeSwipeOnScroll = () =>
         {
@@ -138,6 +146,7 @@ internal sealed class ClassicQueuePanel : Component
         _toggleShuffle ??= props.Player.ToggleShuffle;
         _cycleRepeat ??= props.Player.CycleRepeat;
         _toggleAutoplay ??= props.Verbs.ToggleAutoplay;
+        _toggleCrossfade ??= props.Verbs.ToggleCrossfade;
         _clear ??= props.Verbs.Clear;
         UseSignalEffect(_closeSwipeOnScroll);
         bool hairline = ClassicOptions.ClassicRows();   // the structure's row-style option (M2); the hairline skin is the Classic one
@@ -171,7 +180,7 @@ internal sealed class ClassicQueuePanel : Component
 
         return new BoxEl
         {
-            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Padding = new Edges4(14f, 4f, 14f, 0f),
+            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Padding = new Edges4(14f, 4f, 14f, 0f), OnRealized = _onPanel,
             Children =
             [
                 new BoxEl
@@ -182,9 +191,20 @@ internal sealed class ClassicQueuePanel : Component
                         Pill(Icons.Shuffle, Loc.Get(Strings.Player.Shuffle), queue.Shuffle, _toggleShuffle),
                         Pill(props.RepeatTrack ? Icons.RepeatOne : Icons.RepeatAll, Loc.Get(Strings.Player.Repeat), props.RepeatOn, _cycleRepeat),
                         Pill("∞", Loc.Get(Strings.Player.Autoplay), queue.Autoplay.Enabled, _toggleAutoplay, glyphIsText: true),
+                        // The "between songs" pair (design 5.4): Crossfade beside Autoplay, its length at rest as a link to the duration in
+                        // Settings (the panel draws no slider). Wrapped together, so the length never strands on a line of its own.
+                        new BoxEl
+                        {
+                            Key = "qp:crossfade", Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f, OnRealized = _onCrossfade,
+                            Children = props.CrossfadeLength.Length == 0 || props.OpenCrossfadeLength is null
+                                ? [Pill(Icons.Audio, Loc.Get(Strings.Player.Crossfade), props.Crossfade, _toggleCrossfade)]
+                                : [Pill(Icons.Audio, Loc.Get(Strings.Player.Crossfade), props.Crossfade, _toggleCrossfade),
+                                   LengthLink(props.CrossfadeLength, props.OpenCrossfadeLength, props.Crossfade)],
+                        },
                     ],
                 },
                 body,
+                Hints.Pointer(HintSurfaces.QueuePanel, _crossfadeTarget, _panel),   // the crossfade hint's line floats at the pair (a zero box: no room)
             ],
         };
     }
@@ -474,6 +494,17 @@ internal sealed class ClassicQueuePanel : Component
                 : [eyebrowRow],
         };
     }
+
+    /// <summary>The crossfade's length ("6 s") in the "Clear" text button's grammar: a link to the duration in Settings, dimmer while crossfade is off.</summary>
+    Element LengthLink(string length, Action open, bool on) => ToolTip.Wrap(new BoxEl
+    {
+        Key = "qp:crossfade:length",
+        MinHeight = _tier.MinTarget, MinWidth = _tier.MinTarget, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+        Padding = new Edges4(Spacing.S, Spacing.XXS, Spacing.S, Spacing.XXS), Corners = Radii.ControlAll,
+        HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
+        Role = AutomationRole.Hyperlink, Cursor = CursorId.Hand, Focusable = true, OnClick = open,
+        Children = [new TextEl(length) { Size = ClassicQueueRules.SmallSize, LineHeight = ClassicQueueRules.SmallLine, Weight = 600, Color = on ? Tok.TextSecondary : Tok.TextTertiary, HoverColor = Tok.TextPrimary }],
+    }, Loc.Get(Strings.Player.CrossfadeLengthTip));
 
     Element ShowMore(QueuePanelProps props, QueueSection section)
     {

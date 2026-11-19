@@ -109,6 +109,9 @@ public readonly partial struct User
 
             bool wantMaster = ShellPolicy.Tracked.LibraryTiers.PlaylistsMasterDetail;
             Collect(model.Rootlist, wantMaster ? _find.Value.Trim() : "");
+            // The empty-list placeholder below is hand-built, not a Skel region: it reports to the page's LoadingScope itself, so the page's loading
+            // bar counts it like any other pending placeholder.
+            UsePendingClaim(readiness == NavReadiness.Pending && _rows.Count == 0);
             // The grouped master-detail (the structure asked, and the content is not one column wide): the list column and the playlist pane share the width the flat page caps.
             var content = tiers.Content;
             bool master = ShellPolicy.Tracked.LibraryTiers.PlaylistsMasterDetail && content >= WidthTier.Small && _rows.Count > 0;

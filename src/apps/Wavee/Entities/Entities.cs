@@ -2319,6 +2319,8 @@ public static partial class Entities
         CommitTraits(staging);
         // A track's Canvas (kind 16): one row of owned text per track, landed by its owner (Entities/Canvas.cs).
         CommitCanvas(staging);
+        // A Home preview song's hover clip and cover colour (feedBaselineLookup): one payload row per track (Entities/TrackPreview.cs).
+        CommitTrackPreviews(staging);
         // Recents is its own relation with its own payload (ch 16 §7.2) and rides after the edges for the same reason
         // the edges ride after the rows.
         CommitRecents(staging);
@@ -2328,6 +2330,7 @@ public static partial class Entities
 
     // Implemented by each kind's file as part of this partial class. Unimplemented ones are erased.
     static partial void CommitTracks(Staging s);
+    static partial void CommitTrackPreviews(Staging s);
     static partial void CommitEpisodes(Staging s);
     static partial void CommitAlbums(Staging s);
     static partial void CommitArtists(Staging s);

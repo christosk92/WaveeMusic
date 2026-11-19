@@ -340,24 +340,24 @@ internal static class ClassicPanel
         Padding = new Edges4(Spacing.M, 0f, Spacing.S, 0f), Children = kids,
     };
 
-    internal static Element Header(PanelProps props, PanelMode body)
+    internal static Element Header(PanelProps props, PanelMode body, float box)
     {
-        if (body != PanelMode.Video) return HeaderBox([TitleText(Title(body)), CloseButton(props.Close)]);
+        if (body != PanelMode.Video) return HeaderBox([TitleText(Title(body)), CloseButton(props.Close, box)]);
         // The header's ▣ / ⛶ are the one ALWAYS-visible way to move a docked video (W23b) — keep all three.
         return HeaderBox(
         [
             TitleText(Title(body)),
-            HeaderButton(SegoeGlyphs.PictureInPicture, Loc.Get(Strings.Player.VideoMiniPlayer), () =>
+            HeaderButton(SegoeGlyphs.PictureInPicture, Loc.Get(Strings.Player.VideoMiniPlayer), box, () =>
             {
                 FluentGpu.Input.Announcer.Say(Loc.Get(Strings.Player.VideoMiniPlayer));
                 props.VideoToMiniPlayer();
             }),
-            HeaderButton(SegoeGlyphs.VideoFullScreen, Loc.Get(Strings.Player.VideoFullScreen), () =>
+            HeaderButton(SegoeGlyphs.VideoFullScreen, Loc.Get(Strings.Player.VideoFullScreen), box, () =>
             {
                 FluentGpu.Input.Announcer.Say(Loc.Get(Strings.Player.VideoFullScreen));
                 props.VideoToFullScreen();
             }),
-            CloseButton(props.Close),
+            CloseButton(props.Close, box),
         ]);
     }
 
@@ -376,13 +376,13 @@ internal static class ClassicPanel
         _ => Loc.Get(Strings.Player.NowPlaying),
     };
 
-    /// <summary>A glyph button in the header. <paramref name="active"/> is the stateful arm (the accent tint is the only
-    /// affordance a 32-DIP glyph has to say "on").</summary>
-    internal static Element HeaderButton(string glyph, string tip, Action onClick, bool active = false) => ToolTip.Wrap(GlyphBox(glyph, onClick, active), tip);
+    /// <summary>A glyph button in the header, <paramref name="box"/> square (ClassicPanelTiers.HeaderButtonBox: the sheet's 40 target at Compact).
+    /// <paramref name="active"/> is the stateful arm (the accent tint is the only affordance a glyph button has to say "on").</summary>
+    internal static Element HeaderButton(string glyph, string tip, float box, Action onClick, bool active = false) => ToolTip.Wrap(GlyphBox(glyph, onClick, active, box), tip);
 
-    static BoxEl GlyphBox(string glyph, Action onClick, bool active) => new BoxEl
+    static BoxEl GlyphBox(string glyph, Action onClick, bool active, float box) => new BoxEl
     {
-        Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Shrink = 0f,
+        Width = box, Height = box, Shrink = 0f,
         Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
         OnClick = onClick,
@@ -399,7 +399,7 @@ internal static class ClassicPanel
 
     /// <summary>✕ closes the RAIL for every mode, video included — the coupling demotes a docked video. No tooltip: a close
     /// glyph is universal.</summary>
-    internal static Element CloseButton(Action close) => GlyphBox(Icons.ChromeClose, close, active: false);
+    internal static Element CloseButton(Action close, float box) => GlyphBox(Icons.ChromeClose, close, active: false, box);
 }
 
 /// <summary>The panel's frame: the surface, the edge, the slide and the arm of the body on show. A component of the theme because
@@ -540,7 +540,8 @@ internal sealed class ClassicPanelFrame : Component
                     ClassicPanel.PinnedHero(props, view, swapIn), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)));
         else
         {
-            Element header = body == PanelMode.Lyrics ? Slots.View(ViewKeys.PanelLyricsHeader, props.LyricsHeader) : ClassicPanel.Header(props, body);
+            Element header = body == PanelMode.Lyrics ? Slots.View(ViewKeys.PanelLyricsHeader, props.LyricsHeader)
+                : ClassicPanel.Header(props, body, sheet ? ClassicPanelTiers.SheetHeaderButton : Controls.IconButtonSize);
             Element bodySlot = ClassicPanel.GrowSlot(bodyLive ? ClassicPanel.Body(props, body) : new BoxEl { Grow = 1f, HitTestVisible = false });
             arm = sheet
                 ? ClassicPanel.Arm(open, placement, surface, edge, ClassicPanel.SheetHead(drag, header),

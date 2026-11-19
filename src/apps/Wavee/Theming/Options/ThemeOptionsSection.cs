@@ -1,8 +1,8 @@
 // ── Theming/Options/ThemeOptionsSection.cs — the generated "‹Theme› options" section (themes plan 8.1-8.2, T1b) ───────────
 //
 // Settings › Appearance shows the options of the ACTIVE theme without knowing which theme that is. This file turns the
-// composition's exposed schema into `SettingsRow`s (the page's own document grammar: kind, title, caption, value, writer) and
-// into the palette's option commands; the views (`Settings.UI.Theme.cs`, `Setup.UI.Theme.cs`) only draw what it returns.
+// composition's exposed schema into `SettingsDial`s of the registry's "‹Theme› options" group (`appearance.option.<qualifiedId>`:
+// kind, title, caption, value, writer) and into the palette's option commands; the views only draw what it returns.
 //
 //   · EXPOSED OPTIONS ONLY (`ThemeComposition.ExposedOptions`): structure parameters, options the composition hides and
 //     options a composition option replaces never get a row. A Developer-visibility option is absent outside Developer mode,
@@ -11,7 +11,7 @@
 //     option's apply mode. A value the option refuses (out of range, not a choice) is logged and written nowhere.
 //   · A ROW NEVER BREAKS THE PAGE: a select with no choices has no row, a stored value that is no longer valid reads as the
 //     default (the store's value rules), a `VisibleWhen` that names no value reads as satisfied.
-//   · LEGACY ROWS. A structure whose options are not all options yet lists the rest as `LegacyRows` (SettingsDoc rows bound to
+//   · LEGACY ROWS. A structure whose options are not all options yet lists the rest as `LegacyRows` (registry dials bound to
 //     today's keys); the model carries them next to the generated rows so the page shows ONE section, in its final grouping.
 //
 // WVTH004/005/007 allow this folder to read theme identity and options and to build `theme.*` setting names.
@@ -21,13 +21,13 @@ using FluentGpu.Localization;
 
 namespace Wavee.Theming;
 
-/// <summary>One generated row with what a view needs to draw it (the <see cref="SettingsRow"/> alone does not carry a select's
+/// <summary>One generated row with what a view needs to draw it (the <see cref="SettingsDial"/> alone does not carry a select's
 /// choices or a slider's range).</summary>
 public sealed class GeneratedOptionRow
 {
-    /// <summary>The row in the Settings document grammar. For a reference to a core preference this is the CORE row itself
-    /// (the same instance <c>SettingsDoc</c> serves), so there is one writer for it.</summary>
-    public required SettingsRow Row { get; init; }
+    /// <summary>The row's dial (<c>appearance.option.&lt;qualifiedId&gt;</c>). For a reference to a core preference this is the CORE dial
+    /// itself (the registry's own instance), so there is one writer for it.</summary>
+    public required SettingsDial Row { get; init; }
 
     /// <summary>The layer-qualified option id (<c>style.density</c>); the pref's name for a reference row.</summary>
     public required string QualifiedId { get; init; }
@@ -81,7 +81,7 @@ public sealed class GeneratedOptionRow
 /// <param name="Legacy">The rows still bound to legacy keys, in display order.</param>
 /// <param name="Reset">"Reset options", or null when the theme has no stored option to forget.</param>
 public sealed record ThemeOptionsModel(string ThemeId, string NameKey, IReadOnlyList<GeneratedOptionRow> Rows,
-    IReadOnlyList<LegacyOptionRow> Legacy, SettingsRow? Reset)
+    IReadOnlyList<LegacyOptionRow> Legacy, SettingsDial? Reset)
 {
     /// <summary>A theme with nothing to configure (the page shows one quiet row instead of an expander).</summary>
     public bool IsEmpty => Rows.Count == 0 && Legacy.Count == 0;
@@ -147,10 +147,6 @@ public static class ThemeVerbs
 /// <summary>Builds the options section of a composition.</summary>
 public static class ThemeOptionsSection
 {
-    /// <summary>The Appearance-tab section title the generated rows carry (<c>Settings.Catalog</c> lists it; it is data, the view
-    /// prints "‹theme› options").</summary>
-    public const string SectionTitle = "Theme options";
-
     private const int SegmentedMax = 4;
 
     /// <summary>The section of the ACTIVE theme with its live option values. <see cref="ThemeOptionsModel.None"/> before install.</summary>
@@ -253,18 +249,18 @@ public static class ThemeOptionsSection
         switch (option)
         {
             case ToggleOption:
-                return Generated(lo, option, Make(lo, SettingsRowKind.Toggle, option,
+                return Generated(lo, option, Make(theme, lo, SettingsRowKind.Toggle, option,
                     SettingsWriter.OfToggle(Verb(theme, lo), on => Apply(theme, lo, on)),
                     s => option.Read(s, name, fallback) is true), current: Shape(option, live, twoWay), live: liveNow);
 
             case ColorOption color:
-                return Generated(lo, option, Make(lo, SettingsRowKind.Picker, option,
+                return Generated(lo, option, Make(theme, lo, SettingsRowKind.Picker, option,
                     SettingsWriter.OfChoice(Verb(theme, lo), argb => Apply(theme, lo, ColorOption.Unpack(argb))),
                     s => Shape(option, option.Read(s, name, fallback), twoWay)),
                     current: Shape(option, live, twoWay), live: liveNow, isColor: true, swatches: SwatchesOf(color));
 
             case SliderOption slider:
-                return Generated(lo, option, Make(lo, SettingsRowKind.Slider, option,
+                return Generated(lo, option, Make(theme, lo, SettingsRowKind.Slider, option,
                     SettingsWriter.OfSlider(Verb(theme, lo), v => Apply(theme, lo, v)),
                     s => option.Read(s, name, fallback)),
                     current: Shape(option, live, twoWay), live: liveNow, min: slider.Min, max: slider.Max, step: slider.Step, unitKey: slider.UnitKey);
@@ -273,7 +269,7 @@ public static class ThemeOptionsSection
             {
                 bool known = ThemeVerbs.IsEnabled(action.VerbId);
                 string verb = action.VerbId;
-                SettingsRow row = Make(lo, SettingsRowKind.Action, option,
+                SettingsDial row = Make(theme, lo, SettingsRowKind.Action, option,
                     SettingsWriter.OfAction(Verb(theme, lo), () => ThemeVerbs.Run(verb)), NoValue, enabled: known, confirm: action.Confirm);
                 return Generated(lo, option, row, enabled: known);
             }
@@ -288,9 +284,9 @@ public static class ThemeOptionsSection
             if (titles.Count == 0) return null;   // nothing to choose from: no row beats a dead control
             if (twoWay)
             {
-                return Generated(lo, option, Make(lo, SettingsRowKind.Toggle, option,
+                return Generated(lo, option, Make(theme, lo, SettingsRowKind.Toggle, option,
                     SettingsWriter.OfToggle(Verb(theme, lo), on => ApplyChoice(theme, lo, on ? 1 : 0)),
-                    s => option.ChoiceIndexOf(option.Read(s, name, fallback)) == 1),
+                    s => option.ChoiceIndexOf(option.Read(s, name, fallback)) == 1, choices: titles),
                     current: Shape(option, live, twoWay), live: liveNow, choices: titles, picker: picker);
             }
             SettingsRowKind kind = picker switch
@@ -299,9 +295,9 @@ public static class ThemeOptionsSection
                 PickerStyle.Combo => SettingsRowKind.Choice,
                 _ => titles.Count <= SegmentedMax ? SettingsRowKind.Segmented : SettingsRowKind.Choice,
             };
-            return Generated(lo, option, Make(lo, kind, option,
+            return Generated(lo, option, Make(theme, lo, kind, option,
                 SettingsWriter.OfChoice(Verb(theme, lo), i => ApplyChoice(theme, lo, i)),
-                s => option.ChoiceIndexOf(option.Read(s, name, fallback))),
+                s => option.ChoiceIndexOf(option.Read(s, name, fallback)), choices: titles),
                 current: Shape(option, live, twoWay), live: liveNow, choices: titles, picker: picker);
         }
         return null;   // a kind this build cannot draw (a later contract bump adds it with its control)
@@ -323,7 +319,7 @@ public static class ThemeOptionsSection
         return index;
     }
 
-    private static GeneratedOptionRow Generated(LayerOption lo, ThemeOption option, SettingsRow row, object? current = null,
+    private static GeneratedOptionRow Generated(LayerOption lo, ThemeOption option, SettingsDial row, object? current = null,
         IReadOnlyList<string>? choices = null, PickerStyle picker = PickerStyle.Radio, bool isColor = false,
         IReadOnlyList<ColorF>? swatches = null, float min = 0f, float max = 0f, float step = 0f, string? unitKey = null,
         bool enabled = true, Func<object?>? live = null)
@@ -343,29 +339,29 @@ public static class ThemeOptionsSection
 
     private static GeneratedOptionRow ReferenceRow(LayerOption lo, PrefReferenceOption reference)
     {
-        SettingsRow row = reference.Pref switch
+        SettingsDial row = SettingsSpec.Dial(reference.Pref switch
         {
-            CorePref.AppMode => SettingsDoc.Row(Settings.Tab.Appearance, "appMode"),
-            CorePref.Zoom => SettingsDoc.Row(Settings.Tab.Appearance, "zoom"),
-            CorePref.Marquee => SettingsDoc.Row(Settings.Tab.Appearance, "marquee"),
-            CorePref.StageFace => SettingsDoc.Row(Settings.Tab.Appearance, "stageVisualizer"),
-            _ => new SettingsRow
-            {
-                Tab = Settings.Tab.Appearance, Section = SectionTitle, Id = "pref.reducedMotion", Kind = SettingsRowKind.Fact,
-                TitleKey = Strings.Settings.ThemeOptions.AnimationEffects, Writer = SettingsWriter.ReadOnly,
-                Caption = static _ => Strings.Settings.ThemeOptions.AnimationEffectsSub,
-            },
-        };
+            CorePref.AppMode => "appearance.appMode",
+            CorePref.Zoom => "appearance.zoom",
+            CorePref.Marquee => "appearance.marquee",
+            CorePref.StageFace => "lyrics.stage.visualizer",
+            _ => "appearance.animationEffects",
+        });
         return new GeneratedOptionRow { Row = row, QualifiedId = lo.QualifiedId, Group = reference.Group, Pref = reference.Pref };
     }
 
     private static readonly Func<IAppSettings, object?> NoValue = static _ => null;
 
-    private static SettingsRow Make(LayerOption lo, SettingsRowKind kind, ThemeOption option, SettingsWriter writer,
-        Func<IAppSettings, object?> value, bool enabled = true, SettingsConfirm? confirm = null)
+    /// <summary>A theme option's dial. Its explanation clip, if the option is on the badge list (design 6.5), applies to its own theme only.</summary>
+    private static SettingsDial Make(ThemeComposition theme, LayerOption lo, SettingsRowKind kind, ThemeOption option, SettingsWriter writer,
+        Func<IAppSettings, object?> value, bool enabled = true, SettingsConfirm? confirm = null, IReadOnlyList<string>? choices = null)
         => new()
         {
-            Tab = Settings.Tab.Appearance, Section = SectionTitle, Id = lo.QualifiedId, Kind = kind, TitleKey = option.TitleKey,
+            Id = SettingsSpec.ThemeOptionPrefix + lo.QualifiedId, LegacyIds = [lo.QualifiedId], Kind = kind, TitleKey = option.TitleKey,
+            ChoiceKeys = choices ?? Array.Empty<string>(), Contexts = option.Contexts,
+            Explainer = SettingsExplain.ThemeOptionClip(theme.Manifest.Id, lo.QualifiedId),
+            ExplainerThemes = SettingsExplain.ThemeOptionClip(theme.Manifest.Id, lo.QualifiedId) is null ? null : [theme.Manifest.Id],
+            Tier = option.Visibility == OptionVisibility.Developer ? SettingsTier.Developer : SettingsTier.Common,
             Caption = option.DescriptionKey is { } caption ? _ => caption : static _ => null,
             Value = value, Writer = writer,
             Enabled = enabled ? static _ => SettingsEnablement.On : static _ => SettingsEnablement.Off(null),
@@ -376,10 +372,10 @@ public static class ThemeOptionsSection
     private static string Verb(ThemeComposition theme, LayerOption lo) => "theme." + theme.Manifest.Id + "." + lo.QualifiedId;
 
     /// <summary>"Reset options": greyed (silently) while nothing is stored, so a destructive-looking no-op is never offered.</summary>
-    private static SettingsRow ResetRow(string themeId, bool enabled)
+    private static SettingsDial ResetRow(string themeId, bool enabled)
         => new()
         {
-            Tab = Settings.Tab.Appearance, Section = SectionTitle, Id = "theme.reset", Kind = SettingsRowKind.Action,
+            Id = SettingsSpec.ThemeOptionPrefix + "reset", LegacyIds = ["theme.reset"], Kind = SettingsRowKind.Action,
             TitleKey = Strings.Settings.ThemeOptions.Reset,
             Caption = static _ => Strings.Settings.ThemeOptions.ResetSub,
             Enabled = enabled ? static _ => SettingsEnablement.On : static _ => SettingsEnablement.Off(null),

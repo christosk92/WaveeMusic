@@ -1,6 +1,6 @@
 # Video seek preview: the picture under the pointer on the seek rail
 
-Status: **merged as a first version** (PRs #223 and #224, CHANGELOG 0.3.10). It began as a spike. The code compiles
+Status: **merged as a first version** (PRs #223 and #224, CHANGELOG 0.3.11). It began as a spike. The code compiles
 clean, renders in all three themes and is traced in the headless inspector, against generated sheets and against the REAL
 sheets of a captured manifest (fetched from the CDN through the app's own sheet store). The checks behind the merge did
 **not** include a real playing session: the owner tried a NativeAOT build by hand. Section 10 lists what is still open.

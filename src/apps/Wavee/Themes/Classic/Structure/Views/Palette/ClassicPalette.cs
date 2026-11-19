@@ -43,6 +43,10 @@ internal static class ClassicPalette
 /// index, the result array and the catalog row) is allocated once per mount (ch 19 §9.1 item 2).</summary>
 internal sealed class ClassicPaletteCard : Component
 {
+    // The field takes Enter as its commit (it is consumed there and never bubbles to the card's key handler): this render's
+    // "run the selected row", read when Enter lands (the field's options are built at mount).
+    Action? _enter;
+
     public override Element Render()
     {
         var props = UseProps<PaletteProps>();
@@ -71,6 +75,8 @@ internal sealed class ClassicPaletteCard : Component
         }, (DepKey)q);
 
         void Commit(int i) => results.Invoke(i);
+
+        _enter = () => Commit(selected);
 
         void OnKey(KeyEventArgs e)
         {
@@ -160,6 +166,8 @@ internal sealed class ClassicPaletteCard : Component
                 {
                     Placeholder = Loc.Get(Strings.Palette.Placeholder),
                     Width = ClassicFrameBitsRules.PaletteCardW - Spacing.S * 2f,
+                    // The field takes Enter as its commit (it never bubbles to the card's key handler): Enter runs the selected row.
+                    OnCommit = _ => _enter?.Invoke(),
                 }),
                 new BoxEl { Height = Spacing.XXS },
                 new BoxEl { Direction = 1, Gap = ClassicFrameBitsRules.PaletteRowGap, Children = rows },

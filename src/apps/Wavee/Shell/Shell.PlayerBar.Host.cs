@@ -54,6 +54,8 @@ public static partial class Shell
         /// no sweep) forever. Two <c>UseTimeout</c>s below bump it; the render reads it through <see cref="BarFaceNow"/>.</summary>
         static readonly Action s_wake = static () => NowPlayingFace.Shared.Bump();
 
+        static readonly Action s_notePickerAnswerers = static () => InContextDoors.NotePickerAnswerers();
+
         /// <summary>The window tier a level clamp reads: the committed tier, or -1 where no frame resolved one (every level).</summary>
         static int WindowTierIndex(in Theming.TierFacts tiers) => tiers.Policy is null ? -1 : (int)tiers.Window;
 
@@ -110,7 +112,7 @@ public static partial class Shell
             RateText = EpisodeRateText,
             // the bar is the page's: under the full-screen stage it holds its last state and does no work (PageShown)
             SeekBar = static () => SeekBar(reveal: PageShown),
-            TimeText = static remaining => TimeText(remaining, reveal: PageShown),
+            TimeText = static remaining => TimeText(remaining, reveal: PageShown, door: TimeDoor.Bar),
             // the credits line's stamp holds under the full-screen stage too (a track change behind it re-renders no credits row)
             CreditsStamp = HeldUnderStage(static () => BarCreditsStamp()),
             Credits = static () => BarCredits(),
@@ -300,6 +302,10 @@ public static partial class Shell
 
             // The podcast step buttons' enablement is read only for an episode that owns the transport (the read subscribes).
             bool seekStepEnabled = isEpisode && ownsTransport && PlaybackScrubSource.Instance.Gate(track: true).Enabled;
+
+            // After the bar drew (a level or a tier crossing may have added or dropped its Devices button): whether anything still answers the
+            // device picker request, so a Settings "Also in: Devices" door is handed out only while one does.
+            hooks.UseEffect(s_notePickerAnswerers);
 
             return _held = new PlayerBarView
             {

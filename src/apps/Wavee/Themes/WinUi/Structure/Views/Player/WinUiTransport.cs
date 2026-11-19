@@ -423,6 +423,8 @@ internal static class WinUiTransport
             PressedFill = right ? (ink is null ? Tok.FillSubtleTertiary : R.OnMedia.GlassPressed) : ColorF.Transparent,
             Corners = Radii.ControlAll,
             OnClick = right ? props.ToggleRemaining : null,
+            // The flip is a control: reachable by keyboard (and the Settings "Also in: Player bar" door lands focus here).
+            Role = right ? AutomationRole.Button : AutomationRole.None, Focusable = right, AllowFocusOnInteraction = false,
             Cursor = right ? CursorId.Hand : null,
             Children =
             [

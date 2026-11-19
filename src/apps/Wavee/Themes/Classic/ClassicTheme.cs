@@ -37,7 +37,7 @@ public static class ClassicTheme
             StyleId: ClassicStyle.LayerId,
             InheritsFrom: null,
             Availability: ThemeAvailability.Public,
-            Preview: new ThemePreview("themes/classic-light.png", "themes/classic-dark.png"),
+            Preview: new ThemePreview("themes/classic-light.jpg", "themes/classic-dark.jpg"),
             DescriptionKey: Strings.Theme.Classic.Description),
         new ClassicStructure(),
         new ClassicStyle());

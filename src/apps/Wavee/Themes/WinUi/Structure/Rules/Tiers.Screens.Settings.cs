@@ -2,13 +2,14 @@
 //
 // ONE record per WINDOW tier (`ctx.Tier().Window`: the frame's insets follow the window, so the page's title and the cards ride the same edge), read as
 // `WinUiSettingsTiers.Of(ctx.Tier())`. A view never compares a width with a number (WVTH013). Boards: W-Settings (-Compact, -Small, -Huge), W-SettingsSections,
-// W-ThemeOptions (-Compact, -Small, -Huge). The page is the title, a SelectorBar of the seven tabs, and the SettingsCards of the tab's sections:
+// W-ThemeOptions (-Compact, -Small, -Huge); the settings rework's concept boards (handoff/settings-2026-11-18: Main = the home, W-Search, W-Arrival, W-Compact).
+// The page is the title with the "Find a setting" box, a SelectorBar of Home and the nine categories, and the category's SettingsCards (or the home, or the results):
 //
-//   tier      inset x / top   title        tab strip       cards cap  picker (theme cards)                       aside
-//   Compact   16 / 16         28 / 36      44, scrolls     fill       2-up grid, thumbnail over the name         none
-//   Small     24 / 20         28 / 36      40, scrolls     1000       one row: a 48 x 32 thumbnail, the name     none
-//   Standard  36 / 24         40 / 52      stock           1000       four columns, 16:9 preview, name, caption  none
-//   Huge      48 / 32         40 / 52      stock           1200       four columns, as Standard                  the preview column (Appearance)
+//   tier      inset x / top   title        box                 tab strip       cards cap  home grid  picker (theme cards)                       aside
+//   Compact   16 / 16         28 / 36      under the title     44, scrolls     fill       1 column   2-up grid, thumbnail over the name         none
+//   Small     24 / 20         28 / 36      under the title     40, scrolls     1000       2 columns  one row: a 48 x 32 thumbnail, the name     none
+//   Standard  36 / 24         40 / 52      beside it, 360      stock           1000       2 columns  four columns, 16:9 preview, name, caption  none
+//   Huge      48 / 32         40 / 52      beside it, 360      stock           1200       3 columns  four columns, as Standard                  the preview column (Appearance)
 //
 // THE STACK. A SettingsCard puts its control UNDER its label below 560 CONTENT width (the named rung `WinUiScreenRules.StackRung`, W-Tiers: "SettingsCards
 // stack their control under the label below 560 content width"): `Of` reads the rung from the facts, so a window of 600 that opens the 280 pane stacks, and
@@ -54,10 +55,14 @@ public enum WinUiThemePickerForm : byte
 /// <param name="Aside">The Appearance tab draws the preview column beside the cards (Huge).</param>
 /// <param name="SectionTop">The space above a section header (none above the tab's first).</param>
 /// <param name="SectionBottom">The space between a section header and its first card.</param>
+/// <param name="SearchUnder">The "Find a setting" box sits UNDER the title, the column's width (Compact, Small); beside it, right-aligned, elsewhere. The head is
+/// one tree in both: only its direction and the box's width change, so a crossing keeps the title and the box as the same nodes.</param>
+/// <param name="SearchWidth">The box's width beside the title (the concept board's 360); NaN where it fills the column under the title.</param>
+/// <param name="GlanceColumns">The Settings home's "At a glance" cards per row (the Windows 11 Settings home: 1 at Compact, 2 at Small and Standard, 3 at Huge).</param>
 public sealed record WinUiSettingsLayout(
     WidthTier Tier, float InsetX, float InsetTop, float TitleSize, float TitleLine, float PageGap, float Target, bool StacksControls, float TabHeight, bool TabsScroll,
     float ColumnMaxW, WinUiThemePickerForm Picker, float PickerThumbH, float PickerCardMaxW, bool PickerShowsText, float PickerGap, float PickerPad, float PickerIndent, bool Aside,
-    float SectionTop, float SectionBottom)
+    float SectionTop, float SectionBottom, bool SearchUnder, float SearchWidth, int GlanceColumns)
 {
     /// <summary>The page lays its controls out for touch (the Compact rule: every hit target is at least 40).</summary>
     public bool Touch => Target > 0f;
@@ -80,19 +85,19 @@ public static class WinUiSettingsTiers
         // Compact (W-Settings-Compact, W-ThemeOptions-Compact): 16 inset, a 28 title, 44-tall scrolling tabs, the rows stack, the picker is a 2-up grid.
         new(WidthTier.Compact, InsetX: 16f, InsetTop: 16f, TitleSize: 28f, TitleLine: 36f, PageGap: 16f, Target: 40f, StacksControls: false, TabHeight: 44f, TabsScroll: true,
             ColumnMaxW: float.NaN, WinUiThemePickerForm.Grid, PickerThumbH: 72f, PickerCardMaxW: float.NaN, PickerShowsText: false, PickerGap: 12f, PickerPad: 12f, PickerIndent: 0f, Aside: false,
-            SectionTop: 20f, SectionBottom: 8f),
+            SectionTop: 20f, SectionBottom: 8f, SearchUnder: true, SearchWidth: float.NaN, GlanceColumns: 1),
         // Small (W-Settings-Small): 24 / 20, the 28 title, 40-tall tabs, the picker one row of thumbnail + name cards.
         new(WidthTier.Small, InsetX: 24f, InsetTop: 20f, TitleSize: 28f, TitleLine: 36f, PageGap: 12f, Target: 0f, StacksControls: false, TabHeight: 40f, TabsScroll: true,
             ColumnMaxW: 1000f, WinUiThemePickerForm.Row, PickerThumbH: 32f, PickerCardMaxW: float.NaN, PickerShowsText: false, PickerGap: 12f, PickerPad: 16f, PickerIndent: 36f, Aside: false,
-            SectionTop: 20f, SectionBottom: 8f),
+            SectionTop: 20f, SectionBottom: 8f, SearchUnder: true, SearchWidth: float.NaN, GlanceColumns: 2),
         // Standard (W-Settings, W-SettingsSections): 36 / 24, the 40 title, the 1000 column, four preview cards.
         new(WidthTier.Standard, InsetX: 36f, InsetTop: 24f, TitleSize: 40f, TitleLine: 52f, PageGap: 16f, Target: 0f, StacksControls: false, TabHeight: 0f, TabsScroll: false,
             ColumnMaxW: 1000f, WinUiThemePickerForm.Cards, PickerThumbH: 0f, PickerCardMaxW: 223f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f, PickerIndent: 36f, Aside: false,
-            SectionTop: 20f, SectionBottom: 8f),
+            SectionTop: 20f, SectionBottom: 8f, SearchUnder: false, SearchWidth: 360f, GlanceColumns: 2),
         // Huge (W-Settings-Huge): 48 / 32, the 1200 column, the preview column beside the Appearance cards.
         new(WidthTier.Huge, InsetX: 48f, InsetTop: 32f, TitleSize: 40f, TitleLine: 52f, PageGap: 16f, Target: 0f, StacksControls: false, TabHeight: 0f, TabsScroll: false,
             ColumnMaxW: 1200f, WinUiThemePickerForm.Cards, PickerThumbH: 0f, PickerCardMaxW: 271f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f, PickerIndent: 36f, Aside: true,
-            SectionTop: 20f, SectionBottom: 8f),
+            SectionTop: 20f, SectionBottom: 8f, SearchUnder: false, SearchWidth: 360f, GlanceColumns: 3),
     ];
 
     private static readonly WinUiSettingsLayout[] s_stacked = Array.ConvertAll(s_records, r => r with { StacksControls = true });

@@ -94,7 +94,8 @@ public static class NavMenuModel
         {
             case NavMenuKind.Pane:
                 return SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
-                    Sidebar.Editing.Peek(), LockingNames(), Sidebar.LibraryView.Peek());
+                    Sidebar.Editing.Peek(), LockingNames(), Theming.ThemeHost.Declares(Theming.NavPaneOptionIds.Layout),
+                    Theming.ThemeHost.Declares(Theming.NavPaneOptionIds.Density), Sidebar.LibraryView.Peek());
             case NavMenuKind.Header:
                 return target.SectionId is { } id && HasHeaderMenu(id)
                     ? SidebarMenuModel.Header(Sidebar.Layout.Peek(), Sidebar.State, id, LockingNames())

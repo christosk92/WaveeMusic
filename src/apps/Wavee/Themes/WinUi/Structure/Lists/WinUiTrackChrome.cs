@@ -168,6 +168,7 @@ internal static class WinUiTrackChrome
     {
         var set = a.Set;
         var sort = a.Sort;
+        if (a.EpisodeRows) return Band(a, EpisodeHeader(a, sort));
         var cells = new List<Element>(a.Tracks.Length);
         // The header's cells glide with the rows' (audit B9): a lane that comes or goes moves the others to their new places on the rows' clock.
         void Add(string key, Element cell) => cells.Add(cell with { Key = key, Layout = Design.Reduced ? null : WinUiListRules.CellArrange });
@@ -199,8 +200,39 @@ internal static class WinUiTrackChrome
 
         float padX = WinUiListRules.RowPad;
         float headerH = TableRules.HeaderHeightFor(set.Classic);
-        // ONE tree in every form (audit B9): the Compact row form draws no column header, only its hairline, so the header's band eases to nothing
-        // there (the rows under it ride the reflow) and back, instead of the header being rebuilt around its hairline.
+        return Band(a, new GridEl
+        {
+            Columns = a.Tracks, ColGap = RowMetrics.ColGapFor(set.Tier),
+            Padding = new Edges4(padX, 0f, padX, 0f),
+            RowHeight = headerH, Children = cells.ToArray(),
+        });
+    }
+
+    /// <summary>The header over EPISODE rows (Your Episodes): those rows are no track lanes but the episode row's own layout (the art, the copy column, the
+    /// cluster), so the header is that row's: "Title" stands over the titles (the row's art lead, its art and its gap in), and nothing stands over the
+    /// meta line or the cluster, which hold no column. The word sorts as the track header's does (Title up, down, the list's own order); the row's date
+    /// and length are its meta line's words, never a lane a header word could stand over.</summary>
+    static Element EpisodeHeader(TrackHeaderArgs a, SortSpec sort)
+    {
+        float lead = WinUiEpisodeRow.ArtLead + (a.NarrowEpisode ? Episode.RowArtNarrow : Episode.RowArt) + Episode.RowGap;
+        var sortSignal = a.SortSignal;
+        Element title = Embed.Comp(() => new LabelComponent(sortSignal, artistColumn: true)) with { Key = "sort-label:w:e" };
+        return new BoxEl
+        {
+            Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Height = TableRules.HeaderHeightFor(a.Set.Classic),
+            // The cell ends where the copy column does: the cluster (its 36 disc) and the row's gap before it stand right of it.
+            Padding = new Edges4(lead, 0f, Episode.RowPadX + Episode.RowDisc + Episode.RowGap, 0f),
+            Children = [SortCell(a, title, SortColumn.Title, sort, FlexJustify.Start, artistColumn: true) with { Key = CellKey.Title, Grow = 1f, Basis = 0f }],
+        };
+    }
+
+    /// <summary>The header's band over <paramref name="labels"/>, shifted over while the check lane is in, and the hairline under it across the list.
+    /// ONE tree in every form (audit B9): the Compact row form draws no column header, only its hairline, so the header's band eases to nothing
+    /// there (the rows under it ride the reflow) and back, instead of the header being rebuilt around its hairline.</summary>
+    static Element Band(TrackHeaderArgs a, Element labels)
+    {
+        var set = a.Set;
+        float headerH = TableRules.HeaderHeightFor(set.Classic);
         return new BoxEl
         {
             Key = HeaderKey, Direction = 1, MinWidth = 0f,
@@ -217,15 +249,7 @@ internal static class WinUiTrackChrome
                             Direction = 1, Shrink = 0f,
                             Padding = new Edges4(a.Checks ? WinUiListRules.CheckLaneShift : 0f, 0f, 0f, 0f),
                             Animate = WinUiListRules.HeaderShift,
-                            Children =
-                            [
-                                new GridEl
-                                {
-                                    Columns = a.Tracks, ColGap = RowMetrics.ColGapFor(set.Tier),
-                                    Padding = new Edges4(padX, 0f, padX, 0f),
-                                    RowHeight = headerH, Children = cells.ToArray(),
-                                },
-                            ],
+                            Children = [labels],
                         },
                     ],
                 },
@@ -273,7 +297,7 @@ internal static class WinUiTrackChrome
         };
     }
 
-    static Element SortCell(TrackHeaderArgs a, Element content, SortColumn col, SortSpec sort, FlexJustify justify, bool artistColumn = false)
+    static BoxEl SortCell(TrackHeaderArgs a, Element content, SortColumn col, SortSpec sort, FlexJustify justify, bool artistColumn = false)
     {
         bool caret = TableRules.HeaderActive(col, sort.Column, artistColumn) && (col != SortColumn.Index || sort.Descending);
         var signal = a.SortSignal;
@@ -509,6 +533,16 @@ internal static class WinUiTrackChrome
                 : [Icon(glyph, WinUiListRules.CommandGlyph) with { Color = ink }, word, trailing.Value];
             return Plate(active, onClick, onRealized) with { Gap = WinUiListRules.CommandGap, Padding = WinUiListRules.CommandPad, Children = kids };
         }
+
+        /// <summary>Tune as WinUI's AI action: the sparkle in its hue and the word on the command plate, wearing the AI stroke (<see cref="WinUiTuneRules"/>), the
+        /// stroke's wash while lit (tuned, or the strip open). It stands apart from the bar's plain commands on purpose (owner, 2026-11-18: "a lot more prevalent").</summary>
+        public Element TuneCommand(string label, bool lit, Action onClick)
+            => Plate(false, onClick, null) with
+            {
+                Gap = WinUiListRules.CommandGap, Padding = WinUiListRules.CommandPad,
+                BorderBrush = WinUiTuneRules.Stroke, BorderWidth = WinUiTuneRules.StrokeWidth, Gradient = lit ? WinUiTuneRules.LitWash : null,
+                Children = [Icon(Icons.RefineSparkle, WinUiListRules.CommandGlyph) with { Color = WinUiTuneRules.Sparkle }, CommandWord(label, Tok.TextPrimary)],
+            };
 
         /// <summary>Find as a word at Standard and up (W-Album, W-Album-Huge: the glyph and "Find"); the glyph alone below (W-Album-Small).</summary>
         public Element? FindCommand(string label, bool active, Action onClick, Action<NodeHandle> onRealized)

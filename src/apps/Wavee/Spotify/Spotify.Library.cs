@@ -204,8 +204,7 @@ public static partial class Spotify
         /// the session was connecting leaves now — a held bucket is not a wake deadline, and an idle window would otherwise
         /// hold it until something unrelated ticked. A reconnect the sync's 30 s guard skips still pumps. A session that
         /// cannot reach Spotify never syncs, so it settles the podcast hydrate FAILED instead
-        /// (<see cref="Telemetry.ProgressUnreachable"/>: Reconnecting or Failed — an offline launch included): without it the
-        /// show page's visit head would wait on <see cref="Telemetry.ProgressSettled"/> for good (podcast plan §6.1).</summary>
+        /// (<see cref="Telemetry.ProgressUnreachable"/>: Reconnecting or Failed — an offline launch included; podcast plan §6.1).</summary>
         static void WatchSession()
         {
             var phase = Status.Value;
@@ -249,7 +248,7 @@ public static partial class Spotify
             Entities.Ensure(new User(me), UserFields.Identity, FetchPriority.Visible);
             // Podcast progress: ONE ListCurrentStates for every resume point touched in the last 180 days, folded into the
             // episode rows (podcast plan §5.8). Every sync of the scope — a reconnect catches up on what another device
-            // played meanwhile, and keeps the show page's settled head (Telemetry.ProgressSettled) rather than resetting it.
+            // played meanwhile, and keeps the scope's settled hydrate rather than resetting it.
             Telemetry.HydrateProgress(scope);
             SyncBans(scope);
             _ = Podcasts.ReadSavedAsync(CancellationToken.None);
@@ -1135,6 +1134,7 @@ public static partial class Spotify
             if (!CanWrite(out _, out _)) { Unavailable(); return; }
             if (string.Equals(payload.SourcePlaylistUri, playlistUri, StringComparison.Ordinal)
                 || string.Equals(payload.Uri, playlistUri, StringComparison.Ordinal)) return;
+            string[] episodes = payload.EpisodeUris();   // a podcast row's episodes, read here on the UI thread
             Task<Track[]> resolving;
             try { resolving = payload.ResolveTracksAsync(); }
             catch (Exception ex)
@@ -1145,11 +1145,11 @@ public static partial class Spotify
             resolving.ContinueWith(t =>
             {
                 Track[] tracks = t.IsCompletedSuccessfully ? t.Result : [];
-                Post(() => DepositResolved(playlistUri, name, tracks));
+                Post(() => DepositResolved(playlistUri, name, tracks, episodes));
             }, TaskScheduler.Default);
         }
 
-        static void DepositResolved(string playlistUri, string name, Track[] tracks)
+        static void DepositResolved(string playlistUri, string name, Track[] tracks, string[] episodes)
         {
             if (!CanWrite(out var scope, out string username)) { Unavailable(); return; }
             long now = UnixNowMs();
@@ -1160,6 +1160,7 @@ public static partial class Spotify
                 string uri = tracks[i].Id.Text;
                 if (uri.Length > 0) members.Add(new PlaylistMember(uri, Api.NewItemId(), now));
             }
+            foreach (string uri in episodes) members.Add(new PlaylistMember(uri, Api.NewItemId(), now));
             if (members.Count == 0)
             {
                 Notify.Say(Loc.Get("library.nothingToAdd"), InfoBarSeverity.Informational, dedupeKey: "library.nothing-to-add");

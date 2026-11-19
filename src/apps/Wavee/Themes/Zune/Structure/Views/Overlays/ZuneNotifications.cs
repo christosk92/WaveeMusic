@@ -69,7 +69,9 @@ internal static class ZuneNotifications
             Padding = ZuneOverlayRules.PanelPadding, Gap = ZuneOverlayRules.PanelGap,
             Children =
             [
-                PanelHeader(props, layout),
+                // The bell's hint under its header (design 6.3: Windows notifications), in the header's own column so the panel's gap
+                // never doubles at rest.
+                new BoxEl { Direction = 1, MinWidth = 0f, Children = [PanelHeader(props, layout), Hints.Slot(HintSurfaces.BellHeader)] },
                 FilterWords(props.Filter, props.Host, layout),
                 Embed.Comp(() => new PendingSyncRow(pending)) with { Key = "zn:pending-sync" },
                 body,
@@ -138,6 +140,8 @@ internal static class ZuneNotifications
             kit.Cmd(Loc.Get(Strings.Notifications.MarkAllRead), props.Host.Verbs.MarkAllRead),
         };
         if (props.Clear is { } clear) commands.Add(kit.Cmd(Loc.Get(Strings.Notifications.Clear), clear));
+        // "settings" (design 5.4): a word like the others (Z-Overlays' commands are words), opening Settings at notifications.
+        if (props.OpenSettings is { } openSettings) commands.Add(kit.Cmd(Loc.Get(Strings.Auth.Settings), openSettings) with { Key = "notify:settings" });
         return new BoxEl
         {
             Key = "zn:header", Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = ZuneOverlayRules.HeaderWordsGap, MinWidth = 0f,

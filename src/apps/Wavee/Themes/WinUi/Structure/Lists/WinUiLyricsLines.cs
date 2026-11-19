@@ -4,12 +4,11 @@
 // decides which face the document gets and calls these pictures, handing itself as the `ILyricsHost`:
 //
 //   Message    a centred one-line state ("No lyrics available", "Nothing playing", "No transcript")
-//   Shimmer    the loading bars, at the exact side pad the first lines will take (the breath is the engine's skeleton pulse)
+//   Shimmer    the loading bars, at the exact side pad the first lines will take (flat: nothing on them moves)
 //   Skeleton   the skeleton region's style
 //   Unsynced   an untimed (or suppressed) document: a reading block at reading type, left-aligned, wrapped, never ellipsised - no
 //              highlight, no follow, no wipe, no blur ladder
 //   Lines      a timed document: the measured virtual list and its rows (`WinUiLyricsRow`)
-//   Peek       the podcast transcript's opening lines, progressively blurred and transparent, with the gate laid on the dissolve
 //
 // THE ROW. One lyric line. Frozen at mount: the host, its index, its `Lyrics.Line`, its emphasis signal and its halo signal - a genuine
 // document change re-KEYS the row. Live values only through signals: its OWN packed emphasis (the render tracks a value-gated
@@ -37,12 +36,11 @@ using Wavee.Theming.Roles;
 
 namespace Wavee.Themes.WinUi;
 
-/// <summary>WinUI's lyrics lines: the state line, the loading bars, the unsynced block, the synced list with its rows and the
-/// podcast peek.</summary>
+/// <summary>WinUI's lyrics lines: the state line, the loading bars, the unsynced block and the synced list with its rows.</summary>
 internal static class WinUiLyricsLines
 {
     /// <summary>The style WinUI registers under <c>StyleKeys.LyricsLines</c>. Stateless: the rail, the stage and the reader share it.</summary>
-    public static LyricsLinesStyle Style { get; } = new(Message, Shimmer, Skeleton, Unsynced, Lines, Peek) { Offline = Offline, StageDepthBlur = true, Rail = WinUiPaneLyricsRules.Form,
+    public static LyricsLinesStyle Style { get; } = new(Message, Shimmer, Skeleton, Unsynced, Lines) { Offline = Offline, StageDepthBlur = true, Rail = WinUiPaneLyricsRules.Form,
         StageRows = WinUiLyricsRules.StageRows };
 
     // ── the state line and the loading bars ─────────────────────────────────────────────────────────────────────────
@@ -82,8 +80,8 @@ internal static class WinUiLyricsLines
         ],
     };
 
-    /// <summary>The loading bars, at the exact side pad the first lines will take. They animate nothing themselves: the breath is
-    /// the engine's skeleton pulse on the region's first child.</summary>
+    /// <summary>The loading bars, at the exact side pad the first lines will take. They are flat: nothing on them
+    /// animates, and the engine adds no motion to a placeholder.</summary>
     static Element Shimmer(ILyricsHost host)
     {
         bool large = host.Large;
@@ -181,114 +179,6 @@ internal static class WinUiLyricsLines
             OnRealized = host.SetViewport,
         };
     }
-
-    // ── the podcast peek ────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>THE PEEK: the transcript's real opening lines, rendered exactly as the following transcript renders them (the same
-    /// metrics, gutters and ink), grouped into <see cref="Lyrics.TranscriptPeek.Bands"/> blocks that get progressively blurred and
-    /// progressively transparent from top to bottom, with the gate laid on the dissolve.
-    /// <para>The dissolve is the CONTENT's own self-blur (<c>BoxEl.Blur</c> = a real Gaussian over the block's own pixels) plus its
-    /// own opacity ramp - the engine has no backdrop filter, and fading the TEXT rather than painting a coloured veil over it is the
-    /// one form that is correct on every surface the reader can sit on (Mica included), where a veil colour would have to guess what
-    /// is underneath.</para></summary>
-    static Element Peek(ILyricsHost host, Lyrics.Doc doc)
-    {
-        var m = host.Metrics;
-        // A blur strength of 0 means the user turned the effect off: the opacity ramp alone still dissolves, and the gate still
-        // reads - the peek never becomes an unreadable smear nor a fully sharp free transcript.
-        bool blur = host.BlurEnabled;
-        int count = Lyrics.TranscriptPeek.LineCount(doc.Lines.Count);
-        var bands = new List<Element>(Lyrics.TranscriptPeek.Bands);
-        var rows = new List<Element>(count);
-        int band = 0;
-        for (int i = 0; i < count; i++)
-        {
-            int next = Lyrics.TranscriptPeek.BandOf(i, count);
-            if (next != band)
-            {
-                if (rows.Count > 0) bands.Add(PeekBand(band, rows, blur));
-                rows.Clear();
-                band = next;
-            }
-            rows.Add(PeekRow(host, doc.Lines[i].Text, m));
-        }
-        if (rows.Count > 0) bands.Add(PeekBand(band, rows, blur));
-        return new BoxEl
-        {
-            Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true, ZStack = true,
-            Children =
-            [
-                new BoxEl
-                {
-                    Grow = 1f, MinHeight = 0f, MinWidth = 0f, Direction = 1, Justify = FlexJustify.Start,
-                    Padding = new Edges4(0f, Lyrics.Surface.UnsyncedBlockPad(host.Large), 0f, 0f),
-                    Children = bands.ToArray(),
-                },
-                PeekGate(host),
-            ],
-        };
-    }
-
-    static Element PeekBand(int band, List<Element> rows, bool blur) => new BoxEl
-    {
-        Direction = 1, Shrink = 0f, MinWidth = 0f, HitTestVisible = false,
-        Blur = blur ? Lyrics.TranscriptPeek.SigmaOf(band) : 0f,
-        Opacity = Lyrics.TranscriptPeek.OpacityOf(band),
-        Children = rows.ToArray(),
-    };
-
-    /// <summary>One peek row - the same shape <see cref="Unsynced"/> builds, at the TIMED transcript's own metrics and full primary
-    /// ink, so the block the veil covers is the block that appears once you press play.</summary>
-    static Element PeekRow(ILyricsHost host, string text, Lyrics.RowMetrics m) => new BoxEl
-    {
-        Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
-        Padding = new Edges4(m.SidePad, m.RowPad, m.SidePad, m.RowPad),
-        Children =
-        [
-            new TextEl(text)
-            {
-                Size = m.FontSize, Weight = m.Weight, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,
-                Color = host.Ink.Primary, MaxLines = 0, Trim = TextTrim.None,
-            },
-        ],
-    };
-
-    /// <summary>THE GATE that sits on the peek's dissolve (podcast-episode-peek §2): the caption, the primary pill that starts this
-    /// episode, and the quiet length · language line. A pass-through positioner, so only the pill itself takes the pointer. Only ever
-    /// reached from a reader: the rail always tracks whatever is playing, so it never lands here.</summary>
-    static Element PeekGate(ILyricsHost host)
-    {
-        var ink = host.Ink;
-        var facts = host.PeekGate();
-        var gate = new List<Element>(3)
-        {
-            R.Type.DenseMeta(Loc.Get(Strings.Podcast.PeekFollows)) with
-            {
-                Color = ink.Secondary, Wrap = TextWrap.Wrap, MaxLines = 0,
-            },
-            Button.Accent(Loc.Get(Strings.Podcast.PeekPlay), facts.Play),
-        };
-        if (facts.Meta.Length > 0)
-            gate.Add(new TextEl(facts.Meta)
-            {
-                Size = WinUiLyricsRules.PeekMetaSize, LineHeight = WinUiLyricsRules.PeekMetaLineHeight, Color = ink.Tertiary,
-                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            });
-        return new BoxEl
-        {
-            Grow = 1f, MinHeight = 0f, HitTestPassThrough = true,
-            Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
-            Padding = new Edges4(Spacing.L, 0f, Spacing.L, Spacing.XXL),
-            Children =
-            [
-                new BoxEl
-                {
-                    Shrink = 0f, MinWidth = 0f, Direction = 1,
-                    AlignItems = FlexAlign.Center, Gap = Spacing.S, Children = gate.ToArray(),
-                },
-            ],
-        };
-    }
 }
 
 /// <summary>One lyric line of the synced list (see the file header).</summary>
@@ -337,9 +227,7 @@ internal sealed class WinUiLyricsRow : Component
     /// from that seed (velocity-continuous on a live track).</summary>
     void RetargetOpacity()
     {
-        bool podcast = _host.IsPodcast;
-        bool ownsPlayback = !podcast || _host.ObservedPlaybackOwner;
-        float to = RowOpacity(_host, podcast, ownsPlayback, _emphasis.Value);
+        float to = RowOpacity(_host, _host.IsPodcast, _emphasis.Value);
         var ctx = Context;
         if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
         anim.Spring(ctx.HostNode, AnimChannel.Opacity, to, s_opacitySpring);
@@ -347,10 +235,10 @@ internal sealed class WinUiLyricsRow : Component
 
     /// <summary>The row's opacity rung: the stage's music rows take the board's fade over the ring (<see cref="WinUiLyricsRules.StageOpacity"/>,
     /// transparent past it), every other surface the core's ladder.</summary>
-    static float RowOpacity(ILyricsHost host, bool podcast, bool ownsPlayback, int emphasis)
-        => BoardRows(host, podcast) && !Lyrics.TranscriptPresentation.Neutral(podcast, ownsPlayback)
+    static float RowOpacity(ILyricsHost host, bool podcast, int emphasis)
+        => BoardRows(host, podcast)
             ? WinUiLyricsRules.StageOpacity(Lyrics.Emphasis.DistOf(emphasis))
-            : Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, emphasis);
+            : Lyrics.Emphasis.OpacityOf(emphasis);
 
     /// <summary>The stage's music rows draw the board (W-Lyrics): the type, fade, scale and ink of <see cref="WinUiLyricsRules.StageRows"/>.</summary>
     static bool BoardRows(ILyricsHost host, bool podcast) => host.OnStage && !podcast;
@@ -365,10 +253,8 @@ internal sealed class WinUiLyricsRow : Component
         UseSignalEffect(_retargetOpacity);
         int e = _emphasis.Peek();
         bool podcast = host.IsPodcast;
-        bool ownsPlayback = !podcast || host.ObservedPlaybackOwner;
-        bool isActive = Lyrics.TranscriptPresentation.Active(podcast, ownsPlayback, e);
-        bool neutral = Lyrics.TranscriptPresentation.Neutral(podcast, ownsPlayback);
-        bool near = !neutral && Lyrics.RowRender.IsNear(shape);
+        bool isActive = Lyrics.Emphasis.DistOf(e) == 0;
+        bool near = Lyrics.RowRender.IsNear(shape);
         bool large = host.Large;
         var ink = host.Ink;
         var m = host.Metrics;
@@ -380,31 +266,28 @@ internal sealed class WinUiLyricsRow : Component
         bool board = BoardRows(host, podcast);
         // The board's rows lay out at the ACTIVE size and an inactive row scales down to the line size (28 under 34): the step glides on the
         // scale spring, the row never relayouts.
-        float scale = neutral ? 1f : board ? (isActive || reduce ? 1f : WinUiLyricsRules.StageInactiveScale) : Lyrics.Surface.ScaleFor(isActive, reduce);
-        if (float.IsNaN(_seedOpacity)) _seedOpacity = RowOpacity(host, podcast, ownsPlayback, e);
+        float scale = board ? (isActive || reduce ? 1f : WinUiLyricsRules.StageInactiveScale) : Lyrics.Surface.ScaleFor(isActive, reduce);
+        if (float.IsNaN(_seedOpacity)) _seedOpacity = RowOpacity(host, podcast, e);
         float blur = host.Follow.Peek() == Lyrics.FollowMode.Following ? host.DofShownFor(index) : 0f;
 
         // The scale springs retarget on the active flip (the only input of the scale rest), never per rung.
-        var key = DepKey.From((isActive ? 2 : 0) | (reduce ? 8 : 0) | (neutral ? 16 : 0));
+        var key = DepKey.From((isActive ? 2 : 0) | (reduce ? 8 : 0));
         UseSpring(AnimChannel.ScaleX, scale, s_scaleSpring, key);
         UseSpring(AnimChannel.ScaleY, scale, s_scaleSpring, key);
 
         Element textEl;
-        float lift = neutral ? 0f : Lyrics.Wipe.LiftFor(large, reduce);
+        float lift = Lyrics.Wipe.LiftFor(large, reduce);
         if (line.IsWordByWord && line.Syllables.Count > 0)
         {
             // ALWAYS a two-child ZStack [glow, main], in every state: a line leaving the voice slot is an in-place
             // update, never a child-type swap (a re-shape + blur-cache miss = the lines-above-active flicker).
-            bool highlight = Lyrics.TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line);
-            float split = highlight ? Lyrics.Wipe.SplitOf(host, index, line, (long)host.Now.Peek(), lead: !podcast) : 0f;
+            float split = Lyrics.Wipe.SplitOf(host, index, line, (long)host.Now.Peek(), lead: !podcast);
             float softness = host.SoftnessOfLine(index);
             // Podcasts: the role-driven rung (accent on the sung glyph, plain ink otherwise - never a translucent wash). Music
             // keeps its established alpha-faded unsung look untouched.
-            ColorF sung = neutral ? ink.Secondary
-                : podcast ? RungInk(ink, Lyrics.TranscriptPresentation.InkOf(Lyrics.TranscriptPresentation.RoleOf(e), sungPart: true))
+            ColorF sung = podcast ? RungInk(ink, Lyrics.TranscriptPresentation.InkOf(Lyrics.TranscriptPresentation.RoleOf(e), sungPart: true))
                 : ink.Primary;
-            ColorF unsung = neutral ? ink.Secondary
-                : podcast ? RungInk(ink, Lyrics.TranscriptPresentation.InkOf(Lyrics.TranscriptPresentation.RoleOf(e), sungPart: false))
+            ColorF unsung = podcast ? RungInk(ink, Lyrics.TranscriptPresentation.InkOf(Lyrics.TranscriptPresentation.RoleOf(e), sungPart: false))
                 : board && !isActive ? sung   // the board's far lines are plain ink at their row's fade; only the active line dims its unsung part
                 : sung with { A = Lyrics.Wipe.UnsungAlpha };
             var mainWipe = new GlyphWipe(Before: sung, After: unsung, Split: split, Softness: softness, Lift: lift);
@@ -465,7 +348,7 @@ internal sealed class WinUiLyricsRow : Component
                     textColumn,
                     // THE PILL (ListView accent bar): in the gutter, vertically centred on the row (V-U9: vertical = AlignSelf,
                     // horizontal = JustifySelf); accent on the active line, else clear, cross-faded through BrushTransitionMs like
-                    // the ink flip above. `accentSig.Value` is evaluated ONLY on the active, non-neutral row - the `&&`
+                    // the ink flip above. `accentSig.Value` is evaluated ONLY on the active row - the conditional
                     // short-circuits before the read on every other row - so exactly ONE row subscribes to the slab's cross-fade
                     // and re-renders at 30 Hz for 600 ms per track change (V-U51).
                     new BoxEl
@@ -474,7 +357,7 @@ internal sealed class WinUiLyricsRow : Component
                         Corners = Radii.Circle(WinUiLyricsRules.PillRadius), HitTestVisible = false,
                         AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
                         OffsetX = -(m.SidePad - Spacing.S),
-                        Fill = isActive && !neutral ? accentSig.Value : ColorF.Transparent,
+                        Fill = isActive ? accentSig.Value : ColorF.Transparent,
                         BrushTransitionMs = Design.Motion.Fast,
                     },
                 ],

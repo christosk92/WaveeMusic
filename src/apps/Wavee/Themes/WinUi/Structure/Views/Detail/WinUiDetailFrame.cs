@@ -6,12 +6,13 @@
 //   Detail.Frame
 //   └─ ZStack  [tint, tone, arm "vertical"]
 //      └─ Row  [the page column | the aside slot]
-//         ├─ the page column  [notice · (a show's fixed header) · the content column: the table, which hosts the hero as its item 0]
+//         ├─ the page column  [notice · the content column: the table, which hosts the hero as its item 0]
 //         └─ the aside slot   0 wide where no aside docks; at Huge the 440 (480 from 3200) column with its own scroller, on the page's inset (W-Album-Huge)
 //
 // What the host decided (core, `Detail.FrameHost`): the page mode and the Hero override, the accent, the tint and tone claim leaves, the notice, the table, the
 // drop target, the insights toggle with its facts latch and the aside's presence under `DetailTierLayout.AsideInHero`. The view arranges what it is handed and mounts
-// the show header, the sheet and the aside's body through their own keys. The page inset reaches the list through the tier record (`PageInsetX`: the table pads
+// the sheet and the aside's body through their own keys. WinUI draws the show and episode pages as the podcast pages v2 (`Views\Podcast\`), so no show
+// header reaches this frame under WinUI. The page inset reaches the list through the tier record (`PageInsetX`: the table pads
 // its list and trailing band so the scroller keeps the card's edge); the hero insets itself; the notice and the aside take the same inset here.
 //
 // IDENTICAL TREE across tiers: the aside slot is in the row at every tier (width 0 where none docks), so a crossing never re-parents the table (it would lose
@@ -43,16 +44,10 @@ internal static partial class WinUiDetailFrame
             Key = p.ContentKey, Grow = 1f, Shrink = 1f, MinWidth = p.ContentMinWidth, MinHeight = 0f, Direction = 1,
             Children = [p.Content],
         };
-        // A show's fixed header sits above its episodes (never the hero system), on the page's inset. The episodes' reader pads itself by the core's 24
-        // (16 narrow); the page's inset is 36 at Standard and 48 at Huge, so the reader's column stands that much further in (W-Show: the filter, the heads
-        // and the rows on the cover's edge). The spacers ease across a crossing (the inset's own rule), never a snap.
         Element content = new BoxEl
         {
             Direction = 1, Grow = 1f, ClipToBounds = true, DropTarget = p.Drop,
-            // ONE shape for every page (the column never changes parent when a header arrives): the spacers are 0 without a show header.
-            Children = p.ShowHeader is { } header
-                ? [ctx.View(ViewKeys.DetailShowHeader, header), ShowBody(right, tier, header.Spec.Slots.Aside, swapIn)]
-                : [ReaderInset(right, ShowReaderRules.Pad)],
+            Children = [right],
         };
         Element page = new BoxEl
         {
@@ -76,61 +71,6 @@ internal static partial class WinUiDetailFrame
             ZStack = true, Grow = 1f, OnBoundsChanged = p.OnMeasured, ClipToBounds = true,
             Children = [p.Tint, p.Tone, Arm("vertical", row)],
         });
-    }
-
-    /// <summary>The episodes' column between two easing spacers: the page's inset less the reader's own pad (0 where they agree: Compact, Small).</summary>
-    static Element ReaderInset(Element column, float inset)
-    {
-        float side = MathF.Max(0f, inset - ShowReaderRules.Pad);
-        return new BoxEl
-        {
-            Key = "detail:reader-inset", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-            Children =
-            [
-                new BoxEl { Key = "reader-inset:lead", Width = side, Shrink = 0f, Layout = WinUiDiscoveryMotion.WidthReflow },
-                new BoxEl { Key = "reader-inset:column", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [column] },
-                new BoxEl { Key = "reader-inset:trail", Width = side, Shrink = 0f, Layout = WinUiDiscoveryMotion.WidthReflow },
-            ],
-        };
-    }
-
-    /// <summary>A show's (or an episode's) body under its fixed header: the episodes between their easing spacers and, at Standard and Huge, the show's
-    /// aside beside them (W-Show: About and the topics, W-Show-Huge adds the details) in its own scroller, the page's inset past it. The aside's slot is in
-    /// the row at every tier (0 wide below Standard, where the aside stands under the episodes instead), so a crossing never re-parents the reader (it
-    /// would lose its scroll): the slot eases its width and the episodes yield to it.</summary>
-    static Element ShowBody(Element column, WinUiDetailTier tier, Func<Element>? aside, EnterExit? swapIn)
-    {
-        bool docked = aside is not null && tier.Tier >= WidthTier.Standard;
-        bool huge = tier.Tier >= WidthTier.Huge;
-        float lead = MathF.Max(0f, tier.InsetX - ShowReaderRules.Pad);
-        float trail = docked ? MathF.Max(0f, (huge ? WinUiShowRules.AsideHugeGap : WinUiShowRules.AsideGap) - ShowReaderRules.Pad) : lead;
-        float asideW = docked ? (huge ? WinUiShowRules.AsideHugeWidth : WinUiShowRules.AsideWidth) + tier.InsetX : 0f;
-        return new BoxEl
-        {
-            Key = "detail:reader-inset", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-            Children =
-            [
-                new BoxEl { Key = "reader-inset:lead", Width = lead, Shrink = 0f, Layout = WinUiDiscoveryMotion.WidthReflow },
-                new BoxEl { Key = "reader-inset:column", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [column] },
-                new BoxEl { Key = "reader-inset:trail", Width = trail, Shrink = 0f, Layout = WinUiDiscoveryMotion.WidthReflow },
-                new BoxEl
-                {
-                    Key = "show:aside-slot", Direction = 1, Width = asideW, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
-                    Layout = WinUiDiscoveryMotion.WidthReflow,
-                    Children = docked
-                        ?
-                        [
-                            Ui.ScrollView(new BoxEl
-                            {
-                                Direction = 1, MinWidth = 0f,
-                                Padding = new Edges4(0f, WinUiShowRules.AsideTop, tier.InsetX, R.Space.DockReserve),
-                                Children = [aside!()],
-                            }) with { Key = "show:aside-scroll", Width = asideW, Shrink = 0f, MinHeight = 0f, Grow = 1f, Enter = swapIn, Exit = WinUiDetailRules.FormSwap },
-                        ]
-                        : [],
-                },
-            ],
-        };
     }
 
     /// <summary>One arm of the frame under its own key, entering and leaving on opacity alone.</summary>

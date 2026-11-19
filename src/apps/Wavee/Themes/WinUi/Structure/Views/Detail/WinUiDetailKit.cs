@@ -195,8 +195,8 @@ internal static partial class WinUiDetailKit
             actions.Add(Controls.Named(BorderedAction(Icons.Friends, Loc.Get(Strings.Detail.Edit.Invite), invite, target, words) with { Key = keyPrefix + "invite:button" },
                 Loc.Get(Strings.Detail.Edit.InviteCollaborators)) with { Key = keyPrefix + "invite" });
         if (tune is not null)
-            actions.Add(Controls.Named(BorderedAction(words ? null : Icons.Equalizer, Loc.Get(Strings.Detail.Tuning.Tune), tune, target, words)
-                with { Key = keyPrefix + "tune:button" }, Loc.Get(Strings.Detail.Tuning.Tune)) with { Key = keyPrefix + "tune" });
+            actions.Add(Controls.Named(TuneAction(Loc.Get(Strings.Detail.Tuning.Tune), tune, target, words, acts.TuneLit?.Invoke() ?? false)
+                with { Key = keyPrefix + "tune:button" }, Loc.Get(Strings.Detail.Tuning.Tooltip)) with { Key = keyPrefix + "tune" });
         if (ShareActionFor(id) is { } share)
             actions.Add(Controls.Named(Controls.IconAction(Icons.Share, share, size: target) with { Key = keyPrefix + "share:button" }, Loc.Get(Strings.Menu.Share))
                 with { Key = keyPrefix + "share" });
@@ -227,6 +227,22 @@ internal static partial class WinUiDetailKit
     }
 
     /// <summary>A bordered standard action (W-Album: the control fill, the elevation stroke, r4, 32 / 40 tall): the glyph and its word, or the glyph alone.</summary>
+    /// <summary>Tune as WinUI's AI action in the hero (owner, 2026-11-18: "a lot more prevalent like an AI button"): the sparkle in its hue and the word (the sparkle
+    /// alone at Compact) on the control plate, wearing the AI stroke, its wash while <paramref name="lit"/> (tuned, or the strip open). Numbers: <see cref="WinUiTuneRules"/>.</summary>
+    static BoxEl TuneAction(string label, Action onClick, float target, bool word, bool lit)
+    {
+        Element glyph = Icon(Icons.RefineSparkle, WinUiTuneRules.TileGlyph, WinUiTuneRules.Sparkle);
+        return new BoxEl
+        {
+            Direction = 0, Gap = WinUiTuneRules.HeroGap, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Height = target, MinWidth = target, Shrink = 0f, Padding = word ? new Edges4(WinUiTuneRules.HeroPadX, 0f, WinUiTuneRules.HeroPadX, 0f) : default,
+            Corners = Radii.ControlAll, Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
+            Gradient = lit ? WinUiTuneRules.LitWash : null, BorderBrush = WinUiTuneRules.Stroke, BorderWidth = WinUiTuneRules.StrokeWidth,
+            Role = AutomationRole.Button, Focusable = true, OnClick = onClick,
+            Children = word ? [glyph, Body(label)] : [glyph],
+        };
+    }
+
     static BoxEl BorderedAction(string? glyph, string label, Action onClick, float target, bool word, bool enabled = true)
     {
         if (!word)
