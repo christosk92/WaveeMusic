@@ -199,25 +199,44 @@ internal static partial class WinUiSettings
     {
         readonly Dictionary<string, NodeHandle> _items = new(StringComparer.Ordinal);
         readonly TemplateParts _parts = new();
+        readonly Action<int> _choose;
+        Action<int>? _open;
+        int _chosen = -1;
         bool _seeded;
 
         public CategoryStrip()
-            => _parts[SelectorBar.PartItem] = b => b.Key is { } key ? b with { OnRealized = h => _items[key] = h } : b;
+        {
+            _parts[SelectorBar.PartItem] = b => b.Key is { } key ? b with { OnRealized = h => _items[key] = h } : b;
+            // The strip's own pick (a click, the arrow keys): the page is on screen and stays, so the word glides into view.
+            _choose = i =>
+            {
+                _chosen = i;
+                _open?.Invoke(i);
+            };
+        }
 
         public override Element Render()
         {
             var layout = UseLayout();
             var p = UseProps<StripProps>();
+            _open = p.Open;
             int selected = p.Selected;
             string? key = (uint)selected < (uint)p.Keys.Length ? p.Keys[selected] : null;
             UseLayoutEffect(() =>
             {
+                // Motion nobody can see does not run. A category the page is HANDED (a link, a door, a search result, history) always commits a Settings
+                // route, which re-enters the page under the shell's page swap: the page is fully transparent while the word would glide, so the word is
+                // put in place at once and the page's first visible frame shows it where it rests. Only the strip's own pick, on a page that stays on
+                // screen, glides (and never under reduced motion or on the strip's first layout).
+                bool own = _chosen == selected;
+                _chosen = -1;
                 if (key is not null && _items.TryGetValue(key, out var item) && !item.IsNull && Context.Scene is { } scene)
-                    scene.BringIntoView(item, float.NaN, _seeded && !Design.Reduced ? ScrollMove.Glide : ScrollMove.Immediate, WinUiSettingsRules.StripGutter);
+                    scene.BringIntoView(item, float.NaN, _seeded && own && !Design.Reduced ? ScrollMove.Glide : ScrollMove.Immediate,
+                        WinUiSettingsRules.StripGutter);
                 _seeded = true;
             }, DepKey.From(selected));
             var style = layout.TabHeight > 0f ? new SelectorBarStyle { ItemHeight = layout.TabHeight } : null;
-            Element bar = SelectorBar.Create(p.Labels, new Signal<int>(selected), onChange: p.Open, parts: _parts, style: style, itemKeys: p.Keys);
+            Element bar = SelectorBar.Create(p.Labels, new Signal<int>(selected), onChange: _choose, parts: _parts, style: style, itemKeys: p.Keys);
             return new BoxEl
             {
                 Direction = 1, Shrink = 0f, MinWidth = 0f, MaxWidth = layout.CapsColumn ? layout.ColumnMaxW : float.NaN,
