@@ -89,9 +89,10 @@ internal static class ZuneTrackChrome
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
                 Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
-                // The ✕: closes the bar on this list until the app restarts.
-                a.Dismiss is { } dismiss
-                    ? ToolTip.Wrap(Button.Create("", dismiss, ButtonAppearance.Subtle, glyph: Icons.ChromeClose, isEnabled: a.Shown)
+                // The ✕: closes the bar on this list until the app restarts. Mounted (with its tooltip) only while the bar shows: every list mounts this
+                // bar, and a tooltip host on each hidden one cost a one-time 4.6 MB on a Liked Songs scroll.
+                a.Dismiss is { } dismiss && a.Shown
+                    ? ToolTip.Wrap(Button.Create("", dismiss, ButtonAppearance.Subtle, glyph: Icons.ChromeClose)
                         with { Key = "unavailable:dismiss", Shrink = 0f }, a.DismissLabel)
                     : new BoxEl { Shrink = 0f },
             ],

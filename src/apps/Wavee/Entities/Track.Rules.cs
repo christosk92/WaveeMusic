@@ -664,8 +664,10 @@ public readonly partial struct Track
     public bool Unplayable()
         => Unplayable(Knows(TrackFields.Availability), (FlagBits & (uint)TrackFlags.Unavailable) != 0, AvailableAt);
 
-    /// <summary>A playlist's <c>spotify:local:</c> item (<c>Track.LocalUri.cs</c>): its face is its uri's, and Wavee has no file to play it from.</summary>
-    public bool IsLocalItem => IsValid && LocalTrackUri.Is(Uri.Text);
+    /// <summary>A playlist's <c>spotify:local:</c> item (<c>Track.LocalUri.cs</c>): its face is its uri's, and Wavee has no file to play it from. A local
+    /// item's id is always TEXT-form, so the form is tested first: a gid's <see cref="EntityId.Text"/> builds a new string, and the duration lane and the
+    /// artist runs ask this per row (Entities.cs: never per row per frame).</summary>
+    public bool IsLocalItem => IsValid && Uri.Id.Form == EntityForm.Text && LocalTrackUri.Is(Uri.Text);
 
     /// <summary>The artist a local item's uri names, or "" for any other row.</summary>
     public string LocalArtist => IsLocalItem ? LocalTrackUri.NamesOf(Uri.Text).Artist : "";

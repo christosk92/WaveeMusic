@@ -213,10 +213,10 @@ internal sealed class TrackUnavailableBarArgs
     /// <summary>Turn the filter on (the bar then leaves).</summary>
     public required Action Hide { get; init; }
 
-    /// <summary>Close the bar on this list until the app restarts (its ✕), or null: the bar has no ✕. Appended (contract 1.110).</summary>
+    /// <summary>Close the bar on this list until the app restarts (its ✕), or null: the bar has no ✕. Appended (contract 2.10).</summary>
     public Action? Dismiss { get; init; }
 
-    /// <summary>The ✕'s name and tooltip ("Close"). Appended (contract 1.110).</summary>
+    /// <summary>The ✕'s name and tooltip ("Close"). Appended (contract 2.10).</summary>
     public string DismissLabel { get; init; } = "";
 
     /// <summary>The bar's horizontal edges in the chrome: the rows' gutter in the hero arm, the row plates' inset in the two-column arm.</summary>
