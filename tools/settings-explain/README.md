@@ -35,13 +35,22 @@ DESIGN 6.5 with a `status` per entry.
 
 Not registered yet, and why:
 
-- **Calm motion**: not recordable headless. Calm tames how the stage answers the music (level, beats, onsets); headless
-  there is no audio level, so a take with Calm and one without look alike.
-- **Backdrop (WinUI)**: not recordable headless. Mica and Acrylic sample the desktop behind a real window; a headless
-  render has none, so every backdrop renders alike. Needs a real-window recording (off-screen) or a stand-in desktop in
-  the inspector.
-- **Canvas**: not recordable headless on this line. The Canvas player draws no video frames headless (the poster, then
-  black); the fake media backend that gives it frames (`mount media=fake`) is on the feat/home-* line.
+- **Calm motion**: not recordable headless, nor from a real window. Calm tames how the stage answers the music (level,
+  beats, onsets); headless there is no audio level, and a real `--fake` window has none either (a `--fake` load plays a
+  silent voice into the paced silent endpoint: no device, no samples), so a take with Calm and one without look alike.
+- **Backdrop (WinUI)**: not recordable headless, nor from a real window. Mica and Acrylic sample the desktop behind an
+  active window on a screen; a headless render has none. A real window has to stay off every screen and never take the
+  focus, and there DWM draws flat fallbacks (2026-11-19, a dark test window off every monitor filmed with PrintWindow:
+  Mica and Mica Alt a flat #202020 while inactive, which is also what None paints, Acrylic a flat #545454; no wallpaper
+  tint or blur even with the active frame look). On a visible screen Acrylic would bake whatever lies behind the window
+  into a shipped clip. Needs a stand-in desktop composited behind the window in the inspector.
+- **Canvas**: not recordable on this line. The Canvas player draws no video frames headless (the poster, then black); the
+  fake media backend that gives it frames (`mount media=fake`) is on the feat/home-* line. A real `--fake` window would
+  play the local canvas without a Spotify session, but this line cannot place, drive or film one within the rules: the
+  test-window flags (`--window-rect`, `--window-monitor`, `--no-activate`) and `wavee://diag?cmd=drive` are on
+  feat/feature-recorder (with fluent-gpu's `AppOptions.NoActivate`), the diag verbs refuse a `--fake` run (developer
+  mode stays off in its in-memory settings), and Windows.Graphics.Capture of a window off every monitor returned blank
+  frames.
 - **Daylist clock, Previews on Home**: need feat/pinned-home (their surfaces land with the pinned Home).
 - **Connected animations (WinUI)**: needs feat/pinned-home (the dial); the entry records there as written.
 - **Liked Songs cover in Classic and Zune**: their Liked page draws no cover at the default layout, so there is no cover
