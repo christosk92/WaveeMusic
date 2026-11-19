@@ -9,7 +9,12 @@
 //                  `Spans(i)` (the title's matched letters, Zune's accent), `Close` ("Showing close matches"), and the no-match state
 //                  (`NoMatch`, `NoMatchLine()`, `DidYouMean(i)`, `SearchAppLine()` and `SearchApp`, the whole-app search with the query);
 //   · keyboard     `OnKeyDown` / `PreviewKey` (wire either to the box): Down/Up move `Highlight` through the results, Enter opens the
-//                  highlighted one (the first when none is) in its category, Escape clears the box, a second Escape leaves it;
+//                  highlighted one (the first when none is) in its category, Escape clears the box, a second Escape leaves it. A box
+//                  bound with `Box(frame)` gets Escape ahead of its field: a stock field (the AutoSuggestBox's editor) handles Escape
+//                  itself (it restores the typed text and blurs) and an open suggestion list takes it in the overlay host's key
+//                  preview, so neither ever bubbles to the frame. While the caret is in the box, `Box` chains the window's one key
+//                  preview (`InputHooks.KeyPreview`, the slot the overlay host and the full screen chain too): the list closes and
+//                  the box clears in one Escape, a second leaves the box;
 //   · focus        Ctrl+F while Settings is the page focuses the box instead of the app's search, Ctrl+, opens Settings with the box focused
 //                  (`Settings.FindInPage`, `Settings.OpenWithSearch`); `Box(frame)` binds a theme's box to all of it (it keys the frame
 //                  `settings:search`, takes the focus tickets, routes the keys). A theme that binds without `Box` reads `FocusTicket` and calls
@@ -215,24 +220,113 @@ public sealed class SettingsSearchModel
                 Open(h >= 0 ? h : 0);
                 return true;
             case Keys.Escape:
-                if (Query.Peek().Length > 0 || _ran.Length > 0)
-                {
-                    Clear();
-                    return true;
-                }
-                // A second Escape leaves the box: the caret goes nowhere (the page keeps the keyboard, as after a click on it).
-                if (SettingsContext.Hooks?.FocusNode is not { } focus) return false;
-                focus(NodeHandle.Null, false);
-                return true;
+                return Escape(null);
         }
         return false;
+    }
+
+    /// <summary>The box holds text or shows results: an Escape clears it.</summary>
+    bool HasText => Query.Peek().Length > 0 || _ran.Length > 0;
+
+    /// <summary>Escape in the box: the first clears it (and its results), a second leaves it: the caret goes nowhere (the page keeps the
+    /// keyboard, as after a click on it). False when there is nothing to clear and no focus to drop.</summary>
+    bool Escape(InputHooks? hooks)
+    {
+        if (HasText)
+        {
+            Clear();
+            return true;
+        }
+        if ((hooks ?? SettingsContext.Hooks)?.FocusNode is not { } focus) return false;
+        focus(NodeHandle.Null, false);
+        return true;
+    }
+
+    /// <summary>The box's Escape ahead of its field (see the file header): while the caret is anywhere in the bound box, the window's key
+    /// preview runs this first. It holds the slot only while the box has the caret and puts back what it found when the caret leaves; the
+    /// overlay host re-takes the slot whenever it re-renders (an overlay opened or closed), so the chain is re-asserted after each frame's
+    /// animations while the box is focused (a reference compare on frames that render anyway, nothing allocated).</summary>
+    sealed class EscapeChain
+    {
+        readonly SettingsSearchModel _model;
+        readonly Func<int, bool> _preview;
+        readonly Action _reassert;
+        InputHooks? _hooks;
+        Func<int, bool>? _saved;
+        bool _within, _running;
+
+        public EscapeChain(SettingsSearchModel model)
+        {
+            _model = model;
+            _preview = Preview;
+            _reassert = Reassert;
+        }
+
+        /// <summary>The caret entered (true) or left (false) the box: a routed focus change on the box's frame.</summary>
+        public void Focus(InputHooks hooks, bool within)
+        {
+            if (within == _within) return;
+            if (!within)
+            {
+                Release();
+                return;
+            }
+            _within = true;
+            _hooks = hooks;
+            Install();
+            hooks.SetAfterAnimations(this, _reassert);
+        }
+
+        /// <summary>Leave the slot (the caret left, or the box unmounted), putting back what it held when this chain still owns it.</summary>
+        public void Release()
+        {
+            _within = false;
+            if (_hooks is not { } hooks) return;
+            hooks.SetAfterAnimations(this, null);
+            if (ReferenceEquals(hooks.KeyPreview, _preview)) hooks.KeyPreview = _saved;
+            _saved = null;
+            _hooks = null;
+        }
+
+        void Install()
+        {
+            if (_hooks is not { } hooks || ReferenceEquals(hooks.KeyPreview, _preview)) return;
+            _saved = hooks.KeyPreview;
+            hooks.KeyPreview = _preview;
+        }
+
+        void Reassert()
+        {
+            if (_within) Install();
+        }
+
+        bool Preview(int key)
+        {
+            if (_running) return false;   // a chain that saved this one and was re-wrapped by it: never loop
+            _running = true;
+            try
+            {
+                if (key != Keys.Escape || !_within) return _saved?.Invoke(key) ?? false;
+                bool text = _model.HasText;
+                // An open suggestion list closes first (the overlay host's own Escape): with text that is part of the clear; on an empty box an
+                // overlay that took the key is all this Escape does.
+                bool closed = _saved?.Invoke(key) ?? false;
+                if (text || !closed) _model.Escape(_hooks);
+                return true;
+            }
+            finally
+            {
+                _running = false;
+            }
+        }
     }
 
     // ── the binding a theme wraps its box in ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>Bind a theme's box: <paramref name="frame"/> (the theme's own box node, holding its field) comes back keyed
-    /// <see cref="SettingsKeys.Search"/>, its keys routed through <see cref="OnKeyDown"/>, and the caret moved into its first focusable node on a
-    /// focus request (Ctrl+F on Settings, Ctrl+,). Its sizing is the frame's own; the anchor mirrors it.</summary>
+    /// <see cref="SettingsKeys.Search"/>, its keys routed through <see cref="OnKeyDown"/>, Escape taken ahead of its field while the caret is in
+    /// it (the first clears, a second leaves: see the file header), and the caret moved into its first focusable node on a focus request
+    /// (Ctrl+F on Settings, Ctrl+,). Its sizing is the frame's own; the anchor mirrors it.</summary>
     public Element Box(BoxEl frame) => Embed.Comp(new BoxProps(this, frame), static () => new BoxHost());
 
     sealed record BoxProps(SettingsSearchModel Model, BoxEl Frame);
@@ -245,10 +339,16 @@ public sealed class SettingsSearchModel
             SettingsSearchModel model = p.Model;
             var hooks = UseContext(InputHooks.Current);
             var node = UseRef<NodeHandle>(default);
+            var escape = UseRef<EscapeChain?>(null);
+            EscapeChain chain = escape.Value ??= new EscapeChain(model);
             UseEffect(() =>
             {
                 model._boxes++;
-                return () => model._boxes--;
+                return () =>
+                {
+                    model._boxes--;
+                    chain.Release();
+                };
             }, DepKey.Empty);
             int ticket = model._focusTicket.Value;
             UseLayoutEffect(() =>
@@ -260,6 +360,7 @@ public sealed class SettingsSearchModel
             BoxEl frame = p.Frame;
             Action<NodeHandle>? realized = frame.OnRealized;
             Action<KeyEventArgs>? keys = frame.OnKeyDown;
+            Action<bool>? focusChanged = frame.OnFocusChanged;
             return frame with
             {
                 Key = SettingsKeys.Search,
@@ -272,6 +373,12 @@ public sealed class SettingsSearchModel
                 {
                     keys(e);
                     model.OnKeyDown(e);
+                },
+                // Routed: the frame hears the caret entering and leaving its subtree (the field inside it holds the caret).
+                OnFocusChanged = within =>
+                {
+                    chain.Focus(hooks, within);
+                    focusChanged?.Invoke(within);
                 },
             };
         }

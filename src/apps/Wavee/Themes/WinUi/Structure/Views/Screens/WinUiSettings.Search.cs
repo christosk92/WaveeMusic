@@ -105,10 +105,15 @@ internal static partial class WinUiSettings
             UseLayout();
             var p = UseProps<SuggestProps>();
             var model = p.Model;
-            _ = model.Version.Value;
+            int version = model.Version.Value;
             int highlighted = model.Highlight.Value;
             float w = p.Width.Value;
             int shown = Math.Min(model.Count, WinUiSettingsRules.SuggestionRows);
+            // The box emptied without a keystroke (Escape, a link that opened a dial, the model's own clear): the list goes with the query. A keystroke
+            // never empties the cell while the list is open (backspacing to nothing closes it in the box itself), so a fresh list is never closed here.
+            bool cleared = model.Query.Peek().Length == 0 && !model.Active;
+            Action close = p.Close;
+            UseEffect(() => { if (cleared) close(); }, DepKey.From(version));
 
             if (shown == 0)
                 return new BoxEl
@@ -119,7 +124,6 @@ internal static partial class WinUiSettings
                 };
 
             var rows = new Element[shown];
-            var close = p.Close;
             for (int i = 0; i < shown; i++)
             {
                 var hit = model.Hit(i);
