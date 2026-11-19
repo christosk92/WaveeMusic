@@ -711,7 +711,8 @@ public static partial class Shell
     {
         Sidebar.SidebarMenus.Overlay = overlay;
         return new ContextMenuModel(Sidebar.SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
-            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames(), Sidebar.LibraryView.Peek())));
+            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames(), Theming.ThemeHost.Declares(Theming.NavPaneOptionIds.Layout),
+            Theming.ThemeHost.Declares(Theming.NavPaneOptionIds.Density), Sidebar.LibraryView.Peek())));
     }
 
     /// <summary>The rail seam's guide: the splitter's 2-DIP thumb, bound to the drag so it shows while the pointer is down
