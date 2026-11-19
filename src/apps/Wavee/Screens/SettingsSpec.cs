@@ -432,7 +432,7 @@ public static partial class SettingsSpec
             ChoiceKeys = choices ?? [],
             LiveChoices = liveChoices,
             Explainer = explain?.Id,
-            ExplainerThemes = explain?.Theme is { } theme ? [theme] : null,
+            ExplainerThemes = explain?.Themes,
         };
     }
 

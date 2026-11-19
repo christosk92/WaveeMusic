@@ -699,7 +699,7 @@ in every theme:
 | `settings:dial:<dialId>` | a dial's row in a category body (`settings:dial:playback.crossfade`) | Classic, WinUI |
 | `zs:row:<dialId>` | a dial's row | Zune |
 | `settings:result:<id>` | a search result (a dial's id, or a pointer's: `settings:result:pointer.downloads`) | all |
-| `settings:explain:<dialId>` | a dial's explanation badge (only where its clip exists for the theme and app mode: with the clips in `assets/settings-explain`, Lyrics blur and Crossfade with its duration in every theme) | all |
+| `settings:explain:<dialId>` | a dial's explanation badge (only where its clips exist for the theme in both app modes: the registered dials per theme are listed in `tools/settings-explain/README.md`, Status; in every theme, Lyrics blur, Crossfade and its duration, Normalization, Loudness level, the next-video countdown, the AI lyrics, Player style and its finish, Full-screen layout, Spectrum, the mini player's face and colour) | all |
 
 `click key=settings:cat:sound` (Zune `click key=zs:link:sound`) opens a category, `type key=settings:search crossfade` types into the
 box, `key down` / `key enter` walk and open the results, `key esc` clears the box (an open suggestion list closes with it) and a second
