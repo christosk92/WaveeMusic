@@ -73,9 +73,10 @@ versions separately under `v*` and is not tracked in this file.)
   no row before (output device, podcast speed, the Liked Songs cover, the list columns, the mini player's options,
   private session) are here too.
 
-- **Crossfade in the queue (every theme).** The queue now has Crossfade right beside Autoplay, as the same kind of
-  switch, with its length ("5 s") next to it; the length opens Settings at the crossfade duration. A flip here shows in
-  Settings at once, and Settings' home lists it under Recently changed as "from the queue".
+- **Crossfade in the queue (every theme).** The queue, and the full screen's Up next, now have Crossfade right beside
+  Autoplay, as the same kind of switch, with its length ("5 s") next to it; the length opens Settings at the crossfade
+  duration. A flip here shows in Settings at once, and Settings' home lists it under Recently changed as "from the
+  queue".
 
 - **Background blur in every full-screen options popover.** Classic's and Zune's full-screen options now have the
   Background blur slider WinUI's already had (on the Layout tab), the same setting as Settings > Lyrics > Lyrics blur.
@@ -94,7 +95,9 @@ versions separately under `v*` and is not tracked in this file.)
   setting, and a new last row, "Sound settings", shows the equalizer and normalization at a glance and opens Sound. The
   notifications panel has a settings button (a gear; Zune's "settings") that opens Notifications. In Settings, "Also
   in" now opens the lyrics pane, the devices list, the profile menu, the mini player, a track list, the player bar (the
-  remaining-time label takes keyboard focus) and WinUI's title bar menu.
+  remaining-time label takes keyboard focus) and WinUI's title bar menu; a place that cannot open in the window as it is
+  (no devices list on a narrow Zune window) is named without a link. Changes made in the mini player's options and the
+  Liked Songs cover picker now show under Recently changed too.
 
 ### Changed
 

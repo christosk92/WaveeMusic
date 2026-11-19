@@ -317,8 +317,9 @@
 // suggestions as `HintProps`, `SettingsRecentRow`s) and `Body` (`SettingsBodySource`: `SettingsBody`, `SettingsBodyGroup`, `SettingsBodyRow`
 // with `SettingsExplainInfo`, `SettingsAlsoIn` and `SettingsBodyNote`); `SettingsKeys` (the page's node keys); `ThemePolicies.SettingsPage`
 // (`SettingsPagePolicy.HighlightMs`, from the structure's Rules); `SetupConsent.Labels` (the wizard's crash-consent words are the dial's).
-// 1.117 (settings rework phase 5: settings in context, design 5.4): the queue panel's "between songs" pair, `QueuePanelProps.Crossfade`,
-// `CrossfadeLength` and `OpenCrossfadeLength` with `IQueueVerbs.ToggleCrossfade` / `SetCrossfade`; `IStageSettingsVerbs.SetLyricsBlur` (every
+// 1.117 (settings rework phase 5: settings in context, design 5.4): the queue's "between songs" pair, `QueuePanelProps.Crossfade`,
+// `CrossfadeLength` and `OpenCrossfadeLength` (and the same on `QueueStagePaneProps`, the full screen's Up next) with
+// `IQueueVerbs.ToggleCrossfade` / `SetCrossfade`; `IStageSettingsVerbs.SetLyricsBlur` (every
 // theme's full-screen popover draws Background blur); the lyrics header's ⋯, `PanelLyricsHeaderProps.Options` (`LyricsPaneOptions`: the blur and
 // the AI lyrics status line); `DevicePickerEntryKind.Link` (the quality echo and "Sound settings" link into Settings); the bell panel's settings
 // door, `NotificationsProps.OpenSettings`; the title bar's window menu door, `ShellTitleBarProps.WindowMenuRequest`; `ThemeOption.Contexts` (a
