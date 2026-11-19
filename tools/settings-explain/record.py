@@ -120,8 +120,9 @@ def pending_part(entry):
 
 
 def waits(entry):
-    """Skipped until it lands: a surface on another branch, or something the inspector cannot stage yet."""
-    return pending_part(entry) in ("surface", "inspector")
+    """Skipped until it lands: a surface or a dial on another branch, something the inspector cannot stage yet, or an effect the
+    app does not show in one of the modes (a badge needs both)."""
+    return pending_part(entry) in ("surface", "dial", "inspector", "effect")
 
 
 # ───────────────────────────── the inspector ─────────────────────────────
@@ -360,11 +361,14 @@ class Recorder:
 
     def run_until_still(self, act=None, values=None):
         """Capture every `step` frames until the window (watch="region": the region keys) holds still for `stillFrames`
-        captures, or `capture` seconds pass. `values`: a sweep, one dial write per capture before its frames."""
+        captures, or `capture` seconds pass. watch="none" never judges stillness: the whole `capture` is the change (a
+        countdown whose digit and thin progress bar move too little to tell from a still frame). `values`: a sweep, one
+        dial write per capture before its frames."""
         step = int(self.get("step"))
         max_n = int(math.ceil(float(self.get("capture")) * 1000 / (FRAME_MS * step)))
         min_n = int(math.ceil(float(self.get("minCapture")) * 1000 / (FRAME_MS * step)))
         still_need = int(self.get("stillFrames"))
+        never_still = self.get("watch") == "none"
         paths, prev, still = [], None, 0
         if act:
             act()
@@ -376,9 +380,12 @@ class Recorder:
             self.s.cmd("frames %d" % step)
             p = self.frame()
             paths.append(p)
-            sig = signature(p, self.still_box)
-            moved = differs(sig, prev)
-            prev = sig
+            if never_still:
+                moved = True
+            else:
+                sig = signature(p, self.still_box)
+                moved = differs(sig, prev)
+                prev = sig
             i += 1
             still = 0 if (moved or i <= sweep_n) else still + 1    # a sweep's frames are the change, never the hold
             if i >= sweep_n and i >= min_n and still >= still_need:
@@ -391,13 +398,13 @@ class Recorder:
             paths = paths[:len(paths) - still]
         return paths, last
 
-    def after_hold(self, segs, run, last):
+    def after_hold(self, segs, run, last, p0, p1):
         """The run, then the hold on the after state: the last captured frame (the still tail's, or where a change that never
         stops was cut), so the hold is the very frame the change ended on. A fresh frame later would jump: lyrics move on,
-        a loop runs on."""
+        a loop runs on. `p0`/`p1`: the before/after cue across the run (0 before, 1 after; see Framer)."""
         if run:
-            segs.append(("run", run, run_ms(self)))
-        segs.append(("hold", last))
+            segs.append(("run", run, run_ms(self), p0, p1))
+        segs.append(("hold", last, p1))
 
     def record(self):
         kind = self.e["kind"]
@@ -408,7 +415,7 @@ class Recorder:
             self.write(before)
             self.rest()
             self.look()
-            segs.append(("hold", self.frame()))
+            segs.append(("hold", self.frame(), 0.0))
             afters = after if isinstance(after, list) else [after]
             for k, value in enumerate(afters):
                 sweep = float(self.get("sweep") or 0)
@@ -419,7 +426,7 @@ class Recorder:
                     run, last = self.run_until_still(values=vals)
                 else:
                     run, last = self.run_until_still(act=lambda v=value: self.write(v, settle=False))
-                self.after_hold(segs, run, last)
+                self.after_hold(segs, run, last, 0.0 if k == 0 else 1.0, 1.0)
                 self.look()
         elif kind == "motion":
             takes = self.e.get("takes") or [{"value": self.e.get("value")}]
@@ -429,11 +436,14 @@ class Recorder:
                 self.write(per_theme(take.get("value"), self.theme))
                 self.rest()
                 self.look()
-                segs.append(("hold", self.frame()))
+                # the cue: one take goes from before to after across its change; with takes, the first is "before", the last "after"
+                p0 = 0.0 if len(takes) == 1 else k / float(len(takes) - 1)
+                p1 = 1.0 if len(takes) == 1 else p0
+                segs.append(("hold", self.frame(), p0))
                 lines = [per_theme(a, self.theme) for a in (take.get("action") or self.e.get("action") or [])]
-                lines = [ln if "settle=" in ln else ln + " settle=false" for ln in lines if ln]
+                lines = [ln if "settle=" in ln or ln.split()[0] == "frames" else ln + " settle=false" for ln in lines if ln]
                 run, last = self.run_until_still(act=lambda: [self.s.cmd(ln) for ln in lines])
-                self.after_hold(segs, run, last)
+                self.after_hold(segs, run, last, p0, p1)
                 self.look()
         else:
             raise ClipError("unknown kind %r" % kind)
@@ -452,41 +462,49 @@ def run_ms(rec):
 
 # ───────────────────────────── timeline and encode ─────────────────────────────
 
-def timeline(segs, fps, slow, hold_s):
-    """Segments -> [[source, ms, is_hold]]: a hold is one frame of `hold_s`; a run is resampled to `fps` (slowed by
-    `slow`)."""
+def timeline(segs, fps, slow, hold_s, ramp_ms):
+    """Segments -> [[source, ms, is_hold, cue]]: a hold is one frame of `hold_s`; a run is resampled to `fps` (slowed by
+    `slow`). `cue` is the before/after cue's phase (0 before, 1 after): a run cross-fades it from its p0 to its p1 over its
+    first `ramp_ms` (or all of it, when shorter)."""
     out = []
     frame_ms = 1000.0 / fps
     for seg in segs:
         if seg[0] == "hold":
-            out.append([seg[1], hold_s * 1000.0, True])
+            out.append([seg[1], hold_s * 1000.0, True, seg[2]])
             continue
-        _, paths, step_ms = seg
+        _, paths, step_ms, p0, p1 = seg
         dur = len(paths) * step_ms * slow
         n = max(1, int(round(dur / frame_ms)))
+        ramp = max(frame_ms, min(ramp_ms, n * frame_ms))
         for k in range(n):
             src = paths[min(len(paths) - 1, int(round(k * frame_ms / slow / step_ms)))]
-            out.append([src, frame_ms, False])
+            out.append([src, frame_ms, False, p0 + (p1 - p0) * ease(min(1.0, (k + 1) * frame_ms / ramp))])
     return out
 
 
 def merge_frames(frames, entries, loop_min, max_still=None):
-    """Consecutive identical frames (as cropped) become one. A hold keeps exactly its own length: run frames that look
-    like it (the reaction before a change starts, the still tail after it ends) fold into it without lengthening it. A
-    still stretch inside the change is cut to `max_still` seconds when set (a marquee's start delay). Then the holds grow
-    evenly until the loop is `loop_min` long."""
+    """Consecutive identical frames (the shots, before the frame) become one. A hold keeps exactly its own length: run
+    frames that look like it (the reaction before a change starts, the still tail after it ends) fold into it without
+    lengthening it. A still stretch inside the change is cut to `max_still` seconds when set (a marquee's start delay).
+    Then the holds grow evenly until the loop is `loop_min` long. Returns the frames, their durations and each one's
+    before/after cue (entry[3]): a hold's own, else the last run frame's merged into it, so the cue never keeps a still
+    stretch from merging (it moves with the change)."""
     from PIL import ImageChops
-    out = []                                              # [frame, run_ms, hold_ms, is_hold]
-    for f, (_, ms, hold) in zip(frames, entries):
+    out = []                                              # [frame, run_ms, hold_ms, is_hold, cue]
+    for f, entry in zip(frames, entries):
+        ms, hold, cue = entry[1], entry[2], entry[3]
         if out and ImageChops.difference(out[-1][0], f).getbbox() is None:
             m = out[-1]
             if hold:
                 m[2] += ms
                 m[3] = True
+                m[4] = cue
             else:
                 m[1] += ms
+                if not m[3]:
+                    m[4] = cue
         else:
-            out.append([f, 0.0 if hold else ms, ms if hold else 0.0, hold])
+            out.append([f, 0.0 if hold else ms, ms if hold else 0.0, hold, cue])
     for m in out:
         if m[3]:
             m[1] = 0.0
@@ -498,7 +516,7 @@ def merge_frames(frames, entries, loop_min, max_still=None):
         extra = (loop_min * 1000 - total) / len(holds)
         for m in holds:
             m[2] += extra
-    return [m[0] for m in out], integer_durations([m[1] + m[2] for m in out])
+    return [m[0] for m in out], integer_durations([m[1] + m[2] for m in out]), [m[4] for m in out]
 
 
 def integer_durations(ms_list):
@@ -512,17 +530,24 @@ def integer_durations(ms_list):
     return out
 
 
-def cropped(paths, box_dip, scale, size, cache):
+def shots(entries, box_dip, scale, size, cache):
+    """Each timeline entry's capture, cropped to the box and scaled to the frame's shot size."""
     from PIL import Image
     left, top, w, h = (v * scale for v in box_dip)
     box = (int(round(left)), int(round(top)), int(round(left + w)), int(round(top + h)))
     out = []
-    for p in paths:
-        if p not in cache:
-            with Image.open(p) as im:
-                cache[p] = im.convert("RGB").crop(box).resize(size, Image.LANCZOS)
-        out.append(cache[p])
+    for e in entries:
+        if e[0] not in cache:
+            with Image.open(e[0]) as im:
+                cache[e[0]] = im.convert("RGB").crop(box).resize(size, Image.LANCZOS)
+        out.append(cache[e[0]])
     return out
+
+
+def framed(merged, framer):
+    """merge_frames' answer composed into the frame: (frames, durations)."""
+    frames, durations, cues = merged
+    return [framer.compose(f, cue) for f, cue in zip(frames, cues)], durations
 
 
 def encode(frames, durations, quality):
@@ -713,14 +738,13 @@ def draw_levels(levels, target, pal, style, size, show_target):
 
 
 def diagram_frames(name, pal, style, fps, hold_s, change_s):
-    """[(PIL image 640x360, ms, is_hold)] for a sound dial's diagram, drawn at twice the size and scaled down (smooth
-    edges): a hold on the before state, the change at `fps`, a hold on the after state."""
-    from PIL import Image
+    """[(PIL image 1280x720, ms, is_hold)] for a sound dial's diagram, drawn large and scaled down into the frame's shot
+    (smooth edges): a hold on the before state, the change at `fps`, a hold on the after state."""
     size2 = (1280, 720)
     frames = []
 
     def add(img, ms, hold=False):
-        frames.append((img.resize((640, 360), Image.LANCZOS), ms, hold))
+        frames.append((img, ms, hold))
 
     n = max(2, int(round(change_s * fps)))
     step = 1000.0 / fps
@@ -752,9 +776,151 @@ def diagram_frames(name, pal, style, fps, hold_s, change_s):
     return frames
 
 
+# ───────────────────────────── the frame ─────────────────────────────
+
+def hexrgb(s):
+    s = s.lstrip("#")
+    return tuple(int(s[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def desaturate(c, keep):
+    h, sat, v = colorsys.rgb_to_hsv(*(x / 255.0 for x in c))
+    return tuple(int(round(x * 255)) for x in colorsys.hsv_to_rgb(h, sat * keep, v))
+
+
+def backdrop(kind, ground, accent, strength, size):
+    """The quiet ground behind the shot, drawn small and scaled up (a smooth gradient): `mica` (WinUI) a diagonal from the
+    ground at the top left to a low-saturation tint of the accent at the bottom right; `wash` (Classic) the accent's
+    desaturated tint washing down from the top edge, the way Classic's tinted surfaces sit under a page head; `glow` (Zune) the
+    flat ground with one faint radial glow of the accent in the top right corner. `strength` is how far the ground moves
+    toward the tint at most: barely visible."""
+    from PIL import Image
+    W, H = size
+    sw, sh = 96, 54
+    img = Image.new("RGB", (sw, sh))
+    px = img.load()
+    soft = desaturate(accent, 0.4)
+    for j in range(sh):
+        for i in range(sw):
+            u, v = (i + 0.5) / sw, (j + 0.5) / sh
+            if kind == "mica":
+                t = ease(min(1.0, max(0.0, 0.6 * u + 0.4 * v)))
+                c = mix(ground, soft, t * strength)
+            elif kind == "wash":
+                t = 1.0 - ease(min(1.0, v / 0.8))
+                c = mix(ground, soft, t * strength)
+            elif kind == "glow":
+                d = math.hypot((1.0 - u) * W / float(H), v)
+                t = max(0.0, 1.0 - d / 1.25) ** 2
+                c = mix(ground, accent, t * strength)
+            else:
+                raise ClipError("unknown backdrop %r" % kind)
+            px[i, j] = c
+    return img.resize((W, H), Image.BICUBIC)
+
+
+def aa_mask(size, radius, outline=0):
+    """An anti-aliased rounded-rect mask (L), drawn at 4x and scaled down; `outline` > 0: only a ring that many px wide."""
+    from PIL import Image, ImageDraw
+    k = 4
+    w, h = size
+    m = Image.new("L", (w * k, h * k), 0)
+    d = ImageDraw.Draw(m)
+    box = (0, 0, w * k - 1, h * k - 1)
+    if outline:
+        d.rounded_rectangle(box, radius=radius * k, outline=255, width=outline * k)
+    else:
+        d.rounded_rectangle(box, radius=radius * k, fill=255)
+    return m.resize(size, Image.LANCZOS)
+
+
+class Framer:
+    """The presentation frame every clip is composed into (owner, 2026-11-19: framed, "not too bland", but not too much),
+    from the manifest's `defaults.frame`, per theme and app mode: the theme's quiet backdrop; the shot inset at 16:9 with
+    the theme's corner radius, a 1 px hairline border and a soft shadow under it; and under the shot a before/after cue of
+    two dots, the first filled during the before hold, the second during the after hold, cross-fading during the change.
+    No text, no zoom, no bezel. The frame is static, so in an animated WebP it is paid for once, in the key frame."""
+
+    def __init__(self, cfg, theme, mode, size):
+        from PIL import Image, ImageDraw, ImageFilter
+        W, H = self.size = tuple(size)
+        x, y, w, h = (int(v) for v in cfg["shot"])
+        self.pos, self.shot = (x, y), (w, h)
+        dark = mode == "dark"
+        ground, accent = hexrgb(cfg["ground"][theme][mode]), hexrgb(cfg["accent"][theme][mode])
+        ink = (255, 255, 255) if dark else (0, 0, 0)
+        radius = float(per_theme(cfg["radius"], theme))
+        bd = cfg["backdrop"][theme]
+        base = backdrop(bd["kind"], ground, accent, float(bd["strength"][mode]), (W, H)).convert("RGBA")
+        sh = cfg["shadow"]
+        shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(shadow).rounded_rectangle((x, y + sh["dy"], x + w - 1, y + h - 1 + sh["dy"]), radius=radius,
+                                                 fill=(0, 0, 0, int(round(255 * float(sh["alpha"][mode])))))
+        base = Image.alpha_composite(base, shadow.filter(ImageFilter.GaussianBlur(float(sh["blur"]))))
+        self.base = base.convert("RGB")
+        self.mask = aa_mask((w, h), radius)
+        ring = aa_mask((w, h), radius, outline=1).point(lambda a: int(round(a * float(cfg["border"][mode]))))
+        self.overlay = Image.new("RGBA", (W, H), ink + (0,))
+        layer = Image.new("RGBA", (w, h), ink + (0,))
+        layer.putalpha(ring)
+        self.overlay.alpha_composite(layer, (x, y))
+        cue = cfg["cue"]
+        self.ramp_ms = float(cue["rampMs"])
+        n = int(cue["size"])
+        dot = Image.new("L", (n * 4, n * 4), 0)
+        ImageDraw.Draw(dot).ellipse((0, 0, n * 4 - 1, n * 4 - 1), fill=255)
+        self.dot = dot.resize((n, n), Image.LANCZOS)
+        pitch = n + int(cue["gap"])
+        cy = int(cue["y"]) - n // 2
+        self.dots = [(W // 2 - pitch // 2 - n // 2, cy), (W // 2 + pitch // 2 - n // 2, cy)]
+        self.alpha = (float(cue["alpha"][0]), float(cue["alpha"][1]))
+        self.ink = ink
+        self._overlays = {}
+
+    def overlay_for(self, cue):
+        """The border and the two dots at cue phase `cue` (0 before, 1 after)."""
+        from PIL import Image
+        key = round(cue, 3)
+        if key not in self._overlays:
+            ov = self.overlay.copy()
+            lo, hi = self.alpha
+            for (dx, dy), a in zip(self.dots, (lo + (hi - lo) * (1.0 - key), lo + (hi - lo) * key)):
+                layer = Image.new("RGBA", self.dot.size, self.ink + (0,))
+                layer.putalpha(self.dot.point(lambda v, a=a: int(round(v * a))))
+                ov.alpha_composite(layer, (dx, dy))
+            self._overlays[key] = ov
+        return self._overlays[key]
+
+    def compose(self, shot, cue):
+        """One output frame: the shot (already at `self.shot`) on the backdrop, inside its rounded mask, under the border and the cue."""
+        img = self.base.copy()
+        img.paste(shot, self.pos, self.mask)
+        ov = self.overlay_for(cue)
+        img.paste(ov, (0, 0), ov)
+        return img
+
+
+def diagram_cued(frames, ramp_ms):
+    """A diagram's frames with the before/after cue: 0 on the first hold, cross-fading to 1 over the first change's first
+    `ramp_ms` (the whole change when shorter), 1 from then on."""
+    out, t, started = [], 0.0, False
+    change = sum(ms for _, ms, hold in frames[1:] if not hold) or ramp_ms
+    for k, (img, ms, hold) in enumerate(frames):
+        if k == 0:
+            cue = 0.0
+        else:
+            if not hold:
+                started = True
+            t += ms if started and not hold else 0.0
+            cue = 1.0 if hold else ease(min(1.0, t / max(1.0, min(ramp_ms, change))))
+        out.append((img, ms, hold, cue))
+    return out
+
+
 # ───────────────────────────── one item ─────────────────────────────
 
 def record_item(inspect_mod, exe, entry, theme, mode, defaults, budget, out_root, work_root, palettes, keep):
+    from PIL import Image
     cid = entry["clip"]
     started = time.time()
     tag = "%s-%s-%s" % (theme, mode, cid)
@@ -767,6 +933,7 @@ def record_item(inspect_mod, exe, entry, theme, mode, defaults, budget, out_root
     hold_s = float(setting_for(entry, theme, "hold", defaults))
     loop_min, loop_max = defaults["loop"]
     size = tuple(defaults["size"])
+    framer = Framer(defaults["frame"], theme, mode, size)
     notes = []
     if entry["kind"] == "diagram":
         pal = palettes[(theme, mode)]
@@ -774,8 +941,8 @@ def record_item(inspect_mod, exe, entry, theme, mode, defaults, budget, out_root
         change_s = float(setting_for(entry, theme, "change", defaults))
 
         def build(fps):
-            fr = diagram_frames(entry["diagram"], pal, style, fps, hold_s, change_s)
-            return merge_frames([f for f, _, _ in fr], fr, loop_min)
+            fr = diagram_cued(diagram_frames(entry["diagram"], pal, style, fps, hold_s, change_s), framer.ramp_ms)
+            return framed(merge_frames([img.resize(framer.shot, Image.LANCZOS) for img, _, _, _ in fr], fr, loop_min), framer)
         res["palette"] = {k: "#%02X%02X%02X" % v for k, v in pal.items()}
     else:
         sess = Session(inspect_mod, exe)
@@ -792,8 +959,8 @@ def record_item(inspect_mod, exe, entry, theme, mode, defaults, budget, out_root
         cache = {}
 
         def build(fps):
-            tl = timeline(segs, fps, slow, hold_s)
-            return merge_frames(cropped([src for src, _, _ in tl], box, scale, size, cache), tl, loop_min, max_still)
+            tl = timeline(segs, fps, slow, hold_s, framer.ramp_ms)
+            return framed(merge_frames(shots(tl, box, scale, framer.shot, cache), tl, loop_min, max_still), framer)
     (data, fps, q, frames, durations), fits = encode_at_budget(build, budget, fps0, q0)
     loop_ms = sum(durations)
     if loop_ms > loop_max * 1000:
@@ -905,7 +1072,7 @@ def check(manifest, root, strict, as_json):
                 print("  %-4s %6.1f KB  %5.2f s  %3d fr  %s%s" % (r["status"], r["bytes"] / 1024.0, r.get("loopMs", 0) / 1000.0,
                                                                r.get("frames", 0), r["path"], ("  " + "; ".join(r["problems"])) if r["problems"] else ""))
         missing = [r["path"] for r in rows if r["status"] in ("missing", "pending")]
-        print("  %d ok, %d bad, %d missing, %d pending (a surface on another branch, or not stageable headless yet)" % (
+        print("  %d ok, %d bad, %d missing, %d pending (a surface or dial on another branch, not stageable headless yet, or no effect in a mode)" % (
             counts.get("ok", 0), counts.get("bad", 0), counts.get("missing", 0), counts.get("pending", 0)))
         if missing and not strict:
             print("  not recorded yet: %d (--strict makes a missing clip an error)" % len(missing))
