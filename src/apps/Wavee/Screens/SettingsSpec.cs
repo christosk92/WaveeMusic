@@ -187,6 +187,10 @@ public sealed class SettingsDial
     /// design 4.2); empty where the choices are not words (numbers, adapters, devices, hours).</summary>
     public IReadOnlyList<string> ChoiceKeys { get; init; } = [];
 
+    /// <summary>The choices' words where they are live names rather than loc keys (the output device: the system default, then this PC's endpoints),
+    /// read when a body row is built; null for a dial whose words are its <see cref="ChoiceKeys"/> (or that has none).</summary>
+    public Func<IReadOnlyList<string>>? LiveChoices { get; init; }
+
     /// <summary>The surfaces outside Settings that draw this dial in place (<see cref="SettingsSurfaces"/>).</summary>
     public IReadOnlyList<string> Contexts { get; init; } = [];
 
@@ -405,7 +409,7 @@ public static partial class SettingsSpec
         string? captionKey = null, Func<ISettingsFacts, string?>? caption = null, Func<IAppSettings, object?>? value = null,
         Func<ISettingsFacts, SettingsEnablement>? enabled = null, Func<ISettingsFacts, bool>? visible = null,
         SettingsConfirm? confirm = null, bool silent = false, string[]? contexts = null, string[]? aliases = null,
-        IReadOnlyList<string>? choices = null)
+        IReadOnlyList<string>? choices = null, Func<IReadOnlyList<string>>? liveChoices = null)
     {
         SettingsExplain.Clip? explain = SettingsExplain.Of(id);   // the badge list (design 6.5) decides which dials explain themselves
         Func<ISettingsFacts, string?> cap = caption ?? NoCaption;
@@ -426,6 +430,7 @@ public static partial class SettingsSpec
             Contexts = contexts ?? [],
             Aliases = aliases ?? [],
             ChoiceKeys = choices ?? [],
+            LiveChoices = liveChoices,
             Explainer = explain?.Id,
             ExplainerThemes = explain?.Theme is { } theme ? [theme] : null,
         };

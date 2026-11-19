@@ -286,6 +286,7 @@ public static class SettingsPageModel
             foreach (string key in dial.ChoiceKeys) b.Add(Text(key)!);
             choices = b.MoveToImmutable();
         }
+        else if (dial.LiveChoices is { } live) choices = [.. live()];
         ImmutableArray<SettingsAlsoIn> alsoIn = AlsoIn(dial, out string? alsoInLine);
         return new SettingsBodyRow
         {

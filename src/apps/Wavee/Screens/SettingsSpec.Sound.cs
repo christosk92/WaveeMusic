@@ -8,6 +8,7 @@
 // the curve while it is dragged; normalization goes through the `Settings.ApplyNormalization` seam until the audio host exposes its own
 // setter. The views keep only the mirrors of their frozen controls (a combo's selection signal); the persistence and the push are these verbs.
 
+using FluentGpu.Localization;
 using K = Wavee.SettingsRowKind;
 
 namespace Wavee;
@@ -76,7 +77,7 @@ public static partial class SettingsSpec
             Make("sound.outputDevice", K.Choice, Strings.Settings.Playback.OutputDevice,
                 SettingsWriter.OfChoice("audio.outputDevice", SettingsVerbs.SetOutputDevice), glyph: "Speakers",
                 captionKey: Strings.Settings.Playback.OutputDeviceSub, value: s => SettingsVerbs.OutputDeviceIndex(s.Get(Platform.Keys.OutputDeviceId)),
-                contexts: [SettingsSurfaces.DevicePicker]),
+                contexts: [SettingsSurfaces.DevicePicker], liveChoices: OutputDeviceNames),
             Make("sound.connectName", K.Fact, Strings.Settings.Devices.ThisPc, SettingsWriter.ReadOnly, legacy: ["thisPc"],
                 captionKey: Strings.Settings.Devices.ThisPcSub, value: _ => Playback.DeviceName)),
     ]);
@@ -88,6 +89,17 @@ public static partial class SettingsSpec
         Strings.Settings.Playback.QualityNormal, Strings.Settings.Playback.QualityHigh, Strings.Settings.Playback.QualityVeryHigh,
         Strings.Settings.Playback.QualityLossless,
     ];
+
+    /// <summary>The output device's words: the system default, then this PC's endpoints in roster order (the indexes the dial's value and writer use). Read
+    /// when a body row is built: the roster is tracked, so a plugged headset re-reads the page.</summary>
+    static IReadOnlyList<string> OutputDeviceNames()
+    {
+        var devices = Playback.Audio.Devices.Value;
+        var names = new string[devices.Length + 1];
+        names[0] = Loc.Get(Strings.Player.SystemDefault);
+        for (int i = 0; i < devices.Length; i++) names[i + 1] = devices[i].Name;
+        return names;
+    }
 
     /// <summary>The curve, the preset and the reset follow the equalizer's switch (greyed, no reason of their own).</summary>
     static SettingsEnablement EqOn(ISettingsFacts f) => f.EqualizerEnabled ? SettingsEnablement.On : SettingsEnablement.Off(null);

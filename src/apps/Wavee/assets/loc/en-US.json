@@ -3377,7 +3377,14 @@
         "setupStepSignIn": "Sign in",
         "setupStepTheme": "Theme",
         "setupStepPlayback": "Local playback",
-        "setupBack": "Back"
+        "setupBack": "Back",
+        "settingsFind": "Find a setting",
+        "settingsYourSetup": "Your setup",
+        "settingsResults": "Results",
+        "settingsResultCount": "{count, plural, one {# setting for “{query}”} other {# settings for “{query}”}}",
+        "settingsNothingMatches": "Nothing matches “{query}”",
+        "settingsSeeIt": "See it",
+        "settingsPlayClip": "Play"
       },
       "states": {}
     },
