@@ -671,6 +671,31 @@ The Settings tab strips key their items (`settings:tabitem:<slug>`: Classic's ar
 `zs:link:<slug>`), so `click key=settings:tabitem:appearance` switches the tab the way a user does (`goto route=settings
 arg=appearance` opens it directly).
 
+### `settings {q? | focus?, limit?}`
+
+The settings search (`Screens/SettingsSearch.cs`): the one index the Settings box, the command palette's Settings group and this verb
+ask. `settings q=<text>` ranks the dials of the active theme and the feature pointers for a query as typed (folded, stemmed, prefix
+and typo matches, phrases, AND then OR) and replies `{q, count, close, allocBytes, results:[{id, pointer?, score, fields, title,
+place, under?}]}`: `fields` are where the best hits came from (`title`, `alias`, `terms`, `choice`, `caption`, `group`, `category`,
+`phrase`, `english`), `under` names the result's parent when the parent is a result too, `close: true` (with `note`) means no dial
+matched every word and the list is close matches, and `allocBytes` is what the query allocated (a second run, so the first use's
+index build is not counted: it must be 0). No result adds `noMatch`, `didYouMean` (up to three indexed words two or three edits away)
+and `searchApp`, the lines the results page shows. `limit` (default 8, up to 30) caps the list. `settings focus=<link>` hands a
+settings link (`category`, `category/dialId`, `dialId`, or any old slug or row id) to the deep-link door exactly as
+`wavee://open?route=settings&arg=<link>` does, settles, and replies with what it named (`known`, `category`, `dial`), the focus it
+recorded (`{dial, seq}`: `seq` grows on every dial link, so the same dial twice replays the arrival) and the route; a feature
+pointer's id (`focus=pointer.downloads`) opens the pointer's place instead. It needs a mount. Until each theme draws the registry (phase 4) the page is the old one: a dial link lands on the tab or area that draws the
+dial, and an old slug where it always did. `settings` alone reports the index (`entries`, `tokens`, `postings`, `trigrams`,
+`phrases`, `buildMs`, `culture`) and `missingTerms`: every composed dial and pointer with no `settings.terms.<id>` in the loc files
+(it must be empty).
+
+```text
+settings q="dark mode"                      # appearance.appMode first, by its phrase
+settings q=crosfade                         # a typo: playback.crossfade, then its duration
+settings focus=lyrics.ai                    # opens Lyrics (Appearance in Classic and WinUI) as the AI sparkle does
+goto deeplink="wavee://open?route=settings&arg=playback/playback.crossfade"   # the same door from a link
+```
+
 ### `find {key | prefix, visibleOnly?, depth?}`
 
 `find <key>` (or `key=`) lists the live nodes keyed exactly so; `prefix=` lists those whose key starts with it. The list is

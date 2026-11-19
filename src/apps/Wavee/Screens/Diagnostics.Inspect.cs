@@ -419,6 +419,8 @@ public static partial class Diagnostics
                     return Views(id, name, a);
                 case Inspect.Verb.Setting:
                     return Setting(id, name, a);   // the store needs no mount; a mounted one settles after the write
+                case Inspect.Verb.Settings:
+                    return SettingsSearchVerb(id, name, a);   // a query needs no mount; focus= navigates (it says so when nothing is mounted)
                 case Inspect.Verb.Tiers:
                     return Tiers(id, name, a);   // the policy needs no mount; the facts do
                 case Inspect.Verb.Crossings:

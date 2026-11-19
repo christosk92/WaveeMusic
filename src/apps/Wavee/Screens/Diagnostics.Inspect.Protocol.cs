@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Quit,
+            Views, Crossings, Setting, Settings, Drag, Skeleton, Window, Transport, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -569,6 +569,13 @@ public static partial class Diagnostics
                              Arg("id", ArgType.String, "the dial: its registry id (playback.crossfade) or its old row id (crossfade), any case"),
                              Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none (naming an action presses it)")], s_settleArgs),
             },
+            new(Verb.Settings, "settings", "Ask the settings search: q= ranks the dials and feature pointers for a query (id, score, matched fields, title, place; close matches; the bytes the query allocated; the no-match lines), focus= opens a dial or category through the deep-link door as a link does; no args reports the index and every dial whose terms are missing", "settings q=crosfade")
+            {
+                Positional = ["q"],
+                Args = Join([Arg("q", ArgType.String, "the query, as typed into a settings box"),
+                             Arg("focus", ArgType.String, "a settings link: category, category/dialId, dialId, or any old slug or row id (wavee://open?route=settings&arg=...); or a feature pointer's id (pointer.downloads)"),
+                             IntArg("limit", "results to list", "8", 1, 30)], s_settleArgs),
+            },
             new(Verb.Window, "window", "Park the window the way the OS does (minimized, or hidden to the tray) or restore it, blur or re-activate it (active=false|true), and move the cold-maintenance clock ahead so its 30 s services (the scene slab trim) run on the next frame; a parked window's frames skip paint but drain posts, flush and run cold maintenance", "window state=minimized advance=31000")
             {
                 Positional = ["state"], NeedsMount = true, Acts = true,
@@ -611,7 +618,7 @@ public static partial class Diagnostics
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "transport" => Verb.Transport, "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
-            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag, "window" => Verb.Window,
+            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "settings" => Verb.Settings, "drag" => Verb.Drag, "window" => Verb.Window,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };
