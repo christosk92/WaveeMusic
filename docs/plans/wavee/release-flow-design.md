@@ -10,8 +10,9 @@ is a dry run, `-Go` acts, and every step decides from reality whether it is alre
 
 ## 1. The rules in one screen
 
-1. **`main` is what shipped.** Nobody pushes to it, not even the owner. Only the release runner moves it, by merging a
-   released branch.
+1. **`main` is what shipped, and it is GitHub's default branch, always** (owner, 2026-11-19): what a visitor sees on
+   the repo is what they can install from the feed or the Store. Nobody pushes to it, not even the owner. Only the
+   release runner moves it, by merging a released branch right after the feed serves it.
 2. **All work lands on `release/<next>`** (today: `release/0.3.12`), in both repos, through a pull request.
 3. **Every user-facing PR adds one change file** under `changes/unreleased/`. Nobody edits `CHANGELOG.md` or the
    contract version by hand any more; the runner assembles both at release time.
@@ -27,7 +28,7 @@ is a dry run, `-Go` acts, and every step decides from reality whether it is alre
 
 | Branch | Made from | Merges into | Who | Lifetime |
 |---|---|---|---|---|
-| `main` | (exists) | nothing | the runner only (`merge-main`) | forever; protected |
+| `main` | (exists) | nothing | the runner only (`merge-main`) | forever; protected; GitHub's default branch |
 | `release/<v>` | `main`, by the runner (`open-next`), or the shipped tag for a hotfix | `main`, by the runner | everyone's PRs | kept after it ships (protected, read-only by convention): the base of a hotfix and the record of what went in |
 | `feat/`, `fix/`, `perf/`, `docs/`, `chore/<name>` | `release/<next>` | `release/<next>` by PR (merge commit) | owner lanes, contributors' forks | deleted on merge (GitHub auto-delete stays on) |
 | `spike/<topic>` | anywhere | **never merged** | owner lanes | deleted when the decision is written down |
@@ -102,8 +103,12 @@ fork -> branch from release/<next> -> change file (by: <login>) -> PR into relea
      -> ships in the next release: CHANGELOG credit + "Community" badge in What's new
 ```
 
-- **Target branch:** the open `release/<next>`. With decision D1 (section 13) it is GitHub's default branch, so "New pull
-  request" picks it without the contributor knowing the version. `tools/pr-check.py` refuses any other base.
+- **Target branch:** the open `release/<next>`, the newest `release/*` branch. GitHub offers `main` (the default
+  branch, rule 1), so the contributor picks the base by hand; three things catch a PR that targets `main` anyway:
+  `CONTRIBUTING.md` and the PR template say it first; `tools/pr-check.py` refuses a base that is not the open release
+  branch; and the runner's preflight lists PRs into `main`, which `release.ps1 -RetargetPrs` moves to `release/<next>`
+  with one comment each (the owner starts it). Nothing ever merges into `main` by hand, so a PR on the wrong base waits,
+  it never lands.
 - **Credit is data, not prose:** `by: <login>` in the change file. The assembled CHANGELOG line ends with "A community
   contribution from @login, thank you", the What's new highlight gets its `community` field from it, and
   `CONTRIBUTORS.md` gains the login.
@@ -193,7 +198,7 @@ release.ps1 -Version 0.3.12 -Status                  what is done, what is next
 | 8 | `feed` | `wavee-stable` serves this quad and this release's package (**the moment installs see it**) |
 | 9 | `store-pack`, `store-submit` | Partner Center has a committed submission with this Store quad |
 | 10 | `merge-main` | the release head is an ancestor of `main` in both repos. The runner moves open PRs off the branch, then opens and merges a PR `release/<v>` -> `main` (the ruleset allows `main` to change only by PR) |
-| 11 | `open-next` | `release/<v+1>` exists in both repos, is the default branch (D1), and no open PR targets `release/<v>` |
+| 11 | `open-next` | `release/<v+1>` exists in both repos and no open PR targets `release/<v>` or `main` |
 | 12 | `notify` | every closed issue carries the release comment |
 | 13 | `store-poll` | the submission is Published (certification takes hours to days; `-Status` reports it) |
 
@@ -289,7 +294,7 @@ Ranked from first to last resort:
 | `.githooks/pre-commit` | every commit | test files, PlayPlay material |
 | `tools/pr-check.py` | before pushing a PR, and the reviewer runs it | no change file on a user-facing change; a contract change without `contract:`; a PR not based on the open release branch; `Fixes #n` without `issues: [n]`; PlayPlay paths |
 | GitHub rulesets | always | pushes to `main`; deleted or force-pushed release branches; moved or deleted release tags |
-| runner preflight | every release, dry or not | signing, 1Password, `gh`, wrangler, PlayPlay junction, feed monotonic, change files, issue refs, body size, open PRs |
+| runner preflight | every release, dry or not | signing, 1Password, `gh`, wrangler, PlayPlay junction, feed monotonic, change files, issue refs, body size, open PRs (PRs into `main` are listed for `-RetargetPrs`) |
 | runner steps | `-Go` | each step's "done when" |
 | the watch window | 48 h after `feed` | crash rate, Store failures, new issues |
 
@@ -314,7 +319,7 @@ Ranked from first to last resort:
 
 | # | Question | Recommendation |
 |---|---|---|
-| D1 | GitHub's default branch: the open `release/<next>` (moved by `open-next`) or `main`? | `release/<next>`: contributors then target it without thinking, and `main` stays a clean "what shipped" |
+| D1 | GitHub's default branch | **Decided: `main`, always** (owner, 2026-11-19): the default branch shows what is available on the feed and in the Store. PRs on the wrong base are caught as section 4 says |
 | D2 | Keep shipped release branches? | Yes, protected: the base of a hotfix and the record of what went in; the tags stay the immutable record |
 | D3 | May a hotfix ship with no highlight? | Yes: What's new shows the fix list |
 | D4 | Gradual Store rollout for minors (for example 25 % for 48 h), so a bad minor can be halted in the Store? | Yes for minors, no for hotfixes |
@@ -324,8 +329,8 @@ Ranked from first to last resort:
 
 ## 14. Build order (0.3.12 is the first release on this flow)
 
-1. **GitHub** (each step asked first): the rulesets of section 2; `release/0.3.12` in both repos from `main`; the
-   default branch (D1); 0dm's five open PRs moved from `main` to `release/0.3.12`, with a comment.
+1. **GitHub** (each step asked first): the rulesets of section 2; `release/0.3.12` in both repos from `main`; 0dm's
+   five open PRs moved from `main` to `release/0.3.12`, with a comment. The default branch stays `main` (D1).
 2. **`Wavee.ReleaseTool`**: read change files; `changelog assemble`; the contract bump and `contract-history.md`; the
    issue check from `issues:`; the What's new `community` field from `by:`; a hotfix may have no highlight.
 3. **`ContractVersion.cs`**: shrink to the constants and the rules; the history moves out.
