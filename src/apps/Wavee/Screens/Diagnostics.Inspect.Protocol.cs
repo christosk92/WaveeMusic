@@ -264,6 +264,7 @@ public static partial class Diagnostics
             Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
             Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),
             Arg("panelW", ArgType.Float, "the side panel's stored width (DIP; clamped to the theme's drag range)"),
+            Arg("lyrics", ArgType.Enum, "the fake lyrics' shape: word (word-synced) or line (line-synced, no word timing: what `state kind=ai ai=timed words=on` times word by word)", "word", "word|line"),
             Arg("dt", ArgType.Float, "the fixed frame step in ms (default 16; 8.333 samples motion at 120 Hz: `frames 1` + `render` per frame)", "16"),
         ];
 
@@ -499,6 +500,7 @@ public static partial class Diagnostics
                     Arg("ai", ArgType.Enum, "with kind=ai: the AI lyrics settings card's staged status (no module, no download; the next mount puts 'not started' back); lang-failed: a language added to a ready feature failed, setup-failed: a first setup stopped on a language's file, error: the whole feature failed; timed|timing: ready, and the playing track timed by it (done, or a job running), so the lyrics surfaces draw the AI disclosure (stage after a play)", "ready", string.Join("|", InspectSession.AiCases)),
                     Arg("error", ArgType.Enum, "with kind=ai ai=lang-failed|setup-failed|error: the failure kind", "notfound", string.Join("|", InspectSession.AiErrors)),
                     Arg("lang", ArgType.String, "with kind=ai: the language a language failure names (a pack language)", "ja"),
+                    Arg("words", ArgType.Bool, "with kind=ai ai=timed: the playing track's lyrics also take word timing (each line's words share its span; the store upgrade a cached result takes), so the lyrics surfaces draw it word by word (a line-synced fake: mount lyrics=line); the next mount empties the lyrics store", "false"),
                     Arg("runtime", ArgType.Enum, "with kind=runtime: the Playback settings' runtime card's staged status (no runtime installed or loaded; the next mount puts the boot's back); problem: the error bar with the diagnostics doors and Retry setup, setup: the not-set-up bar, ready: the facts", "problem", string.Join("|", InspectSession.RuntimeCases)),
                     Arg("issue", ArgType.Enum, "with kind=runtime runtime=problem: the typed reason the bar names", "wrongarch", string.Join("|", InspectSession.RuntimeIssues)),
                     Arg("hdcp", ArgType.Enum, "with kind=hdcp: the video's screen as the HDCP guard would judge it (no real screen): blocked = protection did not take there (the song plays, every video surface shows the protected-video warning), clear = the window moved to a screen that carries HDCP (the block lifts, the row goes back to its video); the next mount puts the boot's guard back", "blocked", "blocked|clear")], s_settleArgs),

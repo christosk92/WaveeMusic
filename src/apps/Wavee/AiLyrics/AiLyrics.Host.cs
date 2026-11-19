@@ -155,6 +155,36 @@ public static partial class AiLyrics
     /// <summary>A <see cref="Stage"/> also stands a track status: the driver leaves it alone.</summary>
     static bool s_trackStaged;
 
+    /// <summary>The headless inspector's `state kind=ai ai=timed words=on`: the playing track's lyrics as a finished job leaves them, word
+    /// by word. With no module there is no aligner, and a fake track has no voice to align to, so each line's words share the line's span
+    /// evenly; the result then takes the path a cached result takes (<see cref="Results.Overlay"/> over the provider's lines, then
+    /// <see cref="Lyrics.Store.Upgrade"/>), so every lyrics surface draws what it draws for a song the AI timed. Returns the track id, or
+    /// "" when the playing track has no line-synced lyrics in the store (nothing to time). The settings explanation clip of the AI lyrics
+    /// dial is recorded through it (tools/settings-explain).</summary>
+    internal static string StageWordTiming()
+    {
+        string id = PlayingLyricsId();
+        if (id.Length == 0 || Lyrics.Store.Doc(id) is not { Generated: false } doc || !Acceptance.IsLineSynced(doc)) return "";
+        const string language = "en";
+        var lines = new List<Results.ResultLine>(doc.Lines.Count);
+        for (int i = 0; i < doc.Lines.Count; i++)
+        {
+            var line = doc.Lines[i];
+            long start = line.StartMs;
+            long end = line.EndMs ?? (i + 1 < doc.Lines.Count ? doc.Lines[i + 1].StartMs : start + 3000);
+            long span = Math.Max(1L, end - start);
+            var units = Align.Units(line.Text, language);
+            var words = new List<Results.ResultWord>(units.Count);
+            for (int w = 0; w < units.Count; w++)
+                words.Add(new Results.ResultWord(start + span * w / units.Count, start + span * (w + 1) / units.Count, units[w].Text));
+            lines.Add(new Results.ResultLine(start, end, words));
+        }
+        var result = new Results.ResultDoc(id, PackVersion, language, Rules.DecisionVersion, doc.Provider, 0, 0, lines);
+        if (Results.Overlay(result, doc, 0, language) is not { } timed) return "";
+        Lyrics.Store.Upgrade(timed);
+        return id;
+    }
+
     static Action<Action> s_post = static a => a();
     static CancellationTokenSource? s_downloadCts;
     static CancellationTokenSource? s_loadCts;

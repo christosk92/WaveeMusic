@@ -254,10 +254,10 @@
   <!-- ── Explanation clips (settings rework, handoff/settings-2026-11-18/DESIGN.md 6.5) ─────────────────────────────────────
        A Release build fails when a dial on the badge list (Screens/SettingsExplain.cs) lacks its clip for a theme or app mode it applies
        to (assets/settings-explain/<theme>/<mode>/<clip>.webp), or a clip breaks the size budget: the just-built exe checks its own table
-       (Wavee.exe with the check-explainer-clips switch and the folder; nothing boots). OFF until the clips exist: the lane that commits
-       them (phase 6) sets WaveeExplainerClipCheck to true here. Never in a Debug build, never in a design-time build. -->
+       (Wavee.exe with the check-explainer-clips switch and the folder; nothing boots). ON by default since the clips landed (phase 6);
+       /p:WaveeExplainerClipCheck=false skips it for one build. Never in a Debug build, never in a design-time build. -->
   <PropertyGroup>
-    <WaveeExplainerClipCheck Condition="'$(WaveeExplainerClipCheck)' == ''">false</WaveeExplainerClipCheck>
+    <WaveeExplainerClipCheck Condition="'$(WaveeExplainerClipCheck)' == ''">true</WaveeExplainerClipCheck>
   </PropertyGroup>
   <Target Name="WaveeCheckExplainerClips" AfterTargets="Build"
           Condition="'$(Configuration)' == 'Release' and '$(WaveeExplainerClipCheck)' == 'true' and '$(DesignTimeBuild)' != 'true'">

@@ -72,6 +72,13 @@ versions separately under `v*` and is not tracked in this file.)
   whose effect is easier to see than to describe carry an info button that says what changes, and the settings that had
   no row before (output device, podcast speed, the Liked Songs cover, the list columns, the mini player's options,
   private session) are here too.
+- **Settings show what they change.** More than twenty settings whose effect is easier seen than read now open a short
+  clip of the real app, before and after, in every theme and in light and dark: the lyrics blur, word-by-word AI lyrics,
+  the player styles and their finish, the full-screen layout and its spectrum, the mini player's face and colour, the
+  countdown before the next video, and crossfade, normalization and loudness as drawings (a tip never makes a sound),
+  plus each theme's own: WinUI's navigation pane, row density, artwork in rows, the Liked Songs cover and fast
+  navigation; Classic's sidebar, track list style, marquee text and fast navigation; Zune's background. Each loop sits
+  in a quiet frame in the theme's colours, with two small dots that tell before from after.
 
 - **Crossfade in the queue (every theme).** The queue, and the full screen's Up next, now have Crossfade right beside
   Autoplay, as the same kind of switch, with its length ("5 s") next to it; the length opens Settings at the crossfade

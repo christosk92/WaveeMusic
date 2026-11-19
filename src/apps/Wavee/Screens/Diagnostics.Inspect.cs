@@ -1004,12 +1004,20 @@ public static partial class Diagnostics
             if (!optionsForNext) InspectKit.ForgetThemeOptions();   // the mount's ActivateTheme then reads the defaults
         }
 
-        /// <summary>`mount marquee=on|off remote=<name> panelW=<dip>`, set before the mount: the app's marquee setting (Settings > Appearance), a remote output
-        /// the play bar says it is playing on (`--fake` has no Connect cluster; without `remote` the real roster decides again), and the side panel's stored
-        /// width (clamped to the theme's drag range when the panel opens).</summary>
+        /// <summary>`mount marquee=on|off remote=<name> panelW=<dip> lyrics=word|line`, set before the mount: the app's marquee setting (Settings > Appearance), a remote output
+        /// the play bar says it is playing on (`--fake` has no Connect cluster; without `remote` the real roster decides again), the side panel's stored
+        /// width (clamped to the theme's drag range when the panel opens), and the shape the fake lyrics answer in (word: word-synced, the default;
+        /// line: line-synced, no word timing; every mount sets it, and a change empties the lyrics store so each track is answered again).</summary>
         static bool BarPrefs(Inspect.Args a, out string error)
         {
             error = "";
+            string lyrics = a.Str("lyrics", "word").ToLowerInvariant();
+            if (lyrics is not ("word" or "line")) { error = "lyrics is word or line"; return false; }
+            if (Lyrics.Fixtures.LineSynced != (lyrics == "line"))
+            {
+                Lyrics.Fixtures.LineSynced = lyrics == "line";
+                Lyrics.Store.Clear();
+            }
             if (a.Has("marquee"))
             {
                 string m = a.Str("marquee").ToLowerInvariant();
