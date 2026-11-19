@@ -21,6 +21,7 @@ using System.Collections.Immutable;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Foundation;
+using FluentGpu.Localization;
 using FluentGpu.Scene;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -114,6 +115,16 @@ public sealed record ZuneHomeBoardLayout
 
     /// <summary>The pack metrics at a board width: square cells (unit 0: the column width).</summary>
     public PackMetrics Metrics(float width) => new(ColumnsAt(width), 0f, Gap, GroupGap);
+
+    /// <summary>The width a turned-over entry's back has at a board width: a band's is the board's; a tile's is its columns, at least
+    /// <see cref="OpenMinCols"/> and at most the board's.</summary>
+    public float BackWidth(HomeSize size, float width)
+    {
+        if (size == HomeSize.Full) return width;
+        int columns = ColumnsAt(width);
+        int span = Math.Min(columns, Math.Max((int)OpenMinCols, (size switch { HomeSize.L => L, HomeSize.M => M, _ => S }).Cols));
+        return span * CellAt(width) + (span - 1) * Gap;
+    }
 }
 
 /// <summary>Zune's board records.</summary>
@@ -226,8 +237,23 @@ public static class ZuneHomeBoardRules
     public const float BackPadX = 14f, BackPadTop = 10f, BackPadBottom = 14f, BackHeadH = 40f, BackLabelH = 18f, BackWordH = 40f, BackWordGap = 18f,
         BackOptionGap = 12f;
 
+    /// <summary>How far a word's hit reaches past its ink on each side: half the words' gap, so a line of words is one unbroken band of targets and a
+    /// short word ("off", 24 wide) still takes a 40 target. The word's box hugs its ink, so every line's first glyph stands on the label column (a box
+    /// widened to the target centred a short word in it: "off" stood 8 right of the clock's words).</summary>
+    public const float BackWordSlop = BackWordGap / 2f;
+
     /// <summary>How many words fit on a line of the back at its least width (4 cells): the open extent reserves one line per this many values.</summary>
     public const int BackWordsPerLine = 3;
+
+    /// <summary>The back's app-wide settings (settings design 5.3): the group's label in the micro voice (11/14, its text box 15), and a note's line in the
+    /// 13/18 meta voice with the lines it takes where the back's width is not known (3: the Compact strip wraps the Settings page's sentence over three).</summary>
+    public const float BackMicroH = 15f, BackNoteLineH = 18f;
+    public const int BackNoteLines = 3;
+
+    /// <summary>What the open extent counts a character as, to find where a setting's words and note wrap at the back's width: a word in the 22/28
+    /// light voice (about 10.5; a word's box is its ink), a note's character in the 13/18 meta voice (about 6.8). A guess on the long side only
+    /// leaves air under the words; on the short side the back scrolls, as any back with more words than its box does.</summary>
+    public const float BackWordCharW = 10.5f, BackNoteCharW = 6.8f;
 
     /// <summary>The undo word: shown for 5 s after a change, then at half strength; its fade 200 ms; the slop of its target.</summary>
     public const float UndoFreshMs = 5000f, UndoRest = 0.5f, UndoFadeMs = 200f, UndoPadX = 4f, UndoPadY = 6f, UndoGap = 16f;
@@ -315,8 +341,9 @@ public static class ZuneHomeBoardRules
     }
 
     /// <summary>The turned-over tile's least height: the head, then per option its label over its lines of words (one line per
-    /// <see cref="BackWordsPerLine"/> values), the live choice one more option; the back scrolls when the words need more.</summary>
-    public static float OpenExtent(HomeSourceDef? source)
+    /// <see cref="BackWordsPerLine"/> values), the live choice one more option, then the app-wide settings, whose long words wrap where the back's
+    /// width (<paramref name="backWidth"/>, <see cref="ZuneHomeBoardLayout.BackWidth"/>; 0: not known) puts them; the back scrolls when the words need more.</summary>
+    public static float OpenExtent(HomeSourceDef? source, float backWidth = 0f)
     {
         if (source is null) return 0f;
         float h = BackPadTop + BackHeadH + BackPadBottom;
@@ -328,7 +355,36 @@ public static class ZuneHomeBoardRules
             n++;
         }
         if (n > 0) h += n * BackOptionGap;
+        // The feature's app-wide settings (the daylist's clock and refresh): the group's micro label, then each as an option is, and its note while one
+        // holds (a subscribing read: the board re-packs when it comes).
+        if (!source.Dials.IsDefaultOrEmpty)
+        {
+            float avail = backWidth - 2f * BackPadX;
+            if (source.DialsLabelKey is not null) h += BackOptionGap + BackMicroH;
+            foreach (var d in source.Dials)
+            {
+                int lines = avail > 0f ? WordLines(d.ChoiceKeys, avail) : Math.Max(1, (d.ChoiceKeys.Length + BackWordsPerLine - 1) / BackWordsPerLine);
+                // Wrapped lines stand the words' gap apart (the row's gap runs between its lines too).
+                h += BackOptionGap + BackLabelH + lines * BackWordH + (lines - 1) * BackWordGap;
+                if (d.NoteKey?.Invoke() is { } note)
+                    h += (avail > 0f ? Math.Max(1, (int)MathF.Ceiling(Loc.Get(note).Length * BackNoteCharW / avail)) : BackNoteLines) * BackNoteLineH;
+            }
+        }
         return h;
+    }
+
+    /// <summary>The lines a setting's words take at <paramref name="avail"/> wide, filled as the back's wrapping row fills them.</summary>
+    static int WordLines(ImmutableArray<string> keys, float avail)
+    {
+        int lines = 1;
+        float x = 0f;
+        foreach (var key in keys)
+        {
+            float w = Loc.Get(key).Length * BackWordCharW;
+            if (x > 0f && x + BackWordGap + w > avail) { lines++; x = w; }
+            else x += (x > 0f ? BackWordGap : 0f) + w;
+        }
+        return lines;
     }
 
     /// <summary>The ⋯ menu's height (its words) and the labels' row: what the bar grows by when it opens.</summary>

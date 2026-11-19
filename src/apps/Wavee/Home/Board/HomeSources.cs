@@ -13,6 +13,30 @@ public sealed record OptionValue(string Value, string LabelKey);
 public sealed record OptionDef(string Key, string LabelKey, OptionKind Kind, ImmutableArray<OptionValue> Values,
     string Default, string? EntityKind = null);
 
+/// <summary>An app-wide setting a tile's panel draws after the tile's own options (settings design 5.1): not the tile's, but the feature's, so it reads
+/// the value its Settings row reads and writes through the writer that row calls. A pick in the panel shows in Settings and the reverse.</summary>
+public sealed record HomeTileDial
+{
+    /// <summary>A stable id, the tail of its node keys ("daylistClock").</summary>
+    public required string Id { get; init; }
+
+    /// <summary>Its label in the panel (a loc key: "Clock").</summary>
+    public required string LabelKey { get; init; }
+
+    /// <summary>Its choices' labels (loc keys), in value order: the index is the value.</summary>
+    public required ImmutableArray<string> ChoiceKeys { get; init; }
+
+    /// <summary>The chosen index (a subscribing read of the setting).</summary>
+    public required Func<int> Value { get; init; }
+
+    /// <summary>Choose an index (the Settings row's writer).</summary>
+    public required Action<int> Choose { get; init; }
+
+    /// <summary>The reason a pick does not act as it says, while that holds (a loc key; a subscribing read), else null. The daylist's refresh: Windows
+    /// notifications are off.</summary>
+    public Func<string?>? NoteKey { get; init; }
+}
+
 public sealed record HomeSourceDef
 {
     public required string Id { get; init; }                    // "widget.nowPlaying", "pin", "spotify.section", "spotify.fill", ...
@@ -24,8 +48,14 @@ public sealed record HomeSourceDef
     public required HomeBudget Budget { get; init; }
     public required string DefaultGroup { get; init; }          // "today" | "pinned" | "spotify"
     public ImmutableArray<OptionDef> Options { get; init; } = [];
-    public bool Live { get; init; }                             // gets the "live" toggle
+    public bool Live { get; init; }                             // gets the "live" toggle: only a source whose host shows the still face when paused
     public string Glyph { get; init; } = "";
+
+    /// <summary>The app-wide settings its panel draws after its options (<see cref="HomeTileDials"/>), under <see cref="DialsLabelKey"/>.</summary>
+    public ImmutableArray<HomeTileDial> Dials { get; init; } = [];
+
+    /// <summary>The small label over <see cref="Dials"/> ("For every daylist", a loc key): they are not this tile's, they are every one's.</summary>
+    public string? DialsLabelKey { get; init; }
 
     /// <summary>True when the source declares <paramref name="size"/> (Auto is always allowed).</summary>
     public bool Declares(HomeSize size)
@@ -44,8 +74,8 @@ public sealed record HomeSourceDef
         return Sizes[(i + 1) % Sizes.Length];
     }
 
-    /// <summary>Has anything for the open tile to show: options, or the live toggle.</summary>
-    public bool HasOptions => !Options.IsDefaultOrEmpty || Live;
+    /// <summary>Has anything for the open tile to show: options, the live toggle, or app-wide settings.</summary>
+    public bool HasOptions => !Options.IsDefaultOrEmpty || Live || !Dials.IsDefaultOrEmpty;
 }
 
 public sealed class HomeSourceRegistry
@@ -110,12 +140,14 @@ public sealed class HomeSourceRegistry
                     live,
                 ],
             },
+            // Not live: its host never read the paused flag, so "Live updates" and "Pause live updates" did nothing (owner, 2026-11-18). Its one
+            // per-second motion is the clock, which the Clock setting already stills ("Update time only"). Its panel draws its two real settings.
             new HomeSourceDef
             {
                 Id = Daylist, TitleKey = "home.board.source.daylist.title", DescriptionKey = "home.board.source.daylist.description",
                 SearchTermsKey = "home.board.source.daylist.terms", Sizes = [HomeSize.M, HomeSize.L, HomeSize.Full],
-                CanonicalAuto = HomeSize.Full, Budget = HomeBudget.Hz1, DefaultGroup = HomeDocs.Today, Live = true, Glyph = "clock",
-                Options = [live],
+                CanonicalAuto = HomeSize.Full, Budget = HomeBudget.Hz1, DefaultGroup = HomeDocs.Today, Glyph = "clock",
+                Dials = HomeTileDials.Daylist, DialsLabelKey = "home.board.dial.everyDaylist",
             },
             new HomeSourceDef
             {

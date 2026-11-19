@@ -329,6 +329,8 @@ public sealed class HomeTileOptionsHost : Component
             Live = e.Live,
             Paused = () => OptionOf(id, "live") == "0",
             ToggleLive = e.Live ? () => verbs.ToggleLive(id) : null,
+            Dials = source?.Dials ?? [],
+            DialsLabelKey = source?.DialsLabelKey,
             Done = () => verbs.Close(refocus: true),
         });
     }

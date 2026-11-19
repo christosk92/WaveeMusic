@@ -57,6 +57,9 @@ internal static class ZuneHomeDaylist
         // The strip's own height (a wrapped title grows it): the art's width follows it, so the cover keeps its shape. Only a form with an art COLUMN
         // writes it: the bled forms' height (the art is their ground) would hand the strip, on the crossing back, an art sized for a taller strip.
         var stripH = ctx.Hooks.UseSignal(lay.DaylistH);
+        // On the pinned board the strip stands in a tile: its right click and its "…" ring open ONE menu, the playlist's rows then the tile's (with customize
+        // switched off, "options": HomeTileMenus, ZuneHomeTiles).
+        var tile = ctx.Hooks.UseContext(HomeTileMenus.Current);
         var zone = props.Zone;
         if (zone.Items.Count == 0) return new BoxEl();
         var card = zone.Items[0];
@@ -68,7 +71,7 @@ internal static class ZuneHomeDaylist
         string title = card.Title;
         bool pauses = props.Pauses;
         var host = props.Overlay;
-        var menu = HomeCardNav.MenuOf(in card);
+        var menu = HomeTileMenus.Merge(HomeCardNav.MenuOf(in card), tile);
 
         Element[] rings =
         [

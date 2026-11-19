@@ -14,8 +14,13 @@
 // customizing: owner, 2026-11-16, no toolbar at rest), a held press (600 ms mouse, 500 ms touch), a right-click or Enter
 // on a tile. The selected tile comes forward, the others fall back to 94 % and dim (`ZuneHomeTiles`); its badges unpin and cycle its size; a tap on
 // another tile selects it; arrows move the selected tile, Delete unpins it, Escape (or "done", or a tap away from the tiles) leaves. Only the selected
-// tile drags (`PackReorder.CanLift`). OPTIONS turn the selected tile over (`TileMotion.TurnOver`): its back lists the choices as words
+// tile drags (`PackReorder.CanLift`). OPTIONS turn the selected tile over (`TileMotion.TurnOver`; a band too): its back lists the choices as words
 // (`ZuneHomeTileBack`), applied at once; the visit is one undo step (the core's batch).
+//
+// PICKED FOR ITS OPTIONS (customize is off for the release, `HomeCustomize`; owner, 2026-11-18: the daylist's options must be reachable): outside
+// customize a held press or a right-click on a tile that has options, its content menu's "options" row, or the Menu key selects it (`Pick`). It wears the
+// selected outline (nothing recedes, no badges) and the app bar comes up with "options" and "done". Its back closing, "done", Escape or a tap away lets go.
+// An open back (picked or customizing) is brought wholly above the bar on the page's glide, its reserve under it (`RevealOpen`).
 //
 // THE BOX IS THE PACK'S: a band's height is its body's (packed at the rules' estimate, then at the body's measured height, followed by the grid's
 // 250 ms re-flow); every other tile is f(size class, columns, the group's fill). Nothing a tile loads moves anything.
@@ -29,6 +34,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
@@ -83,10 +89,25 @@ internal static class ZuneHomeBoard
         if (speak) verbs.Say(Strings.Theme.Zune.Home.Selected(name: NameOf(model, id)));
     }
 
-    /// <summary>Leave customize ("done", Escape, a tap away): the tiles come back, the bar goes back to customize.</summary>
+    /// <summary>Outside customize, select <paramref name="id"/> for its options (a held press, a right-click, its menu's "options" row, the Menu key): it
+    /// wears the selected outline and the app bar comes up with "options" and "done" (owner, 2026-11-18). Only a tile that has options.</summary>
+    internal static void Pick(HomeBoardView view, IHomeBoardVerbs verbs, BoardModel model, string id)
+    {
+        if (view.Editing.Peek() || !CanTurn(model, id)) return;
+        Select(view, verbs, model, id);
+    }
+
+    /// <summary>Leave customize ("done", Escape, a tap away): the tiles come back, the bar goes back to customize. Outside customize: the tile picked for
+    /// its options turns back and lets go, and the bar slides away.</summary>
     internal static void Done(HomeBoardView view, IHomeBoardVerbs verbs)
     {
-        if (!view.Editing.Peek()) return;
+        if (!view.Editing.Peek())
+        {
+            if (view.SelectedId.Peek() is null) return;
+            if (view.OpenId.Peek() is not null) verbs.Close(refocus: true);
+            view.SelectedId.Value = null;
+            return;
+        }
         if (view.OpenId.Peek() is not null) verbs.Close(refocus: false);
         // Focus stays where it is: moving it to the tile would bring the tile into view, a scroll jump when "done" is pressed far from it.
         view.Editing.Value = false;
@@ -102,13 +123,17 @@ internal static class ZuneHomeBoard
         else verbs.Open(id);
     }
 
-    /// <summary>The selected entry can turn over (it declares options or is live).</summary>
+    /// <summary>The selected entry can turn over (<see cref="HasBack"/>).</summary>
     internal static bool CanTurn(BoardModel model, string? id)
     {
         if (id is null) return false;
         int i = model.IndexOf(id);
-        return i >= 0 && model.Entries[i] is { } e && (e.HasOptions || e.Live) && e.Source is { Options.Length: > 0 };
+        return i >= 0 && HasBack(model.Entries[i]);
     }
+
+    /// <summary>The entry has a back to turn to: options of its own, or app-wide settings its panel draws (the daylist's).</summary>
+    internal static bool HasBack(BoardEntry e)
+        => e.HasOptions && e.Source is { } s && (!s.Options.IsDefaultOrEmpty || !s.Dials.IsDefaultOrEmpty);
 
     /// <summary>Unpin (or hide) the selected tile and select the next one.</summary>
     internal static void RemoveSelected(HomeBoardView view, IHomeBoardVerbs verbs, BoardModel model)
@@ -176,7 +201,11 @@ internal static class ZuneHomeBoard
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
         readonly Dictionary<string, Signal<bool>> _turned = new(StringComparer.Ordinal);
         readonly Signal<bool> _titleHover = new(false);
-        readonly Action _reveal;
+        readonly Action _reveal, _revealOpen;
+        NodeHandle _pack;
+        Action<NodeHandle>? _onPack;
+        string? _shownOpen;
+        float _shownOpenH;
         BoardProps? _p;
         PackReorder<ZuneBoardItem>? _reorder;
         PackGridOptions<ZuneBoardItem>? _resting, _customizing;
@@ -184,6 +213,7 @@ internal static class ZuneHomeBoard
         Func<PackBox, HomeTileForm>? _formRule, _pinFormRule;
         TimerHandle _revealTimer;
         bool _rendered, _wasAll;
+        string? _openWas;
 
         static readonly Func<PackBox, HomeTileForm> s_full = static _ => HomeTileForm.Full;
         static readonly Func<PackBox, HomeTileForm> s_medium = static _ => HomeTileForm.M;
@@ -191,6 +221,35 @@ internal static class ZuneHomeBoard
         public BoardView()
         {
             _reveal = () => { if (_p?.Board.View.RingId.Peek() is { } id) _p.Board.Grid.BringIntoView(HomeBoardKeys.Tile(id)); };
+            _revealOpen = RevealOpen;
+        }
+
+        /// <summary>An open back stands wholly above the app bar, which lies over the page's foot while a tile is open (content never hides under it). After
+        /// layout, once the grid has packed the back at its open extent, the page's scroller makes the least move on its glide that shows the back's packed
+        /// box and the bar's reserve under it (<see cref="ZuneHomeBoardLayout.FootReserve"/>, the reserve the board keeps under its last row), never past the
+        /// back's top. Again when the open back's height changes (a note under a setting's words, a width that re-wraps them); a re-pack that only moves
+        /// it scrolls nothing, so a page the listener scrolled away from the back stays where it is.</summary>
+        void RevealOpen()
+        {
+            var p = _p;
+            if (p is null) return;
+            string? open = p.Board.View.OpenId.Value;
+            _ = p.Board.Grid.LayoutVersion.Value;   // after every re-pack: the open extent lands on the pack
+            if (open is null) { _shownOpen = null; return; }
+            if (!p.Board.Grid.TryRect(HomeBoardKeys.Tile(open), out var box)) return;
+            if (open == _shownOpen && MathF.Abs(box.H - _shownOpenH) <= 0.5f) return;
+            var scene = Context.Scene;
+            if (scene is null || _pack.IsNull || !scene.IsLive(_pack)) return;
+            var viewport = scene.Parent(_pack);
+            while (!viewport.IsNull && !scene.HasScroll(viewport)) viewport = scene.Parent(viewport);
+            if (viewport.IsNull || scene.ScrollHandleFor(viewport) is not { } scroll) return;
+            var content = scene.ScrollRef(viewport).ContentNode;
+            if (content.IsNull || !scene.IsLive(content)) return;
+            _shownOpen = open;
+            _shownOpenH = box.H;
+            // The grid is the pack box's only child: the back's top in the scroller's content is the box's plus its packed y.
+            double top = scene.AbsoluteLayoutRect(_pack).Y - scene.AbsoluteLayoutRect(content).Y + box.Y;
+            scroll.BringIntoView(top, Math.Min(box.H + p.Lay.FootReserve, scroll.Viewport), float.NaN, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide);
         }
 
         // A measured body's height lands on its box in the frame that laid it out (Measured): the box follows its body with no frame between, so
@@ -241,15 +300,21 @@ internal static class ZuneHomeBoard
             ZuneHomeTiles.Shown = () => model.Peek();
             var items = UseComputed(() => ItemsOf(_p!.Board.Model.Value));
             bool editing = view.Editing.Value;
+            bool picked = !editing && view.SelectedId.Value is not null;   // a tile picked for its options, outside customize (Pick)
             bool all = view.Add.Value.Kind == HomeAddSurfaceKind.AllItems;
             string? open = view.OpenId.Value;
             _revealTimer = UseTimeout(_reveal, B.RecedeMs + 50f);
 
-            // The turned tiles follow the open id (a signal per tile, so only the tile that turns re-renders).
+            // The turned tiles follow the open id (a signal per tile, so only the tile that turns re-renders). Outside customize a tile is picked only
+            // for its options (Pick): once its back closes ("done" on it, "options" again, Escape), it lets go and the bar slides away.
             UseLayoutEffect(() =>
             {
                 foreach (var kv in _turned) { bool t = kv.Key == open; if (kv.Value.Peek() != t) kv.Value.Value = t; }
+                if (open is null && _openWas is { } was && !view.Editing.Peek() && view.SelectedId.Peek() == was) view.SelectedId.Value = null;
+                _openWas = open;
             }, DepKey.From(open?.GetHashCode() ?? 0));
+            // The open back, wholly above the app bar (RevealOpen): auto-tracked, after layout.
+            UseLayoutEffect(_revealOpen);
 
             // Customize always has a selected tile (the first, when it was entered with none: the inspector's `home do=edit`, a mode set elsewhere).
             UseLayoutEffect(() =>
@@ -298,7 +363,7 @@ internal static class ZuneHomeBoard
             _rendered = true;
             Element section = all
                 ? ZuneHomeAllItems.Section(board, p.Lay, rendered)
-                : BoardSection(board, p.Lay, PackGrid.Create(items, _template, editing ? _customizing : _resting), editing, rendered);
+                : BoardSection(board, p.Lay, PackGrid.Create(items, _template, editing ? _customizing : _resting), editing || picked, rendered);
 
             return new BoxEl
             {
@@ -371,8 +436,9 @@ internal static class ZuneHomeBoard
             };
         }
 
-        /// <summary>The board section: the grid, the round arrow to all items, the app bar's reserve. A tap on it (not on a tile) is "done".</summary>
-        Element BoardSection(HomeBoardProps board, ZuneHomeBoardLayout lay, Element grid, bool editing, bool rendered)
+        /// <summary>The board section: the grid, the round arrow to all items, the app bar's reserve. A tap on it (not on a tile) is "done" while
+        /// customizing or while a tile is picked for its options (<paramref name="tapAway"/>).</summary>
+        Element BoardSection(HomeBoardProps board, ZuneHomeBoardLayout lay, Element grid, bool tapAway, bool rendered)
         {
             float slide = Design.Reduced ? 0f : -B.SectionSlide;
             var view = board.View;
@@ -383,7 +449,7 @@ internal static class ZuneHomeBoard
                 Enter = rendered ? new EnterExit(Opacity: 0f, Dx: slide, Active: true) : null,
                 Exit = new EnterExit(Opacity: 0f, Dx: slide, Active: true),
                 Transition = MotionTokenDef.Eased(B.RecedeMs, Easing.FluentDecelerate, ReducedMotionPolicy.KeepFade),
-                OnClick = editing ? () => Done(view, verbs) : null,
+                OnClick = tapAway ? () => Done(view, verbs) : null,
                 Children =
                 [
                     // The pack's height changes with a re-pack (a crossing's new columns, a resize, a tile turned over): its presented height eases on the
@@ -391,6 +457,7 @@ internal static class ZuneHomeBoard
                     new BoxEl
                     {
                         Key = "home:board-pack", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                        OnRealized = _onPack ??= h => _pack = h,
                         Layout = Design.Reduced ? null : ZuneHomeRules.ChapterResize, Children = [grid],
                     },
                     // The round arrow to all items only while the add surface is on (HomeCustomize, owner 2026-11-18).
@@ -439,7 +506,7 @@ internal static class ZuneHomeBoard
                     ? new PackEntry(PackEntryKind.Row, Flags: _follows.Contains(e.Id) ? PackFlags.Follows : PackFlags.None, Extent: grid)
                     : new PackEntry(PackEntryKind.Row, Extent: ShortcutGrid.Extent(_p.Board.Model.Value, Shortcuts(), _width.Value));
             }
-            float open = _p.Board.View.OpenId.Value == e.Id ? ZuneHomeBoardRules.OpenExtent(e.Source) : 0f;
+            float open = _p.Board.View.OpenId.Value == e.Id ? ZuneHomeBoardRules.OpenExtent(e.Source, lay.BackWidth(ZuneHomeBoardRules.SizeOf(e), _width.Value)) : 0f;
             float full = 0f;
             bool measured = false;
             if (ZuneHomeBoardRules.SizeOf(e) == HomeSize.Full)
@@ -478,7 +545,7 @@ internal static class ZuneHomeBoard
             {
                 // Every tile can turn over: the front is the tile its box carries, the back its options (only the open tile builds it).
                 var rule = e.Raw is PinSource ? _pinFormRule! : _formRule!;
-                if (e.Source is not { Options.Length: > 0 }) return board.Tile(e, cell, rule);
+                if (!HasBack(e)) return board.Tile(e, cell, rule);
                 var entry = e;
                 return TileMotion.TurnOver(TurnedOf(e.Id), () => board.Tile(entry, cell, rule), () => board.Options(entry));
             }
@@ -486,6 +553,23 @@ internal static class ZuneHomeBoard
             var extent = ExtentOf(e.Id);
             string id = e.Id;
             var tile = grid ? ShortcutGrid.Create(board, Shortcuts(), _width.Peek()) : board.Tile(e, cell, s_full);
+            var band = Band(extent, id, tile);
+            // A band with a back (the daylist strip: its clock and refresh settings) turns over like a tile. Its box is the pack's: its body's measured
+            // height, at least its back's (EntryOf); the measure is the front's, which the back leaves standing while it shows. A band's wrapper takes
+            // its content's height and the back's words scroll in a viewport with none of its own, so the back stands at the band's packed height.
+            if (grid || !HasBack(e)) return band;
+            var bandEntry = e;
+            return TileMotion.TurnOver(TurnedOf(id), () => band, () => new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Height = Prop.Of(() => cell.Box.Value.Height),
+                Children = [board.Options(bandEntry)],
+            });
+        }
+
+        /// <summary>A band's body inside its measuring box: the body lays out at its own height, which <see cref="Measured"/> hands the pack.</summary>
+        Element Band(Signal<float> extent, string id, Element tile)
+        {
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
@@ -580,6 +664,8 @@ internal static class ZuneHomeBoard
             if (board.View.Editing.Peek()) return;
             if (HomeTileMenus.TryOpen(id)) return;
             Customize(board.View, board.Verbs, board.Model.Peek(), id);
+            // Customize switched off (HomeCustomize): a tile that has options is picked for them (Pick), as a right-click on it does.
+            Pick(board.View, board.Verbs, board.Model.Peek(), id);
         }
 
         /// <summary>The board's keys while focus is inside it (single keys stand aside for a text editor).</summary>
@@ -596,7 +682,7 @@ internal static class ZuneHomeBoard
             {
                 if (ZuneHomeAllItems.Escape(board)) { e.Handled = true; return; }
                 if (view.OpenId.Peek() is not null) { verbs.Close(refocus: true); e.Handled = true; return; }
-                if (view.Editing.Peek()) { Done(view, verbs); e.Handled = true; }
+                if (view.Editing.Peek() || view.SelectedId.Peek() is not null) { Done(view, verbs); e.Handled = true; }
                 return;
             }
             if (editor) return;
@@ -609,6 +695,12 @@ internal static class ZuneHomeBoard
                 if (e.KeyCode == Keys.Enter && e.Mods == KeyModifiers.None && focused.Length > 0 && HomeCustomize.EditMode)
                 {
                     Customize(view, verbs, model, focused);
+                    e.Handled = true;
+                }
+                // The tile picked for its options: Enter turns it over and back, as the bar's "options" does.
+                else if (e.KeyCode == Keys.Enter && e.Mods == KeyModifiers.None && focused.Length > 0 && view.SelectedId.Peek() == focused && CanTurn(model, focused))
+                {
+                    ToggleOptions(view, verbs);
                     e.Handled = true;
                 }
                 return;

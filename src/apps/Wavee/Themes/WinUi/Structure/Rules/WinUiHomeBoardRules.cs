@@ -10,10 +10,12 @@
 // tier record at the fitted width, and the board takes that same number (`FullExtent`, the estimate a full row packs at before its body has laid
 // out once), then the body's measured height (`WinUiHomeBoard`): the box follows the body by the 250 ms re-flow, never by a snap.
 
+using System.Collections.Immutable;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
+using FluentGpu.Dsl;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
@@ -195,6 +197,12 @@ public static class WinUiHomeBoardRules
     /// <summary>An open tile's options: a field row (a label over its control) and the head ("Customize …", Done).</summary>
     public const float OptionsHeadH = 48f, OptionRowH = 64f, OptionRadioRowH = 32f;
 
+    /// <summary>The app-wide settings under an open tile's options (settings design 5.3): the caption label's line ("For every daylist", 16), a
+    /// RadioButtons header's line (the 14 body text's own line, 19), and the note's line (16) with the lines it may take (3: the narrowest open card,
+    /// Compact's, wraps the Settings page's sentence over three).</summary>
+    public const float DialLabelH = 16f, DialHeaderH = 19f, DialNoteLineH = 16f;
+    public const int DialNoteLines = 3;
+
     /// <summary>Up next and Recents list rows inside a card: a 40 row with a 32 cover.</summary>
     public const float ListRowH = 40f, ListArt = 32f;
 
@@ -246,13 +254,31 @@ public static class WinUiHomeBoardRules
     /// <summary>A hidden entry (a placed section the answer lacks, a hidden feed section) keeps its place and takes no room.</summary>
     public static bool IsHidden(BoardEntry e) => e.Hidden;
 
-    /// <summary>The open tile's height: the head and one row per option (a radio group grows by its values under five), plus the live toggle.</summary>
+    /// <summary>The open tile's height: the head and one row per option (a radio group grows by its values under five), plus the live toggle, then
+    /// the app-wide settings (<see cref="DialsExtent"/>), so the card is as tall as what it holds.</summary>
     public static float OpenExtent(BoardEntry e, HomeSourceDef? source, WinUiHomeBoardLayout lay)
     {
         if (source is null) return 0f;
         float h = OptionsHeadH + CardPad;
         foreach (var o in source.Options)
             h += o.Kind == OptionKind.Choice && o.Values.Length < 5 ? OptionRadioRowH * o.Values.Length + OptionRowH - OptionRadioRowH : OptionRowH;
+        h += DialsExtent(source.Dials, source.DialsLabelKey is not null);
         return MathF.Max(h, lay.M.Rows * lay.Unit + (lay.M.Rows - 1) * lay.Gap);
+    }
+
+    /// <summary>The app-wide settings' rows as <c>WinUiHomeTileOptions</c> lays them out: the panel's top padding (the sum above leaves it out), then
+    /// each a gap below the last: the label, every setting's field (a RadioButtons group: its header, its values and the space between them; a
+    /// ComboBox field from five values) and, while one holds, its note. A note read here is a subscribing read: it re-packs the board when it comes.</summary>
+    static float DialsExtent(ImmutableArray<HomeTileDial> dials, bool label)
+    {
+        if (dials.IsDefaultOrEmpty) return 0f;
+        float h = Spacing.S + (label ? Spacing.M + DialLabelH : 0f);
+        foreach (var d in dials)
+        {
+            int n = d.ChoiceKeys.Length;
+            h += Spacing.M + (n < RadioMax ? DialHeaderH + RadioButtons.HeaderGap + n * OptionRadioRowH + (n - 1) * RadioButtons.RowSpacing : OptionRowH);
+            if (d.NoteKey?.Invoke() is not null) h += Spacing.M + DialNoteLines * DialNoteLineH;
+        }
+        return h;
     }
 }

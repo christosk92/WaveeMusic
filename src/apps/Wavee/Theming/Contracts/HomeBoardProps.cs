@@ -362,6 +362,13 @@ public sealed record HomeTileOptionsProps
     /// <summary>Pause or resume live updates.</summary>
     public Action? ToggleLive { get; init; }
 
+    /// <summary>The app-wide settings the source's panel draws after its options (the daylist's Clock and "Tell me when it refreshes"): each is the
+    /// Settings row's own value and writer, drawn in the panel's grammar (settings design 5.1). Empty for most sources. Contract 1.118.</summary>
+    public ImmutableArray<HomeTileDial> Dials { get; init; } = [];
+
+    /// <summary>The small label over <see cref="Dials"/> ("For every daylist", a loc key); null without dials. Contract 1.118.</summary>
+    public string? DialsLabelKey { get; init; }
+
     /// <summary>Close the tile (Done).</summary>
     public required Action Done { get; init; }
 }

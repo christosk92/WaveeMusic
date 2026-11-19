@@ -16,6 +16,7 @@ using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
+using FluentGpu.Dsl;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
@@ -177,6 +178,12 @@ public static class ClassicHomeBoardRules
     /// <summary>An open tile's options: its head (the name, Done) and one row per radio value, a label row per option.</summary>
     public const float OptionsHeadH = 48f, OptionLabelH = 28f, OptionRadioRowH = 36f, OptionToggleH = 68f;
 
+    /// <summary>The app-wide settings under an open tile's options (settings design 5.3): a caption label's line (the group's and each setting's, 16),
+    /// one radio row (the RadioButton's 32), and the note's line (16) with the lines it may take (3: the narrowest open tile, Compact's, wraps the
+    /// Settings page's sentence over three).</summary>
+    public const float DialLabelH = 16f, DialChoiceH = 32f, DialNoteLineH = 16f;
+    public const int DialNoteLines = 3;
+
     /// <summary>A shelf's estimate where nothing better is known (a header and one row of covers).</summary>
     public const float FullFallback = 300f;
 
@@ -251,7 +258,8 @@ public static class ClassicHomeBoardRules
     /// <summary>A placed section with no match in the answer keeps its place and takes no room.</summary>
     public static bool IsHidden(BoardEntry e) => e.Kind == BoardEntryKind.Placeholder && e.Template == SectionTemplate.None;
 
-    /// <summary>The open tile's height: its head, then per option a label and one radio row per value (a toggle one row), then live updates.</summary>
+    /// <summary>The open tile's height: its head, then per option a label and one radio row per value (a toggle one row), then live updates, then the
+    /// app-wide settings (<see cref="DialsExtent"/>), so the tile is as tall as what it holds.</summary>
     public static float OpenExtent(HomeSourceDef? source, ClassicHomeBoardLayout lay)
     {
         if (source is null) return 0f;
@@ -261,6 +269,23 @@ public static class ClassicHomeBoardRules
         bool liveInSchema = false;
         foreach (var o in source.Options) if (o.Key == "live") liveInSchema = true;
         if (source.Live && !liveInSchema) h += OptionToggleH;
+        h += DialsExtent(source.Dials, source.DialsLabelKey is not null);
         return MathF.Max(h, lay.M.Rows * lay.Unit + (lay.M.Rows - 1) * lay.Gap);
+    }
+
+    /// <summary>The app-wide settings' rows as <c>ClassicHomeTileOptions</c> lays them out: the panel's top padding (the sum above leaves it out), then
+    /// each a gap below the last: the group's label, every setting's label and its radio rows (the space between them the RadioButtons' own), and,
+    /// while one holds, its note. A note read here is a subscribing read: it re-packs the board when it comes.</summary>
+    static float DialsExtent(System.Collections.Immutable.ImmutableArray<HomeTileDial> dials, bool label)
+    {
+        if (dials.IsDefaultOrEmpty) return 0f;
+        float h = Spacing.XS + (label ? Spacing.S + DialLabelH : 0f);
+        foreach (var d in dials)
+        {
+            int n = d.ChoiceKeys.Length;
+            h += Spacing.S + DialLabelH + Spacing.S + n * DialChoiceH + (n - 1) * RadioButtons.RowSpacing;
+            if (d.NoteKey?.Invoke() is not null) h += Spacing.S + DialNoteLines * DialNoteLineH;
+        }
+        return h;
     }
 }

@@ -357,6 +357,10 @@
 // `HomePageProps.Board` / `BoardTools`). Its removals (`PageMotionPolicy.ConnectedInto` / `ConnectedKeepsCascade`, `Pages.HomeCustomize` with
 // `HomeCustomizeProps`, `Home.Quickplay` with `HomeQuickplayProps`) were made before any external theme existed, as 1.2 did, so they ride a
 // minor; nothing the settings rework added names them.
+// pinned-home 1.118 (settings in context: the daylist panel, #242 on feat/pinned-home): the optional `HomeTileOptionsProps.Dials` (`HomeTileDial`: an app-wide setting the open tile draws
+// after its own options, with its Settings row's value and writer) and `HomeTileOptionsProps.DialsLabelKey` (the "For every daylist" label over them).
+// 2.4 (#242 merged onto 2.3, additive): the daylist panel's `HomeTileOptionsProps.Dials` and `DialsLabelKey` (pinned-home 1.118 above) land on
+// the 2.x line.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -372,7 +376,7 @@ public static class ContractVersion
     public const int Major = 2;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 3;
+    public const int Minor = 4;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

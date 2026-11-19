@@ -164,6 +164,21 @@ versions separately under `v*` and is not tracked in this file.)
   repeats it), the log viewer's path reads Settings › Help & about › Logs, and in every theme's "Find a setting" box
   the first Escape clears what you typed (closing its list) and a second leaves the box.
 
+- **The daylist's options show its clock and its refresh notice (every theme).** Customize Daylist (WinUI), Daylist
+  options (Classic) and the back of the daylist strip (Zune) now hold the daylist's two real settings under "For every
+  daylist": Clock (Countdown and update time, Update time only, Countdown only) and "Tell me when it refreshes" (Off, In
+  Wavee, Windows). They are the same settings as Settings > Appearance > Home and library and Settings > Notifications, so a pick in
+  one place shows in the other. In Classic the daylist's ⋯ menu now offers Options too.
+
+- **Zune's app bar offers options for a tile.** Press and hold (or right-click) a Home tile that has options and the app
+  bar comes up with "options" and "done"; "options" turns the tile over to its settings. The daylist strip turns over
+  too, and its own menu ends in "options".
+
+### Removed
+
+- **The daylist's "Live updates" switch and "Pause live updates" menu item.** Neither ever did anything for the daylist.
+  Its clock is the only part that moves every second, and Clock > Update time only stills it.
+
 ### Fixed
 
 - **Your Episodes (WinUI) showed a stray "7", a dead band and a header out of line.** It stands on the library's column

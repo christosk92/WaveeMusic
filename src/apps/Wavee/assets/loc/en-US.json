@@ -681,6 +681,11 @@
         "from": "From",
         "fromArtists": "Artists you follow"
       },
+      "dial": {
+        "everyDaylist": "For every daylist",
+        "clock": "Clock",
+        "refresh": "Tell me when it refreshes"
+      },
       "source": {
         "nowPlaying": {
           "title": "Now playing",
