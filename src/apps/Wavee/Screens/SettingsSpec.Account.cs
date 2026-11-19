@@ -37,7 +37,8 @@ public static partial class SettingsSpec
             // Spotify Connect's private session (no play history, the flag on the wire): playback reads it; this is its writer.
             Make("account.privateSession", K.Toggle, Strings.Profile.PrivateSession,
                 SettingsWriter.OfToggle("session.private", SettingsVerbs.SetPrivateSession), glyph: "RevealPassword",
-                captionKey: Strings.Settings.Account.PrivateSessionSub, value: BoolOf(Platform.Keys.PrivateSession), aliases: ["incognito"])),
+                captionKey: Strings.Settings.Account.PrivateSessionSub, value: BoolOf(Platform.Keys.PrivateSession), aliases: ["incognito"],
+                contexts: [SettingsSurfaces.ProfileMenu])),
 
         Group("privacy", Strings.Settings.Groups.Account.Privacy, PvFacts.Subtitle,
             // The collapsed answer is "No telemetry"; inside, the five places anything leaves this PC and why: facts, no control.
