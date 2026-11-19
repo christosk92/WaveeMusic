@@ -64,6 +64,7 @@ internal static class WinUiNotifications
             Children =
             [
                 PanelHeader(props),
+                Hints.Slot(HintSurfaces.BellHeader),   // the bell's hint under its header (design 6.3: Windows notifications)
                 FilterPills(props.Filter, host),
                 Embed.Comp(() => new PendingSyncRow(pending)) with { Key = "nc-pending-sync" },
                 body,

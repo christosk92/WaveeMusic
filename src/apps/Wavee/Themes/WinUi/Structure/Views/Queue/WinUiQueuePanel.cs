@@ -53,6 +53,17 @@ internal static class WinUiQueue
 internal sealed class WinUiQueuePanelView : Component
 {
     readonly ScrollHandle _scroll = new();
+    // The Crossfade row's node: the crossfade hint's TeachingTip points at it (design 6.3 #4: at the panel's own switch, no second control).
+    NodeHandle _crossfadeNode;
+    readonly Action<NodeHandle> _onCrossfadeRow;
+    readonly Func<NodeHandle> _crossfadeRow;
+
+    public WinUiQueuePanelView()
+    {
+        _onCrossfadeRow = h => _crossfadeNode = h;
+        _crossfadeRow = () => _crossfadeNode;
+    }
+
     // The body is ONE virtualized list (only the rows the viewport shows, and its overscan, are built): the lead (Playing from, the
     // now-playing card), the lane's slots, then the tail (the vacancy or the Autoplay row). Every item's extent is stated EXACTLY
     // (the tail's is measured), so the list's geometry matches the lane's drag maths and nothing jumps as rows realize.
@@ -131,7 +142,7 @@ internal sealed class WinUiQueuePanelView : Component
         {
             case ItemPlayingFrom: return Inset(PlayingFrom(props.Queue.PlayingFrom.GetValueOrDefault().Name, props.OpenPlayingFrom));
             case ItemNow: return Inset(NowCard(props));
-            case ItemAutoplay: return Inset(BetweenSongs(props, autoplay, _setAutoplay!, crossfade, _setCrossfade!));
+            case ItemAutoplay: return Inset(BetweenSongs(props, autoplay, _setAutoplay!, crossfade, _setCrossfade!, _onCrossfadeRow, _crossfadeRow));
             case ItemVacancy:
                 return new BoxEl
                 {
@@ -337,7 +348,8 @@ internal sealed class WinUiQueuePanelView : Component
 
     /// <summary>The divider, then the "between songs" pair (design 5.4): "Autoplay" over its hint with the switch at the row's end, then
     /// "Crossfade" in the same grammar, its length a small hyperlink to the duration in Settings before its switch.</summary>
-    static Element BetweenSongs(QueuePanelProps props, Signal<bool> autoplay, Action<bool> setAutoplay, Signal<bool> crossfade, Action<bool> setCrossfade)
+    static Element BetweenSongs(QueuePanelProps props, Signal<bool> autoplay, Action<bool> setAutoplay, Signal<bool> crossfade, Action<bool> setCrossfade,
+        Action<NodeHandle> onCrossfadeRow, Func<NodeHandle> crossfadeRow)
     {
         Element? length = props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } open
             ? ToolTip.Wrap(HyperlinkButton.Create(props.CrossfadeLength, open, size: ControlSize.Small) with { Key = WinUiQueue.CrossfadeKey + ":length" },
@@ -350,7 +362,9 @@ internal sealed class WinUiQueuePanelView : Component
             [
                 new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
                 SwitchRow(Loc.Get(Strings.Player.Autoplay), Loc.Get(Strings.Player.AutoplayHint), null, autoplay, setAutoplay) with { Key = WinUiQueue.AutoplayKey + ":row" },
-                SwitchRow(Loc.Get(Strings.Player.Crossfade), Loc.Get(Strings.Player.CrossfadeHint), length, crossfade, setCrossfade) with { Key = WinUiQueue.CrossfadeKey },
+                SwitchRow(Loc.Get(Strings.Player.Crossfade), Loc.Get(Strings.Player.CrossfadeHint), length, crossfade, setCrossfade)
+                    with { Key = WinUiQueue.CrossfadeKey, OnRealized = onCrossfadeRow },
+                Hints.Pointer(HintSurfaces.QueuePanel, crossfadeRow),   // out of layout: the tip floats at the row
             ],
         };
     }

@@ -93,7 +93,8 @@ public sealed partial class WinUiStructure : IStandInStructure
         string moduleId = "common.module.page";
         ModulePage(ref module, ref moduleId);
         // The explanation badge is WinUI's own (an info glyph after the label opening a TeachingTip: WinUiSettings.Explainer.cs).
-        CommonBlocks.Register(views, module, moduleId, explainer: WinUiSettings.ExplainerTemplate, explainerTemplateId: "winui.screens.settings.explainer");
+        CommonBlocks.Register(views, module, moduleId, explainer: WinUiSettings.ExplainerTemplate, explainerTemplateId: "winui.screens.settings.explainer",
+            hint: WinUiHint.Template, hintTemplateId: "winui.hint");
         // No quickplay strip on Home: WinUI's pins are the nav pane's Pinned section (W-Home; W5 replaces this line if it draws one).
         CommonNothing.Register(views, ViewKeys.HomeQuickplay);
     }

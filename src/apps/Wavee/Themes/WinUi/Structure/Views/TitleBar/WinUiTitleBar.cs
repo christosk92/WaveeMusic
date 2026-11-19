@@ -145,7 +145,7 @@ internal static class WinUiTitleBar
             Tabs = () => Embed.Comp(() => new StripHost(props, tiers)),
             TabsVersion = props.TabsVersion,
             ContentVersion = props.ContentVersion,
-            Lead = () => LeadItems(props, Tier()),
+            Lead = () => LeadItems(props, Tier(), toolbar),
             Wordmark = () => !Strip() && Tier().Mark ? Mark() : new BoxEl { Width = 0f, Height = 0f },
             TrailingItems = () => TrailItems(props, Tier()),
             CenterAlign = Prop.Of(() => Tier().AlignWith(Strip())),
@@ -226,11 +226,11 @@ internal static class WinUiTitleBar
 
     // ── the toolbar's clusters ───────────────────────────────────────────────────────────────────────────────────────────
 
-    private static IReadOnlyList<TitleBarItem> LeadItems(ShellTitleBarProps props, WinUiTitleBarLayout tier)
+    private static IReadOnlyList<TitleBarItem> LeadItems(ShellTitleBarProps props, WinUiTitleBarLayout tier, Ref<NodeHandle> toolbar)
     {
-        var back = new TitleBarItem("back", () => Embed.Comp(() => new HistoryButton(props, forward: false)) with { Key = WinUiFrameRules.BackKey });
+        var back = new TitleBarItem("back", () => Embed.Comp(() => new HistoryButton(props, forward: false, toolbar)) with { Key = WinUiFrameRules.BackKey });
         if (!tier.Forward) return [back];
-        return [back, new TitleBarItem("forward", () => Embed.Comp(() => new HistoryButton(props, forward: true)) with { Key = WinUiFrameRules.ForwardKey })];
+        return [back, new TitleBarItem("forward", () => Embed.Comp(() => new HistoryButton(props, forward: true, toolbar)) with { Key = WinUiFrameRules.ForwardKey })];
     }
 
     private static IReadOnlyList<TitleBarItem> TrailItems(ShellTitleBarProps props, WinUiTitleBarLayout tier)
@@ -270,8 +270,10 @@ internal static class WinUiTitleBar
 
     // ── the self-updating children ───────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Back or Forward: the primary on click, the history flyout on right-click / touch-hold.</summary>
-    private sealed class HistoryButton(ShellTitleBarProps props, bool forward) : Component
+    /// <summary>Back or Forward: the primary on click, the history flyout on right-click / touch-hold. Back also carries two hints' pointers (out of
+    /// layout, their TeachingTips float): fast navigation's at the button itself, and the backdrop's at the toolbar row, whose right-click menu
+    /// offers Backdrop (design 6.3 #10, #11).</summary>
+    private sealed class HistoryButton(ShellTitleBarProps props, bool forward, Ref<NodeHandle> toolbar) : Component
     {
         public override Element Render()
         {
@@ -296,7 +298,15 @@ internal static class WinUiTitleBar
 
             var button = IconButton.Create(forward ? Icons.Forward : Icons.Back, forward ? props.GoForward : props.GoBack, style, isEnabled: canDo)
                 with { OnRealized = h => anchor.Value = h, OnContextRequested = OpenHistory };
-            return ToolTip.Wrap(button, Loc.Get(forward ? Strings.Theme.Winui.Frame.Forward : Strings.Theme.Winui.Frame.Back));
+            var face = ToolTip.Wrap(button, Loc.Get(forward ? Strings.Theme.Winui.Frame.Forward : Strings.Theme.Winui.Frame.Back));
+            var targets = UseRef<(Func<NodeHandle> Back, Func<NodeHandle> Bar)?>(null);
+            targets.Value ??= (() => anchor.Value, () => toolbar.Value);
+            if (forward) return face;
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center,
+                Children = [face, Hints.Pointer(HintSurfaces.PageHead, targets.Value.Value.Back), Hints.Pointer(HintSurfaces.TitleBar, targets.Value.Value.Bar)],
+            };
         }
     }
 
