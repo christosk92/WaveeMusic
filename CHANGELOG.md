@@ -135,7 +135,7 @@ versions separately under `v*` and is not tracked in this file.)
 - **Where Wavee plays: a new device picker (every theme).** The Devices button opens a "Playing on" card (the device
   in use, how it is connected, what plays, its volume) above two lists: This PC, with Match Windows first, and Other
   devices (Spotify Connect), which comes first while one of them plays, with a button that brings playback back to
-  this PC. Outputs are named by the device ("Chris's AirPods Max", "Built-in speakers", "USB-C Audio") instead of
+  this PC. Outputs are named by the device ("AirPods Max", "Built-in speakers", "USB-C Audio") instead of
   Windows' endpoint names, wear the right icon, say how they are connected (Bluetooth, USB, HDMI, This PC), and a
   Bluetooth headset no longer shows twice for its hands-free mode. Choosing an output now moves the sound there at
   once, without losing your place, and Wavee starts on it next time; Match Windows follows the Windows default. When
