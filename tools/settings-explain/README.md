@@ -170,3 +170,21 @@ The manifest expands to 122 clips (`--list`); 92 are committed, 30 pending. The 
 on average; per theme and mode: Classic 16 clips, about 755 KB; WinUI 17, about 745 KB; Zune 13, about 555 KB). Most run
 5-70 KB; the heavy ones are a page swap filmed twice (Fast navigation, 60-104 KB) and the full-screen layouts stepping
 through four arrangements (83-97 KB).
+
+## Theme picker stills (`previews.py`)
+
+The theme picker's cards (Settings > Appearance > Theme, and the setup wizard's theme step) show each theme's Home, light
+and dark: `src/apps/Wavee/assets/themes/<theme>-<mode>.jpg`, the paths each theme's manifest names (`ThemePreview`).
+
+```powershell
+python -I tools/settings-explain/previews.py --exe C:/WAVEE/scratch/<lane>/run/Wavee.exe   # all six, into the assets
+python -I tools/settings-explain/previews.py --check                                        # the committed six: JPEG, 832x468, budget
+```
+
+One fresh inspector per theme and mode renders Home at 1440x960 (scale 2, the fake catalogue, `images=real`); the still is
+the window's top-left corner (960 DIP wide: navigation, the page title, Home's first row) inset on the theme's backdrop
+from this folder's frame (`clips.json` `defaults.frame`), bleeding off the right and the bottom, so every card shape,
+covered from the still's top-left corner, keeps the corner. JPEG at quality 90 (no chroma subsampling), 832x468, at most
+64 KB each: never a WebP, which Windows decodes only with an extension. The cards draw no stand-in, so a Release build
+checks that every shipped theme has both (`Wavee.exe --check-theme-previews`, target `WaveeCheckThemePreviews`). Look at
+`sheet.png` in the work folder: every still at the size each card draws it.
