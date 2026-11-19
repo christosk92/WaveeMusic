@@ -18,8 +18,8 @@ public static class ZuneHintRules
     /// <summary>The lyrics pane's line: on the lyrics' own gutter (the core insets the slot by the surface's side pad), 12 above the pane's foot.</summary>
     public static readonly Edges4 LyricsMargin = new(0f, 0f, 0f, 12f);
 
-    /// <summary>The devices picker's line under its quality row: on the rows' text column (the row's 16 inset, then the 8 dot and its 12 gap).</summary>
-    public static readonly Edges4 PickerMargin = new(ZunePanelBodies.PickerPadX + ZunePanelBodies.PickerDot + ZunePanelBodies.PickerGap, 0f, ZunePanelBodies.PickerPadX, 4f);
+    /// <summary>The devices picker's line under its footer: the picker's own column padding holds it, a little air above.</summary>
+    public static readonly Edges4 PickerMargin = new(0f, 8f, 0f, 0f);
 
     /// <summary>The bell panel's line under its header: the panel's own padding holds it.</summary>
     public static readonly Edges4 BellMargin = new(0f, 0f, 0f, 4f);

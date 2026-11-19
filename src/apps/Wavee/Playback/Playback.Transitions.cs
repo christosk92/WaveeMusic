@@ -1895,20 +1895,172 @@ public static partial class Playback
                 : requiresGraphRebuild ? DeviceRecoveryAction.ReloadThroughController : DeviceRecoveryAction.KeepSession;
     }
 
-    /// <summary>How an OS audio endpoint is NAMED in the picker. Pure strings, so the rule is pinned by a test rather
-    /// than by whatever hardware the developer happens to have plugged in (ch 20 §9 asks for it here; the enumeration
-    /// service itself stays SHELL, in owner H's <c>Playback.Audio.cs</c>).</summary>
+    /// <summary>How a this-PC output reaches it (an app's words for the engine's <c>AudioEndpointBus</c>).</summary>
+    public enum OutputConnection : byte { Unknown, BuiltIn, Bluetooth, Usb, Hdmi, DisplayPort, Display }
+
+    /// <summary>Which icon a this-PC output wears: what it is, not how it is connected (a USB adapter whose endpoint says
+    /// "Speakers" is a USB device to its owner; built-in speakers are the laptop itself).</summary>
+    public enum OutputLook : byte { Speakers, Headphones, Display, Usb, Laptop }
+
+    /// <summary>How an OS audio endpoint is NAMED, which ones the picker offers and which icon each wears (the owner's complaint,
+    /// 2026-11-19: Windows' raw endpoint names such as "Headphones (Chris's AirPods Max - Find My)" and "Speakers (Qualcomm(R)
+    /// Aqstic(TM) Audio Adapter Device)", a headphones icon on speakers, and a hands-free twin of every Bluetooth headset). Pure:
+    /// the facts in, the rows out, so the fake roster and a real machine take the same rules.
+    /// <list type="bullet">
+    /// <item>The label is the DEVICE's own name (its interface name, "Chris's AirPods Max"), cleaned of driver noise ("(R)", "(TM)",
+    /// "Audio Adapter Device", " - Find My"); a part of this PC is "Built-in speakers" or "Headphone jack"; a display is its model
+    /// name (the endpoint's description); two outputs that would read the same add their description.</item>
+    /// <item>A hands-free twin is hidden: a headset endpoint that shares its device's container with a stereo endpoint (the
+    /// Bluetooth hands-free profile beside A2DP; on Snapdragon the hands-free endpoint is offloaded to the audio adapter but keeps
+    /// the headset's container). A part of this PC never counts: the headset jack shares the machine's container with the speakers.</item>
+    /// <item>An endpoint whose container is a Bluetooth device's is Bluetooth too, whatever stack created it.</item>
+    /// </list></summary>
     public static class AudioDeviceNaming
     {
-        /// <summary>The short label: the endpoint's own description first, else the friendly name with its trailing
-        /// " (adapter)" parenthetical stripped, else the raw name. Null / empty in, null out.</summary>
-        public static string? Shorten(string? deviceDesc, string? friendlyName)
+        /// <summary>The OS facts of one active render endpoint.</summary>
+        /// <param name="Id">The endpoint id.</param>
+        /// <param name="FriendlyName">Windows' endpoint name ("Headphones (Chris's AirPods Max - Find My)").</param>
+        /// <param name="DeviceName">The device's own name ("Chris's AirPods Max - Find My"), or "".</param>
+        /// <param name="Description">The endpoint's description ("Headphones", a display's model), or "".</param>
+        /// <param name="FormFactor">The Windows EndpointFormFactor (1 speakers, 3 headphones, 5 headset, 8 SPDIF, 9 digital display).</param>
+        /// <param name="Connection">How it reaches the machine.</param>
+        /// <param name="Container">The device's container id, or "" when not reported.</param>
+        /// <param name="MachineContainer">The container is this computer's own (a part of this PC).</param>
+        /// <param name="IsDefault">Windows plays on it by default.</param>
+        public readonly record struct Facts(string Id, string FriendlyName, string DeviceName, string Description, uint FormFactor,
+            OutputConnection Connection, string Container, bool MachineContainer, bool IsDefault);
+
+        const uint Speakers = 1, Headphones = 3, Headset = 5, Spdif = 8, DigitalDisplay = 9;
+
+        /// <summary>The noise drivers put in device names, removed wherever it stands (case-insensitive).</summary>
+        static readonly string[] s_noise = ["(R)", "(TM)", "(C)", "®", "™", "©"];
+
+        /// <summary>The trailing phrases a driver appends to an adapter's name; removed from the end, longest first.</summary>
+        static readonly string[] s_suffixes =
+        [
+            " - Find My", " High Definition Audio Device", " Audio Adapter Device", " Audio Device", " Audio Adapter",
+        ];
+
+        /// <summary>A device or adapter name without its driver noise: "Qualcomm(R) Aqstic(TM) Audio Adapter Device" is "Qualcomm Aqstic",
+        /// "Chris's AirPods Max - Find My" is "Chris's AirPods Max". Null or blank in, "" out.</summary>
+        public static string Clean(string? name)
         {
-            if (!string.IsNullOrWhiteSpace(deviceDesc)) return deviceDesc.Trim();
-            if (string.IsNullOrWhiteSpace(friendlyName)) return friendlyName;
-            string name = friendlyName.Trim();
-            int open = name.LastIndexOf(" (", StringComparison.Ordinal);
-            return open > 0 && name.EndsWith(')') ? name[..open] : name;
+            if (string.IsNullOrWhiteSpace(name)) return "";
+            string s = name;
+            foreach (string n in s_noise) s = s.Replace(n, "", StringComparison.OrdinalIgnoreCase);
+            s = Collapse(s);
+            bool trimmed = true;
+            while (trimmed)
+            {
+                trimmed = false;
+                foreach (string suffix in s_suffixes)
+                    if (s.Length > suffix.Length && s.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        s = s[..^suffix.Length].TrimEnd(' ', '-', ',');
+                        trimmed = true;
+                    }
+            }
+            return s;
+        }
+
+        static string Collapse(string s)
+        {
+            var b = new System.Text.StringBuilder(s.Length);
+            bool space = false;
+            foreach (char c in s.Trim())
+            {
+                if (char.IsWhiteSpace(c)) { if (!space) b.Append(' '); space = true; }
+                else { b.Append(c); space = false; }
+            }
+            return b.ToString();
+        }
+
+        /// <summary>The device inside Windows' "Description (Device)" name, or "".</summary>
+        static string Parenthetical(string friendly)
+        {
+            int open = friendly.IndexOf(" (", StringComparison.Ordinal);
+            return open > 0 && friendly.EndsWith(')') ? friendly[(open + 2)..^1] : "";
+        }
+
+        static bool IsDisplay(in Facts f)
+            => f.FormFactor == DigitalDisplay || f.Connection is OutputConnection.Hdmi or OutputConnection.DisplayPort or OutputConnection.Display;
+
+        /// <summary>The icon an output wears: headphones for headphones and headsets, a display for a display, the laptop for built-in
+        /// speakers, USB for any other USB device, speakers otherwise.</summary>
+        public static OutputLook LookOf(in Facts f)
+            => f.FormFactor is Headphones or Headset ? OutputLook.Headphones
+             : IsDisplay(in f) ? OutputLook.Display
+             : f.Connection == OutputConnection.BuiltIn ? OutputLook.Laptop
+             : f.Connection == OutputConnection.Usb ? OutputLook.Usb
+             : OutputLook.Speakers;
+
+        /// <summary>The plain label of one output (see the class summary). <paramref name="builtInSpeakers"/> and
+        /// <paramref name="headphoneJack"/> are the localized words for a part of this PC.</summary>
+        public static string Label(in Facts f, string builtInSpeakers, string headphoneJack)
+        {
+            if (f.Connection == OutputConnection.BuiltIn)
+            {
+                if (f.FormFactor is Headphones or Headset) return headphoneJack;
+                if (f.FormFactor is Speakers or uint.MaxValue) return builtInSpeakers;
+                return Clean(f.Description) is { Length: > 0 } built ? built : builtInSpeakers;
+            }
+            if (IsDisplay(in f) && Clean(f.Description) is { Length: > 0 } model) return model;
+            if (Clean(f.DeviceName) is { Length: > 0 } device) return device;
+            if (Clean(Parenthetical(f.FriendlyName)) is { Length: > 0 } inner) return inner;
+            if (Clean(f.Description) is { Length: > 0 } description) return description;
+            return Clean(f.FriendlyName) is { Length: > 0 } friendly ? friendly : f.Id;
+        }
+
+        /// <summary>A hands-free twin: a headset endpoint whose device (its container, never this PC's own) also has a stereo endpoint.</summary>
+        public static bool IsHandsFreeTwin(in Facts f, ReadOnlySpan<Facts> all)
+        {
+            if (f.FormFactor != Headset || f.MachineContainer || f.Container.Length == 0) return false;
+            foreach (ref readonly Facts other in all)
+                if (other.Id != f.Id && other.FormFactor != Headset && string.Equals(other.Container, f.Container, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
+        }
+
+        /// <summary>The connection an endpoint shows: its own, else Bluetooth when it shares its container with a Bluetooth endpoint (the
+        /// offloaded hands-free endpoint of a headset whose stereo endpoint is not up).</summary>
+        static OutputConnection ConnectionOf(in Facts f, ReadOnlySpan<Facts> all)
+        {
+            if (f.Connection != OutputConnection.Unknown || f.MachineContainer || f.Container.Length == 0) return f.Connection;
+            foreach (ref readonly Facts other in all)
+                if (other.Connection == OutputConnection.Bluetooth && string.Equals(other.Container, f.Container, StringComparison.OrdinalIgnoreCase))
+                    return OutputConnection.Bluetooth;
+            return OutputConnection.Unknown;
+        }
+
+        /// <summary>The form factor folded to the wire's output type (<c>audio_output_device_info</c>), as it was before the picker named
+        /// outputs: 1 speakers, 2 headphones or a headset, 4 a digital output, 0 anything else.</summary>
+        static byte WireKind(uint formFactor) => formFactor switch { Headphones or Headset => 2, Spdif or DigitalDisplay => 4, Speakers => 1, _ => 0 };
+
+        /// <summary>The outputs the picker offers, in the OS's order: hands-free twins hidden, each named, iconed and connected, two that
+        /// would read the same told apart by their description.</summary>
+        public static Audio.LocalAudioDevice[] Outputs(ReadOnlySpan<Facts> all, string builtInSpeakers, string headphoneJack)
+        {
+            var rows = new List<Audio.LocalAudioDevice>(all.Length);
+            var descriptions = new List<string>(all.Length);
+            foreach (ref readonly Facts f in all)
+            {
+                if (IsHandsFreeTwin(in f, all)) continue;
+                var connected = f with { Connection = ConnectionOf(in f, all) };
+                rows.Add(new Audio.LocalAudioDevice(f.Id, Label(in connected, builtInSpeakers, headphoneJack), WireKind(f.FormFactor), f.IsDefault)
+                {
+                    Connection = connected.Connection, Look = LookOf(in connected),
+                });
+                descriptions.Add(Clean(f.Description));
+            }
+            for (int i = 0; i < rows.Count; i++)
+            {
+                bool twin = false;
+                for (int j = 0; j < rows.Count && !twin; j++)
+                    twin = j != i && string.Equals(rows[i].Name, rows[j].Name, StringComparison.OrdinalIgnoreCase)
+                           && !string.Equals(descriptions[i], descriptions[j], StringComparison.OrdinalIgnoreCase);
+                if (twin && descriptions[i].Length > 0) rows[i] = rows[i] with { Name = rows[i].Name + " (" + descriptions[i] + ")" };
+            }
+            return rows.ToArray();
         }
     }
 }

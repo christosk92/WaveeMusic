@@ -132,6 +132,18 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Where Wavee plays: a new device picker (every theme).** The Devices button opens a "Playing on" card (the device
+  in use, how it is connected, what plays, its volume) above two lists: This PC, with Match Windows first, and Other
+  devices (Spotify Connect), which comes first while one of them plays, with a button that brings playback back to
+  this PC. Outputs are named by the device ("Chris's AirPods Max", "Built-in speakers", "USB-C Audio") instead of
+  Windows' endpoint names, wear the right icon, say how they are connected (Bluetooth, USB, HDMI, This PC), and a
+  Bluetooth headset no longer shows twice for its hands-free mode. Choosing an output now moves the sound there at
+  once, without losing your place, and Wavee starts on it next time; Match Windows follows the Windows default. When
+  the chosen output is missing or unplugged, Wavee plays on the Windows default instead of going silent, marks the
+  output "Not responding" and moves back when it returns. The quality is a chip that opens its setting, and "Sound
+  settings" shows the equalizer and normalization at rest. With no other device nearby the list says so in one line.
+  Classic uses the same picker as WinUI; Zune draws it in large lowercase words.
+
 - **The theme picker shows each theme as it looks.** Every card in Settings > Appearance > Theme, and in the first-run
   setup's theme step, now shows a real picture of that theme's Home, in light or dark to match the app, instead of the
   same plain blocks for every theme. Zune's theme tiles are now all one width, two to a line in a narrow window.

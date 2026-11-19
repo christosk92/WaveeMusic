@@ -335,15 +335,6 @@ public static class ZunePanelBodies
     /// (15/20), the heart's 40 ring (a 2 stroke) at the end, all on the cover's foot.</summary>
     public const float BleedCover = 88f, BleedMetaGap = 14f, BleedAlbumSize = 15f, BleedAlbumLine = 20f, BleedHeartRing = 2f;
 
-    // ── the device picker (Z-PlayBar-Huge: "play on") ─────────────────────────────────────────────────────────────
-
-    /// <summary>The picker: 340 wide, 8 above and below; the "play on" head and an information row (32, 12/16); a device row (52, the 8 dot,
-    /// 12 to the name 14/20 over its note 12/16, 16 in); a divider's inset; an unused output's ring (Z-Overlays: 1 DIP).</summary>
-    public const float PickerW = 340f, PickerPadY = 8f, PickerHeadH = 32f, PickerSmallSize = 12f, PickerSmallLine = 16f, PickerRowH = 52f,
-        PickerDot = 8f, PickerGap = 12f, PickerNameSize = 14f, PickerNameLine = 20f, PickerPadX = 16f, PickerRing = 1f;
-
-    public static readonly Edges4 PickerDividerMargin = new(16f, 4f, 16f, 4f);
-
     // ── the style chip and its in-place picker (canvas-design `Zune.dc.html`, `Styles.dc.html`): lowercase, flat, square ──────────────────
 
     /// <summary>The node keys `find` reads.</summary>

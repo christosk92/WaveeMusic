@@ -83,6 +83,7 @@ public static partial class Playback
     /// Decode results become inputs here and nowhere else.</summary>
     static void DrainConnect(long now)
     {
+        FoldFakePush(now);                                 // `--fake`'s Connect stand-in answers a transfer as a push would (FakeConnect)
         StartResolved(now);
         while (true)
         {

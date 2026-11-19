@@ -266,11 +266,32 @@ public static partial class Entities
         return picked.ToArray();
     }
 
-    /// <summary>The demo's outputs (<c>Playback.Audio.UseFake</c>): the machine's speakers, the default, and a headset, as a stock Windows laptop lists them.</summary>
-    internal static Playback.Audio.LocalAudioDevice[] FakeOutputs() =>
+    /// <summary>The demo's outputs (<c>Playback.Audio.UseFake</c>) as Windows reports them on a Snapdragon laptop, raw names and all, so the
+    /// naming rules run on them (<c>Playback.AudioDeviceNaming</c>): Bluetooth headphones (the default) and the hands-free twin the audio adapter
+    /// offloads for them (same container, hidden), a USB-C adapter, the built-in speakers and a display over HDMI.</summary>
+    internal static Playback.AudioDeviceNaming.Facts[] FakeOutputs() =>
     [
-        new("fake:out:speakers", "Speakers (Realtek Audio)", 0, IsDefault: true),
-        new("fake:out:headphones", "Headphones (Realtek Audio)", 1, IsDefault: false),
+        new("fake:out:airpods", "Headphones (Chris’s AirPods Max - Find My)", "Chris’s AirPods Max - Find My", "Headphones", 3,
+            Playback.OutputConnection.Bluetooth, FakeAirPodsContainer, MachineContainer: false, IsDefault: true),
+        new("fake:out:airpods-handsfree", "Headset (Qualcomm(R) Aqstic(TM) Audio Adapter Device)", "Qualcomm(R) Aqstic(TM) Audio Adapter Device", "Headset", 5,
+            Playback.OutputConnection.Unknown, FakeAirPodsContainer, MachineContainer: false, IsDefault: false),
+        new("fake:out:usb", "Speakers (USB-C Audio)", "USB-C Audio", "Speakers", 1,
+            Playback.OutputConnection.Usb, "20b9cde5-7039-e011-a935-0002a5d5c51b", MachineContainer: false, IsDefault: false),
+        new("fake:out:speakers", "Speakers (Qualcomm(R) Aqstic(TM) Audio Adapter Device)", "Qualcomm(R) Aqstic(TM) Audio Adapter Device", "Speakers", 1,
+            Playback.OutputConnection.BuiltIn, "00000000-0000-0000-ffff-ffffffffffff", MachineContainer: true, IsDefault: false),
+        new("fake:out:display", "LC34G55T (Qualcomm(R) Aqstic(TM) ACX External Display Audio Device)", "Qualcomm(R) Aqstic(TM) ACX External Display Audio Device",
+            "LC34G55T", 9, Playback.OutputConnection.Hdmi, "6c3a0e51-27b1-5a4d-9d0f-3e7a2a1c55b0", MachineContainer: false, IsDefault: false),
+    ];
+
+    const string FakeAirPodsContainer = "45796092-228e-530c-ac2e-1f8468be2e89";
+
+    /// <summary>The demo's Spotify Connect devices (<c>Playback.UseFakeConnect</c>, the inspector's <c>mount connect=nearby</c>): a TV, a speaker
+    /// and a phone on the same network, each at its own volume (0..65535, the wire scale).</summary>
+    internal static Playback.FakeConnectDevice[] FakeConnect() =>
+    [
+        new("fake:connect:tv", "Living room TV", Spotify.Decode.DeviceKind.Tv, 26214),
+        new("fake:connect:speaker", "Kitchen speaker", Spotify.Decode.DeviceKind.Speaker, 39321),
+        new("fake:connect:phone", "Chris’s iPhone", Spotify.Decode.DeviceKind.Phone, 45875),
     ];
 
     static string AlbumUri(int i) => "spotify:album:al" + Wrap(i, AlbumCount);

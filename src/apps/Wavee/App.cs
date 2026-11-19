@@ -148,18 +148,9 @@ public static class App
         // stamp with it off the UI thread, and it keeps running while the window is idle, minimized or tray-hidden. Same QPC
         // domain as FrameTime, so render sites convert explicitly.
         Playback.FrameNowMs = static () => (long)(System.Diagnostics.Stopwatch.GetTimestamp() * (1000.0 / System.Diagnostics.Stopwatch.Frequency));
-        Playback.Audio.EnumerateEndpoints = static () =>
-        {
-            var endpoints = FluentGpu.Windows.Wasapi.WasapiPcm.EnumerateEndpoints();
-            var rows = new Playback.Audio.LocalAudioDevice[endpoints.Length];
-            for (int i = 0; i < rows.Length; i++)
-            {
-                var endpoint = endpoints[i];
-                byte kind = endpoint.FormFactor switch { 3 or 5 => 2, 8 or 9 => 4, 1 => 1, _ => 0 };
-                rows[i] = new(endpoint.Id, endpoint.Name, kind, endpoint.IsDefault);
-            }
-            return rows;
-        };
+        // The outputs the picker offers: the OS's active render endpoints, each named by its device (never Windows' raw endpoint name),
+        // iconed by what it is and with its hands-free twin hidden (Playback.AudioDeviceNaming).
+        Playback.Audio.EnumerateEndpoints = static () => Playback.Audio.Outputs(FluentGpu.Windows.Wasapi.WasapiPcm.EnumerateEndpoints());
         Playback.Boot();                 // state, host loop, audio pump, os bridges
         Playback.InstallCardSeam();      // Controls.NowPlaying: every media surface's equalizer pill and pause-on-own-card (#160)
         if (gui) WireMaterialPolicy();   // Materials.EnergySaver ← PowerSession: AFTER Playback.Boot, which holds the live PowerSession.Subscribe()

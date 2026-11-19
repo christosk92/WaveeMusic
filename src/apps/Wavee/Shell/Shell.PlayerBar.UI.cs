@@ -433,43 +433,23 @@ public static partial class Shell
         handle.Value.ClosedAction = () => handle.Value = null;
     }
 
-    /// <summary>THE device picker's menu items for the stage's "Playing on" flyout, over the SAME <see cref="DevicePicker.Items"/> the
-    /// bar's picker composes its entries from (<c>RailWiring.ReadDevicePicker</c>), so the two surfaces cannot disagree about a row or
-    /// what it does. The stage mounts <c>Player.DevicePicker</c> instead when T7a moves its flyout, and this goes. Local
-    /// (this-computer) rows are plain commands, not radios: choosing one persists the output for the next session and
-    /// pulls playback here, but the engine does not yet re-route a live session to it, so no row claims to be "the
-    /// endpoint in use".</summary>
-    internal static List<MenuFlyoutItem> DevicePickerMenuItems(
-        Playback.Owner owner, int activeSlot, ReadOnlySpan<Playback.Devices.Row> connect,
-        ReadOnlySpan<Playback.Audio.LocalAudioDevice> local, string? selectedLocalId, bool localSupported,
-        Playback.Audio.Opened observed, Spotify.Audio.Quality asked, SoundState sound)
+    /// <summary>THE device picker as a menu, for the full screen's "Playing on" flyout: the flat answer (<see cref="DevicePickerView.Entries"/>)
+    /// of the SAME <see cref="DevicePicker.Compose"/> the bar's picker draws, so the two surfaces cannot disagree about a row or what it does:
+    /// a section's header as a disabled row, a this-PC output (or Match Windows) as a command whose second line rides the accelerator, a
+    /// Connect device as a radio, "Sound settings" as a link.</summary>
+    internal static List<MenuFlyoutItem> DevicePickerMenuItems(DevicePickerView view)
     {
-        var picker = DevicePicker.Items(owner, activeSlot, connect, local, selectedLocalId, localSupported, observed, asked, sound);
-        var items = new List<MenuFlyoutItem>(picker.Count);
-        foreach (var item in picker)
+        var entries = view.Entries;
+        var items = new List<MenuFlyoutItem>(entries.Count);
+        foreach (var e in entries)
         {
-            var row = item.Row;
-            var intent = item.Intent;
-            items.Add(row.Kind switch
+            items.Add(e.Kind switch
             {
-                DevicePickerRowKind.Separator => MenuFlyoutItem.Separator,
-                // A disabled command row stands in as the section header (MenuFlyout has no header kind; neither does WinUI).
-                // Quality rides the same disabled-row shape: it is informational, never a radio.
-                DevicePickerRowKind.Header or DevicePickerRowKind.Empty
-                    => new MenuFlyoutItem(row.Label, default, false),
-                // The two links (design 5.4): what plays, to the quality dial; the sound settings' state, to the Sound category.
-                DevicePickerRowKind.Quality => new MenuFlyoutItem(row.Label, Icons.Settings, true, DevicePicker.OpenQuality),
-                DevicePickerRowKind.SoundSettings => new MenuFlyoutItem(row.Label, Icons.Equalizer, true, DevicePicker.OpenSound)
-                    with { AcceleratorText = row.Accelerator },
-                DevicePickerRowKind.LocalDefault => new MenuFlyoutItem(row.Label, Icons.ThisPc, row.Enabled,
-                        row.Enabled ? () => DeviceVerbs.Run(intent) : null)
-                    with { AcceleratorText = row.Accelerator },
-                DevicePickerRowKind.LocalDevice => new MenuFlyoutItem(row.Label, DeviceRoster.LocalGlyph(row.LocalKind), row.Enabled,
-                        row.Enabled ? () => DeviceVerbs.Run(intent) : null)
-                    with { AcceleratorText = row.Accelerator },
-                DevicePickerRowKind.ConnectDevice => MenuFlyoutItem.RadioItem(row.Label, row.IsChecked,
-                    () => DeviceVerbs.Run(intent), DeviceRoster.ConnectGlyph(row.ConnectKind)),
-                _ => new MenuFlyoutItem(row.Label, default, false),
+                DevicePickerEntryKind.Separator => MenuFlyoutItem.Separator,
+                DevicePickerEntryKind.Command => new MenuFlyoutItem(e.Label, e.Glyph, e.Enabled, e.Invoke) with { AcceleratorText = e.Accelerator ?? e.Detail },
+                DevicePickerEntryKind.Radio => MenuFlyoutItem.RadioItem(e.Label, e.IsChecked, e.Invoke, e.Glyph),
+                DevicePickerEntryKind.Link => new MenuFlyoutItem(e.Label, e.Glyph, true, e.Invoke) with { AcceleratorText = e.Accelerator },
+                _ => new MenuFlyoutItem(e.Label, default, false),
             });
         }
         return items;

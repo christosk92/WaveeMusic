@@ -130,27 +130,21 @@ public static partial class Stage
         return new StageNextFacts(track.Title, ArtistNames(track), Controls.ArtUrl(track.ImageId));
     }
 
-    /// <summary>"This PC ▾": the output device button's glyph and name.</summary>
+    /// <summary>"This PC ▾": the output device button's glyph and name: the Connect device while one plays, else the output this PC plays on
+    /// (the chosen one while it opens, else the Windows default), named as the picker names it.</summary>
     static StageDeviceFacts DeviceFacts()
     {
         _ = Playback.Devices.Changed.Value;
         var rows = Playback.Devices.Rows;
         int slot = Shell.DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
-        string name = slot >= 0 ? rows[slot].Name ?? "" : Loc.Get(Strings.Player.SystemDefault);
-        string glyph = slot >= 0 ? Icons.Devices : Icons.ThisPc;
-        bool word = slot < 0;
-        if (slot < 0)
-        {
-            string? selected = Playback.Audio.SelectedOutputId.Value;
-            foreach (var d in Playback.Audio.Devices.Value)
-                if (selected is { Length: > 0 } && string.Equals(d.Id, selected, StringComparison.OrdinalIgnoreCase)) { name = d.Name; word = false; break; }
-        }
-        return new StageDeviceFacts(glyph, name) { Word = word };
+        if (slot >= 0) return new StageDeviceFacts(Icons.Devices, rows[slot].Name ?? "");
+        var local = Playback.Audio.Devices.Value;
+        int inUse = Shell.DevicePicker.InUse(local, Playback.Audio.SelectedOutputId.Value, Playback.Audio.Unresponsive.Value, out _, out _);
+        return inUse >= 0
+            ? new StageDeviceFacts(Shell.DeviceRoster.LookGlyph(local[inUse].Look), local[inUse].Name)
+            : new StageDeviceFacts(Icons.Laptop, Loc.Get(Strings.Player.DevicePicker.ThisPc)) { Word = true };
     }
 
-    /// <summary>The two-section device picker over the SAME items the player bar builds (Shell.DevicePickerMenuItems), built when it opens.</summary>
-    static List<MenuFlyoutItem> DeviceItems()
-        => Shell.DevicePickerMenuItems(Playback.OwnerSignal.Peek(), Playback.ActiveDeviceSlot.Peek(), Playback.Devices.Rows,
-            Playback.Audio.Devices.Peek(), Playback.Audio.SelectedOutputId.Peek(), Playback.Audio.Supported.Peek(),
-            Playback.Audio.PlayingOpened, Shell.DevicePickerFacts.Quality, Shell.DevicePickerFacts.Sound);
+    /// <summary>The device picker as a menu over the SAME answer the player bar's picker draws (Shell.DevicePickerMenuItems), built when it opens.</summary>
+    static List<MenuFlyoutItem> DeviceItems() => Shell.DevicePickerMenuItems(RailWiring.ReadDevicePicker());
 }

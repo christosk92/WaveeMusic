@@ -460,15 +460,14 @@ public static partial class Shell
             _ => Icons.ThisPc,
         };
 
-        /// <summary>A local endpoint's form factor, in 0.2.9's <c>LocalAudioDeviceKind</c> order (Speakers,
-        /// Headphones, Headset, Hdmi, …). The Hdmi rung is unreachable from the picker — display audio is filtered
-        /// before the roster — but the map keeps it for other callers.</summary>
-        public static string LocalGlyph(byte kind) => kind switch
+        /// <summary>A this-PC output's icon: what it is (<see cref="Playback.AudioDeviceNaming.LookOf"/>), never its wire type.</summary>
+        public static string LookGlyph(Playback.OutputLook look) => look switch
         {
-            0 => Icons.Speakers,
-            1 or 2 => Icons.Headphones,
-            3 => Icons.TvMonitor,
-            _ => Icons.ThisPc,
+            Playback.OutputLook.Headphones => Icons.Headphones,
+            Playback.OutputLook.Display => Icons.TvMonitor,
+            Playback.OutputLook.Usb => Icons.Usb,
+            Playback.OutputLook.Laptop => Icons.Laptop,
+            _ => Icons.Speakers,
         };
 
         /// <summary>The picker's inset from the window edges before it scrolls (G-210, ch 20 §9 trap): the engine's

@@ -268,6 +268,8 @@ public static partial class Diagnostics
             Arg("motion", ArgType.Enum, "reduced: Windows' Animation effects off for this mount (page swaps fade, nothing slides, zooms or staggers)", "full", "full|reduced"),
             Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
             Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),
+            Arg("connect", ArgType.Enum, "the fake Spotify Connect roster: no device nearby, or a TV, a speaker and a phone (the device picker transfers to them and back)", "none", "none|nearby"),
+            Arg("stuck", ArgType.String, "an output that did not open (the device picker marks it Not responding): a fake output id or its short name (airpods, usb, speakers, display); gone: the chosen output left the roster"),
             Arg("panelW", ArgType.Float, "the side panel's stored width (DIP; clamped to the theme's drag range)"),
             Arg("lyrics", ArgType.Enum, "the fake lyrics' shape: word (word-synced) or line (line-synced, no word timing: what `state kind=ai ai=timed words=on` times word by word)", "word", "word|line"),
             Arg("media", ArgType.Enum, "fake: every media player (the canvas, a player built without its own backend: audio previews) opens a fake source whose costs the media* args set (Diagnostics.Inspect.Media.cs); real: the Spine Shelf's canvas and clip players open through the real Media Foundation path (it touches the hardware adapter: run it through C:/WAVEE/scratch/gpulock.sh)", null, "fake|real"),

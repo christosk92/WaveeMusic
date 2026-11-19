@@ -257,17 +257,36 @@ internal static class RailWiring
 
     static readonly Func<DevicePickerView> s_readDevices = ReadDevicePicker;
 
-    /// <summary>The props of one open of the picker (it carries that open's close verb).</summary>
-    internal static DevicePickerProps DevicePicker(Action close) => new()
+    /// <summary>The ONE cell the picker card's slider binds: the volume of the device in use, mirrored by the template.</summary>
+    static readonly FloatSignal s_pickerVolume = new(1f);
+
+    /// <summary>The props of one open of the picker (it carries that open's close verb). Opening re-reads this PC's outputs off the UI thread:
+    /// a device plugged in since the last notification shows (an unchanged roster writes nothing).</summary>
+    internal static DevicePickerProps DevicePicker(Action close)
     {
-        Read = s_readDevices,
-        MaxHeight = static windowHeight => Shell.DeviceRoster.PickerMaxHeight(windowHeight),
-        Close = close,
+        Playback.Audio.RefreshDevicesSoon();
+        return new()
+        {
+            Read = s_readDevices,
+            MaxHeight = static windowHeight => Shell.DeviceRoster.PickerMaxHeight(windowHeight),
+            Close = close,
+            Playing = Playback.IsPlaying,
+            Volume = Playback.Volume,
+            VolumeCell = s_pickerVolume,
+            SetVolume = static v => Playback.SetVolume(v),
+            LookForDevices = s_lookForDevices,
+        };
+    }
+
+    /// <summary>"Look for devices": re-read this PC's outputs and wake the other devices (the picker-opened announce, rate-limited).</summary>
+    static readonly Action s_lookForDevices = static () =>
+    {
+        Playback.Audio.RefreshDevicesSoon();
+        Shell.DeviceVerbs.PickerOpened();
     };
 
-    /// <summary>The picker's entries, composed from the roster, the owner, the active device and the outputs (this computer first, then
-    /// Spotify Connect with this device filtered out), plus a fingerprint of everything they were built from. The verification row is
-    /// the player's own echo, never a loopback of the setting.</summary>
+    /// <summary>Where Wavee plays (<see cref="Shell.DevicePicker.Compose"/>), from the roster, the owner, the active device, this PC's outputs,
+    /// the player's echo and the sound switches, plus a fingerprint of everything it was built from.</summary>
     internal static DevicePickerView ReadDevicePicker()
     {
         uint roster = Playback.Devices.Changed.Value;
@@ -276,18 +295,19 @@ internal static class RailWiring
         var local = Playback.Audio.Devices.Value;
         string? selected = Playback.Audio.SelectedOutputId.Value;
         bool supported = Playback.Audio.Supported.Value;
+        string? unresponsive = Playback.Audio.Unresponsive.Value;
+        _ = Playback.Current.Value;                                           // the quality echo follows the track
 
         var observed = Playback.Audio.PlayingOpened;
         var asked = Shell.DevicePickerFacts.Quality;
-        _ = Platform.SettingsChanged.Value;                                   // the last row states the equalizer and normalization at rest
+        _ = Platform.SettingsChanged.Value;                                   // the footer states the equalizer and normalization at rest
         var sound = Shell.DevicePickerFacts.Sound;
-        var picker = Shell.DevicePicker.Items(owner, activeSlot, Playback.Devices.Rows, local, selected, supported, observed, asked, sound);
 
-        var entries = Shell.DevicePicker.Entries(picker);
-
-        int stamp = HashCode.Combine(roster, (byte)owner, activeSlot, local.Length, selected, supported,
+        int stamp = HashCode.Combine(roster, (byte)owner, activeSlot, local, selected, supported, unresponsive,
             HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked, sound));
-        return new DevicePickerView(entries, stamp);
+        string selectedName = Platform.Settings.Get(Platform.Keys.OutputDeviceName);   // a chosen output that left the roster keeps its row by this name
+        return Shell.DevicePicker.Compose(owner, activeSlot, Playback.Devices.Rows, local, selected, selectedName, supported, unresponsive, observed,
+            asked, sound, stamp);
     }
 
     // ══ THE ON-MEDIA TRANSPORT ═══════════════════════════════════════════════════════════════════════════════════════

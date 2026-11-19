@@ -338,6 +338,24 @@ public static partial class Playback
             Changed.Value = ++s_version;
         }
 
+        /// <summary>`--fake`'s roster (<see cref="UseFakeConnect"/>): the rows a cluster would put, every device inactive.</summary>
+        internal static void Seed(ReadOnlySpan<FakeConnectDevice> devices)
+        {
+            if (devices.Length > s_rows.Length) Array.Resize(ref s_rows, devices.Length);
+            for (int i = 0; i < devices.Length; i++)
+                s_rows[i] = new Row { Hash = DeviceHash(devices[i].Id), Id = devices[i].Id, Name = devices[i].Name, Kind = devices[i].Kind, Volume = devices[i].Volume };
+            for (int i = devices.Length; i < s_count; i++) s_rows[i] = default;
+            s_count = devices.Length;
+            Changed.Value = ++s_version;
+        }
+
+        /// <summary>`--fake`: the cluster's active flag moves to <paramref name="hash"/>.</summary>
+        internal static void MarkActive(ulong hash)
+        {
+            for (int i = 0; i < s_count; i++) s_rows[i].IsActive = s_rows[i].Hash == hash;
+            Changed.Value = ++s_version;
+        }
+
         static string Text(Spotify.Decode.ClusterBuffer buffer, TextRef reference)
         {
             var utf8 = buffer.Utf8(reference);
@@ -1159,6 +1177,7 @@ public static partial class Playback
     /// second transfer while this one is in flight discards the first answer (C4).</summary>
     static void SendTransfer()
     {
+        if (FakeConnectActive) { AnswerFakeTransfer(s_fx.TransferTo, s_fx.TransferEpoch); return; }
         string target = Devices.IdOf(s_fx.TransferTo);
         if (target.Length == 0)
         {
