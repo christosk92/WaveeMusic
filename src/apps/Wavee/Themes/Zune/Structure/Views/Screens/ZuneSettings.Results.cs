@@ -43,11 +43,15 @@ internal static partial class ZuneSettings
             Basis = lay.ColumnW, MaxWidth = lay.ColumnW, Grow = lay.ColumnGrows ? 1f : 0f, Shrink = 1f,
             Children = kids.ToArray(),
         };
-        // The scroll clip reaches a result's padding left of the column, so the highlighted row's wash bleeds past the column as the board draws it.
+        // The scroll clip reaches a result's padding left of the column, so the highlighted row's wash bleeds past the column as the board draws it; on the
+        // right the scroller runs over the page row's gutter to the page's edge, so its scrollbar sits on that edge (as the category lane's).
         return ScrollView(new BoxEl
         {
-            Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Start, Padding = new Edges4(Z.ResultPadX, laneAir, Z.ResultPadX, Z.LaneBottom), Children = [column],
-        }) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Margin = new Edges4(-Z.ResultPadX, 0f, -Z.ResultPadX, 0f), ScrollKey = "zs:results", Key = "zs:scroll:results" };
+            Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Start, Padding = new Edges4(Z.ResultPadX, laneAir, Z.ResultPadX + lay.Gutter, Z.LaneBottom), Children = [column],
+        }) with
+        {
+            Grow = 1f, Shrink = 1f, MinHeight = 0f, Margin = new Edges4(-Z.ResultPadX, 0f, -Z.ResultPadX - lay.Gutter, 0f), ScrollKey = "zs:results", Key = "zs:scroll:results",
+        };
     }
 
     /// <summary>One result: the label (the matched letters in the accent) over its breadcrumb; a child of another result stands in under it. A link: a tap
