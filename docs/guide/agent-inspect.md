@@ -443,9 +443,10 @@ reads as args, so quote text with spaces after it. This is how a run types into 
 key ctrl+f
 type daft punk
 type "daft punk" settle=false
-type key=settings:search crossfade      # the Settings page's box, once a theme binds it
+type key=settings:search crossfade      # the Settings page's box (every theme binds it)
 type key=settings:search "dark mode"
 key enter
+key esc                                 # in the Settings box: the first Escape clears it (and closes its list), a second leaves it
 ```
 
 ### `scroll {key | x,y, dy?, dx?}`
@@ -518,7 +519,8 @@ The reply's `leftOpen[{key, first}]` lists the overlays the state opened (Zune C
 **The AI lyrics settings card: `state kind=ai`.** The server never starts the AI lyrics module, so the card is always "not
 started" (the switch off and disabled). `state kind=ai ai=<case> error=<kind> lang=<iso>` stages the card's one status model
 (`AiLyrics.Current`, through `AiLyrics.Stage`; `Diagnostics.Inspect.AiLyrics.cs`) on the Settings page that shows the card
-(Classic and WinUI: `route=settings arg=appearance`, the card `appearance.ai-lyrics`; Zune: `arg=lyrics`, the card `zs:ai`), with
+(`route=settings arg=lyrics` in every theme, Lyrics & Now playing › Lyrics; the card is `appearance.ai-lyrics` in Classic and WinUI,
+the rows `zs:ai:rows` in Zune), with
 no module behind it: while it stands every module verb is inert, so a click on Try again, Remove, a language or the switch downloads
 nothing, loads nothing and never touches the profile's `ai\lyrics` folder. The cases: `off`, `unavailable` (not an Arm64 PC: the
 switch off and disabled), `setup` (needs its download), `downloading` (40 %, a speed and a file), `paused`, `preparing` (the first
@@ -649,20 +651,20 @@ Which `value` each option kind takes:
 | Slider | A number. |
 | Colour | `"#RRGGBB"` or `"#RRGGBBAA"`. |
 
-### `setting {category?, tab?, id?, value?}`
+### `setting {category?, id?, value?}`
 
 The app's own settings: every dial of the settings registry (`SettingsSpec`, `Screens/SettingsSpec*.cs`). `setting` lists them in
-registry order, then the active theme's option dials (`live: true`): `{id, legacy?, category, group, parent?, tier?, was?, kind, value,
-writer, readOnly?, enabled?, reason?, visible?, live?}` plus `count` (the registry's dials) and `live`. `was` is the old address
-(`<old tab>/<old row id>`) of a dial the old pages drew; `visible: false` marks one the facts compose away right now (it is still
-listed). `category=sound` (or an old slug, `audio`) lists one category; `tab=appearance` the dials one old tab drew. `setting id=<dial>`
+registry order, then the active theme's option dials (`live: true`): `{id, legacy?, category, group, parent?, tier?, kind, value,
+writer, readOnly?, enabled?, reason?, visible?, live?}` plus `count` (the registry's dials) and `live`. `legacy` lists the old row ids
+a dial answers to; `visible: false` marks one the facts compose away right now (it is still listed). `category=sound` (or an old slug,
+`audio`) lists one category. `setting id=<dial>`
 reads one dial, named by its registry id (`playback.crossfade`) or its old row id (`crossfade`), any case; `setting id=<dial> value=<v>`
 sets it through the dial's own writer, the verb a Settings view calls (a toggle's `true`/`false`, a slider's number, a choice's, a
 segmented dial's or a picker's index; naming an action presses it, with no value), and bumps the page epoch when the writer asks the
 page to re-read, as a view does: a mounted Settings page, the lyrics stage and the bar read the new value as after a click. A value set
 on a live mount is that mount's: the next `mount` (or `reset`) puts it back through the dial's writer (toggles, sliders, choices). One
-set with nothing mounted is for the next mount, which keeps it. An old id two tabs shared (`privacyPolicy`) wants the registry id or
-`tab=`; a read-only dial or a module's own card (`lyrics.ai.files`) is refused. A theme option is a dial too
+set with nothing mounted is for the next mount, which keeps it. An old id two dials shared would want the registry id (none does
+today); a read-only dial or a module's own card (`lyrics.ai.files`) is refused. A theme option is a dial too
 (`appearance.option.style.density`); `option` writes it by its own grammar.
 
 ```text
@@ -671,12 +673,18 @@ setting id=marquee value=false       # an old row id still names its dial
 setting category=sound               # one category's dials with their values
 ```
 
-The Settings tab strips key their items (`settings:tabitem:<slug>`: Classic's areas, WinUI's tabs; Zune's section list is
-`zs:link:<slug>`), so `click key=settings:tabitem:appearance` switches the tab the way a user does (`goto route=settings
-arg=appearance` opens it directly).
-
-**The registry's Settings page (contract 1.116, settings rework phase 4).** Each theme's new page keys its nodes from
-`SettingsKeys` (`Theming/Contracts/SettingsPageModel.cs`), so a link's arrival, these verbs and `lint` find the same node in every theme:
+**The Settings page (settings rework phase 4; contract 2.0 removed the old areas and tabs).** Settings opens on its home; the strip
+(Classic, WinUI) or the section list (Zune) holds the home and nine categories: `home`, `appearance`, `sound`, `playback`, `lyrics`,
+`notifications`, `system`, `storage`, `account`, `help`. `goto route=settings arg=<slug>` opens one directly, and every slug the page
+ever answered to still lands on the category that now holds what it opened (`SettingsSpec.Aliases.cs`): `general`, `language`,
+`graphics`, `links`, `tray` -> system; `audio`, `devices`, `devices-connect`, `connect` -> sound; `video` -> playback; `fullscreen`,
+`nowplaying` -> lyrics; `storage-cache`, `downloads`, `downloads-storage`, `cache` -> storage; `privacy`, `privacy-diagnostics` ->
+account; `about`, `feedback`, `feedback-help`, `keyboard`, `shortcuts`, `logs`, `diagnostics` -> help; an unknown slug opens the home.
+Through the deep-link door an old row id names its dial too (`goto deeplink="wavee://open?route=settings&arg=crossfade"` opens
+Playback and plays the arrival on Crossfade; `goto route=settings arg=<slug>` commits the route itself, with no arrival). The old
+strip keys (`settings:tabitem:<slug>`) are gone: Classic and WinUI key their strip items `settings:cat:<slug>`. Each theme keys its
+nodes from `SettingsKeys` (`Theming/Contracts/SettingsPageModel.cs`), so a link's arrival, these verbs and `lint` find the same node
+in every theme:
 
 | Key | What | Theme |
 |---|---|---|
@@ -686,12 +694,13 @@ arg=appearance` opens it directly).
 | `settings:dial:<dialId>` | a dial's row in a category body (`settings:dial:playback.crossfade`) | Classic, WinUI |
 | `zs:row:<dialId>` | a dial's row | Zune |
 | `settings:result:<id>` | a search result (a dial's id, or a pointer's: `settings:result:pointer.downloads`) | all |
-| `settings:explain:<dialId>` | a dial's explanation badge (only where its clip exists for the theme and app mode) | all |
+| `settings:explain:<dialId>` | a dial's explanation badge (only where its clip exists for the theme and app mode: with the clips in `assets/settings-explain`, Lyrics blur and Crossfade with its duration in every theme) | all |
 
-Once a theme draws them: `click key=settings:cat:sound` (Zune `click key=zs:link:sound`) opens a category, `type key=settings:search
-crossfade` types into the box, `key down` / `key enter` walk and open the results, `key esc` clears the box and a second one leaves it,
-`key ctrl+f` on Settings focuses the box instead of the app's search, and `key ctrl+188` (Ctrl+,) opens Settings on its home with the box
-focused. Until then `settings model=` reads what the page is handed and `settings press=` runs the box's keys.
+`click key=settings:cat:sound` (Zune `click key=zs:link:sound`) opens a category, `type key=settings:search crossfade` types into the
+box, `key down` / `key enter` walk and open the results, `key esc` clears the box (an open suggestion list closes with it) and a second
+one leaves it (the box takes Escape ahead of its field while the caret is in it, `SettingsSearchModel.Box`), `key ctrl+f` on Settings
+focuses the box instead of the app's search, and `key ctrl+188` (Ctrl+,) opens Settings on its home with the box focused.
+`settings model=` reads what the page is handed and `settings press=` runs the box's keys without a caret.
 
 ### `settings {q? | focus? | model? | press?, limit?}`
 
@@ -706,12 +715,12 @@ and `searchApp`, the lines the results page shows. `limit` (default 8, up to 30)
 settings link (`category`, `category/dialId`, `dialId`, or any old slug or row id) to the deep-link door exactly as
 `wavee://open?route=settings&arg=<link>` does, settles, and replies with what it named (`known`, `category`, `dial`), the focus it
 recorded (`{dial, seq}`: `seq` grows on every dial link, so the same dial twice replays the arrival) and the route; a feature
-pointer's id (`focus=pointer.downloads`) opens the pointer's place instead. It needs a mount. Until each theme draws the registry (phase 4) the page is the old one: a dial link lands on the tab or area that draws the
-dial, and an old slug where it always did. `settings` alone reports the index (`entries`, `tokens`, `postings`, `trigrams`,
+pointer's id (`focus=pointer.downloads`) opens the pointer's place instead. It needs a mount. An old slug lands on the category that
+now holds what it opened. `settings` alone reports the index (`entries`, `tokens`, `postings`, `trigrams`,
 `phrases`, `buildMs`, `culture`) and `missingTerms`: every composed dial and pointer with no `settings.terms.<id>` in the loc files
 (it must be empty).
 
-`settings model=<category>` prints what the registry's page is handed (contract 1.116): with Settings mounted, the props the page host
+`settings model=<category>` prints what the page is handed: with Settings mounted, the props the page host
 last pushed (`source: "page"`), else the same members built now (`source: "built"`). `category` (the open one's index), `categories`
 (`{index, slug, title, strip, glyph}`: the home and the nine), `focus` (the arrival: `{dial, seq, category, group, parent, expand,
 highlightMs}`), `home` (`glance` `{id, title, value, dial, glyph}`, `suggestions` `{id, text, action, actionLabel, dial, act, dismiss}`,
@@ -735,7 +744,7 @@ settings model= q=xyzzy                    # the no-match state: noMatch, didYou
 ```text
 settings q="dark mode"                      # appearance.appMode first, by its phrase
 settings q=crosfade                         # a typo: playback.crossfade, then its duration
-settings focus=lyrics.ai                    # opens Lyrics (Appearance in Classic and WinUI) as the AI sparkle does
+settings focus=lyrics.ai                    # opens Lyrics & Now playing on the AI lyrics card, as the AI sparkle does
 goto deeplink="wavee://open?route=settings&arg=playback/playback.crossfade"   # the same door from a link
 ```
 

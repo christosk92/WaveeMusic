@@ -494,7 +494,7 @@ The account chip and menu, the context menu's header and round-verb strip, the C
 Settings, the theme picker and its options, the setup wizard, the release notes, and the report and crash dialogs. All fifteen keys are Zune's own
 (`Structure\ZuneStructure.Screens.cs`); Zune's registrations win over Classic's stand-in key by key.
 
-**Files.** `Structure\Views\Screens\ZuneSettings*.cs` (the page and its seven tabs), `ZuneSetup*.cs`, `ZuneReleaseNotes*.cs`, `ZuneFeedback.cs`,
+**Files.** `Structure\Views\Screens\ZuneSettings*.cs` (the page, its home and nine categories, the results), `ZuneSetup*.cs`, `ZuneReleaseNotes*.cs`, `ZuneFeedback.cs`,
 `ZuneCrash.cs`; numbers and tier records in `Structure\Rules\ZuneSettingsRules.cs` (settings) and `Rules\ZuneSetupRules.cs` (setup, release notes
 and the two dialogs); loc `theme.zune.screens`.
 
@@ -502,13 +502,16 @@ and the two dialogs); loc `theme.zune.screens`.
 LocalPlayback / SignInDoor / RuntimeCard`, `Pages.WhatsNew`, `ReleaseNotes.Viewer`, `ReleaseNotes.AfterUpdatePlate`, `Dialog.Feedback`,
 `Dialog.Crash`. Template ids: `zune.screens.settings[.theme-picker|.theme-options]`, `zune.setup.*`, `zune.release-notes.*`, `zune.dialog.*`.
 
-**Settings.** A panorama title ("settings"), a lowercase section list (the seven core tabs: the page state and every deep link name a tab), and the
-open tab's column. The column is the document drawn: every `SettingsDoc` section of the tab is a group (a 26/300 heading over label | control rows), so a
-new document row shows up with its words and its writer; the controls that need labels or ranges (combos, chips, sliders) are built per row in
-`ZuneSettings.<Tab>.cs`. Controls are the engine's, drawn by `ZuneControls`; the stateful ones (`ZuneKit.ChoiceCell`, `SliderCell`) keep one signal for
-their life and re-read the document on `Settings.PageEpoch`. Appearance mounts the picker and the options through the registry (`Slots.View`), and
-beside the column (or under it, by flex wrap) a live preview built from the roles. Node identity: the list, lane, groups and rows are the same nodes in
-every tier; a tier changes their direction, wrap and widths only.
+**Settings** (settings rework phase 4). A panorama title ("settings", never shrunk), the "find a setting" pill (`props.Search.Box`, `settings:search`) over
+a lowercase section list of ten words (the home, "your setup", and the nine categories, keyed `zs:link:<slug>`), and the open category's column: every group
+of `props.Body.Of(category)` is a 26/32 heading over label | control rows keyed `zs:row:<dialId>` (`ZuneSettings.Body.cs`; the composite blocks in
+`ZuneSettings.Composites.cs` and the per-category files). Typing in the pill replaces the column with the two-line results (`ZuneSettings.Results.cs`: the
+label with the matched letters in the accent over the breadcrumb). A dial whose clip exists for the theme and app mode carries an accent "see it" word that
+opens the clip under the row (`ZuneSettings.Explain.cs`); a link's arrival lights the row's label in the accent and fades it back. At Compact the page is the
+drill-in list of the categories with a summary line each; a category opens as its own page (the route's open section, `props.OpenSection`, closed by
+`props.CloseSection`). Controls are the engine's, drawn by `ZuneControls`; the stateful ones (`ZuneKit.ChoiceCell`, `SliderCell`) keep one signal for their
+life and re-read on `Settings.PageEpoch`. Appearance mounts the picker and the options through the registry (`Slots.View`), with a live preview beside the
+column. Node identity: the pill, list, lane and column are the same nodes in every tier; a tier changes their direction, wrap and widths only.
 
 **Theme options.** `ZuneSettings.Theme.cs` draws the core's `SettingsOptionsView` by row kind: toggles as switches, short selects as chips (a combo
 past four or when the structure asks for one), the accent as a row of square swatches, sliders, confirmed actions, "reset" beside the heading. The
@@ -527,11 +530,10 @@ at open. Compact folds the preview behind a 40 row, Huge is a two-pane card.
 **Numbers.** `ZuneSettingsTiers.For/Of` (content tier), `ZuneSetupTiers`, `ZuneReleaseNotesTiers` (page: content tier; overlays: window tier),
 `ZuneDialogTiers`. The sizes the lane covers are Standard; the others are sane variations ZT8 tunes against the -Compact, -Small and -Huge boards.
 
-**Conflicts with the boards (the plan and the owner win).** The board lists twelve sections; the core page is a seven-tab cell, so account, devices and
-keyboard have no document rows and are not built, and audio, lyrics, feedback & help are groups of Playback, Appearance, About and Privacy. No downloads
-(Q29 / NQ4): the core Storage cache settings stay. The board's "add a theme" tile and community-themes line are not built (nothing installs a theme
-from a folder). Compact and Small draw the section list as a wrapping row above the column, not a drill-in. The Standard preview column wraps under the
-options when the window is too narrow for both.
+**Conflicts with the boards (the plan and the owner win).** The repo boards list twelve sections; the page draws the settings rework's nine categories
+and the home (the concept boards Z-Home, Z-Results, Z-Compact), so the boards' account, devices, keyboard and feedback sections are groups of Account &
+privacy, Sound and Help & about. No downloads (Q29 / NQ4): the core Storage cache settings stay. The board's "add a theme" tile and community-themes line
+are not built (nothing installs a theme from a folder). The Standard preview column wraps under the options when the window is too narrow for both.
 
 ## Z9: the states, "on this PC", the light pass and the completeness rule
 

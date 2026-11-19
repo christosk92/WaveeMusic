@@ -105,6 +105,10 @@ versions separately under `v*` and is not tracked in this file.)
 - **WinUI lyrics pane follows the blur setting,** and the active line and the words being sung stand clearly apart
   from the rest.
 
+- **Settings keeps one of each.** The privacy policy link lives under Account & privacy only (Help & about no longer
+  repeats it), the log viewer's path reads Settings › Help & about › Logs, and in every theme's "Find a setting" box
+  the first Escape clears what you typed (closing its list) and a second leaves the box.
+
 ### Fixed
 
 - **Your Episodes (WinUI) showed a stray "7", a dead band and a header out of line.** It stands on the library's column
