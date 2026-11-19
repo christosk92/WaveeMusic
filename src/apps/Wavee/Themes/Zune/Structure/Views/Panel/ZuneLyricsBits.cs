@@ -44,6 +44,7 @@ internal static class ZuneLyricsHeader
         var tiers = ctx.Tier();
         float h = P.MetaRow(tiers.Policy is null ? WidthTier.Standard : tiers.Window);
         var facts = props.Read();
+        var row = ctx.Hooks.UseRef<NodeHandle>(default);   // the "options" card hangs under the row's start (Zune's left-aligned grammar)
         var kids = new List<Element>(4);
         if (facts.HasSecondLine)
             kids.Add(ToolTip.Wrap(ZunePlayerBar.Word(Loc.Get(Strings.Theme.Zune.Player.Translate), props.ToggleSecondLine, true, facts.SecondLineActive, h, P.MetaSize),
@@ -52,12 +53,12 @@ internal static class ZuneLyricsHeader
         kids.Add(ToolTip.Wrap(ZunePlayerBar.Word(Loc.Get(Strings.Player.Fullscreen), () => props.Expand(begin), true, false, h, P.MetaSize), facts.ExpandTip)
             with { Key = "lyrics-expand" });
         if (props.Options is { } options)
-            kids.Add(Embed.Comp(new ZuneLyricsOptions.Props(options, h), static () => new ZuneLyricsOptions()) with { Key = "lyrics-options" });
+            kids.Add(Embed.Comp(new ZuneLyricsOptions.Props(options, h, row), static () => new ZuneLyricsOptions()) with { Key = "lyrics-options" });
         kids.Add(Embed.Comp(new SparkleProps(props, h), static () => new ZuneLyricsInspector()) with { Key = "lyrics-inspector" });
         return new BoxEl
         {
             Key = Key, Height = h, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = P.WordRowPadding, ClipToBounds = true,
-            Children = kids.ToArray(),
+            OnRealized = n => row.Value = n, Children = kids.ToArray(),
         };
     }
 
@@ -68,8 +69,8 @@ internal static class ZuneLyricsHeader
 /// <summary>The "options" word: opens the lyrics options card under it (light dismiss); a second press closes it.</summary>
 internal sealed class ZuneLyricsOptions : Component
 {
-    /// <summary>The options and the meta row's height (the Compact touch floor included).</summary>
-    internal sealed record Props(LyricsPaneOptions Options, float Height);
+    /// <summary>The options, the meta row's height (the Compact touch floor included) and the row the card hangs under.</summary>
+    internal sealed record Props(LyricsPaneOptions Options, float Height, Ref<NodeHandle> Row);
 
     readonly Ref<NodeHandle> _anchor = new(default);
     readonly Action _toggle;
@@ -91,7 +92,8 @@ internal sealed class ZuneLyricsOptions : Component
     {
         if (_handle is { IsOpen: true } open) { open.Close(); return; }
         if (_overlay is not { } overlay || _props is not { } props) return;
-        var opened = overlay.Open(() => _anchor.Value, () => Embed.Comp(props, static () => new ZuneLyricsOptionsCard()),
+        // Under the meta row's start, left-aligned as Zune's words are (the word itself may stand near the pane's right edge).
+        var opened = overlay.Open(() => props.Row.Value.IsNull ? _anchor.Value : props.Row.Value, () => Embed.Comp(props, static () => new ZuneLyricsOptionsCard()),
             FlyoutPlacement.BottomEdgeAlignedLeft,
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = true });
         _handle = opened;
@@ -124,7 +126,8 @@ internal sealed class ZuneLyricsOptionsCard : Component
         var blur = UseFloatSignal(o.Blur());
         UseSignalEffect(() => blur.SetIfChanged(o.Blur()));
         string ai = o.AiLine();
-        float inner = P.LyricsOptionsW - 2f * P.LyricsOptionsPad;
+        // The card's words stand on the pane's gutter, the column the meta row's words start on (the card hangs under the row's start).
+        float inner = P.LyricsOptionsW - 2f * ZuneFrameRules.PanelGutter;
         var kids = new List<Element>(2)
         {
             new BoxEl
@@ -159,7 +162,7 @@ internal sealed class ZuneLyricsOptionsCard : Component
         return new BoxEl
         {
             Key = "lyrics-options:card", Width = P.LyricsOptionsW, Direction = 1, Gap = P.LyricsOptionsGap,
-            Padding = Edges4.All(P.LyricsOptionsPad), Children = kids.ToArray(),
+            Padding = new Edges4(ZuneFrameRules.PanelGutter, P.LyricsOptionsPad, ZuneFrameRules.PanelGutter, P.LyricsOptionsPad), Children = kids.ToArray(),
         };
     }
 }
