@@ -125,7 +125,7 @@ internal static class ZuneHomeAppBar
             };
             // A layer over the page's foot: only the bar takes the pointer. It is there only while customizing (owner, 2026-11-16) or for a tile picked
             // for its options, and never over all items (its back ring is the way out); the page reserves its height under the board, so the last tiles
-            // stay reachable.
+            // stay reachable, and an open back is brought wholly above it (ZuneHomeBoard's RevealOpen).
             return new BoxEl
             {
                 Direction = 1, Justify = FlexJustify.End, MinWidth = 0f, HitTestPassThrough = true, AlignItems = FlexAlign.Stretch,

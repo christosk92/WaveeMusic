@@ -20,6 +20,7 @@
 // PICKED FOR ITS OPTIONS (customize is off for the release, `HomeCustomize`; owner, 2026-11-18: the daylist's options must be reachable): outside
 // customize a held press or a right-click on a tile that has options, its content menu's "options" row, or the Menu key selects it (`Pick`). It wears the
 // selected outline (nothing recedes, no badges) and the app bar comes up with "options" and "done". Its back closing, "done", Escape or a tap away lets go.
+// An open back (picked or customizing) is brought wholly above the bar on the page's glide, its reserve under it (`RevealOpen`).
 //
 // THE BOX IS THE PACK'S: a band's height is its body's (packed at the rules' estimate, then at the body's measured height, followed by the grid's
 // 250 ms re-flow); every other tile is f(size class, columns, the group's fill). Nothing a tile loads moves anything.
@@ -33,6 +34,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
@@ -199,7 +201,11 @@ internal static class ZuneHomeBoard
         readonly Dictionary<string, Signal<float>> _extent = new(StringComparer.Ordinal);
         readonly Dictionary<string, Signal<bool>> _turned = new(StringComparer.Ordinal);
         readonly Signal<bool> _titleHover = new(false);
-        readonly Action _reveal;
+        readonly Action _reveal, _revealOpen;
+        NodeHandle _pack;
+        Action<NodeHandle>? _onPack;
+        string? _shownOpen;
+        float _shownOpenH;
         BoardProps? _p;
         PackReorder<ZuneBoardItem>? _reorder;
         PackGridOptions<ZuneBoardItem>? _resting, _customizing;
@@ -215,6 +221,35 @@ internal static class ZuneHomeBoard
         public BoardView()
         {
             _reveal = () => { if (_p?.Board.View.RingId.Peek() is { } id) _p.Board.Grid.BringIntoView(HomeBoardKeys.Tile(id)); };
+            _revealOpen = RevealOpen;
+        }
+
+        /// <summary>An open back stands wholly above the app bar, which lies over the page's foot while a tile is open (content never hides under it). After
+        /// layout, once the grid has packed the back at its open extent, the page's scroller makes the least move on its glide that shows the back's packed
+        /// box and the bar's reserve under it (<see cref="ZuneHomeBoardLayout.FootReserve"/>, the reserve the board keeps under its last row), never past the
+        /// back's top. Again when the open back's height changes (a note under a setting's words, a width that re-wraps them); a re-pack that only moves
+        /// it scrolls nothing, so a page the listener scrolled away from the back stays where it is.</summary>
+        void RevealOpen()
+        {
+            var p = _p;
+            if (p is null) return;
+            string? open = p.Board.View.OpenId.Value;
+            _ = p.Board.Grid.LayoutVersion.Value;   // after every re-pack: the open extent lands on the pack
+            if (open is null) { _shownOpen = null; return; }
+            if (!p.Board.Grid.TryRect(HomeBoardKeys.Tile(open), out var box)) return;
+            if (open == _shownOpen && MathF.Abs(box.H - _shownOpenH) <= 0.5f) return;
+            var scene = Context.Scene;
+            if (scene is null || _pack.IsNull || !scene.IsLive(_pack)) return;
+            var viewport = scene.Parent(_pack);
+            while (!viewport.IsNull && !scene.HasScroll(viewport)) viewport = scene.Parent(viewport);
+            if (viewport.IsNull || scene.ScrollHandleFor(viewport) is not { } scroll) return;
+            var content = scene.ScrollRef(viewport).ContentNode;
+            if (content.IsNull || !scene.IsLive(content)) return;
+            _shownOpen = open;
+            _shownOpenH = box.H;
+            // The grid is the pack box's only child: the back's top in the scroller's content is the box's plus its packed y.
+            double top = scene.AbsoluteLayoutRect(_pack).Y - scene.AbsoluteLayoutRect(content).Y + box.Y;
+            scroll.BringIntoView(top, Math.Min(box.H + p.Lay.FootReserve, scroll.Viewport), float.NaN, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide);
         }
 
         // A measured body's height lands on its box in the frame that laid it out (Measured): the box follows its body with no frame between, so
@@ -278,6 +313,8 @@ internal static class ZuneHomeBoard
                 if (open is null && _openWas is { } was && !view.Editing.Peek() && view.SelectedId.Peek() == was) view.SelectedId.Value = null;
                 _openWas = open;
             }, DepKey.From(open?.GetHashCode() ?? 0));
+            // The open back, wholly above the app bar (RevealOpen): auto-tracked, after layout.
+            UseLayoutEffect(_revealOpen);
 
             // Customize always has a selected tile (the first, when it was entered with none: the inspector's `home do=edit`, a mode set elsewhere).
             UseLayoutEffect(() =>
@@ -420,6 +457,7 @@ internal static class ZuneHomeBoard
                     new BoxEl
                     {
                         Key = "home:board-pack", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                        OnRealized = _onPack ??= h => _pack = h,
                         Layout = Design.Reduced ? null : ZuneHomeRules.ChapterResize, Children = [grid],
                     },
                     // The round arrow to all items only while the add surface is on (HomeCustomize, owner 2026-11-18).
