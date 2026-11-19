@@ -291,7 +291,8 @@ public sealed class ClassicStructure : IStructureLayer
         // T11c: the Common blocks every theme shares (history, the Home customizer, the frame-rate overlay, diagnostics, logs: today's views
         // converted, one copy), then Classic's own screens: the setup wizard, the release notes, the feedback and crash dialogs' bodies.
         // Classic draws a dial's explanation badge in its own grammar (an info glyph button and its tip in Classic's plate, settings rework 6.5).
-        CommonBlocks.Register(views, explainer: ClassicSettings.Explainer, explainerTemplateId: "classic.screens.settings.explainer");
+        CommonBlocks.Register(views, explainer: ClassicSettings.Explainer, explainerTemplateId: "classic.screens.settings.explainer",
+            hint: ClassicHint.Template, hintTemplateId: "classic.hint");
         ClassicSetup.Register(views);
         ClassicReleaseNotes.Register(views);
         views.Add(ViewKeys.DialogFeedback, ClassicFeedback.Template, "classic.dialog.feedback");

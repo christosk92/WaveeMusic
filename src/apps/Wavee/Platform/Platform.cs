@@ -861,6 +861,9 @@ public static class SegoeGlyphs
     /// <summary>A person with a plus (Segoe "AddFriend"): the Follow toggle at rest (tuned Classic D21).</summary>
     public static readonly string AddFriend = Of(0xE8FA);
 
+    /// <summary>A lightbulb (Segoe "Lightbulb"): an in-app tip (Classic's hint strip, design 7.1).</summary>
+    public static readonly string Lightbulb = Of(0xE82F);
+
     /// <summary>Lines beside a music note: the queue, wherever a queue door is drawn (the engine's <c>Icons.Queue</c> is the
     /// album disc).</summary>
     public static readonly string Queue = Of(0xE90B);

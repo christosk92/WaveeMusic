@@ -40,7 +40,10 @@ internal static class ClassicDevicePicker
         return new BoxEl
         {
             Direction = 1,
-            Children = [MenuFlyout.Create(items, props.Close, parts: parts, size: OverlayFit.MenuSize) with { Key = "devices:" + version }],
+            // Under the menu, the devices flyout's hint (design 6.3: Lossless available, the metered cap's state line), Classic's strip on the
+            // menu's foot: a MenuFlyout row holds no strip, so the quality row's second line sits under the rows, in the flyout's own plate.
+            Children = [MenuFlyout.Create(items, props.Close, parts: parts, size: OverlayFit.MenuSize) with { Key = "devices:" + version },
+                Hints.Slot(HintSurfaces.DevicePicker, props.Close)],
         };
     }
 

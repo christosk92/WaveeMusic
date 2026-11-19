@@ -31,6 +31,10 @@ internal static class ClassicMasthead
     public static Element Template(MastheadProps props, in ViewContext ctx)
     {
         float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the band's title sits on the page's column (F3)
+        // The band's node: the fast navigation hint's line floats under the page head (design 6.3 #10), wherever a page shows one.
+        var band = ctx.Hooks.UseRef<NodeHandle>(default);
+        var anchor = ctx.Hooks.UseRef<(Action<NodeHandle> OnRealized, Func<NodeHandle> Target)?>(null);
+        anchor.Value ??= (h => band.Value = h, () => band.Value);
         // One stable host; the band is its only child while live, so a band mounts (enters) and unmounts (exits) with its page.
         if (!props.Live || props.Held is not { } chrome)
             return new BoxEl { MinWidth = 0f, Direction = 1, HitTestPassThrough = true };
@@ -51,9 +55,10 @@ internal static class ClassicMasthead
                     Key = BandKey(chrome),
                     Direction = 0, MinWidth = 0f, Gap = Spacing.M, AlignItems = FlexAlign.End,
                     Padding = ClassicFrameBitsRules.MastheadPadding(gutter),
-                    Animate = ClassicFrameBitsRules.MastheadSwap,
+                    Animate = ClassicFrameBitsRules.MastheadSwap, OnRealized = anchor.Value.Value.OnRealized,
                     Children = [ctx.View(ViewKeys.PageHead, new PageHeadProps(chrome)), tools],
                 },
+                Hints.Pointer(HintSurfaces.PageHead, anchor.Value.Value.Target),   // a zero box: the band keeps its height
             ],
         };
     }
