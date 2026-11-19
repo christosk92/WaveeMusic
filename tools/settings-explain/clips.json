@@ -46,8 +46,8 @@
    "dial": "lyrics.stage.calm",
    "kind": "motion",
    "themes": "all",
-   "status": "not recordable headless: Calm tames how the stage answers the music (level, beats, onsets); headless there is no audio level, so a take with Calm and one without look alike",
-   "pending": {"branch": null, "part": "inspector", "why": "Calm motion tames how the stage moves with the music; headless there is no audio level, so the visualizer only drifts and both takes look alike"},
+   "status": "not recordable headless or from a real window: Calm tames how the stage answers the music (level, beats, onsets); headless there is no audio level, and a real --fake window has none either (a --fake load plays a silent voice into the paced silent endpoint: no device, no samples, Playback.Audio OpenSilentAsync / UseSilentEndpoint), so a take with Calm and one without look alike; a real level needs real audio (a Spotify session), which a recording never uses",
+   "pending": {"branch": null, "part": "inspector", "why": "Calm motion tames how the stage moves with the music; headless, and in a real --fake window (a silent voice), there is no audio level, so the visualizer only drifts and both takes look alike"},
    "w": 1280,
    "h": 720,
    "mountArgs": {"stage": "visualizer"},
@@ -104,14 +104,14 @@
    "dial": "appearance.option.style.backdrop",
    "kind": "state",
    "themes": ["winui"],
-   "status": "not recordable headless: Mica and Acrylic sample the desktop behind a real window; a headless render has none, so every backdrop renders alike (needs a real-window recording off-screen, or a stand-in desktop in the inspector)",
+   "status": "not recordable headless or from a real window: Mica and Acrylic sample the desktop behind an active window on a screen. A headless render has none. A real window must stay off every screen and never take the focus, and there DWM draws flat fallbacks (probe 2026-11-19, PrintWindow of a dark window off every monitor: Mica and Mica Alt a flat #202020 while inactive, which None paints too, Acrylic a flat #545454; no wallpaper tint or blur even with the active frame look), so the clip would show four near-identical greys. On a visible screen Acrylic would bake whatever lies behind the window into a shipped clip. Needs a stand-in desktop composited behind the window in the inspector",
    "route": "home",
    "before": 0,
    "after": [2, 3],
    "capture": 0.6,
    "region": {"rect": [0, 0, 560, 315]},
-   "pending": {"branch": null, "part": "inspector", "why": "a headless render flattens the window over its own background; Mica and Acrylic sample the desktop behind a real window, so every backdrop renders alike"},
-   "todo": "record from a real window (secondary monitor, off-screen, --window-rect) or give the inspector a stand-in desktop behind the window"
+   "pending": {"branch": null, "part": "inspector", "why": "a headless render flattens the window over its own background, and a real window off every screen gets DWM's flat fallbacks; Mica and Acrylic sample the desktop behind an active window, so every backdrop renders alike"},
+   "todo": "give the inspector a stand-in desktop behind the window (a neutral wallpaper the materials sample), then record; a real window cannot (see status)"
   },
   {
    "clip": "appearance.option.structure.navigationPane",
@@ -243,7 +243,7 @@
    "dial": "playback.canvas",
    "kind": "state",
    "themes": "all",
-   "status": "not recordable headless on this branch: the Canvas player draws no video frames headless (the poster, then black); the fake media backend that gives it frames (`mount media=fake`) is on the feat/home-* line",
+   "status": "not recordable on this branch: the Canvas player draws no video frames headless (the poster, then black); the fake media backend that gives it frames (`mount media=fake`) is on the feat/home-* line. A real --fake window needs no Spotify session for it (the local assets/canvas loop, as the --stage-canvas probe plays it), but this branch cannot place, drive or film one within the rules: no --window-rect / --window-monitor / --no-activate and no wavee://diag?cmd=drive (both on feat/feature-recorder, which needs fluent-gpu's AppOptions.NoActivate), the diag verbs refuse a --fake run (its developer-mode setting stays in memory, off), --theme reaches only --screenshot / --frame-bench / --stage-demo runs, a light run follows the OS, and Windows.Graphics.Capture of a window off every monitor returned blank frames (probe 2026-11-19)",
    "route": "home",
    "setup": ["play uri=spotify:track:tr3 fromMs=30000", {"winui": "click key=winui-bar-lyrics", "classic": "click key=view", "zune": "click key=lyrics"}, {"winui": "click key=winui-pane-tab:NowPlaying", "zune": "click key=zune-panel-pivot:NowPlaying"}, "setting id=lyrics.playerStyle value=1"],
    "before": false,
@@ -252,7 +252,7 @@
    "region": {"keys": ["npv-stage"], "pad": 16, "fit": "width", "within": {"winui": "winui.panel.host", "classic": "shell.panel.host", "zune": "zune-panel-host"}},
    "why": "a canvas shows in the panel only with the Canvas player style (edge to edge behind the panel), on the stage and in the mini player's Canvas face; the fake tr3 carries the local canvas",
    "pending": {"branch": null, "part": "inspector", "why": "headless the Canvas player draws no video frames: the poster shows, then the surface stays black"},
-   "todo": "give the canvas frames headless (the fake media backend, `mount media=fake`, is on a later branch than this one), then record"
+   "todo": "give the canvas frames headless (the fake media backend, `mount media=fake`, is on a later branch than this one), then record; or film a real window once this branch has the feature recorder's placement and drive verb"
   },
   {
    "clip": "playback.previewSound",
