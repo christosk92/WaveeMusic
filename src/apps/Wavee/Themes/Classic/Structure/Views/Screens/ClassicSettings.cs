@@ -92,6 +92,7 @@ internal static partial class ClassicSettings
         bool arriving = !string.Equals(lastLane.Value, lane, StringComparison.Ordinal);
         lastLane.Value = lane;
         var openedSeq = hooks.UseRef(0);
+        s_laneArriving = arriving;
         if (arriving && focus.Seq > openedSeq.Value) OpenArrivingLane(focus);
         openedSeq.Value = Math.Max(openedSeq.Value, focus.Seq);
         hooks.UseEffect(() => OpenArrival(focus), DepKey.From(focus.Seq));

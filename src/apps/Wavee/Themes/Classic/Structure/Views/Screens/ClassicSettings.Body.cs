@@ -11,10 +11,11 @@
 // explanation badge beside its control (`ClassicSettings.Explain.cs`); a dial a panel draws too carries its "Also in" line under its card, each place a link where
 // the core can open it.
 //
-// THE ARRIVAL (design 4.9). The page host has opened the link's category; the template opens the expanders on the dial's way (`OpenArrival`: its parents, the
-// theme options expander, the shortcuts expander), each on the expander's own FlowReveal motion; the row's frame, when it mounts or its link repeats, brings
-// itself into view at 0.3 of the scroller (`SceneStore.BringIntoView`, a glide; a cut with reduced motion), lights its highlight (the accent border and the
-// accent at the subtle-fill alpha, `Glow`) and moves the keyboard to its control. The highlight holds, then fades back over the policy's HighlightMs through the
+// THE ARRIVAL (design 4.9). The page host has opened the link's category; the template opens the expanders on the dial's way (its parents, the theme
+// options expander, the shortcuts expander): on a lane already on screen each on the expander's own FlowReveal motion (`OpenArrival`), on a lane the link
+// brings in already open (`OpenArrivingLane`). The row's frame, when it mounts or its link repeats, brings itself into view at 0.3 of the scroller
+// (`SceneStore.BringIntoView`: a glide on a lane on screen; a cut on a lane that arrives under its cross-fade, and with reduced motion), lights its highlight
+// (the accent border and the accent at the subtle-fill alpha, `Glow`) and moves the keyboard to its control. The highlight holds, then fades back over the policy's HighlightMs through the
 // colours' brush transition (reduced motion: holds, then cuts). An arrival plays once per link (`s_arrivalDone`): a frame that remounts later does not replay it.
 
 using System.Collections.Immutable;
@@ -38,6 +39,10 @@ internal static partial class ClassicSettings
 
     /// <summary>The link's arrival the bodies hand their frames (see <see cref="Template"/>).</summary>
     static SettingsArrival s_arrival = SettingsArrival.None;
+
+    /// <summary>This render brings a new lane in (a category the link or a door opened): its rows arrive already in place, so an arrival cuts to its row
+    /// under the lane's cross-fade instead of gliding through a page that is still fading in (see <see cref="Template"/>).</summary>
+    static bool s_laneArriving;
 
     /// <summary>The page's expanders' open cells by dial (page lifetime; see <see cref="Template"/>).</summary>
     static Dictionary<string, Signal<bool>> s_expanders = new(StringComparer.Ordinal);
@@ -421,10 +426,10 @@ internal static partial class ClassicSettings
     {
         var arrival = s_arrival;
         int seq = !arrival.IsNone && string.Equals(arrival.DialId, dialId, StringComparison.Ordinal) ? arrival.Seq : 0;
-        return Embed.Comp(new FrameProps(dialId, content, seq, arrival.HighlightMs), static () => new DialFrame());
+        return Embed.Comp(new FrameProps(dialId, content, seq, arrival.HighlightMs, seq > 0 && s_laneArriving), static () => new DialFrame());
     }
 
-    sealed record FrameProps(string Id, Element Content, int Seq, int HighlightMs);
+    sealed record FrameProps(string Id, Element Content, int Seq, int HighlightMs, bool Cut);
 
     /// <summary>A row's frame (see the file header): a stack whose first layer is the highlight while it plays and whose last is the row. The row is keyed inside
     /// the stack, so the highlight arriving and leaving never remounts it.</summary>
@@ -441,12 +446,14 @@ internal static partial class ClassicSettings
             var hooks = UseContext(InputHooks.Current);
             var (glow, setGlow) = UseState(0);
             int seq = p.Seq;
+            bool cut = p.Cut;
             UseLayoutEffect(() =>
             {
                 int[] done = s_arrivalDone.Value;
                 if (seq <= 0 || seq <= done[0] || _node.IsNull) return;
                 done[0] = seq;
-                Context.Scene?.BringIntoView(_node, ClassicSettingsRules.ArrivalAlign, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide);
+                // A lane the link brought in arrives scrolled to the row (a cut under its cross-fade); a lane on screen glides to it (a cut with reduced motion).
+                Context.Scene?.BringIntoView(_node, ClassicSettingsRules.ArrivalAlign, cut || Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide);
                 setGlow(seq);
                 // The keyboard goes to the row's control (past its badge where it has one).
                 NodeHandle within = s_controlNodes.TryGetValue(p.Id, out var control) && Context.Scene is { } scene && scene.IsLive(control) ? control : _node;
