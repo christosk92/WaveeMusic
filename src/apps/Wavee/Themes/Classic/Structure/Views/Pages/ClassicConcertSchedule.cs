@@ -135,7 +135,7 @@ internal static class ClassicConcertSchedule
     {
         var blocks = new List<Element>(6)
         {
-            Cells.SectionCaption(Loc.Get(Strings.Concerts.Schedule.OnTour)),
+            ClassicDetailKit.EyebrowRun(Loc.Get(Strings.Concerts.Schedule.OnTour)),
             R.Type.PageHero(m.Name) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
             Body(ConcertScheduleShaping.StatsLine(m.Stats)) with { Color = Tok.TextSecondary, MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
         };
@@ -177,11 +177,12 @@ internal static class ClassicConcertSchedule
                 }
                 : new BoxEl { Direction = 1, Gap = Spacing.S, Children = [Button.Accent(Loc.Get(Strings.Concerts.Schedule.ViewEvent), props.OpenSpotlight), location] });
         var copy = new BoxEl { Direction = 1, MinWidth = 0f, Gap = Spacing.M, Children = blocks.ToArray() };
-        return Cells.SplitHero(m.HeroImageUrl, m.SpotlightAccent, copy, wide);
+        return Cells.GroundHero(m.HeroImageUrl, m.SpotlightAccent, copy, wide);
     }
 
-    /// <summary>The tour-dates card: "Tour dates" 28/36/600, the month tabs in a 48-high edge-faded scroller, then the
-    /// selected month's board — keyed on its composed signature (props freeze at mount, §9 #9).</summary>
+    /// <summary>"Tour dates" in the section voice and the month tabs (a 48-high edge-faded scroller) on the page's ground, then the selected month's board in its
+    /// card — keyed on its composed signature (props freeze at mount, §9 #9). The title and the tabs stood inside the card, the title at 28/600, a voice no
+    /// other section speaks in (owner, 2026-11-18).</summary>
     static Element TourDates(ConcertScheduleProps props, Cell cell, ConcertScheduleModel m, bool wide)
     {
         var groups = m.Groups;
@@ -200,20 +201,17 @@ internal static class ClassicConcertSchedule
             + group.ShowCount.ToString(CultureInfo.InvariantCulture) + ":" + (group.Runs.Count > 0 ? group.Runs[0].Uri : "") + (wide ? ":w" : ":n");
         return new BoxEl
         {
-            Direction = 1, MinWidth = 0f, ClipToBounds = true, Corners = Radii.CardAll,
-            Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            Key = "artist-schedule:dates", Direction = 1, MinWidth = 0f, Gap = Spacing.S,
             Children =
             [
+                Cells.ShelfTitle(Loc.Get(Strings.Concerts.Schedule.TourDates)),
+                tabs,
                 new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f, Gap = Spacing.S, Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.S),
-                    Children =
-                    [
-                        new TextEl(Loc.Get(Strings.Concerts.Schedule.TourDates)) { Size = Rules.TourDatesSize, LineHeight = Rules.TourDatesLine, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1 },
-                        tabs,
-                    ],
+                    Direction = 1, MinWidth = 0f, ClipToBounds = true, Corners = Radii.CardAll,
+                    Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+                    Children = [Embed.Comp(new ClassicConcertMonthBoard.BoardProps(group, m.Nearby, m.Name, wide, m.Seed), cell.MonthFactory) with { Key = "dashboard-month:" + signature }],
                 },
-                Embed.Comp(new ClassicConcertMonthBoard.BoardProps(group, m.Nearby, m.Name, wide, m.Seed), cell.MonthFactory) with { Key = "dashboard-month:" + signature },
             ],
         };
     }

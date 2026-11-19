@@ -19,6 +19,7 @@
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using Wavee.Theming;
 
 namespace Wavee.Themes.Zune;
 
@@ -69,6 +70,18 @@ public static class ZuneMotion
     /// block's foot and everything after it rides the re-solve. Padding cannot ease, so such air is a spacer carrying this.</summary>
     public static readonly LayoutTransition HeightResize = new(TransitionChannels.Size,
         TransitionDynamics.Tween(ColumnCollapseMs, Easing.SmoothOut), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
+    /// <summary>A Home band whose rows the width decides (a grid that gains or loses a row as its columns change, a shelf whose tiles step a size,
+    /// the shortcuts' page): <see cref="HeightResize"/> that keeps easing while the window is dragged, so each step glides and the bands under it
+    /// ride it. A critically damped spring on the resize's clock, not the tween: a drag re-aims it every frame, and a spring carries its speed into
+    /// each new target where a re-started ease-out would leap at its steep start every time.</summary>
+    public static readonly LayoutTransition RowsResize = HeightResize with
+    {
+        Dynamics = TransitionDynamics.Spring(ColumnCollapseMs / 1000f, RowsDamping), AnimateDuringResize = true,
+    };
+
+    /// <summary><see cref="RowsResize"/>'s damping: critical, so the height never overshoots its rows.</summary>
+    const float RowsDamping = 1f;
 
     /// <summary>The side panel's docked-card slot (B10: one node at every pivot): it glides to its place when a pivot change reorders it and the head (the
     /// pivot slide's clock), and its height eases between the card's and none when the video docks or leaves, so the head and the body ride it.</summary>
@@ -122,4 +135,24 @@ public static class ZuneMotion
         seen.Value = true;
         return was;
     }
+}
+
+/// <summary>How Zune moves one page to the next. Every swap keeps the core's fade-through (Zune declares no recipe or cascade); a section's
+/// "See all" page grows out of the link it was opened from instead (owner, 2026-11-18, on "See all": "A LOT more smooth and less out of body
+/// experience, something with connected or expanding ... now it feels too heavy and like we are leaving the page"): 0.96 to 1 about the link on the
+/// flights' short spring while Home only fades, one block (the page is the section the user was looking at, grown), Back shrinking toward the same
+/// place. WinUI's grow, on the same spring.</summary>
+public static class ZunePageMotion
+{
+    /// <summary>The section page's scale as it starts to grow, and where it shrinks to on Back.</summary>
+    public const float SectionGrowEnterScale = 0.96f, SectionGrowBackScale = 0.97f;
+
+    /// <summary>The grow's spring response (s), and the Back leg's share of it.</summary>
+    public const float SectionGrowResponse = 0.24f, SectionGrowBackResponseScale = 0.85f;
+
+    /// <summary>The policy Zune publishes (<c>ThemePolicies.PageMotion</c>).</summary>
+    public static PageMotionPolicy Policy { get; } = PageMotionPolicy.Default with
+    {
+        GrowIntoSection = new GrowNav(SectionGrowEnterScale, SectionGrowBackScale, EnterOpacity: 0f, SectionGrowResponse, SectionGrowBackResponseScale, MinVisible: 0f),
+    };
 }

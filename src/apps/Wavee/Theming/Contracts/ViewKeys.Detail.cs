@@ -27,10 +27,6 @@ public static partial class ViewKeys
     /// Props: <see cref="DetailCompactRailProps"/>.</summary>
     public static readonly ViewKey<DetailCompactRailProps> DetailCompactRail = new("Detail.CompactRail");
 
-    /// <summary>The vertical show / episode header (cover 140, info column, CTA cluster). Mounted by the frame's vertical arm for a non-track
-    /// page. Props: <see cref="DetailShowHeaderProps"/>.</summary>
-    public static readonly ViewKey<DetailShowHeaderProps> DetailShowHeader = new("Detail.ShowHeader");
-
     /// <summary>The vertical arm's item 0: the expanded hero and the pinned context band, scroll-bound. Mounted by `Detail.Hero` (the table's
     /// item). Props: <see cref="DetailHeroProps"/>.</summary>
     public static readonly ViewKey<DetailHeroProps> DetailHero = new("Detail.Hero");

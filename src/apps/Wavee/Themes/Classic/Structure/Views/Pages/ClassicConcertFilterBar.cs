@@ -80,15 +80,8 @@ internal sealed class ClassicConcertFilterBar : Component
         bool expanded = _expanded.Value;
         _ticker ??= () => new ClassicConcertCountTicker();
 
-        Element caption = new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Gap = Spacing.S,
-            Children =
-            [
-                Cells.SectionCaption(Loc.Get(Strings.Concerts.Filter.FilterBy)), new BoxEl { Grow = 1f },
-                Embed.Comp(io.Count, _ticker) with { Key = "concert-count" },
-            ],
-        };
+        // The events figure stands at the row's end, beside what it counts; there is no "Filter by" caption over the row (the controls say what they are).
+        Element count = Embed.Comp(io.Count, _ticker) with { Key = "concert-count" };
         // decision (ch 17 §8, parity 71): the pill states an INFERRED place as "Near X (approximate)"
         Element where = Cells.WherePill(ConcertHub.WhereLabel(place, inferred, radius), _openWhere, _pill) with { OnRealized = io.CaptureWhere };
         Element row = new BoxEl
@@ -101,12 +94,13 @@ internal sealed class ClassicConcertFilterBar : Component
             Grow = 0f, Height = Rules.BarScrollerH, AutoEdgeFade = true, AutoEdgeFadeBand = Rules.BarEdgeFadeBand, SuppressScrollBar = true,
             ScrollKey = _a.ScrollScope + "concert-hub-filter",
         };
+        // ON THE PAGE'S GROUND: one row, the controls then the count. It stood in a card under a caption line (owner, 2026-11-18: out of pattern).
+        // The hub pins it (ClassicConcertHub: a sticky root returned from a component never pins, so the pin is the hub's box around it).
         return new BoxEl
         {
-            Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S),
-            Corners = Radii.CardAll, Fill = Tok.FillLayerDefault, BorderWidth = 1f, BorderColor = Tok.StrokeSurfaceDefault,
-            Children = [caption, scroller],
-        }.Sticky(ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero));
+            Key = "concert-filter-bar:row", Direction = 0, Gap = Spacing.L, MinWidth = 0f, AlignItems = FlexAlign.Center, Height = Rules.BarScrollerH,
+            Children = [new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [scroller] }, count],
+        };
     }
 
     /// <summary>Rest: [📅 Dates ▾] + the "This weekend" chip. Active: the SAME "when-pill" node fused (§0 #3).</summary>

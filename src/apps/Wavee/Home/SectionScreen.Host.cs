@@ -67,6 +67,10 @@ public sealed class SectionScreen : Component
     Props? _p;
     HomeCard[] _cards = [];
     IReadOnlyList<HomeCard>? _cardsSrc;
+    /// <summary>The cards on show are the row's first cards and blanks, not the whole list (<see cref="SectionScreenHeld"/>): how many are real,
+    /// and whether blanks stand after them.</summary>
+    int _heldKnown;
+    bool _heldBlanks;
     string _scrollScope = "";
     string _title = "";
     bool _demanded;
@@ -182,6 +186,30 @@ public sealed class SectionScreen : Component
         _ = scope.Edges.SectionCards.Changed.Value;
         // Tracked: an unanswered ask only reads as Failed while Online, so a session reaching Online re-decides.
         bool online = Spotify.Status.Value == Spotify.SessionPhase.Online;
+        // The Following release list is one list of many sections' albums (HomeVerbs.SeeAll): it has no row of its own. The page shows the
+        // list the Home tile shows, whole, and follows it.
+        if (!p.Browse && string.Equals(p.Uri, HomeProjection.FollowingReleasesKey, StringComparison.Ordinal))
+        {
+            var state = HomeBoardZones.ReleasesState();
+            var zone = HomeBoardZones.ReleasesZone();
+            var all = zone.Items;
+            _total.Value = state == HomeFeedState.Ready ? all.Count : 0;
+            _liveTitle.Value = zone.Title;
+            _charts = false;
+            if (!ReferenceEquals(_cardsSrc, all))
+            {
+                _cardsSrc = all;
+                _cards = all as HomeCard[] ?? all.ToArray();
+                _cardsSig.Value = _cards;
+            }
+            _load.Value = state switch
+            {
+                HomeFeedState.Loading => SectionScreenLoad.Pending,
+                HomeFeedState.Ready => _cards.Length > 0 ? SectionScreenLoad.Ready : SectionScreenLoad.Empty,
+                _ => SectionScreenLoad.Failed,
+            };
+            return;
+        }
         var s = RowOf(p);
         if (!s.IsValid)
         {
@@ -206,11 +234,32 @@ public sealed class SectionScreen : Component
             _liveTitle.Value = input.Title;
             _charts = s.IsChart;    // BEFORE the cards land: the slots their swap re-renders read it
             var live = input.Cards;
-            if (whole && !ReferenceEquals(_cardsSrc, live))
+            if (whole)
             {
-                _cardsSrc = live;
-                _cards = live as HomeCard[] ?? live.ToArray();
-                _cardsSig.Value = _cards;
+                if (_heldKnown > 0 || !ReferenceEquals(_cardsSrc, live))
+                {
+                    _cardsSrc = live;
+                    _heldKnown = 0;
+                    _heldBlanks = false;
+                    _cards = live as HomeCard[] ?? live.ToArray();
+                    _cardsSig.Value = _cards;
+                }
+            }
+            else if (live.Count > 0)
+            {
+                // THE SECTION AS IT STOOD ON HOME, AT ONCE: its own first cards, then a blank for each card the walk has yet to bring (the row's
+                // total says how many), so the page opens as the section grown and the rest lands in held places. A walk that ended with no
+                // answer leaves the page what it has.
+                bool coming = !t.IsFailed(s.Slot, (uint)Demanded)
+                    && (t.Inflight[s.Slot] != 0 || (t.Asked[s.Slot] & (uint)Demanded) == 0 || !online);
+                if (!ReferenceEquals(_cardsSrc, live) || _heldBlanks != coming)
+                {
+                    _cardsSrc = live;
+                    _heldKnown = live.Count;
+                    _heldBlanks = coming;
+                    _cards = SectionScreenHeld.Of(live, input.TotalCount, coming);
+                    _cardsSig.Value = _cards;
+                }
             }
         }
 
@@ -218,7 +267,7 @@ public sealed class SectionScreen : Component
             failed: t.IsFailed(s.Slot, (uint)Demanded),
             inflight: t.Inflight[s.Slot] != 0,
             asked: (t.Asked[s.Slot] & (uint)Demanded) != 0,
-            online: online);
+            online: online, held: whole ? 0 : _heldKnown);
     }
 
     // ── card open/play routing (the app-wide HomeCardNav, Entities/Home.Rules.cs + Entities/Browse.Cards.cs) ─────────

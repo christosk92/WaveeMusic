@@ -143,13 +143,21 @@ internal static class ClassicArtistPage
             // A layout-neutral holder (no size, no padding, no flex of its own) that glides when a section above it changes height on a tier crossing
             // (the discography's strip / grid swap, the 4K pick column): the sections ride the crossing instead of jumping. A destination's holder is
             // also its anchor.
-            sections[i] = new BoxEl
+            var holder = new BoxEl
             {
                 Key = slot.Anchor is null ? s_secKeys[(int)slot.Section] : s_anchorKeys[(int)slot.Section], Direction = 1, MinWidth = 0f,
                 Animate = ClassicArtistTiers.FollowMotion,
                 OnRealized = slot.Anchor,
                 Children = [slot.Anchor is null ? sectionBody : sectionBody with { Key = s_secKeys[(int)slot.Section] }],
             };
+            // What scrolls under the band dissolves at its line; a PINNED HEADER IS NEVER FEATHERED. A discography facet pins its header on that
+            // line and feathers its grid under it (ClassicDiscography), so it takes no feather here; every other section feathers itself, armed
+            // while its cut is engaged. One feather over the whole magazine softened the top of the facet header parked on the line, a second
+            // fade over the one its own grid makes under it (owner, 2026-11-18).
+            bool pins = slot.Section is ArtistSection.Albums or ArtistSection.Singles or ArtistSection.Compilations or ArtistSection.AppearsOn;
+            sections[i] = pins ? holder
+                : (holder with { EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.BandLayout.ClipFadeBand) { WhileStuck = true } })
+                    .StickyClip(Detail.BandLayout.ClipInset);
         }
 
         float collapse = ArtistHeroLayout.CollapseDistance(m.MinHeight);
@@ -175,8 +183,8 @@ internal static class ClassicArtistPage
             payloadAccent: a.HeaderAccent);
 
         // THE CLIP IS THE CONTRACT: the band paints nothing, so nothing may render into its 56 DIP — the magazine and
-        // the wash are both cut at the line, and the magazine's cut is feathered exactly while its clip is engaged, on
-        // the same render turn that poses the cut (EdgeFadeSpec.WhileStuck; nothing is softened at rest). No gate
+        // the wash are both cut at the line. The feather of that cut is each section's own (see where the sections are built): the
+        // facet headers parked on the line are not softened. No gate
         // of its own (ch 08 BUG F, restored to 0.2.10's model): the page-level `region` above already keeps the
         // whole body — this magazine included — unmounted until the overview lands, so a second, nested
         // SkelRegionEl here pending on the SAME predicate would never once see Pending() true and would only add a
@@ -184,7 +192,6 @@ internal static class ClassicArtistPage
         Element magazine = new BoxEl
         {
             Key = "artist-under-band", Direction = 1, Animate = ClassicArtistTiers.FollowMotion,
-            EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.BandLayout.ClipFadeBand) { WhileStuck = true },
             Children =
             [
                 new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, HitTestVisible = false },

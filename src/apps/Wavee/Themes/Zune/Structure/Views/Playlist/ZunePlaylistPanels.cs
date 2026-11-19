@@ -1,12 +1,12 @@
-// ── Themes/Zune/Structure/Views/Playlist/ZunePlaylistPanels.cs — Zune's playlist access panel and Tune panel (themes plan 6.3; P5 Z6b1) ──────────
+// ── Themes/Zune/Structure/Views/Playlist/ZunePlaylistPanels.cs — Zune's playlist access panel and Tune strip (themes plan 6.3; P5 Z6b1) ──────────
 //
 // Zune draws no board for either panel (owner Q18): both are built from Zune's parts, flat.
 //
 //   · the INVITE & ACCESS panel: the title in the label voice and the hint under it, the "copy invite link" call to action (the THEME accent, a flat
 //     rectangle: it is chrome over the page, not the page) and, for an administrator who can edit the metadata, the two switches (the engine's switch,
 //     which Zune's style draws square). `Playlist.AccessPanel` keeps the optimistic-switch rule and the verbs; the picture is these rows;
-//   · the TUNE panel: the header line, the choices (the current one marked with a 2-dip accent bar and "current" trailing, not disabled-looking) and
-//     "reset tuning" behind a rule ONLY while a tuning is selected. `PlaylistTuneMenuModel` decides which choices show and whether the reset row stands.
+//   · the TUNE strip, inline under the list bar while Tune is open: the AI bar at its lead, its head, the directions as Zune's flat chips, and "reset tuning"
+//     ONLY while a tuning is selected. `PlaylistTuneMenuModel` decides which choices show and whether Reset stands.
 //
 // Numbers: `Rules\ZunePlaylistRules.cs`.
 
@@ -112,64 +112,105 @@ internal static partial class ZunePlaylist
         ],
     };
 
-    // ══ 2. THE TUNE PANEL ═══════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 2. THE TUNE STRIP (inline since 2026-11-18) ═══════════════════════════════════════════════════════════════════════
 
-    /// <summary>The registered template of <see cref="ViewKeys.PlaylistTune"/>. <c>TableProfile.Tune</c> hands no anchor, so the panel opens as a centred dialog.</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.PlaylistTune"/>: the strip under the list bar while Tune is open (owner, 2026-11-18: "not a dialog but
+    /// a nicer experience"). Flat, in Zune's voice: the AI bar at its lead; its head ("tune this mix" in the label voice over the line that says what the mix
+    /// follows, that it is rebuilding, or that the last pick failed; "reset tuning" as a command word while tuned; the close), then the directions as Zune's
+    /// flat chips (the mix's own direction in the accent; while one applies that one is lit, the others wait and the head's ring turns).</summary>
     public static Element TuneTemplate(PlaylistTuneProps p, in ViewContext ctx)
     {
-        var options = p.Options;
-        var kids = new List<Element>(options.Count + 4)
+        var choices = PlaylistTuneMenuModel.VisibleChoices(p.Options);
+        var reset = PlaylistTuneMenuModel.ResetOption(p.Options, p.Selected);
+        bool busy = p.Applying is not null;
+        var pick = p.Pick;
+        float target = ZunePlaylistTiers.Of(ctx.Tier()).Target;
+
+        var chips = new Element[choices.Count];
+        for (int i = 0; i < choices.Count; i++)
         {
-            new BoxEl
-            {
-                Key = "tune:head", Direction = 1, Gap = Z.SwitchLabelGap, Padding = Edges4.All(Z.TuneHeaderPad),
-                Children =
-                [
-                    R.Type.DenseTitle(Loc.Get(Strings.Detail.Tuning.FlyoutTitle)) with
-                    {
-                        Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    },
-                    R.Type.DenseMeta(Loc.Get(Strings.Detail.Tuning.FlyoutSubtitle)) with
-                    {
-                        Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = Z.HintLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    },
-                ],
-            },
-            Rule(),
-        };
-        foreach (var option in PlaylistTuneMenuModel.VisibleChoices(options))
-            kids.Add(TuneRow("tune:" + option.Identifier, option.DisplayName ?? "", string.Equals(option.Identifier, p.Selected, StringComparison.Ordinal),
-                option.Identifier, p.Pick, reset: false));
-        if (PlaylistTuneMenuModel.ResetOption(options, p.Selected) is { } resetOption)
-        {
-            kids.Add(Rule());
-            kids.Add(TuneRow("tune:reset", Loc.Get(Strings.Detail.Tuning.Reset), false, resetOption.Identifier, p.Pick, reset: true));
+            string id = choices[i].Identifier;
+            bool on = busy ? id == p.Applying : id == p.Selected;
+            chips[i] = TuneChip("tune:" + id, choices[i].DisplayName ?? "", on, !busy, busy ? null : () => pick(id), target);
         }
-        return new BoxEl { Key = Z.TuneKey, Direction = 1, Width = p.Width, Children = kids.ToArray() };
+
+        var head = new List<Element>(4) { TuneLines(p, choices, busy), new BoxEl { Grow = 1f, MinWidth = 0f } };
+        if (reset is { } r && !busy)
+        {
+            string resetId = r.Identifier;
+            head.Add(new BoxEl
+            {
+                Key = "tune:reset", Direction = 0, AlignItems = FlexAlign.Center, Height = target, Shrink = 0f, Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
+                HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
+                OnClick = () => pick(resetId),
+                Children = [R.Type.DenseTitle(Loc.Get(Strings.Detail.Tuning.Reset)) with { Color = R.Ink.AccentAction, Case = R.Case.For(LabelKind.Command), MaxLines = 1 }],
+            });
+        }
+        head.Add(ToolTip.Wrap(Controls.IconAction(Icons.ChromeClose, p.Close, size: Z.TuneClose) with { Key = "tune:close" }, Loc.Get(Strings.Detail.Tuning.Close)));
+
+        return new BoxEl
+        {
+            Key = Z.TuneKey, Direction = 0, Gap = Z.TuneBarGap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Children =
+            [
+                new BoxEl { Key = "tune-strip:bar", Width = Z.TuneBarW, Shrink = 0f, Gradient = Z.TuneBar },
+                new BoxEl
+                {
+                    Key = "tune-strip", Direction = 1, Gap = Z.TuneStripGap, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                    Children =
+                    [
+                        new BoxEl { Key = "tune-strip:head", Direction = 0, Gap = Z.TuneHeadGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = head.ToArray() },
+                        new BoxEl { Key = "tune-strip:chips", Direction = 0, Wrap = true, Gap = Z.TuneChipGap, MinWidth = 0f, Children = chips },
+                    ],
+                },
+            ],
+        };
     }
 
-    /// <summary>One choice: a flat row, the current one marked with the accent bar at its lead and the word "current" at its end (nothing to click), a
-    /// reset row as a command word.</summary>
-    static Element TuneRow(string key, string label, bool current, string identifier, Action<string> pick, bool reset) => new BoxEl
+    /// <summary>"tune this mix" over its line: the failure, the rebuild (with the ring), the direction the mix follows, or the invitation.</summary>
+    static Element TuneLines(PlaylistTuneProps p, List<TuneOption> choices, bool busy)
     {
-        Key = key, Direction = 0, Gap = Spacing.M, Height = Z.TuneRowH, AlignItems = FlexAlign.Center, Padding = new Edges4(0f, 0f, Z.TuneRowPad, 0f),
-        HoverFill = current ? ColorF.Transparent : R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
-        Role = reset ? AutomationRole.MenuItem : AutomationRole.RadioButton, Focusable = !current, AllowFocusOnInteraction = false,
-        Cursor = current ? CursorId.Arrow : CursorId.Hand, IsEnabled = !current, OnClick = current ? null : () => pick(identifier),
+        string? name = null;
+        if (p.Selected is { } selected) foreach (var c in choices) if (c.Identifier == selected) { name = c.DisplayName; break; }
+        string line = p.Failed ? Loc.Get(Strings.Detail.Tuning.ApplyFailed)
+            : busy ? Loc.Get(Strings.Detail.Tuning.Applying)
+            : name is not null ? Strings.Detail.Tuning.Tuned(direction: name)
+            : Loc.Get(Strings.Detail.Tuning.Subtitle);
+        var text = R.Type.DenseMeta(line) with
+        {
+            Color = p.Failed ? Tok.SystemFillCritical : Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+        };
+        Element row = busy
+            ? new BoxEl { Direction = 0, Gap = Z.TuneRingGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [ProgressRing.Create(size: Z.TuneRing), text] }
+            : text;
+        return new BoxEl
+        {
+            Direction = 1, Gap = Z.TuneLineGap, Shrink = 1f, MinWidth = 0f,
+            Children =
+            [
+                R.Type.DenseTitle(Loc.Get(Strings.Detail.Tuning.Title)) with
+                {
+                    Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                },
+                row,
+            ],
+        };
+    }
+
+    /// <summary>One direction: Zune's flat chip (a wash at rest, the accent with the on-accent ink when on), <paramref name="target"/> tall; a waiting chip is shown
+    /// and disabled.</summary>
+    static Element TuneChip(string key, string label, bool on, bool available, Action? click, float target) => new BoxEl
+    {
+        Key = key, Direction = 0, Height = target, MinWidth = target, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Padding = new Edges4(Z.ChipPadX, 0f, Z.ChipPadX, 0f),
+        Fill = on ? Tok.AccentDefault : R.Layer.RowHover,
+        HoverFill = on ? Tok.AccentSecondary : R.Layer.ChromeHover, PressedFill = on ? Tok.AccentTertiary : R.Layer.RowPressed,
+        Opacity = available || on ? 1f : ZuneBandRules.DisabledOpacity,
+        Role = AutomationRole.ToggleButton, Focusable = available, AllowFocusOnInteraction = false, IsEnabled = available,
+        Cursor = available ? CursorId.Hand : (CursorId?)null, OnClick = click, BrushTransitionMs = Design.Motion.Faster,
         Children =
         [
-            new BoxEl { Width = Z.TuneMark, Height = Z.TuneRowH, Shrink = 0f, Fill = current ? Tok.AccentDefault : ColorF.Transparent },
-            R.Type.TrackTitle(label) with
-            {
-                Color = current ? Tok.AccentTextPrimary : Tok.TextPrimary, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                Case = reset ? R.Case.For(LabelKind.Command) : TextCase.AsWritten,
-            },
-            current
-                ? R.Type.MicroMeta(Loc.Get(Strings.Detail.Tuning.Current)) with
-                {
-                    Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1,
-                }
-                : new BoxEl(),
+            R.Type.DenseTitle(label) with { Color = on ? Tok.TextOnAccentPrimary : Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = 0f },
         ],
     };
 }

@@ -1,6 +1,6 @@
 // ── Platform/Controls.Art.cs ───────────────────────────────────────────────────────────────────────────────────────
 // The media surface's shared PARTS (cover stack, corner "…", the now-playing overlay, the card data contract, the
-// chrome rules), chips, stat tiles, countdowns, face piles, rich text, the shimmer
+// chrome rules), chips, stat tiles, countdowns, face piles, rich text
 //
 // Role: UI
 // Owner: L
@@ -369,6 +369,10 @@ public static partial class Controls
         /// so a card answers "where did it open" beside its drawer.</summary>
         public bool Selected { get; init; }
 
+        /// <summary>The entity is pinned to Home: the structure's pin mark shows at rest (pinned Home, design 1.6). Set by the surface
+        /// host from the Home store (an adapter never sets it); the style's bodies draw the mark from it.</summary>
+        public bool PinnedToHome { get; init; }
+
         /// <summary>The accent the selected border paints (null = the theme accent), read INSIDE the host's render — a
         /// palette landing repaints the one selected surface and no other. Counts by presence in equality (a fresh thunk
         /// is behaviour, not data).</summary>
@@ -441,7 +445,7 @@ public static partial class Controls
                    && (OnClick is null) == (other.OnClick is null) && (OnPlay is null) == (other.OnPlay is null)
                    && Drag?.Kind == other.Drag?.Kind && Equals(Drag?.Style, other.Drag?.Style)
                    // `float.Equals`, not `==`: NaN (the "unpinned" default) must equal NaN.
-                   && Height.Equals(other.Height) && Selected == other.Selected
+                   && Height.Equals(other.Height) && Selected == other.Selected && PinnedToHome == other.PinnedToHome
                    && (SelectedAccent is null) == (other.SelectedAccent is null) && (Menu is null) == (other.Menu is null)
                    && (Drop is null) == (other.Drop is null)
                    && Equals(Subtitle, other.Subtitle) && Equals(CoverOverride, other.CoverOverride)
@@ -496,81 +500,7 @@ public static partial class Controls
     public static bool RelatesNow(string uri)
         => NowPlaying is { } pb && pb.HasActiveContext.Value && pb.RelatesTo(uri);
 
-    // ══ 5. THE COVER SHIMMER ═════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The neutral shimmer cover tile. A Component (granular re-render) so it can read the image LOAD STATE and
-    /// start/stop its own opacity breathe accordingly: the keyframe effect is keyed by <c>loading</c>, so when the art
-    /// becomes ready the looping pulse is replaced IN PLACE by a finite flat track and the frame loop can quiesce (the
-    /// engine's "no forever-loop" rule).
-    ///
-    /// <para>It LATCHES <c>settled</c> and stops calling the image hook, so a loaded cover unsubscribes from the global
-    /// image epoch — without that, one image's status change re-renders every loaded cover in the grid.</para>
-    ///
-    /// <para>WEAK GPU: the placeholder is held FLAT even while loading. A per-frame opacity loop keeps the render loop
-    /// hot, and on a weak/UMA part that is exactly what starves the decode uploads it is waiting for.</para>
-    ///
-    /// <para>The url and the decode target are RE-PUSHED PROPS (<see cref="ShimmerProps"/>), not constructor fields: a
-    /// recycled virtual row that rebinds to another cover UPDATES this component in place instead of remounting it (hook
-    /// cells, effects and the keyframe track survive; <see cref="Shimmer"/> gives it one constant key). The settle
-    /// latch is therefore keyed to WHAT it settled for — a rebind re-arms the breathe for the new cover exactly as the
-    /// old per-url remount did.</para></summary>
-    public sealed class CoverShimmer : Component
-    {
-        static readonly Keyframe[] Breathe = [new(0f, 1f), new(0.5f, 0.5f), new(1f, 1f)];
-        static readonly Keyframe[] Flat = [new(0f, 1f), new(1f, 1f)];
-
-        // the settle latch, and the (url, decode target) it settled for
-        bool _settled;
-        string? _settledUrl;
-        int _settledW, _settledH;
-        // the placeholder bind, memoized per url: `Prop.Of` is a closure allocation, and this component used to pay it
-        // on every render
-        string? _placeholderFor;
-        Prop<ColorF> _placeholder;
-
-        public override Element Render()
-        {
-            var p = UseProps<ShimmerProps>();
-            if (_settledUrl != p.Url || _settledW != p.DecodeW || _settledH != p.DecodeH)
-            {
-                _settledUrl = p.Url; _settledW = p.DecodeW; _settledH = p.DecodeH;
-                _settled = false;
-            }
-            bool loading = false;
-            if (!_settled)
-            {
-                // Share the displayed image's decode handle (same source + decode target) so this reads the SAME load
-                // state and forks no second decode. The image hook consumes no hook cell, so the conditional call is
-                // safe.
-                var binding = UseImage(p.Url, p.DecodeW, p.DecodeH);
-                var state = binding.State;
-                if (state == ImageState.Ready) _settled = true;
-                else if (state == ImageState.Failed && binding.Failure != ImageFailureKind.Canceled) _settled = true;
-                else loading = state is ImageState.None or ImageState.Pending;
-            }
-            // Deliberately NOT gated on reduced motion: this is a LOADING INDICATOR, not a flourish, and it stops on
-            // settle anyway. Nor on the GPU tier (owner decision, 2026-10-05): every tier gets the same shimmer; a saturated GPU
-            // is the engine's measured governor's business, not a reason to show a different placeholder.
-            bool shimmer = loading;
-            UseKeyframes(AnimChannel.Opacity, shimmer ? Breathe : Flat, shimmer ? 1000f : 1f, shimmer,
-                         DepKey.From(shimmer));
-            if (_placeholderFor != p.Url) { _placeholderFor = p.Url; _placeholder = Design.WatchedPlaceholder(p.Url); }
-            return new BoxEl
-            {
-                Width = p.Width, Height = p.Height, Corners = CornerRadius4.All(p.Corners),
-                // Tint is PAINT-ONLY: the fill bind reads the per-key watch signal, so a landed grading marks
-                // PaintDirty on exactly this tile — never a re-render, and never the global epoch fan-out that used to
-                // re-render every still-loading cover in the grid at once.
-                Fill = _placeholder,
-            };
-        }
-    }
-
-    /// <summary><see cref="CoverShimmer"/>'s re-pushed props. All value fields plus one string, so the compiler's record
-    /// equality is exactly the data gate wanted: a rebind to the same cover at the same size coalesces.</summary>
-    sealed record ShimmerProps(string Url, int DecodeW, int DecodeH, float Width, float Height, float Corners);
-
-    // ══ 6. CHIPS ═════════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 5. CHIPS ═════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The filter-chip rail's own metrics. <see cref="ChipRailExtent"/> is what the chip bar contributes to a
     /// stacked detail chrome column, INCLUDING its bottom semantic gap — one number, so a page's layout arithmetic and
@@ -648,7 +578,7 @@ public static partial class Controls
             ScrollKey = scrollKey,
         };
 
-    // ══ 7. THE STAT TILE ═════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 6. THE STAT TILE ═════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>THE 18/800-value-over-11-caption stat tile — it replaced FOUR hand copies that had drifted onto
     /// diverging motion specs.
@@ -701,7 +631,7 @@ public static partial class Controls
         };
     }
 
-    // ══ 8. THE COUNTDOWNS ════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 7. THE COUNTDOWNS ════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The per-unit remainder, NOT a cumulative total. Clamped at zero so a tick that lands a hair past the
     /// instant (the released gate flips on the next render, not mid-frame) can never render a negative tile.</summary>
@@ -774,7 +704,7 @@ public static partial class Controls
         };
     }
 
-    // ══ 9. FACE PILES ════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 8. FACE PILES ════════════════════════════════════════════════════════════════════════════════════════════════
     //
     // The overlapping-avatar strip. The constants below are what three separate piles had each hand-rolled; naming them
     // once is what stops the three drifting into three different overlaps.
@@ -906,12 +836,12 @@ public static partial class Controls
             : frame;
     }
 
-    // ══ 10. RICH TEXT ════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 9. RICH TEXT ═════════════════════════════════════════════════════════════════════════════════════════════════
     //
     // A description that may be an HTML FRAGMENT — a playlist/album blurb carries anchors to artists and playlists and
     // <b> bold — rendered as ONE wrapped rich-text paragraph (a span paragraph shapes all runs as a single flow).
     // Anchors become accent HYPERLINKS that navigate through the route seam; <b>/<strong> → bold; HTML entities are
-    // decoded; unknown tags are DROPPED and their text KEPT. The shaper has no italic axis, so <i>/<em> render upright.
+    // decoded; unknown tags are DROPPED and their text KEPT. <i>/<em> are italic runs (TextSpan.Italic).
     // Plain text with no markup → a single run, identical to a plain text node.
 
     /// <summary>A rich paragraph at an EXPLICIT width.</summary>
@@ -969,7 +899,7 @@ public static partial class Controls
     {
         var spans = new List<TextSpan>(4);
         var buf = new StringBuilder(s.Length);
-        int bold = 0;
+        int bold = 0, italic = 0;
         string? href = null;
 
         void Flush()
@@ -978,14 +908,15 @@ public static partial class Controls
             string t = buf.ToString();
             buf.Clear();
             ushort w = (ushort)(bold > 0 ? 700 : 0);
+            bool it = italic > 0;
             if (href is { } h && onNavRoute is not null && RouteForUri?.Invoke(h) is { } key)
-                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: () => onNavRoute(key)));
+                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: () => onNavRoute(key), Italic: it));
             else if (href is { } url && LinkOpener?.Invoke(url) is { } open)
-                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: open));   // the link door: a track plays, a web page opens
+                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: open, Italic: it));   // the link door: a track plays, a web page opens
             else if (href is not null)
-                spans.Add(new TextSpan(t, Weight: w, Color: linkColor));   // a reference we cannot route → styled, inert
+                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, Italic: it));   // a reference we cannot route → styled, inert
             else
-                spans.Add(new TextSpan(t, Weight: w));
+                spans.Add(new TextSpan(t, Weight: w, Italic: it));
         }
 
         int i = 0;
@@ -1000,8 +931,10 @@ public static partial class Controls
                 string lower = tag.ToLowerInvariant();
                 if (lower == "/a") href = null;
                 else if (lower == "a" || lower.StartsWith("a ", StringComparison.Ordinal)) href = ExtractHref(tag);
-                else if (lower is "b" or "strong" or "em" or "i") bold++;
-                else if (lower is "/b" or "/strong" or "/em" or "/i") bold = Math.Max(0, bold - 1);
+                else if (lower is "b" or "strong") bold++;
+                else if (lower is "/b" or "/strong") bold = Math.Max(0, bold - 1);
+                else if (lower is "em" or "i") italic++;
+                else if (lower is "/em" or "/i") italic = Math.Max(0, italic - 1);
                 else if (lower is "h1" or "h2" or "h3" or "h4" or "h5" or "h6") bold++;
                 else if (lower is "br" or "br/" or "br /" or "/li") buf.Append('\n');
                 else if (lower is "/p" or "/div" or "/ul" or "/ol"
@@ -1023,7 +956,50 @@ public static partial class Controls
             }
         }
         Flush();
+        FoldBreaks(spans);
         return spans;
+    }
+
+    /// <summary>Line breaks as a reader expects them, whatever the markup did: no break before the first word or after the last, and at most
+    /// one blank line between two blocks. Publishers paste runs of four &lt;br /&gt; between paragraphs and wrap blocks in &lt;p&gt; AND &lt;br&gt;;
+    /// drawn verbatim that was a screen of empty lines (owner 2026-11-18, audiobook About). Whitespace between breaks goes with them. Spans that
+    /// end up empty are removed. The run is carried across spans (a break is often a span of its own between two styled runs).</summary>
+    static void FoldBreaks(List<TextSpan> spans)
+    {
+        var sb = new StringBuilder();
+        int pending = 0;          // breaks seen since the last visible character, not yet written
+        bool seenText = false;
+        for (int k = 0; k < spans.Count; k++)
+        {
+            string t = spans[k].Text;
+            if (t.IndexOf('\n') < 0 && pending == 0)
+            {
+                if (!seenText && t.Trim().Length > 0) seenText = true;
+                continue;
+            }
+            sb.Clear();
+            for (int c = 0; c < t.Length; c++)
+            {
+                char ch = t[c];
+                if (ch == '\n') { pending++; continue; }
+                if (ch is ' ' or '\t' or '\r')
+                {
+                    if (pending > 0) continue;               // whitespace inside a break run goes with it
+                    sb.Append(ch);
+                    continue;
+                }
+                if (pending > 0)
+                {
+                    if (seenText) sb.Append('\n', Math.Min(pending, 2));
+                    pending = 0;
+                }
+                seenText = true;
+                sb.Append(ch);
+            }
+            spans[k] = spans[k] with { Text = sb.ToString() };
+        }
+        // breaks still pending at the end are dropped (no blank lines after the last word); empty spans go
+        spans.RemoveAll(static sp => sp.Text.Length == 0);
     }
 
     // The href value from an anchor tag body (quoted or unquoted). Null if absent.
@@ -1068,13 +1044,16 @@ public static partial class Controls
     /// <para>Every input is a LIVE prop (re-pushed, never frozen at mount — a late page accent reaches the links); the key
     /// is the CONTENT's identity only, so a new body resets the expansion and a resize or a new line cap does not.</para>
     /// <para><paramref name="fullTextTip"/>: while collapsed, hovering the paragraph shows its whole text in a tooltip
-    /// (<see cref="RichTextTip"/>) — the detail description's opt-in; a long show-notes body (Episode) does not ask.</para></summary>
+    /// (<see cref="RichTextTip"/>) — the detail description's opt-in; a long show-notes body (Episode) does not ask.</para>
+    /// <para>A new body that replaces another hands over (<see cref="TextHandOver"/>: the old words fade out, then the new ones in, the height
+    /// easing); the first body, or one appearing where there was none, arrives as it always did.</para></summary>
     public static Element ExpandableRichText(string? html, float size, ColorF color, ColorF linkColor, float width,
                                              int maxLines, string contextKey, Action<string>? onNavRoute = null,
                                              bool fullTextTip = false)
-        => Embed.Comp(new ExpandableRichProps(html, size, color, linkColor, width, maxLines, onNavRoute, fullTextTip),
-                      static () => new ExpandableRich())
-            with { Key = $"rich-expand:{contextKey}:{html}" };
+        => TextHandOver(html ?? "", Embed.Comp(new ExpandableRichProps(html, size, color, linkColor, width, maxLines, onNavRoute, fullTextTip),
+                                               static () => new ExpandableRich())
+                                        with { Key = $"rich-expand:{contextKey}:{html}" })
+            with { Key = $"rich-expand:{contextKey}" };
 
     public static Element ExpandableRichTextFlex(string? html, float size, ColorF color, ColorF linkColor,
                                                 int maxLines, string contextKey, Action<string>? onNavRoute = null)

@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.11",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "A new Settings in every theme, a Home you arrange in place, and a devices list that plays where you choose.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "settings-and-sound",
+      "title": "Settings and sound, rebuilt",
+      "body": "Every theme has a new Settings. Find any setting by the words you would use (\"too quiet\", \"dark mode\", even \"crosfade\"), and a link opens it right where it lives. More than twenty settings show a short before-and-after clip of what they change. The devices list is new too: your outputs go by their own names, and picking one moves the sound there at once without losing your place.",
+      "kind": "rebuilt",
+      "deepLink": "wavee://open?route=settings",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/settings-sound.jpg",
+        "srcLight": "media/settings-sound-light.jpg",
+        "alt": "The new devices list open over Home, with the new Settings page on its Sound section in front",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "home-and-pages",
+      "title": "A Home you arrange, and pages for shows and books",
+      "body": "Home is a board you arrange in place: drag a tile, give it another size or turn it over, and pin anything to it from the title bar. New sections join it, like Release Spotlight and the Spine Shelf. Podcasts, episodes and audiobooks get pages of their own in every theme: a show names what plays next, an episode's chapters and transcript follow playback, and a book shows its authors, its narrator and how far along you are.",
+      "kind": "new",
+      "deepLink": "wavee://open?route=home",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/home-pages.jpg",
+        "srcLight": "media/home-pages-light.jpg",
+        "alt": "Wavee's Home in the Zune theme, with an audiobook's page in the WinUI theme in front",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "solid-controls",
+      "title": "Solid player controls in Classic",
+      "body": "A community contribution from @0dm, thank you! In Classic, previous and next are now solid like the play button and evenly spaced around it. And clicking the player bar no longer draws an outline around the whole bar, in Classic and Zune.",
+      "kind": "improved",
+      "community": [
+        "0dm"
+      ],
+      "issues": [
+        228
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/solid-controls.jpg",
+        "srcLight": "media/solid-controls-light.jpg",
+        "alt": "Classic's player bar with solid previous and next buttons on either side of the play button",
+        "width": 1200,
+        "height": 675
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

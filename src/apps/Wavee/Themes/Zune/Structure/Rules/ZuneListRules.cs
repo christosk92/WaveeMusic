@@ -257,16 +257,10 @@ public static class ZuneListRules
     /// <summary>The figure-space runs the episode seed draws its bars with.</summary>
     public const int EpisodeSeedTitleRun = 28, EpisodeSeedDescriptionRun = 64;
 
-    /// <summary>The "new" mark's tracking.</summary>
-    public const float EpisodeNewTracking = 60f;
-
     // ── the lyrics lines (Z-Lyrics) ──────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A state line's type (13 on 18) and the offline caption's measure.</summary>
     public const float LyricsMessageSize = 15f, LyricsMessageLine = 20f, LyricsOfflineCaptionMaxW = 320f;
-
-    /// <summary>The peek gate's meta line: 12 on 16.</summary>
-    public const float LyricsPeekMetaSize = 12f, LyricsPeekMetaLine = 16f;
 
     /// <summary>The skeleton's text ratio.</summary>
     public const float LyricsSkeletonTextRatio = 0.7f;
@@ -277,10 +271,10 @@ public static class ZuneListRules
     /// <summary>A lyric row's opacity on the ground of the kind. The dark ground keeps the core ladder (the board's 1 / .45 / .24 / .14 / .11, past rows
     /// dimmer). The same alphas read far weaker as dark ink on light (the line next to the active one measured 3.0 : 1 and the quieter ones 1.2 to 1.7 :
     /// 1), so the light ladder lifts them: the line either side of the active one holds 3 : 1 on the stage's pink wash (a 56 DIP run, large text),
-    /// the next ring about 2 : 1 and the rest sit at a quiet 1.5 : 1, still visible. Podcast rows that do not own playback stay at 1.</summary>
-    public static float LyricRowOpacity(bool podcast, bool ownsPlayback, int emphasis, bool light)
+    /// the next ring about 2 : 1 and the rest sit at a quiet 1.5 : 1, still visible.</summary>
+    public static float LyricRowOpacity(int emphasis, bool light)
     {
-        if (!light || Lyrics.TranscriptPresentation.Neutral(podcast, ownsPlayback)) return Lyrics.TranscriptPresentation.RowOpacity(podcast, ownsPlayback, emphasis);
+        if (!light) return Lyrics.Emphasis.OpacityOf(emphasis);
         int dist = Lyrics.Emphasis.DistOf(emphasis);
         if (dist == 0) return 1f;
         bool past = (emphasis & Lyrics.Emphasis.PastBit) != 0;

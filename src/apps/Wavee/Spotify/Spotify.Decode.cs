@@ -903,7 +903,10 @@ public static partial class Spotify
                     case 1: row.Id = EntityId.ForGid(EntityKind.Show, r.Bytes()); break;
                     case 2: row.Title = s.AddText(r.Bytes()); break;
                     case 64: row.Description = s.AddText(r.Bytes()); break;
+                    // On an AUDIOBOOK this "publisher" is the AUTHOR (the capture: "Mark Manson"); the column is the
+                    // byline under the title either way, and the book's real publisher is AUDIOBOOK_SPECIFICS (kind 52).
                     case 66: row.Publisher = s.AddText(r.Bytes()); break;
+                    case 67: row.Language = s.AddText(r.Bytes()); break;
                     case 68: if (r.Bool()) row.Flags |= (uint)ShowFlags.Explicit; break;
                     case 69: row.Image = Cover(s, r.Message()); break;
                     case 74: media = r.Int32(); break;                 // MIXED 0 · AUDIO 1 · VIDEO 2
@@ -933,7 +936,7 @@ public static partial class Spotify
 
             if (media == 2) row.Flags |= (uint)ShowFlags.Video;
             else if (media == 0) row.Flags |= (uint)ShowFlags.Mixed;
-            row.Known |= (uint)ShowFields.Facts;
+            row.Known |= (uint)(ShowFields.Facts | ShowFields.Language);
 
             // The producer mask (see the summary): claim only the Identity columns this answer actually carried.
             row.Known |= (row.Title.IsEmpty ? 0 : (uint)ShowFields.Title)
@@ -952,6 +955,7 @@ public static partial class Spotify
             var r = new ProtoReader(proto);
             ref var row = ref s.Episodes.RowFor(default, Authority.Full,
                 (uint)(EpisodeFields.Identity | EpisodeFields.About));
+            int number = -1;                                           // field 65 unstated
 
             while (r.Next())
             {
@@ -962,12 +966,15 @@ public static partial class Spotify
                     case 7: row.DurationMs = (int)r.ZigZag(); break;
                     case 64: row.Description = s.AddText(r.Bytes()); break;
                     case 88: row.Season = (ushort)Math.Clamp(r.Int32(), 0, ushort.MaxValue); break;
-                    case 89: row.Number = (ushort)Math.Clamp(r.Int32(), 0, ushort.MaxValue); break;
+                    case 65: number = (int)r.ZigZag(); break;              // `number`, sint32 (the capture: 0, 2, 4 … raw)
                     case 66: Date(r.Message(), zigzag: true, out _, out row.PublishedAt, out _); break;
                     case 68: row.Image = Cover(s, r.Message()); break;
                     case 70: if (r.Bool()) row.Flags |= (uint)EpisodeFlags.Explicit; break;
                     case 71: row.ShowUri = ThinShow(r.Message(), s); break;
                     case 72: row.Flags |= (uint)EpisodeFlags.Video; r.Skip(); break;   // repeated VideoFile: one is a video
+                    // `freeze_frame` (ImageGroup, metadata.proto): the video's own still, 16:9. A video show's episodes usually carry the SHOW's
+                    // square cover as `cover_image`, so a page that drew that as the picture showed a crop of the host's portrait.
+                    case 76: row.Still = Cover(s, r.Message()); break;
                     case 87:                                                         // FULL 0 · TRAILER 1 · BONUS 2 = EpisodeKind's own
                         {
                             int kind = r.Int32();
@@ -978,6 +985,14 @@ public static partial class Spotify
                     case 97: if (r.Bool()) row.Flags |= (uint)EpisodeFlags.Short; break;
                     default: r.Skip(); break;
                 }
+            }
+            // `number` is field 65 (zig-zag), not 89 (the audiobook capture, map §4.2). A chapter's number is 0-based book
+            // order (Opening Credits = 0), so it is stored + 1: the column's 0 stays "the wire states none". A podcast
+            // episode's number is the publisher's own (1-based where present) and is stored as sent.
+            if (number >= 0)
+            {
+                int stored = (row.Flags & (uint)EpisodeFlags.AudiobookChapter) != 0 ? number + 1 : number;
+                row.Number = (ushort)Math.Clamp(stored, 0, ushort.MaxValue);
             }
             s.Episodes.Settle();
         }
@@ -1065,6 +1080,7 @@ public static partial class Spotify
             // FIRST, so any positive this answer carries (staged below, later in the batch) wins at commit.
             if (asked is not null) TraitNegatives(response, s, asked);
             if (asked is not null) CanvasNegatives(response, s, asked);
+            if (asked is not null) PagesNegatives(response, s, asked);
             var r = new ProtoReader(response);
             while (r.Next())
             {
@@ -1236,6 +1252,14 @@ public static partial class Spotify
                 case (Ext)37: PodcastRating(payload, entityUri, s); break;
                 case (Ext)21: EpisodeTranscripts(payload, entityUri, s); break;
                 case (Ext)83: AudiobookGenres(payload, entityUri, s); break;
+                // the podcast/audiobook pages' kinds (Spotify.Decode.Book.cs)
+                case (Ext)AudiobookSpecificsKind: AudiobookSpecifics(payload, entityUri, s); break;
+                case (Ext)AudiobookPriceKind: AudiobookPrice(payload, entityUri, s); break;
+                case (Ext)ShowAccessKind: ShowAccess(payload, entityUri, s); break;
+                case (Ext)PreviewPlaybackKind: PreviewPlayback(payload, entityUri, s); break;
+                case (Ext)IdentityTraitKind: IdentityTrait(payload, entityUri, s); break;
+                case (Ext)DirectSalesKind: DirectSales(payload, entityUri, s); break;
+                case (Ext)EntityCappingKind: EntityCapping(payload, entityUri, s); break;
                 // The envelope's uri rides along so a misrouted/stale answer can be caught against the payload's own
                 // gid (D2's mismatch guard) — see `ShowV4`'s remark.
                 case Ext.ShowV4: ShowV4(payload, entityUri, s); break;

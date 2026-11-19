@@ -51,7 +51,8 @@ public static partial class Setup
     public static class Wizard
     {
         /// <summary>The model decided at boot, or null when the wizard is not due this launch. Never consumed: the open is
-        /// guarded by the shown flag, so a remounted chrome cannot open a second plate.</summary>
+        /// guarded by the shown flag, so a remounted chrome cannot open a second plate; a chrome that mounts under a session
+        /// that is still live opens the session's plate again (<see cref="WizardRules.ReopensPlate"/>).</summary>
         public static WizardModel? Due { get; private set; }
 
         /// <summary>PURE: is the wizard due, and which entry? Null when neither the pending marker nor a terms re-arm asks
@@ -155,11 +156,13 @@ public static partial class Setup
 
         static void Inline(Action action) => action();
 
-        /// <summary>The plate is about to open: the launch's one open is spent.</summary>
+        /// <summary>The plate is about to open: the launch's one open is spent. A second call is the session's plate opening again
+        /// under a new root (<see cref="WizardRules.ReopensPlate"/>).</summary>
         public void BeginOpen()
         {
+            bool again = s_wizardShown;
             s_wizardShown = true;
-            Log.Info("setup", "setup wizard opened (" + Entry + ", on " + Page.Peek() + ")");
+            Log.Info("setup", (again ? "setup wizard opened again under a new root (" : "setup wizard opened (") + Entry + ", on " + Page.Peek() + ")");
         }
 
         /// <summary>The plate is up: the shell dims behind it and the wizard owns sign-in.</summary>
@@ -332,10 +335,23 @@ public static partial class Setup
         public static int CrashReportingChoice(bool canSend)
             => (int)Crash.ConsentPolicy.Effective((Crash.Reporting)Platform.Settings.Get(Platform.Keys.CrashReporting), canSend);
 
-        /// <summary>The consent choice writes <see cref="Platform.Keys.CrashReporting"/> the instant it changes — never waits
-        /// for Continue, so a crash between the click and the wizard's own advance cannot lose it. Consent-asked itself is
-        /// stamped once, on Continue (<see cref="Primary"/>).</summary>
-        public static void SetCrashReporting(int mode) => Platform.Settings.Set(Platform.Keys.CrashReporting, mode);
+        /// <summary>The consent choice writes the instant it changes — never waits for Continue, so a crash between the click and the
+        /// wizard's own advance cannot lose it — through Settings' own dial (owner decision 10: the same writer and the same words as
+        /// Account &amp; privacy › Crash reports; Recently changed says "from setup"). Consent-asked itself is stamped once, on Continue
+        /// (<see cref="Primary"/>).</summary>
+        public static void SetCrashReporting(int mode) => SettingsSpec.Dial(CrashReportsDial).WriteChoice(mode, SettingsSurfaces.SetupWizard);
+
+        /// <summary>The consent card's words: the crash-reports dial's own choices (Off · Ask each time · Automatic, owner decision 10).</summary>
+        public static System.Collections.Immutable.ImmutableArray<string> CrashReportingLabels()
+        {
+            IReadOnlyList<string> keys = SettingsSpec.Dial(CrashReportsDial).ChoiceKeys;
+            var labels = System.Collections.Immutable.ImmutableArray.CreateBuilder<string>(keys.Count);
+            foreach (string key in keys) labels.Add(FluentGpu.Localization.Loc.Get(key));
+            return labels.MoveToImmutable();
+        }
+
+        /// <summary>Settings' crash-reports dial (Off · Ask each time · Automatic).</summary>
+        const string CrashReportsDial = "account.privacy.crashReports";
     }
 
     // ══ 4. THE SIGN-IN VERBS (the door and the wizard's Sign in page share them) ═════════════════════════════════════

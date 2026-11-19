@@ -140,10 +140,10 @@ public interface IFrameVerbs
     /// <summary>Open or close the command palette.</summary>
     void TogglePalette();
 
-    /// <summary>Ctrl+F: ask the omnibar for focus.</summary>
+    /// <summary>Ctrl+F: ask the omnibar for focus (on Settings, the page's own box when its page binds one).</summary>
     void FocusSearch();
 
-    /// <summary>Ctrl+,: open Settings.</summary>
+    /// <summary>Ctrl+,: open Settings on its home with its box focused.</summary>
     void OpenSettings();
 
     /// <summary>F11: close the stage / toggle video fullscreen / open the stage, whichever applies.</summary>
@@ -174,8 +174,15 @@ public sealed class FrameVerbs : IFrameVerbs
         else Shell.OpenTab(new Shell.Route(Shell.RouteKind.Home));
     }
     public void TogglePalette() => Shell.PaletteOpen.Value = !Shell.PaletteOpen.Peek();
-    public void FocusSearch() => Shell.FocusSearch();
-    public void OpenSettings() => Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
+    /// <summary>Ctrl+F: Settings' own box while Settings is the page and its page binds one (design 4.8), else the app's search.</summary>
+    public void FocusSearch()
+    {
+        if (Settings.FindInPage()) return;
+        Shell.FocusSearch();
+    }
+
+    /// <summary>Ctrl+,: Settings on its home, its box focused (design 4.8).</summary>
+    public void OpenSettings() => Settings.OpenWithSearch();
     public void ToggleFullscreen() => Shell.ToggleVideoFullscreen();
     public void Zoom(int direction) => Shell.ZoomStep(direction);
 

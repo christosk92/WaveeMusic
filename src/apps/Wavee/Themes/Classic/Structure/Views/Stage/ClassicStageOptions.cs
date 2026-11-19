@@ -3,7 +3,8 @@
 // From `Shell/Stage.Options.UI.cs`: the "Full screen" options popover (design A, two tabs), opened from the top bar's sliders button:
 //   Visualizer tab: Now showing (poster) · group chips · grid of every visualizer (posters) · "Open gallery" (G)
 //   Layout tab:     four layout radio rows with schematic previews · spectrum under the cover (Large / Centered) ·
-//                   artist photo options (lyrics over the photo, slow pan and zoom, dimming)
+//                   artist photo options (lyrics over the photo, slow pan and zoom, dimming) · background blur (the lyrics' depth
+//                   blur, 0 = off; the same dial as Settings › Lyrics, written through `IStageSettingsVerbs.SetLyricsBlur`)
 //
 // Spec: PopoverTabsVisualizer.dc.html / PopoverTabsLayout.dc.html (440 wide · 20 padding · tabs with a 3 px accent underline)
 //
@@ -40,11 +41,17 @@ internal static class ClassicStageOptions
         ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%",
     };
 
+    static readonly Slider.SliderOptions s_blurOptions = new()
+    {
+        Min = G.BlurMin, Max = G.BlurMax, Step = G.BlurStep, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
+
     /// <summary>The popover's state: hook cells of the slot, gathered so the pieces below can take them as one argument.</summary>
-    sealed class Cells(Signal<int> spectrum, Signal<int> cursor, Signal<int> tab, Signal<int> group, Signal<int> layoutSel, FloatSignal dim)
+    sealed class Cells(Signal<int> spectrum, Signal<int> cursor, Signal<int> tab, Signal<int> group, Signal<int> layoutSel, FloatSignal dim, FloatSignal blur)
     {
         public readonly Signal<int> Spectrum = spectrum, Cursor = cursor, Tab = tab, Group = group, LayoutSel = layoutSel;
-        public readonly FloatSignal Dim = dim;
+        public readonly FloatSignal Dim = dim, Blur = blur;
     }
 
     /// <summary>The registered template of <see cref="ViewKeys.StageOptions"/>.</summary>
@@ -52,7 +59,7 @@ internal static class ClassicStageOptions
     {
         var h = ctx.Hooks;
         // the cells are created in a fixed order, once per popover
-        var cells = new Cells(h.UseSignal(0), h.UseSignal(-1), h.UseSignal(0), h.UseSignal(0), h.UseSignal(0), h.UseFloatSignal(Stage.HeroRules.DefaultDim));
+        var cells = new Cells(h.UseSignal(0), h.UseSignal(-1), h.UseSignal(0), h.UseSignal(0), h.UseSignal(0), h.UseFloatSignal(Stage.HeroRules.DefaultDim), h.UseFloatSignal(0f));
         // the flyout lives in the overlay layer: the stage context arrives on the props (the opener wrapped the slot in the provider)
         var st = props.Stage;
         var verbs = props.Verbs;
@@ -62,6 +69,7 @@ internal static class ClassicStageOptions
         h.UseSignalEffect(() => cells.Spectrum.SetIfChanged((int)st.SpectrumPref.Value));
         h.UseSignalEffect(() => cells.LayoutSel.SetIfChanged((int)st.LayoutPref.Value));
         h.UseSignalEffect(() => cells.Dim.SetIfChanged(st.HeroDim.Value));
+        h.UseSignalEffect(() => cells.Blur.SetIfChanged(Lyrics.Prefs.BlurStrength(onStage: false)));
 
         float width = MathF.Min(G.PanelMaxWidth, L.W - G.PanelEdgeInset);
         float height = MathF.Min(G.PanelMaxHeight, L.H - G.PanelEdgeInset);
@@ -256,6 +264,15 @@ internal static class ClassicStageOptions
         };
     }
 
+    static readonly string?[] s_blurNumbers = new string?[(int)G.BlurMax + 1];
+
+    /// <summary>The blur's value in words: "Off" at 0, else the number (each number built once: a drag allocates nothing).</summary>
+    static string BlurWords(float v)
+    {
+        int n = Math.Clamp((int)MathF.Round(v), 0, (int)G.BlurMax);
+        return n == 0 ? Loc.Get(Strings.Stage.Options.BlurOff) : s_blurNumbers[n] ??= n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     static string GroupName(Visualizer.Group g) => g switch
     {
         Visualizer.Group.Lyrics => Strings.Stage.VizGroup.Lyrics, Visualizer.Group.Classics => Strings.Stage.VizGroup.Classics,
@@ -341,6 +358,25 @@ internal static class ClassicStageOptions
                     new TextEl(Loc.Get(Strings.Stage.Options.HeroNote)) { Size = G.CaptionSize, LineHeight = G.NoteLine, Color = Ink.InkSecondary, Wrap = TextWrap.Wrap },
                 ],
             });
+        // Background blur: the lyrics' depth blur (0 = off), the same dial as Settings › Lyrics, in the dimming slider's grammar.
+        kids.Add(new BoxEl
+        {
+            Key = "classic-stage-options-blur", Direction = 1, Gap = G.HeroDimGap, Padding = G.SectionPadding, Shrink = 0f,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        new TextEl(Loc.Get(Strings.Stage.Options.BackgroundBlur)) { Size = G.BodySize, LineHeight = G.BodyLine, Weight = G.WeightSemiBold, Color = Ink.Ink },
+                        new TextEl(Prop.Of(() => BlurWords(cells.Blur.Value))) { Size = G.CaptionSize, LineHeight = G.CaptionLine, Color = Ink.InkSecondary },
+                    ],
+                },
+                Slider.Create(cells.Blur, v => verbs.SetLyricsBlur((int)MathF.Round(v / G.BlurStep) * (int)G.BlurStep), s_blurOptions,
+                    length: width - G.HeroSliderInset, thickness: G.HeroSliderThickness, style: sliderStyle),
+            ],
+        });
         return new ScrollEl
         {
             Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "stageoptionslayout",

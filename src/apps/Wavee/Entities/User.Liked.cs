@@ -62,6 +62,19 @@ public static class LikedCoverRules
 
     public static int ToSetting(LikedCoverStyle style) => (int)style;
 
+    /// <summary>A style's slot in <see cref="PickerOrder"/>, or Stock's (a hand-edited value this build does not define reads as Stock):
+    /// the picker's checked card and the Settings dial's value.</summary>
+    public static int PickerIndexOf(LikedCoverStyle style)
+    {
+        int stock = 0;
+        for (int i = 0; i < PickerOrder.Length; i++)
+        {
+            if (PickerOrder[i] == style) return i;
+            if (PickerOrder[i] == LikedCoverStyle.Stock) stock = i;
+        }
+        return stock;
+    }
+
     /// <summary>The loc key for a style's picker label, total over the enum.</summary>
     public static string NameKey(LikedCoverStyle style) => style switch
     {

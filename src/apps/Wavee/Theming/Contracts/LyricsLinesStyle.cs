@@ -4,7 +4,7 @@
 // word wipe and the node handles they write are core (`Lyrics.ViewCore`, `LyricsModel`). So the lines are a STYLE: the structure registers
 // a `LyricsLinesStyle` under `StyleKeys.LyricsLines` and the core host calls it where it needs a picture, handing itself as the
 // `ILyricsHost`. Every member is a pure picture of what the host decided: the host decides WHICH to draw (a timed document that is not
-// suppressed is the list, any other is the unsynced block, a reader browsing an episode that does not play is the peek).
+// suppressed is the list, any other is the unsynced block).
 
 using FluentGpu.Dsl;
 using FluentGpu.Hooks;
@@ -19,15 +19,13 @@ public sealed class LyricsLinesStyle
         Func<ILyricsHost, Element> shimmer,
         Func<ILyricsHost, SkeletonStyle> skeleton,
         Func<ILyricsHost, Lyrics.Doc, Element> unsynced,
-        Func<ILyricsHost, Lyrics.Doc, Element> lines,
-        Func<ILyricsHost, Lyrics.Doc, Element> peek)
+        Func<ILyricsHost, Lyrics.Doc, Element> lines)
     {
         Message = message;
         Shimmer = shimmer;
         Skeleton = skeleton;
         Unsynced = unsynced;
         Lines = lines;
-        Peek = peek;
     }
 
     /// <summary>A centred one-line state ("No lyrics available", "Nothing playing").</summary>
@@ -45,9 +43,6 @@ public sealed class LyricsLinesStyle
     /// <summary>A timed document: the measured virtual list and its rows.</summary>
     public Func<ILyricsHost, Lyrics.Doc, Element> Lines { get; }
 
-    /// <summary>The podcast peek: the transcript's opening lines dissolving under the gate.</summary>
-    public Func<ILyricsHost, Lyrics.Doc, Element> Peek { get; }
-
     /// <summary>Contract 1.1 (optional): the OFFLINE voice, for a track whose lyrics are not saved on this PC and could not be fetched
     /// because the app is offline (<c>LyricsState.Offline</c>). The action retries the fetch. Null = the core falls back to
     /// <see cref="Message"/> with the offline sentence (a 1.0 style keeps working).</summary>
@@ -60,8 +55,8 @@ public sealed class LyricsLinesStyle
     public bool StageDepthBlur { get; init; }
 
     /// <summary>P6 fix (optional): the side pane's (the rail's) own reading form. Null = the rail keeps the core's focal band and follows the
-    /// user's depth blur (Classic, Zune). Set, the rail follows the active line at <see cref="LyricsRailForm.Band"/> and, when
-    /// <see cref="LyricsRailForm.Crisp"/>, never depth-blurs; the style's <see cref="Lines"/> draws the pane's rows when
+    /// user's depth blur (Classic, Zune). Set, the rail follows the active line at <see cref="LyricsRailForm.Band"/> and still follows the
+    /// user's depth blur (on the content box each row reports); the style's <see cref="Lines"/> draws the pane's rows when
     /// <see cref="ILyricsHost.OnRail"/> says so. The stage and the podcast reader are untouched.</summary>
     public LyricsRailForm? Rail { get; init; }
 
@@ -74,8 +69,7 @@ public sealed class LyricsLinesStyle
 
 /// <summary>The side pane's reading form (<see cref="LyricsLinesStyle.Rail"/>).</summary>
 /// <param name="Band">Where the active line's content centres, as a fraction of the pane's lyrics viewport (the core clamps it to 0.05..0.95).</param>
-/// <param name="Crisp">No depth blur on the pane (its distance cue is the ink), whatever the blur setting says.</param>
-public sealed record LyricsRailForm(float Band, bool Crisp = true);
+public sealed record LyricsRailForm(float Band);
 
 /// <summary>The stage's music rows as a structure draws them (<see cref="LyricsLinesStyle.StageRows"/>).</summary>
 /// <param name="Metrics">The row type and rhythm for the stage's type scale (<c>Stage.Layout.LyricsTypeScale</c>, 1 = the core's 36 DIP stage

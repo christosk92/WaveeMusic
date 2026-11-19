@@ -152,6 +152,11 @@ public static class WinUiPanelBodies
     /// <summary>The header's button size in a window tier: the Compact touch floor, else 32.</summary>
     public static float MetaRow(WidthTier window) => window == WidthTier.Compact ? MetaRowCompactH : MetaRowH;
 
+    /// <summary>The header ⋯'s options card (settings rework phase 5): its width, the FlyoutPresenter's 16 inset, the gap between its blocks and
+    /// inside one, the slider's thickness; the blur slider runs 0 (off) - 100 in steps of five, as the full screen's popover.</summary>
+    public const float LyricsOptionsW = 288f, LyricsOptionsPad = 16f, LyricsOptionsGap = 12f, LyricsOptionsInnerGap = 4f, LyricsSliderThickness = 24f,
+        LyricsBlurMax = 100f, LyricsBlurStep = 5f;
+
     // ── "next up" ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A row: the 40 cover, the 56 floor (W-Queue's rows).</summary>
@@ -289,8 +294,8 @@ public static class WinUiQueueRules
     /// <summary>The Autoplay row: 8 above the divider, 12 / 4 inside.</summary>
     public static readonly Edges4 AutoplayMargin = new(0f, 8f, 0f, 0f), AutoplayPadding = new(0f, 12f, 0f, 4f);
 
-    /// <summary>The autoplay rows' dim, the row entrance and exit travel.</summary>
-    public const float AutoplayDim = 0.6f, EnterDy = 6f, ExitDy = 4f;
+    /// <summary>The row entrance and exit travel.</summary>
+    public const float EnterDy = 6f, ExitDy = 4f;
 
     /// <summary>The shared surface's row text column (title, gap, caption).</summary>
     public const float TextColumn = SurfaceGeometry.CardTitleLineH + SurfaceGeometry.CardLabelGap + SurfaceGeometry.CardCaptionLineH;
@@ -307,9 +312,6 @@ public static class WinUiQueueRules
 
     /// <summary>The "show next" slot's extent: its row and the margin above it.</summary>
     public static float MoreExtent(WidthTier window) => MoreH(window) + MoreTop;
-
-    /// <summary>A section's rows dim when they are the radio's tail.</summary>
-    public static float Dim(QueueSection section) => section == QueueSection.Autoplay ? AutoplayDim : 1f;
 
     /// <summary>Which adapter feeds a row: the seed face while its title is unknown, the episode adapter, the track adapter.</summary>
     public enum Face : byte { Seed, Track, Episode }

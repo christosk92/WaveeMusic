@@ -37,7 +37,6 @@ using FrameActions = Wavee.Detail.FrameActions;
 using FrameSlots = Wavee.Detail.FrameSlots;
 using HeroParts = Wavee.Detail.HeroParts;
 using Identity = Wavee.Detail.Identity;
-using RailBadgeRow = Wavee.Detail.RailBadgeRow;
 using RailLayout = Wavee.Detail.RailLayout;
 using Skeleton = Wavee.Detail.Skeleton;
 using Text = Wavee.Detail.Text;
@@ -358,11 +357,10 @@ internal static partial class ClassicDetailFrame
         float railCover = RailCoverEdge(railW, railRec);
         float titleCap = rail?.TitleSize ?? 0f;
         int railDescLines = rail?.DescriptionLines ?? 0;
-        Element[]? satellites = railForm ? slots.Satellites?.Invoke() : null;
-        var presence = PresenceOf(slots, satellites?.Length ?? 0);
+        var presence = PresenceOf(slots);
         bool blurb = (id.EditableMetadata && slots.Description is not null) || id.DescriptionHtml is { Length: > 0 };
         bool heart = cfg.Heart != HeartMode.None;
-        var rr = RailLayout.RowsFor(id.Kind, cfg.Badges, id.Eyebrow.Length > 0, id.OwnerName is { Length: > 0 },
+        var rr = RailLayout.RowsFor(cfg.Badges, id.Eyebrow.Length > 0, id.OwnerName is { Length: > 0 },
             id.Artists is { Count: > 0 }, id.Meta is { Length: > 0 } || id.MetaLoading, ClassicDetailKit.FixedActionCount(id, heart, acts), blurb, railDescLines,
             presence);
 
@@ -370,20 +368,15 @@ internal static partial class ClassicDetailFrame
 
         // ── the lead: the eyebrow (the rail shows it for TypeYear only, W27; the hero wherever the page has one) ──
         if (railForm ? rr.Eyebrow : !head && f.Eyebrow)
-            rows.Add(Late("hero-eyebrow", railForm && rr.Badges == RailBadgeRow.BesideEyebrow && slots.Badges is { } badgesBeside
-                ? EyebrowWithBadges(id.Eyebrow, badgesBeside(), railCover)
-                : ClassicDetailKit.EyebrowRun(id.Eyebrow) with { Width = railForm ? railCover : float.NaN }, swapIn));
+            rows.Add(Late("hero-eyebrow", ClassicDetailKit.EyebrowRun(id.Eyebrow) with { Width = railForm ? railCover : float.NaN }, swapIn));
         // The rail's owner row, before the title. A page's own attribution builder is the hero's attribution too: one node that moves (after the rule at
         // the hero form); the default owner block is the rail's alone (the hero's default is the owner run).
         bool pageAttribution = slots.Attribution is not null && id.Kind != DetailKind.Album;
         if (railForm && rr.Owner)
         {
-            if (RailLayout.LeadsWithAttribution(id.Kind, presence) && slots.Attribution is { } showLink) rows.Add(Late("rail:lead", showLink(railCover), swapIn));
-            else if (pageAttribution) rows.Add(Late("hero-attribution", slots.Attribution!(railCover), swapIn));
+            if (pageAttribution) rows.Add(Late("hero-attribution", slots.Attribution!(railCover), swapIn));
             else rows.Add(Late("rail:owner", OwnerBlock(id, railCover), swapIn));
         }
-        if (railForm && rr.Badges == RailBadgeRow.OwnRow && slots.Badges is { } badgesOwn)
-            rows.Add(Late("rail:badges", badgesOwn(), swapIn) with { MinHeight = RailLayout.BadgeHeight });
 
         // ── the title: ONE node. The hero's plan (one size per bucketed width), the rail's (the rung is its cap), or the head's display face in its fixed
         //    52 line box; drawn exactly, wrapping freely, ellipsised only past the pathological cap ──
@@ -420,8 +413,6 @@ internal static partial class ClassicDetailFrame
         if (railForm && rr.Artists)
             rows.Add(Late("rail:artists", slots.Attribution?.Invoke(railCover)
                 ?? (id.Artists is { Count: > 0 } billed ? BilledArtists(billed, railCover) : new BoxEl()), swapIn));
-        if (railForm && rr.Rating && slots.Rating is { } rating)
-            rows.Add(Late("rail:rating", rating(railCover), swapIn) with { MinHeight = RailLayout.RatingHeight });
 
         // ── the meta: ONE node in every form. While a find or a filter narrows the list it reads "3 of 48 songs · 11 min (filtered)" (tuned Classic D4) —
         //    its own component, so a keystroke re-renders one line ──
@@ -442,35 +433,27 @@ internal static partial class ClassicDetailFrame
                 ],
             }, swapIn));
         }
-        if (railForm && rr.Badges == RailBadgeRow.AfterMeta && slots.Badges is { } badgesLate)
-            rows.Add(Late("rail:badges", badgesLate(), swapIn) with { MinHeight = RailLayout.BadgeHeight });
-        if (railForm && rr.Ledger && slots.Ledger is { } ledger)
-            rows.Add(Late("rail:ledger", ledger(railCover), swapIn) with { MinHeight = RailLayout.LedgerHeight });
 
         // ── the status rows: the daylist's pulse, the chart's news (one node each in both forms) ──
         if ((railForm ? id.DaylistExpiresAtMs > 0 : !head && f.Pulse) && slots.Pulse is { } pulse) rows.Add(Late("hero-pulse", pulse(), swapIn));
         if (railForm ? id.ChartNewEntries > 0 : !head && f.Chart) rows.Add(Late("hero-chart", ChartCaption(id, slots), swapIn));
 
         // ── the actions: ONE row in both forms (the Play split, then Shuffle · the heart · Share · More in one wrap, the window tier's targets); the rail
-        //    breaks after the split where its tier says (C-Album-Small), and a page's own primary and satellites lead the rail's (W1, W4) ──
+        //    breaks after the split where its tier says (C-Album-Small) ──
         if (!head)
         {
             float target = detailTier.Target;
             Action play = spec.PlayAll ?? rail?.Play ?? DetailVerbs.PlayContext(id.Subject);
-            Element primary = railForm && slots.Primary is { } primaryOf ? primaryOf(spec.Accent) : ClassicDetailKit.PlaySplit(id.Subject, spec.Accent, play, target);
+            Element primary = ClassicDetailKit.PlaySplit(id.Subject, spec.Accent, play, target);
             float topMargin = railForm ? RailLayout.CtaTopMargin : Spacing.XS;
-            rows.Add(Block("hero-actions", satellites is not null
-                ? SatelliteCta("vhero-actions", primary, satellites, topMargin)
-                : ClassicDetailKit.ActionRow("vhero-actions", primary,
-                    ClassicDetailKit.FixedActions("vhero-", id, heart, acts, spec.Accent, MathF.Max(RailLayout.FabSize, target)),
-                    topMargin, railForm && railRec.BreakAfterPrimary ? railCover : 0f)));
+            rows.Add(Block("hero-actions", ClassicDetailKit.ActionRow("vhero-actions", primary,
+                ClassicDetailKit.FixedActions("vhero-", id, heart, acts, spec.Accent, MathF.Max(RailLayout.FabSize, target)),
+                topMargin, railForm && railRec.BreakAfterPrimary ? railCover : 0f)));
         }
 
-        // ── the rail's courtesy rows: topics, about, the countdown, About this release (the band under the rows holds the last two at the hero form) ──
+        // ── the rail's courtesy rows: the countdown, About this release (the band under the rows holds them at the hero form) ──
         if (railForm)
         {
-            if (rr.Topics && slots.Topics is { } topics) rows.Add(Late("rail:topics", topics(railCover), swapIn));
-            if (slots.About is { } about) rows.Add(Late("rail:about", about(railCover), swapIn));
             if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) rows.Add(Late("rail:prerelease", pre(), swapIn));
             // Release facts arrive after the frame: the late panel keeps out of the rows' shove (ClassicDetailKit.ReleaseRow).
             if (!asideDocked && cfg.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
@@ -556,9 +539,9 @@ internal static partial class ClassicDetailFrame
             Pending: pending, Failed: s_false,
             Content: () => column,
             ShimmerSource: railForm
-                ? () => RailSkeletonColumn(id, cfg, slots, acts, railW, railRec, titleCap, railDescLines)
+                ? () => RailSkeletonColumn(id, cfg, acts, railW, railRec, titleCap, railDescLines)
                 : () => HeroIdentitySkeleton(spec, availW, rowFlow, tiers),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true);
+            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: true);
 
         // The rail's own scroller (the last resort once its text has given): as tall as the list's viewport at the columns form, so what the rail holds past
         // the fold stays reachable; at the hero form it sizes to the column (never scrolls: the list carries the hero). The collapsed strip stands in its
@@ -572,7 +555,7 @@ internal static partial class ClassicDetailFrame
                 Pending: tc.CompactRail?.Pending ?? s_false, Failed: s_false,
                 Content: () => CompactRailIdentity(id, slots, stripCover, expand),
                 ShimmerSource: () => CompactRailSkeleton(id.CoverUrl, stripCover),
-                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false), fill: false)
+                OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: Design.Skeleton, Group: null, SmoothResize: false), fill: false)
                 with { Key = "hero:strip", Enter = swapIn, Exit = ClassicTierMotion.SwapFade };
         }
         else

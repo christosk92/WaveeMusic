@@ -550,49 +550,45 @@ public readonly partial struct Artist
         };
 
         /// <summary>A pivot click parks the section's top exactly under the band, animated unless reduced motion is on,
-        /// through the engine's one bring-into-view seam against the page's OWN viewport (ContextBand.cs:347-362).</summary>
+        /// through the engine's one bring-into-view seam against the page's OWN viewport (ContextBand.cs:347-362). A structure's
+        /// <see cref="Theming.SectionJump"/> bounds the move (<see cref="SectionMove"/>).</summary>
         void GoToSection(int section)
         {
             var scene = Context.Scene;
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
             int at = Array.IndexOf(_pivot, (ArtistSection)section, 0, _pivotCount);
-            int from = _active.Peek();
             if (at >= 0)
             {
                 _spyHold = at;
                 _spyHoldUntil = Environment.TickCount64 + SpyHoldMs;
                 _active.SetIfChanged(at);
             }
-            // A structure whose pivot slides its sections (WinUI): park the section at once and slide what then shows in from the side the
-            // tab order points to. Otherwise the glide.
-            if (PivotCascade(at >= 0 ? at : from, from) is { } slide && Context.EntranceCascade is { } cascade)
-            {
-                scene.BringIntoView(_viewport, node, align: 0f, ScrollMove.Immediate, margin: _bandClear);
-                cascade(_viewport, slide);
-                return;
-            }
-            scene.BringIntoView(_viewport, node, align: 0f, GlideOrJump(),
-                margin: _bandClear);
+            // The distance as the spy reads it: the anchor's top in the viewport against the band's edge it parks under.
+            RectF vp = scene.AbsoluteRect(_viewport);
+            double distance = scene.AbsoluteRect(node).Y - vp.Y - _bandClear;
+            var move = SectionMove(distance, vp.H);
+            scene.BringIntoView(_viewport, node, align: 0f, move.Move, margin: _bandClear, maxTravel: move.MaxTravel);
+            if (move.Fade) FadeSection();
         }
-
-        /// <summary>The structure's pivot slide for a step from tab <paramref name="from"/> to <paramref name="to"/> (the overview is
-        /// <see cref="Detail.BandLayout.NoSection"/>, before every tab), or null: none declared (or none under reduced motion), or no step.</summary>
-        static EntranceCascade? PivotCascade(int to, int from)
-            => to == from ? null
-             : Theming.ThemeHost.Facts.Peek().Policies.PageMotion.Pivot?.Invoke(to > from);
 
         /// <summary>The band title's click target: no "Overview" pivot tab, so the title itself is the way back to the
         /// hero. A raw offset, not <see cref="GoToSection"/> — the top of the page has no section anchor to bring in.</summary>
         void ScrollToTop()
         {
-            if (PivotCascade(Detail.BandLayout.NoSection, _active.Peek()) is { } slide && Context.EntranceCascade is { } cascade && !_viewport.IsNull)
-            {
-                _scroll.ScrollTo(0.0, ScrollMove.Immediate);
-                cascade(_viewport, slide);
-                return;
-            }
-            _scroll.ScrollTo(0.0, GlideOrJump());
+            var scene = Context.Scene;
+            double height = scene is not null && !_viewport.IsNull && scene.IsLive(_viewport) ? scene.AbsoluteRect(_viewport).H : _viewportH.Peek();
+            var move = SectionMove(-_scroll.Offset.Peek(), height);
+            _scroll.ScrollTo(0.0, move.Move, move.MaxTravel);
+            if (move.Fade) FadeSection();
+        }
+
+        /// <summary>A far tab's hand-over: what the page's viewport shows (its head, its sections; the pinned pivot is a sticky pose the cascade leaves
+        /// alone) fades in from <see cref="Design.Nav.SameKindEnterFrom"/> over <see cref="Design.Nav.SameKindEnterMs"/>, all at once, on the click frame.
+        /// A part that scrolls in during the arrival joins the fade where it stands.</summary>
+        void FadeSection()
+        {
+            if (Context.EntranceCascade is { } cascade && !_viewport.IsNull) cascade(_viewport, s_sectionFade);
         }
 
         /// <summary>THE SPY: one AbsoluteRect per pivot section, only on a scroll step the 24-DIP projector let through,
@@ -1072,8 +1068,23 @@ public readonly partial struct Artist
     /// <summary>The decode size for a hero photo's base size at the viewport's zoom scale.</summary>
     static int DecodePx(int basePx, float scale) => Design.ImageDecodeScale.For(basePx, scale);
 
-    /// <summary>A glide, or an immediate jump under reduced motion.</summary>
-    static ScrollMove GlideOrJump() => Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide;
+    /// <summary>How a tab moves the page <paramref name="distance"/> DIP (signed) in a <paramref name="viewport"/>-high page. Without the structure's
+    /// <see cref="Theming.SectionJump"/> (Classic, Zune): the glide the whole way (a jump under reduced motion), no fade. With it: a near section
+    /// glides; a far one arrives from the jump's lead (the move's <c>MaxTravel</c>) with what shows fading in; under reduced motion every tab jumps
+    /// (a lead of 0) and keeps the fade.</summary>
+    static (ScrollMove Move, double MaxTravel, bool Fade) SectionMove(double distance, double viewport)
+    {
+        bool reduced = Design.Reduced;
+        ScrollMove move = reduced ? ScrollMove.Immediate : ScrollMove.Glide;
+        if (Theming.ThemeHost.Facts.Peek().Policies.PageMotion.SectionJump is not { } jump) return (move, double.PositiveInfinity, false);
+        bool far = jump.IsFar(distance, viewport);
+        double lead = reduced ? 0.0 : far ? jump.LeadFor(viewport) : double.PositiveInfinity;
+        return (move, lead, far || reduced);
+    }
+
+    /// <summary>A far tab's fade (<see cref="PageHost.FadeSection"/>).</summary>
+    static readonly EntranceCascade s_sectionFade = new(new EnterExit(Opacity: Design.Nav.SameKindEnterFrom),
+        TransitionDynamics.Tween(Design.Nav.SameKindEnterMs, Easing.FluentDecelerate));
 
     /// <summary>How long a pivot click's hold on the spy lasts at most (ms): longer than the glide takes to park a far section, short enough that a wheel which
     /// takes over the scroll gets the spy back almost at once.</summary>

@@ -8,9 +8,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
-## [0.3.10] - unreleased
+## [0.3.11] - 2026-11-19
 
 ### Added
+
+- **A Home you arrange in place (every theme).** Home is a board of tiles: drag one to a new place, give it another
+  size or turn it over to its back. Pin anything to it from the title bar's Pin button ("Pin to Home", beside "Pin to
+  sidebar"), and a card that is already on Home shows a pin mark. In WinUI a tile moves whenever you drag it; Classic
+  and Zune arrange while customizing, right on Home, with Undo, Redo and Reset in the edit bar. A tile also lifts and
+  moves with the keyboard, and its new place is read out.
+- **New sections on Home.** Your shortcuts is one grid with pages (touch and pen swipe turn them). Release Spotlight
+  shows a followed artist's new release. The Spine Shelf replaces "Because you like": one open card and the rest as
+  narrow spines, whose songs play their Canvas on hover, muted until you turn the sound on. Home also gains mood plates,
+  a book shelf, artist circles and a daylist card. Grids never leave an empty slot, a shelf remembers the page you left
+  it on, and resizing the window glides instead of jumping.
+- **New podcast, episode and audiobook pages (every theme).** A show's page has one button that names what plays next
+  (Resume, Play newest, Play part 3), episodes that show at rest whether they are new, unplayed, in progress or played,
+  filters with counts, search, sort and "New since your last visit". An episode's page has a chapter map drawn to scale
+  that seeks on click and a transcript that follows playback. An audiobook's page shows its authors and narrator, genres
+  and rating, one Continue button with your progress through the whole book, a sleep timer, its contents, and your
+  Premium listening hours with links to Spotify's site to check or top them up.
+
+- **Album covers fly into their page (WinUI).** Clicking an album card on Home, an artist's discography, search or
+  "More by" lifts its cover out of the card and flies it into the album page's header while the page fades in quietly
+  underneath; Back flies it home into the same card. Press Back mid-flight and the cover turns around where it is; go
+  somewhere else and it steps aside. With Windows animations off, or from a card that is mostly out of view, nothing
+  flies.
+- **Connected animations and the preview sound are in Settings.** Settings > Appearance > Motion has a "Connected
+  animations" switch wherever pictures fly into their pages (WinUI today): off, nothing flies and pages swap as before.
+  Settings > Playback > Previews on Home turns the sound of the song previews on Home's shelves on or off, the same
+  setting as the shelf's sound button ("Also in: Home"); search finds both ("preview sound", "connected animations").
+
+- **Fast navigation (Classic and WinUI).** A new switch in Settings > Appearance swaps pages without the cross-fade: the
+  new page replaces the old one at once and settles in from 40 %. It is off by default, which keeps the calm hand-over
+  between two pages.
+
+- **Save and Follow in every ⋯ menu.** An album's or playlist's ⋯ menu offers Save, an artist's or show's offers Follow,
+  wherever the menu opens, and both write exactly what the page's own heart does. Your own playlists, Liked Songs and
+  Your Episodes are never offered a Save or a Follow.
 
 - **See the picture where you are seeking (every theme).** Moving the pointer along the seek bar of a music video or a
   video podcast shows the frame at that moment above the bar, with the time and, on an episode, the chapter; it follows
@@ -25,10 +60,266 @@ versions separately under `v*` and is not tracked in this file.)
   line sung at that moment, on a small card that points at your mouse. Settings > Appearance > Lyrics > "Show lyrics
   when seeking" turns it off.
 
+- **Find a setting from the command palette.** Typing in the palette (Ctrl+K) also lists up to three settings that
+  match, with where each one lives. They are found by the words people use, not only their names ("dark mode",
+  "gapless", "too quiet", "start with windows"), and despite a typo ("crosfade"); Enter opens Settings where the
+  setting is. The palette's Theme and Crossfade toggles are gone: both settings come up this way, so a setting is
+  changed in one place.
+
+- **A new Settings page in Zune.** Settings opens on "your setup": the theme, sound, notifications, storage, lyrics and
+  account at a glance, each one a step into its setting, with what you changed lately under it. The list beside it has
+  the home and nine sections (appearance, sound, playback, lyrics & now playing, notifications, startup & system,
+  storage, account & privacy, help & about). A "find a setting" field above the list finds settings by the words
+  people use and despite a typo, the letters you typed lit in the accent; a result opens the setting where it lives,
+  and the setting's name lights up and fades back. Settings whose effect is easier seen than read carry a "see it"
+  word that opens a short clip under the row, and settings that also live elsewhere say where. On a narrow window the
+  page is a list of the sections with a line on each, and a section opens as its own page. The big "settings" title
+  keeps its size at every width.
+- **A new Settings page in WinUI, laid out like Windows 11 Settings.** It opens on a home that shows your setup at a
+  glance (theme, audio quality, notifications, storage, lyrics, account: each card opens its setting), suggestions and
+  the settings you changed most recently. Nine categories sit in the strip under the title (Appearance, Sound,
+  Playback, Lyrics, Notifications, System, Storage, Account, Help) in place of the old seven tabs. "Find a setting"
+  beside the title lists the closest matches as you type, typos included; pick one to jump straight to it, or press
+  Enter for a page of results where every setting can be changed in place. A link to a setting opens its category,
+  unfolds its group, scrolls it into view and highlights it briefly. Settings whose effect is easier to see than to
+  describe carry an info badge after their name that opens a short explanation.
+- **A new Settings page (Classic).** Settings opens on a home that shows your setup at a glance (theme, audio quality,
+  notifications, storage, lyrics, account; each tile opens its setting), any suggestions and the last five settings you
+  changed, wherever you changed them. Nine categories replace the old tabs: Appearance, Sound, Playback, Lyrics &
+  Now playing, Notifications, Startup & system, Storage, Account & privacy and Help & about, with the cards, glyphs and
+  motion Classic always had. "Find a setting" beside the title lists the best matches as you type and shows them as
+  the real, working settings; Enter or a click opens a setting where it lives, its section opening and the setting
+  gliding into view with a short highlight. Settings that also live elsewhere say where ("Also in: Queue"), settings
+  whose effect is easier to see than to describe carry an info button that says what changes, and the settings that had
+  no row before (output device, podcast speed, the Liked Songs cover, the list columns, the mini player's options,
+  private session) are here too.
+- **Settings show what they change.** More than twenty settings whose effect is easier seen than read now open a short
+  clip of the real app, before and after, in every theme and in light and dark: the lyrics blur, word-by-word AI lyrics,
+  the player styles and their finish, the full-screen layout and its spectrum, the mini player's face and colour, the
+  countdown before the next video, and crossfade, normalization and loudness as drawings (a tip never makes a sound),
+  plus each theme's own: WinUI's navigation pane, row density, artwork in rows, the Liked Songs cover and fast
+  navigation; Classic's sidebar, track list style, marquee text and fast navigation; Zune's background. Each loop sits
+  in a quiet frame in the theme's colours, with two small dots that tell before from after.
+
+- **Crossfade in the queue (every theme).** The queue, and the full screen's Up next, now have Crossfade right beside
+  Autoplay, as the same kind of switch, with its length ("5 s") next to it; the length opens Settings at the crossfade
+  duration. A flip here shows in Settings at once, and Settings' home lists it under Recently changed as "from the
+  queue".
+
+- **Background blur in every full-screen options popover.** Classic's and Zune's full-screen options now have the
+  Background blur slider WinUI's already had (on the Layout tab), the same setting as Settings > Lyrics > Lyrics blur.
+
+- **A ⋯ in the lyrics pane (every theme; Zune's "options").** It opens a small card with the Lyrics blur slider and,
+  on a PC that can time lyrics with on-device AI, a status line ("Word-by-word: on") with a link to its settings.
+
+- **App mode with System, and Private session, in the profile menu.** The profile menu's light/dark toggle is now
+  App mode with System, Light and Dark, so picking from the menu no longer drops System. Private session (nothing you
+  play is added to your listening history) has its switch there too.
+
+- **Right-click the title bar for the window's look (WinUI).** Right-clicking the empty part of the title bar offers
+  Backdrop (Mica, Mica Alt, Acrylic, None) and Tabs in the title bar, the same settings as Settings > Appearance.
+
+- **More ways from a setting to where it lives, and back.** The devices list's quality line opens the Audio quality
+  setting, and a new last row, "Sound settings", shows the equalizer and normalization at a glance and opens Sound. The
+  notifications panel has a settings button (a gear; Zune's "settings") that opens Notifications. In Settings, "Also
+  in" now opens the lyrics pane, the devices list, the profile menu, the mini player, a track list, the player bar (the
+  remaining-time label takes keyboard focus) and WinUI's title bar menu; a place that cannot open in the window as it is
+  (no devices list on a narrow Zune window) is named without a link. Changes made in the mini player's options and the
+  Liked Songs cover picker now show under Recently changed too.
+
+- **Gentle tips, at the moment a setting would help (every theme).** When the way you use Wavee shows a setting could
+  help, a short tip appears where it applies, in your theme's own look: word-by-word lyrics under the lyrics after a
+  while of reading along, Lossless in the devices list, Crossfade at the queue's switch when you keep skipping the end of
+  songs, normalization by the volume when you keep adjusting it at the start of tracks, Windows banners in the
+  notifications panel, keeping Wavee playing in the taskbar corner (or starting it with Windows) at the top of Home, the
+  keyboard shortcuts by the play button, and in WinUI where to change the window's backdrop and how to make pages switch
+  at once. A tip that can switch its setting on does it in place and then says so, with a "Change" link to the details;
+  the others open the setting in Settings. Tips never take focus, make no sound and never move what you are looking at:
+  WinUI shows an InfoBar or a TeachingTip, Classic a slim strip, Zune a single lowercase line. They never appear at
+  launch, while a dialog or menu is open or as a song starts.
+- **Tips stay rare.** At most one tip on screen and one new tip per session, each shown at most two or three times on
+  different days; "Not now" (or ×) hides it for 30 days and a third dismissal retires it, and using the setting
+  anywhere retires its tip for good. Every tip's ⋯ (Zune's "more") offers "Don't show tips", the same switch as
+  Settings > Notifications > Tips about features, which turns them all off until you turn it back on. When a metered
+  connection is what lowers the audio quality, the devices list says so every time ("Lowered on a metered connection").
+
+- **Open in new tab.** The menu of an album, playlist, artist or show offers "Open in new tab" under "Open", and
+  anything with a page of its own (a card, a row, a sidebar item) can be dropped on the title bar to open it in a new
+  tab (Classic and WinUI).
+
+### Changed
+
+- **Solid player controls in Classic.** Previous and next are filled like the play button and evenly spaced, and
+  clicking the player bar no longer outlines the whole bar (Classic and Zune). A community contribution from @0dm,
+  thank you. (#228)
+
+- **Where Wavee plays: a new device picker (every theme).** The Devices button opens a "Playing on" card (the device
+  in use, how it is connected, what plays, its volume) above two lists: This PC, with Match Windows first, and Other
+  devices (Spotify Connect), which comes first while one of them plays, with a button that brings playback back to
+  this PC. Outputs are named by the device ("AirPods Max", "Built-in speakers", "USB-C Audio") instead of
+  Windows' endpoint names, wear the right icon, say how they are connected (Bluetooth, USB, HDMI, This PC), and a
+  Bluetooth headset no longer shows twice for its hands-free mode. Choosing an output now moves the sound there at
+  once, without losing your place, and Wavee starts on it next time; Match Windows follows the Windows default. When
+  the chosen output is missing or unplugged, Wavee plays on the Windows default instead of going silent, marks the
+  output "Not responding" and moves back when it returns. The quality is a chip that opens its setting, and "Sound
+  settings" shows the equalizer and normalization at rest. With no other device nearby the list says so in one line.
+  Classic uses the same picker as WinUI; Zune draws it in large lowercase words.
+
+- **The theme picker shows each theme as it looks.** Every card in Settings > Appearance > Theme, and in the first-run
+  setup's theme step, now shows a real picture of that theme's Home, in light or dark to match the app, instead of the
+  same plain blocks for every theme. Zune's theme tiles are now all one width, two to a line in a narrow window.
+
+- **The sidebar's menu offers only what the theme has.** Right-clicking the sidebar offers Layout and Density only in a
+  theme that has them (Classic); WinUI's sidebar no longer offers a Classic choice that lasted until the next start.
+
+- **The remaining time on the player bar is reachable by keyboard.** Tab reaches the time label that switches between the
+  remaining and the total time, and Enter or Space flips it.
+
+- **Playlists open at once.** A playlist you have opened before shows its saved copy the moment you click, Mixes
+  included, and checks for changes behind it; only the daylist waits for its fresh answer. No more placeholder rows for
+  a split second.
+
+- **A changed playlist changes row by row.** When the fresh copy differs, each change plays on its own: a removed song
+  leaves where it stands and the rows below close up, a new song arrives in its place, a moved song travels to its new
+  spot, and a new cover or description hands over in place instead of the whole list repainting.
+
+- **Calmer loading everywhere.** Placeholders are flat and still, with no pulse and no breathing cover tile. When a page
+  takes longer than a second, one thin bar at its top says it is still loading.
+
+- **Page switches are cleaner.** The incoming page is complete on its first frame instead of its parts fading in one by
+  one, and two pages never wash into each other. Going from one album to another (or one playlist, artist or show to
+  the next) is a short 100 ms fade instead of the full page transition.
+
+- **The WinUI library switches like Windows 11.** Choosing Playlists, Albums, Artists or Podcasts keeps "Library" and
+  the tabs where they are and slides only the content below them, left or right. Sort, filter, count and rows line up
+  on one column under the header and end on its right edge; Liked Songs still opens as its own page.
+
+- **The WinUI artist page lands whole.** Popular arrives at its final rows instead of growing into place, the right
+  column comes in with the page, and the blur-rise of the header stays. The section tabs now scroll smoothly to their
+  section; a far section arrives from a short lead-in instead of jumping.
+
+- **Pick-one menus mark their choice as Windows 11 does (Classic and WinUI).** Sort orders, qualities and every other
+  menu where you pick one option show the chosen one with the combo box's accent pill; WinUI's menu rows also take the
+  combo box's spacing.
+
+- **WinUI lyrics pane follows the blur setting,** and the active line and the words being sung stand clearly apart
+  from the rest.
+
+- **Settings keeps one of each.** The privacy policy link lives under Account & privacy only (Help & about no longer
+  repeats it), the log viewer's path reads Settings › Help & about › Logs, and in every theme's "Find a setting" box
+  the first Escape clears what you typed (closing its list) and a second leaves the box.
+
+- **The daylist's options show its clock and its refresh notice (every theme).** Customize Daylist (WinUI), Daylist
+  options (Classic) and the back of the daylist strip (Zune) now hold the daylist's two real settings under "For every
+  daylist": Clock (Countdown and update time, Update time only, Countdown only) and "Tell me when it refreshes" (Off, In
+  Wavee, Windows). They are the same settings as Settings > Appearance > Home and library and Settings > Notifications, so a pick in
+  one place shows in the other. In Classic the daylist's ⋯ menu now offers Options too.
+
+- **Zune's app bar offers options for a tile.** Press and hold (or right-click) a Home tile that has options and the app
+  bar comes up with "options" and "done"; "options" turns the tile over to its settings. The daylist strip turns over
+  too, and its own menu ends in "options".
+
+- **The daylist's settings and its tile point at each other.** In Settings, the daylist clock and "Your daylist
+  refreshed" say "Also in: Home > Daylist tile", a link that opens Home with the daylist's options open; a pick made in
+  those options shows in Settings' Recently changed as made on Home. The first time the daylist refreshes while Home is
+  on screen, the options item in the daylist's ⋯ menu carries a one-time dot (Zune says "options" in the accent).
+
+- **Tune opens in the page, not in a dialog.** On a Mix, Tune opens a strip under the list bar with the Mix's directions
+  ("More discovery tracks", "Make it more soft pop", ...) as chips. A direction applies at once and the list rebuilds in
+  place; the strip stays open with the direction you chose lit and "Reset tuning" beside it. The Tune button carries a
+  sparkle and a blue-to-pink edge in every theme, and lights up while the Mix is tuned.
+
+- **Audiobooks has a book icon** in the sidebar and the command palette, in place of the microphone.
+
+- **New installs start in the WinUI theme.** A first run opens in WinUI, and the setup dialog's theme step shows it
+  selected. An install that already ran keeps its theme.
+
+- **One page per show and per audiobook.** A show or a book picked in the library opens the same page it has
+  everywhere else, fitted to the library's column, instead of an older second design of it.
+
+- **Zune shows "busy" as a train of dots.** Where progress cannot say how far it is (a search still answering, a
+  track still loading, a download finding its size), five small dots rush in, drift through the middle and rush out,
+  in place of the sliding block.
+
+- **Concerts follows each theme.** The page's title stands on the page instead of in a card, the filters are one row of
+  the theme's own controls (place and dates are drop-down buttons beside the toggles, no longer capsules) with the
+  event count at its end, and the shelves are titled like Home's. The filter row stays under the title bar as you
+  scroll (Classic, WinUI). A concert's page and an artist's tour dates open with their picture beside the name, as an
+  album does, with "Play the lineup", "Interested" and share under it; their sections are titled like Home's, and the
+  trail ends on the concert or the artist ("Browse > Concerts > The Wavee Collective") instead of a second
+  "Concerts". In Zune, "view event" is a ring like the event page's, the place is the hub's own control and the
+  months are lowercase.
+
+- **Setup asks for light or dark, the language and the audio quality.** The theme step now has the app mode and the
+  app language under the theme cards, and the playback step has the audio quality: the same rows as in Settings.
+
+- **A larger first-run setup.** The setup dialog is much bigger (1040 x 680 on a normal window). "Is this you?" shows
+  the account as a head and says what Wavee does with it, and signing in shows its four steps as a list, each with
+  what it does.
+
+- **"See all" opens in place.** A section's "See all" page grows out of the section instead of replacing Home
+  with a new page: it opens on the cards the section already showed, holds a place for the ones still loading, and
+  Back shrinks it away again.
+
+- **The WinUI title bar is layered like Windows 11's tabbed apps.** The tab row sits a shade deeper than the toolbar,
+  still tinted by the wallpaper, and the selected tab is the toolbar itself rising into it: the same surface, with no
+  seam along its foot and a hairline round its top. With the backdrop set to None the tab is the window's own colour.
+
+- **Pinned bars show the window behind them (WinUI, Zune).** The bar that stays at the top of an album or playlist
+  page in WinUI no longer paints a lighter band across the page.
+
+### Removed
+
+- **Home's separate customize page and the Quickplay strip.** Home is arranged on Home itself, and its pinned tiles take
+  Quickplay's place.
+
+- **The daylist's "Live updates" switch and "Pause live updates" menu item.** Neither ever did anything for the daylist.
+  Its clock is the only part that moves every second, and Clock > Update time only stills it.
+
 ### Fixed
 
+- **Your Episodes (WinUI) showed a stray "7", a dead band and a header out of line.** It stands on the library's column
+  now, its header sits over the episodes, and its count counts episodes; Podcasts' counts say which mode they count.
+- **A menu over the Canvas showed the panel's buttons through it.** A menu over a playing video or Canvas is frosted
+  through and through.
+- **Liked Songs drew an empty tile** in the WinUI sticky bar and in search results; it shows its own cover.
+- **Your own Liked Songs, Your Episodes and playlists offered Follow** in search results.
+- **Saving an upcoming album** from a heart or a ⋯ menu pre-saves it, and every heart on that album shows it saved.
+- **A hidden Wavee window kept waking up.** While another window covered it, Wavee woke for every event on the
+  desktop; it now stays asleep until it shows again.
 - **Video podcasts that are not copy-protected play their video.** Such an episode played as audio only, as if it had no
   video; it now plays its picture the way a music video does.
+- **A Lyrics blur change showed one change late while paused.** Turning the blur off left the lyrics pane's lines
+  blurred until the next change, which then showed the old value; it now lands at once, playing or paused.
+
+- **An audiobook opened from Home started out as a podcast's page.** It showed a show's layout until the book's details
+  arrived, then turned into the book's page; it opens as the book from its first frame.
+
+- **Podcast and audiobook covers did not fly into their page (WinUI).** The show, audiobook and episode pages now take
+  the cover a card lifts, as album pages do. A show or book still loading shows the card's cover at once while the rest
+  of its page loads, and the cover stays where it is when the page fills in.
+
+- **Expanders open and close in one motion.** On a podcast's page, "About the show" no longer leaves the episode list
+  jumping ahead as it opens or rising over its text as it closes: the list follows the panel's edge both ways. Every
+  expander (Settings too) now slides its panel out from under its header and back, as Windows' own does, so no half
+  line of text is left cut under the header.
+
+- **"See all" on "From artists you follow" opened an empty page titled "Home".** It opens the whole list of releases.
+
+- **Dragging a card on Home moved its whole section (WinUI), and pressing one tilted the whole section (Zune).** A
+  card inside a section is pressed and dragged as itself; the section moves from its own heading.
+
+- **Picking a theme during setup closed the setup dialog.** The dialog vanished, the app stayed dimmed and only a
+  restart brought it back. The dialog now stays on its theme step in the new theme, with its illustration.
+
+## [0.3.10] - 2026-11-18
+
+### Fixed
+
+- **Wavee could close by itself a few seconds after starting on x64 PCs.** 0.3.8 and 0.3.9 were built with a preview of
+  .NET 11 whose compiler left a pointer where the garbage collector could not find it while covers were decoding; a
+  collection at that moment ended the app, most often on the first page after launch or when the window came back after
+  a long time hidden. Wavee is now built with the released .NET 11 SDK, which does not have the defect.
 
 - **Player bar title.** In Classic the title is a link only over its text: the empty space beside a short title no longer lights it up or opens the album. (#225)
 

@@ -1,13 +1,14 @@
 // ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Theme.cs — the theme picker, the active theme's options and their preview (themes plan 6.3, Z8b) ─
 //
 // Boards Z-Settings-Appearance (the picker: a tile 150 x 100 over its name and one line), Z-Theme-Options (the options: label | control rows, the accent as five square
-// swatches, the rest as chips and switches, "reset" beside the heading; the preview beside them).
+// swatches, the rest as chips and switches, "reset" beside the heading; the preview beside them). The Settings page draws the options as its body's options group
+// (each option's control here, `OptionControl`); the keyed options view (`Settings.ThemeOptions`) draws the same controls for the setup wizard's plate.
 //
 // WHAT THIS FILE NEVER DOES: name a theme. The picker draws `ThemePickerEntry` data; the options draw whatever `SettingsOptionsView` holds (a theme with no options gets one
 // quiet line). The board's "add a theme from a folder" tile and its community-themes line are not built: nothing in the core installs a theme from a folder.
 //
-// NO LAYOUT JUMPS. A picker tile has one fixed footprint whatever its text and whatever its preview (a miniature when the preview asset is missing, the image over it when
-// present), and a selected tile spends a constant ring on its selection (clear at rest), so the thumbnail never shifts by a pixel. A group around a row that comes or goes
+// NO LAYOUT JUMPS. A picker tile has one fixed footprint whatever its text and whether or not its still has decoded yet (the still fades in over the thumbnail's plate, in
+// a box of the same size), and a selected tile spends a constant ring on its selection (clear at rest), so the thumbnail never shifts by a pixel. A group around a row that comes or goes
 // tweens its height (`ZuneMotion.ColumnCollapse`), so everything below it eases instead of snapping.
 
 using System.Globalization;
@@ -21,7 +22,6 @@ using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
-using Tab = Wavee.Settings.Tab;
 using Z = Wavee.Themes.Zune.ZuneSettingsRules;
 
 namespace Wavee.Themes.Zune;
@@ -44,31 +44,34 @@ internal static partial class ZuneSettings
 
     static readonly Dictionary<ZuneSettingsLayout, TemplateParts> s_pickerParts = new();
 
-    /// <summary>The group's row and columns in the tier's form: fixed tiles that wrap (Standard up), or fluid tiles that wrap two to a line at the least (Compact, Small).</summary>
+    /// <summary>The group's row and columns in the tier's form: the Compact grid (two up, each tile the share its <see cref="Tile"/> is given), fixed tiles that wrap
+    /// (Standard), or tiles that grow from the record's width along the line (Small, Huge). A wrapping row sizes its items by their measured width (a flex basis plays no
+    /// part there), so the record's width is the columns' minimum.</summary>
     static TemplateParts PickerParts(ZuneSettingsLayout lay)
     {
         if (!s_pickerParts.TryGetValue(lay, out var parts))
             s_pickerParts[lay] = parts = new TemplateParts
             {
                 [RadioButtons.PartGrid] = g => g with { Wrap = true, Gap = lay.PickerGap },
-                [RadioButtons.PartColumn] = c => c with
-                {
-                    Shrink = 0f, Grow = lay.PickerGrows ? 1f : 0f, Basis = lay.PickerCardW, MinWidth = 0f, MaxWidth = lay.PickerGrows ? Z.PickerFluidMax : lay.PickerCardW,
-                },
+                [RadioButtons.PartColumn] = c => lay.PickerGrid
+                    ? c with { Shrink = 0f }
+                    : c with { Shrink = 0f, Grow = lay.PickerGrows ? 1f : 0f, MinWidth = lay.PickerCardW, MaxWidth = lay.PickerGrows ? Z.PickerFluidMax : lay.PickerCardW },
             };
         return parts;
     }
 
-    /// <summary>The picker: one tile per installed theme, driven by `ThemePickerFacts`; a pick is the `themePicker` row's writer (a theme switch under the page). The picked
+    /// <summary>The picker: one tile per installed theme, driven by `ThemePickerFacts`; a pick is the theme dial's writer (a theme switch under the page). The picked
     /// theme's root mounts fresh (owner Q26: nothing carried), so the Settings page opens again ON Appearance, with the picker as its first group.</summary>
     sealed class ThemePickerCard : ZuneScreenComponent
     {
         public override Element Render()
         {
             var lay = UseLayout();
+            var viewport = UseContext(Viewport.Size);   // the Compact grid's tiles follow the window live inside the tier
             var entries = ThemePickerFacts.State.Value.Entries(Platform.Developer.Enabled.Value);   // tracked: a switch or Developer mode re-renders
             if (entries.Count == 0)
                 return ZuneText.Prose(Loc.Get(Strings.Settings.ThemePicker.None)) with { Key = "zs:picker:none" };
+            float gridTile = lay.PickerGridTileW(viewport.Width);
 
             int selected = -1;
             for (int i = 0; i < entries.Count; i++)
@@ -80,7 +83,7 @@ internal static partial class ZuneSettings
                 Key = "zs:picker:lane", Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
                 Children =
                 [
-                    Controls.PickerStrip(entries.Count, selected, (i, on) => Tile(entries[i], on, busyId == entries[i].Id, lay), Pick, parts: PickerParts(lay)),
+                    Controls.PickerStrip(entries.Count, selected, (i, on) => Tile(entries[i], on, busyId == entries[i].Id, lay, gridTile), Pick, parts: PickerParts(lay)),
                 ],
             };
         }
@@ -88,13 +91,16 @@ internal static partial class ZuneSettings
         static void Pick(int index)
         {
             if (SettingsVerbs.ThemeIndex() == index) return;
-            Settings.OpenNextMountOn(Settings.Area.Appearance);
-            if (D(Tab.Appearance, "themePicker").Writer.Choose!(index)) Settings.Bump();
+            Settings.OpenNextMountOn("appearance");
+            if (SettingsSpec.Dial(ThemeDial).Writer.Choose?.Invoke(index) == true) Settings.Bump();
         }
     }
 
-    /// <summary>One tile: the thumbnail (with the selection's ring), the name (the accent when picked) and the line under it.</summary>
-    static Element Tile(ThemePickerEntry entry, bool on, bool busy, ZuneSettingsLayout lay)
+    const string ThemeDial = "appearance.theme";
+
+    /// <summary>One tile: the thumbnail (with the selection's ring), the name (the accent when picked) and the line under it. <paramref name="gridWidth"/>: the Compact
+    /// grid's share (NaN elsewhere: the column's width).</summary>
+    static Element Tile(ThemePickerEntry entry, bool on, bool busy, ZuneSettingsLayout lay, float gridWidth)
     {
         var name = new List<Element>(3)
         {
@@ -118,120 +124,24 @@ internal static partial class ZuneSettings
         };
         if (lay.PickerShowsText && entry.DescriptionKey is { } descriptionKey)
             kids.Add(ZuneText.Hint(Loc.Get(descriptionKey)) with { MaxLines = Z.PickerTextLines, Trim = TextTrim.WordEllipsis, AlignSelf = FlexAlign.Stretch });
-        return new BoxEl
+        var tile = new BoxEl
         {
-            Key = "zs:picker:card:" + entry.Id, Direction = 1, Gap = Z.PickerCardGap, MinWidth = 0f, ClipToBounds = false, Cursor = CursorId.Hand,
+            Key = "zs:picker:card:" + entry.Id, Direction = 1, Gap = Z.PickerCardGap, Width = gridWidth, MinWidth = 0f, ClipToBounds = false, Cursor = CursorId.Hand,
             Animate = ZuneMotion.PivotSlide, Children = kids.ToArray(),
         };
+        // Outside the grid the tile fills its column (the tier's width, `PickerParts`): the radio item is a row, and a tile sized by its content would be as wide as its
+        // words (as wide as its name where the tier shows no line, a sliver of the thumbnail), so the tiles of one picker would not even match.
+        return float.IsNaN(gridWidth) ? tile with { Grow = 1f, Basis = 0f } : tile;
     }
 
-    /// <summary>The preview: the theme's preview image over a UI-native miniature of THAT theme's frame (so a missing asset, the state of every theme until it ships
-    /// one, leaves a thumbnail of the same size that still tells the themes apart, and the image fades in over it instead of replacing a blank).</summary>
+    /// <summary>The preview: the theme's still for this app mode (<see cref="ThemePreviews"/>: its Home from the window's top-left corner), fading in over the box's
+    /// plate when the decode lands, in a box of the same size.</summary>
     static Element Thumbnail(ThemePickerEntry entry, ZuneSettingsLayout lay)
     {
-        var layers = new List<Element>(2) { Miniature(Z.MiniatureOf(entry.Id), lay.PickerThumbH) };
-        var preview = entry.Preview;
-        string asset = R.IsLight ? preview.LightAsset : preview.DarkAsset;
-        if (PreviewPath(asset) is { } path)
-            layers.Add(new ImageEl
-            {
-                Source = path, Fit = ImageFit.Cover, Height = lay.PickerThumbH, AlignSelf = FlexAlign.Stretch, DecodePx = Z.PreviewDecodePx,
-                Placeholder = ColorF.Transparent, RevealTransition = ImageTransition.Fade(Z.PreviewFadeMs),
-            });
-        return new BoxEl { ZStack = true, Height = lay.PickerThumbH, Shrink = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true, Fill = Tok.FillSolidBase, Children = layers.ToArray() };
-    }
-
-    static readonly Dictionary<string, string?> s_previewPaths = new(StringComparer.Ordinal);
-
-    /// <summary>The full path of a preview asset when it ships next to the exe, else null. Looked up once per asset.</summary>
-    static string? PreviewPath(string asset)
-    {
-        if (asset.Length == 0) return null;
-        if (s_previewPaths.TryGetValue(asset, out var known)) return known;
-        string? path = null;
-        try
-        {
-            string candidate = Path.Combine(AppContext.BaseDirectory, "assets", asset.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(candidate)) path = candidate;
-        }
-        catch (Exception) { path = null; }
-        s_previewPaths[asset] = path;
-        return path;
-    }
-
-    /// <summary>A window in miniature drawn from the live tokens, in the shape of the theme it stands for (Z-Settings-Appearance: wavee's sidebar beside two
-    /// tiles, winui's slim rail beside a card and an accent pill, zune's pivot words over a big title and two small tiles), the bar under it. Proportions are flex
-    /// ratios, so it fills any tile.</summary>
-    static Element Miniature(ZuneMiniature form, float height)
-    {
-        ColorF skeleton = Tok.TextTertiary with { A = Z.SkeletonAlpha };
-        ColorF accentTile = R.Ink.AccentAction with { A = Z.MiniTileA };
-        ColorF greyTile = Tok.TextTertiary with { A = Z.MiniTileA };
-        Element Line(float fillGrow, float restGrow, ColorF fill, float h) => new BoxEl
-        {
-            Direction = 0, Height = h, Shrink = 0f, AlignSelf = FlexAlign.Stretch,
-            Children = [new BoxEl { Grow = fillGrow, Basis = 0f, Fill = fill }, new BoxEl { Grow = restGrow, Basis = 0f }],
-        };
-        Element Square(float edge, ColorF fill) => new BoxEl { Width = edge, Height = edge, Shrink = 0f, Fill = fill };
-        Element body = form switch
-        {
-            // wavee: the sidebar (a darker column with its rows) beside the page's two tiles.
-            ZuneMiniature.Sidebar => new BoxEl
-            {
-                Direction = 0, Grow = 1f, Basis = 0f, MinHeight = 0f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Grow = Z.MiniSidebarGrow, Basis = 0f, Direction = 1, Gap = Spacing.XS, Padding = Edges4.All(Spacing.S), Fill = R.Layer.RowHover,
-                        Children = [Line(Z.MiniLineFill, Z.MiniLineRest, skeleton, Spacing.XS), Line(Z.MiniLine2Fill, Z.MiniLine2Rest, skeleton, Spacing.XS)],
-                    },
-                    new BoxEl
-                    {
-                        Grow = Z.MiniPageGrow, Basis = 0f, Direction = 0, Gap = Spacing.S, Padding = Edges4.All(Spacing.M),
-                        Children = [Square(Z.MiniTile, accentTile), Square(Z.MiniTile, greyTile)],
-                    },
-                ],
-            },
-            // winui: the slim navigation rail with its accent mark, a card plate and the accent pill.
-            ZuneMiniature.Rail => new BoxEl
-            {
-                Direction = 0, Grow = 1f, Basis = 0f, MinHeight = 0f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Grow = Z.MiniRailGrow, Basis = 0f, Direction = 1, Padding = Edges4.All(Spacing.S),
-                        Children = [new BoxEl { Width = Z.MiniRailMark, Height = Spacing.M, Fill = R.Ink.AccentAction }],
-                    },
-                    new BoxEl
-                    {
-                        Grow = Z.MiniPageGrow, Basis = 0f, Direction = 1, Gap = Spacing.S, Padding = Edges4.All(Spacing.M),
-                        Children =
-                        [
-                            new BoxEl { Height = Z.MiniCardH, AlignSelf = FlexAlign.Stretch, Fill = R.Layer.RowHover, Corners = CornerRadius4.All(Z.MiniRound) },
-                            new BoxEl { Width = Z.MiniPillW, Height = Spacing.S, Fill = R.Ink.AccentAction, Corners = CornerRadius4.All(Z.MiniRound) },
-                        ],
-                    },
-                ],
-            },
-            // zune: the pivot words over the big title, two small tiles under it.
-            _ => new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, Gap = Spacing.S, Padding = new Edges4(Spacing.M, Spacing.M, Spacing.M, 0f),
-                Children =
-                [
-                    Line(Z.MiniTitleFill, Z.MiniTitleRest, skeleton, Spacing.XS),
-                    Line(Z.MiniLineFill, Z.MiniLineRest, Tok.TextPrimary, Z.MiniBigTitle),
-                    new BoxEl { Direction = 0, Gap = Spacing.XS, Children = [Square(Z.MiniSmallTile, accentTile), Square(Z.MiniSmallTile, greyTile)] },
-                ],
-            },
-        };
-        return new BoxEl
-        {
-            Direction = 1, Height = height, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Fill = R.Layer.ShellGround,
-            Children = [body, new BoxEl { Height = Z.MiniBarHeight, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Fill = R.Layer.PlayerBar }],
-        };
+        Element[] still = ThemePreviews.PathOf(entry.Preview, R.IsLight) is { } path
+            ? [ThemePreviews.Layer(path) with { Height = lay.PickerThumbH, DecodePx = Z.PreviewDecodePx, RevealTransition = ImageTransition.Fade(Z.PreviewFadeMs) }]
+            : [];
+        return new BoxEl { ZStack = true, Height = lay.PickerThumbH, Shrink = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true, Fill = Tok.FillSolidBase, Children = still };
     }
 
     // ══ the options ══════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -293,32 +203,44 @@ internal static partial class ZuneSettings
         }
     }
 
-    /// <summary>One generated row as a Zune row: the control for its kind. A kind this page has no control for (a legacy action, an unknown) is left out.</summary>
+    /// <summary>One generated row as a Zune row: its words and the control for its kind. A kind this page has no control for (a legacy action, an unknown)
+    /// is left out.</summary>
     static Element? Draw(ZuneKit k, GeneratedOptionRow g, ISettingsFacts facts)
     {
-        SettingsRow row = g.Row;
+        SettingsDial row = g.Row;
+        Element? control = OptionControl(k, g, facts, out bool enabled);
         string title = Loc.Get(row.TitleKey);
         string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
-        bool enabled = row.Enabled(facts).Enabled && g.Enabled;
-        string rowKey = "zs:opt:" + g.QualifiedId;
+        return k.Row("zs:opt:" + g.QualifiedId, title, sub, control, enabled);
+    }
+
+    /// <summary>A theme option's control for its kind (chips, a combo, the colour swatches, a switch, a line slider, a command), and whether it is live. The
+    /// body's options group and the wizard's plate draw their rows round it.</summary>
+    static Element? OptionControl(ZuneKit k, GeneratedOptionRow g, ISettingsFacts facts, out bool enabled)
+    {
+        SettingsDial row = g.Row;
+        string title = Loc.Get(row.TitleKey);
+        enabled = row.Enabled(facts).Enabled && g.Enabled;
 
         if (g.Pref is { } pref)
         {
-            Element? control = pref switch
+            var corePref = pref;
+            return corePref switch
             {
-                CorePref.AppMode => k.Choice(row, ModeLabels(), chips: true),
+                CorePref.AppMode => k.Choice(row.Id, new ZuneChoice(ModeLabels(), () => row.Current is int at ? at : 0, i => { if (row.Writer.Choose?.Invoke(i) == true) Settings.Bump(); }, Chips: true)),
                 CorePref.Zoom => Embed.Comp(static () => new ZoomCell()) with { Key = "zs:zoom" },
-                CorePref.Marquee => k.Toggle(row),
-                CorePref.StageFace => k.Choice(row, VisualizerLabels(), chips: false, width: Z.WideComboWidth),
+                CorePref.Marquee => k.Switch(row.Current is true, on => { if (row.Writer.Toggle?.Invoke(on) == true) Settings.Bump(); }),
+                CorePref.StageFace => k.Choice(row.Id, new ZuneChoice(VisualizerLabels(), () => row.Current is int at ? at : 0, i => { if (row.Writer.Choose?.Invoke(i) == true) Settings.Bump(); },
+                    Chips: false, Width: Z.WideComboWidth)),
                 _ => null,   // the animation-effects fact: information only
             };
-            return k.Row(rowKey, title, sub, control);
         }
 
+        bool live = enabled;
         switch (row.Kind)
         {
             case SettingsRowKind.Toggle:
-                return k.Row(rowKey, title, sub, k.Switch(g.Current is true, on => { if (row.Writer.Toggle!(on)) Settings.Bump(); }, enabled), enabled);
+                return k.Switch(g.Current is true, on => { if (row.Writer.Toggle!(on)) Settings.Bump(); }, live);
 
             case SettingsRowKind.Segmented:
             case SettingsRowKind.Choice:
@@ -326,27 +248,27 @@ internal static partial class ZuneSettings
             {
                 string[] labels = ChoiceLabels(g);
                 bool chips = labels.Length <= Z.MaxChips && g.Picker != PickerStyle.Combo;
-                return k.Row(rowKey, title, sub, k.Choice(g.QualifiedId, new ZuneChoice(labels, () => g.Live() is int at ? at : -1,
-                    i => { if (row.Writer.Choose!(i)) Settings.Bump(); }, chips, enabled ? null : static () => false, Width: Z.ComboWidth)), enabled);
+                return k.Choice(g.QualifiedId, new ZuneChoice(labels, () => g.Live() is int at ? at : -1,
+                    i => { if (row.Writer.Choose!(i)) Settings.Bump(); }, chips, live ? null : static () => false, Width: Z.ComboWidth));
             }
 
             case SettingsRowKind.Picker:
-                return k.Row(rowKey, title, sub, Embed.Comp(() => new ColorOption(g)) with { Key = "zs:opt:color:" + g.QualifiedId }, enabled);
+                return Embed.Comp(() => new ColorOption(g)) with { Key = "zs:opt:color:" + g.QualifiedId };
 
             case SettingsRowKind.Slider:
-                return k.Row(rowKey, title, sub, k.Slide(g.QualifiedId, new ZuneSlide(g.Min, g.Max, g.Step,
-                    () => g.Live() is float f ? f : g.Min, v => row.Writer.Slide!(v), v => SliderText(v, g.UnitKey), enabled ? null : static () => false)), enabled);
+                return k.Slide(g.QualifiedId, new ZuneSlide(g.Min, g.Max, g.Step,
+                    () => g.Live() is float f ? f : g.Min, v => row.Writer.Slide!(v), v => SliderText(v, g.UnitKey), live ? null : static () => false));
 
             case SettingsRowKind.Action when row.Confirm is { } confirm:
                 // A destructive action: a command that asks first.
-                return k.Row(rowKey, title, sub, k.Cmd(Loc.Get(confirm.PrimaryKey), () => ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey),
-                    Loc.Get(confirm.PrimaryKey), () => { if (row.Writer.Run!()) Settings.Bump(); }), enabled), enabled);
+                return k.Cmd(Loc.Get(confirm.PrimaryKey), () => ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey),
+                    Loc.Get(confirm.PrimaryKey), () => { if (row.Writer.Run!()) Settings.Bump(); }), live);
 
             case SettingsRowKind.Action:
-                return k.Row(rowKey, title, sub, k.Cmd(title, () => { if (row.Writer.Run!()) Settings.Bump(); }, enabled), enabled);
+                return k.Cmd(title, () => { if (row.Writer.Run!()) Settings.Bump(); }, live);
 
             default:   // a fact: information only
-                return k.Row(rowKey, title, sub, null, enabled);
+                return null;
         }
     }
 

@@ -12,7 +12,7 @@ namespace Wavee.Theming;
 /// <param name="Id">The theme id (what <c>ThemeHost.Switch</c> takes).</param>
 /// <param name="NameKey">The loc key of its name.</param>
 /// <param name="DescriptionKey">The loc key of its one-line description, or null.</param>
-/// <param name="Preview">Its preview images; a picker draws a miniature when the asset is missing.</param>
+/// <param name="Preview">Its picker stills, light and dark (<see cref="ThemePreviews"/>).</param>
 /// <param name="Availability">Who can pick it.</param>
 /// <param name="Selected">It is the active theme.</param>
 public sealed record ThemePickerEntry(string Id, string NameKey, string? DescriptionKey, ThemePreview Preview,

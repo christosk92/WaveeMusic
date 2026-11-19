@@ -1,0 +1,707 @@
+// ── Themes/WinUi/Structure/Views/Discovery/Home/Board/WinUiHomeTiles.cs — WinUI's `Home.Tile.*` (pinned-home-tech.md 1.7; spec 4.2, 8.1) ─────
+//
+// The Widgets board's card: a Fluent card plate (CardBackground, CardStroke, r8) with a ⋯ in a RESERVED corner in every form, so the menu never sits on
+// content. A row tile (S) is the Recently played tile's shape: a 48 cover, the name, one line. A card (M) and a double card (L) stack a head (cover or
+// glyph, title, line) over the widget's body. A FULL row is today's chapter (the shelf, the release list, the Recents grid, the daylist card): the ⋯
+// ends its header row, or, on the daylist card, the card's own ⋯ in its action row carries the tile's rows too. One ⋯ per card, never one outside it;
+// a card's ⋯ opens ONE menu: the item's rows (a pin's album or playlist, the daylist's playlist), a separator, then the tile's Home rows.
+//
+// EVERY CARD ALWAYS DRAGS (the grid's reorder lifts it: a 6 DIP mouse move; touch: hold, then drag, or release for the menu), and takes focus:
+// Alt+Shift+arrows move it (Start's chord), the Menu key or Shift+F10 opens its menu. The menu (spec 8.1): the sizes as radio rows (the pill mark),
+// Customize widget, Pause live updates, Move to front / left / right, then the remove row.
+
+using System.Collections.Generic;
+using System.Globalization;
+using FluentGpu.Animation;
+using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using FluentGpu.Hooks;
+using FluentGpu.Localization;
+using FluentGpu.Signals;
+using FluentGpu.Theming;
+using Wavee.HomeUi;
+using Wavee.Theming;
+using Wavee.Theming.Contracts;
+
+namespace Wavee.Themes.WinUi;
+
+/// <summary>WinUI's tile templates and the board's chrome pieces.</summary>
+internal static class WinUiHomeTiles
+{
+    // ══ the board's chrome ═══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>A group head: a quiet 14 semibold label at the foot of its row (spec 4.2).</summary>
+    public static Element GroupHead(BoardEntry e, WinUiHomeBoardLayout lay) => new BoxEl
+    {
+        Direction = 1, MinWidth = 0f, Grow = 1f, Justify = FlexJustify.End, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
+        // The label hugs its words (it does not stretch with the row), so a width change moves nothing in it.
+        Children = [Ui.BodyStrong(e.Title) with { Key = HomeBoardKeys.Group(e.GroupId) + ":title", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, AlignSelf = FlexAlign.Start }],
+    };
+
+    /// <summary>The Pinned group's head, the concept's "Your shortcuts": the chapter title over "What you reach for most, picked by Spotify", and, while the
+    /// group carries the history tile, the Shortcuts / Recently played switch at its end (Compact: the switch on a line of its own under the title row).
+    /// No "Listening history" link: the grid's own history tile is the way in (owner 2026-11-16). The row's height is the rules'
+    /// <see cref="WinUiHomeBoardLayout.ShortcutsHead"/>.</summary>
+    public static Element ShortcutsHead(BoardEntry e, WinUiHomeBoardLayout lay, WinUiHomeLayout home, HomeBoardProps board, bool switchable)
+    {
+        string key = HomeBoardKeys.Group(e.GroupId);
+        string? sub = home.HeaderSubtitles ? Loc.Get(Strings.Home.Board.Group.PinnedSub) : null;
+        // The switch changes places at the Compact edge (beside the title, under it): each crossing cross-fades it, never a rebuilt part.
+        BoxEl? face = switchable
+            ? new BoxEl
+            {
+                Key = key + ":face", Shrink = 0f,
+                Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+                Children = [Segmented.Create([new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Shortcuts)),
+                                              new SegmentedItem(Loc.Get(Strings.Home.Board.ShortcutsFace.Recents))], board.View.ShortcutsFace,
+                                             options: FaceOptions(lay.FaceSwitchH))],
+            }
+            : null;
+        bool stacked = lay.Tier == WidthTier.Compact;
+        // The grid's pager: the previous and next buttons at the head's end while it pages (the pips stand under the grid).
+        Element pager = Embed.Comp(() => new WinUiHomeZones.WinUiHomeShelfTools(board.View.ShortcutsPager, leadingDivider: false, pips: false))
+            with { Key = key + ":pager" };
+        // One tools box at every tier, so the pager keeps its parent (and its node) when the switch moves under the title at Compact.
+        Element tools = new BoxEl
+        {
+            Key = key + ":tools", Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Children = stacked || face is null ? [pager] : [face.Value, pager],
+        };
+        var header = WinUiHomeZones.ModuleHeader(e.Title, sub, tools, home) with { Key = key + ":title" };
+        return new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, Grow = 1f, Justify = FlexJustify.End, Gap = Spacing.S, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
+            Children = stacked && face is not null ? [header, face.Value with { AlignSelf = FlexAlign.Start }] : [header],
+        };
+    }
+
+    /// <summary>The switch's look: the stock Fluent segmented control (a filled track, the selected segment raised), its segments padded so the words
+    /// never touch (the theme's own Segmented preset is the facet band's underline pivot). The style reads the live tokens when it is built.</summary>
+    static Segmented.SegmentedOptions FaceOptions(float height) => new()
+    {
+        Style = Segmented.FluentStyle() with { Height = height, ItemPadding = new Edges4(Spacing.M, 0f, Spacing.M, 0f) },
+    };
+
+    /// <summary>A shortcut cell of a switchable grid (<see cref="HomeShortcuts"/>): the shortcut's own tile, or the Recently played item at its place.</summary>
+    public static Element ShortcutCell(Element tile, int index, HomeBoardProps board)
+        => Embed.Comp(new FaceProps(tile, index, board), static () => new ShortcutFace());
+
+    internal sealed record FaceProps(Element Tile, int Index, HomeBoardProps Board);
+
+    static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
+
+    /// <summary>The cell's two faces in one place: the face the switch shows is a keyed layer that fades in while the other fades out (the box is the
+    /// pack's, so nothing moves). A place past the end of Recently played keeps its shortcut.</summary>
+    internal sealed class ShortcutFace : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<FaceProps>();
+            Element shown = p.Tile;
+            string key = "face:s";
+            if (p.Board.View.ShortcutsFace.Value == HomeShortcuts.RecentsFace && p.Board.Recents?.Invoke() is { } r && p.Index < r.Cells.Count)
+            {
+                shown = RecentFace(r.Cells[p.Index]);
+                key = "face:r";
+            }
+            return new BoxEl
+            {
+                Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [shown],
+                        Enter = s_fade, Exit = s_fade, Transition = MotionTok.ControlNormal,
+                    },
+                ],
+            };
+        }
+    }
+
+    /// <summary>A Recently played item in a shortcut cell: the row tile's plate and face (its cover, the name, its detail line), no menu corner.</summary>
+    static Element RecentFace(RecentsCell cell)
+    {
+        var c = cell.Card;
+        float edge = WinUiHomeBoardRules.RowArt;
+        Element art = c.Kind == HomeCardKind.Liked
+            ? new BoxEl { Shrink = 0f, Width = edge, Height = edge, Children = [Sidebar.Cover.Liked(edge)] }
+            : Cover(c.ImageUrl, edge, cell.Round);
+        string title = cell.Title, detail = cell.Detail;
+        return new BoxEl
+        {
+            Direction = 1, Grow = 1f, MinWidth = 0f, Corners = Radii.CardAll, ClipToBounds = true,
+            Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f,
+            Children = [Clickable(RowFace(art, () => title, () => detail), () => HomeCardNav.Open(in c))],
+        };
+    }
+
+    /// <summary>The empty Pinned group: a dashed row at the group's height with how to pin (spec 8.1 "Empty states").</summary>
+    public static Element EmptyPinned(WinUiHomeBoardLayout lay) => EmptyPinned(SurfacePlate.For(PlateKind.Outline));
+
+    /// <summary>The empty row in the dashed outline plate the Recently played grid's history tile wears (one outline vocabulary).</summary>
+    static Element EmptyPinned(SurfacePlate plate) => new BoxEl
+    {
+        Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+        Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, Spacing.S),
+        Corners = Radii.CardAll, BorderColor = plate.Stroke, BorderWidth = plate.StrokeWidth, BorderDashOn = plate.Dash, BorderDashOff = plate.Dash,
+        Children =
+        [
+            Ui.Icon(Icons.Pin, WinUiHomeBoardRules.WidgetGlyph, Tok.TextSecondary) with { Shrink = 0f },
+            Ui.Body(Loc.Get(Strings.Theme.Winui.Home.Board.EmptyPinned)).Secondary() with { Shrink = 1f, MinWidth = 0f },
+        ],
+    };
+
+    /// <summary>The drop outline at the lifted tile's packed place.</summary>
+    public static Element Slot(RectF rect) => new BoxEl
+    {
+        Key = HomeBoardKeys.Slot, Width = rect.W, Height = rect.H, Corners = Radii.CardAll,
+        BorderColor = Tok.AccentDefault, BorderWidth = WinUiHomeBoardRules.RingW, BorderDashOn = WinUiHomeBoardRules.DashOn, BorderDashOff = WinUiHomeBoardRules.DashOff, HitTestVisible = false,
+    };
+
+    /// <summary>The open tile: the card becomes its own settings (the options body is the core's `Home.Tile.Options`, drawn by
+    /// <see cref="WinUiHomeTileOptions"/>), lifted a little (the open card's stroke and shadow).</summary>
+    public static Element Open(BoardEntry e, Element options) => new BoxEl
+    {
+        Direction = 1, Grow = 1f, MinWidth = 0f, Corners = Radii.CardAll,
+        Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeSurfaceDefault, BorderWidth = 1f, Shadow = Elevation.Flyout,
+        Children = [options],
+    };
+
+    // ══ the card chrome ══════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>A card around <paramref name="content"/>: the plate, the reserved ⋯ corner, focus, the keys and the context request. A full row has no
+    /// plate (it is a chapter on the page, as today) and no ⋯ of its own: its header ends with the tile's ⋯ (<paramref name="moreInContent"/>), or the
+    /// content's own ⋯ carries the tile's rows (the daylist card, through <see cref="HomeTileMenus"/>). <paramref name="item"/> is the card's item menu (a
+    /// pin's album, the daylist's playlist): its ⋯ opens the item's rows over the tile's.</summary>
+    static Element Card(in ViewContext ctx, HomeTileFrame f, Element content, string? key = null, bool moreInContent = false,
+                        MoreMenu menu = MoreMenu.Full, bool outline = false, Func<ContextMenuModel?>? item = null)
+    {
+        bool full = f.Form == HomeTileForm.Full;
+        // A full row: the body keeps the chapter's full width, so it lays out exactly as the page's chapter does (its first-frame estimates hold,
+        // nothing re-lays next frame). A chapter with a header carries the menu button at the header's end (passed in by the template); a headerless
+        // one (the daylist card) is handed the tile, and its own ⋯ opens the merged menu.
+        if (full)
+            return new BoxEl
+            {
+                Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                // Hosted either way: content with a menu of its own (a release spotlight's album) joins the tile's rows to it on a right-click.
+                Children = [HomeTileMenus.Host(f, s_rows, content)],
+            };
+        Element more = menu == MoreMenu.None ? new BoxEl() : More(ctx, f, menu, item);
+        string id = f.Entry.Id;
+        // The card carries no context handler of its own: a touch hold is the grid wrapper's (it gates the lift, so the hold can become a
+        // drag), and a right-click or the Menu key reaches the board, which opens the menu of the tile under the pointer or in focus
+        // (`WinUiHomeBoard`): the same merged menu as the ⋯.
+        var plate = outline ? SurfacePlate.For(PlateKind.Outline) : default;
+        return new BoxEl
+        {
+            Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true, Corners = Radii.CardAll, ClipToBounds = true,
+            // The outline card is the shortcuts grid's closing tile (the history tile): the dashed plate the Recently played grid's own history tile wears.
+            Fill = outline ? default : Tok.FillCardDefault, BorderColor = outline ? plate.Stroke : Tok.StrokeCardDefault,
+            BorderWidth = outline ? plate.StrokeWidth : 1f, BorderDashOn = outline ? plate.Dash : 0f, BorderDashOff = outline ? plate.Dash : 0f,
+            BrushTransitionMs = Design.Motion.Faster,
+            Children =
+            [
+                content,
+                // The ring around a tile just added: an accent outline for a moment (a bound visibility; nothing relayouts).
+                new BoxEl
+                {
+                    Corners = Radii.CardAll, BorderColor = Tok.AccentDefault, BorderWidth = WinUiHomeBoardRules.RingW, HitTestVisible = false,
+                    Visible = Prop.Of(() => f.View.RingId.Value == id),
+                },
+                // The reserved corner: a full-bleed layer whose row hugs the ⋯ at its top end (a Start layer fills the stack; its child hugs).
+                new BoxEl
+                {
+                    Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Start,
+                    Padding = new Edges4(0f, WinUiHomeBoardRules.MoreInset, WinUiHomeBoardRules.MoreInset, 0f), Children = [more],
+                },
+            ],
+        };
+    }
+
+    /// <summary>Which menu a card's button opens: the full one, only the remove row (a tile whose thing is gone), or none at all (a placeholder of
+    /// Spotify's feed: nothing on it can be acted on).</summary>
+    internal enum MoreMenu : byte { Full, RemoveOnly, None }
+
+    /// <summary>A gone or unknown tile's menu: its removal, or none where removing it would leave no way back (the add surface off and the tile not
+    /// a pin: <see cref="HomeBoardVerbs.CanRemove"/>).</summary>
+    internal static MoreMenu MenuOf(BoardEntry e) => HomeBoardVerbs.CanRemove(e) ? MoreMenu.RemoveOnly : MoreMenu.None;
+
+    /// <summary>The tile's menu rows (the theme's tile menu), handed to content that carries its own ⋯.</summary>
+    static readonly Func<HomeTileFrame, IReadOnlyList<MenuFlyoutItem>> s_rows = WinUiHomeTileMenu.MergedItems;
+
+    /// <summary>The card's menu button (its tools key).</summary>
+    static Element More(in ViewContext ctx, HomeTileFrame f, MoreMenu menu = MoreMenu.Full, Func<ContextMenuModel?>? item = null)
+        => Embed.Comp(new MoreProps(f, WinUiHomeBoardTiers.Of(ctx.Tier()).MoreBox) { Menu = menu, Item = item }, static () => new TileMore())
+            // Laid out by alignment inside the tile: the grid's re-flow re-lays the tile's content at its gliding size, so the button rides the
+            // card's edge with it (a FLIP of its own here fought that and stepped).
+            with { Key = HomeBoardKeys.Tools(f.Entry.Id) };
+
+    /// <summary>A full row that is today's chapter: the menu button ends its header row. A headerless chapter is the daylist card (its own ⋯ carries
+    /// the tile's rows) or the empty facet's vacancy, whose ⋯ stands in the chapter's own top end corner (the vacancy is centred under it).</summary>
+    static Element FullChapter(in ViewContext ctx, HomeTileFrame f, Zone zone, WinUiHomeLayout home)
+    {
+        if (WinUiHomeZones.HasHeader(zone.Kind))
+            return Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home, More(ctx, f)), moreInContent: true);
+        if (zone.Kind == ZoneKind.Daylist) return Card(ctx, f, WinUiHomeZones.ChapterContent(zone, f.Overlay, home));
+        var corner = new BoxEl
+        {
+            Direction = 1, Grow = 1f, MinWidth = 0f, ZStack = true,
+            Children =
+            [
+                WinUiHomeZones.ChapterContent(zone, f.Overlay, home),
+                new BoxEl { Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Start, Children = [More(ctx, f)] },
+            ],
+        };
+        return Card(ctx, f, corner, moreInContent: true);
+    }
+
+    /// <summary>A card's padded column.</summary>
+    static BoxEl Pad(params Element[] kids) => new()
+    {
+        Direction = 1, Grow = 1f, MinWidth = 0f, Gap = Spacing.S,
+        // The ⋯ lane is outside the card's content (a margin, not padding): the content's click target never runs under the tools.
+        Padding = new Edges4(WinUiHomeBoardRules.TilePad, WinUiHomeBoardRules.TilePad, 0f, WinUiHomeBoardRules.TilePad),
+        Margin = new Edges4(0f, 0f, WinUiHomeBoardRules.MoreReserve, 0f),
+        Children = kids,
+    };
+
+    /// <summary>A row tile's line: the art, the name over one line (spec 4.2 `s`).</summary>
+    static BoxEl RowFace(Element art, Func<string> title, Func<string> line, Element? end = null, bool pinned = false)
+    {
+        Element caption = Ui.Caption("").Secondary() with { Text = Prop.Of(line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        var text = new BoxEl
+        {
+            Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center,
+            Children =
+            [
+                Ui.BodyStrong("") with { Text = Prop.Of(title), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                pinned ? PinnedLine(caption) : caption,
+            ],
+        };
+        return new BoxEl
+        {
+            Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+            Padding = new Edges4(WinUiHomeBoardRules.TilePad, 0f, 0f, 0f),
+            Margin = new Edges4(0f, 0f, WinUiHomeBoardRules.MoreReserve, 0f),
+            Children = end is null ? [art, text] : [art, text, end],
+        };
+    }
+
+    /// <summary>A user pin's line, led by the pin mark (state at rest: "yours first, then Spotify's shortcuts", the concept's meta glyph).</summary>
+    static Element PinnedLine(Element caption) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
+        Children =
+        [
+            Ui.Icon(Icons.Pin, WinUiHomeBoardRules.PinMarkGlyph, Tok.AccentTextPrimary) with { Shrink = 0f },
+            new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, Children = [caption] },
+        ],
+    };
+
+    /// <summary>A widget head inside a card: a glyph, the title, a line.</summary>
+    static Element WidgetHead(string glyph, string title, Func<string>? line) => new BoxEl
+    {
+        Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = WinUiHomeBoardRules.WidgetHeadH,
+        Children =
+        [
+            Ui.Icon(glyph, WinUiHomeBoardRules.WidgetGlyph, Tok.AccentTextPrimary) with { Shrink = 0f },
+            new BoxEl
+            {
+                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                Children = line is null
+                    ? [Ui.BodyStrong(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }]
+                    : [Ui.BodyStrong(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                       Ui.Caption("").Secondary() with { Text = Prop.Of(line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
+            },
+        ],
+    };
+
+    /// <summary>A glyph plate standing where a cover would (a widget's row tile).</summary>
+    static Element GlyphPlate(string glyph, float edge)
+        => Controls.IconPlate(glyph, edge, Tok.AccentSubtle, Tok.AccentTextPrimary);
+
+    static Element Cover(string? url, float edge, bool round)
+        => url is { Length: > 0 }
+            ? new BoxEl { Shrink = 0f, Width = edge, Height = edge, Children = [Ui.Image(url, edge, edge, round ? edge * WinUiHomeBoardRules.Half : Radii.Control, Tok.FillSubtleSecondary)] }
+            : new BoxEl { Width = edge, Height = edge, Shrink = 0f, Corners = round ? Radii.Circle(edge) : Radii.ControlAll, Fill = Tok.FillSubtleSecondary };
+
+    // ══ Home.Tile.Pin ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.HomeTilePin"/>.</summary>
+    public static Element Pin(HomePinTileProps p, in ViewContext ctx)
+    {
+        var f = p.Frame;
+        string? cover = p.Cover();
+        Element Art(float edge) => p.CoverArt is { } drawn ? new BoxEl { Shrink = 0f, Width = edge, Height = edge, Children = [drawn(edge)] } : Cover(cover, edge, p.Round);
+        switch (f.Form)
+        {
+            case HomeTileForm.S:
+                return Card(ctx, f, Clickable(RowFace(Art(WinUiHomeBoardRules.RowArt), p.Name, p.Line, pinned: p.UserPin), p.Open), item: p.Card?.Menu);
+            default:
+            {
+                bool wide = f.Form != HomeTileForm.M;
+                float art = wide ? WinUiHomeBoardRules.WideArt : WinUiHomeBoardRules.CardArt;
+                var head = new BoxEl
+                {
+                    Direction = (byte)(wide ? 0 : 1), Gap = Spacing.M, MinWidth = 0f, Grow = 1f,
+                    Children =
+                    [
+                        Art(art),
+                        new BoxEl
+                        {
+                            Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = Spacing.XXS,
+                            Children =
+                            [
+                                Ui.BodyStrong("") with { Text = Prop.Of(p.Name), MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                                p.UserPin
+                                    ? PinnedLine(Ui.Caption("").Secondary() with { Text = Prop.Of(p.Line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f })
+                                    : Ui.Caption("").Secondary() with { Text = Prop.Of(p.Line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                                new BoxEl { Grow = 1f },
+                                p.Play is { } play
+                                    ? Button.Create(Loc.Get(Strings.Theme.Winui.Home.Board.Play), play, ButtonAppearance.Accent, ControlSize.Medium, Icons.Play) with { AlignSelf = FlexAlign.Start }
+                                    : new BoxEl(),
+                            ],
+                        },
+                    ],
+                };
+                return Card(ctx, f, Clickable(Pad(head), p.Open), item: p.Card?.Menu);
+            }
+        }
+    }
+
+    static BoxEl Clickable(BoxEl box, Action open) => box with
+    {
+        OnClick = open, Cursor = CursorId.Hand, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, Role = AutomationRole.Button,
+    };
+
+    // ══ Home.Tile.NowPlaying ════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.HomeTileNowPlaying"/>.</summary>
+    public static Element NowPlaying(HomeNowPlayingTileProps p, in ViewContext ctx)
+    {
+        var f = p.Frame;
+        string title = Loc.Get(Strings.Theme.Winui.Home.Board.NowPlaying);
+        Func<string> name = () => p.HasTrack() ? p.Title() : Loc.Get(Strings.Theme.Winui.Home.Board.NothingPlaying);
+        var pp = new BoxEl
+        {
+            Shrink = 0f, Children = [Controls.IconAction(Icons.Play, p.PlayPause) with { Visible = Prop.Of(() => !p.Playing.Value) },
+                                     Controls.IconAction(Icons.Pause, p.PlayPause) with { Visible = Prop.Of(() => p.Playing.Value) }],
+        };
+        if (f.Form == HomeTileForm.S)
+            return Card(ctx, f, RowFace(Cover(p.Cover(), WinUiHomeBoardRules.RowArt, false), name, p.Line, pp));
+        bool wide = f.Form != HomeTileForm.M;
+        float art = wide ? WinUiHomeBoardRules.WideArt : WinUiHomeBoardRules.CardArt;
+        var transport = new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
+            Children = [Controls.IconAction(Icons.Previous, p.Previous), pp, Controls.IconAction(Icons.Next, p.Next)],
+        };
+        var text = new BoxEl
+        {
+            Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
+            Children =
+            [
+                R.Type.Eyebrow(title),
+                Ui.BodyStrong("") with { Text = Prop.Of(name), MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                Ui.Caption("").Secondary() with { Text = Prop.Of(p.Line), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                p.Lyric is { } lyric && wide ? lyric(LyricLine) : new BoxEl(),
+                new BoxEl { Grow = 1f },
+                transport,
+            ],
+        };
+        var body = new BoxEl
+        {
+            Direction = 1, Grow = 1f, MinWidth = 0f,
+            Children =
+            [
+                Pad(new BoxEl { Direction = (byte)(wide ? 0 : 1), Gap = Spacing.M, Grow = 1f, MinWidth = 0f, Children = [Cover(p.Cover(), art, false), text] }),
+                new BoxEl { Height = WinUiHomeBoardRules.ProgressH, Shrink = 0f, Direction = 1, Children = [p.ProgressLine()] },
+            ],
+        };
+        return Card(ctx, f, body);
+    }
+
+    /// <summary>The lyric reel's line: the active line in the accent (a re-render per line, the reel's own signal).</summary>
+    static Element LyricLine(MiniLyricsFrame frame)
+    {
+        var lines = frame.Lines;
+        var active = frame.Active;
+        return Ui.Caption("") with
+        {
+            Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Text = Prop.Of(() => lines.Count == 0 ? "" : lines[Math.Clamp(active.Value, 0, lines.Count - 1)]),
+        };
+    }
+
+    // ══ Home.Tile.UpNext ════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.HomeTileUpNext"/>.</summary>
+    public static Element UpNext(HomeUpNextTileProps p, in ViewContext ctx)
+    {
+        var f = p.Frame;
+        int max = f.Form switch { HomeTileForm.S => 1, HomeTileForm.M => WinUiHomeBoardRules.CardRows, HomeTileForm.L => WinUiHomeBoardRules.WideRows, _ => WinUiHomeBoardRules.BandRows };
+        var rows = p.Rows(max);
+        string title = Loc.Get(Strings.Theme.Winui.Home.Board.UpNext);
+        string first = rows.Length > 0 ? rows[0].Data.Title : Loc.Get(Strings.Theme.Winui.Home.Board.QueueEmpty);
+        string count = Strings.Theme.Winui.Home.Board.InQueue(n: p.Count());
+        if (f.Form == HomeTileForm.S)
+            return Card(ctx, f, Clickable(RowFace(GlyphPlate(Icons.List, WinUiHomeBoardRules.RowArt), () => title, () => first), p.OpenQueue));
+        var kids = new List<Element> { WidgetHead(Icons.List, title, () => count) };
+        for (int i = 0; i < rows.Length && i < max; i++)
+            kids.Add(Controls.Surface(rows[i].Data, ListShape) with { Key = "upnext:" + rows[i].Key });
+        if (rows.Length == 0) kids.Add(Ui.Caption(first).Secondary());
+        return Card(ctx, f, Pad(kids.ToArray()));
+    }
+
+    static SurfaceShape ListShape => Shape.Row(WinUiHomeBoardRules.ListArt) with { MinHeight = WinUiHomeBoardRules.ListRowH };
+
+    // ══ Home.Tile.Recents ═══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.HomeTileRecents"/>.</summary>
+    public static Element Recents(HomeRecentsTileProps p, in ViewContext ctx)
+    {
+        var f = p.Frame;
+        var r = p.Recents;
+        string title = Loc.Get(Strings.Sidebar.Section.RecentlyPlayed);
+        string week = Strings.Home.PlaysThisWeek(r.Week.Total);
+        switch (f.Form)
+        {
+            case HomeTileForm.Full:
+            {
+                var home = WinUiHomeTiers.Of(ctx.Tier());
+                var body = new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Gap = home.HeaderGap,
+                    Children =
+                    [
+                        WinUiHomeZones.ModuleHeader(r.Zone.Title ?? title, home.HeaderSubtitles ? r.Zone.Subtitle ?? Loc.Get(Strings.Home.RecentsSub) : null,
+                            HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), p.OpenHistory), home, More(ctx, f)),
+                        ctx.View(ViewKeys.HomeZoneRecentGrid, r),
+                    ],
+                };
+                return Card(ctx, f, body, moreInContent: true);
+            }
+            case HomeTileForm.S when HomeShortcuts.IsHistoryCell(f.Entry):
+            {
+                // The shortcuts grid's closing tile (the concept's): the headphones plate, "Listening history", the week's strip and its count, dashed.
+                var line = new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Children = [WinUiHomeRecents.WeekStrip(r.Week, DateTime.Today), WinUiHomeZones.Meta(week) with { Shrink = 1f }],
+                };
+                var text = new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center,
+                    Children = [Ui.BodyStrong(Loc.Get(Strings.Home.ListeningHistory)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }, line],
+                };
+                var face = new BoxEl
+                {
+                    Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+                    Padding = new Edges4(WinUiHomeBoardRules.TilePad, 0f, 0f, 0f), Margin = new Edges4(0f, 0f, WinUiHomeBoardRules.MoreReserve, 0f),
+                    Children = [GlyphPlate(Icons.Headphones, WinUiHomeBoardRules.RowArt), text],
+                };
+                return Card(ctx, f, Clickable(face, p.OpenHistory), outline: true);
+            }
+            case HomeTileForm.S:
+                return Card(ctx, f, Clickable(RowFace(GlyphPlate(Icons.History, WinUiHomeBoardRules.RowArt), () => title, () => week), p.OpenHistory));
+            default:
+            {
+                int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
+                var kids = new List<Element> { WidgetHead(Icons.History, title, () => week) };
+                for (int i = 0; i < r.Cells.Count && i < max; i++)
+                {
+                    var cell = r.Cells[i];
+                    var c = cell.Card;
+                    var data = new Controls.CardData(c.Uri, cell.Title, WinUiHomeZones.Meta(cell.Detail), c.ImageUrl,
+                        () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c), Circular: cell.Round) { Menu = HomeCardNav.MenuOf(in c) };
+                    kids.Add(Controls.Surface(data, ListShape) with { Key = "recents:" + (c.IsBlank ? i.ToString(CultureInfo.InvariantCulture) : c.Uri) });
+                }
+                return Card(ctx, f, Pad(kids.ToArray()));
+            }
+        }
+    }
+
+    // ══ Home.Tile.Releases ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.HomeTileReleases"/>.</summary>
+    public static Element Releases(HomeReleasesTileProps p, in ViewContext ctx)
+    {
+        var f = p.Frame;
+        var zone = p.Zone;
+        var home = WinUiHomeTiers.Of(ctx.Tier());
+        if (f.Form == HomeTileForm.Full) return FullChapter(ctx, f, zone, home);
+        string title = zone.Title ?? Loc.Get(Strings.Home.Zone.FromArtistsYouFollow);
+        int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
+        var kids = new List<Element> { WidgetHead(Icons.RefineSparkle, title, null) };
+        for (int i = 0; i < zone.Items.Count && i < max; i++) kids.Add(CardRow(zone.Items[i], i));
+        return Card(ctx, f, Pad(kids.ToArray()));
+    }
+
+    static Element CardRow(HomeCard card, int i)
+    {
+        var c = card;
+        var data = new Controls.CardData(c.Uri, c.Title, WinUiHomeZones.Meta(c.Subtitle ?? ""), c.ImageUrl,
+            () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c)) { Menu = HomeCardNav.MenuOf(in c) };
+        return Controls.Surface(data, ListShape) with { Key = "row:" + (c.IsBlank ? i.ToString(CultureInfo.InvariantCulture) : c.Uri) };
+    }
+
+    // ══ Home.Tile.Daylist ═══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.HomeTileDaylist"/>.</summary>
+    public static Element Daylist(HomeDaylistTileProps p, in ViewContext ctx)
+    {
+        var f = p.Frame;
+        if (f.Form == HomeTileForm.Full) return Card(ctx, f, p.Card);
+        var card = p.Zone.Items.Count > 0 ? p.Zone.Items[0] : default;
+        bool wide = f.Form != HomeTileForm.M;
+        float art = wide ? WinUiHomeBoardRules.WideArt : WinUiHomeBoardRules.CardArt;
+        var text = new BoxEl
+        {
+            Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
+            Children =
+            [
+                Ui.Caption("").Secondary() with { Text = Prop.Of(p.Eyebrow), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                Ui.Subtitle(card.Title ?? "") with { MaxLines = wide ? 3 : 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                new BoxEl { Grow = 1f },
+                p.Play is { } play
+                    ? Button.Create(Loc.Get(Strings.Theme.Winui.Home.Board.Play), play, ButtonAppearance.Accent, ControlSize.Medium, Icons.Play) with { AlignSelf = FlexAlign.Start }
+                    : new BoxEl(),
+            ],
+        };
+        var row = new BoxEl { Direction = (byte)(wide ? 0 : 1), Gap = Spacing.M, Grow = 1f, MinWidth = 0f, Children = [Cover(card.ImageUrl, art, false), text] };
+        return Card(ctx, f, Pad(row), item: HomeCardNav.MenuOf(in card));
+    }
+
+    // ══ Home.Tile.Section ═══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.HomeTileSection"/>: the full form is today's chapter; a card is the section's
+    /// first covers and names, and opens the section.</summary>
+    public static Element Section(HomeSectionTileProps p, in ViewContext ctx)
+    {
+        var f = p.Frame;
+        var zone = p.Zone;
+        var home = WinUiHomeTiers.Of(ctx.Tier());
+        if (f.Form == HomeTileForm.Full) return FullChapter(ctx, f, zone, home);
+        string title = zone.Title ?? f.Entry.Title;
+        int max = f.Form == HomeTileForm.M ? WinUiHomeBoardRules.CardRows : WinUiHomeBoardRules.WideRows;
+        var kids = new List<Element> { WidgetHead(Icons.Library, title, zone.Subtitle is { Length: > 0 } sub ? () => sub : null) };
+        for (int i = 0; i < zone.Items.Count && i < max; i++) kids.Add(CardRow(zone.Items[i], i));
+        var box = Pad(kids.ToArray());
+        return Card(ctx, f, p.SeeAll is { } open ? Clickable(box, open) : box);
+    }
+
+    // ══ Home.Tile.Vacant ════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.HomeTileVacant"/>: a flat placeholder at the box while loading; a quiet line when the
+    /// thing is gone, paused, offline or unknown. Never a pulse (owner rule 11-15).</summary>
+    public static Element Vacant(HomeTileVacantProps p, in ViewContext ctx)
+    {
+        var f = p.Frame;
+        // Loading: the tile's own view over its seed, shimmered flat (the app's loading pattern): its title lines, cover squares and rows at the
+        // loaded tile's size, so the swap to the loaded tile moves nothing.
+        if (p.Reason == HomeTileVacancy.Loading && p.Skeleton is { } skeleton)
+            // In a box that fills the tile's packed cell, as the loaded tile does (a band's height is its body's).
+            return new BoxEl { Direction = 1, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [Controls.Shimmer(skeleton, f.Entry)] };
+        string line = Loc.Get(p.Reason switch
+        {
+            HomeTileVacancy.Unavailable => Strings.Theme.Winui.Home.Board.Unavailable,
+            HomeTileVacancy.Paused => Strings.Theme.Winui.Home.Board.Paused,
+            HomeTileVacancy.Offline => Strings.Theme.Winui.Home.Board.Offline,
+            HomeTileVacancy.Failed => Strings.Theme.Winui.Home.Board.Failed,
+            _ => Strings.Theme.Winui.Home.Board.Unknown,
+        });
+        // The face per vacancy: a gone or unknown thing keeps its name and offers only its removal; Spotify's feed that failed or is offline says
+        // so in its group's own words and offers nothing (the page's retry and the offline lane are the actions).
+        bool feed = p.Reason is HomeTileVacancy.Failed or HomeTileVacancy.Offline;
+        string name = p.Name.Length > 0 ? p.Name : Loc.Get(feed ? Strings.Theme.Winui.Home.Board.FeedName : Strings.Theme.Winui.Home.Board.Unavailable);
+        string glyph = p.Reason switch
+        {
+            HomeTileVacancy.Offline => Icons.Globe,
+            HomeTileVacancy.Failed => Icons.Warning,
+            HomeTileVacancy.Paused => Icons.Pause,
+            _ => Icons.Info,
+        };
+        var menu = feed ? MoreMenu.None : p.Reason == HomeTileVacancy.Paused ? MoreMenu.Full : MenuOf(f.Entry);
+        return Card(ctx, f, RowFace(GlyphPlate(glyph, WinUiHomeBoardRules.RowArt), () => name, () => line), menu: menu);
+    }
+
+    // ══ the ⋯ ════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+    internal sealed record MoreProps(HomeTileFrame Frame, float Box)
+    {
+        /// <summary>Which rows the menu holds.</summary>
+        public MoreMenu Menu { get; init; }
+
+        /// <summary>The card's item menu (a pin's album, the daylist's playlist), its rows first; null: the tile's rows alone.</summary>
+        public Func<ContextMenuModel?>? Item { get; init; }
+
+        public bool Equals(MoreProps? o) => o is not null && Frame.Entry.Equals(o.Frame.Entry) && Frame.Form == o.Frame.Form && ReferenceEquals(Frame.Verbs, o.Frame.Verbs)
+            && Box == o.Box && Menu == o.Menu && (Item is null) == (o.Item is null);
+        public override int GetHashCode() => Frame.Entry.GetHashCode();
+    }
+
+    /// <summary>The card's ⋯: the menu (spec 8.1) anchored to it; with an item menu, the item's rows then the tile's, as one context menu.</summary>
+    internal sealed class TileMore : Component
+    {
+        static readonly Dictionary<string, TileMore> s_live = new(StringComparer.Ordinal);
+        NodeHandle _anchor;
+        OverlayHandle? _menu;
+        HomeTileFrame? _f;
+        MoreMenu _menuKind;
+        Func<ContextMenuModel?>? _item;
+        HomeTileMenuSlot? _slot;   // the tile a full row's header ⋯ stands in: its content's menu (the spotlight's card on screen) opens over the rows
+
+        /// <summary>Open the menu of <paramref name="f"/>'s card (a context request).</summary>
+        public static void OpenFor(HomeTileFrame f) => OpenFor(f.Entry.Id);
+
+        /// <summary>Open the menu of the card of entry <paramref name="id"/> (the Menu key, Shift+F10 on the focused tile, a right-click on the board): its
+        /// ⋯, or the ⋯ of the content that carries the tile's rows (the daylist card).</summary>
+        public static bool OpenFor(string id)
+        {
+            if (!s_live.TryGetValue(id, out var m)) return HomeTileMenus.TryOpen(id);
+            m.Toggle(keyboard: true);
+            return true;
+        }
+
+        public override Element Render()
+        {
+            var p = UseProps<MoreProps>();
+            _f = p.Frame;
+            _menuKind = p.Menu;
+            _item = p.Item;
+            _slot = UseContext(HomeTileMenus.Current);
+            string id = p.Frame.Entry.Id;
+            UseLayoutEffect(() =>
+            {
+                s_live[id] = this;
+                return () => { if (s_live.TryGetValue(id, out var x) && ReferenceEquals(x, this)) s_live.Remove(id); };
+            }, DepKey.From(id.GetHashCode()));
+            return ToolTip.Wrap(Controls.IconAction(Icons.More, () => Toggle(keyboard: false), requestsContext: false, size: p.Box) with
+            {
+                OnRealized = h => _anchor = h, Role = AutomationRole.Button,
+                // The box steps with the tier (32, 40 at Compact): it eases through real layout, so the card's header beside it rides it.
+                Layout = Design.Reduced ? null : WinUiDiscoveryMotion.SizeReflow,
+            }, Loc.Get(Strings.Theme.Winui.Home.Board.More));
+        }
+
+        void Toggle(bool keyboard)
+        {
+            if (_menu is { IsOpen: true } open) { open.Close(); return; }
+            if (_f is not { } f || f.Overlay is not { } overlay) return;
+            ToolTip.CloseOpen();
+            if ((_item ?? _slot?.Item) is { } item && _menuKind == MoreMenu.Full)
+            {
+                // The item's rows (its own strip and rows, as its right-click elsewhere shows them), then the tile's: one context menu at the ⋯.
+                HomeTileMenus.OpenAt(overlay, _anchor, () => HomeTileMenus.Merged(item(), WinUiHomeTileMenu.MergedItems(f)), keyboard);
+                return;
+            }
+            var items = _menuKind == MoreMenu.RemoveOnly ? WinUiHomeTileMenu.RemoveOnly(f) : WinUiHomeTileMenu.Items(f);
+            _menu = overlay.Open(() => _anchor, () => MenuFlyout.Create(items, () => _menu?.Close()), FlyoutPlacement.BottomEdgeAlignedRight,
+                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss));
+            _menu.ClosedAction = () => _menu = null;
+        }
+    }
+}

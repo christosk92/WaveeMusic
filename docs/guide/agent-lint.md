@@ -370,7 +370,19 @@ all-lowercase head of 18 DIP or more (Zune's voice leaking in). WinUI is not jud
 "new since you were here") and Zune's stand-ins (History, "Featured on"), it also finds Zune's crumbs ("Your Library", board:
 lowercase).
 
+**`pack.hole`** (error). A pack grid (the pinned Home's board) with a group that does not tile: an empty cell, two tiles
+overlapping, a band short of the right edge, a tile below its size class, reading order unlike entry order, a tile outside its
+group. The snapshot carries every grid the board host registers (`packs`: entries, metrics, width, each entry's key and realized
+rect, the grid's origin); the rule re-packs the entries (the pack depends on entries, metrics and width only) and runs
+`PackLayout.Verify`, so it covers the whole board, not just what is on screen; one finding per fault with the keys of the tiles in
+that band. On a settled frame (nothing moving) it also holds every realized wrapper to its packed rect (more than 0.5 DIP off is a
+fault). Saved snapshots carry `packs`; an older snapshot has none and the rule checks nothing there.
+
 ### Report-only rules (level `todo`)
+
+**`pack.tools`** (warn). A tile's edit tools (`home:tile:<id>:tools`) whose rect crosses text or an enabled control of its own
+tile's content: edit tools sit in the tile's reserved corner or tool strip, never on content.
+
 
 Each ships with an algorithm note in its code and a guide policy to declare intent.
 

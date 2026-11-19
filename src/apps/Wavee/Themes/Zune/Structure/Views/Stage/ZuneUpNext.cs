@@ -130,13 +130,23 @@ internal sealed class ZuneStageUpNextColumn : Component
     /// <summary>The page's three mode words (Z-Queue-Page): "shuffle", "repeat" and "autoplay", the accent while on, the secondary ink while off; a press flips it.</summary>
     Element ModesRow(QueueStagePaneProps props, AccentSet set)
     {
-        var words = new List<Element>(3);
+        var words = new List<Element>(5);
         if (props.Player is { } player)
         {
             words.Add(ModeWord(Strings.Player.Shuffle, _queue.Shuffle, player.ToggleShuffle, "stage:upnext:shuffle", set));
             words.Add(ModeWord(Strings.Player.Repeat, (int)_queue.Repeat != 0, player.CycleRepeat, "stage:upnext:repeat", set));
         }
         words.Add(ModeWord(Strings.Player.Autoplay, _queue.Autoplay.Enabled, props.Verbs.ToggleAutoplay, "stage:upnext:autoplay", set));
+        // the "between songs" pair (design 5.4): crossfade beside autoplay, and its length as a quiet word that opens the duration in Settings
+        // (the chips of a Compact window have no room for it there: its row holds the four words)
+        words.Add(ModeWord(Strings.Player.Crossfade, props.Crossfade, props.Verbs.ToggleCrossfade, "stage:upnext:crossfade", set));
+        if (!_q.ModeChips && props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } openLength)
+            words.Add(ToolTip.Wrap(new BoxEl
+            {
+                Key = "stage:upnext:crossfade:length", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = _target, Shrink = 0f,
+                Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = openLength,
+                Children = [new TextEl(props.CrossfadeLength) { Size = Px(UR.ToggleSize), LineHeight = Px(UR.ToggleLine), Color = Ink.InkTertiary, HoverColor = Ink.Ink, Case = R.Case.For(LabelKind.Command), MaxLines = 1 }],
+            }, Loc.Get(Strings.Player.CrossfadeLengthTip)));
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(UR.ModeGap), Height = MathF.Max(Px(UR.ToggleRowH), _target), Shrink = 0f,

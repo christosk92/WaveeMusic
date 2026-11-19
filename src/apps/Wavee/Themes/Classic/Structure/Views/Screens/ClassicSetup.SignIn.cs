@@ -380,28 +380,52 @@ internal static partial class ClassicSetup
         return SetupText.Stack(lead, cards, PremiumRow(host, wizard: true, layout));
     }
 
+    /// <summary>Signing in: ONE sentence of what is awaited (it stood twice: as the lead and again in an info bar under it), what to do about it, and
+    /// the four steps as a ladder in a card, each on its own line with what it does (they ran as one wrapping row, so the fourth stood alone on a
+    /// second line; owner, 2026-11-18).</summary>
     private static Element BusyBody(ISetupSignInHost host, in SetupSignInFacts f) => SetupText.Stack(
-        SetupText.Lead(Loc.Get(Strings.Setup.SignIn.Waiting)),
-        InfoBar.Create(InfoBarSeverity.Informational, Loc.Get(Strings.Auth.SigningIn), Loc.Get(f.BusyMessageKey), isClosable: false),
-        new BoxEl { AlignSelf = FlexAlign.Start, Children = [Embed.Comp(() => new LoginStepBar(host))] },
+        SetupText.Group(
+            SetupText.Lead(Loc.Get(f.BusyMessageKey)),
+            SetupText.Secondary(Loc.Get(Strings.Setup.SignIn.BusyHint))),
         new BoxEl
         {
-            Direction = 0, Wrap = true, Gap = Spacing.L, Stagger = Design.Reduced ? 0f : R.Motion.StaggerMs,
-            Children = [StepRow(host, 0), StepRow(host, 1), StepRow(host, 2), StepRow(host, 3)],
+            Key = "signin:steps", Direction = 1, Gap = ClassicSetupRules.StepCardGap, MinWidth = 0f, Padding = Edges4.All(ClassicSetupRules.StepCardPad),
+            Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Corners = CornerRadius4.All(Radii.Control),
+            Children =
+            [
+                new BoxEl { AlignSelf = FlexAlign.Start, Children = [Embed.Comp(() => new LoginStepBar(host))] },
+                new BoxEl
+                {
+                    Direction = 1, Gap = ClassicSetupRules.StepRowGap, MinWidth = 0f, Stagger = Design.Reduced ? 0f : R.Motion.StaggerMs,
+                    Children = [StepRow(host, 0), StepRow(host, 1), StepRow(host, 2), StepRow(host, 3)],
+                },
+            ],
         });
+
+    /// <summary>What a step of the ladder does, in a few words under its name.</summary>
+    private static string StepSub(int step) => Loc.Get(step switch
+    {
+        1 => Strings.Setup.SignIn.StepMetadataSub,
+        2 => Strings.Setup.SignIn.StepAudioSub,
+        3 => Strings.Setup.SignIn.StepProfileSub,
+        _ => Strings.Setup.SignIn.StepConnectingSub,
+    });
 
     private static Element StepRow(ISetupSignInHost host, int step) => Embed.Comp(() => new LoginStepRow(host, step)) with { Key = "login-step:" + step };
 
-    /// <summary>"Is this you?": a plain 68-DIP account row — no green pill, no auto-advance. The name arrives with the
-    /// account's user row; until then the account id stands in (the host's <c>Account</c> answers it).</summary>
+    /// <summary>"Is this you?": the account as the page's head (a 72 picture, the name in the subtitle voice, the plan and "Signed in on this PC"),
+    /// then what continuing means, as three plain facts with a glyph each: the library, the other devices, playback on this PC. It was one 68-DIP
+    /// row in an empty plate (owner, 2026-11-18: "a lot richer"). No green pill, no auto-advance. "Not me" is the footer's alone: the row carried a
+    /// second one. The name arrives with the account's user row; until then the account id stands in (the host's <c>Account</c> answers it).</summary>
     private static Element DoneBody(ISetupSignInHost host, ClassicSetupLayout layout)
     {
         SetupAccountFacts me = host.Account();   // subscribes: the account's identity lands a tick after Online
+        string plan = Loc.Get(me.Premium ? Strings.Auth.PremiumBadge : Strings.Setup.SignIn.Free);
         return SetupText.Stack(
             SetupText.Lead(Loc.Get(Strings.Setup.SignIn.ConfirmLead)),
             new BoxEl
             {
-                MinHeight = SettingsCard.MinHeight, Padding = Edges4.All(SettingsCard.Padding),
+                Key = "signin:account", Padding = Edges4.All(ClassicSetupRules.AccountCardPad),
                 Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Corners = CornerRadius4.All(Radii.Control),
                 Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center,
                 Children =
@@ -412,18 +436,55 @@ internal static partial class ClassicSetup
                         Direction = 1, Gap = ClassicSetupRules.AccountTextGap, Grow = 1f, Basis = 0f, MinWidth = 0f,
                         Children =
                         [
-                            BodyStrong(me.Name) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                            Caption(Loc.Get(me.Premium ? Strings.Auth.PremiumBadge : Strings.Setup.SignIn.Free)),
+                            Subtitle(me.Name) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                            Caption(plan + " \u00B7 " + Loc.Get(Strings.Setup.SignIn.SignedInHere)) with
+                            {
+                                Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                            },
                         ],
                     },
-                    CommonTouch.Link(Loc.Get(Strings.Setup.SignIn.NotMe), host.SwitchAccount, layout.Target, ControlSize.Small),
+                ],
+            },
+            new BoxEl
+            {
+                Key = "signin:facts", Direction = 1, Gap = ClassicSetupRules.FactRowGap, MinWidth = 0f,
+                Children =
+                [
+                    BodyStrong(Loc.Get(Strings.Setup.SignIn.FactsTitle)),
+                    Fact(Icons.Library, Strings.Setup.SignIn.FactLibraryTitle, Strings.Setup.SignIn.FactLibraryBody),
+                    Fact(Icons.Devices, Strings.Setup.SignIn.FactDevicesTitle, Strings.Setup.SignIn.FactDevicesBody),
+                    Fact(Icons.Download, Strings.Setup.SignIn.FactPlaybackTitle, Strings.Setup.SignIn.FactPlaybackBody),
                 ],
             },
             SetupText.Secondary(Loc.Get(Strings.Setup.SignIn.ConfirmHint)));
     }
 
-    /// <summary>One rung of the Busy ladder: a 16 ring while current, an accent check when done, a tertiary bullet pending,
-    /// a critical cross on failure — each mark keyed by its state so it scale-pops.</summary>
+    /// <summary>One fact of "Is this you?": a glyph on a quiet plate, its name over one sentence.</summary>
+    private static Element Fact(string glyph, string titleKey, string bodyKey) => new BoxEl
+    {
+        Direction = 0, Gap = ClassicSetupRules.FactGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+        Children =
+        [
+            new BoxEl
+            {
+                Width = ClassicSetupRules.FactGlyphBox, Height = ClassicSetupRules.FactGlyphBox, Shrink = 0f, Corners = CornerRadius4.All(Radii.Control),
+                Fill = Tok.FillSubtleSecondary, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Children = [Icon(glyph, ClassicSetupRules.FactGlyphSize, Tok.AccentTextPrimary)],
+            },
+            new BoxEl
+            {
+                Direction = 1, Gap = ClassicSetupRules.AccountTextGap, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Children =
+                [
+                    BodyStrong(Loc.Get(titleKey)) with { Wrap = TextWrap.Wrap, MinWidth = 0f },
+                    Caption(Loc.Get(bodyKey)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f },
+                ],
+            },
+        ],
+    };
+
+    /// <summary>One rung of the Busy ladder, on a line of its own: a 16 ring while current, an accent check when done, a tertiary bullet pending,
+    /// a critical cross on failure (each mark keyed by its state so it scale-pops), then the step's name over what it does.</summary>
     private sealed class LoginStepRow(ISetupSignInHost host, int step) : Component
     {
         public override Element Render()
@@ -447,23 +508,34 @@ internal static partial class ClassicSetup
             };
             return new BoxEl
             {
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Height = ClassicSetupRules.StepRowHeight,
-                Basis = ClassicSetupRules.StepRowWidth, MaxWidth = ClassicSetupRules.StepRowWidth, MinWidth = 0f, Shrink = 1f,
+                Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, MinHeight = ClassicSetupRules.StepRowMinHeight, MinWidth = 0f,
                 Enter = new EnterExit(Dx: -6f, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
                 Children =
                 [
-                    new BoxEl { Width = ClassicSetupRules.StepMarkBox, Height = ClassicSetupRules.StepMarkBox, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [mark] },
-                    new TextEl(Loc.Get(Setup.Commands.LoginStepKey(step)))
+                    new BoxEl { Width = ClassicSetupRules.StepMarkBox, Height = ClassicSetupRules.StepMarkBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [mark] },
+                    new BoxEl
                     {
-                        Size = ClassicSetupRules.CaptionSize, LineHeight = ClassicSetupRules.CaptionLine, Weight = current ? (ushort)600 : (ushort)400,
-                        Color = current ? Tok.TextPrimary : done ? Tok.TextSecondary : Tok.TextTertiary,
+                        Direction = 1, Gap = ClassicSetupRules.StepTextGap, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                        Children =
+                        [
+                            Body(Loc.Get(Setup.Commands.LoginStepKey(step))) with
+                            {
+                                Weight = current ? (ushort)600 : (ushort)400, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                                Color = current || done ? Tok.TextPrimary : Tok.TextSecondary,
+                            },
+                            new TextEl(StepSub(step))
+                            {
+                                Size = ClassicSetupRules.CaptionSize, LineHeight = ClassicSetupRules.CaptionLine, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                                Color = current ? Tok.TextSecondary : Tok.TextTertiary,
+                            },
+                        ],
                     },
                 ],
             };
         }
     }
 
-    /// <summary>The ladder's determinate bar (220), its fill reflow-eased between rungs; Error on a failed login.</summary>
+    /// <summary>The ladder's determinate bar (320), its fill reflow-eased between rungs; Error on a failed login.</summary>
     private sealed class LoginStepBar(ISetupSignInHost host) : Component
     {
         private static readonly TemplateParts FillEase = new()

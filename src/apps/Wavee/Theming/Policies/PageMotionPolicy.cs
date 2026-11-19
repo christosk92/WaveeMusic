@@ -6,6 +6,8 @@
 //   · `PageMotionPolicy`  what a structure answers per kind: the page root's recipe (both legs) and the staggered entrance of the
 //                         incoming page's units (`EntranceCascade` over its `Element.EntranceGroup` containers). A structure that
 //                         declares none keeps the core's one fade-through for every swap (Classic, Zune).
+//   · `SectionJump`       how a tab INSIDE a page moves to its section (the artist page's pivot): a glide when the section is near, an
+//                         arrival (a cut to a lead short of it, then the glide's tail) when it is far. None keeps the full glide.
 
 using FluentGpu.Foundation;
 
@@ -45,7 +47,59 @@ public sealed record PageMotionPolicy(Func<PageSwap, LayoutTransition?>? Recipe 
     /// and no stagger. Null = a cut, as the shell shipped.</summary>
     public LayoutTransition? ReducedFade { get; init; }
 
-    /// <summary>A pivot INSIDE a page stepping to a sibling section (the artist page's tabs): the cascade that brings what then shows in,
-    /// given whether the step goes forward in the tab order (the new part comes from the right). Null = the page's own scroll glide.</summary>
-    public Func<bool, EntranceCascade?>? Pivot { get; init; }
+    /// <summary>How a tab INSIDE a page moves to its section (the artist page's pivot). Null = the page's own scroll glide the whole way.</summary>
+    public SectionJump? SectionJump { get; init; }
+
+    /// <summary>The library family's pivot (<see cref="ShellCapabilities.LibraryFamily"/>): the recipe of the body under the fixed head when the kind
+    /// changes, both legs, given whether the new kind comes after the old one in the pivot's order (it comes in from the right) and the facts the host is
+    /// drawn in. Asked under reduced motion too (the host lets the recipe own it): answer the quick fade there. Null = the core's
+    /// <c>Design.Nav.SameKindSwap</c> fade.</summary>
+    public Func<bool, TierFacts, LayoutTransition?>? LibraryPivot { get; init; }
+
+    /// <summary>The connected navigation flight (<c>SharedTransition.BeginNav</c>): a picture flies into the header of the page it opens (a
+    /// card's cover into an album's, a playlist's or a show's, an artist's round photo into the artist's header), and back into the card on
+    /// Back. Null = this structure flies nothing (the swap plays as authored).</summary>
+    public FluentGpu.Animation.ConnectedNavSpec? Connected { get; init; }
+
+    /// <summary>A page of a kind that grows out of the item the user opened it from instead of flying a picture (the artist: its header photograph
+    /// is not the card's round avatar, so a copied picture would morph into another one). Null, or a null answer, = the kind flies (or swaps as
+    /// authored when nothing flies). Honoured where <see cref="Connected"/> is: off with Settings' Connected animations, never under reduced motion.</summary>
+    public Func<EntityKind, GrowNav?>? GrowInto { get; init; }
+
+    /// <summary>A section's "See all" page (a Home or Browse section's drill) grows out of the place it was opened from, as a <see cref="GrowInto"/>
+    /// kind does, and its units do not stagger in (the page is the section the user was looking at, grown: its first cards are the same cards).
+    /// Back shrinks it toward the same place. Null = the swap plays as authored. Honoured where <see cref="GrowInto"/> is.</summary>
+    public GrowNav? GrowIntoSection { get; init; }
+
+    /// <summary>Under a flight, the page swap keeps its recipe's opacity legs and timings and loses its slide, zoom and stagger
+    /// (<c>Design.Nav.Quiet</c>): the cover is the only thing that travels (Microsoft: a connected animation "does not work well" over a
+    /// translating page transition). False keeps the authored recipe under the flight.</summary>
+    public bool ConnectedQuietPage { get; init; } = true;
+}
+
+/// <summary>How a page grows out of the item it was opened from (<see cref="PageMotionPolicy.GrowInto"/>): the incoming page scales from
+/// <paramref name="EnterScale"/> to 1 about that item's centre and fades in from <paramref name="EnterOpacity"/>, on a critically damped spring of
+/// <paramref name="Response"/> seconds; the old page keeps the recipe's opacity leg only. Back shrinks the page to <paramref name="BackScale"/> about
+/// the same item (or about the page's centre when it is no longer at least <paramref name="MinVisible"/> on screen, or its page's box changed) and
+/// fades it out on <paramref name="Response"/> x <paramref name="BackResponseScale"/>, while the restored page fades in on the recipe's opacity leg.
+/// The scale is a pivot only in effect: the page's own transform origin stays its centre, and an offset of (1 - scale) x (item centre - page centre)
+/// rides the same spring, so the item's centre holds still on every frame.</summary>
+public sealed record GrowNav(float EnterScale, float BackScale, float EnterOpacity, float Response, float BackResponseScale, float MinVisible);
+
+/// <summary>How a tab INSIDE a page (the artist page's pivot) moves the page to its section, by the distance <c>d</c> to it and the page viewport's
+/// height <c>vh</c>. Near (<c>d</c> &lt;= <see cref="NearViewports"/> x <c>vh</c>) the page glides there. Far, it cuts to a lead short of the section
+/// on the side the user comes from, already moving, and decelerates in (<c>ScrollHandle.ScrollTo</c>'s <c>maxTravel</c>), while what the page shows
+/// fades in over the same-kind swap's 100 ms from 40 % (<c>Design.Nav.SameKindEnterMs</c>, <c>SameKindEnterFrom</c>): a glide over many screens
+/// would cross virtualized grids at a viewport per frame. Under reduced motion every tab jumps and keeps the fade.</summary>
+/// <param name="NearViewports">The farthest a section glides from, in viewport heights.</param>
+/// <param name="LeadViewports">The lead a far section arrives from, in viewport heights, clamped to [<paramref name="LeadMin"/>, <paramref name="LeadMax"/>].</param>
+/// <param name="LeadMin">The shortest lead, DIP.</param>
+/// <param name="LeadMax">The longest lead, DIP.</param>
+public sealed record SectionJump(float NearViewports, float LeadViewports, float LeadMin, float LeadMax)
+{
+    /// <summary>Whether a section <paramref name="distance"/> away (DIP, either sign) in a <paramref name="viewport"/>-high page is far.</summary>
+    public bool IsFar(double distance, double viewport) => Math.Abs(distance) > NearViewports * Math.Max(1.0, viewport);
+
+    /// <summary>The lead a far section arrives from in a <paramref name="viewport"/>-high page, DIP.</summary>
+    public double LeadFor(double viewport) => Math.Clamp(LeadViewports * viewport, LeadMin, LeadMax);
 }

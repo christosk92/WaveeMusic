@@ -175,6 +175,20 @@ internal static class WinUiArtistSections
     internal static Element AlbumCardAt(int slot, float w)
         => AlbumCard(new ShelfEntity(slot, new Album(slot).Version, default, 0, slot.ToString(CultureInfo.InvariantCulture)), 0, w);
 
+    /// <summary>The album card's shimmer source at width <paramref name="w"/>: the same surface over placeholder words (a cover, a title line, the
+    /// year's line), for a release whose card fields are still coming.</summary>
+    internal static Element AlbumCardPlaceholder(float w)
+        => Controls.Surface(new Controls.CardData("", Loc.Get(Strings.Artist.LatestRelease), CardSubtitle(Loc.Get(Strings.Theme.Winui.Detail.Newest)), null, null,
+            CoverOverride: CoverBlock(w)), s_shelfShape, w);
+
+    /// <summary>A placeholder card's cover: the square the shelf card's plate holds at <paramref name="w"/>, as one sized block (a card with no url draws
+    /// no cover for the skeleton to derive).</summary>
+    static Element CoverBlock(float w)
+    {
+        float edge = MathF.Max(1f, w - 2f * SurfaceGeometry.PlateInsetX(flush: false));
+        return new BoxEl { Width = edge, Height = edge, Shrink = 0f, Corners = CornerRadius4.All(WinUiArtistRules.PreviewCardRadius) };
+    }
+
     /// <summary>The album card's click, shared with the shelf slot's <c>onInvoke</c>.</summary>
     static void OpenAlbum(ShelfEntity item) => Track.GoToAlbum(new Album(item.Slot));
 

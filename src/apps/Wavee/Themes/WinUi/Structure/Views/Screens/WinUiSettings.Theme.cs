@@ -1,13 +1,12 @@
-// ── Themes/WinUi/Structure/Views/Screens/WinUiSettings.Theme.cs — the theme picker and WinUI's six options (themes plan 6.2, P6 W8b) ──────────────
+// ── Themes/WinUi/Structure/Views/Screens/WinUiSettings.Theme.cs — the Theme card: the picker and WinUI's six options (themes plan 6.2, P6 W8b; settings rework) ──
 //
-// Boards: W-Settings (-Compact, -Small, -Huge) for the picker, W-ThemeOptions (-Compact, -Small, -Huge) for the options. Settings › Appearance, the theme half: ONE
-// SettingsExpander card "Theme" (the current theme's name and a chevron in its header) holding the THEME PICKER (one card per installed theme, driven by
-// `ThemePickerFacts`) and, under a "WinUI theme options" label, the ACTIVE THEME'S OPTIONS: exactly the six the theme defines (W-ThemeOptions), in the board's
-// order, drawn from `SettingsThemeOptions` (the grouping, the visibility and the Developer gate are the core's; the groups are flattened here because the board
-// shows one list). App mode and Zoom follow as their own cards. The setup wizard's Theme step draws the same two views through their own keys
-// (`Settings.ThemePicker`, `Settings.ThemeOptions`).
+// Boards: W-Settings (-Compact, -Small, -Huge) for the picker, W-ThemeOptions (-Compact, -Small, -Huge) for the options. Settings › Appearance › Theme is ONE
+// SettingsExpander card "Theme" (the palette glyph, the current theme's name and a chevron in its header, open) holding the THEME PICKER (one card per
+// installed theme, driven by `ThemePickerFacts`) and, under a "WinUI theme options" label, the registry's "WinUI options" group: the ACTIVE theme's options,
+// each its own row host (`settings:dial:appearance.option.<qualifiedId>`, so a link to an option lands inside the card), in the board's order. The setup
+// wizard's Theme step draws the picker and the options through their own keys (`Settings.ThemePicker`, `Settings.ThemeOptions`).
 //
-// THE SIX, AND HOW EACH APPLIES (technical plan 6.2; the schema declares the mode, this view only writes through the row's writer):
+// THE SIX, AND HOW EACH APPLIES (technical plan 6.2; the schema declares the mode, this view only writes through the dial's writer):
 //   Backdrop (Mica, Mica Alt, Acrylic, None)     TRANSACTION: the material is not a colour; the picked theme's busy ring shows while it prewarms
 //   Navigation pane (Expanded, Compact, Auto)    LIVE: the pane's width animates over 167 ms; a note says what Automatic does at this window width
 //   Density (Default, Compact)                   TRANSACTION: every list re-lays out
@@ -15,12 +14,14 @@
 //   Artwork in track rows                        TRANSACTION: row extents
 //   Use the Windows accent colour                LIVE: colour only
 //
-// WHAT THIS FILE NEVER DOES: name a theme. The picker draws `ThemePickerEntry` data; the options draw whatever `SettingsOptionsView` holds (a theme with no options
-// gets one quiet row). The board's "Browse community themes" tile is not built: nothing in the core installs a theme from a folder (as in Zune).
+// WHAT THIS FILE NEVER DOES: name a theme. The picker draws `ThemePickerEntry` data; the options draw the rows the registry composes. The board's "Browse
+// community themes" tile is not built: nothing in the core installs a theme from a folder.
 //
-// NO LAYOUT JUMPS. A picker card has one fixed footprint whatever its text (name: one line, caption: two, ellipsised) and whatever its preview (a miniature when the
-// preview asset is missing, the image over it when present); the selected card spends its 1-DIP border growth from its padding, so nothing moves when the selection does.
+// NO LAYOUT JUMPS. A picker card has one fixed footprint whatever its text (name: one line, caption: two, ellipsised) and whether or not its still has decoded
+// yet (the still fades in over the thumbnail's plate, in a box of the same size); the selected card spends its 1-DIP border growth from its padding, so nothing
+// moves when the selection does.
 
+using System.Collections.Immutable;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -31,8 +32,6 @@ using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
-using Catalog = Wavee.Settings.Catalog;
-using Tab = Wavee.Settings.Tab;
 
 namespace Wavee.Themes.WinUi;
 
@@ -43,43 +42,40 @@ internal static partial class WinUiSettings
     /// <summary>The registered template of <see cref="ViewKeys.SettingsThemePicker"/>: the picker's cards on a card of their own (the setup wizard's Theme step).</summary>
     public static Element ThemePickerTemplate(SettingsThemePickerProps props, in ViewContext ctx) => Embed.Comp(static () => new ThemePickerCard(chrome: true));
 
-    /// <summary>The registered template of <see cref="ViewKeys.SettingsThemeOptions"/>: the options as cards under their label (the page), or the wizard's plate rows (an
-    /// empty element while the theme has nothing to pick there; the wizard step does not place it then).</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.SettingsThemeOptions"/>: the wizard's plate rows (an empty element while the theme has nothing to
+    /// pick there; the wizard step does not place it then). The page draws the options inside its Theme card instead.</summary>
     public static Element ThemeOptionsTemplate(SettingsThemeOptionsProps props, in ViewContext ctx)
-        => props.Wizard ? WizardThemeOptions() ?? new BoxEl() : Embed.Comp(static () => new OptionsList(wizard: false));
+        => props.Wizard ? Embed.Comp(static () => new WizardOptions()) : new BoxEl();
 
     // ══ 1. THE THEME CARD (the page's expander: picker, then the options) ════════════════════════════════════════════════
 
-    /// <summary>The Theme section's card: the SettingsExpander of W-Settings (palette glyph, "Theme", the current theme's name and a chevron), open, holding the picker
-    /// and the options.</summary>
-    static Element ThemeSettingsCard() => Embed.Comp(static () => new ThemeExpanderCard());
+    /// <summary>The Theme dial's card: the SettingsExpander of W-Settings (palette glyph, "Theme", the current theme's name and a chevron), open, holding the
+    /// picker and the options group's rows.</summary>
+    static Element ThemeCard(RowCtx x) => Embed.Comp(new ThemeCardProps(x), static () => new ThemeExpanderCard());
+
+    sealed record ThemeCardProps(RowCtx X);
 
     sealed class ThemeExpanderCard : SettingsComponent
     {
         public override Element Render()
         {
             var layout = UseLayout();
+            var x = UseProps<ThemeCardProps>().X;
             var entries = ThemePickerFacts.State.Value.Entries(Platform.Developer.Enabled.Value);
             string current = "";
             foreach (var entry in entries)
                 if (entry.Selected) { current = Loc.Get(entry.NameKey); break; }
 
             var body = new List<Element>(3) { Embed.Comp(static () => new ThemePickerCard(chrome: false)) };
-            body.Add(Embed.Comp(static () => new OptionsList(wizard: false)));
-            return SettingsExpander.Create(new SettingsExpander.Options
+            body.Add(OptionsList(x));
+            var header = BaseCard(x, new TextEl(current) { Size = WinUiSettingsRules.ValueTagSize, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis })
+                with { Label = Loc.Get(Strings.Theme.Winui.Screens.ThemeTitle), Description = Loc.Get(Strings.Theme.Winui.Screens.ThemeSub), Glyph = Icons.Brush, Footer = null };
+            return Expander(header, [], x.Expanded, initiallyExpanded: true, itemsHeader: new BoxEl
             {
-                Header = Loc.Get(Strings.Theme.Winui.Screens.ThemeTitle),
-                Description = Loc.Get(Strings.Theme.Winui.Screens.ThemeSub),
-                HeaderIcon = Glyph(Catalog.SectionGlyph(Tab.Appearance, "Theme")),
-                Content = new TextEl(current) { Size = WinUiSettingsRules.ValueTagSize, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                ItemsHeader = new BoxEl
-                {
-                    Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Gap = Spacing.L,
-                    Padding = new Edges4(layout.PickerPad + layout.PickerIndent, layout.PickerPad, layout.PickerPad, layout.PickerPad),
-                    Children = body.ToArray(),
-                },
-                InitiallyExpanded = true,
-            }) with { Key = "settings:theme:card" };
+                Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Gap = Spacing.L,
+                Padding = new Edges4(layout.PickerPad + layout.PickerIndent, layout.PickerPad, layout.PickerPad, layout.PickerPad),
+                Children = body.ToArray(),
+            });
         }
     }
 
@@ -134,13 +130,13 @@ internal static partial class WinUiSettings
         }
     }
 
-    /// <summary>The pick. The picked theme's root mounts fresh (owner Q26: nothing carried), so the Settings page opens again ON Appearance, with the picker as its
-    /// first row, instead of on General.</summary>
+    /// <summary>The pick, through the Theme dial's writer. The picked theme's root mounts fresh (owner Q26: nothing carried), so the Settings page opens again on
+    /// Appearance, with the picker first, instead of on its home.</summary>
     static void PickTheme(int index)
     {
         if (SettingsVerbs.ThemeIndex() == index) return;
-        Settings.OpenNextMountOn(Settings.Area.Appearance);
-        if (D(Tab.Appearance, "themePicker").Writer.Choose!(index)) Settings.Bump();
+        Settings.OpenNextMountOn("appearance");
+        if (Dial("appearance.theme").Writer.Choose is { } choose && choose(index)) Settings.Bump();
     }
 
     /// <summary>The group's grid in the tier's form: the same nodes in every form, only their props differ. The cards are fluid (each column an equal share), the gap
@@ -179,7 +175,7 @@ internal static partial class WinUiSettings
     static Element ThemeCard(ThemePickerEntry entry, bool on, bool busy, WinUiSettingsLayout layout, float gridCardWidth)
     {
         string name = Loc.Get(entry.NameKey);
-        var nameText = (on ? BodyStrong(name) : BodyStrong(name)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap, MinWidth = 0f, Shrink = 1f };
+        var nameText = BodyStrong(name) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap, MinWidth = 0f, Shrink = 1f };
         var head = new List<Element>(4) { nameText with { Grow = layout.Picker == WinUiThemePickerForm.Row ? 0f : 1f } };
         if (entry.Availability == ThemeAvailability.Developer && layout.PickerShowsText) head.Add(DeveloperTag());
         if (busy) head.Add(ProgressRing.Indeterminate(size: ProgressRing.MinSize));
@@ -242,153 +238,134 @@ internal static partial class WinUiSettings
         Children = [new TextEl(Loc.Get(Strings.Settings.ThemePicker.Developer)) { Size = WinUiSettingsRules.TagSize, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 }],
     };
 
-    /// <summary>The preview: the theme's preview image over a UI-native miniature (so a missing asset, the state of every theme until it ships one, leaves a thumbnail of
-    /// the same size, and the image fades in over it instead of replacing a blank). 16:9 where the width is fluid (Standard, Huge), the record's height at the Compact grid,
-    /// the fixed 48 x 32 beside the name at Small.</summary>
+    /// <summary>The preview: the theme's still for this app mode (<see cref="ThemePreviews"/>: its Home from the window's top-left corner), fading in over the box's
+    /// plate when the decode lands, in a box of the same size. 16:9 where the width is fluid (Standard, Huge), the record's height at the Compact grid, the fixed
+    /// 48 x 32 beside the name at Small.</summary>
     static BoxEl ThemeThumbnail(ThemePreview preview, WinUiSettingsLayout layout, float width)
     {
         bool row = layout.Picker == WinUiThemePickerForm.Row;
         bool grid = layout.Picker == WinUiThemePickerForm.Grid;
         float h = row ? layout.PickerThumbH : grid ? layout.PickerThumbH : float.NaN;
-        var layers = new List<Element>(2) { ThemeMiniature(h) };
-        string asset = R.IsLight ? preview.LightAsset : preview.DarkAsset;
-        if (PreviewPath(asset) is { } path)
-            layers.Add(new ImageEl
+        float aspect = float.IsNaN(h) ? WinUiSettingsRules.PreviewAspect : float.NaN;
+        Element[] still = ThemePreviews.PathOf(preview, R.IsLight) is { } path
+            ? [ThemePreviews.Layer(path) with
             {
-                Source = path, Fit = ImageFit.Cover, AspectRatio = float.IsNaN(h) ? WinUiSettingsRules.PreviewAspect : float.NaN, Height = h, AlignSelf = FlexAlign.Stretch,
-                DecodePx = WinUiSettingsRules.PreviewDecodePx, Placeholder = ColorF.Transparent,
-                RevealTransition = ImageTransition.Fade(WinUiSettingsRules.PreviewFadeMs),
-            });
+                AspectRatio = aspect, Height = h, DecodePx = WinUiSettingsRules.PreviewDecodePx, RevealTransition = ImageTransition.Fade(WinUiSettingsRules.PreviewFadeMs),
+            }]
+            : [];
         return new BoxEl
         {
-            ZStack = true, Width = width, Height = h, AspectRatio = float.IsNaN(h) ? WinUiSettingsRules.PreviewAspect : float.NaN, Shrink = 0f,
+            ZStack = true, Width = width, Height = h, AspectRatio = aspect, Shrink = 0f,
             AlignSelf = float.IsNaN(width) ? FlexAlign.Stretch : FlexAlign.Auto, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Control),
-            Fill = Tok.FillSolidBase, Children = layers.ToArray(),
+            Fill = Tok.FillSolidBase, Children = still,
         };
     }
-
-    static readonly Dictionary<string, string?> s_previewPaths = new(StringComparer.Ordinal);
-
-    /// <summary>The full path of a preview asset when it ships next to the exe, else null. Looked up once per asset.</summary>
-    static string? PreviewPath(string asset)
-    {
-        if (asset.Length == 0) return null;
-        if (s_previewPaths.TryGetValue(asset, out var known)) return known;
-        string? path = null;
-        try
-        {
-            string candidate = Path.Combine(AppContext.BaseDirectory, "assets", asset.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(candidate)) path = candidate;
-        }
-        catch (Exception) { path = null; }
-        s_previewPaths[asset] = path;
-        return path;
-    }
-
-    /// <summary>A window in miniature drawn from the live tokens, as the board's thumbnail: a title strip (10 %), a navigation column (22 %), a content plate and a
-    /// player bar (12 %) with a 2-px accent top edge. Proportions are flex ratios, so it fills any card. NaN <paramref name="height"/>: fills the 16:9 box it sits in.</summary>
-    static Element ThemeMiniature(float height)
-        => new BoxEl
-        {
-            Direction = 1, Height = height, Grow = float.IsNaN(height) ? 1f : 0f, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Fill = Tok.FillCardDefault,
-            Children =
-            [
-                new BoxEl { Grow = 10f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillLayerAlt },
-                new BoxEl
-                {
-                    Grow = 78f, Basis = 0f, Direction = 0,
-                    Children =
-                    [
-                        new BoxEl { Grow = 22f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillSolidBaseAlt },
-                        new BoxEl { Grow = 78f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillCardDefault, BorderWidth = 0f },
-                    ],
-                },
-                new BoxEl { Grow = 12f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillSolidBase, Direction = 1, Children = [new BoxEl { Height = WinUiSettingsRules.MiniEdge, AlignSelf = FlexAlign.Stretch, Fill = Tok.AccentDefault }] },
-            ],
-        };
 
     // ══ 3. THE OPTIONS (exactly the six W-ThemeOptions) ═══════════════════════════════════════════════════════════════
 
-    /// <summary>The wizard's options: the same rows as plate cards under their group labels, without the actions (a wizard step resets nothing) and without the legacy
-    /// rows. Null when the theme offers nothing to pick. Call it from a render: it subscribes the caller to the option cells and Developer mode.</summary>
-    static Element? WizardThemeOptions()
+    /// <summary>The options group's rows in the board's order (W-ThemeOptions draws one list, not the core's sub-groups), the rows the board does not name after it in
+    /// the registry's order, the reset last.</summary>
+    static List<SettingsBodyRow> OrderedOptionRows(ImmutableArray<SettingsBodyRow> rows)
     {
-        SettingsOptionsView view = SettingsThemeOptions.Current(wizard: true);
-        List<(string Key, GeneratedOptionRow Row)> rows = OrderedRows(view);
-        if (rows.Count == 0) return null;
-        var facts = SettingsFacts.Live;
+        var rest = new List<SettingsBodyRow>(rows.Length);
+        SettingsBodyRow? reset = null;
+        foreach (var row in rows)
+        {
+            if (row.Option is null && row.Kind == SettingsRowKind.Action && row.Confirm is not null) { reset = row; continue; }
+            rest.Add(row);
+        }
+        var ordered = new List<SettingsBodyRow>(rows.Length);
+        foreach (string id in WinUiScreenRules.OptionOrder)
+            for (int i = 0; i < rest.Count; i++)
+                if (rest[i].Option is { } g && string.Equals(g.QualifiedId, id, StringComparison.Ordinal)) { ordered.Add(rest[i]); rest.RemoveAt(i); break; }
+        ordered.AddRange(rest);
+        if (reset is not null) ordered.Add(reset);
+        return ordered;
+    }
+
+    /// <summary>The page's options inside the Theme card: the "WinUI theme options" label over one row host per option, 4 apart (W-ThemeOptions), then
+    /// "Reset options". The group is read from the Appearance body (a results page's Theme result reads it from the registry). A theme with nothing to
+    /// configure keeps one quiet row and says so.</summary>
+    static Element OptionsList(RowCtx x)
+    {
+        SettingsBodyGroup? group = GroupOf(x.Body, OptionsGroupId) ?? GroupOf(x.Page.Body.Of("appearance"), OptionsGroupId);
+        string name = OptionsThemeName();
+        string title = Strings.Theme.Winui.Screens.OptionsTitle(name);
+        if (group is null || group.Rows.IsEmpty)
+            return DialCard(NewCard(title, Loc.Get(Strings.Settings.ThemeOptions.None)) with { Style = NestedStyle(null) }) with { Key = "settings:theme:options" };
+
+        var rows = OrderedOptionRows(group.Rows);
         var kids = new List<Element>(rows.Count + 1)
         {
-            Caption(Strings.Theme.Winui.Screens.OptionsTitle(Loc.Get(view.NameKey))) with
+            new BoxEl
             {
-                Color = Tok.TextSecondary, Weight = 600, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap, MinWidth = 0f, Margin = new Edges4(0f, Spacing.S, 0f, Spacing.XXS),
+                Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Padding = new Edges4(0f, Spacing.XS, 0f, Spacing.XS),
+                Children = [Caption(title) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap, MinWidth = 0f }],
             },
         };
-        foreach (var (key, row) in rows)
-            kids.Add(new BoxEl { Key = key, Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = [OptionCard(row, facts, wizard: true)] });
+        foreach (var row in rows) kids.Add(RowHost(row, x.Body, x.Page, item: false));
         return new BoxEl
         {
-            Key = "settings:theme:wizard-options", Direction = 1, Gap = WinUiSettingsRules.CardSpacing, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+            Key = "settings:theme:options", Direction = 1, Gap = WinUiSettingsRules.CardSpacing, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
             Layout = MotionRecipes.CardResizeHeight, Children = kids.ToArray(),
         };
     }
 
-    /// <summary>The generated rows of the view in the board's order (one flat list, not the core's groups: W-ThemeOptions draws one), the rows the board does not name
-    /// after it in the core's order. A legacy row is never drawn (WinUI binds none).</summary>
-    static List<(string Key, GeneratedOptionRow Row)> OrderedRows(SettingsOptionsView view)
+    /// <summary>The active theme's name (the options label's "{name} theme options").</summary>
+    static string OptionsThemeName()
     {
-        var all = new List<(string Key, GeneratedOptionRow Row)>(8);
-        foreach (SettingsOptionGroup group in view.Groups)
-            foreach (SettingsOptionItem item in group.Items)
-                if (item.Kind == SettingsOptionItemKind.Generated && item.Generated is { } generated) all.Add((item.Key, generated));
-        var ordered = new List<(string Key, GeneratedOptionRow Row)>(all.Count);
-        foreach (string id in WinUiScreenRules.OptionOrder)
-            for (int i = 0; i < all.Count; i++)
-                if (string.Equals(all[i].Row.QualifiedId, id, StringComparison.Ordinal)) { ordered.Add(all[i]); all.RemoveAt(i); break; }
-        ordered.AddRange(all);
-        return ordered;
+        var entries = ThemePickerFacts.State.Value.Entries(Platform.Developer.Enabled.Value);
+        foreach (var entry in entries)
+            if (entry.Selected) return Loc.Get(entry.NameKey);
+        return "";
     }
 
-    /// <summary>The page's options: the "WinUI theme options" label over one card per option, 4 apart (W-ThemeOptions), then "Reset options" where something is stored.
-    /// A theme with nothing to configure keeps one quiet row and says so.</summary>
-    sealed class OptionsList(bool wizard) : SettingsComponent
-    {
-        public override Element Render()
-        {
-            var layout = UseLayout();
-            var tier = Tier;
-            var facts = SettingsFacts.Live;
-            SettingsOptionsView view = SettingsThemeOptions.Current(wizard);
-            string title = Strings.Theme.Winui.Screens.OptionsTitle(Loc.Get(view.NameKey));
-            var rows = OrderedRows(view);
-            if (rows.Count == 0)
-                return Row(title, Loc.Get(Strings.Settings.ThemeOptions.None)) with { Key = "settings:theme:options" };
+    /// <summary>A card nested in the Theme card (board: 56 high, 4 radius, the secondary card fill).</summary>
+    static SettingsCard.Style NestedStyle(Element? control)
+        => (control is not null && s_layout.StacksControls && IsToggle(control) ? SettingsCard.DefaultStyle with { WrapThreshold = 0f, WrapNoIconThreshold = 0f } : SettingsCard.DefaultStyle)
+            with { Background = Tok.FillCardSecondary, MinHeight = WinUiSettingsRules.OptionCardMinHeight };
 
-            var kids = new List<Element>(rows.Count + 2)
+    /// <summary>One option's row: the control for its kind (themes plan 8.2), the nested card, its badge, and the navigation pane's note under it.</summary>
+    static Element OptionRowCard(RowCtx x)
+    {
+        var row = x.Row;
+        var g = row.Option!;
+        Element? control = OptionControl(row, g);
+        var card = BaseCard(x, control) with { Style = NestedStyle(control) };
+        if (row.Kind == SettingsRowKind.Action && row.Confirm is null && row.Enabled)
+            card = card with { OnClick = () => Press(row.Dial) };
+        Element built = DialCard(card);
+        string? note = NoteFor(g, x.Tiers);
+        return note is null ? built : new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Gap = Spacing.XXS, Children = [built, OptionNote(note)] };
+    }
+
+    /// <summary>The control of an option's kind: three selects (a ComboBox) and three toggles (a switch with its On / Off word) for WinUI's six.</summary>
+    static Element? OptionControl(SettingsBodyRow row, GeneratedOptionRow g)
+    {
+        var dial = row.Dial;
+        return row.Kind switch
+        {
+            SettingsRowKind.Toggle => DialToggle(dial, row.Enabled),
+            SettingsRowKind.Segmented => Selector(ChoiceLabels(g), new Signal<int>(g.Current is int at ? at : -1), onChange: i =>
             {
-                new BoxEl
-                {
-                    Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Padding = new Edges4(0f, Spacing.XS, 0f, Spacing.XS),
-                    Children = [Caption(title) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap, MinWidth = 0f }],
-                },
-            };
-            foreach (var (key, row) in rows)
-            {
-                Element card = OptionCard(row, facts, wizard: false);
-                string? note = NoteFor(row, tier);
-                kids.Add(new BoxEl
-                {
-                    Key = key, Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Gap = Spacing.XXS,
-                    Children = note is null ? [card] : [card, OptionNote(note)],
-                });
-            }
-            if (view.Reset is { } reset) kids.Add(ResetCard(reset, facts));
-            return new BoxEl
-            {
-                Key = "settings:theme:options", Direction = 1, Gap = WinUiSettingsRules.CardSpacing, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-                Layout = MotionRecipes.CardResizeHeight, Children = kids.ToArray(),
-            };
-        }
+                if (dial.Writer.Choose is { } choose && choose(i)) Settings.Bump();
+            }),
+            SettingsRowKind.Choice => Embed.Comp(() => new OptionCombo(g)) with { Key = "opt:combo:" + g.QualifiedId + ":" + string.Join('|', g.ChoiceTitleKeys) },
+            SettingsRowKind.Slider => Embed.Comp(() => new OptionSlider(g)) with { Key = "opt:slider:" + g.QualifiedId },
+            SettingsRowKind.Action when row.Confirm is { } confirm => StdButton(Loc.Get(confirm.PrimaryKey), () =>
+                ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey), () => Press(dial)), isEnabled: row.Enabled),
+            _ => null,
+        };
+    }
+
+    /// <summary>"Reset options": confirmed like every destructive action, greyed while nothing is stored.</summary>
+    static Element OptionsResetCard(RowCtx x)
+    {
+        var row = x.Row;
+        var confirm = row.Confirm;
+        Element? button = confirm is null ? null : StdButton(Loc.Get(confirm.PrimaryKey), () =>
+            ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey), () => Press(row.Dial)), isEnabled: row.Enabled);
+        return DialCard(BaseCard(x, button) with { Style = NestedStyle(button) });
     }
 
     /// <summary>What an option says under its card (W-ThemeOptions-Compact): the navigation pane's Automatic names the form this window gets and where the others begin.
@@ -419,95 +396,62 @@ internal static partial class WinUiSettings
         ],
     };
 
-    /// <summary>"Reset options": confirmed like every destructive action, greyed while nothing is stored.</summary>
-    static Element ResetCard(SettingsRow reset, ISettingsFacts facts)
-    {
-        bool enabled = reset.Enabled(facts).Enabled;
-        string? sub = reset.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
-        var confirm = reset.Confirm!;
-        Element button = StdButton(Loc.Get(confirm.PrimaryKey), () =>
-            ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey),
-                () => { if (reset.Writer.Run!()) Settings.Bump(); }), isEnabled: enabled);
-        return new BoxEl { Key = "opt:reset", Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = [NestedCard(Loc.Get(reset.TitleKey), sub, button, enabled)] };
-    }
+    // ── the wizard's options (the setup wizard's Theme step) ──────────────────────────────────────────────────────────
 
-    /// <summary>A card nested in the theme card (board: 56 high, 4 radius, the secondary card fill) or on the wizard's plate (the stock card).</summary>
-    static Element NestedCard(string title, string? sub, Element? control, bool isEnabled, bool vertical = false, bool clickable = false, Action? onClick = null)
+    /// <summary>The wizard's options: the same options as plate cards under their label, without the actions (a wizard step resets nothing) and without the legacy
+    /// rows; nothing while the theme offers nothing to pick. It subscribes to the option cells and Developer mode.</summary>
+    sealed class WizardOptions : SettingsComponent
     {
-        var align = vertical ? SettingsCard.ContentAlignment.Vertical : SettingsCard.ContentAlignment.Right;
-        var style = (InlineStyle(control) ?? SettingsCard.DefaultStyle) with { Background = Tok.FillCardSecondary, MinHeight = WinUiSettingsRules.OptionCardMinHeight };
-        return SettingsCard.Create(new SettingsCard.Options
+        public override Element Render()
         {
-            Header = title, Description = sub, HeaderIcon = null, Content = control, Alignment = Aligned(align, control), Style = style,
-            IsClickEnabled = clickable, IsActionIconVisible = clickable, OnClick = onClick, IsEnabled = isEnabled,
-        });
-    }
+            UseLayout();
+            SettingsOptionsView view = SettingsThemeOptions.Current(wizard: true);
+            var rows = new List<(string Key, GeneratedOptionRow Row)>(8);
+            foreach (SettingsOptionGroup group in view.Groups)
+                foreach (SettingsOptionItem item in group.Items)
+                    if (item.Kind == SettingsOptionItemKind.Generated && item.Generated is { } generated) rows.Add((item.Key, generated));
+            if (rows.Count == 0) return new BoxEl();
+            var ordered = new List<(string Key, GeneratedOptionRow Row)>(rows.Count);
+            foreach (string id in WinUiScreenRules.OptionOrder)
+                for (int i = 0; i < rows.Count; i++)
+                    if (string.Equals(rows[i].Row.QualifiedId, id, StringComparison.Ordinal)) { ordered.Add(rows[i]); rows.RemoveAt(i); break; }
+            ordered.AddRange(rows);
 
-    // ── the generated rows ───────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>One generated row as a card: the control for its kind (themes plan 8.2). The six of WinUI are three selects (a ComboBox) and three toggles (a switch
-    /// with its On / Off word).</summary>
-    static Element OptionCard(GeneratedOptionRow g, ISettingsFacts facts, bool wizard)
-    {
-        SettingsRow row = g.Row;
-        string title = Loc.Get(row.TitleKey);
-        string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
-        bool enabled = row.Enabled(facts).Enabled;
-        Element Card(Element? control, bool vertical = false, bool clickable = false, Action? onClick = null)
-            => wizard ? Row(title, sub, control, null, vertical ? SettingsCard.ContentAlignment.Vertical : SettingsCard.ContentAlignment.Right, clickable, onClick, enabled)
-                      : NestedCard(title, sub, control, enabled, vertical, clickable, onClick);
-
-        switch (row.Kind)
-        {
-            case SettingsRowKind.Toggle:
-                return Card(OptionToggle(g, enabled));
-
-            case SettingsRowKind.Segmented:
-                return Card(Selector(ChoiceLabels(g), new Signal<int>(g.Current is int at ? at : -1), onChange: i =>
+            var facts = SettingsFacts.Live;
+            var kids = new List<Element>(ordered.Count + 1)
+            {
+                Caption(Strings.Theme.Winui.Screens.OptionsTitle(Loc.Get(view.NameKey))) with
                 {
-                    if (row.Writer.Choose!(i)) Settings.Bump();
-                }));
-
-            case SettingsRowKind.Choice:
-                return Card(Embed.Comp(() => new OptionCombo(g)) with { Key = "opt:combo:" + g.QualifiedId + ":" + string.Join('|', g.ChoiceTitleKeys) });
-
-            case SettingsRowKind.Slider:
-                return Card(Embed.Comp(() => new OptionSlider(g)) with { Key = "opt:slider:" + g.QualifiedId });
-
-            case SettingsRowKind.Action when row.Confirm is { } confirm:
-                return Card(StdButton(Loc.Get(confirm.PrimaryKey), () =>
-                    ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey),
-                        () => { if (row.Writer.Run!()) Settings.Bump(); }), isEnabled: enabled));
-
-            case SettingsRowKind.Action:
-                return Card(null, clickable: enabled, onClick: () =>
+                    Color = Tok.TextSecondary, Weight = 600, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap, MinWidth = 0f, Margin = new Edges4(0f, Spacing.S, 0f, Spacing.XXS),
+                },
+            };
+            foreach (var (key, g) in ordered)
+            {
+                SettingsDial dial = g.Row;
+                bool enabled = dial.Enabled(facts).Enabled;
+                Element? control = dial.Kind switch
                 {
-                    if (row.Writer.Run!()) Settings.Bump();
-                });
-
-            default:   // a fact (or a kind WinUI draws no control for): information only
-                return Card(null);
+                    SettingsRowKind.Toggle => DialToggle(dial, enabled),
+                    SettingsRowKind.Segmented => Selector(ChoiceLabels(g), new Signal<int>(g.Current is int at ? at : -1), onChange: i =>
+                    {
+                        if (dial.Writer.Choose is { } choose && choose(i)) Settings.Bump();
+                    }),
+                    SettingsRowKind.Choice => Embed.Comp(() => new OptionCombo(g)) with { Key = "opt:combo:" + g.QualifiedId + ":" + string.Join('|', g.ChoiceTitleKeys) },
+                    SettingsRowKind.Slider => Embed.Comp(() => new OptionSlider(g)) with { Key = "opt:slider:" + g.QualifiedId },
+                    _ => null,
+                };
+                var card = NewCard(Loc.Get(dial.TitleKey), DescriptionOf(dial), control) with { Enabled = enabled };
+                kids.Add(new BoxEl { Key = key, Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = [DialCard(card)] });
+            }
+            return new BoxEl
+            {
+                Key = "settings:theme:wizard-options", Direction = 1, Gap = WinUiSettingsRules.CardSpacing, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Layout = MotionRecipes.CardResizeHeight, Children = kids.ToArray(),
+            };
         }
     }
 
-    /// <summary>A switch with its On / Off word (W-ThemeOptions: the state beside the track).</summary>
-    static Element OptionToggle(GeneratedOptionRow g, bool enabled)
-    {
-        var row = g.Row;
-        var layout = s_layout;
-        var style = ToggleSwitch.DefaultStyle with { MinWidth = layout.ToggleMinWidth, MinHeight = layout.ToggleMinHeight };
-        return new BoxEl
-        {
-            Key = ToggleKey, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Children =
-            [
-                ToggleSwitch.Create(new Signal<bool>(g.Current is true), on =>
-                {
-                    if (row.Writer.Toggle!(on)) Settings.Bump();
-                }, onContent: Loc.Get(Strings.Theme.Winui.Screens.On), offContent: Loc.Get(Strings.Theme.Winui.Screens.Off), isEnabled: enabled, style: style),
-            ],
-        };
-    }
+    // ── the generated rows' controls ─────────────────────────────────────────────────────────────────────────────────
 
     static string[] ChoiceLabels(GeneratedOptionRow g)
     {
@@ -560,8 +504,8 @@ internal static partial class WinUiSettings
 
     // ══ 4. THE PREVIEW COLUMN (W-Settings-Huge) ═══════════════════════════════════════════════════════════════════════
 
-    /// <summary>The Huge Appearance tab's column beside the cards: "Preview" with the current options as a caption, a miniature of the window, and the navigation pane's
-    /// three forms. Drawn from the live tokens; it follows the options as they change.</summary>
+    /// <summary>The Huge Appearance category's column beside the cards: "Preview" with the current options as a caption, a miniature of the window. Drawn from the
+    /// live tokens; it follows the options as they change.</summary>
     static Element ThemeAside() => Embed.Comp(static () => new ThemeAsideCard());
 
     sealed class ThemeAsideCard : SettingsComponent
@@ -571,15 +515,16 @@ internal static partial class WinUiSettings
             UseLayout();
             _ = ThemeHost.Options.EpochSignal.Value;
             var view = SettingsThemeOptions.Current(wizard: false);
-            var rows = OrderedRows(view);
-            var summary = new List<string>(rows.Count);
-            foreach (var (_, g) in rows)
-            {
-                string value = g.Row.Kind == SettingsRowKind.Toggle
-                    ? (g.Current is true ? Loc.Get(Strings.Theme.Winui.Screens.On) : Loc.Get(Strings.Theme.Winui.Screens.Off))
-                    : g.Live() is int at && at >= 0 && at < g.ChoiceTitleKeys.Count ? Loc.Get(g.ChoiceTitleKeys[at]) : "";
-                summary.Add(g.Row.Kind == SettingsRowKind.Toggle ? Loc.Get(g.Row.TitleKey) + " " + value.ToLowerInvariant() : value);
-            }
+            var summary = new List<string>(8);
+            foreach (SettingsOptionGroup group in view.Groups)
+                foreach (SettingsOptionItem item in group.Items)
+                {
+                    if (item.Kind != SettingsOptionItemKind.Generated || item.Generated is not { } g) continue;
+                    string value = g.Row.Kind == SettingsRowKind.Toggle
+                        ? (g.Current is true ? Loc.Get(Strings.Theme.Winui.Screens.On) : Loc.Get(Strings.Theme.Winui.Screens.Off))
+                        : g.Live() is int at && at >= 0 && at < g.ChoiceTitleKeys.Count ? Loc.Get(g.ChoiceTitleKeys[at]) : "";
+                    summary.Add(g.Row.Kind == SettingsRowKind.Toggle ? Loc.Get(g.Row.TitleKey) + " " + value.ToLowerInvariant() : value);
+                }
             return new BoxEl
             {
                 Key = "settings:aside", Direction = 1, Gap = Spacing.L, Grow = 1f, Basis = 0f, MinWidth = WinUiSettingsRules.AsideMinWidth, AlignSelf = FlexAlign.Start,

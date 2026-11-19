@@ -5,7 +5,7 @@
 // with a 40 floor, a switch in a 48 x 40 cell, a segmented selector and a slider at 40, the stock ComboBox at its Large (40-DIP) field filling the row with its
 // touch-padded rows (C-SettingsSections-Compact), and a NumberBox whose field is the target tall. Nothing here decides anything; it draws what the record asks for.
 //
-// The record is read from `s_layout`: the page template sets it from the tier facts before it builds the first tab, and `SettingsComponent` sets it again before a
+// The record is read from `s_layout`: the page template sets it from the tier facts before it builds the first body, and `SettingsComponent` sets it again before a
 // component builds its control, from the facts it subscribed to, so a control is never built from a stale tier.
 
 using FluentGpu.Controls;

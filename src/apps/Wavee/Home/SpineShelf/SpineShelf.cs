@@ -1,0 +1,951 @@
+// ── Home/SpineShelf/SpineShelf.cs — the Spine Shelf's mechanics: geometry, both forms, motion, pointer, dwell, keyboard ────────────────────
+//
+// Design: C:/WAVEE/scratch/pins/spine-shelf-tech.md. Every theme draws the SAME mechanics through its own skin (SpineShelfSkin: the spine's
+// face, the open card's head, a tile's caption, the washes, the meter and progress inks) at its own tier numbers (SpineShelfGeometry, from
+// the theme's Rules record). This file owns no look.
+//
+// THE MOTION (why it cannot hiccup). The shelf is a layout boundary of fixed height (Geometry.Extent): nothing in it reaches the page.
+// Each item's width is a BOUND prop (open ? FaceW : SpineW). Opening another item is one scoped layout of the n item boxes, then each item
+// rides LayoutTransition(Bounds, Tween(OpenMs, Curve), SizeMode.Reveal): its fill and child clip ease on the presented width, its x on the
+// FLIP translate, both composited (AnimEngine.Compose writes TransformDirty|PaintDirty only: no measure, no render, no allocation). With one
+// curve e(t) for every item, the closing item's presented right edge, x_a + SpineW + (FaceW − SpineW)(1 − e), is exactly where its right
+// neighbour's presented x lands, x_a + SpineW + Gap + (FaceW − SpineW)(1 − e) − Gap: the row keeps its length on every frame, no gap, no
+// overlap. The open face is its own boundary at a FIXED width (FaceW, the open item's final width): it is laid out once and only revealed
+// or clipped while the item moves, so its text never reflows mid-motion. The spine and face layers cross-fade on seeded opacity rows.
+// Song tiles are the same mechanism one level down, on one critically damped spring (TileResponse: the pointer retargets them mid-motion,
+// and springs that share a stiffness add up linearly, so the row keeps its span, its gaps and every picture's centre through any retarget):
+// a hover re-lays out the five tile boxes once; each tile's media layer (the still, and the canvas video under it) is laid out at the
+// widest a tile gets and kept centred by its own Position FLIP on the same spring, cut by the tile's presented clip; its caption is laid
+// out at the rest width. The video joins the still under it once the tile has come to rest and fades it out on its first frame (same box,
+// same cover crop), and the still fades back in over the video before the video is released.
+// The narrow form (Geometry.Standing) stands the items up: rows of RowH, the open one OpenH, heights eased the same way; the total is the
+// same whichever is open.
+
+using FluentGpu.Animation;
+using FluentGpu.Controls;
+using FluentGpu.Controls.Media;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using FluentGpu.Hooks;
+using FluentGpu.Scene;
+using FluentGpu.Signals;
+using Wavee;
+
+namespace Wavee.HomeUi;
+
+/// <summary>A theme's numbers for one tier (its Rules record builds it). <see cref="Standing"/>: the narrow form (items as rows).</summary>
+/// <param name="Height">The row form's height (the whole shelf).</param>
+/// <param name="SpineW">A spine's width in the row form.</param>
+/// <param name="RowH">A spine row's height in the standing form.</param>
+/// <param name="OpenH">The open card's height in the standing form.</param>
+/// <param name="HeadH">The open card's head row height (its cover's edge, or the head's own height standing).</param>
+/// <param name="TileCover">The cover's edge on a tile whose song has no canvas.</param>
+/// <param name="Tier">The theme's own tier record, for its skin (value-equal, so an unchanged tier re-renders nothing).</param>
+public readonly record struct SpineShelfGeometry(
+    bool Standing, float Height, float SpineW, float RowH, float OpenH, float Gap, float Radius,
+    float FacePad, float HeadH, float HeadGap, float TileGap, float TileRadius, float TileCover, float MeterW, float ProgressH,
+    object? Tier = null)
+{
+    /// <summary>The shelf's height for <paramref name="n"/> items: the row form's own, or the rows and the open card standing.</summary>
+    public float Extent(int n) => n <= 0 ? 0f : Standing ? n * RowH + (n - 1) * Gap + (OpenH - RowH) : Height;
+
+    /// <summary>The open card's height.</summary>
+    public float FaceH => Standing ? OpenH : Height;
+
+    /// <summary>The song tiles' height.</summary>
+    public float TilesH => MathF.Max(0f, FaceH - 2f * FacePad - HeadH - HeadGap);
+
+    /// <summary>The open card's width in a shelf <paramref name="width"/> wide holding <paramref name="n"/> items.</summary>
+    public float FaceW(float width, int n) => Standing ? width : MathF.Max(0f, width - (n - 1) * (SpineW + Gap));
+}
+
+/// <summary>A theme's look for the shelf. Every builder is static (a pure function of its arguments and the tokens).</summary>
+/// <param name="Spine">An item's closed face: its whole box (SpineW × Height, or the row standing).</param>
+/// <param name="Head">The open card's head (cover, reason, title, meta, Play, Save), HeadH tall at the face's inner width.</param>
+/// <param name="Caption">A song tile's words over the media (number, title, artist), laid out at the tile's rest width.</param>
+/// <param name="FormSwap">The theme's declared swap fade: the row form and the standing form are different trees (a Compact edge cross-fades
+/// them, the tile height easing through the board's re-pack), never one tree re-laid out at once.</param>
+/// <param name="TopScrim">The ink of a song tile's top scrim (the theme's on-media scrim): the tile's number and anything at its top read over any
+/// canvas, however bright (the foot scrim holds the words at its foot).</param>
+/// <param name="SpineWash">An item's closed fill (<paramref name="SpineHoverWash"/> under the pointer); <paramref name="FaceWash"/> its open fill.</param>
+public sealed record SpineShelfSkin(
+    Func<ShelfItem, int, SpineShelfGeometry, Element> Spine,
+    Func<ShelfItem, SpineShelfGeometry, Element> Head,
+    Func<ShelfSong, int, SpineShelfGeometry, Element> Caption,
+    Func<ShelfItem, GradientSpec> SpineWash,
+    Func<ShelfItem, GradientSpec> SpineHoverWash,
+    Func<ShelfItem, GradientSpec> FaceWash,
+    Func<ColorF> Meter,
+    Func<ColorF> Progress,
+    Func<ColorF> Placeholder,
+    Func<ColorF> TopScrim,
+    EnterExit FormSwap,
+    FluentGpu.Animation.MotionTokenDef FormSwapMotion);
+
+/// <summary>One shelf page: its zone key (the identity the open item is remembered under), its items, the tier's numbers and the theme's look.</summary>
+public sealed record SpineShelfProps(string Key, ShelfItem[] Items, SpineShelfGeometry Geo, SpineShelfSkin Skin)
+{
+    /// <summary>Value equality over the items (see <see cref="ShelfItem.Equals(ShelfItem?)"/>): an unchanged shelf re-pushed by a board
+    /// re-projection re-renders nothing.</summary>
+    public bool Equals(SpineShelfProps? o) => o is not null && Key == o.Key && Geo.Equals(o.Geo) && ReferenceEquals(Skin, o.Skin)
+        && Items.AsSpan().SequenceEqual(o.Items);
+
+    public override int GetHashCode() => HashCode.Combine(Key, Geo, Items.Length);
+}
+
+/// <summary>The shelf body a theme mounts for a SpineShelf zone: one shelf, or (more than <see cref="SpineShelfRules.MaxItems"/> items) a
+/// PagedShelf of shelves driven by the chapter's controller (the header's pager).</summary>
+public static class SpineShelfView
+{
+    public static Element Of(Zone zone, SpineShelfGeometry g, SpineShelfSkin skin, ShelfController? controller, string prevGlyph, string nextGlyph)
+    {
+        // The two forms are different trees: each under its own key in a children list, the old one fading out over the new (a declared swap).
+        Element form = Form(zone, g, skin, controller, prevGlyph, nextGlyph);
+        var keyed = new BoxEl
+        {
+            // The row form's key names its head's height: a theme whose head stacks at a rung (Classic) swaps the two heads under the same fade,
+            // never re-lays the open card's tiles out at once.
+            Key = (g.Standing ? "shelf-standing:" : "shelf-row:" + g.HeadH.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":") + zone.Key,
+            Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Enter = skin.FormSwap, Exit = skin.FormSwap, Transition = skin.FormSwapMotion,
+            Children = [form],
+        };
+        return new BoxEl { Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = [keyed] };
+    }
+
+    static Element Form(Zone zone, SpineShelfGeometry g, SpineShelfSkin skin, ShelfController? controller, string prevGlyph, string nextGlyph)
+    {
+        var items = ShelfModel.Of(zone);
+        if (items.Length == 0) return new BoxEl();
+        int pages = SpineShelfRules.Pages(items.Length);
+        if (pages <= 1)
+            return Embed.Comp(new SpineShelfProps(zone.Key, items, g, skin), static () => new SpineShelf())
+                with { Key = "shelf-page:" + zone.Key, SkeletonProxy = () => Skeleton(items.Length, g) };
+        var parts = new SpineShelfProps[pages];
+        for (int p = 0; p < pages; p++)
+        {
+            int start = SpineShelfRules.PageStart(items.Length, pages, p), size = SpineShelfRules.PageSize(items.Length, pages, p);
+            parts[p] = new SpineShelfProps(zone.Key + "#" + p.ToString(System.Globalization.CultureInfo.InvariantCulture), items[start..(start + size)], g, skin);
+        }
+        float height = g.Extent(SpineShelfRules.PageSize(items.Length, pages, 0));
+        return PagedShelf.Create<SpineShelfProps>(parts,
+            static (part, _, _) => Embed.Comp(part, static () => new SpineShelf()) with { SkeletonProxy = () => Skeleton(part.Items.Length, part.Geo) },
+            cardHeight: _ => height, measured: false, pager: ShelfPager.None, controller: controller,
+            minCardW: 1f, maxCardW: 1_000_000f, maxColumns: 1, gap: g.Gap, edgeFade: 0f, snap: ShelfSnap.Page, offPageDim: HomeModuleLayout.OffPageDim, pageMemoryKey: zone.Key,
+            prevGlyph: prevGlyph, nextGlyph: nextGlyph, lift: ShelfLift.None,
+            keyOf: static (part, _) => "shelf-page:" + part.Key)
+            with { Key = "shelf-pages:" + zone.Key };
+    }
+
+    /// <summary>The cold-load shape: the shelf's boxes at their own geometry (the open card, the spines or rows), flat, so the loaded shelf lands
+    /// in the box its placeholder held.</summary>
+    public static Element Skeleton(int n, SpineShelfGeometry g)
+    {
+        var kids = new Element[Math.Max(1, n)];
+        for (int i = 0; i < kids.Length; i++)
+            kids[i] = g.Standing
+                ? new BoxEl { Height = i == 0 ? g.OpenH : g.RowH, Shrink = 0f, MinWidth = 0f, Corners = CornerRadius4.All(g.Radius) }
+                : new BoxEl { Width = i == 0 ? float.NaN : g.SpineW, Grow = i == 0 ? 1f : 0f, Basis = 0f, Shrink = 0f, MinWidth = 0f, Corners = CornerRadius4.All(g.Radius) };
+        return new BoxEl
+        {
+            Direction = (byte)(g.Standing ? 1 : 0), Gap = g.Gap, Height = g.Extent(n), MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = kids,
+        };
+    }
+
+    /// <summary>The body's height for <paramref name="zone"/> (the chapter's exact extent, under its header).</summary>
+    public static float Extent(Zone zone, SpineShelfGeometry g)
+    {
+        int n = 0;
+        if (zone.Clusters is { } cs) foreach (var c in cs) if (c.Header is not null) n++;
+        int pages = SpineShelfRules.Pages(n);
+        return pages == 0 ? 0f : g.Extent(SpineShelfRules.PageSize(n, pages, 0));
+    }
+
+    /// <summary>The key prefix of every spine (a theme's lint guide names it: the turned words are laid out unturned, see <see cref="Sideways"/>).</summary>
+    public const string SpineKey = "shelf:spine:";
+
+    /// <summary>Why a spine's turned words are no clip (the lint guides' text.clip intent).</summary>
+    public const string SpineLintReason =
+        "a spine's title and artist are turned a quarter (SpineShelfView.Sideways): layout stays unturned, so the rule measures the line across the "
+        + "spine while the render draws it along the spine (scratch/sphome/spine-shelf.html)";
+
+    /// <summary>A line of words turned to read bottom to top (a spine's title): laid out <paramref name="length"/> long and
+    /// <paramref name="thickness"/> tall, then turned a quarter about its centre inside a box <paramref name="thickness"/> wide and
+    /// <paramref name="length"/> tall. Layout stays unrotated (the engine has no vertical text), so both boxes are explicit.</summary>
+    public static Element Sideways(Element line, float length, float thickness, FlexAlign align = FlexAlign.Start) => new BoxEl
+    {
+        Width = thickness, Height = length, Shrink = 0f, MinWidth = 0f, ZStack = true, HitTestVisible = false,
+        Children =
+        [
+            new BoxEl
+            {
+                Width = length, Height = thickness, Shrink = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+                Justify = align == FlexAlign.End ? FlexJustify.End : FlexJustify.Start,
+                // A stack places an oversized layer at its start: the offset centres it on the box before the quarter turn about its centre.
+                AlignSelf = FlexAlign.Center, OffsetX = (thickness - length) / 2f,
+                Rotation = -90f, TransformOriginX = 0.5f, TransformOriginY = 0.5f,
+                Children = [line],
+            },
+        ],
+    };
+}
+
+/// <summary>The mounted shelves (the inspector's `home do=shelf`). A page can be mounted twice for a moment (a paged shelf's measuring copy
+/// beside its cell), so this is a list of instances, each removed by its own unmount.</summary>
+public static class ShelfRegistry
+{
+    public static readonly List<SpineShelf> Live = new();
+
+    /// <summary>The open item remembered per shelf (zone key, page), for the session.</summary>
+    internal static readonly Dictionary<string, string> Open = new(StringComparer.Ordinal);
+}
+
+/// <summary>One shelf page. Mounted through <see cref="SpineShelfView.Of"/>.</summary>
+public sealed class SpineShelf : Component, IPreviewOwner
+{
+    // ── state (survives re-renders; the shelf re-renders only when its props change) ──
+    Signal<int> _open = null!;   // created at the first render with the remembered item (a render never writes a signal)
+    readonly Signal<int> _live = new(-1);   // item * Songs + song, -1 none
+    readonly Signal<int> _closing = new(-1);   // the item whose face is still fading out, -1 none (its face stays in layout until then)
+    IReadSignal<float>? _widthSig;
+    Func<float>? _faceWFn;
+
+    /// <summary>The open face's width (a bound read: it subscribes the bind that calls it to the shelf's measured width).</summary>
+    float FaceWidth()
+    {
+        float w = _widthSig?.Value ?? 0f;
+        return _g.FaceW(w > 1f ? w : _seed, _items.Length);
+    }
+
+    float _seed;   // the slot's known width on the first render (a pack grid tile), until the shelf's own measure lands
+    int _dwell = -1, _focus, _settling = -1, _settled = -1;
+    string _key = "";
+    ShelfItem[] _items = [];
+    SpineShelfGeometry _g;
+    AnimEngine? _anim;
+    InputHooks? _hooks;
+    TimerHandle _dwellTimer, _tileTimer, _closeTimer;
+    bool _armed;
+    NodeHandle[] _item = [], _spine = [], _face = [], _meter = [], _progress = [], _tile = [], _still = [];
+    Action?[] _tileRested = [];   // per tile: its own width row came to rest (a shared one fired for the tile the pointer had LEFT)
+    TimerHandle _releaseTimer, _leaveTimer;
+    int _leaving = -1;   // the tile the pointer left, narrowing only if no other tile is entered within LeaveGraceMs
+    int _releasing = -1;   // the tile whose still is fading back in over its video before the video is released
+    Element[] _built = [];
+    ShelfItem[] _builtItems = [];
+    SpineShelfGeometry _builtG;
+    SpineShelfSkin? _builtSkin;
+
+    /// <summary>An unset extent (the parent's stretch decides).</summary>
+    static readonly Prop<float> Free = float.NaN;
+
+    /// <summary>The face fades in as its item starts to widen (with no delay its wash covers the widening card at once: a delayed face left the card
+    /// an empty ground for 200 ms, seen in the film of an open).</summary>
+    static readonly EnterExit s_faceEnter = new(Opacity: 0f, Active: true);
+    static readonly MotionTokenDef s_faceFade = MotionTokenDef.Eased(SpineShelfRules.FadeMs, Easing.SmoothOut, ReducedMotionPolicy.KeepFade);
+
+    static readonly SpringParams s_fadeIn = SpringParams.FromResponse(SpineShelfRules.FadeMs / 1000f, 1f);
+    /// <summary>The still over a canvas video: out on the video's first frame, back in before the video is released (from wherever it is).</summary>
+    static readonly SpringParams s_swap = SpringParams.FromResponse(SpineShelfRules.SwapMs / 1000f, 1f);
+    const int S = SpineShelfRules.Songs;
+
+    // ── reads for the inspector ──
+    public int Items => _items.Length;
+    public int OpenIndex => _open.Peek();
+    public int LiveTile => _live.Peek() < 0 ? -1 : _live.Peek() % S;
+    public int Dwelling => _dwell;
+    public bool Standing => _g.Standing;
+    public string Key => _key;
+    /// <summary>Whether this instance's items are in the scene now (a measuring copy's are not, once it is gone).</summary>
+    public bool Shown => _item.Length > 0 && !_item[0].IsNull && Context.Scene is { } sc && sc.IsLive(_item[0]);
+
+    public ShelfItem? OpenItem => (uint)_open.Peek() < (uint)_items.Length ? _items[_open.Peek()] : null;
+
+    public override Element Render()
+    {
+        var p = UseProps<SpineShelfProps>();
+        var g = p.Geo;
+        var skin = p.Skin;
+        var items = p.Items;
+        int n = items.Length;
+        bool first = _key.Length == 0;
+        _key = p.Key;
+        _items = items;
+        _g = g;
+        _anim = Context.Anim;
+        _hooks = UseContext(InputHooks.Current);
+        ShelfPreview.Warm(UseContext(VideoCompositor.Current) is not null);
+        if (_item.Length != n)
+        {
+            _item = new NodeHandle[n]; _spine = new NodeHandle[n]; _face = new NodeHandle[n]; _meter = new NodeHandle[n];
+            _progress = new NodeHandle[n * S];
+            _tile = new NodeHandle[n * S];
+            _still = new NodeHandle[n * S];
+            _tileRested = new Action?[n * S];
+        }
+
+        // The open item: remembered per shelf identity, else the first in Spotify's order.
+        if (first)
+        {
+            int open = 0;
+            if (ShelfRegistry.Open.TryGetValue(p.Key, out var remembered))
+                for (int i = 0; i < n; i++) if (items[i].Key == remembered) { open = i; break; }
+            _open = new Signal<int>(open);
+            _focus = open;
+        }
+        int openNow = Math.Min(_open.Peek(), Math.Max(0, n - 1));
+
+        // The shelf's width: remembered per key, else the slot's known width (a pack grid tile), so the first render lays the face out at its width.
+        var measured = UseMeasuredWidth("spine-shelf:" + p.Key, 1f);
+        if (first && measured.Peek() <= 1f
+            && Context.ResolveContextSignal?.Invoke(Context.AnchorNode, MeasureMemory.KnownWidth)?.Peek() is float known && known > 1f)
+            _seed = known;
+        _widthSig = measured;
+
+        _dwellTimer = UseTimeout(DwellFired, SpineShelfRules.DwellMs, DepKey.Empty);
+        _tileTimer = UseTimeout(TileSettled, SpineShelfRules.TileMs, DepKey.Empty);
+        _closeTimer = UseTimeout(CloseSettled, SpineShelfRules.OpenMs, DepKey.Empty);
+        _releaseTimer = UseTimeout(ReleaseVideo, SpineShelfRules.SwapMs, DepKey.Empty);
+        _leaveTimer = UseTimeout(LeaveFired, SpineShelfRules.LeaveGraceMs, DepKey.Empty);
+        if (!_armed) { _armed = true; _dwellTimer.Cancel(); _tileTimer.Cancel(); _closeTimer.Cancel(); _releaseTimer.Cancel(); _leaveTimer.Cancel(); }
+
+        string key = p.Key;
+        UseEffect(() =>
+        {
+            ShelfRegistry.Live.Add(this);
+            PreviewAudio.ClipStarted += OnClipStarted;
+            if (_open.Peek() < _items.Length) ShelfPreview.Prepare(_items[_open.Peek()]);
+            return () =>
+            {
+                ShelfRegistry.Live.Remove(this);
+                PreviewAudio.ClipStarted -= OnClipStarted;
+                if (ShelfPreview.Live.Peek().StartsWith(key + "|", StringComparison.Ordinal)) ShelfPreview.Leave();
+                if (ShelfPreview.Showing.Peek().StartsWith(key + "|", StringComparison.Ordinal)) ShelfPreview.Release(ShelfPreview.Showing.Peek());
+                PreviewAudio.Disown(this);   // its preview ends now (the ownership check would end it on the next tick anyway)
+            };
+        }, DepKey.Empty);
+
+        // An item that has not changed keeps its element (the reconciler skips an identical element): a re-render for one item's change
+        // (its preview songs landing) rebuilds that item alone.
+        var row = new Element[n];
+        bool sameFrame = _builtG.Equals(g) && ReferenceEquals(_builtSkin, skin) && _built.Length == n;
+        for (int i = 0; i < n; i++)
+            row[i] = sameFrame && _builtItems[i].Equals(items[i]) ? _built[i] : Item(items[i], i, i == openNow, g, skin, _faceWFn ??= FaceWidth);
+        _built = row; _builtItems = items; _builtG = g; _builtSkin = skin;
+
+        // A canvas file that lands while its tile waits re-presents it (CanvasVideo.Files.Epoch).
+        var watch = Embed.Comp(new EpochProps(this), static () => new EpochWatch());
+
+        return new BoxEl
+        {
+            Key = "shelf:" + key, Direction = (byte)(g.Standing ? 1 : 0), Gap = g.Gap, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Height = g.Extent(n), Shrink = 0f, IsolateLayout = true,
+            Children = [.. row, watch],
+        };
+    }
+
+    // ── one item: the spine, the face, the meter ────────────────────────────────────────────────────────────────────────
+
+    static readonly LayoutTransition s_rowMotion = new(TransitionChannels.Bounds,
+        TransitionDynamics.Tween(SpineShelfRules.OpenMs, SpineShelfRules.Curve), SizeMode.Reveal, Axes: SizeAxes.Width);
+    static readonly LayoutTransition s_standMotion = new(TransitionChannels.Bounds,
+        TransitionDynamics.Tween(SpineShelfRules.OpenMs, SpineShelfRules.Curve), SizeMode.Reveal, Axes: SizeAxes.Height);
+    static readonly LayoutTransition s_tileMotion = new(TransitionChannels.Bounds,
+        TransitionDynamics.Spring(SpineShelfRules.TileResponse, 1f), SizeMode.Reveal, Axes: SizeAxes.Width);
+    static readonly LayoutTransition s_coverScale = new(TransitionChannels.Bounds,
+        TransitionDynamics.Spring(SpineShelfRules.TileResponse, 1f), SizeMode.ScaleCorrect);
+    static readonly LayoutTransition s_tileSlide = new(TransitionChannels.Position,
+        TransitionDynamics.Spring(SpineShelfRules.TileResponse, 1f));
+
+    Element Item(ShelfItem item, int i, bool open, SpineShelfGeometry g, SpineShelfSkin skin,
+                 Func<float> faceW)
+    {
+        var openSig = _open;
+        int index = i;
+
+        var spine = new BoxEl
+        {
+            Key = SpineShelfView.SpineKey + item.Key, Direction = 1, MinWidth = 0f, Shrink = 0f,
+            Width = g.Standing ? float.NaN : g.SpineW, Height = g.Standing ? g.RowH : g.Height,
+            Gradient = skin.SpineWash(item), HoverGradient = skin.SpineHoverWash(item), Opacity = open ? 0f : 1f,
+            HitTestVisible = Prop.Of(() => openSig.Value != index), Cursor = CursorId.Hand,
+            OnClick = () => OpenAt(index), OnRealized = h => { if (index < _spine.Length) _spine[index] = h; },
+            Children = [skin.Spine(item, i, g)],
+        };
+
+        // The face is mounted only while its item is open (or fading closed): a closed item carries no tiles, so a resize, a re-projection or
+        // a form swap touches one face, not n.
+        var face = Embed.Comp(new FaceProps(this, item, i, g, skin, faceW), static () => new ShelfFace());
+
+        var meter = new BoxEl
+        {
+            Key = "shelf:meter:" + item.Key, Fill = skin.Meter(), HitTestVisible = false,
+            Width = g.Standing ? float.NaN : g.MeterW, Height = g.Standing ? g.MeterW : float.NaN,
+            JustifySelf = FlexAlign.Start, AlignSelf = g.Standing ? FlexAlign.End : FlexAlign.Stretch,
+            ScaleX = g.Standing ? 0f : 1f, ScaleY = g.Standing ? 1f : 0f, TransformOriginX = 0f, TransformOriginY = 1f,
+            OnRealized = h => { if (index < _meter.Length) _meter[index] = h; },
+        };
+
+        return new BoxEl
+        {
+            // The card ground under both layers: while the spine and the face cross-fade, the item is never see-through (the washes fade to it).
+            Key = "shelf:item:" + item.Key, ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(g.Radius), MinWidth = 0f, Fill = Tok.FillSolidBase,
+            Shrink = 0f, Grow = 0f,
+            Width = g.Standing ? Free : Prop.Of(() => openSig.Value == index ? faceW() : g.SpineW),
+            Height = g.Standing ? Prop.Of(() => openSig.Value == index ? g.OpenH : g.RowH) : (Prop<float>)g.Height,
+            Layout = g.Standing ? s_standMotion : s_rowMotion,
+            Focusable = true, Role = AutomationRole.Button,
+            OnHoverMove = _ => DwellStart(index), OnPointerExit = () => DwellCancel(index),
+            OnFocusChanged = f => { if (f) _focus = index; },
+            OnKeyDown = OnKey,
+            OnRealized = h => { if (index < _item.Length) _item[index] = h; },
+            Children = [spine, face, meter],
+        };
+    }
+
+    /// <summary>The open face: the head over the song tiles, at the face width (fixed: never reflowed while its item moves).</summary>
+    internal Element BuildFace(ShelfItem item, int i, SpineShelfGeometry g, SpineShelfSkin skin, Func<float> faceW)
+    {
+        // The tiles share the face's inner width: as many as the lookup named (five, fewer for a short answer), one wider while live.
+        int count = Math.Max(1, item.Songs.Length);
+        float TileSpan() => MathF.Max(0f, faceW() - 2f * g.FacePad - (count - 1) * g.TileGap);
+        float restW() => TileSpan() / count;
+        float liveW() => count == 1 ? TileSpan() : TileSpan() * SpineShelfRules.LiveShare / (count - 1 + SpineShelfRules.LiveShare);
+        float otherW() => TileSpan() / (count - 1 + SpineShelfRules.LiveShare);
+        var openSig = _open;
+        int index = i;
+        Element[] tiles;
+        if (item.NoSongs) tiles = [CoverTile(item, g)];
+        else
+        {
+            tiles = new Element[item.Songs.Length];
+            for (int j = 0; j < tiles.Length; j++) tiles[j] = Tile(item, i, j, g, skin, restW, liveW, otherW);
+        }
+        var face = new BoxEl
+        {
+            Key = "shelf:face:" + item.Key, Direction = 1, MinWidth = 0f, Shrink = 0f,
+            Width = g.Standing ? Free : Prop.Of(faceW), Height = g.FaceH, IsolateLayout = true,
+            JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Start,
+            Padding = Edges4.All(g.FacePad), Gap = g.HeadGap, Gradient = skin.FaceWash(item),
+            // Out of layout while closed (Visible below); it fades in when it comes back (the Enter, behind the opening edge) and out before it leaves.
+            Enter = s_faceEnter, Transition = s_faceFade,
+            HitTestVisible = Prop.Of(() => openSig.Value == index),
+            OnRealized = h => { if (index < _face.Length) _face[index] = h; },
+            Children =
+            [
+                new BoxEl { Direction = 0, Height = g.HeadH, MinWidth = 0f, Shrink = 0f, AlignItems = FlexAlign.Stretch, Children = [skin.Head(item, g)] },
+                new BoxEl
+                {
+                    Key = "shelf:tiles:" + item.Key, Direction = 0, Gap = g.TileGap, Height = g.TilesH, MinWidth = 0f, Shrink = 0f,
+                    IsolateLayout = true, AlignItems = FlexAlign.Stretch, Children = tiles,
+                },
+            ],
+        };
+
+        return face;
+    }
+
+    sealed record FaceProps(SpineShelf Shelf, ShelfItem Item, int Index, SpineShelfGeometry Geo, SpineShelfSkin Skin, Func<float> FaceW);
+
+    /// <summary>An item's face slot: the face while the item is open or fading closed, nothing otherwise. The face is a keyed child of an
+    /// unkeyed box, so it mounts (its Enter fades it in) and unmounts rather than being re-laid out.</summary>
+    sealed class ShelfFace : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<FaceProps>();
+            int open = p.Shelf._open.Value, closing = p.Shelf._closing.Value;
+            bool shown = open == p.Index || closing == p.Index;
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Start,
+                Children = shown ? [p.Shelf.BuildFace(p.Item, p.Index, p.Geo, p.Skin, p.FaceW)] : [],
+            };
+        }
+    }
+
+    // ── one song tile ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Element Tile(ShelfItem item, int i, int j, SpineShelfGeometry g, SpineShelfSkin skin, Func<float> restW, Func<float> liveW, Func<float> otherW)
+    {
+        var song = item.Songs[j];
+        var live = _live;
+        int code = i * S + j;
+        string tile = _key + "|" + item.Key + "#" + j.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        float TileW()
+        {
+            int l = live.Value;
+            if (l < 0 || l / S != code / S) return restW();
+            return l == code ? liveW() : otherW();
+        }
+        if (song.IsBlank)
+            return new BoxEl
+            {
+                Key = "shelf:tile:" + item.Key + ":" + j.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Width = Prop.Of(restW), Shrink = 0f, MinWidth = 0f, Corners = CornerRadius4.All(g.TileRadius), Fill = skin.Placeholder(),
+            };
+
+        var media = new List<Element>(4)
+        {
+            new BoxEl { Gradient = TileWash(song.Accent) },
+        };
+        string jKey = item.Key + ":" + j.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (song.HasCanvas)
+        {
+            // The canvas video UNDER the still, in the still's own box (the media layer): the same cover crop and centre on every frame, the
+            // tile's presented clip cutting both. The video's hole erases only what is drawn before it (the wash), so the still over it is the
+            // poster until the video's first frame, when it fades out (VideoPresented), and the cross-fade back before a release is the still
+            // fading in over the playing video (TileLeave).
+            media.Add(Embed.Comp(new TileVideoProps(this, tile), static () => new TileVideo()));
+            // A fluid image (no explicit width) needs its decode size: without one it never decodes and the tile showed its bare wash (owner,
+            // live account, 2026-11-17). The canvas still's own height, as the canvas host decodes it. A box around it carries the fade (an
+            // ImageEl has no handle of its own).
+            media.Add(new BoxEl
+            {
+                Key = "shelf:still:" + jKey, ZStack = true, HitTestVisible = false,
+                OnRealized = h => { if (code < _still.Length) _still[code] = h; },
+                Children = [new ImageEl { Source = song.Still ?? song.Cover ?? "", Fit = ImageFit.Cover, DecodePx = SpineShelfRules.StillDecodePx }],
+            });
+        }
+        else if (song.Cover is { } cover)
+        {
+            // "Its cover on a blur of its colours": the cover itself decoded a few pixels across and drawn over the whole media layer (the
+            // sampler's bilinear upscale is the blur), darkened under the words. No baked blur (that compute path is tied to the GPU crash); the
+            // colour wash under it is the placeholder while the tiny decode lands.
+            media.Add(new ImageEl { Source = cover, Fit = ImageFit.Cover, DecodePx = SpineShelfRules.BlurDecodePx });
+            media.Add(new BoxEl { Fill = new ColorF(0f, 0f, 0f, SpineShelfRules.BlurDim), HitTestVisible = false });
+            // The concept's min(70 %, the tier's cover): centred on the tile (the media layer is), never wider than the tile it sits on. A tile
+            // that widens grows its cover by a uniform scale on the tile's curve (ScaleCorrect: a square scales without distortion).
+            float CoverEdge() => MathF.Min(g.TileCover, TileW() * SpineShelfRules.CoverShare);
+            media.Add(new BoxEl
+            {
+                AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, Width = Prop.Of(CoverEdge), Height = Prop.Of(CoverEdge),
+                Shrink = 0f, ClipToBounds = true, Corners = CornerRadius4.All(g.TileRadius), Layout = s_coverScale, HitTestVisible = false,
+                ZStack = true,   // the image is a layer that fills the bound square
+                Children = [new ImageEl { Source = cover, Fit = ImageFit.Cover, DecodePx = g.TileCover * 2f }],
+            });
+        }
+
+        // The media is laid out at the widest a tile gets (so a widening tile reveals it and never re-crops it) and centred on the tile: an
+        // unbounded stack layer may overflow its stack on both sides (FlexLayout.ArrangeZStack), and its own Position FLIP rides the tile's
+        // spring, so its centre stays on the tile's presented centre every frame. One TileGap wider than the live tile: a critically damped
+        // spring retargeted with speed can pass its target by a fraction, and the picture must still cover the tile then.
+        float MediaW() => liveW() + g.TileGap;
+        var mediaLayer = new BoxEl
+        {
+            Key = "shelf:media:" + jKey,
+            MeasureUnboundedWidth = true, JustifySelf = FlexAlign.Center, Layout = s_tileSlide, HitTestVisible = false, MinWidth = 0f,
+            Children =
+            [
+                new BoxEl
+                {
+                    ZStack = true, Height = g.TilesH, Width = Prop.Of(MediaW), Shrink = 0f, MinWidth = 0f, HitTestVisible = false,
+                    Children = media.ToArray(),
+                },
+            ],
+        };
+        var scrim = new BoxEl { HitTestVisible = false, Gradient = s_scrim };
+        var topScrim = new BoxEl { HitTestVisible = false, Gradient = TopScrim(skin.TopScrim()) };
+        // The words follow the tile's width: they re-trim once, on the commit frame, never while the tile moves.
+        var caption = new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, HitTestVisible = false,
+            Children = [skin.Caption(song, j, g)],
+        };
+        var progress = new BoxEl
+        {
+            Height = g.ProgressH, AlignSelf = FlexAlign.End, Fill = skin.Progress(), HitTestVisible = false,
+            ScaleX = 0f, TransformOriginX = 0f,
+            OnRealized = h => { if (code < _progress.Length) _progress[code] = h; },
+        };
+        var s = song;
+        return new BoxEl
+        {
+            Key = "shelf:tile:" + item.Key + ":" + j.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(g.TileRadius), Shrink = 0f, MinWidth = 0f,
+            Width = Prop.Of(TileW), Layout = s_tileMotion,
+            // A click plays (it never takes focus: a clicked tile kept focused would hold its preview after the pointer left it).
+            Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, Role = AutomationRole.Button,
+            OnClick = () => PlayFrom(i, s),
+            OnHoverMove = _ => TileEnter(code, tile, in s),
+            OnPointerExit = () => TilePointerLeft(code),
+            OnFocusChanged = f => { if (f) TileEnter(code, tile, in s); else TileLeave(code); },
+            OnRealized = h => { if (code < _tile.Length) _tile[code] = h; },
+            Children = [mediaLayer, topScrim, scrim, caption, progress],
+        };
+    }
+
+    /// <summary>The card the lookup named no song for: one tile across the row, the playlist's cover on its own colour; a click plays it.</summary>
+    static Element CoverTile(ShelfItem item, SpineShelfGeometry g)
+    {
+        var h = item.Header;
+        float edge = MathF.Max(0f, g.TilesH - 2f * g.FacePad);
+        return new BoxEl
+        {
+            Key = "shelf:tile:" + item.Key + ":cover", ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(g.TileRadius), Grow = 1f,
+            MinWidth = 0f, Gradient = TileWash(item.Accent), Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
+            OnClick = () => HomeCardNav.Play(in h),
+            Children =
+            [
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, Width = edge, Height = edge, HitTestVisible = false,
+                    Children = [Controls.Artwork(h.ImageUrl, edge, edge, g.TileRadius)],
+                },
+            ],
+        };
+    }
+
+    /// <summary>A song tile's ground: the cover's own colour, darker at the foot (the media sits on it; a song without a canvas shows its
+    /// cover on it).</summary>
+    static GradientSpec TileWash(uint accent)
+    {
+        var c = accent != 0u ? ColorScience.ToColor(accent) : new ColorF(0.16f, 0.16f, 0.17f, 1f);
+        return new GradientSpec(GradientShape.Linear, 110f, [new GradientStop(0f, ColorF.Lerp(c, new ColorF(1f, 1f, 1f, 1f), 0.18f)), new GradientStop(1f, ColorF.Lerp(c, new ColorF(0f, 0f, 0f, 1f), 0.45f))]);
+    }
+
+    /// <summary>The top scrim: the theme's on-media scrim, a fifth deeper at the tile's top band (its number: a small caption needs 4.5 : 1 over
+    /// the brightest canvas, and the plate's own strength read 4.47 over a pure green), then gone by a third of the way down, so a bright
+    /// canvas never washes the number out and the picture's middle stays clear.</summary>
+    static GradientSpec TopScrim(ColorF ink)
+    {
+        var deep = ink with { A = MathF.Min(1f, ink.A * 1.2f) };
+        return new(GradientShape.Linear, 90f, [new GradientStop(0f, deep), new GradientStop(0.14f, deep), new GradientStop(0.34f, ink with { A = 0f })]);
+    }
+
+    /// <summary>The words' scrim: dark at the tile's foot, clear above its middle (the on-media legibility floor).</summary>
+    static readonly GradientSpec s_scrim = new(GradientShape.Linear, 90f,
+        [new GradientStop(0.4f, new ColorF(0f, 0f, 0f, 0f)), new GradientStop(0.62f, new ColorF(0f, 0f, 0f, 0.25f)), new GradientStop(1f, new ColorF(0f, 0f, 0f, 0.78f))]);
+
+    // ── acts (the pointer, the keyboard and the inspector all come here) ────────────────────────────────────────────────
+
+    /// <summary>Open item <paramref name="i"/>: the widths change in one scoped layout, the motion rides the layout transition, the layers
+    /// cross-fade.</summary>
+    public void OpenAt(int i)
+    {
+        int old = _open.Peek();
+        if ((uint)i >= (uint)_items.Length || i == old) return;
+        DwellCancel(_dwell);
+        TileLeave(_live.Peek(), crossFade: false);   // the face fades as a whole (no video may sit under a fading ancestor)
+        if (_anim is { } a)
+        {
+            Fade(a, _spine, old, 1f, 0f);
+            Fade(a, _face, old, 0f, 0f);
+            Fade(a, _spine, i, 0f, 0f);
+        }
+        _closing.Value = old;
+        _closeTimer.RestartIn(SpineShelfRules.OpenMs);
+        _open.Value = i;
+        _focus = i;
+        ShelfRegistry.Open[_key] = _items[i].Key;
+        ShelfPreview.Prepare(_items[i]);
+    }
+
+    /// <summary>The closed item's motion and fade are over: its face leaves layout.</summary>
+    void CloseSettled() => _closing.Value = -1;
+
+    static void Fade(AnimEngine a, NodeHandle[] nodes, int i, float to, float delay)
+    {
+        if ((uint)i >= (uint)nodes.Length || nodes[i].IsNull) return;
+        a.Spring(nodes[i], AnimChannel.Opacity, to, s_fadeIn, delayMs: delay);
+    }
+
+    /// <summary>The pointer rests on spine <paramref name="i"/>: the meter fills over DwellMs, then it opens (leaving cancels).</summary>
+    public void DwellStart(int i)
+    {
+        if (i == _open.Peek() || i == _dwell || (uint)i >= (uint)_items.Length) return;
+        if (_dwell >= 0) DwellCancel(_dwell);
+        _dwell = i;
+        if (_anim is { } a && !_meter[i].IsNull)
+            a.SeedEased(_meter[i], _g.Standing ? AnimChannel.ScaleX : AnimChannel.ScaleY, 0f, 1f, SpineShelfRules.DwellMs, Easing.Linear);
+        _dwellTimer.RestartIn(SpineShelfRules.DwellMs);
+    }
+
+    /// <summary>The pointer left spine <paramref name="i"/> before it opened.</summary>
+    public void DwellCancel(int i)
+    {
+        if (i < 0 || i != _dwell) return;
+        _dwell = -1;
+        _dwellTimer.Cancel();
+        if (_anim is { } a && (uint)i < (uint)_meter.Length && !_meter[i].IsNull)
+            a.SeedEased(_meter[i], _g.Standing ? AnimChannel.ScaleX : AnimChannel.ScaleY, 1f, 0f, SpineShelfRules.FadeMs / 2f, Easing.EaseOut);
+    }
+
+    void DwellFired()
+    {
+        int i = _dwell;
+        if (i < 0) return;
+        DwellCancel(i);
+        OpenAt(i);
+    }
+
+    /// <summary>The pointer (or focus) came onto a tile of the open card: it widens, its clip starts, its canvas follows once it has widened.</summary>
+    public void TileEnter(int code, string tile, in ShelfSong song)
+    {
+        if (code == _leaving) { _leaving = -1; _leaveTimer.Cancel(); }   // back on the tile within the grace
+        if (code / S != _open.Peek() || code == _live.Peek() || song.IsBlank) return;
+        // The claim moves first, so the old tile's leave below hands its preview over (the two cross) instead of releasing it.
+        if (song.Clip is not null) PreviewAudio.Claim(this, code, tile);
+        TileLeave(_live.Peek());
+        _live.Value = code;
+        _settling = code;
+        ShelfPreview.Enter(tile, in song);
+        // The media opens on the first frame AFTER the tile has come to rest (its width row settled): an engine's synchronous start cost then
+        // lands on a frame where nothing of the shelf moves, never on the widening's last frame. Each tile has its OWN rest callback that acts
+        // only while it is the tile settling: one shared callback also fired when the tile the pointer had just left came to rest, and opened
+        // this tile's video in the middle of its widening (the owner's film, 2026-11-17). Without a row (reduced motion) the timer stands.
+        if (_anim is { } a && (uint)code < (uint)_tile.Length && !_tile[code].IsNull)
+        {
+            int c = code;
+            a.WhenSettled(_tile[code], AnimChannel.SizeW, _tileRested[code] ??= () => { if (_settling == c) _tileTimer.RestartIn(SpineShelfRules.RestFrameMs); });
+            _tileTimer.RestartIn(SpineShelfRules.TileMs + SpineShelfRules.RestFrameMs);   // the fallback when no row runs
+        }
+        else _tileTimer.RestartIn(SpineShelfRules.TileMs);
+    }
+
+    /// <summary>The pointer left tile <paramref name="code"/>: it narrows only if no other tile is entered within LeaveGraceMs. Crossing the gap
+    /// between two tiles left one a frame or two before the next was entered, and that frame laid the whole row out at rest: every tile
+    /// turned back for a frame (the film's reversals, a visible wobble of the tile the pointer was not even on).</summary>
+    void TilePointerLeft(int code)
+    {
+        if (code < 0 || code != _live.Peek()) return;
+        _leaving = code;
+        _leaveTimer.RestartIn(SpineShelfRules.LeaveGraceMs);
+    }
+
+    void LeaveFired()
+    {
+        int code = _leaving;
+        _leaving = -1;
+        TileLeave(code);
+    }
+
+    /// <summary>The pointer (or focus) left tile <paramref name="code"/>: the clip stops, the tile narrows, and a video it shows stays under its
+    /// still while the still fades back in over it (SwapMs, the video following the narrowing tile's clip), then it is released.</summary>
+    public void TileLeave(int code) => TileLeave(code, crossFade: true);
+
+    /// <summary><see cref="TileLeave(int)"/>; without <paramref name="crossFade"/> (the card closing: its face fades as a whole) the video is
+    /// released at once under the still.</summary>
+    void TileLeave(int code, bool crossFade)
+    {
+        if (_leaving >= 0) { _leaving = -1; _leaveTimer.Cancel(); }
+        if (code < 0 || code != _live.Peek()) return;
+        if (_inspectorHold == code) _inspectorHold = -1;
+        _tileTimer.Cancel();
+        _settling = -1;
+        _settled = -1;
+        bool shows = ShelfPreview.Showing.Peek() == TileKey(code);
+        if (shows && crossFade && _anim is { } fa && (uint)code < (uint)_still.Length && !_still[code].IsNull)
+        {
+            if (_releasing >= 0 && _releasing != code) ReleaseNow();
+            _releasing = code;
+            fa.Spring(_still[code], AnimChannel.Opacity, 1f, s_swap);
+            _releaseTimer.RestartIn(SpineShelfRules.SwapMs + SpineShelfRules.RestFrameMs);
+            ShelfPreview.Leave(release: false);
+        }
+        else
+        {
+            if (shows) ShowStill(code);
+            if (_releasing >= 0) ReleaseNow();
+            ShelfPreview.Leave();
+        }
+        if (_anim is { } a && (uint)code < (uint)_progress.Length && !_progress[code].IsNull)
+            a.SeedEased(_progress[code], AnimChannel.ScaleX, 0f, 0f, 1f, Easing.Linear);
+        _live.Value = -1;
+    }
+
+    void TileSettled()
+    {
+        int code = _settling;
+        if (code < 0 || code != _live.Peek()) return;
+        _settled = code;
+        // Back on a tile whose still was fading in over its video: the video never left; the still fades out again.
+        if (_releasing == code)
+        {
+            _releasing = -1;
+            _releaseTimer.Cancel();
+            HideStill(code);
+        }
+        // The clip opens once the tile has widened (ShelfPreview.Settled); its progress line starts when it plays (ClipStarted).
+        ShelfPreview.Settled(TileKey(code));
+    }
+
+    /// <summary>The still has faded back in over the video of the tile the pointer left: the video is released (the next tile's waits for it).</summary>
+    void ReleaseVideo()
+    {
+        if (_releasing >= 0) ReleaseNow();
+    }
+
+    void ReleaseNow()
+    {
+        int code = _releasing;
+        _releasing = -1;
+        _releaseTimer.Cancel();
+        if (code < 0) return;
+        ShowStill(code);
+        ShelfPreview.Release(TileKey(code));
+    }
+
+    /// <summary>The live tile's canvas video put its first frame on the glass: the still over it fades out (the video is in the same box with the
+    /// same cover crop, so only the picture's motion changes).</summary>
+    internal void VideoPresented(string tile)
+    {
+        int code = _live.Peek();
+        if (code < 0 || tile != TileKey(code) || _releasing == code) return;
+        Log.Info("home", "shelf.canvas presented " + tile + " (the still fades out)");   // cold: once per hover
+        HideStill(code);
+    }
+
+    void HideStill(int code)
+    {
+        if (_anim is not { } a || (uint)code >= (uint)_still.Length || _still[code].IsNull) return;
+        a.Spring(_still[code], AnimChannel.Opacity, 0f, s_swap);
+    }
+
+    void ShowStill(int code)
+    {
+        if (_anim is not { } a || (uint)code >= (uint)_still.Length || _still[code].IsNull) return;
+        a.SeedEased(_still[code], AnimChannel.Opacity, 1f, 1f, 1f, Easing.Linear);
+    }
+
+    /// <summary>The live tile's clip started: its progress line fills over the clip's length.</summary>
+    void OnClipStarted(string tile)
+    {
+        int code = _live.Peek();
+        if (code < 0 || tile != TileKey(code)) return;
+        if (_anim is { } a && (uint)code < (uint)_progress.Length && !_progress[code].IsNull)
+            a.SeedEased(_progress[code], AnimChannel.ScaleX, 0f, 1f, SpineShelfRules.ClipMs, Easing.Linear);
+    }
+
+    /// <summary>A canvas file landed: a settled live tile that waited for it presents it now.</summary>
+    internal void FileLanded()
+    {
+        int code = _live.Peek();
+        if (code >= 0 && _settled == code) ShelfPreview.Settled(TileKey(code));
+    }
+
+    string TileKey(int code) => _key + "|" + _items[code / S].Key + "#" + (code % S).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The inspector's tile hover: tile <paramref name="j"/> of the open card (-1 leaves). It stands for a pointer resting on the
+    /// tile, so the preview's ownership check counts it as held (<see cref="HoldFails"/>) until it leaves; `hover key=` and `pointer path=`
+    /// drive the real pointer instead.</summary>
+    public void HoverTile(int j)
+    {
+        int open = _open.Peek();
+        if (j < 0) { TileLeave(_live.Peek()); return; }
+        if ((uint)open >= (uint)_items.Length || (uint)j >= (uint)_items[open].Songs.Length) return;
+        var song = _items[open].Songs[j];
+        _inspectorHold = open * S + j;
+        TileEnter(open * S + j, TileKey(open * S + j), in song);
+    }
+
+    int _inspectorHold = -1;
+
+    /// <summary>The preview's ownership check (PreviewAudio, every tick): "" while this shelf still holds tile <paramref name="code"/>, else
+    /// why not. Held = mounted and shown, the tile live here AND named by ShelfPreview.Live (<paramref name="tile"/>: audio and video agree on
+    /// one owner), in the scene, the window active and not minimized, and the pointer inside the tile's visible rect, crossing the gap to the
+    /// next tile (the leave grace), or keyboard focus on it. The pointer test stays because a missed exit leaves Live set (a wheel scroll
+    /// slides the tile from under a resting pointer and no exit comes). Allocation-free.</summary>
+    public string HoldFails(int code, string tile)
+    {
+        if (!ShelfRegistry.Live.Contains(this)) return "unmounted";
+        if (!Shown) return "hidden";
+        if (_live.Peek() != code) return "not-live";
+        // Audio and video agree on the owner: the tile ShelfPreview.Live names (set by real hover intent or focus, kept through the gap grace).
+        if (!string.Equals(ShelfPreview.Live.Peek(), tile, StringComparison.Ordinal)) return "not-preview-live";
+        if ((uint)code >= (uint)_tile.Length || _tile[code].IsNull || Context.Scene is not { } scene || !scene.IsLive(_tile[code])) return "tile-gone";
+        var hooks = _hooks;
+        if (hooks?.GetWindowState is { } state && state() == FluentGpu.Pal.WindowState.Minimized) return "minimized";
+        if (hooks?.IsWindowActive is { } active && !active()) return "window-inactive";
+        if (_inspectorHold == code) return "";
+        if (_leaving == code) return "";   // the pointer is crossing the gap to the next tile (LeaveGraceMs bounds it)
+        if (hooks?.GetFocus is { } focus && focus() == _tile[code]) return "";
+        if (hooks?.IsPointerInWindow is { } inWindow && !inWindow()) return "pointer-left-window";
+        if (hooks?.GetPointerPosition?.Invoke() is not { } point) return "no-pointer";
+        return scene.VisibleWindowRect(_tile[code]).Contains(point) ? "" : "pointer-off-tile";
+    }
+
+    /// <summary>The ownership check found tile <paramref name="code"/> no longer held (a missed leave): the tile narrows as if the pointer had
+    /// left. The preview is already released.</summary>
+    public void HoldLost(int code)
+    {
+        if (code >= 0 && code == _live.Peek()) TileLeave(code);
+    }
+
+    /// <summary>Play the item's playlist from <paramref name="song"/>.</summary>
+    void PlayFrom(int i, in ShelfSong song)
+    {
+        if ((uint)i >= (uint)_items.Length || song.IsBlank) return;
+        if (i != _open.Peek()) { OpenAt(i); return; }
+        Playback.PlayContext(_items[i].Header.Id, song.Card.Id);
+    }
+
+    /// <summary>Arrows walk the spines (focus), Home and End jump, Enter and Space open the focused one.</summary>
+    public void OnKey(KeyEventArgs a)
+    {
+        if (a.Handled || _items.Length == 0) return;
+        int n = _items.Length, f = _focus;
+        int to = a.KeyCode switch
+        {
+            Keys.Right or Keys.Down => Math.Min(n - 1, f + 1),
+            Keys.Left or Keys.Up => Math.Max(0, f - 1),
+            Keys.Home => 0,
+            Keys.End => n - 1,
+            _ => -1,
+        };
+        if (a.KeyCode is Keys.Enter or Keys.Space) { a.Handled = true; OpenAt(f); return; }
+        if (to < 0) return;
+        a.Handled = true;
+        _focus = to;
+        if ((uint)to < (uint)_item.Length && !_item[to].IsNull) (_hooks?.MoveFocusVisual ?? _hooks?.RestoreFocus)?.Invoke(_item[to]);
+    }
+
+    // ── the canvas file watcher and the tile's video ────────────────────────────────────────────────────────────────────
+
+    sealed record EpochProps(SpineShelf Shelf);
+
+    /// <summary>Re-renders on CanvasVideo.Files.Epoch (a file landed) and tells the shelf from an effect (never from the render).</summary>
+    sealed class EpochWatch : Component
+    {
+        public override Element Render()
+        {
+            var shelf = UseProps<EpochProps>().Shelf;
+            int epoch = CanvasVideo.Files.Epoch.Value;
+            UseEffect(() => shelf.FileLanded(), DepKey.From(epoch));
+            // The song preview's frame clock rides here (a zero box, no gap of its own): it ticks the mixer every frame while it is active.
+            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Children = [Embed.Comp(static () => new PreviewAudio.Clock())] };
+        }
+    }
+
+    sealed record TileVideoProps(SpineShelf Shelf, string Tile);
+
+    /// <summary>A canvas tile's video: the one player's surface, mounted only while this tile is the one showing (ShelfPreview.Showing), in the
+    /// still's box under the still. Its corners are the tile's: the composite hands the video the tile's rounded clip (the box is wider than a
+    /// narrow tile, so a radius of its own would round the wrong corners).</summary>
+    sealed class TileVideo : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<TileVideoProps>();
+            bool showing = ShelfPreview.Showing.Value == p.Tile;
+            if (!showing || ShelfPreview.Video is not { } player) return new BoxEl { HitTestVisible = false };
+            var shelf = p.Shelf;
+            string tile = p.Tile;
+            // The canvas host's fill box (Shell/Canvas.UI.cs): the root grows into the component's box on both axes and the element grows down
+            // it. Without Grow the root took its content's height (the element's 56 floor) and the video played in a strip at the tile's top
+            // (owner, live account, 2026-11-17; the headless real-media check reproduced the 56-high hole).
+            return new BoxEl
+            {
+                Direction = 1, HitTestVisible = false, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                Key = "shelf:video:" + tile,
+                Children = [Embed.Comp(() => new MediaPlayerElement
+                {
+                    Player = player, IsDecorative = true, AreTransportControlsEnabled = false, ShowStatusOverlay = false,
+                    ShowLetterboxBars = false, Stretch = MediaStretch.UniformToFill,
+                    SurfacePresented = () => shelf.VideoPresented(tile),
+                })],
+            };
+        }
+    }
+}

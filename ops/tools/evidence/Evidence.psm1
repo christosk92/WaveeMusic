@@ -158,6 +158,26 @@ function Test-OwnerIdle {
 
 # ── the running verify instance ────────────────────────────────────────────────────────────────────────────────────
 
+function Find-VerifyWavee {
+    <#
+        The verify Wavee running from -Exe on -ProfileDir: the Win32_Process whose command line names that --profile (the
+        crash-handler child excluded), or $null. Never matched on the exe alone: the owner may run the very same build on
+        their own profile (2026-11-17: a bare launch of a verify build was taken for the verify instance and sent diag verbs),
+        and the instance lock is per profile (Platform/InstanceIdRules.cs), so both run side by side.
+    #>
+    param([Parameter(Mandatory)][string]$Exe, [Parameter(Mandatory)][string]$ProfileDir)
+    $exeFull = [IO.Path]::GetFullPath($Exe)
+    $profileFull = [IO.Path]::GetFullPath($ProfileDir).TrimEnd('\')
+    foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='Wavee.exe'" -ErrorAction SilentlyContinue)) {
+        if (-not $p.ExecutablePath -or [IO.Path]::GetFullPath($p.ExecutablePath) -ne $exeFull) { continue }
+        if ($p.CommandLine -match '--crash-handler') { continue }
+        if ($p.CommandLine -notmatch '--profile\s+(?:"([^"]+)"|(\S+))') { continue }
+        $dir = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
+        if ([IO.Path]::GetFullPath($dir).TrimEnd('\') -eq $profileFull) { return $p }
+    }
+    return $null
+}
+
 function Wait-WindowByPid {
     param([Parameter(Mandatory)][int]$ProcessId, [string]$Class = 'FluentGpuWindow', [int]$TimeoutSec = 45)
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
@@ -297,4 +317,4 @@ function Send-ThumbDrag {
 
 Export-ModuleMember -Function ConvertFrom-EvidenceTsv, Read-EvidenceTsv, ConvertFrom-EvidenceReplies, Get-EvidenceReplies,
     Get-BandGeometry, Get-BandSweepOffsets, Test-OwnerIdle, Wait-WindowByPid, Send-WaveeUri, Invoke-WaveeDiag, Send-WheelBurst,
-    Get-ThumbGeometry, Send-ThumbDrag
+    Get-ThumbGeometry, Send-ThumbDrag, Find-VerifyWavee

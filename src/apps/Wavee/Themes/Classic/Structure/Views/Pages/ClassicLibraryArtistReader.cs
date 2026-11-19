@@ -36,6 +36,8 @@ internal static partial class ClassicLibraryArtistReader
         public Func<RowScope, Element>? ItemAt, DotAt;
         public Element? SubRail;
         public Signal<int>? RailScope, RailSort;
+        /// <summary>The sub-rail's right inset (16, or a borrowing structure's page trail, contract 1.109) and the one the cached sub-rail was built with.</summary>
+        public float Trail = ClassicTiers.PaneInset, RailTrail = ClassicTiers.PaneInset;
         /// <summary>The borrowing structure's choice controls (contract 1.85), null in Classic.</summary>
         public LibraryControlsStyle? Controls;
     }
@@ -46,6 +48,7 @@ internal static partial class ClassicLibraryArtistReader
         var h = ctx.Hooks.UseRef(new Holder()).Value;           // before the guard: one hook order on every path
         var registry = ctx.Hooks.UseContext(ViewRegistry.Context);
         h.Controls = registry is not null && registry.TryGetStyle(StyleKeys.LibraryControls, out var controls) ? controls : null;
+        h.Trail = h.Controls?.Nav is { } nav ? nav(Wavee.Theming.TierContext.Tier(ctx)).PaneTrail : ClassicTiers.PaneInset;
         if (props.Vacant) return new BoxEl();
         h.Props = props;
         // The bound templates run ONCE per slot and are frozen at mount: they read the current props through the holder.
@@ -58,6 +61,8 @@ internal static partial class ClassicLibraryArtistReader
             Grow = 1f, Basis = 0f, MinHeight = 0f, MinWidth = 0f, Direction = 1,
             Children = [ItemsView.CreateBound(props.ItemCount, h.ItemAt, props.Layout, props.Options!)],
         };
+        // A borrowing structure's page trail (contract 1.109): the band's verbs and the blocks' commands end on it (their own 20 is the rest).
+        if (h.Controls?.Nav is not null) list = Ctx.Provide(s_trailPad, MathF.Max(0f, h.Trail - Artist.ReaderShape.BandPadX), list);
         // MEDIUM: under the edge the spine is GONE, not hidden — a collapsed node still renders. The two lane children are KEYED so that toggling the breakpoint never
         // positionally pairs the spine against the list host: an unkeyed pair would hand the list host's node to the spine on the way down and remount the whole list (a lost
         // offset and a cold realize) for a 24-DIP drag.
@@ -259,16 +264,17 @@ internal static partial class ClassicLibraryArtistReader
     {
         var p = h.Props;
         if (p.Scope?.Invoke() is not { } scope || p.Sort?.Invoke() is not { } sort) return new BoxEl { Height = Artist.ReaderShape.SubRailH };
-        if (h.SubRail is not null && ReferenceEquals(h.RailScope, scope) && ReferenceEquals(h.RailSort, sort)) return h.SubRail.Value;
+        if (h.SubRail is not null && ReferenceEquals(h.RailScope, scope) && ReferenceEquals(h.RailSort, sort) && h.RailTrail == h.Trail) return h.SubRail.Value;
         h.RailScope = scope;
         h.RailSort = sort;
-        return (h.SubRail = SubRail(p.Host, scope, sort, h.Controls)).Value;
+        h.RailTrail = h.Trail;
+        return (h.SubRail = SubRail(p.Host, scope, sort, h.Controls, h.Trail)).Value;
     }
 
     /// <summary>The two word rails — scope (in your library · all releases · N) — spacer — sort (newest · oldest · a–z), over the page's own Signal INSTANCES, PINNED at the viewport top. A PLAIN
     /// section on the content card (Y1): no band fill, the 1-DIP divider under it is the edge. A pinned direct child of the content paints ABOVE the blocks sliding under it
     /// (<c>NodeFlags.StickyPinned</c>); what stops a track row showing through it is the list's pinned clip inset (<see cref="Artist.ReaderShape.SubRailH"/>).</summary>
-    static Element SubRail(IArtistReaderHost host, Signal<int> scope, Signal<int> sort, LibraryControlsStyle? styled) => new BoxEl
+    static Element SubRail(IArtistReaderHost host, Signal<int> scope, Signal<int> sort, LibraryControlsStyle? styled, float trail) => new BoxEl
     {
         Direction = 1, Shrink = 0f, Height = Artist.ReaderShape.SubRailH, MinWidth = 0f,
         Children =
@@ -277,12 +283,13 @@ internal static partial class ClassicLibraryArtistReader
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f,
                 Padding = new Edges4(ClassicTiers.PaneInset, Artist.ReaderShape.SubRailPadTop, ClassicTiers.PaneInset, Artist.ReaderShape.SubRailPadBottom),
-                // A borrowing structure's scope and sort (contract 1.85) stand where the rails do.
+                // A borrowing structure's scope and sort (contract 1.85) stand where the rails do, and its page trail (1.109) ends them.
                 Children = styled is not null
                     ?
                     [
                         styled.Scope(new LibraryScopeArgs(scope, host.ReleaseTotal, () => host.NarrowNow())),
                         styled.ReaderSort(new LibraryReaderSortArgs(sort)),
+                        .. (styled.Nav is null ? Array.Empty<Element>() : [TrailAir(trail - ClassicTiers.PaneInset)]),
                     ]
                     :
                     [
@@ -408,10 +415,21 @@ internal static partial class ClassicLibraryArtistReader
     /// <para>The root is a plain stretched column, NOT `Grow 1 / Basis 0`: a bound slot's root is mounted straight under the scroller's content node (through one layout-transparent component anchor),
     /// and that is a COLUMN with <c>AlignItems.Stretch</c> — the width comes for free and a zero flex-basis would aim at the height. The keyed region/tail/band bodies hang under it as CHILDREN so the
     /// keyed child diff can remount them.</para></summary>
+    /// <summary>The reader items' extra right inset under a borrowing structure's page trail (contract 1.109); NaN (none) in Classic.</summary>
+    static readonly Context<float> s_trailPad = new(float.NaN);
+
+    /// <summary>The trail's air: a spacer whose width eases through real layout (<see cref="s_trailReflow"/>), so a tier crossing glides the reader's right edge with the
+    /// head's instead of snapping it. Your Episodes' led table ends on the same spacer (`ClassicLibraryPage.SavedBody`).</summary>
+    internal static Element TrailAir(float width) => new BoxEl { Width = MathF.Max(0f, width), MinWidth = 0f, Shrink = 0f, HitTestVisible = false, Layout = s_trailReflow };
+
+    /// <summary>The width half of the tier's reflow (<see cref="ClassicTierMotion.SizeReflow"/>).</summary>
+    static readonly LayoutTransition s_trailReflow = ClassicTierMotion.SizeReflow with { Axes = SizeAxes.Width };
+
     sealed class ReaderItem(IArtistReaderHost host, RowScope scope) : Component
     {
         public override Element Render()
         {
+            float trailPad = UseContext(s_trailPad);
             int i = scope.Index.Value;
             Element body;
             if (i == 0)
@@ -424,7 +442,12 @@ internal static partial class ClassicLibraryArtistReader
                 var block = host.ReadBlock(i - Artist.ReaderShape.Prefix);
                 body = block is not null ? BlockBody(block) : Trailing(host.ReadTail());
             }
-            return new BoxEl { Direction = 1, MinWidth = 0f, Children = [body] };
+            if (float.IsNaN(trailPad)) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [body] };
+            return new BoxEl
+            {
+                Direction = 0, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Children = [new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [body] }, TrailAir(trailPad)],
+            };
         }
     }
 

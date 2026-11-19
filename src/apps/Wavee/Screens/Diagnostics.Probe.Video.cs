@@ -40,6 +40,11 @@
 //                                       (N counts in EnumDisplayMonitors order, from 1), through the engine's SetBoundsPx for
 //                                       the main window; max=1 maximizes it there
 //   screen monitor=N path=C:/x.png      the desktop as the user sees it on monitor N (GDI, physical px; every window on it)
+//   wincap path=C:/x.png                THIS window only, as DWM composes it (PrintWindow PW_RENDERFULLCONTENT: the video and its
+//                                       compositor plates included, other apps' windows never, covered or not)
+//   theme id=classic|winui|zune         switch the theme live (ThemeHost.Switch, the Settings picker's transaction)
+//   setting id=X value=V                a Settings row's own writer, as the inspector's `setting` (a toggle's true/false, a
+//                                       choice's index): `setting id=npvStyle value=1` = the Canvas player style
 //   resolve uri=X [rows=N]              context-resolve X and log its metadata (is_video_first, format_list_type) and first N rows
 //                                       (uri, uid); reads only, never touches playback
 //   ctxsettings uris=A,B                the account's stored per-context playback settings (PlaybackSettingsService
@@ -81,7 +86,7 @@ public static partial class Diagnostics
         static readonly HashSet<string> PassiveVerbs = new(StringComparer.Ordinal)
         {
             "online", "allow", "requireowner", "waitowner", "owner", "wait", "waitframe", "waitvideo", "keys", "pipkeys",
-            "shot", "mark", "quit", "vcheck", "monitorof", "movewin", "screen", "possample", "resolve", "ctxsettings", "plread",
+            "shot", "mark", "quit", "vcheck", "monitorof", "movewin", "screen", "wincap", "possample", "resolve", "ctxsettings", "plread",
         };
 
         /// <summary>`possample [ms=16000] [every=250]`: sample the deck's playhead as the bar paints it (<c>State.Position(now)</c>),
@@ -651,6 +656,17 @@ public static partial class Diagnostics
                     return OnUi(() => MoveWindowTo(Arg(a, "which", "main"), ArgInt(a, "monitor", 1), Arg(a, "max") is "1"));
                 case "screen":
                     return OnUi(() => ScreenShot(ArgInt(a, "monitor", 1), Arg(a, "path")));
+                case "wincap":
+                    // Off the UI thread: PrintWindow waits on the window's own thread, which must stay free to answer.
+                    return WindowShot(s_vpWindow!.Handle.Value, Arg(a, "path"));
+                case "theme":
+                    {
+                        string theme = Arg(a, "id");
+                        OnUi(() => { _ = Wavee.Theming.ThemeHost.Switch(theme); return true; });
+                        return "theme " + theme;
+                    }
+                case "setting":
+                    return OnUi(() => SetSettingRow(Arg(a, "id"), Arg(a, "value")));
                 case "opts":
                     {
                         string text = OnUi(OptionsReport);
@@ -1166,6 +1182,49 @@ public static partial class Diagnostics
             if (lines != h) return "capture failed lines=" + lines;
             PngWriter.WriteBgra(path, bgra, w, h, keepAlpha: false);
             return "screen monitor" + monitor + "(" + dev + ") " + w + "x" + h + " -> " + path;
+        }
+
+        /// <summary>Driver thread: <paramref name="hwnd"/> alone, as DWM composes it, to a PNG (PrintWindow with
+        /// PW_RENDERFULLCONTENT, physical px): its composition visuals (the video and the plates over it) included, nothing of
+        /// another window even where one covers it.</summary>
+        static unsafe string WindowShot(nint hwnd, string path)
+        {
+            VpRect r;
+            if (VpGetWindowRect(hwnd, &r) == 0) return "no window rect";
+            int w = r.Right - r.Left, h = r.Bottom - r.Top;
+            if (w <= 0 || h <= 0) return "empty window";
+            nint screen = VpGetDC(0), mem = VpCreateCompatibleDC(screen), bmp = VpCreateCompatibleBitmap(screen, w, h);
+            nint old = VpSelectObject(mem, bmp);
+            int printed = VpPrintWindow(hwnd, mem, 2 /* PW_RENDERFULLCONTENT */);
+            VpSelectObject(mem, old);
+            byte[] bgra = new byte[w * h * 4];
+            int* bih = stackalloc int[10];   // BITMAPINFOHEADER (40 bytes)
+            new Span<int>(bih, 10).Clear();
+            bih[0] = 40; bih[1] = w; bih[2] = -h;   // top-down
+            ((short*)bih)[6] = 1; ((short*)bih)[7] = 32;   // planes, bit count (BI_RGB)
+            int lines;
+            fixed (byte* p = bgra) lines = VpGetDIBits(mem, bmp, 0, (uint)h, p, bih, 0);
+            VpDeleteObject(bmp); VpDeleteDC(mem); VpReleaseDC(0, screen);
+            if (printed == 0 || lines != h) return "capture failed printed=" + printed + " lines=" + lines;
+            PngWriter.WriteBgra(path, bgra, w, h, keepAlpha: false);
+            return "window " + w + "x" + h + " -> " + path;
+        }
+
+        [LibraryImport("user32.dll", EntryPoint = "PrintWindow")] private static partial int VpPrintWindow(nint hwnd, nint dc, uint flags);
+
+        /// <summary>UI thread: a Settings dial's own writer (the inspector's `setting`), named by its registry id or its old row id: a
+        /// toggle takes true/false, a choice, segmented dial or picker its index.</summary>
+        static string SetSettingRow(string rowId, string value)
+        {
+            if (!SettingsSpec.TryResolve(rowId, out SettingsDial dial, out var matches))
+                return matches.Count == 0 ? "no Settings dial " + rowId : "'" + rowId + "' names several dials: " + string.Join("|", matches.Select(static d => d.Id));
+            SettingsWriter writer = dial.Writer;
+            bool reread;
+            if (writer.Toggle is { } toggle && value is "true" or "false" or "1" or "0") reread = toggle(value is "true" or "1");
+            else if (writer.Choose is { } choose && int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int n)) reread = choose(n);
+            else return "dial " + rowId + " (" + dial.Kind + ") does not take '" + value + "' here";
+            if (reread) Settings.Bump();
+            return "set " + rowId + "=" + value;
         }
 
         // ── plumbing ──────────────────────────────────────────────────────────────────────────────────────────────

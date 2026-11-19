@@ -49,8 +49,13 @@
 //   ShowGrid                                  PagedShelf of HomeCards.ShelfCell (+ 2-span lead cell)       tools: See all · ‹ pips ›
 //   WideTiles/VideoTiles                      PagedShelf of 16:9 HomeCards.ShelfCell                       tools: See all · ‹ pips ›
 //   ReleaseList                               Ui.SectionHeader + GridEl{320, ≤2, 64} of Surface(Row)       (sub-block)
-//   ClusterCards/PodcastGroups                GridEl{300, ≤3} of Ui.Card(SectionHeader + ≤3 Surface(Row(40)))
+//   SpineShelf                                the Spine Shelf (ClassicHomeShelf over Home/SpineShelf): one open card + spines
+//   ReleaseSpotlight                          the Release Spotlight (ClassicHomeSpotlight over Home/ReleaseSpotlight): one release card,
+//                                             a run of them as pages                                        tools: 1 of n · ‹ ›
+//   PodcastGroups                             GridEl{300, ≤3} of Ui.Card(SectionHeader + ≤3 Surface(Row(40)))
 //   BrowseTiles                               GridEl{220, ≤4} of SettingsCard + the Charts sub-block (Home.Charts)
+//   LeadGrid/CompactGrid/ArtistCircles/
+//   CappedShelf                               the Home rhythm templates (ClassicHomeZones.Rhythm.cs)        tools: See all N
 //   EpisodeLead/EpisodeRows                   GridEl{320, ≤2} of Surface(Episode.RowData, EpisodeRow: 56, 2-line title, meta, "…")
 //   ContinueEpisodes                          GridEl{320, ≤3} of the same row + the resume rung (CardData.Below)
 //   EmptyFacet                                Controls.Vacancy(Empty, … → Browse)                          no header
@@ -59,12 +64,14 @@
 // places carries a `SkeletonProxy` that is the SAME static builder its template runs (`BodyTree`, `ClassicHomeRecents.Skeleton`,
 // `ClassicHomeDaylist.Skeleton`, the charts tree over its fallback model): the cold load shimmers as the header + the real cards.
 
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scroll.Effects;
+using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
 using Wavee.Theming;
@@ -73,7 +80,7 @@ using Wavee.Theming.Contracts;
 namespace Wavee.Themes.Classic;
 
 /// <summary>Wavee Classic's Home zone column.</summary>
-internal static class ClassicHomeZones
+internal static partial class ClassicHomeZones
 {
     /// <summary>The registered template of every `Home.Zone.{Kind}` key whose body needs nothing but its zone.</summary>
     public static Element BodyTemplate(HomeZoneProps props, in ViewContext ctx)
@@ -99,7 +106,8 @@ internal static class ClassicHomeZones
             }
             kids.Add(Chapter(zones[i], i, overlay, layout));
         }
-        if (all)
+        // Only while this build offers a way to change Home (HomeCustomize, owner 2026-11-18: off for the release).
+        if (all && HomeVerbs.CanCustomize)
             kids.Add(new BoxEl
             {
                 Key = "customize", Direction = 0, MinWidth = 0f, Animate = Design.Entrance.Row(zones.Count),
@@ -167,37 +175,108 @@ internal static class ClassicHomeZones
         };
     }
 
+    /// <summary>One zone's chapter as a shelf tile of the pinned Home board (`ClassicHomeTiles`): the same keyed sticky scope and the same body as
+    /// the column's chapter, without the page-entrance stagger (the grid realizes tiles as the page scrolls; a tile that mounts there stands in place).</summary>
+    internal static Element TileChapter(Zone zone, IOverlayService? overlay, ClassicHomeLayout layout)
+    {
+        Element content = IsShelf(zone.Kind)
+            ? Embed.Comp(new ShelfChapterProps(zone, overlay, layout), static () => new ClassicHomeShelfChapter())
+                with { SkeletonProxy = () => Chapter(zone, overlay, controller: null, layout) }
+            : Chapter(zone, overlay, controller: null, layout);
+        return new BoxEl
+        {
+            Key = "zone:" + zone.Key, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            ScrollScope = zone.Key,
+            Children = [content],
+        };
+    }
+
     static bool IsShelf(ZoneKind kind) => kind is ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf
-        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles;
+        or ZoneKind.ShowGrid or ZoneKind.WideTiles or ZoneKind.VideoTiles or ZoneKind.BookShelf or ZoneKind.SpineShelf or ZoneKind.PodcastGroups
+        or ZoneKind.ReleaseSpotlight;
+
+    /// <summary>A body that pages its tall items (the Spine Shelf's pages, the podcast groups): its header carries "1 of 2" and the previous and next
+    /// buttons at every tier.</summary>
+    static bool IsPagedGrid(ZoneKind kind) => kind is ZoneKind.SpineShelf or ZoneKind.PodcastGroups or ZoneKind.ReleaseSpotlight;
 
     /// <summary>Header + clipped body inside the zone scope, or the bare body for a headerless zone.</summary>
     internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, ClassicHomeLayout layout)
     {
         Element body = Body(zone, overlay, controller, layout);
-        Element? header = Header(zone, controller is not null && ShelfBandOf(zone.Kind, layout).Pager ? controller : null, layout);
-        if (header is null) return body;
-        return new BoxEl
+        Element? header = Header(zone, controller is not null && (IsPagedGrid(zone.Kind) || ShelfBandOf(zone.Kind, layout).Pager) ? controller : null, layout);
+        // A headerless zone meets the facet row's line itself, so it dissolves there (its own feather, armed while its cut is engaged).
+        if (header is null)
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
+                Children = [body],
+            }.StickyClip(ClassicHomeRules.StuckBottom);
+        // A header with an entity (its cover over two lines) is taller; the body's clip follows it.
+        float headerH = HasEntityHeader(zone) ? ClassicHomeRules.EntityHeaderH : ClassicHomeRules.HeaderH;
+        // The body cuts itself at the header's lower edge, feathered exactly while the cut is engaged.
+        var clipped = new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children =
-            [
-                // The header paints NOTHING: a fixed-height box pinned under the facet row, releasing at the zone's end.
-                new BoxEl
-                {
-                    Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f,
-                    Height = ClassicHomeRules.HeaderH + ClassicHomeRules.HeaderGap,
-                    Padding = new Edges4(0f, 0f, 0f, ClassicHomeRules.HeaderGap),
-                    Children = [header.Value],
-                }.Sticky(ClassicHomeRules.StuckBottom, scope: zone.Key),
-                // The body cuts itself at the header's lower edge, feathered exactly while the cut is engaged.
-                new BoxEl
-                {
-                    Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                    EdgeFade = new EdgeFadeSpec(EdgeMask.Top, ClassicHomeRules.ClipFadeBand) { WhileStuck = true },
-                    Children = [body],
-                }.StickyClip(ClassicHomeRules.BodyClipInset),
-            ],
-        };
+            EdgeFade = new EdgeFadeSpec(EdgeMask.Top, ClassicHomeRules.ClipFadeBand, ClassicHomeRules.ClipFadeFalloff) { WhileStuck = true },
+            Children = [body],
+        }.StickyClip(ClassicHomeRules.BodyClipInset + headerH - ClassicHomeRules.HeaderH);
+        return Embed.Comp(new ChapterProps(zone.Key, header.Value, clipped, headerH + ClassicHomeRules.HeaderGap), static () => new PinnedChapter());
+    }
+
+    sealed record ChapterProps(string Scope, Element Header, Element Body, float HeaderBoxH);
+
+    /// <summary>A chapter: the header pinned under the facet row (it paints NOTHING), releasing at the zone's end, over the clipped body.
+    /// <para>The page cuts its content at the facet row's lower edge (StuckBottom). A header the next zone pushes out slides up across that cut, and
+    /// a header sliced there left a line of glyph feet under the transparent facet row, faint through the page's feather but never gone (C-Home at
+    /// 1440, "Popular radio" over "From artists you follow"). So the header fades out while it is being pushed, and back in when it pins again. Pushed
+    /// is a geometric fact the scroll effects know: a marker the header's height tall at the zone's END, its sticky clip at the same line, is cut
+    /// exactly while the zone's end lies within one header of the line, which is exactly while the header straddles it.</para></summary>
+    sealed class PinnedChapter : Component
+    {
+        readonly Signal<bool> _pushed = new(false);
+        readonly Action<NodeHandle> _onHead;
+        NodeHandle _head;
+
+        public PinnedChapter() => _onHead = h => _head = h;
+
+        public override Element Render()
+        {
+            var p = UseProps<ChapterProps>();
+            UseEffect(() =>
+            {
+                bool pushed = _pushed.Value;
+                if (Context.Anim is { } anim && !_head.IsNull)
+                    anim.SeedValue(_head, AnimChannel.Opacity, pushed ? 0f : 1f, ClassicHomeRules.HeaderPushFade);
+            });
+            var column = new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f,
+                        Height = p.HeaderBoxH,
+                        Padding = new Edges4(0f, 0f, 0f, ClassicHomeRules.HeaderGap),
+                        OnRealized = _onHead,
+                        Children = [p.Header],
+                    }.Sticky(ClassicHomeRules.StuckBottom, scope: p.Scope),
+                    p.Body,
+                ],
+            };
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ZStack = true,
+                Children =
+                [
+                    column,
+                    // The push marker: the header's height at the zone's foot, drawing nothing, cut by the facet row's line while the header is pushed.
+                    new BoxEl { Height = p.HeaderBoxH, AlignSelf = FlexAlign.End, HitTestVisible = false }
+                        .StickyClip(ClassicHomeRules.StuckBottom, engaged: _pushed),
+                ],
+            };
+        }
     }
 
     /// <summary>The chapter header: `HomeModules.ModuleHeader` with the zone's title/subtitle as a plain label (no
@@ -218,19 +297,22 @@ internal static class ClassicHomeZones
                     sub ? zone.Subtitle ?? Loc.Get(Strings.Home.RecentsSub) : null,
                     HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents), open: null);
             default:
-                return HomeModules.ModuleHeader(zone.Title ?? "", sub ? zone.Subtitle : null,
-                                                ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller), open: null);
+                var tools = ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller, HomeVerbs.SeeAllLabel(zone), counter: IsPagedGrid(zone.Kind),
+                                             arrows: !IsPagedGrid(zone.Kind) || layout.PageArrows);
+                return HasEntityHeader(zone)
+                    ? EntityHeader(zone.Header!, tools)
+                    : HomeModules.ModuleHeader(zone.Title ?? "", sub ? zone.Subtitle : null, tools, open: null);
         }
     }
 
     /// <summary>A shelf header's tools: the "See all" link (when the zone has a backing section), then — while the
     /// shelf pages — a 16-px vertical divider and the pager (‹ pips ›). Null when the header has neither.</summary>
-    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller)
+    static Element? ShelfHeaderTools(Action? seeAll, ShelfController? controller, string label, bool counter = false, bool arrows = true)
     {
-        Element? link = seeAll is null ? null : HyperlinkButton.Create(Loc.Get(Strings.Home.SeeAll), seeAll) with { Shrink = 0f };
+        Element? link = seeAll is null ? null : HyperlinkButton.Create(label, seeAll) with { Shrink = 0f };
         bool leadingDivider = link is not null;
         Element? pager = controller is null ? null
-            : Embed.Comp(() => new ClassicHomeShelfTools(controller, leadingDivider)) with { Key = leadingDivider ? "tools+link" : "tools" };
+            : Embed.Comp(() => new ClassicHomeShelfTools(new ShelfPagerSource(controller), leadingDivider, counter, arrows)) with { Key = leadingDivider ? "tools+link" : "tools" };
         if (link is null) return pager;
         if (pager is null) return link;
         return new BoxEl
@@ -269,10 +351,19 @@ internal static class ClassicHomeZones
     internal static Element BodyTree(Zone zone, IOverlayService? overlay, ShelfController? controller, ClassicHomeLayout layout,
                                      RenderContext? hooks = null) => zone.Kind switch
     {
+        ZoneKind.VideoTiles when IsOneEpisode(zone) => VideoCard(zone.Items[0], layout),
         ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf or ZoneKind.ShowGrid
             or ZoneKind.WideTiles or ZoneKind.VideoTiles => Shelf(zone, overlay, controller, layout),
+        ZoneKind.MoodPlates => MoodPlates(zone, layout, hooks),
+        ZoneKind.BookShelf => BookShelf(zone, overlay, controller, layout),
+        ZoneKind.LeadGrid => LeadGrid(zone, overlay, layout),
+        ZoneKind.CompactGrid => CompactGrid(zone, overlay, layout),
+        ZoneKind.ArtistCircles => ArtistCircles(zone, overlay, layout),
+        ZoneKind.CappedShelf => CappedShelf(zone, overlay, layout),
         ZoneKind.ReleaseList => ReleaseList(zone, layout, hooks),
-        ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, layout),
+        ZoneKind.SpineShelf => ClassicHomeShelf.Body(zone, layout, controller),
+        ZoneKind.ReleaseSpotlight => ClassicHomeSpotlight.Body(zone, layout, controller),
+        ZoneKind.PodcastGroups => ClusterGrid(zone, layout, controller),
         ZoneKind.BrowseTiles => BrowseTiles(zone, layout, hooks),
         ZoneKind.EpisodeLead or ZoneKind.EpisodeRows => EpisodeGrid(zone, layout.Episodes),
         ZoneKind.ContinueEpisodes => EpisodeGrid(zone, layout.Continue),
@@ -307,8 +398,8 @@ internal static class ClassicHomeZones
             // "Radio" band are drawn IN the image), so a round crop cut it apart.
             bool circular = c.Kind == HomeCardKind.Artist;
             items[i] = wide
-                ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.HeaderImageUrl ?? c.ImageUrl,
-                                        meta: CardMeta.Of(c.OwnerName, c.TrackCount))
+                ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.VideoThumbUrl ?? c.HeaderImageUrl ?? c.ImageUrl,
+                                        meta: c.IsBlank ? " " : CardMeta.Of(c.OwnerName, c.TrackCount))
                 : leadWide && i == 0
                     // The lead's "{n} songs" rides INLINE at the tail of its two-line caption (the prototype's
                     // `.lead-meta` span inside `.g-cap`): a cover shelf never grows a separate meta line.
@@ -333,7 +424,8 @@ internal static class ClassicHomeZones
         // top-aligned). The extent is a live prop of the mounted shelf, like its band: a crossing that drops the lead re-sizes the same strip.
         Func<float, float> cardHeight = wide ? s_wideCardHeight : CoverCardHeight(HomeCards.CaptionLinesOf(items));
 
-        return PagedShelf.Create<HomeCards.ShelfItem>(items,
+        return GridFill.Balanced(zone.Key, items.Length + (leadWide ? ClassicHomeRules.LeadSpan - 1 : 0), band.MinCardW, band.MaxCardW, band.MaxColumns, band.FixedCardW, band.Gap,
+            band2 => PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, squareAspect),
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),   // the slot owns the click: the card's own open, the lead cell's too
             cardWidthBound: true,   // the surface binds the slot's live width: a slide re-lays the cards out, no slot re-renders
@@ -341,8 +433,8 @@ internal static class ClassicHomeZones
             // The header owns the pager (the controller) where the tier pages the shelf; a tier that does not (a Compact strip) shows none.
             pager: controller is null ? (band.Pager ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None) : ShelfPager.None,
             controller: controller,
-            minCardW: band.MinCardW, maxCardW: band.MaxCardW, maxColumns: band.MaxColumns, fixedCardW: band.FixedCardW,
-            gap: band.Gap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
+            minCardW: band.MinCardW, maxCardW: band2.MaxCardW, maxColumns: band2.MaxColumns, fixedCardW: band.FixedCardW,
+            gap: band.Gap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page, offPageDim: HomeModuleLayout.OffPageDim, pageMemoryKey: zone.Key,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
             keyOf: static (item, i) => item.Card.IsBlank
@@ -357,7 +449,7 @@ internal static class ClassicHomeZones
             leadMinColumns: wide ? 0 : ClassicHomeRules.LeadMinColumns)
            // ONE key at every tier: the card band, the column cap, the pager and the card height are live props, so a crossing re-fits the SAME shelf
            // (its cards, its page and the header's controller survive) instead of remounting it.
-           with { Key = "home-shelf:" + zone.Key };
+           with { Key = "home-shelf:" + zone.Key });
     }
 
     /// <summary>The shelf band of a zone kind in <paramref name="layout"/>: the wide tiles' or the covers'.</summary>
@@ -387,7 +479,7 @@ internal static class ClassicHomeZones
     /// signals, so only this leaf re-renders on a page change. <paramref name="leadingDivider"/> puts the 16-px
     /// vertical divider between the header's "See all" link and the pager — it comes and goes WITH the pager, so a
     /// one-page shelf shows the bare link.</summary>
-    sealed class ClassicHomeShelfTools(ShelfController controller, bool leadingDivider) : Component
+    internal sealed class ClassicHomeShelfTools(IPager controller, bool leadingDivider, bool counter = false, bool arrows = true) : Component
     {
         public override Element Render()
         {
@@ -398,9 +490,11 @@ internal static class ClassicHomeZones
             if (count <= 1) return new BoxEl();
             var kids = new List<Element>(4);
             if (leadingDivider) kids.Add(ToolsDivider());
-            kids.Add(IconButton.Create(Icons.ChevronLeft, controller.Prev, isEnabled: canPrev));
-            kids.Add(PipsPager.Controlled(count, page, controller.GoTo));
-            kids.Add(IconButton.Create(Icons.ChevronRight, controller.Next, isEnabled: canNext));
+            // A paged grid counts its pages ("1 of 2") before the two buttons; a shelf shows its pips between them.
+            if (counter) kids.Add(R.Type.TrackMeta(Strings.Home.PageOf(page + 1, count)) with { Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap });
+            if (arrows) kids.Add(IconButton.Create(Icons.ChevronLeft, controller.Prev, isEnabled: canPrev));
+            if (!counter) kids.Add(PipsPager.Controlled(count, page, controller.GoTo));
+            if (arrows) kids.Add(IconButton.Create(Icons.ChevronRight, controller.Next, isEnabled: canNext));
             return new BoxEl
             {
                 Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray(),
@@ -430,6 +524,8 @@ internal static class ClassicHomeZones
         public override Element Render()
         {
             var p = UseProps<ShelfChapterProps>();
+            string key = p.Zone.Key;
+            UseEffect(() => GridFill.Register(key, _controller));
             // The shelf is bound to the controller at every tier (PagedShelf freezes it at mount); the pager rides the sticky header only where the
             // tier pages this shelf (Chapter reads the band), a strip has none.
             return Chapter(p.Zone, p.Overlay, _controller, p.Layout);
@@ -453,7 +549,7 @@ internal static class ClassicHomeZones
         {
             var c = items[i];
             var key = new ReleaseRowKey(c, c.Uri, c.Title, HomeCards.PlainText(c.Subtitle), c.ImageUrl,
-                                        ReleaseListRules.TypeLabel(c.Kind), ReleaseListRules.DateLabel(c.ReleasedAtMs, nowMs, tz, culture));
+                                        ReleaseListRules.TypeLabel(c), ReleaseListRules.DateLabel(c, nowMs, tz, culture));
             rows[i] = ItemMemo.Of(hooks, key, s_releaseRow);
         }
         return new BoxEl
@@ -461,13 +557,9 @@ internal static class ClassicHomeZones
             Direction = 1, MinWidth = 0f, Gap = Spacing.S, AlignItems = FlexAlign.Stretch,
             Children =
             [
-                Ui.SectionHeader(zone.Title ?? Loc.Get(Strings.Home.Zone.FromArtistsYouFollow),
-                                 layout.HeaderSubtitles ? zone.Subtitle ?? Loc.Get(Strings.Home.ReleasedThisWeek) : null) with { Margin = default },
-                new GridEl
-                {
-                    MinColWidth = layout.Releases.MinCol, MaxColumns = layout.Releases.MaxCols,
-                    ColGap = Spacing.M, RowGap = Spacing.XS, RowHeight = ClassicHomeRules.RowH, Children = rows,
-                },
+                ReleaseHeader(zone, layout),
+                GridFill.Responsive("releases:" + zone.Key, n, w => layout.Releases.Columns(w, Spacing.M),
+                    (cols, w) => GridFill.Build(rows, cols, w, Spacing.M, Spacing.XS, ClassicHomeRules.RowH), FirstWidth(layout.Releases, Spacing.M)),
             ],
         };
     }
@@ -496,54 +588,6 @@ internal static class ClassicHomeZones
         return new BoxEl { Key = "release:" + k.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row())] };
     }
 
-    // ── 2.4 clusters: "Because you like" / "Because you listen to" — Ui.Card(SectionHeader + ≤3 Surface(Row(40))) ───
-
-    static Element ClusterGrid(Zone zone, ClassicHomeLayout layout)
-    {
-        var clusters = zone.Clusters;
-        if (clusters is not { Count: > 0 }) return new BoxEl();
-        int n = Math.Min(clusters.Count, ClassicHomeRules.ClusterMax);
-        var cards = new Element[n];
-        for (int i = 0; i < n; i++) cards[i] = ClusterCard(clusters[i]);
-        return new GridEl
-        {
-            MinColWidth = layout.Clusters.MinCol, MaxColumns = layout.Clusters.MaxCols,
-            ColGap = Spacing.M, RowGap = Spacing.M, Children = cards,
-        };
-    }
-
-    static Element ClusterCard(ZoneCluster cluster)
-    {
-        Element header = Ui.SectionHeader(cluster.Name, cluster.Over is { Length: > 0 } ? cluster.Over : null) with { Margin = default, MinWidth = 0f };
-        if (cluster.Header is { } h)
-        {
-            // The cluster opens to its own baseline card (a playlist / an album): the header is the drill.
-            var hc = h;
-            header = new BoxEl
-            {
-                Direction = 1, MinWidth = 0f, Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true,
-                OnClick = () => HomeCardNav.Open(in hc), Children = [header],
-            };
-        }
-
-        var rowsSrc = cluster.Rows;
-        int n = Math.Min(rowsSrc.Count, ClassicHomeRules.ClusterRows);
-        var rows = new Element[n];
-        for (int i = 0; i < n; i++)
-        {
-            var c = rowsSrc[i];
-            string sub = HomeCards.PlainText(c.Subtitle);
-            var data = new Controls.CardData(c.Uri, c.Title, sub.Length > 0 ? Meta(sub) : null, c.ImageUrl,
-                () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
-                Circular: c.Kind == HomeCardKind.Artist, Drag: HomeCardNav.DragOf(in c))
-                { Menu = HomeCardNav.MenuOf(in c) };
-            rows[i] = new BoxEl { Key = "cluster-row:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row(ClassicHomeRules.ClusterArt))] };
-        }
-
-        return Ui.Card(header, new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = rows })
-            with { MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Gap = Spacing.S };
-    }
-
     // ── 2.5 browse tiles: stock SettingsCards in the tile skin (48 art plate, one-line text), then the Charts sub-block ──
 
     // Every tile here is clickable (the Browse tiles and the three chart tiles), so they take `Controls.TileCardParts`:
@@ -564,11 +608,8 @@ internal static class ClassicHomeZones
             Direction = 1, MinWidth = 0f, Gap = R.Space.SectionGap, AlignItems = FlexAlign.Stretch,
             Children =
             [
-                new GridEl
-                {
-                    MinColWidth = layout.Tiles.MinCol, MaxColumns = layout.Tiles.MaxCols,
-                    ColGap = Spacing.M, RowGap = Spacing.M, Children = tiles,
-                },
+                GridFill.Responsive("browse-tiles:" + zone.Key, tiles.Length, w => layout.Tiles.Columns(w, Spacing.M),
+                    (cols, w) => GridFill.Build(tiles, cols, w, Spacing.M, Spacing.M), FirstWidth(layout.Tiles, Spacing.M)),
                 ChartsBlock(layout.HeaderSubtitles),
             ],
         };
@@ -609,11 +650,9 @@ internal static class ClassicHomeZones
         var clock = Episode.RowClock.Now();                    // one clock per grid: every row agrees on "Today"
         var rows = new Element[cards.Count];
         for (int i = 0; i < rows.Length; i++) rows[i] = EpisodeRow(cards[i], clock);
-        return new GridEl
-        {
-            MinColWidth = band.MinCol, MaxColumns = band.MaxCols,
-            ColGap = Spacing.M, RowGap = Spacing.XS, Children = rows,   // RowHeight auto: two-line titles + a progress rung
-        };
+        // Rows auto-height: two-line titles and a progress rung.
+        return GridFill.Responsive("episodes:" + zone.Key, rows.Length, w => band.Columns(w, Spacing.M),
+            (cols, w) => GridFill.Build(rows, cols, w, Spacing.M, Spacing.XS), FirstWidth(band, Spacing.M));
     }
 
     /// <summary>One Home episode row: the card's own facts (its section facts win over the columns — a resume point or an

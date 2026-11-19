@@ -10,6 +10,8 @@
 // gap after line 12 is 6 s (an interlude past Lyrics.InterludeGapMs). Built from the track index alone: no Random.
 // An acoustic counterpart (`tr<n>a`, al2/al3's versions) gets the same words UNSYNCED (no timing), the provider's other shape: the
 // surfaces' reading block (the mini player's Lyrics face renders it).
+// `LineSynced` (the headless inspector's `mount lyrics=line`) answers every synced track LINE-synced instead: the same lines and times
+// with no word timing, the provider's third shape (a song with no word timing; what the AI lyrics dial times word by word).
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 namespace Wavee;
@@ -26,6 +28,10 @@ public static partial class Lyrics
         ];
 
         const long FirstMs = 4_000, LastEndMs = 128_000, InterludeAfter = 12, InterludeMs = 6_000;
+
+        /// <summary>Answer every synced track line-synced (no word timing): the inspector's `mount lyrics=line`, set before a mount (which
+        /// empties the store when it changes, so every track is answered again in that shape). Never set outside the inspector.</summary>
+        internal static bool LineSynced { get; set; }
 
         /// <summary>The fixture document for a seeded track id (<c>tr0</c>..<c>tr165</c>; <c>tr&lt;n&gt;a</c> unsynced), or null for anything else.</summary>
         public static Doc? For(string trackId)
@@ -59,6 +65,12 @@ public static partial class Lyrics
                 var plain = new List<Line>(lines.Count);
                 foreach (var line in lines) plain.Add(new Line(0, line.Text, []));
                 return new Doc(trackId, IsSynced: false, plain, SyncKind.Unsynced, Provider: "fixture");
+            }
+            if (LineSynced)
+            {
+                var timedLines = new List<Line>(lines.Count);
+                foreach (var line in lines) timedLines.Add(new Line(line.StartMs, line.Text, [], line.EndMs));
+                return new Doc(trackId, IsSynced: true, timedLines, SyncKind.Line, Provider: "fixture");
             }
             return new Doc(trackId, IsSynced: true, lines, SyncKind.Syllable, Provider: "fixture");
         }

@@ -220,6 +220,9 @@ public sealed partial class NavModel : INavVerbs
     public void SetFolderExpanded(string? folderId, bool expanded) => Sidebar.SetFolderExpanded(folderId, expanded);
 
     /// <summary>A pin's name for its toast: the stored name, else the route's title.</summary>
+    /// <summary>The library's unfiltered list (Home's catalogue): no network, no filtering.</summary>
+    public IReadOnlyList<SidebarLibraryEntry> LibraryAll => _binder.LibraryAll;
+
     public string PinName(string id)
     {
         var pins = Sidebar.Pins;

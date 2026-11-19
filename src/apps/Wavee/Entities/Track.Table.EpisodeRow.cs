@@ -6,7 +6,7 @@
 //
 // Role: UI
 //
-// An episode row inside a playlist is not a re-invented grid: it IS the show reader's own row,
+// An episode row inside a playlist is not a re-invented grid: it IS the episode reader row,
 // `Episode.ReaderRow` (Entities/Episode.UI.cs), unchanged — same art, title + badges, two-line description, date /
 // duration-left / progress meta, now-playing treatment. `TableSlot` hands it straight through, with no `Skin`
 // wrapper: `ReaderRow` is fully self-contained (click, hover, the check lane, the "…" menu) once its

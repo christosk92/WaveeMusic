@@ -320,8 +320,7 @@ non-Standard rows). No discovery page draws a title or a facet row: the band is 
 
 | Key | Zune's picture (boards) |
 |---|---|
-| `Pages.Home` | Z-Home: the column on the frame's gutter, 8 under the band, capped at the style's page width, zones 28 apart. On All the quickplay strip leads; two neighbours that pair (release list + clusters, new + continue episodes) share a row 1 : 1 where the tier has room (`ZuneHomePlan.Rows`, pure). The facet swap is the production keyed fade over the dim host; the busy bar and a failed switch's bar lie over the content's top (they never move it); "customize home" closes All. |
-| `Home.Quickplay` (new, contract 1.28) | pins (132 art, the band's own pins, the name in the accent while it plays) · history (`Home.Zone.RecentGrid`, through its core host) · new (the release list's first covers, its "see all"), 32 apart, wrapping. Mounted by the core host `QuickplayHost` (`Home\Quickplay.Host.cs`); Classic registers Nothing. |
+| `Pages.Home` | Z-Home: the column on the frame's gutter, 8 under the band, capped at the style's page width, zones 28 apart. On All the pinned board takes the zone column's place; two neighbours that pair (release list + clusters, new + continue episodes) share a row 1 : 1 where the tier has room (`ZuneHomePlan.Rows`, pure). The facet swap is the production keyed fade over the dim host; the busy bar and a failed switch's bar lie over the content's top (they never move it); "customize home" closes All. |
 | `Home.Zone.RecentGrid` | The history group: the tier's 100 tiles, the playing one in the accent with "playing" as its line, "listening history" to Recents. |
 | `Home.Zone.<Kind>` (14) | A body draws its own heading row (26/32 light, subtitle, "see all"): shelves of 154 covers (`PagedShelf`, chevrons in the heading), the wide tiles the tier's columns of 16:9, the release list's 64 rows, the clusters' 28-title columns of 48 rows, the Browse tiles as flat 88 plates 2 : 1 beside the charts, the shared episode rows, the empty facet's vacancy. |
 | `Home.Charts` | A numbered list: 40 rows, the 22 light rank, the chart's caption. |
@@ -331,7 +330,7 @@ non-Standard rows). No discovery page draws a title or a facet row: the band is 
 | `Pages.BrowseCategory` | Z-Browse-Category: the accent banner (200) with the name as a panorama and its kind, then shelves of 154 covers and six-across tile plates; the flattened modes keep the banner over a grid that owns its scroll. |
 | `Pages.Search` | Z-Search: the facet body alone. All: top result (heading + kind, the tier's art beside the 40/48 name, its line, the matched words in the accent, the play ring and the hit's own control) beside best matches (two columns of 56 rows), the playlist shelf, genres and related searches as inline words. The other facets: the songs in columns, the Albums / Playlists virtual grid, the hit rows. |
 
-**Nothing:** `Home.FacetRow`. **Common:** `Pages.HomeCustomize`.
+**Nothing:** `Home.FacetRow`.
 
 **Row 2.** Home: the core host (`HomeHost.SyncFacetIndex`) publishes the facet words as `PageView`s ("all" first, the target's word lit, Go the
 facet row's select path with its Following memory), a "following" / "all" action where the lit word has a Following sub-chip, and the shown
@@ -427,11 +426,10 @@ numbers and tier records `Rules\ZunePlaylistRules.cs` (`ZunePlaylistRules`, `Zun
 
 ## Z6b2: the show, the episode and the concerts
 
-Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Compact` / `-Small` / `-Huge` twins. Files: `Themes\Zune\Structure\ZuneStructure.ShowEpisodeConcert.cs` (the registrar), `Views\Show\ZuneShowReader.cs`, `ZuneShowHead.cs`, `ZuneShowRail.cs`; `Views\Episode\ZuneEpisode.cs`, `ZuneEpisodeReader.cs`, `ZuneEpisodeDiscussion.cs`; `Views\Concert\ZuneConcertCells.cs`, `ZuneConcertDetail.cs`, `ZuneConcertHub.cs`, `ZuneConcertFilterBar.cs`, `ZuneConcertFlyouts.cs`, `ZuneConcertPicker.cs`, `ZuneConcertSchedule.cs`; numbers and records `Rules\ZuneShowRules.cs` (`ZuneShowRules`, `ZuneEpisodeRules`, `ZuneConcertRules`, `ZuneConcertTiers` / `ZuneConcertLayout`). Zune's registrations win over Classic's stand-in key by key.
+Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Compact` / `-Small` / `-Huge` twins. Files: `Themes\Zune\Structure\ZuneStructure.ShowEpisodeConcert.cs` (the registrar); `Views\Episode\ZuneEpisode.cs`, `ZuneEpisodeReader.cs`, `ZuneEpisodeDiscussion.cs`; `Views\Concert\ZuneConcertCells.cs`, `ZuneConcertDetail.cs`, `ZuneConcertHub.cs`, `ZuneConcertFilterBar.cs`, `ZuneConcertFlyouts.cs`, `ZuneConcertPicker.cs`, `ZuneConcertSchedule.cs`; numbers and records `Rules\ZuneEpisodeConcertRules.cs` (`ZuneEpisodeRules`, `ZuneConcertRules`, `ZuneConcertTiers` / `ZuneConcertLayout`). Zune's registrations win over Classic's stand-in key by key.
 
 | Key | Zune's template |
 |---|---|
-| `StyleKeys.ShowReader` | `ZuneShow.Style` (rail primary, ledger, rating, badges, topics, publisher, satellites; the toolbar, the visit head, the headers, the foot, the seed) |
 | `Episode.Primary` `.Attribution` `.Actions` `.Save` `.RailAbout` `.Rating` | `zune.episode.*` |
 | `Episode.Reader` `.About` `.Chapters` | `zune.episode.reader` / `.about` / `.chapters` |
 | `Episode.Discussion` `.CommentCard` `.CommentSeed` `.LoadMore` `.ReactionFlyout` `.ReactionRoster` `.ReactionPeople` | `zune.episode.*` |
@@ -439,11 +437,11 @@ Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Com
 | `Pages.Concerts`, `Concert.Tail` | `zune.concerts.hub`, `zune.concerts.tail` |
 | `Pages.ArtistConcerts`, `Concert.PlacePicker` | `zune.concerts.artist-schedule`, `zune.concerts.place-picker` |
 
-**The show** stands in Z6a1's detail frame. The rail's slots: the publisher link (15), the badge words ("exclusive · E · video", the accent on exclusive), the rating line, the played LEDGER (a 3-dip bar: played in the primary ink, in progress in the accent, the rest the track, its parts easing their widths; "84 played · 3 in progress · 41 to go · 5 new"), the RING row (the accent play ring with its words, "resume" over "23 min left", or "follow" with a ghost play; save, trailer, share and "..." after it) and the topic words. The rings' size is the tier's (36, 40 at Compact and 4K) and a slot template has no view context, so each ring is a small component that reads the facts it is drawn in. The reader is the core word rail under the accent underline (the stage rule's measure is the core's), the visit head's cards are flat (a 72 cover, the accent label, the title, "6 min left · #808", a 2-dip track and a 40 ring), the "episodes 812" heading is the 26/32 heading voice on the core's stated 30 line, a month the 22 light group voice on the stated 24 line. The core's arithmetic (48 rail, 30 + 12 header, 14 + 24 + 4 month, 30 strip) is untouched.
+**The show** was the reader style (`StyleKeys.ShowReader`: the rail's slots, the word rail, the visit head, the month headers and their jump list, the year strip); it is retired with the library's old show pane (contract 2.5, the podcast-row-open line's 1.118). The show page is the podcast pages' (`Views\Podcast\ZunePodcastShow*.cs`).
 
 **The episode** is the frame's two columns (the cover, the show link, the ring row: resume over its minutes, save, the played mark, share, "...") and Zune's reader: about · chapters · transcript · comments STACKED in one scroll under 26/32 light headings at a 760 measure, the description at 15/22. Chapters are the BIG-NUMERAL rows (a 22 light numeral in a 44 column, the title at 15, the start time at 12; the playing chapter in the accent on the selected wash). The reader draws no pivot: the four words are the band's row 2.
 
-**Row 2** (all through the `PageChromeSink`, Album's pattern): the episode (`Episode.Page.cs`, `EpisodeReader`) publishes about · chapters · transcript · comments, the spy's section current, a click scrolls it; the show (`Show.Page.cs`, `PageHost`) publishes "episodes" and the action follow / following (the word follows the saved set); the concert (a zero-size component beside the page's scroll) publishes details · lineup · related concerts, each only when the page holds it, with its own spy. Gated on what each row is built from.
+**Row 2** (all through the `PageChromeSink`, Album's pattern): the episode and the show (the podcast pages, `Podcasts\PodcastPages.Episode.cs` / `PodcastPages.Show.cs`) publish their title; the concert (a zero-size component beside the page's scroll) publishes details · lineup · related concerts, each only when the page holds it, with its own spy. Gated on what each row is built from.
 
 **The concert page** (the designed one): the caption ("concert · on sale"), the title in the hero voice (64/72; 40/48 at Small; 150/160 at Huge; a name, never re-cased), the date as a big light NUMERAL (64, 150 at Huge) over "november · saturday", the facts as sentences in the provider's clock ("20:00 · doors open 19:00", venue · place, "ages 18+"), the TICKETS SLAB (the raised plate: one row per offer, provider, price and a round accent ring that buys, or the quiet "tickets not available online"; the footnote says the prices are the providers'), the lineup (round faces, rows with a chevron below Standard) and the related concerts as date cards (a 4-across grid on the plate at Standard, rows below). Compact stacks the slab and bleeds it to the gutters; Small seats a 260 slab beside the facts; Standard 320; Huge 440.
 
@@ -451,7 +449,7 @@ Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Com
 
 **Words and casing.** Everything the theme writes (headings, rings, captions, quiet lines, a month, a weekday) is lowered by the case roles; a title, a venue, a place, an artist and a genre keep their casing.
 
-**Decided here.** `Concert.Tail` and `Concert.PlacePicker` are Zune's own (not Nothing). The stand-in's disabled new-episode bell has no ring in Zune. `ConcertDetailView` gained `Date` (the show's date and time as a value, the contract addition).
+**Decided here.** `Concert.Tail` and `Concert.PlacePicker` are Zune's own (not Nothing). `ConcertDetailView` gained `Date` (the show's date and time as a value, the contract addition).
 
 **Board versus contract / plan.** The boards lay chapters and transcript side by side; the reader's contract is a stack of anchored sections read by one spy (two sections would share a top), so they stack. The boards put the episode's title (40/48) above the about; the frame's panorama (and row 2) already carries it. The boards draw no panorama on a show or an episode (the title in the rail); Z6a1's frame draws one on every detail page. The board's "about" tab on a show has no target: the rail already carries the description.
 
@@ -463,7 +461,7 @@ Boards `Z-Show`, `Z-Episode`, `Z-Concert` (Standard, the target) and their `-Com
 
 Library, Recents and the profile (`ZuneStructure.Collection.cs`; boards `Z-Library-{Albums,Artists,Playlists,Podcasts,Audiobooks}`, `Z-Recents`, `Z-Profile`, each with its Compact / Small / Huge twin).
 
-**Keys.** Own: `Pages.Library`, `Library.AlbumPane`, `Library.ShowPane`, `Library.ArtistReader`, `Library.SavedEpisodes` (`Views\Library\`), `Pages.Recents` (`Views\Recents\`), `Pages.User` and `Pages.ProfileList` (`Views\Profile\`; the list has no board, owner Q18). Common: Module. Local files renders through the playlist page.
+**Keys.** Own: `Pages.Library`, `Library.AlbumPane`, `Library.ArtistReader`, `Library.SavedEpisodes` (`Views\Library\`), `Pages.Recents` (`Views\Recents\`), `Pages.User` and `Pages.ProfileList` (`Views\Profile\`; the list has no board, owner Q18). Common: Module. Local files renders through the playlist page.
 
 **The playlists route (core).** `RouteKind.LibraryPlaylists` (`playlists`) is a new exact route. Its page is `User.LibraryPlaylists` (`Entities\User.Page.Playlists.cs`): the rootlist tree the sidebar plans from (`Sidebar.Model.Rootlist`: playlists and folders, folder expansion persisted), the sidebar's covers and subtitles, the create-playlist and new-folder verbs. It is core-drawn with the style's roles (no view key, so Classic needed no change), pumps the nav model itself (the pane that normally does is not mounted under Zune), and is the second view of the library's row 2 (`User.LibraryChromeViews`: liked, playlists, albums, artists, podcasts, audiobooks). Under Classic nothing links to it, but navigating there draws the list. It is registered through its own lazy group (`Shell.InstallLazyGroupFor`).
 
@@ -494,7 +492,7 @@ The account chip and menu, the context menu's header and round-verb strip, the C
 Settings, the theme picker and its options, the setup wizard, the release notes, and the report and crash dialogs. All fifteen keys are Zune's own
 (`Structure\ZuneStructure.Screens.cs`); Zune's registrations win over Classic's stand-in key by key.
 
-**Files.** `Structure\Views\Screens\ZuneSettings*.cs` (the page and its seven tabs), `ZuneSetup*.cs`, `ZuneReleaseNotes*.cs`, `ZuneFeedback.cs`,
+**Files.** `Structure\Views\Screens\ZuneSettings*.cs` (the page, its home and nine categories, the results), `ZuneSetup*.cs`, `ZuneReleaseNotes*.cs`, `ZuneFeedback.cs`,
 `ZuneCrash.cs`; numbers and tier records in `Structure\Rules\ZuneSettingsRules.cs` (settings) and `Rules\ZuneSetupRules.cs` (setup, release notes
 and the two dialogs); loc `theme.zune.screens`.
 
@@ -502,13 +500,16 @@ and the two dialogs); loc `theme.zune.screens`.
 LocalPlayback / SignInDoor / RuntimeCard`, `Pages.WhatsNew`, `ReleaseNotes.Viewer`, `ReleaseNotes.AfterUpdatePlate`, `Dialog.Feedback`,
 `Dialog.Crash`. Template ids: `zune.screens.settings[.theme-picker|.theme-options]`, `zune.setup.*`, `zune.release-notes.*`, `zune.dialog.*`.
 
-**Settings.** A panorama title ("settings"), a lowercase section list (the seven core tabs: the page state and every deep link name a tab), and the
-open tab's column. The column is the document drawn: every `SettingsDoc` section of the tab is a group (a 26/300 heading over label | control rows), so a
-new document row shows up with its words and its writer; the controls that need labels or ranges (combos, chips, sliders) are built per row in
-`ZuneSettings.<Tab>.cs`. Controls are the engine's, drawn by `ZuneControls`; the stateful ones (`ZuneKit.ChoiceCell`, `SliderCell`) keep one signal for
-their life and re-read the document on `Settings.PageEpoch`. Appearance mounts the picker and the options through the registry (`Slots.View`), and
-beside the column (or under it, by flex wrap) a live preview built from the roles. Node identity: the list, lane, groups and rows are the same nodes in
-every tier; a tier changes their direction, wrap and widths only.
+**Settings** (settings rework phase 4). A panorama title ("settings", never shrunk), the "find a setting" pill (`props.Search.Box`, `settings:search`) over
+a lowercase section list of ten words (the home, "your setup", and the nine categories, keyed `zs:link:<slug>`), and the open category's column: every group
+of `props.Body.Of(category)` is a 26/32 heading over label | control rows keyed `zs:row:<dialId>` (`ZuneSettings.Body.cs`; the composite blocks in
+`ZuneSettings.Composites.cs` and the per-category files). Typing in the pill replaces the column with the two-line results (`ZuneSettings.Results.cs`: the
+label with the matched letters in the accent over the breadcrumb). A dial whose clip exists for the theme and app mode carries an accent "see it" word that
+opens the clip under the row (`ZuneSettings.Explain.cs`); a link's arrival lights the row's label in the accent and fades it back. At Compact the page is the
+drill-in list of the categories with a summary line each; a category opens as its own page (the route's open section, `props.OpenSection`, closed by
+`props.CloseSection`). Controls are the engine's, drawn by `ZuneControls`; the stateful ones (`ZuneKit.ChoiceCell`, `SliderCell`) keep one signal for their
+life and re-read on `Settings.PageEpoch`. Appearance mounts the picker and the options through the registry (`Slots.View`), with a live preview beside the
+column. Node identity: the pill, list, lane and column are the same nodes in every tier; a tier changes their direction, wrap and widths only.
 
 **Theme options.** `ZuneSettings.Theme.cs` draws the core's `SettingsOptionsView` by row kind: toggles as switches, short selects as chips (a combo
 past four or when the structure asks for one), the accent as a row of square swatches, sliders, confirmed actions, "reset" beside the heading. The
@@ -527,11 +528,10 @@ at open. Compact folds the preview behind a 40 row, Huge is a two-pane card.
 **Numbers.** `ZuneSettingsTiers.For/Of` (content tier), `ZuneSetupTiers`, `ZuneReleaseNotesTiers` (page: content tier; overlays: window tier),
 `ZuneDialogTiers`. The sizes the lane covers are Standard; the others are sane variations ZT8 tunes against the -Compact, -Small and -Huge boards.
 
-**Conflicts with the boards (the plan and the owner win).** The board lists twelve sections; the core page is a seven-tab cell, so account, devices and
-keyboard have no document rows and are not built, and audio, lyrics, feedback & help are groups of Playback, Appearance, About and Privacy. No downloads
-(Q29 / NQ4): the core Storage cache settings stay. The board's "add a theme" tile and community-themes line are not built (nothing installs a theme
-from a folder). Compact and Small draw the section list as a wrapping row above the column, not a drill-in. The Standard preview column wraps under the
-options when the window is too narrow for both.
+**Conflicts with the boards (the plan and the owner win).** The repo boards list twelve sections; the page draws the settings rework's nine categories
+and the home (the concept boards Z-Home, Z-Results, Z-Compact), so the boards' account, devices, keyboard and feedback sections are groups of Account &
+privacy, Sound and Help & about. No downloads (Q29 / NQ4): the core Storage cache settings stay. The board's "add a theme" tile and community-themes line
+are not built (nothing installs a theme from a folder). The Standard preview column wraps under the options when the window is too narrow for both.
 
 ## Z9: the states, "on this PC", the light pass and the completeness rule
 
@@ -707,7 +707,7 @@ toggle and close 40.
 
 ## ZT6: artist and people tiers
 
-Boards: `Z-Artist` and its `-Compact` / `-Small` / `-Huge` / `-Huge4K`, `Z-Profile` and its `-Compact` / `-Small` / `-Huge`, `Z-Concert` and its `-Compact` / `-Small` / `-Huge`. No board (owner Q18, built from Zune's parts): the discography page, the lightbox, the people list, the concert hub, the tour dashboard and the place picker. Files: `Rules\ZuneArtistRules.cs` (`ZuneArtistTiers`, `ZuneArtistTierPolicy`), `Rules\ZuneProfileRules.cs` (`ZuneProfileTiers`), `Rules\ZuneShowRules.cs` (`ZuneConcertTiers`, the popups' fit), `Rules\ZunePolicies.Artist.cs`, the views under `Views\Artist`, `Views\Profile` and `Views\Concert`.
+Boards: `Z-Artist` and its `-Compact` / `-Small` / `-Huge` / `-Huge4K`, `Z-Profile` and its `-Compact` / `-Small` / `-Huge`, `Z-Concert` and its `-Compact` / `-Small` / `-Huge`. No board (owner Q18, built from Zune's parts): the discography page, the lightbox, the people list, the concert hub, the tour dashboard and the place picker. Files: `Rules\ZuneArtistRules.cs` (`ZuneArtistTiers`, `ZuneArtistTierPolicy`), `Rules\ZuneProfileRules.cs` (`ZuneProfileTiers`), `Rules\ZuneEpisodeConcertRules.cs` (`ZuneConcertTiers`, the popups' fit), `Rules\ZunePolicies.Artist.cs`, the views under `Views\Artist`, `Views\Profile` and `Views\Concert`.
 
 **Records.** Each family has a record per content tier and every one reads `ZuneTiers.Frame(tier).Gutter`. `Of(facts)` returns the content tier's record, folded on a Short window (330-699 tall: the band folds to 52 and the bar holds 72, so about 160 DIP are left to the page); a view mounted with no frame reads Standard's. A record carries what the tier lays out: the artist's hero height, name voice, where the actions stand, the chart's columns, cap and rail, the shelf cards and the grid cell; the profile's avatar, name voice, ranked columns, cards and list cell; the concert's title, numeral, slab and rows. A bare link word is a `LinkTarget` (40 at Compact, 0 where the word is its own target).
 
