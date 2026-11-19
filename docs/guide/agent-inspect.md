@@ -425,7 +425,7 @@ Protocol).
    "actionable":false,"reason":"notShown","why":"...","hit":"about:link"}]}
 ```
 
-### `key {key, repeat?}` and `type {text}`
+### `key {key, repeat?}` and `type {text, key? | x,y, nth?, force?}`
 
 `key` takes these names:
 
@@ -435,12 +435,16 @@ Protocol).
 - any of these with `ctrl+`, `shift+`, `alt+` or `win+` in front, such as `ctrl+f`
 
 `type` sends character input to whatever has focus. The text form takes the rest of the line, spaces kept; to add args
-(`settle=false`, `trace=N`), quote the text or use `text=`:
+(`settle=false`, `trace=N`), quote the text or use `text=`. `type key=<node>` (or `x`, `y`) presses that node first, as a user puts
+the caret in a box (the same actionability checks as `click`; `force=true` skips them), then types; a line that starts with `key=`
+reads as args, so quote text with spaces after it. This is how a run types into the Settings page's box (`settings:search`):
 
 ```text
 key ctrl+f
 type daft punk
 type "daft punk" settle=false
+type key=settings:search crossfade      # the Settings page's box, once a theme binds it
+type key=settings:search "dark mode"
 key enter
 ```
 
@@ -671,7 +675,25 @@ The Settings tab strips key their items (`settings:tabitem:<slug>`: Classic's ar
 `zs:link:<slug>`), so `click key=settings:tabitem:appearance` switches the tab the way a user does (`goto route=settings
 arg=appearance` opens it directly).
 
-### `settings {q? | focus?, limit?}`
+**The registry's Settings page (contract 1.116, settings rework phase 4).** Each theme's new page keys its nodes from
+`SettingsKeys` (`Theming/Contracts/SettingsPageModel.cs`), so a link's arrival, these verbs and `lint` find the same node in every theme:
+
+| Key | What | Theme |
+|---|---|---|
+| `settings:search` | the page's search box (`SettingsPageProps.Search.Box(frame)` keys the theme's box node and binds it) | all |
+| `settings:cat:<slug>` | a category's strip item or list word (`home`, `appearance`, `sound`, `playback`, `lyrics`, `notifications`, `system`, `storage`, `account`, `help`) | Classic, WinUI |
+| `zs:link:<slug>` | a section word of the lowercase list (the same ten slugs) | Zune |
+| `settings:dial:<dialId>` | a dial's row in a category body (`settings:dial:playback.crossfade`) | Classic, WinUI |
+| `zs:row:<dialId>` | a dial's row | Zune |
+| `settings:result:<id>` | a search result (a dial's id, or a pointer's: `settings:result:pointer.downloads`) | all |
+| `settings:explain:<dialId>` | a dial's explanation badge (only where its clip exists for the theme and app mode) | all |
+
+Once a theme draws them: `click key=settings:cat:sound` (Zune `click key=zs:link:sound`) opens a category, `type key=settings:search
+crossfade` types into the box, `key down` / `key enter` walk and open the results, `key esc` clears the box and a second one leaves it,
+`key ctrl+f` on Settings focuses the box instead of the app's search, and `key ctrl+188` (Ctrl+,) opens Settings on its home with the box
+focused. Until then `settings model=` reads what the page is handed and `settings press=` runs the box's keys.
+
+### `settings {q? | focus? | model? | press?, limit?}`
 
 The settings search (`Screens/SettingsSearch.cs`): the one index the Settings box, the command palette's Settings group and this verb
 ask. `settings q=<text>` ranks the dials of the active theme and the feature pointers for a query as typed (folded, stemmed, prefix
@@ -688,6 +710,27 @@ pointer's id (`focus=pointer.downloads`) opens the pointer's place instead. It n
 dial, and an old slug where it always did. `settings` alone reports the index (`entries`, `tokens`, `postings`, `trigrams`,
 `phrases`, `buildMs`, `culture`) and `missingTerms`: every composed dial and pointer with no `settings.terms.<id>` in the loc files
 (it must be empty).
+
+`settings model=<category>` prints what the registry's page is handed (contract 1.116): with Settings mounted, the props the page host
+last pushed (`source: "page"`), else the same members built now (`source: "built"`). `category` (the open one's index), `categories`
+(`{index, slug, title, strip, glyph}`: the home and the nine), `focus` (the arrival: `{dial, seq, category, group, parent, expand,
+highlightMs}`), `home` (`glance` `{id, title, value, dial, glyph}`, `suggestions` `{id, text, action, actionLabel, dial, act, dismiss}`,
+`recent` `{dial, title, value, from, agoMs, door}`), `body` (the named category, or the open one for `model=`: `groups` of `{id, title,
+subtitle, rows}`, a row `{id, kind, label, description, subgroup, glyph, value, choices, writer, enabled, reason, silent, tier, explain
+{clip, caption, path}, alsoInLine, alsoIn [{surface, place, door}], option, noteBefore, noteAfter, children}`) and `search` (the page box:
+`{q, active, count, close, highlight, focusTicket, box, allocBytes, results [{id, key, title, breadcrumb, spans [[start, length]], marked,
+under, pointer, row {kind, value, enabled, children}}], noMatch, didYouMean, searchApp}`). With `q=`, the query is written to the box's
+cell and ranked as a keystroke does (`allocBytes` is a second ranking's: it must be 0); `marked` shows the matched letters in brackets.
+`settings press=down|up|enter|esc` runs the box's key handler as a key in the bound box does (Down/Up move the highlight, Enter opens the
+highlighted dial (the first when none is) in its category through the deep-link door, Escape clears, a second Escape leaves) and replies
+the box's state, the focus and the route.
+
+```text
+settings model=playback q=crosfade         # the categories, the home, Playback's body and the box's results
+settings press=down                        # highlight the first result
+settings press=enter                       # open it: route settings playback, focus playback.crossfade
+settings model= q=xyzzy                    # the no-match state: noMatch, didYouMean, searchApp
+```
 
 ```text
 settings q="dark mode"                      # appearance.appMode first, by its phrase

@@ -520,9 +520,28 @@ public static partial class Diagnostics
                 case Inspect.Verb.Type:
                     {
                         string text = a.Str("text");
+                        // `key=` (or x, y): press the box first, as a user puts the caret in it (the Settings page's `settings:search`).
+                        bool aimed = a.Has("key") || a.Has("x");
+                        Aim aim = default;
+                        if (aimed)
+                        {
+                            if (!TryAim(id, name, a, wheel: false, out aim, out string refusal)) return refusal;
+                            Point2 p = aim.Point;
+                            Move(p);
+                            RunFrames(1);
+                            _hit = HitKey(p);
+                            Queue(new InputEvent(InputKind.PointerDown, p, 0, 0, KeyModifiers.None, TimestampMs: _ms));
+                            RunFrames(1);
+                            Queue(new InputEvent(InputKind.PointerUp, p, 0, 0, KeyModifiers.None, TimestampMs: _ms + 50));
+                            RunFrames(1);
+                        }
                         foreach (char c in text) Queue(new InputEvent(InputKind.Char, default, 0, c, TimestampMs: _ms));
                         RunFrames(1);
-                        return Settled(id, name, a, w => w.WriteNumber("chars", text.Length));
+                        return Settled(id, name, a, w =>
+                        {
+                            w.WriteNumber("chars", text.Length);
+                            if (aimed) WriteAim(w, in aim);
+                        });
                     }
                 case Inspect.Verb.Scroll:
                     {

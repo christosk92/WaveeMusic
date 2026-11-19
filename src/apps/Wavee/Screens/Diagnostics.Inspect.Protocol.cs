@@ -390,9 +390,9 @@ public static partial class Diagnostics
                 Args = Join([Arg("key", ArgType.String, "enter, esc, tab, space, backspace, delete, arrows, home, end, pageup, pagedown, apps, f1..f12, a..z, 0..9 or a VK code"),
                              IntArg("repeat", "presses", "1", 1, 100)], s_settleArgs),
             },
-            new(Verb.Type, "type", "Type text into the focused node (text form: the rest of the line, spaces kept; quote it to add args); then settle", "type \"daft punk\" settle=false")
+            new(Verb.Type, "type", "Type text into the focused node, or into the node key= names (pressed first, as a user puts the caret in a box: refused unless actionable, force=true skips); text form: the rest of the line, spaces kept; quote it to add args; then settle", "type key=settings:search crossfade")
             {
-                Positional = ["text"], NeedsMount = true, Acts = true, Args = Join([Arg("text", ArgType.String, "the characters to type")], s_settleArgs),
+                Positional = ["text"], NeedsMount = true, Acts = true, Args = Join([Arg("text", ArgType.String, "the characters to type")], s_aimArgs, s_settleArgs),
             },
             new(Verb.Scroll, "scroll", "Turn the wheel dy notches at a node (refused unless actionable; force=true skips) or a point; settle waits for the scroller to stop", "scroll key=zune-home-scroll: dy=10")
             {
@@ -569,12 +569,14 @@ public static partial class Diagnostics
                              Arg("id", ArgType.String, "the dial: its registry id (playback.crossfade) or its old row id (crossfade), any case"),
                              Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none (naming an action presses it)")], s_settleArgs),
             },
-            new(Verb.Settings, "settings", "Ask the settings search: q= ranks the dials and feature pointers for a query (id, score, matched fields, title, place; close matches; the bytes the query allocated; the no-match lines), focus= opens a dial or category through the deep-link door as a link does; no args reports the index and every dial whose terms are missing", "settings q=crosfade")
+            new(Verb.Settings, "settings", "Ask the settings search: q= ranks the dials and feature pointers for a query (id, score, matched fields, title, place; close matches; the bytes the query allocated; the no-match lines), focus= opens a dial or category through the deep-link door as a link does; model= prints what the registry page is handed (categories, arrival, home, a category body, with q= the box results); press= runs the box keys; no args reports the index and every dial whose terms are missing", "settings q=crosfade")
             {
                 Positional = ["q"],
-                Args = Join([Arg("q", ArgType.String, "the query, as typed into a settings box"),
+                Args = Join([Arg("q", ArgType.String, "the query, as typed into a settings box (with model=: written to the page box's cell and ranked as a keystroke)"),
                              Arg("focus", ArgType.String, "a settings link: category, category/dialId, dialId, or any old slug or row id (wavee://open?route=settings&arg=...); or a feature pointer's id (pointer.downloads)"),
-                             IntArg("limit", "results to list", "8", 1, 30)], s_settleArgs),
+                             IntArg("limit", "results to list", "8", 1, 30),
+                             Arg("model", ArgType.String, "the registry page's model (contract 1.116): the category list, the open category and arrival, the home's facts, this category's body (a slug; empty: the open one), with q= the box's results"),
+                             Arg("press", ArgType.Enum, "the page box's key handler: down|up move the highlight through the results, enter opens the highlighted dial, esc clears then leaves", null, "down|up|enter|esc")], s_settleArgs),
             },
             new(Verb.Hint, "hint", "The in-app hints (settings rework phase 3): list every hint with its budget and verdict, force one's trigger true for one mount (show), forget every hint's budget and the use facts (reset), or read and load the persisted blob (state)", "hint show id=ai-lyrics")
             {
@@ -1145,7 +1147,8 @@ public static partial class Diagnostics
             if (verb == Verb.None) { error = "unknown command '" + name + "' (try help)"; return false; }
             ReadOnlySpan<char> rest = sp < 0 ? default : line[(sp + 1)..].Trim();
             var args = new Args();
-            if (verb == Verb.Type && !rest.IsEmpty && rest[0] != '"' && !rest.StartsWith("text=", StringComparison.Ordinal))
+            if (verb == Verb.Type && !rest.IsEmpty && rest[0] != '"' && !rest.StartsWith("text=", StringComparison.Ordinal)
+                && !rest.StartsWith("key=", StringComparison.Ordinal))
             {
                 args.Set("text", new Value(ValueKind.String, rest.ToString()));
                 cmd = new Command(verb, name, args);
