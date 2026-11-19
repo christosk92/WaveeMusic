@@ -45,6 +45,16 @@ versions separately under `v*` and is not tracked in this file.)
   setting is. The palette's Theme and Crossfade toggles are gone: both settings come up this way, so a setting is
   changed in one place.
 
+- **A new Settings page in Zune.** Settings opens on "your setup": the theme, sound, notifications, storage, lyrics and
+  account at a glance, each one a step into its setting, with what you changed lately under it. The list beside it has
+  the home and nine sections (appearance, sound, playback, lyrics & now playing, notifications, startup & system,
+  storage, account & privacy, help & about). A "find a setting" field above the list finds settings by the words
+  people use and despite a typo, the letters you typed lit in the accent; a result opens the setting where it lives,
+  and the setting's name lights up and fades back. Settings whose effect is easier seen than read carry a "see it"
+  word that opens a short clip under the row, and settings that also live elsewhere say where. On a narrow window the
+  page is a list of the sections with a line on each, and a section opens as its own page. The big "settings" title
+  keeps its size at every width.
+
 ### Changed
 
 - **Playlists open at once.** A playlist you have opened before shows its saved copy the moment you click, Mixes
