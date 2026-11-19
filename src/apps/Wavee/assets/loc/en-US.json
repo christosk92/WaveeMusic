@@ -2217,6 +2217,28 @@
         "sidebar.menu": "from the sidebar"
       }
     },
+    "alsoIn": {
+      "$comment": "The places outside Settings that draw the same dial (Screens/SettingsPageModel.cs, design 5.1): a category row's 'Also in' line. place.<surface> is keyed by the SettingsSurfaces name.",
+      "line": "Also in: {places}",
+      "separator": " · ",
+      "place": {
+        "stage.options": "Full screen › Options",
+        "stage.gallery": "Full screen › Layouts",
+        "queue.panel": "Queue",
+        "playerBar": "Player bar",
+        "devicePicker": "Devices",
+        "miniPlayer.options": "Mini player › Options",
+        "liked.cover": "Liked Songs › Cover style",
+        "trackList.menu": "Track lists › Columns",
+        "nowPlaying.picker": "Now playing › Style",
+        "whatsNew.dialog": "What's new",
+        "crash.prompt": "Crash report prompt",
+        "logs.menu": "Logs",
+        "tray.menu": "Notification area menu",
+        "video.menu": "Video menu",
+        "sidebar.menu": "Sidebar menu"
+      }
+    },
     "explain": {
       "$comment": "One caption per dial on the badge list (Screens/SettingsExplain.cs, design 6.5): what you see or hear change; also the clip's alt text. Keyed by the dial's registry id.",
       "appearance.fastNavigation": "The old page leaves at once and the new one comes in on its own, with no cross-fade between them.",

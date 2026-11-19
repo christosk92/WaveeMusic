@@ -156,6 +156,18 @@ public static class SettingsExplain
         };
     }
 
+    /// <summary>The badge of <paramref name="dial"/> as the registry's page model carries it (contract 1.116, <see cref="SettingsExplainInfo"/>):
+    /// its clip id and caption for every dial on the list under the active theme, the clip's path where it exists for the active theme and app
+    /// mode, and the props to mount (<see cref="PropsFor"/>) only then. Null for a dial with no badge here (no clip id, another theme's).</summary>
+    public static SettingsExplainInfo? InfoFor(SettingsDial dial, string surface = SettingsSurfaces.Settings)
+    {
+        if (dial.Explainer is not { } clip) return null;
+        string theme = ThemePickerFacts.State.Peek().CurrentId;   // as data: the clips' folder (PropsFor reads the same)
+        if (dial.ExplainerThemes is { } themes && !Contains(themes, theme)) return null;
+        string? path = theme.Length == 0 ? null : ClipPath(clip, theme, Tok.Theme == ThemeKind.Light ? "light" : "dark");
+        return new SettingsExplainInfo(clip, Loc.Get(CaptionKey(dial.Id)), path, path is null ? null : PropsFor(dial, surface));
+    }
+
     static bool Contains(IReadOnlyList<string> list, string value)
     {
         for (int i = 0; i < list.Count; i++)

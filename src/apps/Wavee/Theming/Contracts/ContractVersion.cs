@@ -309,6 +309,14 @@
 // surface in the props; `HintAction`, `HintSurfaces`), `ViewKeys.Explainer` with `ExplainerProps` (a dial's badge and its clip tip) and
 // `ViewKeys.SettingsDials` with `SettingsDialsProps` (a feature panel's dials, written with the panel as their source). Every theme gets the
 // Common stand-ins (`CommonHint`) until it draws its own.
+// 1.116 (settings rework phase 4a: the registry's Settings page, ADDED beside the area members the three pages still draw): `SettingsPageProps`
+// gains `Category`, `Categories` (`SettingsCategoryEntry`: slug, full title, short strip name, subtitle, glyph), `CategoryCell`, `OpenCategory`,
+// `Focus` (`SettingsArrival`: the dial, its sequence, its category and group, the expanders to open, the highlight's duration), `Search`
+// (`SettingsSearchModel`: the query cell, the ranked results with breadcrumbs, matched-letter spans (`SettingsTextSpan`) and parents, the
+// no-match state, the keyboard, the focus tickets, `Box`), `Home` (`SettingsHomeSource`: `SettingsHomeFacts` with `SettingsGlanceTile`s, the
+// suggestions as `HintProps`, `SettingsRecentRow`s) and `Body` (`SettingsBodySource`: `SettingsBody`, `SettingsBodyGroup`, `SettingsBodyRow`
+// with `SettingsExplainInfo`, `SettingsAlsoIn` and `SettingsBodyNote`); `SettingsKeys` (the page's node keys); `ThemePolicies.SettingsPage`
+// (`SettingsPagePolicy.HighlightMs`, from the structure's Rules); `SetupConsent.Labels` (the wizard's crash-consent words are the dial's).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -324,7 +332,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 115;
+    public const int Minor = 116;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

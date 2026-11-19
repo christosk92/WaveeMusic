@@ -4,7 +4,12 @@
 // view the pivot's state and the census as data. The rows themselves are not in the props: a view reads the registry's dials (through the old pages'
 // address, `SettingsDoc.Section`, `SettingsDoc.Row`) and writes through each dial's writer, so a second theme draws the same page from the same source. Every member is read-only (WVTH006); the writable
 // pivot cell travels as a `Func<Signal<T>>`.
+//
+// Contract 1.116 (settings rework phase 4) ADDS the registry's page beside the area members: the open category and its cell, the ten entries,
+// a link's arrival, the search box model, the home and the category bodies (`SettingsPageModel.cs`). The area, tab and grouping members stay
+// until the three theme pages draw the new ones; one major bump then removes them.
 
+using System.Collections.Immutable;
 using FluentGpu.Signals;
 using Wavee.Sdk.Streams;
 
@@ -53,8 +58,41 @@ public sealed record SettingsPageProps
     /// <summary>Close the open section: back to the sections list (Back when the list is the entry below, else the page swapped in place).</summary>
     public Action CloseSection { get; init; } = static () => { };
 
-    /// <summary>The Storage census while the Storage tab is visible, else <see cref="SettingsStorageProps.Idle"/>.</summary>
+    /// <summary>The Storage census while the Storage tab (or the registry page's Storage category) is visible, else <see cref="SettingsStorageProps.Idle"/>.</summary>
     public required SettingsStorageProps Storage { get; init; }
+
+    // ── the registry's page (contract 1.116, settings rework phase 4: `SettingsPageModel.cs` beside this file) ────────────────────────
+    // ADDED beside the area members above, which the three theme pages draw until they switch to these (one major bump removes the area
+    // members, the tab members and the grouping then). A theme on these members reads nothing of the old page.
+
+    /// <summary>The open category: an index into <see cref="Categories"/> (0 = the Settings home). Settings opens on its home unless a link
+    /// names a category or a dial; a link, a door (<see cref="OpenCategory"/>) and a strip (<see cref="CategoryCell"/>) move it.</summary>
+    public int Category { get; init; }
+
+    /// <summary>The ten entries in order: the Settings home, then the nine categories, each with its full title and its short strip name.</summary>
+    public ImmutableArray<SettingsCategoryEntry> Categories { get; init; } = [];
+
+    /// <summary>The category cell (root-lifetime): a strip binds it and switches in place, with no history step.</summary>
+    public Func<Signal<int>> CategoryCell { get; init; } = Settings.CategoryCell;
+
+    /// <summary>Open a category by its slug as a place (a drill-in list, a door): a history step from the home, the entry swapped from another
+    /// category. <c>home</c> opens the Settings home.</summary>
+    public Action<string> OpenCategory { get; init; } = static slug => Settings.OpenCategory(slug);
+
+    /// <summary>The arrival a link asked for (design 4.9): the dial, its <see cref="SettingsArrival.Seq"/>, the expanders to open and the
+    /// highlight's duration; <see cref="SettingsArrival.None"/> when no link named a dial. The page has opened its category already.</summary>
+    public SettingsArrival Focus { get; init; } = SettingsArrival.None;
+
+    /// <summary>The page's search box (design 4.8): its query cell, its ranked results over the model's own buffers, the no-match state, its
+    /// keyboard and its focus. A theme binds its box with <c>Search.Box(frame)</c>; it draws the results while <c>Search.Active</c>.</summary>
+    public SettingsSearchModel Search { get; init; } = SettingsSearchModel.Current;
+
+    /// <summary>The Settings home (design 3.3): the six facts at a glance, the top three suggestions, the five recent changes (<c>Home.Read()</c>).</summary>
+    public SettingsHomeSource Home { get; init; } = SettingsHomeSource.Shared;
+
+    /// <summary>A category's body and a dial's row, composed from the registry (<c>Body.Of(Category)</c>, <c>Body.Row(dial)</c>): a theme draws
+    /// these and never rebuilds a category itself.</summary>
+    public SettingsBodySource Body { get; init; } = SettingsBodySource.Shared;
 }
 
 /// <summary>The Storage tab's census as the host holds it (written off the UI thread, posted back, never read from the disk by a view).</summary>

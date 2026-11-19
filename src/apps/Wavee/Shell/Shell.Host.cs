@@ -938,6 +938,10 @@ public static partial class Shell
     /// Settings.InstallScreens.</summary>
     public static Action<string>? OnSettingsTabRequested;
 
+    /// <summary>Settings was entered from another page with no link (a forward commit to the bare settings route): the registry's page opens on
+    /// its home (settings rework phase 4, owner decision 1). Back and Forward never call it. Set by Settings.InstallScreens.</summary>
+    public static Action? OnSettingsEntered;
+
     // ══ 4. THE NAV VERBS (the SHELL half — the reducer is Shell.cs) ═════════════════════════════════════════════════
 
     /// <summary>Commit a forward navigation and run the SIX side effects 0.2.9's 19-line `Go` carries beside the stack
@@ -963,6 +967,7 @@ public static partial class Shell
     static void Commit(in Route route, NavOrigin? origin, NavTransitionKind motion)
     {
         var normalized = Redirected(route) with { Tab = Tabs.ActiveId };
+        RouteKind before = s_nav.Current.Kind;
         if (!Go(ref s_nav, normalized)) return;
 
         ArmForward(normalized);                   // the connected flight (Shell.Connected.cs): the card's cover into the page's hero, before the route
@@ -970,6 +975,7 @@ public static partial class Shell
         Origins.Write(normalized, origin);        // every Go writes; null OVERWRITES — latest arrival wins
         Current.Value = normalized;
         RouteCommitted();
+        if (normalized.Kind == RouteKind.Settings && before != RouteKind.Settings && normalized.Arg.IsEmpty) OnSettingsEntered?.Invoke();
         CanBack.Value = s_nav.CanBack;
         CanForward.Value = false;
         History.Store.Add(normalized);            // the navigation log

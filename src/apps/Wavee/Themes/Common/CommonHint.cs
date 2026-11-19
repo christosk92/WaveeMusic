@@ -54,7 +54,7 @@ internal static class CommonHint
 
     /// <summary>The badge stand-in: nothing without a clip; the caption with one.</summary>
     public static Element Explainer(ExplainerProps p, in ViewContext ctx)
-        => p.ClipPath is null ? s_nothing : new BoxEl { Key = "explain:" + p.DialId, MinWidth = 0f, Children = [Ui.Caption(p.Caption) with { Shrink = 1f, MinWidth = 0f }] };
+        => p.ClipPath is null ? s_nothing : new BoxEl { Key = SettingsKeys.Explain(p.DialId), MinWidth = 0f, Children = [Ui.Caption(p.Caption) with { Shrink = 1f, MinWidth = 0f }] };
 
     /// <summary>The in-context dials stand-in: each dial's title over its current value.</summary>
     public static Element SettingsDials(SettingsDialsProps p, in ViewContext ctx)

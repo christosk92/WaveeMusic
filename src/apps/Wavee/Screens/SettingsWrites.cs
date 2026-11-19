@@ -19,6 +19,11 @@ public static class SettingsWrites
 {
     static string? s_from;
     static int s_quiet;
+    static readonly FluentGpu.Signals.Signal<int> s_epoch = new(0);
+
+    /// <summary>Moves on every recorded write (an int set: nothing allocates): what the Settings home's Recently changed re-reads on
+    /// (<c>SettingsHomeSource.Read</c>). Only a view that shows the ring reads it.</summary>
+    public static FluentGpu.Signals.IReadSignal<int> Epoch => s_epoch;
 
     /// <summary>The source of the writes inside the scope (UI thread). Nested scopes restore the outer source.</summary>
     public static Scope From(string surface)
@@ -45,6 +50,7 @@ public static class SettingsWrites
         {
             HintState.RecordWrite(dial, Source, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             Hints.OnDialWritten(dial);
+            s_epoch.Value = s_epoch.Peek() + 1;
         }
         return reread;
     }

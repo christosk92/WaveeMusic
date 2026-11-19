@@ -37,6 +37,7 @@
 using System.Numerics;
 using FluentGpu.Localization;
 using Wavee.Theming;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -223,6 +224,72 @@ public static class SettingsSearch
             destination[w++] = SidebarSearch.Fold(c);
         }
         return w;
+    }
+
+    /// <summary>The runs of <paramref name="title"/> the query's words match, for a result's highlight (Zune's accent letters, design 7.3):
+    /// a title word a query word is the start of marks the letters typed; one the query word equals by stem or reaches by a typo (the
+    /// search's own bounds: 1 edit for 4-7 letters, 2 for 8+) marks the whole word. Title words are read as <see cref="Fold"/> reads them
+    /// ("hi-res" is one word), and a span covers the title's own characters (a dropped hyphen inside it included). In title order, one span
+    /// per word at most, at most <paramref name="spans"/>.Length; the count. Stack buffers only: no allocation.</summary>
+    public static int TitleSpans(ReadOnlySpan<char> query, ReadOnlySpan<char> title, Span<SettingsTextSpan> spans)
+    {
+        if (spans.IsEmpty || title.IsEmpty) return 0;
+        Span<char> q = stackalloc char[MaxQuery];
+        int length = Fold(query.Length > MaxQuery ? query[..MaxQuery] : query, q);
+        Span<int> starts = stackalloc int[MaxTerms];
+        Span<int> lengths = stackalloc int[MaxTerms];
+        int n = Words(q[..length], starts, lengths);
+        if (n == 0) return 0;
+        Lang lang = LangOf(Loc.CurrentCulture);
+        Span<char> word = stackalloc char[MaxWord];
+        Span<int> at = stackalloc int[MaxWord];       // folded letter k of the word came from title[at[k]]
+        Span<char> stemWord = stackalloc char[MaxWord];
+        Span<char> stemTerm = stackalloc char[MaxQuery];
+        int count = 0, i = 0;
+        while (i < title.Length && count < spans.Length)
+        {
+            int len = 0;
+            bool tooLong = false;
+            for (; i < title.Length; i++)
+            {
+                char c = title[i];
+                if (c is '-' or '\'' or '’' or '­') continue;   // dropped inside a word, as Fold drops it
+                bool letter = char.IsLetterOrDigit(c)
+                    || (c == '.' && i > 0 && i + 1 < title.Length && char.IsAsciiDigit(title[i - 1]) && char.IsAsciiDigit(title[i + 1]));
+                if (!letter)
+                {
+                    if (len > 0 || tooLong) break;
+                    continue;
+                }
+                if (len == MaxWord) { tooLong = true; continue; }
+                at[len] = i;
+                word[len++] = SidebarSearch.Fold(c);
+            }
+            if (len == 0 || tooLong) continue;
+            ReadOnlySpan<char> w = word[..len];
+            int best = 0;   // letters of the word the best term covers (len = the whole word)
+            for (int t = 0; t < n && best < len; t++)
+            {
+                ReadOnlySpan<char> term = q.Slice(starts[t], lengths[t]);
+                if (term.Length <= len && w.StartsWith(term) && (term.Length >= 2 || term.Length == len))
+                {
+                    best = Math.Max(best, term.Length);
+                    continue;
+                }
+                if (term.Length >= 4 && term.Length <= stemTerm.Length
+                    && Stem(lang, w, stemWord) is var sw && Stem(lang, term, stemTerm) is var st
+                    && stemWord[..sw].SequenceEqual(stemTerm[..st]))
+                {
+                    best = len;
+                    continue;
+                }
+                int edits = term.Length >= 8 ? 2 : term.Length >= 4 ? 1 : 0;
+                if (edits > 0 && Distance(term, w, edits) <= edits) best = len;
+            }
+            if (best == 0) continue;
+            spans[count++] = new SettingsTextSpan(at[0], at[best - 1] + 1 - at[0]);
+        }
+        return count;
     }
 
     /// <summary>The words of a folded text: their starts and lengths (at most <paramref name="starts"/>.Length).</summary>

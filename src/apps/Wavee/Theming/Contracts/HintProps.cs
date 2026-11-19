@@ -107,7 +107,7 @@ public sealed record HintProps
 /// mounts it only for a dial whose clip exists for the active theme and app mode (a badge shows only where its clip exists).</summary>
 public sealed record ExplainerProps
 {
-    /// <summary>The dial it explains (a registry id); a template keys its badge <c>explain:&lt;dialId&gt;</c>.</summary>
+    /// <summary>The dial it explains (a registry id); a template keys its badge <see cref="SettingsKeys.Explain"/> (<c>settings:explain:&lt;dialId&gt;</c>).</summary>
     public required string DialId { get; init; }
 
     /// <summary>The caption (resolved <c>settings.explain.&lt;dialId&gt;</c>), also the clip's alt text.</summary>
