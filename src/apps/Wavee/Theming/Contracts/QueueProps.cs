@@ -118,6 +118,13 @@ public interface IQueueVerbs
     /// <summary>Set autoplay (a switch that states the value it wants).</summary>
     void SetAutoplay(bool on);
 
+    /// <summary>Flip crossfade (the "between songs" pair beside Autoplay, design 5.4): the Settings dial's own writer, recorded as written from the
+    /// queue. Appended (contract 1.117).</summary>
+    void ToggleCrossfade();
+
+    /// <summary>Set crossfade (a switch that states the value it wants). Appended (contract 1.117).</summary>
+    void SetCrossfade(bool on);
+
     /// <summary>One more page of <paramref name="section"/> on this surface.</summary>
     void ShowMore(QueueSection section);
 
@@ -228,6 +235,18 @@ public sealed record QueuePanelProps
 
     /// <summary>Opens where the now-playing row plays from (the context's page, else the track's album); null when there is nowhere to go.</summary>
     public Action? OpenNowPlaying { get; init; }
+
+    /// <summary>Crossfade is on: the switch beside Autoplay (the "between songs" pair, design 5.4), written through
+    /// <see cref="IQueueVerbs.SetCrossfade"/> / <see cref="IQueueVerbs.ToggleCrossfade"/>. Appended (contract 1.117).</summary>
+    public bool Crossfade { get; init; }
+
+    /// <summary>The crossfade's length in words ("6 s"), shown at rest beside the switch as a link to the duration in Settings; "" for none.
+    /// Appended (contract 1.117).</summary>
+    public string CrossfadeLength { get; init; } = "";
+
+    /// <summary>Opens Settings at the crossfade's duration (the duration stays a Settings dial: the panel draws no slider); null for no link.
+    /// Appended (contract 1.117).</summary>
+    public Action? OpenCrossfadeLength { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.QueueStagePane"/>: the fullscreen stage's Up next column (the stage's accent, scale and width

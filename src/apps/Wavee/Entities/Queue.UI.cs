@@ -373,6 +373,12 @@ public static partial class Queue
             return Playback.Snap().Cursor.Index;
         };
         static readonly Func<bool> s_autoplay = static () => { _ = Platform.SettingsChanged.Value; return Shell.QueueModel.AutoplayEnabled(); };
+        /// <summary>The rail's crossfade pair (the switch and its length in words), a value the memo compares.</summary>
+        protected static readonly Func<(bool On, string Length)> s_crossfade = static () =>
+        {
+            _ = Platform.SettingsChanged.Value;
+            return (Shell.QueueVerbs.CrossfadeEnabled(), Shell.QueueVerbs.CrossfadeLength());
+        };
         static readonly Func<bool> s_autoplayListed = static () => { _ = Platform.SettingsChanged.Value; return Shell.QueueModel.AutoplayListed(Shell.QueueModel.AutoplayEnabled(), Playback.Repeat.Value); };
         static readonly Func<string?> s_contextName = static () =>
         {
@@ -588,6 +594,8 @@ public static partial class Queue
         public override Element Render()
         {
             Prologue(rail: true);
+            // The crossfade switch and its length through a value memo: the panel re-renders when either changes, not on every settings write.
+            var crossfade = UseComputed(s_crossfade).Value;
             UseEffect(() => Pages.Reset(), DepKey.From(ContextId.GetHashCode()));
             var counts = Model.Counts;
             BuildSlots(QueueSlots.Realized(counts.Queue, Pages.Of(QueueSection.Queue).Value, PageSize),
@@ -618,6 +626,9 @@ public static partial class Queue
                 RepeatTrack = Model.Repeat == RepeatMode.Track,
                 OpenPlayingFrom = openPlayingFrom,
                 OpenNowPlaying = openNowPlaying,
+                Crossfade = crossfade.On,
+                CrossfadeLength = crossfade.Length,
+                OpenCrossfadeLength = Shell.QueueVerbs.OpenCrossfadeLength,
             });
         }
 

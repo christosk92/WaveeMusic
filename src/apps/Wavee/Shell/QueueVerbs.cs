@@ -127,9 +127,32 @@ public static partial class Shell
             if (!QueueModel.IsViewer() && Queue.MoveInSection(section, from, to, Playback.Snap().Cursor)) Changed();
         }
 
+        // The "between songs" pair (design 5.4): the panel's two switches are the Settings dials themselves, written through their ONE writer
+        // with the queue as the source, so a flip here shows in Settings live and in Recently changed as "from the queue".
+
         public void ToggleAutoplay() => SetAutoplay(!QueueModel.AutoplayEnabled());
 
-        public void SetAutoplay(bool on) => Platform.Settings.Set(Platform.Keys.AutoplayEnabled, on);
+        public void SetAutoplay(bool on) => SettingsSpec.Dial(AutoplayDial).WriteToggle(on, SettingsSurfaces.QueuePanel);
+
+        public void ToggleCrossfade() => SetCrossfade(!CrossfadeEnabled());
+
+        public void SetCrossfade(bool on) => SettingsSpec.Dial(CrossfadeDial).WriteToggle(on, SettingsSurfaces.QueuePanel);
+
+        /// <summary>The registry ids of the pair, and of the duration the panel links to.</summary>
+        public const string AutoplayDial = "playback.autoplay", CrossfadeDial = "playback.crossfade", CrossfadeLengthDial = "playback.crossfade.duration";
+
+        /// <summary>Crossfade is on (the stored switch, the dial's own value).</summary>
+        public static bool CrossfadeEnabled() => SettingsSpec.Dial(CrossfadeDial).Current is true;
+
+        /// <summary>The crossfade's length in words ("6 s"), from the duration dial's value.</summary>
+        public static string CrossfadeLength()
+        {
+            float seconds = SettingsSpec.Dial(CrossfadeLengthDial).Current is float s ? s : 0f;
+            return Strings.Player.CrossfadeLength(seconds.ToString("0.#", System.Globalization.CultureInfo.CurrentCulture));
+        }
+
+        /// <summary>Settings at the crossfade's duration (the deep link: the expander opens and the row is highlighted).</summary>
+        public static readonly Action OpenCrossfadeLength = static () => InContextDoors.OpenSettings(CrossfadeLengthDial);
 
         public void ShowMore(QueueSection section) => pages.ShowMore(section);
 
