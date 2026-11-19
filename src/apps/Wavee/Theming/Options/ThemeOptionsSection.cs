@@ -290,7 +290,7 @@ public static class ThemeOptionsSection
             {
                 return Generated(lo, option, Make(lo, SettingsRowKind.Toggle, option,
                     SettingsWriter.OfToggle(Verb(theme, lo), on => ApplyChoice(theme, lo, on ? 1 : 0)),
-                    s => option.ChoiceIndexOf(option.Read(s, name, fallback)) == 1),
+                    s => option.ChoiceIndexOf(option.Read(s, name, fallback)) == 1, choices: titles),
                     current: Shape(option, live, twoWay), live: liveNow, choices: titles, picker: picker);
             }
             SettingsRowKind kind = picker switch
@@ -301,7 +301,7 @@ public static class ThemeOptionsSection
             };
             return Generated(lo, option, Make(lo, kind, option,
                 SettingsWriter.OfChoice(Verb(theme, lo), i => ApplyChoice(theme, lo, i)),
-                s => option.ChoiceIndexOf(option.Read(s, name, fallback))),
+                s => option.ChoiceIndexOf(option.Read(s, name, fallback)), choices: titles),
                 current: Shape(option, live, twoWay), live: liveNow, choices: titles, picker: picker);
         }
         return null;   // a kind this build cannot draw (a later contract bump adds it with its control)
@@ -357,10 +357,11 @@ public static class ThemeOptionsSection
     private static readonly Func<IAppSettings, object?> NoValue = static _ => null;
 
     private static SettingsDial Make(LayerOption lo, SettingsRowKind kind, ThemeOption option, SettingsWriter writer,
-        Func<IAppSettings, object?> value, bool enabled = true, SettingsConfirm? confirm = null)
+        Func<IAppSettings, object?> value, bool enabled = true, SettingsConfirm? confirm = null, IReadOnlyList<string>? choices = null)
         => new()
         {
             Id = SettingsSpec.ThemeOptionPrefix + lo.QualifiedId, LegacyIds = [lo.QualifiedId], Kind = kind, TitleKey = option.TitleKey,
+            ChoiceKeys = choices ?? Array.Empty<string>(),
             Tier = option.Visibility == OptionVisibility.Developer ? SettingsTier.Developer : SettingsTier.Common,
             Caption = option.DescriptionKey is { } caption ? _ => caption : static _ => null,
             Value = value, Writer = writer,

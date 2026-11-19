@@ -37,7 +37,7 @@ public static partial class SettingsSpec
             // Spotify Connect's private session (no play history, the flag on the wire): playback reads it; this is its writer.
             Make("account.privateSession", K.Toggle, Strings.Profile.PrivateSession,
                 SettingsWriter.OfToggle("session.private", SettingsVerbs.SetPrivateSession), glyph: "RevealPassword",
-                captionKey: Strings.Settings.Account.PrivateSessionSub, value: BoolOf(Platform.Keys.PrivateSession))),
+                captionKey: Strings.Settings.Account.PrivateSessionSub, value: BoolOf(Platform.Keys.PrivateSession), aliases: ["incognito"])),
 
         Group("privacy", Strings.Settings.Groups.Account.Privacy, PvFacts.Subtitle,
             // The collapsed answer is "No telemetry"; inside, the five places anything leaves this PC and why: facts, no control.
@@ -49,7 +49,8 @@ public static partial class SettingsSpec
             // `CrashModeEnablement` / `CrashModeCaptionKey`: Automatic alone is disabled (no service in this build), with its reason.
             Make("account.privacy.crashReports", K.Segmented, PvFacts.CrashReports,
                 SettingsWriter.OfChoice("crash.mode", SettingsVerbs.SetCrashMode), legacy: ["crashReports"], glyph: "StatusWarning",
-                captionKey: PvFacts.CrashReportsSub, value: IntOf(Platform.Keys.CrashReporting), contexts: [SettingsSurfaces.CrashPrompt]),
+                captionKey: PvFacts.CrashReportsSub, value: IntOf(Platform.Keys.CrashReporting), contexts: [SettingsSurfaces.CrashPrompt],
+                choices: [PvFacts.ModeOff, PvFacts.ModeAsk, PvFacts.ModeAuto]),
             // The memory-snapshot switch is live only while reporting is on (greyed, no reason of its own).
             Make("account.privacy.crashDump", K.Toggle, PvFacts.IncludeDump,
                 SettingsWriter.OfToggle("crash.includeDump", WriteBool(Platform.Keys.CrashIncludeDump)), legacy: ["crashDump"],

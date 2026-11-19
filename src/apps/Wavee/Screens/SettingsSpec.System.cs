@@ -17,7 +17,7 @@ public static partial class SettingsSpec
         Group("startup", Strings.Settings.Groups.System.Startup, null,
             Make("system.startOnLogin", K.Toggle, Strings.Settings.General.StartOnLogin,
                 SettingsWriter.OfToggle("tray.startOnLogin", SettingsVerbs.SetStartOnLogin), legacy: ["startOnLogin"], glyph: "Contact",
-                captionKey: Strings.Settings.General.StartOnLoginSub, value: BoolOf(Platform.Keys.StartOnLogin)),
+                captionKey: Strings.Settings.General.StartOnLoginSub, value: BoolOf(Platform.Keys.StartOnLogin), aliases: ["autostart"]),
             Make("system.startHidden", K.Toggle, Strings.Settings.General.Tray.StartHidden,
                 SettingsWriter.OfToggle("tray.startHidden", on => SettingsVerbs.SetTrayFlag(Platform.Keys.TrayStartHidden, on)),
                 legacy: ["startHidden"], glyph: "RevealPassword",
@@ -31,23 +31,25 @@ public static partial class SettingsSpec
             Make("system.tray.icon", K.Choice, Strings.Settings.General.Tray.IconMode,
                 SettingsWriter.OfChoice("tray.iconMode", SettingsVerbs.SetTrayIconMode), legacy: ["trayIcon"], glyph: "Pin",
                 caption: f => f.TrayMode == Tray.IconMode.Never ? Strings.Settings.General.Tray.IconNeverSub : Strings.Settings.General.Tray.IconModeSub,
-                value: s => (int)Tray.ModeFrom(s.Get(Platform.Keys.TrayIconMode)), contexts: [SettingsSurfaces.TrayMenu]),
+                value: s => (int)Tray.ModeFrom(s.Get(Platform.Keys.TrayIconMode)), contexts: [SettingsSurfaces.TrayMenu], aliases: ["tray"],
+                choices: [Strings.Settings.General.Tray.IconAlways, Strings.Settings.General.Tray.IconWhileHidden, Strings.Settings.General.Tray.IconNever]),
             Make("system.tray.closeToTray", K.Toggle, Strings.Settings.General.Tray.CloseToTray,
                 SettingsWriter.OfToggle("tray.closeToTray", on => SettingsVerbs.SetTrayFlag(Platform.Keys.TrayCloseToTray, on)),
                 legacy: ["closeToTray"], glyph: "ChromeClose",
                 captionKey: Strings.Settings.General.Tray.CloseToTraySub, value: BoolOf(Platform.Keys.TrayCloseToTray),
-                enabled: HideAllowed),
+                enabled: HideAllowed, aliases: ["tray"]),
             Make("system.tray.minimizeToTray", K.Toggle, Strings.Settings.General.Tray.MinimizeToTray,
                 SettingsWriter.OfToggle("tray.minimizeToTray", on => SettingsVerbs.SetTrayFlag(Platform.Keys.TrayMinimizeToTray, on)),
                 legacy: ["minimizeToTray"], glyph: "ChromeMinimize",
                 captionKey: Strings.Settings.General.Tray.MinimizeToTraySub, value: BoolOf(Platform.Keys.TrayMinimizeToTray),
-                enabled: HideAllowed)),
+                enabled: HideAllowed, aliases: ["tray"])),
 
         Group("language", Strings.Settings.Groups.System.Language, Strings.Settings.Language.Subtitle,
             Make("system.language", K.Choice, Strings.Settings.Language.Label,
                 SettingsWriter.OfChoice("language.set", SettingsVerbs.SetLanguage), legacy: ["language"], glyph: "LocaleLanguage",
                 captionKey: Strings.Settings.Language.RestartSub,
-                value: s => Settings.Language.IndexOf(s.Get(Platform.Keys.UiCulture)))),
+                value: s => Settings.Language.IndexOf(s.Get(Platform.Keys.UiCulture)),
+                choices: [Strings.Settings.Language.System, Strings.Settings.Language.EnglishUs, Strings.Settings.Language.Dutch, Strings.Settings.Language.Korean])),
 
         Group("links", Strings.Settings.Groups.System.Links, Strings.Settings.Links.Subtitle,
             // A packaged build's manifest owns its protocols, so the dial says Windows manages it.
@@ -61,7 +63,8 @@ public static partial class SettingsSpec
             Make("system.gpu", K.Choice, Strings.Settings.Gpu.Label,
                 SettingsWriter.OfChoice("gpu.pick", SettingsVerbs.PickGpu), legacy: ["preferredGpu"], glyph: "Device",
                 captionKey: Strings.Settings.Gpu.RestartSub,
-                value: s => SettingsFacts.GpuIndexOf(SettingsFacts.Gpus, s.Get(Platform.Keys.PreferredGpuLuid), s.Get(Platform.Keys.PreferredGpuName)))),
+                value: s => SettingsFacts.GpuIndexOf(SettingsFacts.Gpus, s.Get(Platform.Keys.PreferredGpuLuid), s.Get(Platform.Keys.PreferredGpuName)),
+                aliases: ["gpu"])),
     ]);
 
     /// <summary>The close/minimize-to-tray dials need an icon: with "Never" they grey and say so.</summary>

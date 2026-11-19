@@ -21,24 +21,27 @@ public static partial class SettingsSpec
             Make("sound.quality", K.Choice, Strings.Settings.Playback.AudioQuality,
                 SettingsWriter.OfChoice("audio.quality", SettingsVerbs.SetAudioQuality), legacy: ["audioQuality"], glyph: "Headphones",
                 captionKey: Strings.Settings.Playback.AudioSub,
-                value: s => Settings.Quality.AudioIndex(s.Get(Platform.Keys.PlaybackQuality), Spotify.Audio.CanDerive)),
+                value: s => Settings.Quality.AudioIndex(s.Get(Platform.Keys.PlaybackQuality), Spotify.Audio.CanDerive),
+                aliases: ["flac", "hires", "hi-res", "kbps", "320"], choices: QualityChoices),
             // The description IS the detector's verdict (a live sentence, `Settings.MeteredStatusLine`): every state says something,
             // "Unknown" included. The view words it; the dial carries no static caption.
             Make("sound.meteredQuality", K.Choice, Strings.Settings.Playback.MeteredQuality,
                 SettingsWriter.OfChoice("audio.meteredCap", SettingsVerbs.SetMeteredQuality), legacy: ["meteredQuality"], glyph: "RadioTower",
-                value: _ => Platform.Network.MeteredQualityCap.Peek())),
+                value: _ => Platform.Network.MeteredQualityCap.Peek(), choices: QualityChoices)),
 
         Group("loudness", Strings.Settings.Groups.Sound.Loudness, null,
             // G-132 / D5: the switch, the mode and album mode all apply LIVE to the playing track.
             Make("sound.normalization", K.Toggle, Strings.Settings.Playback.Normalization,
                 SettingsWriter.OfToggle("audio.normalization", on => SettingsVerbs.SetNormalizationToggle(Platform.Keys.NormalizationEnabled, on)),
                 legacy: ["normalization"], glyph: "Equalizer",
-                captionKey: Strings.Settings.Playback.NormalizationSub, value: BoolOf(Platform.Keys.NormalizationEnabled)),
+                captionKey: Strings.Settings.Playback.NormalizationSub, value: BoolOf(Platform.Keys.NormalizationEnabled),
+                aliases: ["replaygain", "lufs"]),
             Make("sound.normalization.mode", K.Choice, Strings.Settings.Playback.NormalizationMode,
                 SettingsWriter.OfChoice("audio.normalizationMode", SettingsVerbs.SetNormalizationMode),
                 legacy: ["normalizationMode"], parent: "sound.normalization", glyph: "Speakers",
                 captionKey: Strings.Settings.Playback.NormalizationModeSub,
-                value: s => Math.Clamp(s.Get(Platform.Keys.NormalizationMode), 0, 2)),
+                value: s => Math.Clamp(s.Get(Platform.Keys.NormalizationMode), 0, 2),
+                choices: [Strings.Settings.Playback.NormQuiet, Strings.Settings.Playback.NormNormal, Strings.Settings.Playback.NormLoud]),
             Make("sound.normalization.album", K.Toggle, Strings.Settings.Playback.NormalizationAlbum,
                 SettingsWriter.OfToggle("audio.normalizationAlbum", on => SettingsVerbs.SetNormalizationToggle(Platform.Keys.NormalizationAlbum, on)),
                 legacy: ["normalizationAlbum"], parent: "sound.normalization", glyph: "Album",
@@ -51,11 +54,13 @@ public static partial class SettingsSpec
             // The expander's header switch; the items below grey with it, and say nothing more about why.
             Make("sound.equalizer", K.Toggle, Strings.Settings.Sound.Equalizer,
                 SettingsWriter.OfToggle("eq.enabled", SettingsVerbs.SetEqualizerEnabled), legacy: ["equalizer"], glyph: "Equalizer",
-                captionKey: Strings.Settings.Sound.EqualizerSub, value: BoolOf(Platform.Keys.EqualizerEnabled)),
+                captionKey: Strings.Settings.Sound.EqualizerSub, value: BoolOf(Platform.Keys.EqualizerEnabled), aliases: ["eq", "equaliser"]),
             Make("sound.equalizer.preset", K.Choice, Strings.Settings.Sound.Preset,
                 SettingsWriter.OfChoice("eq.preset", SettingsVerbs.ApplyEqPreset), legacy: ["eqPreset"], parent: "sound.equalizer",
                 value: s => Settings.Eq.PresetIndex(s.Get(Platform.Keys.EqualizerPreset)),
-                enabled: EqOn, silent: true),
+                enabled: EqOn, silent: true,
+                choices: [Strings.Settings.Sound.Presets.Flat, Strings.Settings.Sound.Presets.Bass, Strings.Settings.Sound.Presets.Treble,
+                    Strings.Settings.Sound.Presets.Vocal, Strings.Settings.Sound.Presets.Radio, Strings.Settings.Sound.Presets.Proof]),
             // The curve reports every pointer sample: (band, gain) — the owning verb is `SettingsVerbs.SetEqBand`.
             Make("sound.equalizer.curve", K.Composite, Strings.Settings.Sound.Curve,
                 SettingsWriter.Owned("SettingsVerbs.SetEqBand"), legacy: ["eqCurve"], parent: "sound.equalizer",
@@ -75,6 +80,14 @@ public static partial class SettingsSpec
             Make("sound.connectName", K.Fact, Strings.Settings.Devices.ThisPc, SettingsWriter.ReadOnly, legacy: ["thisPc"],
                 captionKey: Strings.Settings.Devices.ThisPcSub, value: _ => Playback.DeviceName)),
     ]);
+
+    /// <summary>The streaming ladder's rungs (the metered cap offers the same ones); Lossless is offered only with a key deriver, but it is
+    /// always a word the search knows.</summary>
+    static readonly string[] QualityChoices =
+    [
+        Strings.Settings.Playback.QualityNormal, Strings.Settings.Playback.QualityHigh, Strings.Settings.Playback.QualityVeryHigh,
+        Strings.Settings.Playback.QualityLossless,
+    ];
 
     /// <summary>The curve, the preset and the reset follow the equalizer's switch (greyed, no reason of their own).</summary>
     static SettingsEnablement EqOn(ISettingsFacts f) => f.EqualizerEnabled ? SettingsEnablement.On : SettingsEnablement.Off(null);

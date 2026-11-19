@@ -24,7 +24,7 @@ public static partial class SettingsSpec
                 contexts: [SettingsSurfaces.QueuePanel]),
             Make("playback.crossfade", K.Toggle, Strings.Settings.Sound.Crossfade,
                 SettingsWriter.OfToggle("crossfade.enabled", SettingsVerbs.SetCrossfadeEnabled), legacy: ["crossfade"], glyph: "Audio",
-                captionKey: Strings.Settings.Sound.CrossfadeSub, value: BoolOf(Platform.Keys.CrossfadeEnabled)),
+                captionKey: Strings.Settings.Sound.CrossfadeSub, value: BoolOf(Platform.Keys.CrossfadeEnabled), aliases: ["crossfade", "x-fade"]),
             // The slider and the number box commit through ONE verb (seconds; the verb snaps to a millisecond).
             Make("playback.crossfade.duration", K.Slider, Strings.Settings.Sound.CrossfadeDuration,
                 SettingsWriter.OfSlider("crossfade.duration", v => SettingsVerbs.CommitCrossfade(v)),
@@ -45,13 +45,13 @@ public static partial class SettingsSpec
             Make("playback.episodeSpeed", K.Slider, Strings.Player.SpeedMenu,
                 SettingsWriter.OfSlider("playback.episodeSpeed", SettingsVerbs.SetEpisodeSpeed), glyph: "Forward",
                 value: s => Playback.ValidEpisodeSpeed(s.Get(Playback.EpisodeSpeedKey)),
-                contexts: [SettingsSurfaces.PlayerBar, SettingsSurfaces.VideoMenu])),
+                contexts: [SettingsSurfaces.PlayerBar, SettingsSurfaces.VideoMenu], aliases: ["1.5x", "2x"])),
 
         Group("videos", Strings.Settings.Groups.Playback.Videos, null,
             Make("playback.video.quality", K.Choice, Strings.Settings.Playback.VideoQuality,
                 SettingsWriter.OfChoice("video.quality", SettingsVerbs.SetVideoQuality), legacy: ["videoQuality"], glyph: "TvMonitor",
                 captionKey: Strings.Settings.Playback.VideoQualitySub, value: s => Settings.Quality.VideoIndex(s.Get(Platform.Keys.VideoQuality)),
-                contexts: [SettingsSurfaces.VideoMenu]),
+                contexts: [SettingsSurfaces.VideoMenu], aliases: ["1080p", "720p"], choices: [Strings.Settings.Playback.VideoQualityAuto]),
             Make("playback.video.meteredQuality", K.Choice, Strings.Settings.Playback.VideoMeteredQuality,
                 SettingsWriter.OfChoice("video.meteredCap", SettingsVerbs.SetMeteredVideo), legacy: ["videoMetered"], glyph: "RadioTower",
                 captionKey: Strings.Settings.Playback.VideoMeteredQualitySub,
@@ -63,7 +63,7 @@ public static partial class SettingsSpec
             // Spotify Canvas (Shell/Canvas.cs), DEFAULT ON as in Spotify: off, no canvas is asked, fetched or shown anywhere.
             Make("playback.canvas", K.Toggle, Strings.Settings.Playback.ShowCanvas,
                 SettingsWriter.OfToggle("playback.canvas", CanvasVideo.SetEnabled), legacy: ["showCanvas"], glyph: "Picture",
-                captionKey: Strings.Settings.Playback.ShowCanvasSub, value: BoolOf(CanvasVideo.ShowKey)),
+                captionKey: Strings.Settings.Playback.ShowCanvasSub, value: BoolOf(CanvasVideo.ShowKey), aliases: ["canvas"]),
             // The full screen's end-of-video countdown (Playback.EndHold.cs), DEFAULT ON: off, a music video's end advances at once, as audio does.
             Make("playback.video.endCountdown", K.Toggle, Strings.Settings.Playback.VideoEndCountdown,
                 SettingsWriter.OfToggle("video.endCountdown", SettingsVerbs.SetVideoEndCountdown), legacy: ["videoEndCountdown"], glyph: "Clock",
@@ -71,7 +71,7 @@ public static partial class SettingsSpec
             // "Clear all" is the ONE confirmed verb (N times, no per-row undo); no roster store → the whole row greys, no control.
             Make("playback.videoOverrides", K.Action, Strings.VideoOverride.SettingsHeader,
                 SettingsWriter.OfAction("video.overrides.clearAll", SettingsVerbs.ClearAllVideoOverrides), legacy: ["videoOverrides"], glyph: "Edit",
-                captionKey: Strings.VideoOverride.SettingsSub,
+                captionKey: Strings.VideoOverride.SettingsSub, aliases: ["mp4"],
                 enabled: f => f.VideoOverridesPresent ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true,
                 confirm: new SettingsConfirm(Strings.VideoOverride.ClearAll, Strings.VideoOverride.ClearAllBody, Strings.VideoOverride.ClearAll)),
             // The manager flyout's per-item verbs (replace · locate · show in Explorer · remove) are `SettingsVerbs` members.

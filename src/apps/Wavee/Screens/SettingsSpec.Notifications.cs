@@ -21,7 +21,8 @@ public static partial class SettingsSpec
             string id = TopicDialId(topic);
             topics.Add(Make(id, K.Segmented, TopicTitleKey(topic),
                 SettingsWriter.OfChoice("notify.topicLevel", i => SettingsVerbs.SetTopicLevel(captured, i)),
-                legacy: ["topic:" + topic], captionKey: TopicCaptionKey(topic), value: _ => (int)Notify.Prefs.Level(captured)));
+                legacy: ["topic:" + topic], captionKey: TopicCaptionKey(topic), value: _ => (int)Notify.Prefs.Level(captured),
+                choices: TopicLevelChoices));
             // Developer surface: the dial stays where it is; the chevron reveals "Send a test event" (enabled at every level, Off
             // included: "nothing happens, as configured" is otherwise unverifiable).
             topics.Add(Make(id + ".test", K.Action, Strings.Settings.Notify.Send,
@@ -44,7 +45,7 @@ public static partial class SettingsSpec
                     enabled: NeedsWindowsDelivery, silent: true),
                 Make("notifications.quiet", K.Toggle, Strings.Settings.Notify.Quiet,
                     SettingsWriter.OfToggle("notify.quiet", on => SettingsVerbs.SetNotifyToggle(Platform.Keys.NotifyQuietEnabled, on, reconcile: true)),
-                    legacy: ["quiet"], captionKey: Strings.Settings.Notify.QuietSub, value: BoolOf(Platform.Keys.NotifyQuietEnabled),
+                    legacy: ["quiet"], captionKey: Strings.Settings.Notify.QuietSub, value: BoolOf(Platform.Keys.NotifyQuietEnabled), aliases: ["dnd"],
                     enabled: NeedsWindowsDelivery, silent: true),
                 // The From / To pair is composed only while Windows delivery AND quiet hours are on.
                 Make("notifications.quiet.from", K.Choice, Strings.Settings.Notify.QuietFrom,
@@ -58,6 +59,9 @@ public static partial class SettingsSpec
             new SettingsGroup("topics", Strings.Settings.Groups.Notifications.Topics, null, topics.ToArray()),
         ]);
     }
+
+    /// <summary>Every topic ladder's three levels.</summary>
+    static readonly string[] TopicLevelChoices = [Strings.Settings.Notify.LevelOff, Strings.Settings.Notify.LevelInApp, Strings.Settings.Notify.LevelWindows];
 
     static SettingsEnablement NeedsWindowsDelivery(ISettingsFacts f)
         => f.WindowsNotifications ? SettingsEnablement.On : SettingsEnablement.Off(null);

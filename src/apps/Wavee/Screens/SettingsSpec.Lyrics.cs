@@ -30,7 +30,8 @@ public static partial class SettingsSpec
             // On-device AI lyrics (AiLyrics.UI.Settings.cs): the card is the AI module's own state machine; its switches are dials
             // here, its per-language and per-file verbs stay the module's.
             Make("lyrics.ai", K.Toggle, Strings.Settings.Lyrics.Ai.Title,
-                SettingsWriter.OfToggle("ai.enabled", SettingsVerbs.SetAiLyricsEnabled), legacy: ["aiLyrics"], glyph: "RefineSparkle"),
+                SettingsWriter.OfToggle("ai.enabled", SettingsVerbs.SetAiLyricsEnabled), legacy: ["aiLyrics"], glyph: "RefineSparkle",
+                aliases: ["ai", "npu"]),
             Make("lyrics.ai.wordSync", K.Toggle, Strings.Settings.Lyrics.Ai.WordSync,
                 SettingsWriter.OfToggle("ai.wordSync", on => SettingsVerbs.SetAiPref(Platform.Keys.AiLyricsWordSync, on)),
                 legacy: ["aiWordSync"], parent: "lyrics.ai", glyph: "Font",
@@ -53,7 +54,7 @@ public static partial class SettingsSpec
             Make("lyrics.playerStyle", K.Choice, Strings.Settings.Appearance.NpvStyle,
                 SettingsWriter.OfChoice("npv.style", SettingsVerbs.SetNpvStyle), legacy: ["npvStyle"], glyph: "Settings",
                 captionKey: Strings.Settings.Appearance.NpvStyleSub, value: _ => Rail.PlayerPrefs.Style(),
-                contexts: [SettingsSurfaces.NowPlayingPicker]),
+                contexts: [SettingsSurfaces.NowPlayingPicker], choices: Array.ConvertAll(Rail.PlayerCatalog.Styles, static s => s.NameKey)),
             // The style's finish (Vinyl, Pocket): the style picker's swatches, composed only for a style that has one.
             Make("lyrics.playerStyle.finish", K.Choice, Strings.Settings.NowPlaying.Finish,
                 SettingsWriter.OfChoice("npv.finish", SettingsVerbs.SetNpvFinish), parent: "lyrics.playerStyle", glyph: "Brush",
@@ -65,11 +66,12 @@ public static partial class SettingsSpec
             Make("lyrics.stage.visualizer", K.Choice, Strings.Stage.Settings.Visualizer,
                 SettingsWriter.OfChoice("stage.visualizer", SettingsVerbs.SetStageVisualizer), legacy: ["stageVisualizer"], glyph: "Equalizer",
                 captionKey: Strings.Stage.Settings.VisualizerSub, value: _ => Settings.VisualizerIndex(),
-                contexts: [SettingsSurfaces.StageOptions]),
+                contexts: [SettingsSurfaces.StageOptions], aliases: ["visualiser"], choices: VisualizerChoices()),
             Make("lyrics.stage.layout", K.Choice, Strings.Stage.Settings.Layout,
                 SettingsWriter.OfChoice("stage.layout", SettingsVerbs.SetStageLayout), legacy: ["stageLayout"], glyph: "SplitView",
                 captionKey: Strings.Stage.Settings.LayoutSub, value: _ => Prefs.Stage.Layout(),
-                contexts: [SettingsSurfaces.StageOptions]),
+                contexts: [SettingsSurfaces.StageOptions],
+                choices: [Strings.Stage.Layout.Card, Strings.Stage.Layout.Large, Strings.Stage.Layout.Centered, Strings.Stage.Layout.Artist]),
             // The layout's own options, the options popover's Layout tab: the spectrum under the cover (Large art, Centered) and the
             // Artist layout's photo (its lyrics, its pan and zoom, its dimming). Each is composed only for the layouts that use it.
             Make("lyrics.stage.spectrum", K.Segmented, Strings.Stage.Options.SpectrumUnder,
@@ -119,15 +121,25 @@ public static partial class SettingsSpec
         Group("miniPlayer", Strings.Settings.Groups.Lyrics.MiniPlayer, null,
             Make("lyrics.mini.face", K.Picker, Strings.Mini.Face,
                 SettingsWriter.OfChoice("mini.face", SettingsVerbs.SetMiniFace), glyph: "Picture",
-                value: s => MiniPlayer.ClampFaceIndex(s.Get(Platform.Keys.MiniPlayerFace)), contexts: [SettingsSurfaces.MiniPlayerOptions]),
+                value: s => MiniPlayer.ClampFaceIndex(s.Get(Platform.Keys.MiniPlayerFace)), contexts: [SettingsSurfaces.MiniPlayerOptions],
+                aliases: ["pip"]),
             Make("lyrics.mini.onTop", K.Toggle, Strings.Mini.OnTop,
                 SettingsWriter.OfToggle("mini.onTop", SettingsVerbs.SetMiniOnTop), glyph: "Pin",
-                value: BoolOf(Platform.Keys.MiniPlayerOnTop), contexts: [SettingsSurfaces.MiniPlayerOptions]),
+                value: BoolOf(Platform.Keys.MiniPlayerOnTop), contexts: [SettingsSurfaces.MiniPlayerOptions], aliases: ["pip"]),
             // Per theme: the active theme's slot of the mask, with that theme's default (its mini player style).
             Make("lyrics.mini.artColour", K.Toggle, Strings.Mini.ArtColour,
                 SettingsWriter.OfToggle("mini.artColour", SettingsVerbs.SetMiniArtColour), glyph: "Brush",
                 value: s => MiniPlayer.ArtColourForActiveTheme(s.Get(Platform.Keys.MiniPlayerArtColour)), contexts: [SettingsSurfaces.MiniPlayerOptions])),
     ]);
+
+    /// <summary>The faces the visualizer dial offers (the gallery's shown faces, in gallery order), as loc keys.</summary>
+    static string[] VisualizerChoices()
+    {
+        var shown = Visualizer.Catalog.Shown;
+        var keys = new string[shown.Length];
+        for (int i = 0; i < keys.Length; i++) keys[i] = Visualizer.NameKey(shown[i]);
+        return keys;
+    }
 
     /// <summary>Is the full screen's STORED layout <paramref name="layout"/>? (A layout option is composed only for its layouts.)</summary>
     static bool StageLayoutIs(Stage.VizLayout layout) => Stage.LayoutRules.Coerce(Platform.Settings.Get(Platform.Keys.StageLayout)) == (int)layout;

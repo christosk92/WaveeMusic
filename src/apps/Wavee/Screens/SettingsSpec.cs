@@ -5,13 +5,15 @@
 // `SettingsDoc` is a thin read-through of the old address for the views until each theme draws the registry (phase 4).
 //
 // A DIAL is today's Settings row with a stable address of its own: `SettingsDial { Id, LegacyIds, Parent, Glyph, Tier, Contexts,
-// Aliases, Kind, TitleKey, Caption, Value, Writer, Enabled, Visible, Confirm, SilentWhenDisabled }`:
+// Aliases, ChoiceKeys, Kind, TitleKey, Caption, Value, Writer, Enabled, Visible, Confirm, SilentWhenDisabled }`:
 //   · `Id`        stable and unique app-wide ("playback.crossfade"); `LegacyIds` the old row ids ("crossfade"), so an inspector line or
 //                 an old link keeps resolving (`SettingsSpec.Aliases.cs`);
 //   · `Parent`    the dial whose expander it opens with (a child row), or null;
 //   · `Glyph`     the glyph NAME a theme resolves to `Icons.*` (was `Settings.Catalog`); null where the row paints none;
 //   · `Tier`      Common · Advanced · Developer (composed away outside Developer mode);
 //   · `Contexts`  the surfaces outside Settings that draw the same dial in place today (`SettingsSurfaces`): "Also in" and the hints;
+//   · `Aliases`, `ChoiceKeys`  what the search indexes beside the title, caption and the authored `settings.terms.<id>` (`SettingsSearch.cs`):
+//                 invariant words (brand and format names) and the loc keys of a choice dial's choices;
 //   · `Kind`      what a view draws for it (toggle, choice, segmented, slider, picker, action, fact, composite);
 //   · `Value`     reads the CURRENT value from a settings store (bool / int / float / string), no UI mirror;
 //   · `Writer`    the ONE verb that changes it, returning whether the page must re-read (the views' `Bump`). A read-only dial says so
@@ -132,6 +134,10 @@ public sealed class SettingsDial
 
     /// <summary>Invariant search words (never translated) beside the authored terms.</summary>
     public IReadOnlyList<string> Aliases { get; init; } = [];
+
+    /// <summary>The loc keys of the choices a choice, segmented or picker dial offers, in order (what the search indexes as choice labels,
+    /// design 4.2); empty where the choices are not words (numbers, adapters, devices, hours).</summary>
+    public IReadOnlyList<string> ChoiceKeys { get; init; } = [];
 
     /// <summary>The surfaces outside Settings that draw this dial in place (<see cref="SettingsSurfaces"/>).</summary>
     public IReadOnlyList<string> Contexts { get; init; } = [];
@@ -293,7 +299,8 @@ public static partial class SettingsSpec
         string[]? legacy = null, string? parent = null, string? glyph = null, SettingsTier tier = SettingsTier.Common,
         string? captionKey = null, Func<ISettingsFacts, string?>? caption = null, Func<IAppSettings, object?>? value = null,
         Func<ISettingsFacts, SettingsEnablement>? enabled = null, Func<ISettingsFacts, bool>? visible = null,
-        SettingsConfirm? confirm = null, bool silent = false, string[]? contexts = null, string[]? aliases = null)
+        SettingsConfirm? confirm = null, bool silent = false, string[]? contexts = null, string[]? aliases = null,
+        IReadOnlyList<string>? choices = null)
     {
         Func<ISettingsFacts, string?> cap = caption ?? NoCaption;
         if (caption is null && captionKey is not null) cap = _ => captionKey;
@@ -312,6 +319,7 @@ public static partial class SettingsSpec
             SilentWhenDisabled = silent,
             Contexts = contexts ?? [],
             Aliases = aliases ?? [],
+            ChoiceKeys = choices ?? [],
         };
     }
 

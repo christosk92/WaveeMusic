@@ -50,7 +50,8 @@ public static partial class SettingsSpec
         Group("mode", Strings.Settings.Groups.Appearance.Mode, null,
             Make("appearance.appMode", K.Segmented, Strings.Settings.Appearance.AppMode,
                 SettingsWriter.OfChoice("appearance.mode", SettingsVerbs.SetThemeMode), legacy: ["appMode"], glyph: "Sun",
-                captionKey: Strings.Settings.Appearance.ThemeSub, value: s => (int)Appearance.ModeOf(s.Get(Platform.Keys.ThemeMode)))),
+                captionKey: Strings.Settings.Appearance.ThemeSub, value: s => (int)Appearance.ModeOf(s.Get(Platform.Keys.ThemeMode)),
+                choices: [Strings.Settings.Choice.System, Strings.Settings.Choice.Light, Strings.Settings.Choice.Dark])),
 
         Group("sizeAndText", Strings.Settings.Groups.Appearance.SizeAndText, null,
             // A combo, not segments: thirteen items (Auto + twelve rungs). Index 0 is "Auto (N%)" for both Auto and Dense.
@@ -75,18 +76,20 @@ public static partial class SettingsSpec
             // No page re-read: nothing else on the page shows the clock.
             Make("appearance.daylistClock", K.Choice, Strings.Settings.Appearance.DaylistClock,
                 SettingsWriter.OfChoice("lists.daylistClock", SettingsVerbs.SetDaylistClock), legacy: ["daylistClock"], glyph: "Clock",
-                captionKey: Strings.Settings.Appearance.DaylistClockSub, value: _ => (int)Prefs.Appearance.DaylistClock()),
+                captionKey: Strings.Settings.Appearance.DaylistClockSub, value: _ => (int)Prefs.Appearance.DaylistClock(),
+                choices: [Strings.Settings.Appearance.DaylistClockBoth, Strings.Settings.Appearance.DaylistClockUpdateTime,
+                    Strings.Settings.Appearance.DaylistClockCountdown]),
             // The Liked Songs cover: the same writer as the cover's "Cover style" flyout; its value is the slot in the picker's order.
             Make("appearance.likedCover", K.Picker, Strings.Detail.LikedCover.Title,
                 SettingsWriter.OfChoice("liked.coverStyle", SettingsVerbs.SetLikedCover), glyph: "Album",
                 captionKey: Strings.Detail.LikedCover.Note,
                 value: _ => LikedCoverRules.PickerIndexOf(LikedCoverRules.FromSetting(Prefs.Appearance.LikedCover(LikedCoverRules.StyleCount))),
-                contexts: [SettingsSurfaces.LikedCover]),
+                contexts: [SettingsSurfaces.LikedCover], choices: Array.ConvertAll(LikedCoverRules.PickerOrder, LikedCoverRules.NameKey)),
             // The two opt-in list columns: the same writers and the same keys as a track list's ⋯ menu (the active structure's scope
             // included, so Settings and the list never disagree).
             Make("appearance.tempoColumn", K.Toggle, Strings.Detail.TempoColumn,
                 SettingsWriter.OfToggle("lists.tempoColumn", SettingsVerbs.SetTempoColumn), glyph: "List",
-                value: s => s.Get(TableColumnsPref.TempoKey(ShellPolicy.Now.Lists)), contexts: [SettingsSurfaces.TrackListMenu]),
+                value: s => s.Get(TableColumnsPref.TempoKey(ShellPolicy.Now.Lists)), contexts: [SettingsSurfaces.TrackListMenu], aliases: ["bpm"]),
             Make("appearance.playsColumn", K.Toggle, Strings.Detail.PlaysColumn,
                 SettingsWriter.OfToggle("lists.playsColumn", SettingsVerbs.SetPlaysColumn), glyph: "ViewList",
                 value: BoolOf(Platform.Keys.PlaysColumn), contexts: [SettingsSurfaces.TrackListMenu])),

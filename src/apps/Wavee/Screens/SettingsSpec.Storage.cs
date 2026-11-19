@@ -53,7 +53,8 @@ public static partial class SettingsSpec
             // drive-share percent are its children. Every commit trims to the new policy and re-reads the cache status.
             Make("storage.cache.budget", K.Segmented, Strings.Settings.Storage.BodyBudget,
                 SettingsWriter.OfChoice("cache.budgetMode", SettingsVerbs.SetBudgetMode), legacy: ["budget"], glyph: "RowSize",
-                captionKey: Strings.Settings.Storage.BodyBudgetSub, value: s => Math.Clamp(s.Get(Platform.Keys.AudioBodyCacheBudgetMode), 0, 2)),
+                captionKey: Strings.Settings.Storage.BodyBudgetSub, value: s => Math.Clamp(s.Get(Platform.Keys.AudioBodyCacheBudgetMode), 0, 2),
+                choices: [Strings.Settings.Storage.FixedSize, Strings.Settings.Storage.DriveShare, Strings.Settings.Storage.Unlimited]),
             Make("storage.cache.budget.preset", K.Choice, Strings.Settings.Storage.FixedSize,
                 SettingsWriter.OfChoice("cache.budgetPreset", SettingsVerbs.SetBudgetPreset), legacy: ["budgetPreset"], parent: "storage.cache.budget",
                 value: s => Settings.StorageFormat.BodyBudgetExactIndex(Math.Max(ChunkDiskCache.MinBudgetBytes, s.Get(Platform.Keys.AudioBodyCacheBudgetBytes)))),
