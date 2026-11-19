@@ -1,10 +1,10 @@
-// ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Storage.cs — the Storage tab (themes plan 6.3, Z8b) ───────────────────────────────────────
+// ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Storage.cs — Storage's sections (themes plan 6.3, Z8b; settings rework phase 4) ─────────────────
 //
 // Board Z-Settings-Sections ("downloads & storage"), without its downloads (owner Q29 / NQ4: no offline playback, so no downloaded songs, no "remove all downloads"):
-// the core Storage settings stay reachable. The census (the usage line and bar, the nine fixed hues), the playback-cache rows (the audio and key switches, the
-// three-mode budget editor, the cache location), the metadata cache and the factory reset. The census itself (the phase, the snapshot, the cache status, the key
-// count, the metadata stats; the first visit to the tab starts it; a clear re-runs it) is the core's (`Settings.Host.cs`) and arrives as `SettingsPageProps.Storage`;
-// the clears, the budget writes, the folder doors and the factory reset are the rows' writers.
+// the census (the usage line and bar, the nine fixed hues) over On this PC, each census category's row (its hue, its size once the census lands, "open folder",
+// and its clear or remove where it has one), the three-mode budget editor, the cache location and the metadata cache. The census itself (the phase, the snapshot,
+// the cache status, the key count, the metadata stats; the first visit starts it; a clear re-runs it) is the core's (`Settings.Host.cs`) and arrives as
+// `SettingsPageProps.Storage`; the clears, the budget writes, the folder doors and the factory reset are the dials' writers.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -17,7 +17,6 @@ using Wavee.Sdk.Streams;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
-using Tab = Wavee.Settings.Tab;
 using Z = Wavee.Themes.Zune.ZuneSettingsRules;
 
 namespace Wavee.Themes.Zune;
@@ -33,96 +32,84 @@ internal static partial class ZuneSettings
         Strings.Settings.Storage.ImageCache, Strings.Settings.Storage.AiModels, Strings.Settings.Storage.OtherData,
     ];
 
-    static Named[] StorageTab(ZuneKit k, SettingsStorageProps storage)
+    /// <summary>The census over On this PC: the usage line and bar once it lands, a spinner while it reads, the failure with a retry.</summary>
+    static Element Census(Paint d)
     {
+        var storage = d.Props.Storage;
         var s = storage.Snapshot;
-        var facts = SettingsFacts.Live;
-
-        Element census = storage.Phase == Settings.StorageLoadPhase.Failed
+        return storage.Phase == Settings.StorageLoadPhase.Failed
             ? ZuneKit.Notice(InfoBarSeverity.Error, Loc.Get(Strings.Settings.Storage.ReadFailed), storage.Error ?? Loc.Get(Strings.Common.ErrorTitle),
-                k.Cmd(Loc.Get(Strings.Common.Retry), static () => Settings.RefreshStorage()))
+                d.K.Cmd(Loc.Get(Strings.Common.Retry), static () => Settings.RefreshStorage())) with { Key = "zs:usage" }
             : s is null
                 ? new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinHeight = Z.CensusMinHeight,
+                    Key = "zs:usage", Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinHeight = Z.CensusMinHeight,
                     Children = [ProgressRing.Indeterminate(size: Z.SpinnerSize), ZuneText.Meta(Loc.Get(Strings.Settings.Storage.Reading))],
                 }
                 : UsageCard(s);
-
-        string logsSub = s is null ? Loc.Get(Strings.Settings.Storage.LogsSubEmpty)
-            : s.LogFiles == 1 ? Loc.Get(Strings.Settings.Storage.LogsSubOne) : Strings.Settings.Storage.LogsSub(s.LogFiles);
-        string keysSub = storage.KeyCount is not { } keys ? Loc.Get(Strings.Settings.Storage.LicenseKeysSub)
-            : keys == 1 ? Loc.Get(Strings.Settings.Storage.LicenseKeysCountOne) : Strings.Settings.Storage.LicenseKeysCount(keys);
-        string aiSub = s is null ? Loc.Get(Strings.Settings.Storage.AiModelsSub)
-            : s.AiModels <= 0 ? Loc.Get(Strings.Settings.Storage.AiModelsNone)
-            : s.AiLanguages == 1 ? Loc.Get(Strings.Settings.Storage.AiModelsCountOne)
-            : s.AiLanguages > 1 ? Strings.Settings.Storage.AiModelsCount(s.AiLanguages) : Loc.Get(Strings.Settings.Storage.AiModelsSub);
-        var location = D(Tab.Storage, "cacheLocation");
-        var locationDefault = D(Tab.Storage, "cacheLocationDefault");
-        var metaBudget = D(Tab.Storage, "metadataBudget");
-        var clearMeta = D(Tab.Storage, "clearMetadata");
-        var reset = D(Tab.Storage, "factoryReset");
-
-        return
-        [
-            Group(k, Tab.Storage, "On this PC", census,
-                CategoryRow(k, 0, "library", Loc.Get(Strings.Settings.Storage.LibrarySub), s?.LibraryDb),
-                CategoryRow(k, 1, "runtime", Loc.Get(Strings.Settings.Storage.RuntimeSub), s?.Runtime),
-                CategoryRow(k, 2, "logs", logsSub, s?.Logs, ClearCmd(k, D(Tab.Storage, "logsClear"), facts)),
-                CategoryRow(k, 3, "localStore", Loc.Get(Strings.Settings.Storage.LocalStoreSub), s?.Store),
-                CategoryRow(k, 6, "imageCache", Loc.Get(Strings.Settings.Storage.ImageCacheSub), s?.ImageCache),
-                CategoryRow(k, 7, "aiModels", aiSub, s?.AiModels, ClearCmd(k, D(Tab.Storage, "aiModelsRemove"), facts)),
-                CategoryRow(k, 8, "otherData", Loc.Get(Strings.Settings.Storage.OtherDataSub), s?.Other)),
-
-            Group(k, Tab.Storage, "Playback cache",
-                ToggleRow(k, Tab.Storage, "cacheAudio"), ToggleRow(k, Tab.Storage, "cacheKeys"),
-                Embed.Comp(new BudgetArgs(s, storage.Audio), static () => new BudgetRow()) with { Key = "zs:budget" },
-                // The PATH is the hint. The row itself stays enabled; only the two relocation commands need the cache.
-                k.Row("zs:row:cache-location", Loc.Get(Strings.Settings.Storage.CacheLocation), storage.AudioDirectory,
-                    new BoxEl
-                    {
-                        Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, Wrap = true, MinWidth = 0f,
-                        Children =
-                        [
-                            k.Cmd(Loc.Get(Strings.Settings.Storage.ChooseLocation), () => location.Writer.Run!(), location.Enabled(facts).Enabled),
-                            k.Cmd(Loc.Get(Strings.Settings.Storage.UseDefaultLocation), () => locationDefault.Writer.Run!(), locationDefault.Enabled(facts).Enabled),
-                            k.Cmd(Loc.Get(Strings.Settings.Storage.OpenFolder), static () => SettingsVerbs.OpenStorageFolder("cacheLocation")),
-                        ],
-                    }),
-                CategoryRow(k, 4, "audioBodies", Loc.Get(Strings.Settings.Storage.AudioBodiesSub), s?.AudioBody, ClearCmd(k, D(Tab.Storage, "audioBodiesClear"), facts)),
-                CategoryRow(k, 5, "licenseKeys", keysSub, s?.LicenseDb, ClearCmd(k, D(Tab.Storage, "licenseKeysClear"), facts))),
-
-            Group(k, Tab.Storage, "Metadata cache",
-                k.DocRow(metaBudget, k.Choice(metaBudget, Settings.StorageFormat.MetaBudgetLabels, chips: false, width: Z.BudgetComboWidth)),
-                k.Row(ZuneKit.RowKey(clearMeta), Loc.Get(Strings.Settings.Storage.MetadataCache), MetadataSub(storage.Meta), ClearCmd(k, clearMeta, facts))),
-
-            Group(k, Tab.Storage, "Reset",
-                k.DocRow(reset, k.Cmd(Loc.Get(Strings.Settings.Storage.FactoryResetAction),
-                    () => ConfirmThen(Loc.Get(reset.Confirm!.TitleKey), Loc.Get(reset.Confirm.BodyKey), Loc.Get(reset.Confirm.PrimaryKey), () => reset.Writer.Run!()))
-                    )),
-        ];
     }
 
-    /// <summary>The verb opens the ONE confirm (Cancel default, the row's <see cref="SettingsConfirm"/>); the confirmed action, the row's writer, runs off-thread and toasts.</summary>
-    static Element ClearCmd(ZuneKit k, SettingsDial row, ISettingsFacts facts)
+    /// <summary>The census part a Storage folder dial stands for (its hue's index in `Settings.StorageRules.Parts` order), or null for another dial.</summary>
+    static int? StoragePart(string id) => id switch
     {
-        var confirm = row.Confirm!;
-        return k.Cmd(Loc.Get(confirm.TitleKey), () => ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey), () => row.Writer.Run!()),
-            row.Enabled(facts).Enabled);
-    }
+        "storage.library" => 0,
+        "storage.runtime" => 1,
+        "storage.logs" => 2,
+        "storage.localStore" => 3,
+        "storage.cache.audioBodies" => 4,
+        "storage.cache.licenseKeys" => 5,
+        "storage.imageCache" => 6,
+        "storage.aiModels" => 7,
+        "storage.otherData" => 8,
+        _ => null,
+    };
 
-    /// <summary>A census row: the part's fixed hue, its words, its size (simply ABSENT until the census lands: never a dash, never 0 B), "open folder" and an optional verb.</summary>
-    static Element CategoryRow(ZuneKit k, int hue, string rowId, string sub, long? size, Element? extra = null)
+    /// <summary>A census category's row: the part's fixed hue, its words (the census's count where it says more than the caption), its size (simply ABSENT until
+    /// the census lands: never a dash, never 0 B), "open folder" (the dial's writer) and its clear or remove (the child dial, confirmed, keyed as its row).</summary>
+    static Element CensusRow(Paint d, SettingsBodyRow row, int hue)
     {
+        var k = d.K;
+        var storage = d.Props.Storage;
+        var s = storage.Snapshot;
+        long? size = s is null ? null : hue switch
+        {
+            0 => s.LibraryDb, 1 => s.Runtime, 2 => s.Logs, 3 => s.Store, 4 => s.AudioBody, 5 => s.LicenseDb, 6 => s.ImageCache, 7 => s.AiModels, _ => s.Other,
+        };
+        string? sub = hue switch
+        {
+            2 => s is null ? Loc.Get(Strings.Settings.Storage.LogsSubEmpty) : s.LogFiles == 1 ? Loc.Get(Strings.Settings.Storage.LogsSubOne) : Strings.Settings.Storage.LogsSub(s.LogFiles),
+            5 => storage.KeyCount is not { } keys ? Loc.Get(Strings.Settings.Storage.LicenseKeysSub)
+                : keys == 1 ? Loc.Get(Strings.Settings.Storage.LicenseKeysCountOne) : Strings.Settings.Storage.LicenseKeysCount(keys),
+            7 => s is null ? row.Description
+                : s.AiModels <= 0 ? Loc.Get(Strings.Settings.Storage.AiModelsNone)
+                : s.AiLanguages == 1 ? Loc.Get(Strings.Settings.Storage.AiModelsCountOne)
+                : s.AiLanguages > 1 ? Strings.Settings.Storage.AiModelsCount(s.AiLanguages) : row.Description,
+            _ => row.Description,
+        };
         var controls = new List<Element>(4)
         {
             new BoxEl { Width = Z.HueSize, Height = Z.HueSize, Shrink = 0f, Fill = Z.StorageHues[hue] },
         };
         if (size is { } bytes) controls.Add(R.Type.DenseMeta(Settings.StorageFormat.Bytes(bytes)) with { Color = Tok.TextPrimary, Shrink = 0f });
-        controls.Add(k.Cmd(Loc.Get(Strings.Settings.Storage.OpenFolder), () => D(Tab.Storage, rowId).Writer.Run!()));
-        if (extra is not null) controls.Add(extra.Value);
-        return k.Row(ZuneKit.RowKey(D(Tab.Storage, rowId)), Loc.Get(s_storagePartKeys[hue]), sub,
-            new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, Wrap = true, MinWidth = 0f, Children = controls.ToArray() });
+        controls.Add(k.Cmd(Loc.Get(Strings.Settings.Storage.OpenFolder), RunOf(row)));
+        foreach (var child in row.Children)
+            if (child.Kind == SettingsRowKind.Action && child.Confirm is { } confirm)
+                controls.Add(ConfirmCmd(k, child, Loc.Get(confirm.TitleKey)) with { Key = SettingsKeys.ZuneRow(child.Id), OnRealized = NoteRow(child.Id) });
+        return DialRow(d, row, new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, Wrap = true, MinWidth = 0f, Children = controls.ToArray() }, sub);
+    }
+
+    /// <summary>The cache location: the PATH is the description; "choose location" (the dial's two-dialog flow) and "use default" (its child) need the cache,
+    /// "open folder" never does.</summary>
+    static Element CacheLocationRow(Paint d, SettingsBodyRow row)
+    {
+        var k = d.K;
+        var controls = new List<Element>(3) { k.Cmd(row.Label, RunOf(row), row.Enabled) };
+        foreach (var child in row.Children)
+            if (child.Kind == SettingsRowKind.Action)
+                controls.Add(k.Cmd(child.Label, RunOf(child), child.Enabled) with { Key = SettingsKeys.ZuneRow(child.Id), OnRealized = NoteRow(child.Id) });
+        controls.Add(k.Cmd(Loc.Get(Strings.Settings.Storage.OpenFolder), static () => SettingsVerbs.OpenStorageFolder("cacheLocation")));
+        return DialRow(d, row, new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, Wrap = true, MinWidth = 0f, Children = controls.ToArray() },
+            d.Props.Storage.AudioDirectory, enabled: true, label: Loc.Get(Strings.Settings.Storage.CacheLocation));
     }
 
     /// <summary>The usage line and bar: the total as a numeral, the segmented bar (each segment grows by its bytes, so widths are exact proportions), and a wrapping
@@ -173,8 +160,8 @@ internal static partial class ZuneSettings
     // ── the audio body budget (fixed size, drive share, unlimited) ────────────────────────────────────────────────────────
 
     /// <summary>The budget row: the mode as chips, the editor of the mode, the meter and its line. Its own component: the editors' controls bind one signal for their
-    /// life, seeded from the document and re-seeded on every page epoch.</summary>
-    sealed record BudgetArgs(Settings.StorageSnapshot? Snapshot, AudioBodyCacheStatus? Status);
+    /// life, seeded from the dials and re-seeded on every page epoch. Keyed as the budget dial's row; the preset and the two numbers are its children's writers.</summary>
+    sealed record BudgetArgs(SettingsBodyRow Row, Settings.StorageSnapshot? Snapshot, AudioBodyCacheStatus? Status, SettingsArrival Focus);
 
     sealed class BudgetRow : ZuneScreenComponent
     {
@@ -204,11 +191,12 @@ internal static partial class ZuneSettings
             var args = UseProps<BudgetArgs>();
             var snapshot = args.Snapshot;
             var status = args.Status;
+            var row = args.Row;
             _ = Settings.PageEpoch.Value;
-            var budget = D(Tab.Storage, "budget");
+            var budget = row.Dial;
             int mode = budget.Current is int m ? Math.Clamp(m, 0, 2) : 0;
-            int preset = D(Tab.Storage, "budgetPreset").Current is int pr ? pr : 5;
-            int percent = D(Tab.Storage, "budgetPercent").Current is int pc ? pc : 0;
+            int preset = SettingsSpec.Dial(BudgetPresetDial).Current is int pr ? pr : 5;
+            int percent = SettingsSpec.Dial(BudgetPercentDial).Current is int pc ? pc : 0;
             double gib = SettingsFacts.AudioBudgetBytes() / (double)(1L << 30);
             UseEffect(() =>
             {
@@ -231,7 +219,7 @@ internal static partial class ZuneSettings
                         {
                             if ((uint)i >= (uint)Settings.StorageFormat.BodyBudgetBytes.Length) return;
                             _gib.Value = Settings.StorageFormat.BodyBudgetBytes[i] / (double)(1L << 30);
-                            if (D(Tab.Storage, "budgetPreset").Writer.Choose!(i)) Settings.Bump();
+                            if (SettingsSpec.Dial(BudgetPresetDial).Writer.Choose?.Invoke(i) == true) Settings.Bump();
                         }),
                         Number(lay, _gib, v =>
                         {
@@ -252,15 +240,14 @@ internal static partial class ZuneSettings
             };
 
             string budgetLabel = status?.BudgetBytes is { } limit ? Settings.StorageFormat.Bytes(limit) : Loc.Get(Strings.Settings.Storage.Unlimited);
-            return k.DocRow(budget, new BoxEl
+            return k.Row(SettingsKeys.ZuneRow(row.Id), LabelOf(args.Focus, row.Id, ZuneText.Label(row.Label)), row.Description, new BoxEl
             {
                 Direction = 1, Gap = Z.ControlGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
                 Children =
                 [
-                    k.Choice(SettingsDoc.RowIdOf(budget), new ZuneChoice(
-                        [Loc.Get(Strings.Settings.Storage.FixedSize), Loc.Get(Strings.Settings.Storage.DriveShare), Loc.Get(Strings.Settings.Storage.Unlimited)],
+                    k.Choice(row.Id, new ZuneChoice(row.Choices,
                         () => budget.Current is int at ? at : 0,
-                        m2 => { if (budget.Writer.Choose!(m2)) Settings.Bump(); }, Chips: true)),
+                        m2 => { if (budget.Writer.Choose?.Invoke(m2) == true) Settings.Bump(); }, Chips: true)),
                     editor,
                     ProgressBar.Determinate(fraction, width: Z.BudgetMeterWidth, state: over ? ProgressBarState.Error : ProgressBarState.Normal),
                     ZuneText.Hint(Strings.Settings.Storage.UsedOfBudget(Settings.StorageFormat.Bytes(used), budgetLabel)),
@@ -268,8 +255,10 @@ internal static partial class ZuneSettings
                         ? ZuneText.Hint(Loc.Get(Strings.Settings.Storage.LocationUnavailable)) with { Color = Tok.SystemFillCritical }
                         : ZuneText.Hint(Strings.Settings.Storage.FreeReserve(Settings.StorageFormat.Bytes(status?.ReserveBytes ?? 0))),
                 ],
-            });
+            }, row.Enabled) with { OnRealized = NoteRow(row.Id) };
         }
+
+        const string BudgetPresetDial = "storage.cache.budget.preset", BudgetPercentDial = "storage.cache.budget.percent";
 
         /// <summary>A number box whose field is the tier's hit target tall (the engine's own 32 elsewhere). ONE key at every tier: the style is a live prop.</summary>
         static Element Number(ZuneSettingsLayout lay, Signal<double> value, Action<double> onChange, NumberBox.NumberBoxOptions options, string key)

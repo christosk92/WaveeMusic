@@ -1,7 +1,8 @@
 // ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Theme.cs — the theme picker, the active theme's options and their preview (themes plan 6.3, Z8b) ─
 //
 // Boards Z-Settings-Appearance (the picker: a tile 150 x 100 over its name and one line), Z-Theme-Options (the options: label | control rows, the accent as five square
-// swatches, the rest as chips and switches, "reset" beside the heading; the preview beside them).
+// swatches, the rest as chips and switches, "reset" beside the heading; the preview beside them). The Settings page draws the options as its body's options group
+// (each option's control here, `OptionControl`); the keyed options view (`Settings.ThemeOptions`) draws the same controls for the setup wizard's plate.
 //
 // WHAT THIS FILE NEVER DOES: name a theme. The picker draws `ThemePickerEntry` data; the options draw whatever `SettingsOptionsView` holds (a theme with no options gets one
 // quiet line). The board's "add a theme from a folder" tile and its community-themes line are not built: nothing in the core installs a theme from a folder.
@@ -21,7 +22,6 @@ using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
-using Tab = Wavee.Settings.Tab;
 using Z = Wavee.Themes.Zune.ZuneSettingsRules;
 
 namespace Wavee.Themes.Zune;
@@ -59,7 +59,7 @@ internal static partial class ZuneSettings
         return parts;
     }
 
-    /// <summary>The picker: one tile per installed theme, driven by `ThemePickerFacts`; a pick is the `themePicker` row's writer (a theme switch under the page). The picked
+    /// <summary>The picker: one tile per installed theme, driven by `ThemePickerFacts`; a pick is the theme dial's writer (a theme switch under the page). The picked
     /// theme's root mounts fresh (owner Q26: nothing carried), so the Settings page opens again ON Appearance, with the picker as its first group.</summary>
     sealed class ThemePickerCard : ZuneScreenComponent
     {
@@ -89,9 +89,11 @@ internal static partial class ZuneSettings
         {
             if (SettingsVerbs.ThemeIndex() == index) return;
             Settings.OpenNextMountOn(Settings.Area.Appearance);
-            if (D(Tab.Appearance, "themePicker").Writer.Choose!(index)) Settings.Bump();
+            if (SettingsSpec.Dial(ThemeDial).Writer.Choose?.Invoke(index) == true) Settings.Bump();
         }
     }
+
+    const string ThemeDial = "appearance.theme";
 
     /// <summary>One tile: the thumbnail (with the selection's ring), the name (the accent when picked) and the line under it.</summary>
     static Element Tile(ThemePickerEntry entry, bool on, bool busy, ZuneSettingsLayout lay)
@@ -293,32 +295,44 @@ internal static partial class ZuneSettings
         }
     }
 
-    /// <summary>One generated row as a Zune row: the control for its kind. A kind this page has no control for (a legacy action, an unknown) is left out.</summary>
+    /// <summary>One generated row as a Zune row: its words and the control for its kind. A kind this page has no control for (a legacy action, an unknown)
+    /// is left out.</summary>
     static Element? Draw(ZuneKit k, GeneratedOptionRow g, ISettingsFacts facts)
     {
         SettingsDial row = g.Row;
+        Element? control = OptionControl(k, g, facts, out bool enabled);
         string title = Loc.Get(row.TitleKey);
         string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
-        bool enabled = row.Enabled(facts).Enabled && g.Enabled;
-        string rowKey = "zs:opt:" + g.QualifiedId;
+        return k.Row("zs:opt:" + g.QualifiedId, title, sub, control, enabled);
+    }
+
+    /// <summary>A theme option's control for its kind (chips, a combo, the colour swatches, a switch, a line slider, a command), and whether it is live. The
+    /// body's options group and the wizard's plate draw their rows round it.</summary>
+    static Element? OptionControl(ZuneKit k, GeneratedOptionRow g, ISettingsFacts facts, out bool enabled)
+    {
+        SettingsDial row = g.Row;
+        string title = Loc.Get(row.TitleKey);
+        enabled = row.Enabled(facts).Enabled && g.Enabled;
 
         if (g.Pref is { } pref)
         {
-            Element? control = pref switch
+            var corePref = pref;
+            return corePref switch
             {
-                CorePref.AppMode => k.Choice(row, ModeLabels(), chips: true),
+                CorePref.AppMode => k.Choice(row.Id, new ZuneChoice(ModeLabels(), () => row.Current is int at ? at : 0, i => { if (row.Writer.Choose?.Invoke(i) == true) Settings.Bump(); }, Chips: true)),
                 CorePref.Zoom => Embed.Comp(static () => new ZoomCell()) with { Key = "zs:zoom" },
-                CorePref.Marquee => k.Toggle(row),
-                CorePref.StageFace => k.Choice(row, VisualizerLabels(), chips: false, width: Z.WideComboWidth),
+                CorePref.Marquee => k.Switch(row.Current is true, on => { if (row.Writer.Toggle?.Invoke(on) == true) Settings.Bump(); }),
+                CorePref.StageFace => k.Choice(row.Id, new ZuneChoice(VisualizerLabels(), () => row.Current is int at ? at : 0, i => { if (row.Writer.Choose?.Invoke(i) == true) Settings.Bump(); },
+                    Chips: false, Width: Z.WideComboWidth)),
                 _ => null,   // the animation-effects fact: information only
             };
-            return k.Row(rowKey, title, sub, control);
         }
 
+        bool live = enabled;
         switch (row.Kind)
         {
             case SettingsRowKind.Toggle:
-                return k.Row(rowKey, title, sub, k.Switch(g.Current is true, on => { if (row.Writer.Toggle!(on)) Settings.Bump(); }, enabled), enabled);
+                return k.Switch(g.Current is true, on => { if (row.Writer.Toggle!(on)) Settings.Bump(); }, live);
 
             case SettingsRowKind.Segmented:
             case SettingsRowKind.Choice:
@@ -326,27 +340,27 @@ internal static partial class ZuneSettings
             {
                 string[] labels = ChoiceLabels(g);
                 bool chips = labels.Length <= Z.MaxChips && g.Picker != PickerStyle.Combo;
-                return k.Row(rowKey, title, sub, k.Choice(g.QualifiedId, new ZuneChoice(labels, () => g.Live() is int at ? at : -1,
-                    i => { if (row.Writer.Choose!(i)) Settings.Bump(); }, chips, enabled ? null : static () => false, Width: Z.ComboWidth)), enabled);
+                return k.Choice(g.QualifiedId, new ZuneChoice(labels, () => g.Live() is int at ? at : -1,
+                    i => { if (row.Writer.Choose!(i)) Settings.Bump(); }, chips, live ? null : static () => false, Width: Z.ComboWidth));
             }
 
             case SettingsRowKind.Picker:
-                return k.Row(rowKey, title, sub, Embed.Comp(() => new ColorOption(g)) with { Key = "zs:opt:color:" + g.QualifiedId }, enabled);
+                return Embed.Comp(() => new ColorOption(g)) with { Key = "zs:opt:color:" + g.QualifiedId };
 
             case SettingsRowKind.Slider:
-                return k.Row(rowKey, title, sub, k.Slide(g.QualifiedId, new ZuneSlide(g.Min, g.Max, g.Step,
-                    () => g.Live() is float f ? f : g.Min, v => row.Writer.Slide!(v), v => SliderText(v, g.UnitKey), enabled ? null : static () => false)), enabled);
+                return k.Slide(g.QualifiedId, new ZuneSlide(g.Min, g.Max, g.Step,
+                    () => g.Live() is float f ? f : g.Min, v => row.Writer.Slide!(v), v => SliderText(v, g.UnitKey), live ? null : static () => false));
 
             case SettingsRowKind.Action when row.Confirm is { } confirm:
                 // A destructive action: a command that asks first.
-                return k.Row(rowKey, title, sub, k.Cmd(Loc.Get(confirm.PrimaryKey), () => ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey),
-                    Loc.Get(confirm.PrimaryKey), () => { if (row.Writer.Run!()) Settings.Bump(); }), enabled), enabled);
+                return k.Cmd(Loc.Get(confirm.PrimaryKey), () => ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey),
+                    Loc.Get(confirm.PrimaryKey), () => { if (row.Writer.Run!()) Settings.Bump(); }), live);
 
             case SettingsRowKind.Action:
-                return k.Row(rowKey, title, sub, k.Cmd(title, () => { if (row.Writer.Run!()) Settings.Bump(); }, enabled), enabled);
+                return k.Cmd(title, () => { if (row.Writer.Run!()) Settings.Bump(); }, live);
 
             default:   // a fact: information only
-                return k.Row(rowKey, title, sub, null, enabled);
+                return null;
         }
     }
 
