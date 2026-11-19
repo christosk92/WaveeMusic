@@ -323,6 +323,7 @@
 // and `SettingsGrouping` / `SettingsTab` are gone, with the core's `Settings.Tab`, `TabSlugs`, `Area`, `AreaSlugs`, `AreaTitleKeys`, `PartsOf`,
 // `HomeArea`, `FirstTab`, `AreaOf`, `AreaFromSlug`, `SettingsDoc` / `SettingsSection` and `Settings.OpenNextMountOn(Area)` / `(Tab)` (a theme
 // pick names the category: `Settings.OpenNextMountOn("appearance")`). Every old slug and row id still lands through `SettingsSpec`'s aliases.
+// `SettingsExplainInfo` is non-null only where the dial's clip exists for the theme and app mode (`ClipPath` and `Props` are never null).
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a

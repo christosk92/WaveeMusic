@@ -39,11 +39,7 @@ internal static partial class ZuneSettings
     }.Interactive(Interaction.Subtle);
 
     /// <summary>The clip's place under a row: the explanation view (Zune's own template), open while the row's "see it" says so.</summary>
-    static Element ExplainSlot(string dialId, SettingsExplainInfo info)
-        => ViewSlots.View(ViewKeys.Explainer, info.Props ?? new ExplainerProps
-        {
-            DialId = dialId, Caption = info.Caption, ClipPath = info.ClipPath, ReducedMotion = Design.Reduced,
-        });
+    static Element ExplainSlot(SettingsExplainInfo info) => ViewSlots.View(ViewKeys.Explainer, info.Props);
 
     /// <summary>The registered template of <see cref="ViewKeys.Explainer"/>: the clip under its row (see the file header).</summary>
     public static Element ExplainerTemplate(ExplainerProps props, in ViewContext ctx)

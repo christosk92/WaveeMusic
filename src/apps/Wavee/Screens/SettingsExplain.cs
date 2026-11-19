@@ -4,15 +4,16 @@
 // words alone do not show it: a short looping clip of the before and after, in a tip, with a one-line caption. It is on demand, never a
 // nudge, so it never counts against the hint budget.
 //
-//   · THE LIST (`s_clips`, the table of design 6.5): dial id → clip id, and the theme a theme option's clip belongs to. The registry sets
-//     `SettingsDial.Explainer` (and `ExplainerThemes`) from it on every dial it names (`SettingsSpec.Make`, `ThemeOptionsSection.Make`),
-//     so this table is the one place a dial joins the list. Not on this line yet, so not listed: Connected animations and Previews on
-//     Home (their dials do not exist here).
+//   · THE LIST (`s_clips`, the table of design 6.5): the dial, the clip that explains it, and the theme a theme option's clip belongs to.
+//     The clip id IS the dial id (the recorder's manifest, `tools/settings-explain/clips.json`, names it so), except where one clip serves
+//     two dials (Crossfade duration shows Crossfade's). The registry sets `SettingsDial.Explainer` (and `ExplainerThemes`) from it on every
+//     dial it names (`SettingsSpec.Make`, `ThemeOptionsSection.Make`), so this table is the one place a dial joins the list. Not on this
+//     line yet, so not listed: Connected animations and Previews on Home (their dials do not exist here).
 //   · THE CLIPS: one per clip id per theme per app mode, an animated WebP at
-//     `assets/settings-explain/<theme>/<mode>/<clip>.webp` (mode `dark` | `light`), recorded from the real app by the phase 6 command,
+//     `assets/settings-explain/<theme>/<mode>/<clip>.webp` (mode `dark` | `light`), recorded from the real app by `tools/settings-explain`,
 //     committed like the What's new media. A clip shared by two dials (Crossfade and its duration) is one file.
-//   · A BADGE SHOWS ONLY WHERE ITS CLIP EXISTS for the active theme and mode (`PropsFor` answers null otherwise), so a missing clip hides a
-//     badge, never shows an empty tip.
+//   · A BADGE SHOWS ONLY WHERE ITS CLIP EXISTS for the active theme and mode (owner decision): `InfoFor` and `PropsFor` answer null
+//     otherwise, so no theme draws a badge, or a tip without its clip, for a dial whose clip is not recorded yet.
 //   · THE RELEASE CHECK: `Wavee.exe --check-explainer-clips <assets/settings-explain>` lists every clip the table needs that is missing,
 //     and every clip over the size budget (`SettingsExplainRules`), and exits 1 when there is one. The Wavee project runs it after a
 //     Release build when the MSBuild property `WaveeExplainerClipCheck` is `true` (Wavee.csproj, target `WaveeCheckExplainerClips`).
@@ -40,43 +41,48 @@ public static class SettingsExplainRules
 /// <summary>Explanation badges (see the file header).</summary>
 public static class SettingsExplain
 {
-    /// <summary>One row of the badge list: the dial, its clip, and the one theme it belongs to (a theme option's), or null for every theme.</summary>
-    public readonly record struct Clip(string DialId, string Id, string? Theme = null);
+    /// <summary>One row of the badge list: the dial, the one theme it belongs to (a theme option's) or null for every theme, and the dial whose
+    /// clip it shares (null: its own).</summary>
+    public readonly record struct Clip(string DialId, string? Theme = null, string? SharesWith = null)
+    {
+        /// <summary>The clip's id: the dial's own id, or the id of the dial it shares a clip with.</summary>
+        public string Id => SharesWith ?? DialId;
+    }
 
     /// <summary>The badge list of design 6.5, in its order (theme options only in their own theme).</summary>
     static readonly Clip[] s_clips =
     [
         // Appearance
-        new("appearance.fastNavigation", "fast-navigation"),
-        new("lyrics.stage.calm", "calm-motion"),
-        new("appearance.daylistClock", "daylist-clock"),
-        new("appearance.likedCover", "liked-cover"),
-        new(SettingsSpec.ThemeOptionPrefix + "style.backdrop", "backdrop", "winui"),
-        new(SettingsSpec.ThemeOptionPrefix + "structure.navigationPane", "navigation-pane", "winui"),
-        new(SettingsSpec.ThemeOptionPrefix + "style.rowDensity", "density", "winui"),
-        new(SettingsSpec.ThemeOptionPrefix + "structure.artworkInRows", "artwork-in-rows", "winui"),
-        new(SettingsSpec.ThemeOptionPrefix + "structure.rowStyle", "row-style", "classic"),
-        new(SettingsSpec.ThemeOptionPrefix + "structure.sidebar", "sidebar-layout", "classic"),
-        new(SettingsSpec.ThemeOptionPrefix + "structure.surfaces", "surfaces", "classic"),
-        new("appearance.marquee", "marquee", "classic"),
-        new(SettingsSpec.ThemeOptionPrefix + "structure.background", "background", "zune"),
+        new("appearance.fastNavigation"),
+        new("lyrics.stage.calm"),
+        new("appearance.daylistClock"),
+        new("appearance.likedCover"),
+        new(SettingsSpec.ThemeOptionPrefix + "style.backdrop", "winui"),
+        new(SettingsSpec.ThemeOptionPrefix + "structure.navigationPane", "winui"),
+        new(SettingsSpec.ThemeOptionPrefix + "style.rowDensity", "winui"),
+        new(SettingsSpec.ThemeOptionPrefix + "structure.artworkInRows", "winui"),
+        new(SettingsSpec.ThemeOptionPrefix + "structure.rowStyle", "classic"),
+        new(SettingsSpec.ThemeOptionPrefix + "structure.sidebar", "classic"),
+        new(SettingsSpec.ThemeOptionPrefix + "structure.surfaces", "classic"),
+        new("appearance.marquee", "classic"),
+        new(SettingsSpec.ThemeOptionPrefix + "structure.background", "zune"),
         // Sound (animated diagrams: tips never make a sound)
-        new("sound.normalization", "normalization"),
-        new("sound.normalization.mode", "loudness-level"),
+        new("sound.normalization"),
+        new("sound.normalization.mode"),
         // Playback
-        new("playback.crossfade", "crossfade"),
-        new("playback.crossfade.duration", "crossfade"),
-        new("playback.canvas", "canvas"),
-        new("playback.video.endCountdown", "video-countdown"),
+        new("playback.crossfade"),
+        new("playback.crossfade.duration", SharesWith: "playback.crossfade"),
+        new("playback.canvas"),
+        new("playback.video.endCountdown"),
         // Lyrics & Now playing
-        new("lyrics.blur", "lyrics-blur"),
-        new("lyrics.ai", "word-by-word"),
-        new("lyrics.playerStyle", "player-style"),
-        new("lyrics.playerStyle.finish", "player-style-finish"),
-        new("lyrics.stage.layout", "stage-layout"),
-        new("lyrics.stage.spectrum", "stage-spectrum"),
-        new("lyrics.mini.face", "mini-face"),
-        new("lyrics.mini.artColour", "colour-from-art"),
+        new("lyrics.blur"),
+        new("lyrics.ai"),
+        new("lyrics.playerStyle"),
+        new("lyrics.playerStyle.finish"),
+        new("lyrics.stage.layout"),
+        new("lyrics.stage.spectrum"),
+        new("lyrics.mini.face"),
+        new("lyrics.mini.artColour"),
     ];
 
     /// <summary>The badge list.</summary>
@@ -156,17 +162,11 @@ public static class SettingsExplain
         };
     }
 
-    /// <summary>The badge of <paramref name="dial"/> as the registry's page model carries it (contract 1.116, <see cref="SettingsExplainInfo"/>):
-    /// its clip id and caption for every dial on the list under the active theme, the clip's path where it exists for the active theme and app
-    /// mode, and the props to mount (<see cref="PropsFor"/>) only then. Null for a dial with no badge here (no clip id, another theme's).</summary>
+    /// <summary>The badge of <paramref name="dial"/> as the page model carries it (<see cref="SettingsExplainInfo"/>): its clip id, caption, the
+    /// clip's path and the props to mount (<see cref="PropsFor"/>). Null wherever no badge shows: no clip id, another theme's option, or no clip
+    /// on disk for the active theme and app mode (owner decision: a badge shows only where its clip exists).</summary>
     public static SettingsExplainInfo? InfoFor(SettingsDial dial, string surface = SettingsSurfaces.Settings)
-    {
-        if (dial.Explainer is not { } clip) return null;
-        string theme = ThemePickerFacts.State.Peek().CurrentId;   // as data: the clips' folder (PropsFor reads the same)
-        if (dial.ExplainerThemes is { } themes && !Contains(themes, theme)) return null;
-        string? path = theme.Length == 0 ? null : ClipPath(clip, theme, Tok.Theme == ThemeKind.Light ? "light" : "dark");
-        return new SettingsExplainInfo(clip, Loc.Get(CaptionKey(dial.Id)), path, path is null ? null : PropsFor(dial, surface));
-    }
+        => PropsFor(dial, surface) is { ClipPath: { } path } props ? new SettingsExplainInfo(dial.Explainer!, props.Caption, path, props) : null;
 
     static bool Contains(IReadOnlyList<string> list, string value)
     {

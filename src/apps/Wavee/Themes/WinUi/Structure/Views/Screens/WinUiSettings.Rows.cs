@@ -336,11 +336,8 @@ internal static partial class WinUiSettings
         return x.Item ? card with { Style = SettingsExpander.DefaultStyle.ClickableItemCardStyle } : card;
     }
 
-    /// <summary>The badge's props (design 6.5): the core's where the clip exists; where it does not yet, the same badge, whose tip shows the poster's
-    /// placeholder over the caption (the clips land with the recording command).</summary>
-    static ExplainerProps? ExplainOf(SettingsBodyRow row)
-        => row.Explain is not { } info ? null
-            : info.Props ?? new ExplainerProps { DialId = row.Id, Caption = info.Caption, ClipPath = null, ReducedMotion = Design.Reduced };
+    /// <summary>The badge's props (design 6.5): the core carries them only where the dial's clip exists for the theme and app mode.</summary>
+    static ExplainerProps? ExplainOf(SettingsBodyRow row) => row.Explain?.Props;
 
     /// <summary>The generic card of a row's kind; a row with children is an expander whose items are the children.</summary>
     static Element GenericCard(RowCtx x)

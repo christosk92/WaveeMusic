@@ -176,14 +176,14 @@ public sealed record SettingsBodyRow
     public SettingsBodyNote? NoteAfter { get; init; }
 }
 
-/// <summary>A dial's explanation badge (design 6.5): which clip explains it, its caption, and whether the clip exists for the active theme
-/// and app mode. A badge draws only where it does: hand <see cref="Props"/> to <see cref="ViewKeys.Explainer"/>, keyed
+/// <summary>A dial's explanation badge (design 6.5). A row carries one only where the dial's clip exists for the active theme and app mode
+/// (owner decision): no clip, no badge, never a tip without its clip. Hand <see cref="Props"/> to <see cref="ViewKeys.Explainer"/>, keyed
 /// <see cref="SettingsKeys.Explain"/>.</summary>
-/// <param name="ClipId">The clip (<c>crossfade</c>; two dials may share one).</param>
+/// <param name="ClipId">The clip (<c>playback.crossfade</c>; two dials may share one).</param>
 /// <param name="Caption">The caption (resolved <c>settings.explain.&lt;dialId&gt;</c>), also the clip's alt text.</param>
-/// <param name="ClipPath">The clip on disk for the active theme and app mode, or null when it is not there (then nothing draws).</param>
-/// <param name="Props">The badge's props, or null when <see cref="ClipPath"/> is.</param>
-public sealed record SettingsExplainInfo(string ClipId, string Caption, string? ClipPath, ExplainerProps? Props);
+/// <param name="ClipPath">The clip on disk for the active theme and app mode.</param>
+/// <param name="Props">The badge's props.</param>
+public sealed record SettingsExplainInfo(string ClipId, string Caption, string ClipPath, ExplainerProps Props);
 
 /// <summary>A place outside Settings that draws the same dial (design 5.1): a link to it when the core can open it now.</summary>
 /// <param name="Surface">The surface (<c>SettingsSurfaces</c>: <c>queue.panel</c>).</param>

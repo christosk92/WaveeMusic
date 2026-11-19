@@ -175,7 +175,7 @@ internal static partial class ZuneSettings
         return new BoxEl
         {
             Key = key, Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, OnRealized = NoteRow(row.Id),
-            Children = [line with { Key = key + ":line" }, ExplainSlot(row.Id, info)],
+            Children = [line with { Key = key + ":line" }, ExplainSlot(info)],
         };
     }
 
