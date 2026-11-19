@@ -337,7 +337,7 @@ public static partial class Detail
     /// nothing is shown twice. Provided by <c>FrameHost</c> around the frame view; false everywhere else.</summary>
     public static readonly Context<bool> AsideDocked = new(false);
 
-    /// <summary>The aside's remembered-width verbs (contract 1.109), one per slot (<see cref="DetailRailPrefs.AsideSlot"/>), built once.</summary>
+    /// <summary>The aside's remembered-width verbs (contract 2.9), one per slot (<see cref="DetailRailPrefs.AsideSlot"/>), built once.</summary>
     static readonly Func<float>[] s_asideStored =
     [
         static () => DetailRailPrefs.StoredAsideWidth(0), static () => DetailRailPrefs.StoredAsideWidth(1), static () => DetailRailPrefs.StoredAsideWidth(2),

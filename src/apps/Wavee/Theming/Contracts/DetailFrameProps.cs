@@ -185,10 +185,10 @@ public sealed record DetailAsideProps
 
     /// <summary>The width the user last dragged this kind of aside to (the active theme's remembered size), or 0 when it was never dragged: the
     /// structure's own width then. A read subscribes the remembered sizes' epoch, so "Clear all remembered sizes" and a release on another page
-    /// reach a mounted aside. Null: the aside is not resizable. Appended (contract 1.109).</summary>
+    /// reach a mounted aside. Null: the aside is not resizable. Appended (contract 2.9).</summary>
     public Func<float>? StoredWidth { get; init; }
 
-    /// <summary>Remember a dragged width for this kind of aside: the grip's release. Appended (contract 1.109).</summary>
+    /// <summary>Remember a dragged width for this kind of aside: the grip's release. Appended (contract 2.9).</summary>
     public Action<float>? CommitWidth { get; init; }
 
     /// <inheritdoc />
