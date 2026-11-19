@@ -39,6 +39,12 @@ versions separately under `v*` and is not tracked in this file.)
   line sung at that moment, on a small card that points at your mouse. Settings > Appearance > Lyrics > "Show lyrics
   when seeking" turns it off.
 
+- **Find a setting from the command palette.** Typing in the palette (Ctrl+K) also lists up to three settings that
+  match, with where each one lives. They are found by the words people use, not only their names ("dark mode",
+  "gapless", "too quiet", "start with windows"), and despite a typo ("crosfade"); Enter opens Settings where the
+  setting is. The palette's Theme and Crossfade toggles are gone: both settings come up this way, so a setting is
+  changed in one place.
+
 ### Changed
 
 - **Playlists open at once.** A playlist you have opened before shows its saved copy the moment you click, Mixes

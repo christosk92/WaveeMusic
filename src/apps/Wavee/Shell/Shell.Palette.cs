@@ -7,12 +7,18 @@
 // Budget: 600 lines
 // Spec: ch 19 §0 items 1-3, §2 W1-W3, §3, §5, §6.1, §8 (WaveeCommands), §9.1 items 1-2, §10 items 1-11d
 //
-// THREE REGIONS, in dependency order, so the pure half is testable without an engine (ShellPaletteTests):
-//   1. PURE   — the builtin table (19 rows; declaration order IS the empty-query order), the registry merge, the
+// THREE REGIONS, in dependency order, so the pure half needs no engine:
+//   1. PURE   — the builtin table (declaration order IS the empty-query order), the registry merge, the
 //               scoring ladder (prefix 0 · contains 1 · subsequence 2 · no match dropped), the bounded scored insert
-//               into a CALLER-OWNED array, the `>` commands-only prefix and the "Search for …" row. No LINQ and no
-//               per-keystroke allocation beyond the query's own lowercase copy.
-//   2. SHELL  — invoking an entry, and the two shell verbs it lands on (theme, zoom) that had no 0.3 home.
+//               into a CALLER-OWNED array, the `>` commands-only prefix, the Settings group's rows and the "Search for …"
+//               row. No LINQ and no per-keystroke allocation beyond the query's own lowercase copy.
+//   2. SHELL  — invoking an entry, and the zoom verb it lands on that had no 0.3 home.
+//
+// THE SETTINGS GROUP (settings rework phase 2, owner decision 5): a query also asks the settings search (`SettingsSearch`, the
+// one index the Settings page's box reads) and shows its top three dials, after the commands and before "Search for …". A
+// Settings row writes NOTHING: Enter deep-links to the dial (`Settings.Open`), so a dial has one writer path. That is why the
+// palette has no verb that is a plain dial write (the old "Theme" and "Crossfade" toggles); its verbs that are not dial
+// writes (zoom steps, the next player style, Edit sidebar, Home's facets) stay.
 //   3. UI     — the host of the structure's `Shell.CommandPalette` view (T4c): the props and the session. The lane (a ZStack
 //               sibling, top pad 64, hit-test transparent), the popup's anchor and the card are `ClassicPalette.cs`.
 //
@@ -36,9 +42,9 @@ public static partial class Shell
 {
     // ══ 1. PURE — the command table and its keystroke filter ═════════════════════════════════════════════════════════
 
-    public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library, ThemeOption }
+    public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library, ThemeOption, Dial }
     public enum PalettePlaybackVerb : byte { PlayPause, Next, Previous, Shuffle, Repeat }
-    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar }
+    public enum PaletteSettingsVerb : byte { ZoomIn, ZoomOut, ZoomReset, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar }
 
     /// <summary>"New folder" lives here because the only other way to reach it is a right-click on a sidebar row — and
     /// a pane with no folders yet has no such row.</summary>
@@ -67,6 +73,8 @@ public static partial class Shell
         public string? CatalogQuery;
         /// <summary>What a <see cref="PaletteKind.ThemeOption"/> row does: the active theme's option applies itself (themes plan 8.2).</summary>
         public Action? Run;
+        /// <summary>The settings link a <see cref="PaletteKind.Dial"/> row opens (the dial's id).</summary>
+        public string? SettingsLink;
     }
 
     public static class CommandTable
@@ -91,8 +99,6 @@ public static partial class Shell
             PlayRow("playback.previous", Loc.Get(Strings.Player.Previous), Icons.Previous, PalettePlaybackVerb.Previous),
             PlayRow("playback.shuffle", Loc.Get(Strings.Player.Shuffle), Icons.Shuffle, PalettePlaybackVerb.Shuffle),
             PlayRow("playback.repeat", Loc.Get(Strings.Player.Repeat), Icons.RepeatAll, PalettePlaybackVerb.Repeat),
-            SetRow("settings.theme", Loc.Get(Strings.Settings.Appearance.Theme), Icons.Brush, PaletteSettingsVerb.ToggleTheme),
-            SetRow("settings.crossfade", Loc.Get(Strings.Settings.Sound.Crossfade), Icons.MusicNote, PaletteSettingsVerb.ToggleCrossfade),
             SetRow("settings.zoomIn", Loc.Get(Strings.Settings.Appearance.ZoomIn), Icons.Add, PaletteSettingsVerb.ZoomIn),
             SetRow("settings.zoomOut", Loc.Get(Strings.Settings.Appearance.ZoomOut), Icons.Remove, PaletteSettingsVerb.ZoomOut),
             SetRow("settings.zoomReset", Loc.Get(Strings.Settings.Appearance.ZoomReset), Icons.Undo, PaletteSettingsVerb.ZoomReset),
@@ -188,10 +194,11 @@ public static partial class Shell
             => new() { Id = CatalogId, Glyph = Icons.Search, Kind = PaletteKind.CatalogSearch };
 
         /// <summary>Scan <paramref name="index"/> into <paramref name="dest"/> (length ≥ <see cref="MaxResults"/>) and
-        /// return the hit count. A query WITHOUT <c>&gt;</c> is trimmed (a pasted "  pl\n" still matches) and, when
-        /// room remains, gets the catalog row LAST; a query WITH <c>&gt;</c> skips only the spaces right after it and
-        /// never gets the catalog row.</summary>
-        public static int Filter(PaletteEntry[] index, string query, PaletteEntry[] dest, PaletteEntry catalogScratch)
+        /// return the hit count. A query WITHOUT <c>&gt;</c> is trimmed (a pasted "  pl\n" still matches), gets the
+        /// <paramref name="settings"/> rows (the Settings group) after the commands and the catalog row LAST, both with
+        /// their room kept; a query WITH <c>&gt;</c> skips only the spaces right after it and gets neither.</summary>
+        public static int Filter(PaletteEntry[] index, string query, PaletteEntry[] dest, PaletteEntry catalogScratch,
+            ReadOnlySpan<PaletteEntry> settings = default)
         {
             bool commandsOnly = false;
             string q = query ?? "";
@@ -208,6 +215,9 @@ public static partial class Shell
             }
 
             string qLower = q.Length == 0 ? "" : q.ToLowerInvariant();
+            bool catalog = !commandsOnly && q.Length > 0;
+            if (commandsOnly || q.Length == 0) settings = default;
+            int cap = Math.Max(1, MaxResults - settings.Length - (catalog ? 1 : 0));
             int written = 0;
             Span<int> scores = stackalloc int[MaxResults];
             for (int i = 0; i < index.Length; i++)
@@ -215,10 +225,11 @@ public static partial class Shell
                 var e = index[i];
                 int s = qLower.Length == 0 ? 0 : ScoreOf(e.LabelLower, qLower);
                 if (s < 0) continue;
-                InsertScored(dest, scores, ref written, e, s);
+                InsertScored(dest, scores, ref written, e, s, cap);
             }
+            for (int i = 0; i < settings.Length && written < MaxResults; i++) dest[written++] = settings[i];
 
-            if (!commandsOnly && q.Length > 0 && written < MaxResults)
+            if (catalog && written < MaxResults)
             {
                 catalogScratch.CatalogQuery = q;
                 catalogScratch.Label = Strings.Palette.SearchFor(q);
@@ -245,14 +256,14 @@ public static partial class Shell
             return j == queryLower.Length;
         }
 
-        /// <summary>The bounded linear insert. Ties keep DECLARATION order: an equal score inserts AFTER its peers (the
-        /// scan steps back only past STRICTLY worse scores).</summary>
-        static void InsertScored(PaletteEntry[] dest, Span<int> scores, ref int written, PaletteEntry e, int score)
+        /// <summary>The bounded linear insert into the first <paramref name="cap"/> slots. Ties keep DECLARATION order: an
+        /// equal score inserts AFTER its peers (the scan steps back only past STRICTLY worse scores).</summary>
+        static void InsertScored(PaletteEntry[] dest, Span<int> scores, ref int written, PaletteEntry e, int score, int cap)
         {
-            if (written == MaxResults && score >= scores[written - 1]) return;
-            int at = written < MaxResults ? written : MaxResults - 1;
+            if (written == cap && score >= scores[written - 1]) return;
+            int at = written < cap ? written : cap - 1;
             while (at > 0 && scores[at - 1] > score) at--;
-            int last = written < MaxResults ? written : MaxResults - 1;
+            int last = written < cap ? written : cap - 1;
             for (int i = last; i > at; i--)
             {
                 dest[i] = dest[i - 1];
@@ -260,7 +271,7 @@ public static partial class Shell
             }
             dest[at] = e;
             scores[at] = score;
-            if (written < MaxResults) written++;
+            if (written < cap) written++;
         }
 
         static PaletteEntry NavRow(string id, string label, string glyph, RouteKind route) => new()
@@ -317,15 +328,12 @@ public static partial class Shell
                     case PalettePlaybackVerb.Repeat: PlayerVerbs.Default.CycleRepeat(); break;
                 }
                 break;
+            case PaletteKind.Dial:
+                Settings.Open(e.SettingsLink);
+                break;
             case PaletteKind.Settings:
                 switch (e.SettingsVerb)
                 {
-                    case PaletteSettingsVerb.ToggleTheme: Appearance.ToggleMode(); break;
-                    case PaletteSettingsVerb.ToggleCrossfade:
-                        bool on = !Platform.Settings.Get(Platform.Keys.CrossfadeEnabled);
-                        Platform.Settings.Set(Platform.Keys.CrossfadeEnabled, on);
-                        Playback.Audio.SetCrossfade(on, Platform.Settings.Get(Platform.Keys.CrossfadeMs));
-                        break;
                     case PaletteSettingsVerb.ZoomIn: ZoomStep(+1); break;
                     case PaletteSettingsVerb.ZoomOut: ZoomStep(-1); break;
                     case PaletteSettingsVerb.ZoomReset: ZoomStep(0); break;
@@ -404,17 +412,44 @@ public static partial class Shell
     /// than an overlay entry, the frame's own Escape handler must bail while it is open.</summary>
     public static Element CommandPalette() => ViewSlots.View(ViewKeys.ShellCommandPalette, s_paletteProps);
 
-    /// <summary>One open palette (the card's session): the command index, the result array and the catalog row, allocated once per
-    /// mount (ch 19 §9.1 item 2). The card mounts FRESH per open, so the session does too.</summary>
+    /// <summary>One open palette (the card's session): the command index, the result array, the catalog row and the Settings group's
+    /// rows, allocated once per mount (ch 19 §9.1 item 2). The card mounts FRESH per open, so the session does too.</summary>
     sealed class PaletteSession : IPaletteSession
     {
+        /// <summary>How many dials the Settings group shows.</summary>
+        const int SettingsRows = 3;
+
         readonly PaletteEntry[] _index = CommandTable.BuildIndex(Actions.Registry.Current?.Actions, s_paletteGlyphOf,
             Theming.ThemeOptionsSection.Commands(Platform.Developer.Enabled.Peek()), caps: ShellCaps.Now);
         readonly PaletteEntry[] _hits = new PaletteEntry[CommandTable.MaxResults];
         readonly PaletteEntry _scratch = CommandTable.NewCatalogScratch();
+        readonly SettingsHit[] _found = new SettingsHit[SettingsSearch.PopupResults];
+        readonly PaletteEntry[] _dials = [NewDialRow(), NewDialRow(), NewDialRow()];
         int _count;
 
-        public int Filter(string query) => _count = CommandTable.Filter(_index, query, _hits, _scratch);
+        public int Filter(string query) => _count = CommandTable.Filter(_index, query, _hits, _scratch, _dials.AsSpan(0, FindDials(query)));
+
+        /// <summary>The Settings group: the search's top dials (every query word matched; pointers and close matches are left to the
+        /// Settings page) into the session's reused rows. Allocation-free: the labels are the index's own, built once per dial.</summary>
+        int FindDials(string query)
+        {
+            ReadOnlySpan<char> q = query.AsSpan().Trim();
+            if (q.IsEmpty || q[0] == '>') return 0;
+            var result = SettingsSearch.Run(q, _found);
+            if (result.Close) return 0;
+            int rows = 0;
+            for (int i = 0; i < result.Count && rows < SettingsRows; i++)
+            {
+                if (_found[i].Dial is not { } dial) continue;
+                PaletteEntry row = _dials[rows++];
+                row.Id = dial.Id;
+                row.Label = SettingsSearch.PaletteLabel(in _found[i]);
+                row.SettingsLink = dial.Id;
+            }
+            return rows;
+        }
+
+        static PaletteEntry NewDialRow() => new() { Glyph = Icons.Settings, Kind = PaletteKind.Dial };
 
         public string GlyphAt(int index) => _hits[index].Glyph;
 
