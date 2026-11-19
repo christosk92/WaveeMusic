@@ -255,12 +255,7 @@ internal static partial class ZuneSettings
                     Children =
                     [
                         // A long word wraps inside its target rather than shrinking (design 7.3): the target grows a line.
-                        ZuneText.Nav(name) with
-                        {
-                            Color = drill || on ? Tok.TextPrimary : Tok.TextTertiary, HoverColor = drill ? R.Ink.AccentDecor : Tok.TextPrimary,
-                            Weight = on ? Z.NavSelectedWeight : Z.NavRestWeight, Size = lay.NavSize, LineHeight = lay.NavLineH,
-                            MaxLines = 0, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.None, Shrink = 1f,
-                        },
+                        Embed.Comp(new WordProps(name, on, drill, lay.NavSize, lay.NavLineH, props.Search), static () => new SectionWord()),
                         ZuneText.Hint(summary) with
                         {
                             Visible = drill && summary.Length > 0, MaxLines = Math.Max(1, lay.SummaryLines), Trim = TextTrim.WordEllipsis,
@@ -270,6 +265,30 @@ internal static partial class ZuneSettings
                 new BoxEl { Shrink = 0f, Visible = drill, HitTestVisible = false, Children = [Icon(Icons.ChevronRight, Z.SectionChevron, Tok.TextTertiary)] },
             ],
         }.Interactive(Interaction.Subtle);
+    }
+
+    sealed record WordProps(string Name, bool Open, bool Drill, float Size, float LineHeight, SettingsSearchModel Search);
+
+    /// <summary>A section word: the open one in the ink at the heavier weight, the rest tertiary. While the pill has a query no word is open (the results
+    /// stand in the column, which no section owns); the open style comes back on the section that opens, or on the one that was open when the query clears.
+    /// The same text node either way: only its brush (cross-faded) and its weight change, from the box's active state alone (a memo: a keystroke that keeps the
+    /// results showing re-renders nothing here).</summary>
+    sealed class SectionWord : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<WordProps>();
+            var search = p.Search;
+            bool searching = UseComputed(() => IsSearching(search)).Value;
+            bool on = p.Open && !searching;
+            return ZuneText.Nav(p.Name) with
+            {
+                Color = p.Drill || on ? Tok.TextPrimary : Tok.TextTertiary, HoverColor = p.Drill ? R.Ink.AccentDecor : Tok.TextPrimary,
+                BrushTransitionMs = Design.Motion.Faster,
+                Weight = on ? Z.NavSelectedWeight : Z.NavRestWeight, Size = p.Size, LineHeight = p.LineHeight,
+                MaxLines = 0, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.None, Shrink = 1f,
+            };
+        }
     }
 
     /// <summary>A drill-in row's summary (design 7.3): its category's fact at a glance where the home has one ("zune · system", "very high · normalization
