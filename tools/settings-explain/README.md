@@ -86,7 +86,10 @@ lacks a clip for a theme or mode it applies to, or a clip breaks the budget. A D
 
 ## How a clip is made
 
-- One fresh inspector process per clip x theme x mode, mounted at the entry's size and `scale` (2 by default).
+- One fresh inspector process per clip x theme x mode, mounted at the entry's size and `scale` (2 by default), with
+  `images=real` (`defaults.mountArgs`): covers are the bundled artwork, never the fake decoder's flat gradients. The fake
+  catalogue's covers cannot be graded, so a clip whose effect is a colour taken from the art (Colour from art, Zune's
+  Background) names the `grade` that matches its cover (tr8's ochre art and `grade=yellow`; tr3's teal and `grade=teal`).
 - The setup lines, then the before value through `setting id=<dial> value=<v>`: the dial's own writer, as a Settings view
   calls it. A rest, then `render` of the before frame.
 - The change: the after value written with `settle=false` (a slider is swept through its values; an `after` list steps
@@ -97,6 +100,12 @@ lacks a clip for a theme or mode it applies to, or a clip breaks the budget. A D
 - The crop: the union of the region keys (`find`, in both states) grown to 16:9, at least `minWidth` DIP wide, kept
   inside `within` and the window. Never the whole window unless the window is the subject (the full screen, the mini
   player).
+- The cut edges: where a crop edge lies inside the window and content runs on past it (a lyric line above the active
+  one, a track list's trailing column), that edge of the shot fades to the shot's own ground over 16 px
+  (`defaults.frame.fade`) instead of cutting a word or a line hard. `EdgeFade` decides it per clip from the first and
+  last captures (content touching the outermost rows or columns; the ground is the commonest colour along that edge); a
+  window edge is a real edge and never fades. The region's `fade` overrides it (a list of sides, or false). The log
+  names the faded sides.
 - The frames are resampled to 15 fps (motion can be slowed with `slow` so a 300 ms flight is readable), cropped, scaled to
   the shot, merged where identical (sub-rectangle frames do the rest), composed into the frame (below) and encoded with
   libwebp's WebPAnimEncoder through Pillow: lossy, quality 70 (an entry may start higher: dim lyrics on a dim ground smear

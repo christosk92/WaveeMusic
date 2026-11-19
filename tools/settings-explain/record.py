@@ -309,7 +309,9 @@ class Recorder:
         route = self.get("route")
         if route:
             args.append("route=" + route)
-        for k, v in (self.get("mountArgs") or {}).items():
+        mount_args = dict(self.d.get("mountArgs") or {})              # the defaults (images=real: covers as the product shows them)
+        mount_args.update(per_theme(self.e.get("mountArgs"), self.theme) or {})
+        for k, v in mount_args.items():
             args.append("%s=%s" % (k, fmt_value(v)))
         r = self.s.cmd(" ".join(args))
         self.s.scale = float((r.get("size") or {}).get("scale", self.s.scale))
@@ -530,18 +532,106 @@ def integer_durations(ms_list):
     return out
 
 
-def shots(entries, box_dip, scale, size, cache):
-    """Each timeline entry's capture, cropped to the box and scaled to the frame's shot size."""
+def shot_of(path, box_dip, scale, size):
+    """One capture cropped to the box (DIP) and scaled to the frame's shot size."""
     from PIL import Image
     left, top, w, h = (v * scale for v in box_dip)
     box = (int(round(left)), int(round(top)), int(round(left + w)), int(round(top + h)))
+    with Image.open(path) as im:
+        return im.convert("RGB").crop(box).resize(size, Image.LANCZOS)
+
+
+def shots(entries, box_dip, scale, size, cache, fade=None):
+    """Each timeline entry's capture, cropped to the box, scaled to the frame's shot size and faded at its cut edges."""
     out = []
     for e in entries:
         if e[0] not in cache:
-            with Image.open(e[0]) as im:
-                cache[e[0]] = im.convert("RGB").crop(box).resize(size, Image.LANCZOS)
+            img = shot_of(e[0], box_dip, scale, size)
+            cache[e[0]] = fade.apply(img) if fade else img
         out.append(cache[e[0]])
     return out
+
+
+SIDES = ("top", "bottom", "left", "right")
+
+
+class EdgeFade:
+    """The shot's cut edges (owner, 2026-11-19: a crop that cuts content mid-word or mid-line reads unfinished). Where the content
+    honestly runs on past the crop, that edge fades to the shot's own ground over `width` px instead of a hard cut: the lines
+    above and below a lyric, a track list's trailing column. Planned once per clip (`plan`) from its first and last captures:
+    a side is faded when the crop edge lies inside the window (a window edge is a real edge: the full screen, the mini
+    player) and content touches it (pixels off the ground in the outermost rows or columns); its ground is the commonest
+    colour of the band along it. The region's `fade` overrides it: a list of sides, or false for none."""
+
+    def __init__(self, sides, size, width):
+        from PIL import Image
+        self.sides = sides
+        self.layers = []
+        w, h = size
+        for side, rgb in sides:
+            ramp = Image.new("L", (w, h), 0)
+            px = ramp.load()
+            n = int(width)
+            for k in range(n):
+                v = int(round(255 * (1.0 - ease((k + 0.5) / n))))
+                if side in ("top", "bottom"):
+                    y = k if side == "top" else h - 1 - k
+                    for x in range(w):
+                        px[x, y] = max(px[x, y], v)
+                else:
+                    x = k if side == "left" else w - 1 - k
+                    for y in range(h):
+                        px[x, y] = max(px[x, y], v)
+            self.layers.append((Image.new("RGB", (w, h), rgb), ramp))
+
+    def apply(self, img):
+        from PIL import Image
+        for ground, ramp in self.layers:
+            img = Image.composite(ground, img, ramp)
+        return img
+
+    @staticmethod
+    def band(img, side, depth):
+        w, h = img.size
+        return img.crop({"top": (0, 0, w, depth), "bottom": (0, h - depth, w, h),
+                         "left": (0, 0, depth, h), "right": (w - depth, 0, w, h)}[side])
+
+    @staticmethod
+    def ground(band):
+        """The commonest colour of a band (quantised, so anti-aliasing and lossy noise do not split it)."""
+        q = band.point(lambda v: (v // 6) * 6)
+        colours = q.getcolors(q.size[0] * q.size[1]) or [(1, (0, 0, 0))]
+        return max(colours, key=lambda c: c[0])[1]
+
+    @classmethod
+    def touches(cls, img, side, ground, level=24, share=0.006):
+        edge = cls.band(img, side, 2)
+        n = 0
+        pixels = edge.get_flattened_data() if hasattr(edge, "get_flattened_data") else edge.getdata()
+        for px in pixels:
+            if max(abs(px[0] - ground[0]), abs(px[1] - ground[1]), abs(px[2] - ground[2])) > level:
+                n += 1
+        return n > share * edge.size[0] * edge.size[1]
+
+    @classmethod
+    def plan(cls, setting, box, win, samples, width):
+        """`setting`: "auto" (the default), a list of sides, or false. `box`/`win`: the crop and the window (DIP); `samples`: shots
+        (first, last) at the shot size."""
+        if setting is False or not samples:
+            return None
+        inside = {"left": box[0] > 0.5, "top": box[1] > 0.5,
+                  "right": box[0] + box[2] < win[0] - 0.5, "bottom": box[1] + box[3] < win[1] - 0.5}
+        sides = []
+        for side in SIDES:
+            if isinstance(setting, list):
+                if side not in setting:
+                    continue
+            elif not inside[side]:
+                continue
+            g = cls.ground(cls.band(samples[0], side, 14))
+            if isinstance(setting, list) or any(cls.touches(sh, side, g) for sh in samples):
+                sides.append((side, g))
+        return cls(sides, samples[0].size, width) if sides else None
 
 
 def framed(merged, framer):
@@ -957,10 +1047,17 @@ def record_item(inspect_mod, exe, entry, theme, mode, defaults, budget, out_root
         max_still = setting_for(entry, theme, "maxStill", defaults)
         res["crop"] = [round(v, 1) for v in box]
         cache = {}
+        region = {k: per_theme(v, theme) for k, v in (setting_for(entry, theme, "region", defaults) or {}).items()}
+        fade = EdgeFade.plan(region.get("fade", "auto"), box, rec.win,
+                             [shot_of(segs[0][1], box, scale, framer.shot), shot_of(segs[-1][1], box, scale, framer.shot)],
+                             float(defaults["frame"].get("fade", 16)))
+        res["fade"] = [side for side, _ in fade.sides] if fade else []
+        if fade:
+            notes.append("fade " + "/".join(res["fade"]))
 
         def build(fps):
             tl = timeline(segs, fps, slow, hold_s, framer.ramp_ms)
-            return framed(merge_frames(shots(tl, box, scale, framer.shot, cache), tl, loop_min, max_still), framer)
+            return framed(merge_frames(shots(tl, box, scale, framer.shot, cache, fade), tl, loop_min, max_still), framer)
     (data, fps, q, frames, durations), fits = encode_at_budget(build, budget, fps0, q0)
     loop_ms = sum(durations)
     if loop_ms > loop_max * 1000:
