@@ -108,7 +108,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ShellPanel, ClassicPanel.Template, "classic.shell.panel");
         views.Add(ViewKeys.PanelFriends, ClassicFriends.Template, "classic.panel.friends");
         views.Add(ViewKeys.NowPlayingHero, ClassicNowPlayingHero.Template, "classic.player.now-playing-hero");
-        views.Add(ViewKeys.DevicePicker, ClassicDevicePicker.Template, "classic.player.device-picker");
+        CommonDevicePicker.Register(views, "classic.player.device-picker");   // WinUI's picker, shared (Themes/Common): the owner's choice, 2026-11-19
         views.Add(ViewKeys.OnMediaTransport, ClassicOnMedia.Template, "classic.player.on-media-transport");
         // P3: the panel's lyrics header (with the AI sparkle and the developer inspector), the "Next up" rows and the lyrics peek; their facts,
         // verbs, the rows' data and the peek's clock stay core (`RailWiring`, `AiLyrics.HeaderFacts`, `Rail.NextUpRows`, `Lyrics.PeekReel`).
