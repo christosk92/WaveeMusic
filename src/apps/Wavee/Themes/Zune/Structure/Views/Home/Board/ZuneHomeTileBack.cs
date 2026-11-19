@@ -125,10 +125,12 @@ internal static class ZuneHomeTileBack
         }
     }
 
-    /// <summary>A choice as a word: the 22/28 light voice, lowercase, the accent when it is the current one; a 40 target at least.</summary>
+    /// <summary>A choice as a word: the 22/28 light voice, lowercase, the accent when it is the current one. Its box is its ink, so a line's first word
+    /// starts on the label column; its hit reaches half the words' gap past each side (<see cref="ZuneHomeBoardRules.BackWordSlop"/>), 40 tall.</summary>
     static Element Word(string key, string text, bool lit, Action act, bool command = false) => new BoxEl
     {
-        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinHeight = B.BackWordH, MinWidth = B.BadgeHit, Shrink = 0f,
+        Key = key, Direction = 0, AlignItems = FlexAlign.Center, MinHeight = B.BackWordH, Shrink = 0f,
+        HitSlop = new Edges4(B.BackWordSlop, 0f, B.BackWordSlop, 0f),
         Focusable = true, Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = act,
         Children =
         [

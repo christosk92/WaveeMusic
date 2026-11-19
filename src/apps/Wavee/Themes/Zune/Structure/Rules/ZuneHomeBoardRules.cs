@@ -237,6 +237,11 @@ public static class ZuneHomeBoardRules
     public const float BackPadX = 14f, BackPadTop = 10f, BackPadBottom = 14f, BackHeadH = 40f, BackLabelH = 18f, BackWordH = 40f, BackWordGap = 18f,
         BackOptionGap = 12f;
 
+    /// <summary>How far a word's hit reaches past its ink on each side: half the words' gap, so a line of words is one unbroken band of targets and a
+    /// short word ("off", 24 wide) still takes a 40 target. The word's box hugs its ink, so every line's first glyph stands on the label column (a box
+    /// widened to the target centred a short word in it: "off" stood 8 right of the clock's words).</summary>
+    public const float BackWordSlop = BackWordGap / 2f;
+
     /// <summary>How many words fit on a line of the back at its least width (4 cells): the open extent reserves one line per this many values.</summary>
     public const int BackWordsPerLine = 3;
 
@@ -246,7 +251,7 @@ public static class ZuneHomeBoardRules
     public const int BackNoteLines = 3;
 
     /// <summary>What the open extent counts a character as, to find where a setting's words and note wrap at the back's width: a word in the 22/28
-    /// light voice (about 10.5; a word is a 40 target at least), a note's character in the 13/18 meta voice (about 6.8). A guess on the long side only
+    /// light voice (about 10.5; a word's box is its ink), a note's character in the 13/18 meta voice (about 6.8). A guess on the long side only
     /// leaves air under the words; on the short side the back scrolls, as any back with more words than its box does.</summary>
     public const float BackWordCharW = 10.5f, BackNoteCharW = 6.8f;
 
@@ -375,7 +380,7 @@ public static class ZuneHomeBoardRules
         float x = 0f;
         foreach (var key in keys)
         {
-            float w = MathF.Max(BadgeHit, Loc.Get(key).Length * BackWordCharW);
+            float w = Loc.Get(key).Length * BackWordCharW;
             if (x > 0f && x + BackWordGap + w > avail) { lines++; x = w; }
             else x += (x > 0f ? BackWordGap : 0f) + w;
         }
