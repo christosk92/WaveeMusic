@@ -98,9 +98,11 @@ internal static partial class ZuneSettings
         Element categoryLane = ScrollView(new BoxEl
         {
             Direction = 0, Wrap = scrolled.Count > 1, Gap = Z.AsideGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
-            // the clip reaches LaneInk left of the column, the column stays where it was (a left-hanging glyph at the gutter keeps its ink)
-            Padding = new Edges4(Z.LaneInk, laneAir, 0f, Z.LaneBottom), Children = scrolled.ToArray(),
-        }) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Margin = new Edges4(-Z.LaneInk, 0f, 0f, 0f), ScrollKey = "zs:" + slug, Key = "zs:scroll:" + slug };
+            // the clip reaches LaneInk left of the column, the column stays where it was (a left-hanging glyph at the gutter keeps its ink); on the right the
+            // scroller runs over the page row's gutter to the page's edge (the pane's divider or the window's), so its scrollbar sits on that edge as Home's
+            // does instead of floating a gutter inside it (owner report 2026-11-19), and the gutter is the lane's own padding
+            Padding = new Edges4(Z.LaneInk, laneAir, lay.Gutter, Z.LaneBottom), Children = scrolled.ToArray(),
+        }) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Margin = new Edges4(-Z.LaneInk, 0f, -lay.Gutter, 0f), ScrollKey = "zs:" + slug, Key = "zs:scroll:" + slug };
 
         Element lane = new BoxEl
         {
@@ -202,10 +204,12 @@ internal static partial class ZuneSettings
         {
             Key = "zs:sections:list", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
             // The drill-in page scrolls like a lane: nine 60-tall rows overrun a short window, and the last ones must still come up from under the play bar.
-            Padding = new Edges4(0f, 0f, 0f, drill ? Z.LaneBottom : 0f), Children = items,
+            // There its scroller runs over the page row's gutter to the page's edge, so the scrollbar sits on that edge (as the lane's), the gutter padding.
+            Padding = new Edges4(0f, 0f, drill ? lay.Gutter : 0f, drill ? Z.LaneBottom : 0f), Children = items,
         }) with
         {
             Key = "zs:sections:scroll", Grow = 0f, Shrink = 1f, MinHeight = 0f, ContentSized = true, SuppressScrollBar = !drill, ScrollKey = "zs:sections",
+            Margin = new Edges4(0f, 0f, drill ? -lay.Gutter : 0f, 0f),
             // The results stand in the drill-in list's place while the pill has a query.
             Visible = listPage ? Prop.Of(() => !IsSearching(search)) : true,
         };

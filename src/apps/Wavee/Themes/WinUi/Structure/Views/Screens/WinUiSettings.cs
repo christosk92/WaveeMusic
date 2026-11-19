@@ -96,6 +96,8 @@ internal static partial class WinUiSettings
         bool aside = layout.Aside && !showResults && slug == "appearance";
         // The body swaps with the page cross-fade: the lane is keyed per view, so a switch is a real unmount the engine fades out under the arriving view,
         // and each view keeps its own offset. The head and the strip are SIBLINGS of the scroller: nothing compacts, sticks or gains a shadow.
+        // The scroller spans the page out to its right edge (the pane's divider or the window's edge), so its scrollbar sits on that edge as in Windows
+        // Settings; the page's side insets are the scrolled column's padding (owner report 2026-11-19: the bar "floating" in the free space by the column).
         Element content = new BoxEl
         {
             Key = "settings:view:" + view, Direction = 1, Grow = 1f, MinHeight = 0f, Animate = WinUiSettingsRules.TabSwap,
@@ -104,7 +106,7 @@ internal static partial class WinUiSettings
                 ScrollView(new BoxEl
                 {
                     Direction = 1,
-                    Padding = new Edges4(0f, 0f, 0f, layout.InsetX),
+                    Padding = new Edges4(layout.InsetX, 0f, layout.InsetX, layout.InsetX),
                     Children = [ContentColumn(body, layout, aside ? ThemeAside() : null)],
                 }) with { Grow = 1f, ScrollKey = "settings:" + view, Key = "settings:scroll:" + view },
             ],
@@ -113,8 +115,9 @@ internal static partial class WinUiSettings
         return new BoxEl
         {
             Key = "settings:page", Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Gap = layout.PageGap,
-            Padding = new Edges4(layout.InsetX, layout.InsetTop, layout.InsetX, 0f),
-            // The page's insets follow the window tier: the head, the strip and the body glide to their new boxes on a crossing (no part rebuilds).
+            Padding = new Edges4(0f, layout.InsetTop, 0f, 0f),
+            // The page's insets follow the window tier: the head and the strip take them as their margins, the body's scroller as its column's padding, and
+            // each glides to its new box on a crossing (no part rebuilds).
             Children =
             [
                 Head(layout, search),
@@ -143,6 +146,7 @@ internal static partial class WinUiSettings
         return new BoxEl
         {
             Key = "settings:head", Direction = under ? (byte)1 : (byte)0, Gap = under ? layout.PageGap : Spacing.L, MinWidth = 0f, Shrink = 0f,
+            Margin = new Edges4(layout.InsetX, 0f, layout.InsetX, 0f),
             MaxWidth = layout.CapsColumn ? layout.ColumnMaxW : float.NaN,   // the box's right edge is the cards' (the concept board)
             Layout = WinUiScreenMotion.Reflow,
             AlignItems = under ? FlexAlign.Stretch : FlexAlign.Center,
@@ -247,6 +251,7 @@ internal static partial class WinUiSettings
             return new BoxEl
             {
                 Direction = 1, Shrink = 0f, MinWidth = 0f, MaxWidth = layout.CapsColumn ? layout.ColumnMaxW : float.NaN,
+                Margin = new Edges4(layout.InsetX, 0f, layout.InsetX, 0f),
                 Children =
                 [
                     // A mouse has no sideways wheel: where the words run past the column (a narrow window, an open pane, Compact), hovering the strip shows
