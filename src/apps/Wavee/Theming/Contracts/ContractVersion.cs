@@ -305,6 +305,10 @@
 // 1.114 (the connected navigation flight): `PageMotionPolicy.Connected` (the structure's `ConnectedNavSpec`: an album card's cover flies into
 // the album page's hero and back; null flies nothing) and `PageMotionPolicy.ConnectedQuietPage` (the page under a flight swaps with the
 // recipe's opacity legs only, `Design.Nav.Quiet`).
+// 1.115 (settings rework phase 3: hints, explanation badges, in-context dials): `ViewKeys.Hint` with `HintProps` (one key for every surface, the
+// surface in the props; `HintAction`, `HintSurfaces`), `ViewKeys.Explainer` with `ExplainerProps` (a dial's badge and its clip tip) and
+// `ViewKeys.SettingsDials` with `SettingsDialsProps` (a feature panel's dials, written with the panel as their source). Every theme gets the
+// Common stand-ins (`CommonHint`) until it draws its own.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -320,7 +324,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 114;
+    public const int Minor = 115;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

@@ -1164,6 +1164,10 @@
       "deliveryTitle": "Delivery",
       "windows": "Windows notifications",
       "windowsSub": "Let Wavee raise banners in the Action Center. Off, nothing leaves the app — the bell in the top bar still keeps everything.",
+      "tips": "Tips about features",
+      "tipsSub": "Now and then, show where a setting can help, right where it's useful",
+      "resetTips": "Reset tips",
+      "resetTipsSub": "Show the tips you've dismissed again",
       "sound": "Play a sound",
       "soundSub": "Off, banners appear silently.",
       "quiet": "Quiet hours",
@@ -1261,7 +1265,7 @@
       "sound": { "quality": "Quality", "loudness": "Loudness and volume", "equalizer": "Equalizer", "output": "Output and Connect" },
       "playback": { "betweenSongs": "Between songs", "playerBar": "Player bar", "podcasts": "Podcasts and audiobooks", "videos": "Videos and Canvas", "runtime": "Playback runtime" },
       "lyrics": { "text": "Lyrics", "nowPlaying": "Now playing", "fullScreen": "Full screen", "miniPlayer": "Mini player" },
-      "notifications": { "delivery": "Delivery", "topics": "What you're told about" },
+      "notifications": { "delivery": "Delivery", "topics": "What you're told about", "tips": "Tips" },
       "system": { "startup": "Startup", "window": "Window and notification area", "language": "Language", "links": "Links", "graphics": "Graphics" },
       "storage": { "onThisPc": "On this PC", "playbackCache": "Playback cache", "metadataCache": "Metadata cache", "reset": "Reset" },
       "account": { "signedIn": "Account", "privacy": "Privacy", "crashReports": "Crash reports" },
@@ -1930,7 +1934,8 @@
         "needsIcon": "Turned off while the icon is set to Never",
         "needsStartOnLogin": "Turn on opening Wavee when you sign in first"
       }
-    }
+    },
+    "value": { "on": "On", "off": "Off" }
   },
   "shell": {
     "searchPlaceholder": "Search songs, artists, albums...",
@@ -4405,5 +4410,26 @@
     "live": "Live",
     "updateReady": "Update ready",
     "onDevice": "on {device}"
+  },
+  "hints": {
+    "$comment": "The in-app hints (Shell/Hints.cs, design 6.3): one line and its one action each; Zune lowercases through its case role.",
+    "notNow": "Not now",
+    "neverTips": "Don't show tips",
+    "done": { "on": "On", "change": "Change" },
+    "aiLyrics": { "text": "Want every word timed as it is sung? Word-by-word lyrics run on this PC.", "action": "Set up" },
+    "lossless": { "text": "Lossless is available on this PC.", "action": "Change quality" },
+    "meteredCap": { "text": "Lowered on a metered connection", "action": "Change" },
+    "crossfade": { "text": "Blend the end of each song into the next." },
+    "normalization": { "text": "Some songs louder than others? Audio normalization evens them out.", "action": "Turn on" },
+    "equalizerState": { "off": "Sound settings · Equalizer off", "on": "Sound settings · Equalizer on" },
+    "windowsNotifications": { "text": "Get release-day news as Windows banners too?", "action": "Turn on" },
+    "closeToTray": { "text": "Closing Wavee by accident? It can keep playing from the taskbar corner instead.", "action": "Keep playing when closed" },
+    "startWithWindows": { "text": "You open Wavee right after signing in. Start it with Windows?", "action": "Start with Windows" },
+    "fastNavigation": { "text": "Pages can switch without the cross-fade.", "action": "Try fast navigation" },
+    "backdrop": { "text": "Right-click the title bar to change the window's material." },
+    "daylistOptions": { "text": "Daylist options" },
+    "shortcuts": { "text": "Space plays and pauses. See every shortcut.", "action": "Shortcuts" },
+    "sleepTimer": { "text": "Falling asleep? Set a sleep timer.", "action": "Sleep timer" },
+    "cacheFull": { "text": "Your playback cache is almost full ({used} of {budget}).", "action": "Change size" }
   }
 }

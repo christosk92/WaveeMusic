@@ -96,6 +96,8 @@ public static partial class Shell
                 Children =
                 [
                     Embed.Comp(() => new RuntimeBannerChrome()),
+                    Hints.HomeBanner(),                               // the Home InfoBar hints (#8, #9): floats under the banner, never reflows the page
+                    Hints.Watcher(),                                  // the hint facts that follow signals (Shell/Hints.UI.cs)
                     Embed.Comp(() => new UpdateToastWatcher()),
                     Embed.Comp(() => new RuntimeToastWatcher()),
                     Embed.Comp(() => new PlaybackFailureToastWatcher()),

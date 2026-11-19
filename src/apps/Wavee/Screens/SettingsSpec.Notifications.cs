@@ -2,7 +2,8 @@
 //
 // Role: CORE (settings rework phase 1). Delivery (Windows banners, the sound, quiet hours) · What you're told about (ONE LADDER PER
 // TOPIC, Off → In Wavee → Windows, in `Notify.Prefs.AllTopics` order — read, never re-listed (A9) — each with its developer-only
-// "Send a test event"). No glyphs: the Bell/gear glyphs repeat on purpose (ch 27 parity 75a).
+// "Send a test event") · Tips (phase 3: the hint service's own switch, "Tips about features", and "Reset tips"; design 6.2). No
+// glyphs: the Bell/gear glyphs repeat on purpose (ch 27 parity 75a).
 
 using FluentGpu.Controls;
 using FluentGpu.Localization;
@@ -56,6 +57,14 @@ public static partial class SettingsSpec
                     legacy: ["quietTo"], parent: "notifications.quiet",
                     value: IntOf(Platform.Keys.NotifyQuietToHour), visible: f => f.WindowsNotifications && f.QuietHours)),
             new SettingsGroup("topics", Strings.Settings.Groups.Notifications.Topics, null, topics.ToArray()),
+            // The hint service's switch (every hint's "Don't show tips" writes it) and its reset (Shell/Hints.cs).
+            Group("tips", Strings.Settings.Groups.Notifications.Tips, null,
+                Make(Hints.TipsDialId, K.Toggle, Strings.Settings.Notify.Tips,
+                    SettingsWriter.OfToggle("hints.tips", SettingsVerbs.SetTips), legacy: ["tips"],
+                    captionKey: Strings.Settings.Notify.TipsSub, value: BoolOf(Platform.Keys.TipsEnabled)),
+                Make("notifications.resetTips", K.Action, Strings.Settings.Notify.ResetTips,
+                    SettingsWriter.OfAction("hints.resetTips", SettingsVerbs.ResetTips), legacy: ["resetTips"],
+                    captionKey: Strings.Settings.Notify.ResetTipsSub)),
         ]);
     }
 
@@ -105,6 +114,21 @@ public static partial class SettingsVerbs
         Notify.Prefs.Bump();
         if (reconcile) Notify.RequestReconcile();
         return true;
+    }
+
+    /// <summary>"Tips about features": persist; the hint slots re-evaluate (a write of this dial bumps them, `Hints.OnDialWritten`).</summary>
+    public static bool SetTips(bool on)
+    {
+        Platform.Settings.Set(Platform.Keys.TipsEnabled, on);
+        return true;
+    }
+
+    /// <summary>"Reset tips": every hint may show again (its shows, snoozes, dismissals and retirement cleared); the slots re-evaluate.</summary>
+    public static bool ResetTips()
+    {
+        HintState.ResetHints();
+        Hints.Bump();
+        return false;
     }
 
     /// <summary>A quiet-hours bound (0..23).</summary>

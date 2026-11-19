@@ -1489,6 +1489,7 @@ public static partial class Shell
             if (ReferenceEquals(NotificationVerbs.PanelCloser, close)) NotificationVerbs.PanelCloser = null;
         };
         Notify.PanelOpened(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        HintFacts.BellOpened();   // hints #7
     }
 
     /// <summary>The panel's host: the feed's signals, the filter, the expanded row, the relative-time tick and the update-progress mirror.

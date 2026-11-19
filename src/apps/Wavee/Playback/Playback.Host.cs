@@ -543,6 +543,7 @@ public static partial class Playback
         ClaimPhase claimBefore = s_state.Own.Claim;
         if (i.Kind == InputKind.Play && !i.Context.Equals(s_wireOriginContext)) s_wireOrigin = null;
         uint loadBefore = s_state.LoadEpoch;
+        if (i.Kind == InputKind.Next) HintFacts.Skipped();   // a local Next, read before the step moves the position (hints #4)
         Step(ref s_state, in i, ref s_fx);
         if (s_state.LoadEpoch != loadBefore && (s_fx.Load || s_fx.Adopt))
             WireStarted(PlayerSession.CauseOf(i.Kind == InputKind.Play, (ClaimCause)(byte)(i.LongArg & 0xFF), s_fx.TakeoverSeed));
@@ -1497,6 +1498,7 @@ public static partial class Playback
     public static void Resume(string cause) { LogPlayPause(cause, resume: true); Post(Input.Resume(FrameNowMs())); }
     public static void TogglePlay(string cause)
     {
+        HintFacts.PlayPauseAsked(cause);   // the bar button's clicks (hints #13)
         bool resume = !s_state.IsPlaying;
         LogPlayPause(cause, resume);
         Post(resume ? Input.Resume(FrameNowMs()) : Input.Pause(FrameNowMs()));
@@ -1515,7 +1517,11 @@ public static partial class Playback
     public static void ScrubEnd(int ms) => Post(Input.ScrubEnd(ms, FrameNowMs()));
     public static void ScrubCancel() => Post(Input.ScrubCancel());
     public static void GoLive() => Post(Input.GoLive(FrameNowMs()));
-    public static void SetVolume(float linear01) => Post(Input.Volume(linear01, FrameNowMs()));
+    public static void SetVolume(float linear01)
+    {
+        HintFacts.VolumeMoved();   // only user actions call this (hints #5)
+        Post(Input.Volume(linear01, FrameNowMs()));
+    }
 
     /// <summary>The exit tail's one call (V-PA11): write a volume change the reducer's 500 ms debounce has not persisted yet,
     /// so the last slider move before closing the window is never lost. A no-op when nothing is pending. After the loop

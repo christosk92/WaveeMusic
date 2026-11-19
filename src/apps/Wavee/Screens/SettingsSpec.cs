@@ -19,6 +19,10 @@
 //   · `Enabled`   enabled or greyed, and the REASON (a loc key) a greyed dial gives; `SilentWhenDisabled` marks one greyed with none;
 //   · `Visible`   composed at all (developer-only dials are ABSENT, never greyed).
 //
+// EVERY WRITE IS SEEN: a value writer is wrapped when it is built, so a write from any surface reports (dial id, source, time) to
+// `SettingsWrites` (Recently changed, retire-on-use; settings rework phase 3). `WriteToggle(on, surface)` and friends write from a
+// place that is not Settings, with that place as the source.
+//
 // A theme's options are dials too: the "‹Theme› options" group lists the ACTIVE theme's generated options
 // (`appearance.option.<qualifiedId>`, `ThemeOptionsSection`) and the legacy rows its structure lists (Classic's sidebar actions).
 //
@@ -73,13 +77,23 @@ public readonly record struct SettingsEnablement(bool Enabled, string? ReasonKey
 public sealed record SettingsConfirm(string TitleKey, string BodyKey, string PrimaryKey);
 
 /// <summary>The verb that changes a dial. Exactly one delegate is set, matching the dial's <see cref="SettingsRowKind"/>; each
-/// returns whether the page must re-read its rows afterwards.</summary>
+/// returns whether the page must re-read its rows afterwards.
+/// <para>THE ONE WRITE PATH (settings rework phase 3): a value writer (<see cref="Toggle"/>, <see cref="Choose"/>, <see cref="Slide"/>)
+/// is wrapped once, when it is built, so every call — a Settings view, a panel, a hint, the inspector — reports the write to
+/// <see cref="SettingsWrites"/> (Recently changed, retire-on-use) under the dial it belongs to (<see cref="DialId"/>, bound by the dial).
+/// A press (<see cref="Run"/>) is a verb, not a value, and records nothing.</para></summary>
 public sealed class SettingsWriter
 {
     SettingsWriter(string verb) => Verb = verb;
 
     /// <summary>The verb's stable name ("tray.iconMode"): what a log or the inspector calls it.</summary>
     public string Verb { get; }
+
+    /// <summary>The dial this writer belongs to (bound once, by <see cref="SettingsDial"/>), or null for a writer no dial holds yet.</summary>
+    public string? DialId { get; private set; }
+
+    /// <summary>Bind the writer to its dial: the first dial that holds it names its writes. A shared writer (<see cref="ReadOnly"/>) writes nothing.</summary>
+    internal void Bind(string dialId) => DialId ??= dialId;
 
     /// <summary>On/off.</summary>
     public Func<bool, bool>? Toggle { get; private init; }
@@ -104,17 +118,50 @@ public sealed class SettingsWriter
     /// <summary>The dial's verbs are the owning module's (<paramref name="owner"/> names them): a card with its own state machine.</summary>
     public static SettingsWriter Owned(string owner) => new(owner) { IsOwned = true };
 
-    public static SettingsWriter OfToggle(string verb, Func<bool, bool> write) => new(verb) { Toggle = write };
-    public static SettingsWriter OfChoice(string verb, Func<int, bool> write) => new(verb) { Choose = write };
-    public static SettingsWriter OfSlider(string verb, Func<float, bool> write) => new(verb) { Slide = write };
+    // Each value writer is wrapped ONCE here (one closure per writer, at registry build): a call allocates nothing beyond what the
+    // writer itself does, and the record is a ring slot update (`SettingsWrites.Recorded`).
+    public static SettingsWriter OfToggle(string verb, Func<bool, bool> write)
+    {
+        SettingsWriter w = null!;
+        w = new(verb) { Toggle = on => SettingsWrites.Recorded(w, write(on)) };
+        return w;
+    }
+
+    public static SettingsWriter OfChoice(string verb, Func<int, bool> write)
+    {
+        SettingsWriter w = null!;
+        w = new(verb) { Choose = i => SettingsWrites.Recorded(w, write(i)) };
+        return w;
+    }
+
+    public static SettingsWriter OfSlider(string verb, Func<float, bool> write)
+    {
+        SettingsWriter w = null!;
+        w = new(verb) { Slide = v => SettingsWrites.Recorded(w, write(v)) };
+        return w;
+    }
+
     public static SettingsWriter OfAction(string verb, Func<bool> run) => new(verb) { Run = run };
 }
 
 /// <summary>One setting: its address in the registry, its words and its one writer (see the file header).</summary>
 public sealed class SettingsDial
 {
+    readonly string _id = "";
+    readonly SettingsWriter _writer = SettingsWriter.ReadOnly;
+
     /// <summary>Stable and unique app-wide ("playback.crossfade"); a theme option's is <c>appearance.option.&lt;qualifiedId&gt;</c>.</summary>
-    public required string Id { get; init; }
+    public required string Id
+    {
+        get => _id;
+        init
+        {
+            _id = value;
+            // Whichever of Id and Writer is set second binds the writer to its dial (the one write path); the shared read-only
+            // writer belongs to no dial.
+            if (!ReferenceEquals(_writer, SettingsWriter.ReadOnly)) _writer.Bind(value);
+        }
+    }
 
     /// <summary>The old row ids this dial answers to (the inspector's <c>setting id=</c>, old links); the first is its row id on its old tab.</summary>
     public IReadOnlyList<string> LegacyIds { get; init; } = [];
@@ -151,7 +198,46 @@ public sealed class SettingsDial
     /// store itself, WVTH002). Null for a dial with no value.</summary>
     public object? Current => Value(Platform.Settings);
 
-    public required SettingsWriter Writer { get; init; }
+    /// <summary>The ONE verb that changes the dial; its value writers report every write under <see cref="Id"/> (<see cref="SettingsWrites"/>).</summary>
+    public required SettingsWriter Writer
+    {
+        get => _writer;
+        init
+        {
+            _writer = value;
+            if (_id.Length > 0 && !ReferenceEquals(value, SettingsWriter.ReadOnly)) value.Bind(_id);
+        }
+    }
+
+    // ── writes from a place that is not Settings (a panel, a hint, the inspector): the same writer, with its source ─────────────
+
+    /// <summary>Write a toggle dial from <paramref name="surface"/> (Recently changed says "from" it). Returns whether the page re-reads.</summary>
+    public bool WriteToggle(bool on, string surface)
+    {
+        using var _ = SettingsWrites.From(surface);
+        return _writer.Toggle is { } toggle && toggle(on);
+    }
+
+    /// <summary>Write a choice dial (an index) from <paramref name="surface"/>.</summary>
+    public bool WriteChoice(int index, string surface)
+    {
+        using var _ = SettingsWrites.From(surface);
+        return _writer.Choose is { } choose && choose(index);
+    }
+
+    /// <summary>Write a slider dial from <paramref name="surface"/>.</summary>
+    public bool WriteSlider(float value, string surface)
+    {
+        using var _ = SettingsWrites.From(surface);
+        return _writer.Slide is { } slide && slide(value);
+    }
+
+    /// <summary>Press an action dial from <paramref name="surface"/>.</summary>
+    public bool Press(string surface)
+    {
+        using var _ = SettingsWrites.From(surface);
+        return _writer.Run is { } run && run();
+    }
 
     public Func<ISettingsFacts, SettingsEnablement> Enabled { get; init; } = static _ => SettingsEnablement.On;
 
@@ -196,13 +282,18 @@ public sealed record SettingsCategory(string Id, string TitleKey, string StripKe
     public string Slug => Id;
 }
 
-/// <summary>The surfaces outside Settings that draw a dial in place today (design 5.4): a dial's <see cref="SettingsDial.Contexts"/>.</summary>
+/// <summary>The surfaces outside Settings that draw a dial in place today (design 5.4): a dial's <see cref="SettingsDial.Contexts"/>, and
+/// the source a write records for Recently changed (<see cref="SettingsWrites"/>).</summary>
 public static class SettingsSurfaces
 {
     public const string StageOptions = "stage.options", StageGallery = "stage.gallery", QueuePanel = "queue.panel", PlayerBar = "playerBar",
         DevicePicker = "devicePicker", MiniPlayerOptions = "miniPlayer.options", LikedCover = "liked.cover", TrackListMenu = "trackList.menu",
         NowPlayingPicker = "nowPlaying.picker", WhatsNew = "whatsNew.dialog", CrashPrompt = "crash.prompt", LogsMenu = "logs.menu",
         TrayMenu = "tray.menu", VideoMenu = "video.menu", SidebarMenu = "sidebar.menu";
+
+    /// <summary>Sources of a write that are not a dial's in-context home: the Settings page (the default), a hint's inline action, the
+    /// command palette, the inspector's <c>setting</c> verb.</summary>
+    public const string Settings = "settings", Hint = "hint", Palette = "palette", Inspector = "inspector";
 }
 
 /// <summary>The registry (see the file header).</summary>

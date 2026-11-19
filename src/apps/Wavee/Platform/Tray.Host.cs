@@ -303,6 +303,7 @@ public static partial class Tray
                     if (!s_retiring)
                     {
                         s_retiring = true;
+                        if (!s_quitRequested) HintFacts.QuitByClose();   // the window's ✕ / Alt+F4 quit, not the tray's Quit (hints #8)
                         // Keep the UI dispatcher alive until the bounded inactive PUT has completed.
                         Spotify.Connect.RetireThen(() => Playback.ToUi(() =>
                         {

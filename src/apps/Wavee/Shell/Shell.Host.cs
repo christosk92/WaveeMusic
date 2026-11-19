@@ -254,6 +254,8 @@ public static partial class Shell
                 s_activation.Kind == ActivationKind.StartupTask,
                 Tray.HasTrayArg(args));
             Tray.Host.Arm(startHidden);
+            // The launch fact (hints #8, #9): a launch by hand, as opposed to Windows starting it at sign-in.
+            HintFacts.Launched(atSignIn: s_activation.Kind == ActivationKind.StartupTask || Tray.HasTrayArg(args));
         }
         // The harness arms hold no gate, so the activation above never parks their deep link: a capture's own
         // `wavee://open?route=…&arg=…` goes through the same drain a cold protocol launch does (the shell's first effect).
@@ -980,7 +982,11 @@ public static partial class Shell
     /// unmounted — its ToolTip owner stays mounted and, under a still pointer, geometrically "hovered": no leave edge,
     /// the safe-zone poll keeps it, and the bubble outlives the page it described until the 5 s dwell (recording
     /// 2026-09-16: a discography drawer's "Go to album" tip parked over the album page it had just opened).</summary>
-    static void RouteCommitted() => ToolTip.CloseOpen();
+    static void RouteCommitted()
+    {
+        ToolTip.CloseOpen();
+        HintFacts.PageCommitted();   // a page left a moment after its swap (hints #10)
+    }
 
     /// <summary>A route that is really ANOTHER page (Spotify's listen-later playlist is the Podcasts library's Your
     /// Episodes view): returns the page to show instead, or null to keep the route. Consulted by every commit and every
