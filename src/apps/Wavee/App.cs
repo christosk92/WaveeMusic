@@ -96,6 +96,9 @@ public static class App
             if (!Shell.AcquireInstance()) return false;
         }
         RegisterShapes();                // the catalog's disk schema (G-007): before Store.Boot / Entities.Boot either way, so --fake and a real profile share one registration path
+        // Fresh-install detection over the profile's disk witnesses (read-only probe), before any store opens (B5) AND before the themes install: a new
+        // install's theme is the bootstrap's to store (ThemeCatalog.NewInstallId), and InstallThemes activates the stored id.
+        if (!Platform.Args.Fake) Setup.BootstrapInstall();
         // The compositions, once and before any surface mounts: it resolves the stored theme id and publishes the active theme's registry, options and facts. FULLY QUALIFIED because
         // inside `namespace Wavee` the simple name `Themes` is the namespace `Wavee.Themes` (the theme packages), not the class.
         // A Developer-only theme (none today) resolves to Classic with Developer mode off, the stored id kept for when it is on again.
@@ -107,14 +110,16 @@ public static class App
         // full-screen stage on real hardware in a given theme): --fake keeps the setting in memory.
         bool fakeBench = Array.IndexOf(argv, "--fake") >= 0
             && Array.Exists(argv, static a => a == "--frame-bench" || a == "--stage-demo" || a.StartsWith("--frame-bench=", StringComparison.Ordinal));
-        if (themeAt >= 0 && themeAt + 1 < argv.Length && (Array.IndexOf(argv, "--screenshot") >= 0 || fakeBench))
+        // Any other `--fake` demo takes it as well (a recorder rehearsal, Record-Feature.ps1 -Fake): its settings live in memory, so the
+        // theme is the run's from its first frame and never switched at run time.
+        bool fakeDemo = Array.IndexOf(argv, "--fake") >= 0;
+        if (themeAt >= 0 && themeAt + 1 < argv.Length && (Array.IndexOf(argv, "--screenshot") >= 0 || fakeBench || fakeDemo))
         {
             Wavee.Theming.ThemeHost.SelectForRun(argv[themeAt + 1]);
         }
         InstallThemes();
         if (!Platform.Args.Fake)
         {
-            Setup.BootstrapInstall();    // fresh-install detection over the profile's disk witnesses (read-only probe), before any store opens (B5)
             StoreFiles.Reap(Platform.LocalFolder, Store.FileName);   // stale schemas, the legacy library.db set, .dead-* leftovers — after the gate, before the open
             Store.Use(Path.Combine(Platform.LocalFolder, Store.FileName));   // the persistent graph (G-007), one file per schema fingerprint; --fake stays memory-only
             // The persisted metadata-cache ceiling, applied at boot (until now only a Storage combo change set it); 0 disables the budget leg.
@@ -143,18 +148,9 @@ public static class App
         // stamp with it off the UI thread, and it keeps running while the window is idle, minimized or tray-hidden. Same QPC
         // domain as FrameTime, so render sites convert explicitly.
         Playback.FrameNowMs = static () => (long)(System.Diagnostics.Stopwatch.GetTimestamp() * (1000.0 / System.Diagnostics.Stopwatch.Frequency));
-        Playback.Audio.EnumerateEndpoints = static () =>
-        {
-            var endpoints = FluentGpu.Windows.Wasapi.WasapiPcm.EnumerateEndpoints();
-            var rows = new Playback.Audio.LocalAudioDevice[endpoints.Length];
-            for (int i = 0; i < rows.Length; i++)
-            {
-                var endpoint = endpoints[i];
-                byte kind = endpoint.FormFactor switch { 3 or 5 => 2, 8 or 9 => 4, 1 => 1, _ => 0 };
-                rows[i] = new(endpoint.Id, endpoint.Name, kind, endpoint.IsDefault);
-            }
-            return rows;
-        };
+        // The outputs the picker offers: the OS's active render endpoints, each named by its device (never Windows' raw endpoint name),
+        // iconed by what it is and with its hands-free twin hidden (Playback.AudioDeviceNaming).
+        Playback.Audio.EnumerateEndpoints = static () => Playback.Audio.Outputs(FluentGpu.Windows.Wasapi.WasapiPcm.EnumerateEndpoints());
         Playback.Boot();                 // state, host loop, audio pump, os bridges
         Playback.InstallCardSeam();      // Controls.NowPlaying: every media surface's equalizer pill and pause-on-own-card (#160)
         if (gui) WireMaterialPolicy();   // Materials.EnergySaver ← PowerSession: AFTER Playback.Boot, which holds the live PowerSession.Subscribe()
@@ -164,8 +160,10 @@ public static class App
         Video.Install();                 // the video host: resolver tiers (chained after the module tier), demotion, engine log sink, attachments, placement preference (B7)
         Video.InstallMirror();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.VideoOverride/LocalVideo; after Install, which loads the roster
         Sidebar.Boot();                  // design, pane state, the layout document and pins; before its action seams and the UI (B6)
-        HomeUi.HomeLayout.Boot();        // home-layout.json v2 loaded once, before the first Home/Customize render (F29)
+        HomeBoardStore.Boot();           // the pinned Home's per-account document (home.acct-<hash>.json); after Sidebar.Boot: its folder and pins
         Sidebar.InstallActionSeams();    // Actions.Services.IsPinned / SetPinned (J1)
+        HomePinVerbs.InstallActionSeams();   // Actions.Services.IsHomePinned / SetHomePinned (pinned Home)
+        Spotify.Books.Install();         // the audiobook-hours allowance's chapter-start PutConsumption (podcast pages data)
         Spotify.Library.Install();       // library writes + sync on Online + the pin bridge; after Sidebar.Boot, before the pane mounts (B2)
         Log.Event(WaveeLogLevel.Info, "app", "boot.playback", "", null, Log.SinceStartMs);
         StartupTimeline.Mark("playback");
@@ -245,10 +243,20 @@ public static class App
         => Wavee.Theming.ThemeHost.Install(Wavee.Themes.Classic.ClassicTheme.Create(), Wavee.Themes.Zune.ZuneTheme.Create(),
             Wavee.Themes.WinUi.WinUiTheme.Create());
 
+    /// <summary>The manifests of the shipped compositions, in picker order (the theme picker still check reads their previews).</summary>
+    static IReadOnlyList<Wavee.Theming.ThemeManifest> ShippedManifests()
+        => [Wavee.Themes.Classic.ClassicTheme.Create().Manifest, Wavee.Themes.Zune.ZuneTheme.Create().Manifest, Wavee.Themes.WinUi.WinUiTheme.Create().Manifest];
+
     [STAThread]
     static int Main(string[] args)
     {
         StartupTimeline.Mark("main");
+        // The Release build's explanation-clip check (Screens/SettingsExplain.cs, Wavee.csproj WaveeCheckExplainerClips): reads a table and a
+        // folder, boots nothing.
+        if (SettingsExplain.TryRunCheck(args, out int clipCode)) return clipCode;
+        // The Release build's theme picker still check (Theming/Composition/ThemePreviews.cs, Wavee.csproj WaveeCheckThemePreviews): reads the
+        // shipped manifests and a folder, boots nothing.
+        if (Wavee.Theming.ThemePreviews.TryRunCheck(args, ShippedManifests, out int previewCode)) return previewCode;
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency; // P16a, once
         Glyphs.Register();               // wavee-icons.otf PUA + bundled SegoeFluentIcons.ttf, BEFORE the harness runs, or every Fluent-Icons glyph is tofu on Win10 (ch 00 §9.5)
         // The crash handler's whole life is here, before ANYTHING else — it never opens settings, the store or the

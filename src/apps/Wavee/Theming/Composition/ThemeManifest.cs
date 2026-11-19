@@ -38,10 +38,10 @@ public readonly record struct RoleSet(ImmutableArray<string> RoleIds)
     public static RoleSet None => new(ImmutableArray<string>.Empty);
 }
 
-/// <summary>One Settings row a structure still binds to a LEGACY key (T1b): the id of its <c>SettingsDoc</c> row on the Appearance
-/// tab and the group it is shown under in the theme's options. An M-PR that turns the switch into a theme option removes the
-/// entry and declares the option instead (the generated row takes the same place), so the tab never changes layout again.</summary>
-/// <param name="RowId">The <c>SettingsDoc</c> row id (Appearance tab).</param>
+/// <summary>One Settings row a structure still binds to a LEGACY key (T1b): its registry dial (named by its id or its old row id,
+/// <c>SettingsSpec.TryResolve</c>) and the group it is shown under in the theme's options. An M-PR that turns the switch into a theme
+/// option removes the entry and declares the option instead (the generated row takes the same place), so the page never changes layout again.</summary>
+/// <param name="RowId">The dial's id or old row id.</param>
 /// <param name="Group">The group label's loc key.</param>
 public sealed record LegacyOptionRow(string RowId, string Group);
 
@@ -77,7 +77,7 @@ public interface IStructureLayer
     /// <summary>The roles the style must define for this structure.</summary>
     RoleSet RequiredRoles { get; }
 
-    /// <summary>The rows of the theme's options that are not options yet: still <c>SettingsDoc</c> rows bound to their legacy keys,
+    /// <summary>The rows of the theme's options that are not options yet: still registry dials bound to their legacy keys,
     /// in display order. Empty for a theme whose every option is in <see cref="Options"/>.</summary>
     IReadOnlyList<LegacyOptionRow> LegacyRows => Array.Empty<LegacyOptionRow>();
 }

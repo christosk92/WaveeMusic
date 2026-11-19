@@ -28,8 +28,8 @@ public static partial class Diagnostics
             switch (verb)
             {
                 case "status": break;
-                case "next": Playback.Next(); break;
-                case "prev": Playback.Previous(); break;
+                case "next": Playback.Next("inspect"); break;
+                case "prev": Playback.Previous("inspect"); break;
                 case "end": Playback.EndNow(); break;
                 case "seek": Playback.SeekTo(Math.Max(0, a.Int("ms", 0))); break;
                 case "shuffle": Playback.SetShuffle(value is "on" or "true" or "1"); break;
@@ -73,8 +73,33 @@ public static partial class Diagnostics
                         Entities.RuleUnplayable(track);
                         break;
                     }
+                case "audiobook":
+                    {
+                        // The catalogue classifies a show as a book (its list header's is_audiobook), as no fake show is.
+                        if (!EntityId.TryParse(a.Str("uri").AsSpan(), out EntityId show)) return Inspect.Reply.Fail(id, name, "audiobook wants uri=spotify:show:...");
+                        Entities.RuleAudiobook(show);
+                        break;
+                    }
+                case "putstate":
+                    {
+                        // The connect-state PUT body this deck would send now (Playback.SnapshotForConnect through the real encoder), as
+                        // base64 for an offline decode (ops/tools/capture/proto_dump.py: PUT_STATE_REQUEST). Nothing is sent: the inspector
+                        // has no Connect session.
+                        Playback.Snapshot snap = Playback.SnapshotForConnect(Playback.PublishReason.PlayerStateChanged);
+                        byte[] body = new byte[Spotify.Decode.PutStateCapacity(in snap)];
+                        int n = Spotify.Decode.PutState(in snap, body, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - Environment.TickCount64);
+                        string b64 = Convert.ToBase64String(body, 0, Math.Max(0, n));
+                        return Settled(id, name, a, w =>
+                        {
+                            w.WriteString("do", verb);
+                            w.WriteNumber("bytes", n);
+                            w.WriteBoolean("audiobook", snap.Wire.Audiobook);
+                            w.WriteString("putState", b64);
+                            WriteTransport(w);
+                        });
+                    }
                 default:
-                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead, not '" + verb + "'");
+                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate, not '" + verb + "'");
             }
             // traced (`trace=N`): the trace's first frames are the change's own (the frame the queue and the deck land in), so nothing runs before it
             bool traced = a.Has("trace");

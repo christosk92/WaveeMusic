@@ -1,7 +1,6 @@
 // ── Platform/Controls.Words.cs ─────────────────────────────────────────────────────────────────────────────────────
-// THE WORD RAIL (Zune's text pivot) — the library's sort / scope / reader-sort rails and the podcast reader's filter ·
-// sort · episode-tab rails — its Big (Display-face) variant, the count badges, and the wrapping word LINKS (a show's
-// topic row)
+// THE WORD RAIL (Zune's text pivot) — the library's sort / scope / reader-sort rails and the podcast pages' filter and
+// episode-tab rails — its Big (Display-face) variant, the count badges, and the wrapping word LINKS (a show's topic row)
 //
 // Role: UI
 // Owner: O
@@ -12,8 +11,8 @@
 //
 // ── ONE RAIL, EVERY SURFACE ──────────────────────────────────────────────────────────────────────────────────────────
 //
-// The library rework drew the rail privately inside `User`; the podcast reader needs the same words for its filter,
-// its sort and (Big) its episode tabs, so the rail lives here and Classic's `ClassicLibraryRails.WordRail/ScopeRail/ReaderSortRail` are thin
+// The library rework drew the rail privately inside `User`; the podcast pages need the same words for their filter and
+// (Big) their episode tabs, so the rail lives here and Classic's `ClassicLibraryRails.WordRail/ScopeRail/ReaderSortRail` are thin
 // adapters over it. The library's metrics are the rail's metrics (13.5/18, gap 14, height 32, 400 → 600, ink 50 % /
 // 85 % hover / 100 %, a 2-DIP underline 3 DIP under the run): moving the rail must not move a library pixel.
 //
@@ -200,12 +199,6 @@ public static partial class Controls
             return k;
         }
 
-        /// <summary>A rail's measure, reported whenever it moves by more than half a DIP: <paramref name="total"/> is the
-        /// row's own arranged width (the words, their counts and the gaps between them — what a toolbar must reserve for a
-        /// rail it never lets shrink) and <paramref name="words"/> each word's arranged width, in word order (a hidden
-        /// word reads 0). The array is the rail's own: read it inside the callback, never keep it.</summary>
-        public delegate void Measured(float total, float[] words);
-
         // ══ THE RAIL ═════════════════════════════════════════════════════════════════════════════════════════════════
 
         /// <summary>A rail bound to one int signal: the active word 100 % ink at the heavy weight over a 2-DIP
@@ -222,25 +215,18 @@ public static partial class Controls
         /// clips nothing and feathers instead, and the selected word is always brought fully into view (on selection, on
         /// resize, on the first frame it answers, and on keyboard focus). <c>false</c> (the default) is exactly today's
         /// element.</para>
-        /// <para><paramref name="onMeasured"/> exposes the rail's natural width and each word's width (<see cref="Measured"/>)
-        /// to a host that decides, from numbers, how much room the rail needs — the show reader's toolbar. Mount-time, like
-        /// every other callback here.</para>
         /// <para><paramref name="fit"/> (instead of <paramref name="fill"/>): the leading words that fit whole, the rest folded behind a trailing "more ▾" word
         /// with a radio menu (see the file header), labelled <paramref name="more"/>.</para>
         /// <para><paramref name="restInk"/> is an inactive word's opacity, read live (null: <see cref="RestInkNow"/>, the kind's): a theme whose ground needs a
         /// heavier rest for the words' contrast states its own.</para>
-        /// <para><paramref name="countRest"/> is a count badge's ink while its word rests, read live (null: the primary text ink: the badge rests with its
-        /// word at the rest opacity, where the secondary ink read 2.8-3.5 : 1 at 11 DIP, audit B8; its size tells it apart). A selected word's badge is the
-        /// secondary ink at full opacity.</para></summary>
+        /// <para>A count badge is the primary text ink while its word rests (it rests with the word at the rest opacity, where the secondary ink read
+        /// 2.8-3.5 : 1 at 11 DIP, audit B8; its size tells it apart), and the secondary ink at full opacity while its word is selected.</para></summary>
         public static Element Rail(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF>? tone = null,
                                    bool big = false, AutomationRole role = AutomationRole.Button,
                                    Action<int>? onReselect = null, Action<int>? onSelect = null, bool fill = false,
-                                   Measured? onMeasured = null, bool fit = false, Prop<string>? more = null, Func<float>? restInk = null,
-                                   Func<ColorF>? countRest = null)
-            => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, fill && !fit, onMeasured,
-                                             fit, more ?? Loc.Bind(Strings.Library.Rail.More), restInk ?? s_restInk, countRest ?? s_countInk));
-
-        static readonly Func<ColorF> s_countInk = static () => Tok.TextPrimary;
+                                   bool fit = false, Prop<string>? more = null, Func<float>? restInk = null)
+            => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, fill && !fit,
+                                             fit, more ?? Loc.Bind(Strings.Library.Rail.More), restInk ?? s_restInk));
 
         static readonly Func<float> s_restInk = static () => RestInkNow;
 
@@ -259,11 +245,6 @@ public static partial class Controls
             // — plain fields, never signals: the slide reads them at the edge and nothing re-renders for them.
             readonly float[] _x, _w;
             readonly NodeHandle[] _bars;
-            // `onMeasured` only: the row's arranged width, and what the callback was last told (so a re-arrange that moved
-            // nothing reports nothing).
-            readonly Measured? _onMeasured;
-            readonly float[]? _sentWords;
-            float _rowW, _sentTotal = -1f;
             // `fill` only: the viewport's scroll handle, and a coarse geometry bump (GeometryKey over its viewport/extent
             // signals) so `AfterLayout` re-runs the reveal on a resize or a late-answering word — never on the user's own
             // scroll (GeometryKey folds in no offset).
@@ -284,41 +265,23 @@ public static partial class Controls
             OverlayHandle? _menu;
             IOverlayService? _overlay;
             readonly Func<float> _rest;
-            readonly Func<ColorF> _countRest;
 
             public RailHost(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF> tone, bool big,
-                            AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool fill, Measured? onMeasured,
-                            bool fit = false, Prop<string>? more = null, Func<float>? restInk = null, Func<ColorF>? countRest = null)
+                            AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool fill,
+                            bool fit = false, Prop<string>? more = null, Func<float>? restInk = null)
             {
                 _rest = restInk ?? s_restInk;
-                _countRest = countRest ?? s_countInk;
                 _fit = fit;
                 _more = more ?? (Prop<string>)"";
                 if (fit) { _nat = new float[words.Count]; _fitShown = new Signal<int>(words.Count); }
                 _words = words; _selected = selected; _tone = tone; _big = big; _role = role;
                 _onReselect = onReselect; _onSelect = onSelect;
                 _fill = fill;
-                _onMeasured = onMeasured;
                 _codes = new int[words.Count];
                 _x = new float[words.Count];
                 _w = new float[words.Count];
                 _bars = new NodeHandle[words.Count];
-                if (onMeasured is not null) _sentWords = new float[words.Count];
                 if (_fill) _scroll = new ScrollHandle();
-            }
-
-            /// <summary>Tell the host what the rail measures — once per real change (the row's width or any word's moved by
-            /// more than half a DIP). The row and every word each report their own bounds, in whatever order the arrange
-            /// visits them, so this runs from all of them and only the last one to move anything is heard.</summary>
-            void ReportMeasure()
-            {
-                if (_onMeasured is not { } cb || _sentWords is not { } sent || !(_rowW > 0f)) return;
-                bool moved = MathF.Abs(_rowW - _sentTotal) > 0.5f;
-                for (int i = 0; !moved && i < _w.Length; i++) moved = MathF.Abs(_w[i] - sent[i]) > 0.5f;
-                if (!moved) return;
-                _sentTotal = _rowW;
-                Array.Copy(_w, sent, _w.Length);
-                cb(_rowW, _w);
             }
 
             public override Element Render()
@@ -350,7 +313,6 @@ public static partial class Controls
                 {
                     Direction = 0, Height = _big ? BigHeight : Height, Gap = _big ? BigGap : Gap,
                     AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids,
-                    OnBoundsChanged = _onMeasured is null ? null : r => { _rowW = r.W; ReportMeasure(); },
                 };
             }
 
@@ -391,7 +353,7 @@ public static partial class Controls
                         Ink(w.Label, big ? BigHeavyWeight : HeavyWeight, Prop.Of(() => isOn() ? Tok.TextPrimary : ColorF.Transparent), big),
                     ],
                 };
-                Element head = w.Count is null && w.Chevron is null ? ink : Head(ink, w.Count, w.Chevron, isOn, _countRest);
+                Element head = w.Count is null && w.Chevron is null ? ink : Head(ink, w.Count, w.Chevron, isOn);
                 return new BoxEl
                 {
                     Direction = 1, Gap = UnderlineGap, Shrink = 0f, Padding = new Edges4(0f, TopPad, 0f, 0f),
@@ -401,7 +363,6 @@ public static partial class Controls
                     OnBoundsChanged = r =>
                     {
                         _x[i] = r.X; _w[i] = r.W;
-                        if (_onMeasured is not null) ReportMeasure();
                         if (_nat is { } nat && r.W > MinSlideWidth && MathF.Abs(nat[i] - r.W) > 0.5f) { nat[i] = r.W; Refit(); }
                     },
                     // Keyboard tabbing onto a word scrolled out of a `fill` rail's viewport brings it back — a no-op
@@ -422,14 +383,14 @@ public static partial class Controls
             }
 
             /// <summary>The word plus its count badge and/or its chevron, on one centred row. The badge is the secondary ink while its word is
-            /// selected and <paramref name="countRest"/> while it rests (it rests with the word at the rest opacity).</summary>
-            static Element Head(Element ink, Prop<string>? count, Func<bool>? chevron, Func<bool> isOn, Func<ColorF> countRest)
+            /// selected and the primary ink while it rests (it rests with the word at the rest opacity).</summary>
+            static Element Head(Element ink, Prop<string>? count, Func<bool>? chevron, Func<bool> isOn)
             {
                 var kids = new List<Element>(3) { ink };
                 if (count is { } c)
                     kids.Add(new TextEl(c)
                     {
-                        Size = CountSize, LineHeight = CountLine, Color = Prop.Of(() => isOn() ? Tok.TextSecondary : countRest()), MaxLines = 1,
+                        Size = CountSize, LineHeight = CountLine, Color = Prop.Of(() => isOn() ? Tok.TextSecondary : Tok.TextPrimary), MaxLines = 1,
                         Visible = Prop.Of(() => c.Current() is { Length: > 0 }),
                     });
                 if (chevron is not null)

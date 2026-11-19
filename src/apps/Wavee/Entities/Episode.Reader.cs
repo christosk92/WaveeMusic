@@ -1,28 +1,12 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 using Contracts = Wavee.Theming.Contracts;
 using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
-
-public readonly partial struct Episode
-{
-    sealed class TranscriptReader : Component
-    {
-        public override Element Render()
-        {
-            var p = UseProps<ReaderProps>();
-            return new BoxEl { Direction = 1, Grow = 1, MinHeight = 0, MinWidth = 0,
-                Children = [Lyrics.TranscriptView(p.Subject.Id)] };
-        }
-    }
-
-}
 
 public static class PodcastReaderRules
 {
@@ -57,142 +41,32 @@ internal static partial class PodcastReaderUI
         { Direction = 1, Gap = Spacing.S, AlignItems = FlexAlign.Start,
             Children = [Quiet(Loc.Get(Strings.Podcast.Reader.Unavailable)), Button.Subtle(Loc.Get(Strings.Podcast.Reader.Retry), retry)] };
 
-    internal sealed record SaveProps(EntityUri Subject);
-    internal sealed class SaveEpisode : Component
-    {
-        public override Element Render()
-        {
-            var p = UseProps<SaveProps>(); var e = Episode.ReaderEpisode(p.Subject);
-            _ = Spotify.Podcasts.SavedChanged.Value;
-            uint epoch = Entities.ScopeEpoch.Value;
-            var read = UseResource(ct => Platform.Args.Fake ? Task.FromResult(new Spotify.Podcasts.Mutation(false, 404)) : Spotify.Podcasts.ReadSavedAsync(ct), new Spotify.Podcasts.Mutation(false, 0), DepKey.From((int)epoch));
-            bool pending = read.Loadable.State.Value == (byte)LoadState.Pending || Spotify.Podcasts.SavedBusy;
-            if (!Spotify.Podcasts.SavedReady)
-                return ViewSlots.View(Contracts.ViewKeys.EpisodeSave, new Contracts.EpisodeSaveProps(Icons.Heart,
-                    Loc.Get(pending ? Strings.Podcast.Reader.Save : Strings.Podcast.Reader.SaveUnavailable), pending ? null : read.Refresh));
-            bool saved = e.IsValid && Spotify.Podcasts.IsSaved(e);
-            return ViewSlots.View(Contracts.ViewKeys.EpisodeSave, new Contracts.EpisodeSaveProps(saved ? Icons.HeartFill : Icons.Heart,
-                Loc.Get(saved ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save),
-                e.IsValid && !Spotify.Podcasts.SavedBusy ? () => Spotify.Podcasts.ToggleSaved(e) : null));
-        }
-    }
-
-    internal sealed record RecommendationProps(string Uri, bool Show);
-
-    /// <summary>The shelf's placeholder while its request is in flight (four seed cards).</summary>
-    internal static readonly Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation> RecommendationsSeed = new(
-        Enumerable.Range(0, 4).Select(i => new Spotify.Podcasts.Recommendation("seed:" + i, "Episode title", "", "Show title")).ToArray(), "", 4, "", 200);
-
-    /// <summary>The "More like this" request — ONE definition for the two owners that run it: the episode page's
-    /// <see cref="Recommendations"/> (its own, per mount) and the show reader (<c>ReaderHost.Similar</c>, once per visit).</summary>
+    /// <summary>The "More like this" request — ONE definition for every owner that runs it: the podcast pages (<c>PodcastPages.Show.cs</c>,
+    /// <c>PodcastPages.Episode.cs</c>).</summary>
     internal static Task<Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>> RecommendationsOf(string uri, bool show, CancellationToken ct)
         => Platform.Args.Fake
-            ? Task.FromResult(new Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>([], "", 0, "", 200))
+            ? Task.FromResult(FakeRecommendations(uri, show))
             : Spotify.Podcasts.RecommendationsAsync(uri, show, ct);
 
-    /// <summary>"More like this" with a request of its OWN, made at mount (the episode page's).</summary>
-    internal sealed class Recommendations : Component
+    /// <summary>Under <c>--fake</c>: "More like this" for a show is the other seeded shows that are resident with a title (their cover and
+    /// publisher); an episode's stays empty.</summary>
+    static Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation> FakeRecommendations(string uri, bool show)
     {
-        public override Element Render()
-        {
-            var p = UseProps<RecommendationProps>(); uint epoch = Entities.ScopeEpoch.Value;
-            var resource = UseResource(ct => RecommendationsOf(p.Uri, p.Show, ct), RecommendationsSeed, epoch + ":" + p.Uri);
-            return RecommendationShelf(resource);
-        }
-    }
-
-    /// <summary>"More like this" over a request the CALLER owns (<paramref name="Request"/>): the show reader's foot is
-    /// remounted whenever its list's items move, so the request lives above it and this only paints what it holds.</summary>
-    internal sealed record SimilarProps(Resource<Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>> Request);
-
-    internal sealed class SimilarShelf : Component
-    {
-        public override Element Render() => RecommendationShelf(UseProps<SimilarProps>().Request);
-    }
-
-    static Element RecommendationShelf(Resource<Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>> resource)
-        => Skel.Region(resource.Loadable,
-            page => !page.Ok ? Failed(resource.Refresh) : page.Items.Length == 0 ? new BoxEl()
-                : PagedShelf.Create(page.Items, RecommendationCard, onInvoke: static (item, _) => OpenRecommendation(item), cardHeight: SurfaceGeometry.ShelfHeight,
-                    title: Loc.Get(Strings.Podcast.Reader.Related), measured: false, keyOf: static (item, _) => item.Uri,
-                    lift: ShelfLift.None),   // the shared card hovers fill-only: no lift halo to reserve clearance for
-            onFailed: () => Failed(resource.Refresh));
-
-    /// <summary>The recommendation card's click, shared with the shelf slot's <c>onInvoke</c>: its episode or show page.</summary>
-    static void OpenRecommendation(Spotify.Podcasts.Recommendation item)
-    {
-        var uri = EntityUri.Parse(item.Uri);
-        if (uri.IsValid) Shell.GoTo(Shell.For(uri, item.Title));
-    }
-
-    static Element RecommendationCard(Spotify.Podcasts.Recommendation item, int index, float width)
-    {
-        var data = new Controls.CardData(item.Uri, item.Title, Quiet(item.Subtitle), item.Image,
-            OnClick: () => OpenRecommendation(item), OnPlay: RecommendationPlay(item))
-        {
-            Menu = () => RecommendationMenu(item),
-        };
-        return Controls.Surface(data, Shape.Shelf(captionLines: 2), width);   // the extent above: one title line, two caption lines
-    }
-
-    /// <summary>The card's play FAB: pause/resume when the episode or show is the playing context, else start it. Null for a
-    /// uri that names neither (no dead FAB).</summary>
-    static Action? RecommendationPlay(Spotify.Podcasts.Recommendation item)
-    {
-        var uri = EntityUri.Parse(item.Uri);
-        if (!uri.IsValid || uri.Kind is not (EntityKind.Episode or EntityKind.Show)) return null;
-        var id = uri.Id;
-        return () => Playback.PlayOrToggleContext(id);
-    }
-
-    /// <summary>A recommendation's menu, built at OPEN time: an episode gets the episode menu (with "Go to show"), a show
-    /// the shared container menu (<see cref="Menus.Container"/>). The shelf holds wire rows, not library entities, so
-    /// an episode the scope has not seen is menu'd by its uri alone.</summary>
-    static ContextMenuModel? RecommendationMenu(Spotify.Podcasts.Recommendation item)
-    {
-        var uri = EntityUri.Parse(item.Uri);
-        if (!uri.IsValid) return null;
-        if (uri.Kind == EntityKind.Episode)
-            return Episode.Menu(Entities.Episode(uri), new Episode.MenuOptions(ShowGoToShow: true));
-        if (uri.Kind != EntityKind.Show) return null;
-        var show = ActionTarget.ForShow(uri, item.Title);
-        return Menus.Container(in show, item.Image.Length > 0 ? item.Image : null, item.Subtitle, new ContainerExtras());
-    }
-
-    internal sealed record RatingProps(EntityUri Subject, Func<ColorF>? Tone);
-    internal sealed class RatingEditor : Component
-    {
-        readonly Signal<bool> _busy = new(false);
-        readonly Signal<string> _error = new("");
-        public override Element Render()
-        {
-            var p = UseProps<RatingProps>(); var post = UsePost();
-            uint epoch = Entities.ScopeEpoch.Value;
-            _ = Entities.Current.Shows.Changed.Value;
-            var show = Entities.Current.Shows.TryGetSlot(p.Subject.Id, out int slot) ? new Show(slot) : default;
-            int rating = show.IsValid ? show.MyRating : 0;
-            return ViewSlots.View(Contracts.ViewKeys.EpisodeRating, new Contracts.ShowRatingProps(
-                Strings.Podcast.Rate.Title(show.IsValid ? show.Title : ""), rating,
-                _busy.Value || Platform.Args.Fake ? null : value => Submit(value), p.Tone, _error.Value));
-            async void Submit(int value)
+        var items = new List<Spotify.Podcasts.Recommendation>(FakeSimilarMax);
+        if (show)
+            for (int i = 0; i < FakeShowCount && items.Count < FakeSimilarMax; i++)
             {
-                _busy.Value = true; _error.Value = "";
-                Spotify.Podcasts.Mutation result;
-                try { result = await Spotify.Podcasts.RateAsync(p.Subject.Text, value, CancellationToken.None).ConfigureAwait(false); }
-                catch { result = new(false, 0, true); }
-                post(() =>
-                {
-                    if (Entities.ScopeEpoch.Peek() != epoch) return;
-                    _busy.Value = false;
-                    if (!result.Success) { _error.Value = Loc.Get(Strings.Podcast.Reader.MutationFailed); return; }
-                    if (show.IsValid)
-                    {
-                        Entities.Invalidate(Entities.Current.Shows, [show.Slot], (uint)ShowFields.Rating);
-                        Entities.Ensure(show, ShowFields.Rating);
-                    }
-                    Notify.Say(Loc.Get(Strings.Podcast.Reader.RatingSaved), InfoBarSeverity.Success);
-                });
+                string other = "spotify:show:sh" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (other == uri) continue;
+                var parsed = EntityUri.Parse(other);
+                if (!parsed.IsValid || !Entities.Current.Shows.TryGetSlot(parsed.Id, out int slot)) continue;
+                var s = new Show(slot);
+                if (!s.Knows(ShowFields.Title) || s.Title.Length == 0) continue;
+                items.Add(new Spotify.Podcasts.Recommendation(other, s.Title, Controls.ArtUrl(s.ImageId) ?? "",
+                    s.Knows(ShowFields.Publisher) ? Entities.Strings.Resolve(s.PublisherId) : ""));
             }
-        }
+        return new Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>(items.ToArray(), "", items.Count, "", 200);
     }
+
+    const int FakeShowCount = 9, FakeSimilarMax = 6;
 }

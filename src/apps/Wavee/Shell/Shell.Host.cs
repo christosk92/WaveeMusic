@@ -163,6 +163,12 @@ public static partial class Shell
     /// <para>Returns false when a running instance took the launch — it already has this process's activation payload
     /// through the gate, so the caller's whole job is to shut down at once: no <c>RegisterShapes</c>, no
     /// <c>Store.Use</c>, no <c>Entities.Boot</c>, no setting written.</para></summary>
+    /// <summary>The launch switches that take a value: each value is the switch's (a profile folder, a theme id, a file for
+    /// the screenshot), never a deep link or a file the shell handed over. Without this, `--profile C:\p` read as a file
+    /// activation and every profile launch logged `deeplink.refused: C:\p`.</summary>
+    internal static readonly string[] ValueOptions =
+        ["--profile", "--fg", "--theme", "--fake-video", "--whatsnew", "--screenshot", "--frames", "--width", "--height", "--window-monitor", "--window-rect"];
+
     public static bool AcquireInstance()
     {
         var args = Platform.Args.Argv;
@@ -171,7 +177,7 @@ public static partial class Shell
         if (screenshot is not null || frames >= 0) return true;   // the harness arms: no gate, same as always
 
         s_gate = new SingleInstanceGate();
-        s_activation = ActivationArgs.FromCurrentProcess("wavee");
+        s_activation = ActivationArgs.FromCurrentProcess("wavee", ValueOptions);
         // A sign-in StartupTask carries its task id, not a deep link: to a running instance it is a bare relaunch.
         string payload = s_activation.Kind is ActivationKind.Launch or ActivationKind.StartupTask ? "" : s_activation.Argument;
         // The instance is PROFILE-scoped (InstanceIdRules): a --profile run is its own instance beside the user's Wavee
@@ -218,7 +224,8 @@ public static partial class Shell
         // Where the user left the main window (Shell.Host.Placement.cs). The harness, capture and explicit-size launches keep
         // their own size and never read or write it. Restored, the first frame's size (and the zoom seeded from it) is the
         // restored client at the target monitor's DPI, so nothing re-lays out once the window is shown.
-        bool followPlacement = frames < 0 && screenshot is null && !capture.Offscreen && !HasExplicitSize(args);
+        bool followPlacement = frames < 0 && screenshot is null && !capture.Offscreen && !HasExplicitSize(args)
+            && Array.IndexOf(args, "--window-monitor") < 0;   // a test run's window is placed by its own args (PlaceTestWindow)
         var restore = followPlacement ? WindowPlacementStore.ResolveForLaunch() : null;
         var zoomMonitor = ZoomService.PrimaryMonitor();
         if (restore is { Plan: var plan })
@@ -254,6 +261,8 @@ public static partial class Shell
                 s_activation.Kind == ActivationKind.StartupTask,
                 Tray.HasTrayArg(args));
             Tray.Host.Arm(startHidden);
+            // The launch fact (hints #8, #9): a launch by hand, as opposed to Windows starting it at sign-in.
+            HintFacts.Launched(atSignIn: s_activation.Kind == ActivationKind.StartupTask || Tray.HasTrayArg(args));
         }
         // The harness arms hold no gate, so the activation above never parks their deep link: a capture's own
         // `wavee://open?route=…&arg=…` goes through the same drain a cold protocol launch does (the shell's first effect).
@@ -275,7 +284,7 @@ public static partial class Shell
             FluentAppHarness.Run(
                 // The factory runs after the engine created the window and before the first frame. The engine installed the OS accent as a
                 // `Tok.SetAccent` override there, which would win over the active theme's accent: release it (Appearance, THE OS ACCENT).
-                static () => { Appearance.OnWindowCreated(); Diagnostics.Probe.PlaceProbeWindow(); return new RootHost(); },
+                static () => { Appearance.OnWindowCreated(); Diagnostics.Probe.PlaceProbeWindow(); Diagnostics.Probe.PlaceTestWindow(); return new RootHost(); },
                 new AppOptions
                 {
                     // MinWidth 300 (DIP): the shell is verified sound below 360 — the detail surface is in vertical
@@ -318,6 +327,9 @@ public static partial class Shell
                     // The sign-in launch into the tray: the window exists, the tree mounts, nothing paints until the icon
                     // (or a second launch) shows it.
                     StartHidden = startHidden,
+                    // A real-window test run (`--window-monitor`, `--no-activate`; Diagnostics.Probe.TestWindow.cs) never takes the
+                    // foreground: owner rule 2026-11-17, test runs go on the secondary screen and never interrupt the person's work.
+                    NoActivate = Diagnostics.Probe.NoActivateArg(args),
                     // The first frame the user sees is final (Classic tuning F9): the window stays hidden until a frame has
                     // presented (no bare Mica first) with the setup plate already up when a first run or a re-auth is due, and
                     // every later show-from-hidden (the tray) repaints first the same way. Entrances seeded on the hidden
@@ -538,6 +550,7 @@ public static partial class Shell
         Lyrics.Requests.AfterPublish();
         Wavee.Palette.Tick();
         Store.FlushPalette();
+        Wavee.HomeUi.PreviewAudio.FrameTick();   // the shelf's song preview: its ownership check and fades (one bool when idle)
         ArmFetchWake();
     }
 
@@ -859,14 +872,20 @@ public static partial class Shell
     static string s_pendingActivation = "";
 
     /// <summary>A second launch's payload, redirected here by the single-instance gate. The engine delivers it on the UI
-    /// thread, parked frames included, so a tray-hidden Wavee hears it. It PARKS the payload for the shell's drain, which
+    /// thread, parked frames included, so a tray-hidden Wavee hears it. It PARKS the payload and posts the drain, which
     /// runs it through <see cref="ApplyDeepLink"/> — and that door decides whether the window comes up. A bare relaunch
-    /// never reaches the door (there is nothing to drain), so it wakes here.</summary>
+    /// never reaches the door (there is nothing to drain), so it wakes here.
+    /// <para>The drain is posted through the PROCESS-lifetime poster (<see cref="s_uiPost"/>, the GUI root's, above the theme's
+    /// remount), never from inside the themed frame: a runtime theme switch unmounts that frame and mounts the next one only on
+    /// the frame that commits the switch, which a minimized or parked window does not render, so a drain hooked to the frame was
+    /// gone for as long as the window stayed down (2026-11-17: every wavee:// verb after a switch on a minimized window went
+    /// unanswered for 90 s). Before the root exists the payload waits; the frame's first mount drains it.</para></summary>
     static void OnActivationRedirected(string raw)
     {
         raw ??= "";
         Volatile.Write(ref s_pendingActivation, raw);
         if (raw.Length == 0 && Tray.WakeFor(DeepLinkKind.None)) Tray.Host.ShowWindow();
+        else if (raw.Length > 0 && s_uiPost is { } post) post(s_drainActivation);
     }
 
     /// <summary>The payload waiting to be applied, taken atomically. `Shell.UI.cs` polls this from a UI-thread effect;
@@ -884,7 +903,9 @@ public static partial class Shell
         // trims it the same way for the raw echo.
         int nul = raw.IndexOf('\0');
         if (nul >= 0) raw = raw[..nul];
-        var verb = DeepLink(raw, Platform.Settings.Get(Platform.Keys.DeveloperMode));
+        // The diag verbs are developer-only; an offline `--fake` demo (no account, memory-only settings) takes them too, so the
+        // feature recorder can be proven on a demo window before it films a real profile.
+        var verb = DeepLink(raw, Platform.Settings.Get(Platform.Keys.DeveloperMode) || Platform.Args.Fake);
         if (Tray.WakeFor(verb.Kind)) Tray.Host.ShowWindow();
         switch (verb.Kind)
         {
@@ -932,8 +953,13 @@ public static partial class Shell
     /// history entry. `+Shell.Overlays.UI.cs` installs it.</summary>
     public static Action<string>? OnReportRequested;
 
-    /// <summary>`wavee://open?route=settings&amp;arg=&lt;tab slug&gt;`: Settings opens on that tab; set by Settings.InstallScreens.</summary>
+    /// <summary>`wavee://open?route=settings&amp;arg=&lt;link&gt;`: Settings opens on that category or dial (`Settings.Open`); set by
+    /// Settings.InstallScreens.</summary>
     public static Action<string>? OnSettingsTabRequested;
+
+    /// <summary>Settings was entered from another page with no link (a forward commit to the bare settings route): the registry's page opens on
+    /// its home (settings rework phase 4, owner decision 1). Back and Forward never call it. Set by Settings.InstallScreens.</summary>
+    public static Action? OnSettingsEntered;
 
     // ══ 4. THE NAV VERBS (the SHELL half — the reducer is Shell.cs) ═════════════════════════════════════════════════
 
@@ -960,6 +986,7 @@ public static partial class Shell
     static void Commit(in Route route, NavOrigin? origin, NavTransitionKind motion)
     {
         var normalized = Redirected(route) with { Tab = Tabs.ActiveId };
+        RouteKind before = s_nav.Current.Kind;
         if (!Go(ref s_nav, normalized)) return;
 
         ArmForward(normalized);                   // the connected flight (Shell.Connected.cs): the card's cover into the page's hero, before the route
@@ -967,6 +994,7 @@ public static partial class Shell
         Origins.Write(normalized, origin);        // every Go writes; null OVERWRITES — latest arrival wins
         Current.Value = normalized;
         RouteCommitted();
+        if (normalized.Kind == RouteKind.Settings && before != RouteKind.Settings && normalized.Arg.IsEmpty) OnSettingsEntered?.Invoke();
         CanBack.Value = s_nav.CanBack;
         CanForward.Value = false;
         History.Store.Add(normalized);            // the navigation log
@@ -980,7 +1008,11 @@ public static partial class Shell
     /// unmounted — its ToolTip owner stays mounted and, under a still pointer, geometrically "hovered": no leave edge,
     /// the safe-zone poll keeps it, and the bubble outlives the page it described until the 5 s dwell (recording
     /// 2026-09-16: a discography drawer's "Go to album" tip parked over the album page it had just opened).</summary>
-    static void RouteCommitted() => ToolTip.CloseOpen();
+    static void RouteCommitted()
+    {
+        ToolTip.CloseOpen();
+        HintFacts.PageCommitted();   // a page left a moment after its swap (hints #10)
+    }
 
     /// <summary>A route that is really ANOTHER page (Spotify's listen-later playlist is the Podcasts library's Your
     /// Episodes view): returns the page to show instead, or null to keep the route. Consulted by every commit and every
@@ -1042,7 +1074,7 @@ public static partial class Shell
     {
         if (!ForwardStep(ref s_nav)) return;
         RedirectCurrent();
-        ArmNone(s_nav.Current);
+        ArmForwardStep(s_nav.Current);   // mouse Forward after a Back flies from the card it left (Shell.Connected.cs)
         Motion.Value = NavTransitionKind.Forward;
         Current.Value = s_nav.Current;
         RouteCommitted();

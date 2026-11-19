@@ -54,7 +54,7 @@ public static partial class Shell
     {
         // s_exact (15) — ApiConsole DELETED, plan §9.6 Q7, 2026-09-12; SidebarCustomize deleted with the customizer (sidebar rework P3)
         Home, Browse, Search, LibraryAlbums, LibraryArtists, LibraryPodcasts, LibraryAudiobooks, LibraryPlaylists, Liked, Local,
-        History, Recents, Settings, PlaybackDiagnostics, WhatsNew, HomeCustomize,
+        History, Recents, Settings, PlaybackDiagnostics, WhatsNew,
         // s_prefixes (10) — "<prefix><entity uri>"; a bare prefix addresses nothing and is NOT a route
         Album, Playlist, Artist, Show, Prerelease, Discography, Module, BrowseCategory, HomeSection, BrowseSection,
         // ConcertRoutes (3)
@@ -158,7 +158,7 @@ public static partial class Shell
         // Audiobooks (A2 plan §3.6): its own library route beside Podcasts — same SavedShows edge, split client-side
         // (User.Page.Library.cs's LibraryAudiobookFilter), so it needs its own row for exactly the ch 18 §7 reason
         // every other kind does (a fall-through here would read "Your Library" in the tab strip and history).
-        new(RouteKind.LibraryAudiobooks,   "audiobooks",           false, Strings.Nav.Audiobooks,       Icons.Microphone,  false, false, false),
+        new(RouteKind.LibraryAudiobooks,   "audiobooks",           false, Strings.Nav.Audiobooks,       Icons.ReadingMode,  false, false, false),
         // The playlists list (Z7): the user's playlists and folders as a page of their own, for a structure without a nav tree (Zune's band
         // row 2 reaches it). Core-drawn (`User.LibraryPlaylists`); Classic never links to it.
         new(RouteKind.LibraryPlaylists,    "playlists",            false, Strings.Sidebar.Playlists,    Icons.MusicNote,   false, false, false),
@@ -171,7 +171,6 @@ public static partial class Shell
         new(RouteKind.Settings,            "settings",             false, Strings.Nav.Settings,         Icons.Settings,    false, false, false, PlaceByArg: true),
         new(RouteKind.PlaybackDiagnostics, "playback-diagnostics", false, Strings.Nav.PlaybackRuntime,  Icons.MusicNote,   true,  false, false),
         new(RouteKind.WhatsNew,            "whatsnew",             false, Strings.WhatsNew.Title,       Icons.RefineSparkle, false, false, true, PlaceByArg: true),
-        new(RouteKind.HomeCustomize,       "home-customize",       false, Strings.Home.Customizer.Title, Icons.Edit,       false, false, true, PlaceByArg: true),
 
         new(RouteKind.Album,               "album:",               true,  Strings.Nav.Album,            Icons.Album,       false, true,  false),
         new(RouteKind.Playlist,            "pl:",                  true,  Strings.Nav.Playlist,         Icons.MusicNote,   false, true,  false),
@@ -246,7 +245,7 @@ public static partial class Shell
     // ── 1.3 lazy page-factory groups ────────────────────────────────────────────────────────────────────────────────
     //
     // Three of the nine App.cs page-owner installs moved off the boot path and onto this miss arm: Home.InstallPages
-    // (8 kinds: Home/Search/Browse/Recents + the two section prefixes + HomeCustomize), Album.InstallPages (4: Album/
+    // (8 kinds: Home/Search/Browse/Recents + the two section prefixes ), Album.InstallPages (4: Album/
     // Prerelease/Show/Episode — Episode joined in the podcast rework's wave P2, plan §5.11) and Playlist.InstallPages
     // (6: Playlist/Local/Liked + the three library kinds) — 18 of the 30 renderable kinds, and most of the boot.pages
     // cost. Each group installs at most ONCE (the bool below), then every kind in it resolves the ordinary way.
@@ -270,7 +269,7 @@ public static partial class Shell
     {
         switch (kind)
         {
-            case RouteKind.Home or RouteKind.HomeSection or RouteKind.BrowseSection or RouteKind.HomeCustomize
+            case RouteKind.Home or RouteKind.HomeSection or RouteKind.BrowseSection
                 or RouteKind.Search or RouteKind.Browse or RouteKind.BrowseCategory or RouteKind.Recents:
                 if (s_homeGroupInstalled) return;
                 s_homeGroupInstalled = true;
@@ -372,7 +371,7 @@ public static partial class Shell
     /// <summary>Kinds whose <c>Arg</c> is a DISPLAY NAME rather than a slot discriminator. <c>search</c> is in both
     /// camps on purpose: the query is the label AND the keep-alive discriminator, exactly as 0.2.9 has it.</summary>
     static bool CarriesDisplayName(RouteKind k) => k is not (RouteKind.Discography or RouteKind.ProfileList or RouteKind.WhatsNew
-        or RouteKind.HomeCustomize or RouteKind.Home   // Home's arg is a facet id
+        or RouteKind.Home   // Home's arg is a facet id
         or RouteKind.Browse   // Browse's arg is a band id (BrowseBands), never a title
         or RouteKind.Settings);   // Settings' arg, when present, is a tab slug (`route=settings&arg=privacy`), never a display name; it is also the Compact section page (PlaceByArg)
 
@@ -1438,34 +1437,10 @@ public static partial class Shell
         }
     }
 
-    // ── 7.1 the device picker's rows ────────────────────────────────────────────────────────────────────────────────
+    // ── 7.1 the device picker's words ───────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The role of a picker row (engine-free so the composition is unit-tested without a flyout type).</summary>
-    public enum DevicePickerRowKind : byte
-    {
-        Header,          // a disabled section-header row ("This computer" / "Spotify Connect")
-        Separator,       // divider between sections
-        LocalDefault,    // the "System default" radio (DeviceId == "")
-        LocalDevice,     // a specific this-computer output radio
-        Quality,         // disabled: the ACTUAL playing quality, echoed from the player — never a setting loopback
-        ConnectDevice,   // a Spotify Connect device radio (click = transfer)
-        Empty,           // a disabled placeholder row (no-devices / hint)
-    }
-
-    /// <summary>One row in the two-section device picker — a POD the UI maps to a menu item.</summary>
-    public readonly record struct DevicePickerRow(
-        DevicePickerRowKind Kind,
-        string Label,
-        bool IsChecked = false,
-        bool Enabled = true,
-        string DeviceId = "",
-        string? Accelerator = null,
-        byte LocalKind = 0,
-        Spotify.Decode.DeviceKind ConnectKind = Spotify.Decode.DeviceKind.Computer,
-        bool Chosen = false);
-
-    /// <summary>Hard cap on device labels — endpoint names are short (DeviceDesc-first) but Connect names and
-    /// duplicate-name fallbacks can be arbitrarily long, and the flyout sizes to its widest row.</summary>
+    /// <summary>Hard cap on device labels — Connect names and duplicate-name fallbacks can be arbitrarily long, and a row ellipsizes
+    /// past what its column holds.</summary>
     public const int DevicePickerMaxLabelChars = 48;
 
     internal static string CapLabel(string label)
@@ -1473,98 +1448,20 @@ public static partial class Shell
             ? label
             : label[..(DevicePickerMaxLabelChars - 1)].TrimEnd() + "…";
 
-    /// <summary>The two-section device picker: "This computer" (System default + the local render endpoints), then a
-    /// separator + "Spotify Connect" (the roster, with THIS device filtered out — this PC is section 1).
-    /// <para><b>The ownership contract, applied (ch 20 §9.11).</b> 0.2.9 checked a Connect row when its id matched the
-    /// active id <b>OR</b> when the cluster's own <c>IsActive</c> bit was set. That fallback contradicts the ownership
-    /// authority — the same fix the remote-device line already took after the 2026-09-11 Connect incident — so 0.3
-    /// checks against the ACTIVE ID ALONE. A deliberate divergence from 0.2.9, recorded here so a side-by-side
-    /// reviewer does not file it as a regression.</para></summary>
-    public static List<DevicePickerRow> DevicePickerRows(
-        ReadOnlySpan<Playback.Audio.LocalAudioDevice> local,
-        string? selectedLocalId,
-        bool localSupported,
-        bool weAreActiveOutput,
-        ReadOnlySpan<Playback.Devices.Row> connect,
-        string? activeConnectId,
-        Playback.Audio.Opened observed,
-        Spotify.Audio.Quality askedQuality)
-    {
-        var rows = new List<DevicePickerRow>(local.Length + connect.Length + 6);
-        // stale-truthful "Unavailable" only when local playback is genuinely unsupported
-        string? acc = localSupported ? null : Loc.Get(Strings.Player.Unavailable);
-
-        rows.Add(new DevicePickerRow(DevicePickerRowKind.Header, Loc.Get(Strings.Player.ThisComputer), Enabled: false));
-        rows.Add(new DevicePickerRow(DevicePickerRowKind.LocalDefault, Loc.Get(Strings.Player.SystemDefault),
-            IsChecked: localSupported && weAreActiveOutput && string.IsNullOrEmpty(selectedLocalId),
-            Enabled: localSupported, DeviceId: "", Accelerator: acc, Chosen: localSupported && string.IsNullOrEmpty(selectedLocalId)));
-        for (int i = 0; i < local.Length; i++)
-        {
-            ref readonly var d = ref local[i];
-            bool chosen = localSupported && !string.IsNullOrEmpty(selectedLocalId) && string.Equals(d.Id, selectedLocalId, StringComparison.OrdinalIgnoreCase);
-            rows.Add(new DevicePickerRow(DevicePickerRowKind.LocalDevice, CapLabel(d.Name),
-                IsChecked: chosen && weAreActiveOutput,
-                Enabled: localSupported, DeviceId: d.Id, Accelerator: acc, LocalKind: d.Kind, Chosen: chosen));
-        }
-
-        rows.Add(QualityRow(observed, askedQuality));
-
-        rows.Add(new DevicePickerRow(DevicePickerRowKind.Separator, ""));
-        rows.Add(new DevicePickerRow(DevicePickerRowKind.Header, Loc.Get(Strings.Player.SpotifyConnect), Enabled: false));
-        int connectCount = 0;
-        for (int i = 0; i < connect.Length; i++)
-        {
-            ref readonly var d = ref connect[i];
-            if (d.Kind == Spotify.Decode.DeviceKind.ThisDevice) continue;
-            connectCount++;
-            rows.Add(new DevicePickerRow(DevicePickerRowKind.ConnectDevice, CapLabel(d.Name ?? ""),
-                IsChecked: !string.IsNullOrEmpty(activeConnectId)
-                           && string.Equals(d.Id, activeConnectId, StringComparison.OrdinalIgnoreCase),
-                DeviceId: d.Id ?? "", ConnectKind: d.Kind));
-        }
-        if (connectCount == 0)
-        {
-            rows.Add(new DevicePickerRow(DevicePickerRowKind.Empty, Loc.Get(Strings.Player.NoDevices), Enabled: false));
-            rows.Add(new DevicePickerRow(DevicePickerRowKind.Empty, Loc.Get(Strings.Player.NoDevicesHint), Enabled: false));
-        }
-        return rows;
-    }
-
-    /// <summary>The verification row: what the player is ACTUALLY echoing, never a loopback of the setting (the
-    /// user's own wording — "so we can verify the quality is being selected and played"). <paramref name="observed"/>
-    /// is the player's own echo (<c>Playback.Audio.PlayingOpened</c>); its <c>Label</c> is empty exactly when
-    /// nothing has been opened yet (<see cref="Playback.Audio.Opened"/> default / the silent-endpoint open). The
-    /// "below setting" wording fires ONLY when the observed format sits on the quality ladder at all — an AAC/ICY
-    /// radio stream (<see cref="Spotify.Audio.Rung"/> = −1) is not a claim about the Spotify quality setting, so it
-    /// never disagrees with it.</summary>
-    static DevicePickerRow QualityRow(Playback.Audio.Opened observed, Spotify.Audio.Quality askedQuality)
-    {
-        if (string.IsNullOrEmpty(observed.Label))
-            return new DevicePickerRow(DevicePickerRowKind.Quality, Loc.Get(Strings.Player.QualityIdle), Enabled: false);
-
-        int observedRung = Spotify.Audio.Rung(observed.Format);
-        int askedRung = Spotify.Audio.TargetRung(askedQuality);
-        string quality = ObservedQualityWords(observed);
-        string text = observedRung >= 0 && observedRung < askedRung
-            ? Strings.Player.QualityBelowSetting(quality, Loc.Get(AskedQualityLabel(askedQuality)))
-            : Strings.Player.QualityPlaying(quality);
-        return new DevicePickerRow(DevicePickerRowKind.Quality, text, Enabled: false);
-    }
-
-    /// <summary>The observed format in the setting's own words (the boards' "very high · 320 kbps", audit B8), not the codec
-    /// label the stage badge prints ("ogg 320"): a Spotify Ogg rung names its rung and its nominal rate, a FLAC rung names
-    /// "lossless" and its depth; anything off the ladder (MP3, AAC radio, a local file) keeps the codec label. The rung words are
-    /// mid-sentence forms; each theme still applies its own case role to the line.</summary>
+    /// <summary>The observed format in the setting's own words (the boards' "Very high · 320 kbps"), not the codec label the stage badge
+    /// prints ("ogg 320"): a Spotify Ogg rung names its rung (the quality setting's own label) and its nominal rate, a FLAC rung names
+    /// "Lossless" and its depth; anything off the ladder (MP3, AAC radio, a local file) keeps the codec label. Each theme applies its own
+    /// case role to the line.</summary>
     static string ObservedQualityWords(Playback.Audio.Opened observed)
     {
         var f = observed.Format;
         if (f is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24)
-            return Strings.Player.QualityFormat(Loc.Get(Strings.Player.QualityRungLossless), observed.Label);
+            return Strings.Player.QualityFormat(Loc.Get(Strings.Settings.Playback.QualityLossless), observed.Label);
         string? rung = f switch
         {
-            Spotify.Audio.Format.OggVorbis96 => Strings.Player.QualityRungNormal,
-            Spotify.Audio.Format.OggVorbis160 => Strings.Player.QualityRungHigh,
-            Spotify.Audio.Format.OggVorbis320 => Strings.Player.QualityRungVeryHigh,
+            Spotify.Audio.Format.OggVorbis96 => Strings.Settings.Playback.QualityNormal,
+            Spotify.Audio.Format.OggVorbis160 => Strings.Settings.Playback.QualityHigh,
+            Spotify.Audio.Format.OggVorbis320 => Strings.Settings.Playback.QualityVeryHigh,
             _ => null,
         };
         return rung is { } k

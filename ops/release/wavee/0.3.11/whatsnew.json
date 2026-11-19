@@ -4,7 +4,7 @@
   "version": "0.3.11",
   "packageVersion": "",
   "name": "Crest",
-  "tagline": "Playlists open the moment you click, album covers fly into their page, and every page switch is calmer.",
+  "tagline": "A new Settings in every theme, a Home you arrange in place, and a devices list that plays where you choose.",
   "date": "",
   "channel": "stable",
   "lang": "en",
@@ -20,50 +20,55 @@
   },
   "highlights": [
     {
-      "id": "instant-playlists",
-      "title": "Playlists open at once, and change song by song",
-      "body": "A playlist you have opened before shows up the moment you click, Mixes included, while Wavee checks for changes behind it. When something changed, you see each change: a removed song steps out and the rows close up, a new one arrives in its place, a moved one travels to its spot, and a new cover fades over the old. Loading is calmer everywhere too: still placeholders, and one thin bar only when a page takes longer than a second.",
-      "kind": "improved",
-      "issues": [],
-      "media": {
-        "kind": "motion",
-        "src": "media/playlist-changes.webp",
-        "poster": "media/playlist-changes.jpg",
-        "alt": "A Mix open on its saved copy: when the fresh copy arrives, three songs step out, the rows close up, new songs arrive in their places, and the cover and description change in place",
-        "width": 1440,
-        "height": 810
-      }
-    },
-    {
-      "id": "connected-albums",
-      "title": "Album covers fly into their page",
-      "body": "In the WinUI theme, clicking an album card lifts its cover out and flies it into the album's header while the page fades in underneath. Back flies it home into the card, and pressing Back mid-flight turns it around where it is. It works from Home, artist pages, search and \"More by\".",
-      "kind": "new",
-      "deepLink": "wavee://open?route=albums",
-      "issues": [],
-      "media": {
-        "kind": "motion",
-        "src": "media/album-flight.webp",
-        "poster": "media/album-flight.jpg",
-        "alt": "In the WinUI theme, an album card on an artist's discography: its cover flies into the album page's header, then Back flies it home into the card",
-        "width": 1440,
-        "height": 810
-      }
-    },
-    {
-      "id": "calmer-navigation",
-      "title": "A calmer way between pages",
-      "body": "A new page is complete on its first frame, and going from one album or playlist to the next is a quick fade. The WinUI library slides only its content when you switch between Playlists, Albums, Artists and Podcasts, and the artist page lands whole with tabs that scroll to their section. Prefer it snappier? Turn on Fast navigation in Settings > Appearance.",
-      "kind": "improved",
+      "id": "settings-and-sound",
+      "title": "Settings and sound, rebuilt",
+      "body": "Every theme has a new Settings. Find any setting by the words you would use (\"too quiet\", \"dark mode\", even \"crosfade\"), and a link opens it right where it lives. More than twenty settings show a short before-and-after clip of what they change. The devices list is new too: your outputs go by their own names, and picking one moves the sound there at once without losing your place.",
+      "kind": "rebuilt",
       "deepLink": "wavee://open?route=settings",
       "issues": [],
       "media": {
-        "kind": "motion",
-        "src": "media/library-switch.webp",
-        "poster": "media/library-switch.jpg",
-        "alt": "The WinUI library switching from Albums to Artists and back: the heading and tabs stay, only the content below slides",
-        "width": 1440,
-        "height": 810
+        "kind": "image",
+        "src": "media/settings-sound.jpg",
+        "srcLight": "media/settings-sound-light.jpg",
+        "alt": "The new devices list open over Home, with the new Settings page on its Sound section in front",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "home-and-pages",
+      "title": "A Home you arrange, and pages for shows and books",
+      "body": "Home is a board you arrange in place: drag a tile, give it another size or turn it over, and pin anything to it from the title bar. New sections join it, like Release Spotlight and the Spine Shelf. Podcasts, episodes and audiobooks get pages of their own in every theme: a show names what plays next, an episode's chapters and transcript follow playback, and a book shows its authors, its narrator and how far along you are.",
+      "kind": "new",
+      "deepLink": "wavee://open?route=home",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/home-pages.jpg",
+        "srcLight": "media/home-pages-light.jpg",
+        "alt": "Wavee's Home in the Zune theme, with an audiobook's page in the WinUI theme in front",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "solid-controls",
+      "title": "Solid player controls in Classic",
+      "body": "A community contribution from @0dm, thank you! In Classic, previous and next are now solid like the play button and evenly spaced around it. And clicking the player bar no longer draws an outline around the whole bar, in Classic and Zune.",
+      "kind": "improved",
+      "community": [
+        "0dm"
+      ],
+      "issues": [
+        228
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/solid-controls.jpg",
+        "srcLight": "media/solid-controls-light.jpg",
+        "alt": "Classic's player bar with solid previous and next buttons on either side of the play button",
+        "width": 1200,
+        "height": 675
       }
     }
   ],

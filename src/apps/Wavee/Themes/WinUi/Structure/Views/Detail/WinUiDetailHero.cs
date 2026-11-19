@@ -7,8 +7,8 @@
 //     they fit beside it, top-aligned once they outgrow it: the eyebrow,
 //     the title (Title Large 40/52), the billed artists with their avatars and the meta on one line, the action row; under it the table's own list bar (Find,
 //     the order, Filter, Select). A SHORT window (under 720 tall, W-Shell-Short) draws the short form: a 104 cover, the title 28/36, no eyebrow.
-//   · THE STICKY BAR (W-Shell-Short): 48 tall, once the hero has collapsed: a 32 cover, the title over the byline and Play as an accent button, on a layer of its
-//     own with a hairline under it. The core's collapse distance is the hero's measured height less these 48 (`DetailTierLayout.BandHeight`); it reveals over the
+//   · THE STICKY BAR (W-Shell-Short): 48 tall, once the hero has collapsed: a 32 cover, the title over the byline and Play as an accent button, over the
+//     window's own ground (NO PLATE: the rows are cut under it, so nothing needs hiding; owner, 2026-11-18) with a hairline under it. The core's collapse distance is the hero's measured height less these 48 (`DetailTierLayout.BandHeight`); it reveals over the
 //     last 44 of the collapse and takes hits only once the table's chrome has stuck (the engaged edge, `CompactInteractive`).
 //
 // The numbers are `WinUiDetailRules` and the tier's `WinUiDetailTier`; the form (tall, short, stacked) is the tier's and the window's height (`TierFacts.Height`).
@@ -140,7 +140,7 @@ internal static partial class WinUiDetailFrame
                 rows.Add(Block("hero-attribution", Facts(faces, id.Meta, settled, metaLine, avatar, measure, form, center)));
             // A daylist's strip under the facts (its countdown, or "Your next daylist is running late"): the page's pulse slot, as Classic's rail draws it.
             if (Pulses(spec)) rows.Add(Block("hero-daylist", PulseRow(spec.Slots.Pulse!(), center)));
-            rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.Slots, spec.PlayAll, tier, form, words, center)));
+            rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.PlayAll, tier, form, words, center)));
 
             Element cover = Cover(spec.Identity, spec.Slots, spec.Actions, form);
             // A head not read yet (audit B7 r2: blank reserved lines beside a live Play) shimmers its words in place: the loading band's own rows at their
@@ -329,18 +329,14 @@ internal static partial class WinUiDetailFrame
         };
     }
 
-    /// <summary>The action row: the Play split, then Shuffle, Save, Share and "..." (the page's satellites replace the fixed group where it has them).</summary>
-    static Element Actions(Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Detail.FrameSlots slots, Action? playAll, WinUiDetailTier tier,
+    /// <summary>The action row: the Play split, then Shuffle, Save, Share and "...".</summary>
+    static Element Actions(Detail.Identity id, Detail.Config cfg, Detail.FrameActions acts, Action? playAll, WinUiDetailTier tier,
         WinUiHeroForm form, bool words, bool center)
     {
         float target = tier.Target;
-        Element primary = slots.Primary is { } primaryOf
-            ? primaryOf(() => Tok.AccentDefault)
-            : WinUiDetailKit.PlaySplit(id.Subject, playAll ?? DetailVerbs.PlayContext(id.Subject), target, enabled: !id.Empty);
-        IReadOnlyList<Element> fixedGroup = slots.Satellites is { } satellites
-            ? satellites()
-            : WinUiDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, target, words,
-                shuffleGlyph: ShuffleGlyph(tier, id.Kind), invite: acts.Invite, tune: TuneInHero(tier) ? acts.Tune : null);
+        Element primary = WinUiDetailKit.PlaySplit(id.Subject, playAll ?? DetailVerbs.PlayContext(id.Subject), target, enabled: !id.Empty);
+        IReadOnlyList<Element> fixedGroup = WinUiDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, target, words,
+            shuffleGlyph: ShuffleGlyph(tier, id.Kind), invite: acts.Invite, tune: TuneInHero(tier) ? acts.Tune : null);
         return WinUiDetailKit.ActionRow("vhero-actions", primary, fixedGroup, form.ActionTop, center: center);
     }
 
@@ -366,6 +362,8 @@ internal static partial class WinUiDetailFrame
     /// <summary>The words' loading boundary: the words once the header has answered, else their shimmer (<see cref="SkeletonWords"/>), one cross-dissolve
     /// when it lands. Each side is the words' own column (the info box's gap and alignment); the rows the data brings (a description) open with the swap
     /// (SmoothResize: the region's height eases through real layout, so the list bar and the rows under the hero ride it).</summary>
+    static readonly Func<bool> s_never = static () => false;
+
     static Element Words(WinUiHeroForm form, bool center, Element[] words, Func<bool> pending, Func<Element[]> shimmer)
     {
         Element Column(Element[] kids) => new BoxEl
@@ -421,7 +419,8 @@ internal static partial class WinUiDetailFrame
     // ══ 3. THE STICKY BAR ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The 48 bar: a 32 cover, the title (Body Strong 14/20) over the byline (Caption 12/16), the insights entry where the page has facts and Play as an
-    /// accent button, on the tier's inset, over a layer with a hairline at its foot (W-Shell-Short).</summary>
+    /// accent button, on the tier's inset, with a hairline at its foot (W-Shell-Short). It paints no plate: the table clips its rows at the bar's line, so the
+    /// window's material shows under the bar as it does under the page.</summary>
     static Element Bar(VerticalSpec spec, HeroParts parts, float width, float inset)
     {
         var id = spec.Identity;
@@ -453,7 +452,6 @@ internal static partial class WinUiDetailFrame
         return new BoxEl
         {
             Width = width, Height = h, ZStack = true, HitTestVisible = true,
-            Fill = Prop.Of(static () => Tok.FillCardDefault),
             Children =
             [
                 new BoxEl

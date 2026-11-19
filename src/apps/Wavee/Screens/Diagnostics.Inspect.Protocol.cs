@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Quit,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -181,6 +181,7 @@ public static partial class Diagnostics
             Arg("rows", ArgType.Bool, "false: the summary only", "true"),
             Arg("census", ArgType.Bool, "a slow frame's row names the components that made it slow", "false"),
             Arg("flights", ArgType.Bool, "each row carries the connected navigation flights (a card's cover flying into its page), the summary their take-off, landing and hand-off", "false"),
+            Arg("curves", ArgType.Bool, "each watched key's motion curve (x, y, w, h, opacity per frame, a sparkline) and its steps, reversals, stalls and snaps (motionFindings)", "false"),
             Arg("baseline", ArgType.Bool, "judge the first traced frame against the watched nodes as they stood before it (on for state)", "state"),
             Arg("jump", ArgType.Float, "a presented move over this many DIP in one frame under a track is a jump", "2"),
             Arg("snap", ArgType.Float, "a change over this many DIP in one frame with no track is a snap", "0.5"),
@@ -204,6 +205,8 @@ public static partial class Diagnostics
             Arg("dragX", ArgType.Float, "press at this x (window DIP)"),
             Arg("dragY", ArgType.Float, "press at this y (window DIP)"),
             Arg("dragDy", ArgType.Float, "DIP per frame down while dragging", "0"),
+            Arg("glide", ArgType.String, "drag the window to WxH over the first traced frames (eased in-out, one size per frame, as resize ms=)"),
+            Arg("glideMs", ArgType.Int, "the glide's length (16 ms per frame)", "800"),
         ];
 
         /// <summary>A settling verb's own args, plus the trace options, which only apply beside `trace=N` with N > 0 (anywhere else
@@ -237,10 +240,12 @@ public static partial class Diagnostics
             Arg("scale", ArgType.Float, "DPI scale, 0 < scale <= 4", "1"),
             Arg("theme", ArgType.Enum, "the theme (default: the active one; a fresh server is classic)", null, ThemeChoices),
             Arg("kind", ArgType.Enum, "light or dark (default: the current kind)", null, "dark|light"),
+            Arg("homedoc", ArgType.Enum, "the pinned Home document the mount starts from (keep: the profile's file as it is)", "default", "default|keep|pins0|pins200|gonepin|custom|mixed|v2hidden|toonew|corrupt|unknown"),
             Arg("gpu", ArgType.Enum, "hardware (the default: the hardware adapter, WARP when the machine has none) or warp (WARP forced): the offscreen D3D12 surface (render works); none: no pixels", "hardware", "hardware|warp|none"),
             Arg("keepRoute", ArgType.Bool, "keep the current navigation (and tabs) instead of a fresh Home", "false"),
-            Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate (signin: ask for the sign-in page)", null, "true|false|signin"),
+            Arg("setup", ArgType.Enum, "mount a first run: the setup wizard's plate (signin: on the sign-in page; theme: on the theme page)", null, "true|false|signin|theme"),
             Arg("feedback", ArgType.Enum, "open the report form over the page", null, "bug|feature"),
+            Arg("home", ArgType.Enum, "the Home fixture: mock (the hybrid seed), capture (the redacted 1.3.8.620 answers, every facet), or a derived / synthetic All, or live1 / live2 (redacted live answers of 2026-11-16 and 2026-11-17, every facet; Entities.Fake.Home.cs), or releases (live2's All with four followed releases spliced in: the Release Spotlight's fold)", "mock", "mock|capture|new|free|podcast|region|synthetic|second|live1|live2|releases"),
             Arg("video", ArgType.Enum, "put the video surface up with a fake track playing", null, "fullscreen|docked|floating|pip"),
             Arg("player", ArgType.Enum, "fake: bind an idle engine player to the video surface (no frames); scripted: a player whose scripted source follows the deck (metadata, a first frame, a play intent; every video track an in-place switch)", null, "fake|scripted", requires: "video"),
             Arg("videoOpenMs", ArgType.Int, "player=scripted: how long each open takes to its first frame on the 16 ms frame clock (metadata at half of it)", "240", requires: "video"),
@@ -263,7 +268,15 @@ public static partial class Diagnostics
             Arg("motion", ArgType.Enum, "reduced: Windows' Animation effects off for this mount (page swaps fade, nothing slides, zooms or staggers)", "full", "full|reduced"),
             Arg("marquee", ArgType.Enum, "the app's marquee setting (Settings > Appearance), set before the mount", null, "on|off|true|false"),
             Arg("remote", ArgType.String, "the play bar plays on a remote output of this name (--fake has no Connect cluster)"),
+            Arg("connect", ArgType.Enum, "the fake Spotify Connect roster: no device nearby, or a TV, a speaker and a phone (the device picker transfers to them and back)", "none", "none|nearby"),
+            Arg("stuck", ArgType.String, "an output that did not open (the device picker marks it Not responding): a fake output id or its short name (airpods, usb, speakers, display); gone: the chosen output left the roster"),
             Arg("panelW", ArgType.Float, "the side panel's stored width (DIP; clamped to the theme's drag range)"),
+            Arg("lyrics", ArgType.Enum, "the fake lyrics' shape: word (word-synced) or line (line-synced, no word timing: what `state kind=ai ai=timed words=on` times word by word)", "word", "word|line"),
+            Arg("media", ArgType.Enum, "fake: every media player (the canvas, a player built without its own backend: audio previews) opens a fake source whose costs the media* args set (Diagnostics.Inspect.Media.cs); real: the Spine Shelf's canvas and clip players open through the real Media Foundation path (it touches the hardware adapter: run it through C:/WAVEE/scratch/gpulock.sh)", null, "fake|real"),
+            IntArg("mediaOpenMs", "media=fake: an open's latency to its first frame on the 16 ms clock (metadata at half)", "120", 0, 60_000),
+            Arg("mediaStartCostMs", ArgType.Float, "media=fake: a synchronous UI-thread stall inside each open (a real engine's creation): the start hiccup", "0") with { Min = 0, Max = 2000 },
+            Arg("mediaFrameCostMs", ArgType.Float, "media=fake: UI-thread work in each video pump while it plays: a per-frame cost", "0") with { Min = 0, Max = 500 },
+            Arg("mediaFailMs", ArgType.Int, "media=fake: every session fails this long after its first frame (0: never), a crashed engine", "0") with { Min = 0, Max = 600000 },
             Arg("dt", ArgType.Float, "the fixed frame step in ms (default 16; 8.333 samples motion at 120 Hz: `frames 1` + `render` per frame)", "16"),
         ];
 
@@ -333,7 +346,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-book", "cold-book-chapters", "cold-book-facts", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "home-cold", "home-land", "home-following", "home-previews", "daylist-generic", "daylist-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -363,7 +376,8 @@ public static partial class Diagnostics
             {
                 Positional = ["w", "h"], NeedsMount = true,
                 Args = Join([Arg("w", ArgType.Float, "window width (DIP)"), Arg("h", ArgType.Float, "window height (DIP)"),
-                             Arg("loop", ArgType.Bool, "commit the size through the OS modal size loop, as crossing narrows", "false")], s_settleArgs),
+                             Arg("loop", ArgType.Bool, "commit the size through the OS modal size loop, as crossing narrows", "false"),
+                             IntArg("ms", "glide to the size over this many ms (one size per frame, eased in-out, as a hand drags the edge; the live driver plays the same); 0 = at once", "0", 0, 10_000)], s_settleArgs),
             },
             new(Verb.Frames, "frames", "Run exactly n frames on the 16 ms fake clock", "frames 60")
             {
@@ -380,9 +394,10 @@ public static partial class Diagnostics
                 Args = Join(s_aimArgs, s_stableArgs, [Arg("button", ArgType.Enum, "the button", "left", "left|right"),
                                         Arg("mods", ArgType.String, "modifiers held: ctrl+shift (ctrl, shift, alt, win)")], s_settleArgs),
             },
-            new(Verb.Hover, "hover", "Move the pointer to a node's visible centre (refused unless actionable and its rect holds still for 2 frames; force=true skips) or a point; then settle", "hover key=zune-band-pivot:home")
+            new(Verb.Hover, "hover", "Move the pointer to a node's visible centre (refused unless actionable and its rect holds still for 2 frames; force=true skips) or a point; rest there dwell ms on the frame clock; then settle", "hover key=zune-band-pivot:home dwell=700")
             {
-                Positional = ["key"], NeedsMount = true, Acts = true, Args = Join(s_aimArgs, s_stableArgs, s_settleArgs),
+                Positional = ["key"], NeedsMount = true, Acts = true,
+                Args = Join(s_aimArgs, s_stableArgs, [IntArg("dwell", "ms the pointer rests on the target before the settle (a rest-to-open timer, a hover preview), on the 16 ms clock", "0", 0, 60_000)], s_settleArgs),
             },
             new(Verb.Key, "key", "Press and release a key (ctrl+, shift+, alt+, win+ prefixes) repeat times; then settle", "key ctrl+f")
             {
@@ -390,20 +405,21 @@ public static partial class Diagnostics
                 Args = Join([Arg("key", ArgType.String, "enter, esc, tab, space, backspace, delete, arrows, home, end, pageup, pagedown, apps, f1..f12, a..z, 0..9 or a VK code"),
                              IntArg("repeat", "presses", "1", 1, 100)], s_settleArgs),
             },
-            new(Verb.Type, "type", "Type text into the focused node (text form: the rest of the line, spaces kept; quote it to add args); then settle", "type \"daft punk\" settle=false")
+            new(Verb.Type, "type", "Type text into the focused node, or into the node key= names (pressed first, as a user puts the caret in a box: refused unless actionable, force=true skips); text form: the rest of the line, spaces kept; quote it to add args; then settle", "type key=settings:search crossfade")
             {
-                Positional = ["text"], NeedsMount = true, Acts = true, Args = Join([Arg("text", ArgType.String, "the characters to type")], s_settleArgs),
+                Positional = ["text"], NeedsMount = true, Acts = true, Args = Join([Arg("text", ArgType.String, "the characters to type")], s_aimArgs, s_settleArgs),
             },
             new(Verb.Scroll, "scroll", "Turn the wheel dy notches at a node (refused unless actionable; force=true skips) or a point; settle waits for the scroller to stop", "scroll key=zune-home-scroll: dy=10")
             {
                 Positional = ["key", "dy"], NeedsMount = true, Acts = true,
                 Args = Join(s_aimArgs, [Arg("dy", ArgType.Float, "notches, positive toward the end", "3"), Arg("dx", ArgType.Float, "horizontal notches", "0")], s_settleArgs),
             },
-            new(Verb.Play, "play", "Play a fake track or episode as its own context (next=N queues the tracks after it), or turn the output remote (remote=); then settle", "play spotify:track:tr3 next=4")
+            new(Verb.Play, "play", "Play a fake track or episode as its own context (next=N queues the tracks after it, cold=N then N tracks no row knows yet), or turn the output remote (remote=); then settle", "play spotify:track:tr3 next=4")
             {
                 Positional = ["uri", "fromMs"], NeedsMount = true, Acts = true,
                 Args = Join([Arg("uri", ArgType.String, "a spotify:track: or spotify:episode: uri (optional with remote=)"), Arg("fromMs", ArgType.Int, "the start position", "0"),
                              IntArg("next", "queue this many tracks after a spotify:track:tr<k>", "0", 0, 64),
+                             IntArg("cold", "then queue this many tracks no row knows yet (bare ids the fake never answers: a remote device's queue as it arrives)", "0", 0, 16),
                              Arg("ago", ArgType.Int, "backdate the play in the play log by this many minutes", "0"),
                              Arg("context", ArgType.String, "play the rows in this context (a spotify:playlist: or spotify:album: uri, as a row click on its page does)"),
                              IntArg("at", "with context=: start at this row of the rows (0 = the uri's own), as a click on a row further down the page does", "0", 0, 64),
@@ -493,12 +509,15 @@ public static partial class Diagnostics
                     Arg("page", ArgType.Enum, "with kind=loading|empty: that page's OWN state instead of the shared vacancy (a library tab's or Liked Songs' relations staged; show/episode: a fixture in that state)", null, "library|albums|artists|podcasts|audiobooks|liked|show|episode"),
                     Arg("uri", ArgType.String, "with kind=head: the album, playlist, show or episode whose header is staged unknown, or the artist whose charted rows are staged in flight (it opens); kind=head-land puts it back in place"),
                     Arg("answer", ArgType.Enum, "with kind=head: hold (an artist: its overview instead of its late chart; the page's own ask for its head goes through the real fetch layer and is held by a scripted transport); with kind=head-land: how the held ask settles (fill: the head lands; omit: answered without it, the miss retries omitted too; unfilled: a route that did not answer; fail: a terminal 404; cancel: a transport failure, re-queued in flight)", null, "hold|fill|omit|unfilled|fail|cancel"),
+                    Arg("keep", ArgType.Enum, "with kind=head: card keeps what a card's thin row stages (the title and the cover, as a Home or search card leaves them on live data), so the page opens on the head a card click gives it", null, "card"),
+                    Arg("go", ArgType.Bool, "with kind=head: false stages it where the listener is (the page does not open), so a card click opens it the way a listener does", "true"),
                     Arg("part", ArgType.Enum, "with kind=head-land after an artist's answer=hold: what lands (overview: the overview and chart, the release cards still in flight; cards: the release cards' fields a few frames later; all: both at once)", "all", "all|overview|cards"),
                     IntArg("cards", "with kind=head-land part=overview: the release cards land this many frames after the overview, inside the verb's own trace (frame N) or before its settle", null, 0, 1000),
                     Arg("loops", ArgType.Enum, "looping tracks, as on every settling verb; unset: skeletons for loading and cold-* (their skeleton is the picture), ignore for the rest", null, "ignore|wait|skeletons"),
                     Arg("ai", ArgType.Enum, "with kind=ai: the AI lyrics settings card's staged status (no module, no download; the next mount puts 'not started' back); lang-failed: a language added to a ready feature failed, setup-failed: a first setup stopped on a language's file, error: the whole feature failed; timed|timing: ready, and the playing track timed by it (done, or a job running), so the lyrics surfaces draw the AI disclosure (stage after a play)", "ready", string.Join("|", InspectSession.AiCases)),
                     Arg("error", ArgType.Enum, "with kind=ai ai=lang-failed|setup-failed|error: the failure kind", "notfound", string.Join("|", InspectSession.AiErrors)),
                     Arg("lang", ArgType.String, "with kind=ai: the language a language failure names (a pack language)", "ja"),
+                    Arg("words", ArgType.Bool, "with kind=ai ai=timed: the playing track's lyrics also take word timing (each line's words share its span; the store upgrade a cached result takes), so the lyrics surfaces draw it word by word (a line-synced fake: mount lyrics=line); the next mount empties the lyrics store", "false"),
                     Arg("runtime", ArgType.Enum, "with kind=runtime: the Playback settings' runtime card's staged status (no runtime installed or loaded; the next mount puts the boot's back); problem: the error bar with the diagnostics doors and Retry setup, setup: the not-set-up bar, ready: the facts", "problem", string.Join("|", InspectSession.RuntimeCases)),
                     Arg("issue", ArgType.Enum, "with kind=runtime runtime=problem: the typed reason the bar names", "wrongarch", string.Join("|", InspectSession.RuntimeIssues)),
                     Arg("hdcp", ArgType.Enum, "with kind=hdcp: the video's screen as the HDCP guard would judge it (no real screen): blocked = protection did not take there (the song plays, every video surface shows the protected-video warning), clear = the window moved to a screen that carries HDCP (the block lifts, the row goes back to its video); the next mount puts the boot's guard back", "blocked", "blocked|clear")], s_settleArgs),
@@ -556,17 +575,47 @@ public static partial class Diagnostics
                 [
                     Arg("dx", ArgType.Float, "DIP the pointer travels along x (negative: left)", "0"),
                     Arg("dy", ArgType.Float, "DIP the pointer travels along y (negative: up)", "0"),
+                    Arg("to", ArgType.Key, "end on the visible centre of this node instead of dx,dy (a drag onto a tile)"),
+                    IntArg("holdMs", "ms the button stays down, still, before the pointer moves (a touch lift's hold)", "0", 0, 10_000),
+                    IntArg("pauseMs", "ms the pointer dwells at the end, button down, before the release (a reorder's dwell)", "0", 0, 10_000),
+                    Arg("pointer", ArgType.Enum, "mouse or touch (touch events, no hover move first)", "mouse", "mouse|touch"),
                     IntArg("steps", "frames the pointer moves over, one equal move per frame", "8", 1, 600),
                     Arg("button", ArgType.Enum, "the button", "left", "left|right"),
                     Arg("mods", ArgType.String, "modifiers held: ctrl+shift (ctrl, shift, alt, win)"),
                 ], s_settleArgs),
             },
-            new(Verb.Setting, "setting", "List the app's Settings rows (tab, section, id, kind, value, writer), or set one through the row's own writer as a Settings view does (the theme's options are `option`)", "setting id=lyricsBlur value=40")
+            new(Verb.PodcastPages, "podcastpages", "The podcast/audiobook pages' data: load a redacted fixture (assets/spotify/fixtures/podcast-pages, fake mode) into the scope and dump its view model (ShowPage + the first EpisodePage, or AudiobookPage) and the hours allowance; `goto uri=<show>` then opens the page", "podcastpages fixture=book-titled")
+            {
+                Positional = ["fixture"], NeedsMount = true,
+                Args = [Arg("fixture", ArgType.Enum, "the fixture", "book-titled", "show-episodic|show-serial|book-titled|book-tracks|book-inprogress|book-finished"),
+                        Arg("path", ArgType.Path, "also write the dump's JSON to this file")],
+            },
+            new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {
                 Positional = ["id", "value"],
-                Args = Join([Arg("tab", ArgType.String, "only this tab's rows (general|appearance|playback|notifications|storage|privacy|about|account|devices|keyboard|feedback); needed when an id is on several tabs"),
-                             Arg("id", ArgType.String, "the row (any case)"),
-                             Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none")], s_settleArgs),
+                Args = Join([Arg("category", ArgType.String, "only this category's dials (home|appearance|sound|playback|lyrics|notifications|system|storage|account|help, or an old slug)"),
+                             Arg("id", ArgType.String, "the dial: its registry id (playback.crossfade) or its old row id (crossfade), any case"),
+                             Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none (naming an action presses it)")], s_settleArgs),
+            },
+            new(Verb.Settings, "settings", "Ask the settings search: q= ranks the dials and feature pointers for a query (id, score, matched fields, title, place; close matches; the bytes the query allocated; the no-match lines), focus= opens a dial or category through the deep-link door as a link does; model= prints what the registry page is handed (categories, arrival, home, a category body, with q= the box results); press= runs the box keys; no args reports the index and every dial whose terms are missing", "settings q=crosfade")
+            {
+                Positional = ["q"],
+                Args = Join([Arg("q", ArgType.String, "the query, as typed into a settings box (with model=: written to the page box's cell and ranked as a keystroke)"),
+                             Arg("focus", ArgType.String, "a settings link: category, category/dialId, dialId, or any old slug or row id (wavee://open?route=settings&arg=...); or a feature pointer's id (pointer.downloads)"),
+                             IntArg("limit", "results to list", "8", 1, 30),
+                             Arg("model", ArgType.String, "the registry page's model (contract 1.116): the category list, the open category and arrival, the home's facts, this category's body (a slug; empty: the open one), with q= the box's results"),
+                             Arg("press", ArgType.Enum, "the page box's key handler: down|up move the highlight through the results, enter opens the highlighted dial, esc clears then leaves", null, "down|up|enter|esc")], s_settleArgs),
+            },
+            new(Verb.Hint, "hint", "The in-app hints (settings rework phase 3): list every hint with its budget and verdict, force one's trigger true for one mount (show), forget every hint's budget and the use facts (reset), or read and load the persisted blob (state)", "hint show id=ai-lyrics")
+            {
+                Positional = ["do", "id"],
+                Args = Join([Arg("do", ArgType.Enum, "list (every hint, its budget and verdict) · show (force id's trigger for one mount) · reset · state (the blob; with blob= load it as a launch does)", "list", "list|show|reset|state"),
+                             Arg("id", ArgType.String, "the hint (hint list names them: ai-lyrics, lossless, crossfade, ...)"),
+                             Arg("blob", ArgType.String, "with do=state: the hints.state blob to write and read back")], s_settleArgs),
+            },
+            new(Verb.Recent, "recent", "Recently changed: the last five dial writes from any surface, newest first, with where each came from (persisted across restarts in the hint blob)", "recent")
+            {
+                Args = [Arg("clear", ArgType.Bool, "true empties the ring", "false")],
             },
             new(Verb.Window, "window", "Park the window the way the OS does (minimized, or hidden to the tray) or restore it, blur or re-activate it (active=false|true), and move the cold-maintenance clock ahead so its 30 s services (the scene slab trim) run on the next frame; a parked window's frames skip paint but drain posts, flush and run cold maintenance", "window state=minimized advance=31000")
             {
@@ -580,10 +629,108 @@ public static partial class Diagnostics
             new(Verb.Transport, "transport", "Drive the playback sequencer as the transport and the queue verbs do (next, prev, a natural end, shuffle, repeat, add/playnext, a track ruled unavailable) and read back the deck, the modes, the queue rows and the panel's up-next list; then settle", "transport do=next")
             {
                 Positional = ["do", "value"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable), duration (ms=: the decoder reports the playing row's real length, a same-row duration change)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration"),
+                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable), duration (ms=: the decoder reports the playing row's real length, a same-row duration change), audiobook (uri=: the catalogue classifies a show as a book), putstate (the connect-state PUT body the deck would send now, base64; nothing is sent)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate"),
                              Arg("value", ArgType.String, "shuffle on|off, repeat off|all|one"),
-                             Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead"),
+                             Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead; a spotify:show: uri for audiobook"),
                              Arg("ms", ArgType.Int, "the seek target (seek), the new length (duration)", "0")], s_settleArgs),
+            },
+            new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, customize, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); drive a Spine Shelf (shelf) or a Release Spotlight card (spotlight); acting ones settle", "home do=pin uri=spotify:album:al2")
+            {
+                Positional = ["do"], NeedsMount = true, Acts = true,
+                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|doc|plan|explain|verify|edit|customize|pin|unpin|add|remove|size|move|open|close|option|surface|search|undo|redo|reset|page|shelf|spotlight|preview"),
+                             Arg("path", ArgType.Path, "doc: also write the document's JSON to this file"),
+                             Arg("facet", ArgType.String, "plan / explain: the facet (empty: All)", ""),
+                             Arg("on", ArgType.Bool, "edit: on or off", "true"),
+                             Arg("item", ArgType.String, "the entry id (home do=status lists them; home:tile:<id> is accepted)"),
+                             Arg("uri", ArgType.String, "pin / unpin: an entity uri or a route key"),
+                             Arg("group", ArgType.String, "pin / add: the group (today|pinned|spotify)"),
+                             Arg("source", ArgType.String, "add: a catalogue id (widget.upNext, pin:<pin id>, section:<key>)"),
+                             Arg("at", ArgType.Int, "add: the index inside the group", "-1"),
+                             Arg("size", ArgType.Enum, "add / size: the size (size: next cycles)", null, "auto|s|m|l|full|next"),
+                             Arg("by", ArgType.Int, "move: steps through the order (negative: back)"),
+                             Arg("to", ArgType.Enum, "move: to the group's start or end", null, "start|end"),
+                             Arg("onto", ArgType.String, "move: onto this entry (later: after it; earlier: before it; a group head: its start)"),
+                             Arg("dir", ArgType.Enum, "move: one step toward a side (up and down: onto the nearest tile); page: left is the previous page, right the next", null, "left|right|up|down"),
+                             Arg("page", ArgType.Int, "page: the page to show, from 1 (key: the section's zone key or a unique part of it)", "1"),
+                             Arg("refocus", ArgType.Bool, "close: focus goes back to the tile", "true"),
+                             Arg("key", ArgType.String, "option: the option's key; page: the paged section; shelf: the shelf; spotlight: the card"),
+                             Arg("value", ArgType.String, "option: the value"),
+                             Arg("open", ArgType.Bool, "surface: open or close", "true"),
+                             Arg("kind", ArgType.Enum, "surface: which", "band", "band|allitems|addrow|find"),
+                             Arg("arg", ArgType.String, "surface: a selector kind, a pivot or a group id"),
+                             Arg("q", ArgType.String, "search: the text typed", ""),
+                             Arg("items", ArgType.Int, "search: the most hits listed", "40"),
+                             Arg("scope", ArgType.Enum, "reset: this page or everything", "page", "page|everything"),
+                             Arg("confirm", ArgType.Bool, "reset scope=everything: answer Classic's question yes", "false"),
+                             Arg("spine", ArgType.Int, "shelf: open item n (from 1) as a click on its spine (key: the shelf's key or a unique part of it)"),
+                             Arg("dwell", ArgType.Int, "shelf: rest on spine n (from 1): the meter fills, then it opens"),
+                             Arg("tile", ArgType.Int, "shelf: point at song n (from 1) of the open card; 0 leaves the tile"),
+                             Arg("leave", ArgType.Bool, "shelf: the pointer leaves the shelf (a dwell cancels, a live tile stops); spotlight: the pointer leaves the card", "false"),
+                             Arg("song", ArgType.Int, "spotlight: point at song n (from 1; 0 the card's face song) of the card (key: the zone key or the album uri, or a unique part)"),
+                             Arg("press", ArgType.Enum, "shelf: a key on the focused spine", null, "left|right|up|down|home|end|enter"),
+                             Arg("sound", ArgType.Enum, "preview: the shelf's sound button (toggle flips it)", null, "on|off|toggle"),
+                             Arg("volume", ArgType.Float, "preview: set the user's volume (0..1, the slider's linear position) as the volume slider does"),
+                             Arg("music", ArgType.Enum, "preview: pause, resume or stop the user's music", null, "pause|play|stop"),
+                             Arg("samples", ArgType.Bool, "preview: list the per-tick levels recorded since the last read (and clear them)", "false")], s_settleArgs),
+            },
+            new(Verb.Hold, "hold", "Press and hold: the button stays down ms on the frame clock (on a node's visible centre or a point), then a release there or a drag of dx,dy; then settle", "hold key=home:tile:d-recents ms=600 pointer=touch")
+            {
+                Positional = ["key"], NeedsMount = true, Acts = true,
+                Args = Join(s_aimArgs, s_stableArgs,
+                [
+                    IntArg("ms", "how long the press is held", "600", 16, 10_000),
+                    Arg("pointer", ArgType.Enum, "mouse or touch", "mouse", "mouse|touch"),
+                    Arg("then", ArgType.Enum, "after the hold: release where it pressed, or drag dx,dy", "release", "release|drag"),
+                    Arg("dx", ArgType.Float, "then=drag: DIP along x", "0"),
+                    Arg("dy", ArgType.Float, "then=drag: DIP along y", "0"),
+                    IntArg("steps", "then=drag: frames the pointer moves over", "8", 1, 600),
+                ], s_settleArgs),
+            },
+            new(Verb.Focus, "focus", "Move keyboard focus to a node (the focus ring shows, as after Tab) without a click; then settle", "focus key=home:tile:d-recents")
+            {
+                Positional = ["key"], NeedsMount = true, Acts = true,
+                Args = Join([Arg("key", ArgType.Key, "the node (exact key)"), Arg("nth", ArgType.Int, "which match, in reading order", "0") with { Min = 0 }], s_settleArgs),
+            },
+            new(Verb.Said, "said", "The announcements (screen-reader text) since the last said: text, assertive, frame. Every acting verb's after{} carries its own as said[]", "said")
+            {
+                Args = [Arg("clear", ArgType.Bool, "forget what this read returns (false: the next said returns it again)", "true")],
+            },
+            new(Verb.Perf, "perf", "Frame-cost capture around any verbs: on starts it (every later frame is recorded under its verb), report judges every frame against the budget (per verb: max, p95, presents, jit, hot alloc; each frame over budget with its top phase and the relayout scope or components behind it; hot-phase allocation on steady animation frames), off stops it", "perf on budget=16.7")
+            {
+                Positional = ["do"],
+                Args = [Arg("do", ArgType.Enum, "on, off, report or status", "report", "on|off|report|status"),
+                        Arg("budget", ArgType.Float, "the frame budget in ms (default: the refresh interval the host paced at, 16.67 at 60 Hz)") with { Min = 0.5, Max = 1000 },
+                        Arg("judge", ArgType.Enum, "on: ui (flush + layout + anim + record + postSubmit, JIT subtracted) or total (ui + submit: on WARP the CPU rasteriser)", "ui", "ui|total"),
+                        Arg("census", ArgType.Bool, "on: the host's render census names the components of a slow flush (costs frame time)", "false"),
+                        Arg("rows", ArgType.Enum, "report: the per-frame rows listed (over: the over-budget and alloc frames)", "over", "over|all|none"),
+                        IntArg("items", "report: the most entries per list", "20", 1, 5000),
+                        Arg("path", ArgType.Path, "report: also write every row to this JSON file"),
+                        Arg("reset", ArgType.Bool, "report: forget the frames after the report (the next report starts afresh)", "false")],
+            },
+            new(Verb.Film, "film", "Trace N frames from where the host stands (start the motion with an acting verb's settle=false) and lay every Nth frame into one contact-sheet PNG labelled with frame and time; keys=/prefix= add each key's motion curve with its steps, reversals, stalls and snaps", "film frames=40 every=4 path=C:/WAVEE/scratch/x/film.png prefix=home:section:")
+            {
+                Positional = ["frames"], NeedsMount = true,
+                Args = Join([IntArg("frames", "frames to film", "40", 1, 600), IntArg("every", "keep every Nth frame (the last always)", "4", 1, 600),
+                             Arg("path", ArgType.Path, "the contact sheet (.png)"), IntArg("cols", "cells per row", "5", 1, 20),
+                             Arg("scale", ArgType.Float, "each cell's scale of the frame (0.05 < scale <= 1)", "0.5"),
+                             Arg("framesDir", ArgType.Path, "also write each kept frame whole to this folder (f000.png, ...)"),
+                             Arg("crop", ArgType.Key, "cells show only this node's drawn rect (8 DIP around it, on the window) as it stood when the film began"),
+                             IntArg("max", "the most nodes watched", "20", 1, 500)], s_traceOptions),
+            },
+            new(Verb.Pointer, "pointer", "Pointer realism: glide through waypoints (a key's visible centre, at:x:y, or leave = off the window) one real move per frame over steps frames, resting each waypoint's @ms on the frame clock; then settle", "pointer path=[home:tile:a@700,home:tile:b@300,leave@200] steps=6")
+            {
+                NeedsMount = true, Acts = true,
+                Args = Join([Arg("path", ArgType.List, "waypoints: key[@ms], at:x:y[@ms] or leave[@ms]"),
+                             IntArg("steps", "frames each glide takes (one move per frame)", "6", 1, 600),
+                             IntArg("dwell", "ms rested at a waypoint that names none", "0", 0, 60_000),
+                             Arg("ease", ArgType.Enum, "the glide's pace: linear (even steps) or inout (a hand's start and stop: cubic ease in-out, as the live driver records)", "linear", "linear|inout"),
+                             Arg("film", ArgType.Path, "film the walk itself: a contact sheet (.png) of the path's frames and `tail` more, with film's every/cols/scale/crop and the keys'/prefixes' motion curves (each key waypoint is aimed when its leg starts, so a target that moved is followed)"),
+                             IntArg("tail", "with film: frames filmed after the last waypoint's rest", "30", 0, 600),
+                             Arg("keys", ArgType.List, "with film: exact keys whose motion curves to write"),
+                             Arg("prefix", ArgType.List, "with film: key prefixes whose motion curves to write"),
+                             IntArg("every", "with film: keep every Nth frame (the last always)", "2", 1, 600), IntArg("cols", "with film: cells per row", "6", 1, 20),
+                             Arg("scale", ArgType.Float, "with film: each cell's scale of the frame", "0.5"),
+                             Arg("crop", ArgType.Key, "with film: cells show only this node's drawn rect")], s_settleArgs),
             },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
@@ -610,7 +757,9 @@ public static partial class Diagnostics
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "transport" => Verb.Transport, "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
-            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag, "window" => Verb.Window,
+            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
+            "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
+            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };
@@ -1126,7 +1275,8 @@ public static partial class Diagnostics
             if (verb == Verb.None) { error = "unknown command '" + name + "' (try help)"; return false; }
             ReadOnlySpan<char> rest = sp < 0 ? default : line[(sp + 1)..].Trim();
             var args = new Args();
-            if (verb == Verb.Type && !rest.IsEmpty && rest[0] != '"' && !rest.StartsWith("text=", StringComparison.Ordinal))
+            if (verb == Verb.Type && !rest.IsEmpty && rest[0] != '"' && !rest.StartsWith("text=", StringComparison.Ordinal)
+                && !rest.StartsWith("key=", StringComparison.Ordinal))
             {
                 args.Set("text", new Value(ValueKind.String, rest.ToString()));
                 cmd = new Command(verb, name, args);

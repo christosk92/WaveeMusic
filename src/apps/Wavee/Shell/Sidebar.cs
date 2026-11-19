@@ -1675,11 +1675,12 @@ public static class SidebarSearch
 
     // Latin-1 Supplement (U+00C0..U+00FF) folded to its base letter, lowercased. Beyond that range the fold is
     // case-only (the honest limit without a full Unicode decomposition table, which invariant mode has no data for).
+    // The settings search folds every word it indexes and every query with this same fold (`SettingsSearch.Fold`).
     const string Latin1Fold =
         "aaaaaaaceeeeiiiidnooooo×ouuuuyþs" +
         "aaaaaaaceeeeiiiidnooooo÷ouuuuyþy";
 
-    static char Fold(char c)
+    internal static char Fold(char c)
     {
         if (c < 128) return (uint)(c - 'A') <= 'Z' - 'A' ? (char)(c + 32) : c;
         if (c >= 'À' && c <= 'ÿ') return Latin1Fold[c - 'À'];
@@ -2783,7 +2784,7 @@ public static class SidebarPinId
     /// <summary>Real pages that are never pins. The first three are tooling/editor surfaces; the last is a report
     /// reached from a dialog.</summary>
     static readonly string[] UnpinnableRoutes =
-        ["settings", "api-console", "home-customize", "playback-diagnostics"];
+        ["settings", "api-console", "playback-diagnostics"];
 
     /// <summary>One dated event. Its page is real and navigable, but a concert happens and is then over, so a pin
     /// would decay into a dead row — the durable destinations are the hub ("concerts") and an artist's schedule

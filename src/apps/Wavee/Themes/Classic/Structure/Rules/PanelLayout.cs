@@ -52,6 +52,14 @@ internal static class ClassicPanelLayout
 
     /// <summary>Back to full opacity from wherever the loop was, critically damped (never overshoots 1).</summary>
     public static readonly SpringParams SparkleSettle = SpringParams.FromResponse(0.35f, 1f);
+
+    // ── the lyrics header's ⋯ (settings rework phase 5, design 5.4) ──
+
+    /// <summary>The options card under the ⋯: its width, inset, the gap between its blocks and inside one, the slider's thickness.</summary>
+    public const float LyricsOptionsW = 288f, LyricsOptionsPad = 16f, LyricsOptionsGap = 12f, LyricsOptionsInnerGap = 6f, LyricsSliderThickness = 24f;
+
+    /// <summary>The blur slider: 0 (off) - 100 in steps of five, as the full screen's popover.</summary>
+    public const float LyricsBlurMax = 100f, LyricsBlurStep = 5f;
 }
 
 /// <summary>The constants of Classic's now-playing hero and body.</summary>

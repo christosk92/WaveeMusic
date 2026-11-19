@@ -121,6 +121,9 @@ internal static class ClassicStageOptionsGeometry
     /// <summary>The dimming slider: 0-100 in steps of five.</summary>
     public const float DimMin = 0f, DimMax = 100f, DimStep = 5f;
 
+    /// <summary>The background blur slider (the lyrics' depth blur, 0 = off): 0-100 in steps of five, as WinUI's popover.</summary>
+    public const float BlurMin = 0f, BlurMax = 100f, BlurStep = 5f;
+
     /// <summary>A section (title over a control) and a labelled row.</summary>
     public const float SectionGap = 8f, RowGap = 2f, RowMinHeight = 32f;
     public static readonly Edges4 SectionPadding = new(0f, 10f, 0f, 0f);

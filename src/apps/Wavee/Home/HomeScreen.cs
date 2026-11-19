@@ -64,15 +64,19 @@ public sealed class HomeScreen : Component
     readonly object _tintOwner = new();
     LoadState? _lastVerdict;                              // edge-gated facet.verdict log
     string? _contentFacet;                                // the facet whose content root is mounted (facet.content log)
+    readonly HomeBoardHost _board;                        // the All facet's pinned board: view state, verbs, grid controller (pinned-home-tech.md 1.5)
 
-    public HomeScreen() => _host = new HomeHost(_scroll);
+    public HomeScreen()
+    {
+        _host = new HomeHost(_scroll);
+        _board = new HomeBoardHost(_scroll);
+    }
 
     public override Element Render()
     {
         var p = UseProps<Props>();
         int tab = p.Tab;
         _host.Tab = tab;
-        var layout = UseRequiredContext(HomeLayout.Slot);
         string scope = UseContext(Shell.PageScrollScope);
         var overlay = UseContext(Overlay.Service);
 
@@ -86,7 +90,7 @@ public sealed class HomeScreen : Component
 
         // ── the screen model: DERIVED over the table signals. No publish, no stamps, no writes. ──
         var facetSig = UseComputed(() => _host.Switch.Value.Published);
-        var model = UseComputed(() => Compute(facetSig.Value, layout.Doc.Value));
+        var model = UseComputed(() => Compute(facetSig.Value));
         var verdict = UseComputed(() => Verdict(facetSig.Value, model.Value));
 
         // ── "shown this session" + words + the shimmer shape memo: written by an effect on the Ready edge, never
@@ -101,12 +105,14 @@ public sealed class HomeScreen : Component
         UseEffect(() => _host.Land(tab));
 
         // ── D-plan §6.3: the "From artists you follow" block on All needs the `music-following-chip` document.
-        // Prefetched once per All-entry edge; `Home.EnsureFeed` dedupes on Known/Asked, so re-entering All while it's
-        // still in flight (or already known) costs nothing extra. ──
+        // Prefetched on the All-entry edge AND in each new scope, as the demand above re-asks: a launch mounts Home before the
+        // login, so the first ask lands in the signed-out scope and is never sent; without the re-ask the release list never
+        // filled (a live open, 2026-11-17). `Home.EnsureFeed` dedupes on Known/Asked, so a re-run costs nothing. ──
         UseEffect(() =>
         {
+            _ = Entities.ScopeEpoch.Value;
             if (facetSig.Value.Length == 0) HomeHost.EnsureFollowingChipFeed();
-        }, DepKey.From(facetSig.Value.Length == 0));
+        });
 
         // The row's props: the host's ONE record (its signals are this tab's own stable fields and its delegates read the
         // host's Tab), so it serves the component's whole life — a fresh record per render would re-push on every parent
@@ -117,6 +123,18 @@ public sealed class HomeScreen : Component
         // (Reveal None: the zones own their entrance; the shimmer is the SAME tree rendered against the seed, so the skeleton is derived
         // from the real page, never authored by hand). The host hands over what it decided; every Func is read inside the region, as before.
         string facet = facetSig.Value;
+        // The pinned board (pinned-home-tech.md T1): on All the board replaces the zone column. The document is on hand, so the page region is
+        // never pending there (each tile holds its own flat placeholder at its box); the other facets keep their planners and their region.
+        bool board = facet.Length == 0;
+        // The board's model: the document x Spotify's answer, derived here (the page's own component) so both the board and its head-row tools
+        // read one memo; nothing in this render reads it, so a board change never re-renders the page.
+        var boardModel = UseComputed(() => _board.Project());
+        _board.Bind(boardModel, overlay);
+        // The v2 layout's hidden zones resolve against the first answer (pinned-home-tech.md 1.2.4): once, when it lands.
+        UseEffect(() => HomeBoardHost.ResolveLegacyOnAnswer(), DepKey.From(model.Value is null ? 0 : 1));
+        // Each answer on hand writes down the shape every section drew as (HomeItem.Shape): the next launch draws their skeletons at their places and
+        // loaded sizes. A signal effect over the board's memo (it writes the document, never in a render); a no-op when nothing changed.
+        UseSignalEffect(() => HomeBoardStore.Instance.RecordShapes(boardModel.Value));
         return Slots.View(ViewKeys.HomePage, new HomePageProps
         {
             Facet = facet,
@@ -125,21 +143,33 @@ public sealed class HomeScreen : Component
             Group = this,
             FacetRow = rowProps,
             Switch = _host.Switch,
-            Pending = () => verdict.Value == LoadState.Pending,
-            Failed = () => verdict.Value == LoadState.Failed,
-            Content = () => model.Value ?? Seed(facetSig.Value, layout.Doc.Value),
-            Seed = () => Seed(facetSig.Value, layout.Doc.Value),
+            Pending = () => !board && verdict.Value == LoadState.Pending,
+            Failed = () => !board && verdict.Value == LoadState.Failed,
+            Content = () => model.Value ?? Seed(facetSig.Value),
+            Seed = () => Seed(facetSig.Value),
             OnContent = NoteContent,
             RetryFirstLoad = _host.RetryFirstLoad,
             Overlay = overlay,
             Wash = BuildWash(() => model.Value),
             Greeting = DaylistCard.Greeting,
+            Board = board ? _board.Board : null,
+            BoardTools = board ? _board.Tools : null,
         });
     }
 
     // ══ THE SCREEN MODEL (derived, never published by hand) ═══════════════════════════════════════════════════════
 
-    ScreenModel? Compute(string facet, LayoutDoc layoutDoc)
+    /// <summary>All's zones: the board's drawn sections (feed, placed, folded), in board order.</summary>
+    IReadOnlyList<Zone> BoardZones()
+    {
+        var m = _board.Project();
+        var zones = new List<Zone>();
+        foreach (var e in m.Entries)
+            if (!e.Hidden && e.Zone is { } z) zones.Add(z);
+        return zones;
+    }
+
+    ScreenModel? Compute(string facet)
     {
         // A sign-in re-boots the entity scope: every table (and its Changed signal) is replaced, so subscribe to the
         // scope epoch first or the model stays bound to the dead scope's signals and never sees the feed land.
@@ -161,10 +191,13 @@ public sealed class HomeScreen : Component
             _ = fh.Version; _ = fh.SectionVersion;
             if (fh.Knows(HomeFields.Sections)) following = SectionReader.Read(fh);
         }
-        IReadOnlyList<Zone> zones = IsPodcastsFacet(facet)
-            ? PodcastPlanner.Plan(inputs, titles, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
-            : ZonePlanner.Plan(inputs, facet, titles, facet.Length == 0 ? kind => LayoutZoneOf(kind) is { } lz && layoutDoc.IsHidden(lz) : null,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), following, LocalizedSubtitles());
+        // All is the pinned board's (it draws its own entries): the model's zones are the board's sections, for the page's wash and the
+        // facet log; the other facets keep their planners.
+        IReadOnlyList<Zone> zones = facet.Length == 0
+            ? BoardZones()
+            : IsPodcastsFacet(facet)
+                ? PodcastPlanner.Plan(inputs, titles, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+                : ZonePlanner.Plan(inputs, facet, titles, null, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), following, LocalizedSubtitles());
         if (zones.Count == 0) zones = [new Zone(ZoneKind.EmptyFacet, "home:empty:" + facet, null, null, Array.Empty<HomeCard>())];
         return new ScreenModel(facet, zones, SectionReader.Greeting(h), SectionReader.Chips(h));
     }
@@ -205,7 +238,7 @@ public sealed class HomeScreen : Component
         YourShows: Loc.Get(Strings.Home.Zone.YourShows),
         ShowsYouMightLike: Loc.Get(Strings.Home.Zone.ShowsYouMightLike));
 
-    static ZoneSubtitles LocalizedSubtitles() => new(
+    internal static ZoneSubtitles LocalizedSubtitles() => new(
         MadeForYou: Loc.Get(Strings.Home.ZoneSub.MadeForYou),
         NewMusic: Loc.Get(Strings.Home.ZoneSub.NewMusic),
         BecauseYouLike: Loc.Get(Strings.Home.ZoneSub.BecauseYouLike),
@@ -215,20 +248,6 @@ public sealed class HomeScreen : Component
         NewEpisodes: Loc.Get(Strings.Home.ZoneSub.NewEpisodes));
 
     static bool IsPodcastsFacet(string facet) => facet is "podcasts-chip" or "podcasts-following-chip";
-
-    static LayoutZone? LayoutZoneOf(ZoneKind k) => k switch
-    {
-        ZoneKind.Daylist => LayoutZone.Daylist,
-        ZoneKind.RecentGrid => LayoutZone.Recents,
-        ZoneKind.CoverShelf => LayoutZone.MadeForYou,
-        ZoneKind.WideTiles => LayoutZone.NewMusic,
-        ZoneKind.ReleaseList => LayoutZone.Releases,
-        ZoneKind.ClusterCards => LayoutZone.BecauseYouLike,
-        ZoneKind.MixedCovers => LayoutZone.JumpBackIn,
-        ZoneKind.RadioShelf => LayoutZone.Radio,
-        ZoneKind.BrowseTiles => LayoutZone.Browse,
-        _ => null,
-    };
 
     // ══ THE FACET CONTENT LOG ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -249,16 +268,16 @@ public sealed class HomeScreen : Component
 
     /// <summary>The Pending/shimmer document: the facet's OWN last-known zone shape when this tab has shown it
     /// before this session (F30), else a generic first-paint shape per facet family. All opens on the daylist card
-    /// (ZonePlanner.PlanAll is the only planner that emits a Daylist zone) unless the Home layout hides it; the other
+    /// (the board's daylist widget leads it); the other
     /// music facets open on the Recents grid; Podcasts on its own lead. Rendered through the SAME zone column (the page view's `ClassicHomeZones.Column`) as the
     /// live page, so the skeleton is derived from the real tree (the daylist card's SkeletonProxy draws its silhouette
     /// for the blank seed card).</summary>
-    ScreenModel Seed(string facet, LayoutDoc layoutDoc)
+    ScreenModel Seed(string facet)
     {
         ZoneKind[] kinds = _host.TryLastShape(facet, out var known) ? known
             : IsPodcastsFacet(facet)
                 ? [ZoneKind.EpisodeLead, ZoneKind.ContinueEpisodes, ZoneKind.ShowGrid]
-                : facet.Length == 0 && !layoutDoc.IsHidden(LayoutZone.Daylist)
+                : facet.Length == 0
                     ? [ZoneKind.Daylist, ZoneKind.RecentGrid, ZoneKind.CoverShelf, ZoneKind.CoverShelf]
                     : [ZoneKind.RecentGrid, ZoneKind.CoverShelf, ZoneKind.CoverShelf];
 

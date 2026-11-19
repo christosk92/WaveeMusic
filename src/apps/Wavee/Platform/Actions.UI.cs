@@ -515,7 +515,7 @@ public static partial class Actions
         if (r.IsNone || r.Kind != EntityKind.Track) return null;
         var track = new Track(r.Slot);
         return track.IsValid
-            ? Track.Menu([track], new Track.MenuOptions(ShowGoToAlbum: true, PickerOverlay: Track.DrawerOverlay))
+            ? Track.Menu([track], new Track.MenuOptions(ShowGoToAlbum: true, PickerOverlay: Track.DrawerOverlay, ShowPinHome: true))
             : null;
     };
 }

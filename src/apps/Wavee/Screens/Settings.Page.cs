@@ -2,17 +2,22 @@
 // the Settings page's CORE HOST: the install call, the route's mount point, the pivot's tab cell and the deep-link seams, the
 // page epoch every writer bumps, and the one component (`PageHost`) that keeps the hooks and publishes the page's context
 //
-// Role: CORE (themes plan 6.1, T11b). The page's PICTURE — the masthead, the seven-tab pivot, the scroll lane, the section
-// headers, the row controls, the cards — is the structure's `Pages.Settings` view (Classic's `ClassicSettings*.cs`), drawn
-// over `SettingsDoc`. What stays here is what decides and publishes:
-//   · `InstallScreens()` / `Page()` / `Open(area)` / `AreaFromSlug`: the route, the deep link and the pivot's root-lifetime cell (the cell holds an AREA: the page's twelve
-//     sections, `Settings.Areas.cs`);
+// Role: CORE (themes plan 6.1, T11b; settings rework phase 4). The page's PICTURE — the head, the search box, the strip or
+// section list, the category bodies, the rows — is the structure's `Pages.Settings` view, drawn over the registry
+// (`SettingsSpec`, through `SettingsPageModel.cs`). What stays here is what decides and publishes:
+//   · `InstallScreens()` / `Page()` / `Open(link)`: the route, the deep link and the open CATEGORY (root-lifetime; a link or
+//     `OpenCategory` moves it, a strip writes its cell, Settings entered from another page with no link opens the home). A link
+//     (design 4.9) names a category, a dial or any old slug or row id (`SettingsSpec.ParseLink`); a dial link also records the
+//     `SettingsFocus` the page plays the arrival from (`SettingsPageModel.ArrivalOf`). A category opened as a place is the route
+//     `settings` with the category's slug as its arg (Zune's Compact section page);
 //   · the page EPOCH (`Bump()`): the settings store is not observable, so a writer that returns "re-read" bumps it, the host
-//     folds it (and the two foreign epochs the Appearance tab reads) into the props' `Revision`, and the template re-runs;
+//     folds it (and the two foreign epochs the Now playing and full-screen dials read) into the props' `Revision`, and the template re-runs;
 //   · the page CONTEXT (`SettingsContext.Bind`): the overlay host, the input hooks and the UI poster the verbs read;
-//   · the Storage census trigger (the first visit to the tab starts it) and the About notices' warm read.
+//   · the Storage census trigger (the first visit to the Storage category starts it) and the About notices' warm read;
+//   · the search box's model (`SettingsSearchModel`: the host re-ranks on a change of its query), the home and the category
+//     bodies (`SettingsPageModel.cs`), and the two chords (`FindInPage`: Ctrl+F on Settings; `OpenWithSearch`: Ctrl+,).
 //
-// MOUNT POINTS / SEAMS: `Settings.InstallScreens()` (the orchestrator's one call), `Settings.Page()`, `Settings.Open(Area)` / `Open(Tab)`;
+// MOUNT POINTS / SEAMS: `Settings.InstallScreens()` (the orchestrator's one call), `Settings.Page()`, `Settings.Open(string)` (every link);
 // `Settings.SendTestEvent` (owner S assigns the notification simulator, G-218).
 
 using FluentGpu;
@@ -35,9 +40,10 @@ public static partial class Settings
     public static void InstallScreens()
     {
         Shell.SetPage(Shell.RouteKind.Settings, static (in Shell.Route route) => PageFor(route));
-        // `wavee://open?route=settings&arg=<slug>`: the arg is an AREA slug (the old tab slugs are aliases), never a place of its own (plan D4).
-        // The slug resolves through the structure's grouping (P6 WK): a tab's own slug lands on its first area; the default grouping is AreaFromSlug.
-        Shell.OnSettingsTabRequested = static slug => Open(ShellPolicy.Now.Settings.AreaFromSlug(slug));
+        // `wavee://open?route=settings&arg=<link>`: a category, `category/dialId`, a dial, or any slug or row id a link ever used (design 4.9),
+        // never a place of its own (plan D4). An old slug lands on the category that now holds what it opened (`SettingsSpec.Aliases`).
+        Shell.OnSettingsTabRequested = static arg => Open(arg);
+        Shell.OnSettingsEntered = static () => EnteredFresh();
         ReleaseNotes.InstallUi();
         Feedback.InstallUi();
         Setup.InstallWizard();
@@ -46,27 +52,120 @@ public static partial class Settings
     // MOUNT POINT (stage B contract)
     public static Element Page() => Embed.Comp(new HostProps(""), static () => new PageHost());
 
-    /// <summary>The page for a route: the route's arg, an area slug, is the OPEN SECTION (the Compact sections-then-section page; every other tier keeps the pivot).
-    /// The slot is the same for every arg (<c>KeyedByArg</c> is false), so opening or closing a section re-pushes the props to the mounted page.</summary>
+    /// <summary>The page for a route: the route's arg, a category's slug, is the OPEN SECTION (the Compact sections-then-section page; every other tier keeps
+    /// its strip). The slot is the same for every arg (<c>KeyedByArg</c> is false), so opening or closing a section re-pushes the props to the mounted page.</summary>
     public static Element PageFor(in Shell.Route route) => Embed.Comp(new HostProps(Entities.Strings.Resolve(route.Arg)), static () => new PageHost());
 
     sealed record HostProps(string Arg);
 
-    /// <summary>The route of an area's page (arg = the area's slug).</summary>
-    static Shell.Route SectionRoute(int area) => new(Shell.RouteKind.Settings, default, Entities.Strings.Intern(AreaSlugs[Math.Clamp(area, 0, AreaSlugs.Length - 1)].AsSpan()));
+    /// <summary>The route of a category's page (arg = the category's slug).</summary>
+    static Shell.Route CategoryRoute(int category)
+        => new(Shell.RouteKind.Settings, default, Entities.Strings.Intern(SettingsSpec.Categories[Math.Clamp(category, 0, SettingsSpec.Categories.Count - 1)].Slug.AsSpan()));
 
-    /// <summary>Navigate to Settings on the area that holds <paramref name="tab"/>'s first section.</summary>
-    public static void Open(Tab tab) => Open(HomeArea(tab));
-
-    /// <summary>Navigate to Settings on <paramref name="area"/> (the palette, a toast's "Manage", a deep link).</summary>
-    public static void Open(Area area)
+    /// <summary>Open Settings from a link (a deep link's arg, the palette's Settings group, a toast, the AI sparkle, the inspector's
+    /// `settings focus=`): <c>category</c>, <c>category/dialId</c>, <c>dialId</c>, or any slug or row id a link ever used
+    /// (<see cref="SettingsSpec.ParseLink"/>). A dial link records a new <see cref="Focus"/> (its sequence grows on every request, so the
+    /// same dial twice replays the arrival). The page opens the link's category (<see cref="Category"/>; no arg, <c>home</c> or an unknown
+    /// arg opens the Settings home) and the box clears: a link lands on its category, never on a results page. Returns what the link
+    /// named.</summary>
+    public static SettingsLink Open(string? arg)
     {
-        s_tab.Value = (int)area;
-        var route = SectionRoute((int)area);
-        // Already on a section's page: a tab switch is not a new place, the entry is swapped. From the sections list (Compact) or from another page it is a step.
-        if (Shell.Current.Value is { Kind: Shell.RouteKind.Settings, Arg.IsEmpty: false }) Shell.ReplaceCurrent(route);
+        SettingsLink link = SettingsSpec.ParseLink(arg);
+        SettingsSearchModel.Current.Clear();
+        if (arg is not { Length: > 0 })
+        {
+            SetCategory(0);
+            Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
+            return link;
+        }
+        if (link.Dial is { } dial) s_focusState.Value.Value = new SettingsFocus(dial.Id, ++s_focusSeq);
+        OpenAt(link.Known ? SettingsPageModel.IndexOf(link.Category) : 0);
+        return link;
+    }
+
+    /// <summary>Open the category <paramref name="slug"/> names (its own slug or an old one; <c>home</c> or an unknown one opens the Settings
+    /// home) as a place: a history step from the Settings home or another page (Zune's Compact drill-in), the entry swapped from another
+    /// category's. The box clears. A strip that switches in place writes <see cref="CategoryCell"/> instead (no history step).</summary>
+    public static void OpenCategory(string? slug)
+    {
+        SettingsSearchModel.Current.Clear();
+        OpenAt(SettingsPageModel.IndexOf(SettingsSpec.CategoryFromSlug(slug)));
+    }
+
+    /// <summary>Ctrl+,: open Settings on its home with its box focused (owner decision 1, design 4.8).</summary>
+    public static void OpenWithSearch()
+    {
+        Open(null);
+        SettingsSearchModel.Current.RequestFocus();
+    }
+
+    /// <summary>Ctrl+F while Settings is the page and its page draws a bound box: the box takes the caret instead of the app's search. False
+    /// (the app's search takes it) on any other page, or while no bound box is mounted.</summary>
+    public static bool FindInPage()
+    {
+        if (Shell.Current.Peek().Kind != Shell.RouteKind.Settings) return false;
+        var search = SettingsSearchModel.Current;
+        if (!search.HasBox) return false;
+        search.RequestFocus();
+        return true;
+    }
+
+    /// <summary>The open category: an index into <see cref="SettingsPageModel.Categories"/>, 0 the Settings home. ROOT-LIFETIME: a remounted
+    /// root opens the home (or Appearance after a theme pick). Settings entered from another page with no link opens the home
+    /// (<see cref="EnteredFresh"/>).</summary>
+    public static IReadSignal<int> Category => s_categoryState.Value;
+
+    /// <summary>The category cell as the props carry it (a strip binds it; a writable cell travels as a <c>Func</c>: WVTH006).</summary>
+    public static Func<Signal<int>> CategoryCell => s_categoryCell;
+
+    static readonly RootState<Signal<int>> s_categoryState = new("Settings.Category", static () => new Signal<int>(TakePendingCategory()));
+    static readonly Func<Signal<int>> s_categoryCell = static () => s_categoryState.Value;
+    static readonly Action<string> s_openCategory = static slug => OpenCategory(slug);
+    /// <summary>The category the NEXT mounted root opens on, or -1 for the home (<see cref="OpenNextMountOn"/>).</summary>
+    static int s_pendingCategory = -1;
+
+    static void SetCategory(int index) => s_categoryState.Value.Value = Math.Clamp(index, 0, SettingsSpec.Categories.Count - 1);
+
+    static int TakePendingCategory()
+    {
+        int category = s_pendingCategory;
+        s_pendingCategory = -1;
+        return category >= 0 && category < SettingsSpec.Categories.Count ? category : 0;
+    }
+
+    /// <summary>Settings was entered from another page with no link (the navigation pane, the palette's Settings row, a menu): the page opens
+    /// on its home with an empty box (owner decision 1). Called by the shell's commit (<see cref="Shell.OnSettingsEntered"/>); Back and
+    /// Forward keep the category they left.</summary>
+    static void EnteredFresh()
+    {
+        SetCategory(0);
+        SettingsSearchModel.Current.Clear();
+    }
+
+    /// <summary>The category a route's arg opens: a category's slug, any old slug a restored session or an old link carries (the alias
+    /// table), or a link's dial's category; else the home.</summary>
+    static int CategoryForArg(string arg) => SettingsPageModel.IndexOf(SettingsSpec.ParseLink(arg).Category);
+
+    /// <summary>Navigate to Settings on <paramref name="category"/>: the home is the bare route (a Compact sections list shows the list), a
+    /// category the route with its slug. Already on a category's page, the entry is swapped (a category switch is not a new place); from
+    /// the home or from another page it is a step.</summary>
+    static void OpenAt(int category)
+    {
+        SetCategory(category);
+        var route = category == 0 ? new Shell.Route(Shell.RouteKind.Settings) : CategoryRoute(category);
+        if (Shell.Current.Peek() is { Kind: Shell.RouteKind.Settings, Arg.IsEmpty: false }) Shell.ReplaceCurrent(route);
         else Shell.GoTo(route);
     }
+
+    /// <summary>The props the page host last pushed (the inspector's `settings model` reads what the page was handed).</summary>
+    internal static SettingsPageProps? LastPublished { get; private set; }
+
+    /// <summary>The last dial a link asked for: the page (<c>SettingsPageProps.Focus</c>) opens its category, its parent's expander, glides it
+    /// into view and highlights it whenever <see cref="SettingsFocus.Seq"/> moves. ROOT-LIFETIME: a remounted root starts with none.</summary>
+    public static IReadSignal<SettingsFocus> Focus => s_focusState.Value;
+
+    static readonly RootState<Signal<SettingsFocus>> s_focusState = new("Settings.Focus", static () => new Signal<SettingsFocus>(SettingsFocus.None));
+    static int s_focusSeq;
 
     /// <summary>Owner S's notification simulator (G-218): push a real event of the topic through the pipeline and report what
     /// consumed it. Null → "Send event" answers <see cref="TestEventOutcome.Unavailable"/>.</summary>
@@ -74,35 +173,10 @@ public static partial class Settings
 
     // ══ 2. PAGE STATE (0.2.9's SettingsPage instance fields; page-lifetime) ════════════════════════════════════════
 
-    // The pivot is ROOT-LIFETIME state (RootScope.cs, owner Q26): a remounted root opens Settings on its first tab, like a fresh
-    // navigation. `Open(tab)` before the first mount writes the ambient scope the root then adopts.
-    static readonly RootState<Signal<int>> s_tabState = new("Settings.Tab", static () => new Signal<int>(TakePendingTab()));
-    static Signal<int> s_tab => s_tabState.Value;
-
-    /// <summary>The pivot's cell as the props carry it (a writable cell travels as a <c>Func</c>: WVTH006).</summary>
-    static readonly Func<Signal<int>> s_tabCell = static () => s_tab;
-
-    /// <summary>A grouped pivot's tab click (P6 WK): the area cell moves to the tab's first home area, so the tab on show is that tab.</summary>
-    static readonly Action<int> s_openGroup = static g => s_tab.Value = (int)ShellPolicy.Now.Settings.HomeAreaOf(g);
-
-    /// <summary>The tab the NEXT mounted root's pivot opens on, or -1 for the first. A theme pick sets it to Appearance before the
-    /// root remounts (owner Q26: the remounted page is a fresh navigation, to Settings › Appearance, picker first); the new
-    /// root's pivot cell consumes it when it is created.</summary>
-    static int s_pendingTab = -1;
-
-    /// <summary>Ask the next mounted root to open Settings on <paramref name="tab"/>: the theme picker's pick remounts the root (owner Q26), and the
-    /// remounted page is a fresh navigation to Settings › Appearance with the picker as its first row, instead of General.</summary>
-    public static void OpenNextMountOn(Area area) => s_pendingTab = (int)area;
-
-    /// <summary>The same for the area holding <paramref name="tab"/>'s first section (the pre-areas seam, kept for themes written against it).</summary>
-    public static void OpenNextMountOn(Tab tab) => OpenNextMountOn(HomeArea(tab));
-
-    static int TakePendingTab()
-    {
-        int tab = s_pendingTab;
-        s_pendingTab = -1;
-        return tab >= 0 && tab < AreaSlugs.Length ? tab : 0;
-    }
+    /// <summary>Ask the next mounted root to open Settings on the category <paramref name="slug"/> names: the theme picker's pick remounts the
+    /// root (owner Q26), and the remounted page is a fresh navigation to Settings › Appearance with the picker first. The new root's category
+    /// cell consumes it when it is created.</summary>
+    public static void OpenNextMountOn(string slug) => s_pendingCategory = SettingsPageModel.IndexOf(slug);
 
     static readonly Signal<int> s_epoch = new(0);
 
@@ -140,38 +214,59 @@ public static partial class Settings
                 SettingsFacts.WarmNotices(LoadNotices);
             }, DepKey.Empty);
 
-            // The page's own epoch plus the two foreign epochs the Appearance tab reads: a write on the fullscreen stage's gallery
-            // or the player bar re-renders the rows live. Each only ever grows, so the sum changes when any one does.
+            // The page's own epoch plus the two foreign epochs the Now playing and full-screen dials read: a write on the fullscreen stage's
+            // gallery or the player bar re-renders the rows live. Each only ever grows, so the sum changes when any one does.
             int revision = s_epoch.Value + Prefs.PlayerBar.Epoch.Value + Prefs.Stage.Epoch.Value;
             string arg = UseProps<HostProps>().Arg;
             bool section = arg.Length > 0;
-            // The structure's grouping (P6 WK): which tab the open area lives in, and where a tab's own slug lands. Tracked: a theme switch regroups.
-            var grouping = ShellPolicy.Tracked.Settings;
-            int argTab = (int)grouping.AreaFromSlug(arg);
-            // A route that names a section (history, a restored session) opens the pivot on it.
-            UseEffect(() => { if (section && s_tab.Peek() != argTab) s_tab.Value = argTab; }, DepKey.From(argTab, section ? 1 : 0));
-            int area = Math.Clamp(s_tab.Value, 0, AreaSlugs.Length - 1);
 
-            UseEffect(() => EnterStorage(area == (int)Area.Storage), DepKey.From(area));
+            // The open category (a route that names one, from history or a restored session, opens it), the box's ranking (an auto-tracked
+            // effect: it re-runs on a change of the query alone, never re-rendering this host), and a link's arrival.
+            var search = SettingsSearchModel.Current;
+            UseEffect(() => search.Refresh(search.Query.Value));
+            int argCategory = section ? CategoryForArg(arg) : -1;
+            UseEffect(() => { if (argCategory >= 0 && s_categoryState.Value.Peek() != argCategory) SetCategory(argCategory); }, DepKey.From(argCategory));
+            int category = Math.Clamp(s_categoryState.Value.Value, 0, SettingsSpec.Categories.Count - 1);
+            SettingsArrival arrival = SettingsPageModel.ArrivalOf(s_focusState.Value.Value, ShellPolicy.Tracked.SettingsPage.HighlightMs);
+            bool storage = category == StorageCategory;
 
-            return Slots.View(ViewKeys.SettingsPage, new SettingsPageProps
+            UseEffect(() => EnterStorage(storage), DepKey.From(storage ? 1 : 0));
+
+            var props = new SettingsPageProps
             {
-                Area = area,
-                Grouping = grouping,
-                Group = grouping.GroupOf((Area)area),
-                OpenGroup = s_openGroup,
                 Revision = revision,
-                AreaCell = s_tabCell,
                 OpenSection = section,
-                OpenArea = static i => { s_tab.Value = i; Shell.GoTo(SectionRoute(i)); },
                 CloseSection = static () =>
                 {
                     // The history decides: the entry below is the sections list (Settings, no arg) -> Back; else the page is swapped for the list.
                     if (Shell.TryPeekBack(out var below) && below is { Kind: Shell.RouteKind.Settings, Arg.IsEmpty: true }) Shell.GoBack();
                     else Shell.ReplaceCurrent(new Shell.Route(Shell.RouteKind.Settings));
                 },
-                Storage = area == (int)Area.Storage ? StorageFacts() : SettingsStorageProps.Idle,
-            });
+                Storage = storage ? StorageFacts() : SettingsStorageProps.Idle,
+                Category = category,
+                Categories = SettingsPageModel.Categories,
+                CategoryCell = s_categoryCell,
+                OpenCategory = s_openCategory,
+                Focus = arrival,
+                Search = search,
+                Home = SettingsHomeSource.Shared,
+                Body = SettingsBodySource.Shared,
+            };
+            LastPublished = props;
+            return Slots.View(ViewKeys.SettingsPage, props);
         }
     }
+
+    /// <summary>The Storage category's index (its census starts on the first visit).</summary>
+    static int StorageCategory => SettingsPageModel.IndexOf("storage");
+}
+
+/// <summary>A link's arrival at one dial: the dial's registry id and a sequence number that grows on every request, so asking for the same
+/// dial twice replays the arrival (design 4.9).</summary>
+/// <param name="DialId">The dial (<see cref="SettingsDial.Id"/>), or empty for none.</param>
+/// <param name="Seq">Grows with every link to a dial.</param>
+public readonly record struct SettingsFocus(string DialId, int Seq)
+{
+    /// <summary>No dial asked for.</summary>
+    public static SettingsFocus None => new("", 0);
 }

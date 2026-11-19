@@ -574,6 +574,30 @@ internal static class ClassicTrackChrome
 
         /// <summary>The labeled (icon + text) command — every inline command is labeled; one that does not fit is evicted,
         /// never shrunk to a glyph (ch 04 §0.10).</summary>
+        /// <summary>Tune as Classic's AI action (owner, 2026-11-18: "a lot more prevalent like an AI button"): a pill wearing the AI stroke, the sparkle in its hue
+        /// and the word in the primary ink, the stroke's wash while lit (tuned, or the strip open).</summary>
+        public Element TuneCommand(string label, bool lit, Action onClick)
+        {
+            float h = ClassicTrackChromeLayout.CommandHeightFor(_tier.Target);
+            return TunePill(label, lit, onClick, h);
+        }
+
+        /// <summary>The Tune pill at <paramref name="h"/> tall: its corners are half its height (a token radius larger than the box draws no stroke).</summary>
+        static Element TunePill(string label, bool lit, Action onClick, float h) => new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicTrackChromeLayout.CommandGap,
+            Height = h, Padding = new Edges4(ClassicPlaylistLayout.TunePillPadL, 0f, ClassicPlaylistLayout.TunePillPadR, 0f),
+            Corners = CornerRadius4.All(h / 2f), Gradient = lit ? ClassicPlaylistLayout.TuneWash : null,
+            BorderBrush = ClassicPlaylistLayout.TuneStroke, BorderWidth = ClassicPlaylistLayout.TuneStrokeWidth,
+            HoverFill = Prop.Of(static () => Tok.FillSubtleSecondary), PressedFill = Prop.Of(static () => Tok.FillSubtleTertiary),
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
+            Children =
+            [
+                Icon(Icons.RefineSparkle, ClassicTrackChromeLayout.CommandGlyph) with { Color = ClassicPlaylistLayout.TuneSparkle },
+                Ui.Caption(label) with { Weight = 600, Color = Prop.Of(static () => Tok.TextPrimary) },
+            ],
+        };
+
         public Element Labeled(string glyph, string label, bool active, Action onClick, Action<NodeHandle>? onRealized, Element? trailing)
         {
             Prop<ColorF> ink = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary);

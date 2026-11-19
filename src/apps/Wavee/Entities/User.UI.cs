@@ -213,7 +213,7 @@ public readonly partial struct User
         AppActions.Register(new AppAction
         {
             Id = ActionId.SaveContext, IconKey = ActionIcons.Save,
-            Label = static c => Loc.Get(SaveWordOf(c.Target.Kind, c.S.IsSaved?.Invoke(c.Target.Uri) ?? false)),
+            Label = static c => Loc.Get(SaveWordOf(c.Target.Kind, c.Target.Uri, c.S.IsSaved?.Invoke(c.Target.Uri) ?? false)),
             IsEnabled = static c => c.S.SetSaved is not null && Controls.Library is not null && CanSave(c.Target),
             IsChecked = static c => c.S.IsSaved?.Invoke(c.Target.Uri) ?? false,
             Execute = static c => c.S.SetSaved?.Invoke(c.Target.Uri, !(c.S.IsSaved?.Invoke(c.Target.Uri) ?? false)),
@@ -222,10 +222,24 @@ public readonly partial struct User
 
     /// <summary>The word the kind's own button says, as the strip's other toggle (the track menu's Save / Saved) does: an album or
     /// playlist is Save / Saved (its heart and Save button), an artist or show Follow / Following (its Follow toggle). The strip's
-    /// four labels share one row, where "Remove from Your Library" trimmed to "Remove ..." (WinUI, 1440).</summary>
-    static string SaveWordOf(TargetKind kind, bool saved) => kind is TargetKind.Artist or TargetKind.Show
-        ? (saved ? Strings.Artist.Following : Strings.Artist.Follow)
-        : (saved ? Strings.Menu.Saved : Strings.Menu.Save);
+    /// four labels share one row, where "Remove from Your Library" trimmed to "Remove ..." (WinUI, 1440). An AUDIOBOOK is a show the user does not
+    /// follow but keeps (owner 2026-11-18: a book's card said "Follow"): Save / Saved, the album's words. The book page's own "Add to Your Library"
+    /// trimmed to "Add to Y..." in the strip's cell, as the long remove label did.</summary>
+    static string SaveWordOf(TargetKind kind, EntityUri uri, bool saved)
+    {
+        if (kind == TargetKind.Show && IsAudiobook(uri))
+            return saved ? Strings.Menu.Saved : Strings.Menu.Save;
+        return kind is TargetKind.Artist or TargetKind.Show
+            ? (saved ? Strings.Artist.Following : Strings.Artist.Follow)
+            : (saved ? Strings.Menu.Saved : Strings.Menu.Save);
+    }
+
+    /// <summary>Is this show uri a book (the show flag, or a resident chapter: <see cref="Show.IsAudiobook"/>)? A peek: a menu label, not a render.</summary>
+    static bool IsAudiobook(EntityUri uri)
+    {
+        var scope = Entities.Current;
+        return scope is not null && uri.IsValid && scope.Shows.TryGetSlot(uri.Id, out int slot) && new Show(slot).IsAudiobook;
+    }
 
     /// <summary>Can the library seam save or follow this container? Its own collections cannot (<see cref="Entities.IsOwnCollection"/>:
     /// Liked Songs, Your Episodes, a playlist the account owns), nor the imported files (Local Files) or a playback module's

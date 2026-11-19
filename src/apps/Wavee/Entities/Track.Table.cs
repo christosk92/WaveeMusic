@@ -326,8 +326,13 @@ public readonly partial struct Track
         public Action<IReadOnlyList<int>>? RemoveRows { get; init; }
         /// <summary>Appended section (O, Wave 5); null = absent.</summary>
         public Func<Element?>? Recommendations { get; init; }
-        /// <summary>Playlist tuning button; null = absent.</summary>
+        /// <summary>Playlist tuning button (it opens and shuts the Tune strip); null = absent.</summary>
         public Action? Tune { get; init; }
+        /// <summary>The Tune strip under the list bar (the structure's `Playlist.Tune` view) while it is open, else null. A tracked read: the strip's
+        /// slot follows it. Null member = no strip. Appended (contract 1.120).</summary>
+        public Func<Element?>? TuneStrip { get; init; }
+        /// <summary>Is Tune lit (the mix is tuned, or its strip is open)? A tracked read. Appended (contract 1.120).</summary>
+        public Func<bool>? TuneLit { get; init; }
         /// <summary>Expanded-row BODY (Track.Drawer.cs, M Wave 5), handed the row's track and DISPLAY index; the host pads it
         /// by <see cref="RowMetrics.DrawerIndent"/>. Null = no chevron lane.</summary>
         public Func<Track, int, Element?>? Drawer { get; init; }
@@ -1791,7 +1796,7 @@ public readonly partial struct Track
                 });
                 Element trailBlock = InsetList(new BoxEl { Direction = 1, Children = kids.ToArray() })
                     .StickyClip(line);
-                // A structure with its own band (WinUI's opaque 48 bar) also clips the block at the band's line: the chrome that the block's end pushes up must
+                // A structure with its own band (WinUI's 48 bar, which paints no plate) also clips the block at the band's line: the chrome that the block's end pushes up must
                 // not paint over the bar it passes under. The shell's transparent 56 band leaves it as it was.
                 if (ShellPolicy.Tracked.DetailTiers.For(TiersNow()).BandHeight > 0f) tableBlock = tableBlock.StickyClip(line);
                 children = [TrailHero(spec), tableBlock, trailBlock];
@@ -2473,8 +2478,8 @@ public readonly partial struct Track
         {
             AcceptKinds = [Drag.Resource],
             CanAccept = payload => Verdict(payload) == DropRefusal.None,
-            // An album/show table sits the gesture out silently; a read-only PLAYLIST says why (ch 04 §9.9).
-            Transparent = _ => Cfg.Kind is DetailKind.Album or DetailKind.Show && !Editable,
+            // An album table sits the gesture out silently; a read-only PLAYLIST says why (ch 04 §9.9).
+            Transparent = _ => Cfg.Kind is DetailKind.Album && !Editable,
             IsSameList = IsSameList,
             // A same-list reorder never dims the app; a cross-list deposit keeps the scrim.
             SpotlightWhen = session => !IsSameList(session.Payload),
@@ -3067,10 +3072,10 @@ public readonly partial struct Track
             // (track / episode), which is all its shape depends on; the display index is peeked where it is needed.
             var kind = UseComputed(() => _host.RowKindAt(_scope.Index.Value - _start)).Value;
 
-            // An episode row is never wrapped by Skin — it IS the show reader's own row (Episode.ReaderRow), self-
+            // An episode row is never wrapped by Skin — it IS the episode reader row (Episode.ReaderRow), self-
             // contained (click, hover, check lane, "…"), built through Episode.RowContext from this host's own
-            // tone/play/overlay/menu/selection seams (Track.Table.EpisodeRow.cs). Looks and behaves identically to a
-            // row in the show reader, whether it's hosted in a mixed playlist or Your Episodes.
+            // tone/play/overlay/menu/selection seams (Track.Table.EpisodeRow.cs), whether it's hosted in a mixed
+            // playlist or Your Episodes.
             if (kind == RowTemplate.Episode)
             {
                 _episodeItem ??= _host.BindEpisodeItemFor(_scope, _start);

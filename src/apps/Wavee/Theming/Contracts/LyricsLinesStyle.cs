@@ -4,7 +4,7 @@
 // word wipe and the node handles they write are core (`Lyrics.ViewCore`, `LyricsModel`). So the lines are a STYLE: the structure registers
 // a `LyricsLinesStyle` under `StyleKeys.LyricsLines` and the core host calls it where it needs a picture, handing itself as the
 // `ILyricsHost`. Every member is a pure picture of what the host decided: the host decides WHICH to draw (a timed document that is not
-// suppressed is the list, any other is the unsynced block, a reader browsing an episode that does not play is the peek).
+// suppressed is the list, any other is the unsynced block).
 
 using FluentGpu.Dsl;
 using FluentGpu.Hooks;
@@ -19,15 +19,13 @@ public sealed class LyricsLinesStyle
         Func<ILyricsHost, Element> shimmer,
         Func<ILyricsHost, SkeletonStyle> skeleton,
         Func<ILyricsHost, Lyrics.Doc, Element> unsynced,
-        Func<ILyricsHost, Lyrics.Doc, Element> lines,
-        Func<ILyricsHost, Lyrics.Doc, Element> peek)
+        Func<ILyricsHost, Lyrics.Doc, Element> lines)
     {
         Message = message;
         Shimmer = shimmer;
         Skeleton = skeleton;
         Unsynced = unsynced;
         Lines = lines;
-        Peek = peek;
     }
 
     /// <summary>A centred one-line state ("No lyrics available", "Nothing playing").</summary>
@@ -44,9 +42,6 @@ public sealed class LyricsLinesStyle
 
     /// <summary>A timed document: the measured virtual list and its rows.</summary>
     public Func<ILyricsHost, Lyrics.Doc, Element> Lines { get; }
-
-    /// <summary>The podcast peek: the transcript's opening lines dissolving under the gate.</summary>
-    public Func<ILyricsHost, Lyrics.Doc, Element> Peek { get; }
 
     /// <summary>Contract 1.1 (optional): the OFFLINE voice, for a track whose lyrics are not saved on this PC and could not be fetched
     /// because the app is offline (<c>LyricsState.Offline</c>). The action retries the fetch. Null = the core falls back to

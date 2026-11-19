@@ -87,6 +87,147 @@ public static partial class Entities
         t.Version[list]++;
     }
 
+    // ── a BOOK that loads the way a real one does (`state kind=cold-book`, then `cold-book-chapters`, then `cold-book-facts`) ──
+    // The owner's recording (2026-11-18, Designing Data-Intensive Applications, 2nd Edition): the page opened on the show's own answer (the title and
+    // the subtitle joined in one string, no chapters, no length), the membership landed a tenth of a second later (the chapters' names, no lengths),
+    // and the book's credits and the chapters' lengths two seconds after that. One stage per answer, on sh9 (The Long Book):
+    //   · cold-book           the membership is unknown and asked, the credits are not known, the title is the joined one (`goto` sh9 after it);
+    //   · cold-book-chapters  the membership lands whole; no chapter knows its length yet;
+    //   · cold-book-facts     the credits land (the title and the subtitle apart, the book's length) and so does every chapter's length.
+
+    /// <summary>The book the cold-book stages act on (sh9, a hundred chapters).</summary>
+    public static string FakeColdBookUri => AlbumSeed.ColdBookUri;
+
+    static bool s_bookCold;
+
+    /// <summary>`state kind=cold-book`: sh9 as the show's own answer leaves it (no membership, no credits, no lengths).</summary>
+    public static void StageColdBook()
+    {
+        RestoreColdBook();
+        s_bookCold = true;
+        AlbumSeed.ColdBook();
+    }
+
+    /// <summary>`state kind=cold-book-chapters`: the membership lands (names, no lengths).</summary>
+    public static void StageColdBookChapters()
+    {
+        if (s_bookCold) AlbumSeed.ColdBookChapters();
+    }
+
+    /// <summary>`state kind=cold-book-facts`: the credits and the chapters' lengths land.</summary>
+    public static void StageColdBookFacts()
+    {
+        if (s_bookCold) AlbumSeed.ColdBookFacts();
+    }
+
+    /// <summary>The book as the boot seeded it; nothing when no cold-book ran. The inspector's restore on the next mount calls it.</summary>
+    public static void RestoreColdBook()
+    {
+        if (!s_bookCold) return;
+        s_bookCold = false;
+        AlbumSeed.RestoreBook();
+    }
+
+    static partial class AlbumSeed
+    {
+        public static string ColdBookUri => ShowUri(LongBook);
+
+        const string ColdBookTitle = "The Long Book", ColdBookSubtitle = "A Voyage in One Hundred Chapters, Told by the Keepers of the Light at Vell";
+
+        /// <summary>What the cold stage took: each chapter's length, and the fields the show knew.</summary>
+        static int[]? s_bookLengths;
+        static uint s_bookKnown;
+
+        static int BookSlot => SlotOf(Current.Shows, ShowUri(LongBook));
+
+        public static void ColdBook()
+        {
+            Scope s = Current;
+            var t = s.Shows;
+            int show = BookSlot;
+            s_bookKnown = t.Known[show];
+            RetainText(ref t.Title[show], Intern(Utf8(ColdBookTitle + ": " + ColdBookSubtitle)));
+            t.Known[show] &= ~(uint)ShowFields.Credits;
+            t.Version[show]++;
+            t.MarkDirty();
+            int n = EpisodesIn(LongBook);
+            s_bookLengths = new int[n];
+            for (int i = 0; i < n; i++)
+            {
+                int ep = SlotOf(s.Episodes, EpisodeUri(LongBook, i));
+                s_bookLengths[i] = s.Episodes.DurationMs[ep];
+                s.Episodes.DurationMs[ep] = 0;
+                s.Episodes.Version[ep]++;
+            }
+            s.Episodes.MarkDirty();
+            s.Edges.ShowEpisodes.Replace(show, ReadOnlySpan<int>.Empty, default, EdgeState.Unknown, 0);
+            s.Edges.ShowEpisodes.MarkAsked(show, 0);
+            s.PublishAll();
+        }
+
+        public static void ColdBookChapters()
+        {
+            Scope s = Current;
+            int n = EpisodesIn(LongBook);
+            var targets = new int[n];
+            for (int i = 0; i < n; i++) targets[i] = SlotOf(s.Episodes, EpisodeUri(LongBook, i));
+            s.Edges.ShowEpisodes.Replace(BookSlot, targets, default, EdgeState.Complete, n);
+            s.PublishAll();
+        }
+
+        public static void ColdBookFacts()
+        {
+            Scope s = Current;
+            var t = s.Shows;
+            int show = BookSlot;
+            long total = Lengths();
+            RetainText(ref t.BookTitle[show], Intern(Utf8(ColdBookTitle)));
+            RetainText(ref t.BookSubtitle[show], Intern(Utf8(ColdBookSubtitle)));
+            t.BookDurationMs[show] = (int)Math.Min(int.MaxValue, total);
+            t.Known[show] |= (uint)ShowFields.Credits;
+            t.Version[show]++;
+            t.MarkDirty();
+            s.PublishAll();
+        }
+
+        /// <summary>Every chapter's length back (once); the sum.</summary>
+        static long Lengths()
+        {
+            Scope s = Current;
+            long total = 0;
+            int n = EpisodesIn(LongBook);
+            for (int i = 0; i < n; i++)
+            {
+                int ep = SlotOf(s.Episodes, EpisodeUri(LongBook, i));
+                if (s_bookLengths is { } held && s.Episodes.DurationMs[ep] == 0)
+                {
+                    s.Episodes.DurationMs[ep] = held[i];
+                    s.Episodes.Version[ep]++;
+                }
+                total += s.Episodes.DurationMs[ep];
+            }
+            s_bookLengths = null;
+            s.Episodes.MarkDirty();
+            return total;
+        }
+
+        public static void RestoreBook()
+        {
+            Scope s = Current;
+            var t = s.Shows;
+            int show = BookSlot;
+            Lengths();
+            RetainText(ref t.Title[show], Intern(Utf8(ColdBookTitle)));
+            RetainText(ref t.BookTitle[show], StringId.Empty);
+            RetainText(ref t.BookSubtitle[show], StringId.Empty);
+            t.BookDurationMs[show] = 0;
+            t.Known[show] = s_bookKnown;
+            t.Version[show]++;
+            t.MarkDirty();
+            ColdBookChapters();
+        }
+    }
+
     // ── any detail page's header, unknown in place (`state kind=head uri=<uri>`, then `state kind=head-land`) ──
     // An album's, a list's, a show's or an episode's title is taken away with every field it knows (a cold open: no title, publisher, rating, cover), so
     // the page draws its pending head; the landing puts them back on the page that shows it, so a trace sees the head land as the real client's first
@@ -96,8 +237,9 @@ public static partial class Entities
     static (Table Table, Column<StringId> Title, int Slot, StringId Value, uint Known)? s_head;
 
     /// <summary>Take the header of the album, playlist, show or episode <paramref name="uri"/> away (its title and every known field, the one the
-    /// page's HeaderPending reads among them). False for another kind or an unknown uri.</summary>
-    public static bool StageHead(string uri, bool artistOverview = false)
+    /// page's HeaderPending reads among them). <paramref name="keepCard"/> keeps what a card's thin row stages (the title and the cover, as a
+    /// Home or search card leaves them on live data), so the page opens on the head a card click gives it. False for another kind or an unknown uri.</summary>
+    public static bool StageHead(string uri, bool artistOverview = false, bool keepCard = false)
     {
         RestoreHead();
         var kind = EntityUri.KindOf(uri.AsSpan());
@@ -114,9 +256,17 @@ public static partial class Entities
             _ => null,
         };
         if (head is not { } h) return false;
+        uint card = !keepCard ? 0u : kind switch
+        {
+            EntityKind.Album => (uint)(AlbumFields.Title | AlbumFields.Image),
+            EntityKind.Playlist => (uint)PlaylistFields.Identity,
+            EntityKind.Show => (uint)(ShowFields.Title | ShowFields.Image),
+            EntityKind.Episode => (uint)EpisodeFields.Identity,
+            _ => 0u,
+        };
         s_head = (h.Table, h.Title, slot, h.Title[slot], h.Table.Known[slot]);
-        h.Title[slot] = StringId.Empty;
-        h.Table.Known[slot] = 0;
+        if (card == 0u) h.Title[slot] = StringId.Empty;
+        h.Table.Known[slot] &= card;
         h.Table.Version[slot]++;
         h.Table.MarkDirty();   // a publication carries only the tables marked
         s.PublishAll();

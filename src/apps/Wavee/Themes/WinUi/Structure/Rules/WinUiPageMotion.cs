@@ -215,10 +215,12 @@ public static class WinUiPageMotion
         return s_libraryPivot[(fromRight ? 4 : 0) + tier];
     }
 
-    // ── THE CONNECTED NAVIGATION FLIGHT (an album card's cover into the album page's hero, and back) ─────────────────────────
-    // WinUI's ConnectedAnimation runs 300 ms on (0.8, 0, 0.2, 1), its Back (Direct) configuration 150-200 ms on (0.1, 0.9, 0.2, 1).
-    // Here a critically damped spring whose response grows with the distance (a turn-around keeps its velocity): 90 % of the way at
-    // 0.62 x the response, 99 % at 1.06 x, so forward reads as 250-340 ms and Back 15 % quicker. No arc, no dip, no overshoot.
+    // ── THE CONNECTED NAVIGATION FLIGHT (a picture into the header of the page it opens, and back) ──────────────────────────────
+    // A card's, a row's or a tile's cover into an album's, a playlist's, a show's or an episode's header cover; a generated cover (Liked
+    // Songs, a playlist with no image) as one whole picture. Not the artist: its page grows out of the item instead (GrowInto, below). WinUI's ConnectedAnimation runs 300 ms on
+    // (0.8, 0, 0.2, 1), its Back (Direct) configuration 150-200 ms on (0.1, 0.9, 0.2, 1). Here a critically damped spring whose
+    // response grows with the distance (a turn-around keeps its velocity): 90 % of the way at 0.62 x the response, 99 % at 1.06 x,
+    // so forward reads as 250-340 ms and Back 15 % quicker. No arc, no dip, no overshoot.
     /// <summary>The shortest response (s): a short hop.</summary>
     public const float ConnectedResponseMin = 0.24f;
     /// <summary>The longest response (s): across the window.</summary>
@@ -233,15 +235,58 @@ public static class WinUiPageMotion
     public const float ConnectedPendingMs = 0f;
     /// <summary>An abandoned flyer's fade where it stands (ControlFaster).</summary>
     public const float ConnectedAbandonFadeMs = 83f;
-    /// <summary>The longest a landed flyer waits for its hero to be ready before it hands off anyway.</summary>
-    public const float ConnectedHandOffWaitMs = 600f;
+    /// <summary>The longest a landed flyer stands in for a header picture that is not drawable yet (a cold page loading its cover) before it
+    /// fades out and the page's own entrance takes over.</summary>
+    public const float ConnectedHandOffWaitMs = 2500f;
+    /// <summary>The smallest picture that flies (its shorter edge, DIP): rows' 40 px art and up; a sidebar's 16 px thumb does not.</summary>
+    public const float ConnectedMinSourceEdge = 40f;
 
     static readonly FluentGpu.Animation.ConnectedNavSpec s_connected = new(ConnectedResponseMin, ConnectedResponseMax, ConnectedResponsePerDip,
-        ConnectedBackScale, ConnectedMinVisible, ConnectedPendingMs, ConnectedAbandonFadeMs, ConnectedHandOffWaitMs);
+        ConnectedBackScale, ConnectedMinVisible, ConnectedPendingMs, ConnectedAbandonFadeMs, ConnectedHandOffWaitMs,
+        HandOffFadeMs: 0f, MinSourceEdge: ConnectedMinSourceEdge);
+
+    // ── THE ARTIST GROWS (nothing flies) ─────────────────────────────────────────────────────────────────────────────────────
+    // The owner, 2026-11-16, after the artist's round photo flew and morphed into the 1088x260 header photograph: "please think of something
+    // for artist navigation, maybe just scale. dont copy the image". So no picture leaves the card: the artist page grows out of the item that
+    // opened it (a top result, a circle card, a row, a tile). It scales from GrowEnterScale to 1 about that item's centre and fades in from 0,
+    // on the flights' spring family (critically damped, GrowResponse: 90 % in ~175 ms, settled to the pixel by ~300 ms), while the old page
+    // keeps only its recipe's fade (the quiet swap). The page's sections keep their rise (the owner: "keep blur rise"). Back shrinks the page
+    // to GrowBackScale toward the same item and fades it out on the spring x ConnectedBackScale while the restored page fades in; an item no
+    // longer half on screen (or a page box that changed size since) gives the page's centre: WinUI's own drill back, a page receding, which
+    // stays calm and never points at something the user cannot see. Mouse Forward after Back grows from the remembered item again.
+    // Material's container transform and iOS's zoom transition grow a page from its card the same way; WinUI's drill in scales 0.94 -> 1.
+    /// <summary>The artist page's scale as it starts to grow (WinUI's drill in is 0.94; a little more travel reads as coming out of the item).</summary>
+    public const float GrowEnterScale = 0.92f;
+    /// <summary>Where the artist page shrinks to on Back.</summary>
+    public const float GrowBackScale = 0.94f;
+    /// <summary>The grow's spring response (s): the flights' mid response for a half-window hop.</summary>
+    public const float GrowResponse = 0.28f;
+
+    static readonly GrowNav s_grow = new(GrowEnterScale, GrowBackScale, EnterOpacity: 0f, GrowResponse, ConnectedBackScale, ConnectedMinVisible);
+
+    /// <summary>The kinds whose page grows out of its item instead of flying a picture (<see cref="PageMotionPolicy.GrowInto"/>): the artist.</summary>
+    static GrowNav? GrowInto(EntityKind kind) => kind == EntityKind.Artist ? s_grow : null;
+
+    // ── A SECTION'S "SEE ALL" GROWS OUT OF THE SECTION ─────────────────────────────────────────────────────────────────────
+    // The owner, 2026-11-18, on a recording of "See all": "a LOT more smooth and less out of body experience, something with connected or
+    // expanding. now it feels too heavy and like we are leaving the page". The swap was the drill-in of any other page: Home left, a page
+    // arrived, its cards rose one after another. The drill is the section the user was looking at, with the rest of its cards: so the page
+    // grows out of the "See all" link it was opened from (0.96 to 1 about that point, fading in on the flights' spring, while Home only
+    // fades: no slide, no gap between the two), as one block with no stagger, and it opens on the cards the section already showed
+    // (SectionScreen holds a place for the rest). Back shrinks it toward the same point while Home fades back where it was left.
+    /// <summary>The section page's scale as it starts to grow: a short travel, it is the same content getting room.</summary>
+    public const float SectionGrowEnterScale = 0.96f;
+    /// <summary>Where the section page shrinks to on Back.</summary>
+    public const float SectionGrowBackScale = 0.97f;
+    /// <summary>The section grow's spring response (s): the flights' short hop.</summary>
+    public const float SectionGrowResponse = 0.24f;
+
+    static readonly GrowNav s_sectionGrow = new(SectionGrowEnterScale, SectionGrowBackScale, EnterOpacity: 0f, SectionGrowResponse, ConnectedBackScale, MinVisible: 0f);
 
     /// <summary>The policy WinUI publishes (<c>ThemePolicies.PageMotion</c>).</summary>
     public static PageMotionPolicy Policy { get; } = new(RecipeFor, CascadeFor)
     {
         ReducedFade = s_reduced, SectionJump = s_sectionJump, LibraryPivot = LibraryPivot, Connected = s_connected,
+        GrowInto = GrowInto, GrowIntoSection = s_sectionGrow,
     };
 }

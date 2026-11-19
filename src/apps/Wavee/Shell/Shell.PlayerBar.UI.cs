@@ -127,8 +127,15 @@ public static partial class Shell
     /// <see cref="SeekBar"/> signal of the same name: a concealed label holds its last text and stops following the
     /// position, and the reveal brings it current. <paramref name="alone"/>: the elapsed label with no "/ total" beside it
     /// (<see cref="TimeLabelProps.Alone"/>).</summary>
-    public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null, bool alone = false)
-        => Embed.Comp(() => new BarTimeText(remaining, ink, reveal, alone));
+    public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null, bool alone = false, TimeDoor door = TimeDoor.None)
+        => Embed.Comp(() => new BarTimeText(remaining, ink, reveal, alone, door));
+
+    /// <summary>Which remaining-time label takes the Settings "Also in: Player bar" door: the bar's, else (none mounted) the now-playing panel's.</summary>
+    public enum TimeDoor : byte { None, Bar, Panel }
+
+    /// <summary>Asks the player bar's remaining-time label to take keyboard focus (the Settings "Also in: Player bar" door, design 5.4: the bar is
+    /// always on screen, so the door shows where the dial lives by moving focus onto its control).</summary>
+    public static readonly Signal<int> PlayerBarFocusRequest = new(0);
 
     /// <summary>The ONE float the volume rails bind (inline + popup). A slider needs a FloatSignal and the model
     /// publishes a Signal&lt;float&gt;; <see cref="PlayerBarHost"/> mirrors model → rail with an equality gate, and the
@@ -426,39 +433,23 @@ public static partial class Shell
         handle.Value.ClosedAction = () => handle.Value = null;
     }
 
-    /// <summary>THE device picker's menu items for the stage's "Playing on" flyout, over the SAME <see cref="DevicePicker.Items"/> the
-    /// bar's picker composes its entries from (<c>RailWiring.ReadDevicePicker</c>), so the two surfaces cannot disagree about a row or
-    /// what it does. The stage mounts <c>Player.DevicePicker</c> instead when T7a moves its flyout, and this goes. Local
-    /// (this-computer) rows are plain commands, not radios: choosing one persists the output for the next session and
-    /// pulls playback here, but the engine does not yet re-route a live session to it, so no row claims to be "the
-    /// endpoint in use".</summary>
-    internal static List<MenuFlyoutItem> DevicePickerMenuItems(
-        Playback.Owner owner, int activeSlot, ReadOnlySpan<Playback.Devices.Row> connect,
-        ReadOnlySpan<Playback.Audio.LocalAudioDevice> local, string? selectedLocalId, bool localSupported,
-        Playback.Audio.Opened observed, Spotify.Audio.Quality asked)
+    /// <summary>THE device picker as a menu, for the full screen's "Playing on" flyout: the flat answer (<see cref="DevicePickerView.Entries"/>)
+    /// of the SAME <see cref="DevicePicker.Compose"/> the bar's picker draws, so the two surfaces cannot disagree about a row or what it does:
+    /// a section's header as a disabled row, a this-PC output (or Match Windows) as a command whose second line rides the accelerator, a
+    /// Connect device as a radio, "Sound settings" as a link.</summary>
+    internal static List<MenuFlyoutItem> DevicePickerMenuItems(DevicePickerView view)
     {
-        var picker = DevicePicker.Items(owner, activeSlot, connect, local, selectedLocalId, localSupported, observed, asked);
-        var items = new List<MenuFlyoutItem>(picker.Count);
-        foreach (var item in picker)
+        var entries = view.Entries;
+        var items = new List<MenuFlyoutItem>(entries.Count);
+        foreach (var e in entries)
         {
-            var row = item.Row;
-            var intent = item.Intent;
-            items.Add(row.Kind switch
+            items.Add(e.Kind switch
             {
-                DevicePickerRowKind.Separator => MenuFlyoutItem.Separator,
-                // A disabled command row stands in as the section header (MenuFlyout has no header kind; neither does WinUI).
-                // Quality rides the same disabled-row shape: it is informational, never a radio.
-                DevicePickerRowKind.Header or DevicePickerRowKind.Empty or DevicePickerRowKind.Quality
-                    => new MenuFlyoutItem(row.Label, default, false),
-                DevicePickerRowKind.LocalDefault => new MenuFlyoutItem(row.Label, Icons.ThisPc, row.Enabled,
-                        row.Enabled ? () => DeviceVerbs.Run(intent) : null)
-                    with { AcceleratorText = row.Accelerator },
-                DevicePickerRowKind.LocalDevice => new MenuFlyoutItem(row.Label, DeviceRoster.LocalGlyph(row.LocalKind), row.Enabled,
-                        row.Enabled ? () => DeviceVerbs.Run(intent) : null)
-                    with { AcceleratorText = row.Accelerator },
-                DevicePickerRowKind.ConnectDevice => MenuFlyoutItem.RadioItem(row.Label, row.IsChecked,
-                    () => DeviceVerbs.Run(intent), DeviceRoster.ConnectGlyph(row.ConnectKind)),
-                _ => new MenuFlyoutItem(row.Label, default, false),
+                DevicePickerEntryKind.Separator => MenuFlyoutItem.Separator,
+                DevicePickerEntryKind.Command => new MenuFlyoutItem(e.Label, e.Glyph, e.Enabled, e.Invoke) with { AcceleratorText = e.Accelerator ?? e.Detail },
+                DevicePickerEntryKind.Radio => MenuFlyoutItem.RadioItem(e.Label, e.IsChecked, e.Invoke, e.Glyph),
+                DevicePickerEntryKind.Link => new MenuFlyoutItem(e.Label, e.Glyph, true, e.Invoke) with { AcceleratorText = e.Accelerator },
+                _ => new MenuFlyoutItem(e.Label, default, false),
             });
         }
         return items;
@@ -833,7 +824,7 @@ public static partial class Shell
 
         readonly bool _alone;
 
-        public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null, bool alone = false)
+        public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null, bool alone = false, TimeDoor door = TimeDoor.None)
         {
             _remaining = remaining;
             _alone = alone && !remaining;
@@ -841,6 +832,45 @@ public static partial class Shell
             _reveal = reveal;
             _label = Label;
             _widest = Widest;
+            _door = remaining ? door : TimeDoor.None;
+            _asked = PlayerBarFocusRequest.Peek();
+            _focusOnAsk = FocusOnAsk;
+            _mounted = Mounted;
+        }
+
+        readonly TimeDoor _door;
+        readonly Func<Action?> _mounted;
+
+        /// <summary>Says the label is there (the door is handed out only while one is), and that it is gone.</summary>
+        Action? Mounted()
+        {
+            var kind = _door;
+            InContextDoors.LabelMounted(kind, +1);
+            return () => InContextDoors.LabelMounted(kind, -1);
+        }
+        readonly Action _focusOnAsk;
+        int _asked;
+        InputHooks? _hooks;
+        Action<Action>? _post;
+        Action? _focusNow;
+
+        /// <summary>The door's ask: the flip's target takes keyboard focus, with its focus visual.</summary>
+        void FocusOnAsk()
+        {
+            int n = PlayerBarFocusRequest.Value;
+            if (n == _asked) return;
+            _asked = n;
+            if (_door == TimeDoor.Panel && InContextDoors.BarLabelsMounted) return;   // the bar's label takes it while there is one
+            // The panel's label waits a frame: the door just showed the panel, and a sheet focuses into itself as it opens.
+            if (_door == TimeDoor.Panel && _post is { } post) post(_focusNow ??= FocusNow);
+            else FocusNow();
+        }
+
+        void FocusNow()
+        {
+            var host = Context.HostNode;
+            if (host.IsNull || _hooks?.FirstFocusableIn?.Invoke(host) is not { IsNull: false } target) return;
+            _hooks.FocusNode?.Invoke(target, true);
         }
 
         readonly Func<string> _widest;
@@ -892,6 +922,13 @@ public static partial class Shell
         public override Element Render()
         {
             bool isLive = UseComputed(static () => Playback.Live.Value.IsLive).Value;
+            if (_door != TimeDoor.None)
+            {
+                _hooks = UseContext(InputHooks.Current);
+                _post = UsePost();
+                UseSignalEffect(_focusOnAsk);
+                UseEffect(_mounted, DepKey.Empty);
+            }
             return ViewSlots.View(ViewKeys.TimeLabel, new TimeLabelProps
             {
                 Remaining = _remaining,

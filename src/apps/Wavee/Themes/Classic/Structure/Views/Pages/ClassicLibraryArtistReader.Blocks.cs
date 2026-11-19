@@ -112,7 +112,7 @@ internal static partial class ClassicLibraryArtistReader
                                     Role = valid ? AutomationRole.Button : AutomationRole.None,
                                     OnClick = valid ? go : null,
                                     Children = [Controls.Artwork(valid ? Controls.ArtUrl(a.ImageId) : null,
-                                                                 cover, cover, Radii.Card, decodePx: 256)],
+                                                                 cover, cover, Radii.Card, decodePx: 256, connect: Design.MorphKeys.ForUri(uri, cover))],
                                 },
                                 Ui.Caption(caption) with
                                 {

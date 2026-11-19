@@ -6,10 +6,12 @@
 //
 //   Compact  (C-Setup-Compact)  NO plate: a full-bleed sheet filling the window under the 48-DIP title row, padding 16 / 24 / 16 / 16, the two sign-in cards stacked
 //                               full width, the footer stacked (step label over a full-width bar, then a two-column grid of 40-DIP buttons), Back 40 x 40.
-//   Small    (C-Setup-Small)    the 762 x 490 plate WITHOUT the icon column (the board draws none at 800: the old 770-1007 band that kept it is gone), Back beside
+//   THE PLATE IS LARGE (owner, 2026-11-18: "make the setup dialog a lot bigger"): 880 x 600, 1040 x 680 and 1240 x 780 where the boards drew 762 x 490 and
+//   960 x 600; a window too small for it gets the window less its margins, as before.
+//   Small    (C-Setup-Small)    the 880 x 600 plate WITHOUT the icon column (the board draws none at 800: the old 770-1007 band that kept it is gone), Back beside
 //                               the title, the two sign-in cards side by side (min height 132, padding 20), the 80-DIP footer with its 210-DIP progress column.
-//   Standard (C-Setup)          today's tuned plate: 762 x 490, the 192 icon column, the cards stacked in the 498-DIP column, Back over the icon column's corner.
-//   Huge     (C-Setup-Huge)     the 960 x 600 plate, padding 32, a 240 icon column, the cards side by side, a 120-DIP QR, Back beside the title.
+//   Standard (C-Setup)          the 1040 x 680 plate, padding 32, a 264 icon column, the cards side by side in the 680-DIP column, Back over the icon column's corner.
+//   Huge     (C-Setup-Huge)     the 1240 x 780 plate, padding 40, a 320 icon column, the cards side by side, a 140-DIP QR, Back beside the title.
 //
 // The arithmetic (the plate's size in a window, the body's width in the plate) lives here too, so a view never compares or computes with a measured width (WVTH013): it passes
 // the live viewport and takes the answer. Public, so `Wavee.Tests` pins the records (the assembly has no InternalsVisibleTo).
@@ -101,28 +103,28 @@ public static class ClassicSetupTiers
             SignInSideBySide: false, SignInCardMinHeight: 0f, SignInCardPadding: 16f, QrSize: 80f),
         // Small (C-Setup-Small): the plate, no icon column, Back beside the title, the cards side by side.
         new(WidthTier.Small, Sheet: false, TopInset: 0f,
-            PlateWidth: 762f, PlateHeight: 490f, MinPlateWidth: 320f, MinPlateHeight: 184f, ViewportMargin: 16f,
+            PlateWidth: 880f, PlateHeight: 600f, MinPlateWidth: 320f, MinPlateHeight: 184f, ViewportMargin: 16f,
             ContentPadding: Edges4.All(24f), IconColumn: 0f, IconGap: 0f,
             BackInContent: true, BackSize: 30f, BackSpacer: 42f, BackPadding: Edges4.All(24f),
             FooterStacked: false, FooterHeight: 80f, FooterPadding: Edges4.All(24f), ProgressColumn: 210f,
             ButtonHeight: 32f, SignatureHeight: 28f, Target: 0f,
             SignInSideBySide: true, SignInCardMinHeight: 132f, SignInCardPadding: 20f, QrSize: 80f),
-        // Standard (C-Setup, the tuned plate): the 192 icon column, Back over the icon column's corner, the cards stacked.
+        // Standard (C-Setup): the 264 icon column, Back over the icon column's corner, the cards side by side; the footer's step column ends where the page's column starts.
         new(WidthTier.Standard, Sheet: false, TopInset: 0f,
-            PlateWidth: 762f, PlateHeight: 490f, MinPlateWidth: 320f, MinPlateHeight: 184f, ViewportMargin: 32f,
-            ContentPadding: Edges4.All(24f), IconColumn: 192f, IconGap: 24f,
-            BackInContent: false, BackSize: 30f, BackSpacer: 42f, BackPadding: Edges4.All(24f),
-            FooterStacked: false, FooterHeight: 80f, FooterPadding: Edges4.All(24f), ProgressColumn: 210f,
+            PlateWidth: 1040f, PlateHeight: 680f, MinPlateWidth: 320f, MinPlateHeight: 184f, ViewportMargin: 32f,
+            ContentPadding: Edges4.All(32f), IconColumn: 264f, IconGap: 32f,
+            BackInContent: false, BackSize: 30f, BackSpacer: 42f, BackPadding: Edges4.All(32f),
+            FooterStacked: false, FooterHeight: 80f, FooterPadding: new Edges4(32f, 24f, 32f, 24f), ProgressColumn: 290f,
             ButtonHeight: 32f, SignatureHeight: 28f, Target: 0f,
-            SignInSideBySide: false, SignInCardMinHeight: 0f, SignInCardPadding: 16f, QrSize: 80f),
-        // Huge (C-Setup-Huge): the 960 x 600 plate, padding 32, a 240 icon column, Back beside the title (in the page's column), the cards side by side, a 120 QR.
+            SignInSideBySide: true, SignInCardMinHeight: 132f, SignInCardPadding: 20f, QrSize: 96f),
+        // Huge (C-Setup-Huge): the 1240 x 780 plate, padding 40, a 320 icon column, Back beside the title (in the page's column), the cards side by side, a 140 QR.
         new(WidthTier.Huge, Sheet: false, TopInset: 0f,
-            PlateWidth: 960f, PlateHeight: 600f, MinPlateWidth: 320f, MinPlateHeight: 184f, ViewportMargin: 32f,
-            ContentPadding: Edges4.All(32f), IconColumn: 240f, IconGap: 32f,
-            BackInContent: true, BackSize: 30f, BackSpacer: 42f, BackPadding: new Edges4(304f, 31f, 0f, 0f),
-            FooterStacked: false, FooterHeight: 80f, FooterPadding: Edges4.All(32f), ProgressColumn: 210f,
+            PlateWidth: 1240f, PlateHeight: 780f, MinPlateWidth: 320f, MinPlateHeight: 184f, ViewportMargin: 32f,
+            ContentPadding: Edges4.All(40f), IconColumn: 320f, IconGap: 40f,
+            BackInContent: true, BackSize: 30f, BackSpacer: 42f, BackPadding: new Edges4(400f, 39f, 0f, 0f),
+            FooterStacked: false, FooterHeight: 80f, FooterPadding: new Edges4(40f, 24f, 40f, 24f), ProgressColumn: 354f,
             ButtonHeight: 32f, SignatureHeight: 28f, Target: 0f,
-            SignInSideBySide: true, SignInCardMinHeight: 132f, SignInCardPadding: 20f, QrSize: 120f),
+            SignInSideBySide: true, SignInCardMinHeight: 132f, SignInCardPadding: 20f, QrSize: 140f),
     ];
 
     /// <summary>The record of window tier <paramref name="window"/> (Huge 4K reads Huge's: Classic draws no 4K band).</summary>

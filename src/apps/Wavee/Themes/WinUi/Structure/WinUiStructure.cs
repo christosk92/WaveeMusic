@@ -92,9 +92,10 @@ public sealed partial class WinUiStructure : IStandInStructure
         ViewTemplate<ModulePageProps>? module = null;
         string moduleId = "common.module.page";
         ModulePage(ref module, ref moduleId);
-        CommonBlocks.Register(views, module, moduleId);
+        // The explanation badge is WinUI's own (an info glyph after the label opening a TeachingTip: WinUiSettings.Explainer.cs).
+        CommonBlocks.Register(views, module, moduleId, explainer: WinUiSettings.ExplainerTemplate, explainerTemplateId: "winui.screens.settings.explainer",
+            hint: WinUiHint.Template, hintTemplateId: "winui.hint");
         // No quickplay strip on Home: WinUI's pins are the nav pane's Pinned section (W-Home; W5 replaces this line if it draws one).
-        CommonNothing.Register(views, ViewKeys.HomeQuickplay);
     }
 
     // The registrars, one per family lane (P6-plan §4): each is implemented in `Structure\WinUiStructure.<Family>.cs`.
@@ -155,10 +156,11 @@ public sealed partial class WinUiStructure : IStandInStructure
         Picker: PickerStyle.Combo);
 
     /// <summary>Tabs in the title bar. Off hides the 40 strip in every tier and leaves the 48 toolbar row; the other tabs stay open in the
-    /// background and return in place when it is on again (owner Q1: the board). Live: the strip's row animates (W2a).</summary>
-    public static ToggleOption Tabs { get; } = new(
+    /// background and return in place when it is on again (owner Q1: the board). Live: the strip's row animates (W2a). Also in the title bar's
+    /// window menu (design 5.4).</summary>
+    public static ToggleOption Tabs { get; } = new ToggleOption(
         Id: "tabs", TitleKey: Strings.Theme.Winui.Options.Tabs, DescriptionKey: Strings.Theme.Winui.Options.TabsSub,
-        Group: Strings.Theme.Winui.Options.Group.Window, Default: true);
+        Group: Strings.Theme.Winui.Options.Group.Window, Default: true) with { Contexts = [SettingsSurfaces.TitleBarMenu] };
 
     /// <summary>Artwork in track rows: playlist, Liked and search rows show a 40 cover over two lines (48); off, one 40 line. Album rows never
     /// show covers. Transaction (the row extents change).</summary>

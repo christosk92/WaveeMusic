@@ -211,7 +211,7 @@ public readonly record struct FetchRoute(RouteTransport Transport, uint Primary,
 public static class FetchRoutes
 {
     /// <summary>More routes than any one need can select — the stack span a caller sizes with.</summary>
-    public const int MaxRoutes = 8;
+    public const int MaxRoutes = 16;
 
     // ── the extension kinds (extension_kind.proto; the numbers ARE the protocol) ──
     public const int TrackV4 = 10, EpisodeV4 = 12, AlbumV4 = 9, ArtistV4 = 8, ShowV4 = 11, ListMetadataV2 = 205;
@@ -254,6 +254,8 @@ public static class FetchRoutes
         FetchRoute.Pathfinder(PathfinderOp.EpisodeDetail, (uint)EpisodeFields.Detail),
         FetchRoute.Metadata(21, (uint)EpisodeFields.Transcript),
         FetchRoute.Metadata(182, (uint)EpisodeFields.Media),
+        // ENTITY_CAPPING: asked by the audiobook page for its chapters only (EpisodeFields.Capping is outside All).
+        FetchRoute.Metadata(Spotify.Decode.EntityCappingKind, (uint)EpisodeFields.Capping),
     ];
 
     static readonly FetchRoute[] s_album =
@@ -299,11 +301,21 @@ public static class FetchRoutes
         // Facts (flags, consumption order, trailer) ride the SAME ShowV4 answer — one request fills all three groups, so
         // a show whose Identity came from a search card still gets its facts from one batched ask (podcast plan §5.3).
         // Rating has no route until the pathfinder show read lands (§5.9, wave P4); asked alone it seals.
-        FetchRoute.Metadata(ShowV4, (uint)(ShowFields.Identity | ShowFields.About | ShowFields.Facts)),
+        FetchRoute.Metadata(ShowV4, (uint)(ShowFields.Identity | ShowFields.About | ShowFields.Facts | ShowFields.Language),
+            primary: (uint)(ShowFields.Identity | ShowFields.About | ShowFields.Facts | ShowFields.Language)),
         FetchRoute.Metadata(37, (uint)ShowFields.Rating),
         FetchRoute.Metadata(179, (uint)ShowFields.Appearance),
         FetchRoute.Metadata(3, (uint)ShowFields.Topics),
         FetchRoute.Metadata(54, (uint)ShowFields.Html),
+        // The audiobook page's kinds (Spotify.Decode.Book.cs), the official client's show_cosmos batch. Asked only by
+        // PodcastPages.Open on a book (ShowFields.Book is outside All); a podcast never sends them.
+        FetchRoute.Metadata(Spotify.Decode.AudiobookSpecificsKind, (uint)ShowFields.Credits),
+        FetchRoute.Metadata(Spotify.Decode.IdentityTraitKind, (uint)ShowFields.Authors),
+        FetchRoute.Metadata(Spotify.Decode.AudiobookPriceKind, (uint)ShowFields.Price),
+        FetchRoute.Metadata(Spotify.Decode.ShowAccessKind, (uint)ShowFields.Access),
+        FetchRoute.Metadata(Spotify.Decode.PreviewPlaybackKind, (uint)ShowFields.Preview),
+        FetchRoute.Metadata(Spotify.Decode.DirectSalesKind, (uint)ShowFields.Sales),
+        FetchRoute.Metadata(Spotify.Decode.AudiobookGenreKind, (uint)ShowFields.Genres),
     ];
 
     static readonly FetchRoute[] s_user =

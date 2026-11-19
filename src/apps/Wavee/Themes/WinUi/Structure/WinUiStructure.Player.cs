@@ -8,6 +8,7 @@
 
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 
 namespace Wavee.Themes.WinUi;
 
@@ -24,7 +25,7 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.SeekPreview, WinUiTransport.SeekPreview, "winui.player.seek-preview");
         views.Add(ViewKeys.SeekLyric, WinUiTransport.SeekLyric, "winui.player.seek-lyric");
         views.Add(ViewKeys.TimeLabel, WinUiTransport.TimeLabel, "winui.player.time-label");
-        views.Add(ViewKeys.DevicePicker, WinUiDevicePicker.Template, "winui.player.device-picker");
+        CommonDevicePicker.Register(views, "winui.player.device-picker");   // the shared picker (Themes/Common, the 2026-11-19 redesign)
         views.Add(ViewKeys.OnMediaTransport, WinUiOnMedia.Template, "winui.player.on-media-transport");
         views.Add(ViewKeys.ShellPanel, WinUiPanel.Template, "winui.shell.panel");
         views.Add(ViewKeys.NowPlayingHero, WinUiNowPlayingHero.Template, "winui.player.now-playing-hero");

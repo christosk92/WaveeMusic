@@ -170,7 +170,7 @@ internal static class WinUiLibraryControls
                                 [
                                     new TextEl(Loc.Get(Strings.Theme.Winui.Library.Title))
                                     {
-                                        FontFamily = WinUiShowRules.DisplayFace, Weight = WinUiShowRules.VoiceWeight, Color = Tok.TextPrimary,
+                                        FontFamily = WinUiChoiceRules.HeadFace, Weight = WinUiChoiceRules.HeadWeight, Color = Tok.TextPrimary,
                                         Size = WinUiChoiceRules.HeadTitle, LineHeight = WinUiChoiceRules.HeadTitleLine, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                                     },
                                     new BoxEl

@@ -10,7 +10,7 @@
 // ── ONE BAR ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 //
 // Four files had grown their own filled rounded bar for "this line is coming" — the Recents row's two-bar text column,
-// the track drawer's reserved video row, the library pane's header placeholder (album and show twins) and its rows' bars.
+// the track drawer's reserved video row, the library pane's header placeholder and its rows' bars.
 // They differed only by a corner radius (a half-height capsule, a fixed 4, a fixed 3) and by whether the bar may shrink.
 // The bar is GEOMETRY, never an invented string: it is a plain filled box with no text, no handlers and no role, so a
 // screen reader reads nothing and the pointer falls through to whatever is under it.
@@ -20,6 +20,7 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 
 namespace Wavee;
 
@@ -56,4 +57,12 @@ public static partial class Controls
         };
         return reserve.Skel(reserve);
     }
+
+    /// <summary>A view whose data is on its way, as the app's loading pattern draws it: <paramref name="view"/> (the real template over a blank
+    /// seed: empty names, no covers, blank cards) derived flat, chrome and nested components included (<c>SkeletonStyle.DeriveComponents</c>), so
+    /// its title lines, cover squares and rows stand at the loaded view's size and the swap to the loaded view moves nothing. Never a pulse.
+    /// The caller swaps it for the loaded view when the data lands. <paramref name="view"/> must be pure for its props (draw only).</summary>
+    public static Element Shimmer(Func<Element> view, object? group = null) => new SkelRegionEl(
+        Pending: static () => true, Failed: static () => false, Content: static () => new BoxEl(), ShimmerSource: view, OnFailed: null,
+        Reveal: SkelReveal.None, Style: SkeletonStyle.Default with { DeriveComponents = true }, Group: group, SmoothResize: false);
 }

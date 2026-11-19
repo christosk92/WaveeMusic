@@ -18,6 +18,10 @@ namespace Wavee;
 public enum ContainerVerb : byte
 {
     Play, PlayNext, AddToQueue, Save, AddToPlaylist, Open, Pin, GoToArtist, ArtistRadio, Share,
+    /// <summary>Open in new tab: directly under Open, where the structure has tabs (owner, 2026-11-18).</summary>
+    OpenInTab,
+    /// <summary>Pin to Home / Unpin from Home: directly under the sidebar's pin row (design 1.6).</summary>
+    PinHome,
 }
 
 /// <summary>One kind's menu: the labeled <see cref="Strip"/> (the Win11 command bar) over the <see cref="Rows"/>.</summary>
@@ -47,13 +51,13 @@ public static class ContainerMenuRules
     static readonly ContainerVerb[] s_listStripOwn =
         [ContainerVerb.Play, ContainerVerb.PlayNext, ContainerVerb.AddToQueue];
     static readonly ContainerVerb[] s_albumRows =
-        [ContainerVerb.AddToPlaylist, ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.GoToArtist, ContainerVerb.Share];
+        [ContainerVerb.AddToPlaylist, ContainerVerb.Open, ContainerVerb.OpenInTab, ContainerVerb.Pin, ContainerVerb.PinHome, ContainerVerb.GoToArtist, ContainerVerb.Share];
     static readonly ContainerVerb[] s_playlistRows =
-        [ContainerVerb.AddToPlaylist, ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.Share];
+        [ContainerVerb.AddToPlaylist, ContainerVerb.Open, ContainerVerb.OpenInTab, ContainerVerb.Pin, ContainerVerb.PinHome, ContainerVerb.Share];
     static readonly ContainerVerb[] s_artistStrip = [ContainerVerb.Play, ContainerVerb.Save];
     static readonly ContainerVerb[] s_artistRows =
-        [ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.ArtistRadio, ContainerVerb.Share];
-    static readonly ContainerVerb[] s_showRows = [ContainerVerb.Open, ContainerVerb.Pin, ContainerVerb.Share];
+        [ContainerVerb.Open, ContainerVerb.OpenInTab, ContainerVerb.Pin, ContainerVerb.PinHome, ContainerVerb.ArtistRadio, ContainerVerb.Share];
+    static readonly ContainerVerb[] s_showRows = [ContainerVerb.Open, ContainerVerb.OpenInTab, ContainerVerb.Pin, ContainerVerb.PinHome, ContainerVerb.Share];
 
     // The on-page variants are DERIVED from the card tables (not restated) so the two cannot drift.
     static readonly ContainerMenuPlan s_album = new(s_listStrip, s_albumRows);
@@ -89,7 +93,7 @@ public static class ContainerMenuRules
     {
         var rows = new List<ContainerVerb>(card.Strip.Length + card.Rows.Length);
         foreach (var v in card.Strip) if (v is not (ContainerVerb.Play or ContainerVerb.Save)) rows.Add(v);
-        foreach (var v in card.Rows) if (v is not (ContainerVerb.Open or ContainerVerb.GoToArtist)) rows.Add(v);
+        foreach (var v in card.Rows) if (v is not (ContainerVerb.Open or ContainerVerb.OpenInTab or ContainerVerb.GoToArtist)) rows.Add(v);
         return new ContainerMenuPlan(s_none, rows.ToArray());
     }
 }
@@ -202,8 +206,12 @@ public static partial class Menus
                 return x.Deposit ?? Actions.Menu.Row(ActionId.AddContextToPlaylist, in ctx);
             case ContainerVerb.Open:
                 return OpenRow(in ctx, in x);
+            case ContainerVerb.OpenInTab:
+                return OpenInTabRow(in ctx);
             case ContainerVerb.Pin:
                 return x.Pin is { } pin ? pin() : PinRow(in ctx);
+            case ContainerVerb.PinHome:
+                return HomePinRow(in ctx);
             default:
                 return Actions.Menu.Row(IdOf(verb), in ctx);
         }
@@ -216,6 +224,43 @@ public static partial class Menus
         var route = ActionRules.RouteFor(in target);
         return new MenuFlyoutItem(Loc.Get(Strings.Menu.Open), ActionIcons.Resolve(ActionIcons.Open), !route.IsNone,
             () => Shell.GoTo(route, origin));
+    }
+
+    /// <summary>"Open in new tab": the target's own page in a new tab beside this one (in the background where the structure hides its strip).
+    /// Absent where the structure has no tabs (Zune), or the target has no page.</summary>
+    static MenuFlyoutItem? OpenInTabRow(in ActionContext ctx)
+    {
+        if (!ShellCaps.Now.Tabs) return null;
+        var target = ctx.Target;
+        var route = ActionRules.RouteFor(in target);
+        if (route.IsNone) return null;
+        return Shell.OpenInNewTabRow(route);
+    }
+
+    /// <summary>The Home pin pair: "Unpin from Home" when the target is on Home; else "Pin to Home" as one row, or (Classic,
+    /// <see cref="Theming.HomePinMenu.GroupsSubmenu"/>) a submenu of Home's groups with Pinned first. Built from the target's route
+    /// (HomePinVerbs), so every container menu carries it.</summary>
+    static MenuFlyoutItem? HomePinRow(in ActionContext ctx)
+    {
+        var target = ctx.Target;
+        var route = ActionRules.RouteFor(in target);
+        if (route.IsNone || HomePinVerbs.TargetFor(route) is not { } t) return null;
+        string pinId = t.PinId, title = target.Name is { Length: > 0 } n ? n : t.Title;
+        if (t.Pinned)
+            return new MenuFlyoutItem(Loc.Get(Strings.Home.Board.Pin.Unpin), ActionIcons.Resolve(ActionIcons.Unpin), true, () => HomePinVerbs.Unpin(pinId));
+        if (ShellPolicy.Now.Home.PinMenu != Theming.HomePinMenu.GroupsSubmenu)
+            return new MenuFlyoutItem(Loc.Get(Strings.Home.Board.Pin.PinTo), ActionIcons.Resolve(ActionIcons.Pin), true, () => HomePinVerbs.Pin(pinId, title, ""));
+        var doc = HomeBoardStore.Instance.Doc.Peek();
+        var items = new List<MenuFlyoutItem>(doc.Groups.Length);
+        int pinned = doc.GroupIndex(HomeDocs.Pinned);
+        if (pinned >= 0) items.Add(GroupItem(doc.Groups[pinned].Id, pinId, title, first: true));
+        for (int g = 0; g < doc.Groups.Length; g++)
+            if (g != pinned) items.Add(GroupItem(doc.Groups[g].Id, pinId, title, first: false));
+        return MenuFlyoutItem.SubMenu(Loc.Get(Strings.Home.Board.Pin.PinTo), items, ActionIcons.Resolve(ActionIcons.Pin));
+
+        static MenuFlyoutItem GroupItem(string groupId, string pinId, string title, bool first)
+            => new MenuFlyoutItem(HomePinVerbs.GroupTitle(groupId), first ? ActionIcons.Resolve(ActionIcons.Pin) : default, true,
+                () => HomePinVerbs.Pin(pinId, title, "", groupId));
     }
 
     /// <summary>The absolute pin pair: only the one that can run is offered.</summary>

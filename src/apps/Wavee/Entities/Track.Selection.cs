@@ -1,6 +1,6 @@
 // ── Entities/Track.Selection.cs ────────────────────────────────────────────────────────────────────────────────────
 // the ONE selection command lane: Thumbs · count · verbs · Select all · "…" · ✕, for a track, an episode or a mixed
-// selection. The detail table, the show reader (and, later, the album drawer and Top tracks) all mount it as the
+// selection. The detail table (and, later, the album drawer and Top tracks) mounts it as the
 // `commands` of `Controls.SelectionBar`; the host supplies WHAT is selected and the two actions, the lane owns the rest.
 //
 // Role: UI (with pure statics)
@@ -59,7 +59,6 @@ public readonly record struct SelectionLaneArgs(
     bool WasVisible)
 {
     static readonly Func<PlaylistHost> s_noHost = static () => default;
-    static readonly Func<IReadOnlyList<Track>> s_noTracks = static () => [];
     static readonly Func<IReadOnlyList<Episode>> s_noEpisodes = static () => [];
 
     /// <summary>A plain track list (an album drawer, Top tracks): <paramref name="tracks"/> read live from the host's
@@ -67,11 +66,6 @@ public readonly record struct SelectionLaneArgs(
     public static SelectionLaneArgs ForTracks(int count, Func<IReadOnlyList<Track>> tracks, Action exit, Action selectAll,
                                               Func<PlaylistHost>? host = null, bool wasVisible = true)
         => new(SelectionLaneKind.Tracks, count, tracks, s_noEpisodes, host ?? s_noHost, exit, selectAll, wasVisible);
-
-    /// <summary>An all-episode selection (the show reader).</summary>
-    public static SelectionLaneArgs ForEpisodes(int count, Func<IReadOnlyList<Episode>> episodes, Action exit, Action selectAll,
-                                                bool wasVisible = true)
-        => new(SelectionLaneKind.Episodes, count, s_noTracks, episodes, s_noHost, exit, selectAll, wasVisible);
 }
 
 public readonly partial struct Track

@@ -47,7 +47,8 @@ public readonly partial struct Track
     public readonly record struct MenuOptions(PlaylistHost Host = default, bool ShowGoToAlbum = true,
         Action? TrackDetails = null, Action? MoveUp = null, Action? MoveDown = null, long QueueItemId = 0,
         bool CompactRows = false /* a 240-DIP pane: the transport verbs as rows instead of the strip */,
-        IOverlayService? PickerOverlay = null);
+        IOverlayService? PickerOverlay = null,
+        bool ShowPinHome = false /* the now-playing menu: Pin this album / artist to Home (pinned Home, design 1.6) */);
 
     static readonly MenuOptions s_defaultMenuOptions = new(ShowGoToAlbum: true);
 
@@ -55,6 +56,16 @@ public readonly partial struct Track
     /// that awaits the server, toasts (with Undo where the grammar offers it) and maps its own failure — the menu only
     /// calls it. Installed by the owning page/shell file (playlist writes: owner O; the queue: owner Q; the credits
     /// modal: <c>Track.Drawer.cs</c>). Null ⇒ the verb renders disabled or its row is absent.</summary>
+    /// <summary>The now-playing menu's "Pin this album / artist to Home" (or its Unpin), null when Home cannot hold the route.</summary>
+    static MenuFlyoutItem? HomePinRow(Shell.Route route, bool album)
+    {
+        if (HomePinVerbs.TargetFor(route) is not { } t) return null;
+        string id = t.PinId, title = t.Title;
+        return t.Pinned
+            ? new MenuFlyoutItem(Loc.Get(album ? Strings.Home.Board.Pin.UnpinAlbum : Strings.Home.Board.Pin.UnpinArtist), ActionIcons.Resolve(ActionIcons.Unpin), true, () => HomePinVerbs.Unpin(id))
+            : new MenuFlyoutItem(Loc.Get(album ? Strings.Home.Board.Pin.PinAlbum : Strings.Home.Board.Pin.PinArtist), ActionIcons.Resolve(ActionIcons.Pin), true, () => HomePinVerbs.Pin(id, title, ""));
+    }
+
     public static class MenuSeams
     {
         /// <summary>Remove these tracks' membership rows (<c>host.Rows</c>, original indices in display order).</summary>
@@ -161,6 +172,11 @@ public readonly partial struct Track
                     rows.Add(album);
             }
             if (ArtistNavItem(single, in ctx) is { } artists) rows.Add(artists);
+            if (o.ShowPinHome && !single.IsPodcast)
+            {
+                if (HomePinRow(Shell.LinkFor(single, Shell.LinkSlot.Title), album: true) is { } pinAlbum) rows.Add(pinAlbum);
+                if (HomePinRow(Shell.LinkFor(single, Shell.LinkSlot.Artist), album: false) is { } pinArtist) rows.Add(pinArtist);
+            }
         }
 
         if (Actions.Menu.Share(in ctx) is { } share) rows.Add(share);

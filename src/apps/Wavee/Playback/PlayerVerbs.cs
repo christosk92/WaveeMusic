@@ -129,9 +129,9 @@ public sealed class PlayerVerbs : IPlayerVerbs
 
     public void TogglePlay(string cause) => Playback.TogglePlay(cause);
 
-    public void Previous() => Playback.Previous();
+    public void Previous() => Playback.Previous("player.button");
 
-    public void Next() => Playback.Next();
+    public void Next() => Playback.Next("player.button");
 
     public void SeekBy(int deltaMs) => Shell.ScrubController.SeekBy(deltaMs);
 
@@ -158,7 +158,9 @@ public sealed class PlayerVerbs : IPlayerVerbs
 
     public void GoLive() => Playback.GoLive();
 
-    public void ToggleRemaining() => Prefs.PlayerBar.ToggleRemaining();
+    // The time label's flip is the "Show remaining time" dial itself (its one writer), recorded as written from the player bar (design 5.4).
+    public void ToggleRemaining()
+        => SettingsSpec.Dial("playback.remainingTime").WriteToggle(!Prefs.PlayerBar.ShowRemaining(), SettingsSurfaces.PlayerBar);
 
     public void OpenPanel(Shell.RailMode mode) => Shell.Ui.Toggle(mode);
 

@@ -51,12 +51,14 @@ public static partial class Actions
         public const string KeyArtistRadio = "wavee.artistRadio";
         public const string KeyPin = "wavee.pinToSidebar";
         public const string KeyUnpin = "wavee.unpinFromSidebar";
+        public const string KeyPinHome = "wavee.pinToHome";
+        public const string KeyUnpinHome = "wavee.unpinFromHome";
 
-        /// <summary>All thirteen keys, in registration order — what a test walks to prove the table is complete.</summary>
+        /// <summary>Every key, in registration order.</summary>
         public static readonly string[] AllKeys =
         [
             KeyPlay, KeyPlayNext, KeyAddToQueue, KeyToggleLike, KeySaveContext, KeyOpen,
-            KeyGoToAlbum, KeyGoToArtist, KeyCopyLink, KeySongRadio, KeyArtistRadio, KeyPin, KeyUnpin,
+            KeyGoToAlbum, KeyGoToArtist, KeyCopyLink, KeySongRadio, KeyArtistRadio, KeyPin, KeyUnpin, KeyPinHome, KeyUnpinHome,
         ];
 
         /// <summary>Register the first-party actions. <paramref name="services"/> is part of the SIGNATURE a generator
@@ -208,6 +210,30 @@ public static partial class Actions
                 IsEnabled = static (s, _, t) => s.SetPinned is not null && t.Route.Kind != Shell.RouteKind.NotFound
                     && (s.IsPinned?.Invoke(t.Route) ?? false),
                 Run = static (s, _, t) => s.SetPinned?.Invoke(t.Route, false),
+            });
+
+            // ── Home pins: the same absolute pair over the pinned Home (HomePinVerbs). Its ActiveRoute target is what lists
+            // "Pin current page to Home" in the palette.
+            r.RegisterAction(new ActionDescriptor
+            {
+                Key = KeyPinHome, LegacyId = ActionId.PinToHome,
+                LabelLocKey = Strings.Home.Board.Pin.PinTo, IconKey = ActionIcons.Pin,
+                AcceptedTargets = ActionTargetModes.FixedEntity | ActionTargetModes.ActiveRoute,
+                RequiredPermissions = [Permissions.SidebarPins],
+                IsEnabled = static (s, _, t) => s.SetHomePinned is not null && t.Route.Kind != Shell.RouteKind.NotFound
+                    && HomePinVerbs.CanPin(t.Route) && !(s.IsHomePinned?.Invoke(t.Route) ?? false),
+                Run = static (s, _, t) => s.SetHomePinned?.Invoke(t.Route, true),
+            });
+
+            r.RegisterAction(new ActionDescriptor
+            {
+                Key = KeyUnpinHome, LegacyId = ActionId.UnpinFromHome,
+                LabelLocKey = Strings.Home.Board.Pin.Unpin, IconKey = ActionIcons.Unpin,
+                AcceptedTargets = ActionTargetModes.FixedEntity | ActionTargetModes.ActiveRoute,
+                RequiredPermissions = [Permissions.SidebarPins],
+                IsEnabled = static (s, _, t) => s.SetHomePinned is not null && t.Route.Kind != Shell.RouteKind.NotFound
+                    && (s.IsHomePinned?.Invoke(t.Route) ?? false),
+                Run = static (s, _, t) => s.SetHomePinned?.Invoke(t.Route, false),
             });
         }
 

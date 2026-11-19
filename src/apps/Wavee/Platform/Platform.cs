@@ -80,7 +80,7 @@ public static partial class Platform
     /// file does not have to depend on `Design.cs`/`Notify.cs`/`Sidebar.cs` to boot. The same applies to the four rail
     /// widths, whose defaults are `Design.cs` tokens: Wave 4 owes a convergence test pinning the two (the
     /// `ZoomAutoPolicy.DesignW` precedent).</para></summary>
-    // PARTIAL: the Wave-6 keys (`diag.stageRects`, and any a Wave-6 owner adds with a writer) are in Platform.Settings.cs.
+    // PARTIAL: the Wave-6 keys (the fullscreen stage's, and any a Wave-6 owner adds with a writer) are in Platform.Settings.cs.
     public static partial class Keys
     {
         // ── sidebar: legacy (v0) global pane keys, read only by the first-run probe
@@ -139,6 +139,10 @@ public static partial class Platform
         /// on the click and brings the new one in on its own cue (<c>Design.Nav.NoOverlap</c>). Read at each swap, so it applies from the next
         /// navigation.</summary>
         public static readonly SettingKey<bool> FastNavigation = new("appearance.fastNavigation", false);
+        /// <summary>Connected animations (Settings ▸ Appearance ▸ Display, WinUI today): TRUE (the default) lets the picture you click fly
+        /// into the page it opens and back (<c>Shell.Connected</c>); FALSE flies nothing and every swap plays the theme's own recipe. The
+        /// owner asked for the switch on 2026-11-16. Read at each navigation, so it applies from the next one.</summary>
+        public static readonly SettingKey<bool> ConnectedAnimations = new("appearance.connectedAnimations", true);
         /// <summary>App-wide UI zoom (effective scale = OS DPI × zoom). Seeded into the window BEFORE it comes up and
         /// SNAPPED on that read: a hand-edited value must never seed a non-ladder scale, because off-rung zooms alias the
         /// glyph-atlas raster buckets — which is the whole reason the ladder is discrete.</summary>
@@ -178,10 +182,12 @@ public static partial class Platform
         public static readonly SettingKey<string> PlaylistVideoFirst = new("playlist.videoFirst", "");
 
         // ── podcasts ──
-        /// <summary>The show reader's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most
+        /// <summary>The podcast show page's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most
         /// recent first, <see cref="ShowViewPrefs.Cap"/> shows), never a key per uri (podcast plan D-6). Read and written
         /// ONLY through <see cref="ShowViewPrefs"/>, which owns the format.</summary>
         public static readonly SettingKey<string> PodcastViews = new("podcast.views", "");
+        /// <summary>Per-show "last visit" stamps for "new since last visit" (PodcastPages, VisitStamps).</summary>
+        public static readonly SettingKey<string> PodcastVisits = new("podcast.visits", "");
 
         // ── video surfaces ──
         public static readonly SettingKey<string> VideoPreferredPlacement = new("video.placement", "");
@@ -222,6 +228,8 @@ public static partial class Platform
         public static readonly SettingKey<bool> RememberVolume = new("playback.volume.remember", true);
         /// <summary>First-launch volume ≈ −6 dB (D6): 0.794³ = 0.5005 through the cubic taper. <c>Playback.UnmuteDefault</c> is the same number.</summary>
         public static readonly SettingKey<float> SavedVolume = new("playback.volume", 0.794f);
+        /// <summary>The Spine Shelf's song previews are heard (the shelf's sound button). Off by default: a hovered song's preview plays muted.</summary>
+        public static readonly SettingKey<bool> PreviewSound = new("playback.preview.sound", false);
         public static readonly SettingKey<string> OutputDeviceId = new("playback.output.deviceId", "");
         public static readonly SettingKey<string> OutputDeviceName = new("playback.output.deviceName", "");
         public static readonly SettingKey<bool> EqualizerEnabled = new("playback.eq.enabled", false);
@@ -252,6 +260,15 @@ public static partial class Platform
         public static readonly SettingKey<long> NotificationsGanderLastSeenMs = new("notifications.gander.lastSeenMs", 0L);
         public static readonly SettingKey<long> NotificationsWhatsNewLastSeenMs = new("notifications.whatsnew.lastSeenMs", 0L);
         public static readonly SettingKey<string> NotificationsReadIds = new("notifications.readIds", "");
+
+        // ── hints and tips (settings rework phase 3, handoff/settings-2026-11-18/DESIGN.md 6.2) ──
+        /// <summary>"Tips about features" (Settings › Notifications › Tips, and every hint's "Don't show tips"): off, no hint shows at all until
+        /// it is turned back on. State lines are state, not hints, and keep showing.</summary>
+        public static readonly SettingKey<bool> TipsEnabled = new("notifications.tips", true);
+        /// <summary>The hint service's ONE blob: per hint its show count, last-shown day, snoozed-until day, dismissals and retired; the few
+        /// use facts that must outlive a launch; and the last five dial writes (Recently changed). Never a key per hint. Read and written
+        /// ONLY through <see cref="HintState"/>, which owns the format.</summary>
+        public static readonly SettingKey<string> HintsState = new("hints.state", "");
 
         // ── now playing / deck ──
         /// <summary>The now-playing player style (`Rail.PlayerCatalog` id; 0 = Cover). Copied once from the retired presentation and
@@ -852,6 +869,9 @@ public static class SegoeGlyphs
     /// <summary>A person with a plus (Segoe "AddFriend"): the Follow toggle at rest (tuned Classic D21).</summary>
     public static readonly string AddFriend = Of(0xE8FA);
 
+    /// <summary>A lightbulb (Segoe "Lightbulb"): an in-app tip (Classic's hint strip, design 7.1).</summary>
+    public static readonly string Lightbulb = Of(0xE82F);
+
     /// <summary>Lines beside a music note: the queue, wherever a queue door is drawn (the engine's <c>Icons.Queue</c> is the
     /// album disc).</summary>
     public static readonly string Queue = Of(0xE90B);
@@ -1292,7 +1312,7 @@ internal sealed partial class CredentialJson : JsonSerializerContext { }
 // ── WHERE OWNER S's WAVE-6 HALF LANDED (G-199) ───────────────────────────────────────────────────────────────────────
 //   · `Platform.Settings.cs` (the named partial): the settings-backing selection, `Developer`, `Network`, `AmbientPower`,
 //     `LogCapturePolicy`, `WaveeLogSessions` (pure), `WaveeVersionInfo`, `RunMarker`,
-//     `FactoryResetPlan`, `ProvisioningOutcome`, `Keys.StageRects`.
+//     `FactoryResetPlan`, `ProvisioningOutcome`, the fullscreen stage's keys.
 //   · `Platform.Host.cs`: the profile-file / in-memory settings stores, the log levels through `LogCapturePolicy`, the
 //     crash-writer install, the factory-reset apply/request and the restart broker's spawn, the NLM cost host, the
 //     ambient power poll, `Platform.Version`.

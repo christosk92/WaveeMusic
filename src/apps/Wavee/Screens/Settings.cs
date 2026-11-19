@@ -1,5 +1,5 @@
 // ── Screens/Settings.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// SettingsCatalog, the tab model, and the page's pure decisions: the equalizer gain vector + presets, the quality and
+// The page's pure decisions: the equalizer gain vector + presets, the quality and
 // video ladders, the metered status line, the storage formatting and budget ladders, the notification-block banner
 // decision, the app-language options, the About receipts' formatting, the Storage/About hero and meter rules
 //
@@ -11,8 +11,8 @@
 // rung is offered only when a key deriver is installed)
 //
 // ENGINE-FREE apart from two plain WindowsApi VALUE types the decisions are phrased in (`NetworkCost`,
-// `ToastDeliverySetting`) — no component, no signal, no token. Glyphs are stored as NAMES (the engine's glyphs.json
-// keys) and resolved to `Icons.*` by the structure's Settings view (`ClassicSettings.Glyph`), so `SettingsCatalogTests` asserts the no-repeat invariant on plain data.
+// `ToastDeliverySetting`) — no component, no signal, no token. Where each setting lives, with its glyph NAME, is the registry
+// (`SettingsSpec`, `Screens/SettingsSpec*.cs`).
 //
 // The About receipts' formatters (`Receipts`) are ch 27 §8's `GpuSummary`/`ClassifySharedIgpu`/`FormatBytes`/
 // `FormatUptime`, which plan §2 files under `Screens/Diagnostics.cs` (owner S). They sit here because the About tab is
@@ -27,228 +27,7 @@ namespace Wavee;
 
 public static partial class Settings
 {
-    // ══ 1. THE TAB MODEL ════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The document's tabs: where a ROW lives (its writer, its facts and its tests are keyed by tab). The first seven are the original pivot; Account,
-    /// Devices, Keyboard and Feedback hold the rows of the four sections the Zune boards add. What the PAGE shows is the twelve <see cref="Area"/>s
-    /// (`Settings.Areas.cs`), each a composition of document sections, so a row can move between areas without changing its identity.</summary>
-    public enum Tab : byte { General, Appearance, Playback, Notifications, Storage, PrivacyDiagnostics, About, Account, Devices, Keyboard, Feedback }
-
-    /// <summary>Must stay 1:1 with <see cref="Tab"/> — a missing slug made About IndexOutOfRange in 0.2.9. The log viewer
-    /// is no longer a tab (it is the route <c>logs</c>), so the old <c>logs</c> slug now falls back to General.</summary>
-    public static readonly string[] TabSlugs = ["general", "appearance", "playback", "notifications", "storage", "privacy", "about", "account", "devices", "keyboard", "feedback"];
-
-    /// <summary>A deep link's tab name → the tab, General when unknown (a bad arg lands on the page, never nowhere).</summary>
-    public static Tab TabFromSlug(string? slug)
-    {
-        if (slug is { Length: > 0 })
-            for (int i = 0; i < TabSlugs.Length; i++)
-                if (string.Equals(TabSlugs[i], slug, StringComparison.OrdinalIgnoreCase)) return (Tab)i;
-        return Tab.General;
-    }
-
-    // ══ 2. THE CATALOG (0.2.9 `App/SettingsCatalog.cs`, verbatim + the tray group) ═════════════════════════════════
-    //
-    // EVERY ROW CARRIES ITS OWN GLYPH, AND A SECTION'S GLYPH IS NEVER REUSED BY ONE OF ITS OWN ROWS — per SECTION, not
-    // global (ch 27 §0 N3 lists the 17 legitimate cross-section repeats; do not "de-duplicate" them). SCOPE: the five
-    // table-driven tabs — General, Appearance, Playback, Storage and Privacy & diagnostics. Notifications enumerates its
-    // rows from `Notify.Prefs.AllTopics`; About has no table rows.
-
-    public static class Catalog
-    {
-        public readonly record struct Section(Tab Tab, string Title, string Glyph);
-
-        /// <summary><paramref name="RowId"/> is unique within its <paramref name="Tab"/>, not merely its section.
-        /// <para><paramref name="DeveloperOnly"/> rows are COMPOSED AWAY outside developer mode — absent, never
-        /// greyed (that shape is reserved for a row whose write is merely unavailable, like the FPS overlay, Simulate an
-        /// update and Send a test crash report on Privacy &amp; diagnostics — present but greyed while developer mode is
-        /// off, so they are NOT flagged here; only the two Appearance rows are). They stay in this table because the row
-        /// still exists, and its glyph still has to be unique, when the switch is on.</para></summary>
-        public readonly record struct Row(Tab Tab, string Section, string RowId, string Glyph, bool DeveloperOnly = false);
-
-        public static readonly Section[] Sections =
-        [
-            new(Tab.General, "Language & region", "Globe"),
-            new(Tab.General, "Links", "Link"),
-            // tray plan §8: between Links and Graphics
-            new(Tab.General, "Notification area", "ThisPc"),
-            new(Tab.General, "Graphics", "Devices"),
-
-            // T1b: the tab is Theme (the picker) · the theme's options · Display (app mode, zoom, marquee), then what is not a
-            // theme option and has no other home yet (lyrics, full screen, now playing, the daylist clock).
-            new(Tab.Appearance, "Theme", "Brush"),
-            new(Tab.Appearance, "Theme options", "Design"),
-            new(Tab.Appearance, "Display", "Devices"),
-            new(Tab.Appearance, "Lyrics", "Microphone"),
-            new(Tab.Appearance, "Fullscreen", "TvMonitor"),
-            new(Tab.Appearance, "Now playing", "Album"),
-            new(Tab.Appearance, "Home", "Home"),
-
-            new(Tab.Playback, "Playback", "Forward"),
-            new(Tab.Playback, "Audio", "MusicNote"),
-            new(Tab.Playback, "Sound", "Speakers"),
-            new(Tab.Playback, "Video", "Movie"),
-            new(Tab.Playback, "Player bar", "Pin"),
-
-            new(Tab.Storage, "On this PC", "ThisPc"),
-            new(Tab.Storage, "Playback cache", "Download"),
-            new(Tab.Storage, "Metadata cache", "Document"),
-            new(Tab.Storage, "Reset", "Delete"),
-
-            // privacy-diagnostics-tab-implementation.md §3.1: the tab that replaced Logs and absorbed General's two sections.
-            new(Tab.PrivacyDiagnostics, "Privacy", "Shield"),
-            new(Tab.PrivacyDiagnostics, "Crash reports", "Warning"),
-            new(Tab.PrivacyDiagnostics, "Logs", "Document"),
-            new(Tab.PrivacyDiagnostics, "Tools", "Repair"),
-            new(Tab.PrivacyDiagnostics, "Developer", "Code"),
-        ];
-
-        public static readonly Row[] Rows =
-        [
-            new(Tab.General, "Language & region", "language", "LocaleLanguage"),
-            // "OpenInNewWindow", not "Link": the section header already owns Link.
-            new(Tab.General, "Links", "spotifyLinks", "OpenInNewWindow"),
-            new(Tab.General, "Notification area", "trayIcon", "Pin"),
-            new(Tab.General, "Notification area", "closeToTray", "ChromeClose"),
-            new(Tab.General, "Notification area", "minimizeToTray", "ChromeMinimize"),
-            new(Tab.General, "Notification area", "startHidden", "RevealPassword"),
-            new(Tab.General, "Notification area", "startOnLogin", "Contact"),
-            // "Device" (singular), not "Devices": the section owns the plural.
-            new(Tab.General, "Graphics", "preferredGpu", "Device"),
-
-            new(Tab.Appearance, "Theme", "themePicker", "Picture"),
-            // The rows a structure still binds to legacy keys (`IStructureLayer.LegacyRows`); each leaves this section when its
-            // M-PR turns the switch into a theme option. A glyph may not repeat inside a section
-            // (SettingsCatalogTests.NoGlyph_RepeatsWithinASection).
-            new(Tab.Appearance, "Theme options", "sidebarCustomize", "Edit"),
-            // The core presentation prefs every theme honours.
-            new(Tab.Appearance, "Display", "appMode", "Sun"),
-            new(Tab.Appearance, "Display", "zoom", "Zoom"),
-            new(Tab.Appearance, "Display", "marquee", "Font"),
-            new(Tab.Appearance, "Display", "fastNavigation", "Forward"),
-            // "Lyrics second line" (Globe) and "Animated lyrics backdrop" (RefineSparkle) are GONE, not gated: neither
-            // is a setting any more. The blur dial is what is left of the section.
-            new(Tab.Appearance, "Lyrics", "lyricsBlur", "Filter"),
-            // The seek rail's lyric tip (the line under the pointer while it hovers or scrubs a song's rail).
-            new(Tab.Appearance, "Lyrics", "lyricsSeekTip", "MusicNote"),
-            // On-device AI lyrics (AiLyrics.UI.Settings.cs, plan ai-lyrics-sync-implementation.md §4.2): the card wears the
-            // Windows AI sparkle in every phase; the rest are the Ready expander's items.
-            new(Tab.Appearance, "Lyrics", "aiLyrics", "RefineSparkle"),
-            new(Tab.Appearance, "Lyrics", "aiWordSync", "Font"),
-            new(Tab.Appearance, "Lyrics", "aiPlainText", "Document"),
-            new(Tab.Appearance, "Lyrics", "aiBatterySaver", "Clock"),
-            new(Tab.Appearance, "Lyrics", "aiLanguages", "LocaleLanguage"),
-            new(Tab.Appearance, "Lyrics", "aiFiles", "Folder"),
-            // The fullscreen stage's four settings (+ the visualizer and layout picks), mirrored from its gallery and options popover. "TvMonitor" is the
-            // section's own glyph, so none of the rows may reuse it.
-            new(Tab.Appearance, "Fullscreen", "stageVisualizer", "Equalizer"),
-            new(Tab.Appearance, "Fullscreen", "stageLayout", "SplitView"),
-            new(Tab.Appearance, "Fullscreen", "stageSensitivity", "Audio"),
-            new(Tab.Appearance, "Fullscreen", "stageLyricsOverlay", "Document"),
-            new(Tab.Appearance, "Fullscreen", "stageSyncOffset", "Clock"),
-            new(Tab.Appearance, "Fullscreen", "stageCalm", "RefineSparkle"),
-            new(Tab.Appearance, "Fullscreen", "stageMoments", "Brush"),
-            // The player style (2026-11-08: a normal user setting; the now-playing style chip changes the same one).
-            new(Tab.Appearance, "Now playing", "npvStyle", "Settings"),
-            // #185: what the daylist clock shows (countdown / update time / both) on the playlist hero and the Home card.
-            new(Tab.Appearance, "Home", "daylistClock", "Clock"),
-
-            // Playback (the behaviour of the queue): the board's playback section holds autoplay and crossfade; the sound of it is Audio.
-            new(Tab.Playback, "Playback", "rememberVolume", "Volume"),
-            new(Tab.Playback, "Playback", "autoplay", "Play"),
-            new(Tab.Playback, "Playback", "crossfade", "Audio"),
-            new(Tab.Playback, "Audio", "audioQuality", "Headphones"),
-            new(Tab.Playback, "Audio", "meteredQuality", "RadioTower"),
-            // G-132: the normalization switch 0.2.9 persisted but never showed.
-            new(Tab.Playback, "Audio", "normalization", "Equalizer"),
-            // D5: the mode combo and album mode. "Speakers"/"Album" are mapped in `ClassicSettings.Glyph` and distinct from every
-            // other row in the section (the Sound section owns "Speakers" as ITS header glyph, which is a different section).
-            new(Tab.Playback, "Audio", "normalizationMode", "Speakers"),
-            new(Tab.Playback, "Audio", "normalizationAlbum", "Album"),
-            new(Tab.Playback, "Sound", "equalizer", "Equalizer"),
-            new(Tab.Playback, "Video", "videoQuality", "TvMonitor"),
-            new(Tab.Playback, "Video", "videoMetered", "RadioTower"),
-            new(Tab.Playback, "Video", "videoPrepareAhead", "Download"),
-            new(Tab.Playback, "Video", "showCanvas", "Picture"),
-            new(Tab.Playback, "Video", "videoEndCountdown", "Clock"),
-            new(Tab.Playback, "Video", "videoOverrides", "Edit"),
-            new(Tab.Playback, "Player bar", "playerBarRemaining", "Clock"),
-
-            new(Tab.Storage, "On this PC", "library", "Album"),
-            new(Tab.Storage, "On this PC", "runtime", "Code"),
-            new(Tab.Storage, "On this PC", "logs", "Document"),
-            new(Tab.Storage, "On this PC", "localStore", "Folder"),
-            new(Tab.Storage, "On this PC", "imageCache", "Picture"),
-            // The feature's sparkle, as on its card (Appearance › Lyrics) and in What leaves this PC.
-            new(Tab.Storage, "On this PC", "aiModels", "RefineSparkle"),
-            // "FolderOpen", not "ThisPc": the section header owns ThisPc.
-            new(Tab.Storage, "On this PC", "otherData", "FolderOpen"),
-            new(Tab.Storage, "Playback cache", "cacheAudio", "Audio"),
-            // "Document", not "Tag": License keys keeps Tag; the two would collide within this one section.
-            new(Tab.Storage, "Playback cache", "cacheKeys", "Document"),
-            new(Tab.Storage, "Playback cache", "budget", "RowSize"),
-            new(Tab.Storage, "Playback cache", "cacheLocation", "FolderOpen"),
-            new(Tab.Storage, "Playback cache", "audioBodies", "MusicNote"),
-            new(Tab.Storage, "Playback cache", "licenseKeys", "Tag"),
-            new(Tab.Storage, "Metadata cache", "metadataBudget", "RowSize"),
-            new(Tab.Storage, "Metadata cache", "clearMetadata", "Delete"),
-            // "Attention", not "Delete": the section owns Delete.
-            new(Tab.Storage, "Reset", "factoryReset", "Attention"),
-
-            // Privacy & diagnostics — only what paints a glyph (the crash-mode radios, the queue InfoBar, the saved-report
-            // bundle rows and the Detail-level / capture items do not). Developer's three items are present but greyed
-            // while developer mode is off (plan D2), so none of them is DeveloperOnly. "Settings" on developerMode is one
-            // of the two deliberate gears (the other is Appearance/npvStyle). Cross-section repeats (Folder,
-            // StatusWarning, Devices, Clock, Refresh) are allowed by N3.
-            new(Tab.PrivacyDiagnostics, "Privacy", "whatLeaves", "Globe"),
-            // The "AI model download" fact inside What leaves this PC — the one fact item with a glyph (the feature's sparkle).
-            new(Tab.PrivacyDiagnostics, "Privacy", "whatLeavesAi", "RefineSparkle"),
-            new(Tab.PrivacyDiagnostics, "Privacy", "crashReports", "StatusWarning"),
-            new(Tab.PrivacyDiagnostics, "Privacy", "crashDump", "Camera"),
-            new(Tab.PrivacyDiagnostics, "Privacy", "crashContents", "Info"),
-            new(Tab.PrivacyDiagnostics, "Privacy", "crashService", "Delete"),
-            new(Tab.PrivacyDiagnostics, "Privacy", "privacyPolicy", "OpenInNewWindow"),
-            new(Tab.PrivacyDiagnostics, "Crash reports", "savedReports", "Folder"),
-            new(Tab.PrivacyDiagnostics, "Logs", "logViewer", "ViewList"),
-            new(Tab.PrivacyDiagnostics, "Logs", "detailLevel", "Filter"),
-            new(Tab.PrivacyDiagnostics, "Logs", "logFiles", "Folder"),
-            new(Tab.PrivacyDiagnostics, "Tools", "playbackRuntime", "MusicNote"),
-            new(Tab.PrivacyDiagnostics, "Tools", "realtimeCapture", "RadioTower"),
-            new(Tab.PrivacyDiagnostics, "Developer", "developerMode", "Settings"),
-            new(Tab.PrivacyDiagnostics, "Developer", "fpsOverlay", "Clock"),
-            new(Tab.PrivacyDiagnostics, "Developer", "simulateUpdate", "Refresh"),
-            new(Tab.PrivacyDiagnostics, "Developer", "sendTestCrashReport", "StatusWarning"),
-        ];
-
-        public static string SectionGlyph(Tab tab, string title)
-        {
-            foreach (var s in Sections)
-                if (s.Tab == tab && string.Equals(s.Title, title, StringComparison.Ordinal))
-                    return s.Glyph;
-            throw new InvalidOperationException("SettingsCatalog: no section '" + title + "' on tab " + tab + ".");
-        }
-
-        public static string RowGlyph(Tab tab, string rowId)
-        {
-            foreach (var r in Rows)
-                if (r.Tab == tab && string.Equals(r.RowId, rowId, StringComparison.Ordinal))
-                    return r.Glyph;
-            throw new InvalidOperationException("SettingsCatalog: no row '" + rowId + "' on tab " + tab + ".");
-        }
-
-        /// <summary>Is a row composed at all? The ONE gate the tabs call, so "which rows are developer-only" is a fact of
-        /// this table rather than a condition scattered through the view's tabs. An unknown row id throws, exactly as
-        /// <see cref="RowGlyph"/> does — a typo must fail loudly, never silently hide a row.</summary>
-        public static bool RowVisible(Tab tab, string rowId, bool developerMode)
-        {
-            foreach (var r in Rows)
-                if (r.Tab == tab && string.Equals(r.RowId, rowId, StringComparison.Ordinal))
-                    return developerMode || !r.DeveloperOnly;
-            throw new InvalidOperationException("SettingsCatalog: no row '" + rowId + "' on tab " + tab + ".");
-        }
-    }
-
-    // ══ 3. THE EQUALIZER (0.2.9 `App/EqualizerSettings.cs` + the preset table of `SettingsPage.Playback.cs:20-29`) ══
+    // ══ 2. THE EQUALIZER (0.2.9 `App/EqualizerSettings.cs` + the preset table of `SettingsPage.Playback.cs:20-29`) ══
 
     public static class Eq
     {
@@ -313,7 +92,7 @@ public static partial class Settings
         public static float SnapGain(float db) => Math.Clamp(MathF.Round(db / SnapDb) * SnapDb, MinGainDb, MaxGainDb);
     }
 
-    // ══ 4. THE PLAYBACK LADDERS ═════════════════════════════════════════════════════════════════════════════════════
+    // ══ 3. THE PLAYBACK LADDERS ═════════════════════════════════════════════════════════════════════════════════════
 
     public static class Quality
     {
@@ -361,7 +140,7 @@ public static partial class Settings
         public static double CrossfadeSeconds(int storedMs) => Math.Clamp(storedMs, 0, 12_000) / 1000.0;
     }
 
-    // ══ 5. THE METERED STATUS LINE (0.2.9 `App/MeteredStatusLine.cs`, verbatim) ═════════════════════════════════════
+    // ══ 4. THE METERED STATUS LINE (0.2.9 `App/MeteredStatusLine.cs`, verbatim) ═════════════════════════════════════
 
     public enum MeteredStatusKind : byte { Unknown, NotMetered, Metered, MeteredWithinCap }
 
@@ -405,7 +184,7 @@ public static partial class Settings
         }
     }
 
-    // ══ 6. STORAGE FORMATTING AND LADDERS (0.2.9 `SettingsPage.Storage.cs:27-28, 50-51, 206-212, 245-255`) ═════════
+    // ══ 5. STORAGE FORMATTING AND LADDERS (0.2.9 `SettingsPage.Storage.cs:27-28, 50-51, 206-212, 245-255`) ═════════
 
     /// <summary>The census of the data folder. Sizes are bytes; <see cref="LogFiles"/> counts every log file, the live
     /// one included. <see cref="AiModels"/> is the whole <c>ai\lyrics</c> folder (the runtime, the models, their compiled
@@ -461,7 +240,7 @@ public static partial class Settings
             => (long)(Math.Max(double.IsFinite(gib) ? gib : 0.0625, 0.0625) * (1L << 30));
     }
 
-    // ══ 7. THE NOTIFICATIONS TAB'S OS-BLOCK BANNER (0.2.9 `SettingsPage.Notifications.cs:242-263`, now tested) ═════
+    // ══ 6. THE NOTIFICATIONS TAB'S OS-BLOCK BANNER (0.2.9 `SettingsPage.Notifications.cs:242-263`, now tested) ═════
 
     public enum BlockedBanner : byte { None, App, User, Policy }
 
@@ -527,7 +306,7 @@ public static partial class Settings
     /// <summary>A simulated event's result; <see cref="At"/> is the release time for the two clocked outcomes.</summary>
     public readonly record struct TestEventResult(TestEventOutcome Outcome, DateTimeOffset? At);
 
-    // ══ 8. APP LANGUAGE (0.2.9 `SettingsPage.General.cs:32-51`) ════════════════════════════════════════════════════
+    // ══ 7. APP LANGUAGE (0.2.9 `SettingsPage.General.cs:32-51`) ════════════════════════════════════════════════════
 
     public static class Language
     {
@@ -547,7 +326,7 @@ public static partial class Settings
         public static bool CanPick(int index) => (uint)index < (uint)Codes.Length && Enabled[index];
     }
 
-    // ══ 9. THE ABOUT RECEIPTS' FORMATTING (0.2.9 `SettingsPage.About.cs:265-274, 362-392`, now tested) ═════════════
+    // ══ 8. THE ABOUT RECEIPTS' FORMATTING (0.2.9 `SettingsPage.About.cs:265-274, 362-392`, now tested) ═════════════
 
     public enum GpuTier : byte { Unknown, Weak, Strong }
 
@@ -595,7 +374,7 @@ public static partial class Settings
         public static string Fps(double fps) => fps > 0 ? fps.ToString("0.0", CultureInfo.InvariantCulture) : Dash;
     }
 
-    // ══ 10. THE STORAGE AND ABOUT DECISIONS (0.2.9 `SettingsPage.Storage.cs` / `.About.cs`; pinned by SettingsStorageTests) ═
+    // ══ 9. THE STORAGE AND ABOUT DECISIONS (0.2.9 `SettingsPage.Storage.cs` / `.About.cs`; pinned by SettingsStorageTests) ═
 
     public static class StorageRules
     {

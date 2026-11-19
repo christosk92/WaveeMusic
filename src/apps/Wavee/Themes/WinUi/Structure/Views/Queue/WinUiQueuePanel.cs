@@ -7,8 +7,10 @@
 //                              bars at its end; it opens where the track plays from
 //   the lane                   each section's header (Body Strong 14): "Next in queue" with "Clear" (an accent text button), "Next up" with
 //                              "<n> more" (Caption, secondary), "Autoplay"; the rows (the shared media surface at the 40 cover, the ✕ as its
-//                              trailing cell, the autoplay rows dimmed); "Show next n · m more"
-//   Autoplay                   a divider, then the Autoplay row (Body Strong over "Similar music will keep playing") with its ToggleSwitch
+//                              trailing cell); "Show next n · m more"
+//   Autoplay · Crossfade       a divider, then the Autoplay row (Body Strong over "Similar music will keep playing") with its ToggleSwitch, then
+//                              the Crossfade row in the same grammar (the "between songs" pair, design 5.4): its length ("6 s") at rest as a
+//                              small hyperlink to the duration in Settings (the panel draws no slider), then its ToggleSwitch
 //
 // The core host (`Queue.RailPanelHost`) keeps what reads and decides (the sections, the page counters, the realized slots, the reorder lane,
 // the rows' drag and menus, the verbs). The lane's drag maths needs every slot's height EXACT, so the template states them before it builds
@@ -37,7 +39,7 @@ namespace Wavee.Themes.WinUi;
 internal static class WinUiQueue
 {
     /// <summary>The node keys the mounted tests find: the now-playing card's prefix, the autoplay row.</summary>
-    public const string NowKeyPrefix = "np:", AutoplayKey = "winui-queue-autoplay";
+    public const string NowKeyPrefix = "np:", AutoplayKey = "winui-queue-autoplay", CrossfadeKey = "winui-queue-crossfade";
 
     /// <summary>The registered template of <see cref="ViewKeys.QueuePanel"/>.</summary>
     public static Element PanelTemplate(QueuePanelProps props, in ViewContext ctx) => Embed.Comp(props, static () => new WinUiQueuePanelView());
@@ -51,6 +53,17 @@ internal static class WinUiQueue
 internal sealed class WinUiQueuePanelView : Component
 {
     readonly ScrollHandle _scroll = new();
+    // The Crossfade row's node: the crossfade hint's TeachingTip points at it (design 6.3 #4: at the panel's own switch, no second control).
+    NodeHandle _crossfadeNode;
+    readonly Action<NodeHandle> _onCrossfadeRow;
+    readonly Func<NodeHandle> _crossfadeRow;
+
+    public WinUiQueuePanelView()
+    {
+        _onCrossfadeRow = h => _crossfadeNode = h;
+        _crossfadeRow = () => _crossfadeNode;
+    }
+
     // The body is ONE virtualized list (only the rows the viewport shows, and its overscan, are built): the lead (Playing from, the
     // now-playing card), the lane's slots, then the tail (the vacancy or the Autoplay row). Every item's extent is stated EXACTLY
     // (the tail's is measured), so the list's geometry matches the lane's drag maths and nothing jumps as rows realize.
@@ -58,11 +71,11 @@ internal sealed class WinUiQueuePanelView : Component
     float[] _extents = new float[64];
     int[] _kinds = new int[64];   // per item: a lane slot position (>= 0), or one of the Item* kinds
     const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3, ItemAutoplay = -4;
-    /// <summary>The tail's estimate until its first measure (the Autoplay row: the divider, the title and a one-line hint).</summary>
-    const float TailEstimate = 72f;
+    /// <summary>The tail's estimate until its first measure (the divider, then the Autoplay and Crossfade rows: each a title over a one-line hint).</summary>
+    const float TailEstimate = 128f;
     Func<QueueSlot, float>? _extentOf;
     Action? _clear;
-    Action<bool>? _setAutoplay;
+    Action<bool>? _setAutoplay, _setCrossfade;
     WidthTier _window = WidthTier.Standard;
 
     float ExtentOf(QueueSlot slot) => slot.Kind switch
@@ -82,9 +95,13 @@ internal sealed class WinUiQueuePanelView : Component
         var lane = props.Lane;
         _clear ??= props.Verbs.Clear;
         _setAutoplay ??= props.Verbs.SetAutoplay;
+        _setCrossfade ??= props.Verbs.SetCrossfade;
         bool autoplayOn = queue.Autoplay.Enabled;
         var autoplay = UseSignal(autoplayOn);
         UseLayoutEffect(() => { if (autoplay.Peek() != autoplayOn) autoplay.Value = autoplayOn; }, DepKey.From(autoplayOn ? 1 : 0));
+        bool crossfadeOn = props.Crossfade;
+        var crossfade = UseSignal(crossfadeOn);
+        UseLayoutEffect(() => { if (crossfade.Peek() != crossfadeOn) crossfade.Value = crossfadeOn; }, DepKey.From(crossfadeOn ? 1 : 0));
         lane.SetMetrics(Q.RowExtent, _extentOf ??= ExtentOf);
 
         // The items, in list order: the lead, the lane's slots (under the live projection while a row is lifted, so each position states the
@@ -104,7 +121,7 @@ internal sealed class WinUiQueuePanelView : Component
         else if (!queue.Viewer) { _kinds[n] = ItemAutoplay; _extents[n++] = -TailEstimate; }
         _layout.SetExtents(_extents.AsSpan(0, n), Q.BodyPadding.Top, Q.BodyPadding.Bottom);
 
-        var body = Virtual.Custom(n, _layout, i => Item(props, autoplay, i)) with
+        var body = Virtual.Custom(n, _layout, i => Item(props, autoplay, crossfade, i)) with
         {
             Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "queuepanel", Handle = _scroll,
         };
@@ -117,7 +134,7 @@ internal sealed class WinUiQueuePanelView : Component
     }
 
     /// <summary>The list's item <paramref name="i"/> (<see cref="_kinds"/>), inset by the body's side padding.</summary>
-    Element Item(QueuePanelProps props, Signal<bool> autoplay, int i)
+    Element Item(QueuePanelProps props, Signal<bool> autoplay, Signal<bool> crossfade, int i)
     {
         var lane = props.Lane;
         int kind = (uint)i < (uint)_kinds.Length ? _kinds[i] : ItemVacancy;
@@ -125,7 +142,7 @@ internal sealed class WinUiQueuePanelView : Component
         {
             case ItemPlayingFrom: return Inset(PlayingFrom(props.Queue.PlayingFrom.GetValueOrDefault().Name, props.OpenPlayingFrom));
             case ItemNow: return Inset(NowCard(props));
-            case ItemAutoplay: return Inset(AutoplayRow(autoplay, _setAutoplay!));
+            case ItemAutoplay: return Inset(BetweenSongs(props, autoplay, _setAutoplay!, crossfade, _setCrossfade!, _onCrossfadeRow, _crossfadeRow));
             case ItemVacancy:
                 return new BoxEl
                 {
@@ -160,7 +177,7 @@ internal sealed class WinUiQueuePanelView : Component
         return new BoxEl
         {
             Key = props.Lane.RowKey("", row.ItemId, row.Index),
-            Direction = 1, Opacity = Q.Dim(row.Section),
+            Direction = 1,   // an Autoplay row is drawn like any row (it was dimmed to 60 %: washed-out covers and text; owner, 2026-11-18). Its heading says what it is.
             Enter = WinUiQueue.RowEnter, Exit = WinUiQueue.RowExit, Layout = LayoutTransition.Slide,
             Children = [Controls.FromData(face, s_rowSurface)],
         };
@@ -329,31 +346,47 @@ internal sealed class WinUiQueuePanelView : Component
         };
     }
 
-    /// <summary>The divider, then "Autoplay" over its hint with the switch at the row's end.</summary>
-    static Element AutoplayRow(Signal<bool> on, Action<bool> set) => new BoxEl
+    /// <summary>The divider, then the "between songs" pair (design 5.4): "Autoplay" over its hint with the switch at the row's end, then
+    /// "Crossfade" in the same grammar, its length a small hyperlink to the duration in Settings before its switch.</summary>
+    static Element BetweenSongs(QueuePanelProps props, Signal<bool> autoplay, Action<bool> setAutoplay, Signal<bool> crossfade, Action<bool> setCrossfade,
+        Action<NodeHandle> onCrossfadeRow, Func<NodeHandle> crossfadeRow)
     {
-        Key = WinUiQueue.AutoplayKey, Direction = 1, Shrink = 0f, Margin = Q.AutoplayMargin,
-        Children =
-        [
-            new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
-            new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Padding = Q.AutoplayPadding, Gap = Q.FromGap,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                        Children =
-                        [
-                            new TextEl(Loc.Get(Strings.Player.Autoplay)) { Size = Q.HeaderSize, LineHeight = Q.HeaderLine, Weight = Q.TitleWeight, Color = Tok.TextPrimary },
-                            new TextEl(Loc.Get(Strings.Player.AutoplayHint)) { Size = Q.SmallSize, LineHeight = Q.SmallLine, Color = Tok.TextSecondary, MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f },
-                        ],
-                    },
-                    // The bare switch (no 154 content column), so it ends at the pane's content edge (W-Queue).
-                    ToggleSwitch.Create(on, set, onContent: "", offContent: "", style: ToggleSwitch.DefaultStyle with { MinWidth = 0f }),
-                ],
-            },
-        ],
-    };
+        Element? length = props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } open
+            ? ToolTip.Wrap(HyperlinkButton.Create(props.CrossfadeLength, open, size: ControlSize.Small) with { Key = WinUiQueue.CrossfadeKey + ":length" },
+                Loc.Get(Strings.Player.CrossfadeLengthTip))
+            : null;
+        return new BoxEl
+        {
+            Key = WinUiQueue.AutoplayKey, Direction = 1, Shrink = 0f, Margin = Q.AutoplayMargin,
+            Children =
+            [
+                new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
+                SwitchRow(Loc.Get(Strings.Player.Autoplay), Loc.Get(Strings.Player.AutoplayHint), null, autoplay, setAutoplay) with { Key = WinUiQueue.AutoplayKey + ":row" },
+                SwitchRow(Loc.Get(Strings.Player.Crossfade), Loc.Get(Strings.Player.CrossfadeHint), length, crossfade, setCrossfade)
+                    with { Key = WinUiQueue.CrossfadeKey, OnRealized = onCrossfadeRow },
+                Hints.Pointer(HintSurfaces.QueuePanel, crossfadeRow),   // out of layout: the tip floats at the row
+            ],
+        };
+    }
+
+    /// <summary>One switch row: the title over its hint, an optional note before the switch, the bare switch at the row's end.</summary>
+    static BoxEl SwitchRow(string title, string hint, Element? note, Signal<bool> on, Action<bool> set)
+    {
+        var text = new BoxEl
+        {
+            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
+            Children =
+            [
+                new TextEl(title) { Size = Q.HeaderSize, LineHeight = Q.HeaderLine, Weight = Q.TitleWeight, Color = Tok.TextPrimary },
+                new TextEl(hint) { Size = Q.SmallSize, LineHeight = Q.SmallLine, Color = Tok.TextSecondary, MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f },
+            ],
+        };
+        // The bare switch (no 154 content column), so it ends at the pane's content edge (W-Queue).
+        var toggle = ToggleSwitch.Create(on, set, onContent: "", offContent: "", style: ToggleSwitch.DefaultStyle with { MinWidth = 0f });
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Padding = Q.AutoplayPadding, Gap = Q.FromGap,
+            Children = note is null ? [text, toggle] : [text, note, toggle],
+        };
+    }
 }

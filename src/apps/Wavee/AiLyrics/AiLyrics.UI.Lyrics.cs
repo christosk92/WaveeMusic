@@ -25,6 +25,8 @@
 //                  caption line on the box's gutter, the sparkle and "AI word timing" (or the progress line, cut to one line), with
 //                  tighter padding, so it never pushes the lines up by two lines of text. (No tooltip there: that face is a picture,
 //                  never a target, and on hover the transport's veil covers it.)
+//                  Under the strip sits the lyrics surface's hint slot (`Hints.Slot(HintSurfaces.LyricsFooter)`, Shell/Hints.UI.cs): a
+//                  zero box at rest, the AI lyrics hint while it qualifies (design 6.3 #1); never in the small box.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -40,7 +42,7 @@ namespace Wavee;
 public static partial class AiLyrics
 {
     // THE SPARKLE (the `Panel.LyricsHeader` view draws it)
-    static readonly Action s_openSettings = static () => Settings.Open(Settings.Area.Lyrics);
+    static readonly Action s_openSettings = static () => Settings.Open("lyrics.ai");
 
     /// <summary>The lyrics header sparkle's verdict for this render: the status, the track's status and the playing entity through
     /// <see cref="Rules.Header"/>, with the track's preference. Subscribes all three (and the preference epoch).</summary>
@@ -60,6 +62,22 @@ public static partial class AiLyrics
         if (facts.TogglesPreference) SetPreferAi(facts.TrackId, !facts.PrefersAi);
         else if (facts.OpensSettings) s_openSettings();
         else FluentGpu.Input.Announcer.Say(facts.Tip);
+    }
+
+    /// <summary>The lyrics header ⋯'s status line (design 5.4): "Word-by-word: on" / "off" / "setting up" / "needs attention" from the setup
+    /// phase, or "" where the feature cannot run on this PC. Subscribes the AI status.</summary>
+    internal static string StatusLine()
+    {
+        var phase = Current.Value.Phase;
+        string? state = phase switch
+        {
+            SetupPhase.Unavailable => null,
+            SetupPhase.Off => Strings.Player.AiStateOff,
+            SetupPhase.Ready => Strings.Player.AiStateOn,
+            SetupPhase.Error => Strings.Player.AiStateAttention,
+            _ => Strings.Player.AiStateSettingUp,
+        };
+        return state is null ? "" : Strings.Player.AiLine(Loc.Get(state));
     }
 
     // MOUNT POINT (Lyrics.ViewCore root column)
@@ -144,10 +162,18 @@ public static partial class AiLyrics
             var track = Track.Value;
             string playing = PlayingLyricsId();
             var root = new BoxEl { Direction = 1, Shrink = 0f, MinWidth = 0f };
+            // The lyrics surface's hint slot (Hints.UI.cs): a zero box at rest, the AI lyrics hint while it qualifies, on the lyrics' own
+            // gutter (the surface's side pad, so every theme's hint lines up with the lines above it). Never on the small box's face (a
+            // picture, never a target).
+            Element? hint = compact ? null : new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, Shrink = 0f, Padding = new Edges4(_sidePad, 0f, _sidePad, 0f),
+                Children = [Hints.Slot(HintSurfaces.LyricsFooter)],
+            };
             // A status that still names the previous track (the host re-evaluates on its own effect) never captions the
             // next track's lyrics.
             if (!Rules.ShowsFooter(track) || track.TrackId.Length == 0 || !string.Equals(track.TrackId, playing, StringComparison.Ordinal))
-                return root;   // zero extent: nothing reserved
+                return hint is null ? root : root with { Children = [hint] };   // zero extent: nothing reserved
 
             bool progress = Rules.FooterShowsProgress(track);
             var color = _ink.Secondary;
@@ -169,29 +195,24 @@ public static partial class AiLyrics
                 ],
             };
 
-            return root with
+            var clip = new BoxEl
             {
+                Key = "ai-lyrics-footer-clip", Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+                // Reduced motion snaps the height, keeps the fade.
+                Animate = Design.Reduced ? null : s_grow,
                 Children =
                 [
                     new BoxEl
                     {
-                        Key = "ai-lyrics-footer-clip", Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
-                        // Reduced motion snaps the height, keeps the fade.
-                        Animate = Design.Reduced ? null : s_grow,
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Direction = 1, Gap = Spacing.XS, MinWidth = 0f,
-                                Padding = compact ? new Edges4(box!.Gutter, Spacing.XS, box.Gutter, Spacing.XS) : new Edges4(_sidePad, Spacing.S, _sidePad, Spacing.S),
-                                Animate = s_fadeIn,
-                                HitTestVisible = false,
-                                Children = progress ? [line, BufferBar()] : [line],
-                            },
-                        ],
+                        Direction = 1, Gap = Spacing.XS, MinWidth = 0f,
+                        Padding = compact ? new Edges4(box!.Gutter, Spacing.XS, box.Gutter, Spacing.XS) : new Edges4(_sidePad, Spacing.S, _sidePad, Spacing.S),
+                        Animate = s_fadeIn,
+                        HitTestVisible = false,
+                        Children = progress ? [line, BufferBar()] : [line],
                     },
                 ],
             };
+            return root with { Children = hint is null ? [clip] : [clip, hint] };
         }
 
         /// <summary>Track, timed region, playhead tick (the video player's buffer bar). The timed width and the tick's

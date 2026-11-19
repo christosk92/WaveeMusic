@@ -25,6 +25,18 @@ public static partial class Shell
         /// escapes the enum's range).</summary>
         public static Spotify.Audio.Quality QualityOf(int persisted)
             => (Spotify.Audio.Quality)Math.Clamp(persisted, Platform.Network.QualityMin, Platform.Network.QualityMax);
+
+        /// <summary>The equalizer and normalization switches the picker's last row ("Sound settings") states at rest (design 5.4).</summary>
+        public static SoundState Sound => new(Platform.Settings.Get(Platform.Keys.EqualizerEnabled), Platform.Settings.Get(Platform.Keys.NormalizationEnabled));
+    }
+
+    /// <summary>What the device picker's "Sound settings" row says at rest: the equalizer and normalization switches.</summary>
+    public readonly record struct SoundState(bool Equalizer, bool Normalization)
+    {
+        /// <summary>"Equalizer off · Normalization on".</summary>
+        public string Words => Strings.Player.SoundState(
+            FluentGpu.Localization.Loc.Get(Equalizer ? Strings.Player.EqualizerOn : Strings.Player.EqualizerOff),
+            FluentGpu.Localization.Loc.Get(Normalization ? Strings.Settings.Landing.NormalizationOn : Strings.Settings.Landing.NormalizationOff));
     }
 
     public static class DeviceVerbs

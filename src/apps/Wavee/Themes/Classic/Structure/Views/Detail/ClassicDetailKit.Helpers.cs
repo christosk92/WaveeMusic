@@ -89,7 +89,7 @@ internal static partial class ClassicDetailKit
     /// <summary>The billed artists as one comma-joined run of 14/20/600 links (accent on hover), each one shrinkable and
     /// clipped so a long bill yields instead of pushing the meta line out. An empty bill is an EMPTY BOX, never a blank
     /// row of air: the header's gap must not open for an attribution that does not exist. A detail-frame piece, shared by
-    /// the library's album pane, the show pane's publisher slot and the artist reader (library rework §5.5).</summary>
+    /// the library's album pane and the artist reader (library rework §5.5).</summary>
     public static Element ArtistLine(IReadOnlyList<Controls.Face>? artists)
     {
         if (artists is not { Count: > 0 }) return new BoxEl();
@@ -116,9 +116,12 @@ internal static partial class ClassicDetailKit
     public static EntityUri SaveTargetOf(Detail.Identity id) => id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
 
     /// <summary>Copy the page's web link with the confirmation toast — only when a clipboard seam exists.</summary>
-    public static Action? ShareActionFor(Detail.Identity id)
+    public static Action? ShareActionFor(Detail.Identity id) => ShareLinkAction(id.ShareUrl);
+
+    /// <summary>The same copy-the-link verb for a bare web link (a concert's).</summary>
+    public static Action? ShareLinkAction(string? shareUrl)
     {
-        if (id.ShareUrl is not { Length: > 0 } url) return null;
+        if (shareUrl is not { Length: > 0 } url) return null;
         return () =>
         {
             if (Actions.Services.Clipboard is not { } copy) return;

@@ -24,5 +24,5 @@ public static partial class Stage
     /// <summary>The options popover, re-providing the stage context (it mounts in the overlay layer, outside the stage subtree).</summary>
     static Element OptionsContent(StageCtx ctx, Action close)
         => Ctx.Provide(StageContext, ctx, ViewSlots.View(ViewKeys.StageOptions,
-            new StageOptionsProps { Stage = ctx, Verbs = StageSettingsVerbs.Shared, Close = close }));
+            new StageOptionsProps { Stage = ctx, Verbs = StageSettingsVerbs.Options, Close = close }));
 }

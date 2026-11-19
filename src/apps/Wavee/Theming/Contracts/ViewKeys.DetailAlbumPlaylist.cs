@@ -90,8 +90,8 @@ public static partial class ViewKeys
     /// `Playlist.AccessPanel`. Props: <see cref="PlaylistAccessProps"/>.</summary>
     public static readonly ViewKey<PlaylistAccessProps> PlaylistAccess = new("Playlist.Access");
 
-    /// <summary>The Tune panel: the accent header, the choices (the current one disabled) and the reset row. Mounted when a Tune dialog opens.
-    /// Props: <see cref="PlaylistTuneProps"/>.</summary>
+    /// <summary>The Tune strip, inline under the list bar while Tune is open: its title, the directions as choices (the current one on, the one applying
+    /// working), Reset while tuned, and its close. Props: <see cref="PlaylistTuneProps"/>.</summary>
     public static readonly ViewKey<PlaylistTuneProps> PlaylistTune = new("Playlist.Tune");
 
     /// <summary>The daylist flip strip: the digits, the ring while rolling, the next-update caption. Mounted by `Playlist.DaylistHost`. Props:

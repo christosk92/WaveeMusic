@@ -6,13 +6,13 @@
 //
 //   THE PAGE (Z-Home, Standard): the frame's gutter (48), 8 under the band, the zones 28 apart (22 at Compact), each a heading row (26/32
 //   light, its subtitle 13 tertiary 14 after it on the baseline, "see all" 13 at the end) 10 over its body. Pages cap at 2400 (decision 2).
-//   QUICKPLAY (All only): pins (132 art) · history (100 art) · new (100 art), the groups 32 apart and wrapping, tiles 12 apart, each a
-//   22/28 light head (the QuickplayHead role) and its link word. THE DAYLIST: a 176 strip, the art 320 wide, the copy 32 in (eyebrow 13,
+//   All is the pinned board (`ZuneHomeBoardRules`); THE HISTORY group (the Recents zone): 100 art, tiles 12 apart, a 22/28 light head and its
+//   link word. THE DAYLIST: a 176 strip, the art 320 wide, the copy 32 in (eyebrow 13,
 //   title 40/48 light, meta 13, the 36 rings 22 apart under it), the clock column 260 (the count line, five 40-wide bars 4 apart with the
 //   current one 20 tall in the accent, the dayparts line). SHELVES: 154 cards 16 apart; the wide tiles a 4-up 16:9 grid. Side by side
 //   (1 : 1, 48 apart): the release list (64 rows, 56 art, the "when" 80 wide) beside the clusters (two columns 24 apart, a 28 title over
 //   48 rows of 40 art); the new and continue episodes (72 rows, 56 art). The Browse tiles (4-up flat 88 plates) 2 : 1 beside the charts
-//   (40 rows, the 22 light rank 32 wide), then "customize home".
+//   (40 rows, the 22 light rank 32 wide).
 
 using System.Collections.Immutable;
 using FluentGpu.Foundation;
@@ -28,14 +28,14 @@ public static class ZuneHomeRules
 {
     // ── the node keys the views carry (the tests find them) ──────────────────────────────────────────────────────────────
 
-    /// <summary>The page's column, the quickplay strip, a quickplay group (`zune-home-quick:pins|history|new`), a pin tile, the daylist strip,
-    /// a zone's chapter (`zune-home-zone:<zone key>`), a side-by-side pair, the charts list and the customize word.</summary>
-    public const string ColumnKey = "zune-home-column", QuickplayKey = "zune-home-quickplay", QuickGroupPrefix = "zune-home-quick:",
-        PinTilePrefix = "zune-home-pin:", DaylistKey = "zune-home-daylist", ZonePrefix = "zune-home-zone:", PairPrefix = "zune-home-pair:",
-        ChartsKey = "zune-home-charts", CustomizeKey = "zune-home-customize", ZoneAirPrefix = "zune-home-air:", FailureKey = "zune-home-failure", BusyKey = "zune-home-busy";
+    /// <summary>The page's column, the history group (`zune-home-quick:history`), the daylist strip, a zone's chapter (`zune-home-zone:<zone key>`),
+    /// a side-by-side pair, the charts list.</summary>
+    public const string ColumnKey = "zune-home-column", QuickGroupPrefix = "zune-home-quick:",
+        DaylistKey = "zune-home-daylist", ZonePrefix = "zune-home-zone:", PairPrefix = "zune-home-pair:",
+        ChartsKey = "zune-home-charts", ZoneAirPrefix = "zune-home-air:", FailureKey = "zune-home-failure", BusyKey = "zune-home-busy";
 
-    /// <summary>The quickplay groups' ids.</summary>
-    public const string PinsGroup = "pins", HistoryGroup = "history", FreshGroup = "new";
+    /// <summary>The history group's id.</summary>
+    public const string HistoryGroup = "history";
 
     // ── the page ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -63,35 +63,10 @@ public static class ZuneHomeRules
     /// <summary>The gap between a tile's art and its caption lines.</summary>
     public const float TileCaptionGap = 6f;
 
-    // ── quickplay ────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ── the history group ────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The gap between the groups, between a group's tiles, between its head and its tiles.</summary>
-    public const float QuickGap = 32f, QuickTileGap = 12f, QuickHeadGap = 10f;
-
-    /// <summary>A quickplay group's row of <paramref name="count"/> tiles <paramref name="edge"/> wide, <paramref name="gap"/> apart (0 for none).</summary>
-    public static float TilesWidth(int count, float edge, float gap) => count <= 0 ? 0f : count * edge + (count - 1) * gap;
-
-    /// <summary>The line of the strip's wrapping row the new group stands on at strip width <paramref name="width"/>: the groups break as the row wraps
-    /// them (a group goes on the line it fits on after the ones before it), <paramref name="gap"/> apart; a group of width 0 is absent. Line 0 is the
-    /// first.</summary>
-    public static int FreshLine(float width, float pinsW, float historyW, float freshW, float gap)
-    {
-        int line = 0;
-        float x = -1f;   // < 0: the line is empty
-        Place(pinsW); Place(historyW); Place(freshW);
-        return line;
-
-        void Place(float w)
-        {
-            if (w <= 0f) return;
-            if (x < 0f) { x = w; return; }
-            if (x + gap + w > width + 0.5f) { line++; x = w; }
-            else x += gap + w;
-        }
-    }
-
-    /// <summary>The play disc that shows on a pin tile while it is hovered.</summary>
-    public const float PinPlayDisc = 40f, PinPlayGlyph = 14f, PinPlayInset = 8f;
+    /// <summary>The gap between the history's tiles, between its head and its tiles.</summary>
+    public const float QuickTileGap = 12f, QuickHeadGap = 10f;
 
     // ── the daylist ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -164,11 +139,48 @@ public static class ZuneHomeRules
     /// <summary>At most this many release rows.</summary>
     public const int ReleaseRowsMax = 6;
 
-    /// <summary>The clusters: the gap between their columns, a cluster's title row, its rows and their art, the narrowest column.</summary>
-    public const float ClusterGap = 24f, ClusterTitleH = 28f, ClusterRowH = 48f, ClusterArt = 40f, ClusterRowGap = 4f, ClusterMinCol = 200f;
+    /// <summary>The clusters: the gap between their columns, a cluster's title row, its rows and their art.</summary>
+    public const float ClusterGap = 24f, ClusterTitleH = 28f, ClusterRowH = 48f, ClusterArt = 40f, ClusterRowGap = 4f;
 
-    /// <summary>At most this many clusters, and rows per cluster.</summary>
-    public const int ClusterMax = 4, ClusterRows = 3;
+    /// <summary>Rows per cluster (home-gap P4: four).</summary>
+    public const int ClusterRows = 4;
+
+    /// <summary>A lone group on the last row takes the row in its wide form, its rows in this many columns beside the offer.</summary>
+    public const int WideClusterRowCols = 2;
+
+    /// <summary>A preview group's playlist cover, the reason's avatar, the gap in the group's offer (home-gap P4).</summary>
+    public const float PreviewCover = 72f, ReasonAvatar = 24f, OfferGap = 14f;
+
+    /// <summary>The daylist's tags shown (each opens its own mix).</summary>
+    public const int DaylistMaxTags = 6;
+
+    /// <summary>The mood plates (home-gap P6): the plate's floor, how many a shelf shows, the plate's insets. The name is 40 light and wraps; the plate
+    /// grows with it.</summary>
+    public const float MoodPlateH = 120f;
+    public const int MoodPlatesMax = 8;
+
+    /// <summary>The Home rhythm lead (home-rhythm.html #a-zune): no plate, the art over the name in the 40 light voice (lowercase, one line that
+    /// runs off its edge under a fade, never shrunk), its line, the play ring. The art is never under this height beside the grid; stacked
+    /// (Compact) it is this wide for one tall.</summary>
+    public const float LeadArtMin = 120f, LeadArtAspect = 2f, LeadCopyTop = 10f, LeadCopyGap = 4f, LeadRingTop = 10f;
+
+    /// <summary>The lead art's decode target.</summary>
+    public const int LeadArtDecodePx = 960;
+
+    /// <summary>A capped card's title lines (two title lines over one caption line) and the compact tiles' gap.</summary>
+    public const int CappedTitleLines = 2;
+
+    /// <inheritdoc cref="CappedTitleLines"/>
+    public const float CompactGap = 8f;
+
+    /// <summary>A book's caption lines (home-gap P8): the author, the rating and length, the plan.</summary>
+    public const int BookCaptionLines = 3;
+
+    /// <summary>A section head that hangs off something: its cover.</summary>
+    public const float EntityCover = 48f;
+
+    /// <summary>The video card: the still's width beside the copy, its badges' inset, the progress line.</summary>
+    public const float VideoStillW = 380f, VideoBadgeInset = 8f, VideoProgressH = 3f;
 
     /// <summary>The episode rows: the floor, the art, the gap between art and copy.</summary>
     public const float EpisodeRowH = 72f, EpisodeArt = 56f, EpisodeGap = 14f;
@@ -219,7 +231,7 @@ public static class ZuneHomeRules
     public const float TilesShare = 2f, ChartsShare = 1f;
 
     /// <summary>The charts: a row and its rank's width; the customize word's step down.</summary>
-    public const float ChartRowH = 40f, ChartRankW = 32f, ChartGap = 12f, CustomizeTop = 16f;
+    public const float ChartRowH = 40f, ChartRankW = 32f, ChartGap = 12f;
 
     /// <summary>The section drill page's narrowest cell.</summary>
     public const float SectionMinCell = 154f, SectionGap = 16f;
@@ -305,6 +317,15 @@ public enum ZuneDaylistTitle : byte
     Hero,
 }
 
+/// <summary>A Home rhythm capped grid (the compact tiles, the circles, the capped shelf) in one tier: as many columns as fit at
+/// <see cref="MinCol"/> up to <see cref="MaxCols"/>, and <see cref="Rows"/> rows of them (never a ragged row).</summary>
+public readonly record struct ZuneCappedBand(float MinCol, int MaxCols, int Rows)
+{
+    /// <summary>The columns at <paramref name="width"/>, 1..<see cref="MaxCols"/>; one before the width is measured.</summary>
+    public int Columns(float width, float gap)
+        => width <= 0f ? 1 : Math.Clamp((int)MathF.Floor((width + gap) / (MinCol + gap)), 1, Math.Max(1, MaxCols));
+}
+
 /// <summary>What Zune's Home lays out in one CONTENT tier (and, under a window too short for the strip, in the one-row form of it).
 /// Every property defaults to Standard's (Z-Home); a tier's record states its differences.</summary>
 public sealed record ZuneHomeLayout : ITierLayoutRecord
@@ -321,34 +342,19 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
     /// <summary>The gap between zones.</summary>
     public float ZoneGap { get; init; } = 28f;
 
-    // ── quickplay ────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ── the history group ────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The quickplay groups stand in one column (Compact) instead of a row that wraps; the gap between them. The row wraps at EVERY other tier,
-    /// Huge included: Huge's row is 2316 wide with six pins (6 x 180, 4 x 140, 3 x 140, 16 and 48 apart), wider than its column from the Huge edge
-    /// (1920 less two 48 gutters) to 2412, so a one-row strip clipped there cut the history and the new group mid-tile at the owner's 1920 window. A
-    /// group's tiles never wrap (`ZuneHomeQuickplay.Tiles`), so a wrapped group is its own width on the next row, never a full row of big tiles.</summary>
+    /// <summary>The history's plays stack as rows (Compact) instead of a row of tiles.</summary>
     public bool QuickStacked { get; init; }
-
-    /// <inheritdoc cref="QuickStacked"/>
-    public float QuickGroupGap { get; init; } = ZuneHomeRules.QuickGap;
 
     /// <summary>The gap between a group's tiles.</summary>
     public float QuickTileGap { get; init; } = ZuneHomeRules.QuickTileGap;
-
-    /// <summary>The pins quickplay shows, and their art.</summary>
-    public int QuickPins { get; init; } = 4;
-
-    /// <inheritdoc cref="QuickPins"/>
-    public float PinTileW { get; init; } = 132f;
 
     /// <summary>The history's plays and their art (a row's, where <see cref="HistoryRows"/>).</summary>
     public int QuickTiles { get; init; } = 3;
 
     /// <inheritdoc cref="QuickTiles"/>
     public float QuickTileW { get; init; } = 100f;
-
-    /// <summary>The new group's releases (0 = no group: the zone below says it); their art is <see cref="QuickTileW"/>.</summary>
-    public int QuickFresh { get; init; } = 3;
 
     /// <summary>A history or new tile carries the second line under its name.</summary>
     public bool QuickSubs { get; init; } = true;
@@ -505,6 +511,27 @@ public sealed record ZuneHomeLayout : ITierLayoutRecord
     /// <inheritdoc cref="ChartsBeside"/>
     public float ChartRankW { get; init; } = ZuneHomeRules.ChartRankW;
 
+    /// <summary>The Home rhythm lead grid: the lead beside the grid (half each) or stacked over it, and the grid's fixed columns and rows.</summary>
+    public bool LeadBeside { get; init; } = true;
+
+    /// <inheritdoc cref="LeadBeside"/>
+    public int LeadCols { get; init; } = 3;
+
+    /// <inheritdoc cref="LeadBeside"/>
+    public int LeadRows { get; init; } = 2;
+
+    /// <summary>The compact tiles (the cover beside the text, no plate), their art; the round covers; the capped shelf (one row of six at Standard).</summary>
+    public ZuneCappedBand Compact { get; init; } = new(200f, 5, 2);
+
+    /// <inheritdoc cref="Compact"/>
+    public float CompactArt { get; init; } = 48f;
+
+    /// <inheritdoc cref="Compact"/>
+    public ZuneCappedBand Circles { get; init; } = new(110f, 8, 1);
+
+    /// <inheritdoc cref="Compact"/>
+    public ZuneCappedBand Capped { get; init; } = new(150f, 6, 1);
+
     /// <summary>A heading row carries its subtitle.</summary>
     public bool Subtitles { get; init; } = true;
 
@@ -524,10 +551,11 @@ public static class ZuneHomeTiers
     // Huge's numbers (Z-Frame-Huge, Z-Home-Huge); Huge 4K is the same (the page caps at 2400, decision 2; plan "Home at 4K is built from the Huge rules").
     private static ZuneHomeLayout Huge(WidthTier tier) => Std(tier) with
     {
-        DaylistArtAspect = 2f, DaylistArtMaxW = 640f, ZoneGap = 36f, QuickGroupGap = 48f, QuickTileGap = 16f, QuickPins = 6, PinTileW = 180f, QuickTiles = 4, QuickTileW = 140f, QuickFresh = 3,
+        DaylistArtAspect = 2f, DaylistArtMaxW = 640f, ZoneGap = 36f, QuickTileGap = 16f, QuickTiles = 4, QuickTileW = 140f,
         DaylistH = 220f, DaylistArtW = 440f, ClockW = 320f, DaylistTitle = ZuneDaylistTitle.Hero, DaylistPad = 40f, DaylistRings = 3, ClockBarW = 52f,
         ShelfCols = 8, ShelfMinW = 140f, WideCols = 6, ClusterCols = 3, TileCols = 8, TileH = 120f, TileBig = true,
         ReleaseWhenW = 96f, ClusterTitleH = 32f, ClusterRowH = 64f, ChartRowH = 64f, ChartRankW = 36f,
+        LeadCols = 4, Compact = new ZuneCappedBand(220f, 5, 2), Circles = new ZuneCappedBand(130f, 10, 1), Capped = new ZuneCappedBand(170f, 8, 1),
     };
 
     // The wide bled daylist (Small; Standard under the strip's content rung): the art the strip's ground under the scrim, the copy a full-width column
@@ -551,7 +579,7 @@ public static class ZuneHomeTiers
         // rows have no "when" (the row's own "…" instead).
         Std(WidthTier.Compact) with
         {
-            ZoneGap = 22f, QuickStacked = true, QuickGroupGap = 22f, QuickPins = 4, PinTileW = 80f, QuickTiles = 3, QuickFresh = 0,
+            ZoneGap = 22f, QuickStacked = true, QuickTiles = 3,
             HistoryRows = true,
             DaylistForm = ZuneDaylistForm.Bleed, DaylistH = 160f, DaylistArtW = 0f, DaylistArtAspect = 0f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Title, DaylistTitleLines = 0,
             DaylistPad = 16f, DaylistMeta = false, DaylistRings = 4, RingLabels = false, RingSize = 36f, RingTarget = 40f, RingsGap = 10f, PlayAtEnd = false,
@@ -559,6 +587,8 @@ public static class ZuneHomeTiers
             PairBeside = false, ShelfCols = 2, ShelfMinW = 120f, WideCols = 2, WideMinW = 120f, ClusterCols = 1, TileCols = 2,
             ReleaseRowH = 56f, ReleaseArt = 44f, ReleaseWhenW = 0f, ClusterTitleH = 40f, ClusterRowH = 56f, ClusterArt = 44f, ChartsBeside = false,
             Subtitles = false, LinkTarget = 40f,
+            LeadBeside = false, LeadCols = 2, LeadRows = 2, Compact = new ZuneCappedBand(120f, 2, 3), CompactArt = 40f,
+            Circles = new ZuneCappedBand(90f, 3, 2), Capped = new ZuneCappedBand(120f, 2, 2),
         },
         // Small (Z-Frame-Small, Z-Home-Small): 18 between zones; pins and history side by side, three 88 tiles each (the name alone), no new group;
         // the shelf five across, the wide tiles four; the release list beside "because you like" (32 apart; 52 rows, 40 art, the "when" 72), the Browse
@@ -567,10 +597,11 @@ public static class ZuneHomeTiers
         // labelled rings), the strip growing from 176 to hug it.
         WideBleed(Std(WidthTier.Small) with
         {
-            ZoneGap = 18f, QuickGroupGap = 32f, QuickPins = 3, PinTileW = 88f, QuickTiles = 3, QuickTileW = 88f, QuickFresh = 0, QuickSubs = false,
+            ZoneGap = 18f, QuickTiles = 3, QuickTileW = 88f, QuickSubs = false,
             DaylistPad = 24f,
             PairBeside = true, PairGap = 32f, ShelfCols = 5, ShelfMinW = 100f, WideCols = 4, WideMinW = 120f, ClusterCols = 1, TileCols = 4,
             ReleaseRowH = 52f, ReleaseArt = 40f, ReleaseWhenW = 72f, ClusterRowH = 52f, ClusterArt = 40f, ChartsBeside = false,
+            LeadCols = 2, Compact = new ZuneCappedBand(180f, 3, 2), Circles = new ZuneCappedBand(96f, 6, 1), Capped = new ZuneCappedBand(130f, 4, 1),
         }),
         // Standard (Z-Home): the tuned page (the defaults).
         Std(WidthTier.Standard),
@@ -588,7 +619,7 @@ public static class ZuneHomeTiers
     // The one-row daylist (Z-Shell-Short): the same page, its daylist one 56 row, the gaps tight, no heading subtitles.
     private static readonly ZuneHomeLayout[] s_oneRow = Array.ConvertAll(s_records, static r => r with
     {
-        ZoneGap = Math.Min(r.ZoneGap, 14f), QuickGroupGap = Math.Min(r.QuickGroupGap, 14f), Subtitles = false,
+        ZoneGap = Math.Min(r.ZoneGap, 14f), Subtitles = false,
         DaylistForm = ZuneDaylistForm.OneRow, DaylistH = 56f, DaylistArtW = 56f, DaylistArtAspect = 0f, ClockW = 0f, DaylistTitle = ZuneDaylistTitle.Group, DaylistTitleLines = 1,
         DaylistPad = 16f, DaylistMeta = false, DaylistRings = 1, RingLabels = false, RingSize = ZuneHomeRules.RingSize, PlayAtEnd = true,
         DaylistGrows = false,
@@ -628,10 +659,6 @@ public static class ZuneHomeTiers
 /// <summary>What one row of Zune's Home column is.</summary>
 public enum ZuneHomeRowKind : byte
 {
-    /// <summary>The quickplay strip (All only): <see cref="ZuneHomeRow.First"/> is the Recents zone or -1, <see cref="ZuneHomeRow.Second"/>
-    /// the release-list zone or -1.</summary>
-    Quickplay,
-
     /// <summary>One zone (<see cref="ZuneHomeRow.First"/>).</summary>
     Single,
 
@@ -645,29 +672,14 @@ public readonly record struct ZuneHomeRow(ZuneHomeRowKind Kind, int First, int S
 /// <summary>Zune's Home plan: which zones stand where (pure, pinned by the rules tests).</summary>
 public static class ZuneHomePlan
 {
-    /// <summary>The rows of a facet's zones. On All (<paramref name="quickplay"/>) the strip leads (the daylist, the planner's first zone, follows
-    /// it) and takes the Recents zone as its history, so the Recents zone stands nowhere else; the release list stays in the column too (the board
-    /// draws it twice: three covers in the strip, the list below). Two neighbours that pair (a release list and the clusters, new episodes and
-    /// continue listening) share one row; every other zone is a row of its own, in the planner's order. <paramref name="daylistLeads"/> (the
-    /// one-row daylist, under the height rung <see cref="ZuneHomeRules.DaylistRung"/>; Z-Shell-Short): the daylist's row comes first, over the
-    /// strip, so a short window opens on the one row and the strip's captions never sit under the fade at the foot (V28c).</summary>
-    public static ImmutableArray<ZuneHomeRow> Rows(IReadOnlyList<ZoneKind> kinds, bool quickplay, bool daylistLeads = false)
+    /// <summary>The rows of a facet's zones (every facet but All, which is the pinned board): two neighbours that pair (a release list and the
+    /// clusters, new episodes and continue listening) share one row; every other zone is a row of its own, in the planner's order.</summary>
+    public static ImmutableArray<ZuneHomeRow> Rows(IReadOnlyList<ZoneKind> kinds)
     {
-        var rows = ImmutableArray.CreateBuilder<ZuneHomeRow>(kinds.Count + 1);
-        int recents = -1, releases = -1;
-        if (quickplay)
-        {
-            for (int i = 0; i < kinds.Count; i++)
-            {
-                if (kinds[i] == ZoneKind.RecentGrid && recents < 0) recents = i;
-                if (kinds[i] == ZoneKind.ReleaseList && releases < 0) releases = i;
-            }
-            rows.Add(new ZuneHomeRow(ZuneHomeRowKind.Quickplay, recents, releases));
-        }
+        var rows = ImmutableArray.CreateBuilder<ZuneHomeRow>(kinds.Count);
         for (int i = 0; i < kinds.Count; i++)
         {
-            if (i == recents) continue;
-            if (i + 1 < kinds.Count && i + 1 != recents && Pairs(kinds[i], kinds[i + 1]))
+            if (i + 1 < kinds.Count && Pairs(kinds[i], kinds[i + 1]))
             {
                 rows.Add(new ZuneHomeRow(ZuneHomeRowKind.Pair, i, i + 1));
                 i++;
@@ -675,26 +687,14 @@ public static class ZuneHomePlan
             }
             rows.Add(new ZuneHomeRow(ZuneHomeRowKind.Single, i));
         }
-        if (quickplay && daylistLeads)
-            for (int r = 1; r < rows.Count; r++)
-            {
-                if (rows[r].Kind != ZuneHomeRowKind.Single || kinds[rows[r].First] != ZoneKind.Daylist) continue;
-                var daylist = rows[r];
-                rows.RemoveAt(r);
-                rows.Insert(0, daylist);
-                break;
-            }
         return rows.ToImmutable();
     }
 
     /// <summary>Whether <paramref name="a"/> followed by <paramref name="b"/> share a row.</summary>
     public static bool Pairs(ZoneKind a, ZoneKind b) => (a, b) switch
     {
-        (ZoneKind.ReleaseList, ZoneKind.ClusterCards) or (ZoneKind.ClusterCards, ZoneKind.ReleaseList) => true,
         (ZoneKind.EpisodeLead, ZoneKind.ContinueEpisodes) or (ZoneKind.EpisodeRows, ZoneKind.ContinueEpisodes) => true,
         _ => false,
     };
 
-    /// <summary>Whether a facet opens on the quickplay strip: All (the empty facet id).</summary>
-    public static bool HasQuickplay(string facet) => facet.Length == 0;
 }

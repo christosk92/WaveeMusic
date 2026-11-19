@@ -428,8 +428,6 @@ internal static class ZuneDetailHero
                 Direction = 0, AlignItems = FlexAlign.Center, MinHeight = columns ? lay.ArtistLine : 0f, Height = columns ? float.NaN : HitArtist(lay), MinWidth = 0f,
                 Children = [slots.Attribution?.Invoke(infoW) ?? K.Artists(id, infoW, lay, columns ? 0f : HitArtist(lay))],
             }));
-        if (columns && hasRail && slots.Badges is { } badges) info.Add(K.LateRow("rail:badges", badges()) with { Exit = ZuneMotion.SwapFade });
-        if (columns && hasRail && slots.Rating is { } rating) info.Add(K.LateRow("rail:rating", rating(infoW)) with { Exit = ZuneMotion.SwapFade });
         // The meta's reserved lines: the record's in the identity column, one under a page head (Liked Songs), two beside the hero form's cover.
         int metaLines = head ? 1 : columns ? Math.Max(1, lay.MetaLines) : 2;
         float metaW = columns ? lay.RailW : float.NaN;
@@ -464,12 +462,11 @@ internal static class ZuneDetailHero
             Children = coverKids.ToArray(),
         });
 
-        // ── the status rows (a show's ledger, the daylist's pulse, the chart's news): the columns form's, between the meta and the rings (after them on a
-        //    short window, so the verbs and their state stay above the play bar at rest, V4) ──
-        var status = new List<Element>(3);
+        // ── the status rows (the daylist's pulse, the chart's news): the columns form's, between the meta and the rings (after them on a short window,
+        //    so the verbs and their state stay above the play bar at rest, V4) ──
+        var status = new List<Element>(2);
         if (columns && hasRail)
         {
-            if (slots.Ledger is { } ledger) status.Add(K.LateRow("rail:ledger", ledger(lay.RailW)) with { Exit = ZuneMotion.SwapFade });
             if (id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) status.Add(K.LateRow("rail:daylist", pulse()) with { Exit = ZuneMotion.SwapFade });
             if (id.ChartNewEntries > 0 && slots.Chart is { } chart) status.Add(K.LateRow("rail:chart", chart()) with { Exit = ZuneMotion.SwapFade });
         }
@@ -486,16 +483,14 @@ internal static class ZuneDetailHero
                 // play and saved) and eases its height.
                 Key = "hero:actions", Direction = 1, MinWidth = 0f, Shrink = 0f, Layout = K.GrowShove,
                 Height = columns ? float.NaN : lay.RingSize, ClipToBounds = !columns,
-                Children = [K.Rings(Z.ActionsKey, id, cfg, acts, slots, spec.Accent, spec.PlayAll ?? DetailVerbs.PlayContext(id.Subject), lay, spring: !columns, enter)],
+                Children = [K.Rings(Z.ActionsKey, id, cfg, acts, spec.Accent, spec.PlayAll ?? DetailVerbs.PlayContext(id.Subject), lay, spring: !columns, enter)],
             });
         }
         if (shortWindow) kids.AddRange(status);
 
-        // ── the columns form's courtesy rows: topics, about, the countdown, About this release (the band under the rows holds the last two at the hero form) ──
+        // ── the columns form's courtesy rows: the countdown, About this release (the band under the rows holds them at the hero form) ──
         if (columns && hasRail)
         {
-            if (slots.Topics is { } topics) kids.Add(K.LateRow("rail:topics", topics(lay.RailW)) with { Exit = ZuneMotion.SwapFade });
-            if (slots.About is { } about) kids.Add(K.LateRow("rail:about", about(lay.RailW)) with { Exit = ZuneMotion.SwapFade });
             if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre)
                 kids.Add(K.LateRow("rail:prerelease", pre()) with { Enter = enter ?? K.FadeUp, Exit = ZuneMotion.SwapFade });
             if (cfg.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
@@ -589,7 +584,7 @@ internal static class ZuneDetailHero
         kids.Add(K.CoverSkeleton(id.CoverUrl, w));
         kids.Add(new BoxEl { Height = lay.ArtistLine, Direction = 0, AlignItems = FlexAlign.Center, Children = [K.Bar(w * Z.SkelArtistFraction, lay.ArtistSize)] });
         kids.Add(new BoxEl { Height = lay.MetaLine, Direction = 0, AlignItems = FlexAlign.Center, Children = [K.Bar(w * Z.SkelMetaFraction, lay.MetaSize)] });
-        kids.Add(K.RingsSkeleton("skel:actions", K.RingCount(id, spec.Config, spec.Actions, spec.Slots, lay), lay));
+        kids.Add(K.RingsSkeleton("skel:actions", K.RingCount(id, spec.Config, spec.Actions, lay), lay));
         return new BoxEl { Direction = 1, Gap = lay.RailGap, Width = w, Shrink = 0f, Children = kids.ToArray() };
     }
 
@@ -621,7 +616,7 @@ internal static class ZuneDetailHero
                 ],
             },
             Air(Z.HeroActionsTop),
-            new BoxEl { Height = lay.RingSize, Children = [K.RingsSkeleton("hero-skel:actions", K.RingCount(id, spec.Config, spec.Actions, spec.Slots, lay), lay)] },
+            new BoxEl { Height = lay.RingSize, Children = [K.RingsSkeleton("hero-skel:actions", K.RingCount(id, spec.Config, spec.Actions, lay), lay)] },
         };
         if (g.Description)
         {

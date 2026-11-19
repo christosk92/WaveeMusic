@@ -225,6 +225,18 @@ public static partial class MiniPlayer
     public static int FaceCount => s_faces.Length;
     static int ClampFace(int i) => (uint)i < (uint)s_faces.Length ? i : 0;
 
+    /// <summary>A stored face index clamped onto the faces (an unknown one reads as Cover): the Settings dial's value.</summary>
+    public static int ClampFaceIndex(int stored) => ClampFace(stored);
+
+    /// <summary>The faces' names as loc keys, in flip order: the Settings dial's choices (the words a page draws and the search indexes).</summary>
+    public static string[] FaceNameKeys()
+    {
+        var keys = new string[s_faces.Length];
+        for (int i = 0; i < keys.Length; i++)
+            keys[i] = s_faces[i].Kind == MiniFaceKind.Lyrics ? Strings.Mini.Lyrics : Rail.PlayerCatalog.ById(s_faces[i].StyleId).NameKey;
+        return keys;
+    }
+
     static string FaceName(int i)
     {
         var f = s_faces[ClampFace(i)];
@@ -478,11 +490,40 @@ public static partial class MiniPlayer
     }
 
     /// <summary>"Colour from album art" for a theme slot: its explicit choice, else the theme's default.</summary>
-    static bool ArtColour(int slot, bool fallback)
+    static bool ArtColour(int slot, bool fallback) => ArtColourOf(s_artColour.Value, slot, fallback);
+
+    /// <summary>"Colour from album art" in <paramref name="mask"/> for a theme slot: its explicit choice, else the theme's default.</summary>
+    static bool ArtColourOf(int mask, int slot, bool fallback)
     {
-        int mask = s_artColour.Value;
         if (mask < 0 || (uint)slot > 7u) return fallback;
         return (mask & (1 << slot)) != 0 || ((mask & (1 << (slot + 8))) == 0 && fallback);
+    }
+
+    /// <summary>The ACTIVE theme's slot and default (its registered <see cref="MiniPlayerStyle"/>), or false before a theme registers one.</summary>
+    static bool ActiveArtSlot(out int slot, out bool fallback)
+    {
+        bool known = Theming.ThemeHost.Registry.TryGetStyle(StyleKeys.MiniPlayer, out var style);
+        (slot, fallback) = known ? (style!.ArtColourSlot, style.ArtColourDefault) : (-1, false);
+        return known;
+    }
+
+    /// <summary>"Colour from album art" for the ACTIVE theme, read from the stored <paramref name="mask"/>: the Settings dial's value.</summary>
+    public static bool ArtColourForActiveTheme(int mask) => ActiveArtSlot(out int slot, out bool fallback) && ArtColourOf(mask, slot, fallback);
+
+    /// <summary>Set "Colour from album art" for the ACTIVE theme's slot (the Options panel's writer, after the prefs are loaded so the
+    /// other themes' choices survive); nothing before a theme registers its style.</summary>
+    public static void SetArtColourForActiveTheme(bool on)
+    {
+        EnsurePrefs();
+        if (ActiveArtSlot(out int slot, out _)) SetArtColour(slot, on);
+    }
+
+    /// <summary>The Options panel's "Colour from album art": the active theme's slot is the Settings dial's (its writer, recorded as written from the
+    /// mini player); another slot (none today: the panel draws in the active theme) is written as it was.</summary>
+    static void SetArtColourFromOptions(int slot, bool on)
+    {
+        if (ActiveArtSlot(out int active, out _) && active == slot) SettingsSpec.Dial("lyrics.mini.artColour").WriteToggle(on, SettingsSurfaces.MiniPlayerOptions);
+        else SetArtColour(slot, on);
     }
 
     static void SetArtColour(int slot, bool on)
@@ -549,14 +590,23 @@ public static partial class MiniPlayer
         Platform.Settings.Set(Platform.Keys.MiniPlayerFace, index);
     }
 
-    static void ToggleOnTop()
+    /// <summary>Pick the face (the Options panel's writer), after the prefs are loaded so keep on top and the colours survive.</summary>
+    public static void ChooseFace(int index)
     {
-        bool next = !s_onTop.Peek();
-        s_onTop.Value = next;
-        Platform.Settings.Set(Platform.Keys.MiniPlayerOnTop, next);
+        EnsurePrefs();
+        SetFace(index);
     }
 
-    static string ArtistText()
+    /// <summary>Keep on top (the Options panel's writer): persisted and published, so an open window follows at once.</summary>
+    public static void SetOnTop(bool on)
+    {
+        EnsurePrefs();
+        if (s_onTop.Peek() == on) return;
+        s_onTop.Value = on;
+        Platform.Settings.Set(Platform.Keys.MiniPlayerOnTop, on);
+    }
+
+    internal static string ArtistText()
     {
         var c = Shell.PlayerBarHost.Props.Credits();
         if (c.Show is { } show) return show.Text;
@@ -600,15 +650,16 @@ public static partial class MiniPlayer
         ToggleRemaining = static () => PlayerVerbs.Default.ToggleRemaining(),
         ArtistText = ArtistText,
         DetailText = DetailText,
-        SetFace = SetFace,
+        // The Options panel's three rows are the Settings dials themselves (one writer each), recorded as written from the mini player.
+        SetFace = static i => SettingsSpec.Dial("lyrics.mini.face").WriteChoice(i, SettingsSurfaces.MiniPlayerOptions),
         BackToWavee = static () => Close("back"),
         OnTop = s_onTop,
-        ToggleOnTop = ToggleOnTop,
+        ToggleOnTop = static () => SettingsSpec.Dial("lyrics.mini.onTop").WriteToggle(!s_onTop.Peek(), SettingsSurfaces.MiniPlayerOptions),
         SetShape = static shape => s_shapeRequest.Value = (shape, s_shapeRequest.Peek().Seq + 1),
         WheelVolume = WheelVolume,
         UseMaterial = static (m, dark) => s_material.Value = (m, dark),
         ArtColour = ArtColour,
-        SetArtColour = SetArtColour,
+        SetArtColour = SetArtColourFromOptions,
         ArtUrl = NowArtUrl,
         AlbumAccent = AlbumAccent,
         SeekRail = static draw => Shell.SeekBarDrawn(draw),

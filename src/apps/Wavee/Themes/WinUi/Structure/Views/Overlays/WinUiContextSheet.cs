@@ -271,11 +271,12 @@ internal static class WinUiContextSheet
                     ? () => onSub(item)
                     : () => { close(); item.Invoke?.Invoke(); };
                 into.Add(Row(item.Icon, item.Label, item.AcceleratorText, item.Enabled, trailGlyph.Length > 0 ? trailGlyph : null, click, key: "sheet-row:" + i,
-                    role: AutomationRole.MenuItem));
+                    role: AutomationRole.MenuItem, attention: item.Attention));
             }
         }
 
-        static BoxEl Row(IconRef icon, string label, string? accelerator, bool enabled, string? trail, Action? onClick, string key, AutomationRole role)
+        static BoxEl Row(IconRef icon, string label, string? accelerator, bool enabled, string? trail, Action? onClick, string key, AutomationRole role,
+            bool attention = false)
         {
             ColorF ink = enabled ? Tok.TextPrimary : Tok.TextDisabled;
             var kids = new List<Element>(4)
@@ -291,6 +292,8 @@ internal static class WinUiContextSheet
                     Size = WinUiSheetRules.RowText, Color = ink, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
             };
+            // A row that asks for attention (hint #12's options row): the InfoBadge dot after the label, as the menu draws it.
+            if (attention && enabled) kids.Add(InfoBadge.Dot() with { Shrink = 0f, HitTestVisible = false });
             if (accelerator is { Length: > 0 }) kids.Add(new TextEl(accelerator) { Size = WinUiSheetRules.SubtitleSize, Color = Tok.TextTertiary });
             if (trail is not null) kids.Add(Icon(trail, WinUiSheetRules.RowTrail, enabled ? Tok.TextSecondary : Tok.TextDisabled));
             return new BoxEl

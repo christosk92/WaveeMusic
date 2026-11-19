@@ -81,7 +81,12 @@ internal static class WinUiHomeFacetRow
             Children = [bar],
         };
         Element row = strip
-            ? Ui.ScrollView(new BoxEl
+            // The strip and the row are different trees (a scroller, a box): keyed apart, the crossing cross-fades them.
+            ? new BoxEl
+            {
+                Key = "home:facet:row:strip", Direction = 0, Height = WinUiHomeRules.SelectorH, MinWidth = 0f, Grow = 1f, Shrink = 1f, Basis = 0f,
+                Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+                Children = [Ui.ScrollView(new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Height = WinUiHomeRules.SelectorH, Gap = Spacing.XS,
                     Padding = new Edges4(0f, 0f, inset, 0f),   // the strip's last pixel rests one inset from the window's edge once scrolled to the end
@@ -93,11 +98,13 @@ internal static class WinUiHomeFacetRow
                     ],
                 }, horizontal: true) with
                 {
-                    Key = "home:facet:row", Height = WinUiHomeRules.SelectorH, MinWidth = 0f, Grow = 1f, Shrink = 1f, Basis = 0f,
-                }
+                    Height = WinUiHomeRules.SelectorH, MinWidth = 0f, Grow = 1f, Shrink = 1f, Basis = 0f,
+                }],
+            }
             : new BoxEl
             {
                 Key = "home:facet:row",
+                Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
                 Direction = 0, AlignItems = FlexAlign.Center, Height = WinUiHomeRules.SelectorH, MinWidth = 0f, Gap = Spacing.XS,
                 Grow = 1f, Shrink = 1f, Basis = 0f,
                 // Small leaves the button out (the greeting's row has it): no stand-in, so the host LEAVES (its exit fade) instead of being reused empty.

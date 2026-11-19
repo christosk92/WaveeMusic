@@ -228,7 +228,8 @@ internal sealed class ZuneBand : Component
         UseLayoutEffect(() =>
         {
             if (Context.Scene is not { } scene || Context.Anim is not { } anim) return;
-            _carousel.Slide(scene, anim, carousel, Design.Reduced);
+            // A crossing into the rotating tier glides the words to their rotated places (they never jump there).
+            _carousel.Slide(scene, anim, carousel, Design.Reduced, enterGlide: true);
             if (_carousel.TakeRefocus() && _carousel.Order.Length > 0 && _carousel.WordOf(_carousel.Order[0]) is { IsNull: false } lead && scene.IsLive(lead))
                 (hooks.MoveFocusVisual ?? hooks.RestoreFocus)?.Invoke(lead);
         }, DepKey.From(orderKey, carousel ? 1 : 0, (int)tiers.Window, 0));

@@ -5,7 +5,7 @@
 // `C-SettingsSections-Compact` and `C-ThemeOptions-Compact`, Small the -Small boards, Huge the -Huge boards; Standard is the tuned design (P3b) and its record is
 // exactly the numbers the page held before tiers (`ClassicSettingsRules`: the 1000-DIP left-aligned column, the 208 x 172 theme cards that wrap).
 //
-//   tier      tabs                              rows                                       theme picker                         columns
+//   tier      strip                             rows                                       theme picker                         columns
 //   Compact   44 tall, scroll, full-bleed fade  control UNDER the label (picker 40);       2-up grid, 72 thumbs, no text        1, fill
 //                                               toggles keep label | state | 48 x 40
 //   Small     40 tall, scroll, fade at the edge label | control (32 controls)              one strip, 190 cards, 72 thumbs      1, 1000
@@ -13,9 +13,9 @@
 //   Huge      stock item, in the gutter            label | control                            five-up row that fits, x 172         2 x 1000, gap 32, left-aligned
 //                                                                                             (each card <= 184, the board's fifth)
 //
-// COLUMNS. At Huge a tab's sections split over two columns (the board: Appearance puts Theme, options, mode, zoom and marquee on the left and Lists, Sidebar, Lyrics
-// and Full screen on the right; Playback puts Runtime, Audio and Sound beside Player bar and Video). `SplitAt` picks the section boundary that balances the two: pure
-// arithmetic over the sections' weights, never a width comparison. A tab with one section stays one column. The columns never exceed 1000 each and the pair is
+// COLUMNS. At Huge a category's groups split over two columns (the board: Appearance puts the theme, its options, mode and size on the left and motion and Home
+// and library on the right). `SplitAt` picks the group boundary that balances the two: pure arithmetic over the groups' weights, never a width comparison. A
+// category with one group stays one column. The columns never exceed 1000 each and the pair is
 // LEFT-ALIGNED (never centred), as the Huge boards draw. The split is made at EVERY tier and only laid out differently (the pair is a row at Huge and a column,
 // reading as one, elsewhere), so a crossing into or out of Huge keeps every section as the same node; no tier or column count is in a key.
 //
@@ -33,6 +33,10 @@
 //   Small     24, gap 12    one row           24 / 8
 //   Standard  none          caption under     32 / 8   (tuned)
 //   Huge      24, gap 12    one row           28 / 4
+//
+// THE SEARCH BOX AND THE HOME (settings rework 7.1). The masthead's box is right-aligned beside the title at Small, Standard and Huge and the row's width under
+// the title at Compact (`SearchUnder`); the Settings home's at-a-glance tiles are one per row at Compact, two at Small and Standard, three across Huge's wide
+// column (`GlanceColumns`). Both are live props of the same nodes, so a crossing moves the box and re-flows the tiles instead of rebuilding them.
 //
 // TOUCH. `Target` is the Compact hit target (40): the page asks for a control at that size and the record never decides what a control is. The stock ComboBox takes
 // its Large (40-DIP) field and fills the stacked row, and a NumberBox takes a 40-DIP field through its options' style (`ClassicSettings.Touch.cs`).
@@ -65,7 +69,7 @@ public enum ClassicThemePickerForm : byte
 /// <param name="TabHeight">The tab strip's item height (0 keeps the stock item).</param>
 /// <param name="TabsScroll">The tab strip scrolls sideways (a lane that runs off the edge fades out) instead of ending at the column.</param>
 /// <param name="TabsBleed">The strip and its rule run edge to edge of the page card (Compact), its first label still on the gutter.</param>
-/// <param name="Columns">The tab body's columns (Huge 2).</param>
+/// <param name="Columns">The body's columns (Huge 2).</param>
 /// <param name="ColumnMaxW">One column's cap (the board's 1000).</param>
 /// <param name="ColumnGap">The gap between columns.</param>
 /// <param name="Picker">The theme picker's form.</param>
@@ -77,13 +81,16 @@ public enum ClassicThemePickerForm : byte
 /// <param name="PickerPad">The padding of the card the picker sits in (the board's 12 at Compact, 16 elsewhere).</param>
 /// <param name="TitleGlyph">The page title stands behind the 24 gear glyph (Compact, Small, Huge boards; the tuned Standard title stands alone).</param>
 /// <param name="SectionInline">A section header's caption rides the title's line (Small, Huge) instead of hanging under it.</param>
-/// <param name="SectionTop">The space above a section header (none above the tab's first).</param>
+/// <param name="SectionTop">The space above a section header (none above the body's first).</param>
 /// <param name="SectionBottom">The space between a section header and its first card.</param>
+/// <param name="SearchUnder">The masthead's search box sits under the title, the row's width (Compact), instead of right-aligned beside it.</param>
+/// <param name="GlanceColumns">The Settings home's at-a-glance tiles per row (design 7.1: two at Standard, one at Compact).</param>
 public sealed record ClassicSettingsLayout(
     WidthTier Tier, float Target, bool StacksControls, float TabHeight, bool TabsScroll, bool TabsBleed,
     int Columns, float ColumnMaxW, float ColumnGap,
     ClassicThemePickerForm Picker, float PickerCardW, float PickerCardH, float PickerThumbH, bool PickerShowsText, float PickerGap, float PickerPad,
-    bool TitleGlyph, bool SectionInline, float SectionTop, float SectionBottom)
+    bool TitleGlyph, bool SectionInline, float SectionTop, float SectionBottom,
+    bool SearchUnder, int GlanceColumns)
 {
     /// <summary>The page lays its controls out for touch (the Compact rule: every hit target is at least 40).</summary>
     public bool Touch => Target > 0f;
@@ -103,27 +110,31 @@ public static class ClassicSettingsTiers
 {
     private static readonly ClassicSettingsLayout[] s_records =
     [
-        // Compact (C-Settings-Compact): the tabs bleed to the card's edges, 44 tall; the rows stack; the theme picker is a 2-up grid of 72-high thumbs.
+        // Compact (C-Settings-Compact): the strip bleeds to the card's edges, 44 tall; the rows stack; the theme picker is a 2-up grid of 72-high thumbs.
         new(WidthTier.Compact, Target: 40f, StacksControls: true, TabHeight: 44f, TabsScroll: true, TabsBleed: true,
             Columns: 1, ColumnMaxW: 1000f, ColumnGap: 0f,
             ClassicThemePickerForm.Grid, PickerCardW: 0f, PickerCardH: 0f, PickerThumbH: 72f, PickerShowsText: false, PickerGap: 12f, PickerPad: 12f,
-            TitleGlyph: true, SectionInline: false, SectionTop: 20f, SectionBottom: 6f),
-        // Small (C-Settings-Small): 40-tall tabs that fade out at the edge; the picker is one scrolling strip of 190-wide cards with 72-high thumbs.
+            TitleGlyph: true, SectionInline: false, SectionTop: 20f, SectionBottom: 6f,
+            SearchUnder: true, GlanceColumns: 1),
+        // Small (C-Settings-Small): a 40-tall strip that fades out at the edge; the picker is one scrolling strip of 190-wide cards with 72-high thumbs.
         new(WidthTier.Small, Target: 0f, StacksControls: false, TabHeight: 40f, TabsScroll: true, TabsBleed: true,
             Columns: 1, ColumnMaxW: 1000f, ColumnGap: 0f,
             ClassicThemePickerForm.Strip, PickerCardW: 190f, PickerCardH: 0f, PickerThumbH: 72f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f,
-            TitleGlyph: true, SectionInline: true, SectionTop: 24f, SectionBottom: 8f),
+            TitleGlyph: true, SectionInline: true, SectionTop: 24f, SectionBottom: 8f,
+            SearchUnder: false, GlanceColumns: 2),
         // Standard: the tuned design, unchanged (the 1000 column, the 208 x 172 cards).
         new(WidthTier.Standard, Target: 0f, StacksControls: false, TabHeight: 0f, TabsScroll: false, TabsBleed: false,
             Columns: 1, ColumnMaxW: 1000f, ColumnGap: 0f,
             ClassicThemePickerForm.Wrap, PickerCardW: 208f, PickerCardH: 172f, PickerThumbH: 92f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f,
-            TitleGlyph: false, SectionInline: false, SectionTop: 32f, SectionBottom: 8f),
+            TitleGlyph: false, SectionInline: false, SectionTop: 32f, SectionBottom: 8f,
+            SearchUnder: false, GlanceColumns: 2),
         // Huge (C-Settings-Huge, C-SettingsSections-Huge): two 1000 columns 32 apart, left-aligned; the picker is the board's five-up row that fits its column,
         // each card at most 184 (the board's (1000 - 2 x 16 - 2 - 4 x 12) / 5).
         new(WidthTier.Huge, Target: 0f, StacksControls: false, TabHeight: 0f, TabsScroll: false, TabsBleed: false,
             Columns: 2, ColumnMaxW: 1000f, ColumnGap: 32f,
             ClassicThemePickerForm.Fit, PickerCardW: 184f, PickerCardH: 172f, PickerThumbH: 92f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f,
-            TitleGlyph: true, SectionInline: true, SectionTop: 28f, SectionBottom: 4f),
+            TitleGlyph: true, SectionInline: true, SectionTop: 28f, SectionBottom: 4f,
+            SearchUnder: false, GlanceColumns: 3),
     ];
 
     /// <summary>The record of content tier <paramref name="content"/> (Huge 4K reads Huge's: Classic draws no 4K band).</summary>
@@ -134,9 +145,9 @@ public static class ClassicSettingsTiers
 
     // ── the columns ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Where a tab's sections split over two columns: the number of leading groups that go in the left column, 1..n-1, chosen so the two columns' weights
-    /// differ least (the left one wins a tie, so the first column is never the shorter by choice). -1 when the tab has fewer than two groups: it stays one column.</summary>
-    /// <param name="weights">Each section's weight (its rows), in the tab's order.</param>
+    /// <summary>Where a body's groups split over two columns: the number of leading groups that go in the left column, 1..n-1, chosen so the two columns' weights
+    /// differ least (the left one wins a tie, so the first column is never the shorter by choice). -1 when the body has fewer than two groups: it stays one column.</summary>
+    /// <param name="weights">Each group's weight (its rows), in the body's order.</param>
     public static int SplitAt(IReadOnlyList<int> weights)
     {
         int n = weights.Count;

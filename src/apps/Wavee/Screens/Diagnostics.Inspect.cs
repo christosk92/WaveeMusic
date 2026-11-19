@@ -370,13 +370,15 @@ public static partial class Diagnostics
             if (!Inspect.Validate(in cmd, out string invalid)) return Inspect.Reply.Fail(cmd.Id, cmd.Name, invalid);
             _acts = Inspect.SpecOf(cmd.Verb)?.Acts ?? false;
             _hit = null;
+            CaptureAnnouncements();   // Diagnostics.Inspect.Home.cs: the said[] of this verb starts here
+            PerfBegin(in cmd);        // Diagnostics.Inspect.Perf.cs: the frames this verb runs are recorded under its label
             try { return Dispatch(in cmd); }
             catch (Exception ex)
             {
                 Log.Warn("inspect", "command '" + cmd.Name + "' failed", ex);
                 return Inspect.Reply.Fail(cmd.Id, cmd.Name, ex.GetType().Name + ": " + ex.Message);
             }
-            finally { _acts = false; }
+            finally { _acts = false; PerfEnd(); }
         }
 
         string Dispatch(in Inspect.Command cmd)
@@ -390,7 +392,10 @@ public static partial class Diagnostics
             {
                 case Inspect.Verb.Help:
                     return Help(id, name, a);
+                case Inspect.Verb.Said:
+                    return Said(id, name, a);
                 case Inspect.Verb.Quit:
+                    HomeBoardStore.Instance.Quiesce();   // the pinned Home's pending write lands before the process ends
                     Unmount();
                     _quit = true;
                     return Inspect.Reply.Ok(id, name);
@@ -406,6 +411,7 @@ public static partial class Diagnostics
                 case Inspect.Verb.Reset:
                     Unmount();
                     ClearLeaks(keepRoute: false, keepOptions: false);
+                    StageHomeDoc("default");
                     Wavee.Shell.Headless.ResetNavigation();
                     InspectKit.ActivateTheme(InspectKit.DefaultThemeId, ThemeKind.Dark);
                     return Inspect.Reply.Ok(id, name, w => w.WriteString("theme", InspectKit.ActiveThemeId));
@@ -417,12 +423,22 @@ public static partial class Diagnostics
                     return Crossing(id, name, a);   // mounts by itself when nothing is
                 case Inspect.Verb.Views:
                     return Views(id, name, a);
+                case Inspect.Verb.PodcastPages:
+                    return PodcastPagesVerb(id, name, a);
                 case Inspect.Verb.Setting:
                     return Setting(id, name, a);   // the store needs no mount; a mounted one settles after the write
+                case Inspect.Verb.Settings:
+                    return SettingsSearchVerb(id, name, a);   // a query needs no mount; focus= navigates (it says so when nothing is mounted)
+                case Inspect.Verb.Hint:
+                    return Hint(id, name, a);      // the table and the blob need no mount; `show` settles on a mounted one
+                case Inspect.Verb.Recent:
+                    return Recent(id, name, a);
                 case Inspect.Verb.Tiers:
                     return Tiers(id, name, a);   // the policy needs no mount; the facts do
                 case Inspect.Verb.Crossings:
                     return Crossings(id, name, a);   // mounts a row at a time
+                case Inspect.Verb.Perf:
+                    return Perf(id, name, a);   // on needs a mount; report and off read what was recorded
             }
 
             // Everything below needs a mount (the verb table says so: NeedsMount).
@@ -442,7 +458,21 @@ public static partial class Diagnostics
                     {
                         float w0 = a.Float("w", 0f), h0 = a.Float("h", 0f);
                         if (!(w0 >= 1f && h0 >= 1f)) return Inspect.Reply.Fail(id, name, "resize wants w and h (DIP)");
+                        int glideMs = a.Int("ms", 0);
                         if (a.Bool("loop", false)) ResizeThroughModalLoop(shell, w0, h0);
+                        else if (glideMs > 0)
+                        {
+                            // `ms=`: one size per 16 ms frame, eased in-out, as a hand drags the edge (the live driver's resize)
+                            RectF from = InspectKit.WindowRect(shell);
+                            int frames = Math.Max(1, (glideMs + 15) / 16);
+                            for (int i = 1; i <= frames; i++)
+                            {
+                                float t = (float)i / frames;
+                                t = t < 0.5f ? 4f * t * t * t : 1f - MathF.Pow(-2f * t + 2f, 3f) / 2f;
+                                shell.Resize(MathF.Round(from.W + (w0 - from.W) * t), MathF.Round(from.H + (h0 - from.H) * t));
+                                if (i < frames) RunFrames(1);
+                            }
+                        }
                         else shell.Resize(w0, h0);
                         if (_pointer is { } p && !InspectKit.WindowRect(shell).Contains(p)) _pointer = null;   // the window shrank past it
                         return Settled(id, name, a);
@@ -488,6 +518,7 @@ public static partial class Diagnostics
                         Move(p);
                         RunFrames(1);
                         _hit = HitKey(p);   // what the press lands on (a hover can raise a part over the target)
+                        if (cmd.Verb == Inspect.Verb.Hover) RunFrames(Math.Max(0, DwellFrames(a.Int("dwell", 0)) - 1));   // the rest (Diagnostics.Inspect.Pointer.cs)
                         if (cmd.Verb == Inspect.Verb.Click)
                         {
                             int button = a.Str("button", "left") == "right" ? 1 : 0;
@@ -514,9 +545,28 @@ public static partial class Diagnostics
                 case Inspect.Verb.Type:
                     {
                         string text = a.Str("text");
+                        // `key=` (or x, y): press the box first, as a user puts the caret in it (the Settings page's `settings:search`).
+                        bool aimed = a.Has("key") || a.Has("x");
+                        Aim aim = default;
+                        if (aimed)
+                        {
+                            if (!TryAim(id, name, a, wheel: false, out aim, out string refusal)) return refusal;
+                            Point2 p = aim.Point;
+                            Move(p);
+                            RunFrames(1);
+                            _hit = HitKey(p);
+                            Queue(new InputEvent(InputKind.PointerDown, p, 0, 0, KeyModifiers.None, TimestampMs: _ms));
+                            RunFrames(1);
+                            Queue(new InputEvent(InputKind.PointerUp, p, 0, 0, KeyModifiers.None, TimestampMs: _ms + 50));
+                            RunFrames(1);
+                        }
                         foreach (char c in text) Queue(new InputEvent(InputKind.Char, default, 0, c, TimestampMs: _ms));
                         RunFrames(1);
-                        return Settled(id, name, a, w => w.WriteNumber("chars", text.Length));
+                        return Settled(id, name, a, w =>
+                        {
+                            w.WriteNumber("chars", text.Length);
+                            if (aimed) WriteAim(w, in aim);
+                        });
                     }
                 case Inspect.Verb.Scroll:
                     {
@@ -560,7 +610,7 @@ public static partial class Diagnostics
                         // context (the stage's "playing from …" line) has one
                         EntityId contextId = default;
                         if (a.Has("context") && !EntityId.TryParse(a.Str("context").AsSpan(), out contextId)) return Inspect.Reply.Fail(id, name, "context wants a spotify: uri, not '" + a.Str("context") + "'");
-                        if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)), a.Int("next", 0), agoMin: a.Int("ago", 0), context: contextId, at: a.Int("at", 0))) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
+                        if (!InspectKit.Play(uri, Math.Max(0, a.Int("fromMs", 0)), a.Int("next", 0), agoMin: a.Int("ago", 0), context: contextId, at: a.Int("at", 0), cold: a.Int("cold", 0))) return Inspect.Reply.Fail(id, name, "play wants a spotify:track|episode uri, not '" + uri + "'");
                         RunFrames(2);
                         // The load opens on the audio chain on the wall clock, which a frame-counted settle can outrun (the reply then read the bar and the
                         // rows before the track played: no playing row, no lyrics button). Wait for it to land first; `phase` says where it stands.
@@ -611,13 +661,16 @@ public static partial class Diagnostics
                         if (kind == "head")
                         {
                             string uri = a.Str("uri");
-                            if (!Entities.StageHead(uri, artistOverview: a.Has("answer"))) return Inspect.Reply.Fail(id, name, "state kind=head wants uri=<an album, playlist, show, episode or artist the fake holds>, not '" + uri + "'");
+                            string keep = a.Str("keep");
+                            if (keep.Length > 0 && keep != "card") return Inspect.Reply.Fail(id, name, "state kind=head keep= takes card (the title and the cover a card stages), not '" + keep + "'");
+                            if (!Entities.StageHead(uri, artistOverview: a.Has("answer"), keepCard: keep == "card")) return Inspect.Reply.Fail(id, name, "state kind=head wants uri=<an album, playlist, show, episode or artist the fake holds>, not '" + uri + "'");
                             InspectKit.ColdStaged = true;   // the next mount puts the header back
                             // answer=hold: the page's own ask for its head goes through the real fetch layer and is held by a scripted transport
                             // (Entities.Fake.Answer.cs), for `head-land answer=` to settle.
                             if (a.Has("answer") && !Entities.BeginScripted(uri))
                                 return Inspect.Reply.Fail(id, name, "state kind=head answer= wants an album, playlist, show, episode or artist the fake holds");
-                            Wavee.Shell.GoTo(Wavee.Shell.For(EntityUri.Parse(uri)));
+                            // go=false stages it where the listener is, so a card click opens the page the way a listener does (its cover's flight).
+                            if (a.Bool("go", true)) Wavee.Shell.GoTo(Wavee.Shell.For(EntityUri.Parse(uri)));
                             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
                             return Settled(id, name, a, w =>
                             {
@@ -688,8 +741,18 @@ public static partial class Diagnostics
                     return Trace(id, name, a, shell);
                 case Inspect.Verb.Drag:
                     return Drag(id, name, a);
+                case Inspect.Verb.Home:
+                    return Home(id, name, a);
+                case Inspect.Verb.Hold:
+                    return Hold(id, name, a);
+                case Inspect.Verb.Focus:
+                    return Focus(id, name, a);
                 case Inspect.Verb.Window:
                     return Window(id, name, a, shell);
+                case Inspect.Verb.Film:
+                    return Film(id, name, a, shell);
+                case Inspect.Verb.Pointer:
+                    return Pointer(id, name, a);
             }
             return Inspect.Reply.Fail(id, name, "verb not handled");
         }
@@ -802,6 +865,7 @@ public static partial class Diagnostics
         {
             float w0 = a.Float("w", 1180f), h0 = a.Float("h", 760f);
             if (!MountShell(a, w0, h0, out string error, out bool mounted)) return Inspect.Reply.Fail(id, name, error, mounted ? WriteMountFacts : null);
+            LandHomeDoc(a);   // Diagnostics.Inspect.Home.cs: a homedoc whose state needs the mounted board (gonepin)
             return Settled(id, name, a, WriteMountFacts);
         }
 
@@ -827,15 +891,20 @@ public static partial class Diagnostics
             ClearLeaks(a.Bool("keepRoute", false));
             if (!a.Bool("keepRoute", false)) Wavee.Shell.Headless.ResetNavigation();
             // `setup=true` mounts a first run: the pending marker is armed in the (in-memory, `--fake`) store and the wizard's boot decision is taken again, so its plate opens on the mount.
-            if (a.Bool("setup", false) || a.Str("setup") == "signin")
+            if (a.Bool("setup", false) || a.Str("setup") is "signin" or "theme")
             {
                 Platform.Settings.Set(Platform.Keys.SetupPending, true);
                 Setup.Wizard.ResetForTests();
                 Setup.Wizard.Boot(Platform.Settings, false);
-                // `setup=signin` starts on the sign-in page (step 2) instead of the terms.
-                if (a.Str("setup") == "signin" && Setup.Wizard.Due is { } due) due.Page.Value = Setup.WizardPage.SignIn;
+                // `setup=signin` starts on the sign-in page (step 2) instead of the terms, `setup=theme` on the theme page (step 3: the picker and the active
+                // theme's options; a headless run cannot sign in to pass step 2).
+                if (Setup.Wizard.Due is { } due && a.Str("setup") is "signin" or "theme")
+                    due.Page.Value = a.Str("setup") == "theme" ? Setup.WizardPage.Theme : Setup.WizardPage.SignIn;
             }
             InspectKit.ActivateTheme(theme, kind ?? Tok.Theme);
+            // `home=<fixture>`: the Home subjects re-seeded from that fixture; every mount names one (default mock), so a previous mount's never leaks.
+            if (!Entities.StageHomeFixture(a.Str("home", "mock"))) { error = "home fixture '" + a.Str("home", "mock") + "' is not bundled"; return false; }
+            if (!StageHome(a, out error)) return false;   // Diagnostics.Inspect.Home.cs: homedoc= (over the fixture's answer)
             string gpu = a.Str("gpu", "hardware").ToLowerInvariant();   // hardware falls back to WARP on a machine without an adapter (D3D12Device.InitDevice)
             if (gpu is not ("warp" or "hardware" or "none")) { error = "gpu is warp, hardware or none"; return false; }
             if (!StagePrefs(a, out error)) return false;
@@ -869,6 +938,7 @@ public static partial class Diagnostics
             FluentGpu.Dsl.Materials.EnergySaver = materials == "off";
             float dt = a.Float("dt", 16f);
             if (!(dt >= 1f && dt <= 100f)) { error = "dt is 1..100 ms"; return false; }
+            _dtMs = dt;   // `perf`'s default budget (Diagnostics.Inspect.Perf.cs)
             // `mini=1` (#197): the mini player window's content ALONE at w x h (its shape follows the size), `face=<0..7>` its face. The
             // mini player reads as open, so its animated faces run as they do in the window.
             // `deskW`/`deskH`: the window sits at the bottom-right corner of a screen that size, so its menus (which escape the window into
@@ -882,6 +952,11 @@ public static partial class Diagnostics
             _frames++;
             _mounts++;
             mounted = true;
+            Wavee.HomeUi.ShelfPreview.RealInTestHost = a.Str("media") == "real";   // the shelf's real Media Foundation players (the gpulock lane only)
+            if (a.Str("media") == "fake")   // Diagnostics.Inspect.Media.cs: the fake video and audio source, before anything opens a player
+                _fakeMedia = new FakeMedia(_shell.Host, a.Int("mediaOpenMs", 120), a.Float("mediaStartCostMs", 0f), a.Float("mediaFrameCostMs", 0f),
+                    a.Int("mediaFailMs", 0));
+            Wavee.HomeUi.PreviewAudio.ResetForMount();   // the profile's preview sound, no claim, no duck, fresh counters
             if (a.Has("route") || a.Has("uri") || a.Has("deeplink"))
             {
                 if (!Navigate(a, out error)) return false;
@@ -960,6 +1035,7 @@ public static partial class Diagnostics
             bool optionsForNext = _optionsForNext && keepOptions;
             _optionsForNext = false;
             RestoreSettings();   // the app settings `setting` wrote on the last mount (kept when written for this one)
+            RestoreHints();      // a `hint show` forced its hint for one mount
             if (_mounts == 0) return;
             Wavee.Shell.SetInspectState("none");
             InspectKit.RestoreColdPlaylist();
@@ -971,6 +1047,9 @@ public static partial class Diagnostics
             if (!keepRoute) InspectKit.ResetTabs();
             _scriptedVideo?.Dispose();
             _scriptedVideo = null;
+            _fakeMedia?.Dispose();
+            _fakeMedia = null;
+            Wavee.HomeUi.ShelfPreview.RealInTestHost = false;
             InspectKit.ResetVideo(_fakePlayer);
             _fakePlayer = null;
             InspectKit.ResetPlayback();
@@ -978,12 +1057,20 @@ public static partial class Diagnostics
             if (!optionsForNext) InspectKit.ForgetThemeOptions();   // the mount's ActivateTheme then reads the defaults
         }
 
-        /// <summary>`mount marquee=on|off remote=<name> panelW=<dip>`, set before the mount: the app's marquee setting (Settings > Appearance), a remote output
-        /// the play bar says it is playing on (`--fake` has no Connect cluster; without `remote` the real roster decides again), and the side panel's stored
-        /// width (clamped to the theme's drag range when the panel opens).</summary>
+        /// <summary>`mount marquee=on|off remote=<name> panelW=<dip> lyrics=word|line`, set before the mount: the app's marquee setting (Settings > Appearance), a remote output
+        /// the play bar says it is playing on (`--fake` has no Connect cluster; without `remote` the real roster decides again), the side panel's stored
+        /// width (clamped to the theme's drag range when the panel opens), and the shape the fake lyrics answer in (word: word-synced, the default;
+        /// line: line-synced, no word timing; every mount sets it, and a change empties the lyrics store so each track is answered again).</summary>
         static bool BarPrefs(Inspect.Args a, out string error)
         {
             error = "";
+            string lyrics = a.Str("lyrics", "word").ToLowerInvariant();
+            if (lyrics is not ("word" or "line")) { error = "lyrics is word or line"; return false; }
+            if (Lyrics.Fixtures.LineSynced != (lyrics == "line"))
+            {
+                Lyrics.Fixtures.LineSynced = lyrics == "line";
+                Lyrics.Store.Clear();
+            }
             if (a.Has("marquee"))
             {
                 string m = a.Str("marquee").ToLowerInvariant();
@@ -992,6 +1079,21 @@ public static partial class Diagnostics
                 Prefs.Appearance.Bump();
             }
             Wavee.Theming.InspectSwitches.RemoteDevice = a.Has("remote") ? a.Str("remote") : null;
+            // The Spotify Connect stand-in (Playback.UseFakeConnect): no device nearby, or the demo's TV, speaker and phone, which the device
+            // picker transfers to and comes back from through the reducer's own inputs.
+            string connect = a.Str("connect", "none").ToLowerInvariant();
+            if (connect is not ("none" or "nearby")) { error = "connect is none or nearby"; return false; }
+            Playback.UseFakeConnect(connect == "nearby" ? Entities.FakeConnect() : []);
+            // An output that did not open (the picker marks it "Not responding"): a fake output id, or its short name (display, usb, ...);
+            // `gone`: the chosen output left the roster (unplugged) and the Windows default plays, as `Playback.Audio.OpenOutput` decides.
+            string stuck = a.Str("stuck", "");
+            string? stuckId = stuck.Length == 0 ? null : stuck.StartsWith("fake:", StringComparison.Ordinal) ? stuck : "fake:out:" + stuck;
+            if (stuck == "gone")
+            {
+                Platform.Settings.Set(Platform.Keys.OutputDeviceName, "Desk DAC");
+                Playback.Audio.SelectedOutputId.Value = stuckId;
+            }
+            Playback.Audio.Unresponsive.Value = stuckId;
             if (a.Has("panelW"))
             {
                 float w = a.Float("panelW", 0f);
@@ -1604,6 +1706,7 @@ public static partial class Diagnostics
             string? hit = _hit ?? (_pointer is { } p ? HitKey(p) : null);
             if (hit is not null) w.WriteString("hit", hit);
             else w.WriteNull("hit");
+            WriteSaid(w, "said", Math.Min(_saidVerbMark, _said.Count));   // what the verb announced
             w.WriteEndObject();
         }
 

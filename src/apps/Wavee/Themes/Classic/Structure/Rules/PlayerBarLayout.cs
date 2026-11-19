@@ -121,6 +121,16 @@ internal static class ClassicPlayerBarLayout
     /// centre (the pause bars are symmetric and stay put).</summary>
     public const float PlayNudgeDivisor = 12f;
 
+    /// <summary>Segoe Fluent Icons' SOLID skip pair (U+F8AC / U+F8AD), the same family as <see cref="PauseSolid"/>: outline skips beside the
+    /// filled disc read as a lighter, different set of controls.</summary>
+    public const string PreviousSolid = "", NextSolid = "";
+
+    /// <summary>The solid skips are drawn at this fraction of the level's glyph size, a filled shape's weight (16 → 14 at every level today).</summary>
+    public const float SkipGlyphScale = 0.875f;
+
+    /// <summary>The air between the transport's buttons (prev · play · next), so the skips do not sit on the disc's edge.</summary>
+    public const float TransportGap = 8f;
+
     /// <summary>A split button's chevron glyph (the video split, the view split).</summary>
     public const float SplitChevronGlyph = 10f;
 
