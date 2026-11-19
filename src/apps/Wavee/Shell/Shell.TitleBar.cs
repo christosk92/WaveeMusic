@@ -23,6 +23,9 @@ public static partial class Shell
 
     static ShellTitleBarProps? s_titleBarProps;
 
+    /// <summary>Asks the title bar to open its own window menu (a Settings "Also in" door to a theme option that lives there, design 5.4).</summary>
+    public static readonly FluentGpu.Signals.Signal<int> TitleBarMenuRequest = new(0);
+
     /// <summary>The props of the structure's title bar: one frozen instance for the process (every member is a delegate over the
     /// shell's statics, read lazily, so a root remount mounts the same props on a fresh tree).</summary>
     static ShellTitleBarProps TitleBarProps() => s_titleBarProps ??= new()

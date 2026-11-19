@@ -2215,6 +2215,9 @@
         "tray.menu": "from the notification area",
         "video.menu": "from the video",
         "sidebar.menu": "from the sidebar",
+        "lyrics.pane": "from the lyrics pane",
+        "profile.menu": "from the profile menu",
+        "titleBar.menu": "from the title bar",
         "setup.wizard": "from setup"
       }
     },
@@ -2237,7 +2240,10 @@
         "logs.menu": "Logs",
         "tray.menu": "Notification area menu",
         "video.menu": "Video menu",
-        "sidebar.menu": "Sidebar menu"
+        "sidebar.menu": "Sidebar menu",
+        "lyrics.pane": "Lyrics › Options",
+        "profile.menu": "Profile menu",
+        "titleBar.menu": "Title bar menu"
       }
     },
     "explain": {

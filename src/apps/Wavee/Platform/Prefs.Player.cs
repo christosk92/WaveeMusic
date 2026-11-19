@@ -88,12 +88,5 @@ public static partial class Prefs
             _ = Epoch.Value;
             return Platform.Settings.Get(Platform.Keys.PlayerBarShowRemaining);
         }
-
-        /// <summary>Flip it.</summary>
-        public static void ToggleRemaining()
-        {
-            Platform.Settings.Set(Platform.Keys.PlayerBarShowRemaining, !ShowRemaining());
-            Bump();
-        }
     }
 }

@@ -312,6 +312,8 @@ internal static class ZuneTransport
             // the stage's labels (an ink is handed) sit on the stage's gutter edges (Z-Lyrics: "1:14" on the 48, "-3:04" ending on the 1392); the bar's hug the line
             Direction = 0, AlignItems = FlexAlign.Center, Justify = onMedia ? (right ? FlexJustify.End : FlexJustify.Start) : right ? FlexJustify.Start : FlexJustify.End,
             OnClick = right ? props.ToggleRemaining : null, Cursor = right ? CursorId.Hand : null,
+            // The flip is a control: reachable by keyboard (and the Settings "Also in: player bar" door lands focus here).
+            Focusable = right, AllowFocusOnInteraction = false,
             Role = right ? AutomationRole.Button : AutomationRole.Text,
             // the stage's labels reserve the widest this track can print (an unseen copy of it sizes the slot), so the seek line never moves mid-track
             ZStack = onMedia && props.Widest is not null,

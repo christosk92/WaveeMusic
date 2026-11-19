@@ -127,8 +127,12 @@ public static partial class Shell
     /// <see cref="SeekBar"/> signal of the same name: a concealed label holds its last text and stops following the
     /// position, and the reveal brings it current. <paramref name="alone"/>: the elapsed label with no "/ total" beside it
     /// (<see cref="TimeLabelProps.Alone"/>).</summary>
-    public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null, bool alone = false)
-        => Embed.Comp(() => new BarTimeText(remaining, ink, reveal, alone));
+    public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null, bool alone = false, bool door = false)
+        => Embed.Comp(() => new BarTimeText(remaining, ink, reveal, alone, door));
+
+    /// <summary>Asks the player bar's remaining-time label to take keyboard focus (the Settings "Also in: Player bar" door, design 5.4: the bar is
+    /// always on screen, so the door shows where the dial lives by moving focus onto its control).</summary>
+    public static readonly Signal<int> PlayerBarFocusRequest = new(0);
 
     /// <summary>The ONE float the volume rails bind (inline + popup). A slider needs a FloatSignal and the model
     /// publishes a Signal&lt;float&gt;; <see cref="PlayerBarHost"/> mirrors model → rail with an equality gate, and the
@@ -833,7 +837,7 @@ public static partial class Shell
 
         readonly bool _alone;
 
-        public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null, bool alone = false)
+        public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null, bool alone = false, bool door = false)
         {
             _remaining = remaining;
             _alone = alone && !remaining;
@@ -841,6 +845,25 @@ public static partial class Shell
             _reveal = reveal;
             _label = Label;
             _widest = Widest;
+            _door = door && remaining;
+            _asked = PlayerBarFocusRequest.Peek();
+            _focusOnAsk = FocusOnAsk;
+        }
+
+        readonly bool _door;
+        readonly Action _focusOnAsk;
+        int _asked;
+        InputHooks? _hooks;
+
+        /// <summary>The door's ask: the flip's target takes keyboard focus, with its focus visual.</summary>
+        void FocusOnAsk()
+        {
+            int n = PlayerBarFocusRequest.Value;
+            if (n == _asked) return;
+            _asked = n;
+            var host = Context.HostNode;
+            if (host.IsNull || _hooks?.FirstFocusableIn?.Invoke(host) is not { IsNull: false } target) return;
+            _hooks.FocusNode?.Invoke(target, true);
         }
 
         readonly Func<string> _widest;
@@ -892,6 +915,11 @@ public static partial class Shell
         public override Element Render()
         {
             bool isLive = UseComputed(static () => Playback.Live.Value.IsLive).Value;
+            if (_door)
+            {
+                _hooks = UseContext(InputHooks.Current);
+                UseSignalEffect(_focusOnAsk);
+            }
             return ViewSlots.View(ViewKeys.TimeLabel, new TimeLabelProps
             {
                 Remaining = _remaining,

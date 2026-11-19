@@ -353,7 +353,7 @@ public static class SettingsPageModel
             SettingsSurfaces.StageOptions or SettingsSurfaces.StageGallery => static () => PlayerVerbs.Default.OpenStage(null, "settings-also-in"),
             SettingsSurfaces.LikedCover => static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked)),
             SettingsSurfaces.LogsMenu => static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.Logs)),
-            _ => null,
+            _ => InContextDoors.Of(surface),
         };
         s_doors[surface] = door;
         return door;

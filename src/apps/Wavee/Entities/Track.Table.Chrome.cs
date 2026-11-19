@@ -848,14 +848,15 @@ public readonly partial struct Track
                     if (cfg.ShowTempo)
                     {
                         bool tempoOn = TableColumnsPref.TempoNow();
+                        // The column toggles are the Settings dials themselves (one writer), recorded as written from a track list (design 5.4).
                         items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.TempoColumn), tempoOn,
-                            () => TableColumnsPref.SetTempo(!tempoOn)));
+                            () => SettingsSpec.Dial("appearance.tempoColumn").WriteToggle(!tempoOn, SettingsSurfaces.TrackListMenu)));
                     }
                     if (cfg.PlaysColumnOptIn)
                     {
                         bool playsOn = TableColumnsPref.PlaysNow();
                         items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.PlaysColumn), playsOn,
-                            () => TableColumnsPref.SetPlays(!playsOn)));
+                            () => SettingsSpec.Dial("appearance.playsColumn").WriteToggle(!playsOn, SettingsSurfaces.TrackListMenu)));
                     }
                     if (cfg.Selection != ItemsSelectionMode.None && !h._inlineSelect)
                     {

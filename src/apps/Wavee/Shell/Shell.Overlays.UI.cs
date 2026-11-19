@@ -360,6 +360,16 @@ public static partial class Shell
                 handle.Value.ClosedAction = () => handle.Value = null;
             }
 
+            // A Settings "Also in" door asks for the menu (design 5.4): the bar's chip opens it where it stands (the drawer's copy does not).
+            var asked = UseRef(ProfileMenuRequest.Peek());
+            UseSignalEffect(() =>
+            {
+                int n = ProfileMenuRequest.Value;
+                if (n == asked.Value) return;
+                asked.Value = n;
+                if (!drawer && !anchor.Value.IsNull && handle.Value is not { IsOpen: true }) OpenMenu();
+            });
+
             return ViewSlots.View(ViewKeys.OverlayProfileChip, new ProfileChipProps
             {
                 Known = identity.Known, Name = identity.Name, AvatarUrl = identity.AvatarUrl,
@@ -370,6 +380,9 @@ public static partial class Shell
     }
 
     readonly record struct AccountIdentity(bool Known, string Name, string? AvatarUrl);
+
+    /// <summary>Asks the title bar's profile chip to open its menu (a Settings "Also in" door to App mode or Private session, design 5.4).</summary>
+    public static readonly FluentGpu.Signals.Signal<int> ProfileMenuRequest = new(0);
 
     /// <summary>The signed-in account's display identity, from its user row — known only once the row carries the
     /// Identity group (the readiness predicate).</summary>
