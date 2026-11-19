@@ -343,6 +343,7 @@ public static class SettingsPageModel
     /// a flyout that needs its anchor). Built once per surface.</summary>
     static Action? DoorOf(string surface)
     {
+        if (InContextDoors.Handles(surface)) return InContextDoors.Of(surface);   // asked every time: those places come and go with the window
         if (s_doors.TryGetValue(surface, out Action? known)) return known;
         Action? door = surface switch
         {
@@ -353,7 +354,7 @@ public static class SettingsPageModel
             SettingsSurfaces.StageOptions or SettingsSurfaces.StageGallery => static () => PlayerVerbs.Default.OpenStage(null, "settings-also-in"),
             SettingsSurfaces.LikedCover => static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked)),
             SettingsSurfaces.LogsMenu => static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.Logs)),
-            _ => InContextDoors.Of(surface),
+            _ => null,
         };
         s_doors[surface] = door;
         return door;

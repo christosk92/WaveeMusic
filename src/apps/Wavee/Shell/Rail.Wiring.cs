@@ -338,7 +338,7 @@ internal static class RailWiring
         Facts = ReadSheetTransport,
         Verbs = PlayerVerbs.Default,
         SeekBar = static () => Shell.SeekBar(reveal: Shell.PageShown),
-        TimeText = static remaining => Shell.TimeText(remaining, reveal: Shell.PageShown),
+        TimeText = static remaining => Shell.TimeText(remaining, reveal: Shell.PageShown, door: Shell.TimeDoor.Panel),
         Source = ReadSheetSource,
         Device = ReadSheetDevice,
         ToggleDevicePicker = Shell.BarToggleDevicePicker,

@@ -360,14 +360,21 @@ public static partial class Shell
                 handle.Value.ClosedAction = () => handle.Value = null;
             }
 
-            // A Settings "Also in" door asks for the menu (design 5.4): the bar's chip opens it where it stands (the drawer's copy does not).
+            // A Settings "Also in" door asks for the menu (design 5.4): the title bar's chip opens it where it stands; with no title bar chip
+            // mounted the door opened the narrow drawer, and the drawer's chip opens it. Every chip says it is mounted, so the door is handed out
+            // only while one is (InContextDoors: no dead door).
+            UseEffect(() =>
+            {
+                InContextDoors.ChipMounted(drawer, +1);
+                return () => InContextDoors.ChipMounted(drawer, -1);
+            }, DepKey.Empty);
             var asked = UseRef(ProfileMenuRequest.Peek());
             UseSignalEffect(() =>
             {
                 int n = ProfileMenuRequest.Value;
                 if (n == asked.Value) return;
                 asked.Value = n;
-                if (!drawer && !anchor.Value.IsNull && handle.Value is not { IsOpen: true }) OpenMenu();
+                if (drawer == ProfileMenuViaDrawer && !anchor.Value.IsNull && handle.Value is not { IsOpen: true }) OpenMenu();
             });
 
             return ViewSlots.View(ViewKeys.OverlayProfileChip, new ProfileChipProps
@@ -383,6 +390,9 @@ public static partial class Shell
 
     /// <summary>Asks the title bar's profile chip to open its menu (a Settings "Also in" door to App mode or Private session, design 5.4).</summary>
     public static readonly FluentGpu.Signals.Signal<int> ProfileMenuRequest = new(0);
+
+    /// <summary>Which chip answers the request: the narrow drawer's (the door opened the drawer) or the title bar's.</summary>
+    internal static bool ProfileMenuViaDrawer;
 
     /// <summary>The signed-in account's display identity, from its user row — known only once the row carries the
     /// Identity group (the readiness predicate).</summary>
