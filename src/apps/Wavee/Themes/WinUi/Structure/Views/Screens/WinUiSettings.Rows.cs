@@ -319,15 +319,14 @@ internal static partial class WinUiSettings
     }
 
     /// <summary>The card every presenter starts from: the row's label, description, enablement, badge and "Also in" footer, in the item or card style.</summary>
-    static Card BaseCard(RowCtx x, Element? control)
-    {
-        var row = x.Row;
-        var style = x.Item ? SettingsExpander.DefaultStyle.ItemCardStyle : SettingsCard.DefaultStyle;
-        return new Card(row.Label, row.Description, control, style)
+    static Card BaseCard(RowCtx x, Element? control) => RowCard(x.Row, x.Item, control) with { Footer = AlsoInFooter(x.Row), OnControl = x.OnControl };
+
+    /// <summary>A row's card with no host: its label, description, enablement and badge, in the item or card style.</summary>
+    static Card RowCard(SettingsBodyRow row, bool item, Element? control)
+        => new(row.Label, row.Description, control, item ? SettingsExpander.DefaultStyle.ItemCardStyle : SettingsCard.DefaultStyle)
         {
-            Enabled = row.Enabled, Explain = ExplainOf(row), Footer = AlsoInFooter(row), OnControl = x.OnControl, WrapLabel = true,
+            Enabled = row.Enabled, Explain = ExplainOf(row), WrapLabel = true,
         };
-    }
 
     // ── a row outside the page ──────────────────────────────────────────────────────────────────────────────────
 
@@ -345,7 +344,7 @@ internal static partial class WinUiSettings
     static Element OutsideRow(string dialId, Func<SettingsBodyRow, Card, Element> present)
     {
         if (SettingsPageModel.RowOf(Dial(dialId)) is not { } row) return new BoxEl { Visible = false };
-        return present(row, new Card(row.Label, row.Description, null, SettingsCard.DefaultStyle) { Enabled = row.Enabled, Explain = ExplainOf(row), WrapLabel = true });
+        return present(row, RowCard(row, item: false, control: null));
     }
 
     /// <summary>A clickable card (an action without a control): the clickable style where it is an expander item.</summary>
