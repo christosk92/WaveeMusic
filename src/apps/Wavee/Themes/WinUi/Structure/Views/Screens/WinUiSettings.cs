@@ -237,16 +237,19 @@ internal static partial class WinUiSettings
             }, DepKey.From(selected));
             var style = layout.TabHeight > 0f ? new SelectorBarStyle { ItemHeight = layout.TabHeight } : null;
             Element bar = SelectorBar.Create(p.Labels, new Signal<int>(selected), onChange: _choose, parts: _parts, style: style, itemKeys: p.Keys);
+            var strip = ScrollView(new BoxEl { Direction = 0, Children = [bar] }, horizontal: true) with
+            {
+                Grow = 0f, Shrink = 0f, MinWidth = 0f, Height = layout.TabHeight > 0f ? layout.TabHeight : float.NaN, SuppressScrollBar = true,
+                AutoEdgeFade = layout.TabsScroll, ScrollKey = "settings:tabs",
+            };
             return new BoxEl
             {
                 Direction = 1, Shrink = 0f, MinWidth = 0f, MaxWidth = layout.CapsColumn ? layout.ColumnMaxW : float.NaN,
                 Children =
                 [
-                    ScrollView(new BoxEl { Direction = 0, Children = [bar] }, horizontal: true) with
-                    {
-                        Grow = 0f, Shrink = 0f, MinWidth = 0f, Height = layout.TabHeight > 0f ? layout.TabHeight : float.NaN, SuppressScrollBar = true,
-                        AutoEdgeFade = layout.TabsScroll, ScrollKey = "settings:tabs",
-                    },
+                    // A mouse has no sideways wheel: where the words run past the column (a narrow window, an open pane, Compact), hovering the strip shows
+                    // the shelves' ‹ › pager over its ends at the side that hides words (owner report 2026-11-19), at the tier's hit target.
+                    Controls.StripPager.Create(strip, "settings:tabs", layout.Touch ? layout.Target : float.NaN),
                     Divider(),
                 ],
             };
