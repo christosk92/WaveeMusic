@@ -31,7 +31,7 @@ public static class WinUiTheme
         InheritsFrom: null,
         Availability: ThemeAvailability.Public,
         // No preview images ship yet: the picker draws its UI-native miniature where an asset is missing.
-        Preview: new ThemePreview("themes/winui-light.png", "themes/winui-dark.png"),
+        Preview: new ThemePreview("themes/winui-light.jpg", "themes/winui-dark.jpg"),
         DescriptionKey: Strings.Theme.Winui.Description);
 
     /// <summary>Builds the composition. <c>App.InstallThemes</c> installs it next to Classic and Zune. It also hands the `--inspect` lint

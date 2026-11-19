@@ -193,7 +193,7 @@ internal static class ClassicSettingsRules
     /// <summary>The strip card's description is one line.</summary>
     public const int ThemeStripDescriptionLines = 1;
 
-    /// <summary>The preview image's fade over the miniature.</summary>
+    /// <summary>The preview still's fade over the thumbnail's plate when its decode lands.</summary>
     public const float PreviewFadeMs = 140f;
 
     /// <summary>A generated option's text card.</summary>

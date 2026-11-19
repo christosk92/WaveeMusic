@@ -250,6 +250,10 @@ public static class App
         => Wavee.Theming.ThemeHost.Install(Wavee.Themes.Classic.ClassicTheme.Create(), Wavee.Themes.Zune.ZuneTheme.Create(),
             Wavee.Themes.WinUi.WinUiTheme.Create());
 
+    /// <summary>The manifests of the shipped compositions, in picker order (the theme picker still check reads their previews).</summary>
+    static IReadOnlyList<Wavee.Theming.ThemeManifest> ShippedManifests()
+        => [Wavee.Themes.Classic.ClassicTheme.Create().Manifest, Wavee.Themes.Zune.ZuneTheme.Create().Manifest, Wavee.Themes.WinUi.WinUiTheme.Create().Manifest];
+
     [STAThread]
     static int Main(string[] args)
     {
@@ -257,6 +261,9 @@ public static class App
         // The Release build's explanation-clip check (Screens/SettingsExplain.cs, Wavee.csproj WaveeCheckExplainerClips): reads a table and a
         // folder, boots nothing.
         if (SettingsExplain.TryRunCheck(args, out int clipCode)) return clipCode;
+        // The Release build's theme picker still check (Theming/Composition/ThemePreviews.cs, Wavee.csproj WaveeCheckThemePreviews): reads the
+        // shipped manifests and a folder, boots nothing.
+        if (Wavee.Theming.ThemePreviews.TryRunCheck(args, ShippedManifests, out int previewCode)) return previewCode;
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency; // P16a, once
         Glyphs.Register();               // wavee-icons.otf PUA + bundled SegoeFluentIcons.ttf, BEFORE the harness runs, or every Fluent-Icons glyph is tofu on Win10 (ch 00 §9.5)
         // The crash handler's whole life is here, before ANYTHING else — it never opens settings, the store or the

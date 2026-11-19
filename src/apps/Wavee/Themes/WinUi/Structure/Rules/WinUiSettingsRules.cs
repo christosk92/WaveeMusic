@@ -148,7 +148,7 @@ internal static class WinUiSettingsRules
     /// <summary>The preview column is never narrower than this (the column beside a 1200 card column at 1920 wide).</summary>
     public const float AsideMinWidth = 320f;
 
-    /// <summary>The preview's title (Subtitle 20 / 28) and the window miniature's aspect (the board's 16 : 9).</summary>
+    /// <summary>The preview's title (Subtitle 20 / 28) and the aspect of the window mock and of a fluid picker card's still (the board's 16 : 9).</summary>
     public const float PreviewTitleSize = 20f, PreviewTitleLine = 28f, PreviewAspect = 16f / 9f;
 
     /// <summary>A theme card's padding (board: 8), the Small row card's, and the card's caption lines.</summary>
@@ -163,8 +163,8 @@ internal static class WinUiSettingsRules
     /// <summary>The selected card's check mark and an option's note glyph.</summary>
     public const float CheckGlyph = 14f, NoteGlyph = 14f;
 
-    /// <summary>The miniature's accent edge (the board's 2-px top border of the bar) and the window mock's hairline.</summary>
-    public const float MiniEdge = 2f, MiniHairline = 1f;
+    /// <summary>The window mock's hairline (the Huge preview column).</summary>
+    public const float MiniHairline = 1f;
 
     /// <summary>A nested option card is at least this tall (board: 56).</summary>
     public const float OptionCardMinHeight = 56f;
@@ -222,7 +222,7 @@ internal static class WinUiSettingsRules
     /// <summary>The strip card's description is one line.</summary>
     public const int ThemeStripDescriptionLines = 1;
 
-    /// <summary>The preview image's fade over the miniature.</summary>
+    /// <summary>The preview still's fade over the thumbnail's plate when its decode lands.</summary>
     public const float PreviewFadeMs = 140f;
 
     /// <summary>A generated option's text card.</summary>
