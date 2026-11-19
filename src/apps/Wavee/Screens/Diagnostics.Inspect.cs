@@ -419,6 +419,10 @@ public static partial class Diagnostics
                     return Views(id, name, a);
                 case Inspect.Verb.Setting:
                     return Setting(id, name, a);   // the store needs no mount; a mounted one settles after the write
+                case Inspect.Verb.Hint:
+                    return Hint(id, name, a);      // the table and the blob need no mount; `show` settles on a mounted one
+                case Inspect.Verb.Recent:
+                    return Recent(id, name, a);
                 case Inspect.Verb.Tiers:
                     return Tiers(id, name, a);   // the policy needs no mount; the facts do
                 case Inspect.Verb.Crossings:
@@ -960,6 +964,7 @@ public static partial class Diagnostics
             bool optionsForNext = _optionsForNext && keepOptions;
             _optionsForNext = false;
             RestoreSettings();   // the app settings `setting` wrote on the last mount (kept when written for this one)
+            RestoreHints();      // a `hint show` forced its hint for one mount
             if (_mounts == 0) return;
             Wavee.Shell.SetInspectState("none");
             InspectKit.RestoreColdPlaylist();

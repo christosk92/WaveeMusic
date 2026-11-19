@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Drag, Skeleton, Window, Transport, Quit,
+            Views, Crossings, Setting, Hint, Recent, Drag, Skeleton, Window, Transport, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -569,6 +569,17 @@ public static partial class Diagnostics
                              Arg("id", ArgType.String, "the dial: its registry id (playback.crossfade) or its old row id (crossfade), any case"),
                              Arg("value", ArgType.String, "a toggle's true|false, a slider's number, a choice's index; an action takes none (naming an action presses it)")], s_settleArgs),
             },
+            new(Verb.Hint, "hint", "The in-app hints (settings rework phase 3): list every hint with its budget and verdict, force one's trigger true for one mount (show), forget every hint's budget and the use facts (reset), or read and load the persisted blob (state)", "hint show id=ai-lyrics")
+            {
+                Positional = ["do", "id"],
+                Args = Join([Arg("do", ArgType.Enum, "list (every hint, its budget and verdict) · show (force id's trigger for one mount) · reset · state (the blob; with blob= load it as a launch does)", "list", "list|show|reset|state"),
+                             Arg("id", ArgType.String, "the hint (hint list names them: ai-lyrics, lossless, crossfade, ...)"),
+                             Arg("blob", ArgType.String, "with do=state: the hints.state blob to write and read back")], s_settleArgs),
+            },
+            new(Verb.Recent, "recent", "Recently changed: the last five dial writes from any surface, newest first, with where each came from (persisted across restarts in the hint blob)", "recent")
+            {
+                Args = [Arg("clear", ArgType.Bool, "true empties the ring", "false")],
+            },
             new(Verb.Window, "window", "Park the window the way the OS does (minimized, or hidden to the tray) or restore it, blur or re-activate it (active=false|true), and move the cold-maintenance clock ahead so its 30 s services (the scene slab trim) run on the next frame; a parked window's frames skip paint but drain posts, flush and run cold maintenance", "window state=minimized advance=31000")
             {
                 Positional = ["state"], NeedsMount = true, Acts = true,
@@ -611,7 +622,7 @@ public static partial class Diagnostics
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "transport" => Verb.Transport, "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
-            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "drag" => Verb.Drag, "window" => Verb.Window,
+            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };
