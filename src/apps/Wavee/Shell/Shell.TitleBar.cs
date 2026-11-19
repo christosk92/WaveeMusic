@@ -32,6 +32,7 @@ public static partial class Shell
     {
         Layout = static () => RowStateOf(ChromeLayout.Value),
         PeekLayout = static () => RowStateOf(ChromeLayout.Peek()),
+        WindowMenuRequest = TitleBarMenuRequest,
         TabsVersion = TitleBarTabsVersion,
         ContentVersion = ChromeContentVersion,
         TabItemsVersion = TabStripItemsVersion,

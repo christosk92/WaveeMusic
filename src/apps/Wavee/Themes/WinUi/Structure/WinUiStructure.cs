@@ -156,10 +156,11 @@ public sealed partial class WinUiStructure : IStandInStructure
         Picker: PickerStyle.Combo);
 
     /// <summary>Tabs in the title bar. Off hides the 40 strip in every tier and leaves the 48 toolbar row; the other tabs stay open in the
-    /// background and return in place when it is on again (owner Q1: the board). Live: the strip's row animates (W2a).</summary>
-    public static ToggleOption Tabs { get; } = new(
+    /// background and return in place when it is on again (owner Q1: the board). Live: the strip's row animates (W2a). Also in the title bar's
+    /// window menu (design 5.4).</summary>
+    public static ToggleOption Tabs { get; } = new ToggleOption(
         Id: "tabs", TitleKey: Strings.Theme.Winui.Options.Tabs, DescriptionKey: Strings.Theme.Winui.Options.TabsSub,
-        Group: Strings.Theme.Winui.Options.Group.Window, Default: true);
+        Group: Strings.Theme.Winui.Options.Group.Window, Default: true) with { Contexts = [SettingsSurfaces.TitleBarMenu] };
 
     /// <summary>Artwork in track rows: playlist, Liked and search rows show a 40 cover over two lines (48); off, one 40 line. Album rows never
     /// show covers. Transaction (the row extents change).</summary>

@@ -362,7 +362,7 @@ public static class ThemeOptionsSection
         => new()
         {
             Id = SettingsSpec.ThemeOptionPrefix + lo.QualifiedId, LegacyIds = [lo.QualifiedId], Kind = kind, TitleKey = option.TitleKey,
-            ChoiceKeys = choices ?? Array.Empty<string>(),
+            ChoiceKeys = choices ?? Array.Empty<string>(), Contexts = option.Contexts,
             Explainer = SettingsExplain.ThemeOptionClip(theme.Manifest.Id, lo.QualifiedId),
             ExplainerThemes = SettingsExplain.ThemeOptionClip(theme.Manifest.Id, lo.QualifiedId) is null ? null : [theme.Manifest.Id],
             Tier = option.Visibility == OptionVisibility.Developer ? SettingsTier.Developer : SettingsTier.Common,
