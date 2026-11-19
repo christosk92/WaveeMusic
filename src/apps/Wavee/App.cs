@@ -249,6 +249,9 @@ public static class App
     static int Main(string[] args)
     {
         StartupTimeline.Mark("main");
+        // The Release build's explanation-clip check (Screens/SettingsExplain.cs, Wavee.csproj WaveeCheckExplainerClips): reads a table and a
+        // folder, boots nothing.
+        if (SettingsExplain.TryRunCheck(args, out int clipCode)) return clipCode;
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency; // P16a, once
         Glyphs.Register();               // wavee-icons.otf PUA + bundled SegoeFluentIcons.ttf, BEFORE the harness runs, or every Fluent-Icons glyph is tofu on Win10 (ch 00 §9.5)
         // The crash handler's whole life is here, before ANYTHING else — it never opens settings, the store or the

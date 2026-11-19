@@ -253,18 +253,18 @@ public static class ThemeOptionsSection
         switch (option)
         {
             case ToggleOption:
-                return Generated(lo, option, Make(lo, SettingsRowKind.Toggle, option,
+                return Generated(lo, option, Make(theme, lo, SettingsRowKind.Toggle, option,
                     SettingsWriter.OfToggle(Verb(theme, lo), on => Apply(theme, lo, on)),
                     s => option.Read(s, name, fallback) is true), current: Shape(option, live, twoWay), live: liveNow);
 
             case ColorOption color:
-                return Generated(lo, option, Make(lo, SettingsRowKind.Picker, option,
+                return Generated(lo, option, Make(theme, lo, SettingsRowKind.Picker, option,
                     SettingsWriter.OfChoice(Verb(theme, lo), argb => Apply(theme, lo, ColorOption.Unpack(argb))),
                     s => Shape(option, option.Read(s, name, fallback), twoWay)),
                     current: Shape(option, live, twoWay), live: liveNow, isColor: true, swatches: SwatchesOf(color));
 
             case SliderOption slider:
-                return Generated(lo, option, Make(lo, SettingsRowKind.Slider, option,
+                return Generated(lo, option, Make(theme, lo, SettingsRowKind.Slider, option,
                     SettingsWriter.OfSlider(Verb(theme, lo), v => Apply(theme, lo, v)),
                     s => option.Read(s, name, fallback)),
                     current: Shape(option, live, twoWay), live: liveNow, min: slider.Min, max: slider.Max, step: slider.Step, unitKey: slider.UnitKey);
@@ -273,7 +273,7 @@ public static class ThemeOptionsSection
             {
                 bool known = ThemeVerbs.IsEnabled(action.VerbId);
                 string verb = action.VerbId;
-                SettingsDial row = Make(lo, SettingsRowKind.Action, option,
+                SettingsDial row = Make(theme, lo, SettingsRowKind.Action, option,
                     SettingsWriter.OfAction(Verb(theme, lo), () => ThemeVerbs.Run(verb)), NoValue, enabled: known, confirm: action.Confirm);
                 return Generated(lo, option, row, enabled: known);
             }
@@ -288,7 +288,7 @@ public static class ThemeOptionsSection
             if (titles.Count == 0) return null;   // nothing to choose from: no row beats a dead control
             if (twoWay)
             {
-                return Generated(lo, option, Make(lo, SettingsRowKind.Toggle, option,
+                return Generated(lo, option, Make(theme, lo, SettingsRowKind.Toggle, option,
                     SettingsWriter.OfToggle(Verb(theme, lo), on => ApplyChoice(theme, lo, on ? 1 : 0)),
                     s => option.ChoiceIndexOf(option.Read(s, name, fallback)) == 1),
                     current: Shape(option, live, twoWay), live: liveNow, choices: titles, picker: picker);
@@ -299,7 +299,7 @@ public static class ThemeOptionsSection
                 PickerStyle.Combo => SettingsRowKind.Choice,
                 _ => titles.Count <= SegmentedMax ? SettingsRowKind.Segmented : SettingsRowKind.Choice,
             };
-            return Generated(lo, option, Make(lo, kind, option,
+            return Generated(lo, option, Make(theme, lo, kind, option,
                 SettingsWriter.OfChoice(Verb(theme, lo), i => ApplyChoice(theme, lo, i)),
                 s => option.ChoiceIndexOf(option.Read(s, name, fallback))),
                 current: Shape(option, live, twoWay), live: liveNow, choices: titles, picker: picker);
@@ -356,11 +356,14 @@ public static class ThemeOptionsSection
 
     private static readonly Func<IAppSettings, object?> NoValue = static _ => null;
 
-    private static SettingsDial Make(LayerOption lo, SettingsRowKind kind, ThemeOption option, SettingsWriter writer,
+    /// <summary>A theme option's dial. Its explanation clip, if the option is on the badge list (design 6.5), applies to its own theme only.</summary>
+    private static SettingsDial Make(ThemeComposition theme, LayerOption lo, SettingsRowKind kind, ThemeOption option, SettingsWriter writer,
         Func<IAppSettings, object?> value, bool enabled = true, SettingsConfirm? confirm = null)
         => new()
         {
             Id = SettingsSpec.ThemeOptionPrefix + lo.QualifiedId, LegacyIds = [lo.QualifiedId], Kind = kind, TitleKey = option.TitleKey,
+            Explainer = SettingsExplain.ThemeOptionClip(theme.Manifest.Id, lo.QualifiedId),
+            ExplainerThemes = SettingsExplain.ThemeOptionClip(theme.Manifest.Id, lo.QualifiedId) is null ? null : [theme.Manifest.Id],
             Tier = option.Visibility == OptionVisibility.Developer ? SettingsTier.Developer : SettingsTier.Common,
             Caption = option.DescriptionKey is { } caption ? _ => caption : static _ => null,
             Value = value, Writer = writer,

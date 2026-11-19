@@ -17,7 +17,8 @@
 //   · `Writer`    the ONE verb that changes it, returning whether the page must re-read (the views' `Bump`). A read-only dial says so
 //                 (`SettingsWriter.ReadOnly`), so "every dial has a writer" is a checkable statement;
 //   · `Enabled`   enabled or greyed, and the REASON (a loc key) a greyed dial gives; `SilentWhenDisabled` marks one greyed with none;
-//   · `Visible`   composed at all (developer-only dials are ABSENT, never greyed).
+//   · `Visible`   composed at all (developer-only dials are ABSENT, never greyed);
+//   · `Explainer` the explanation clip of a dial whose effect is seen or heard (design 6.5), set from `SettingsExplain`'s badge list.
 //
 // EVERY WRITE IS SEEN: a value writer is wrapped when it is built, so a write from any surface reports (dial id, source, time) to
 // `SettingsWrites` (Recently changed, retire-on-use; settings rework phase 3). `WriteToggle(on, surface)` and friends write from a
@@ -209,6 +210,15 @@ public sealed class SettingsDial
         }
     }
 
+    /// <summary>The explanation clip's id (design 6.5: a dial whose effect is something you see or hear), or null. The badge shows only
+    /// where the clip exists for the active theme and app mode (<see cref="SettingsExplain"/>); its caption is
+    /// <c>settings.explain.&lt;Id&gt;</c>.</summary>
+    public string? Explainer { get; init; }
+
+    /// <summary>The themes the explanation applies to (theme ids), or null for every theme that shows the dial. A theme option's
+    /// explanation applies only to its own theme.</summary>
+    public IReadOnlyList<string>? ExplainerThemes { get; init; }
+
     // ── writes from a place that is not Settings (a panel, a hint, the inspector): the same writer, with its source ─────────────
 
     /// <summary>Write a toggle dial from <paramref name="surface"/> (Recently changed says "from" it). Returns whether the page re-reads.</summary>
@@ -367,6 +377,7 @@ public static partial class SettingsSpec
         foreach (var dial in All)
             if (!index.TryAdd(dial.Id, dial))
                 throw new InvalidOperationException("SettingsSpec: the dial id '" + dial.Id + "' is declared twice.");
+        SettingsExplain.Validate(index);
         return index;
     }
 
@@ -386,6 +397,7 @@ public static partial class SettingsSpec
         Func<ISettingsFacts, SettingsEnablement>? enabled = null, Func<ISettingsFacts, bool>? visible = null,
         SettingsConfirm? confirm = null, bool silent = false, string[]? contexts = null, string[]? aliases = null)
     {
+        SettingsExplain.Clip? explain = SettingsExplain.Of(id);   // the badge list (design 6.5) decides which dials explain themselves
         Func<ISettingsFacts, string?> cap = caption ?? NoCaption;
         if (caption is null && captionKey is not null) cap = _ => captionKey;
         Func<ISettingsFacts, bool> vis = visible ?? AlwaysVisible;
@@ -403,6 +415,8 @@ public static partial class SettingsSpec
             SilentWhenDisabled = silent,
             Contexts = contexts ?? [],
             Aliases = aliases ?? [],
+            Explainer = explain?.Id,
+            ExplainerThemes = explain?.Theme is { } theme ? [theme] : null,
         };
     }
 

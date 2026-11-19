@@ -1935,7 +1935,37 @@
         "needsStartOnLogin": "Turn on opening Wavee when you sign in first"
       }
     },
-    "value": { "on": "On", "off": "Off" }
+    "value": { "on": "On", "off": "Off" },
+    "explain": {
+      "$comment": "One caption per dial on the badge list (Screens/SettingsExplain.cs, design 6.5): what you see or hear change; also the clip's alt text. Keyed by the dial's registry id.",
+      "appearance.fastNavigation": "The old page leaves at once and the new one comes in on its own, with no cross-fade between them.",
+      "lyrics.stage.calm": "The full screen moves slowly and gently instead of pulsing with the beat.",
+      "appearance.daylistClock": "What the daylist's clock shows: a countdown to its next refresh, the time it refreshes, or both.",
+      "appearance.likedCover": "How the Liked Songs cover is made from the artwork of the music you saved.",
+      "appearance.option.style.backdrop": "The material behind the window: Mica tints it with your desktop, Acrylic blurs what is behind it.",
+      "appearance.option.structure.navigationPane": "Whether the navigation pane shows its labels, only its icons, or follows the window's width.",
+      "appearance.option.style.rowDensity": "How tall each row of a track list is.",
+      "appearance.option.structure.artworkInRows": "A small cover at the start of every track row.",
+      "appearance.option.structure.rowStyle": "Track lists in the modern layout or in the classic columns.",
+      "appearance.option.structure.sidebar": "The sidebar as the classic list or as your library.",
+      "appearance.option.structure.surfaces": "How much of the artwork's colour tints the pages.",
+      "appearance.marquee": "Titles too long for their place scroll slowly instead of ending in an ellipsis.",
+      "appearance.option.structure.background": "What lies behind the pages: the artwork's colours, a mix of them, or nothing.",
+      "sound.normalization": "Quiet songs and loud songs play at about the same volume.",
+      "sound.normalization.mode": "How loud normalized songs play: quiet, normal or loud.",
+      "playback.crossfade": "The end of one song fades out while the next one fades in.",
+      "playback.crossfade.duration": "How long the two songs overlap.",
+      "playback.canvas": "The short looping video some songs carry plays behind Now playing.",
+      "playback.video.endCountdown": "A music video that ends in full screen counts down before the next one starts.",
+      "lyrics.blur": "How much the lines around the one being sung blur and glow.",
+      "lyrics.ai": "Each word lights up as it is sung, timed on this PC.",
+      "lyrics.playerStyle": "How the art looks in Now playing.",
+      "lyrics.playerStyle.finish": "The finish of the Vinyl and Pocket player styles.",
+      "lyrics.stage.layout": "How the full screen arranges the art, the lyrics and the visualizer.",
+      "lyrics.stage.spectrum": "A spectrum of the music under the cover.",
+      "lyrics.mini.face": "What the mini player shows: the cover, the lyrics or the controls.",
+      "lyrics.mini.artColour": "The mini player takes its colours from the album art."
+    }
   },
   "shell": {
     "searchPlaceholder": "Search songs, artists, albums...",
