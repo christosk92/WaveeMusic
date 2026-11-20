@@ -124,26 +124,38 @@ internal static partial class ClassicPlayerBar
         if (mini) titleRun = titleRun with { LineHeight = ClassicPlayerTiers.MiniTitleLine };
         // The mini bar's title never scrolls and is no link: the whole identity is ONE door there.
         long face = ((long)v.Face.Kind << 32) | (uint)v.Face.Slot;   // the stated playable: a new one restarts the marquees' passes
+        // THE LINK IS THE TEXT, never the slot: the title's slot spans the whole text column, so a link on it lit the title and took the
+        // press anywhere on the row beside a short title. The link box is the run's own width (the credits' links do the same).
+        bool titleLink = v.TitleNav && !mini;
+        var marqueeStyle = new Marquee.Style
+        {
+            FontSize = ClassicPlayerBarLayout.TitleSize, Weight = ClassicPlayerBarLayout.TitleWeight, Foreground = titleInk,
+            Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
+        };
         BoxEl titleEl = v.Marquee && !mini
-            ? Marquee.Of(Prop.Of<string>(props.TitleText), new Marquee.Style
-            {
-                FontSize = ClassicPlayerBarLayout.TitleSize, Weight = ClassicPlayerBarLayout.TitleWeight, Foreground = titleInk,
-                Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
-            }, marquees.Value, order: 0, identity: face)
-            : new BoxEl
-            {
-                ClipToBounds = true, MinWidth = 0f,
-                Children = [titleRun],
-            };
+            ? titleLink
+                // A content marquee over the link (its run and copy are both the link), so only the moving text takes the pointer.
+                ? Marquee.Content(TitleLink(new TextEl(Prop.Of<string>(props.TitleText))
+                    {
+                        Size = ClassicPlayerBarLayout.TitleSize, Weight = ClassicPlayerBarLayout.TitleWeight, Color = titleInk,
+                        Wrap = TextWrap.NoWrap, MaxLines = 1,
+                    }), Prop.Of<string>(props.TitleText), marqueeStyle, marquees.Value, order: 0, identity: face)
+                : Marquee.Of(Prop.Of<string>(props.TitleText), marqueeStyle, marquees.Value, order: 0, identity: face)
+            : titleLink
+                // The slot stays the column's width (the trim tip measures it); the link inside it is a shrinking row child, cut at the slot.
+                ? new BoxEl { ClipToBounds = true, MinWidth = 0f, Direction = 0, Children = [TitleLink(titleRun)] }
+                : new BoxEl { ClipToBounds = true, MinWidth = 0f, Children = [titleRun] };
         titleEl = titleEl with { Key = titleKey };
-        if (v.TitleNav && !mini)
-            titleEl = titleEl with
-            {
-                Cursor = CursorId.Hand, OnClick = props.NavigateTitle,
-                Role = AutomationRole.Hyperlink, Focusable = true,
-                OnHoverMove = _ => { if (!titleLinkHover.Peek()) titleLinkHover.Value = true; },
-                OnPointerExit = () => { if (titleLinkHover.Peek()) titleLinkHover.Value = false; },
-            };
+
+        BoxEl TitleLink(TextEl run) => new()
+        {
+            Direction = 1, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
+            Cursor = CursorId.Hand, OnClick = props.NavigateTitle,
+            Role = AutomationRole.Hyperlink, Focusable = true,
+            OnHoverMove = _ => { if (!titleLinkHover.Peek()) titleLinkHover.Value = true; },
+            OnPointerExit = () => { if (titleLinkHover.Peek()) titleLinkHover.Value = false; },
+            Children = [run],
+        };
         // A scrolling title shows itself in full (no tip: an empty text never measures cut); a plain one, the mini bar's always (it never
         // scrolls), is cut at the slot, so its full text rides a tooltip that exists only while it is cut. The same host in both forms and with
         // the marquee on or off, so the title keeps its node across the 528 crossing (the mini bar's title had no tip with the marquee on; B11).
@@ -193,10 +205,13 @@ internal static partial class ClassicPlayerBar
                     });
         }
 
+        // THE HEART FOLLOWS THE WORDS. In the full bar the text block is its lines' own width (shrinking to the zone when they are longer), so the
+        // heart rides one gap after the title or the artists, never at the far end of a wide zone (Huge's 360 left it ~120 DIP from a short title).
+        // The mini bar's block still fills its door.
         var metaCol = new BoxEl
         {
             Key = "meta", Animate = ClassicPlayerBarLayout.MoveMotion,
-            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Shrink = 1f,
+            Direction = 1, Grow = mini ? 1f : 0f, Basis = mini ? 0f : float.NaN, MinWidth = 0f, Shrink = 1f,
             Gap = mini ? ClassicPlayerTiers.MiniLinesGap : ClassicPlayerBarLayout.MetaGap, Justify = FlexJustify.Center, ClipToBounds = true,
             OnRealized = h => metaNode.Value = h,
             Children = metaKids.ToArray(),
@@ -241,12 +256,20 @@ internal static partial class ClassicPlayerBar
             ? Loc.Get(v.Liked ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save)
             : Loc.Get(v.Liked ? Strings.Menu.Saved : Strings.Menu.SaveToLiked));
         var likeSlot = Slot("like", likeBox, likeBox, v.LikeLit, saveFace);
+        // THE HEART RIDES THE TEXT'S GLIDE. Its x follows the text block's width (the full bar's block hugs its lines), and the block eases with
+        // MoveMotion on a track change; the slot fades its face only (FaceMotion: no bounds channel, so lighting never reflows the row), so this
+        // wrapper carries the block's own glide and the two land together instead of the heart jumping on the first frame.
+        var likeRide = new BoxEl
+        {
+            Key = "like-ride", Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+            Animate = ClassicPlayerBarLayout.MoveMotion, Children = [likeSlot],
+        };
 
         // The cover and the text block; the heart rides beside them in the identity zone. In the mini bar this flow IS the door (C-PlayerBar
         // mini): the 48-tall identity that opens the now-playing sheet, its subtle plate under the cover and the two lines, never under the heart.
         var leftFlow = new BoxEl
         {
-            Key = "left-flow", Grow = 1f, Shrink = 1f, MinWidth = 0f,
+            Key = "left-flow", Grow = mini ? 1f : 0f, Shrink = 1f, MinWidth = 0f,
             Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = !mini,
             Gap = mini ? ClassicPlayerTiers.MiniDoorGap : huge ? ClassicPlayerTiers.HugeLeftGap : m.LeftGap,
             Children = mini || v.ShowTitleBlock ? [art, metaCol] : [art],
@@ -271,7 +294,7 @@ internal static partial class ClassicPlayerBar
             // The factory PEEKS at promotion time: the mounted cluster outlives every track change. An idle bar is
             // not a drag handle at all. (The mini bar's door carries its own.)
             Draggable = v.Draggable && !mini ? Drag.Source(props.DragPayload) : null,
-            Children = mini || (v.ShowTitleBlock && v.ShowLikeSlot) ? [leftFlow, likeSlot] : [leftFlow],
+            Children = mini || (v.ShowTitleBlock && v.ShowLikeSlot) ? [leftFlow, likeRide] : [leftFlow],
         };
         // Right-click / Menu key / long-press: the track menu over the now-playing target, with its header. ONE seam
         // feeds this cluster AND the immersive stage (`Stage.NowPlayingMenu`, installed by the track menu's owner);
