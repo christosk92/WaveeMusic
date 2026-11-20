@@ -321,8 +321,6 @@ versions separately under `v*` and is not tracked in this file.)
   collection at that moment ended the app, most often on the first page after launch or when the window came back after
   a long time hidden. Wavee is now built with the released .NET 11 SDK, which does not have the defect.
 
-- **Find in a scrolled playlist.** The list's search opens wherever the list is scrolled, not only at the top. (#230)
-
 ## [0.3.9] - 2026-11-14
 
 ### Added
