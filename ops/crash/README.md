@@ -1,7 +1,7 @@
 # Wavee crash service — deploy runbook
 
 No CI touches this. Every step here is run by hand from a developer machine, the same way
-`ops/release/wavee-release.ps1` is — see the repo root `CLAUDE.md`: "There is no CI." This document
+`ops/release/release.ps1` is — see the repo root `CLAUDE.md`: "There is no CI." This document
 covers the Cloudflare Worker in `ops/crash/worker` **and** the dashboard (`ops/crash/dashboard`, Fluent
 UI v9): the Worker serves the dashboard's built `dist/` as its static assets on the same hostname,
 `https://crash.cproducts.dev`, next to `/v1/*` — one deploy (step 5), one Access setup (step 6), no
@@ -195,8 +195,8 @@ so a wrong key there gets a 302 to Access, not the JSON 401 step 6 expects. The 
 `ops/crash/worker/.prod.vars` (gitignored); never print it.
 
 `https://crash.cproducts.dev` is the one URL every release stamps into the build:
-`ops/release/wavee-release.ps1 -CrashIngestUrl https://crash.cproducts.dev` (`WaveeCrashIngestUrl`,
-WP-G; phase `symbols` uploads the maps this Worker resolves against).
+the release runner (`ops/release/release.ps1`) passes it to `pack-wavee-msix.ps1 -CrashIngestUrl` (`WaveeCrashIngestUrl`,
+WP-G), with the key read from 1Password; its step `symbols` uploads the maps this Worker resolves against.
 
 Until step 6 is done the host is not gated: the dashboard's static files are reachable (they carry no
 data) and every data route answers `401`, because `wrangler.toml`'s `ACCESS_*` placeholders fail closed.
@@ -299,7 +299,7 @@ curl.exe -i -X DELETE https://crash.cproducts.dev/v1/installs/x -H "Cf-Access-Jw
 
 ## 7. Uploading symbol maps (what the release script runs)
 
-The release script (`ops/release/wavee-release.ps1`, phase `symbols`, WP-G) uploads one `.symmap` per
+The release runner (`ops/release/release.ps1`, step `symbols`, WP-G) uploads one `.symmap` per
 quad/arch after building it with `Wavee.ReleaseTool symbol-map`:
 
 ```powershell
@@ -323,7 +323,7 @@ under `symbols/`, which has no lifecycle rule (step 3). Fetching them: `docs/gui
 
 This route is **not** exposed through the Worker's HTTP API (there is no `PUT /v1/symbols/:quad/:arch`
 handler to keep the ingest surface small) — it only ever happens through this `wrangler` command, run by
-whoever cuts the release, same trust level as the rest of `wavee-release.ps1`. The Worker discovers a map
+whoever cuts the release, same trust level as the rest of the release runner. The Worker discovers a map
 the first time it needs to resolve a report for that quad/arch (`src/symbolicate.ts`, R2 `GET`, cached in
 memory per isolate) and opportunistically records it in the `symbols` D1 table so the dashboard's Symbols
 tab has something to show — that D1 row is a side effect of the first successful read, not of this

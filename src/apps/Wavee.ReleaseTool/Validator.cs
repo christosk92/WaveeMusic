@@ -40,6 +40,8 @@ static class Validator
         string? token = a.Get("github-token") ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN");
         bool allowUnresolved = a.Flag("allow-unresolved");
         bool allowUnlinked = a.Flag("allow-unlinked");
+        // A hotfix ships its fix list without a highlight: What's new shows the tagline and the sections (design D3).
+        bool hotfix = a.Flag("hotfix");
         if (missing.Count > 0)
         {
             Console.Error.WriteLine("error: missing required argument(s): " + string.Join(", ", missing));
@@ -103,7 +105,7 @@ static class Validator
 
         if (doc.Version != semver) errors.Add($"whatsnew.json version '{doc.Version}' != --semver '{semver}'");
         if (doc.Name != codename) errors.Add($"whatsnew.json name '{doc.Name}' != --codename '{codename}'");
-        if (doc.Highlights.Length == 0) errors.Add("whatsnew.json has no highlights");
+        if (doc.Highlights.Length == 0 && !hotfix) errors.Add("whatsnew.json has no highlights (only a hotfix may have none: --hotfix)");
         if (doc.Tagline.Length == 0) errors.Add("whatsnew.json has no tagline");
 
         // The script owns these — the author never hand-maintains them.
@@ -111,6 +113,8 @@ static class Validator
         doc.Channel = channel;
         doc.Date = release.Date ?? "";
         doc.Sections = release.Sections;
+        // A community change's CHANGELOG line credits its contributor; the highlights that cite its issues carry the badge.
+        foreach (var line in CommunityCredits.Fill(doc, repo)) Console.WriteLine(line);
 
         errors.AddRange(ReleaseNotesValidation.ValidateMedia(doc, notesDir));
         errors.AddRange(ReleaseNotesValidation.ValidateDeepLinks(doc));

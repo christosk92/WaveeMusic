@@ -22,7 +22,8 @@
   stamped build always carries a quad (the crash service refuses a report without one) and symbols, and the map
   is uploaded as symbols/<quad>/win-<arch>.symmap: the Worker resolves frames AT INGEST, so a report sent before the
   map exists stays <unresolved> forever. Uploads are limited to 0.0.x.y verify quads, because a real release's map is
-  owned by wavee-release.ps1's symbols phase and a mismatched upload would break every report from that release.
+  owned by the release runner's symbols step (ops/release/release.ps1) and a mismatched upload would break every
+  report from that release.
   -NoSymbolUpload builds the map and keeps it local.
 
   Update checker (-Channel/-UpdateBaseUrl/-FeedRelease). A loose exe is unpackaged: the checker polls the
@@ -142,7 +143,7 @@ if ($CrashIngestUrl) {
   $Symbols = $true
   if (-not $NoSymbolUpload) {
     if ($Quad -notmatch '^0\.0\.\d+\.\d+$') {
-      throw "Symbol upload is limited to 0.0.x.y verify quads (got $Quad): a real release's map belongs to wavee-release.ps1. Pass -NoSymbolUpload."
+      throw "Symbol upload is limited to 0.0.x.y verify quads (got $Quad): a real release's map belongs to the release runner (ops/release/release.ps1). Pass -NoSymbolUpload."
     }
     # Fail before a multi-minute AOT publish, not after it.
     $wrangler = Get-WranglerPath -RepoRoot $root
