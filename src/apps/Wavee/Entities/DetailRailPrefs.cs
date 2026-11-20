@@ -30,6 +30,13 @@ public static class DetailRailPrefs
     /// <summary>Moves <see cref="Epoch"/>.</summary>
     public static void Bump() => Epoch.Value = Epoch.Peek() + 1;
 
+    /// <summary>The asides' own epoch, apart from the rails' <see cref="Epoch"/>: a mounted frame host reads the rails' on every render, so an aside
+    /// grip's release on the shared one re-rendered the whole page (17 components) for a width only the aside's slot draws. Bumped by an aside
+    /// commit and by <see cref="ResetAll"/>; read by <see cref="StoredAsideWidth"/> alone.</summary>
+    static readonly Signal<int> s_asideEpoch = new(0);
+
+    static void BumpAsides() => s_asideEpoch.Value = s_asideEpoch.Peek() + 1;
+
     // One StateKey per scope and member. The defaults are the authored widths (album-like 280, list-like and uniform 240); the range is the grip's.
     static readonly StateKey<float> s_albumWidth = WidthKeyOf("rail.album.width", RailScope.Album);
     static readonly StateKey<float> s_playlistWidth = WidthKeyOf("rail.playlist.width", RailScope.Playlist);
@@ -41,6 +48,35 @@ public static class DetailRailPrefs
     static readonly StateKey<bool> s_likedCollapsed = new("rail.liked.collapsed", false, false, false);
     static readonly StateKey<bool> s_showCollapsed = new("rail.show.collapsed", false, false, false);
     static readonly StateKey<bool> s_uniformCollapsed = new("rail.uniform.collapsed", false, false, false);
+
+    // The docked aside's remembered widths (contract 2.9), one per kind the structure sizes apart: the album's, a playlist's with its own body,
+    // and the insights alone. 0 = never dragged: the structure's own width (its bounds are the structure's too, so the store only caps the absurd).
+    const float AsideStoredMax = 4096f;
+    static readonly StateKey<float>[] s_asideWidths =
+    [
+        new("aside.album.width", 0f, 0f, AsideStoredMax),
+        new("aside.playlist.width", 0f, 0f, AsideStoredMax),
+        new("aside.insights.width", 0f, 0f, AsideStoredMax),
+    ];
+
+    /// <summary>The remembered-width slot of an aside of <paramref name="kind"/> (<paramref name="body"/>: the page has an aside body of its own,
+    /// not only the insights).</summary>
+    public static int AsideSlot(DetailKind kind, bool body) => kind == DetailKind.Album ? 0 : body ? 1 : 2;
+
+    /// <summary>The slot's remembered aside width, 0 when never dragged. Reads the asides' epoch (never the rails'), so a render that asks
+    /// re-renders on a reset or a release elsewhere, and nothing else does.</summary>
+    public static float StoredAsideWidth(int slot)
+    {
+        _ = s_asideEpoch.Value;
+        return ThemeState.Get(s_asideWidths[slot]);
+    }
+
+    /// <summary>An aside grip's release: persist the slot's width, then ONE bump of the asides' epoch (the rails' is not touched).</summary>
+    public static void CommitAsideWidth(int slot, float width)
+    {
+        ThemeState.Set(s_asideWidths[slot], width);
+        BumpAsides();
+    }
 
     static StateKey<float> WidthKeyOf(string id, RailScope scope)
         => new(id, Detail.RailPolicy.DefaultWidthFor(scope), Detail.RailPolicy.MinWidthFor(scope), Detail.RailPolicy.MaxWidth);
@@ -102,10 +138,11 @@ public static class DetailRailPrefs
             ThemeState.Get(s_albumWidth), ThemeState.Get(s_albumCollapsed),
             ThemeState.Get(s_playlistWidth), ThemeState.Get(s_playlistCollapsed),
             ThemeState.Get(s_likedWidth), ThemeState.Get(s_likedCollapsed),
-            ThemeState.Get(s_showWidth), ThemeState.Get(s_showCollapsed));
+            ThemeState.Get(s_showWidth), ThemeState.Get(s_showCollapsed))
+           || Array.Exists(s_asideWidths, static k => ThemeState.Get(k) > 0f);
 
-    /// <summary>Reset the FOUR per-scope pairs to their authored defaults (never the uniform pair), then ONE bump, so an
-    /// open detail page's rail snaps to the reset widths now rather than next launch.</summary>
+    /// <summary>Reset the FOUR per-scope pairs to their authored defaults (never the uniform pair) and the asides' widths, then ONE bump of each
+    /// epoch, so an open detail page's rail and aside snap to the reset widths now rather than next launch.</summary>
     public static void ResetAll()
     {
         Span<RailScope> scopes = [RailScope.Album, RailScope.Playlist, RailScope.Liked, RailScope.Show];
@@ -115,6 +152,8 @@ public static class DetailRailPrefs
             ThemeState.Set(width, width.Default);
             ThemeState.Set(CollapsedKey(scope), false);
         }
+        foreach (var aside in s_asideWidths) ThemeState.Set(aside, 0f);   // the asides back to the structure's own widths
         Bump();
+        BumpAsides();
     }
 }

@@ -61,14 +61,18 @@ internal static class ClassicAlbumTrailing
     public static Element AsideTemplate(AlbumAsideProps p, in ViewContext ctx)
     {
         var g = ClassicDetailTiers.Of(ctx.Tier()).Aside ?? ClassicDetailAside.Huge;
-        float content = g.ContentWidthFor(DetailKind.Album, body: true);
         var kids = new List<Element>(4);
         if (p.Release is { } release) kids.Add(release);
         // The card freezes at mount: its band height is in the key, so a Huge | Huge 4K crossing re-mounts it at the new band.
         if (p.About is { } artist)
             kids.Add(Controls.ArtistAboutCard(artist, AboutLayout.Aside, g.ArtistBand)
                 with { Key = "aside:about:" + artist.Uri.Text + ":" + g.ArtistBand.ToString(CultureInfo.InvariantCulture) });
-        if (p.Fans.Count > 0) kids.Add(AsideFans(p.Fans, g, content));
+        // The fans grid sizes its cells to the column it stands in (its grip resizes it): measured, so a drag re-lays the grid alone.
+        if (p.Fans.Count > 0)
+        {
+            var fans = p.Fans;
+            kids.Add(ClassicDetailFrame.AsideMeasured("aside:fans", g.ContentWidthFor(DetailKind.Album, body: true), w => AsideFans(fans, g, w)));
+        }
         if (p.MoreBy is { } moreBy) kids.Add(moreBy);
         return new BoxEl { Direction = 1, Gap = g.AlbumGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
     }

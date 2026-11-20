@@ -337,6 +337,18 @@ public static partial class Detail
     /// nothing is shown twice. Provided by <c>FrameHost</c> around the frame view; false everywhere else.</summary>
     public static readonly Context<bool> AsideDocked = new(false);
 
+    /// <summary>The aside's remembered-width verbs (contract 2.9), one per slot (<see cref="DetailRailPrefs.AsideSlot"/>), built once.</summary>
+    static readonly Func<float>[] s_asideStored =
+    [
+        static () => DetailRailPrefs.StoredAsideWidth(0), static () => DetailRailPrefs.StoredAsideWidth(1), static () => DetailRailPrefs.StoredAsideWidth(2),
+    ];
+
+    /// <inheritdoc cref="s_asideStored"/>
+    static readonly Action<float>[] s_asideCommit =
+    [
+        static w => DetailRailPrefs.CommitAsideWidth(0, w), static w => DetailRailPrefs.CommitAsideWidth(1, w), static w => DetailRailPrefs.CommitAsideWidth(2, w),
+    ];
+
     /// <summary>Everything a page hands the frame. Equality gates on DATA: the identity by value, the config, the table
     /// source by (type, context, version, count, total, state), the profile by its own data equality, the verbs and slots
     /// by presence, the route key.</summary>
@@ -829,8 +841,13 @@ public static partial class Detail
             bool asideOn = tierLayout.AsideDocked && !episodes && (spec.Slots.Aside is not null || _sheetHosts)
                 && (!heroForm || (verticalTracks && tierLayout.AsideInHero));
             _heroAside = asideOn && heroForm;
+            int asideSlot = DetailRailPrefs.AsideSlot(id.Kind, spec.Slots.Aside is not null);
             Contracts.DetailAsideProps? aside = asideOn
-                ? new Contracts.DetailAsideProps { Kind = id.Kind, Body = spec.Slots.Aside is null ? null : _sAside(), RouteKey = routeKey }
+                ? new Contracts.DetailAsideProps
+                {
+                    Kind = id.Kind, Body = spec.Slots.Aside is null ? null : _sAside(), RouteKey = routeKey,
+                    StoredWidth = s_asideStored[asideSlot], CommitWidth = s_asideCommit[asideSlot],
+                }
                 : null;
             Contracts.DetailHeadProps? head = cfg.Rail ? null : new Contracts.DetailHeadProps { Spec = spec, Shown = _listCount };
             Contracts.DetailInsightsProps? sheet = episodes ? null : SheetProps(routeKey);

@@ -254,11 +254,19 @@ public sealed record ClassicDetailAside
     /// <summary>The gap between two fans of a row.</summary>
     public float FanColumnGap { get; init; } = 8f;
 
-    /// <summary>The list column's right inset before the hairline: the rows keep it and never run to the card's edge.</summary>
+    /// <summary>The rows' right inset at the page's edge (an insights-only aside folded shut): they never run to the card's edge.</summary>
     public float ListInset { get; init; } = 8f;
 
-    /// <summary>The hairline's margins: 24 over it, 16 each side.</summary>
-    public Edges4 HairlineMargin { get; init; } = new(16f, 24f, 16f, 0f);
+    /// <summary>The air the rows keep before the hairline beyond <see cref="ListInset"/> (the board's 16).</summary>
+    public float HairlineLead { get; init; } = 16f;
+
+    /// <summary>The rows' right inset beside an open aside: <see cref="ListInset"/> and <see cref="HairlineLead"/>, laid INSIDE the list's scroller
+    /// (<c>ClassicDetailHero.ListInsets</c>), so the scroller runs to the hairline and its scrollbar stands on the pane's edge, not in the gutter.</summary>
+    public float ListTrail => ListInset + HairlineLead;
+
+    /// <summary>The hairline's margins: 24 over it, none before it (the list's scroller meets it; the rows keep <see cref="ListTrail"/>), 16 after it
+    /// (the grip's strip).</summary>
+    public Edges4 HairlineMargin { get; init; } = new(0f, 24f, 16f, 0f);
 
     /// <summary>The album aside's padding over its first section (24), on the right (the card's edge, 24) and under its last (24).</summary>
     public Edges4 AlbumPad { get; init; } = new(0f, 24f, 24f, 24f);
@@ -275,8 +283,20 @@ public sealed record ClassicDetailAside
     /// <summary>The gap inside the insights section (its title over the cards).</summary>
     public float InsightsGap { get; init; } = 12f;
 
-    /// <summary>The hairline and its two margins: what the aside slot adds beside its column.</summary>
+    /// <summary>The hairline and its two margins: what the aside slot adds beside its column. The right margin is the aside's grip (the engine
+    /// splitter's 16 DIP strip), so the grip starts at the hairline and never lies over the list's scrollbar left of it.</summary>
     public float HairlineSpan => HairlineMargin.Left + 1f + HairlineMargin.Right;
+
+    /// <summary>How narrow and how wide a drag may make the aside column (its grip's bounds). Every default width lies inside them, and the list
+    /// keeps its 300 DIP floor at the narrowest window of the tier.</summary>
+    public float MinWidth { get; init; } = 320f;
+
+    /// <inheritdoc cref="MinWidth"/>
+    public float MaxWidth { get; init; } = 640f;
+
+    /// <summary>The column's width: the remembered one (<paramref name="stored"/>, 0 = never dragged), held inside the bounds, else the kind's own.</summary>
+    public float RestFor(DetailKind kind, bool body, float stored)
+        => stored > 0f ? Math.Clamp(stored, MinWidth, MaxWidth) : WidthFor(kind, body);
 
     /// <summary>The aside column's width for a page of <paramref name="kind"/> (<paramref name="body"/>: the page has a body of its own, not only the insights).</summary>
     public float WidthFor(DetailKind kind, bool body) => kind == DetailKind.Album ? AlbumWidth : body ? PlaylistWidth : InsightsWidth;
@@ -297,7 +317,7 @@ public sealed record ClassicDetailAside
     public static ClassicDetailAside Huge { get; } = new() { AlbumWidth = 520f, ArtistBand = 270f, FanArt = 96f, FanRowGap = 12f };
 
     /// <summary>Huge 4K (C-Album-Huge4K): the playlist asides keep Huge's (no 4K board draws them).</summary>
-    public static ClassicDetailAside Huge4K { get; } = new() { AlbumWidth = 640f, ArtistBand = 360f, FanArt = 120f, FanRowGap = 16f };
+    public static ClassicDetailAside Huge4K { get; } = new() { AlbumWidth = 640f, ArtistBand = 360f, FanArt = 120f, FanRowGap = 16f, MaxWidth = 800f };
 }
 
 /// <summary>The two-column rail's own metrics in one window tier: its padding, the gap between its rows and whether the CTA's actions start a line of their own.</summary>

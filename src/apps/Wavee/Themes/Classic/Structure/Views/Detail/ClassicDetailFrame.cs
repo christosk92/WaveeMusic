@@ -211,10 +211,9 @@ internal static partial class ClassicDetailFrame
         };
         Element right = new BoxEl
         {
-            // The content column keeps the host's key (`right:tracks`) in every form; beside a docked aside the rows keep the board's 8 before the hairline
-            // (C-Album-Huge).
+            // The content column keeps the host's key (`right:tracks`) in every form. Beside a docked aside it runs to the hairline: the rows' air before
+            // it (C-Album-Huge) is the table's own trail inset (ClassicDetailHero.ListInsets), inside the scroller, so the scrollbar meets the hairline.
             Key = p.ContentKey, Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = p.ContentMinWidth, MinHeight = 0f,
-            Padding = p.Aside is not null && detailTier.Aside is { } g ? new Edges4(0f, 0f, g.ListInset, 0f) : default,
             Children =
             [
                 host,
@@ -296,50 +295,140 @@ internal static partial class ClassicDetailFrame
     /// insights follows their toggle (0 closed), the slot easing its width with the insights dock's dynamics, so the list yields instead of jumping.
     /// <para>The slot's Width is BOUND in every form (none, the full slot, the toggle's): the slot is one reused node across the forms, and the engine
     /// wires a bind at mount only, so a static-to-bound flip keeps the mounted form (FluentGpu `Reconciler.Rewire.cs`). A playlist whose facts landed
-    /// after its first Huge frame kept the "none" slot's static 0 with the insights column inside it and its toggle open.</para></summary>
-    static Element AsideSlot(DetailFrameProps p, ClassicDetailTier tier, EnterExit? swapIn = null)
+    /// after its first Huge frame kept the "none" slot's static 0 with the insights column inside it and its toggle open.</para>
+    /// <para>RESIZABLE (contract 2.9): the hairline's right margin is the engine splitter's strip, so a drag on the aside's edge sizes the column
+    /// between the tier's bounds and a release remembers the width for this kind of aside (the core's state). The grip starts at the hairline, never
+    /// left of it: the list's scrollbar owns the list's last DIP. The host is mounted in every form, so the slot stays one node.</para>
+    /// <para>NOTHING ON A DRAG RE-RENDERS THE FRAME. The grip's cells (the live width, the drag flag) and the remembered width's read live in the
+    /// slot's own component: the slot and the column BIND their widths to the live cell (layout reflows them), the drag flag that turns the slot's
+    /// eased reveal off re-renders the slot alone on a press, and a release's commit (the remembered sizes' epoch) re-renders the slot alone too.
+    /// What sizes itself to the column (the album's fans grid, the insights bento) measures its own width (<see cref="AsideMeasured"/>).</para></summary>
+    static Element AsideSlot(DetailFrameProps p, ClassicDetailTier tier, EnterExit? swapIn = null) => new BoxEl
     {
-        if (p.Aside is not { } aside || tier.Aside is not { } g)
-            return new BoxEl { Key = "detail:aside", Width = NoSlot, Shrink = 0f, MinHeight = 0f, Animate = ClassicDetailLayout.DockReveal };
-        bool body = aside.Body is not null;
-        var insights = p.Sheet is { Facts: not null } sheet ? sheet : null;
-        float columnW = g.WidthFor(aside.Kind, body);
-        float slotW = g.SlotWidthFor(aside.Kind, body);
-        var pad = g.PadFor(aside.Kind);
-        float content = g.ContentWidthFor(aside.Kind, body);
-        var kids = new List<Element>(2);
-        if (aside.Body is { } b) kids.Add(b);
-        if (insights is { } i) kids.Add(ClassicInsights.AsideSection(i.Toggle, i.Facts!, content, g.InsightsGap));
-        Prop<float> width = Prop.Of(() => slotW);
-        if (!body && insights is { } only)
+        // A column the page row stretches to its height, its width the slot's: the slot's component host takes its root's Grow, which in this
+        // column fills the height and never claims the row's free width beside the list.
+        Key = "detail:aside-host", Direction = 1, Shrink = 0f, MinHeight = 0f,
+        Children =
+        [
+            Embed.Comp(new AsideSlotArgs(p.Aside, p.Sheet is { Facts: not null } sheet ? sheet : null, tier.Aside, swapIn), static () => new AsideSlotHost()),
+        ],
+    };
+
+    /// <summary>What the aside's slot is handed (re-pushed every frame render; equal args re-render nothing).</summary>
+    sealed record AsideSlotArgs(DetailAsideProps? Aside, DetailInsightsProps? Insights, ClassicDetailAside? Tier, EnterExit? SwapIn);
+
+    /// <summary>The aside's slot (<see cref="AsideSlot"/>): its own component, holding the grip's cells, so a drag, a press and a release re-render it,
+    /// never the frame.</summary>
+    sealed class AsideSlotHost : Component
+    {
+        public override Element Render()
         {
-            var open = only.Toggle.Open;
-            width = Prop.Of(() => open.Value ? slotW : 0f);
+            var a = UseProps<AsideSlotArgs>();
+            // The rest: the remembered width inside the tier's bounds, else the kind's own; 0 where no aside docks. Its read subscribes the
+            // remembered sizes' epoch (a release here or on another page, "Clear all remembered sizes"): a new rest re-seeds the column unless a
+            // drag owns it. Every render, every arm: the hooks keep their order.
+            float rest = a.Aside is { } at && a.Tier is { } gt ? gt.RestFor(at.Kind, at.Body is not null, at.StoredWidth?.Invoke() ?? 0f) : 0f;
+            var live = UseSignal(rest);
+            var dragSig = UseSignal(false);
+            UseLayoutEffect(() => { if (!dragSig.Peek() && live.Peek() != rest) live.Value = rest; }, DepKey.From(rest));
+            // A drag sizes the slot 1:1; the eased reveal is the toggle's and a tier crossing's.
+            bool dragging = dragSig.Value;
+            if (a.Aside is not { } aside || a.Tier is not { } g)
+                return new BoxEl { Key = "detail:aside", Width = NoSlot, Grow = 1f, Shrink = 0f, MinHeight = 0f, Animate = ClassicDetailLayout.DockReveal };
+            bool body = aside.Body is not null;
+            var insights = a.Insights;
+            float span = g.HairlineSpan;
+            var open = !body && insights is { } only ? only.Toggle.Open : null;
+            Prop<float> width = Prop.Of(() => open is { Value: false } ? 0f : span + (live.Value > 0f ? live.Value : rest));
+            Prop<float> columnW = Prop.Of(() => live.Value > 0f ? live.Value : rest);
+            var pad = g.PadFor(aside.Kind);
+            Element grip = aside.CommitWidth is { } commit
+                ? Splitter.Create(live, () => commit(live.Peek()),
+                    // Paint-free (the shell rails' form): the hairline is the seam and the SizeWE cursor finds it; a hover thumb beside it read as a
+                    // second, brighter divider every time the pointer passed the strip.
+                    new Splitter.SplitterOptions { Min = g.MinWidth, Max = g.MaxWidth, Polarity = SplitterPolarity.Leading, ShowIndicator = false },
+                    dragging: dragSig)
+                    with { Key = "aside:grip" }
+                : new BoxEl { Width = g.HairlineMargin.Right, Shrink = 0f };
+            var kids = new List<Element>(2);
+            if (aside.Body is { } b) kids.Add(b);
+            if (insights is { } i)
+            {
+                // The bento is laid out for a width: it measures the section it stands in (the column's content), so a drag re-lays it alone.
+                var facts = i.Facts!;
+                float restContent = rest - pad.Right;
+                kids.Add(ClassicInsights.AsideSection(i.Toggle, _ => AsideMeasured("aside:insights:facts", restContent, facts), restContent, g.InsightsGap));
+            }
+            return new BoxEl
+            {
+                // Grow: the slot fills the height of the column it stands in (the aside runs the page's height).
+                Key = "detail:aside", Direction = 0, Grow = 1f, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
+                Width = width, Animate = dragging ? null : ClassicDetailLayout.DockReveal,
+                Children =
+                [
+                    // What docks here (About this release, "More by") stands in the rail and the band under the list below Huge: two places, so a crossing
+                    // cross-fades the column on the declared swap while the slot eases its width (audit B9).
+                    new BoxEl
+                    {
+                        Key = "aside:swap", Direction = 0, Shrink = 0f, MinHeight = 0f,
+                        Enter = a.SwapIn, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Key = "aside:hairline", Width = 1f, Shrink = 0f, Margin = new Edges4(0f, g.HairlineMargin.Top, 0f, 0f),
+                                Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
+                            },
+                            grip,
+                            // The column at the grip's live width, BOUND on this box (a scroller's width is static): the row has no free width (the
+                            // slot is its hairline, grip and column exactly), and the scroller fills the column's width and the aside row's height.
+                            new BoxEl
+                            {
+                                Key = "aside:column", Direction = 1, Width = columnW, Shrink = 0f, MinHeight = 0f,
+                                Children =
+                                [
+                                    Ui.ScrollView(new BoxEl
+                                    {
+                                        Direction = 1, Gap = aside.Kind == DetailKind.Album ? g.AlbumGap : g.PlaylistGap, Padding = pad,
+                                        Children = kids.ToArray(),
+                                    }) with { Key = "aside:scroll:" + aside.RouteKey, Grow = 1f, MinHeight = 0f },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            };
         }
-        return new BoxEl
+    }
+
+    /// <summary>What sizes itself to the aside's column (the album's fans grid, the insights bento): <paramref name="build"/> at the width its own box is
+    /// arranged at, on the 4-DIP <see cref="AsideMeasureGrid"/>, so a drag of the grip re-renders this part alone and the rest of the column reflows
+    /// through layout. The box stretches across the column, so its width is the column's content and never the built content's (no measuring loop).
+    /// Keyed (<paramref name="key"/>): a remount draws its first frame at the width it last had; before any measure it is <paramref name="fallback"/>,
+    /// the column's resting content.</summary>
+    internal static Element AsideMeasured(string key, float fallback, Func<float, Element> build)
+        => Embed.Comp(new AsideMeasuredArgs(key, fallback, build), static () => new AsideMeasuredHost());
+
+    /// <summary>The measuring grid of <see cref="AsideMeasured"/>: a drag re-lays the measured parts every 4 DIP, not every pointer move.</summary>
+    const float AsideMeasureGrid = 4f;
+
+    sealed record AsideMeasuredArgs(string Key, float Fallback, Func<float, Element> Build);
+
+    sealed class AsideMeasuredHost : Component
+    {
+        string? _key;   // the keyed measurement's role, frozen at mount like every hook input
+
+        public override Element Render()
         {
-            Key = "detail:aside", Direction = 0, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
-            Width = width, Animate = ClassicDetailLayout.DockReveal,
-            Children =
-            [
-                // What docks here (About this release, "More by") stands in the rail and the band under the list below Huge: two places, so a crossing
-                // cross-fades the column on the declared swap while the slot eases its width (audit B9).
-                new BoxEl
-                {
-                    Key = "aside:swap", Direction = 0, Shrink = 0f, MinHeight = 0f,
-                    Enter = swapIn, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
-                    Children =
-                    [
-                        new BoxEl { Key = "aside:hairline", Width = 1f, Shrink = 0f, Margin = g.HairlineMargin, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
-                        Ui.ScrollView(new BoxEl
-                        {
-                            Direction = 1, Width = columnW, Gap = aside.Kind == DetailKind.Album ? g.AlbumGap : g.PlaylistGap, Padding = pad,
-                            Children = kids.ToArray(),
-                        }) with { Key = "aside:scroll:" + aside.RouteKey, Width = columnW, Shrink = 0f, MinHeight = 0f },
-                    ],
-                },
-            ],
-        };
+            var a = UseProps<AsideMeasuredArgs>();
+            _key ??= a.Key;
+            float w = UseMeasuredWidth(_key, AsideMeasureGrid).Value;
+            return new BoxEl
+            {
+                Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Children = [a.Build(w > 0f ? w : a.Fallback)],
+            };
+        }
     }
 
     // ══ 2. THE GRIP AND ITS SEAM ═══════════════════════════════════════════════════════════════════════════════════════════
