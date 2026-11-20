@@ -1177,50 +1177,60 @@ public static partial class Playback
                 Spotify.Connect.Signal(target, signal, CancellationToken.None)));
             return;
         }
+        // Shuffle and repeat (remote-play plan 3.2): ONE `set_options` to an owner that advertises capability 25 (all.saz 2044,
+        // 2164; the iPhone and desktop 1.3.10 both set it, device-capabilities.txt); the legacy verbs only for one that does not.
+        bool setOptions = Devices.SupportsSetOptions(device);
         if (s_fx.RemoteCmd == RemoteCmd.SetRepeatingContext && s_fx.RemoteArg > 0)
         {
-            // A complete repeat mode (DoRepeat): both flags, the one being turned off first, so the owner never passes through
-            // a mode nobody asked for (Track -> Context: track off, then context on; Off: track off, then context off).
+            // A complete repeat mode (DoRepeat): both flags at once. One set_options names both; the legacy pair turns the one
+            // being switched off first, so the owner never passes through a mode nobody asked for (Track -> Context: track off,
+            // then context on; Off: track off, then context off).
             var mode = (RepeatMode)(s_fx.RemoteArg - 1);
             bool context = mode != RepeatMode.Off, track = mode == RepeatMode.Track;
             RunForward(RemoteVerb.Repeat, device, () =>
             {
-                bool ok = true;
-                if (!track) ok &= Spotify.Connect.Command(target, "set_repeating_track", "value", 0, false, CancellationToken.None);
-                ok &= Spotify.Connect.Command(target, "set_repeating_context", "value", 0, context, CancellationToken.None);
-                if (track) ok &= Spotify.Connect.Command(target, "set_repeating_track", "value", 0, true, CancellationToken.None);
+                bool ok;
+                if (setOptions) ok = Spotify.Connect.SetRepeat(target, track, context, CancellationToken.None);
+                else
+                {
+                    ok = true;
+                    if (!track) ok &= Spotify.Connect.Command(target, "set_repeating_track", false, CancellationToken.None);
+                    ok &= Spotify.Connect.Command(target, "set_repeating_context", context, CancellationToken.None);
+                    if (track) ok &= Spotify.Connect.Command(target, "set_repeating_track", true, CancellationToken.None);
+                }
                 Answered(RemoteVerb.Repeat, device, ok);
             });
             return;
         }
-        string endpoint = Endpoint(s_fx.RemoteCmd);
-        if (endpoint.Length == 0) return;
-        string valueName = s_fx.RemoteCmd switch
-        {
-            RemoteCmd.SeekTo => "value",
-            RemoteCmd.SetShufflingContext or RemoteCmd.SetRepeatingContext or RemoteCmd.SetRepeatingTrack => "value",
-            _ => "",
-        };
         long arg = s_fx.RemoteArg;
         bool flag = s_fx.RemoteFlag;
-        RemoteVerb verb = VerbOf(s_fx.RemoteCmd);
-        RunForward(verb, device, () => Answered(verb, device,
-            Spotify.Connect.Command(target, endpoint, valueName, arg, flag, CancellationToken.None)));
+        RemoteCmd cmd = s_fx.RemoteCmd;
+        RemoteVerb verb = VerbOf(cmd);
+        // Every other verb in the official client's spelling (remote-play plan 3.1, 3.3; Spotify.Connect.Outbound.cs §4b):
+        // pause/resume with their options and origin, previous as prev_track with allow_seeking, seek without logging.
+        Func<bool>? send = cmd switch
+        {
+            RemoteCmd.Pause => () => Spotify.Connect.Pause(target, CancellationToken.None),
+            RemoteCmd.Resume => () => Spotify.Connect.Resume(target, CancellationToken.None),
+            RemoteCmd.SkipPrev => () => Spotify.Connect.PrevTrack(target, CancellationToken.None),
+            RemoteCmd.SeekTo => () => Spotify.Connect.SeekTo(target, arg, CancellationToken.None),
+            RemoteCmd.SetShufflingContext when setOptions => () => Spotify.Connect.SetShuffle(target, flag, CancellationToken.None),
+            RemoteCmd.SetShufflingContext or RemoteCmd.SetRepeatingContext or RemoteCmd.SetRepeatingTrack
+                => () => Spotify.Connect.Command(target, LegacyOptionEndpoint(cmd), flag, CancellationToken.None),
+            _ => null,
+        };
+        if (send is null) return;
+        RunForward(verb, device, () => Answered(verb, device, send()));
     }
 
-    /// <summary>The wire spelling of a verb. The ONE place an endpoint string exists on the outbound side — the
-    /// decode half folded the inbound ones to ordinals for the same reason.</summary>
-    static string Endpoint(RemoteCmd cmd) => cmd switch
+    /// <summary>The LEGACY wire spelling of an option verb, for an owner without capability 25 (<see cref="SendRemote"/>). Every
+    /// other outbound verb has its own writer in <c>Spotify.Connect</c> (remote-play plan phase 3); only these and the legacy
+    /// repeat pair in <see cref="SendRemote"/> still name an endpoint here.</summary>
+    static string LegacyOptionEndpoint(RemoteCmd cmd) => cmd switch
     {
-        RemoteCmd.Play => "play",
-        RemoteCmd.Pause => "pause",
-        RemoteCmd.Resume => "resume",
-        RemoteCmd.SeekTo => "seek_to",
-        RemoteCmd.SkipPrev => "skip_prev",          // no capture: the official client's previous button was never sent
         RemoteCmd.SetShufflingContext => "set_shuffling_context",
-        RemoteCmd.SetRepeatingContext => "set_repeating_context",
         RemoteCmd.SetRepeatingTrack => "set_repeating_track",
-        _ => "",
+        _ => "set_repeating_context",
     };
 
     /// <summary>Move playback to another device. The reply is posted back with the epoch it was started for, so a

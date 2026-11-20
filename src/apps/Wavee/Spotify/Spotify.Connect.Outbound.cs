@@ -147,11 +147,160 @@ public static partial class Spotify
             return w.Written.Length;
         }
 
-        /// <summary>One verb for the device that holds playback. <paramref name="endpoint"/> is the wire spelling
-        /// (`pause`, `resume`, `skip_prev`, `seek_to`, `set_shuffling_context`, …) and <paramref name="value"/> is the
-        /// verb's one argument, written under <paramref name="valueName"/> when that name is non-empty.</summary>
-        public static bool Command(string targetDeviceId, string endpoint, string valueName, long value,
-            bool flag, CancellationToken ct)
+        // ── 4b. the transport verbs, spelled as the official client sends them (remote-play plan phase 3, 2026-11-20) ──
+        //
+        //   pause       pause      + options{3} + logging_params + pause_origin{npb}            verycomplex3.saz 657 (1.2.96)
+        //   resume      resume     + options{3} + logging_params + resume_origin{npb}           verycomplex.saz 737 (1.2.96)
+        //   previous    prev_track + options{3, allow_seeking:true} + logging_params            sppp.saz 470 (1.3.10)
+        //   seek        seek_to    + value + position + relative:"beginning", NO logging_params bigone.saz 1958 (1.3.10), all.saz 2233
+        //   shuffle     set_options + shuffling_context + options{3} + logging_params + modes{context_enhancement:NONE}
+        //                                                                                        all.saz 2044, 2183 (1.2.94)
+        //   repeat      set_options + repeating_track + repeating_context + options{3} + logging_params
+        //                                                                                        all.saz 2164, 2230, 2272 (1.2.94)
+        //
+        // Before, every one of them went through one generic writer: `skip_prev` with no options (no official client sends that
+        // spelling over HTTP; without `allow_seeking` the owner is not told it may restart the row instead), pause and resume
+        // with thin logging, seek WITH logging, and shuffle/repeat as `set_shuffling_context` / `set_repeating_*` (two posts for
+        // one repeat change). `set_options` goes only to a device that advertises capability 25 (supports_set_options_command:
+        // the iPhone and desktop 1.3.10 both do, device-capabilities.txt); any other keeps the legacy verbs (`Command`).
+
+        /// <summary>Pause the device that holds playback (<c>pause</c>, verycomplex3.saz 657). Blocks; api threads only.</summary>
+        public static bool Pause(string targetDeviceId, CancellationToken ct) => Transport(targetDeviceId, "pause", ct);
+
+        /// <summary>Resume it (<c>resume</c>, verycomplex.saz 737). Blocks; api threads only.</summary>
+        public static bool Resume(string targetDeviceId, CancellationToken ct) => Transport(targetDeviceId, "resume", ct);
+
+        /// <summary>Previous on it (<c>prev_track</c> with <c>allow_seeking</c>, sppp.saz 470): the owner decides between restarting
+        /// the row and going back, as its own button does. Blocks; api threads only.</summary>
+        public static bool PrevTrack(string targetDeviceId, CancellationToken ct) => Transport(targetDeviceId, "prev_track", ct);
+
+        static bool Transport(string targetDeviceId, string endpoint, CancellationToken ct)
+        {
+            var buffer = new ArrayBufferWriter<byte>(512);
+            TransportBody(buffer, endpoint, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
+            return PostCommand(endpoint, targetDeviceId, buffer.WrittenSpan, ct);
+        }
+
+        /// <summary>The body of <c>pause</c>, <c>resume</c> and <c>prev_track</c>, key for key as captured: the endpoint, the three
+        /// option bools (<c>prev_track</c> adds <c>allow_seeking: true</c>, sppp.saz 470), the full logging params, then the origin a
+        /// pause or a resume names (<c>pause_origin</c> / <c>resume_origin</c> <c>{feature_identifier: "npb"}</c>, the now-playing
+        /// bar: verycomplex3.saz 657, verycomplex.saz 737), then <c>connection_type</c> and <c>intent_id</c>. PURE.</summary>
+        public static void TransportBody(IBufferWriter<byte> into, string endpoint, string deviceId, string commandId, string intentId,
+            long nowMs)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", endpoint);
+            QueueOptions(w, allowSeeking: endpoint == "prev_track");
+            LoggingParams(w, deviceId, commandId, "", nowMs);
+            string? origin = endpoint switch { "pause" => "pause_origin", "resume" => "resume_origin", _ => null };
+            if (origin is not null)
+            {
+                w.WriteStartObject(origin);
+                w.WriteString("feature_identifier", "npb");
+                w.WriteEndObject();
+            }
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
+        /// <summary>Seek the device that holds playback to <paramref name="positionMs"/> (<c>seek_to</c>). Blocks; api threads only.</summary>
+        public static bool SeekTo(string targetDeviceId, long positionMs, CancellationToken ct)
+        {
+            var buffer = new ArrayBufferWriter<byte>(192);
+            SeekBody(buffer, positionMs, NewId());
+            return PostCommand("seek_to", targetDeviceId, buffer.WrittenSpan, ct);
+        }
+
+        /// <summary>The <c>seek_to</c> body as every captured one is (bigone.saz 1958 on 1.3.10, all.saz 2233, itsover.saz 789): the
+        /// position twice (<c>value</c>, <c>position</c>), <c>relative: "beginning"</c>, and NO logging params; then
+        /// <c>connection_type</c> and <c>intent_id</c>. PURE.</summary>
+        public static void SeekBody(IBufferWriter<byte> into, long positionMs, string intentId)
+        {
+            long ms = Math.Max(0L, positionMs);
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", "seek_to");
+            w.WriteNumber("value", ms);
+            w.WriteNumber("position", ms);
+            w.WriteString("relative", "beginning");
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
+        /// <summary>Shuffle on or off as ONE <c>set_options</c> (all.saz 2044). Only for a device that sets capability 25
+        /// (<see cref="Decode.ClusterDevice.SupportsSetOptions"/>); the caller keeps <c>set_shuffling_context</c> for any other.
+        /// Blocks; api threads only.</summary>
+        public static bool SetShuffle(string targetDeviceId, bool shuffle, CancellationToken ct)
+        {
+            var buffer = new ArrayBufferWriter<byte>(512);
+            ShuffleOptionsBody(buffer, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
+            return PostCommand("set_options", targetDeviceId, buffer.WrittenSpan, ct);
+        }
+
+        /// <summary>A whole repeat mode as ONE <c>set_options</c> naming both flags (all.saz 2164: track off, context on; 2230: both
+        /// on), so the owner never passes through a mode nobody asked for. Only for a device that sets capability 25; the caller
+        /// keeps the two <c>set_repeating_*</c> posts for any other. Blocks; api threads only.</summary>
+        public static bool SetRepeat(string targetDeviceId, bool repeatTrack, bool repeatContext, CancellationToken ct)
+        {
+            var buffer = new ArrayBufferWriter<byte>(512);
+            RepeatOptionsBody(buffer, repeatTrack, repeatContext, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
+            return PostCommand("set_options", targetDeviceId, buffer.WrittenSpan, ct);
+        }
+
+        /// <summary>The shuffle <c>set_options</c> body, key for key as all.saz 2044: the endpoint, <c>shuffling_context</c>, the three
+        /// option bools, the logging params, then <c>modes {context_enhancement: "NONE"}</c>; then <c>connection_type</c> and
+        /// <c>intent_id</c>. PURE.</summary>
+        public static void ShuffleOptionsBody(IBufferWriter<byte> into, bool shuffle, string deviceId, string commandId, string intentId,
+            long nowMs)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", "set_options");
+            w.WriteBoolean("shuffling_context", shuffle);
+            QueueOptions(w);
+            LoggingParams(w, deviceId, commandId, "", nowMs);
+            w.WriteStartObject("modes");
+            w.WriteString("context_enhancement", "NONE");
+            w.WriteEndObject();
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
+        /// <summary>The repeat <c>set_options</c> body, key for key as all.saz 2164: the endpoint, <c>repeating_track</c>, then
+        /// <c>repeating_context</c>, the three option bools and the logging params (no <c>modes</c>); then <c>connection_type</c> and
+        /// <c>intent_id</c>. PURE.</summary>
+        public static void RepeatOptionsBody(IBufferWriter<byte> into, bool repeatTrack, bool repeatContext, string deviceId,
+            string commandId, string intentId, long nowMs)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", "set_options");
+            w.WriteBoolean("repeating_track", repeatTrack);
+            w.WriteBoolean("repeating_context", repeatContext);
+            QueueOptions(w);
+            LoggingParams(w, deviceId, commandId, "", nowMs);
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
+        /// <summary>A LEGACY option verb for a device that does not advertise capability 25: <c>set_shuffling_context</c>,
+        /// <c>set_repeating_context</c> or <c>set_repeating_track</c> with its one boolean <c>value</c>. No official client was seen
+        /// sending these over HTTP (gap analysis 1.1); they stay only for an owner that cannot take <c>set_options</c>, in the
+        /// body they always had (the value, a thin <c>logging_params</c>).</summary>
+        public static bool Command(string targetDeviceId, string endpoint, bool value, CancellationToken ct)
         {
             var buffer = new ArrayBufferWriter<byte>(256);
             using (var w = new Utf8JsonWriter(buffer))
@@ -159,19 +308,7 @@ public static partial class Spotify
                 w.WriteStartObject();
                 w.WriteStartObject("command");
                 w.WriteString("endpoint", endpoint);
-                if (valueName.Length > 0)
-                {
-                    if (endpoint.StartsWith("set_", StringComparison.Ordinal)) w.WriteBoolean(valueName, flag);
-                    else w.WriteNumber(valueName, value);
-                }
-                if (endpoint == "seek_to") { w.WriteNumber("position", value); w.WriteString("relative", "beginning"); }
-                if (endpoint == "resume")
-                {
-                    w.WriteStartObject("options"); w.WriteEndObject();
-                    w.WriteStartObject("resume_origin");
-                    w.WriteString("feature_identifier", "npb");
-                    w.WriteEndObject();
-                }
+                w.WriteBoolean("value", value);
                 w.WriteStartObject("logging_params");
                 w.WriteStartArray("interaction_ids");
                 w.WriteEndArray();
@@ -510,12 +647,15 @@ public static partial class Spotify
             return rows;
         }
 
-        static void QueueOptions(Utf8JsonWriter w)
+        /// <summary>The three option bools every captured verb carries, all false; <paramref name="allowSeeking"/> adds
+        /// <c>allow_seeking: true</c> as <c>prev_track</c> does (sppp.saz 470).</summary>
+        static void QueueOptions(Utf8JsonWriter w, bool allowSeeking = false)
         {
             w.WriteStartObject("options");
             w.WriteBoolean("override_restrictions", false);
             w.WriteBoolean("only_for_local_device", false);
             w.WriteBoolean("system_initiated", false);
+            if (allowSeeking) w.WriteBoolean("allow_seeking", true);
             w.WriteEndObject();
         }
 

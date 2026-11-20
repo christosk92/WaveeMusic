@@ -14,7 +14,10 @@ Headers: bearer, client-token, identity tuple, `Accept-Language`, `X-Spotify-Con
 |---|---|---|---|
 | Skip button | `next_track` (7 of 7) | `options{override_restrictions,only_for_local_device,system_initiated}` (all false), **no** `track`, `logging_params` | verified; Wavee sends it (`Connect.NextTrack` with an empty track) |
 | Queue-row click | `next_track` | as above plus `track{uri,uid,metadata}`; the owner advances its own queue to that row | verified; `NextTrackBody` |
-| Previous button | `skip_prev` | `Connect.Command` body | unverified (no capture), left as is |
+| Previous button | `prev_track` | `options{...,allow_seeking:true}`, `logging_params` (sppp.saz 470, 1.3.10; the target receives it as `skip_prev`) | verified 2026-11-20; Wavee sends it (`Connect.PrevTrack`) |
+| Pause / resume | `pause` / `resume` | `options`, `logging_params`, `pause_origin` / `resume_origin` `{feature_identifier:"npb"}` (verycomplex3.saz 657, verycomplex.saz 737) | verified; `Connect.Pause` / `Connect.Resume` |
+| Seek | `seek_to` | `value`, `position`, `relative:"beginning"`, no `logging_params` (bigone.saz 1958) | verified; `Connect.SeekTo` |
+| Shuffle / repeat | `set_options` | `shuffling_context` + `modes{context_enhancement:"NONE"}` (all.saz 2044); `repeating_track` + `repeating_context` (all.saz 2164) | verified on 1.2.94; sent to a device with capability 25, the legacy `set_shuffling_context` / `set_repeating_*` otherwise |
 | `add_to_queue` | `add_to_queue` | `track{uri,uid:"",metadata:{}}`, `options`, `logging_params` | verified |
 | `set_queue` | `set_queue` | `queue_revision` bare number, `prev_tracks[]`, `next_tracks[]` (rows `{uri,uid,metadata,provider:"queue"/"context",removed[],blocked[],restrictions{22 disallow_*}}`, new rows `uid:""` + `metadata{is_queued:"true"}`), `options`, `logging_params`; a `spotify:delimiter` row separates queue from context tail | verified |
 | `play` | `play` | context (+ pages of up to 50 tracks), `play_origin`, `prepare_play_options{skip_to{track_uri,track_uid,track_index}}`, `play_options`, `logging_params` (no `command_received_time`) | verified for the official envelope; Wavee's `PlayBody` is URI-only and unchanged (unverified against the gateway) |
