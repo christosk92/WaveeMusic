@@ -134,7 +134,9 @@ public static partial class Deck
     /// pixel, so up to half a pixel below the canvas's box), while a gradient's edge is antialiased over its last pixel: a dissolve that ended
     /// exactly at the foot left the hole's last row half bare, a 1-px line of the raw picture between the fade and "Next up" (fade-gap.png;
     /// veil-right.png's row 845 is the picture's (190,172,193) between the dissolve's 242 and the ground's 243). Past the foot the layer
-    /// paints the panel's ground over that same opaque ground, which nothing sees; 2 DIP is two device pixels or more at every scale.</summary>
+    /// paints the panel's ground over that same opaque ground, which nothing sees; 2 DIP is two device pixels or more at every scale. Only the
+    /// LAST layer reaches past the foot: a layer under it that ended on the same edge would show through its antialiased last row (the light
+    /// kind's veil ends at the foot, <c>LightScopeView</c>).</summary>
     public const float FootOverlap = 2f;
 
     /// <summary>The light kind's layers over the canvas (the file header): the veil behind the copy (whose top sits <paramref name="copyLift"/>
@@ -162,8 +164,12 @@ public static partial class Deck
             float w = LaidWidth(p.PanelWidth), vh = BleedHeight(w);
             float copyFoot = CopyFoot(vh, p.NowPlaying.RailHeight.Value), copyTop = MathF.Max(0f, copyFoot - p.CopyLift);
             float lead = MathF.Min(LightVeilLead, copyTop), veilTop = copyTop - lead;
-            // The veil's box runs on past the canvas's foot (under the dissolve, which covers it there), so the ramp's stop keeps its DIP.
-            float veilH = MathF.Max(1f, vh - veilTop) + FootOverlap;
+            // The veil ends AT the canvas's foot, inside the dissolve's opaque reach, never on the dissolve's own end: two layers ending on one
+            // fractional edge each antialias their last pixel row, and the dissolve's partial ground over the veil's partial black left a 1-px
+            // line of 243 x (1 - 0.42c + 0.42c^2), 218 at half coverage, across the panel between the fade and "Next up" (the owner's 10.png,
+            // WinUI light: the ground by y 818, a uniform (218,218,218) row at 820, the ground again). Ended here, the dissolve's full ground
+            // over the overlap covers the veil's edge row whole.
+            float veilH = MathF.Max(1f, vh - veilTop);
             var floor = new MediaScrim.Floor(veilTop, lead, LightVeilA);
             ColorF black = ColorF.FromRgba(0, 0, 0);   // the veil MediaScrim solves (its blend is black over the frame)
             // The dissolve reaches the ground at the canvas's foot and holds it over the overlap (a gradient holds its last stop past it).
