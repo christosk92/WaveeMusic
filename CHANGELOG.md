@@ -8,15 +8,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
-## [0.3.12] - unreleased
-
-### Fixed
-
-- **Resizable side panel.** Drag the divider beside a playlist's Insights or an album's About panel to make it wider or
-  narrower; the width is remembered. (#229)
-- **Playlist scrollbar beside Insights.** With Insights open in a wide window, the song list's scrollbar sits on the
-  divider instead of in a gap before it. (#229)
-
 ## [0.3.11] - 2026-11-19
 
 ### Added
