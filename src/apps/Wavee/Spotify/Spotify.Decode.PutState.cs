@@ -244,6 +244,11 @@ public static partial class Spotify
             Span<byte> scratch = stackalloc byte[48];
             Span<byte> contextUtf8 = stackalloc byte[UriBytes];
             int contextLength = snap.HasTrack ? FormatId(snap.Context, contextUtf8) : 0;
+            // Our own Liked Songs, named as the iPhone names it: the account's Liked Songs PLAYLIST and the liked-songs
+            // metadata (remote-play plan 5.4, capture record #1702). Without a known playlist the collection spelling stays.
+            string likedPlaylist = snap.Wire.LikedPlaylist;
+            bool liked = contextLength > 0 && likedPlaylist.Length > 0 && likedPlaylist.Length <= contextUtf8.Length;
+            if (liked) contextLength = System.Text.Encoding.ASCII.GetBytes(likedPlaylist.AsSpan(), contextUtf8);
             var w = new ProtoWriter(into);
 
             int device = w.Open(2);
@@ -251,7 +256,7 @@ public static partial class Spotify
                 DeviceInfo(ref w, in snap);
                 int player = w.Open(2);                        // Device.player_state
                 w.U(1, (ulong)Math.Max(0, snap.TimestampMs));
-                if (snap.HasTrack) PlayerState(ref w, in snap, contextUtf8[..contextLength], scratch);
+                if (snap.HasTrack) PlayerState(ref w, in snap, contextUtf8[..contextLength], scratch, liked);
                 w.Close(player);
                 int priv = w.Open(3);                          // Device.private_device_info
                 w.Str(1, snap.Device.Platform);
@@ -324,7 +329,11 @@ public static partial class Spotify
             w.Close(info);
         }
 
-        static void PlayerState(ref ProtoWriter w, in Playback.Snapshot snap, scoped ReadOnlySpan<byte> context, scoped Span<byte> scratch)
+        /// <param name="liked">The context is our own Liked Songs written as the account's Liked Songs playlist (5.4): the
+        /// play_origin stays <c>your_library</c>, Enhance stays refused as for the collection, and the liked-songs metadata is
+        /// written (<see cref="LikedMetadata"/>).</param>
+        static void PlayerState(ref ProtoWriter w, in Playback.Snapshot snap, scoped ReadOnlySpan<byte> context, scoped Span<byte> scratch,
+            bool liked = false)
         {
             Playback.WireWindow? window = snap.Wire.Window;
             ref readonly Playback.WireIds ids = ref snap.Wire.Ids;
@@ -337,7 +346,7 @@ public static partial class Spotify
             if (!context.IsEmpty) w.Concat(3, "context://"u8, context);
             w.Empty(4);                                        // context_restrictions {}
             int origin = w.Open(5);                            // play_origin
-            ReadOnlySpan<byte> feature = FeatureOf(context, snap.Wire.Audiobook);
+            ReadOnlySpan<byte> feature = liked ? "your_library"u8 : FeatureOf(context, snap.Wire.Audiobook);
             if (snap.Wire.Origin is { Feature.Length: > 0 } carried)
             {
                 w.Str(1, carried.Feature); w.Str(2, carried.Version); w.Str(3, carried.View);
@@ -379,7 +388,7 @@ public static partial class Spotify
             }
             else if (playing) w.Utf8(2, "not_paused"u8);
             if (snap.Track.Kind != EntityKind.Episode) w.Utf8(25, "not_supported_by_content_type"u8);   // setting playback speed
-            if (snap.Track.Kind != EntityKind.Episode && context.IndexOf(":playlist:"u8) < 0)           // Enhance is a playlist feature
+            if (snap.Track.Kind != EntityKind.Episode && (liked || context.IndexOf(":playlist:"u8) < 0))   // Enhance is a playlist feature
             {
                 int modes = w.Open(28);
                 w.Utf8(1, "context_enhancement"u8);
@@ -417,6 +426,7 @@ public static partial class Spotify
             if (snap.Wire.Origin is { } carriedOrigin)
                 foreach (var entry in carriedOrigin.Metadata)
                     if (!Queue.OwnsContextMetadataKey(entry.Key)) w.Entry(21, entry.Key, entry.Value);   // ours wins, below
+            if (liked && !Carries(snap.Wire.Origin, "format_list_type")) LikedMetadata(ref w, snap.Wire.LikedOwner);
             w.Entry(21, "player.arch"u8, "2"u8);               // context_metadata
             if (ids.SessionId != UInt128.Zero) { Base62.Encode(ids.SessionId, scratch); w.Utf8(23, scratch[..Base62.GidChars]); }            // session_id
             if (snap.Wire.QueueRevision != 0 && Utf8Formatter.TryFormat(snap.Wire.QueueRevision, scratch, out int digits))
@@ -434,6 +444,39 @@ public static partial class Spotify
             int unknown = w.Open(38);                          // unnamed #38 = {1: ""}
             w.Utf8Always(1, default);
             w.Close(unknown);
+        }
+
+        /// <summary>The context metadata that says our own Liked Songs IS the account's Liked Songs playlist, as the iPhone states
+        /// it while it plays that list (capture record #1702, liked-format-list-facts.txt §3): <c>context_description</c> "Liked
+        /// Songs", <c>context_owner</c>, <c>format_list_type: liked-songs</c>, <c>liked_songs_collection_uri</c> and
+        /// <c>reporting.uri</c> both <c>spotify:user:&lt;owner&gt;:collection</c>, <c>switch_liked_songs_url_dynamically:
+        /// false</c>. Its owner keys (a previous owner's description a takeover carries already names them) are not written twice.
+        /// Allocation-free: the collection uri is formatted on the stack.</summary>
+        static void LikedMetadata(ref ProtoWriter w, string owner)
+        {
+            w.Entry(21, "context_description", "Liked Songs");
+            w.Entry(21, "context_owner", owner);
+            w.Entry(21, "format_list_type", "liked-songs");
+            Span<byte> uri = stackalloc byte[256];
+            ReadOnlySpan<byte> head = "spotify:user:"u8, tail = ":collection"u8;
+            if (System.Text.Encoding.UTF8.GetByteCount(owner) <= uri.Length - head.Length - tail.Length)
+            {
+                head.CopyTo(uri);
+                int n = head.Length + System.Text.Encoding.UTF8.GetBytes(owner.AsSpan(), uri[head.Length..]);
+                tail.CopyTo(uri[n..]);
+                n += tail.Length;
+                w.Entry(21, "liked_songs_collection_uri"u8, uri[..n]);
+                w.Entry(21, "reporting.uri"u8, uri[..n]);
+            }
+            w.Entry(21, "switch_liked_songs_url_dynamically", "false");
+        }
+
+        /// <summary>Does a carried play origin's context metadata name <paramref name="key"/>?</summary>
+        static bool Carries(Playback.WireOrigin? origin, string key)
+        {
+            if (origin is null) return false;
+            foreach (var entry in origin.Metadata) if (entry.Key == key) return true;
+            return false;
         }
 
         /// <summary>The tail's end the way the official client states it: the hidden <c>spotify:meta:page:1</c> page marker, then

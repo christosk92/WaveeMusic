@@ -125,8 +125,25 @@ public static partial class Playback
         string output = OutputDeviceName();
         if (!Ownership.IsActiveOnWire(in s_state.Own) || !s_state.HasCurrent || Entities.Current is null)
             return new WireExtras(null, 0, default, privateSession, output, sender);
+        string likedPlaylist = LikedOnWire(out string likedOwner);
         return new WireExtras(WindowNow(), RevisionNow(), in s_wireIds, privateSession, output, sender, s_state.ContentRate, s_wireOrigin,
-            OutputDeviceKind(), ContextIsAudiobook());
+            OutputDeviceKind(), ContextIsAudiobook(), likedPlaylist, likedOwner);
+    }
+
+    /// <summary>Our own Liked Songs playback as the PUT names it (remote-play plan 5.4): the account's Liked Songs PLAYLIST and
+    /// the username its liked-songs metadata names, when the deck's context is a Liked collection spelling and both are known;
+    /// "" otherwise, and the PUT keeps today's collection spelling. Wavee published <c>spotify:collection:tracks</c> (bbbb.saz
+    /// 109, 321), a spelling no official client was seen publishing; the iPhone, playing Liked Songs, publishes the playlist
+    /// with <c>format_list_type: liked-songs</c> (capture record #1702, liked-format-list-facts.txt §3). UI thread, inside the
+    /// capture: no allocation (the playlist and the username are held strings).</summary>
+    static string LikedOnWire(out string owner)
+    {
+        owner = "";
+        if (!ForwardPlayEnvelope.IsLikedSpelling(s_state.Context)) return "";
+        string playlist = Spotify.Connect.KnownLikedPlaylist;
+        if (playlist.Length == 0 || Spotify.Current.Username.IsEmpty) return "";
+        owner = Entities.Strings.Resolve(Spotify.Current.Username);
+        return owner.Length > 0 ? playlist : "";
     }
 
     /// <summary>Is the deck's context an audiobook? The catalogue's classification of the show (<see cref="ShowFlags.Audiobook"/>), the
@@ -388,15 +405,21 @@ public static partial class Playback
 
     /// <summary>The queue the foreign owner's last cluster stated — the rows a forwarded <c>set_queue</c> must echo back
     /// verbatim (uid and provenance kept), and the revision it must quote. Copied out of the pooled cluster buffer into
-    /// grow-only arrays, so a heartbeat allocates nothing after the first push. UI thread.</summary>
+    /// grow-only arrays, so a heartbeat allocates nothing after the first push. UI thread.
+    ///
+    /// <para>Each row keeps its whole <c>ProvidedTrack</c> as the owner sent it (remote-play plan 5.2): the official client's
+    /// set_queue echoes the owner's rows with their own provider (<c>context</c>, <c>queue</c> or <c>autoplay</c>), their 12-52
+    /// metadata keys, their removed/blocked lists and album/artist uris (moreptions.saz 794, qoptions.saz 58). Wavee echoed
+    /// uri + uid only, every row not queued relabelled <c>context</c>, so after a "Play next" the owner's autoplay run came
+    /// back as its context, without its metadata (gap analysis 2.1).</para></summary>
     sealed class ForeignQueue
     {
         public const int MaxRows = 128;
 
         byte[] _text = new byte[8192];
         int _textLength, _revisionStart, _revisionLength;
-        readonly (int Uri, int UriLength, int Uid, int UidLength, bool Queued, bool Autoplay, int By, int ByLength)[] _rows
-            = new (int, int, int, int, bool, bool, int, int)[2 * MaxRows];
+        readonly (int Uri, int UriLength, int Uid, int UidLength, bool Queued, bool Autoplay, int By, int ByLength, int Raw, int RawLength)[] _rows
+            = new (int, int, int, int, bool, bool, int, int, int, int)[2 * MaxRows];
         ulong _stamp;
 
         public int PrevCount { get; private set; }
@@ -429,8 +452,10 @@ public static partial class Playback
             var (uri, uriLength) = Add(buffer.Utf8(track.Uri));
             var (uid, uidLength) = Add(buffer.Utf8(track.Uid));
             var (by, byLength) = Add(buffer.Utf8(track.QueuedBy));
+            var (raw, rawLength) = Add(buffer.Utf8(track.Raw));
             ReadOnlySpan<byte> provider = buffer.Utf8(track.Provider);
-            _rows[slot] = (uri, uriLength, uid, uidLength, provider.SequenceEqual("queue"u8), provider.SequenceEqual("autoplay"u8), by, byLength);
+            _rows[slot] = (uri, uriLength, uid, uidLength, provider.SequenceEqual("queue"u8), provider.SequenceEqual("autoplay"u8), by, byLength,
+                raw, rawLength);
         }
 
         (int, int) Add(ReadOnlySpan<byte> utf8)
@@ -446,7 +471,8 @@ public static partial class Playback
         public ulong Revision
             => Utf8Parser.TryParse(_text.AsSpan(_revisionStart, _revisionLength), out ulong value, out _) ? value : 0UL;
 
-        /// <summary>The rows as the body writer takes them — COLD (a user's queue click): strings made here.</summary>
+        /// <summary>The rows as the body writer takes them — COLD (a user's queue click): strings made here, and each row's
+        /// <c>ProvidedTrack</c> copied out whole, so the set_queue echoes the owner's own row (5.2).</summary>
         public Spotify.Connect.QueueWireRow[] Rows(bool next)
         {
             int count = next ? NextCount : PrevCount, offset = next ? MaxRows : 0;
@@ -455,7 +481,8 @@ public static partial class Playback
             {
                 var r = _rows[offset + k];
                 rows[k] = new Spotify.Connect.QueueWireRow(Encoding.UTF8.GetString(_text, r.Uri, r.UriLength),
-                    Encoding.UTF8.GetString(_text, r.Uid, r.UidLength), r.Queued);
+                    Encoding.UTF8.GetString(_text, r.Uid, r.UidLength), r.Queued,
+                    r.RawLength > 0 ? _text.AsSpan(r.Raw, r.RawLength).ToArray() : null);
             }
             return rows;
         }
@@ -534,14 +561,15 @@ public static partial class Playback
     /// <summary>The reducer forwarded a staged run (<see cref="DoQueueToOwner"/>): one track appended is <c>add_to_queue</c>;
     /// otherwise a <c>set_queue</c> of the owner's own queue with the run spliced in — at the head of its queued rows for
     /// "play next", after them for an append (0.2.9's splice). The body is built here, sent on an api thread.</summary>
-    static void ForwardQueue(string target, RemoteCmd cmd, long arg, bool next)
+    static void ForwardQueue(string target, ulong device, RemoteCmd cmd, long arg, bool next)
     {
         int offset = (int)(arg >> 32), count = (int)(arg & 0xFFFF_FFFF);
         if (offset < 0 || count <= 0 || offset + count > s_forward.Count) return;
         if (cmd == RemoteCmd.AddToQueue)
         {
             string uri = s_forward[offset].Text;
-            Spotify.Api.Run(() => Spotify.Connect.AddToQueue(target, uri, CancellationToken.None));
+            RunForward(RemoteVerb.Queue, device, () => Answered(RemoteVerb.Queue, device,
+                Spotify.Connect.AddToQueue(target, uri, CancellationToken.None)));
             return;
         }
         var added = new Spotify.Connect.QueueWireRow[count];
@@ -549,7 +577,8 @@ public static partial class Playback
         Spotify.Connect.QueueWireRow[] prev = s_foreign.Rows(next: false);
         Spotify.Connect.QueueWireRow[] rows = Spotify.Connect.SpliceQueued(s_foreign.Rows(next: true), added, next ? 0 : int.MaxValue);
         ulong revision = s_foreign.Revision;
-        Spotify.Api.Run(() => Spotify.Connect.SetQueue(target, revision, prev, rows, CancellationToken.None));
+        RunForward(RemoteVerb.Queue, device, () => Answered(RemoteVerb.Queue, device,
+            Spotify.Connect.SetQueue(target, revision, prev, rows, CancellationToken.None)));
     }
 
     // ── 4. the BecameInactive a sign-out owes (G-036) ─────────────────────────────────────────────────────────────────

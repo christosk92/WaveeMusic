@@ -239,7 +239,8 @@ internal static class WinUiStageTransport
         {
             var p = UseProps<Props>();
             bool muted = p.T.Muted();
-            return ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, p.T.ToggleMute, p.Tier.ButtonBox, p.Tier.Glyph), Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute));
+            // locked while the owner keeps its volume (remote-play plan 2.2)
+            return ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, p.T.ToggleMute, p.Tier.ButtonBox, p.Tier.Glyph, VolumeSlider.Settable), VolumeSlider.MuteTip(muted));
         }
     }
 

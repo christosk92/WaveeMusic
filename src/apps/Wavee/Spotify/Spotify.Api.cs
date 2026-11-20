@@ -1166,16 +1166,36 @@ public static partial class Spotify
         /// any table. BLOCKS — an api worker thread only. Status 0 = transport failure.</summary>
         public static (int Status, XmAnswerSummary? Summary) ProbeExtensions(string[] uris, int[] kinds)
         {
+            Result result = PostExtensions(uris, kinds, CancellationToken.None);
+            if (!result.Ok || result.Length == 0) return (result.Status, null);
+            return (result.Status, XmAnswerSummary.Read(result.Bytes, uris, kinds, keepPayloads: true));
+        }
+
+        /// <summary>ONE extension kind for ONE entity: its payload (the <c>Any</c>'s value), sent as <see cref="ProbeExtensions"/>
+        /// sends (the metadata cache bypassed — the answer is the server's own), and the answer's status. The payload is null on a
+        /// transport failure, a non-2xx, or an answer that names no payload for it. The remote-play path's kind-246 ask
+        /// (<c>Spotify.Connect.AskLikedPlaylist</c>). BLOCKS — an api worker thread only.</summary>
+        public static (int Status, byte[]? Payload) ExtensionPayload(string uri, int kind, CancellationToken ct)
+        {
+            string[] uris = [uri];
+            int[] kinds = [kind];
+            Result result = PostExtensions(uris, kinds, ct);
+            if (!result.Ok || result.Length == 0) return (result.Status, null);
+            foreach (XmAnswerSummary.Row row in XmAnswerSummary.Read(result.Bytes, uris, kinds, keepPayloads: true).Rows)
+                if (row.Kind == kind && row.Payload is { Length: > 0 } payload) return (result.Status, payload);
+            return (result.Status, null);
+        }
+
+        /// <summary>A mixed-kind extended-metadata POST for <paramref name="uris"/> × <paramref name="kinds"/>, past the cache.</summary>
+        static Result PostExtensions(string[] uris, int[] kinds, CancellationToken ct)
+        {
             byte[] body = BatchBody(uris, kinds, Market, Catalogue);
-            if (body.Length == 0) return (0, null);
+            if (body.Length == 0) return Result.Transport;
             var args = new RequestArgs { Body = body };
             Span<char> buffer = stackalloc char[64];
             Request request = Build(RequestKind.ExtendedMetadata, args, buffer);
             string url = BaseUrl(request.Host) + new string(request.Path);
-            Result result = SendAuthed(Verb.Post, url, request.Headers | HeaderSet.GzipBody, RequestKind.ExtendedMetadata, body, "",
-                CancellationToken.None);
-            if (!result.Ok || result.Length == 0) return (result.Status, null);
-            return (result.Status, XmAnswerSummary.Read(result.Bytes, uris, kinds, keepPayloads: true));
+            return SendAuthed(Verb.Post, url, request.Headers | HeaderSet.GzipBody, RequestKind.ExtendedMetadata, body, "", ct);
         }
 
         /// <summary>The REST arm of profile resolution, one user at a time, for the users kind 15 did not answer: the

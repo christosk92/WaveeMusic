@@ -119,16 +119,19 @@ public static partial class Playback
 
     /// <summary>While another device owns playback (<see cref="Queue.LocalQueueWritable"/>), hand a play to IT — the
     /// desktop <c>play</c> envelope a row click forwards from the reducer (DoPlay → ForwardPlay) — and touch no local row.
-    /// True when the play was the owner's (sent, or refused because it is not in the roster); false when it is ours to run.</summary>
-    static bool ForwardPlayToOwner(EntityId context, EntityId startAt, int fromMs)
+    /// True when the play was the owner's (sent, or refused because it is not in the roster); false when it is ours to run.
+    /// <paramref name="rows"/> / <paramref name="start"/> / <paramref name="facts"/> are the rows a page holds
+    /// (<see cref="PlayRows"/>): a playlist's go inline in the order shown, the row by its list uid and index (remote-play
+    /// plan 4.1, 4.2).</summary>
+    static bool ForwardPlayToOwner(EntityId context, EntityId startAt, int fromMs, ReadOnlySpan<EntityRef> rows = default, int start = -1,
+        PageFacts? facts = null)
     {
-        if (Queue.LocalQueueWritable(s_state.Owner) || s_state.Own.Device == 0) return false;
+        if (!ForwardsPlays) return false;
         string target = Devices.IdOf(s_state.Own.Device);
         if (target.Length == 0) { Log.Warn("playback", "play dropped: the owner is not in the roster"); return true; }
-        string contextUri = ForwardPlayEnvelope.For(context, startAt).Text, trackUri = startAt.IsEmpty ? "" : startAt.Text;
-        bool shuffle = s_state.Shuffle;
-        Log.Info("playback", "play forwarded to the owner: context=" + contextUri + " track=" + trackUri);
-        Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None, fromMs));
+        // The one play send (Playback.Host.Forward.cs): the Liked rule, then the envelope.
+        SendPlay(target, s_state.Own.Device, ForwardPlayEnvelope.For(context, startAt), startAt, s_state.Shuffle, fromMs, null, false,
+            rows, start, facts);
         return true;
     }
 
@@ -327,13 +330,14 @@ public static partial class Playback
     /// track — from <paramref name="start"/>, at <paramref name="fromMs"/>. UI thread. The queue is laid out by
     /// <see cref="RemotePlan.Layout"/> (history, the deck, the user's still-waiting queued rows, the rest as next up, the
     /// next-up run shuffled when shuffle is on), published at once so the queue surfaces answer the click in its own frame,
-    /// and one Play is posted. A context resolve still in flight is superseded.</summary>
-    public static void PlayRows(ReadOnlySpan<EntityRef> rows, int start, EntityId context, int fromMs = -1)
+    /// and one Play is posted. A context resolve still in flight is superseded. <paramref name="facts"/> (a list page's, built
+    /// only while another device owns playback: <see cref="ForwardsPlays"/>) tells that device the rows as shown.</summary>
+    public static void PlayRows(ReadOnlySpan<EntityRef> rows, int start, EntityId context, int fromMs = -1, PageFacts? facts = null)
     {
         if (Entities.Current is null || (uint)start >= (uint)rows.Length || rows[start].IsNone) return;
         // Another device owns playback: the click is a command to IT, sent BEFORE any local layout, Replace or publish —
         // local rows laid out now would sit under the owner's untouched header. The panel follows its next cluster.
-        if (ForwardPlayToOwner(context.IsEmpty ? rows[start].Id : context, rows[start].Id, fromMs)) return;
+        if (ForwardPlayToOwner(context.IsEmpty ? rows[start].Id : context, rows[start].Id, fromMs, rows, start, facts)) return;
         Rebind();                                          // the queue this play keeps from must be this scope's (G-241)
         int existing = Math.Max(1, Queue.Count);
         int[] targets = ArrayPool<int>.Shared.Rent(rows.Length);

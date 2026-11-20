@@ -193,7 +193,8 @@ public static partial class Shell
     /// <summary>"Couldn't take over playback" / "Couldn't transfer playback": one toast per BUMP of the model's two failure
     /// counters (<see cref="Playback.ClaimRejectedCount"/>, <see cref="Playback.TransferFailedCount"/>). The decision — did a
     /// counter move, and which story wins — is <see cref="PlaybackFailureToasts.Between"/>; this only reads and says it.
-    /// The baseline is taken at mount, so a remount never replays an old failure.</summary>
+    /// The baseline is taken at mount, so a remount never replays an old failure. A verb the device that owns playback
+    /// refused (<see cref="Playback.LastRemoteRefusal"/>) is said here too, through <see cref="RemoteRefusalToasts"/>.</summary>
     sealed class PlaybackFailureToastWatcher : Component
     {
         public override Element Render()
@@ -213,6 +214,22 @@ public static partial class Shell
                         Notify.Say(Loc.Get(Strings.Player.TransferFailed), InfoBarSeverity.Warning, dedupeKey: "playback.transfer.failed");
                         break;
                 }
+            });
+            // A refused forward (Playback.LastRemoteRefusal): one toast per refusal, at most one per kind a gap
+            // (RemoteRefusalToasts). The baseline is the sequence at mount, so a remount never replays an old refusal.
+            var remoteSeen = UseRef(Playback.LastRemoteRefusal.Peek().Seq);
+            var remoteSaid = UseRef<long[]?>(null);
+            UseEffect(() =>
+            {
+                Playback.RemoteRefusal refusal = Playback.LastRemoteRefusal.Value;
+                if (refusal.Seq == remoteSeen.Value) return;
+                remoteSeen.Value = refusal.Seq;
+                long[] said = remoteSaid.Value ??= new long[byte.MaxValue + 1];
+                long now = Environment.TickCount64;
+                if (!RemoteRefusalToasts.Due(now, said[(int)refusal.Verb])) return;
+                said[(int)refusal.Verb] = now;
+                Notify.Say(RemoteRefusalToasts.Text(refusal.Verb, Playback.Devices.NameOf(refusal.Device)), InfoBarSeverity.Warning,
+                    dedupeKey: RemoteRefusalToasts.DedupeKey(refusal.Verb));
             });
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }

@@ -258,9 +258,11 @@ internal sealed class ZuneVolumeGlyph : Component
         var anchor = UseRef<NodeHandle>(default);
         var handle = UseRef<OverlayHandle?>(null);
         bool popup = p.Popup;
+        bool settable = VolumeSlider.Settable;   // reactive: re-renders when the owner's volume turns fixed (remote-play plan 2.2)
 
         void Click()
         {
+            if (!settable) return;                // locked, mute and popup form alike: the popup would only hold a locked line
             if (!popup) { props.ToggleMute(); return; }
             if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
             handle.Value = overlay.Open(
@@ -279,8 +281,8 @@ internal sealed class ZuneVolumeGlyph : Component
             handle.Value.ClosedAction = () => handle.Value = null;
         }
 
-        return ToolTip.Wrap(ZunePlayerBar.Glyph(muted ? Icons.Mute : Icons.Volume, Click, true, Tok.TextPrimary, p.Box, p.Glyph, h => anchor.Value = h),
-            Loc.Get(popup ? Strings.Player.Volume : muted ? Strings.Player.Unmute : Strings.Player.Mute));
+        return ToolTip.Wrap(ZunePlayerBar.Glyph(muted ? Icons.Mute : Icons.Volume, Click, settable, Tok.TextPrimary, p.Box, p.Glyph, h => anchor.Value = h),
+            !settable ? VolumeSlider.MuteTip(muted) : Loc.Get(popup ? Strings.Player.Volume : muted ? Strings.Player.Unmute : Strings.Player.Mute));
     }
 }
 

@@ -908,6 +908,8 @@ public static partial class Playback
     /// <param name="Offered">The video switches the owner offers a controller (<c>signals</c>).</param>
     /// <param name="Disallowed">The video switches it lists in <c>disallow_signals</c> with a reason.</param>
     /// <param name="ManifestId">The row's music-video manifest id as the owner offers it (<c>associated_video_id</c>), interned.</param>
+    /// <param name="VolumeFixed">The ACTIVE device does not let a controller set its volume (its capabilities,
+    /// <see cref="Spotify.Decode.ClusterDevice.VolumeFixed"/>).</param>
     public readonly record struct RemoteState(
         bool HasTrack,
         EntityId Track,
@@ -927,7 +929,8 @@ public static partial class Playback
         bool OnVideo = false,
         VideoSignals Offered = VideoSignals.None,
         VideoSignals Disallowed = VideoSignals.None,
-        StringId ManifestId = default);
+        StringId ManifestId = default,
+        bool VolumeFixed = false);
 
     /// <summary>THE playback state. One value, written on the UI thread only (C1), copied freely, and the single
     /// source every playback surface binds through the host's signals.
@@ -998,6 +1001,9 @@ public static partial class Playback
         public float Volume;
         /// <summary>The foreign owner's volume as the cluster stated it, 0..1; -1 = none stated.</summary>
         public float MirrorVolume;
+        /// <summary>The active device, as the last cluster stated it, does not let a controller set its volume
+        /// (<see cref="RemoteState.VolumeFixed"/>). Read through <see cref="VolumeFixed"/>, which asks a foreign owner too.</summary>
+        public bool MirrorVolumeFixed;
         /// <summary>The level a mute took the volume away from (the owner's while Foreign, ours otherwise); 0 = none
         /// remembered. Only the VOLUME-0 mute uses it — a real sink mute keeps the volume where it was.</summary>
         public float MuteRestoreVolume;
@@ -1173,6 +1179,10 @@ public static partial class Playback
         /// <summary>What the volume slider shows: the foreign owner's volume while one owns playback (dragging it is a
         /// volume PUT to that device), ours otherwise.</summary>
         public readonly float SliderVolume => Own.Kind == Owner.Foreign && MirrorVolume >= 0f ? MirrorVolume : Volume;
+        /// <summary>A foreign owner whose volume a controller cannot set (an iPhone sets <c>disable_volume</c> and answered 36
+        /// volume PUTs of 36 with 400, gap analysis 2.1): no volume PUT goes to it (<see cref="Refusal.VolumeFixed"/>) and every
+        /// volume rail shows it disabled. Our own volume is never fixed.</summary>
+        public readonly bool VolumeFixed => Own.Kind == Owner.Foreign && MirrorVolumeFixed;
 
         /// <summary>The position to PAINT at <paramref name="nowMs"/> (frame clock): the last authoritative report
         /// extrapolated while playing, and the report itself otherwise — a refilling stream (<see cref="Buffering"/>) does
@@ -1505,6 +1515,8 @@ public static partial class Playback
         NoTransferTarget,
         /// <summary>A switch to video for a row that has none.</summary>
         NoVideo,
+        /// <summary>A volume change for a foreign owner whose volume a controller cannot set (<see cref="State.VolumeFixed"/>).</summary>
+        VolumeFixed,
     }
 
     /// <summary>Fixed effect SLOTS — one per effect KIND, never a list. The last write inside a drain wins and the
@@ -2243,7 +2255,9 @@ public static partial class Playback
         {
             // The slider follows the ACTIVE device: while a phone owns playback, dragging it is a volume PUT to the
             // phone (its own route, not a player command) and our own sink is untouched. The slider moves at once; the
-            // phone's next cluster confirms it.
+            // phone's next cluster confirms it. An owner whose volume cannot be set gets no PUT at all (its rail is
+            // disabled; a key, a wheel or a mute lands here and is refused, and the host says why).
+            if (s.VolumeFixed) { fx.Refused = Refusal.VolumeFixed; return; }
             Forward(ref s, RemoteCmd.Unknown, ref fx, wire, false);
             if (fx.SendRemote) { fx.RemoteIsVolume = true; s.MirrorVolume = wire / (float)MaxWireVolume; }
             return;
@@ -2677,6 +2691,7 @@ public static partial class Playback
         s.StreamFormat = StringId.Empty;
         // The slider follows the OWNER; our own volume (the sink's, the PUT body's) is untouched.
         if (r.Volume >= 0) s.MirrorVolume = Math.Clamp(r.Volume / (float)MaxWireVolume, 0f, 1f);
+        s.MirrorVolumeFixed = r.VolumeFixed;
         MirrorVideo(ref s, in r);
         fx.Smtc = true;
         fx.SmtcEpoch = s.Epoch;

@@ -93,7 +93,7 @@ internal sealed class ClassicOverlayChrome : Component
                 strip.Add(new AppBarCommand(Icons.Previous, Loc.Get(Strings.Player.Previous), props.Previous, Enabled: facts.PrevEnabled));
                 strip.Add(new AppBarCommand(Icons.Next, Loc.Get(Strings.Player.Next), props.Next, Enabled: facts.NextEnabled));
             }
-            strip.Add(new AppBarCommand(facts.Muted ? Icons.Mute : Icons.Volume, Loc.Get(facts.Muted ? Strings.Player.Unmute : Strings.Player.Mute), props.ToggleMute));
+            strip.Add(new AppBarCommand(facts.Muted ? Icons.Mute : Icons.Volume, VolumeSlider.MuteTip(facts.Muted), props.ToggleMute, Enabled: VolumeSlider.Settable)); // locked beside the locked rail (remote-play plan 2.2)
             // the slider card opens at "…" once the menu has closed (two popups never stand at once)
             strip.Add(new AppBarCommand(Icons.ChevronUp, Loc.Get(Strings.Player.Volume), () => volumeAfterMore.Value = true));
             return new ContextMenuModel(strip, rows);
@@ -145,7 +145,7 @@ internal sealed class ClassicOverlayChrome : Component
         }
         // The glyph MUTES, like every other mute glyph; the chevron opens the slider card.
         if (volumeShown)
-            left.Add(Slot("mute", ToolTip.Wrap(Bar.Glyph(facts.Muted ? Icons.Mute : Icons.Volume, props.ToggleMute, true), Loc.Get(facts.Muted ? Strings.Player.Unmute : Strings.Player.Mute))));
+            left.Add(Slot("mute", ToolTip.Wrap(Bar.Glyph(facts.Muted ? Icons.Mute : Icons.Volume, props.ToggleMute, VolumeSlider.Settable), VolumeSlider.MuteTip(facts.Muted))));
 
         var right = new List<Element>(2);
         if (volumeShown)

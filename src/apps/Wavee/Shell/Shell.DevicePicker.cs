@@ -281,6 +281,59 @@ public static partial class Shell
              : PlaybackFailure.None;
     }
 
+    /// <summary>The toast a refused forward earns (<see cref="Playback.LastRemoteRefusal"/>, remote-play plan 1.4 and 2.1): one
+    /// sentence per verb kind, naming the device, and at most one card per kind every <see cref="GapMs"/>, so a burst (a
+    /// refused volume drag, five skips to a phone that went away) is one card, not a stack. Before it a refusal was silent:
+    /// every caller dropped the answer (gap analysis 2.8).</summary>
+    public static class RemoteRefusalToasts
+    {
+        /// <summary>The least gap between two toasts of one kind.</summary>
+        public const long GapMs = 10_000;
+
+        /// <summary>May a refusal of one kind be said at <paramref name="nowMs"/>, given when that kind was last said
+        /// (<paramref name="lastMs"/>, 0 = never)? PURE.</summary>
+        public static bool Due(long nowMs, long lastMs) => lastMs == 0 || nowMs < lastMs || nowMs - lastMs >= GapMs;
+
+        /// <summary>The engine's de-duplication key for a kind: a second card of one kind refreshes the first.</summary>
+        public static string DedupeKey(Playback.RemoteVerb verb) => verb switch
+        {
+            Playback.RemoteVerb.LikedUnknown => "playback.remote.liked",
+            Playback.RemoteVerb.Pause => "playback.remote.pause",
+            Playback.RemoteVerb.Resume => "playback.remote.resume",
+            Playback.RemoteVerb.Skip => "playback.remote.skip",
+            Playback.RemoteVerb.Seek => "playback.remote.seek",
+            Playback.RemoteVerb.Shuffle => "playback.remote.shuffle",
+            Playback.RemoteVerb.Repeat => "playback.remote.repeat",
+            Playback.RemoteVerb.Queue => "playback.remote.queue",
+            Playback.RemoteVerb.Volume => "playback.remote.volume",
+            Playback.RemoteVerb.VolumeFixed => "playback.remote.volume.fixed",
+            Playback.RemoteVerb.Video => "playback.remote.video",
+            _ => "playback.remote.play",
+        };
+
+        /// <summary>The sentence for <paramref name="verb"/> about the device named <paramref name="device"/> ("" when the
+        /// roster no longer names it). UI thread (Loc).</summary>
+        public static string Text(Playback.RemoteVerb verb, string device)
+        {
+            string d = device.Length > 0 ? device : Loc.Get(Strings.Player.Remote.ThatDevice);
+            return verb switch
+            {
+                Playback.RemoteVerb.LikedUnknown => Strings.Player.Remote.LikedUnknown(d),
+                Playback.RemoteVerb.Pause => Strings.Player.Remote.PauseFailed(d),
+                Playback.RemoteVerb.Resume => Strings.Player.Remote.ResumeFailed(d),
+                Playback.RemoteVerb.Skip => Strings.Player.Remote.SkipFailed(d),
+                Playback.RemoteVerb.Seek => Strings.Player.Remote.SeekFailed(d),
+                Playback.RemoteVerb.Shuffle => Strings.Player.Remote.ShuffleFailed(d),
+                Playback.RemoteVerb.Repeat => Strings.Player.Remote.RepeatFailed(d),
+                Playback.RemoteVerb.Queue => Strings.Player.Remote.QueueFailed(d),
+                Playback.RemoteVerb.Volume => Strings.Player.Remote.VolumeFailed(d),
+                Playback.RemoteVerb.VolumeFixed => Strings.Player.Remote.VolumeFixed(d),
+                Playback.RemoteVerb.Video => Strings.Player.Remote.VideoFailed(d),
+                _ => Strings.Player.Remote.PlayFailed(d),
+            };
+        }
+    }
+
     // ── one Previous/Next rule for the bar, the stage and the video overlay ──────────────────────────────────────────
 
     /// <summary>The skip enablement, read by EVERY transport surface from the same fact set
