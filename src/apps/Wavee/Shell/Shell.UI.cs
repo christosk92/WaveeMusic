@@ -615,8 +615,9 @@ public static partial class Shell
             RailGapWidth = static () => FrameRules.RailGapWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
             RailReservedWidth = static () => FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value),
             RailSeamWidth = static () => FrameRules.RailSeamWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
+            // At the content's edge: past every open docked pane with the gap the frame lays before it (WinUI's Huge pane docks flush, BEFORE the primary).
             RailSeamX = () => FrameRules.RailSeamX(vp.Value.Width, MathF.Max(Ui.RailDragWidth.Value, Ui.PanelFloor.Value),
-                FrameRules.SecondOffset(PanelHost.Shared.SecondOpen(), PanelHost.Shared.SecondWidth())),
+                FrameRules.PanesWidth(PanelHost.Shared.PaneOpen(0), PanelHost.Shared.PaneOpen(1), PanelHost.Shared.PaneWidth(), policies.Panel.PaneGap)),
             PanelPlacement = static () => Ui.PanelPlacement.Value,
             SecondPanelOpen = static () => PanelHost.Shared.SecondOpen(),
             SecondPanelWidth = static () => PanelHost.Shared.SecondWidth(),

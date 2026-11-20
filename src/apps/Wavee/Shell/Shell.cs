@@ -1803,9 +1803,16 @@ public static partial class Shell
         /// page rather than resizing it).</summary>
         public static bool RailFloats(bool open, bool fits) => open && !fits;
 
-        /// <summary>The rail seam grip: translated to the rail's left edge, on the content side. <paramref name="rightOffset"/> is what
-        /// lies right of the primary panel (the second docked pane and its gap, at a two-pane tier).</summary>
-        public static float RailSeamX(float viewportWidth, float railWidth, float rightOffset = 0f) => viewportWidth - rightOffset - railWidth - SeamStripW;
+        /// <summary>The rail seam grip: translated to the content's right edge, so its strip covers the rail's gap and the panel's first
+        /// <c>SeamStripW - RailGapW</c> DIP (inside the panel's own inset). It starts AT the content's edge, never left of it: the page's scrollbar owns
+        /// the content's last 12 DIP, its thumb drawn in the last 3 (#255: a strip straddling the edge took every press on the thumb).
+        /// <paramref name="panesWidth"/> is what the open docked panes take beside the primary (<see cref="PanesWidth"/>), on either side of it.</summary>
+        public static float RailSeamX(float viewportWidth, float railWidth, float panesWidth = 0f) => viewportWidth - panesWidth - railWidth - RailGapW;
+
+        /// <summary>What the open docked panes take from the content row beside the primary (contract 1.29): each open pane's width and the gap the
+        /// structure's frame lays before it (<c>PanelPolicy.PaneGap</c>: Classic's 8 before its queue, WinUI's flush panes 0), whichever side it docks on.</summary>
+        public static float PanesWidth(bool secondOpen, bool thirdOpen, float paneWidth, float paneGap)
+            => (secondOpen ? paneGap + paneWidth : 0f) + (thirdOpen ? paneGap + paneWidth : 0f);
 
         /// <summary>The rail seam grip only exists while the rail is open AND docked (a floating panel and a sheet have no width to drag).</summary>
         public static float RailSeamWidth(bool open, bool docked = true) => open && docked ? SeamStripW : 0f;

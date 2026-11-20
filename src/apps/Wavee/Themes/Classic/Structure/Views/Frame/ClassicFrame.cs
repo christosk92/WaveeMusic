@@ -19,10 +19,10 @@
 //              the bracketed bands, the content region and the panel layer COLLAPSE (bound Visible, still mounted) under full-screen
 //              video OR the fullscreen stage: out of layout, paint and hit-test, subtree inactive
 //     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation · second gap · second reservation) ·
-//                              sidebar seam · rail seam · narrow drawer ]
-//     panel layer    = ZStack[ sheet scrim · primary panel host · second panel host ]: over the content region AND the player dock, so
-//                      the Compact sheet can cover the mini bar (TC2); it provides the sheet's one drag (`ClassicSheetDrag`) to the scrim and
-//                      the primary panel
+//                              sidebar seam · narrow drawer ]
+//     panel layer    = ZStack[ sheet scrim · primary panel host · second panel host · rail seam ]: over the content region AND the player
+//                      dock, so the Compact sheet can cover the mini bar (TC2); it provides the sheet's one drag (`ClassicSheetDrag`) to the
+//                      scrim and the primary panel. The rail seam lies over the gap and the panel's inset, never the page's scrollbar (#255)
 //
 // The surfaces that are not yet a key of their own (the overlays) arrive as element builders on the props (`ShellFrameProps`); T11 gives
 // each its own key and replaces the builder with a `ctx.View` call here. The two video layers are builders for good: they are the core
@@ -214,15 +214,6 @@ internal static class ClassicFrame
             Transform = Prop.Of(() => Affine2D.Translation(props.SidebarPresentedWidth.Value, 0f)),
             Children = [props.SidebarSeam()],
         },
-        // The rail seam: exists only while the rail is open and docked. The panel layer paints over the content region, so a narrowing drag
-        // that carries the guide into the panel's rect draws it under the panel's content; at rest the strip lies wholly left of the panel.
-        new BoxEl
-        {
-            Direction = 1, ClipToBounds = true,
-            Width = Prop.Of(props.RailSeamWidth),
-            Transform = Prop.Of(() => Affine2D.Translation(props.RailSeamX(), 0f)),
-            Children = [props.RailSeam()],
-        },
         props.NarrowDrawer()) with
     {
         // The region that yields (inside the body) when the window is shorter than the column; clipped so a settling page never
@@ -272,6 +263,7 @@ internal static class ClassicFrame
             PrimaryHost(props, in ctx, tiers, placement, drag),
         };
         if (props.SecondPanel is { } second) kids.Add(SecondHost(props, second, in ctx, tiers));
+        kids.Add(RailSeamLayer(props, in ctx, tiers));
         // ONE sheet drag for the primary host's bottom sheet: its scrim's dim and its arm both move with it (`ClassicSheetDrag`).
         return Ctx.Provide(ClassicPanel.SheetDragSlot, drag, new BoxEl
         {
@@ -284,6 +276,31 @@ internal static class ClassicFrame
     }
 
     private static readonly Func<PanelPlacement> s_dock = static () => PanelPlacement.Dock;
+
+    /// <summary>The rail seam (only while the rail is open and docked: 0 wide otherwise), the panel layer's top layer, beside the content region above
+    /// the dock. Its strip starts at the content card's right edge (<c>FrameRules.RailSeamX</c>): the page's scrollbar owns the card's last 12 DIP, so
+    /// the strip runs over the gap and the panel's first 8 DIP instead, OVER the panel as the sidebar seam lies over the page, so it takes the pointer
+    /// there whatever the panel draws (a lyric line runs to the panel's edge). The drag guide draws over the panel too.</summary>
+    private static Element RailSeamLayer(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers) => new BoxEl
+    {
+        Direction = 1, Grow = 1f, HitTestPassThrough = true,
+        Children =
+        [
+            new BoxEl
+            {
+                Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
+                Width = Prop.Of(props.RailSeamWidth),
+                Transform = Prop.Of(() => Affine2D.Translation(props.RailSeamX(), 0f)),
+                Children = [props.RailSeam()],
+            },
+            // The dock's height, as the docked primary host leaves it.
+            new BoxEl
+            {
+                Shrink = 0f, HitTestVisible = false, Height = Prop.Of(() => ClassicPlayerTiers.BarOf(tiers()).Height),
+                Animate = ctx.Reduced ? null : ClassicTierMotion.HeightReflow,
+            },
+        ],
+    };
 
     /// <summary>The primary panel's host: bound spacers place it by the tier's record, its width is the placement's (the window for a
     /// sheet, 340 floating, the committed width docked), and it FLIPs when a crossing moves it. The panel body owns the slide, the coats
