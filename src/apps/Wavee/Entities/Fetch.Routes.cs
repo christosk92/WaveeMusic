@@ -221,6 +221,9 @@ public static class FetchRoutes
     public const int UserProfile = 15, RecommendedPlaylists = 151;
     /// <summary><c>CANVAS_V1</c>: the track's looping Canvas video (Entities/Canvas.cs).</summary>
     public const int CanvasV1 = 16;
+    /// <summary><c>CURATION_EXPERIENCE_TRAIT</c>: on a track it names the account's Liked Songs playlist
+    /// (<c>Spotify.Connect.AskLikedPlaylist</c>). Asked on its own, never by a table's route.</summary>
+    public const int CurationExperience = 246;
 
     // ── the entity tables' routes, most capable first ──
 

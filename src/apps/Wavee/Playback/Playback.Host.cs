@@ -673,6 +673,7 @@ public static partial class Playback
 
         ulong active = DeviceHash(buffer.Utf8(d.ActiveDeviceId));
         Devices.Update(buffer, in d, active);
+        Spotify.Connect.NoteLikedCluster(buffer, in d);     // a cluster playing the account's Liked Songs playlist names it (1.2b)
 
         var frame = new ClusterFrame(d.Origin, d.PutMsgId, active, d.ServerTimestampMs, d.UpdateReason,
             d.ActiveStartedPlayingAt, d.AckId);
@@ -1130,13 +1131,11 @@ public static partial class Playback
         }
         if (s_fx.RemoteCmd == RemoteCmd.PlayContext)
         {
-            // The texts are formatted HERE (UI thread; an EntityId's text is the interner's) and captured as strings.
-            string contextUri = s_fx.RemoteContext.Text, trackUri = s_fx.RemoteTrack.Text;
-            bool shuffle = s_fx.RemoteFlag, video = s_fx.RemoteVideo;
+            // The one play send (Playback.Host.Forward.cs): the Liked rule, then the envelope. The uid is spelled HERE (UI
+            // thread: the uid book is ours alone).
             Span<char> uidChars = stackalloc char[UidBook.MaxChars];
             string? skipUid = Spotify.Connect.SkipUidOf(new(uidChars[..s_uids.Format((ulong)s_fx.RemoteArg, uidChars)]));
-            Log.Info("playback", "play forwarded to the owner: context=" + contextUri + " track=" + trackUri + (video ? " video" : ""));
-            Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None, skipUid: skipUid, video: video));
+            SendPlay(target, s_fx.RemoteDevice, s_fx.RemoteContext, s_fx.RemoteTrack, s_fx.RemoteFlag, -1, skipUid, s_fx.RemoteVideo);
             return;
         }
         if (s_fx.RemoteCmd == RemoteCmd.Signal)

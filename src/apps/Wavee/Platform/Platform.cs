@@ -384,6 +384,10 @@ public static partial class Platform
         /// <summary>The account's listen-later playlist uri ("Your Episodes") as last discovered (`podcasts.yourEpisodes:&lt;account&gt;`),
         /// so a cold start recognises a pinned Your Episodes before this session has read it. "" = none known.</summary>
         public static SettingKey<string> YourEpisodesUri(string account) => new("podcasts.yourEpisodes:" + account, "");
+        /// <summary>The account's Liked Songs PLAYLIST uri (`connect.likedPlaylist:&lt;account&gt;`, a <c>spotify:playlist:</c> the
+        /// service keeps per account) as last learned: the context a Liked Songs play forwarded to another device names
+        /// (<c>Spotify.Connect.KnownLikedPlaylist</c>, remote-play plan 1.2). "" = not learned yet.</summary>
+        public static SettingKey<string> LikedSongsPlaylist(string account) => new("connect.likedPlaylist:" + account, "");
         /// <summary>The artists reader's scope (0 = in your library · 1 = all releases). Per kind for symmetry with the
         /// other library keys; only "artists" reads it today.</summary>
         public static SettingKey<int> LibraryScope(string kind) => new("library." + kind + ".scope", 0);

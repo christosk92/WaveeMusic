@@ -125,10 +125,8 @@ public static partial class Playback
         if (Queue.LocalQueueWritable(s_state.Owner) || s_state.Own.Device == 0) return false;
         string target = Devices.IdOf(s_state.Own.Device);
         if (target.Length == 0) { Log.Warn("playback", "play dropped: the owner is not in the roster"); return true; }
-        string contextUri = ForwardPlayEnvelope.For(context, startAt).Text, trackUri = startAt.IsEmpty ? "" : startAt.Text;
-        bool shuffle = s_state.Shuffle;
-        Log.Info("playback", "play forwarded to the owner: context=" + contextUri + " track=" + trackUri);
-        Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None, fromMs));
+        // The one play send (Playback.Host.Forward.cs): the Liked rule, then the envelope.
+        SendPlay(target, s_state.Own.Device, ForwardPlayEnvelope.For(context, startAt), startAt, s_state.Shuffle, fromMs, null, false);
         return true;
     }
 

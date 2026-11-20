@@ -184,9 +184,11 @@ public static partial class Spotify
 
         /// <summary>"Play this context from this row" on the device that owns playback — the desktop `play` envelope
         /// (0.2.9 <c>OutboundEnvelope.Play</c>): an opaque, URI-only context, a play_origin, `prepare_play_options` with
-        /// the skip_to track and the shuffle override, and `play_options` interactive/replace/immediately.</summary>
+        /// the skip_to track and the shuffle override, and `play_options` interactive/replace/immediately.
+        /// <paramref name="feature"/> overrides the play_origin feature <see cref="PlayFeatureOf"/> derives from the uri (a Liked
+        /// Songs play names its playlist but the feature <see cref="LikedFeature"/>).</summary>
         public static bool PlayContext(string targetDeviceId, string contextUri, string? trackUri, bool shuffle, CancellationToken ct,
-            int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false)
+            int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false, string? feature = null)
         {
             if (!Egress.Admits(contextUri.AsSpan()) || (!string.IsNullOrEmpty(trackUri) && !Egress.Admits(trackUri.AsSpan())))
             {
@@ -194,7 +196,8 @@ public static partial class Spotify
                 return false;
             }
             var buffer = new ArrayBufferWriter<byte>(768);
-            PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs, skipUid, skipIndex, video);
+            PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs, skipUid, skipIndex, video,
+                feature);
             return PostCommand("play", targetDeviceId, buffer.WrittenSpan, ct);
         }
 
@@ -214,9 +217,10 @@ public static partial class Spotify
         /// the context twice — so the row's <paramref name="skipUid"/> (<see cref="SkipUidOf"/>) and a known
         /// <paramref name="skipIndex"/> (&gt;= 0) ride beside the uri; everything else stays thin. <paramref name="video"/> asks the
         /// owner for the row's music video — the desktop's "song videos" play, <c>is_single_track_video_content</c> in the context
-        /// metadata (all.saz 1831).</summary>
+        /// metadata (all.saz 1831). <paramref name="feature"/> null derives the play_origin feature from the uri.</summary>
         public static void PlayBody(IBufferWriter<byte> into, string contextUri, string? trackUri, bool shuffle, string deviceId,
-            string commandId, string intentId, long nowMs, int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false)
+            string commandId, string intentId, long nowMs, int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false,
+            string? feature = null)
         {
             using var w = new Utf8JsonWriter(into);
             w.WriteStartObject();
@@ -231,7 +235,7 @@ public static partial class Spotify
             w.WriteEndObject();
             w.WriteEndObject();
             w.WriteStartObject("play_origin");
-            w.WriteString("feature_identifier", PlayFeatureOf(contextUri));
+            w.WriteString("feature_identifier", feature ?? PlayFeatureOf(contextUri));
             w.WriteString("feature_version", "harmony");
             w.WriteString("referrer_identifier", "harmony");
             w.WriteEndObject();
