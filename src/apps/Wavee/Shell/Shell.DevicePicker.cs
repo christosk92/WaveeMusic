@@ -298,6 +298,16 @@ public static partial class Shell
         public static string DedupeKey(Playback.RemoteVerb verb) => verb switch
         {
             Playback.RemoteVerb.LikedUnknown => "playback.remote.liked",
+            Playback.RemoteVerb.Pause => "playback.remote.pause",
+            Playback.RemoteVerb.Resume => "playback.remote.resume",
+            Playback.RemoteVerb.Skip => "playback.remote.skip",
+            Playback.RemoteVerb.Seek => "playback.remote.seek",
+            Playback.RemoteVerb.Shuffle => "playback.remote.shuffle",
+            Playback.RemoteVerb.Repeat => "playback.remote.repeat",
+            Playback.RemoteVerb.Queue => "playback.remote.queue",
+            Playback.RemoteVerb.Volume => "playback.remote.volume",
+            Playback.RemoteVerb.VolumeFixed => "playback.remote.volume.fixed",
+            Playback.RemoteVerb.Video => "playback.remote.video",
             _ => "playback.remote.play",
         };
 
@@ -309,6 +319,16 @@ public static partial class Shell
             return verb switch
             {
                 Playback.RemoteVerb.LikedUnknown => Strings.Player.Remote.LikedUnknown(d),
+                Playback.RemoteVerb.Pause => Strings.Player.Remote.PauseFailed(d),
+                Playback.RemoteVerb.Resume => Strings.Player.Remote.ResumeFailed(d),
+                Playback.RemoteVerb.Skip => Strings.Player.Remote.SkipFailed(d),
+                Playback.RemoteVerb.Seek => Strings.Player.Remote.SeekFailed(d),
+                Playback.RemoteVerb.Shuffle => Strings.Player.Remote.ShuffleFailed(d),
+                Playback.RemoteVerb.Repeat => Strings.Player.Remote.RepeatFailed(d),
+                Playback.RemoteVerb.Queue => Strings.Player.Remote.QueueFailed(d),
+                Playback.RemoteVerb.Volume => Strings.Player.Remote.VolumeFailed(d),
+                Playback.RemoteVerb.VolumeFixed => Strings.Player.Remote.VolumeFixed(d),
+                Playback.RemoteVerb.Video => Strings.Player.Remote.VideoFailed(d),
                 _ => Strings.Player.Remote.PlayFailed(d),
             };
         }

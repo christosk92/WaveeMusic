@@ -38,7 +38,21 @@ public static partial class Spotify
             public DeviceKind Kind;
             public int Volume;
             public bool IsActive;
+            /// <summary>A controller cannot set this device's volume: its capabilities say <c>disable_volume</c> (field 13), or
+            /// they state no volume steps (field 8 absent or 0) — <see cref="VolumeFixedBy"/>.</summary>
+            public bool VolumeFixed;
+            /// <summary>Its capabilities say <c>supports_set_options_command</c> (field 25): shuffle and repeat may go to it as one
+            /// <c>set_options</c> (the remote-play plan's step 3.2 reads it).</summary>
+            public bool SupportsSetOptions;
         }
+
+        /// <summary>Is a device's volume out of a controller's reach, by its capabilities? <c>disable_volume</c> (field 13 in the
+        /// public Connect protos; this repo's encoder never names it) says so outright; a capabilities message with no volume
+        /// steps says so too. A device that published no capabilities at all is NOT taken as fixed: nothing is known. The
+        /// iPhone sets 13 (with 16 steps) and answered 36 volume PUTs of 36 with 400; both desktops leave it unset with 64
+        /// steps (capture records #92 and #1702, gap analysis 2.1). PURE.</summary>
+        public static bool VolumeFixedBy(bool hasCapabilities, bool disableVolume, int volumeSteps)
+            => disableVolume || (hasCapabilities && volumeSteps <= 0);
 
         /// <summary>A `ProvidedTrack`: the remote's own account of what is playing. Its uri is an identity the
         /// catalog CAN hold, but the title/artist/cover ride along so a transfer paints before any fetch lands.</summary>
@@ -159,6 +173,9 @@ public static partial class Spotify
             public ClusterTrack Track;
             public bool IsPlaying, IsPaused, IsBuffering;
             public bool NoPrev, NoNext, NoSeek;
+            /// <summary>The ACTIVE device's volume cannot be set by a controller (<see cref="ClusterDevice.VolumeFixed"/>); false
+            /// when nobody is active.</summary>
+            public bool ActiveVolumeFixed;
             /// <summary>The video switches the owner OFFERS (<c>signals</c>, field 33) and lists in <c>disallow_signals</c> with a
             /// reason (restrictions field 29), as <c>Playback.VideoSignals</c> bits: 1 = switch-to-video, 2 = switch-to-audio.</summary>
             public byte VideoOffered, VideoDisallowed;
@@ -262,7 +279,10 @@ public static partial class Spotify
             {
                 if (d.Kind == DeviceKind.ThisDevice) delta.OurVolume = d.Volume;
                 if (d.IsActive || (!active.IsEmpty && into.Utf8(d.Id).SequenceEqual(into.Utf8(active))))
+                {
                     delta.ActiveVolume = d.Volume;
+                    delta.ActiveVolumeFixed = d.VolumeFixed;
+                }
             }
             if (delta.ActiveVolume < 0) delta.ActiveVolume = delta.OurVolume;
 
@@ -274,13 +294,31 @@ public static partial class Spotify
                 if (info.IsEmpty && key.IsEmpty) return;
                 var d = new ProtoReader(info);
                 ReadOnlySpan<byte> id = default, name = default;
-                int volume = 0, type = 0;
+                int volume = 0, type = 0, volumeSteps = 0;
+                bool hasCapabilities = false, disableVolume = false, setOptions = false;
                 while (d.Next())
                 {
                     switch (d.Field)
                     {
                         case 2: volume = d.Int32(); break;
                         case 3: name = d.Bytes(); break;
+                        case 4:                                    // Capabilities: the three bits a controller acts on
+                            {
+                                hasCapabilities = true;
+                                var c = d.Message();
+                                while (c.Next())
+                                {
+                                    if (c.Wire != 0) { c.Skip(); continue; }
+                                    switch (c.Field)
+                                    {
+                                        case 8: volumeSteps = c.Int32(); break;       // volume_steps
+                                        case 13: disableVolume = c.Bool(); break;     // disable_volume
+                                        case 25: setOptions = c.Bool(); break;        // supports_set_options_command
+                                        default: c.Skip(); break;
+                                    }
+                                }
+                                break;
+                            }
                         case 7: type = d.Int32(); break;
                         case 10: id = d.Bytes(); break;
                         default: d.Skip(); break;
@@ -293,6 +331,8 @@ public static partial class Spotify
                 row.Name = into.AddText(name);
                 row.Volume = volume;
                 row.Kind = us ? DeviceKind.ThisDevice : KindOf(type);
+                row.VolumeFixed = VolumeFixedBy(hasCapabilities, disableVolume, volumeSteps);
+                row.SupportsSetOptions = setOptions;
             }
 
             // `devices.proto`'s DeviceType ordinals, folded to the five shapes the picker draws (`ClusterMapper`).

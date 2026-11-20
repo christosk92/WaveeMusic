@@ -408,14 +408,17 @@ internal static partial class CommonMiniPlayer
             Children =
             [
                 Btn(m, muted ? Icons.Mute : Icons.Volume, bar.ToggleMute, true, Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute)),
-                VolumeSlider(vol, bar.SetVolume, accent, m.Size.Width - 2f * st.Pad + 2f * H.CtrlBleedBottom - st.ButtonBox - H.VolumePctW - 2f * H.TallPanelGap),
+                VolumeSlider(vol, bar.SetVolume, accent, m.Size.Width - 2f * st.Pad + 2f * H.CtrlBleedBottom - st.ButtonBox - H.VolumePctW - 2f * H.TallPanelGap,
+                    global::Wavee.Theming.VolumeSlider.Settable),
                 new BoxEl { Width = H.VolumePctW, Direction = 0, Justify = FlexJustify.End, HitTestVisible = false,
                     Children = [st.Detail("") with { Text = Prop.Of(() => Percent(vol.Value)), Color = m.Ink2 }] },
             ],
         };
     }
 
-    static Element VolumeSlider(FloatSignal vol, Action<float> set, ColorF accent, float length) => new BoxEl
+    /// <summary>The mini player's own rail; <paramref name="settable"/> false (the playing device keeps its volume to itself,
+    /// <c>VolumeSlider.Settable</c>) draws it in the style's disabled colours and takes no input.</summary>
+    static Element VolumeSlider(FloatSignal vol, Action<float> set, ColorF accent, float length, bool settable) => new BoxEl
     {
         Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center,
         Children =
@@ -425,7 +428,7 @@ internal static partial class CommonMiniPlayer
                 {
                     ValueFill = accent, ValueFillPointerOver = accent, ValueFillPressed = accent,
                     ThumbFill = accent, ThumbFillPointerOver = accent, ThumbFillPressed = accent,
-                }),
+                }, isEnabled: settable),
         ],
     };
 

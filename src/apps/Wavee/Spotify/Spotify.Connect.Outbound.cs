@@ -43,6 +43,10 @@ public static partial class Spotify
         const HeaderSet TransferHeaders = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity
             | HeaderSet.AcceptLanguage | HeaderSet.AcceptBareProtobuf | HeaderSet.ContentForm | HeaderSet.ConnectionId;
 
+        /// <summary>The volume PUT: a protobuf body, not gzipped, with the connection id and <c>Accept-Language</c> (all.saz 2243).</summary>
+        const HeaderSet VolumeHeaders = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity | HeaderSet.AcceptLanguage
+            | HeaderSet.ContentProtobuf | HeaderSet.ConnectionId;
+
         const string PlayerCommandRoute = "/connect-state/v1/player/command/from/";
         public const string TransferRoute = "/connect-state/v1/connect/transfer/from/";
         public const string WakeDevicesRoute = "/connect-state/v1/cluster/wake-devices";
@@ -348,7 +352,9 @@ public static partial class Spotify
         }
 
         /// <summary>Volume is not a player verb: it is a PUT with a three-field `SetVolumeCommand` protobuf body,
-        /// hand-encoded so this path carries no generated message for three bytes of varint.</summary>
+        /// hand-encoded so this path carries no generated message for three bytes of varint. The header set is the official
+        /// client's (all.saz 2243): the connection id and <c>Accept-Language</c> ride beside the protobuf content type
+        /// (remote-play plan 2.3; Wavee sent neither). The caller paces it (<c>Playback.PaceVolume</c>).</summary>
         public static bool Volume(string targetDeviceId, int volume0To65535, CancellationToken ct)
         {
             Span<byte> body = stackalloc byte[16];
@@ -365,7 +371,7 @@ public static partial class Spotify
                 Path = w.Written,
                 Host = ApiHost.Spclient,
                 Verb = Verb.Put,
-                Headers = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity | HeaderSet.ContentProtobuf,
+                Headers = VolumeHeaders,
                 Body = body[..n],
             };
             Api.Result result = Api.Send(RequestKind.Custom, args, ct);

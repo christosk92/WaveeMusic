@@ -534,14 +534,15 @@ public static partial class Playback
     /// <summary>The reducer forwarded a staged run (<see cref="DoQueueToOwner"/>): one track appended is <c>add_to_queue</c>;
     /// otherwise a <c>set_queue</c> of the owner's own queue with the run spliced in — at the head of its queued rows for
     /// "play next", after them for an append (0.2.9's splice). The body is built here, sent on an api thread.</summary>
-    static void ForwardQueue(string target, RemoteCmd cmd, long arg, bool next)
+    static void ForwardQueue(string target, ulong device, RemoteCmd cmd, long arg, bool next)
     {
         int offset = (int)(arg >> 32), count = (int)(arg & 0xFFFF_FFFF);
         if (offset < 0 || count <= 0 || offset + count > s_forward.Count) return;
         if (cmd == RemoteCmd.AddToQueue)
         {
             string uri = s_forward[offset].Text;
-            Spotify.Api.Run(() => Spotify.Connect.AddToQueue(target, uri, CancellationToken.None));
+            RunForward(RemoteVerb.Queue, device, () => Answered(RemoteVerb.Queue, device,
+                Spotify.Connect.AddToQueue(target, uri, CancellationToken.None)));
             return;
         }
         var added = new Spotify.Connect.QueueWireRow[count];
@@ -549,7 +550,8 @@ public static partial class Playback
         Spotify.Connect.QueueWireRow[] prev = s_foreign.Rows(next: false);
         Spotify.Connect.QueueWireRow[] rows = Spotify.Connect.SpliceQueued(s_foreign.Rows(next: true), added, next ? 0 : int.MaxValue);
         ulong revision = s_foreign.Revision;
-        Spotify.Api.Run(() => Spotify.Connect.SetQueue(target, revision, prev, rows, CancellationToken.None));
+        RunForward(RemoteVerb.Queue, device, () => Answered(RemoteVerb.Queue, device,
+            Spotify.Connect.SetQueue(target, revision, prev, rows, CancellationToken.None)));
     }
 
     // ── 4. the BecameInactive a sign-out owes (G-036) ─────────────────────────────────────────────────────────────────

@@ -172,6 +172,10 @@ public static partial class Playback
     /// <summary>Is whoever is audible muted — the foreign owner at volume 0 while one owns playback, else our sink muted
     /// or our volume at 0? The ONE fact every mute glyph reads (<see cref="ToggleMute"/> flips it).</summary>
     public static readonly Signal<bool> Muted = new(false);
+    /// <summary>The device that owns playback does not let a controller set its volume (<see cref="State.VolumeFixed"/>: an
+    /// iPhone's <c>disable_volume</c>). Every volume rail reads it and draws disabled (<c>Theming.VolumeSlider</c>); a volume
+    /// key or a mute meanwhile is refused and said (<see cref="RemoteVerb.VolumeFixed"/>).</summary>
+    public static readonly Signal<bool> VolumeFixed = new(false) { DebugName = "playback.volumeFixed" };
     public static readonly Signal<bool> Shuffle = new(false);
     public static readonly Signal<RepeatMode> Repeat = new(RepeatMode.Off);
     /// <summary>The FOLDED enablement — restrictions, phase, error and (while live) the DVR window, decided once.</summary>
@@ -280,6 +284,12 @@ public static partial class Playback
             /// <summary>0..65535, the wire scale.</summary>
             public int Volume;
             public bool IsActive;
+            /// <summary>A controller cannot set its volume (<see cref="Spotify.Decode.ClusterDevice.VolumeFixed"/>): no volume PUT
+            /// goes to it and every volume rail shows it disabled while it owns playback (<see cref="VolumeFixed"/>).</summary>
+            public bool VolumeFixed;
+            /// <summary>It takes shuffle and repeat as one <c>set_options</c> (capability 25,
+            /// <see cref="Spotify.Decode.ClusterDevice.SupportsSetOptions"/>).</summary>
+            public bool SupportsSetOptions;
         }
 
         static Row[] s_rows = new Row[8];
@@ -311,6 +321,14 @@ public static partial class Playback
             return slot < 0 ? "" : s_rows[slot].Name ?? "";
         }
 
+        /// <summary>Does the device take shuffle and repeat as one <c>set_options</c> (<see cref="Row.SupportsSetOptions"/>)?
+        /// False for a device the roster does not hold.</summary>
+        public static bool SupportsSetOptions(ulong hash)
+        {
+            int slot = SlotOf(hash);
+            return slot >= 0 && s_rows[slot].SupportsSetOptions;
+        }
+
         /// <summary>Replace the roster from one cluster. Strings are only materialised for a hash the roster does not
         /// already hold, so a 1 Hz heartbeat over five devices allocates nothing after the first push.</summary>
         internal static void Update(Spotify.Decode.ClusterBuffer buffer, in Spotify.Decode.ClusterDelta delta, ulong active)
@@ -332,10 +350,13 @@ public static partial class Playback
                 }
                 else if (string.IsNullOrEmpty(row.Name)) row.Name = Text(buffer, d.Name);
                 bool isActive = hash != 0 && hash == active;
-                if (row.Kind != d.Kind || row.Volume != d.Volume || row.IsActive != isActive) changed = true;
+                if (row.Kind != d.Kind || row.Volume != d.Volume || row.IsActive != isActive || row.VolumeFixed != d.VolumeFixed
+                    || row.SupportsSetOptions != d.SupportsSetOptions) changed = true;
                 row.Kind = d.Kind;
                 row.Volume = d.Volume;
                 row.IsActive = isActive;
+                row.VolumeFixed = d.VolumeFixed;
+                row.SupportsSetOptions = d.SupportsSetOptions;
             }
             s_count = devices.Length;
             if (!changed) return;
@@ -347,7 +368,11 @@ public static partial class Playback
         {
             if (devices.Length > s_rows.Length) Array.Resize(ref s_rows, devices.Length);
             for (int i = 0; i < devices.Length; i++)
-                s_rows[i] = new Row { Hash = DeviceHash(devices[i].Id), Id = devices[i].Id, Name = devices[i].Name, Kind = devices[i].Kind, Volume = devices[i].Volume };
+                s_rows[i] = new Row
+                {
+                    Hash = DeviceHash(devices[i].Id), Id = devices[i].Id, Name = devices[i].Name, Kind = devices[i].Kind, Volume = devices[i].Volume,
+                    VolumeFixed = devices[i].VolumeFixed,
+                };
             for (int i = devices.Length; i < s_count; i++) s_rows[i] = default;
             s_count = devices.Length;
             Changed.Value = ++s_version;
@@ -686,7 +711,8 @@ public static partial class Playback
             d.NoPrev, d.NoNext, d.NoSeek,
             Identify(buffer.Utf8(d.ContextUri)),    // the owner's context: what a takeover adopts (A4)
             d.HasTrack && d.Track.IsVideo, (VideoSignals)d.VideoOffered, (VideoSignals)d.VideoDisallowed,
-            d.HasTrack ? RemoteManifest(buffer.Utf8(d.Track.AssociatedVideoId), buffer.Utf8(d.Track.Uri)) : StringId.Empty);
+            d.HasTrack ? RemoteManifest(buffer.Utf8(d.Track.AssociatedVideoId), buffer.Utf8(d.Track.Uri)) : StringId.Empty,
+            d.ActiveVolumeFixed);
 
         StepOne(Input.Cluster(in frame, in remote, now));
         s_state.ActiveDeviceSlot = Devices.SlotOf(s_state.ActiveDevice);
@@ -855,6 +881,8 @@ public static partial class Playback
             TransferFailedCount.Value = TransferFailedCount.Peek() + 1;
         }
         if (s_fx.Refused != Refusal.None) Log.Info("playback", "intent refused: " + s_fx.Refused);
+        // A volume key, a wheel or a mute for an owner whose volume cannot be set: nothing was sent; the user is told why.
+        if (s_fx.Refused == Refusal.VolumeFixed) NoteRemoteRefusal(RemoteVerb.VolumeFixed, s_state.Own.Device);
         if (s_fx.Mute)
         {
             Audio.SetMuted(s_fx.MuteOn);
@@ -1105,15 +1133,16 @@ public static partial class Playback
     {
         string target = Devices.IdOf(s_fx.RemoteDevice);
         if (target.Length == 0) { Log.Warn("playback", "remote verb dropped: the owner is not in the roster"); return; }
+        ulong device = s_fx.RemoteDevice;
         if (s_fx.RemoteIsVolume)
         {
-            int volume = (int)Math.Clamp(s_fx.RemoteArg, 0, MaxWireVolume);
-            Spotify.Api.Run(() => Spotify.Connect.Volume(target, volume, CancellationToken.None));
+            // Paced, about three PUTs a second with the last value always sent (Playback.Host.Forward.cs); no allocation per move.
+            PaceVolume(target, device, (int)Math.Clamp(s_fx.RemoteArg, 0, MaxWireVolume));
             return;
         }
         if (s_fx.RemoteCmd is RemoteCmd.AddToQueue or RemoteCmd.SetQueue)
         {
-            ForwardQueue(target, s_fx.RemoteCmd, s_fx.RemoteArg, s_fx.RemoteFlag);   // G-248, Playback.Host.Wire.cs
+            ForwardQueue(target, device, s_fx.RemoteCmd, s_fx.RemoteArg, s_fx.RemoteFlag);   // G-248, Playback.Host.Wire.cs
             return;
         }
         if (s_fx.RemoteCmd is RemoteCmd.NextTrack or RemoteCmd.SkipNext)
@@ -1126,7 +1155,8 @@ public static partial class Playback
             Span<char> uidChars = stackalloc char[UidBook.MaxChars];
             string trackUid = named ? new(uidChars[..s_uids.Format((ulong)s_fx.RemoteArg, uidChars)]) : "";
             Log.Info("playback", "next_track forwarded to the owner: track=" + (named ? trackUri : "(plain skip)") + " uid=" + trackUid);
-            Spotify.Api.Run(() => Spotify.Connect.NextTrack(target, trackUri, trackUid, CancellationToken.None));
+            RunForward(RemoteVerb.Skip, device, () => Answered(RemoteVerb.Skip, device,
+                Spotify.Connect.NextTrack(target, trackUri, trackUid, CancellationToken.None)));
             return;
         }
         if (s_fx.RemoteCmd == RemoteCmd.PlayContext)
@@ -1135,7 +1165,7 @@ public static partial class Playback
             // thread: the uid book is ours alone).
             Span<char> uidChars = stackalloc char[UidBook.MaxChars];
             string? skipUid = Spotify.Connect.SkipUidOf(new(uidChars[..s_uids.Format((ulong)s_fx.RemoteArg, uidChars)]));
-            SendPlay(target, s_fx.RemoteDevice, s_fx.RemoteContext, s_fx.RemoteTrack, s_fx.RemoteFlag, -1, skipUid, s_fx.RemoteVideo);
+            SendPlay(target, device, s_fx.RemoteContext, s_fx.RemoteTrack, s_fx.RemoteFlag, -1, skipUid, s_fx.RemoteVideo);
             return;
         }
         if (s_fx.RemoteCmd == RemoteCmd.Signal)
@@ -1143,7 +1173,8 @@ public static partial class Playback
             // The owner's audio ⇄ video switch (itsover.saz 772): RemoteArg carries the VideoSignal.
             var signal = (Spotify.Decode.VideoSignal)s_fx.RemoteArg;
             Log.Info("playback", "video signal forwarded to the owner: " + Spotify.Decode.SignalId(signal));
-            Spotify.Api.Run(() => Spotify.Connect.Signal(target, signal, CancellationToken.None));
+            RunForward(RemoteVerb.Video, device, () => Answered(RemoteVerb.Video, device,
+                Spotify.Connect.Signal(target, signal, CancellationToken.None)));
             return;
         }
         if (s_fx.RemoteCmd == RemoteCmd.SetRepeatingContext && s_fx.RemoteArg > 0)
@@ -1152,11 +1183,13 @@ public static partial class Playback
             // a mode nobody asked for (Track -> Context: track off, then context on; Off: track off, then context off).
             var mode = (RepeatMode)(s_fx.RemoteArg - 1);
             bool context = mode != RepeatMode.Off, track = mode == RepeatMode.Track;
-            Spotify.Api.Run(() =>
+            RunForward(RemoteVerb.Repeat, device, () =>
             {
-                if (!track) Spotify.Connect.Command(target, "set_repeating_track", "value", 0, false, CancellationToken.None);
-                Spotify.Connect.Command(target, "set_repeating_context", "value", 0, context, CancellationToken.None);
-                if (track) Spotify.Connect.Command(target, "set_repeating_track", "value", 0, true, CancellationToken.None);
+                bool ok = true;
+                if (!track) ok &= Spotify.Connect.Command(target, "set_repeating_track", "value", 0, false, CancellationToken.None);
+                ok &= Spotify.Connect.Command(target, "set_repeating_context", "value", 0, context, CancellationToken.None);
+                if (track) ok &= Spotify.Connect.Command(target, "set_repeating_track", "value", 0, true, CancellationToken.None);
+                Answered(RemoteVerb.Repeat, device, ok);
             });
             return;
         }
@@ -1170,7 +1203,9 @@ public static partial class Playback
         };
         long arg = s_fx.RemoteArg;
         bool flag = s_fx.RemoteFlag;
-        Spotify.Api.Run(() => Spotify.Connect.Command(target, endpoint, valueName, arg, flag, CancellationToken.None));
+        RemoteVerb verb = VerbOf(s_fx.RemoteCmd);
+        RunForward(verb, device, () => Answered(verb, device,
+            Spotify.Connect.Command(target, endpoint, valueName, arg, flag, CancellationToken.None)));
     }
 
     /// <summary>The wire spelling of a verb. The ONE place an endpoint string exists on the outbound side — the
@@ -1235,6 +1270,7 @@ public static partial class Playback
         Volume.Value = s_state.SliderVolume;
         Muted.Value = s_state.Own.Kind == Owner.Foreign ? s_state.SliderVolume <= MuteFloor : s_state.SinkMuted || s_state.Volume <= MuteFloor;
         HeardVolume.Value = Muted.Peek() ? 0f : s_state.SliderVolume;
+        VolumeFixed.Value = s_state.VolumeFixed;
         SeekGen.Value = s_state.SeekGen;
         LastSeekLandedGen.Value = s_state.LastSeekLandedGen;
         ScrubPositionMs.Value = s_state.Scrub.Current != ScrubModel.State.Idle ? s_state.ScrubPosMs : -1;

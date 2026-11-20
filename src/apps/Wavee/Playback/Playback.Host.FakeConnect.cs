@@ -15,8 +15,9 @@ namespace Wavee;
 
 public static partial class Playback
 {
-    /// <summary>One fake Spotify Connect device: its id, name, kind and volume (0..65535, the wire scale).</summary>
-    public readonly record struct FakeConnectDevice(string Id, string Name, Spotify.Decode.DeviceKind Kind, int Volume);
+    /// <summary>One fake Spotify Connect device: its id, name, kind and volume (0..65535, the wire scale), and whether a controller
+    /// is kept from setting that volume (<see cref="Devices.Row.VolumeFixed"/>: true stands in for an iPhone's <c>disable_volume</c>).</summary>
+    public readonly record struct FakeConnectDevice(string Id, string Name, Spotify.Decode.DeviceKind Kind, int Volume, bool VolumeFixed = false);
 
     static FakeConnectDevice[]? s_fakeConnect;
     static ulong s_fakePushTarget;
@@ -58,7 +59,7 @@ public static partial class Playback
         var remote = new RemoteState(
             s_state.HasCurrent, s_state.CurrentId, IsPlaying: true, IsPaused: false, IsBuffering: false,
             s_state.PosMs, unix, s_state.DurationMs, s_state.Shuffle, s_state.Repeat, Devices.Rows[slot].Volume,
-            NoPrev: false, NoNext: false, NoSeek: false, s_state.Context);
+            NoPrev: false, NoNext: false, NoSeek: false, s_state.Context, VolumeFixed: Devices.Rows[slot].VolumeFixed);
         StepOne(Input.Cluster(in frame, in remote, now));
         s_state.ActiveDeviceSlot = Devices.SlotOf(s_state.ActiveDevice);
     }

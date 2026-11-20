@@ -16,10 +16,19 @@ namespace Wavee.Theming;
 /// during its drain to the next drain, so a 0 ms re-arm is exactly one step per frame and can never spin), no re-render. The rail's own
 /// writes (a drag, a press, the wheel) land at once, and so does any change inside <see cref="OwnQuietMs"/> of one (the level the model
 /// publishes back trails a drag by a drain), so the thumb never fights the pointer. A step smaller than <see cref="GlideMinStep"/> and
-/// reduced motion land at once too.</para></summary>
+/// reduced motion land at once too.</para>
+/// <para>A FIXED VOLUME. While the device that owns playback does not let a controller set its volume (<c>Playback.VolumeFixed</c>: an
+/// iPhone's <c>disable_volume</c>, remote-play plan 2.2), every rail draws the slider DISABLED in its own style's disabled colours and
+/// ignores the wheel: the rail still shows that device's level, and no move can be made that would only be refused. Fixed here, in the
+/// one control every bar, overlay, full screen and device picker uses, so every theme gets it.</para></summary>
 public static class VolumeSlider
 {
     public const float WheelStep = .05f;
+
+    /// <summary>May the volume be set right now? False while the device that owns playback keeps its volume to itself. A REACTIVE read:
+    /// a render that asks re-renders when it flips (a device change, never a drag). For a rail that does not go through
+    /// <see cref="Create"/> (the mini player's own slider passes it as its <c>isEnabled</c>).</summary>
+    public static bool Settable => !Playback.VolumeFixed.Value;
 
     /// <summary>How long after the rail's own write an outside change still lands at once.</summary>
     const double OwnQuietMs = 300;
@@ -54,21 +63,30 @@ public static class VolumeSlider
             // Reads the CURRENT args' level each run (a re-pushed signal is followed from its next change).
             UseSignalEffect(() => Follow(_a!.Value.Value));
             _set ??= Set;
+            bool settable = Settable;                    // re-renders this rail (only) when the owner's volume turns fixed or settable
 
             return new BoxEl
             {
                 OnPointerWheel = e =>
                 {
                     e.Handled = true;
-                    if (e.Steps == 0) return;
+                    if (e.Steps == 0 || !settable) return;
                     float v = Math.Clamp(shown.Peek() - WheelStep * e.Steps, 0f, 1f);
                     if (v == shown.Peek()) return;
                     shown.Value = v;
                     Set(v);
                 },
-                Children = [Slider.Create(shown, _set, a.Options, a.Length, a.Thickness, a.Style)],
+                Children = [Slider.Create(shown, _set, a.Options, a.Length, a.Thickness, settable ? a.Style : FixedStyle(a.Style),
+                    isEnabled: settable)],
             };
         }
+
+        /// <summary>The style a FIXED rail draws in. The engine's ring has no disabled colour (WinUI's outer thumb keeps one fill in
+        /// every state), which suits a two-ink thumb (Classic, WinUI: a dark ring round the dot). A ONE-ink thumb (Zune's line: ring
+        /// and dot the same white) would stay full white over a dimmed line, so its ring takes the dot's disabled ink and the whole
+        /// thumb dims. Built only on a render while fixed (a device change), never per frame.</summary>
+        static Slider.Style? FixedStyle(Slider.Style? s)
+            => s is not null && s.ThumbRing == s.ThumbFill ? s with { ThumbRing = s.ThumbFillDisabled } : s;
 
         /// <summary>The rail's own write (the slider already moved the thumb): a glide stops, the model hears it.</summary>
         void Set(float v)
