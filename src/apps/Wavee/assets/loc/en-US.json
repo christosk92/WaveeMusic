@@ -2753,6 +2753,7 @@
     "aspectRatio219": "21:9",
     "aspectRatio239": "2.39:1",
     "qualityAuto": "Auto",
+    "losslessMark": "Lossless",
     "videoUpNext": "Up next",
     "playingOn": "Playing on {device}",
     "playHere": "Play here",

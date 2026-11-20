@@ -586,7 +586,13 @@ track follows its lyrics: render the stage while playing, no pause needed. `ago=
 `context=<uri>` plays the rows in that context as a row click on its page does, from row `at=` (0 = the uri's own row).
 
 `remote=<name>` turns the output remote on the live mount, as a Connect transfer does while playing (`remote=off` makes it local again); without a
-`uri` only the output changes. The fake load lands on the wall clock; `play uri=` waits for it (up to 5 s) before it settles and replies
+`uri` only the output changes.
+
+`format=<badge>` makes the deck's load report that format badge and its open the format the badge names (`Playback.StageFormat`: the open's
+format, then the audio host's own reducer input), after the load
+lands so the fake open's "OGG 320" cannot overwrite it; without a `uri` it restamps the playing load. A FLAC badge stands a lossless stream:
+`play uri=spotify:track:tr3`, then `play format="FLAC 24/96"`, and Classic's bar shows its Lossless pill (`np-lossless`, its tooltip the badge)
+(Standard and wider; the bar reads the opened format, the badge is its tooltip) and the stage its format chip. The fake load lands on the wall clock; `play uri=` waits for it (up to 5 s) before it settles and replies
 `phase` and `loadFrames` (above), so the next command reads the playing bar; the remote line shows through the load as the title and artists do.
 
 ### `transport {do, value?, uri?, ms?}`

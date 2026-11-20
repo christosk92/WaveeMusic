@@ -5076,6 +5076,25 @@ public static partial class Playback
             };
         }
 
+        /// <summary>Diagnostics (the inspector's <c>play format=</c>): the playing open reports <paramref name="label"/> and the format it names, as
+        /// the audio host's own open would, so a case can stand a lossless stream on the fake catalogue (whose opens are all <see cref="FakeFormat"/>).
+        /// The badge is read back to its format only here: everything else reads <see cref="Opened.Format"/>.</summary>
+        internal static void StageOpened(string label)
+        {
+            var format = label switch
+            {
+                _ when label.StartsWith("FLAC", StringComparison.Ordinal) =>
+                    label.Contains("24", StringComparison.Ordinal) ? Spotify.Audio.Format.Flac24 : Spotify.Audio.Format.Flac,
+                "OGG 96" => Spotify.Audio.Format.OggVorbis96,
+                "OGG 160" => Spotify.Audio.Format.OggVorbis160,
+                "OGG 320" => Spotify.Audio.Format.OggVorbis320,
+                "MP3" => Spotify.Audio.Format.Mp3,
+                "AAC" => Spotify.Audio.Format.Aac,
+                _ => Spotify.Audio.Format.Unknown,
+            };
+            lock (s_gate) s_opened = s_opened with { Format = format, Label = label };
+        }
+
         // ── 19. ICY: the radio framing ───────────────────────────────────────────────────────────────────────────────
 
         /// <summary>What a SHOUTcast/ICY response head says. Parsed rather than handed to `HttpClient` because
