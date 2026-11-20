@@ -69,12 +69,17 @@ this reason.
 - **No tests, ever.** No test projects or files, no `dotnet test`; the build and the pre-commit hook reject them.
 - **No environment-variable switches** for behaviour or verification: always-on logs, the diagnostics page, gates.
 - **No legacy paths.** Replace outright; delete obsolete code. Breaking is acceptable.
-- **Every fix references its issue.** The CHANGELOG bullet ends with ` (#n)`, the commit body carries `Fixes #n`,
-  and the release script's `issue refs` gate refuses a mismatch between the two (→ `github-triage` skill).
+- **Branch from and target the open release branch** (the newest `release/*`, today `release/0.3.12`), never `main`:
+  `main` is what shipped and only the release runner moves it (protected since 2026-11-20). Read the
+  `wavee-contributing` skill before starting a change: change files instead of CHANGELOG edits, theme contract
+  changes declared instead of numbered, spikes, PR rules, and what reviews keep finding.
+- **Every fix references its issue.** The commit body carries `Fixes #n` and the change file lists `issues: [n]`
+  (→ `github-triage` skill).
 - **Plans with real code.** Multi-part work gets a plan in `docs/plans/wavee/*-implementation.md` with the actual
   code, component trees and ASCII wireframes; implementation is parallel subagents on disjoint files, and only the
   orchestrator builds/launches.
-- App skills: `.claude/skills/wavee` (deep links, backend, diagnostics), `wavee-sidebar` (the sidebar: layouts, modes,
+- App skills: `wavee-contributing` (the flow from idea to release, change files, PR and review rules, hotfix and
+  rollback), `.claude/skills/wavee` (deep links, backend, diagnostics), `wavee-sidebar` (the sidebar: layouts, modes,
   Edit mode, pins), `releasing` (the release runbook + gotchas), `github-triage` (labels, milestones, the project board,
   issue forms — every modifying `gh` call is approved by the user first). Sidebar: `docs/guide/sidebar.md`; playback
   modules: `docs/guide/playback-modules.md`; releasing: `docs/guide/releasing-wavee.md`; scrolling:

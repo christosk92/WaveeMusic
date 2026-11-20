@@ -5,6 +5,12 @@ description: Use when cutting, publishing, or troubleshooting a Wavee MSIX relea
 
 # Releasing Wavee (signed MSIX, local only)
 
+> **Changing (2026-11-20).** `main` is protected (PR only), so `wavee-release.ps1`, which pushes `main` and works on
+> `main`, can no longer cut a release. Releases move to `release/<v>` branches and a new runner
+> (`ops/release/release.ps1`: dry run by default, `-Go`, steps judged from reality, the Store folded in), designed in
+> `docs/plans/wavee/release-flow-design.md` and summarised in the `wavee-contributing` skill. 0.3.12 is the first release
+> on it. What follows stays true for packaging, signing, symbols, the feed and its gotchas, which the runner reuses.
+
 Wavee ships as a **NativeAOT, packaged-Win32 full-trust MSIX** (arm64 + x64, x64 via the MSVC `HostArm64\x64` cross
 toolchain), signed by **Azure Trusted Signing** and published to GitHub Releases on **this** repo. **There is no CI
 job**: a CI checkout has no `src/apps/Wavee.PlayPlay` junction and would silently publish the public-only variant, so a

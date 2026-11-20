@@ -60,14 +60,28 @@ Backlog, Planned, In progress, In review, Done.
 
 ## Branches and commits
 
-Branch from `main`. Prefix by kind, matching the repo's history:
+`main` is what shipped: what users can install from the feed or the Store. Nobody pushes to it and no PR targets
+it. All work goes into the **open release branch**, the newest `release/*` branch (today `release/0.3.12`):
+
+```
+git fetch origin
+git switch -c fix/<name> origin/release/0.3.12
+...
+gh pr create --base release/0.3.12        # GitHub suggests main: pick the release branch
+```
+
+A PR opened against `main` is not lost, it waits until a maintainer moves it. When a release ships while your PR is
+open, the PR is moved to the next release branch for you. The full flow (spikes, releases, hotfixes, rollback) is in
+`docs/plans/wavee/release-flow-design.md`; agents read `.claude/skills/wavee-contributing`.
+
+Prefix the branch by kind, matching the repo's history:
 
 - `feat/…` — new functionality
 - `fix/…` — bug fixes
-- `hotfix/…` — urgent post-release fixes
 - `perf/…` — performance work
 - `docs/…` — documentation only
 - `chore/…` — everything else (tooling, deps, cleanup)
+- `spike/…` — an experiment that answers a question; it is never merged (a draft PR at most)
 
 Commit subjects follow `area: summary`, imperative mood, e.g.:
 
@@ -79,20 +93,20 @@ docs(readme): bring back the download buttons
 Put the *why* in the body, not just the *what*. Keep PRs to one logical change — small, reviewable diffs are
 much more likely to land quickly than a large mixed one.
 
-Every fix references its issue: the commit body carries `Fixes #n`, and the release script's `issue refs` gate
-refuses a mismatch between that trailer and the CHANGELOG (→ `github-triage` skill).
+Every fix references its issue: the commit body carries `Fixes #n`, and the change file lists the same number in
+`issues:` (→ `github-triage` skill).
 
 ## Changelog
 
-`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). If your change is
-user-facing, add a bullet under the next version heading, `## [x.y.z] - unreleased` (create that heading above
-the latest released one if it doesn't exist yet, with the appropriate `### Added` / `### Changed` / `### Fixed`
-/ `### Removed` section). Write it the way the existing entries read: a bold, user-facing lead phrase followed
-by plain-language detail — not an engineering changelog. The release script refuses to ship a version without
-this heading, so a PR that changes behavior and skips it will get flagged in review.
+Don't edit `CHANGELOG.md`. If your change is user-facing, add one **change file** to `changes/unreleased/`; the
+format is in [`changes/README.md`](changes/README.md). Write its text the way the existing CHANGELOG entries read: a
+bold, user-facing lead phrase followed by plain-language detail, not an engineering changelog. At release time the
+files are assembled into the version's section of `CHANGELOG.md` (which follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/)), and a community change is credited there and on the What's
+new page from the file's `by:` field.
 
-Every fix references its issue: the bullet ends with ` (#n)`, and the release script's `issue refs` gate refuses
-a mismatch between that citation and the commits it ships (→ `github-triage` skill).
+If your change touches the theme contract (`src/apps/Wavee/Theming/Contracts/`), say so in the change file
+(`contract: additive` or `breaking`) and leave `ContractVersion.cs` alone: the release sets the number.
 
 ## Gates before you open a PR
 
