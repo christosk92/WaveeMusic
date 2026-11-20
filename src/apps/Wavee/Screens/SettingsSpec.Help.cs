@@ -139,6 +139,9 @@ public static partial class SettingsSpec
             Group("links", Strings.Settings.Groups.Help.Links, null,
                 AboutLink("help.links.allIssues", "allIssues", Strings.Report.AboutAllIssues, () => SettingsVerbs.OpenUri(Settings.IssuesUrl)),
                 AboutLink("help.links.website", "website", Strings.Settings.About.Website, () => SettingsVerbs.OpenUri(Settings.WebsiteUrl)),
+                // The repo, one row under the website that used to open it (new: no old row id to answer to).
+                Make("help.links.source", K.Action, Strings.Settings.About.Source,
+                    SettingsWriter.OfAction("about.link:source", () => SettingsVerbs.OpenUri(Settings.SourceUrl))),
                 AboutLink("help.links.thirdPartyNotices", "thirdPartyNotices", Strings.Settings.About.ThirdPartyNotices, SettingsVerbs.OpenNotices),
                 AboutLink("help.links.openDataFolder", "openDataFolder", Strings.Settings.About.OpenDataFolder, SettingsVerbs.OpenDataFolder),
                 // The licenses are static text.

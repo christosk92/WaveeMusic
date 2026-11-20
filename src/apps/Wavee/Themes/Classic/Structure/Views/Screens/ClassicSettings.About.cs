@@ -65,7 +65,7 @@ internal static partial class ClassicSettings
             case "help.links.allIssues":
                 card = group is null ? null : LinksCard(group);
                 return group is not null;
-            case "help.links.website" or "help.links.thirdPartyNotices" or "help.links.openDataFolder":
+            case "help.links.website" or "help.links.source" or "help.links.thirdPartyNotices" or "help.links.openDataFolder":
                 return group is not null;   // the links card draws them (a result draws its own clickable row)
             case "help.links.licenses":
                 card = new BoxEl
