@@ -1353,6 +1353,10 @@ public readonly partial struct Track
             // columns form's pinned head, audit B9; the Liked chips arriving) is never overwritten by the inset the list froze at mount.
             _itemBandSig ??= new Signal<float>(stickyInset);
             UseLayoutEffect(() => ApplyItemBand(stickyInset), DepKey.From(stickyInset, (float)_resetEpoch));
+            // Find keeps the list's top in view (#230): a query typed while scrolled down parks the chrome on its pin line, so the first match shows.
+            string findQuery = snap.Query;
+            float findLine = StickLine();
+            UseLayoutEffect(() => KeepFindAtListTop(findQuery, findLine), DepKey.From(findQuery.GetHashCode()));
 
             // The hero arm appends the section too (C-Playlist-Compact, C-Empty-Compact): after its rows, as one more slot of its viewport.
             bool recsCapable = cfg.Recommendations && !args.Embedded && !asideDocked && P.Recommendations is not null;
@@ -1598,6 +1602,28 @@ public readonly partial struct Track
             sc.ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand;
             scene.Mark(viewport, NodeFlags.PaintDirty);
             if (!sc.ContentNode.IsNull && scene.IsLive(sc.ContentNode)) scene.Mark(sc.ContentNode, NodeFlags.PaintDirty);
+        }
+
+        /// <summary>The query the chrome last answered (<see cref="KeepFindAtListTop"/>); null until the table's first query render.</summary>
+        string? _findQuerySeen;
+
+        /// <summary>The chrome's root node (the hero arm: the list's prefix item, or the album's table block), so a find can bring it back to its pin line.</summary>
+        NodeHandle _chromeNode;
+        Action<NodeHandle>? _captureChrome;
+
+        /// <summary>A find narrowed (or widened) the rows while the chrome is pinned (#230): the offset the user scrolled to belonged to the OLD rows,
+        /// and once they shrink it lands deep in the matches, or past them all (an album clamps to its end: the trailing shelves under the rows),
+        /// so the results sat above the viewport. Park the chrome on its pin line instead, at once — the rows change under it on this frame, and a
+        /// glide from an offset that no longer exists would only travel through content that is gone. Scrolled to the top (the chrome not pinned),
+        /// the list's top is already in view and nothing moves.</summary>
+        void KeepFindAtListTop(string query, float line)
+        {
+            string? seen = _findQuerySeen;
+            _findQuerySeen = query;
+            if (seen is null || seen == query || !VerticalArm || !_compactInteractive.Peek()) return;
+            var node = _chromeNode;
+            if (Context.Scene is not { } scene || node.IsNull || !scene.IsLive(node)) return;
+            scene.BringIntoView(node, align: 0f, ScrollMove.Immediate, margin: line);
         }
 
         // ══ 4. THE LIST ARMS ═════════════════════════════════════════════════════════════════════════════════════════

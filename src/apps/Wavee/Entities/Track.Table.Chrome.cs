@@ -192,6 +192,8 @@ public readonly partial struct Track
             return new BoxEl
             {
                 Key = "chrome", Direction = 1,
+                // The hero arm's chrome lives in the list's own scroller: a find brings it back to its pin line (#230).
+                OnRealized = vertical ? _captureChrome ??= n => _chromeNode = n : null,
                 Padding = new Edges4(0f, toolbar ? Spacing.S : 0f, 0f, 0f),
                 Children = children,
             };
@@ -682,7 +684,11 @@ public readonly partial struct Track
                     {
                         OnRealized = n =>
                         {
-                            if (!h.VerticalArm || band == h._compactInteractive.Peek()) post(() => hooks.FocusNode?.Invoke(n, false));
+                            // The band owns input only where it SHOWS: the hero form's collapsed band once the chrome pins. The columns form pins the
+                            // hero whole and draws no band, so its hidden copy taking focus there (scrolled: the chrome engaged) was refused, blurred
+                            // while empty and collapsed the find on the frame it opened.
+                            bool bandOwns = h._compactInteractive.Peek() && !h.ColumnsForm;
+                            if (!h.VerticalArm || band == bandOwns) post(() => hooks.FocusNode?.Invoke(n, false));
                         },
                     },
                 }, DepKey.Empty);
