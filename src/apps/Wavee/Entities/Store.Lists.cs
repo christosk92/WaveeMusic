@@ -781,6 +781,8 @@ public static partial class Store
         ref StagedEdge edge = ref s.Edges.Add();
         edge.Target = Stage(s, row.Uri);
         if (edge.Target.IsEmpty) return false;
+        // A local file: its own uri is its face, re-stated with every landing of the list (Track.LocalUri.cs).
+        if (relation == EdgeRelation.PlaylistTracks && LocalTrackUri.Is(row.Uri)) LocalTrackUri.StageFace(s, in edge.Target, row.Uri);
         edge.Text = Arena(s, row.ItemId);
         edge.At = row.AddedAt;
         edge.Aux = Stage(s, row.AddedBy);

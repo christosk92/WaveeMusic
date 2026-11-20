@@ -664,6 +664,17 @@ public readonly partial struct Track
     public bool Unplayable()
         => Unplayable(Knows(TrackFields.Availability), (FlagBits & (uint)TrackFlags.Unavailable) != 0, AvailableAt);
 
+    /// <summary>A playlist's <c>spotify:local:</c> item (<c>Track.LocalUri.cs</c>): its face is its uri's, and Wavee has no file to play it from. A local
+    /// item's id is always TEXT-form, so the form is tested first: a gid's <see cref="EntityId.Text"/> builds a new string, and the duration lane and the
+    /// artist runs ask this per row (Entities.cs: never per row per frame).</summary>
+    public bool IsLocalItem => IsValid && Uri.Id.Form == EntityForm.Text && LocalTrackUri.Is(Uri.Text);
+
+    /// <summary>The artist a local item's uri names, or "" for any other row.</summary>
+    public string LocalArtist => IsLocalItem ? LocalTrackUri.NamesOf(Uri.Text).Artist : "";
+
+    /// <summary>How many artists the row draws: its billed artists, or the one a local item's uri names.</summary>
+    public int DisplayArtistCount => ArtistSlots.Length is > 0 and var n ? n : LocalArtist.Length > 0 ? 1 : 0;
+
     /// <summary>Does this row show the versions chevron (<see cref="TableRules.HasVersionsOf"/>)? Subscribes the versions
     /// relation's own <c>Changed</c>, so a bound read re-resolves when a drawer's fetch lands an alternate; the video
     /// flag and the counterpart are track columns the row's presentation stamp already follows.</summary>
@@ -1019,14 +1030,16 @@ public readonly partial struct Track
     /// C-Unavailable-Compact). <paramref name="NotAvailable"/>: ruled unavailable with no release instant (<see cref="Track.Unplayable()"/>: withdrawn,
     /// region-locked, gone, "isn’t available in your country"); <paramref name="NotYetOut"/>: ruled unavailable until a release instant still ahead
     /// ("isn’t out yet"). A row is counted once, under the first that holds.</summary>
-    public readonly record struct UnavailableTally(int NotAvailable = 0, int NotYetOut = 0)
+    public readonly record struct UnavailableTally(int NotAvailable = 0, int NotYetOut = 0, int LocalFiles = 0)
     {
         /// <summary>Every row the filter would hide.</summary>
-        public int Total => NotAvailable + NotYetOut;
+        public int Total => NotAvailable + NotYetOut + LocalFiles;
 
-        /// <summary>This tally with one more row of the given verdict (a playable or unruled row adds nothing).</summary>
-        public UnavailableTally With(bool notYetOut, bool unplayable)
-            => unplayable ? this with { NotAvailable = NotAvailable + 1 }
+        /// <summary>This tally with one more row of the given verdict (a playable or unruled row adds nothing). A playlist's local file
+        /// (<paramref name="local"/>) is its own reason ("are local files"), never "isn’t available in your country".</summary>
+        public UnavailableTally With(bool notYetOut, bool unplayable, bool local = false)
+            => local ? this with { LocalFiles = LocalFiles + 1 }
+             : unplayable ? this with { NotAvailable = NotAvailable + 1 }
              : notYetOut ? this with { NotYetOut = NotYetOut + 1 }
              : this;
     }

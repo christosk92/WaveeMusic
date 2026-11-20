@@ -384,7 +384,7 @@ internal static class WinUiTrackTable
     {
         var buffer = new SpanBuffer();
         var meta = R.Type.TrackMeta("");
-        int ArtistCount(in RowPresentation p) => compact || Track.ArtistInTitle(in p, setArtist) ? p.Track.ForDisplay.ArtistSlots.Length : 0;
+        int ArtistCount(in RowPresentation p) => compact || Track.ArtistInTitle(in p, setArtist) ? p.Track.ForDisplay.DisplayArtistCount : 0;
         // A podcast row names its show; the Compact list row its album. (The playlist's Small band keeps the artists alone: W-Playlist-Small.)
         bool HasContainer(in RowPresentation p, Track d) => (d.IsPodcast || compact && p.ShowAlbumColumn) && Track.ContainerOf(d).Name.Length > 0;
         string PlaysTail(in RowPresentation p) => compact && !p.ShowAlbumColumn && p.Track.PlayCount > 0
@@ -450,17 +450,17 @@ internal static class WinUiTrackTable
             buffer.Clear();
             var p = r.P;
             var d = p.Track.ForDisplay;
-            FillLinkSpans(buffer, d, d.ArtistSlots.Length, default, "", WinUiListRules.RowInk(p.State.IsNow, Tok.AccentTextPrimary, Tok.TextSecondary));
+            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, "", WinUiListRules.RowInk(p.State.IsNow, Tok.AccentTextPrimary, Tok.TextSecondary));
             return buffer.Current;
         }))
         {
             Size = body.Size, LineHeight = body.LineHeight, Color = Tok.TextSecondary,
             Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1, MinWidth = 0f,
-            Visible = Prop.Of(() => r.P.Track.ForDisplay.ArtistSlots.Length > 0),
+            Visible = Prop.Of(() => r.P.Track.ForDisplay.DisplayArtistCount > 0),
             OnSpanClick = index =>
             {
                 var d = r.Presentation.Peek().Track.ForDisplay;
-                int target = RowCellRules.LinkTarget(index, d.ArtistSlots.Length, album: false);
+                int target = RowCellRules.LinkTarget(index, d.DisplayArtistCount, album: false);
                 if (target >= 0) Track.GoToArtistAt(d, target);
             },
         };
@@ -575,13 +575,12 @@ internal static class WinUiTrackTable
     /// <summary>The artists, the container and a plain tail as one span run (separators and the tail are not links).</summary>
     static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, string tail, ColorF ink)
     {
-        var slots = t.ArtistSlots;
-        if (artistCount > slots.Length) artistCount = slots.Length;
+        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
         for (int i = 0; i < artistCount; i++)
         {
             if (i > 0) b.Add(new TextSpan(", ", Color: ink));
-            var a = new Artist(slots[i]);
-            b.Add(new TextSpan(a.Name, Color: ink, IsLink: a.Uri.IsValid));
+            var (name, link) = Track.ArtistAt(t, i);
+            b.Add(new TextSpan(name, Color: ink, IsLink: link));
         }
         if (container.Name is { Length: > 0 })
         {

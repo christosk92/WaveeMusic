@@ -85,6 +85,7 @@ public readonly partial struct Track
         Func<PlaylistHost> _laneHost = null!;
         // the unavailable-songs bar (contract 1.22): its verb, whether it is on (the hero arm's clip inset follows it), and its cached tally
         Action _hideUnavailable = null!;
+        Action? _dismissUnavailable;
         /// <summary>The list bar's Tune verb, built once (the profile's own verb, read at click time).</summary>
         Action? _tuneToggle;
         readonly Signal<bool> _unavailableShown = new(false);
@@ -1028,7 +1029,7 @@ public readonly partial struct Track
                 var t = src.At(i);
                 if (!t.IsValid) continue;
                 bool unplayable = t.Unplayable(), notYetOut = t.NotYetOut(now);
-                if (FilterModel.HiddenByPlayable(notYetOut, unplayable)) tally = tally.With(notYetOut, unplayable);
+                if (FilterModel.HiddenByPlayable(notYetOut, unplayable)) tally = tally.With(notYetOut, unplayable, t.IsLocalItem);
             }
             _tally = tally;
             _tallySeeded = true; _tallyVersion = version; _tallyPublication = publication;
@@ -1039,11 +1040,21 @@ public readonly partial struct Track
         /// C-Unavailable), or one shared reason ("…: they aren’t out yet.").</summary>
         static string UnavailableExplained(in UnavailableTally tally)
         {
-            string reasons = tally.NotAvailable > 0 && tally.NotYetOut > 0
-                ? Strings.Detail.Filter.Unavailable.Region(count: tally.NotAvailable) + ", " + Strings.Detail.Filter.Unavailable.Upcoming(count: tally.NotYetOut)
-                : tally.NotAvailable > 0
-                    ? Strings.Detail.Filter.Unavailable.AllRegion(count: tally.NotAvailable)
-                    : Strings.Detail.Filter.Unavailable.AllUpcoming(count: tally.NotYetOut);
+            // One reason: its "all" form ("…: they’re local files."); several: each counted, in this order.
+            int kinds = (tally.NotAvailable > 0 ? 1 : 0) + (tally.NotYetOut > 0 ? 1 : 0) + (tally.LocalFiles > 0 ? 1 : 0);
+            string reasons;
+            if (kinds <= 1)
+                reasons = tally.NotAvailable > 0 ? Strings.Detail.Filter.Unavailable.AllRegion(count: tally.NotAvailable)
+                        : tally.LocalFiles > 0 ? Strings.Detail.Filter.Unavailable.AllLocal(count: tally.LocalFiles)
+                        : Strings.Detail.Filter.Unavailable.AllUpcoming(count: tally.NotYetOut);
+            else
+            {
+                var parts = new List<string>(3);
+                if (tally.NotAvailable > 0) parts.Add(Strings.Detail.Filter.Unavailable.Region(count: tally.NotAvailable));
+                if (tally.NotYetOut > 0) parts.Add(Strings.Detail.Filter.Unavailable.Upcoming(count: tally.NotYetOut));
+                if (tally.LocalFiles > 0) parts.Add(Strings.Detail.Filter.Unavailable.Local(count: tally.LocalFiles));
+                reasons = string.Join(", ", parts);
+            }
             return Strings.Detail.Filter.Unavailable.Explained(count: tally.Total, reasons: reasons);
         }
 
@@ -1084,7 +1095,9 @@ public readonly partial struct Track
                 var tally = UseComputed(_tally ??= h.UnavailableNow).Value;
                 var filters = h._filters.Value;
                 var template = h._listStyle?.Chrome.UnavailableBar;
-                bool shown = template is not null && FilterModel.OffersHide(in tally, in filters);
+                // Closed with its ✕ on this list: gone until the app restarts (Track.UnavailableBar.cs). The read subscribes the closes.
+                bool dismissed = UnavailableBarDismissals.Has(h._contextText);
+                bool shown = template is not null && !dismissed && FilterModel.OffersHide(in tally, in filters);
                 UseLayoutEffect(() => h._unavailableShown.Value = shown, DepKey.From(shown));
                 if (template is null) return new BoxEl();
                 bool vertical = h.HeroFormLive;
@@ -1097,6 +1110,9 @@ public readonly partial struct Track
                     Explained = tally.Total > 0 ? UnavailableExplained(in tally) : Strings.Detail.Filter.Unavailable.Summary(count: count),
                     ActionLabel = Strings.Detail.Filter.Unavailable.Hide(count: count),
                     Hide = h._hideUnavailable,
+                    // The list's context at CLICK time (the host is reused across pages).
+                    Dismiss = h._contextText.Length > 0 ? h._dismissUnavailable ??= () => UnavailableBarDismissals.Add(h._contextText) : null,
+                    DismissLabel = Loc.Get(Strings.Detail.Filter.Unavailable.Dismiss),
                     InsetX = insetX,
                     Tiers = h.TiersNow(),
                 });

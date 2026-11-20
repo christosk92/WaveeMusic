@@ -308,7 +308,7 @@ public readonly partial struct Track
     /// queue). A span per artist, ", " joined; a name-only artist (no uri) is plain text. Empty box for no artists.</summary>
     public static Element ArtistLinks(Track t, float size, float lineHeight, ColorF color)
     {
-        int count = t.ArtistSlots.Length;
+        int count = t.DisplayArtistCount;
         if (BuildLinkSpans(t, count, default) is not { } spans) return new BoxEl();
         return new SpanTextEl(spans)
         {
@@ -323,8 +323,7 @@ public readonly partial struct Track
     internal static TextSpan[]? BuildLinkSpans(Track t, int artistCount, (EntityUri Uri, string Name) container)
     {
         bool hasContainer = container.Name is { Length: > 0 };
-        var slots = t.ArtistSlots;
-        if (artistCount > slots.Length) artistCount = slots.Length;
+        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
         int artistSpans = artistCount == 0 ? 0 : artistCount * 2 - 1;
         int total = artistSpans + (hasContainer ? (artistSpans > 0 ? 2 : 1) : 0);
         if (total == 0) return null;
@@ -333,8 +332,8 @@ public readonly partial struct Track
         for (int i = 0; i < artistCount; i++)
         {
             if (i > 0) spans[n++] = new TextSpan(", ");
-            var a = new Artist(slots[i]);
-            spans[n++] = new TextSpan(a.Name, IsLink: a.Uri.IsValid);
+            var (name, link) = ArtistAt(t, i);
+            spans[n++] = new TextSpan(name, IsLink: link);
         }
         if (hasContainer)
         {
@@ -342,6 +341,19 @@ public readonly partial struct Track
             spans[n++] = new TextSpan(container.Name, IsLink: container.Uri.IsValid);
         }
         return spans;
+    }
+
+    /// <summary>Artist <paramref name="i"/> of a row's credit run: a billed artist (a link when it has a page), or the artist a playlist's local
+    /// file names in its uri (plain text: no page behind it). Every artist run reads its names here, the themes' table fills included.</summary>
+    internal static (string Name, bool IsLink) ArtistAt(Track t, int i)
+    {
+        var slots = t.ArtistSlots;
+        if ((uint)i < (uint)slots.Length)
+        {
+            var a = new Artist(slots[i]);
+            return (a.Name, a.Uri.IsValid);
+        }
+        return i == 0 && slots.Length == 0 ? (t.LocalArtist, false) : ("", false);
     }
 
     /// <summary>ONE click closure per run: span 2i → artist i; the trailing span → the container.</summary>
@@ -361,7 +373,8 @@ public readonly partial struct Track
     internal static (EntityUri Uri, string Name) ContainerOf(Track t)
     {
         int slot = t.AlbumSlot;
-        if (slot <= 0) return (default, "");
+        // A playlist's local file names its album in its uri: plain text, no page behind it (Track.LocalUri.cs).
+        if (slot <= 0) return t.IsLocalItem ? (default, LocalTrackUri.NamesOf(t.Uri.Text).Album) : (default, "");
         if (t.IsPodcast)
         {
             var show = new Show(slot);
