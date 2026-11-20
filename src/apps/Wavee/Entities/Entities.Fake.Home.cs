@@ -1622,23 +1622,26 @@ public static partial class Entities
         if (!home.IsValid) return;
         string facet = home.FacetId.IsEmpty ? "" : Strings.Resolve(home.FacetId);
         byte[]? lookup = s_lookupFile.TryGetValue(facet, out var file) ? ReadBundledCapture(file) : null;
-        DecodeLookup(lookup, home.BaselinePreviewLinks());
+        DecodeLookup(lookup, home.BaselinePreviewLinks(owedOnly: true));   // the live request: the sections that owe their songs
         MarkLookupAnswered(slot);
         Current.PublishAll();
     }
 
-    /// <summary>A lookup answer through the live preview fold, for the (section, card) pairs it was asked for.</summary>
+    /// <summary>A lookup answer through the live preview fold, for the (section, card) pairs it was asked for. A facet with no lookup
+    /// capture answers one that names no card: every asked section settles with no songs (its cover), as a live answer would.</summary>
     static void DecodeLookup(byte[]? lookup, HomePreviewLink[] links)
     {
-        if (lookup is null || links.Length == 0) return;
+        if (links.Length == 0) return;
         var p = Staging.Rent();
         try
         {
-            Spotify.Decode.FeedBaselineLookup(lookup, links, p);
+            Spotify.Decode.FeedBaselineLookup(lookup ?? s_noLookup, links, p);
             Commit(p);
         }
         finally { Staging.Return(p); }
     }
+
+    static readonly byte[] s_noLookup = "{\"data\":{\"lookup\":[]}}"u8.ToArray();
 
     /// <summary>The lookup answered, as the live door leaves its marker: asked, and answered without a run of its own (Fetch.EdgesAnswered's
     /// NoRoute). Never a structural write: the live marker has none, and a reader that leaned on one passed only here.</summary>

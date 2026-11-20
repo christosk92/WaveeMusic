@@ -100,7 +100,7 @@ public static class SpotlightModel
         {
             if (c.Header is not { } h) continue;
             // Until the lookup answers: placeholders at the songs' rows. Once it has: exactly the songs it named.
-            bool answered = c.Rows.Count > 0 || Answered(c.FooterSectionSlot) || LookupDone();
+            bool answered = c.Rows.Count > 0 || Home.PreviewsSettled(c.FooterSectionSlot);
             var songs = new ShelfSong[answered ? c.Rows.Count : (h.IsBlank ? 0 : 1)];
             for (int i = 0; i < songs.Length; i++) songs[i] = i < c.Rows.Count ? ShelfModel.SongOf(c.Rows[i]) : ShelfSong.Blank;
             items.Add(new SpotlightItem(h.IsBlank ? "blank:" + items.Count.ToString(CultureInfo.InvariantCulture) : h.Uri, h,
@@ -129,16 +129,6 @@ public static class SpotlightModel
         int n = 0;
         if (zone.Clusters is { } cs) foreach (var c in cs) if (c.Header is not null) n++;
         return n;
-    }
-
-    static bool Answered(int sectionSlot)
-        => sectionSlot > Table.None && Entities.Current.Edges.SectionPreviewTracks.State(sectionSlot) == EdgeState.Complete;
-
-    static bool LookupDone()
-    {
-        var marker = Entities.Current.Edges.HomePreviews;
-        for (int p = 0; p < marker.ParentCount; p++) if (marker.State(p) == EdgeState.Complete || marker.IsFailed(p)) return true;
-        return false;
     }
 
     /// <summary>Ask for what the card shows beyond the Home answer: the album (release date, track count, its track list and their durations),

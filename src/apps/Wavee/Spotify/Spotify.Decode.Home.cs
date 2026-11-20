@@ -178,7 +178,11 @@ public static partial class Spotify
         /// card uri is resolved back to every SECTION that carries it — a card can sit in more than one baseline
         /// section across a facet, and the run closes <see cref="Relation.SectionPreviewTracks"/> once per owning
         /// section from the SAME staged tracks. An <c>EpisodeOrChapterResponseWrapper</c> entry is skipped —
-        /// episodes carry no previews.</summary>
+        /// episodes carry no previews.
+        /// <para>Every section the map names is SETTLED by the answer: one whose card the answer did not name (an episode,
+        /// a card Spotify sent no preview items for, or no entry at all) closes an EMPTY list, "this card has no preview
+        /// songs". Left Unknown it read as "still asking" forever, and the Spine Shelf's open card held five placeholder
+        /// tiles for a list nobody would send (live, 2026-11-20).</para></summary>
         public static void FeedBaselineLookup(ReadOnlySpan<byte> json, HomePreviewLink[] map, Staging s)
         {
             if (map.Length == 0) return;
@@ -188,6 +192,7 @@ public static partial class Spotify
             // ONCE, not once per answer entry.
             var cardUtf8 = new byte[map.Length][];
             var sectionIds = new StagedId[map.Length];
+            var closed = new bool[map.Length];
             for (int i = 0; i < map.Length; i++)
             {
                 cardUtf8[i] = Encoding.UTF8.GetBytes(map[i].CardUri);
@@ -195,17 +200,21 @@ public static partial class Spotify
             }
 
             var r = new Utf8JsonReader(json);
-            if (!r.Read() || r.TokenType != JsonTokenType.StartObject) return;
-            for (int root = r.CurrentDepth; Next(ref r, root);)
+            if (r.Read() && r.TokenType == JsonTokenType.StartObject)
             {
-                if (!r.ValueTextEquals("data"u8)) { SkipValue(ref r); continue; }
-                for (int data = Fields(ref r); Next(ref r, data);)
+                for (int root = r.CurrentDepth; Next(ref r, root);)
                 {
-                    if (!r.ValueTextEquals("lookup"u8) || !EnterArray(ref r)) { SkipValue(ref r); continue; }
-                    for (int list = r.CurrentDepth; Element(ref r, list);)
-                        PreviewFold.Entry(ref r, s, cardUtf8, sectionIds);
+                    if (!r.ValueTextEquals("data"u8)) { SkipValue(ref r); continue; }
+                    for (int data = Fields(ref r); Next(ref r, data);)
+                    {
+                        if (!r.ValueTextEquals("lookup"u8) || !EnterArray(ref r)) { SkipValue(ref r); continue; }
+                        for (int list = r.CurrentDepth; Element(ref r, list);)
+                            PreviewFold.Entry(ref r, s, cardUtf8, sectionIds, closed);
+                    }
                 }
             }
+            for (int i = 0; i < map.Length; i++)
+                if (!closed[i]) s.Edges.Close(Relation.SectionPreviewTracks, in sectionIds[i], s.Edges.PendingMark);
         }
 
         /// <summary>The preview fold's private half — see <see cref="HomeFeedFold"/>'s summary for why this is a
@@ -218,8 +227,8 @@ public static partial class Spotify
             /// <summary>One <c>data.lookup[]</c> entry (the reader on its object, from the array walk). Skips an
             /// episode wrapper, stages up to <see cref="MaxRows"/> thin tracks, then closes
             /// <see cref="Relation.SectionPreviewTracks"/> on every section <paramref name="sectionIds"/> names for a
-            /// matching card.</summary>
-            internal static void Entry(ref Utf8JsonReader r, Staging s, byte[][] cardUtf8, StagedId[] sectionIds)
+            /// matching card, and marks it in <paramref name="closed"/>.</summary>
+            internal static void Entry(ref Utf8JsonReader r, Staging s, byte[][] cardUtf8, StagedId[] sectionIds, bool[] closed)
             {
                 if (WrapperIsEpisode(r)) { r.Skip(); return; }
 
@@ -244,6 +253,7 @@ public static partial class Spotify
                     int mark = s.Edges.PendingMark;
                     for (int t = 0; t < trackCount; t++) s.Edges.Push().Target = tracks[t];
                     s.Edges.Close(Relation.SectionPreviewTracks, in sectionIds[i], mark);
+                    closed[i] = true;
                 }
             }
 
