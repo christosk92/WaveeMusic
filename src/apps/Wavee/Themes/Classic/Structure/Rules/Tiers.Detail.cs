@@ -27,8 +27,10 @@
 //     (20/28) and a 40 field that finds songs (C-Empty-Compact), the section's commands 40.
 //   · Every other tier leads an empty playlist's Recommended songs the same way at the C-Empty board's size: the 28/36 message (24 over, 8 under), a 32 field,
 //     the blocks 14 apart. The lead stands in a box whose height the record reserves, so a crossing eases it and never jumps the rows under it.
-//   · Small: the two-column arm (mode 1's 224 rail at 800); no Album and no Plays lane, and the Date lane only on a quiet list (C-TrackList small); Sort as
-//     its glyph; the rail padded 16 / 12 with its rows 10 apart and the Play row breaking after Play (C-Album-Small, C-Playlist-Small, C-Liked-Small).
+//   · Small: the two-column arm (mode 1's 224 rail at 800); no Album lane (the album rides the Modern row's subline) and no Plays lane; the Date lane
+//     wherever the list column's table ladder admits it (from 560: C-TrackList small drew it on a quiet list only, the owner overruled that on 2026-11-20,
+//     "date added. it has plenty of space, why hidden!", a 712-DIP list at a 1000 window had no date); Sort as its glyph; the rail padded 16 / 12 with
+//     its rows 10 apart and the Play row breaking after Play (C-Album-Small, C-Playlist-Small, C-Liked-Small).
 //   · Standard: the tuned design (P3b), unchanged.
 //   · Huge (and Huge 4K): the rail rests at 320 where it was never dragged, the rows at the cozy rung (56 / 44, 40 art), the insights pane docks as a
 //     360 column beside the list (C-Liked-Huge) instead of covering it and rests OPEN there; a two-column page docks its ASIDE (contract 1.21): the album's
@@ -176,11 +178,11 @@ public static class ClassicDetailTiers
         Tier = WidthTier.Compact, Target = CompactTarget, SortLeadsBar = true, SelectionTinted = true, FilterGlyph = true, Lead = ClassicEmptyLead.Compact,
     };
 
-    /// <summary>Small (C-Album-Small, C-Playlist-Small, C-TrackList small).</summary>
+    /// <summary>Small (C-Album-Small, C-Playlist-Small, C-TrackList small): no Album or Plays lane; the Date lane where the list column admits it.</summary>
     public static ClassicDetailTier Small { get; } = new()
     {
         Core = new DetailTierLayout(
-            new DetailTableTier(CompactRows: false, AlbumColumn: false, PlaysColumn: false, DateColumn: false),
+            new DetailTableTier(CompactRows: false, AlbumColumn: false, PlaysColumn: false, DateColumn: true),
             InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f),
         Tier = WidthTier.Small, Target = Target, SortLeadsBar = false, SelectionTinted = false, SortGlyph = true, Rail = ClassicDetailRail.Small,
     };
