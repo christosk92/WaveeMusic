@@ -200,6 +200,15 @@ public static partial class Playback
             Log.Info("playback", "update_context ignored: not the context on the deck");
             return;
         }
+        // An update that restates the context's metadata (its sort, filter, title) WITHOUT its rows is what the official
+        // client sends (1.3.10: bigone:605, bigone:729, fresh:512, fresh:533; no pages). It says nothing about the rows, so
+        // the deck's run stands: splicing zero rows would keep only the user's queue and drop every context row after the
+        // current track (remote-play gap analysis, found while building 5.3).
+        if (body.Kind == RemoteCmd.UpdateContext && body.TrackCount == 0)
+        {
+            Log.Info("playback", "update_context without rows: the deck's run is kept");
+            return;
+        }
 
         // The kept history and deck, the kept user queue and the controller's rows: never more than twice the live run
         // plus what came in.

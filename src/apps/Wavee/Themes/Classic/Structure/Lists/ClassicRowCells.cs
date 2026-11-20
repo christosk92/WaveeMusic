@@ -344,7 +344,7 @@ internal static class ClassicRowCells
     public static Element MetadataLine(Track t, bool showArtists, bool showAlbum, bool explicitBadge, ColorF? ink)
     {
         bool episode = t.IsPodcast;
-        int artistCount = showArtists ? t.ArtistSlots.Length : 0;
+        int artistCount = showArtists ? t.DisplayArtistCount : 0;
         var container = Track.ContainerOf(t);
         bool album = (showAlbum || episode) && container.Name.Length > 0;
         TextSpan[]? spans = Track.BuildLinkSpans(t, artistCount, album ? container : default);
@@ -475,7 +475,7 @@ internal static class ClassicRowCells
 
         if (showArtists)
         {
-            int artistCount = t.ArtistSlots.Length;
+            int artistCount = t.DisplayArtistCount;
             leading = new SpanTextEl(BuildClassicSpans(t, artistCount, showVideo, primary, secondary, tertiary))
             {
                 Size = ClassicTrackRowLayout.BodySize, LineHeight = ClassicTrackRowLayout.BodyLine, Color = primary,
@@ -523,12 +523,11 @@ internal static class ClassicRowCells
             spans[n++] = new TextSpan(Icons.Movie, Color: tertiary, FontFamily: Tok.Definition.Fonts.Icon);
         }
         if (artistCount > 0) spans[n++] = new TextSpan("  ·  ", Color: tertiary);
-        var slots = t.ArtistSlots;
         for (int i = 0; i < artistCount; i++)
         {
             if (i > 0) spans[n++] = new TextSpan(", ", Color: secondary);
-            var a = new Artist(i < slots.Length ? slots[i] : 0);
-            spans[n++] = new TextSpan(a.Slot > 0 ? a.Name : "", Color: secondary, IsLink: a.Slot > 0 && a.Uri.IsValid);
+            var (name, link) = Track.ArtistAt(t, i);
+            spans[n++] = new TextSpan(name, Color: secondary, IsLink: link);
         }
         return spans;
     }

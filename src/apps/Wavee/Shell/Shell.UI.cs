@@ -615,8 +615,9 @@ public static partial class Shell
             RailGapWidth = static () => FrameRules.RailGapWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
             RailReservedWidth = static () => FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value),
             RailSeamWidth = static () => FrameRules.RailSeamWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
+            // At the content's edge: past every open docked pane with the gap the frame lays before it (WinUI's Huge pane docks flush, BEFORE the primary).
             RailSeamX = () => FrameRules.RailSeamX(vp.Value.Width, MathF.Max(Ui.RailDragWidth.Value, Ui.PanelFloor.Value),
-                FrameRules.SecondOffset(PanelHost.Shared.SecondOpen(), PanelHost.Shared.SecondWidth())),
+                FrameRules.PanesWidth(PanelHost.Shared.PaneOpen(0), PanelHost.Shared.PaneOpen(1), PanelHost.Shared.PaneWidth(), policies.Panel.PaneGap)),
             PanelPlacement = static () => Ui.PanelPlacement.Value,
             SecondPanelOpen = static () => PanelHost.Shared.SecondOpen(),
             SecondPanelWidth = static () => PanelHost.Shared.SecondWidth(),
@@ -756,8 +757,11 @@ public static partial class Shell
         }
     }
 
-    /// <summary>Bare Escape and Space bubble here after every focused owner declined them. NOT accelerators (the
-    /// dispatcher only matches Ctrl/Alt/F-keys) and NOT KeyPreview (a single slot the overlay host re-assigns).</summary>
+    /// <summary>Bare Escape and Space bubble here after every focused owner declined them, and with NOTHING focused (the usual
+    /// state: at start-up, after a click on the page, after the focused node went away) they start here: every theme's frame
+    /// column carries <c>TakesUnfocusedKeys</c> beside this handler. NOT accelerators (the dispatcher only matches Ctrl/Alt/F-keys)
+    /// and NOT KeyPreview (a single slot the overlay host re-assigns). An open dialog or menu is its own focus scope, so it keeps
+    /// its keys even with nothing focused in it.</summary>
     static void OnShellKey(KeyEventArgs e)
     {
         if (e.Handled) return;
@@ -1123,6 +1127,8 @@ public static partial class Shell
             case "credits-land": Entities.LandFakeCredits(); return true;
             // Home's next answer over the one the page shows (Entities.Fake.Home.cs): identity across answers.
             case "home-refresh": return Entities.StageHomeRefresh();
+            // Home's next answer as a live re-fetch lands it (Entities.Fake.Home.cs): the document only; the app's own demand asks the lookup.
+            case "home-reanswer": return Entities.StageHomeReanswer();
             // Home's live open, one answer per step (Entities.Fake.Home.cs): cold, then the All answer, the Following answer, the lookup.
             case "home-cold": HomeUi.HomeHost.StageLaunchWords(); return Entities.StageHomeCold();
             case "home-land": return Entities.StageHomeAnswer("");

@@ -286,12 +286,13 @@ public static partial class Entities
     const string FakeAirPodsContainer = "45796092-228e-530c-ac2e-1f8468be2e89";
 
     /// <summary>The demo's Spotify Connect devices (<c>Playback.UseFakeConnect</c>, the inspector's <c>mount connect=nearby</c>): a TV, a speaker
-    /// and a phone on the same network, each at its own volume (0..65535, the wire scale).</summary>
+    /// and a phone on the same network, each at its own volume (0..65535, the wire scale). The phone keeps its volume to itself, as a
+    /// real iPhone does (capability 13, <c>disable_volume</c>): while it plays, every volume rail is disabled.</summary>
     internal static Playback.FakeConnectDevice[] FakeConnect() =>
     [
         new("fake:connect:tv", "Living room TV", Spotify.Decode.DeviceKind.Tv, 26214),
         new("fake:connect:speaker", "Kitchen speaker", Spotify.Decode.DeviceKind.Speaker, 39321),
-        new("fake:connect:phone", "Alex’s iPhone", Spotify.Decode.DeviceKind.Phone, 45875),
+        new("fake:connect:phone", "Alex’s iPhone", Spotify.Decode.DeviceKind.Phone, 45875, VolumeFixed: true),
     ];
 
     static string AlbumUri(int i) => "spotify:album:al" + Wrap(i, AlbumCount);

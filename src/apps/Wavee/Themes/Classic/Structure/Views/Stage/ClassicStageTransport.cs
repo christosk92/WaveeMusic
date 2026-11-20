@@ -197,7 +197,8 @@ internal static class ClassicStageTransport
         {
             var t = UseProps<Props>().T;
             bool muted = t.Muted();
-            return ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, t.ToggleMute, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph), Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute));
+            // locked while the owner keeps its volume (remote-play plan 2.2)
+            return ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, t.ToggleMute, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, VolumeSlider.Settable), VolumeSlider.MuteTip(muted));
         }
     }
 

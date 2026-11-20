@@ -15,8 +15,9 @@
 //     full-width r4 backplate.
 //   · THE LANES (the core's, `Track.TracksFor`): # · art · title (+ subline) · album · added · plays · heart · time · "..." · chevron; the heart STANDS in its
 //     own lane before the time (WinUI keeps `Plays | heart | time | ...` at rest, a liked row's filled heart at rest, an unliked row's outline on hover).
-//   · THE TIERS (`WinUiListTiers`): below 560 the table is two-line, 560-859 drops Plays, Date and Album, from 860 every lane; the window's Compact band
-//     (< 641) draws the Compact row form (56 two-line, 40 cover, no header, the time, the heart and a 40 "..." on every row).
+//   · THE TIERS (`WinUiListTiers`, on the list column): from 860 every lane; below it the Album lane folds into the subline ("artists · album"); Date and Plays
+//     stay while the title keeps its floor beside them (from 504); the window's Compact band (< 641) draws the Compact row form (56 two-line, 40 cover, no header, the time,
+//     the heart and a 40 "..." on every row).
 //
 // Public, so `Wavee.Tests` pins the rules (the assembly has no InternalsVisibleTo).
 
@@ -117,7 +118,7 @@ public static class WinUiListRules
         TransitionDynamics.Tween(Design.Motion.Slow, Easing.FluentDecelerate));
 
     /// <summary>A row cell a crossing moves or resizes (the one-tree page's lanes, audit B9: the Compact row folding its lanes into the subline, the 860 edge
-    /// adding Album, Date and Plays): it glides to its new lane, laid out at its final size from the commit (a reveal, so the rows never relayout per
+    /// adding the Album lane, the 504 edge Date and Plays): it glides to its new lane, laid out at its final size from the commit (a reveal, so the rows never relayout per
     /// frame); a lane only one form draws fades in or out.</summary>
     public static readonly LayoutTransition CellArrange = new(TransitionChannels.Position | TransitionChannels.Size,
         TransitionDynamics.Tween(WinUiDiscoveryMotion.ReflowMs, Easing.SmoothOut), SizeMode.Reveal,
@@ -238,8 +239,8 @@ public static class WinUiListRules
     /// <summary>The Compact row (W-RowStates-Compact: "track row, 56 px, two-line, ... always shown"; W-MultiSelect-Compact: a 40 cover).</summary>
     public const float CompactModernRow = 56f, CompactClassicRow = 48f, CompactArt = 40f;
 
-    /// <summary>Small (W-Album-Small, W-Playlist-Small): # · title (/ artists) · heart · time · "..." and no chevron lane; the list column's table ladder drops
-    /// Album, Date and Plays below 860.</summary>
+    /// <summary>Small (W-Album-Small, W-Playlist-Small): # · title (/ artists) · heart · time · "..." and no chevron lane; the list column's table ladder decides the
+    /// factual lanes (`WinUiListTiers`: Date and Plays from 504, the Album lane from 860, the album in the subline below it).</summary>
     public static DetailTierLayout Small { get; } = new(
         new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true,
                             HeartTrailing: true, VersionsLane: false, OneLineTrim: AlbumRowTrim, DurationWidth: TimeLane, TuneInHero: true, ListRowAir: ListRowAir,

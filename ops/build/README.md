@@ -19,8 +19,8 @@ Build, sign, and publish the two shipping apps in this tree — **FluentGpu Gall
 | **`Wavee.AppxManifest.xml`** | Wavee's MSIX manifest template — identity `cproducts.Wavee`, the `wavee://` protocol + toast activation declarations |
 | **`Wavee.AppInstaller.template.xml`** | Wavee's `.appinstaller` template (`__VERSION__`/`__ARCH__`/`__PUBLISHER__`/`__APPINSTALLER_URI__`/`__MSIX_URI__`) |
 | **`publish-wavee-aot.ps1`** | Plain NativeAOT publish of Wavee (no packaging) — the fast "does AOT still link?" loop |
-| **`Wavee.Build.psm1`** | Shared build helpers imported by both pack scripts *and* by `ops/release/wavee-release.ps1`: `Get-WindowsSdkTools`, `Add-VsInstallerToPath`, `Test-X64CrossToolchain`, `Get-WaveeVersionProps` / `Set-WaveeBuild`, `Invoke-Native`, `Invoke-TrustedSigning` / `Invoke-DevCertSigning`, `Test-MsixSignature`, `Get-MsixIdentity`, `Get-PeMachine` / `Test-PeMachine` |
-| **`../release/`** | The Wavee **release** orchestrator (`wavee-release.ps1`), its pure helpers (`Wavee.Release.psm1`), the feed-release body, the per-version notes folders, and the local update rehearsal — Wavee has **no** CI release job |
+| **`Wavee.Build.psm1`** | Shared build helpers imported by both pack scripts *and* by the release runner (`ops/release/release.ps1`, `ReleaseRunner.psm1`): `Get-WindowsSdkTools`, `Add-VsInstallerToPath`, `Test-X64CrossToolchain`, `Get-WaveeVersionProps` / `Set-WaveeBuild`, `Invoke-Native`, `Invoke-TrustedSigning` / `Invoke-DevCertSigning`, `Test-MsixSignature`, `Get-MsixIdentity`, `Get-PeMachine` / `Test-PeMachine` |
+| **`../release/`** | The Wavee **release** runner (`release.ps1` + `ReleaseRunner.psm1`), its pure helpers (`Wavee.Release.psm1`), the feed-release body, the per-version notes folders, and the local update rehearsal — Wavee has **no** CI release job |
 
 ## Local build
 
@@ -59,7 +59,7 @@ pwsh ops/build/pack-wavee-msix.ps1 -NoAot                                # self-
 
 **A zero-flag run is a dev pack.** Version identity comes from `src/apps/Wavee/Wavee.Version.props`, so nothing has to
 be passed: the MSIX quad is `<WaveeVersion core>.<WaveeBuild>`, the channel is `dev`, and `InformationalVersion` is
-`<semver>+build.<N>.sha.<sha7>`. **Nothing here bumps `<WaveeBuild>`** — only `ops/release/wavee-release.ps1` does.
+`<semver>+build.<N>.sha.<sha7>`. **Nothing here bumps `<WaveeBuild>`** — only the release runner (`ops/release/release.ps1`) does.
 
 A real release passes every value explicitly; these are the flags it uses:
 
@@ -89,7 +89,7 @@ makes deep links and notification clicks activate the *installed* app rather tha
 those two paths can only be smoke‑tested from an installed package.
 
 **Wavee has no CI release job.** A CI checkout has no `src/apps/Wavee.PlayPlay` junction, so it would silently publish
-the public‑only variant; releases are cut locally by `ops/release/wavee-release.ps1`, which bumps `<WaveeBuild>`, dates
+the public‑only variant; releases are cut locally by `ops/release/release.ps1`, which bumps `<WaveeBuild>`, dates
 the changelog, validates the notes, calls this script once per architecture, signs, tags, publishes, and repoints the
 `wavee-stable` feed. See **`ops/release/README.md`** and the full runbook
 **[`docs/guide/releasing-wavee.md`](../../docs/guide/releasing-wavee.md)**.

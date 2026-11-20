@@ -227,11 +227,14 @@ internal static class WinUiPanel
     static readonly EnterExit BleedFade = new(Opacity: 0f, Active: true);
 
     /// <summary>The edge-to-edge canvas (BleedWinUI): the panel's ground, the canvas over it from the top, its lower half fading into the ground
-    /// in the dark kind (in the light kind the veil behind the copy and the foot's dissolve into the light ground, <see cref="Deck.LightScope"/>),
-    /// and the head's scrim. Shown while the Canvas style rests with a canvas to play; it fades in and out.</summary>
+    /// in the dark kind (<see cref="Deck.DarkFade"/>; in the light kind the veil behind the copy and the foot's dissolve into the light ground,
+    /// <see cref="Deck.LightScope"/>), and the head's scrim. Shown while the Canvas style rests with a canvas to play; it fades in and out.
+    /// <para><paramref name="width"/> is the frame's committed width and answers only until the layers have measured the pane: the canvas and
+    /// the layers that end it lay out at the width the host gives the pane, which a seam drag moves every frame (<c>DockWidth.Host</c>, the
+    /// live width) while the committed width waits for the release, and which the sheet sets to the window's (veil-wrong.png: the light veil
+    /// and dissolve held the committed 327 DIP over a pane dragged to 388).</para></summary>
     internal static Element Bleed(NowPlayingHeroProps np, float width)
     {
-        float vh = MathF.Round(width * B.BleedAspect), fade = MathF.Round(vh * B.BleedFadeShare);
         ColorF ground = Tok.FillSolidBase, shade = Deck.BleedShade(ground);
         return Flow.Show(np.Bleeds, new BoxEl
         {
@@ -244,11 +247,7 @@ internal static class WinUiPanel
                 np.BleedVideo(width),
                 R.IsLight
                     ? Deck.LightScope(np, width, B.BleedMetaLift, ground)
-                    : new BoxEl
-                    {
-                        AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, vh - fade, 0f, 0f), Height = fade,
-                        Gradient = Ui.GradientDown(new GradientStop(0f, ground with { A = 0f }), new GradientStop(B.BleedFadeFull, ground)),
-                    },
+                    : Deck.DarkFade(width, B.BleedFadeShare, B.BleedFadeFull, ground),
                 new BoxEl
                 {
                     AlignSelf = FlexAlign.Start, Height = B.BleedHeadScrimH,

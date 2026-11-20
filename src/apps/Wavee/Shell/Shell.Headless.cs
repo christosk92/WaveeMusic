@@ -274,8 +274,10 @@ public static partial class Shell
             Fonts = devices.Fonts;
             _release = devices.Release;
             var strings = Entities.Strings;
+            // Sized as the window's host is (Shell.SceneCapacity), or every GC and allocation count the inspector reads pays a
+            // growth the app never makes.
             Host = new AppHost(_app, devices.Window, devices.Device, Fonts, strings, new HeadlessRoot(content), devices.Images,
-                frameTime: frameTime);
+                frameTime: frameTime, initialSceneCapacity: SceneCapacity);
             devices.Attach?.Invoke(Host);
             // Every cross-thread seam posts into THIS host, each post followed by the publish on the cadence — the GUI's
             // poster minus the early-post queue (the host exists before anything posts).

@@ -1761,7 +1761,9 @@ public static partial class Fetch
 
     /// <summary>D2's per-parent request shape for <see cref="FetchEdge.HomePreviews"/> (UI thread, inside
     /// <see cref="Send"/>, C1 — the provider cannot read a table): each home row's baseline-section (section uri, card
-    /// uri) pairs, and the deduped card uris the request body actually sends.</summary>
+    /// uri) pairs, and the deduped card uris the request body actually sends. Only the sections that still OWE their songs
+    /// (<c>Home.OwesPreviews</c>): on the first ask that is all of them; on the ask a later answer of the document needs
+    /// (<c>Home.EnsurePreviews</c>), the new sections and the ones whose card changed.</summary>
     static void FillPreviewMap(FetchBatch batch, int take)
     {
         for (int i = 0; i < take; i++)
@@ -1769,9 +1771,9 @@ public static partial class Fetch
             int slot = batch.Slots[i];
             var home = (uint)slot < (uint)Entities.Current.Homes.Count && Entities.Current.Homes.Id[slot] == batch.Ids[i]
                 ? new global::Wavee.Home(slot) : default;
-            HomePreviewLink[] links = home.IsValid ? home.BaselinePreviewLinks() : [];
+            HomePreviewLink[] links = home.IsValid ? home.BaselinePreviewLinks(owedOnly: true) : [];
+            batch.PreviewUris[i] = links.Length == 0 ? null : DedupCardUris(ref links);
             batch.PreviewLinks[i] = links.Length == 0 ? null : links;
-            batch.PreviewUris[i] = links.Length == 0 ? null : DedupCardUris(links);
             // Always on: how many baseline sections and card uris this lookup carries (an empty one sends nothing).
             if (Log.IsEnabled(WaveeLogLevel.Info))
                 Log.Event(WaveeLogLevel.Info, "fetch", "fetch.previews", "", null, -1, null,
@@ -1784,14 +1786,27 @@ public static partial class Fetch
 
     /// <summary>The distinct card uris of <paramref name="links"/>, first-seen order, capped at 120 — the wire request
     /// (a card shared by two baseline sections is asked for once). The 1.3.8.620 client sends every baseline card of an
-    /// answer in one call (91 on the Audiobooks chip, Fiddler capture 2026-11-16); 120 covers that with room.</summary>
-    static string[] DedupCardUris(HomePreviewLink[] links)
+    /// answer in one call (91 on the Audiobooks chip, Fiddler capture 2026-11-16); 120 covers that with room.
+    /// <paramref name="links"/> keeps only the sections whose card made the cap: the answer settles every section of the map
+    /// (<c>Spotify.Decode.FeedBaselineLookup</c>), so a section whose card was not asked stays owed for the next ask.</summary>
+    static string[] DedupCardUris(ref HomePreviewLink[] links)
     {
         const int Cap = 120;
         var seen = new HashSet<string>(Math.Min(links.Length, Cap), StringComparer.Ordinal);
         var uris = new List<string>(Math.Min(links.Length, Cap));
-        for (int i = 0; i < links.Length && uris.Count < Cap; i++)
-            if (seen.Add(links[i].CardUri)) uris.Add(links[i].CardUri);
+        int kept = 0;
+        for (int i = 0; i < links.Length; i++)
+        {
+            string card = links[i].CardUri;
+            if (!seen.Contains(card))
+            {
+                if (uris.Count >= Cap) continue;
+                seen.Add(card);
+                uris.Add(card);
+            }
+            links[kept++] = links[i];
+        }
+        if (kept < links.Length) Array.Resize(ref links, kept);
         return uris.ToArray();
     }
 

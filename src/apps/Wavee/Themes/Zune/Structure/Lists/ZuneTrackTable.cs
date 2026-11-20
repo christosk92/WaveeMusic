@@ -372,7 +372,7 @@ internal static class ZuneTrackTable
         if (durationInline || Track.Badge(in p)) return true;
         var d = p.Track.ForDisplay;
         if (d.IsPodcast) return true;
-        int artists = Track.ArtistInTitle(in p, setArtist) ? d.ArtistSlots.Length : 0;
+        int artists = Track.ArtistInTitle(in p, setArtist) ? d.DisplayArtistCount : 0;
         bool container = Track.ShowAlbumInMeta(in p, false, setAlbum) && Track.ContainerOf(d).Name.Length > 0;
         return RowCellRules.LinkSpanCount(artists, container) > 0;
     }
@@ -383,7 +383,7 @@ internal static class ZuneTrackTable
     {
         var buffer = new SpanBuffer();
         var meta = R.Type.TrackMeta("");
-        int ArtistCount(in RowPresentation p) => Track.ArtistInTitle(in p, setArtist) ? p.Track.ForDisplay.ArtistSlots.Length : 0;
+        int ArtistCount(in RowPresentation p) => Track.ArtistInTitle(in p, setArtist) ? p.Track.ForDisplay.DisplayArtistCount : 0;
         bool HasContainer(in RowPresentation p, Track d)
             => (Track.ShowAlbumInMeta(in p, false, setAlbum) || d.IsPodcast) && Track.ContainerOf(d).Name.Length > 0;
         Prop<ColorF> ink = RowInk(r, static () => Tok.TextSecondary);
@@ -457,17 +457,17 @@ internal static class ZuneTrackTable
             buffer.Clear();
             var p = r.P;
             var d = p.Track.ForDisplay;
-            FillLinkSpans(buffer, d, d.ArtistSlots.Length, default, ZuneListRules.RowInk(p.State.IsNow, R.Ink.AccentAction, Tok.TextSecondary));
+            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, ZuneListRules.RowInk(p.State.IsNow, R.Ink.AccentAction, Tok.TextSecondary));
             return buffer.Current;
         }))
         {
             Size = meta.Size, LineHeight = meta.LineHeight, Color = Tok.TextSecondary,
             Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1, MinWidth = 0f,
-            Visible = Prop.Of(() => r.P.Track.ForDisplay.ArtistSlots.Length > 0),
+            Visible = Prop.Of(() => r.P.Track.ForDisplay.DisplayArtistCount > 0),
             OnSpanClick = index =>
             {
                 var d = r.Presentation.Peek().Track.ForDisplay;
-                int target = RowCellRules.LinkTarget(index, d.ArtistSlots.Length, album: false);
+                int target = RowCellRules.LinkTarget(index, d.DisplayArtistCount, album: false);
                 if (target >= 0) Track.GoToArtistAt(d, target);
             },
         };
@@ -634,13 +634,12 @@ internal static class ZuneTrackTable
     /// <summary>The artists and the container as one link run (separators are not links).</summary>
     static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink)
     {
-        var slots = t.ArtistSlots;
-        if (artistCount > slots.Length) artistCount = slots.Length;
+        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
         for (int i = 0; i < artistCount; i++)
         {
             if (i > 0) b.Add(new TextSpan(", ", Color: ink));
-            var a = new Artist(slots[i]);
-            b.Add(new TextSpan(a.Name, Color: ink, IsLink: a.Uri.IsValid));
+            var (name, link) = Track.ArtistAt(t, i);
+            b.Add(new TextSpan(name, Color: ink, IsLink: link));
         }
         if (container.Name is { Length: > 0 })
         {

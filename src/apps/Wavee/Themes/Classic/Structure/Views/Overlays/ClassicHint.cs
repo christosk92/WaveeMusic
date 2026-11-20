@@ -11,11 +11,13 @@
 //                card (the toast card's plate the Settings home's suggestions wear), opaque with the flyout elevation, because it lies over the
 //                page. A strip by a control floats in the overlay layer at that control (`CommonHintFloat`): the page under it never moves, and it
 //                stays inside the surface the control lives in (the queue panel, under the Crossfade pair on its content column; the player bar,
-//                above the play button or the volume; the page head's band, on the page's gutter), as wide as that surface less Classic's inset
-//                at most, in the two-row form. Home's banner is one row at its reading width (two at Compact).
+//                above its top edge over the play button, the volume or the Lossless badge, never over the bar's title row; the page head's band,
+//                on the page's gutter), as wide as that surface less Classic's inset at most, in the two-row form. Home's banner is one row at its
+//                reading width (two at Compact).
 //
-// A state line (the metered cap) keeps its "Change" and has no close. After an inline write: the check, the confirmation ("On · Normal"), its
-// "Change" link and the close. Keys: `hint:<id>`, the parts `:act`, `:change`, `:more`, `:dismiss`. The entrance is the notification card's
+// A hint with its own words for the dismiss (the Lossless badge's "Keep it") says them as a text action after its action, in the close glyph's
+// place. A state line (the metered cap) keeps its "Change" and has no close. After an inline write: the check, the confirmation ("On · Normal"),
+// its "Change" link and the close. Keys: `hint:<id>`, the parts `:act`, `:change`, `:more`, `:dismiss`. The entrance is the notification card's
 // short rise and fade. At Compact every target is 40 at least.
 
 using FluentGpu.Controls;
@@ -53,13 +55,15 @@ internal static class ClassicHint
     }
 
     /// <summary>Where a floating strip sits in its surface: under the queue's Crossfade pair on the panel's content column (it covers the list,
-    /// not the pills), under the page head on the page's gutter, above the player bar's play button (centred) and volume (end-aligned).</summary>
+    /// not the pills), under the page head on the page's gutter; above the player bar's top edge (never over its rows: the Lossless badge sits
+    /// under the title), centred on the play button or the badge, ending at the volume.</summary>
     static HintFloatPlace PlaceOf(string surface, in ViewContext ctx) => surface switch
     {
         HintSurfaces.QueuePanel => new(Below: true, HintFloatAlign.Start, ClassicHintRules.QueueInset, ClassicHintRules.FloatMaxWidth),
         HintSurfaces.PageHead => new(Below: true, HintFloatAlign.Start, ClassicTiers.PageOf(ctx.Tier()).Gutter, ClassicHintRules.FloatMaxWidth),
-        HintSurfaces.PlayerVolume => new(Below: false, HintFloatAlign.End, ClassicHintRules.FloatInset, ClassicHintRules.FloatMaxWidth),
-        _ => new(Below: false, HintFloatAlign.Center, ClassicHintRules.FloatInset, ClassicHintRules.FloatMaxWidth),
+        HintSurfaces.PlayerVolume => new(Below: false, HintFloatAlign.End, ClassicHintRules.FloatInset, ClassicHintRules.FloatMaxWidth,
+            Edge: true, EdgeGap: ClassicHintRules.FloatGap),
+        _ => new(Below: false, HintFloatAlign.Center, ClassicHintRules.FloatInset, ClassicHintRules.FloatMaxWidth, Edge: true, EdgeGap: ClassicHintRules.FloatGap),
     };
 
     /// <summary>The strip on the notice card's plate, <paramref name="width"/> wide (its line wraps inside it): one row, two at Compact.</summary>
@@ -121,7 +125,8 @@ internal static class ClassicHint
         Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Wrap = TextWrap.Wrap,
     };
 
-    /// <summary>The one text action (the confirmation's "Change" after an inline write) and the "⋯".</summary>
+    /// <summary>The one text action (the confirmation's "Change" after an inline write), the dismiss in the hint's own words when it has them,
+    /// and the "⋯".</summary>
     static void Actions(HintProps p, float target, List<Element> into)
     {
         string key = "hint:" + p.Id;
@@ -131,13 +136,17 @@ internal static class ClassicHint
             return;
         }
         if (p.Act is { } act && p.ActionLabel is { } label) into.Add(TextAction(label, act, target) with { Key = key + ":act" });
+        if (Worded(p) && p.Dismiss is { } dismiss) into.Add(TextAction(p.DismissLabel!, dismiss, target) with { Key = key + ":dismiss" });
         if (p.NeverTips is { } never) into.Add(More(key, never, target));
     }
 
-    /// <summary>The close glyph ("not now"; on a confirmation it only closes it). A state line has none.</summary>
+    /// <summary>The hint words its dismiss ("Keep it"): a text action, not the close glyph (one verb, one control).</summary>
+    static bool Worded(HintProps p) => !p.Done && p.DismissLabel is not null;
+
+    /// <summary>The close glyph ("not now"; on a confirmation it only closes it). A state line has none, nor a hint that words its dismiss.</summary>
     static void Close(HintProps p, float target, List<Element> into)
     {
-        if (p.Dismiss is not { } dismiss) return;
+        if (p.Dismiss is not { } dismiss || Worded(p)) return;
         into.Add(ToolTip.Wrap(IconButton.Create(Icons.Cancel, dismiss, target > 0f ? IconButton.DefaultStyle with { Size = target } : null)
             with { Key = "hint:" + p.Id + ":dismiss", Shrink = 0f }, Loc.Get(Strings.Common.Close)));
     }

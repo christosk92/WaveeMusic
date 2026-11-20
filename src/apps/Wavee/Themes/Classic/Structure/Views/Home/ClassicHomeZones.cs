@@ -481,8 +481,25 @@ internal static partial class ClassicHomeZones
     /// one-page shelf shows the bare link.</summary>
     internal sealed class ClassicHomeShelfTools(IPager controller, bool leadingDivider, bool counter = false, bool arrows = true) : Component
     {
+        // A pip comes and goes with the page count, and the count follows the width and the tier: Small fits a shelf in fewer pages as it widens
+        // (three at 1000, two from 1008), and Standard's sidebar narrows it back to three. So the Small -> Standard crossing takes the third pip away
+        // on the resized frame and brings it back on the commit. Each pip enters and leaves on the theme's declared tier cross-fade, never as a
+        // pip rebuilt at once (none on the pager's first render: pips that arrive with the page arrive with its entrance).
+        static readonly TemplateParts s_pipsSwap = new()
+        {
+            [PipsPager.PartDot] = static dot => dot with
+            {
+                Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+            },
+        };
+        static readonly TemplateParts s_pipsFirst = new()
+        {
+            [PipsPager.PartDot] = static dot => dot with { Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion },
+        };
+
         public override Element Render()
         {
+            bool rendered = ClassicTierMotion.Rendered(Context);
             int count = controller.PageCount.Value;
             int page = controller.Page.Value;
             bool canPrev = controller.CanPrev.Value;
@@ -493,7 +510,7 @@ internal static partial class ClassicHomeZones
             // A paged grid counts its pages ("1 of 2") before the two buttons; a shelf shows its pips between them.
             if (counter) kids.Add(R.Type.TrackMeta(Strings.Home.PageOf(page + 1, count)) with { Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap });
             if (arrows) kids.Add(IconButton.Create(Icons.ChevronLeft, controller.Prev, isEnabled: canPrev));
-            if (!counter) kids.Add(PipsPager.Controlled(count, page, controller.GoTo));
+            if (!counter) kids.Add(PipsPager.Controlled(count, page, controller.GoTo, parts: rendered ? s_pipsSwap : s_pipsFirst));
             if (arrows) kids.Add(IconButton.Create(Icons.ChevronRight, controller.Next, isEnabled: canNext));
             return new BoxEl
             {

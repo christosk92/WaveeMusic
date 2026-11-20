@@ -8,7 +8,9 @@
 //     title bar slot (88 = the 40 tab strip over the 48 toolbar; 48 with tabs off)          `shell.titlebar`       Shell.TitleBar
 //     body = ZStack[ column( content region · play bar ) · panel layer ]
 //            content region = ZStack[ row( nav column · content card · panel gap · panel reservation · docked panes' reservations )
-//                                     · the nav seam · the panel seam · the narrow drawer ]
+//                                     · the nav seam · the narrow drawer ]
+//            panel layer    = ZStack[ scrim · primary host · second pane · docked panes · the panel seam (over the gap and the pane's inset,
+//                                     never the page's scrollbar: #255) ]
 //            content card   = the content layer (#282828 dark / #f9f9f9 light), r8 on its top left with a 1-px left+top hairline from
 //                             Small up, square and flush at Compact (LeftMinimal: no rail)                   `shell.content.card`
 //            play bar       = Player.Bar (Mini 64 at Compact, 72 elsewhere)                                   `shell.playerbar`
@@ -57,7 +59,9 @@ internal static class WinUiFrame
         {
             // Window-tall, bound: the body yields instead of shoving the play bar off the bottom.
             Direction = 1, Grow = 1f, Height = Prop.Of(() => props.Viewport.Value.Height),
-            OnKeyDown = props.OnKeyDown,
+            // The shell's keys (Space play/pause, Escape, Ctrl+Tab) also when NOTHING has focus: the usual state after a click on the page or at
+            // start-up. The engine drops a key with no focused node unless a TakesUnfocusedKeys box takes it.
+            OnKeyDown = props.OnKeyDown, TakesUnfocusedKeys = true,
             Children =
             [
                 .. props.Chords,
@@ -172,22 +176,13 @@ internal static class WinUiFrame
         return ZStack(
             // The row never moves on a toggle: the content card FLIPs relative to it.
             new BoxEl { MorphId = WinUiFrameRules.ContentRowMorphId, Direction = 0, Grow = 1f, ClipToBounds = true, Children = row.ToArray() },
-            // The nav seam (a non-resizable pane presents it 0 wide) and the panel seam (the docked pane resizes 280-480).
+            // The nav seam (a non-resizable pane presents it 0 wide). The panel seam is the panel layer's (PanelSeamLayer).
             new BoxEl
             {
                 Direction = 1, ClipToBounds = true,
                 Width = Prop.Of(props.SidebarSeamWidth),
                 Transform = Prop.Of(() => Affine2D.Translation(props.SidebarPresentedWidth.Value, 0f)),
                 Children = [props.SidebarSeam()],
-            },
-            new BoxEl
-            {
-                Direction = 1, ClipToBounds = true,
-                Width = Prop.Of(props.RailSeamWidth),
-                // A closed (or undocked) panel presents the seam 0 wide: out of the tree then, so its 16-wide grip is no hit target nobody can see.
-                Visible = Prop.Of(() => props.RailSeamWidth() > 0f),
-                Transform = Prop.Of(() => Affine2D.Translation(props.RailSeamX(), 0f)),
-                Children = [props.RailSeam()],
             },
             props.NarrowDrawer()) with
         {
@@ -279,6 +274,7 @@ internal static class WinUiFrame
         };
         if (props.DockedPanes is null && props.SecondPanel is { } second) kids.Add(SecondHost(props, second, in ctx, tiers));
         foreach (var pane in panes) kids.Add(PaneHost(props, pane, panes, in ctx, tiers, reduced, dock));
+        kids.Add(PanelSeamLayer(props, tiers));
         return new BoxEl
         {
             Grow = 1f, ZStack = true, HitTestPassThrough = true,
@@ -286,6 +282,29 @@ internal static class WinUiFrame
             Children = kids.ToArray(),
         };
     }
+
+    /// <summary>The panel seam (the docked pane resizes 280-480), the panel layer's top layer, beside the content region above the play bar. Its strip
+    /// starts at the content card's right edge (<c>FrameRules.RailSeamX</c>): the page's scrollbar owns the card's last 12 DIP, so the strip runs over
+    /// the gap and the pane's first 8 DIP instead, OVER the pane as the nav seam lies over the page, so it takes the pointer there whatever the pane
+    /// draws (a lyric line runs to the pane's edge).</summary>
+    private static Element PanelSeamLayer(ShellFrameProps props, Func<TierFacts> tiers) => new BoxEl
+    {
+        Direction = 1, Grow = 1f, HitTestPassThrough = true,
+        Children =
+        [
+            new BoxEl
+            {
+                Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
+                Width = Prop.Of(props.RailSeamWidth),
+                // A closed (or undocked) panel presents the seam 0 wide: out of the tree then, so its 16-wide grip is no hit target nobody can see.
+                Visible = Prop.Of(() => props.RailSeamWidth() > 0f),
+                Transform = Prop.Of(() => Affine2D.Translation(props.RailSeamX(), 0f)),
+                Children = [props.RailSeam()],
+            },
+            // The play bar's height, as the docked primary host leaves it.
+            new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(() => WinUiTiers.FrameOf(tiers()).BarH) },
+        ],
+    };
 
     /// <summary>What docks right of <paramref name="pane"/> (null: the primary panel): Classic's second pane, and the panes of the core's
     /// arrangement on that side (nearest the primary first).</summary>

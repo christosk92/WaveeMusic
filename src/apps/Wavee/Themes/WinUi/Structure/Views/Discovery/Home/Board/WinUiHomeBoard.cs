@@ -335,12 +335,20 @@ internal static class WinUiHomeBoard
                     ? WinUiHomeTiles.ShortcutCell(board.Tile(e, cell, s_small), index, board)
                     : board.Tile(e, cell, s_small),
                 CanReorder: static () => true,
-                // FlipView's hover-revealed edge buttons over the pages.
-                Edge: static (prev, pager) => IconButton.Create(prev ? Icons.ChevronLeft : Icons.ChevronRight, prev ? pager.Prev : pager.Next)
+                // FlipView's hover-revealed edge buttons over the pages. They sit over the edge tiles' cover art, so like FlipView's own
+                // they stand on an opaque plate: a bare glyph read 2.68 : 1 over a dark cover (inspector contrast.text, 2026-11-20).
+                Edge: static (prev, pager) => IconButton.Create(prev ? Icons.ChevronLeft : Icons.ChevronRight, prev ? pager.Prev : pager.Next, EdgeStyle())
                     with { Key = prev ? "home:shortcuts-edge:prev" : "home:shortcuts-edge:next" },
                 Below: static c => Embed.Comp(() => new WinUiHomeZones.ClusterPips(c)) with { Key = "home:shortcuts-pips" },
                 BelowH: lay.ShortcutPipsH);
         }
+
+        /// <summary>The shortcuts strip's edge buttons: the stock icon button on an opaque solid plate (FlipView's previous/next
+        /// buttons), read at render so the plate follows light and dark.</summary>
+        static IconButton.Style EdgeStyle() => IconButton.DefaultStyle with
+        {
+            Fill = Tok.FillSolidSecondary, HoverFill = Tok.FillSolidTertiary, PressedFill = Tok.FillSolidBase,
+        };
 
         WinUiHomeBoardLayout? s_specLay;
 

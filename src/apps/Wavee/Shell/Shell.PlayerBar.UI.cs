@@ -137,11 +137,6 @@ public static partial class Shell
     /// always on screen, so the door shows where the dial lives by moving focus onto its control).</summary>
     public static readonly Signal<int> PlayerBarFocusRequest = new(0);
 
-    /// <summary>The ONE float the volume rails bind (inline + popup). A slider needs a FloatSignal and the model
-    /// publishes a Signal&lt;float&gt;; <see cref="PlayerBarHost"/> mirrors model → rail with an equality gate, and the
-    /// rail's own writes go to the model through <see cref="Playback.SetVolume"/>.</summary>
-    static readonly FloatSignal s_barVolume = new(1f);
-
     // ── the now-playing reads (every one peeks or reads the model LIVE — never a render-time capture) ────────────────
 
     /// <summary>(kind, slot, row version): the ONE subscription the bar takes on the catalog. The memo's equality
@@ -390,8 +385,10 @@ public static partial class Shell
             default:
             {
                 bool muted = Playback.Muted.Peek();
-                return new MenuFlyoutItem(Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute),
-                    muted ? Icons.Volume : Icons.Mute, true, static () => Playback.ToggleMute());
+                // Locked, and saying why, while the owner keeps its volume (remote-play plan 2.2); built at open time, so one read is enough.
+                bool settable = Theming.VolumeSlider.Settable;
+                return new MenuFlyoutItem(Theming.VolumeSlider.MuteTip(muted),
+                    muted ? Icons.Volume : Icons.Mute, settable, static () => Playback.ToggleMute());
             }
         }
     }

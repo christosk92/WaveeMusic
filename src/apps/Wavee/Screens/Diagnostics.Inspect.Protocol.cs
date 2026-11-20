@@ -346,7 +346,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-book", "cold-book-chapters", "cold-book-facts", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "home-cold", "home-land", "home-following", "home-previews", "daylist-generic", "daylist-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-book", "cold-book-chapters", "cold-book-facts", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "home-reanswer", "home-cold", "home-land", "home-following", "home-previews", "daylist-generic", "daylist-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -423,7 +423,8 @@ public static partial class Diagnostics
                              Arg("ago", ArgType.Int, "backdate the play in the play log by this many minutes", "0"),
                              Arg("context", ArgType.String, "play the rows in this context (a spotify:playlist: or spotify:album: uri, as a row click on its page does)"),
                              IntArg("at", "with context=: start at this row of the rows (0 = the uri's own), as a click on a row further down the page does", "0", 0, 64),
-                             Arg("remote", ArgType.String, "turn the output remote under this name on the live mount (off: local again)")], s_settleArgs),
+                             Arg("remote", ArgType.String, "turn the output remote under this name on the live mount (off: local again)"),
+                             Arg("format", ArgType.String, "the deck's load reports this format badge after it lands (\"FLAC 24/96\": a lossless stream; the fake loads report \"OGG 320\")")], s_settleArgs),
             },
             new(Verb.Option, "option", "List the active theme's user options, or set one (id, value) the way Settings does", "option style.density Compact")
             {
@@ -623,7 +624,7 @@ public static partial class Diagnostics
                 Args = Join([Arg("state", ArgType.Enum, "minimized (the caption button), hidden (close to tray) or restored (the restore edge paints the next frame; then settle)", null, "minimized|hidden|restored"),
                              Arg("active", ArgType.Bool, "false blurs the window (the WindowBlur a deactivation sends: hover cleared, a pointer that was in leaves the window), true re-activates it (the pointer is back with the next move)"),
                              Arg("advance", ArgType.Float, "move the cold-maintenance clock this many ms ahead first (31000 makes a 30 s deadline due)", "0") with { Min = 0 },
-                             Arg("floor", ArgType.Int, "set the scene slab's trim floor (SceneStore.CapacityFloor; the app runs with 8192, an inspector mount with 0)") with { Min = 0 },
+                             Arg("floor", ArgType.Int, "set the scene slab's trim floor (SceneStore.CapacityFloor; a mount starts at the app's Shell.SceneCapacity, 8192)") with { Min = 0 },
                              IntArg("frames", "frames to run after the change when not restoring (parked frames while parked)", "2", 0, 100_000)], s_settleArgs),
             },
             new(Verb.Transport, "transport", "Drive the playback sequencer as the transport and the queue verbs do (next, prev, a natural end, shuffle, repeat, add/playnext, a track ruled unavailable) and read back the deck, the modes, the queue rows and the panel's up-next list; then settle", "transport do=next")

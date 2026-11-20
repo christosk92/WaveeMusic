@@ -908,6 +908,8 @@ public static partial class Playback
     /// <param name="Offered">The video switches the owner offers a controller (<c>signals</c>).</param>
     /// <param name="Disallowed">The video switches it lists in <c>disallow_signals</c> with a reason.</param>
     /// <param name="ManifestId">The row's music-video manifest id as the owner offers it (<c>associated_video_id</c>), interned.</param>
+    /// <param name="VolumeFixed">The ACTIVE device does not let a controller set its volume (its capabilities,
+    /// <see cref="Spotify.Decode.ClusterDevice.VolumeFixed"/>).</param>
     public readonly record struct RemoteState(
         bool HasTrack,
         EntityId Track,
@@ -927,7 +929,8 @@ public static partial class Playback
         bool OnVideo = false,
         VideoSignals Offered = VideoSignals.None,
         VideoSignals Disallowed = VideoSignals.None,
-        StringId ManifestId = default);
+        StringId ManifestId = default,
+        bool VolumeFixed = false);
 
     /// <summary>THE playback state. One value, written on the UI thread only (C1), copied freely, and the single
     /// source every playback surface binds through the host's signals.
@@ -998,6 +1001,9 @@ public static partial class Playback
         public float Volume;
         /// <summary>The foreign owner's volume as the cluster stated it, 0..1; -1 = none stated.</summary>
         public float MirrorVolume;
+        /// <summary>The active device, as the last cluster stated it, does not let a controller set its volume
+        /// (<see cref="RemoteState.VolumeFixed"/>). Read through <see cref="VolumeFixed"/>, which asks a foreign owner too.</summary>
+        public bool MirrorVolumeFixed;
         /// <summary>The level a mute took the volume away from (the owner's while Foreign, ours otherwise); 0 = none
         /// remembered. Only the VOLUME-0 mute uses it — a real sink mute keeps the volume where it was.</summary>
         public float MuteRestoreVolume;
@@ -1173,6 +1179,10 @@ public static partial class Playback
         /// <summary>What the volume slider shows: the foreign owner's volume while one owns playback (dragging it is a
         /// volume PUT to that device), ours otherwise.</summary>
         public readonly float SliderVolume => Own.Kind == Owner.Foreign && MirrorVolume >= 0f ? MirrorVolume : Volume;
+        /// <summary>A foreign owner whose volume a controller cannot set (an iPhone sets <c>disable_volume</c> and answered 36
+        /// volume PUTs of 36 with 400, gap analysis 2.1): no volume PUT goes to it (<see cref="Refusal.VolumeFixed"/>) and every
+        /// volume rail shows it disabled. Our own volume is never fixed.</summary>
+        public readonly bool VolumeFixed => Own.Kind == Owner.Foreign && MirrorVolumeFixed;
 
         /// <summary>The position to PAINT at <paramref name="nowMs"/> (frame clock): the last authoritative report
         /// extrapolated while playing, and the report itself otherwise — a refilling stream (<see cref="Buffering"/>) does
@@ -1399,13 +1409,11 @@ public static partial class Playback
             => new(InputKind.Transfer, intArg: rosterSlot, longArg: (long)device, nowMs: nowMs);
         /// <summary>Pull playback to this device. Unlike <see cref="Transfer"/> it names no device: the claim IS the request.</summary>
         public static Input TakeOver(long nowMs = 0) => new(InputKind.TakeOver, nowMs: nowMs);
-        /// <summary>Mute or unmute whoever is audible: the local sink (<paramref name="hasSink"/>), else volume 0 with the
-        /// previous level remembered — the wire carries no mute flag, so a foreign owner is muted the same way.</summary>
-        public static Input Mute(bool muted, bool hasSink) => new(InputKind.SetMute, intArg: (muted ? MuteBit : 0) | (hasSink ? SinkBit : 0));
+        /// <summary>Mute or unmute whoever is audible: this device's sink, else (a foreign owner: the wire carries no mute flag) volume 0
+        /// with the previous level remembered.</summary>
+        public static Input Mute(bool muted) => new(InputKind.SetMute, intArg: muted ? MuteBit : 0);
         /// <summary>The bit of a SetMute's <c>IntArg</c> that asks for mute (clear = unmute).</summary>
         public const int MuteBit = 1;
-        /// <summary>The bit of a SetMute's <c>IntArg</c> that says a local output exists to mute.</summary>
-        public const int SinkBit = 2;
         public static Input Cluster(in ClusterFrame frame, in RemoteState remote, long nowMs = 0)
             => new(InputKind.Cluster, frame: frame, remote: remote, nowMs: nowMs);
         /// <summary>A controller's verb. (Named <c>Controller</c> and not <c>Remote</c> because
@@ -1507,6 +1515,8 @@ public static partial class Playback
         NoTransferTarget,
         /// <summary>A switch to video for a row that has none.</summary>
         NoVideo,
+        /// <summary>A volume change for a foreign owner whose volume a controller cannot set (<see cref="State.VolumeFixed"/>).</summary>
+        VolumeFixed,
     }
 
     /// <summary>Fixed effect SLOTS — one per effect KIND, never a list. The last write inside a drain wins and the
@@ -2245,7 +2255,9 @@ public static partial class Playback
         {
             // The slider follows the ACTIVE device: while a phone owns playback, dragging it is a volume PUT to the
             // phone (its own route, not a player command) and our own sink is untouched. The slider moves at once; the
-            // phone's next cluster confirms it.
+            // phone's next cluster confirms it. An owner whose volume cannot be set gets no PUT at all (its rail is
+            // disabled; a key, a wheel or a mute lands here and is refused, and the host says why).
+            if (s.VolumeFixed) { fx.Refused = Refusal.VolumeFixed; return; }
             Forward(ref s, RemoteCmd.Unknown, ref fx, wire, false);
             if (fx.SendRemote) { fx.RemoteIsVolume = true; s.MirrorVolume = wire / (float)MaxWireVolume; }
             return;
@@ -2679,6 +2691,7 @@ public static partial class Playback
         s.StreamFormat = StringId.Empty;
         // The slider follows the OWNER; our own volume (the sink's, the PUT body's) is untouched.
         if (r.Volume >= 0) s.MirrorVolume = Math.Clamp(r.Volume / (float)MaxWireVolume, 0f, 1f);
+        s.MirrorVolumeFixed = r.VolumeFixed;
         MirrorVideo(ref s, in r);
         fx.Smtc = true;
         fx.SmtcEpoch = s.Epoch;
@@ -2949,14 +2962,14 @@ public static partial class Playback
     /// (<c>SavedVolume</c>'s default): through the cubic taper 0.794³ = 0.5005, which is −6.01 dB (D6).</summary>
     public const float UnmuteDefault = 0.794f;
 
-    /// <summary>Mute whoever is audible, routed like <see cref="DoVolume"/>: a real local sink is muted as a sink (the
-    /// volume stays where it was); a foreign owner — the wire has no mute flag — and a sinkless local session are muted
-    /// as volume 0, and unmuted back to the level they left (<see cref="State.MuteRestoreVolume"/>).</summary>
+    /// <summary>Mute whoever is audible, routed like <see cref="DoVolume"/>: this device is muted as a sink (the volume stays
+    /// where it was, and is remembered with it), also before its audio has booted: the session applies the flag as it opens, so a
+    /// mute pressed before the first play no longer set the volume itself to 0. A foreign owner — the wire has no mute flag — is
+    /// muted as volume 0, and unmuted back to the level it left (<see cref="State.MuteRestoreVolume"/>).</summary>
     static void DoMute(ref State s, in Input i, ref Effects fx)
     {
         bool muted = (i.IntArg & Input.MuteBit) != 0;
-        bool foreign = !s.RoutesLocal;
-        if (!foreign && (i.IntArg & Input.SinkBit) != 0)
+        if (s.RoutesLocal)
         {
             fx.Mute = true;
             fx.MuteOn = muted;
@@ -2972,7 +2985,7 @@ public static partial class Playback
             }
             return;
         }
-        float current = foreign ? (s.MirrorVolume >= 0f ? s.MirrorVolume : 0f) : s.Volume;
+        float current = s.MirrorVolume >= 0f ? s.MirrorVolume : 0f;
         float target;
         if (muted)
         {

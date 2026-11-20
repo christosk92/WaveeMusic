@@ -69,6 +69,18 @@ internal static class ClassicTrackChrome
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
                 Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
+                // The ✕: closes the bar on this list until the app restarts. Mounted (with its tooltip) only while the bar shows: every list mounts this
+                // bar, and a tooltip host on each hidden one cost a one-time 4.6 MB on a Liked Songs scroll. Folded, a spacer of its size holds the row.
+                a.Dismiss is { } dismiss && a.Shown
+                    ? ToolTip.Wrap(new BoxEl
+                    {
+                        Key = "unavailable:dismiss", Width = g.Height - g.Padding.Top - g.Padding.Bottom, Height = g.Height - g.Padding.Top - g.Padding.Bottom, Shrink = 0f,
+                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+                        HoverFill = Prop.Of(static () => Tok.FillSubtleSecondary), PressedFill = Prop.Of(static () => Tok.FillSubtleTertiary),
+                        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = dismiss,
+                        Children = [Icon(Icons.ChromeClose, g.Glyph, Tok.TextSecondary)],
+                    }, a.DismissLabel)
+                    : new BoxEl { Width = a.Dismiss is null ? float.NaN : g.Height - g.Padding.Top - g.Padding.Bottom, Shrink = 0f },
             ],
         };
         // The bar stands between two easing gutters (not a padding: a padding cannot ease), so a crossing that moves the rows' inset (the detail page's

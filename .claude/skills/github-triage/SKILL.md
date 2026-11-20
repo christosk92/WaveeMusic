@@ -95,9 +95,12 @@ half-formed ideas → suggest Discussions › Ideas.
 
 ## Bugfix bookkeeping (every fix, no exceptions)
 
-`ops/release/wavee-release.ps1`'s `issue refs` gate (hard) cross-checks git closing keywords against the
-CHANGELOG at release time, so every bugfix has to leave behind the same four things — the release reads and
-composes them, it never invents them:
+Since 2026-11-20 nobody writes CHANGELOG bullets: a user-facing change adds a change file in `changes/unreleased/`
+(format: `changes/README.md`; the flow: the `wavee-contributing` skill), and the release runner assembles the CHANGELOG
+from them. `ops/release/release.ps1`'s `issue refs` preflight gate (hard) cross-checks the closing keywords of the
+commits in the release range against the change files' `issues:` (once the runner's `changelog` step has run, against
+the CHANGELOG section it assembled from them), so every bugfix has to leave behind the same things — the release reads
+and composes them, it never invents them:
 
 - [ ] **An issue exists.** If the report came in by chat/DM instead of a GitHub issue, create one first
       (approval-gated — ask before running this):
@@ -107,23 +110,24 @@ composes them, it never invents them:
       ```
       Use the current minor's milestone (see "New minor / new milestone" above) and at least one `area:` label
       from the scheme above.
-- [ ] **The CHANGELOG bullet cites it.** Under `## [<next>] - unreleased`, the bullet ends with the trailing
-      group ` (#n)` — optionally ` (#n, !pr)` if a PR is also known. Only the *trailing* parenthesised group
-      counts; a mid-sentence `(#n)` is ignored by design (`- Fixed the #42 regression` does not link — put the
-      ref at the end).
+- [ ] **The change file lists it.** The fix's change file, named after the issue
+      (`changes/unreleased/<n>-<slug>.md`), carries `issues: [n]` in its front matter (several: `issues: [225, 226]`).
+      Never edit `CHANGELOG.md`: a bullet added by hand ends up under whatever version ships next. Every issue a
+      commit closes needs a change file that lists it, also a fix that would otherwise need none.
 - [ ] **The commit body carries a closing keyword.** One line naming the issue: `Fixes #n` (also accepted:
-      `close(s|d)`, `fix(es|ed)`, `resolve(s|d)`, case-insensitive). This is what makes GitHub close the issue
-      when the commit lands on `main`, and it is the other half of the cross-check.
-- [ ] **A squash-merge suffix or `!N` is a PR, never an issue.** `(#N)` appended to a squashed commit's subject
-      (or `!N` anywhere) is read as a **PR** reference by the gate's parser — it never satisfies "this commit
-      fixes issue #N". Issues and PRs share one number space on GitHub, so always cite the issue explicitly with a
-      `Fixes #n` trailer; the squash suffix only ever names the PR.
+      `close(s|d)`, `fix(es|ed)`, `resolve(s|d)`, case-insensitive). GitHub closes the issue when the commit reaches
+      `main` (the runner merges the release into it), and it is the other half of the cross-check.
+- [ ] **A squash-merge suffix or `!N` is a PR, never an issue.** `(#N)` appended to a commit's subject (or `!N`
+      anywhere) is read as a **PR** reference by the gate's parser — it never satisfies "this commit fixes issue #N".
+      Issues and PRs share one number space on GitHub, so always cite the issue explicitly with a `Fixes #n` trailer.
 
-At release time the gate fails hard when these disagree: a commit in `<prevTag>..HEAD` fixes an issue the
-CHANGELOG entry does not cite, or the entry cites an issue no commit in range fixes. Commits without any ref are
-fine ("Other changes" in the release notes); CHANGELOG bullets without a ref are fine too but trigger the soft
-`issue coverage` warning. **Before cutting a release, run `-DryRun` and read the `issue refs` row** — it lists
-exactly what would fail, before anything is bumped or tagged.
+Before a PR, `python -I tools/pr-check.py` runs the same cross-check on the branch: a `Fixes #n` no change file lists
+is an error, a listed issue no commit closes a warning (GitHub would not close it). At release time the gate fails
+hard on either: a commit in `<prevTag>..HEAD` fixes an issue no change file lists, or a change file lists an issue no
+commit in range fixes. Commits without any ref are fine ("Other changes" in the release notes), and so are change
+files with `issues: []` (not every change is a bugfix). **Before cutting a release, run the dry run
+(`ops/release/release.ps1 -Version <v>`, no `-Go`) and read the `issue refs` row** — it lists exactly what would
+fail, before anything is bumped or tagged.
 
 ## Changing the label set
 

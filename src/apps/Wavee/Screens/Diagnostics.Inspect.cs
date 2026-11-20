@@ -602,9 +602,17 @@ public static partial class Diagnostics
                             Wavee.Theming.InspectSwitches.RemoteDevice = remote.Length == 0 || string.Equals(remote, "off", StringComparison.OrdinalIgnoreCase) ? null : remote;
                             if (uri.Length == 0)
                             {
+                                if (a.Has("format")) Playback.StageFormat(a.Str("format"));
                                 RunFrames(2);
                                 return Settled(id, name, a, w => w.WriteString("remote", Wavee.Theming.InspectSwitches.RemoteDevice ?? "off"));
                             }
+                        }
+                        // `format=<badge>` without a uri: the playing load reports that badge now (a lossless stream on the live mount).
+                        if (uri.Length == 0 && a.Has("format"))
+                        {
+                            Playback.StageFormat(a.Str("format"));
+                            RunFrames(2);
+                            return Settled(id, name, a, w => w.WriteString("format", a.Str("format")));
                         }
                         // `context=<uri>`: the rows play IN that context (a playlist, an album), as a row click on its page does, so what names the
                         // context (the stage's "playing from …" line) has one
@@ -617,6 +625,8 @@ public static partial class Diagnostics
                         long before = _frames;
                         string phase = AwaitPlaybackLoad(PlayLoadBudgetMs);
                         long loadFrames = _frames - before;
+                        // After the load landed, so the fake open's own "OGG 320" cannot overwrite it.
+                        if (a.Has("format")) { Playback.StageFormat(a.Str("format")); RunFrames(2); }
                         return Settled(id, name, a, w => { w.WriteString("uri", uri); w.WriteString("phase", phase); w.WriteNumber("loadFrames", loadFrames); });
                     }
                 case Inspect.Verb.Dialog:

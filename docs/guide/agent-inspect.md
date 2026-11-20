@@ -320,7 +320,7 @@ clock ahead. Use it for what happens to a window that sits minimized or in the t
 | `state` | `minimized` (the caption button: the placement reads Minimized), `hidden` (close to tray: the window reads invisible) or `restored` (back to Normal and shown). Positional: `window minimized`. |
 | `active` | `false` blurs the window (`HeadlessWindow.IsActive`: the WindowBlur a Win32 deactivation sends; the dispatcher drops the pointer position, clears hover, closes light-dismiss overlays, and a pointer that was in leaves the window first: `InputHooks.PointerLeftWindowObserved`, then `WindowBlurObserved`); `true` re-activates it (WindowFocus). The pointer is back only with the next move: `hover x= y=`. Runs `frames` after the change. The fullscreen stage logs `[stage.chrome] exit as=left src=window` (a pointer that was in) and `src=blur`. A move off the window is `hover x=-50 y=-50` (`src=window`). |
 | `advance` | Moves the cold-maintenance clock this many ms ahead (`AppHost.AdvanceColdMaintenanceClock`) before the frames run, so a 30 s deadline falls due on the next frame: `advance=31000`. |
-| `floor` | Sets the scene slab's trim floor (`SceneStore.CapacityFloor`). The app runs with 8192 (`InitialSceneCapacity`); an inspector mount has none (0, the engine's own 256), so pass `floor=8192` to trim as the app does. |
+| `floor` | Sets the scene slab's trim floor (`SceneStore.CapacityFloor`). An inspector mount starts as the app does (`Shell.SceneCapacity`, 8192: the slab and the render thread's snapshot slots start at that size, and the trim never cuts below it); pass `floor=0` to let the trim go down to the engine's own 256. |
 | `frames` | Frames to run after the change when not restoring (2). A restore runs one frame, then settles (`settle`, `max`, `loops` and `trace=N` apply). |
 
 **The parked path is production's.** While the window is minimized or hidden, every frame (from `window` itself and from any
@@ -586,7 +586,15 @@ track follows its lyrics: render the stage while playing, no pause needed. `ago=
 `context=<uri>` plays the rows in that context as a row click on its page does, from row `at=` (0 = the uri's own row).
 
 `remote=<name>` turns the output remote on the live mount, as a Connect transfer does while playing (`remote=off` makes it local again); without a
-`uri` only the output changes. The fake load lands on the wall clock; `play uri=` waits for it (up to 5 s) before it settles and replies
+`uri` only the output changes.
+
+`format=<badge>` makes the deck's load report that format badge and its open the format the badge names (`Playback.StageFormat`: the open's
+format, then the audio host's own reducer input), after the load
+lands so the fake open's "OGG 320" cannot overwrite it; without a `uri` it restamps the playing load. A FLAC badge stands a lossless stream:
+`play uri=spotify:track:tr3`, then `play format="FLAC 24/96"`, and every theme's bar shows its Lossless mark after the artists (`np-lossless`, its
+tooltip the badge; Classic from Standard, WinUI in every full bar, Zune from its full level, 1240; the bar reads the opened format, the badge is its
+tooltip) and the stage its format chip. `setting id=sound.losslessBadge value=false` hides the mark at once (the host then hands the themes no
+format). The fake load lands on the wall clock; `play uri=` waits for it (up to 5 s) before it settles and replies
 `phase` and `loadFrames` (above), so the next command reads the playing bar; the remote line shows through the load as the title and artists do.
 
 ### `transport {do, value?, uri?, ms?}`
@@ -614,6 +622,13 @@ transport do=end                                                       # deck=tr
 
 `state kind=home-refresh` lands the pinned Home's next answer (the `second` fixture) over the one the page shows: a removed
 section keeps its place as a hidden entry, a new one sits after its server neighbour, a hidden one stays hidden.
+
+`state kind=home-reanswer` lands All's next answer the way a live re-fetch does (the daylist rollover re-asks the feed's sections every
+few hours): the document alone, over `home=live1` live2's and over anything else live1's (ten new baseline sections, eight that carry
+another card under the same uri). The baseline lookup is then the app's own ask: under `--fake` it is answered on the next turn from the
+lookup capture that document came with, through the live preview fold, and the lookup's marker takes the live door's marks (asked, then
+answered without a run of its own), as it does on every fixture load. Mount `home=live1`, scroll the Spine Shelf ("Because you like")
+into view, stage it with `trace=90 prefix=shelf:`: the open card's song tiles hold their place and fill in.
 
 `state kind=home-cold`, then `home-land`, `home-following` and `home-previews` (any order) stage a live open one answer at a time: cold
 forgets the All answer, the Following facet's answer and the baseline lookup the tables hold and seats All and Following in flight (the
@@ -917,6 +932,19 @@ hint show id=ai-lyrics          # with the lyrics pane open: the stand-in in the
 setting id=crossfade value=true # retires the crossfade hint, and appears in `recent`
 hint list
 recent
+```
+
+The Lossless badge's tip (`lossless-badge`, the player bar's surface) points at the mark (`np-lossless`): WinUI's TeachingTip, Classic's and
+Zune's line, each wholly above the bar's top edge (never over its title row). Its slot is mounted wherever the bar's artists line holds the mark's
+place (the widths above), so stand a lossless stream there first, then force it. In every theme `click key=hint:lossless-badge:act` ("Hide
+badge") writes the switch off and turns the tip into its confirmation ("Badge hidden", `hint:lossless-badge:change`), and
+`hint:lossless-badge:dismiss` is "Keep it" (it retires the tip); WinUI's tip keys its bubble `hint:lossless-badge` and its row's buttons the
+same way (`:act`, `:dismiss`, `:more`). It skips the two minutes after launch; the track's first seconds still hold it.
+
+```text
+play uri=spotify:track:tr3
+play format="FLAC 24/96"
+hint show id=lossless-badge
 ```
 
 ### `find {key | prefix, visibleOnly?, depth?}`

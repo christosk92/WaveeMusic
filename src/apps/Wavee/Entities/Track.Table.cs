@@ -1272,6 +1272,8 @@ public readonly partial struct Track
             // A frame that docks the selection bar (Zune): this table publishes the bar's model while the selection shows it, and withdraws it when the table goes.
             UseEffect(PublishSelectionDock);
             UseEffect(() => WithdrawSelectionDock, DepKey.Empty);
+            // Another device playing this list in the order shown hears a re-sort, a filter or an edit (remote-play plan 5.3).
+            UseEffect(WatchRemoteList);
             var live = UseMemo(() => new TableLive(_viewMemo!, SetFilters, _visible, PageBar), DepKey.Empty);
 
             var context = args.Source.Context;
@@ -1353,6 +1355,10 @@ public readonly partial struct Track
             // columns form's pinned head, audit B9; the Liked chips arriving) is never overwritten by the inset the list froze at mount.
             _itemBandSig ??= new Signal<float>(stickyInset);
             UseLayoutEffect(() => ApplyItemBand(stickyInset), DepKey.From(stickyInset, (float)_resetEpoch));
+            // Find keeps the list's top in view (#230): a query typed while scrolled down parks the chrome on its pin line, so the first match shows.
+            string findQuery = snap.Query;
+            float findLine = StickLine();
+            UseLayoutEffect(() => KeepFindAtListTop(findQuery, findLine), DepKey.From(findQuery.GetHashCode()));
 
             // The hero arm appends the section too (C-Playlist-Compact, C-Empty-Compact): after its rows, as one more slot of its viewport.
             bool recsCapable = cfg.Recommendations && !args.Embedded && !asideDocked && P.Recommendations is not null;
@@ -1598,6 +1604,28 @@ public readonly partial struct Track
             sc.ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand;
             scene.Mark(viewport, NodeFlags.PaintDirty);
             if (!sc.ContentNode.IsNull && scene.IsLive(sc.ContentNode)) scene.Mark(sc.ContentNode, NodeFlags.PaintDirty);
+        }
+
+        /// <summary>The query the chrome last answered (<see cref="KeepFindAtListTop"/>); null until the table's first query render.</summary>
+        string? _findQuerySeen;
+
+        /// <summary>The chrome's root node (the hero arm: the list's prefix item, or the album's table block), so a find can bring it back to its pin line.</summary>
+        NodeHandle _chromeNode;
+        Action<NodeHandle>? _captureChrome;
+
+        /// <summary>A find narrowed (or widened) the rows while the chrome is pinned (#230): the offset the user scrolled to belonged to the OLD rows,
+        /// and once they shrink it lands deep in the matches, or past them all (an album clamps to its end: the trailing shelves under the rows),
+        /// so the results sat above the viewport. Park the chrome on its pin line instead, at once — the rows change under it on this frame, and a
+        /// glide from an offset that no longer exists would only travel through content that is gone. Scrolled to the top (the chrome not pinned),
+        /// the list's top is already in view and nothing moves.</summary>
+        void KeepFindAtListTop(string query, float line)
+        {
+            string? seen = _findQuerySeen;
+            _findQuerySeen = query;
+            if (seen is null || seen == query || !VerticalArm || !_compactInteractive.Peek()) return;
+            var node = _chromeNode;
+            if (Context.Scene is not { } scene || node.IsNull || !scene.IsLive(node)) return;
+            scene.BringIntoView(node, align: 0f, ScrollMove.Immediate, margin: line);
         }
 
         // ══ 4. THE LIST ARMS ═════════════════════════════════════════════════════════════════════════════════════════
@@ -2173,6 +2201,8 @@ public readonly partial struct Track
             var src = _latest.Source;
             var view = ViewNow();
             if (view.Length == 0) return;
+            // Another device owns playback: the play goes THERE, and it is told the rows as shown (remote-play plan 4.1, 4.2).
+            Playback.PageFacts? facts = Playback.ForwardsPlays ? RemoteFacts(src, view) : null;
             if (!src.HasEpisodes)
             {
                 if ((uint)display >= (uint)view.Length) display = 0;
@@ -2180,7 +2210,7 @@ public readonly partial struct Track
                 try
                 {
                     for (int i = 0; i < view.Length; i++) refs[i] = new EntityRef(EntityKind.Track, src.At(view[i]).Slot);
-                    Playback.PlayRows(refs.AsSpan(0, view.Length), display, src.Context.Id);
+                    Playback.PlayRows(refs.AsSpan(0, view.Length), display, src.Context.Id, -1, facts);
                 }
                 finally { System.Buffers.ArrayPool<EntityRef>.Shared.Return(refs); }
                 return;
@@ -2196,7 +2226,51 @@ public readonly partial struct Track
                 refList.Add(new EntityRef(kind == EntityKind.Episode ? EntityKind.Episode : EntityKind.Track, slot));
             }
             if (refList.Count == 0) return;
-            Playback.PlayRows(refList.ToArray(), target, src.Context.Id);
+            Playback.PlayRows(refList.ToArray(), target, src.Context.Id, -1, facts);
+        }
+
+        /// <summary>What a play forwarded to another device sends beside the rows (remote-play plan 4.1, 4.2; read by
+        /// <c>Playback.ShapePlay</c>): per visible row, in display order, the uid its LIST gave it (a playlist's item id; none for
+        /// an album or the Liked list) and its index in the list's own order; then the view's sort, its trimmed text query, and
+        /// whether any other filter narrows it. Built only while another device owns playback, on a click.</summary>
+        Playback.PageFacts RemoteFacts(TableSource src, ReadOnlySpan<int> view)
+        {
+            var uids = new StringId[view.Length];
+            var origins = new int[view.Length];
+            for (int i = 0; i < view.Length; i++)
+            {
+                origins[i] = view[i];
+                uids[i] = src.ItemId(view[i]);
+            }
+            FilterState filters = _filters.Peek();
+            return new Playback.PageFacts(uids, origins, _sort.Peek(), _query.Peek().Trim(), !filters.IsDefault);
+        }
+
+        /// <summary>The view a device playing this list in Wavee's order was last told about (remote-play plan 5.3): the context,
+        /// its membership (version and count) and the view's sort, query and filters.</summary>
+        readonly record struct RemoteListView(EntityId Context, uint Version, int Count, SortSpec Sort, string Query, FilterState Filters);
+
+        RemoteListView _remoteView;
+        bool _remoteViewSeeded;
+
+        /// <summary>An auto-tracked effect over the snapshot (it re-runs when the snapshot VALUE moves — a sort, a filter, the
+        /// membership — never per frame): once the list has fully landed, a change of its sort, filter or rows after the first
+        /// complete view is handed to <c>Playback.ListViewChanged</c>, which does nothing unless another device plays THIS list
+        /// in the order Wavee sent it (remote-play plan 5.3). A new context only re-seeds. No allocation (a value compare).</summary>
+        void WatchRemoteList()
+        {
+            var snap = _snapshot!.Value;
+            if (snap.State != EdgeState.Complete) return;
+            var view = new RemoteListView(snap.Context, snap.Version, snap.Count, snap.Sort, snap.Query, snap.Filters);
+            if (!_remoteViewSeeded || !view.Context.Equals(_remoteView.Context))
+            {
+                _remoteViewSeeded = true;
+                _remoteView = view;
+                return;
+            }
+            if (view.Equals(_remoteView)) return;
+            _remoteView = view;
+            Playback.ListViewChanged(snap.Context, snap.Sort, snap.Query, !snap.Filters.IsDefault);
         }
 
         /// <summary>The page's ONE shuffle (G-264; 0.2.9 `DetailShell.Shuffle`): the command bar, its "…" item and the vertical

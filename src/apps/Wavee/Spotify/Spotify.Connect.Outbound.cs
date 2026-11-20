@@ -43,6 +43,10 @@ public static partial class Spotify
         const HeaderSet TransferHeaders = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity
             | HeaderSet.AcceptLanguage | HeaderSet.AcceptBareProtobuf | HeaderSet.ContentForm | HeaderSet.ConnectionId;
 
+        /// <summary>The volume PUT: a protobuf body, not gzipped, with the connection id and <c>Accept-Language</c> (all.saz 2243).</summary>
+        const HeaderSet VolumeHeaders = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity | HeaderSet.AcceptLanguage
+            | HeaderSet.ContentProtobuf | HeaderSet.ConnectionId;
+
         const string PlayerCommandRoute = "/connect-state/v1/player/command/from/";
         public const string TransferRoute = "/connect-state/v1/connect/transfer/from/";
         public const string WakeDevicesRoute = "/connect-state/v1/cluster/wake-devices";
@@ -67,8 +71,8 @@ public static partial class Spotify
                 Body = buffer.WrittenSpan,
             };
             Api.Result result = Api.Send(RequestKind.Custom, args, ct);
-            ackId = result.Ok ? AckIdOf(result.Body) : null;
-            if (!result.Ok) Log.Warn("spotify", "connect " + TransferRoute + " rejected (" + result.Status + ")");
+            ackId = result.Ok ? AckIdOf(result.Bytes) : null;
+            LogCommand("transfer", result.Status, ackId);
             return result.Ok;
         }
 
@@ -143,11 +147,160 @@ public static partial class Spotify
             return w.Written.Length;
         }
 
-        /// <summary>One verb for the device that holds playback. <paramref name="endpoint"/> is the wire spelling
-        /// (`pause`, `resume`, `skip_prev`, `seek_to`, `set_shuffling_context`, …) and <paramref name="value"/> is the
-        /// verb's one argument, written under <paramref name="valueName"/> when that name is non-empty.</summary>
-        public static bool Command(string targetDeviceId, string endpoint, string valueName, long value,
-            bool flag, CancellationToken ct)
+        // ── 4b. the transport verbs, spelled as the official client sends them (remote-play plan phase 3, 2026-11-20) ──
+        //
+        //   pause       pause      + options{3} + logging_params + pause_origin{npb}            verycomplex3.saz 657 (1.2.96)
+        //   resume      resume     + options{3} + logging_params + resume_origin{npb}           verycomplex.saz 737 (1.2.96)
+        //   previous    prev_track + options{3, allow_seeking:true} + logging_params            sppp.saz 470 (1.3.10)
+        //   seek        seek_to    + value + position + relative:"beginning", NO logging_params bigone.saz 1958 (1.3.10), all.saz 2233
+        //   shuffle     set_options + shuffling_context + options{3} + logging_params + modes{context_enhancement:NONE}
+        //                                                                                        all.saz 2044, 2183 (1.2.94)
+        //   repeat      set_options + repeating_track + repeating_context + options{3} + logging_params
+        //                                                                                        all.saz 2164, 2230, 2272 (1.2.94)
+        //
+        // Before, every one of them went through one generic writer: `skip_prev` with no options (no official client sends that
+        // spelling over HTTP; without `allow_seeking` the owner is not told it may restart the row instead), pause and resume
+        // with thin logging, seek WITH logging, and shuffle/repeat as `set_shuffling_context` / `set_repeating_*` (two posts for
+        // one repeat change). `set_options` goes only to a device that advertises capability 25 (supports_set_options_command:
+        // the iPhone and desktop 1.3.10 both do, device-capabilities.txt); any other keeps the legacy verbs (`Command`).
+
+        /// <summary>Pause the device that holds playback (<c>pause</c>, verycomplex3.saz 657). Blocks; api threads only.</summary>
+        public static bool Pause(string targetDeviceId, CancellationToken ct) => Transport(targetDeviceId, "pause", ct);
+
+        /// <summary>Resume it (<c>resume</c>, verycomplex.saz 737). Blocks; api threads only.</summary>
+        public static bool Resume(string targetDeviceId, CancellationToken ct) => Transport(targetDeviceId, "resume", ct);
+
+        /// <summary>Previous on it (<c>prev_track</c> with <c>allow_seeking</c>, sppp.saz 470): the owner decides between restarting
+        /// the row and going back, as its own button does. Blocks; api threads only.</summary>
+        public static bool PrevTrack(string targetDeviceId, CancellationToken ct) => Transport(targetDeviceId, "prev_track", ct);
+
+        static bool Transport(string targetDeviceId, string endpoint, CancellationToken ct)
+        {
+            var buffer = new ArrayBufferWriter<byte>(512);
+            TransportBody(buffer, endpoint, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
+            return PostCommand(endpoint, targetDeviceId, buffer.WrittenSpan, ct);
+        }
+
+        /// <summary>The body of <c>pause</c>, <c>resume</c> and <c>prev_track</c>, key for key as captured: the endpoint, the three
+        /// option bools (<c>prev_track</c> adds <c>allow_seeking: true</c>, sppp.saz 470), the full logging params, then the origin a
+        /// pause or a resume names (<c>pause_origin</c> / <c>resume_origin</c> <c>{feature_identifier: "npb"}</c>, the now-playing
+        /// bar: verycomplex3.saz 657, verycomplex.saz 737), then <c>connection_type</c> and <c>intent_id</c>. PURE.</summary>
+        public static void TransportBody(IBufferWriter<byte> into, string endpoint, string deviceId, string commandId, string intentId,
+            long nowMs)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", endpoint);
+            QueueOptions(w, allowSeeking: endpoint == "prev_track");
+            LoggingParams(w, deviceId, commandId, "", nowMs);
+            string? origin = endpoint switch { "pause" => "pause_origin", "resume" => "resume_origin", _ => null };
+            if (origin is not null)
+            {
+                w.WriteStartObject(origin);
+                w.WriteString("feature_identifier", "npb");
+                w.WriteEndObject();
+            }
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
+        /// <summary>Seek the device that holds playback to <paramref name="positionMs"/> (<c>seek_to</c>). Blocks; api threads only.</summary>
+        public static bool SeekTo(string targetDeviceId, long positionMs, CancellationToken ct)
+        {
+            var buffer = new ArrayBufferWriter<byte>(192);
+            SeekBody(buffer, positionMs, NewId());
+            return PostCommand("seek_to", targetDeviceId, buffer.WrittenSpan, ct);
+        }
+
+        /// <summary>The <c>seek_to</c> body as every captured one is (bigone.saz 1958 on 1.3.10, all.saz 2233, itsover.saz 789): the
+        /// position twice (<c>value</c>, <c>position</c>), <c>relative: "beginning"</c>, and NO logging params; then
+        /// <c>connection_type</c> and <c>intent_id</c>. PURE.</summary>
+        public static void SeekBody(IBufferWriter<byte> into, long positionMs, string intentId)
+        {
+            long ms = Math.Max(0L, positionMs);
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", "seek_to");
+            w.WriteNumber("value", ms);
+            w.WriteNumber("position", ms);
+            w.WriteString("relative", "beginning");
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
+        /// <summary>Shuffle on or off as ONE <c>set_options</c> (all.saz 2044). Only for a device that sets capability 25
+        /// (<see cref="Decode.ClusterDevice.SupportsSetOptions"/>); the caller keeps <c>set_shuffling_context</c> for any other.
+        /// Blocks; api threads only.</summary>
+        public static bool SetShuffle(string targetDeviceId, bool shuffle, CancellationToken ct)
+        {
+            var buffer = new ArrayBufferWriter<byte>(512);
+            ShuffleOptionsBody(buffer, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
+            return PostCommand("set_options", targetDeviceId, buffer.WrittenSpan, ct);
+        }
+
+        /// <summary>A whole repeat mode as ONE <c>set_options</c> naming both flags (all.saz 2164: track off, context on; 2230: both
+        /// on), so the owner never passes through a mode nobody asked for. Only for a device that sets capability 25; the caller
+        /// keeps the two <c>set_repeating_*</c> posts for any other. Blocks; api threads only.</summary>
+        public static bool SetRepeat(string targetDeviceId, bool repeatTrack, bool repeatContext, CancellationToken ct)
+        {
+            var buffer = new ArrayBufferWriter<byte>(512);
+            RepeatOptionsBody(buffer, repeatTrack, repeatContext, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
+            return PostCommand("set_options", targetDeviceId, buffer.WrittenSpan, ct);
+        }
+
+        /// <summary>The shuffle <c>set_options</c> body, key for key as all.saz 2044: the endpoint, <c>shuffling_context</c>, the three
+        /// option bools, the logging params, then <c>modes {context_enhancement: "NONE"}</c>; then <c>connection_type</c> and
+        /// <c>intent_id</c>. PURE.</summary>
+        public static void ShuffleOptionsBody(IBufferWriter<byte> into, bool shuffle, string deviceId, string commandId, string intentId,
+            long nowMs)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", "set_options");
+            w.WriteBoolean("shuffling_context", shuffle);
+            QueueOptions(w);
+            LoggingParams(w, deviceId, commandId, "", nowMs);
+            w.WriteStartObject("modes");
+            w.WriteString("context_enhancement", "NONE");
+            w.WriteEndObject();
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
+        /// <summary>The repeat <c>set_options</c> body, key for key as all.saz 2164: the endpoint, <c>repeating_track</c>, then
+        /// <c>repeating_context</c>, the three option bools and the logging params (no <c>modes</c>); then <c>connection_type</c> and
+        /// <c>intent_id</c>. PURE.</summary>
+        public static void RepeatOptionsBody(IBufferWriter<byte> into, bool repeatTrack, bool repeatContext, string deviceId,
+            string commandId, string intentId, long nowMs)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", "set_options");
+            w.WriteBoolean("repeating_track", repeatTrack);
+            w.WriteBoolean("repeating_context", repeatContext);
+            QueueOptions(w);
+            LoggingParams(w, deviceId, commandId, "", nowMs);
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
+        /// <summary>A LEGACY option verb for a device that does not advertise capability 25: <c>set_shuffling_context</c>,
+        /// <c>set_repeating_context</c> or <c>set_repeating_track</c> with its one boolean <c>value</c>. No official client was seen
+        /// sending these over HTTP (gap analysis 1.1); they stay only for an owner that cannot take <c>set_options</c>, in the
+        /// body they always had (the value, a thin <c>logging_params</c>).</summary>
+        public static bool Command(string targetDeviceId, string endpoint, bool value, CancellationToken ct)
         {
             var buffer = new ArrayBufferWriter<byte>(256);
             using (var w = new Utf8JsonWriter(buffer))
@@ -155,19 +308,7 @@ public static partial class Spotify
                 w.WriteStartObject();
                 w.WriteStartObject("command");
                 w.WriteString("endpoint", endpoint);
-                if (valueName.Length > 0)
-                {
-                    if (endpoint.StartsWith("set_", StringComparison.Ordinal)) w.WriteBoolean(valueName, flag);
-                    else w.WriteNumber(valueName, value);
-                }
-                if (endpoint == "seek_to") { w.WriteNumber("position", value); w.WriteString("relative", "beginning"); }
-                if (endpoint == "resume")
-                {
-                    w.WriteStartObject("options"); w.WriteEndObject();
-                    w.WriteStartObject("resume_origin");
-                    w.WriteString("feature_identifier", "npb");
-                    w.WriteEndObject();
-                }
+                w.WriteBoolean("value", value);
                 w.WriteStartObject("logging_params");
                 w.WriteStartArray("interaction_ids");
                 w.WriteEndArray();
@@ -179,88 +320,7 @@ public static partial class Spotify
                 w.WriteString("intent_id", NewId());
                 w.WriteEndObject();
             }
-            return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
-        }
-
-        /// <summary>"Play this context from this row" on the device that owns playback — the desktop `play` envelope
-        /// (0.2.9 <c>OutboundEnvelope.Play</c>): an opaque, URI-only context, a play_origin, `prepare_play_options` with
-        /// the skip_to track and the shuffle override, and `play_options` interactive/replace/immediately.</summary>
-        public static bool PlayContext(string targetDeviceId, string contextUri, string? trackUri, bool shuffle, CancellationToken ct,
-            int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false)
-        {
-            if (!Egress.Admits(contextUri.AsSpan()) || (!string.IsNullOrEmpty(trackUri) && !Egress.Admits(trackUri.AsSpan())))
-            {
-                Log.Info("spotify", "play not forwarded: a non-Spotify item cannot play on another device");
-                return false;
-            }
-            var buffer = new ArrayBufferWriter<byte>(768);
-            PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs, skipUid, skipIndex, video);
-            return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
-        }
-
-        /// <summary>The uid a <c>skip_to</c> may carry: only the 32-lowercase-hex uid the owner's CONTEXT stamped on a row, else
-        /// null. Never our own <c>q&lt;n&gt;</c> or packed-hex mint — an owner that does not know the uid ignores it at best.
-        /// PURE.</summary>
-        public static string? SkipUidOf(string? uid)
-        {
-            if (uid is not { Length: 32 }) return null;
-            foreach (char c in uid) if (!(c is >= '0' and <= '9' or >= 'a' and <= 'f')) return null;
-            return uid;
-        }
-
-        /// <summary>The `play` envelope body. PURE (SpotifyConnectTests). <paramref name="trackUri"/> null/empty plays the
-        /// context from its head. `always_play_something` false and `license` premium as every desktop capture carries.
-        /// Owners match <c>skip_to</c> by uid, then uri, then index — a uri alone lands on the FIRST copy of a track that sits in
-        /// the context twice — so the row's <paramref name="skipUid"/> (<see cref="SkipUidOf"/>) and a known
-        /// <paramref name="skipIndex"/> (&gt;= 0) ride beside the uri; everything else stays thin. <paramref name="video"/> asks the
-        /// owner for the row's music video — the desktop's "song videos" play, <c>is_single_track_video_content</c> in the context
-        /// metadata (all.saz 1831).</summary>
-        public static void PlayBody(IBufferWriter<byte> into, string contextUri, string? trackUri, bool shuffle, string deviceId,
-            string commandId, string intentId, long nowMs, int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false)
-        {
-            using var w = new Utf8JsonWriter(into);
-            w.WriteStartObject();
-            w.WriteStartObject("command");
-            w.WriteString("endpoint", "play");
-            w.WriteStartObject("context");
-            w.WriteString("entity_uri", contextUri);
-            w.WriteString("uri", contextUri);
-            w.WriteString("url", "context://" + contextUri);
-            w.WriteStartObject("metadata");
-            if (video) w.WriteString("is_single_track_video_content", "true");
-            w.WriteEndObject();
-            w.WriteEndObject();
-            w.WriteStartObject("play_origin");
-            w.WriteString("feature_identifier", PlayFeatureOf(contextUri));
-            w.WriteString("feature_version", "harmony");
-            w.WriteString("referrer_identifier", "harmony");
-            w.WriteEndObject();
-            w.WriteStartObject("prepare_play_options");
-            w.WriteBoolean("always_play_something", false);
-            if (fromMs >= 0) w.WriteNumber("seek_to", fromMs);
-            if (!string.IsNullOrEmpty(trackUri))
-            {
-                w.WriteStartObject("skip_to");
-                w.WriteString("track_uri", trackUri);
-                if (SkipUidOf(skipUid) is { } uid) w.WriteString("track_uid", uid);
-                if (skipIndex >= 0) w.WriteNumber("track_index", skipIndex);
-                w.WriteEndObject();
-            }
-            w.WriteString("license", "premium");
-            w.WriteStartObject("player_options_override");
-            w.WriteBoolean("shuffling_context", shuffle);
-            w.WriteEndObject();
-            w.WriteEndObject();
-            w.WriteStartObject("play_options");
-            w.WriteString("reason", "interactive");
-            w.WriteString("operation", "replace");
-            w.WriteString("trigger", "immediately");
-            w.WriteEndObject();
-            LoggingParams(w, deviceId, commandId, "", nowMs);
-            w.WriteEndObject();
-            w.WriteString("connection_type", "wlan");
-            w.WriteString("intent_id", intentId);
-            w.WriteEndObject();
+            return PostCommand(endpoint, targetDeviceId, buffer.WrittenSpan, ct);
         }
 
         /// <summary>"Jump to this row of YOUR queue" on the device that owns playback — the desktop `next_track` envelope; with
@@ -271,7 +331,7 @@ public static partial class Spotify
             if (!string.IsNullOrEmpty(trackUri) && !Egress.Admits(trackUri.AsSpan())) return false;
             var buffer = new ArrayBufferWriter<byte>(512);
             NextTrackBody(buffer, trackUri, trackUid, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
-            return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
+            return PostCommand("next_track", targetDeviceId, buffer.WrittenSpan, ct);
         }
 
         /// <summary>The `next_track` envelope body, as the official client's queue-row click sends it: the three option
@@ -310,7 +370,7 @@ public static partial class Spotify
             if (signal == Decode.VideoSignal.None) return false;
             var buffer = new ArrayBufferWriter<byte>(384);
             SignalBody(buffer, signal, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
-            return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
+            return PostCommand("signal", targetDeviceId, buffer.WrittenSpan, ct);
         }
 
         /// <summary>The `signal` envelope body, field for field as the official client sends it: endpoint, <c>signal_id</c>, the
@@ -331,20 +391,10 @@ public static partial class Spotify
             w.WriteEndObject();
         }
 
-        /// <summary>The play_origin's feature for a context uri — the surface the desktop names for the same kind. PURE.</summary>
-        public static string PlayFeatureOf(string contextUri)
-        {
-            if (contextUri.StartsWith("spotify:playlist:", StringComparison.Ordinal)) return "playlist";
-            if (contextUri.StartsWith("spotify:album:", StringComparison.Ordinal)) return "album";
-            if (contextUri.StartsWith("spotify:artist:", StringComparison.Ordinal)) return "artist";
-            if (contextUri.StartsWith("spotify:show:", StringComparison.Ordinal)) return "show";
-            if (contextUri.Contains(":collection", StringComparison.Ordinal)) return "your_library";
-            if (contextUri.StartsWith("spotify:track:", StringComparison.Ordinal) || contextUri.StartsWith("spotify:episode:", StringComparison.Ordinal)) return "track";
-            return "harmony";
-        }
-
         /// <summary>Volume is not a player verb: it is a PUT with a three-field `SetVolumeCommand` protobuf body,
-        /// hand-encoded so this path carries no generated message for three bytes of varint.</summary>
+        /// hand-encoded so this path carries no generated message for three bytes of varint. The header set is the official
+        /// client's (all.saz 2243): the connection id and <c>Accept-Language</c> ride beside the protobuf content type
+        /// (remote-play plan 2.3; Wavee sent neither). The caller paces it (<c>Playback.PaceVolume</c>).</summary>
         public static bool Volume(string targetDeviceId, int volume0To65535, CancellationToken ct)
         {
             Span<byte> body = stackalloc byte[16];
@@ -361,11 +411,11 @@ public static partial class Spotify
                 Path = w.Written,
                 Host = ApiHost.Spclient,
                 Verb = Verb.Put,
-                Headers = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity | HeaderSet.ContentProtobuf,
+                Headers = VolumeHeaders,
                 Body = body[..n],
             };
             Api.Result result = Api.Send(RequestKind.Custom, args, ct);
-            if (!result.Ok) Log.Warn("spotify", "connect volume rejected (" + result.Status + ")");
+            LogCommand("volume", result.Status, result.Ok ? AckIdOf(result.Bytes) : null);
             return result.Ok;
         }
 
@@ -388,17 +438,17 @@ public static partial class Spotify
         // ── 4a. the queue forwards (G-248) ───────────────────────────────────────────────────────────────────────────
 
         /// <summary>One row of a forwarded <c>set_queue</c>: its uri, its uid as the owner minted it ("" for a row we add),
-        /// and whether it sits in the user queue (<c>provider: "queue"</c>) rather than the context's continuation.</summary>
-        public readonly record struct QueueWireRow(string Uri, string Uid, bool Queued);
+        /// whether it sits in the user queue rather than the context's continuation, and — for a row the OWNER stated — its whole
+        /// <c>ProvidedTrack</c> as the owner sent it (<c>Track</c>, null for a row we add), which the echo writes back
+        /// with its own provider and metadata (remote-play plan 5.2).</summary>
+        public readonly record struct QueueWireRow(string Uri, string Uid, bool Queued, byte[]? Track = null);
 
         /// <summary>Append one track to the owner's queue (<c>add_to_queue</c>). Blocks; api threads only.</summary>
         public static bool AddToQueue(string targetDeviceId, string trackUri, CancellationToken ct)
         {
             var buffer = new ArrayBufferWriter<byte>(512);
             AddToQueueBody(buffer, trackUri, OurDeviceId, NewId(), NewId(), Guid.NewGuid().ToString(), Playback.UnixNowMs());
-            bool ok = PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
-            Log.Info("spotify", "connect add_to_queue forwarded to the owner ok=" + ok);
-            return ok;
+            return PostCommand("add_to_queue", targetDeviceId, buffer.WrittenSpan, ct);
         }
 
         /// <summary>Rewrite the owner's queue (<c>set_queue</c>) — its own rows echoed back, ours spliced in. Blocks; api
@@ -409,10 +459,8 @@ public static partial class Spotify
             var buffer = new ArrayBufferWriter<byte>(4096);
             SetQueueBody(buffer, queueRevision, prev, next, OurDeviceId, NewId(), NewId(), Guid.NewGuid().ToString(),
                 Playback.UnixNowMs());
-            bool ok = PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
-            Log.Info("spotify", "connect set_queue forwarded to the owner rows=" + next.Length + " revision=" + queueRevision
-                + " ok=" + ok);
-            return ok;
+            Log.Info("spotify", "connect set_queue to the owner rows=" + next.Length + " revision=" + queueRevision);
+            return PostCommand("set_queue", targetDeviceId, buffer.WrittenSpan, ct);
         }
 
         /// <summary>The desktop's <c>add_to_queue</c> envelope (0.2.9 <c>OutboundEnvelope.AddToQueue</c>): the track as
@@ -440,9 +488,12 @@ public static partial class Spotify
         }
 
         /// <summary>The desktop's <c>set_queue</c> envelope (0.2.9 <c>OutboundEnvelope.SetQueue</c>): <c>queue_revision</c> as a
-        /// BARE unsigned number (it exceeds Int64), both track lists — each row with its uid (always written), a metadata
-        /// object carrying <c>is_queued: "true"</c> (a string) for a queued row, its provider, empty removed/blocked lists
-        /// and the 22 empty restriction lists the capture carries — then the options and logging params. PURE.</summary>
+        /// BARE unsigned number (it exceeds Int64), both track lists, then the options and logging params. PURE.
+        /// <para>An OWNER's row (<see cref="QueueWireRow.Track"/>) is echoed back as the owner stated it, key for key as
+        /// moreptions.saz 794 and qoptions.saz 58: uri, uid, its whole metadata map, ITS provider (<c>context</c>, <c>queue</c>,
+        /// <c>autoplay</c>), its removed and blocked lists, the 22 empty restriction lists, then <c>album_uri</c> and
+        /// <c>artist_uri</c> when it names them (remote-play plan 5.2). A row we add is uri, <c>uid: ""</c>, metadata
+        /// <c>is_queued: "true"</c> (a string), provider <c>queue</c>, empty lists (moreptions.saz 794, next_tracks #0).</para></summary>
         public static void SetQueueBody(IBufferWriter<byte> into, ulong queueRevision, ReadOnlySpan<QueueWireRow> prev,
             ReadOnlySpan<QueueWireRow> next, string deviceId, string commandId, string intentId, string interactionId, long nowMs)
         {
@@ -466,6 +517,7 @@ public static partial class Spotify
 
             static void QueueEntry(Utf8JsonWriter w, in QueueWireRow row)
             {
+                if (row.Track is { Length: > 0 } track) { OwnerEntry(w, in row, track); return; }
                 w.WriteStartObject();
                 w.WriteString("uri", row.Uri);
                 w.WriteString("uid", row.Uid ?? "");
@@ -475,10 +527,60 @@ public static partial class Spotify
                 w.WriteString("provider", row.Queued ? "queue" : "context");
                 w.WriteStartArray("removed"); w.WriteEndArray();
                 w.WriteStartArray("blocked"); w.WriteEndArray();
-                w.WriteStartObject("restrictions");
-                foreach (string key in RestrictionKeys) { w.WriteStartArray(key); w.WriteEndArray(); }
+                EmptyRestrictions(w);
                 w.WriteEndObject();
-                w.WriteEndObject();
+            }
+        }
+
+        /// <summary>One OWNER row of a set_queue, echoed from its <c>ProvidedTrack</c> (uri 1, uid 2, metadata 3, removed 4,
+        /// blocked 5, provider 6, album_uri 8, artist_uri 10): key for key as moreptions.saz 794. A metadata pair, a list entry or
+        /// a uri that is not valid UTF-8 is left out rather than failing the body; a row the owner gave no provider keeps
+        /// the one its queue flag implies. PURE (a cold path: one user click).</summary>
+        static void OwnerEntry(Utf8JsonWriter w, in QueueWireRow row, byte[] track)
+        {
+            ReadOnlySpan<byte> provider = default, album = default, artist = default;
+            w.WriteStartObject();
+            w.WriteString("uri", row.Uri);
+            w.WriteString("uid", row.Uid ?? "");
+            w.WriteStartObject("metadata");
+            var r = new Decode.ProtoReader(track);
+            while (r.Next())
+            {
+                switch (r.Field)
+                {
+                    case 3:
+                        {
+                            r.Message().Fields(1, 2, out var key, out var value);
+                            if (!key.IsEmpty && System.Text.Unicode.Utf8.IsValid(key) && System.Text.Unicode.Utf8.IsValid(value)) w.WriteString(key, value);
+                            break;
+                        }
+                    case 6: provider = r.Bytes(); break;
+                    case 8: album = r.Bytes(); break;
+                    case 10: artist = r.Bytes(); break;
+                    default: r.Skip(); break;
+                }
+            }
+            w.WriteEndObject();
+            if (!provider.IsEmpty && System.Text.Unicode.Utf8.IsValid(provider)) w.WriteString("provider", provider);
+            else w.WriteString("provider", row.Queued ? "queue" : "context");
+            StringList(w, "removed", track, 4);
+            StringList(w, "blocked", track, 5);
+            EmptyRestrictions(w);
+            if (!album.IsEmpty && System.Text.Unicode.Utf8.IsValid(album)) w.WriteString("album_uri", album);
+            if (!artist.IsEmpty && System.Text.Unicode.Utf8.IsValid(artist)) w.WriteString("artist_uri", artist);
+            w.WriteEndObject();
+
+            static void StringList(Utf8JsonWriter w, string name, byte[] track, int field)
+            {
+                w.WriteStartArray(name);
+                var r = new Decode.ProtoReader(track);
+                while (r.Next())
+                {
+                    if (r.Field != field || r.Wire != 2) { r.Skip(); continue; }
+                    ReadOnlySpan<byte> entry = r.Bytes();
+                    if (System.Text.Unicode.Utf8.IsValid(entry)) w.WriteStringValue(entry);
+                }
+                w.WriteEndArray();
             }
         }
 
@@ -504,21 +606,27 @@ public static partial class Spotify
             return rows;
         }
 
-        static void QueueOptions(Utf8JsonWriter w)
+        /// <summary>The three option bools every captured verb carries, all false; <paramref name="allowSeeking"/> adds
+        /// <c>allow_seeking: true</c> as <c>prev_track</c> does (sppp.saz 470).</summary>
+        static void QueueOptions(Utf8JsonWriter w, bool allowSeeking = false)
         {
             w.WriteStartObject("options");
             w.WriteBoolean("override_restrictions", false);
             w.WriteBoolean("only_for_local_device", false);
             w.WriteBoolean("system_initiated", false);
+            if (allowSeeking) w.WriteBoolean("allow_seeking", true);
             w.WriteEndObject();
         }
 
-        /// <summary><c>logging_params</c> as the captures carry it: received time echoing initiated time, the interaction id.</summary>
-        static void LoggingParams(Utf8JsonWriter w, string deviceId, string commandId, string interactionId, long nowMs)
+        /// <summary><c>logging_params</c> as the captures carry it: received time echoing initiated time, the interaction id.
+        /// <paramref name="receivedTime"/> false leaves the received time out, as every official play that names its page inline
+        /// does (bigone.saz 578, 1391; all.saz 1169).</summary>
+        static void LoggingParams(Utf8JsonWriter w, string deviceId, string commandId, string interactionId, long nowMs,
+            bool receivedTime = true)
         {
             w.WriteStartObject("logging_params");
             w.WriteNumber("command_initiated_time", nowMs);
-            w.WriteNumber("command_received_time", nowMs);
+            if (receivedTime) w.WriteNumber("command_received_time", nowMs);
             w.WriteStartArray("page_instance_ids"); w.WriteEndArray();
             w.WriteStartArray("interaction_ids");
             if (interactionId.Length > 0) w.WriteStringValue(interactionId);
@@ -542,22 +650,45 @@ public static partial class Spotify
             "disallow_removing_from_context_tracks_reasons", "disallow_updating_context_reasons",
         ];
 
-        static bool PostCommand(string prefix, string fromDeviceId, string targetDeviceId, ReadOnlySpan<byte> body,
-            HeaderSet headers, CancellationToken ct)
+        /// <summary><c>"restrictions": { the 22 lists, each empty }</c>: what every captured set_queue row, play context and
+        /// update_context context carries (moreptions.saz 794; bigone.saz 891, 605).</summary>
+        static void EmptyRestrictions(Utf8JsonWriter w)
+        {
+            w.WriteStartObject("restrictions");
+            foreach (string key in RestrictionKeys) { w.WriteStartArray(key); w.WriteEndArray(); }
+            w.WriteEndObject();
+        }
+
+        /// <summary>One player verb POSTed to the owner's command route, and its one <c>connect.cmd</c> line
+        /// (<see cref="LogCommand"/>). <paramref name="endpoint"/> is the verb as the body spells it, for the log only.</summary>
+        static bool PostCommand(string endpoint, string targetDeviceId, ReadOnlySpan<byte> body, CancellationToken ct)
         {
             Span<char> path = stackalloc char[256];
-            int length = CommandPath(prefix, fromDeviceId, targetDeviceId, path);
+            int length = CommandPath(PlayerCommandRoute, OurDeviceId, targetDeviceId, path);
             var args = new RequestArgs
             {
                 Path = path[..length],
                 Host = ApiHost.Spclient,
                 Verb = Verb.Post,
-                Headers = headers,
+                Headers = CommandHeaders,
                 Body = body,
             };
             Api.Result result = Api.Send(RequestKind.Custom, args, ct);
-            if (!result.Ok) Log.Warn("spotify", "connect " + prefix + " rejected (" + result.Status + ")");
+            LogCommand(endpoint, result.Status, result.Ok ? AckIdOf(result.Bytes) : null);
             return result.Ok;
+        }
+
+        /// <summary>ONE line for every command this device sends another (remote-play plan 0.1, 2026-11-20): every player verb,
+        /// the transfer and the volume PUT, with the endpoint, the status and the answer's <c>ack_id</c> (the value the next
+        /// cluster echoes when the owner applied it). Before it only a refusal left a line — the `wire.call` of a failed call —
+        /// so a log could not say whether a pause, a seek, a previous, a shuffle or a repeat was ever sent, or which ack a cluster
+        /// answered (gap analysis 1.3). A 2xx is Info, anything else Warn; both read <c>connect.cmd</c>. The device ids stay in the
+        /// route, out of the line.</summary>
+        static void LogCommand(string endpoint, int status, string? ackId)
+        {
+            string line = "connect.cmd endpoint=" + endpoint + " status=" + status + " ack=" + (ackId ?? "-");
+            if (status is >= 200 and < 300) Log.Info("spotify", line);
+            else Log.Warn("spotify", line + " rejected");
         }
 
         static string NewId() => Guid.NewGuid().ToString("N");

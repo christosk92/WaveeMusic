@@ -12,7 +12,9 @@
 //   the pages     the grid slides (a critically damped spring on its translate; reduced motion: none) to the page the board view's
 //                 ShortcutsPager shows, clipped to one page - NOT a scroller: a cell dragged sideways must move the cell, and the engine
 //                 hands a sideways drag inside a sideways scroller to its pan. The Pinned group's head draws the theme's pager over the same
-//                 pager; the theme's edge chevrons stand over the pages on hover. One height (the tallest page's).
+//                 pager; the theme's edge chevrons stand over the pages on hover, at the edge each turns to. One height (the tallest page's). A new
+//                 width (the side panel, a window drag) re-cuts the strip at once: its width, the cells' tracks and its offset follow the measured
+//                 width together, so a page is always exactly the grid's width and never shows its neighbour's edge.
 //
 // ACROSS PAGES: a lifted cell dragged past its page's edge lands among the next page's cells (they are laid out there, just clipped); held there a
 // moment, the grid slides to that page and the drag carries on. A drop commits through the grid's reorder verb (ReorderShortcut: one document
@@ -217,13 +219,17 @@ public sealed class ShortcutGridView : Component
         var plan = Plan.Value;
         var plans = Plan;
         Items = UseComputed(() => plans.Value.Items());
+        // The width the pages are cut at, read here too (subscribing): a width that keeps the page count (the side panel opening, a window drag inside
+        // one column count) re-pushes the strip's width and its offset with it. Read once at the track's mount, a strip cut for one width stood
+        // under a clip of another: rows ran past the edge, and a page turn's offset at the new width showed the last page's cells.
+        float width = _width.Value > 0f ? _width.Value : p.FirstWidth;
         var pager = p.Board.View.ShortcutsPager;
         int count = plan.Pages.Length;
         UseEffect(() => pager.Publish(count), DepKey.From(count));
         // The inspector's `home do=page key=shortcuts` turns these pages.
         UseEffect(() => GridFill.Register("home:shortcuts", pager));
         var spec = p.Spec;
-        var track = Embed.Comp(new TrackProps(this, Math.Max(1, count)), static () => new ShortcutTrack()) with { Key = "home:shortcuts-track" };
+        var track = Embed.Comp(new TrackProps(this, Math.Max(1, count), width), static () => new ShortcutTrack()) with { Key = "home:shortcuts-track" };
         var layers = new List<Element>(2)
         {
             new BoxEl
@@ -246,10 +252,14 @@ public sealed class ShortcutGridView : Component
             var hover = _hover;
             layers.Add(new BoxEl
             {
-                Direction = 0, Justify = FlexJustify.SpaceBetween, AlignItems = FlexAlign.Center, MinWidth = 0f, HitTestVisible = false,
+                // The edge chevrons, centred on the pages: the previous at the start edge, the next at the end edge, each only while there is a page
+                // that way. The spacer between them holds each at its own edge while the other is hidden: a hidden child leaves the row, and the lone
+                // child of a space-between row stands at its START (the first page's next chevron showed at the left edge).
+                Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, HitTestVisible = false,
                 Children =
                 [
                     new BoxEl { HitTestVisible = true, Visible = Prop.Of(() => hover.Value && pager.CanPrev.Value), Children = [edge(true, pager)] },
+                    new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, HitTestVisible = false },
                     new BoxEl { HitTestVisible = true, Visible = Prop.Of(() => hover.Value && pager.CanNext.Value), Children = [edge(false, pager)] },
                 ],
             });
@@ -267,7 +277,8 @@ public sealed class ShortcutGridView : Component
         };
     }
 
-    internal sealed record TrackProps(ShortcutGridView Grid, int Count);
+    /// <summary>The track's props: the grid, its pages, and the width each page is (the grid's measured width).</summary>
+    internal sealed record TrackProps(ShortcutGridView Grid, int Count, float Width);
 }
 
 /// <summary>The pages: ONE PackGrid as wide as every page side by side (a page the grid's width, the gap between them), slid to the page shown (its
@@ -316,15 +327,17 @@ public sealed class ShortcutTrack : Component
         var pager = grid.Board.View.ShortcutsPager;
         _ = pager.Page.Value;   // subscribe: a turn re-renders the track
         int page = pager.FirstPage(p.Count);
-        float width = grid.Width, gap = grid.Spec.Gap;
+        float width = p.Width, gap = grid.Spec.Gap;
         float step = width + gap;
         float to = -page * step;
         int gen = _panGen.Value;
-        // The grid mounts on its page (a remembered one too): no slide in. After that the slide is a critically damped spring from wherever the
-        // grid is (a turn mid-slide or a released swipe carries on); reduced motion lands at once.
-        UseTransition(AnimChannel.TranslateX, to, to, 0f, Easing.Linear, DepKey.Empty);
-        if (Motion.ReducedMotion) UseTransition(AnimChannel.TranslateX, to, to, 0f, Easing.Linear, DepKey.From(page, HashCode.Combine((int)step, gen)));
-        else UseSpring(AnimChannel.TranslateX, to, s_slide, DepKey.From(page, HashCode.Combine((int)step, gen)));
+        // The grid mounts on its page (a remembered one too): no slide in. A new width (the side panel, a window drag) moves the strip to its page
+        // at once, as the cells re-lay out at that width at once (a plain width change is no re-flow): an offset easing after them showed the
+        // neighbouring page's edge. A turn is a critically damped spring from wherever the grid is (a turn mid-slide or a released swipe carries
+        // on); reduced motion lands at once.
+        UseTransition(AnimChannel.TranslateX, to, to, 0f, Easing.Linear, DepKey.From(step));
+        if (Motion.ReducedMotion) UseTransition(AnimChannel.TranslateX, to, to, 0f, Easing.Linear, DepKey.From(page, gen));
+        else UseSpring(AnimChannel.TranslateX, to, s_slide, DepKey.From(page, gen));
         _turn = UseTimeout(_onTurn, TurnDwellMs);
 
         // Each cell dims while it stands off the page shown (the page sliding off at 0.8, the one sliding in easing to 1).
@@ -363,7 +376,16 @@ public sealed class ShortcutTrack : Component
             Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Stretch,
             Width = p.Count * width + (p.Count - 1) * gap,
             OnRealized = _onRealized,
-            Children = [new BoxEl { Direction = 1, Grow = 1f, AlignItems = FlexAlign.Stretch, Children = [PackGrid.Create(grid.Items!, _template, _options)] }],
+            // The grid's lane is the strip's width exactly (Basis 0): sized by its content, it kept the widest pack it had laid out (a pack measures as
+            // its tiles' far edge, and a lane that does not shrink never gave that back), so at a narrower width every track stayed as wide as before.
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                    Children = [PackGrid.Create(grid.Items!, _template, _options)],
+                },
+            ],
         };
     }
 

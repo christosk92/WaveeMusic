@@ -34,6 +34,9 @@ public static class ZuneHintRules
     /// <summary>Above the player bar a floating line keeps the bar's own row inset from the bar's ends.</summary>
     public const float FloatInset = 24f;
 
+    /// <summary>Above the player bar the band lies ON the bar's top edge (no gap: the bar grows a line), never over the bar's rows.</summary>
+    public const float FloatGap = 0f;
+
     /// <summary>In the queue panel the band runs from edge to edge (no inset) and its words sit on the panel's content column (the panel's own
     /// inset as the band's padding).</summary>
     public const float QueueInset = 0f;

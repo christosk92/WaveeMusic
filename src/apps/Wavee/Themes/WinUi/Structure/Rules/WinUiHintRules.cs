@@ -37,6 +37,10 @@ public static class WinUiHintRules
     /// <summary>The gap between the InfoBar's action button and its overflow.</summary>
     public const float ActionGap = 4f;
 
-    /// <summary>The TeachingTip's foot (its "⋯"): inset as the tip's own content margin (12), the button flush right.</summary>
-    public static readonly Edges4 TipFootPadding = new(12f, 0f, 8f, 8f);
+    /// <summary>The TeachingTip's one row (its buttons and the "⋯"): on the tip's own content margin (12) at the start and the foot, the line's
+    /// own 12 above it (WinUI's button panel margin), the "⋯"'s subtle plate 8 from the end (its glyph near the line's end).</summary>
+    public static readonly Edges4 TipRowPadding = new(12f, 0f, 8f, 12f);
+
+    /// <summary>Between the tip's two buttons (WinUI's 4 + 4 split), and between them and the "⋯".</summary>
+    public const float TipButtonGap = 8f;
 }

@@ -33,6 +33,7 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Signals;
 
 using Wavee.Theming.Contracts;
 
@@ -59,6 +60,14 @@ public static partial class Shell
         /// <summary>The window tier a level clamp reads: the committed tier, or -1 where no frame resolved one (every level).</summary>
         static int WindowTierIndex(in Theming.TierFacts tiers) => tiers.Policy is null ? -1 : (int)tiers.Window;
 
+        /// <summary>The ONE float the volume rails bind (inline + popup). A slider needs a FloatSignal and the model publishes a
+        /// Signal&lt;float&gt;; the host mirrors model → rail with an equality gate, and the rail's own writes go to the model through
+        /// <see cref="Playback.SetVolume"/>. Declared HERE, before <see cref="Props"/>, so it is set when the props are built: as a static
+        /// of the outer <c>Shell</c> it could be read while Shell's own initializer was still running (it reached the bar first), and
+        /// <c>Props.Volume</c> was null for the whole run: the slider fell back to its own value at 0% (the sound kept the stored
+        /// level) and a wheel over it crashed (<c>VolumeSlider</c> peeked the null signal).</summary>
+        static readonly FloatSignal s_barVolume = new(1f);
+
         /// <summary>The props the frame mounts <c>Player.Bar</c> with: the host, the verbs, the live reads and the actions, built once.</summary>
         public static readonly PlayerBarProps Props = new()
         {
@@ -83,6 +92,23 @@ public static partial class Shell
                 int slot = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
                 return slot < 0 ? null : rows[slot].Name ?? "";
             },
+            // the stage's format chip rule (Stage.Transport.ShowsQualityBadge), narrowed to a lossless badge; held under the stage like the title
+            // Lossless is the OPENED format (the device picker's quality words read the same fact); the badge is only the tooltip's text.
+            // The badge's switch (Settings › Sound, the badge tip's "Hide badge") is decided HERE: off, no theme is handed a format, so none
+            // needs a check of its own; its writer bumps the player bar's epoch, so the badge goes (or comes back) at once.
+            LosslessFormat = HeldUnderStage(static () =>
+            {
+                // Read first, every time: the badge changes with every open, so this keeps the bind subscribed to the opened format too.
+                var fmt = Playback.StreamFormat.Value;
+                if (!Prefs.PlayerBar.ShowLosslessBadge()) return null;
+                if (fmt.IsEmpty || Theming.InspectSwitches.RemoteDevice is not null) return null;
+                _ = Playback.Devices.Changed.Value;
+                bool remote = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows) >= 0;
+                if (!Stage.Transport.ShowsQualityBadge(true, remote)) return null;
+                return Playback.Audio.PlayingOpened.Format is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24
+                    ? Entities.Strings.Resolve(fmt)
+                    : null;
+            }),
             DevicePickerRequest = Playback.DevicePickerRequest,
             Muted = Playback.Muted,
             EpisodeSpeed = Playback.EpisodeSpeed,
@@ -176,7 +202,8 @@ public static partial class Shell
             // EVERY catalog write anywhere in the scope (a page loading its rows, the queue asking its own) and rebuilt the whole bar, its
             // buttons and their tooltips (the owner's census, 2026-11-07). The memo's equality cut-off re-renders it only when a fact moves.
             var face = hooks.UseComputed(s_barFace);
-            hooks.UseSignalEffect(static () => s_barVolume.SetIfChanged(Playback.Volume.Value));
+            // The rail shows what is heard (Playback.HeardVolume: 0 while muted); the rail itself glides a mute or an unmute (VolumeSlider).
+            hooks.UseSignalEffect(static () => s_barVolume.SetIfChanged(Playback.HeardVolume.Value));
 
             // ── 4. the facts ──
             var level = levelSignal.Value;

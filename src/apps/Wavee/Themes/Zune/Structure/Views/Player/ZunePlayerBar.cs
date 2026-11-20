@@ -116,7 +116,9 @@ internal static partial class ZunePlayerBar
         }, DepKey.From((int)faceRef.Kind, faceRef.Slot));
 
         // ── the identity ──────────────────────────────────────────────────────────────────────────────────────────────
-        var meta = MetaColumn(props, v, look, mini, titleLinkHover, metaNode, marquees.Value);
+        // The Lossless mark has its room from full's identity column up (`L.LosslessFrom`); below it its place stays, empty.
+        bool losslessRoom = !mini && look.Level >= L.LosslessFrom;
+        var meta = MetaColumn(props, v, look, mini, titleLinkHover, metaNode, marquees.Value, anchors.OnLossless, losslessRoom);
         var art = new BoxEl
         {
             Key = "art", Width = look.Art, Height = look.Art, Shrink = 0f, Animate = L.MoveMotion,
@@ -290,32 +292,37 @@ internal static partial class ZunePlayerBar
         // reflow-shove rule snaps a position slide while the title bar reflows on the same crossing). The slot is NOT the view's root: a component's
         // root lands its size at once on a crossing (its anchor is laid out at the final size), so the frame's column snapped by 16 at 3200 while the
         // bar eased inside; under a plain root the slot's reflow drives the column frame by frame.
-        // The hints that point at the play disc and the volume: zero boxes after the slot (no room), only where the control is drawn.
+        // The hints that point at the play disc, the volume and the Lossless mark: zero boxes after the slot (no room), only where the control is
+        // drawn (the mark's tip: wherever the level gives the mark its room, so its confirmation outlives a "hide badge").
         bool volumeShown = !mini && (v.Slots & (RightSlot.Volume | RightSlot.VolumeSlider)) != 0;
+        Element[] hints = v.OwnsTransport && volumeShown
+            ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)]
+            : v.OwnsTransport ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar)]
+            : volumeShown ? [Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)] : [];
+        if (losslessRoom && v.ShowTitleBlock && v.ShowArtistLine) hints = [.. hints, Hints.Pointer(HintSurfaces.PlayerBar, anchors.Lossless, anchors.Bar)];
         return new BoxEl
         {
             Direction = 1, Shrink = 0f,
-            Children = v.OwnsTransport && volumeShown
-                ? [Slot(tier, reduced, layers, barNode, input, props), Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)]
-                : v.OwnsTransport ? [Slot(tier, reduced, layers, barNode, input, props), Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar)]
-                : volumeShown ? [Slot(tier, reduced, layers, barNode, input, props), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)]
-                : [Slot(tier, reduced, layers, barNode, input, props)],
+            Children = [Slot(tier, reduced, layers, barNode, input, props), .. hints],
         };
     }
 
-    /// <summary>The play disc's and the volume control's nodes, captured once per bar with stable delegates (a hint line's anchor).</summary>
+    /// <summary>The play disc's, the volume control's and the Lossless mark's nodes, captured once per bar with stable delegates (a hint line's
+    /// anchor).</summary>
     private sealed class HintAnchors
     {
-        NodeHandle _play, _volume;
-        public readonly Action<NodeHandle> OnPlay, OnVolume;
-        public readonly Func<NodeHandle> Play, Volume, Bar;   // Bar: the line stays inside the bar's band
+        NodeHandle _play, _volume, _lossless;
+        public readonly Action<NodeHandle> OnPlay, OnVolume, OnLossless;
+        public readonly Func<NodeHandle> Play, Volume, Lossless, Bar;   // Bar: the line stays inside the bar's band
 
         public HintAnchors(Ref<NodeHandle> bar)
         {
             OnPlay = h => _play = h;
             OnVolume = h => _volume = h;
+            OnLossless = h => _lossless = h;
             Play = () => _play;
             Volume = () => _volume;
+            Lossless = () => _lossless;
             Bar = () => bar.Value;
         }
     }
@@ -327,8 +334,10 @@ internal static partial class ZunePlayerBar
             Animate = reduced ? null : ZunePlayerTiers.SlotMotion,
             Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
             OnRealized = node => barNode.Value = node,
-            // A pointer click takes the bar's key map without drawing its focus ring round the whole bar; Tab still shows it.
-            OnClick = () => input.FocusNode?.Invoke(barNode.Value, false),
+            // A press on the bar's own ground takes its key map: the press handler makes that ground a press target, and the engine's
+            // pointer focus focuses the bar without its ring (Tab still shows it). NOT OnClick: that made the bar a button, so a focused
+            // bar spent Space on its own activation and never reached the key map (#232).
+            OnPointerPressed = static _ => { },
             OnKeyDown = e => props.OnKey(e, input.GetFocus?.Invoke() == barNode.Value),
             Children =
             [
@@ -352,7 +361,7 @@ internal static partial class ZunePlayerBar
     const string TitleHostKey = "np-title-host:";
 
     static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, ZuneBarLook look, bool mini, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode,
-                           Marquee.Group marquees)
+                           Marquee.Group marquees, Action<NodeHandle> losslessRealized, bool losslessRoom)
     {
         const string titleKey = "np-title", artistsKey = "np-artists";
         Prop<ColorF> titleInk = Prop.Of(() => titleLinkHover.Value && props.TitleHasRoute() ? Tok.AccentTextPrimary : InkOf(props.TitleInk()));
@@ -396,11 +405,24 @@ internal static partial class ZunePlayerBar
         if (v.ShowArtistLine)
         {
             var credits = new CreditsProps(props, look.SubSize, look.SubLine, Linked: !mini);
-            kids.Add(marquee
+            // THE LOSSLESS MARK rides the line's end ("artist · lossless"): the names hug their own width (shrinking to the line less the mark,
+            // and scrolling in the marquee), so the mark sits right after them. It moves nothing: the identity column is the level's, the meta
+            // column fills it, so the heart never follows the text. Its place is in every form (empty where the level has no room, and in the
+            // mini bar), so a crossing rebuilds nothing.
+            BoxEl names = marquee
                 ? Marquee.Content(Embed.Comp(credits, static () => new ZuneCredits()), Prop.Of(() => props.Credits().Line(L.CreditSeparator)),
                     new Marquee.Style { FontSize = look.SubSize, Speed = L.MarqueeSpeed, FadeBand = L.MarqueeFade }, marquees, order: 1, identity: face)
-                    with { Key = artistsKey }
-                : new BoxEl { Key = artistsKey, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new ZuneCredits())] });
+                : new BoxEl { ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new ZuneCredits())] };
+            kids.Add(new BoxEl
+            {
+                Key = artistsKey, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
+                Children =
+                [
+                    names with { Key = L.ArtistsLineKey, Grow = 0f, Shrink = 1f },
+                    Embed.Comp(new LosslessProps(props, look.SubSize, look.SubLine, losslessRealized, Shown: losslessRoom), static () => new ZuneLosslessMark())
+                        with { Key = L.LosslessKey },
+                ],
+            });
         }
 
         return new BoxEl

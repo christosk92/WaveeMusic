@@ -158,8 +158,9 @@ internal sealed class ZuneOverlayChrome : Component
                                 ZuneOnMedia.Disc(props.TogglePlay, facts.Playing, facts.CanPlay),
                                 ToolTip.Wrap(ZuneOnMedia.Glyph(Icons.Next, props.Next, facts.NextEnabled), Loc.Get(Strings.Player.Next)),
                                 new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false },
-                                ToolTip.Wrap(ZuneOnMedia.Glyph(facts.Muted ? Icons.Mute : Icons.Volume, props.ToggleMute, true),
-                                    Loc.Get(facts.Muted ? Strings.Player.Unmute : Strings.Player.Mute)),
+                                // locked beside the locked rail while the owner keeps its volume (remote-play plan 2.2)
+                                ToolTip.Wrap(ZuneOnMedia.Glyph(facts.Muted ? Icons.Mute : Icons.Volume, props.ToggleMute, VolumeSlider.Settable),
+                                    VolumeSlider.MuteTip(facts.Muted)),
                                 ToolTip.Wrap(ZuneOnMedia.Glyph(Icons.ChevronUp, ToggleVolume, true, h => volAnchor.Value = h), Loc.Get(Strings.Player.Volume)),
                                 ToolTip.Wrap(ZuneOnMedia.Glyph(Icons.More, ToggleMore, true, h => moreAnchor.Value = h), Loc.Get(Strings.Common.More)),
                             ],

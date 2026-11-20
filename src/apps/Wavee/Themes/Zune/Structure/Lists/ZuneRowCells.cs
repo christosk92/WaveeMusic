@@ -294,13 +294,13 @@ internal static class ZuneRowCells
     /// <summary>Does <see cref="MetadataLine"/> have something besides the ring to show (the episode eyebrow, the explicit mark, a linked artist or
     /// album)?</summary>
     static bool MetadataSpeaks(Track t, bool showArtists, bool showAlbum, bool explicitBadge)
-        => t.IsPodcast || explicitBadge || (showArtists && t.ArtistSlots.Length > 0) || (showAlbum && Track.ContainerOf(t).Name.Length > 0);
+        => t.IsPodcast || explicitBadge || (showArtists && t.DisplayArtistCount > 0) || (showAlbum && Track.ContainerOf(t).Name.Length > 0);
 
     /// <summary>The subline: [EPISODE] · [E] · the linked artists · the album, one ellipsized run whose artist and album parts are links.</summary>
     public static Element MetadataLine(Track t, bool showArtists, bool showAlbum, bool explicitBadge, ColorF ink, bool onThisPc = false)
     {
         bool episode = t.IsPodcast;
-        int artistCount = showArtists ? t.ArtistSlots.Length : 0;
+        int artistCount = showArtists ? t.DisplayArtistCount : 0;
         var container = Track.ContainerOf(t);
         bool album = (showAlbum || episode) && container.Name.Length > 0;
         TextSpan[]? spans = Track.BuildLinkSpans(t, artistCount, album ? container : default);

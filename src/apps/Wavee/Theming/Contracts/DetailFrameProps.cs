@@ -183,6 +183,14 @@ public sealed record DetailAsideProps
     /// <summary>The page's route key (keys the aside's scroll).</summary>
     public required string RouteKey { get; init; }
 
+    /// <summary>The width the user last dragged this kind of aside to (the active theme's remembered size), or 0 when it was never dragged: the
+    /// structure's own width then. A read subscribes the remembered sizes' epoch, so "Clear all remembered sizes" and a release on another page
+    /// reach a mounted aside. Null: the aside is not resizable. Appended (contract 2.9).</summary>
+    public Func<float>? StoredWidth { get; init; }
+
+    /// <summary>Remember a dragged width for this kind of aside: the grip's release. Appended (contract 2.9).</summary>
+    public Action<float>? CommitWidth { get; init; }
+
     /// <inheritdoc />
     public bool Equals(DetailAsideProps? other) => ReferenceEquals(this, other);
 

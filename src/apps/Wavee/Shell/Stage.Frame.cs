@@ -72,7 +72,7 @@ public static partial class Stage
         TimeTextWithChrome = (remaining, ink) => Shell.TimeText(remaining, ink, ChromeReveal(ctx)),
         Muted = static () => Playback.Muted.Value,
         ToggleMute = static () => Playback.ToggleMute(),
-        Volume = static () => Playback.Volume.Value,
+        Volume = static () => Playback.HeardVolume.Value,
         SetVolume = static v => Playback.SetVolume(v),
         Device = DeviceFacts,
         DeviceItems = DeviceItems,

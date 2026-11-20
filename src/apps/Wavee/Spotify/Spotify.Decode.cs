@@ -1175,7 +1175,7 @@ public static partial class Spotify
                 if (!terminal && row.Verdict is not (XmAnswerSummary.Verdict.Omitted or XmAnswerSummary.Verdict.Empty)) continue;
                 int at = Array.IndexOf(uris, row.Uri);
                 if (at < 0) continue;
-                var id = new StagedId(asked.Ids[at]);
+                var id = AskedId(s, asked.Ids[at], row.Uri);
                 if (id.IsEmpty) continue;
                 uint group = TraitGroup(row.Kind);
                 // The descriptor chips live in a RUN: an empty one is the "this track has none" the kind-6 decoder writes.
@@ -1183,6 +1183,16 @@ public static partial class Spotify
                 s.Tracks.RowFor(id, Authority.Full, group);   // values stay default: 0 plays, no video, no chips
                 s.Tracks.Settle();
             }
+        }
+
+        /// <summary>An ASKED id as a staged row key. A GID stays packed; any other form (a playlist's <c>spotify:local:</c> file) is a text-form
+        /// <see cref="EntityId"/> whose payload indexes the UI thread's interner, which neither this api worker nor the store thread may read, so
+        /// it is staged as the uri's arena text instead (Store.cs, <c>RowWriter.Emit</c>: a packed text-form key fail-fasts a Debug build and
+        /// drops the row in Release).</summary>
+        internal static StagedId AskedId(Staging s, EntityId asked, string uri)
+        {
+            if (asked.IsEmpty) return default;
+            return asked.Form == EntityForm.Gid ? new StagedId(asked) : new StagedId(s.AddText(System.Text.Encoding.UTF8.GetBytes(uri)));
         }
 
         /// <summary>The track group a trait kind answers for, or 0 for a kind whose silence is not a negative.</summary>
@@ -1906,7 +1916,13 @@ public static partial class Spotify
                 StagedId target = default;
                 while (item.Next())
                 {
-                    if (item.Field == 1) target = Identity(s, item.Bytes());
+                    if (item.Field == 1)
+                    {
+                        var uri = item.Bytes();
+                        target = Identity(s, uri);
+                        // A local file: the catalogue knows nothing of it, so its own uri is its face (Track.LocalUri.cs).
+                        if (LocalTrackUri.Is(uri)) LocalTrackUri.StageFace(s, in target, uri);
+                    }
                     else if (item.Field == 2) ItemAttributes(item.Message(), s, ref edge);
                     else item.Skip();
                 }

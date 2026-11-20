@@ -193,11 +193,11 @@ internal sealed class WinUiStageVideoBar : Component
             UseSignalEffect(() => _level.SetIfChanged(t.Volume()));
             bool muted = t.Muted();
             bool open = p.Slider && _open.Value;
-            var mute = ToolTip.Wrap(WinUiStageTransport.Glyph(muted ? Icons.Mute : Icons.Volume, t.ToggleMute, B.Button, B.Glyph) with
+            var mute = ToolTip.Wrap(WinUiStageTransport.Glyph(muted ? Icons.Mute : Icons.Volume, t.ToggleMute, B.Button, B.Glyph, VolumeSlider.Settable) with
             {
                 Key = "picture:bar:mute",
                 OnFocusChanged = got => { if (got) _open.SetIfChanged(true); },
-            }, Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute));
+            }, VolumeSlider.MuteTip(muted));   // locked while the owner keeps its volume (remote-play plan 2.2)
             var style = Slider.DefaultStyle with
             {
                 RailFill = Ink.Ink with { A = WinUiStageGeometry.RailAlpha }, RailFillDisabled = Ink.Ink with { A = WinUiStageGeometry.RailDisabledAlpha },

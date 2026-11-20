@@ -214,7 +214,10 @@
         "upcoming": "{count, plural, one {one isn’t out yet} other {# aren’t out yet}}",
         "allRegion": "{count, plural, one {it isn’t available in your country} other {they aren’t available in your country}}",
         "allUpcoming": "{count, plural, one {it isn’t out yet} other {they aren’t out yet}}",
-        "hide": "{count, plural, one {Hide it} other {Hide them}}"
+        "local": "{count, plural, one {one is a local file} other {# are local files}}",
+        "allLocal": "{count, plural, one {it’s a local file} other {they’re local files}}",
+        "hide": "{count, plural, one {Hide it} other {Hide them}}",
+        "dismiss": "Close"
       }
     },
     "density": {
@@ -327,6 +330,7 @@
       "unavailable": "Audio unavailable",
       "unavailableShort": "Unavailable",
       "unavailableReason": "This song isn’t available to play",
+      "localReason": "A local file: Wavee can’t play local files yet",
       "$comment2": "Camelot encodes mode in its own suffix — the B ring is major, the A ring minor — so these two words are the only key wording we can state honestly. They are lowercase because they follow a tonic: \"8B · C major\".",
       "major": "major",
       "minor": "minor"
@@ -1568,6 +1572,7 @@
       "appearance.playsColumn": "play+count streams popularity column track+list",
       "sound.quality": "bitrate kbps lossless flac hi+res high+resolution bit+depth streaming+quality sound+quality 320 audiophile better+sound",
       "sound.meteredQuality": "mobile+data hotspot data+saver cellular limited+data metered",
+      "sound.losslessBadge": "quality sound+quality audio+quality lossless+mark lossless+label lossless+icon format+badge player+bar hide+lossless",
       "sound.normalization": "volume+jumps louder quieter too+quiet too+loud same+volume level+volume replaygain lufs songs+louder+than+others",
       "sound.normalization.mode": "loud quiet normal level volume",
       "sound.normalization.album": "album+volume track+gain album+gain",
@@ -1721,6 +1726,7 @@
       "help.developer.sendTestCrashReport": "crash test",
       "help.links.allIssues": "github issues bugs",
       "help.links.website": "website homepage",
+      "help.links.source": "github source code",
       "help.links.thirdPartyNotices": "licenses open+source",
       "help.links.openDataFolder": "data+folder appdata",
       "help.links.licenses": "open+source",
@@ -2107,6 +2113,8 @@
       "seconds": "{value} seconds",
       "reset": "Reset",
       "resetCurve": "Reset curve to flat",
+      "losslessBadge": "Show the Lossless badge",
+      "losslessBadgeSub": "In the player bar while a lossless stream plays",
       "presets": {
         "flat": "Flat",
         "flatSub": "No processing - flat, transparent playback",
@@ -2214,6 +2222,7 @@
       "rightNow": "Wavee right now",
       "sendFeedback": "Send feedback",
       "website": "Website",
+      "source": "Source on GitHub",
       "copyDiagnostics": "Copy diagnostics info",
       "openDataFolder": "Open data folder",
       "diagnosticsCopied": "Diagnostics info copied",
@@ -2753,6 +2762,7 @@
     "aspectRatio219": "21:9",
     "aspectRatio239": "2.39:1",
     "qualityAuto": "Auto",
+    "losslessMark": "Lossless",
     "videoUpNext": "Up next",
     "playingOn": "Playing on {device}",
     "playHere": "Play here",
@@ -2764,6 +2774,22 @@
     "remoteCommandFailed": "Couldn’t reach that device — make sure it’s online and try again",
     "takeOverFailed": "Couldn’t take over playback",
     "transferFailed": "Couldn’t transfer playback",
+    "remote": {
+      "$comment": "A verb sent to the Spotify Connect device that owns playback (a phone, another desktop) that it refused or that Wavee could not send (remote-play fixes 2026-11-20). One toast per kind; the device placeholder is that device's name, or thatDevice when the device list no longer names it.",
+      "playFailed": "Couldn’t play that on {device}",
+      "likedUnknown": "Couldn’t start Liked Songs on {device}",
+      "pauseFailed": "Couldn’t pause {device}",
+      "resumeFailed": "Couldn’t resume {device}",
+      "skipFailed": "Couldn’t skip on {device}",
+      "seekFailed": "Couldn’t seek on {device}",
+      "shuffleFailed": "Couldn’t change shuffle on {device}",
+      "repeatFailed": "Couldn’t change repeat on {device}",
+      "queueFailed": "Couldn’t change the queue on {device}",
+      "volumeFailed": "Couldn’t change the volume on {device}",
+      "volumeFixed": "The volume can’t be changed on {device}",
+      "videoFailed": "Couldn’t switch between video and audio on {device}",
+      "thatDevice": "that device"
+    },
     "thisComputer": "This computer",
     "spotifyConnect": "Spotify Connect",
     "soundSettings": "Sound settings",
@@ -5265,6 +5291,7 @@
     "daylistOptions": { "text": "Daylist options" },
     "shortcuts": { "text": "Space plays and pauses. See every shortcut.", "action": "Shortcuts" },
     "sleepTimer": { "text": "Falling asleep? Set a sleep timer.", "action": "Sleep timer" },
-    "cacheFull": { "text": "Your playback cache is almost full ({used} of {budget}).", "action": "Change size" }
+    "cacheFull": { "text": "Your playback cache is almost full ({used} of {budget}).", "action": "Change size" },
+    "losslessBadge": { "title": "You're listening in lossless", "text": "This badge shows while a lossless stream plays.", "action": "Hide badge", "dismiss": "Keep it", "done": "Badge hidden" }
   }
 }

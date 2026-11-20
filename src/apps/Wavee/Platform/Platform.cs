@@ -172,6 +172,9 @@ public static partial class Platform
 
         // ── shell state ──
         public static readonly SettingKey<bool> PlayerBarShowRemaining = new("playerbar.duration.remaining", true);
+        /// <summary>The player bar's Lossless badge (Settings › Sound › Quality, and "Hide badge" on the badge's own tip). On, every theme's bar says
+        /// "Lossless" after the artists while a lossless stream plays on this device; off, the bar's host hands the themes no format, so none draws it.</summary>
+        public static readonly SettingKey<bool> PlayerBarLosslessBadge = new("playerbar.losslessBadge", true);
         public static readonly SettingKey<string> PlaylistDepositRecents = new("playlist.deposit.recents", "");
         public static readonly SettingKey<string> WorkspacePinnedTabs = new("workspace.tabs.pinned", "");
         /// <summary>The concerts the listener marked "interested" (a LOCAL set: the concert API has no interested / saved state of its own): ONE capped blob,
@@ -228,6 +231,9 @@ public static partial class Platform
         public static readonly SettingKey<bool> RememberVolume = new("playback.volume.remember", true);
         /// <summary>First-launch volume ≈ −6 dB (D6): 0.794³ = 0.5005 through the cubic taper. <c>Playback.UnmuteDefault</c> is the same number.</summary>
         public static readonly SettingKey<float> SavedVolume = new("playback.volume", 0.794f);
+        /// <summary>This device's mute, remembered beside <see cref="SavedVolume"/> (both follow <see cref="RememberVolume"/>): a muted Wavee
+        /// starts muted, its level kept for the unmute.</summary>
+        public static readonly SettingKey<bool> SavedMuted = new("playback.muted", false);
         /// <summary>The Spine Shelf's song previews are heard (the shelf's sound button). Off by default: a hovered song's preview plays muted.</summary>
         public static readonly SettingKey<bool> PreviewSound = new("playback.preview.sound", false);
         public static readonly SettingKey<string> OutputDeviceId = new("playback.output.deviceId", "");
@@ -381,6 +387,10 @@ public static partial class Platform
         /// <summary>The account's listen-later playlist uri ("Your Episodes") as last discovered (`podcasts.yourEpisodes:&lt;account&gt;`),
         /// so a cold start recognises a pinned Your Episodes before this session has read it. "" = none known.</summary>
         public static SettingKey<string> YourEpisodesUri(string account) => new("podcasts.yourEpisodes:" + account, "");
+        /// <summary>The account's Liked Songs PLAYLIST uri (`connect.likedPlaylist:&lt;account&gt;`, a <c>spotify:playlist:</c> the
+        /// service keeps per account) as last learned: the context a Liked Songs play forwarded to another device names
+        /// (<c>Spotify.Connect.KnownLikedPlaylist</c>, remote-play plan 1.2). "" = not learned yet.</summary>
+        public static SettingKey<string> LikedSongsPlaylist(string account) => new("connect.likedPlaylist:" + account, "");
         /// <summary>The artists reader's scope (0 = in your library · 1 = all releases). Per kind for symmetry with the
         /// other library keys; only "artists" reads it today.</summary>
         public static SettingKey<int> LibraryScope(string kind) => new("library." + kind + ".scope", 0);

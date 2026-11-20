@@ -292,7 +292,7 @@ internal static class WinUiRowCells
     public static Element MetadataLine(Track t, bool showArtists, bool showAlbum, ColorF ink, bool onThisPc = false)
     {
         bool episode = t.IsPodcast;
-        int artistCount = showArtists ? t.ArtistSlots.Length : 0;
+        int artistCount = showArtists ? t.DisplayArtistCount : 0;
         var container = Track.ContainerOf(t);
         bool album = (showAlbum || episode) && container.Name.Length > 0;
         TextSpan[]? spans = Track.BuildLinkSpans(t, artistCount, album ? container : default);

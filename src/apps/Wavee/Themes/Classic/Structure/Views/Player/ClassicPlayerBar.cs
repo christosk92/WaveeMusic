@@ -124,32 +124,45 @@ internal static partial class ClassicPlayerBar
         if (mini) titleRun = titleRun with { LineHeight = ClassicPlayerTiers.MiniTitleLine };
         // The mini bar's title never scrolls and is no link: the whole identity is ONE door there.
         long face = ((long)v.Face.Kind << 32) | (uint)v.Face.Slot;   // the stated playable: a new one restarts the marquees' passes
+        // THE LINK IS THE TEXT, never the slot: the title's slot spans the whole text column, so a link on it lit the title and took the
+        // press anywhere on the row beside a short title. The link box is the run's own width (the credits' links do the same).
+        bool titleLink = v.TitleNav && !mini;
+        var marqueeStyle = new Marquee.Style
+        {
+            FontSize = ClassicPlayerBarLayout.TitleSize, Weight = ClassicPlayerBarLayout.TitleWeight, Foreground = titleInk,
+            Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
+        };
         BoxEl titleEl = v.Marquee && !mini
-            ? Marquee.Of(Prop.Of<string>(props.TitleText), new Marquee.Style
-            {
-                FontSize = ClassicPlayerBarLayout.TitleSize, Weight = ClassicPlayerBarLayout.TitleWeight, Foreground = titleInk,
-                Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
-            }, marquees.Value, order: 0, identity: face)
-            : new BoxEl
-            {
-                ClipToBounds = true, MinWidth = 0f,
-                Children = [titleRun],
-            };
+            ? titleLink
+                // A content marquee over the link (its run and copy are both the link), so only the moving text takes the pointer.
+                ? Marquee.Content(TitleLink(new TextEl(Prop.Of<string>(props.TitleText))
+                    {
+                        Size = ClassicPlayerBarLayout.TitleSize, Weight = ClassicPlayerBarLayout.TitleWeight, Color = titleInk,
+                        Wrap = TextWrap.NoWrap, MaxLines = 1,
+                    }), Prop.Of<string>(props.TitleText), marqueeStyle, marquees.Value, order: 0, identity: face)
+                : Marquee.Of(Prop.Of<string>(props.TitleText), marqueeStyle, marquees.Value, order: 0, identity: face)
+            : titleLink
+                // The slot stays the column's width (the trim tip measures it); the link inside it is a shrinking row child, cut at the slot.
+                ? new BoxEl { ClipToBounds = true, MinWidth = 0f, Direction = 0, Children = [TitleLink(titleRun)] }
+                : new BoxEl { ClipToBounds = true, MinWidth = 0f, Children = [titleRun] };
         titleEl = titleEl with { Key = titleKey };
-        if (v.TitleNav && !mini)
-            titleEl = titleEl with
-            {
-                Cursor = CursorId.Hand, OnClick = props.NavigateTitle,
-                Role = AutomationRole.Hyperlink, Focusable = true,
-                OnHoverMove = _ => { if (!titleLinkHover.Peek()) titleLinkHover.Value = true; },
-                OnPointerExit = () => { if (titleLinkHover.Peek()) titleLinkHover.Value = false; },
-            };
+
+        BoxEl TitleLink(TextEl run) => new()
+        {
+            Direction = 1, Shrink = 1f, MinWidth = 0f, ClipToBounds = true,
+            Cursor = CursorId.Hand, OnClick = props.NavigateTitle,
+            Role = AutomationRole.Hyperlink, Focusable = true,
+            OnHoverMove = _ => { if (!titleLinkHover.Peek()) titleLinkHover.Value = true; },
+            OnPointerExit = () => { if (titleLinkHover.Peek()) titleLinkHover.Value = false; },
+            Children = [run],
+        };
         // A scrolling title shows itself in full (no tip: an empty text never measures cut); a plain one, the mini bar's always (it never
         // scrolls), is cut at the slot, so its full text rides a tooltip that exists only while it is cut. The same host in both forms and with
         // the marquee on or off, so the title keeps its node across the 528 crossing (the mini bar's title had no tip with the marquee on; B11).
         Element titleSlot = Controls.TrimTip(titleEl, v.Marquee && !mini ? "" : props.TitleText(), titleRun) with { Key = titleKey };
 
         var metaKids = new List<Element>(3);
+        bool losslessDrawn = false;   // the mark's place is on the line (its tip's slot is mounted with it, below)
         if (mini)
         {
             // The second line: the artists or, while the output plays on another device, "Playing on" in their place (the bar's remote state at
@@ -180,23 +193,44 @@ internal static partial class ClassicPlayerBar
                 });
             metaKids.Add(titleSlot);
             if (v.ShowArtistLine)
-                metaKids.Add(v.Marquee
+            {
+                // The names hug their own width (Grow 0, shrinking) so the lossless mark sits right after them; a long line still
+                // shrinks to the column and scrolls, the mark held at the end. The mark is Standard and wider only: below it (Small's
+                // 800) its 51 DIP cut the names mid-word, and the names are what the line is for.
+                bool losslessRoom = barTier.MinLevel >= ClassicPlayerTiers.Comfortable && props.LosslessFormat is not null;
+                losslessDrawn = losslessRoom;
+                BoxEl names = v.Marquee
                     ? Marquee.Content(Embed.Comp(() => new Credits(props, compact: false)), Prop.Of(() => props.Credits().Line(ClassicTransportLayout.CreditSeparator)),
                         new Marquee.Style
                         {
                             FontSize = ClassicTransportLayout.CreditSize, Speed = ClassicPlayerBarLayout.MarqueeSpeed, FadeBand = ClassicPlayerBarLayout.MarqueeFade,
-                        }, marquees.Value, order: 1, identity: face) with { Key = artistsKey }
+                        }, marquees.Value, order: 1, identity: face)
                     : new BoxEl
                     {
-                        Key = artistsKey, ClipToBounds = true, MinWidth = 0f,
+                        ClipToBounds = true, MinWidth = 0f,
                         Children = [Embed.Comp(() => new Credits(props, compact: true))],
-                    });
+                    };
+                metaKids.Add(new BoxEl
+                {
+                    Key = artistsKey, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
+                    Children = losslessRoom
+                        ?
+                        [
+                            names with { Key = "np-artists-line", Grow = 0f, Shrink = 1f },
+                            Embed.Comp(() => new LosslessMark(props, anchors.OnLossless)) with { Key = "np-lossless" },
+                        ]
+                        : [names with { Key = "np-artists-line", Grow = 0f, Shrink = 1f }],
+                });
+            }
         }
 
+        // THE HEART FOLLOWS THE WORDS. In the full bar the text block is its lines' own width (shrinking to the zone when they are longer), so the
+        // heart rides one gap after the title or the artists, never at the far end of a wide zone (Huge's 360 left it ~120 DIP from a short title).
+        // The mini bar's block still fills its door.
         var metaCol = new BoxEl
         {
             Key = "meta", Animate = ClassicPlayerBarLayout.MoveMotion,
-            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Shrink = 1f,
+            Direction = 1, Grow = mini ? 1f : 0f, Basis = mini ? 0f : float.NaN, MinWidth = 0f, Shrink = 1f,
             Gap = mini ? ClassicPlayerTiers.MiniLinesGap : ClassicPlayerBarLayout.MetaGap, Justify = FlexJustify.Center, ClipToBounds = true,
             OnRealized = h => metaNode.Value = h,
             Children = metaKids.ToArray(),
@@ -241,12 +275,20 @@ internal static partial class ClassicPlayerBar
             ? Loc.Get(v.Liked ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save)
             : Loc.Get(v.Liked ? Strings.Menu.Saved : Strings.Menu.SaveToLiked));
         var likeSlot = Slot("like", likeBox, likeBox, v.LikeLit, saveFace);
+        // THE HEART RIDES THE TEXT'S GLIDE. Its x follows the text block's width (the full bar's block hugs its lines), and the block eases with
+        // MoveMotion on a track change; the slot fades its face only (FaceMotion: no bounds channel, so lighting never reflows the row), so this
+        // wrapper carries the block's own glide and the two land together instead of the heart jumping on the first frame.
+        var likeRide = new BoxEl
+        {
+            Key = "like-ride", Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+            Animate = ClassicPlayerBarLayout.MoveMotion, Children = [likeSlot],
+        };
 
         // The cover and the text block; the heart rides beside them in the identity zone. In the mini bar this flow IS the door (C-PlayerBar
         // mini): the 48-tall identity that opens the now-playing sheet, its subtle plate under the cover and the two lines, never under the heart.
         var leftFlow = new BoxEl
         {
-            Key = "left-flow", Grow = 1f, Shrink = 1f, MinWidth = 0f,
+            Key = "left-flow", Grow = mini ? 1f : 0f, Shrink = 1f, MinWidth = 0f,
             Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = !mini,
             Gap = mini ? ClassicPlayerTiers.MiniDoorGap : huge ? ClassicPlayerTiers.HugeLeftGap : m.LeftGap,
             Children = mini || v.ShowTitleBlock ? [art, metaCol] : [art],
@@ -271,7 +313,7 @@ internal static partial class ClassicPlayerBar
             // The factory PEEKS at promotion time: the mounted cluster outlives every track change. An idle bar is
             // not a drag handle at all. (The mini bar's door carries its own.)
             Draggable = v.Draggable && !mini ? Drag.Source(props.DragPayload) : null,
-            Children = mini || (v.ShowTitleBlock && v.ShowLikeSlot) ? [leftFlow, likeSlot] : [leftFlow],
+            Children = mini || (v.ShowTitleBlock && v.ShowLikeSlot) ? [leftFlow, likeRide] : [leftFlow],
         };
         // Right-click / Menu key / long-press: the track menu over the now-playing target, with its header. ONE seam
         // feeds this cluster AND the immersive stage (`Stage.NowPlayingMenu`, installed by the track menu's owner);
@@ -581,12 +623,14 @@ internal static partial class ClassicPlayerBar
         // with the edge. The slot is the layout firewall (a title change re-solves THIS subtree only). It sits under an auto-sized root: the
         // view's anchor mirrors its root's DECLARED height, so a slot that was the root left the anchor (and the page above) at the new height
         // at once while the slot eased inside it.
-        // The hints that point at the play disc and the volume: zero boxes under the slot (no room), only where the control is drawn.
+        // The hints that point at the play disc, the volume and the Lossless mark: zero boxes under the slot (no room), only where the control is
+        // drawn (the mark's tip: wherever the line has the mark's place, so its confirmation outlives a "Hide badge").
         bool volumeShown = !mini && (v.Slots & (RightSlot.Volume | RightSlot.VolumeSlider)) != 0;
         Element[] hints = v.OwnsTransport && volumeShown
             ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)]
             : v.OwnsTransport ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar)]
             : volumeShown ? [Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)] : [];
+        if (losslessDrawn) hints = [.. hints, Hints.Pointer(HintSurfaces.PlayerBar, anchors.Lossless, anchors.Bar)];
         return new BoxEl
         {
             Direction = 1, Shrink = 0f,
@@ -604,8 +648,10 @@ internal static partial class ClassicPlayerBar
                             Direction = 1, Grow = 1f, MinHeight = 0f,
                             Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
                             OnRealized = node => barNode.Value = node,
-                            // A pointer click takes the bar's key map without drawing its focus ring round the whole bar; Tab still shows it.
-                            OnClick = mini ? null : () => input.FocusNode?.Invoke(barNode.Value, false),
+                            // A press on the bar's own ground takes its key map: the press handler makes that ground a press target, and the
+                            // engine's pointer focus focuses the bar without its ring (Tab still shows it). NOT OnClick: that made the bar a button,
+                            // so a focused bar spent Space on its own activation and never reached the key map (#232).
+                            OnPointerPressed = mini ? null : static _ => { },
                             OnKeyDown = e => props.OnKey(e, input.GetFocus?.Invoke() == barNode.Value),
                             Children =
                             [
@@ -681,6 +727,37 @@ internal static partial class ClassicPlayerBar
         }
     }
 
+    /// <summary>The "· Lossless" mark after the credits line: plain text on the line's own type, the separator in its secondary ink and the word
+    /// in the accent text ink, while a lossless stream plays on this device; its tooltip the stream's own badge ("FLAC 24/96"); nothing at all
+    /// otherwise. Its own component, so a format change re-renders the mark and not the bar. Its root is one box in both states (empty, 0 x 0,
+    /// with no lossless stream), captured by <paramref name="realized"/>: the badge tip's anchor, which outlives a "Hide badge" so the tip's
+    /// confirmation still points where the badge was.</summary>
+    private sealed class LosslessMark(PlayerBarProps props, Action<NodeHandle> realized) : Component
+    {
+        public override Element Render()
+        {
+            string? format = props.LosslessFormat?.Invoke();
+            if (format is null) return new BoxEl { HitTestVisible = false, OnRealized = realized };
+            var mark = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Children =
+                [
+                    new TextEl(ClassicTransportLayout.LosslessSeparator)
+                    {
+                        Size = ClassicTransportLayout.CreditSize, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap,
+                    },
+                    new TextEl(Loc.Get(Strings.Player.LosslessMark))
+                    {
+                        Size = ClassicTransportLayout.CreditSize, Weight = ClassicTransportLayout.LosslessTextWeight,
+                        Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap,
+                    },
+                ],
+            };
+            return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, OnRealized = realized, Children = [ToolTip.Wrap(mark, format)] };
+        }
+    }
+
     private static ColorF TitleInkOf(NowPlayingInk ink) => ink switch
     {
         NowPlayingInk.Secondary => Tok.TextSecondary,
@@ -730,19 +807,22 @@ internal static partial class ClassicPlayerBar
     /// whose <paramref name="face"/> is either lit (opaque, hit-testable) or dark (transparent, inert) — cross-faded over
     /// the control token, never entered/exited, so a face lighting up moves NOTHING around it. The face's own
     /// <c>IsEnabled</c> should follow <paramref name="lit"/> too, so a dark face is not a focus stop.</summary>
-    /// <summary>The play disc's and the volume control's nodes, captured once per bar with stable delegates (a hint line's anchor).</summary>
+    /// <summary>The play disc's, the volume control's and the Lossless mark's nodes, captured once per bar with stable delegates (a hint line's
+    /// anchor).</summary>
     private sealed class HintAnchors
     {
-        NodeHandle _play, _volume;
-        public readonly Action<NodeHandle> OnPlay, OnVolume;
-        public readonly Func<NodeHandle> Play, Volume, Bar;   // Bar: the line stays inside the bar's band
+        NodeHandle _play, _volume, _lossless;
+        public readonly Action<NodeHandle> OnPlay, OnVolume, OnLossless;
+        public readonly Func<NodeHandle> Play, Volume, Lossless, Bar;   // Bar: the line stays inside the bar's band
 
         public HintAnchors(Ref<NodeHandle> bar)
         {
             OnPlay = h => _play = h;
             OnVolume = h => _volume = h;
+            OnLossless = h => _lossless = h;
             Play = () => _play;
             Volume = () => _volume;
+            Lossless = () => _lossless;
             Bar = () => bar.Value;
         }
     }
@@ -866,9 +946,11 @@ internal static partial class ClassicPlayerBar
             var anchor = UseRef<NodeHandle>(default);
             var handle = UseRef<OverlayHandle?>(null);
             bool popupForm = _popup;
+            bool settable = VolumeSlider.Settable;   // reactive: re-renders when the owner's volume turns fixed (remote-play plan 2.2)
 
             void Click()
             {
+                if (!settable) return;
                 if (!popupForm) { props.ToggleMute(); return; }
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
                 handle.Value = overlay.Open(
@@ -891,7 +973,9 @@ internal static partial class ClassicPlayerBar
                 handle.Value.ClosedAction = () => handle.Value = null;
             }
 
-            return BarButton(muted ? Icons.Mute : Icons.Volume, Click, true, false, _box, _glyph, h => anchor.Value = h);
+            // Locked (mute and popup form alike) while the owner keeps its volume; the tooltip then says why. No tooltip while settable, as before.
+            var button = BarButton(muted ? Icons.Mute : Icons.Volume, Click, settable, false, _box, _glyph, h => anchor.Value = h);
+            return settable ? button : ToolTip.Wrap(button, VolumeSlider.MuteTip(muted));
         }
     }
 

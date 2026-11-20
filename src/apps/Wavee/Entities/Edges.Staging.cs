@@ -562,6 +562,9 @@ public static partial class Entities
                             s_edgeTargets[n] = s.Slot(table, in page[j].Target);
                             s_edgeKind[n++] = new KindEdge(kind);
                         }
+                        // A baseline section's preview songs belong to its first card: a new one voids them (Home.VoidReplacedCardPreviews).
+                        if (run.Relation == Relation.SectionCards && run.Offset <= 0)
+                            Home.VoidReplacedCardPreviews(parent, n > 0 ? s_edgeKind[0].Kind : EntityKind.Unknown, n > 0 ? s_edgeTargets[0] : Table.None);
                         Land(run.Relation == Relation.SectionCards ? Current.Edges.SectionCards : Current.Edges.SearchResult,
                              parent, n, s_edgeKind, in run);
                         break;

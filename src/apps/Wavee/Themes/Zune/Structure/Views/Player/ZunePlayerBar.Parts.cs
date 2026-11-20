@@ -32,6 +32,10 @@ internal static partial class ZunePlayerBar
     /// <summary>The props of the credits line (<paramref name="Linked"/>: each name is a link; the mini bar's door has none of its own).</summary>
     internal sealed record CreditsProps(PlayerBarProps Bar, float Size, float Line, bool Linked);
 
+    /// <summary>The props of the Lossless mark after the artists (the line's <paramref name="Size"/> and <paramref name="Line"/>; its holder captured
+    /// by <paramref name="Realized"/>, the badge tip's anchor; <paramref name="Shown"/>: the level's identity column has the mark's room).</summary>
+    internal sealed record LosslessProps(PlayerBarProps Bar, float Size, float Line, Action<NodeHandle> Realized, bool Shown);
+
     /// <summary>The props of a word or glyph tool that owns an overlay.</summary>
     internal sealed record ToolProps(PlayerBarProps Bar, float Box, float Glyph, float WordSize, bool Popup);
 
@@ -258,9 +262,11 @@ internal sealed class ZuneVolumeGlyph : Component
         var anchor = UseRef<NodeHandle>(default);
         var handle = UseRef<OverlayHandle?>(null);
         bool popup = p.Popup;
+        bool settable = VolumeSlider.Settable;   // reactive: re-renders when the owner's volume turns fixed (remote-play plan 2.2)
 
         void Click()
         {
+            if (!settable) return;                // locked, mute and popup form alike: the popup would only hold a locked line
             if (!popup) { props.ToggleMute(); return; }
             if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
             handle.Value = overlay.Open(
@@ -279,8 +285,8 @@ internal sealed class ZuneVolumeGlyph : Component
             handle.Value.ClosedAction = () => handle.Value = null;
         }
 
-        return ToolTip.Wrap(ZunePlayerBar.Glyph(muted ? Icons.Mute : Icons.Volume, Click, true, Tok.TextPrimary, p.Box, p.Glyph, h => anchor.Value = h),
-            Loc.Get(popup ? Strings.Player.Volume : muted ? Strings.Player.Unmute : Strings.Player.Mute));
+        return ToolTip.Wrap(ZunePlayerBar.Glyph(muted ? Icons.Mute : Icons.Volume, Click, settable, Tok.TextPrimary, p.Box, p.Glyph, h => anchor.Value = h),
+            !settable ? VolumeSlider.MuteTip(muted) : Loc.Get(popup ? Strings.Player.Volume : muted ? Strings.Player.Unmute : Strings.Player.Mute));
     }
 }
 
@@ -482,6 +488,40 @@ internal sealed class ZuneCredits : Component
             Cursor = nav ? CursorId.Hand : null, OnClick = nav ? link.Navigate : null,
             Role = nav ? AutomationRole.Hyperlink : AutomationRole.Text,
             Children = [text],
+        };
+    }
+}
+
+/// <summary>"· lossless" after the artists while a lossless stream plays on this device: the line's own type, the separator in its secondary ink
+/// and the word in the accent, lowercase by the label role; its tooltip the stream's own badge ("FLAC 24/96"). Its own component, so a stream
+/// turning lossless re-renders the mark and not the bar. Its root is ONE box in every state (empty, 0 x 0, with no lossless stream or where the
+/// level has no room for it), captured by the props' <c>Realized</c>: the badge tip's anchor, which outlives a "hide badge" so the tip's
+/// confirmation still points where the badge was.</summary>
+internal sealed class ZuneLosslessMark : Component
+{
+    public override Element Render()
+    {
+        var p = UseProps<ZunePlayerBar.LosslessProps>();
+        string? format = p.Shown ? p.Bar.LosslessFormat?.Invoke() : null;
+        if (format is null) return new BoxEl { Shrink = 0f, HitTestVisible = false, OnRealized = p.Realized };
+        return new BoxEl
+        {
+            Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, OnRealized = p.Realized,
+            Children =
+            [
+                ToolTip.Wrap(new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                    Children =
+                    [
+                        new TextEl(ZunePlayerLayout.LosslessSeparator) { Size = p.Size, LineHeight = p.Line, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap },
+                        new TextEl(Loc.Get(Strings.Player.LosslessMark))
+                        {
+                            Size = p.Size, LineHeight = p.Line, Color = Tok.AccentTextPrimary, Case = R.Case.For(LabelKind.Label), Wrap = TextWrap.NoWrap,
+                        },
+                    ],
+                }, format),
+            ],
         };
     }
 }

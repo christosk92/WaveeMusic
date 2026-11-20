@@ -722,7 +722,15 @@ public static class QueueAttribution
 /// <summary>The context a forwarded `play` envelope names. PURE. A single playable is never the context of a DIFFERENT
 /// track: the owner cannot start "track B" inside "the context that is track A" — it answers with an empty session and
 /// leaves (2026-10-01, a stale owner-painted single-track context). Such a pair sends the track as its own context, as
-/// the desktop plays a single track; an empty context names the track too, and a real context passes through.</summary>
+/// the desktop plays a single track; an empty context names the track too, and a real context passes through.
+///
+/// <para>THE LIKED RULE (<see cref="Liked"/>, remote-play plan 1.1, 2026-11-20). A Liked Songs collection spelling
+/// (<see cref="EntityUri.IsLikedCollection(ReadOnlySpan{char})"/>: <c>spotify:collection:tracks</c>,
+/// <c>spotify:user:&lt;u&gt;:collection</c>, …) is NEVER a forwarded play context. The gateway answered
+/// <c>spotify:collection:tracks</c> with 403 six times of six and the phone stopped (Wavee log lines 1241-1243, 6623-6645),
+/// while the official desktop names the account's Liked Songs PLAYLIST, 13 of 13 answered 200 (bro.saz 352-507, sppp.saz
+/// 156-539). Both forward paths (the reducer's row click, <c>Playback.PlayContext</c> while another device owns playback)
+/// send through <c>Playback.SendPlay</c>, which applies this rule and sends the playlist, or nothing.</para></summary>
 public static class ForwardPlayEnvelope
 {
     public static EntityId For(EntityId context, EntityId track)
@@ -731,4 +739,29 @@ public static class ForwardPlayEnvelope
         if (track.IsEmpty) return context;
         return context.IsPlayable && !context.Equals(track) ? track : context;
     }
+
+    /// <summary>What a forwarded play does with its context under the Liked rule.</summary>
+    public enum LikedVerdict : byte
+    {
+        /// <summary>Not a Liked Songs spelling: the context goes as it is.</summary>
+        NotLiked,
+        /// <summary>A Liked Songs spelling, and the account's Liked Songs playlist is known: the playlist goes instead.</summary>
+        Playlist,
+        /// <summary>A Liked Songs spelling with no playlist known: learn it first; with none learned, send NOTHING.</summary>
+        Unknown,
+    }
+
+    /// <summary>The Liked rule for <paramref name="context"/> (a <see cref="For"/> answer), given the account's Liked Songs
+    /// playlist as far as it is known (<paramref name="knownPlaylist"/>, "" = not known). UI thread: a collection id's text is
+    /// the interner's.</summary>
+    public static LikedVerdict Liked(EntityId context, string knownPlaylist)
+        => !IsLikedSpelling(context) ? LikedVerdict.NotLiked
+         : knownPlaylist.Length > 0 ? LikedVerdict.Playlist
+         : LikedVerdict.Unknown;
+
+    /// <summary>Is <paramref name="context"/> a Liked Songs collection, in any spelling? A collection is always the text form,
+    /// so only a collection-kind text id resolves anything. UI thread.</summary>
+    public static bool IsLikedSpelling(EntityId context)
+        => context.Kind == EntityKind.Collection && context.Form == EntityForm.Text
+           && EntityUri.IsLikedCollection(Entities.Strings.Resolve(context.TextId));
 }

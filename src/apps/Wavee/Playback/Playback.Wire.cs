@@ -205,12 +205,26 @@ public static partial class Playback
         /// <c>show</c>.</summary>
         public readonly bool Audiobook;
 
+        readonly string? _likedPlaylist, _likedOwner;
+
+        /// <summary>The deck plays Liked Songs and the account's Liked Songs PLAYLIST is known: the uri the PUT names as its
+        /// context instead of the collection spelling, as the iPhone publishes Liked Songs (remote-play plan 5.4; capture record
+        /// #1702: context_uri the playlist, format_list_type liked-songs). "" otherwise — the PUT keeps the collection.</summary>
+        public string LikedPlaylist => _likedPlaylist ?? "";
+        /// <summary>With <see cref="LikedPlaylist"/>: the account's username, for <c>context_owner</c> and the
+        /// <c>spotify:user:&lt;u&gt;:collection</c> the liked-songs metadata names.</summary>
+        public string LikedOwner => _likedOwner ?? "";
+
         public WireExtras(WireWindow? window, ulong queueRevision, in WireIds ids, bool privateSession, string? outputDevice,
-            string? commandSender, float playbackRate = 1f, WireOrigin? origin = null, byte outputType = 0, bool audiobook = false)
+            string? commandSender, float playbackRate = 1f, WireOrigin? origin = null, byte outputType = 0, bool audiobook = false,
+            string? likedPlaylist = null, string? likedOwner = null)
         {
             Window = window; QueueRevision = queueRevision; Ids = ids; PrivateSession = privateSession;
             _outputDevice = outputDevice; _commandSender = commandSender; _playbackRate = playbackRate; Origin = origin; OutputType = outputType;
             Audiobook = audiobook;
+            bool liked = !string.IsNullOrEmpty(likedPlaylist) && !string.IsNullOrEmpty(likedOwner);
+            _likedPlaylist = liked ? likedPlaylist : null;
+            _likedOwner = liked ? likedOwner : null;
         }
     }
 

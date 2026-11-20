@@ -265,6 +265,10 @@ public static partial class ReleaseNotes
         public int[] Issues { get; set; } = [];
         /// <summary>PR numbers named by a squash suffix <c>(#N)</c> or a <c>!N</c> reference.</summary>
         public int[] Prs { get; set; } = [];
+        /// <summary>On the release branch's own line (<c>git log --first-parent</c>): a PR's merge commit or a commit made on
+        /// the branch, not one a merge brought in. Only these are listed in the "Other changes" fold; the issue cross-check
+        /// and Resolved issues use every commit. Absent on the wire means true, so an older commits.json reads as before.</summary>
+        public bool FirstParent { get; set; } = true;
     }
 
     public sealed class ReleaseNotice

@@ -24,8 +24,18 @@
 // small (`MaxCapturedBodyBytes`) — an unknown-length or large body (the audio cdn's range reads, in particular) is
 // never buffered just to satisfy an off-by-default capture — and run through `Redactor.RedactJsonBody` first: a
 // non-JSON or unredactable body is never captured raw, it is simply dropped with `Truncated = true` on the header.
+//
+// TWO EXCEPTIONS, BOTH FOR A REFUSED COMMAND (remote-play plan 0.2, 2026-11-20). The 403 the gateway gave a forwarded Liked
+// Songs play kept nothing: the request is gzipped (`X-Transfer-Encoding: gzip`, so not JSON on the wire) and the answer's
+// length is unknown (the handler inflates it and drops `Content-Length`: `recv=?`), so capture records #89/#90 held
+// payload 0 and the 403's text is still unknown (gap analysis 1.3, §6 question 1). So: (1) a gzipped request body is
+// inflated before the redaction, and a `player/command` body may be as large as `MaxCapturedCommandBodyBytes` (a play
+// that inlines a playlist page is about 130 KB before gzip, all.saz 1169); (2) a 4xx answer of unknown length is read up
+// to `MaxCapturedBodyBytes`, and the caller still gets every byte (a longer one is handed on as the bytes read, then the
+// rest of the stream). Media keeps the 8 KB cap and its unknown-length 2xx reads are never buffered.
 
 using System.Diagnostics;
+using System.IO.Compression;
 
 namespace Wavee;
 
@@ -117,6 +127,19 @@ public static class Wire
     /// never buffered just to satisfy an off-by-default capture (§3.2's "may drop a body, never the header").</summary>
     const int MaxCapturedBodyBytes = 8 * 1024;
 
+    /// <summary>The cap for a <c>player/command</c> REQUEST body, inflated (remote-play plan 0.2): the one route whose body
+    /// is the question when the owner refuses a verb. A thin command is under 1 KB, but the official play inlines a playlist
+    /// page (all.saz 1169: about 130 KB before gzip) and the plan's later steps send the same, so this route alone gets
+    /// room for it; every other route, media first, keeps <see cref="MaxCapturedBodyBytes"/>.</summary>
+    const int MaxCapturedCommandBodyBytes = 256 * 1024;
+
+    /// <summary>The path every player verb to another device is POSTed under (<c>Spotify.Connect.PostCommand</c>).</summary>
+    const string PlayerCommandPath = "/connect-state/v1/player/command/";
+
+    /// <summary>How large a request body to <paramref name="path"/> may be and still be captured.</summary>
+    static int RequestBodyCap(string path)
+        => path.Contains(PlayerCommandPath, StringComparison.Ordinal) ? MaxCapturedCommandBodyBytes : MaxCapturedBodyBytes;
+
     /// <summary>Wrap <paramref name="inner"/> so every request through it is logged under <paramref name="client"/>.
     /// <paramref name="storms"/> is false for the audio cdn alone: a track IS dozens of range reads of one path a
     /// minute, which is its job and not a loop (each is still logged).</summary>
@@ -204,7 +227,7 @@ public static class Wire
         string endpoint = WireRules.EndpointOf(request.Method.Method, host, Redactor.RedactQueryString(path) ?? path);
         if (CaptureRules.IsAuthEndpoint(host, path))
             return Capture.Begin(CaptureKind.HttpCall, causeId, a: endpoint, b: "bodyOmitted=auth");
-        return Capture.Begin(CaptureKind.HttpCall, causeId, a: endpoint, payload: CapturedRequestBody(request));
+        return Capture.Begin(CaptureKind.HttpCall, causeId, a: endpoint, payload: CapturedRequestBody(request, RequestBodyCap(path)));
     }
 
     static void CaptureEnd(long id, HttpRequestMessage request, HttpResponseMessage? response)
@@ -220,37 +243,69 @@ public static class Wire
             return;
         }
 
-        (ReadOnlyMemory<byte> payload, bool truncated) = CapturedResponseBody(response);
+        (ReadOnlyMemory<byte> payload, bool truncated) = CapturedResponseBody(response, status);
         Capture.End(id, n0: status, payload: payload, truncated: truncated);
     }
 
     /// <summary>Read-once, buffered content is safe to read again before the send (`ByteArrayContent`/`StringContent`,
     /// the only content kinds this app's HTTP call sites build) — a length-less or streamed request body (never true
-    /// for this app's own requests, but a defensive default all the same) is left untouched.</summary>
-    static ReadOnlyMemory<byte> CapturedRequestBody(HttpRequestMessage request)
+    /// for this app's own requests, but a defensive default all the same) is left untouched. A gzipped body (the command
+    /// route's <c>X-Transfer-Encoding: gzip</c>, extended-metadata's <c>Content-Encoding</c>) is inflated first, at most
+    /// <paramref name="cap"/> bytes of it, so the JSON the app wrote is what the redaction reads.</summary>
+    static ReadOnlyMemory<byte> CapturedRequestBody(HttpRequestMessage request, int cap)
     {
         HttpContent? content = request.Content;
         if (content is null) return default;
         long? len = content.Headers.ContentLength;
-        if (len is not (> 0 and <= MaxCapturedBodyBytes)) return default;
+        if (len is not > 0 || len > cap) return default;
         try
         {
             byte[] raw = content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+            if (IsGzip(raw) && !TryGunzip(raw, cap, out raw)) return default;
             return TryRedactJson(raw, out byte[] redacted) ? redacted : default;
         }
         catch { return default; } // never let a capture-only read fault the real request
+    }
+
+    /// <summary>The gzip member header (<c>1f 8b</c>): no JSON body starts with it, so the bytes say it whatever header
+    /// named the encoding. PURE.</summary>
+    static bool IsGzip(ReadOnlySpan<byte> raw) => raw.Length > 2 && raw[0] == 0x1f && raw[1] == 0x8b;
+
+    /// <summary>Inflate <paramref name="gzip"/>; false when it is not gzip after all or inflates past <paramref name="cap"/>
+    /// (a capture-only read: the real request already left with the compressed bytes).</summary>
+    static bool TryGunzip(byte[] gzip, int cap, out byte[] plain)
+    {
+        plain = [];
+        try
+        {
+            using var input = new GZipStream(new MemoryStream(gzip, writable: false), CompressionMode.Decompress);
+            byte[] buffer = new byte[Math.Min(cap, Math.Max(1024, gzip.Length * 8)) + 1];
+            int n = 0, read;
+            while ((read = input.Read(buffer, n, buffer.Length - n)) > 0)
+            {
+                n += read;
+                if (n < buffer.Length) continue;
+                if (buffer.Length > cap) return false;                       // more than the cap: not captured
+                Array.Resize(ref buffer, Math.Min(cap, buffer.Length * 2) + 1);
+            }
+            plain = buffer.AsSpan(0, n).ToArray();
+            return true;
+        }
+        catch (InvalidDataException) { return false; }
     }
 
     /// <summary>Buffers the response body into a fresh <see cref="ByteArrayContent"/> (same headers) so the real
     /// caller still reads exactly what the server sent — the capture's own copy is a SEPARATE array, never the one
     /// handed onward. Only when `Content-Length` is known and small: an unknown-length body (chunked, or the audio
     /// cdn's own range reads) is never buffered, so a media response is never at risk of this capture holding
-    /// megabytes it does not need.</summary>
-    static (ReadOnlyMemory<byte> Payload, bool Truncated) CapturedResponseBody(HttpResponseMessage response)
+    /// megabytes it does not need — bar a 4xx, whose unknown-length body is read up to the cap
+    /// (<see cref="CapturedRefusalBody"/>).</summary>
+    static (ReadOnlyMemory<byte> Payload, bool Truncated) CapturedResponseBody(HttpResponseMessage response, int status)
     {
         HttpContent? content = response.Content;
         if (content is null) return (default, false);
         long? len = content.Headers.ContentLength;
+        if (len is null && status is >= 400 and < 500) return CapturedRefusalBody(response, content);
         if (len is not (> 0 and <= MaxCapturedBodyBytes)) return (default, len is null or 0 ? false : true);
 
         try
@@ -262,6 +317,67 @@ public static class Wire
             return TryRedactJson(raw, out byte[] redacted) ? (redacted, false) : (default, raw.Length > 0);
         }
         catch { return (default, true); }
+    }
+
+    /// <summary>A 4xx answer whose length the transport does not know (remote-play plan 0.2: the handler inflates a gzipped
+    /// answer and drops its <c>Content-Length</c>, so the 403 to a forwarded Liked play was <c>recv=?</c> and kept nothing).
+    /// At most <see cref="MaxCapturedBodyBytes"/> + 1 bytes are read: a body that fits is captured (redacted) and handed on
+    /// as a fresh buffered content; a longer one is handed on whole — the bytes read, then the rest of the stream
+    /// (<see cref="PrefixedStream"/>) — and not captured. Either way the caller reads exactly what the server sent.</summary>
+    static (ReadOnlyMemory<byte> Payload, bool Truncated) CapturedRefusalBody(HttpResponseMessage response, HttpContent content)
+    {
+        try
+        {
+            Stream stream = content.ReadAsStream();
+            byte[] head = new byte[MaxCapturedBodyBytes + 1];
+            int n = 0, read;
+            while (n < head.Length && (read = stream.Read(head, n, head.Length - n)) > 0) n += read;
+            bool fits = n <= MaxCapturedBodyBytes;
+            HttpContent replacement = fits ? new ByteArrayContent(head, 0, n) : new StreamContent(new PrefixedStream(head, n, stream));
+            foreach (var header in content.Headers) replacement.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            response.Content = replacement;
+            if (!fits) return (default, true);
+            stream.Dispose();
+            if (n == 0) return (default, false);
+            return TryRedactJson(head.AsSpan(0, n), out byte[] redacted) ? (redacted, false) : (default, true);
+        }
+        catch { return (default, true); }
+    }
+
+    /// <summary>The bytes a capture already read off a response stream, then the rest of that stream: what a refusal body
+    /// longer than the capture's cap is handed on as, so the caller's read is the server's body, byte for byte.</summary>
+    sealed class PrefixedStream(byte[] head, int headLength, Stream rest) : Stream
+    {
+        int _at;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            if (_at >= headLength) return rest.Read(buffer);
+            int n = Math.Min(buffer.Length, headLength - _at);
+            head.AsSpan(_at, n).CopyTo(buffer);
+            _at += n;
+            return n;
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => _at >= headLength ? rest.ReadAsync(buffer, cancellationToken) : new ValueTask<int>(Read(buffer.Span));
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) rest.Dispose();
+            base.Dispose(disposing);
+        }
     }
 
     /// <summary>PURE-ish (allocates, but only ever called on a capture-enabled path): redacts a JSON body's
