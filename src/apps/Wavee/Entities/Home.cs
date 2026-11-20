@@ -1206,6 +1206,8 @@ public readonly partial struct Home
     public static void EnsurePreviews(Home h)
     {
         if (!h.IsValid || !h.HasBaselineSections) return;
+        // --fake answers the ask from the lookup capture its document came with, through the live fold and the live marks (F15's pattern).
+        if (Platform.Args.Fake) { Entities.SimulatePreviewLookup(h, refresh: false); return; }
         Entities.EnsureEdge(FetchEdge.HomePreviews, h.Slot);
     }
 

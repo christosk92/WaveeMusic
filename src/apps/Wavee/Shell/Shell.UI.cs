@@ -1127,6 +1127,8 @@ public static partial class Shell
             case "credits-land": Entities.LandFakeCredits(); return true;
             // Home's next answer over the one the page shows (Entities.Fake.Home.cs): identity across answers.
             case "home-refresh": return Entities.StageHomeRefresh();
+            // Home's next answer as a live re-fetch lands it (Entities.Fake.Home.cs): the document only; the app's own demand asks the lookup.
+            case "home-reanswer": return Entities.StageHomeReanswer();
             // Home's live open, one answer per step (Entities.Fake.Home.cs): cold, then the All answer, the Following answer, the lookup.
             case "home-cold": HomeUi.HomeHost.StageLaunchWords(); return Entities.StageHomeCold();
             case "home-land": return Entities.StageHomeAnswer("");
