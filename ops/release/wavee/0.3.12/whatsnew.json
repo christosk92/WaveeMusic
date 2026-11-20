@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.12",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "Space and the volume behave again, and the Lossless badge comes to every theme.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "seek-bar",
+      "title": "The seek bar shows where you're going",
+      "body": "In case you missed it in 0.3.11: point at the seek bar of a song with timed lyrics and a small card shows the line sung at that moment. On a music video or a video podcast it shows the picture there instead, with the time and the chapter, and while you drag, pulling the pointer away from the bar slows the seek down to land on the exact spot. Settings > Appearance > Lyrics > \"Show lyrics when seeking\" turns the lyrics card off.",
+      "kind": "new",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/seek-bar.jpg",
+        "srcLight": "media/seek-bar-light.jpg",
+        "alt": "A lyric line, \"city lights falling over the river\", on a card above the seek bar in the WinUI theme",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "keys-and-volume",
+      "title": "Space, volume and mute behave again",
+      "body": "Space plays and pauses again from anywhere outside a text field, also right after Wavee starts, and with the player bar focused the arrow keys seek and change the volume. The volume slider starts at your volume instead of 0%, glides to 0 when you mute and back when you unmute, and a muted Wavee starts muted. The volume work is a community contribution from @0dm, thank you!",
+      "kind": "improved",
+      "community": [
+        "0dm"
+      ],
+      "issues": [
+        232,
+        256
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/keys-and-volume.jpg",
+        "srcLight": "media/keys-and-volume-light.jpg",
+        "alt": "The WinUI player bar while a song plays, with the volume slider at the listener's volume",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "lossless-and-more",
+      "title": "Lossless in every theme, and more from the community",
+      "body": "While a lossless stream plays, the player bar says so after the artists, now in WinUI and Zune as well as Classic; hover it for the exact format, such as FLAC 24/96. The first time it shows, a tip asks whether to keep it or hide it, and Settings > Sound > Quality > \"Show the Lossless badge\" switches it later. The badge first came from @0dm, together with resizable Insights and About panels, local files with their title, artist and length, a bar about songs that can't be played that you can close, and Find that opens wherever the list is scrolled. Thank you!",
+      "kind": "new",
+      "community": [
+        "0dm"
+      ],
+      "issues": [
+        227,
+        229,
+        230,
+        231
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/lossless-and-more.jpg",
+        "srcLight": "media/lossless-and-more-light.jpg",
+        "alt": "WinUI's player bar with Lossless after the artist, and the tip above it: You're listening in lossless, with Hide badge and Keep it",
+        "width": 1200,
+        "height": 675
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

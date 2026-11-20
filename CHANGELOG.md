@@ -8,6 +8,100 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.12] - unreleased
+
+### Added
+
+- **Lossless in the player bar, in every theme.** While a lossless stream plays, the artist line ends with "· Lossless"
+  in Classic, WinUI and Zune (Zune's in its lowercase); hover it for the exact format, such as FLAC 24/96. Settings >
+  Sound > Quality has a "Show the Lossless badge" switch to hide it, and when the badge first appears a small tip above
+  the player bar asks whether to hide it or keep it. The badge is a community contribution from @0dm, thank you. (#227)
+- **Close the bar about songs that can't be played.** Its new ✕ hides it on that list until Wavee restarts; other lists
+  still show theirs. A community contribution from @0dm, thank you. (#231)
+
+### Changed
+
+- **The volume slider follows mute.** It glides to 0 on mute and back to your volume on unmute, and a volume step from
+  the keys or another device glides too. 0% and 100% sit on the ends of the slider, and a muted slider no longer shows a
+  sliver of volume. A community contribution from @0dm, thank you. (#256)
+- **A Home shelf's page dots fade in and out in Classic.** When resizing the window changes how many pages a shelf has,
+  the dot that comes or goes fades instead of popping.
+- **Settings links to Wavee's new website.** The Website link in Settings > Help & about > Links now opens
+  www.cproducts.dev/wavee; the source code on GitHub is one row below it, "Source on GitHub".
+
+### Fixed
+
+- **Smooth song changes.** Starting another song or pressing Next no longer lets the old song crackle out for a moment
+  or clips the first fraction of a second off the new one, most noticeable on Bluetooth headphones: the old song fades
+  out and the new one starts from its very first note, without Wavee closing and reopening your speakers in between.
+- **Liked Songs plays on your other device.** While a phone or another computer is playing, clicking a song in Liked
+  Songs now starts it there, from that song, instead of stopping the other device. If Wavee cannot start Liked Songs
+  there, it leaves that device playing and tells you.
+- **Controlling another device tells you when it says no.** While a phone or another computer is playing, a pause, skip,
+  seek, shuffle, repeat, queue, volume or video change that the device refuses now shows a notice instead of doing
+  nothing. A device that keeps its volume to itself, like an iPhone, shows the volume slider and the mute button as
+  locked, and dragging the slider for any other device sends a few changes a second instead of dozens.
+- **A playlist started on your other device plays in the order you see in Wavee.** While a phone or another computer is
+  playing, starting a playlist from Wavee sends its songs in the order and with the filter you have on the page, and
+  starts the very row you clicked, also when a song is in the list twice. An album starts at the song you clicked, and
+  an artist's Popular songs play as that artist's Popular list, the way Spotify's own app starts them.
+- **Previous, shuffle and repeat on your other device work the way Spotify's own app sends them.** While a phone or
+  another computer is playing, Previous lets that device decide whether to restart the song or go back, as its own
+  button does, and each shuffle or repeat change reaches it as one command instead of two. Pause, resume and seek are
+  sent in the same form as Spotify's app too.
+- **Liked Songs on your phone is Liked Songs in Wavee.** When your phone or another computer plays your Liked Songs,
+  Wavee names it Liked Songs, opening it goes to Wavee's own Liked Songs page, and that page's play button pauses and
+  resumes it. Your other devices also see Wavee's own Liked Songs playback as Liked Songs. While another device plays a
+  playlist you started from Wavee, sorting or filtering that playlist in Wavee changes the order there without
+  restarting the song, and "Play next" keeps that device's own upcoming and autoplay songs as they were.
+- **Up next survives a change made on another device.** When the Spotify app on another device re-sorted or refreshed
+  the list Wavee was playing, Wavee dropped every song after the current one. It now keeps them.
+- **Space plays and pauses again, and the player bar's keys work.** Space toggles playback anywhere outside a text
+  field, also when nothing has keyboard focus (at start-up, after a click on the page). With the player bar focused
+  (Tab, or a click on its empty space) Space plays and pauses, Left and Right seek and Up and Down change the volume. In
+  every theme. (#232)
+- **The volume slider showed 0% at launch, and the mouse wheel over it closed Wavee.** It starts at your volume, and the
+  wheel steps it. A community contribution from @0dm, thank you. (#256)
+- **Mute is remembered.** A muted Wavee starts muted, and unmuting brings back your volume, also when you muted before
+  the first song. A community contribution from @0dm, thank you. (#256)
+- **Every slider reaches its ends.** The lowest and highest values sit on the ends of the rail, the thumb moves from the
+  first step, and a slider at its lowest value shows no sliver of fill, in Settings, the speed panel, the full-screen
+  options and the mini player, in every theme, as the volume rails already did.
+- **Because you like shows its songs again.** The open card's song tiles stayed five empty grey boxes once Home had
+  refreshed in the background (it does every few hours) and brought new picks: their preview songs were only ever asked
+  for once per session. Home now asks for the new picks' songs as they arrive, a pick whose card changed shows its own
+  songs instead of the previous card's, and a pick that has none shows its cover instead of empty tiles. All themes; the
+  Release Spotlight's songs too.
+- **Your shortcuts keep their shape when the window changes.** After the side panel opened or the window was resized,
+  the shortcuts grid on Home kept the width it had before: tiles in one row came out different sizes, the last tile ran
+  past the edge, and turning the page showed a cut-off piece of the page before it and a tile with no picture or name.
+  In every theme, each page is now exactly as wide as the grid and the tiles follow a new width at once. In WinUI and
+  Zune, the arrow that appears on hover to go to the next page now sits on the right edge, not the left.
+- **The Canvas in the side panel's Now playing follows the panel.** While you drag the panel wider or narrower in WinUI,
+  the fade over the Canvas video now resizes with it instead of hanging as a pale box over the picture, and in the
+  light theme the thin grey line between the faded Canvas and "Next up" is gone. Zune's panel gets the same fixes.
+- **Date added shows whenever the song list has room for it.** A playlist or Liked Songs no longer hides its Date added
+  column in a mid-size window or beside a docked queue while the title column has plenty of space (WinUI, and Classic
+  and Zune in a small window). In WinUI, where the Album column does not fit, the album moves next to the artist under
+  the song title instead of disappearing.
+- **Local files in playlists show up.** A playlist's local files show their title, artist and length (greyed out: Wavee
+  can't play them yet) instead of empty rows, and their tags, video and Canvas answers are kept instead of being asked
+  for again on every visit. A community contribution from @0dm, thank you. (#231)
+- **Resizable side panel.** Drag the divider beside a playlist's Insights or an album's About panel to make it wider or
+  narrower; the width is remembered. A community contribution from @0dm, thank you. (#229)
+- **Find in a scrolled playlist.** The list's search opens wherever the list is scrolled, not only at the top. A
+  community contribution from @0dm, thank you. (#230)
+- **The scrollbar beside an open side panel takes the pointer again.** With the queue, lyrics, friends or now playing
+  panel open, the page's scrollbar thumb and track next to the panel can be grabbed and dragged to the end of a long
+  playlist; the panel's resize grip now sits over the gap and the panel's edge instead of over the scrollbar (Classic
+  and WinUI). (#255)
+- **Playlist scrollbar beside Insights.** With Insights open in a wide window, the song list's scrollbar sits on the
+  divider instead of in a gap before it. A community contribution from @0dm, thank you. (#229)
+- **Player bar title.** In Classic the title is a link only over its text: the empty space beside a short title no
+  longer lights it up or opens the album. A community contribution from @0dm, thank you. (#225)
+- **Heart beside the title.** In a wide window the heart in Classic's player bar sits right after the title instead of
+  at the far end of its area. A community contribution from @0dm, thank you. (#226)
+
 ## [0.3.11] - 2026-11-19
 
 ### Added

@@ -10,6 +10,17 @@ version by hand.
 The history before 2026-11-20 was written by hand in `ContractVersion.cs`. It is kept below as it was written, oldest
 first: a version that names a branch (`pinned-home 1.117`) was numbered on that branch before it merged.
 
+## 2.8 (Wavee 0.3.12)
+
+- the optional `PlayerBarProps.LosslessFormat` (the playing stream's badge, such as FLAC 24/96, while a lossless stream
+  plays on this device; null otherwise) (#227)
+- the optional `DetailAsideProps.StoredWidth` / `.CommitWidth` (the aside's remembered width per kind; a structure draws
+  a grip on the aside's edge and commits the width on release; 0 = never dragged) (#229)
+- the optional `TrackUnavailableBarArgs.Dismiss` / `.DismissLabel` (the unavailable bar's close button, per list until
+  the app restarts) (#231)
+- the optional `HintProps.DismissLabel` (a hint's own words for its dismiss, such as Keep it on the Lossless badge's tip;
+  null = the theme's usual Not now or close glyph)
+
 ## Before 2026-11-20 (hand-written, oldest first)
 
 1.1 (tuned Classic CT4): `LyricsState.Offline` and the optional `LyricsLinesStyle.Offline` picture; `PlayerBarSlots.VideoSplit`
