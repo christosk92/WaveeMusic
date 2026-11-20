@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Wavee's update feed. ops/release/wavee-release.ps1 substitutes __VERSION__ / __ARCH__ / __PUBLISHER__ /
+<!-- Wavee's update feed. the release runner (ops/release/release.ps1) substitutes __VERSION__ / __ARCH__ / __PUBLISHER__ /
      __IDENTITY__ / __APPINSTALLER_URI__ / __MSIX_URI__ and uploads the result to the ROLLING GitHub release
      'wavee-stable' (one asset per arch: Wavee.arm64.appinstaller, Wavee.x64.appinstaller). That rolling release is
      the feed - never releases/latest, which is repo-global and belongs to the FluentGpu gallery.

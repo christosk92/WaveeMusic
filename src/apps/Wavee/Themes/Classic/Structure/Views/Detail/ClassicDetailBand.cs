@@ -1,7 +1,7 @@
 // ── Themes/Classic/Structure/Views/Detail/ClassicDetailBand.cs — the context band's pieces (themes plan 6.1, T10c2) ─────────────────────────────────────
 //
-// The band (the 56-DIP identity row), its title, byline and ONE hairline, and the section pivot are the structure's: the detail frame's hero, the artist page,
-// the profile page and the episode reader all build their context band from these. They lived in `Detail` as the seam until the last page moved (T10c2).
+// The band (the 56-DIP identity row), its title, byline and ONE hairline, and the section pivot are the structure's: the detail frame's hero, the artist page
+// and the profile page all build their context band from these. They lived in `Detail` as the seam until the last page moved (T10c2).
 // The band's NUMBERS and the scroll-spy arithmetic (`Detail.BandLayout`) stay core: the artist and profile hosts read them.
 
 using System.Globalization;

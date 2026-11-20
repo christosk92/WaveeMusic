@@ -1,0 +1,59 @@
+# The Spine Shelf take (WinUI, 1600x1000; about 35 s). Record-Feature.ps1 fills the placeholders from the live Home:
+#   1. list the keys:  Record-Feature.ps1 -Script <this> -Exe <build> -ListKeys shelf:     (the page glides on until the shelf
+#                      is realized; writes <Out>\keys.txt)
+#   2. record:         Record-Feature.ps1 -Script <this> -Exe <build> -Audio -Set @{ SHELF = '<zone key>#<page>'; OPEN = '<open item>';
+#                      T1 = 1; T2 = 3; DWELL = '<item>'; CLICK = '<item>'; VIDEO = 'true' }
+# SHELF is the part after `shelf:` of the shelf page's own key (shelf:<zone key>#<page>); OPEN the item open at rest, T1 and T2
+# two of its song tiles (shelf:tile:<OPEN>:<n>, n from 0; songs with a canvas); DWELL and CLICK two closed spines
+# (shelf:item:<key>), CLICK at least four spines from the page's last (the arrows walk three on from it); VIDEO true waits for
+# each tile's canvas to present (false only for a rehearsal on the --fake demo, which has no canvas files). Keys come from
+# Home/SpineShelf/SpineShelf.cs.
+# NEVER a click on a song tile, the card's Play or Save: a tile click PLAYS its playlist (SpineShelf.Tap -> Playback.PlayContext),
+# which on the owner's account is a Connect takeover. Tiles are only hovered; spines are clicked.
+#live ready key=home:tile:d-daylist images=true quiet=500
+pointer path=[at:1240:560@0] steps=1
+#rec
+# 1. down to the shelf: a turn of the wheel, then the page glides the shelf in under the header
+pointer path=[at:900:640@250] steps=30 ease=inout
+scroll x=900 y=640 dy=4
+frames 40
+#live reveal key=shelf:{SHELF} vp=home: top=150 ms=1100
+#live ready key=shelf:{SHELF} images=true quiet=400 max=10000
+frames 30
+# 2. rest on a song tile: it widens, then its canvas plays and its 30 s preview starts
+pointer path=[shelf:tile:{OPEN}:{T1}@0] steps=54 ease=inout
+#live ready key=shelf:tile:{OPEN}:{T1} video={VIDEO} quiet=0 max=8000
+frames 300
+# 3. on to a second tile
+pointer path=[shelf:tile:{OPEN}:{T2}@0] steps=40 ease=inout
+#live ready key=shelf:tile:{OPEN}:{T2} video={VIDEO} quiet=0 max=8000
+frames 270
+# 4. rest on a spine until it opens (the meter fills over 0.7 s)
+pointer path=[shelf:item:{DWELL}@0] steps=46 ease=inout
+frames 66
+#live ready key=shelf:item:{DWELL} images=true quiet=350 max=6000
+frames 70
+# 5. click another spine
+pointer path=[shelf:item:{CLICK}@250] steps=40 ease=inout
+click key=shelf:item:{CLICK}
+frames 90
+# 6. the keys: the pointer steps off the shelf, the arrows walk the spines, Enter opens the focused one
+pointer path=[at:900:150@200] steps=36 ease=inout
+key right
+frames 32
+key right
+frames 32
+key right
+frames 40
+key enter
+frames 120
+# 7. the window narrows until the shelf stands up, holds, and widens back (a hand dragging the edge)
+pointer path=[leave@0] steps=30 ease=inout
+resize 600 1000 ms=1500
+frames 30
+#live reveal key=shelf:{SHELF} top=120 ms=900
+frames 110
+resize 1600 1000 ms=1500
+frames 30
+#live reveal key=shelf:{SHELF} top=150 ms=700
+frames 80

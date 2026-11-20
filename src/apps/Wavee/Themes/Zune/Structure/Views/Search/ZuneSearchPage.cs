@@ -209,7 +209,7 @@ internal static class ZuneSearchPage
             Key = "zune-search-top-hero", Direction = (byte)(stacked ? 1 : 0), Gap = S.HeroGap, AlignItems = stacked ? FlexAlign.Start : FlexAlign.End, MinWidth = 0f,
             Children =
             [
-                new BoxEl { Width = art, Height = art, Shrink = 0f, Children = [Controls.Artwork(url, art, art, corners)] },
+                new BoxEl { Width = art, Height = art, Shrink = 0f, Children = [Search.ArtOf(hit, url, art, art, corners)] },
                 new BoxEl { Direction = 1, Gap = S.HeroLineGap, Grow = stacked ? 0f : 1f, Shrink = 1f, MinWidth = 0f, Children = copy.ToArray() },
             ],
         };

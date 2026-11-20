@@ -3,7 +3,8 @@
 // THE CONTENT STATES. The core content host decides which state the page region is in (a page, an empty body, the not-found page, the offline
 // lane) and builds the page; this template draws the state it was handed, keyed as the core keys it:
 //
-//   Page / EmptyBody   one body box keyed `props.Key` (`page:<route>` / `page-empty:<route>`) that fills the page region.
+//   Page / EmptyBody   one body box keyed `props.Key` (`page:<route>` / `page-empty:<route>`) that fills the page region; a page stands in
+//                      it under the page's loading bar (`CommonPageBusy`: the 2 px accent line directly under the band).
 //   NotFound           the Common not-found block (`CommonNotFound`): the destination's own glyph, the not-found line and Go home.
 //   OfflineLane        the strip in the flow above the kept page: the window tier's gutter either side (16 / 24 / 48 / 48 / 64), 16 from the
 //                      top, so the page opens under it.
@@ -36,15 +37,9 @@ internal static class ZuneContentState
         {
             ContentStateKind.NotFound => CommonNotFound.Block(props.Key, props.Glyph, props.GoHome),
             ContentStateKind.OfflineLane => OfflineLane(props, gutter),
-            _ => PageBox(props.Key, props.Page),
+            _ => CommonPageBusy.PageBox(props.Key, props.Page, props.Busy, ZuneFrameRules.PageBusyH),
         };
     }
-
-    private static BoxEl PageBox(string key, Element? page) => new()
-    {
-        Key = key, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-        Children = page is null ? [] : [page.Value],
-    };
 
     private static BoxEl OfflineLane(ContentStateProps props, float gutter) => new()
     {

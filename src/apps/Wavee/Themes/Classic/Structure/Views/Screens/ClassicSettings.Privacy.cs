@@ -1,16 +1,16 @@
-// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Privacy.cs — the Privacy & diagnostics tab (themes plan 6.1, T11b) ───────────────────────
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Privacy.cs — Account & privacy's and Help's diagnostics cards (settings rework 7.1) ──────
 //
-// From `Screens\Settings.UI.Privacy.cs`. Privacy (what leaves this PC, the crash-report mode with its memory-snapshot switch, the crash-service card, the policy link) ·
-// Crash reports (ONE Saved reports expander: the send-queue InfoBar, a row per report with a "…" menu, Open folder / Delete all) · Logs (the viewer card with live
-// counts, the two detail levels, the log-file rule, Report a problem) · Tools (Playback runtime, Spotify Connect, Realtime capture) · Developer (developer mode and
-// the three items it unlocks).
+// From `Screens\Settings.UI.Privacy.cs`. Account & privacy › Privacy (what leaves this PC, the crash-report mode with its memory-snapshot switch, the crash-service
+// card, the policy link) and › Crash reports (ONE Saved reports expander: the send-queue InfoBar, a row per report with a "…" menu, Open folder / Delete all);
+// Help & about › Diagnostics (the log viewer card with live counts, the two detail levels, the log-file rule, Realtime capture) and › Developer (developer mode
+// and the three items it unlocks). Each card is drawn where its dial lives; the child dials it holds are keyed as their rows (`FrameOf`).
 //
-// Spec: docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.1, §5.1, §5.3-§5.6 — the tab replaces Settings › Logs and absorbs General's Privacy &
-// diagnostics and Developer groups; the decisions it makes are `Settings.PrivacyRules` (engine-free and tested), the verbs are the rows' writers.
+// Spec: docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.1, §5.1, §5.3-§5.6 — the decisions are `Settings.PrivacyRules` (engine-free), the verbs are
+// the dials' writers.
 //
-// THE SHAPE: `PrivacyDiagnosticsTab()` is a static body re-run with the page. A group that must follow something the page does not bump — the reports folder, the
-// send outbox, the log ring, the logger's levels, the developer signals — is its own component with its own subscriptions, so the page never re-renders for them.
-// Every expander starts COLLAPSED (the header answers); every destructive action confirms through `Controls.Confirm`; every toast goes through `Notify.Say`.
+// THE SHAPE: a card that must follow something the page does not bump — the reports folder, the send outbox, the log ring, the logger's levels, the developer
+// signals — is its own component with its own subscriptions, so the page never re-renders for them. Every expander starts COLLAPSED (the header answers);
+// every destructive action confirms through `Controls.Confirm`; every toast goes through `Notify.Say`.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -26,59 +26,29 @@ using PvFacts = Wavee.Strings.Settings.Privacy.Facts;
 using PvLogs = Wavee.Strings.Settings.Privacy.Logs;
 using PvReports = Wavee.Strings.Settings.Privacy.Reports;
 using PvTools = Wavee.Strings.Settings.Privacy.Tools;
-using Tab = Wavee.Settings.Tab;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
 
 internal static partial class ClassicSettings
 {
-    // ══ 1. THE TAB ════════════════════════════════════════════════════════════════════════════════════════════════════
-
-    private static Element[] PrivacyDiagnosticsTab() =>
-    [
-        Mark("Privacy"),
-        SectionHeader(Loc.Get(PvFacts.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Privacy"), Loc.Get(PvFacts.Subtitle)),
-        WhatLeavesExpander(),
-        CrashReportsExpander(),
-        Embed.Comp(static () => new CrashServiceCard()) with { Key = "privacy.crash-service" },
-        PrivacyPolicyCard(),
-
-        Mark("Crash reports"),
-        SectionHeader(Loc.Get(PvReports.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Crash reports"), Loc.Get(PvReports.Subtitle)),
-        Embed.Comp(static () => new SavedReportsGroup()) with { Key = "privacy.reports" },
-
-        Mark("Logs"),
-        SectionHeader(Loc.Get(PvLogs.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Logs"), Loc.Get(PvLogs.Subtitle)),
-        Embed.Comp(static () => new LogViewerCard()) with { Key = "privacy.log-viewer" },
-        Embed.Comp(static () => new DetailLevelGroup()) with { Key = "privacy.detail-level" },
-        LogFilesCard(),
-
-        Mark("Tools"),
-        SectionHeader(Loc.Get(PvTools.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Tools"), Loc.Get(PvTools.Subtitle)),
-        ToolLinkCard(Tab.PrivacyDiagnostics, "playbackRuntime"),
-        RealtimeCaptureExpander(),
-
-        Mark("Developer"),
-        SectionHeader(Loc.Get(PvDev.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Developer"), Loc.Get(PvDev.Subtitle)),
-        Embed.Comp(static () => new DeveloperGroup()) with { Key = "privacy.developer" },
-    ];
-
     // ══ 2. PRIVACY ════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The collapsed answer is "No telemetry"; inside, the five places anything leaves this PC and why. Items
     /// carry no control — they are facts.</summary>
-    static Element WhatLeavesExpander() => SettingsExpander.Create(new SettingsExpander.Options
+    static Element WhatLeavesExpander(SettingsBodyRow row) => SettingsExpander.Create(new SettingsExpander.Options
     {
         Header = Loc.Get(PvFacts.WhatLeaves),
         Description = Loc.Get(PvFacts.WhatLeavesSub),
-        HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "whatLeaves"),
+        HeaderIcon = GlyphOf(row.Dial),
         Content = ValueTag(Loc.Get(PvFacts.NoTelemetry)),
+        IsExpanded = ExpandCell(row.Id, false),
         Items =
         [
             Item(Loc.Get(PvFacts.Spotify), Loc.Get(PvFacts.SpotifySub)),
             Item(Loc.Get(PvFacts.Lyrics), Loc.Get(PvFacts.LyricsSub)),
             Item(Loc.Get(PvFacts.Github), Loc.Get(PvFacts.GithubSub)),
-            Item(Loc.Get(PvFacts.AiModels), Loc.Get(PvFacts.AiModelsSub), icon: RowGlyph(Tab.PrivacyDiagnostics, "whatLeavesAi")),
+            FrameOf("account.privacy.whatLeavesAi", Item(Loc.Get(PvFacts.AiModels), Loc.Get(PvFacts.AiModelsSub), icon: GlyphOf(Dial("account.privacy.whatLeavesAi")))),
             Item(Loc.Get(PvFacts.CrashService), Loc.Get(PvFacts.CrashServiceSub)),
         ],
         ItemsFooter = ExpanderFooter(FooterNote(Loc.Get(PvFacts.Footer))),
@@ -88,9 +58,9 @@ internal static partial class ClassicSettings
     /// only a group-wide enabled flag, and Automatic alone must be disabled with its reason), then the memory-snapshot
     /// switch (live only while reporting is on) and what a report contains. The header tag is the EFFECTIVE mode — a
     /// stored Automatic on a build that cannot send behaves as, and shows as, Ask each time.</summary>
-    static Element CrashReportsExpander()
+    static Element CrashReportsExpander(SettingsBodyRow row)
     {
-        var stored = D(Tab.PrivacyDiagnostics, "crashReports").Current is int storedMode ? (Crash.Reporting)storedMode : default;
+        var stored = row.Value is int storedMode ? (Crash.Reporting)storedMode : default;
         bool configured = Crash.Uploader.Configured;
         var effective = Crash.ConsentPolicy.Effective(stored, configured);
         bool reporting = effective != Crash.Reporting.Off;
@@ -99,25 +69,27 @@ internal static partial class ClassicSettings
         {
             Header = Loc.Get(PvFacts.CrashReports),
             Description = Loc.Get(PvFacts.CrashReportsSub),
-            HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "crashReports"),
+            HeaderIcon = GlyphOf(row.Dial),
             Content = ValueTag(Loc.Get(PrivacyRules.ModeKey(effective))),
+            IsExpanded = ExpandCell(row.Id, false),
             Items =
             [
                 ModeItemOf(Crash.Reporting.Off, effective, PvFacts.ModeOff, facts),
                 ModeItemOf(Crash.Reporting.Ask, effective, PvFacts.ModeAsk, facts),
                 ModeItemOf(Crash.Reporting.Auto, effective, PvFacts.ModeAuto, facts),
-                Item(Loc.Get(PvFacts.IncludeDump), Loc.Get(PvFacts.IncludeDumpSub),
-                    RowToggle(D(Tab.PrivacyDiagnostics, "crashDump"), reporting),
-                    isEnabled: reporting, icon: RowGlyph(Tab.PrivacyDiagnostics, "crashDump")),
-                Item(Loc.Get(PvFacts.Contents), Loc.Get(PvFacts.ContentsSub), icon: RowGlyph(Tab.PrivacyDiagnostics, "crashContents")),
+                FrameOf("account.privacy.crashDump", Item(Loc.Get(PvFacts.IncludeDump), Loc.Get(PvFacts.IncludeDumpSub),
+                    RowToggle(Dial("account.privacy.crashDump"), reporting),
+                    isEnabled: reporting, icon: GlyphOf(Dial("account.privacy.crashDump")))),
+                FrameOf("account.privacy.crashContents",
+                    Item(Loc.Get(PvFacts.Contents), Loc.Get(PvFacts.ContentsSub), icon: GlyphOf(Dial("account.privacy.crashContents")))),
             ],
         }) with { Key = "privacy.crash-reports" };
     }
 
     /// <summary>One mode with its caption and enablement from the document (Automatic needs a service, and says so).</summary>
     static Element ModeItemOf(Crash.Reporting mode, Crash.Reporting current, string labelKey, ISettingsFacts facts)
-        => ModeItem(mode, current, Loc.Get(labelKey), Loc.Get(SettingsDoc.CrashModeCaptionKey((int)mode, facts)),
-            SettingsDoc.CrashModeEnablement((int)mode, facts).Enabled);
+        => ModeItem(mode, current, Loc.Get(labelKey), Loc.Get(SettingsSpec.CrashModeCaptionKey((int)mode, facts)),
+            SettingsSpec.CrashModeEnablement((int)mode, facts).Enabled);
 
     /// <summary>One mode: a radio and an indented caption, left-aligned so the card renders ONLY the content
     /// (<c>SettingsCard.ContentAlignment.Left</c>). Disabled, the caption says why.</summary>
@@ -140,7 +112,7 @@ internal static partial class ClassicSettings
     /// Automatic really writes Ask.</summary>
     static void SetCrashMode(Crash.Reporting mode)
     {
-        if (D(Tab.PrivacyDiagnostics, "crashReports").Writer.Choose!((int)mode)) Settings.Bump();
+        if (Dial("account.privacy.crashReports").Writer.Choose!((int)mode)) Settings.Bump();
     }
 
     /// <summary>"Your data on the crash service": the shortened install id, Copy id, and the confirmed right-to-erasure
@@ -159,22 +131,23 @@ internal static partial class ClassicSettings
 
             // The confirmed erasure is the row's writer (off the UI thread; the answer bumps the epoch above).
             void OnDelete() => Controls.Confirm(overlay, Loc.Get(PvFacts.DeleteMyDataConfirmTitle), Loc.Get(PvFacts.DeleteMyDataConfirmBody),
-                Loc.Get(PvFacts.DeleteMyDataConfirmButton), () => D(Tab.PrivacyDiagnostics, "crashService").Writer.Run!());
+                Loc.Get(PvFacts.DeleteMyDataConfirmButton), () => Dial("account.privacy.crashService").Writer.Run!());
 
             return SettingsCard.Create(new SettingsCard.Options
             {
                 Header = Loc.Get(PvFacts.YourData),
                 Description = PvFacts.YourDataSub(PrivacyRules.ShortInstallId(fullId)),
-                HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "crashService"),
+                HeaderIcon = GlyphOf(Dial("account.privacy.crashService")),
                 Content = HStack(Spacing.S,
-                    SubtleButton(Loc.Get(PvFacts.CopyId), () => D(Tab.PrivacyDiagnostics, "crashServiceCopy").Writer.Run!(), isEnabled: fullId.Length > 0),
+                    FrameOf("account.privacy.crashServiceCopy",
+                        SubtleButton(Loc.Get(PvFacts.CopyId), () => Dial("account.privacy.crashServiceCopy").Writer.Run!(), isEnabled: fullId.Length > 0)),
                     StdButton(Loc.Get(PvFacts.DeleteMyData), OnDelete, isEnabled: configured)),
             });
         }
     }
 
-    static Element PrivacyPolicyCard() => DocRow(D(Tab.PrivacyDiagnostics, "privacyPolicy"), isClickEnabled: true,
-        onClick: static () => D(Tab.PrivacyDiagnostics, "privacyPolicy").Writer.Run!(), actionIcon: Icons.OpenInNewWindow);
+    static Element PrivacyPolicyCard(SettingsBodyRow row) => CardRow(row, isClickEnabled: true,
+        onClick: static () => Dial("account.privacy.policy").Writer.Run!(), actionIcon: Icons.OpenInNewWindow);
 
     // ══ 3. CRASH REPORTS › SAVED REPORTS ══════════════════════════════════════════════════════════════════════════════
 
@@ -204,8 +177,10 @@ internal static partial class ClassicSettings
                     queued == 1 ? Loc.Get(PvReports.QueuedOne) : PvReports.Queued(queued.ToString(CultureInfo.InvariantCulture)),
                     isClosable: false,
                     actionButton: HStack(Spacing.S,
-                        AccentButton(Loc.Get(PvReports.SendNow), static () => D(Tab.PrivacyDiagnostics, "reportsSendNow").Writer.Run!(), isEnabled: configured),
-                        StdButton(Loc.Get(PvReports.Discard), static () => D(Tab.PrivacyDiagnostics, "reportsDiscard").Writer.Run!())))) with { Key = "privacy.reports.queued" });
+                        FrameOf("account.reports.sendNow",
+                            AccentButton(Loc.Get(PvReports.SendNow), static () => Dial("account.reports.sendNow").Writer.Run!(), isEnabled: configured)),
+                        FrameOf("account.reports.discard",
+                            StdButton(Loc.Get(PvReports.Discard), static () => Dial("account.reports.discard").Writer.Run!()))))) with { Key = "privacy.reports.queued" });
             foreach (var b in bundles)
                 items.Add(ReportRow(b, overlay, configured) with { Key = "crash:" + b.Summary.ReportId });
             PruneAnchors(bundles);
@@ -217,7 +192,8 @@ internal static partial class ClassicSettings
                     ? Loc.Get(PvReports.SavedNone)
                     : PvReports.SavedSummary(tally.Sent.ToString(CultureInfo.InvariantCulture),
                         tally.NotSent.ToString(CultureInfo.InvariantCulture), tally.Closed.ToString(CultureInfo.InvariantCulture)),
-                HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "savedReports"),
+                HeaderIcon = GlyphOf(Dial("account.reports.saved")),
+                IsExpanded = ExpandCell("account.reports.saved", false),
                 Content = ValueTag(tally.Total == 1
                     ? PvReports.SavedCountOne(PrivacyRules.Mb(tally.Bytes))
                     : PvReports.SavedCount(tally.Total.ToString(CultureInfo.InvariantCulture), PrivacyRules.Mb(tally.Bytes))),
@@ -230,10 +206,11 @@ internal static partial class ClassicSettings
                     [
                         Caption(PvReports.Retention(Crash.Files.KeepBundles.ToString(CultureInfo.InvariantCulture)))
                             with { Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap },
-                        StdButton(Loc.Get(PvReports.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "reportsOpenFolder").Writer.Run!()),
-                        StdButton(Loc.Get(PvReports.DeleteAll), () => Controls.Confirm(overlay,
+                        FrameOf("account.reports.openFolder",
+                            StdButton(Loc.Get(PvReports.OpenFolder), static () => Dial("account.reports.openFolder").Writer.Run!())),
+                        FrameOf("account.reports.deleteAll", StdButton(Loc.Get(PvReports.DeleteAll), () => Controls.Confirm(overlay,
                             Loc.Get(PvReports.DeleteAllConfirmTitle), Loc.Get(PvReports.DeleteAllConfirmBody),
-                            Loc.Get(PvReports.DeleteAll), static () => D(Tab.PrivacyDiagnostics, "reportsDeleteAll").Writer.Run!()), isEnabled: tally.Total > 0),
+                            Loc.Get(PvReports.DeleteAll), static () => Dial("account.reports.deleteAll").Writer.Run!()), isEnabled: tally.Total > 0)),
                     ],
                 }),
             });
@@ -420,10 +397,10 @@ internal static partial class ClassicSettings
             {
                 Header = Loc.Get(PvLogs.Viewer),
                 Description = _line.Peek(),   // non-empty, so the card builds the description node the part binds
-                HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "logViewer"),
+                HeaderIcon = GlyphOf(Dial("help.logs.viewer")),
                 IsClickEnabled = true,
                 IsActionIconVisible = true,
-                OnClick = static () => D(Tab.PrivacyDiagnostics, "logViewer").Writer.Run!(),
+                OnClick = static () => Dial("help.logs.viewer").Writer.Run!(),
                 Parts = _parts,
             });
         }
@@ -457,18 +434,31 @@ internal static partial class ClassicSettings
             {
                 Header = Loc.Get(PvLogs.DetailLevel),
                 Description = Loc.Get(PvLogs.DetailLevelSub),
-                HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "detailLevel"),
+                HeaderIcon = GlyphOf(Dial("help.logs.detailLevel")),
                 Content = ValueTag(PvLogs.DetailLevelValue(Diagnostics.LogView.LevelNames[viewerIndex], Diagnostics.LogView.LevelNames[fileIndex])),
+                IsExpanded = ExpandCell("help.logs.detailLevel", false),
                 Items =
                 [
-                    Item(Loc.Get(PvLogs.InViewer), Loc.Get(PvLogs.InViewerSub),
-                        Combo(Diagnostics.LogView.LevelNames, new Signal<int>(viewerIndex), width: ClassicSettingsRules.LevelComboWidth,
-                            onChange: static i => D(Tab.PrivacyDiagnostics, "logLevelViewer").Writer.Choose!(i))
-                            with { Key = "privacy.level.viewer:" + viewerIndex.ToString(CultureInfo.InvariantCulture) }),
-                    Item(Loc.Get(PvLogs.InFile), Loc.Get(PvLogs.InFileSub),
-                        Combo(Diagnostics.LogView.LevelNames, new Signal<int>(fileIndex), width: ClassicSettingsRules.LevelComboWidth,
-                            onChange: static i => D(Tab.PrivacyDiagnostics, "logLevelFile").Writer.Choose!(i))
-                            with { Key = "privacy.level.file:" + fileIndex.ToString(CultureInfo.InvariantCulture) }),
+                    FrameOf("help.logs.viewerLevel", Item(Loc.Get(PvLogs.InViewer), Loc.Get(PvLogs.InViewerSub), new BoxEl
+                    {
+                        Direction = 1, MinWidth = 0f,
+                        Children =
+                        [
+                            Combo(Diagnostics.LogView.LevelNames, new Signal<int>(viewerIndex), width: ClassicSettingsRules.LevelComboWidth,
+                                onChange: static i => Dial("help.logs.viewerLevel").Writer.Choose!(i))
+                                with { Key = "privacy.level.viewer:" + viewerIndex.ToString(CultureInfo.InvariantCulture) },
+                        ],
+                    })),
+                    FrameOf("help.logs.fileLevel", Item(Loc.Get(PvLogs.InFile), Loc.Get(PvLogs.InFileSub), new BoxEl
+                    {
+                        Direction = 1, MinWidth = 0f,
+                        Children =
+                        [
+                            Combo(Diagnostics.LogView.LevelNames, new Signal<int>(fileIndex), width: ClassicSettingsRules.LevelComboWidth,
+                                onChange: static i => Dial("help.logs.fileLevel").Writer.Choose!(i))
+                                with { Key = "privacy.level.file:" + fileIndex.ToString(CultureInfo.InvariantCulture) },
+                        ],
+                    })),
                 ],
             });
         }
@@ -476,32 +466,29 @@ internal static partial class ClassicSettings
 
     /// <summary>The writer's rule in one sentence, fed by the writer's own numbers (never hard-coded here), and a door to
     /// the folder.</summary>
-    static Element LogFilesCard() => Row(Loc.Get(PvLogs.Files),
-        PvLogs.FilesSub(PrivacyRules.WholeMb(Log.MaxFileBytes), Log.RetentionDays.ToString(CultureInfo.InvariantCulture),
-            PrivacyRules.WholeMb(Log.RetentionBytes)),
-        StdButton(Loc.Get(PvLogs.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "logFiles").Writer.Run!()),
-        RowGlyph(Tab.PrivacyDiagnostics, "logFiles"));
+    static Element LogFilesCard(SettingsBodyRow row) => CardRow(row,
+        StdButton(Loc.Get(PvLogs.OpenFolder), static () => Dial("help.logs.files").Writer.Run!()),
+        sub: PvLogs.FilesSub(PrivacyRules.WholeMb(Log.MaxFileBytes), Log.RetentionDays.ToString(CultureInfo.InvariantCulture),
+            PrivacyRules.WholeMb(Log.RetentionBytes)));
 
     // ══ 5. TOOLS ══════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A clickable card that opens one diagnostics page (Playback keeps its own door to the same pages).</summary>
-    static Element ToolLinkCard(Tab tab, string rowId)
-        => DocRow(D(tab, rowId), isClickEnabled: true, onClick: () => D(tab, rowId).Writer.Run!());
-
     /// <summary>The persisted key/subtitle are `dealerArchive` verbatim (CLAUDE.md: no legacy renumbering); the toggle
     /// applies live through <c>RealtimeCaptureHost.OnSettingsChanged</c>, and the two doors sit inside.</summary>
-    static Element RealtimeCaptureExpander() => SettingsExpander.Create(new SettingsExpander.Options
+    static Element RealtimeCaptureExpander(SettingsBodyRow row) => SettingsExpander.Create(new SettingsExpander.Options
     {
         Header = Loc.Get(PvTools.Capture),
         Description = Loc.Get(PvTools.CaptureSub),
-        HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "realtimeCapture"),
-        Content = RowToggle(D(Tab.PrivacyDiagnostics, "realtimeCapture")),
+        HeaderIcon = GlyphOf(row.Dial),
+        Content = RowToggle(row.Dial),
+        Style = ToggleHeaderStyle(RowToggle(row.Dial)),
+        IsExpanded = ExpandCell(row.Id, false),
         Items =
         [
-            Item(Loc.Get(PvTools.OpenCaptureViewer), Loc.Get(PvTools.OpenCaptureViewerSub), isClickEnabled: true,
-                onClick: static () => D(Tab.PrivacyDiagnostics, "captureViewer").Writer.Run!()),
-            Item(Loc.Get(PvTools.OpenCaptureFolder), Loc.Get(PvTools.OpenCaptureFolderSub),
-                StdButton(Loc.Get(PvTools.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "captureFolder").Writer.Run!())),
+            FrameOf("help.tools.captureViewer", Item(Loc.Get(PvTools.OpenCaptureViewer), Loc.Get(PvTools.OpenCaptureViewerSub), isClickEnabled: true,
+                onClick: static () => Dial("help.tools.captureViewer").Writer.Run!())),
+            FrameOf("help.tools.captureFolder", Item(Loc.Get(PvTools.OpenCaptureFolder), Loc.Get(PvTools.OpenCaptureFolderSub),
+                StdButton(Loc.Get(PvTools.OpenFolder), static () => Dial("help.tools.captureFolder").Writer.Run!()))),
         ],
     }) with { Key = "privacy.capture" };
 
@@ -520,40 +507,42 @@ internal static partial class ClassicSettings
             bool dev = facts.DeveloperMode;
             bool fps = Platform.Developer.FpsOverlay.Value;
             bool canSend = facts.CrashServiceConfigured;
-            var fpsDoc = D(Tab.PrivacyDiagnostics, "fpsOverlay");
-            var simulateDoc = D(Tab.PrivacyDiagnostics, "simulateUpdate");
-            var testDoc = D(Tab.PrivacyDiagnostics, "sendTestCrashReport");
+            var fpsDoc = Dial("help.developer.fpsOverlay");
+            var simulateDoc = Dial("help.developer.simulateUpdate");
+            var testDoc = Dial("help.developer.sendTestCrashReport");
 
             return SettingsExpander.Create(new SettingsExpander.Options
             {
                 Header = Loc.Get(PvDev.Mode),
                 Description = Loc.Get(PvDev.ModeSub),
-                HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "developerMode"),
+                HeaderIcon = GlyphOf(Dial("help.developer.mode")),
                 Content = Toggle(new Signal<bool>(dev), onChange: static on =>
                 {
-                    // The Appearance / Notifications developer-only rows are page-composed, so the writer asks the page to re-read.
-                    if (D(Tab.PrivacyDiagnostics, "developerMode").Writer.Toggle!(on)) Settings.Bump();
+                    // The developer-only dials are page-composed, so the writer asks the page to re-read.
+                    if (Dial("help.developer.mode").Writer.Toggle!(on)) Settings.Bump();
                 }),
+                Style = ToggleHeaderStyle(Toggle(new Signal<bool>(dev))),
+                IsExpanded = ExpandCell("help.developer.mode", false),
                 Items =
                 [
-                    Item(Loc.Get(PvDev.FpsOverlay), Loc.Get(PvDev.FpsOverlaySub),
-                        Toggle(new Signal<bool>(fps), onChange: static on => D(Tab.PrivacyDiagnostics, "fpsOverlay").Writer.Toggle!(on),
+                    FrameOf("help.developer.fpsOverlay", Item(Loc.Get(PvDev.FpsOverlay), Loc.Get(PvDev.FpsOverlaySub),
+                        Toggle(new Signal<bool>(fps), onChange: static on => Dial("help.developer.fpsOverlay").Writer.Toggle!(on),
                             isEnabled: fpsDoc.Enabled(facts).Enabled),
-                        isEnabled: fpsDoc.Enabled(facts).Enabled, icon: RowGlyph(Tab.PrivacyDiagnostics, "fpsOverlay")),
-                    Item(Loc.Get(PvDev.SimulateUpdate), Loc.Get(PvDev.SimulateUpdateSub),
-                        StdButton(Loc.Get(PvDev.SimulateUpdateButton), static () => D(Tab.PrivacyDiagnostics, "simulateUpdate").Writer.Run!(),
+                        isEnabled: fpsDoc.Enabled(facts).Enabled, icon: GlyphOf(fpsDoc))),
+                    FrameOf("help.developer.simulateUpdate", Item(Loc.Get(PvDev.SimulateUpdate), Loc.Get(PvDev.SimulateUpdateSub),
+                        StdButton(Loc.Get(PvDev.SimulateUpdateButton), static () => Dial("help.developer.simulateUpdate").Writer.Run!(),
                             isEnabled: simulateDoc.Enabled(facts).Enabled),
-                        isEnabled: simulateDoc.Enabled(facts).Enabled, icon: RowGlyph(Tab.PrivacyDiagnostics, "simulateUpdate")),
-                    Item(Loc.Get(PvDev.SendTestCrashReport), Loc.Get(testDoc.Caption(facts)!),
-                        StdButton(Loc.Get(PvDev.SendTestCrashReportButton), static () => D(Tab.PrivacyDiagnostics, "sendTestCrashReport").Writer.Run!(),
+                        isEnabled: simulateDoc.Enabled(facts).Enabled, icon: GlyphOf(simulateDoc))),
+                    FrameOf("help.developer.sendTestCrashReport", Item(Loc.Get(PvDev.SendTestCrashReport), Loc.Get(testDoc.Caption(facts)!),
+                        StdButton(Loc.Get(PvDev.SendTestCrashReportButton), static () => Dial("help.developer.sendTestCrashReport").Writer.Run!(),
                             isEnabled: testDoc.Enabled(facts).Enabled),
-                        isEnabled: dev && canSend, icon: RowGlyph(Tab.PrivacyDiagnostics, "sendTestCrashReport")),
+                        isEnabled: dev && canSend, icon: GlyphOf(testDoc))),
                 ],
             });
         }
     }
 
-    // ══ 7. SHARED CHROME OF THIS TAB'S EXPANDERS ══════════════════════════════════════════════════════════════════════
+    // ══ 7. SHARED CHROME OF THESE EXPANDERS ══════════════════════════════════════════════════════════════════════
 
     /// <summary>A footer under an expander's items: a hairline above, then the content (the engine puts dividers between
     /// items but none before a footer).</summary>

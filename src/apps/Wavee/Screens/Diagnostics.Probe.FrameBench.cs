@@ -463,7 +463,7 @@ public static partial class Diagnostics
                     {
                         var s = Playback.Snap();
                         if (s.CurrentId.Text != last) { changes++; last = s.CurrentId.Text; }
-                        if (++step % 2 == 1) Playback.Next();
+                        if (++step % 2 == 1) Playback.Next("bench");
                         else if (s.DurationMs > 8000) Playback.SeekTo(s.DurationMs - 3500);
                         return now + 4.0;
                     });

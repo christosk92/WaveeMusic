@@ -438,6 +438,8 @@ internal static class ClassicTransport
             Corners = Radii.ControlAll,
             OnClick = right ? props.ToggleRemaining : null,
             Cursor = right ? CursorId.Hand : null,
+            // The flip is a control: reachable by keyboard (and the Settings "Also in: Player bar" door lands focus here).
+            Role = right ? AutomationRole.Button : AutomationRole.None, Focusable = right, AllowFocusOnInteraction = false,
             // the toggle's target meets the 40 DIP rule with slop above and below the line (a real hit beside it, the seek rail's, still wins)
             HitSlop = right ? new Edges4(0f, ClassicTransportLayout.TimeSlop(caption.LineHeight), 0f, ClassicTransportLayout.TimeSlop(caption.LineHeight)) : default,
             Children =

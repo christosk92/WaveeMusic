@@ -64,6 +64,7 @@ internal static class ClassicNotifications
             Children =
             [
                 PanelHeader(props),
+                Hints.Slot(HintSurfaces.BellHeader),   // the bell's hint under its header (design 6.3: Windows notifications)
                 FilterPills(props.Filter, host),
                 Embed.Comp(() => new PendingSyncRow(pending)) with { Key = "nc-pending-sync" },
                 body,
@@ -106,6 +107,16 @@ internal static class ClassicNotifications
         };
         if (props.Clear is { } clear)
             kids.Add(PanelLink(Loc.Get(Strings.Notifications.Clear), clear));
+        // The settings gear: "Notification settings" opens Settings at the Notifications category (design 5.4).
+        if (props.OpenSettings is { } openSettings)
+            kids.Add(ToolTip.Wrap(new BoxEl
+            {
+                Key = "notify:settings", Width = ClassicNotificationRules.GearSize, Height = ClassicNotificationRules.GearSize, Shrink = 0f,
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = CornerRadius4.All(ClassicNotificationRules.LinkRadius),
+                HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = openSettings,
+                Children = [new TextEl(Icons.Settings) { Size = ClassicNotificationRules.GearGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary }],
+            }, Loc.Get(Strings.Notifications.Settings)));
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicNotificationRules.HeaderGap, Padding = ClassicNotificationRules.HeaderPadding,

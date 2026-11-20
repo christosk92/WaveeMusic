@@ -24,6 +24,7 @@
 // THE SKELETON is derived from the real page: `smoothResize false` (a page-level region whose branches differ by hundreds of DIP lands its height at once)
 // and Reveal None (the zones own their entrance), the shimmer the SAME tree rendered against the seed.
 
+using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -81,17 +82,17 @@ internal static class WinUiHomePage
         {
             Key = "home:head", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
             Padding = new Edges4(0f, 0f, 0f, layout.GreetingGap),
-            // The greeting's rung (40/52 or 28/36) follows the content tier a docking pane or a resize changes: the head's height eases, the page rides it.
-            Layout = Design.Reduced ? null : WinUiDiscoveryMotion.HeightReflow,
+            // The greeting's rung (40/52 or 28/36) follows the content tier a docking pane or a resize changes, and its words wrap to a second line as
+            // the row narrows: the head's height eases, through a window drag too (HeadReflow), and the page rides it.
+            Layout = Design.Reduced ? null : WinUiDiscoveryMotion.HeadReflow,
             Children =
             [
                 WinUiDiscoveryMotion.AirH("home:head:lead", inset),
                 new BoxEl
                 {
                     Key = "home:head:row", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                    Children = layout.Following == WinUiFollowingPlace.GreetingRow
-                        ? [greeting with { Grow = 1f, Shrink = 1f }, WinUiHomeFacetRow.Following(props.FacetRow, layout)]
-                        : [greeting with { Grow = 1f, Shrink = 1f }],
+                    // On All the board's tools ("Add widgets", the page's ⋯) end the head row (spec 8.1); at Small the Following button joins them.
+                    Children = HeadRow(props, layout, greeting),
                 },
                 WinUiDiscoveryMotion.AirH("home:head:end", inset),
             ],
@@ -120,6 +121,7 @@ internal static class WinUiHomePage
                 Key = props.Facet.Length > 0 ? "home:scroll:" + props.Facet : "home:scroll", Grow = 1f, MinWidth = 0f,
                 ScrollKey = props.ScrollKey,
                 Handle = props.Scroll,
+                Anchoring = true,   // what the user looks at stays put when the page above it changes size (a tier edge, a shelf standing up)
                 EdgeCues = ScrollEdgeCues.None,   // the band's own cut does the dissolving: a viewport top cue would fade the pinned row
             };
 
@@ -128,6 +130,26 @@ internal static class WinUiHomePage
             Grow = 1f, Direction = 1, ZStack = true,
             Children = [props.Wash, scroll],
         };
+    }
+
+    /// <summary>The head row's children: the greeting, then (Small) the Following button, then (All) the board's tools.</summary>
+    static Element[] HeadRow(HomePageProps props, WinUiHomeLayout layout, TextEl greeting)
+    {
+        // The greeting's lines break at the width the row leaves it, and the Following button joining or leaving the row (the Small edge) moves that
+        // width at once: a run cannot ease its breaks, so each form is its own keyed greeting and the crossing cross-fades them.
+        var kids = new List<Element>(3)
+        {
+            new BoxEl
+            {
+                Key = layout.Following == WinUiFollowingPlace.GreetingRow ? "home:greeting:beside" : "home:greeting:alone",
+                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                Enter = WinUiDiscoveryMotion.SwapFade, Exit = WinUiDiscoveryMotion.SwapFade, Transition = WinUiDiscoveryMotion.SwapFadeMotion,
+                Children = [greeting],
+            },
+        };
+        if (layout.Following == WinUiFollowingPlace.GreetingRow) kids.Add(WinUiHomeFacetRow.Following(props.FacetRow, layout));
+        if (props.BoardTools is { } tools) kids.Add(tools());
+        return kids.ToArray();
     }
 
     /// <summary>The greeting: Title Large 40/52 (Title 28/36 below Standard), keyed for the inset lint. The words are a bound read of the host's greeting.
@@ -164,7 +186,9 @@ internal static class WinUiHomePage
                     Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, EntranceGroup = true,
                     Opacity = Prop.Of(() => FacetDimPlan.Of(props.Switch.Value.Phase).Opacity),      // compositor-only
                     HitTestVisible = Prop.Of(() => !props.Switch.Value.Dim),
-                    Children = [WinUiHomeZones.Column(m, m.Facet, props.Overlay, layout)],
+                    // On All the pinned board stands where the zone column stood (the scroller, the head, the band, the dim host and the
+                    // entrance stay the page's); every other facet keeps its zones.
+                    Children = [props.Board is { } board ? board() : WinUiHomeZones.Column(m, m.Facet, props.Overlay, layout)],
                 },
             ],
         };

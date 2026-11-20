@@ -1,9 +1,8 @@
-// ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Appearance.cs — the Appearance tab (themes plan 6.3, Z8b) ────────────────────────────────
+// ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Appearance.cs — Appearance's sections: the theme picker and the Zoom cell (settings rework phase 4) ─
 //
-// Board Z-Settings-Appearance: the theme picker, the active theme's options, then what is not a theme option: App mode and Zoom (the core presentation prefs every
-// theme honours), Marquee, Lyrics (blur, the on-device AI lyrics), Fullscreen (the stage's gallery settings mirrored through the document), Now playing and Home.
-// The picker and the options are their own keys (`Settings.ThemePicker`, `Settings.ThemeOptions`): the setup wizard mounts them too, so the page asks the registry
-// for them instead of calling them.
+// Board Z-Settings-Appearance. The picker is its own key (`Settings.ThemePicker`, `ZuneSettings.Theme.cs`): the setup wizard mounts it too, so the page asks the
+// registry for it, under the Theme group's heading at the column's full width. The active theme's options are the body's options group (drawn by the body, each
+// option's control from `ZuneSettings.Theme.cs`); App mode, Marquee, Fast navigation and the Home and library dials are generic rows.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -15,81 +14,18 @@ using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
-using static FluentGpu.Dsl.Ui;
-using Tab = Wavee.Settings.Tab;
 using Z = Wavee.Themes.Zune.ZuneSettingsRules;
 
 namespace Wavee.Themes.Zune;
 
 internal static partial class ZuneSettings
 {
-    static Named[] AppearanceTab(ZuneKit k)
+    /// <summary>The theme picker at the Theme group's full width (the group's heading names it), keyed as the theme dial's row.</summary>
+    static Element PickerBlock(SettingsBodyRow row) => new BoxEl
     {
-        var facts = SettingsFacts.Live;
-        var groups = new List<Named>(8)
-        {
-            Group(k, Tab.Appearance, "Theme", Slots.View(ViewKeys.SettingsThemePicker, SettingsThemePickerProps.Instance) with { Key = "zs:picker-view" }),
-            new Named("Theme options", Slots.View(ViewKeys.SettingsThemeOptions, SettingsThemeOptionsProps.Page) with { Key = "zs:options-view" }),
-        };
-
-        var mode = D(Tab.Appearance, "appMode");
-        var marquee = D(Tab.Appearance, "marquee");
-        groups.Add(Group(k, Tab.Appearance, "Display",
-            k.DocRow(mode, k.Choice(mode, ModeLabels(), chips: true)),
-            k.DocRow(D(Tab.Appearance, "zoom"), Embed.Comp(static () => new ZoomCell()) with { Key = "zs:zoom" }),
-            k.DocRow(marquee, k.Toggle(marquee))));
-
-        var blur = D(Tab.Appearance, "lyricsBlur");
-        groups.Add(Bare(k, Tab.Appearance, "Lyrics",
-            k.DocRow(blur, k.Slide("lyricsBlur", new ZuneSlide(0f, 100f, 1f,
-                () => blur.Current is float v ? v : 0f,
-                v => { if (blur.Writer.Slide!(v)) Settings.Bump(); },
-                static v => ((int)MathF.Round(v)).ToString(CultureInfo.InvariantCulture) + "%"))),
-            ToggleRow(k, Tab.Appearance, "lyricsSeekTip"),
-            Embed.Comp(static () => new AiLyricsRow()) with { Key = "zs:ai" }));
-
-        var visualizer = D(Tab.Appearance, "stageVisualizer");
-        var layout = D(Tab.Appearance, "stageLayout");
-        var sensitivity = D(Tab.Appearance, "stageSensitivity");
-        var offset = D(Tab.Appearance, "stageSyncOffset");
-        groups.Add(Group(k, Tab.Appearance, "Fullscreen",
-            k.DocRow(visualizer, k.Choice(visualizer, VisualizerLabels(), chips: false, width: Z.WideComboWidth)),
-            k.DocRow(layout, k.Choice(layout,
-            [
-                Loc.Get(Strings.Stage.Layout.Card), Loc.Get(Strings.Stage.Layout.Large), Loc.Get(Strings.Stage.Layout.Centered), Loc.Get(Strings.Stage.Layout.Artist),
-            ], chips: true)),
-            k.DocRow(sensitivity, k.Slide("stageSensitivity", new ZuneSlide(Z.SensitivityMin, Z.SensitivityMax, Z.SensitivityStep,
-                () => sensitivity.Current is float v ? v : 1f,
-                v => sensitivity.Writer.Slide!(v),
-                static v => ((int)MathF.Round(v * 100f)).ToString(CultureInfo.InvariantCulture) + "%"))),
-            ToggleRow(k, Tab.Appearance, "stageLyricsOverlay"),
-            k.DocRow(offset, k.Slide("stageSyncOffset", new ZuneSlide(Z.SyncOffsetMin, Z.SyncOffsetMax, Z.SyncOffsetStep,
-                () => offset.Current is float v ? v : 0f,
-                v => offset.Writer.Slide!(v),
-                static v => ((int)MathF.Round(v)).ToString(CultureInfo.InvariantCulture) + " ms"))),
-            ToggleRow(k, Tab.Appearance, "stageCalm"), ToggleRow(k, Tab.Appearance, "stageMoments")));
-
-        // The player style: a normal user setting (the same one the now-playing style chip changes).
-        var npvStyle = D(Tab.Appearance, "npvStyle");
-        if (npvStyle.Visible(facts))
-        {
-            var styles = Rail.PlayerCatalog.Styles;
-            var styleLabels = new string[styles.Length];
-            for (int i = 0; i < styleLabels.Length; i++) styleLabels[i] = Loc.Get(styles[i].NameKey);
-            groups.Add(Group(k, Tab.Appearance, "Now playing",
-                k.DocRow(npvStyle, k.Choice(npvStyle, styleLabels, chips: false, width: Z.WideComboWidth))));
-        }
-
-        var daylist = D(Tab.Appearance, "daylistClock");
-        groups.Add(Group(k, Tab.Appearance, "Home",
-            k.DocRow(daylist, k.Choice(daylist,
-            [
-                Loc.Get(Strings.Settings.Appearance.DaylistClockBoth),
-                Loc.Get(Strings.Settings.Appearance.DaylistClockUpdateTime),
-                Loc.Get(Strings.Settings.Appearance.DaylistClockCountdown),
-            ], chips: true))));
-        return groups.ToArray();
-    }
+        Key = SettingsKeys.ZuneRow(row.Id), Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, OnRealized = NoteRow(row.Id),
+        Children = [Slots.View(ViewKeys.SettingsThemePicker, SettingsThemePickerProps.Instance) with { Key = "zs:picker-view" }],
+    };
 
     static string[] ModeLabels() =>
     [
@@ -140,8 +76,10 @@ internal static partial class ZuneSettings
             // The combo's ITEMS freeze at mount: the head label changes only on a plateau change, so re-key on that.
             return k.Combo(_labels, _index, Z.ComboWidth, true, static i =>
             {
-                if (D(Tab.Appearance, "zoom").Writer.Choose!(i)) Settings.Bump();
+                if (SettingsSpec.Dial(ZoomDial).Writer.Choose?.Invoke(i) == true) Settings.Bump();
             }) with { Key = "zs:zoom:" + percent.ToString(CultureInfo.InvariantCulture) };
         }
     }
+
+    const string ZoomDial = "appearance.zoom";
 }

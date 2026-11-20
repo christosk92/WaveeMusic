@@ -200,11 +200,17 @@ public static partial class Playback
         /// <summary><c>last_command_sent_by_device_id</c>: the controller the PUT answers, "" outside the attribution window.</summary>
         public string CommandSender => _commandSender ?? "";
 
+        /// <summary>The context on the deck is an AUDIOBOOK (a show the catalogue classifies as a book, or the deck row is one of its
+        /// chapters): <c>play_origin</c> names the <c>audiobook</c> feature, as the official client does, where a podcast show names
+        /// <c>show</c>.</summary>
+        public readonly bool Audiobook;
+
         public WireExtras(WireWindow? window, ulong queueRevision, in WireIds ids, bool privateSession, string? outputDevice,
-            string? commandSender, float playbackRate = 1f, WireOrigin? origin = null, byte outputType = 0)
+            string? commandSender, float playbackRate = 1f, WireOrigin? origin = null, byte outputType = 0, bool audiobook = false)
         {
             Window = window; QueueRevision = queueRevision; Ids = ids; PrivateSession = privateSession;
             _outputDevice = outputDevice; _commandSender = commandSender; _playbackRate = playbackRate; Origin = origin; OutputType = outputType;
+            Audiobook = audiobook;
         }
     }
 

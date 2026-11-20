@@ -9,12 +9,12 @@ using FluentGpu.Dsl;
 
 namespace Wavee.Themes.Classic;
 
-/// <summary>The constants of Classic's library album and show panes.</summary>
+/// <summary>The constants of Classic's library album pane.</summary>
 public static class ClassicLibraryPaneRules
 {
     // ── the header ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The pane covers' one edge — 128, the show pane's too (it renders this same header).</summary>
+    /// <summary>The pane cover's one edge — 128.</summary>
     public const float PaneCover = 128f;
 
     /// <summary>The cover's decode size.</summary>

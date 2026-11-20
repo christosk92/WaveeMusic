@@ -87,6 +87,10 @@ public readonly partial struct Concert
             }
             var a = _artist;
             UseEffect(_demand, DepKey.From(a.Slot, (int)epoch));
+            // The trail's last crumb: the artist's own name once the row knows it.
+            string crumb = a.IsValid ? a.Name : "";
+            var route = p.Route;
+            UseEffect(() => PublishCrumb(route, crumb), DepKey.From(crumb.GetHashCode(), crumb.Length));
 
             var readiness = a.IsValid ? e.ArtistConcerts.Readiness(a.Slot) : EdgeState.Failed;
             _pending = readiness == EdgeState.Unknown;

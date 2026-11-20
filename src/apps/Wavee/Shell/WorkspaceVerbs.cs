@@ -78,7 +78,7 @@ public sealed class WorkspaceVerbs : IChromeVerbs
         if (uri.Length > 0 && (kind is DragKind.Playlist or DragKind.Album or DragKind.Show)
             && Sidebar.LibraryWrites?.ResolveTracks is { } resolve)
             resolver = ct => resolve(uri, ct);
-        return new DragPayload(kind, pinId, uri, title, TrackResolver: resolver);
+        return new DragPayload(kind, pinId, uri, title, TrackResolver: resolver, FromTab: true);
     }
 
     public TabDropSite? DropSiteFor(in Shell.Route route, int tabId, string name)

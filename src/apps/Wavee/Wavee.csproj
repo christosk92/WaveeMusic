@@ -25,7 +25,7 @@
 
   <!-- Build identity. Wavee.Version.props is the single source of the semver, the per-minor codename and the
        monotonic release counter (WaveeBuild); ops/build/pack-wavee-msix.ps1 stamps the rest via /p: properties and
-       ops/release/wavee-release.ps1 owns the counter. Settings → About / crash headers / the update checker read all
+       the release runner (ops/release/release.ps1) owns the counter. Settings → About / crash headers / the update checker read all
        of it back through AssemblyMetadataAttribute (WaveeVersionInfo.Parse). -->
   <Import Project="Wavee.Version.props" />
   <PropertyGroup>
@@ -44,8 +44,8 @@
     <WaveeStoreId Condition="'$(WaveeStoreId)' == ''">9NJPVWTQPT9H</WaveeStoreId>
     <!-- The opt-in crash & diagnostics pipeline's ingest endpoint + public key (crash & diagnostics plan §B.5), stamped
          exactly like WaveeUpdateBaseUrl: build-time metadata, never a runtime switch. Empty on a plain `dotnet run` and
-         on every E2E package -> Crash.Uploader.Configured is false and nothing is ever sent. Only wavee-release.ps1's
-         `symbols` phase (via pack-wavee-msix.ps1 -CrashIngestUrl/-CrashIngestKey) sets these for a real release. -->
+         on every E2E package -> Crash.Uploader.Configured is false and nothing is ever sent. Only the release runner's
+         pack steps (via pack-wavee-msix.ps1 -CrashIngestUrl/-CrashIngestKey) sets these for a real release. -->
     <WaveeCrashIngestUrl Condition="'$(WaveeCrashIngestUrl)' == ''"></WaveeCrashIngestUrl>
     <WaveeCrashIngestKey Condition="'$(WaveeCrashIngestKey)' == ''"></WaveeCrashIngestKey>
     <!-- A local `dotnet run` is "0.2.0-dev"; the pack script stamps "<semver>+build.<N>.sha.<sha7>". -->
@@ -251,6 +251,61 @@
   <ItemGroup>
     <Using Include="Wavee.Theming.Roles" />
   </ItemGroup>
+  <!-- ── Explanation clips (settings rework, handoff/settings-2026-11-18/DESIGN.md 6.5) ─────────────────────────────────────
+       A Release build fails when a dial on the badge list (Screens/SettingsExplain.cs) lacks its clip for a theme or app mode it applies
+       to (assets/settings-explain/<theme>/<mode>/<clip>.webp), or a clip breaks the size budget: the just-built exe checks its own table
+       (Wavee.exe with the check-explainer-clips switch and the folder; nothing boots). ON by default since the clips landed (phase 6);
+       /p:WaveeExplainerClipCheck=false skips it for one build. Never in a Debug build, never in a design-time build. -->
+  <PropertyGroup>
+    <WaveeExplainerClipCheck Condition="'$(WaveeExplainerClipCheck)' == ''">true</WaveeExplainerClipCheck>
+    <_WaveeClipCheckOn>false</_WaveeClipCheckOn>
+    <_WaveeClipCheckOn Condition="'$(Configuration)' == 'Release' and '$(WaveeExplainerClipCheck)' == 'true' and '$(DesignTimeBuild)' != 'true'">true</_WaveeClipCheckOn>
+  </PropertyGroup>
+  <!-- ── Theme picker stills (Theming/Composition/ThemePreviews.cs) ────────────────────────────────────────────────────────────────────
+       A Release build fails when a shipped theme's manifest names a picker still (assets/themes/<id>-<mode>.jpg, light and dark) that is
+       missing, is not a JPEG or a PNG, or breaks the size budget: the just-built exe checks its own manifests (Wavee.exe with the
+       check-theme-previews switch and the assets folder; nothing boots). The cards draw no stand-in, so every shipped theme ships both.
+       /p:WaveeThemePreviewCheck=false skips it for one build. Never in a Debug build, never in a design-time build.
+       Regenerate the stills with tools/settings-explain/previews.py. -->
+  <PropertyGroup>
+    <WaveeThemePreviewCheck Condition="'$(WaveeThemePreviewCheck)' == ''">true</WaveeThemePreviewCheck>
+    <_WaveePreviewCheckOn>false</_WaveePreviewCheckOn>
+    <_WaveePreviewCheckOn Condition="'$(Configuration)' == 'Release' and '$(WaveeThemePreviewCheck)' == 'true' and '$(DesignTimeBuild)' != 'true'">true</_WaveePreviewCheckOn>
+  </PropertyGroup>
+  <!-- The checks run an exe built for this machine: the build's own apphost when the build made one (a plain Release build), else the
+       native exe a NativeAOT publish links (it does not exist yet when Build ends, so that check runs after Publish). A build for another
+       architecture (x64 cross-compiled on the arm64 release box) cannot run here: it skips with a message, and the host-architecture leg
+       of the same release checks the same files. -->
+  <Target Name="_WaveeReleaseCheckExe">
+    <PropertyGroup>
+      <_WaveeClipRid>$(RuntimeIdentifier)</_WaveeClipRid>
+      <_WaveeClipRid Condition="'$(_WaveeClipRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</_WaveeClipRid>
+      <_WaveeClipHostRun Condition="'$(_WaveeClipRid)' == '$(NETCoreSdkRuntimeIdentifier)'">true</_WaveeClipHostRun>
+      <_WaveeClipBuildExe>$(TargetDir)$(AssemblyName).exe</_WaveeClipBuildExe>
+      <_WaveeClipDone Condition="'$(_WaveeClipHostRun)' == 'true' and Exists('$(_WaveeClipBuildExe)')">true</_WaveeClipDone>
+    </PropertyGroup>
+  </Target>
+  <Target Name="WaveeCheckExplainerClips" AfterTargets="Build" DependsOnTargets="_WaveeReleaseCheckExe" Condition="'$(_WaveeClipCheckOn)' == 'true'">
+    <Exec Condition="'$(_WaveeClipDone)' == 'true'"
+          Command="&quot;$(_WaveeClipBuildExe)&quot; --check-explainer-clips &quot;$(MSBuildProjectDirectory)\assets\settings-explain&quot;" />
+    <Message Importance="high" Condition="'$(_WaveeClipHostRun)' != 'true'"
+             Text="Explainer clip check skipped: a $(_WaveeClipRid) build cannot run on this $(NETCoreSdkRuntimeIdentifier) machine; the $(NETCoreSdkRuntimeIdentifier) leg checks the same clips." />
+  </Target>
+  <Target Name="WaveeCheckExplainerClipsPublished" AfterTargets="Publish"
+          Condition="'$(_WaveeClipCheckOn)' == 'true' and '$(_WaveeClipHostRun)' == 'true' and '$(_WaveeClipDone)' != 'true'">
+    <Exec Command="&quot;$(PublishDir)$(AssemblyName).exe&quot; --check-explainer-clips &quot;$(MSBuildProjectDirectory)\assets\settings-explain&quot;" />
+  </Target>
+  <Target Name="WaveeCheckThemePreviews" AfterTargets="Build" DependsOnTargets="_WaveeReleaseCheckExe" Condition="'$(_WaveePreviewCheckOn)' == 'true'">
+    <Exec Condition="'$(_WaveeClipDone)' == 'true'"
+          Command="&quot;$(_WaveeClipBuildExe)&quot; --check-theme-previews &quot;$(MSBuildProjectDirectory)\assets&quot;" />
+    <Message Importance="high" Condition="'$(_WaveeClipHostRun)' != 'true'"
+             Text="Theme preview check skipped: a $(_WaveeClipRid) build cannot run on this $(NETCoreSdkRuntimeIdentifier) machine; the $(NETCoreSdkRuntimeIdentifier) leg checks the same stills." />
+  </Target>
+  <Target Name="WaveeCheckThemePreviewsPublished" AfterTargets="Publish"
+          Condition="'$(_WaveePreviewCheckOn)' == 'true' and '$(_WaveeClipHostRun)' == 'true' and '$(_WaveeClipDone)' != 'true'">
+    <Exec Command="&quot;$(PublishDir)$(AssemblyName).exe&quot; --check-theme-previews &quot;$(MSBuildProjectDirectory)\assets&quot;" />
+  </Target>
+
   <!-- JIT Debug/Release: NuGet drops e_sqlite3.dll under runtimes/ only; publish colocates it. Copy the arch-matching
        binary next to Wavee.exe so Rider F5 and the publish preflight share the same layout. -->
   <Target Name="CopyESqlite3ToAppRoot" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">

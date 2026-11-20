@@ -469,7 +469,7 @@ public static partial class Diagnostics
         /// <summary>type.voice (visual.md 12, 20): the app's own copy (<see cref="TextRun.Copy"/>: a base-culture loc string, not a title or a
         /// name) as the screen shows it (its case transform applied) in another theme's voice. Zune speaks lowercase: Title Case copy, or a
         /// capitalised heading (20 DIP and up), is a stand-in's or another theme's voice (a semibold one is not: Zune lights its selected pivot so). Classic heads in semibold sentence case: a light all-lowercase head (18 DIP and up)
-        /// is Zune's voice leaking in (the show reader's "continue", "new since you were here"). WinUI is not judged.</summary>
+        /// is Zune's voice leaking in. WinUI is not judged.</summary>
         static int VoiceRule(Snapshot s, List<Finding> into)
         {
             bool zune = string.Equals(s.Theme, "zune", StringComparison.OrdinalIgnoreCase);

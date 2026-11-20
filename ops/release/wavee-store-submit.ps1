@@ -4,8 +4,12 @@
   Submit one already-released Wavee version to the Microsoft Store from this machine.
 
 .DESCRIPTION
-  The Store leg always FOLLOWS a feed release: ops\release\wavee-release.ps1 has already bumped the counter,
-  tagged wavee-v<semver> and published the feed, so this script never touches the tree or the counter. It packs
+  This is the Store engine of the release runner (ops\release\release.ps1): its store-submit step runs it from the
+  release worktree with -PollMinutes 0 (-Resume when a ledger exists) and its store-poll step with -Resume. Nobody
+  runs it by hand any more; the examples below are what the runner issues.
+
+  The Store leg always FOLLOWS a feed release: the runner has already bumped the counter, tagged wavee-v<semver>
+  and published the feed, so this script never touches the tree or the counter. It packs
   the two store-channel packages from the tag commit, folds them into one .msixupload, creates a draft submission
   through msstore-cli (the Microsoft Store Developer CLI over the DevCenter submission API), patches the en-US
   "What's new" text, commits the submission and polls until the Store has taken it into certification.
@@ -384,7 +388,7 @@ function Invoke-Status {
     if ($st.Failed -or "$($st.Status)" -match 'Failed') {
         Warn 'recovery: fix what the errors above name (listing content in Partner Center, packages here), then'
         Note "  msstore submission delete $ProductId     # a failed submission blocks a new one until deleted"
-        Note '  powershell -File ops\release\wavee-store-submit.ps1   # re-pack and re-submit'
+        Note "  move $stage aside, then release.ps1 -Version $semver -Go   # the runner's store-submit re-packs and re-submits"
     }
 }
 
@@ -518,7 +522,7 @@ if (-not (Test-PhaseDone 'preflight')) {
         # The Store submission always follows the feed release: the tag must exist here AND on origin, and the
         # working copy must BE that commit. No dirty-source or tag override is supported.
         $local = Invoke-Git @('rev-list', '-n', '1', $tag) -AllowFailure
-        if ($local.ExitCode -ne 0 -or -not $local.Text) { throw "tag $tag does not exist locally; run ops\release\wavee-release.ps1 first (the feed release cuts the tag)" }
+        if ($local.ExitCode -ne 0 -or -not $local.Text) { throw "tag $tag does not exist locally; run ops\release\release.ps1 -Version $semver -Go first (the feed release cuts the tag)" }
         $remote = (Invoke-Git @('ls-remote', '--tags', 'origin', "refs/tags/$tag", "refs/tags/$tag^{}")).Lines
         $peeled = @($remote | Where-Object { $_ -match '\^\{\}$' })
         $remoteCommit = if ($peeled.Count) { ($peeled[0] -split '\s+')[0] } elseif ($remote.Count) { ($remote[0] -split '\s+')[0] } else { '' }
@@ -1133,7 +1137,7 @@ else {
 
 function Invoke-Poll {
     Step "Poll the submission (every 30 s, up to $PollMinutes min)"
-    $statusCmd = "powershell -File ops\release\wavee-store-submit.ps1 -Status"
+    $statusCmd = "release.ps1 -Version $semver -Status (the runner's store-poll step polls again on the next -Go)"
     $waiting = @('CommitStarted', 'PendingCommit', 'PreProcessing', 'Certification', 'PendingPublication', 'Publishing', 'Release')
     $deadline = [DateTime]::UtcNow.AddMinutes($PollMinutes)
     while ($true) {
@@ -1196,7 +1200,7 @@ if ($polled) {
     Good "Wavee $semver $EmDash $codename ($storeQuad) is Published with its verified dual-architecture bundle."
 }
 else {
-    Note "the submission is committed; only the poll timed out. Re-check with -Status (or -Resume to poll again)."
+    Note "the submission is committed; only the poll timed out. release.ps1 -Version $semver -Status reports it; the next -Go polls again."
 }
 }
 finally {

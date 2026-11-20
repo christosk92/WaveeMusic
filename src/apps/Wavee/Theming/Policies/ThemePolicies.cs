@@ -60,9 +60,9 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     /// A structure that declares nothing keeps the key's own default.</summary>
     public LibraryTierPolicy LibraryTiers { get; init; } = LibraryTierPolicy.Default;
 
-    /// <summary>How the structure groups the Settings page's twelve areas into tabs (P6 WK, owner Q3; <see cref="SettingsGrouping"/>). A structure that declares
-    /// nothing draws one tab per area, as the page shipped.</summary>
-    public SettingsGrouping Settings { get; init; } = SettingsGrouping.Default;
+    /// <summary>What the structure decides for the registry's Settings page (contract 1.116, <see cref="SettingsPagePolicy"/>: the arrival's highlight
+    /// duration, from the structure's Rules). A structure that declares nothing gets the design's 1.6 s.</summary>
+    public SettingsPagePolicy SettingsPage { get; init; } = SettingsPagePolicy.Default;
 
     /// <summary>How the structure moves one page to the next, per kind of swap (<see cref="PageMotionPolicy"/>: the page root's recipe and
     /// the incoming page's staggered entrance). A structure that declares nothing keeps the core's one fade-through. (winui page motion)</summary>
@@ -85,10 +85,15 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (DetailTiers is null) problems.Add("DetailTiers is missing");
         if (ArtistTiers is null) problems.Add("ArtistTiers is missing");
         if (LibraryTiers is null) problems.Add("LibraryTiers is missing");
-        if (Settings is null) problems.Add("Settings is missing"); else problems.AddRange(Settings.Validate());
+        if (SettingsPage is null) problems.Add("SettingsPage is missing"); else problems.AddRange(SettingsPage.Validate());
         if (PageMotion is null) problems.Add("PageMotion is missing");
         return problems;
     }
+
+    /// <summary>What the structure decides for the pinned Home (design 1.6): the menus' Home row (a row, or Classic's groups submenu), how a pin
+    /// from anywhere is confirmed (a toast with Undo, or nothing: Zune shows the tile), and where a band strip reads its pins. Default: a row, a
+    /// toast, the sidebar's pins. Appended (pinned Home).</summary>
+    public HomePolicy Home { get; init; } = HomePolicy.Default;
 }
 
 /// <summary>What the shell offers under the active structure.</summary>
@@ -120,6 +125,12 @@ public sealed record ShellCapabilities(bool Tabs, bool NavTree, bool FriendsPane
     /// structure that draws them does the core ask each member's credits (one batched metadata request per album); default false: nothing is asked
     /// and the album props carry no credits. Appended (contract 1.84, album credits).</summary>
     public bool AlbumCredits { get; init; }
+
+    /// <summary>The library's four master-detail kinds (albums, artists, podcasts, audiobooks) are ONE family under one head: they share one keep-alive
+    /// slot, the head (the title and the kinds' pivot) is drawn once over them, and a switch between two of them slides only the body under the head by
+    /// the pivot's order (`User.LibraryFamily`, <see cref="PageMotionPolicy.LibraryPivot"/>). Each kind stays a place: history, Back, deep links and
+    /// the tab's route follow the route as before. Default false: each kind is its own page (Classic, Zune). Appended (winui library family).</summary>
+    public bool LibraryFamily { get; init; }
 
     /// <summary>The title row draws the tab strip: tabs are offered and the strip is not hidden.</summary>
     public bool ShowsTabStrip => Tabs && !HiddenTabStrip;
@@ -186,4 +197,19 @@ public static class ThemeFactsContext
 {
     /// <summary>The provided signal. Null only where no root provides it (a bare unit test of a view).</summary>
     public static readonly Context<IReadSignal<ThemeFacts>?> Signal = new(null);
+}
+
+/// <summary>The menus' "Pin to Home" row: one toggle row, or a submenu of Home's groups with Pinned first (Classic).</summary>
+public enum HomePinMenu : byte { Row, GroupsSubmenu }
+
+/// <summary>How a pin from anywhere is confirmed: a toast with Undo (WinUI, Classic), or nothing (Zune: the tile is the answer).</summary>
+public enum HomeConfirm : byte { Toast, None }
+
+/// <summary>Where a band strip reads its pins: the sidebar's (WinUI, Classic) or Home's Pinned group (Zune).</summary>
+public enum BandPinsSource : byte { Sidebar, Home }
+
+/// <summary>The pinned Home's per-structure choices (design 1.6). The defaults are today's behaviour.</summary>
+public sealed record HomePolicy(HomePinMenu PinMenu, HomeConfirm Confirm, BandPinsSource BandPinsFrom)
+{
+    public static HomePolicy Default { get; } = new(HomePinMenu.Row, HomeConfirm.Toast, BandPinsSource.Sidebar);
 }

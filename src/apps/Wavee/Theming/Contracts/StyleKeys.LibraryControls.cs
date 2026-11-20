@@ -31,6 +31,9 @@ public static partial class StyleKeys
 /// <param name="Head">The page's HEAD across its whole width, above the navigator and the pane (W-Library: "Library" over a SelectorBar of the kinds). A page
 /// that finds one draws it over its columns and leaves its own title row and kind chips out of the navigator's toolbar (the toolbar keeps the count); null: the
 /// page's own head. Appended (contract 1.88, winui show pages).</param>
+/// <param name="Nav">The navigator column's leads for the tier the page is drawn in (<see cref="LibraryNavMetrics"/>): a structure whose page column stands
+/// on another lead than the borrowed page's own numbers (WinUI: every left edge on the page inset) hands them here; null: the page's own. Appended
+/// (contract 1.109, winui library).</param>
 public sealed record LibraryControlsStyle(
     Func<LibrarySortArgs, Element> Sort,
     Func<LibraryModesArgs, Element> Modes,
@@ -38,7 +41,24 @@ public sealed record LibraryControlsStyle(
     Func<LibraryScopeArgs, Element> Scope,
     Func<LibraryReaderSortArgs, Element> ReaderSort,
     Func<LibraryKindsArgs, Element>? Kinds = null,
-    Func<LibraryHeadArgs, Element>? Head = null);
+    Func<LibraryHeadArgs, Element>? Head = null,
+    Func<TierFacts, LibraryNavMetrics>? Nav = null);
+
+/// <summary>The navigator column's leads (<see cref="LibraryControlsStyle.Nav"/>, contract 1.109). The page's column G is the head's lead.</summary>
+/// <param name="LeadAir">The air before the navigator column (G less <paramref name="ItemLead"/>): an eased spacer, so a tier crossing glides it with the head's lead.</param>
+/// <param name="ItemLead">How far the navigator's head (the sort, the filter, the count, the letter plates) and a grid's first cards stand in from the column's own edge.</param>
+/// <param name="RowArtLead">Where a list row's art stands in from its plate's left edge (the row plate hangs left of G by this much).</param>
+/// <param name="PaneTrail">The panes' right inset: their last ink and control plates end this far in from the card's right edge, on the head's own trail.</param>
+public sealed record LibraryNavMetrics(Element LeadAir, float ItemLead, float RowArtLead, float PaneTrail)
+{
+    /// <summary>Where the structure's episode row (<see cref="StyleKeys.EpisodeRow"/>) stands its art in from its plate: Your Episodes' table hangs its row plates this far
+    /// left of G, so their art stands on G as a list row's does. 0: <see cref="RowArtLead"/>. Contract 1.112.</summary>
+    public float EpisodeArtLead { get; init; }
+
+    /// <summary>The bound list row's chrome pads its content this far in from the plate (the engine's WinUI ListViewItem: Padding 16,0,12,0), so a row's art
+    /// stands <see cref="RowArtLead"/> in when its content sits <c>RowArtLead - ChromeContentPad</c> from the chrome's content edge.</summary>
+    public const float ChromeContentPad = 16f;
+}
 
 /// <summary>The library page's head (<see cref="LibraryControlsStyle.Head"/>, contract 1.88).</summary>
 /// <param name="Kinds">The kinds in order, the page on screen <see cref="LibraryKindChip.Selected"/>.</param>
@@ -55,7 +75,16 @@ public sealed record LibrarySortArgs(EntityKind Kind, Signal<int> Sort, Signal<b
 /// <summary>Podcasts' modes.</summary>
 /// <param name="Mode">The persisted mode: 0 Followed shows, 1 Your Episodes.</param>
 /// <param name="Height">The control's height at this tier.</param>
-public sealed record LibraryModesArgs(Signal<int> Mode, float Height);
+public sealed record LibraryModesArgs(Signal<int> Mode, float Height)
+{
+    /// <summary>How many shows Followed shows holds, as ONE bound text ("" while the relation has not answered): a structure that words its modes with
+    /// their counts ("Followed shows · 7") reads it, live. Null: no count. Contract 1.113.</summary>
+    public Prop<string>? FollowedCount { get; init; }
+
+    /// <summary>How many episodes Your Episodes holds, as ONE bound text ("" while the listen-later list's count has not landed), read the same way
+    /// ("Your Episodes · 8"). Null: no count. Contract 1.113.</summary>
+    public Prop<string>? EpisodesCount { get; init; }
+}
 
 /// <summary>The view toggle.</summary>
 /// <param name="View">The persisted view code: 0 compact list, 1 list, 2 compact grid, 3 grid.</param>

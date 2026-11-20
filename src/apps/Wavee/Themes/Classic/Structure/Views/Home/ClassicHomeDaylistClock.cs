@@ -151,6 +151,28 @@ internal static class ClassicHomeDaylistClock
         }
     }
 
+    /// <summary>The block's height in <paramref name="form"/> (the card's <c>Extent</c> counts it): the ring beside its lines (the first line, the caption
+    /// under it in the full block), the timeline's bars and, in the full block, their labels; the plate adds its padding. Every face but Late (whose link
+    /// under the first line is a small button) draws exactly this.</summary>
+    internal static float Extent(ClassicClockForm form)
+    {
+        float body = Ui.Body("").LineHeight, caption = Ui.Caption("").LineHeight, ring = ClassicHomeRules.RingSize;
+        float bars = BarsTop + ProgressBar.DefaultStyle.Height;
+        float full = MathF.Max(ring, body + caption) + bars + LabelsTop + caption;
+        return form switch
+        {
+            ClassicClockForm.None => 0f,
+            ClassicClockForm.Line => MathF.Max(ring, MathF.Max(body, caption)),
+            ClassicClockForm.Bars => MathF.Max(ring, MathF.Max(body, caption)) + bars,
+            ClassicClockForm.Boxed => ClassicHomeRules.ClockPlatePadding.Vertical + full,
+            _ => full,
+        };
+    }
+
+    /// <summary>The gaps above the timeline's bars and above their labels.</summary>
+    static float BarsTop => Spacing.S + Spacing.XXS;
+    static float LabelsTop => Spacing.XS + Spacing.XXS;
+
     static Element Full(Element ring, SpanTextEl line, string caption, FloatSignal[]? segs, int current, DaylistClockFace.Face face, Element? action,
                         float firstWidth) => new BoxEl
     {
@@ -225,12 +247,12 @@ internal static class ClassicHomeDaylistClock
                 new BoxEl
                 {
                     Direction = 0, Gap = DaypartTimeline.Gap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                    Margin = new Edges4(0f, Spacing.S + Spacing.XXS, 0f, 0f), Children = bars,
+                    Margin = new Edges4(0f, BarsTop, 0f, 0f), Children = bars,
                 },
                 showLabels ? new BoxEl
                 {
                     Direction = 0, Gap = DaypartTimeline.Gap, MinWidth = 0f,
-                    Margin = new Edges4(0f, Spacing.XS + Spacing.XXS, 0f, 0f), Children = labelCells,
+                    Margin = new Edges4(0f, LabelsTop, 0f, 0f), Children = labelCells,
                 } : new BoxEl(),
             ],
         };

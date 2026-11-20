@@ -8,7 +8,7 @@
 //  1. SELECTION IS A CROSSFADE, NOT A CUT. The component PERSISTS (the page re-pushes its props, whose equality ignores the callback) and this view returns a ZStack host
 //     whose single child is keyed by slot: a key change is a real unmount, so the engine orphans the leaving pane and fades it UNDER the entering one, which rises 6 DIP in
 //     (`ZuneLibraryKit.PaneSwap`). Nothing reads a frame clock; reduced motion is the engine's.
-//  2. LOADING → READY IS A CROSS-DISSOLVE. The rows area is one `Skel.Region`: pending ⇒ the engine paints and breathes the DERIVED shimmer of the counted rows; Ready ⇒ it
+//  2. LOADING → READY IS A CROSS-DISSOLVE. The rows area is one `Skel.Region`: pending ⇒ the engine paints the flat DERIVED shimmer of the counted rows; Ready ⇒ it
 //     mounts the real table and blur-reveals it row by row while the shimmer fades out beneath. The two `Loadable<int>` are the host's CACHED instances, one per state.
 
 using FluentGpu.Controls;
@@ -134,7 +134,7 @@ internal static class ZuneLibraryAlbumPane
 
     // ══ THE COUNTED SHIMMER ══════════════════════════════════════════════════════════════════════════════════════════
     //
-    // This tree is the region's DERIVATION INPUT, never painted as written: the engine maps its leaves to pulsing bars and cross-dissolves the real table over it. The
+    // This tree is the region's DERIVATION INPUT, never painted as written: the engine maps its leaves to flat bars and cross-dissolves the real table over it. The
     // header band is CHROME the table paints itself, so it stands as an empty band of the header's height (the rows land where the bars stood); the rows are the table's
     // own tracks, gaps and pitch with bars where the number, title and clock go.
 

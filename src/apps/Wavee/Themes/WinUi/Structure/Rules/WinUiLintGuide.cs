@@ -32,12 +32,20 @@ public sealed class WinUiLintGuide : IThemeLintGuide
         RectF content = context.RectOf(WinUiFrameLayout.ContentKey) ?? new RectF(0f, 0f, context.WindowW, context.WindowH);
 
         // The page title sits on the content inset (W-Tiers "Content inset": 16 / 24 / 36 / 48 left and right): the page column's ink line.
+        // The library's column stands on the same line (W-LibraryList, the owner's 2026-11-15 "not aligning"): the navigator's sort and count, and a
+        // list row's art, whose plate hangs left of it.
         return
         [
             new LintEdge(Gutter, "page.title", "the page title", LintSide.Left, content.X + inset, Tolerance,
                 Keys: [WinUiFrameLayout.PageTitleKey], Column: true),
+            new LintEdge(Gutter, "library.sort", "the library's sort", LintSide.Left, content.X + inset, Tolerance, Keys: [LibrarySortKey], Column: true),
+            new LintEdge(Gutter, "library.count", "the library's count", LintSide.Left, content.X + inset, Tolerance, Keys: [LibraryCountKey], Column: true),
+            new LintEdge(Gutter, "library.row", "a library row's art", LintSide.Left, content.X + inset, Tolerance, Keys: [LibraryRowKey], Column: true),
         ];
     }
+
+    /// <summary>The library navigator's sort (`WinUiLibraryControls`), its count and a list row's content (`ClassicLibraryPage` under WinUI's leads).</summary>
+    private const string LibrarySortKey = "lib:sort", LibraryCountKey = "lib:count", LibraryRowKey = "lib:row";
 
     /// <summary>Home's facet words (the key `WinUiHomeFacetRow` gives the SelectorBar's box).</summary>
     private const string FacetWordsKey = "home:facet:words";
@@ -48,6 +56,7 @@ public sealed class WinUiLintGuide : IThemeLintGuide
     /// <summary>The intents, built once: none depends on the window.</summary>
     private static readonly LintPolicy[] s_policies =
     [
+        new(LintIntent.Allow, Wavee.HomeUi.SpineShelfView.SpineKey, Wavee.HomeUi.SpineShelfView.SpineLintReason, Rule: "text.clip"),
         new(LintIntent.Allow, FacetWordsKey,
             "the facet words are a stock SelectorBar: each item pads its words in from the column (W-Home draws 'All' one item padding right of the greeting)",
             Rule: "align.inset"),
@@ -55,7 +64,22 @@ public sealed class WinUiLintGuide : IThemeLintGuide
             "search hits are ListView rows: the row's hover plate starts on the column and pads the art in (W-Search draws the song rows' art 8 right of 'Songs')"),
         new(LintIntent.ItemPlate, SearchFacetsKey,
             "the search facets are a stock SelectorBar: each item pads its words in from the column (W-Search draws 'All' one item padding right of 'Results for')"),
+        new(LintIntent.Allow, ListPillKey,
+            "a ListView row's selection pill stands in its plate's margin, 8 left of the column the row's art stands on, as the pivot's pill hangs (W-LibraryList)",
+            Rule: "align.inset"),
+        new(LintIntent.Allow, CardRingKey,
+            "a grid card's selection ring is the card's plate: it hangs the card's padding left of the column its cover stands on, as a row's plate hangs (W-Library)",
+            Rule: "align.inset"),
+        new(LintIntent.Allow, HeaderRuleKey,
+            "a list's column header draws its rule across the row plates under it, so where the plates hang left of the column (the library's Your Episodes, as a ListView row's) the rule hangs with them",
+            Rule: "align.inset"),
     ];
+
+    /// <summary>The stock ListView row's selection pill (`SelectorVisualsBound.AccentPill`) and a bound grid card's selection ring (its plate).</summary>
+    private const string ListPillKey = "lv-pill", CardRingKey = "ic-ring";
+
+    /// <summary>The track table's column-header rule (`WinUiTrackChrome`'s header band).</summary>
+    private const string HeaderRuleKey = "winui.list.header-rule";
 
     /// <inheritdoc />
     public IReadOnlyList<LintPolicy> Policies(LintContext context) => s_policies;

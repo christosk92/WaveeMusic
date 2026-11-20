@@ -5,7 +5,8 @@
 // switches on `Kind` and draws it. A props record freezes at mount: every live value reaches the template through the page
 // element it hosts or a verb, never through a changing member.
 //
-//   Page          the registered page, built by the core (`Page`), in a body box keyed `Key` (`page:<route>`)
+//   Page          the registered page, built by the core (`Page`), in a body box keyed `Key` (`page:<route>`), with the page's loading
+//                 bar over the box's top edge while `Busy` is true (`Themes/Common/CommonPageBusy.cs`)
 //   EmptyBody     an empty body box keyed `Key` (`page-empty:<route>`)
 //   NotFound      the route's own glyph (`Glyph`), the not-found line and the one action that always works (`GoHome`), keyed
 //                 `Key` (`page-notfound:<route>|<arg>`)
@@ -14,6 +15,7 @@
 // Delegates are cached statics of the core (equal props compare equal by reference), so an unchanged state skips the template.
 
 using FluentGpu.Dsl;
+using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
 
@@ -32,6 +34,11 @@ public sealed record ContentStateProps
     /// <summary>The page the core built for a <see cref="ContentStateKind.Page"/>; null for the other kinds.</summary>
     public Element? Page { get; init; }
 
+    /// <summary>A <see cref="ContentStateKind.Page"/>'s "still loading" flag: true once the page's placeholders (or its deferred mount) have
+    /// been pending <see cref="Design.LoadingBarShowAfterMs"/>, then for at least <see cref="Design.LoadingBarMinVisibleMs"/>. The template
+    /// shows its loading bar while it is true. One signal per keep-alive slot, so the props still freeze at mount; null for the other kinds.</summary>
+    public IReadSignal<bool>? Busy { get; init; }
+
     /// <summary>The route's own glyph, drawn by the not-found page.</summary>
     public string Glyph { get; init; } = "";
 
@@ -42,8 +49,8 @@ public sealed record ContentStateProps
     public OfflineStripProps Strip { get; init; } = s_noStrip;
 
     /// <summary>A page fills the body.</summary>
-    public static ContentStateProps ForPage(string key, Element page)
-        => new() { Kind = ContentStateKind.Page, Key = key, Page = page };
+    public static ContentStateProps ForPage(string key, Element page, IReadSignal<bool>? busy = null)
+        => new() { Kind = ContentStateKind.Page, Key = key, Page = page, Busy = busy };
 
     /// <summary>An empty body.</summary>
     public static ContentStateProps ForEmptyBody(string key)

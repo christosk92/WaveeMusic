@@ -113,9 +113,15 @@ public static class WinUiPlayerLayout
 
     public const string StepBackGlyph = "", StepForwardGlyph = "", StepDigits = "10";
 
-    public const float StepDigitsSize = 7f;
+    /// <summary>The step's digits: at the type floor (11; the 7 they were failed `type.floor`), inside a larger arc (<see cref="StepArcGlyph"/>) whose
+    /// bowl holds them, nudged under its centre by <see cref="StepDigitsPadding"/>.</summary>
+    public const float StepDigitsSize = 11f, StepArcGlyph = 26f;
 
-    public static readonly Edges4 StepDigitsPadding = new(0f, 6f, 0f, 0f);
+    public static readonly Edges4 StepDigitsPadding = new(0f, 1f, 0f, 0f);
+
+    /// <summary>The steps' arc: Segoe Fluent's open circle with its arrowhead (Refresh, U+E72C) holds the digits in its bowl; back is the same arc
+    /// mirrored. (The curved Undo / Redo arrows cut through the digits once they are legible.)</summary>
+    public const string StepArcGlyph2 = "";
 
     /// <summary>The tools' glyphs as the board draws them (Segoe Fluent Icons: quote U+E9B2, music queue U+E90B, devices U+E975, full screen
     /// brackets U+E9A6).</summary>

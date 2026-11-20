@@ -20,12 +20,22 @@ namespace Wavee.Themes.Common;
 internal static class CommonFps
 {
     /// <summary>The registered template of <see cref="ViewKeys.ShellFps"/>: the FPS HUD (ch 27 W26) for the frame's overlay ZStack.</summary>
-    public static Element Template(FpsProps props, in ViewContext ctx) => new BoxEl
+    public static Element Template(FpsProps props, in ViewContext ctx)
     {
-        Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, HitTestPassThrough = true,
-        Direction = 1, AlignItems = FlexAlign.End, Padding = CommonFpsRules.FpsInset,
-        Children = [Flow.Show(props.Shown, Embed.Comp(static () => new CommonFpsPill()))],
-    };
+        Element hud = new BoxEl
+        {
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, HitTestPassThrough = true,
+            Direction = 1, AlignItems = FlexAlign.End, Padding = CommonFpsRules.FpsInset,
+            Children = [Flow.Show(props.Shown, Embed.Comp(static () => new CommonFpsPill()))],
+        };
+        // The live driver's drawn pointer (a developer recording) rides the same top lane, over the HUD.
+        if (props.DriveCursor is not { } cursor) return hud;
+        return new BoxEl
+        {
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, HitTestPassThrough = true, ZStack = true,
+            Children = [hud, cursor()],
+        };
+    }
 }
 
 /// <summary>Renders EXACTLY ONCE: both numbers are retained dynamic-text slots the host refreshes in place, so the HUD never

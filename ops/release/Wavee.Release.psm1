@@ -1,11 +1,12 @@
 #requires -Version 5.1
 <#
-    Wavee.Release.psm1 - the pure helpers behind ops\release\wavee-release.ps1.
+    Wavee.Release.psm1 - the pure helpers behind the release runner (ops\release\release.ps1 and
+    ReleaseRunner.psm1) and its Store engine (wavee-store-submit.ps1).
 
     Everything here is either a pure function (semver / quad / manifest / .appinstaller substitution, the crash
-    ingest gate, stamp evidence) or a thin, testable wrapper over one external tool (gh, op, wrangler, dotnet) or
-    one HTTP GET (the rolling feed). The orchestrators (wavee-release.ps1, wavee-store-submit.ps1) own the phase
-    sequencing and the ledgers; this module owns the decisions.
+    ingest gate, stamp evidence) or a thin wrapper over one external tool (gh, op, wrangler, dotnet) or one HTTP
+    GET (the rolling feed). The runner (ReleaseRunner.psm1) and wavee-store-submit.ps1 own the step sequencing and
+    the state; this module owns the decisions.
 
     Style rules: PowerShell 5.1 only, ASCII-only string literals (an em dash is [char]0x2014), UTF-8 without a BOM
     on every file this module writes, no && / || / ternary, and TLS 1.2 forced before every Invoke-WebRequest.
@@ -442,7 +443,7 @@ function Test-AssetContentLength {
 
 # ---------------------------------------------------------------------------------------------------------------
 # Crash reporting (#165): the ingest stamp every shipping build carries, and the symbol maps the crash Worker
-# resolves report RVAs against. Shared by wavee-release.ps1 and wavee-store-submit.ps1.
+# resolves report RVAs against. Shared by the release runner (ReleaseRunner.psm1) and wavee-store-submit.ps1.
 #
 # The ingest KEY is a credential: no function here ever prints it, puts it in an exception message, or returns it
 # anywhere but Resolve-CrashIngestKey's .Key. Callers keep it in memory only (never in release-state.json).
@@ -712,15 +713,44 @@ function Assert-CrashIngestStamp {
     "Wavee.exe carries $Url ($uWhere) and the ingest key ($kEnc)"
 }
 
+function Invoke-WranglerPut {
+    <#
+    .SYNOPSIS
+      One `wrangler r2 object put <Object> --file <File> --remote`, tried up to -Attempts times with a growing wait
+      (5, 15, 45 s) between tries.
+    .DESCRIPTION
+      An R2 put is idempotent (the same key gets the same bytes), so a retry is always safe. The 0.3.11 release died
+      on one transient Cloudflare 500 in the middle of the symbols upload; a retry would have carried it.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Wrangler,
+        [Parameter(Mandatory = $true)][string]$Object,
+        [Parameter(Mandatory = $true)][string]$File,
+        [int]$Attempts = 4)
+
+    $delays = @(5, 15, 45)
+    for ($i = 1; $i -le $Attempts; $i++) {
+        $r = Invoke-Native $Wrangler @('r2', 'object', 'put', $Object, '--file', $File, '--remote') -AllowFailure
+        if ($r.ExitCode -eq 0) { return }
+        $tail = (@($r.Output | Select-Object -Last 5) -join ' / ')
+        if ($i -ge $Attempts) {
+            throw "wrangler r2 object put $Object failed $Attempts times (last exit $($r.ExitCode)): $tail"
+        }
+        $wait = $delays[[Math]::Min($i - 1, $delays.Count - 1)]
+        Write-Warning "wrangler r2 object put $Object failed (exit $($r.ExitCode)); try $($i + 1) of $Attempts in $wait s"
+        Start-Sleep -Seconds $wait
+    }
+}
+
 function Invoke-SymbolsUpload {
     <#
     .SYNOPSIS
       Upload one architecture's .symmap to R2 with the crash Worker's wrangler (`r2 object put ... --remote`), or
       report why it was skipped.
     .DESCRIPTION
-      The R2 key and the wrangler argument list are computed HERE so Wavee.Release.Tests.ps1 can assert on them (via
-      a mocked Invoke-Native) without a real Cloudflare account. -Wrangler (Get-WranglerPath) is required unless
-      -Skip; -Skip covers -DryRun / -NoUpload - the caller decides which and passes -SkipReason for the Warn text.
+      The R2 key and the wrangler argument list are computed HERE. -Wrangler (Get-WranglerPath) is required unless
+      -Skip; the caller passes -SkipReason for the warning text. Every put goes through Invoke-WranglerPut (up to 4
+      tries with backoff).
     .OUTPUTS
       pscustomobject @{ Uploaded = [bool]; Key = "symbols/<quad>/win-<arch>.symmap"; Reason = [string] }
     #>
@@ -741,7 +771,7 @@ function Invoke-SymbolsUpload {
     if (-not $Wrangler) { throw 'Invoke-SymbolsUpload: -Wrangler <the crash Worker''s wrangler.cmd, see Get-WranglerPath> is required unless -Skip' }
     if (-not (Test-Path -LiteralPath $SymmapPath)) { throw "Invoke-SymbolsUpload: symmap not found: $SymmapPath" }
 
-    Invoke-Native $Wrangler @('r2', 'object', 'put', "$Bucket/$key", '--file', $SymmapPath, '--remote') | Out-Null
+    Invoke-WranglerPut -Wrangler $Wrangler -Object "$Bucket/$key" -File $SymmapPath
     [pscustomobject]@{ Uploaded = $true; Key = $key; Reason = '' }
 }
 
@@ -778,8 +808,8 @@ function Invoke-SymbolsBinariesUpload {
     if (-not (Test-Path -LiteralPath $ExePath)) { throw "Invoke-SymbolsBinariesUpload: executable not found: $ExePath" }
     if (-not (Test-Path -LiteralPath $SymbolsZip)) { throw "Invoke-SymbolsBinariesUpload: symbols zip not found: $SymbolsZip" }
 
-    Invoke-Native $Wrangler @('r2', 'object', 'put', "$Bucket/$($keys[0])", '--file', $ExePath, '--remote') | Out-Null
-    Invoke-Native $Wrangler @('r2', 'object', 'put', "$Bucket/$($keys[1])", '--file', $SymbolsZip, '--remote') | Out-Null
+    Invoke-WranglerPut -Wrangler $Wrangler -Object "$Bucket/$($keys[0])" -File $ExePath
+    Invoke-WranglerPut -Wrangler $Wrangler -Object "$Bucket/$($keys[1])" -File $SymbolsZip
     [pscustomobject]@{ Uploaded = $true; Keys = $keys; Reason = '' }
 }
 
@@ -1121,21 +1151,171 @@ function Format-IssueRefMismatch {
 }
 
 function Write-ReleaseCommitsJson {
-    <#  The `commits.json` file Wavee.ReleaseTool reads via --commits. camelCase keys, arrays even when empty. #>
+    <#
+      The `commits.json` file Wavee.ReleaseTool reads via --commits. camelCase keys, arrays even when empty. A record
+      that carries a FirstParent property (the runner sets it from `git rev-list --first-parent`) writes
+      "firstParent": true|false; the tool lists only first-parent commits (one line per merged PR) in the body's
+      commit fold.
+    #>
     param(
         [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Commits,
         [Parameter(Mandatory = $true)][string]$Path)
 
     $rows = @($Commits | ForEach-Object {
-        [ordered]@{
+        $row = [ordered]@{
             sha     = $_.Sha
             short   = $_.Short
             subject = $_.Subject
             issues  = @($_.Issues)
             prs     = @($_.Prs)
         }
+        if ($_.PSObject.Properties['FirstParent']) { $row.firstParent = [bool]$_.FirstParent }
+        $row
     })
     [IO.File]::WriteAllText($Path, (ConvertTo-Json -InputObject $rows -Depth 4), (New-Utf8NoBom))
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+# Release notes inputs and staging (moved here from the old release script)
+# ---------------------------------------------------------------------------------------------------------------
+
+function Set-ChangelogReleaseDate {
+    <#
+    .SYNOPSIS
+      Date the `## [<Semver>]` heading of CHANGELOG.md: `- unreleased` (or no date at all) becomes `- <Date>`. True
+      when the file changed. CHANGELOG.md is CRLF on disk and .NET's multiline `$` only sees `\n`, so the CR is
+      tolerated by a lookahead (it stays in place).
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Semver,
+        [Parameter(Mandatory = $true)][string]$Date)
+
+    $v = [regex]::Escape($Semver)
+    $cl = [IO.File]::ReadAllText($Path)
+    $dated = [regex]::Replace($cl, "(?m)^(## \[$v\] - )unreleased[ \t]*(?=\r?$)", ('${1}' + $Date))
+    if ($dated -eq $cl) {
+        $dated = [regex]::Replace($cl, "(?m)^(## \[$v\])[ \t]*(?=\r?$)", ('${1} - ' + $Date))
+    }
+    if ($dated -eq $cl) { return $false }
+    [IO.File]::WriteAllText($Path, $dated, (New-Utf8NoBom))
+    $true
+}
+
+function Get-WaveePreviousIndex {
+    <#
+    .SYNOPSIS
+      Download the feed's whatsnew-index.json to -OutFile so the release tool can prepend this release to it. Returns
+      -OutFile, or '' when the feed has no index yet.
+    .DESCRIPTION
+      A 404 means "there is no index yet" and is the legitimate first-release state. ANY other failure throws: the
+      index is the cumulative history of every release, the feed step uploads it with --clobber, and continuing
+      without it would replace the published history with a one-entry file. That is unrecoverable (the old entries
+      only exist on the feed), so the run stops instead.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Repo,
+        [Parameter(Mandatory = $true)][string]$FeedRelease,
+        [Parameter(Mandatory = $true)][string]$OutFile)
+
+    $url = "https://github.com/$Repo/releases/download/$FeedRelease/whatsnew-index.json"
+    Set-WaveeTls12
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri $url -MaximumRedirection 5 -OutFile $OutFile
+    }
+    catch {
+        $resp = $null
+        if ($_.Exception.PSObject.Properties['Response']) { $resp = $_.Exception.Response }
+        if ($resp -and ([int]$resp.StatusCode) -eq 404) { return '' }
+        throw ("could not read the published whatsnew-index.json ($($_.Exception.Message)). " +
+            "It is the cumulative release history and the feed step clobbers it, so the run stops rather than " +
+            "publishing a one-entry index over it. Fix the network or permissions and -Go again, or download " +
+            "$url by hand to $OutFile.")
+    }
+    $OutFile
+}
+
+function Assert-WaveeIndexSafeToPublish {
+    <#
+      whatsnew-index.json is CUMULATIVE history and it is uploaded with --clobber, so publishing one that was not
+      built on top of the published one destroys every older entry. The notes step records whether it read the
+      previous index; this refuses to stage or upload when it did not AND the feed release now carries one.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Repo,
+        [Parameter(Mandatory = $true)][string]$FeedRelease,
+        [bool]$PreviousIndexRead,
+        [Parameter(Mandatory = $true)][string]$Phase)
+
+    if ($PreviousIndexRead) { return }
+    $frel = Get-GhRelease $Repo $FeedRelease
+    if (-not $frel) { return }
+    $hit = @($frel.assets | Where-Object { $_.name -eq 'whatsnew-index.json' })
+    if ($hit.Count -gt 0) {
+        throw ("$Phase refuses to touch whatsnew-index.json: $FeedRelease publishes one, but the notes step did " +
+            "not read it, so the staged index carries only this release.")
+    }
+}
+
+function Get-WaveeReleaseMediaNames {
+    <#
+      The flat asset names of the media an emitted whatsnew.json references ("media/foo.webp" ships as "foo.webp"),
+      or, when it lists none, every file under <NotesOut>\media. Sorted, unique.
+    #>
+    param([Parameter(Mandatory = $true)][string]$NotesOut)
+
+    $names = @()
+    $doc = Join-Path $NotesOut 'whatsnew.json'
+    if (Test-Path -LiteralPath $doc) {
+        $json = Get-Content -LiteralPath $doc -Raw | ConvertFrom-Json
+        if ($json.media) {
+            foreach ($m in $json.media) {
+                $src = "$($m.src)"
+                if ($src) { $names += (Split-Path -Leaf ($src -replace '/', '\')) }
+            }
+        }
+    }
+    if ($names.Count -eq 0) {
+        $mediaDir = Join-Path $NotesOut 'media'
+        if (Test-Path -LiteralPath $mediaDir) {
+            foreach ($f in (Get-ChildItem -LiteralPath $mediaDir -File -Recurse)) { $names += $f.Name }
+        }
+    }
+    @($names | Sort-Object -Unique)
+}
+
+function Copy-WaveeReleaseMedia {
+    <#  Copy every media file Get-WaveeReleaseMediaNames names into -Stage, flat. Returns the names. #>
+    param(
+        [Parameter(Mandatory = $true)][string]$NotesOut,
+        [Parameter(Mandatory = $true)][string]$Stage)
+
+    $names = @()
+    $doc = Join-Path $NotesOut 'whatsnew.json'
+    if (Test-Path -LiteralPath $doc) {
+        $json = Get-Content -LiteralPath $doc -Raw | ConvertFrom-Json
+        if ($json.media) {
+            foreach ($m in $json.media) {
+                $src = "$($m.src)"
+                if (-not $src) { continue }
+                $from = Join-Path $NotesOut ($src -replace '/', '\')
+                if (-not (Test-Path -LiteralPath $from)) { throw "whatsnew.json references media that is not in $NotesOut : $src" }
+                $leaf = Split-Path -Leaf $from
+                Copy-Item -LiteralPath $from (Join-Path $Stage $leaf) -Force
+                $names += $leaf
+            }
+        }
+    }
+    if ($names.Count -eq 0) {
+        $mediaDir = Join-Path $NotesOut 'media'
+        if (Test-Path -LiteralPath $mediaDir) {
+            foreach ($f in (Get-ChildItem -LiteralPath $mediaDir -File -Recurse)) {
+                Copy-Item -LiteralPath $f.FullName (Join-Path $Stage $f.Name) -Force
+                $names += $f.Name
+            }
+        }
+    }
+    @($names | Sort-Object -Unique)
 }
 
 function New-ShippedIssueComment {
@@ -1219,6 +1399,7 @@ Export-ModuleMember -Function @(
     'Get-ZipEntryBytes',
     'Find-ByteText',
     'Assert-CrashIngestStamp',
+    'Invoke-WranglerPut',
     'Invoke-SymbolsUpload',
     'Publish-WaveeSymbolMap',
     'Publish-WaveeRelease',
@@ -1230,6 +1411,11 @@ Export-ModuleMember -Function @(
     'Compare-ReleaseIssueRefs',
     'Format-IssueRefMismatch',
     'Write-ReleaseCommitsJson',
+    'Set-ChangelogReleaseDate',
+    'Get-WaveePreviousIndex',
+    'Assert-WaveeIndexSafeToPublish',
+    'Get-WaveeReleaseMediaNames',
+    'Copy-WaveeReleaseMedia',
     'New-ShippedIssueComment',
     'Test-IssueAlreadyNotified',
     'Add-ShippedIssueComments')

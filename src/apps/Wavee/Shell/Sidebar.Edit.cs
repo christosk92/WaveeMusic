@@ -194,12 +194,15 @@ public static class SidebarMenuModel
     const string FinishEditing = "sidebar.pane.finishEditing";
 
     /// <summary>The global pane menu (design C.4): Layout ▸ · Show section ▸ · [Library: Hide pinned · Unpin all shortcuts]
-    /// · Density ▸ · Edit sidebar… · ─ · Reset everything…. While editing, the layout radios and Reset everything are disabled
+    /// · Density ▸ · Edit sidebar… · ─ · Reset everything…. Layout and Density are the active structure's options: offered only where it
+    /// declares them (<paramref name="layoutOption"/>, <paramref name="densityOption"/>; settings design 5.4), so a structure without them
+    /// never gets a pick that lasts one session; without Layout, "Reset layout" stands on its own. While editing, the layout radios and Reset everything are disabled
     /// with the reason (Q7); Density stays. Library has no Pinned header (P.2a), so its two Pinned verbs live HERE: "Hide
     /// pinned" (disabled with "Unpin {names} first" while route/module pins lock it) and "Unpin all shortcuts" (Q17, while
     /// such pins exist). <paramref name="lockingPinNames"/> = <see cref="SidebarVisibilityRules.LockingPins"/>.</summary>
     public static IReadOnlyList<SidebarMenuRow> Pane(SidebarLayoutId layout, SidebarLayoutState state, SidebarDensity density, bool editing,
-                                                     IReadOnlyList<string> lockingPinNames, SidebarLibraryView view = SidebarLibraryView.List)
+                                                     IReadOnlyList<string> lockingPinNames, bool layoutOption, bool densityOption,
+                                                     SidebarLibraryView view = SidebarLibraryView.List)
     {
         var hidden = new List<SidebarMenuRow>();
         var overlay = state.Of(layout);
@@ -216,31 +219,33 @@ public static class SidebarMenuModel
             if (locked)
                 pinnedRows.Add(new SidebarMenuRow(SidebarMenuAction.UnpinAllShortcuts, "sidebar.menu.unpinShortcuts"));
         }
-        return
-        [
-            new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.layout", Children:
+        var resetLayout = new SidebarMenuRow(SidebarMenuAction.ResetLayout, "sidebar.menu.resetLayout", Enabled: SidebarLayoutRules.IsModified(overlay, view));
+        var rows = new List<SidebarMenuRow>(10);
+        rows.Add(layoutOption
+            ? new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.layout", Children:
             [
                 new SidebarMenuRow(SidebarMenuAction.SwitchLayout, "sidebar.layoutName.classic", "classic",
                     Enabled: !editing, Checked: layout == SidebarLayoutId.Classic, Radio: true, ReasonKey: editing ? FinishEditing : null),
                 new SidebarMenuRow(SidebarMenuAction.SwitchLayout, "sidebar.layoutName.library", "library",
                     Enabled: !editing, Checked: layout == SidebarLayoutId.Library, Radio: true, ReasonKey: editing ? FinishEditing : null),
                 SidebarMenuRow.Divider,
-                new SidebarMenuRow(SidebarMenuAction.ResetLayout, "sidebar.menu.resetLayout",
-                    Enabled: SidebarLayoutRules.IsModified(overlay, view)),
-            ]),
-            new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.showSection",
-                Enabled: hidden.Count > 0, ReasonKey: hidden.Count == 0 ? "sidebar.menu.nothingHidden" : null, Children: hidden),
-            .. pinnedRows,
-            new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.density", Children:
+                resetLayout,
+            ])
+            : resetLayout);
+        rows.Add(new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.showSection",
+            Enabled: hidden.Count > 0, ReasonKey: hidden.Count == 0 ? "sidebar.menu.nothingHidden" : null, Children: hidden));
+        rows.AddRange(pinnedRows);
+        if (densityOption)
+            rows.Add(new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.density", Children:
             [
                 new SidebarMenuRow(SidebarMenuAction.SetDensity, "sidebar.density.default", "default", Checked: density == SidebarDensity.Default, Radio: true),
                 new SidebarMenuRow(SidebarMenuAction.SetDensity, "sidebar.density.compact", "compact", Checked: density == SidebarDensity.Compact, Radio: true),
-            ]),
-            new SidebarMenuRow(SidebarMenuAction.EditSidebar, "sidebar.menu.edit", Enabled: !editing),
-            SidebarMenuRow.Divider,
-            new SidebarMenuRow(SidebarMenuAction.ResetEverything, "sidebar.menu.resetEverything",
-                Enabled: !editing, ReasonKey: editing ? FinishEditing : null),
-        ];
+            ]));
+        rows.Add(new SidebarMenuRow(SidebarMenuAction.EditSidebar, "sidebar.menu.edit", Enabled: !editing));
+        rows.Add(SidebarMenuRow.Divider);
+        rows.Add(new SidebarMenuRow(SidebarMenuAction.ResetEverything, "sidebar.menu.resetEverything",
+            Enabled: !editing, ReasonKey: editing ? FinishEditing : null));
+        return rows;
     }
 
     /// <summary>A section header's ⋯ (design C.4, section-scoped). <paramref name="lockingPinNames"/> non-empty ⇒ Pinned

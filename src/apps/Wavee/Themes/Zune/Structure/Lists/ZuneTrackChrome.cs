@@ -530,6 +530,23 @@ internal static class ZuneTrackChrome
             return Plate(active, onClick, onRealized) with { Gap = ZuneListRules.CommandGap, Padding = ZuneListRules.CommandPad, Children = kids };
         }
 
+        /// <summary>Tune as Zune's AI action (owner, 2026-11-18: "a lot more prevalent like an AI button"): the sparkle in its hue and the word in the accent's
+        /// voice over the AI underline, on the command plate (its active plate while lit: tuned, or the strip open).</summary>
+        public Element TuneCommand(string label, bool lit, Action onClick)
+        {
+            var word = Word(label, Tok.TextSecondary, LabelKind.Command) with { Size = R.Type.DenseMeta("").Size, Color = R.Ink.AccentAction };
+            var underlined = new BoxEl
+            {
+                Direction = 1, AlignItems = FlexAlign.Stretch, MinWidth = 0f,
+                Children = [word, new BoxEl { Height = ZunePlaylistRules.TuneUnderlineH, Shrink = 0f, Gradient = ZunePlaylistRules.TuneUnderline }],
+            };
+            return Plate(lit, onClick, null) with
+            {
+                Gap = ZuneListRules.CommandGap, Padding = ZuneListRules.CommandPad,
+                Children = [Icon(Icons.RefineSparkle, ZuneListRules.CommandGlyph) with { Color = ZunePlaylistRules.TuneSparkle }, underlined],
+            };
+        }
+
         public Element IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized)
             => Plate(active, onClick, onRealized) with { Width = Edge, Children = [Icon(glyph, ZuneListRules.CommandGlyph) with { Color = Ink(active) }] };
 

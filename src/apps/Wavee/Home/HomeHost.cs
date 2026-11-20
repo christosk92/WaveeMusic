@@ -42,8 +42,10 @@ public sealed class HomeHost
     // ── the facet machine's state (per tab) ──
     /// <summary>The facet-switch machine; <c>Target</c> is the selected facet, <c>Published</c> the one on screen.</summary>
     public readonly Signal<FacetSwitchState> Switch = new(FacetSwitchState.Initial(""));
-    /// <summary>The pivot's words, "All" first (<see cref="FacetPivot.Words"/>); empty until the first model lands.</summary>
-    public readonly Signal<FacetWord[]> Words = new(Array.Empty<FacetWord>());
+    /// <summary>The pivot's words, "All" first (<see cref="FacetPivot.Words"/>). Until the first model lands: the words the last session
+    /// showed (<see cref="LaunchWords"/>), so the row stands at its height from the first frame and the page under it never moves when the
+    /// answer lands (a live open, 2026-11-17: the row appeared with the answer and pushed the page down).</summary>
+    public readonly Signal<FacetWord[]> Words = new(LaunchWords());
     /// <summary>The SelectorBar's own index (the bar writes it on click/roving; <see cref="SyncFacetIndex"/> re-syncs it).</summary>
     public readonly Signal<int> FacetIndex = new(0);
 
@@ -76,7 +78,11 @@ public sealed class HomeHost
     public PageChromeRow? ChromeRow => _chromeRow;
 
     /// <param name="scroll">The page's scroll handle: the landing edge reads its offset (a Refreshing swap only lands at the top).</param>
-    public HomeHost(ScrollHandle scroll) => _scroll = scroll;
+    public HomeHost(ScrollHandle scroll)
+    {
+        _scroll = scroll;
+        s_hosts.Add(new WeakReference<HomeHost>(this));
+    }
 
     /// <summary>This tab's route tab, re-pushed by the screen each render.</summary>
     public int Tab { get; set; }
@@ -107,10 +113,13 @@ public sealed class HomeHost
     }
 
     /// <summary>§3.12's demand for the switch target (the Artist/Album/Show idiom: in an effect, never in the model memo);
-    /// re-asks in a new scope.</summary>
+    /// re-asks in a new scope, and runs again when the Home table changes: the baseline lookup is asked once the document is
+    /// KNOWN, which on a launch is an answer that lands after the mount (before, the lookup was never sent and the Spine Shelf's
+    /// open card kept five empty tiles; a live open, 2026-11-17). Both asks are idempotent.</summary>
     public void DemandTarget()
     {
         _ = Entities.ScopeEpoch.Value;
+        _ = Home.Changed.Value;
         Demand(Switch.Value.Target);
     }
 
@@ -120,7 +129,9 @@ public sealed class HomeHost
     {
         if (m is null) return;
         _shown.Add(m.Facet);
-        Words.Value = FacetPivot.Words(m.Chips, Loc.Get(Strings.Home.FacetAll));
+        var words = FacetPivot.Words(m.Chips, Loc.Get(Strings.Home.FacetAll));
+        if (!SameWords(words, Words.Peek())) Words.Value = words;
+        RememberWords(words);
         var kinds = new ZoneKind[m.Zones.Count];
         for (int i = 0; i < kinds.Length; i++) kinds[i] = m.Zones[i].Kind;
         _lastShape[m.Facet] = kinds;
@@ -197,6 +208,55 @@ public sealed class HomeHost
         var (lit, on) = FacetPivot.Resolve(words, Switch.Peek().Target);
         if ((uint)lit < (uint)words.Length && words[lit].HasSub) Select(FacetPivot.Target(words[lit], !on), Tab);
     }
+
+    // ── the words across launches ──
+
+    static readonly SettingKey<string> s_wordsKey = new("home.facetWords", "");
+    const char FieldSep = '', WordSep = '';
+
+    /// <summary>The words a new host starts with: the last session's (the settings' <c>home.facetWords</c>), else "All" alone, which stands
+    /// the row at the same height. A stale word is replaced in place when the answer lands; the row's height never depends on it.</summary>
+    static FacetWord[] LaunchWords()
+    {
+        string all = Loc.Get(Strings.Home.FacetAll);
+        string saved = Platform.Settings.Get(s_wordsKey);
+        if (saved.Length == 0) return FacetPivot.Words(null, all);
+        var parts = saved.Split(WordSep);
+        var words = new List<FacetWord>(parts.Length + 1) { new("", all, HasSub: false, SubId: null, SubLabel: null) };
+        foreach (var part in parts)
+        {
+            var f = part.Split(FieldSep);
+            if (f.Length != 4 || f[0].Length == 0) continue;
+            words.Add(new FacetWord(f[0], f[1], f[2].Length > 0, f[2].Length > 0 ? f[2] : null, f[3].Length > 0 ? f[3] : null));
+        }
+        return words.ToArray();
+    }
+
+    /// <summary>Keep <paramref name="words"/> for the next launch (the chips only: "All" is the label of this run's language).</summary>
+    static void RememberWords(FacetWord[] words)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int i = 1; i < words.Length; i++)
+        {
+            var w = words[i];
+            if (sb.Length > 0) sb.Append(WordSep);
+            sb.Append(w.Id).Append(FieldSep).Append(w.Label).Append(FieldSep).Append(w.SubId ?? "").Append(FieldSep).Append(w.SubLabel ?? "");
+        }
+        string value = sb.ToString();
+        if (value != Platform.Settings.Get(s_wordsKey)) Platform.Settings.Set(s_wordsKey, value);
+    }
+
+    /// <summary>The inspector's launch (`state kind=home-cold`): every host shows the words a new host would start with.</summary>
+    internal static void StageLaunchWords()
+    {
+        for (int i = s_hosts.Count - 1; i >= 0; i--)
+        {
+            if (!s_hosts[i].TryGetTarget(out var host)) { s_hosts.RemoveAt(i); continue; }
+            host.Words.Value = LaunchWords();
+        }
+    }
+
+    static readonly List<WeakReference<HomeHost>> s_hosts = [];
 
     static bool SameWords(FacetWord[] a, FacetWord[] b)
     {

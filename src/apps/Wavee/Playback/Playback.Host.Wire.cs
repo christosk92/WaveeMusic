@@ -62,8 +62,9 @@ public static partial class Playback
             using var json = System.Text.Json.JsonDocument.Parse(buffer.Utf8(source).ToArray());
             if (json.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
                 foreach (var property in json.RootElement.EnumerateObject())
-                    if (property.Value.ValueKind == System.Text.Json.JsonValueKind.String)
-                        metadata[property.Name] = property.Value.GetString() ?? "";
+                    if (property.Value.ValueKind == System.Text.Json.JsonValueKind.String && property.Value.GetString() is { } value
+                        && Queue.ContextMetadataValueSound(value))
+                        metadata[property.Name] = value;
         }
         s_wireOrigin = new WireOrigin(Text(load.FeatureIdentifier), Text(load.FeatureVersion), Text(load.ViewUri),
             Text(load.ExternalReferrer), Text(load.ReferrerIdentifier), Text(load.DeviceIdentifier), Text(load.CommandId), metadata.ToArray());
@@ -124,7 +125,24 @@ public static partial class Playback
         string output = OutputDeviceName();
         if (!Ownership.IsActiveOnWire(in s_state.Own) || !s_state.HasCurrent || Entities.Current is null)
             return new WireExtras(null, 0, default, privateSession, output, sender);
-        return new WireExtras(WindowNow(), RevisionNow(), in s_wireIds, privateSession, output, sender, s_state.ContentRate, s_wireOrigin, OutputDeviceKind());
+        return new WireExtras(WindowNow(), RevisionNow(), in s_wireIds, privateSession, output, sender, s_state.ContentRate, s_wireOrigin,
+            OutputDeviceKind(), ContextIsAudiobook());
+    }
+
+    /// <summary>Is the deck's context an audiobook? The catalogue's classification of the show (<see cref="ShowFlags.Audiobook"/>), the
+    /// deck row's own (<see cref="Episode.IsAudiobookChapter"/>), or what the context's resolve said (<c>is_audiobook</c>). Columns only,
+    /// no signal read: this runs inside the drain's capture.</summary>
+    static bool ContextIsAudiobook()
+    {
+        EntityId context = s_state.Context;
+        if (context.Kind != EntityKind.Show || Entities.Current is not { } scope) return false;
+        if (scope.Shows.TryGetSlot(context, out int show) && (new Show(show).Flags & ShowFlags.Audiobook) != 0) return true;
+        if (s_state.CurrentId.Kind == EntityKind.Episode && scope.Episodes.TryGetSlot(s_state.CurrentId, out int chapter)
+            && new Episode(chapter).IsAudiobookChapter) return true;
+        if (s_wireOrigin is { } origin && context.Equals(s_wireOriginContext))
+            foreach (var entry in origin.Metadata)
+                if (entry.Key == "is_audiobook") return entry.Value == "true";
+        return false;
     }
 
     /// <summary>The OS endpoint we render to: the one the user chose, else the system default's row. "" when unknown —
@@ -287,8 +305,11 @@ public static partial class Playback
             Show show = episode.Show;
             bool known = show.Slot > 0 && show.Slot < scope.Shows.Count;
             string? showTitle = known ? Interned(show.TitleId) : null;
+            // The row's "artist" is the show's PUBLISHER: a podcast's publisher, an audiobook's author (SHOW_V4 field 66 carries the
+            // author for a book). The show's own name rides album_title only; it used to be written as the author too.
+            string? publisher = known ? Interned(show.PublisherId) : null;
             string? image = Interned(episode.ImageId) ?? (known ? Interned(show.ImageId) : null);
-            return new WireRow(id, edge.ItemId, uid, provider, Interned(episode.TitleId), showTitle, showTitle, image,
+            return new WireRow(id, edge.ItemId, uid, provider, Interned(episode.TitleId), publisher, showTitle, image,
                 known ? show.Id : default, decisionId: decision, queuedBy: queuedBy);
         }
         return new WireRow(id, edge.ItemId, uid, provider, decisionId: decision, queuedBy: queuedBy);

@@ -618,8 +618,8 @@ public static partial class Diagnostics
                 case Headless.Verb.Resume: Playback.Resume("probe"); return true;
                 case Headless.Verb.Toggle: Playback.TogglePlay("probe"); return true;
                 case Headless.Verb.Stop: Playback.Stop(); return true;
-                case Headless.Verb.Next: Playback.Next(); return true;
-                case Headless.Verb.Prev: Playback.Previous(); return true;
+                case Headless.Verb.Next: Playback.Next("probe"); return true;
+                case Headless.Verb.Prev: Playback.Previous("probe"); return true;
                 case Headless.Verb.Seek:
                     {
                         int target;
@@ -909,16 +909,22 @@ public static partial class Diagnostics
     // composition and ticks the machine; `StressLoad` is the OS half.
 
     /// <summary>`--stress-audio [--file &lt;path&gt; | --track &lt;spotify:track:id&gt;] [--burners &lt;n per class&gt;] [--memory-mib &lt;n&gt;]
-    /// [--minimize] [--battery-saver] [--seconds &lt;n&gt;] [--allow-one] [--fake] [--profile &lt;dir&gt;]`. Pure parse; tested.</summary>
+    /// [--minimize] [--battery-saver] [--seconds &lt;n&gt;] [--allow-one] [--fake] [--profile &lt;dir&gt;] [--select &lt;s&gt;=&lt;endpoint id|default&gt;]...`.
+    /// Pure parse.</summary>
     public readonly record struct StressOptions(string FilePath, string TrackUri, int Burners, int MemoryMib, bool Minimize,
                                                 bool BatterySaver, int Seconds, bool AllowOne, bool Fake, string Profile)
     {
         public const int DefaultSeconds = 60, MaxBurnersPerClass = 64, MaxMemoryMib = 16_384, MaxSeconds = 3_600;
+
+        /// <summary>`--select`: at these seconds into playback, choose this output as the device picker does (an endpoint id, or null for
+        /// Match Windows), so a run proves the sink reopens on the chosen endpoint (the log's `open.begin` / `open deviceRate=… endpoint=`).</summary>
+        public IReadOnlyList<(int Seconds, string? EndpointId)> Selects { get; init; } = [];
         public const string TrackPrefix = "spotify:track:";
 
         public const string Usage =
             "usage: Wavee.exe --stress-audio [--file <path> | --track <spotify:track:id>] [--burners <n>] [--memory-mib <n>]\n" +
             "                 [--minimize] [--battery-saver] [--seconds <n>] [--allow-one] [--fake] [--profile <dir>]\n" +
+            "                 [--select <s>=<endpoint id|default>]...\n" +
             "  --file          play a local file through the real device (the gate)\n" +
             "  --track         play a Spotify track on the stored credential through the real device (the gate)\n" +
             "                  neither: the --fake silent voice through the paced silent endpoint, labelled `smoke` (CI only)\n" +
@@ -929,6 +935,7 @@ public static partial class Diagnostics
             "  --seconds       the length of the measured window (default 60)\n" +
             "  --allow-one     tolerate one incident (exit 0); default: none\n" +
             "  --fake          silent endpoint: the run is a smoke run, whatever the source\n" +
+            "  --select        at <s> seconds into playback choose that output (an endpoint id, or default for Match Windows), as the picker does\n" +
             "  exit codes: 0 no incident, 2 incidents, 1 the run could not complete, 64 usage, 67/75/69 credential / login / device";
 
         /// <summary>The run goes through a real audio source (`--file` or `--track`).</summary>
@@ -950,6 +957,7 @@ public static partial class Diagnostics
             string file = "", track = "", profile = "";
             int burners = 0, memory = 0, seconds = DefaultSeconds;
             bool minimize = false, battery = false, allowOne = false, fake = false;
+            var selects = new List<(int, string?)>();
             for (int i = 0; i < args.Length; i++)
             {
                 string a = args[i];
@@ -966,6 +974,19 @@ public static partial class Diagnostics
                     case "--burners": if (!Count(args, ref i, a, 0, MaxBurnersPerClass, out burners, ref usage)) return false; break;
                     case "--memory-mib": if (!Count(args, ref i, a, 0, MaxMemoryMib, out memory, ref usage)) return false; break;
                     case "--seconds": if (!Count(args, ref i, a, 1, MaxSeconds, out seconds, ref usage)) return false; break;
+                    case "--select":
+                    {
+                        if (!Text(args, ref i, a, out string pick, ref usage)) return false;
+                        int eq = pick.IndexOf('=');
+                        if (eq <= 0 || !int.TryParse(pick.AsSpan(0, eq), out int at) || at < 0 || eq == pick.Length - 1)
+                        {
+                            usage = "--select wants <seconds>=<endpoint id|default>, not '" + pick + "'\n" + Usage;
+                            return false;
+                        }
+                        string id = pick[(eq + 1)..];
+                        selects.Add((at, id.Equals("default", StringComparison.OrdinalIgnoreCase) ? null : id));
+                        break;
+                    }
                     default:
                         usage = "unknown argument '" + a + "'\n" + Usage;
                         return false;
@@ -978,7 +999,7 @@ public static partial class Diagnostics
                 return false;
             }
             if (fake && track.Length > 0) { usage = "--fake has no Spotify session: use --file, or nothing, with it\n" + Usage; return false; }
-            options = new StressOptions(file, track, burners, memory, minimize, battery, seconds, allowOne, fake, profile);
+            options = new StressOptions(file, track, burners, memory, minimize, battery, seconds, allowOne, fake, profile) { Selects = selects };
             return true;
         }
 
@@ -1576,6 +1597,7 @@ public static partial class Diagnostics
             var input = new StressInput(nowMs, Spotify.Current.IsOnline, p.Phase.ToString(), p.Buffering, p.Error.ToString(), p.Position(nowMs),
                 m.Xruns, m.XrunFramesLost, (int)m.GlitchIncidents, (long)m.LongestStallMs, m.GlitchVerdictKey ?? GlitchLedger.VerdictClean);
 
+            RunSelects(nowMs);
             StressStep step = s_run.Tick(in input);
             switch (step.Verb)
             {
@@ -1585,6 +1607,7 @@ public static partial class Diagnostics
                         Console.Error.WriteLine("stress-audio: " + error);
                         RequestExit(Headless.ExitCode.Fault);
                     }
+                    s_playAtMs = nowMs;
                     break;
                 case StressVerb.BeginLoad:
                     s_load = StressLoad.Start(s_options);
@@ -1603,6 +1626,21 @@ public static partial class Diagnostics
                     Console.Out.WriteLine(Headless.JsonLine.Fault(nowMs, "stress-failed", step.Reason));
                     RequestExit(step.Code);
                     break;
+            }
+        }
+
+        static long s_playAtMs = -1;
+        static int s_selectsRun;
+
+        /// <summary>Loop thread: the `--select` picks that are due, in order, through the picker's own output verb.</summary>
+        static void RunSelects(long nowMs)
+        {
+            var picks = s_options.Selects;
+            while (s_playAtMs >= 0 && s_selectsRun < picks.Count && nowMs - s_playAtMs >= picks[s_selectsRun].Seconds * 1000L)
+            {
+                var (at, id) = picks[s_selectsRun++];
+                Log.Info("stress", $"select at {at}s: {id ?? "<match windows>"}");
+                Playback.Audio.Select(id);
             }
         }
 

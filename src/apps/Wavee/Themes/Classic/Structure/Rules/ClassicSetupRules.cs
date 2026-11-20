@@ -47,12 +47,15 @@ public static class ClassicSetupRules
     /// <summary>The hyperlink's own 11-DIP inner padding: −11 puts the first link's TEXT flush with the copy.</summary>
     public static readonly Edges4 FlushLinkMargin = new(-11f, 0f, 0f, 0f);
 
-    /// <summary>"Is this you?": the avatar's size and the gap between the name and the tier.</summary>
-    public const float AccountPicture = 40f, AccountTextGap = 2f;
+    /// <summary>"Is this you?": the account's picture, the gap between its name and its plan, and its card's padding.</summary>
+    public const float AccountPicture = 72f, AccountTextGap = 2f, AccountCardPad = 20f;
+
+    /// <summary>"Is this you?": the three facts under the account. A fact is a 40 plate with a 20 glyph, 16 from its words; the facts stand 14 apart.</summary>
+    public const float FactGlyphBox = 40f, FactGlyphSize = 20f, FactGap = 16f, FactRowGap = 14f;
 
     /// <summary>The Busy ladder: the ring, the done / failed glyph, the pending bullet, the row, the mark's box and the bar.</summary>
     public const float StepRingSize = 16f, StepGlyphSize = 15f, StepBulletSize = 11f;
-    public const float StepRowHeight = 26f, StepRowWidth = 300f, StepMarkBox = 18f, StepBarWidth = 220f;
+    public const float StepRowMinHeight = 44f, StepRowGap = 6f, StepTextGap = 2f, StepMarkBox = 24f, StepBarWidth = 320f, StepCardPad = 20f, StepCardGap = 16f;
 
     // ── the runtime card ──────────────────────────────────────────────────────────────────────────────────────────────────
 

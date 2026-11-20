@@ -3,14 +3,15 @@
 // Every fake track gets its kind-16 answer at boot, so `--fake` never sends for one: most have NONE (the page is what it is without
 // Canvas), and the tracks in `WithCanvas` loop the one local canvas (assets/canvas: a 4 s 288x512 H.264 gradient, no audio, ~33 KB, made
 // with ffmpeg's `gradients` source) with its own .thmb still as the poster. tr3 is the inspector's `play` track and tr20 the launch's
-// now playing; tr4 and tr5 (no canvas) are the without-canvas pair.
+// now playing; tr4 and tr5 (no canvas) are the without-canvas pair; tr6 and tr7 fill the mock Troye shelf card's five songs (3, 6, 7 with a
+// canvas: the Spine Shelf's hover over real media).
 
 namespace Wavee;
 
 public static partial class Entities
 {
     /// <summary>The fake tracks that carry a canvas (by their <c>trN</c> index).</summary>
-    public static readonly int[] FakeCanvasTracks = [3, 20, 27, 41, 55, 62];
+    public static readonly int[] FakeCanvasTracks = [3, 6, 7, 20, 27, 41, 55, 62];
 
     static partial void SeedCanvasSurfaces(long now0)
     {

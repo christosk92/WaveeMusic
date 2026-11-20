@@ -37,6 +37,85 @@ internal static class WinUiSettingsRules
     /// <summary>The keyboard page's key chip: its padding.</summary>
     public const float KeyChipPadX = 8f, KeyChipPadY = 2f;
 
+    // ── the registry's page (settings rework phase 4: the concept boards Main, W-Search, W-Arrival, W-Compact) ──
+
+    /// <summary>A link's arrival (design 4.9, 7.2): the row takes a 2-DIP accent ring over the accent's subtle fill, holds while the row glides in, then both
+    /// fade back over <see cref="HighlightMs"/> (Windows Settings' "jump to setting"). The page's policy carries the duration to the core
+    /// (<c>WinUiPolicies</c> → <c>SettingsPagePolicy.HighlightMs</c> → <c>SettingsArrival.HighlightMs</c>). Reduced motion holds for the whole duration and cuts.</summary>
+    public const int HighlightMs = 1600;
+
+    /// <summary>The arrival ring's width, and how long the highlight holds at full strength before its fade (the glide's own length).</summary>
+    public const float HighlightBorder = 2f, HighlightHoldMs = 450f;
+
+    /// <summary>The ring goes back to rest a beat after its fade lands (the next press's hover then cross-fades at the card's own speed).</summary>
+    public const float HighlightSettleMs = 60f;
+
+    /// <summary>The strip's selected item glides into its sideways scroller (Compact, Small) with this much of the strip kept beyond it, so the next
+    /// category's word shows too (a minimal move: nothing scrolls while the item and its gutter are in view).</summary>
+    public const float StripGutter = 64f;
+
+    /// <summary>Where the arrival puts its row in the scroller (design 4.9: a third of the way down).</summary>
+    public const float ArrivalAlign = 0.3f;
+
+    /// <summary>How long a parent's expander takes to open before the arrival gives up on a child row that never drew (the AI lyrics card before its setup:
+    /// the parent row takes the highlight instead). The expander's own reveal is about 260 ms.</summary>
+    public const float ArrivalFallbackMs = 400f;
+
+    /// <summary>A clickable row card's focus ring sits 3 DIP outside it (SettingsCard's own).</summary>
+    public static readonly Edges4 CardFocusMargin = new(-3f, -3f, -3f, -3f);
+
+    /// <summary>The "Find a setting" box's field height (the stock AutoSuggestBox, as the title bar's omnibar), and at a tier that asks for a hit target (Compact).</summary>
+    public const float SearchH = 32f, SearchTouchH = 40f;
+
+    /// <summary>The box's query button reaches a little past its 32 x 28 plate (the omnibar's slop).</summary>
+    public static readonly Edges4 SearchQueryHitSlop = new(1f, 5f, 1f, 5f);
+
+    /// <summary>The box's suggestion list: the top results it shows (design 7.2: eight), a row's height (glyph, title over breadcrumb), its glyph and the gap
+    /// between the glyph and the words.</summary>
+    public const int SuggestionRows = 8;
+    public const float SuggestionRowH = 48f, SuggestionGlyph = 16f, SuggestionGlyphGap = 12f;
+
+    /// <summary>The suggestion row's padding inside the list plate (the stock list item's 12 lead) and its plate inset.</summary>
+    public static readonly Edges4 SuggestionPadding = new(12f, 6f, 12f, 6f), SuggestionInset = new(4f, 2f, 4f, 2f);
+
+    /// <summary>The results page: the heading (Subtitle 20 / 28), the gap under its count line, and the breadcrumb's gap above its card.</summary>
+    public const float ResultsTitleSize = 20f, ResultsTitleLine = 28f, ResultsHeadGap = 4f, ResultBreadcrumbGap = 6f;
+
+    /// <summary>A result's breadcrumb (a link to the dial in its category) reaches the Compact 40 target past its 12-DIP line.</summary>
+    public static readonly Edges4 BreadcrumbTouchSlop = new(10f, 10f, 10f, 10f);
+
+    /// <summary>The space between the count line and the first result (the concept board W-Search: 22).</summary>
+    public const float ResultsListGap = 20f;
+
+    /// <summary>The space between one result (its breadcrumb and card) and the next.</summary>
+    public const float ResultGap = 16f;
+
+    /// <summary>The no-match card: a dashed-looking frame is no Fluent shape, so it is a plain card with the line, the "did you mean" links and the app search.</summary>
+    public const float NoMatchGap = 8f;
+
+    /// <summary>The gap between the Settings home's "At a glance" cards in their grid (the concept board's 8).</summary>
+    public const float GlanceGap = 8f;
+
+    /// <summary>A Recently changed card's "when" column.</summary>
+    public const float RecentWhenGap = 12f;
+
+    /// <summary>The explanation badge (design 6.5): the info glyph after a row's label, its cell, the gap after the label, and the hit slop that lifts the
+    /// 20-DIP cell to the 32 floor (Small and up) and to the Compact 40 target without growing the label's line. At Compact it reaches further down
+    /// than up: the label sits 8 under an expander item's top edge, where the expander's clip would cut a slop that reached 10 above it.</summary>
+    public const float ExplainGlyph = 14f, ExplainCell = 20f, ExplainGap = 6f;
+    public static readonly Edges4 ExplainTouchSlop = new(10f, 6f, 10f, 14f), ExplainSlop = new(6f, 6f, 6f, 6f);
+
+    /// <summary>The explanation tip's clip: 320 x 180 (the clips are recorded at twice that), its play glyph over the poster or the placeholder.</summary>
+    public const float ExplainClipW = 320f, ExplainClipH = 180f, ExplainPlayGlyph = 28f, ExplainPlayCell = 56f;
+
+    /// <summary>The "Also in" footer of a row: its padding (the card's 16 lead) and the gap between its words.</summary>
+    public static readonly Edges4 AlsoInPadding = new(16f, 6f, 16f, 6f);
+    public const float AlsoInGap = 8f;
+
+    /// <summary>The episode speed's slider: the speed menus' range and step (0.5x to 2x by quarters).</summary>
+    public const float EpisodeSpeedMin = 0.5f, EpisodeSpeedMax = 2f, EpisodeSpeedStep = 0.25f;
+
+
     /// <summary>The title glyph arrives and leaves on a tier crossing with the form fade (opacity over <c>Design.Motion.Fast</c>), while the title beside it
     /// slides (<see cref="HeadSlide"/>).</summary>
     public static LayoutTransition HeadFade => new(TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut),
@@ -69,7 +148,7 @@ internal static class WinUiSettingsRules
     /// <summary>The preview column is never narrower than this (the column beside a 1200 card column at 1920 wide).</summary>
     public const float AsideMinWidth = 320f;
 
-    /// <summary>The preview's title (Subtitle 20 / 28) and the window miniature's aspect (the board's 16 : 9).</summary>
+    /// <summary>The preview's title (Subtitle 20 / 28) and the aspect of the window mock and of a fluid picker card's still (the board's 16 : 9).</summary>
     public const float PreviewTitleSize = 20f, PreviewTitleLine = 28f, PreviewAspect = 16f / 9f;
 
     /// <summary>A theme card's padding (board: 8), the Small row card's, and the card's caption lines.</summary>
@@ -84,8 +163,8 @@ internal static class WinUiSettingsRules
     /// <summary>The selected card's check mark and an option's note glyph.</summary>
     public const float CheckGlyph = 14f, NoteGlyph = 14f;
 
-    /// <summary>The miniature's accent edge (the board's 2-px top border of the bar) and the window mock's hairline.</summary>
-    public const float MiniEdge = 2f, MiniHairline = 1f;
+    /// <summary>The window mock's hairline (the Huge preview column).</summary>
+    public const float MiniHairline = 1f;
 
     /// <summary>A nested option card is at least this tall (board: 56).</summary>
     public const float OptionCardMinHeight = 56f;
@@ -143,7 +222,7 @@ internal static class WinUiSettingsRules
     /// <summary>The strip card's description is one line.</summary>
     public const int ThemeStripDescriptionLines = 1;
 
-    /// <summary>The preview image's fade over the miniature.</summary>
+    /// <summary>The preview still's fade over the thumbnail's plate when its decode lands.</summary>
     public const float PreviewFadeMs = 140f;
 
     /// <summary>A generated option's text card.</summary>
@@ -195,11 +274,12 @@ internal static class WinUiSettingsRules
     /// <summary>The receipts' sampling interval (N12).</summary>
     public const float ReceiptsTickMs = 5000f;
 
-    /// <summary>W19's hero: the 64² tile, the 24/600 version line, the gaps.</summary>
-    public const float HeroTile = 64f, HeroVersionSize = 24f, HeroGap = 18f, HeroTextGap = 6f;
+    /// <summary>W19's hero: the 64² tile, the 24/600 version line, the gaps, the tile's radius and glyph, the hero's padding.</summary>
+    public const float HeroTile = 64f, HeroVersionSize = 24f, HeroGap = 18f, HeroTextGap = 6f, HeroTileRadius = 16f, HeroGlyph = 30f;
+    public static readonly Edges4 HeroPadding = new(24f, 22f, 24f, 22f);
 
-    /// <summary>The "What's new" link's unread dot gap.</summary>
-    public const float AboutBadgeGap = 6f;
+    /// <summary>A license expander's body item: padding 16, 12, 16, 16 (a flat never-wrapping card).</summary>
+    public static readonly Edges4 LicensePadding = new(16f, 12f, 16f, 16f);
 
     /// <summary>The update status card's progress bar.</summary>
     public const float UpdateProgressWidth = 180f;

@@ -16,6 +16,7 @@ using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using Wavee.Theming;
 
 namespace Wavee.Themes.Classic;
 
@@ -52,6 +53,23 @@ public static class ClassicTierMotion
     /// above shrinks or grows with it every frame instead of stepping by the difference.</summary>
     public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
+    /// <summary>A part whose WIDTH steps with the tier (the page's gutter, 16 / 32 / 36): it eases through real layout, so what stands beside it
+    /// rides it instead of stepping by the difference.</summary>
+    public static readonly LayoutTransition WidthReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(ReflowMs, Easing.SmoothOut),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width);
+
+    /// <summary>A Home body whose rows the width decides (a grid that gains or loses a row as its columns change, a shelf whose cards step a size):
+    /// its height eases through real layout and keeps easing while the window is dragged, so each step glides and the rows under it ride it. A
+    /// critically damped spring on the reflow's clock, not the tween: a drag re-aims it every frame, and a spring carries its speed into each new
+    /// target where a re-started ease-out would leap at its steep start every time.</summary>
+    public static readonly LayoutTransition RowsReflow = HeightReflow with
+    {
+        Dynamics = TransitionDynamics.Spring(ReflowMs / 1000f, RowsDamping), AnimateDuringResize = true,
+    };
+
+    /// <summary><see cref="RowsReflow"/>'s damping: critical, so the height never overshoots its rows.</summary>
+    const float RowsDamping = 1f;
 
     /// <summary>A part a tier ADDS to a column or drops from it (the narrow drawer's account row, which the Compact tier moves out of the title
     /// bar): it opens or closes its height through real layout as it fades, so what follows it slides instead of stepping by its height.</summary>
@@ -91,4 +109,24 @@ public static class ClassicTierMotion
         seen.Value = true;
         return was;
     }
+}
+
+/// <summary>How Classic moves one page to the next. Every swap keeps the core's fade-through (Classic declares no recipe or cascade); a section's
+/// "See all" page grows out of the link it was opened from instead (owner, 2026-11-18, on "See all": "A LOT more smooth and less out of body
+/// experience, something with connected or expanding ... now it feels too heavy and like we are leaving the page"): 0.96 to 1 about the link on the
+/// flights' short spring while Home only fades, one block (the page is the section the user was looking at, grown), Back shrinking toward the same
+/// place. WinUI's grow, on the same spring.</summary>
+public static class ClassicPageMotion
+{
+    /// <summary>The section page's scale as it starts to grow, and where it shrinks to on Back.</summary>
+    public const float SectionGrowEnterScale = 0.96f, SectionGrowBackScale = 0.97f;
+
+    /// <summary>The grow's spring response (s), and the Back leg's share of it.</summary>
+    public const float SectionGrowResponse = 0.24f, SectionGrowBackResponseScale = 0.85f;
+
+    /// <summary>The policy Classic publishes (<c>ThemePolicies.PageMotion</c>).</summary>
+    public static PageMotionPolicy Policy { get; } = PageMotionPolicy.Default with
+    {
+        GrowIntoSection = new GrowNav(SectionGrowEnterScale, SectionGrowBackScale, EnterOpacity: 0f, SectionGrowResponse, SectionGrowBackResponseScale, MinVisible: 0f),
+    };
 }

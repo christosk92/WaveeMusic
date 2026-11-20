@@ -10,6 +10,13 @@
 //                 (the owner's recording: "Smart" alone, rows 1 and 4 with a hole between);
 //   · cold-warm   (instead of cold-rows) the membership lands with every row restored from disk: faces known, credits in flight;
 //   · cold-faces  the rows' own fields land (titles, artists, covers, durations: the meta line gains its duration).
+//   · regen       a regenerated Mix's fresh answer (the owner's recording, 2026-11-15, Heartbreak Mix): open the Mix first (`goto` pl6: a seeded list
+//                 nobody revalidated this session: the page paints it and revalidates behind it, and the fake never answers), then `regen` lands
+//                 what the /diff would: a new revision with other rows (a re-cut: most rows leave, a few glide, most arrive), and a new cover and
+//                 a description that alternates per regen between a short line and one that wraps to three lines in a 216 DIP rail;
+//   · regen-edit  a SMALL remote edit over the list the page shows (another device): display rows 2, 5 and 6 removed, row 9 moved to row 3, new
+//                 tracks inserted at rows 1, 4 and 30 (the last off the first screen); a new cover, the alternating description and a new
+//                 revision. A pure function of the current membership and an epoch, so it repeats; the count stays.
 //
 // Inspector-only (`Shell.SetInspectState`); every value is a pure function of the row index and a per-staging epoch, so a second `cold-list` is cold again.
 
@@ -80,6 +87,147 @@ public static partial class Entities
         t.Version[list]++;
     }
 
+    // ── a BOOK that loads the way a real one does (`state kind=cold-book`, then `cold-book-chapters`, then `cold-book-facts`) ──
+    // The owner's recording (2026-11-18, Designing Data-Intensive Applications, 2nd Edition): the page opened on the show's own answer (the title and
+    // the subtitle joined in one string, no chapters, no length), the membership landed a tenth of a second later (the chapters' names, no lengths),
+    // and the book's credits and the chapters' lengths two seconds after that. One stage per answer, on sh9 (The Long Book):
+    //   · cold-book           the membership is unknown and asked, the credits are not known, the title is the joined one (`goto` sh9 after it);
+    //   · cold-book-chapters  the membership lands whole; no chapter knows its length yet;
+    //   · cold-book-facts     the credits land (the title and the subtitle apart, the book's length) and so does every chapter's length.
+
+    /// <summary>The book the cold-book stages act on (sh9, a hundred chapters).</summary>
+    public static string FakeColdBookUri => AlbumSeed.ColdBookUri;
+
+    static bool s_bookCold;
+
+    /// <summary>`state kind=cold-book`: sh9 as the show's own answer leaves it (no membership, no credits, no lengths).</summary>
+    public static void StageColdBook()
+    {
+        RestoreColdBook();
+        s_bookCold = true;
+        AlbumSeed.ColdBook();
+    }
+
+    /// <summary>`state kind=cold-book-chapters`: the membership lands (names, no lengths).</summary>
+    public static void StageColdBookChapters()
+    {
+        if (s_bookCold) AlbumSeed.ColdBookChapters();
+    }
+
+    /// <summary>`state kind=cold-book-facts`: the credits and the chapters' lengths land.</summary>
+    public static void StageColdBookFacts()
+    {
+        if (s_bookCold) AlbumSeed.ColdBookFacts();
+    }
+
+    /// <summary>The book as the boot seeded it; nothing when no cold-book ran. The inspector's restore on the next mount calls it.</summary>
+    public static void RestoreColdBook()
+    {
+        if (!s_bookCold) return;
+        s_bookCold = false;
+        AlbumSeed.RestoreBook();
+    }
+
+    static partial class AlbumSeed
+    {
+        public static string ColdBookUri => ShowUri(LongBook);
+
+        const string ColdBookTitle = "The Long Book", ColdBookSubtitle = "A Voyage in One Hundred Chapters, Told by the Keepers of the Light at Vell";
+
+        /// <summary>What the cold stage took: each chapter's length, and the fields the show knew.</summary>
+        static int[]? s_bookLengths;
+        static uint s_bookKnown;
+
+        static int BookSlot => SlotOf(Current.Shows, ShowUri(LongBook));
+
+        public static void ColdBook()
+        {
+            Scope s = Current;
+            var t = s.Shows;
+            int show = BookSlot;
+            s_bookKnown = t.Known[show];
+            RetainText(ref t.Title[show], Intern(Utf8(ColdBookTitle + ": " + ColdBookSubtitle)));
+            t.Known[show] &= ~(uint)ShowFields.Credits;
+            t.Version[show]++;
+            t.MarkDirty();
+            int n = EpisodesIn(LongBook);
+            s_bookLengths = new int[n];
+            for (int i = 0; i < n; i++)
+            {
+                int ep = SlotOf(s.Episodes, EpisodeUri(LongBook, i));
+                s_bookLengths[i] = s.Episodes.DurationMs[ep];
+                s.Episodes.DurationMs[ep] = 0;
+                s.Episodes.Version[ep]++;
+            }
+            s.Episodes.MarkDirty();
+            s.Edges.ShowEpisodes.Replace(show, ReadOnlySpan<int>.Empty, default, EdgeState.Unknown, 0);
+            s.Edges.ShowEpisodes.MarkAsked(show, 0);
+            s.PublishAll();
+        }
+
+        public static void ColdBookChapters()
+        {
+            Scope s = Current;
+            int n = EpisodesIn(LongBook);
+            var targets = new int[n];
+            for (int i = 0; i < n; i++) targets[i] = SlotOf(s.Episodes, EpisodeUri(LongBook, i));
+            s.Edges.ShowEpisodes.Replace(BookSlot, targets, default, EdgeState.Complete, n);
+            s.PublishAll();
+        }
+
+        public static void ColdBookFacts()
+        {
+            Scope s = Current;
+            var t = s.Shows;
+            int show = BookSlot;
+            long total = Lengths();
+            RetainText(ref t.BookTitle[show], Intern(Utf8(ColdBookTitle)));
+            RetainText(ref t.BookSubtitle[show], Intern(Utf8(ColdBookSubtitle)));
+            t.BookDurationMs[show] = (int)Math.Min(int.MaxValue, total);
+            t.Known[show] |= (uint)ShowFields.Credits;
+            t.Version[show]++;
+            t.MarkDirty();
+            s.PublishAll();
+        }
+
+        /// <summary>Every chapter's length back (once); the sum.</summary>
+        static long Lengths()
+        {
+            Scope s = Current;
+            long total = 0;
+            int n = EpisodesIn(LongBook);
+            for (int i = 0; i < n; i++)
+            {
+                int ep = SlotOf(s.Episodes, EpisodeUri(LongBook, i));
+                if (s_bookLengths is { } held && s.Episodes.DurationMs[ep] == 0)
+                {
+                    s.Episodes.DurationMs[ep] = held[i];
+                    s.Episodes.Version[ep]++;
+                }
+                total += s.Episodes.DurationMs[ep];
+            }
+            s_bookLengths = null;
+            s.Episodes.MarkDirty();
+            return total;
+        }
+
+        public static void RestoreBook()
+        {
+            Scope s = Current;
+            var t = s.Shows;
+            int show = BookSlot;
+            Lengths();
+            RetainText(ref t.Title[show], Intern(Utf8(ColdBookTitle)));
+            RetainText(ref t.BookTitle[show], StringId.Empty);
+            RetainText(ref t.BookSubtitle[show], StringId.Empty);
+            t.BookDurationMs[show] = 0;
+            t.Known[show] = s_bookKnown;
+            t.Version[show]++;
+            t.MarkDirty();
+            ColdBookChapters();
+        }
+    }
+
     // ── any detail page's header, unknown in place (`state kind=head uri=<uri>`, then `state kind=head-land`) ──
     // An album's, a list's, a show's or an episode's title is taken away with every field it knows (a cold open: no title, publisher, rating, cover), so
     // the page draws its pending head; the landing puts them back on the page that shows it, so a trace sees the head land as the real client's first
@@ -89,8 +237,9 @@ public static partial class Entities
     static (Table Table, Column<StringId> Title, int Slot, StringId Value, uint Known)? s_head;
 
     /// <summary>Take the header of the album, playlist, show or episode <paramref name="uri"/> away (its title and every known field, the one the
-    /// page's HeaderPending reads among them). False for another kind or an unknown uri.</summary>
-    public static bool StageHead(string uri, bool artistOverview = false)
+    /// page's HeaderPending reads among them). <paramref name="keepCard"/> keeps what a card's thin row stages (the title and the cover, as a
+    /// Home or search card leaves them on live data), so the page opens on the head a card click gives it. False for another kind or an unknown uri.</summary>
+    public static bool StageHead(string uri, bool artistOverview = false, bool keepCard = false)
     {
         RestoreHead();
         var kind = EntityUri.KindOf(uri.AsSpan());
@@ -107,9 +256,17 @@ public static partial class Entities
             _ => null,
         };
         if (head is not { } h) return false;
+        uint card = !keepCard ? 0u : kind switch
+        {
+            EntityKind.Album => (uint)(AlbumFields.Title | AlbumFields.Image),
+            EntityKind.Playlist => (uint)PlaylistFields.Identity,
+            EntityKind.Show => (uint)(ShowFields.Title | ShowFields.Image),
+            EntityKind.Episode => (uint)EpisodeFields.Identity,
+            _ => 0u,
+        };
         s_head = (h.Table, h.Title, slot, h.Title[slot], h.Table.Known[slot]);
-        h.Title[slot] = StringId.Empty;
-        h.Table.Known[slot] = 0;
+        if (card == 0u) h.Title[slot] = StringId.Empty;
+        h.Table.Known[slot] &= card;
         h.Table.Version[slot]++;
         h.Table.MarkDirty();   // a publication carries only the tables marked
         s.PublishAll();
@@ -137,8 +294,78 @@ public static partial class Entities
         t.Known[artist] &= ~(uint)(ArtistFields.Overview | ArtistFields.Chart);
         t.Version[artist]++;
         t.MarkDirty();
+        StageArtistCards(artist);
         Current.PublishAll();
         return true;
+    }
+
+    // ── the release cards of an artist page, landing after its overview (`head-land part=overview`, then `head-land part=cards`) ──
+    // The real client's order (the owner's recording, 2026-11-15): the overview and the chart land first, and the release cards beside them (the latest
+    // release, the discography preview's covers) land a few frames later, as their own album rows' answers do. The hold stages those rows' card fields
+    // unknown, asked and in flight with the overview; `part=overview` lands the overview alone and `part=cards` the cards (no `part`: both at once).
+
+    /// <summary>The album rows <see cref="StageArtistCards"/> took the card fields of, and what each knew.</summary>
+    static (int[] Slots, uint[] Known)? s_artistCards;
+
+    /// <summary>The request stamp of the staged card rows' fetch (cleared by the landing).</summary>
+    const uint ArtistCardsStamp = 0xCA4Du;
+
+    /// <summary>Take <see cref="AlbumFields.DiscoCard"/> away from <paramref name="artist"/>'s latest release and its discography's releases: unknown,
+    /// asked and in flight, so the side column's cards read "still coming".</summary>
+    static void StageArtistCards(int artist)
+    {
+        RestoreArtistCards();
+        var a = new Artist(artist);
+        var slots = new List<int>();
+        if (a.Latest.IsValid) slots.Add(a.Latest.Slot);
+        foreach (int s in a.AlbumSlots) if (!slots.Contains(s)) slots.Add(s);
+        foreach (int s in a.SingleSlots) if (!slots.Contains(s)) slots.Add(s);
+        foreach (int s in a.CompilationSlots) if (!slots.Contains(s)) slots.Add(s);
+        if (slots.Count == 0) return;
+        var t = Current.Albums;
+        uint group = (uint)AlbumFields.DiscoCard;
+        var known = new uint[slots.Count];
+        for (int i = 0; i < slots.Count; i++)
+        {
+            int slot = slots[i];
+            known[i] = t.Known[slot];
+            t.Known[slot] &= ~group;
+            t.Asked[slot] |= group;
+            StageSeat(t, slot, ArtistCardsStamp);
+            t.Version[slot]++;
+        }
+        s_artistCards = (slots.ToArray(), known);
+        t.MarkDirty();
+    }
+
+    /// <summary>The landing of <see cref="StageArtistCards"/>: the card fields back, as the rows' answers land them. Nothing when none is staged.</summary>
+    public static void RestoreArtistCards()
+    {
+        if (s_artistCards is not { } c) return;
+        s_artistCards = null;
+        var t = Current.Albums;
+        for (int i = 0; i < c.Slots.Length; i++)
+        {
+            int slot = c.Slots[i];
+            if (slot <= Table.None || slot >= t.Count) continue;
+            t.Known[slot] = c.Known[i];
+            LandSeat(t, slot);
+            t.Version[slot]++;
+        }
+        t.MarkDirty();
+        Current.PublishAll();
+    }
+
+    /// <summary>The landing of <see cref="StageArtistOverview"/>'s overview alone: the artist's known bits back (the cards stay staged).</summary>
+    public static void RestoreArtistOverview()
+    {
+        if (s_artistOverview is not { } o) return;
+        s_artistOverview = null;
+        var t = Current.Artists;
+        t.Known[o.Slot] = o.Known;
+        t.Version[o.Slot]++;
+        t.MarkDirty();
+        Current.PublishAll();
     }
 
     /// <summary>The request stamp of the staged chart rows' fetch (cleared by the landing).</summary>
@@ -204,15 +431,8 @@ public static partial class Entities
     public static void RestoreHead()
     {
         RestoreChartLate();
-        if (s_artistOverview is { } o)
-        {
-            s_artistOverview = null;
-            var t = Current.Artists;
-            t.Known[o.Slot] = o.Known;
-            t.Version[o.Slot]++;
-            t.MarkDirty();
-            Current.PublishAll();
-        }
+        RestoreArtistCards();
+        RestoreArtistOverview();
         if (s_head is not { } h) return;
         s_head = null;
         h.Title[h.Slot] = h.Value;
@@ -277,6 +497,101 @@ public static partial class Entities
         }
         Current.PublishAll();
     }
+
+    /// <summary>`state regen`: the Mix's fresh answer lands over the copy the page holds: another cover and description, and a new revision whose
+    /// rows are other tracks (each knows its face). The membership's version moves, so the open's revalidation sees it MOVED and lets go.</summary>
+    public static void StageRegen()
+    {
+        int list = ResolveSeedSlot(EntityKind.Playlist, FakeColdPlaylistUri);
+        if (list == Table.None) return;
+        s_regenEpoch++;
+        StageRegenHead(list, "regen");
+        var targets = new int[ColdRows];
+        var payload = new PlaylistTrackEdge[ColdRows];
+        for (int k = 0; k < ColdRows; k++)
+        {
+            targets[k] = ResolveSeedSlot(EntityKind.Track, TrackUri(Wrap(k * 7 + 3 + s_regenEpoch, 60)));
+            payload[k] = new PlaylistTrackEdge(StringId.Empty, 0, Table.None, 0, 0, 0, 0);
+        }
+        Current.Edges.PlaylistTracks.Replace(list, targets, payload, EdgeState.Complete, ColdRows);
+        Current.PublishAll();
+    }
+
+    static int s_regenEpoch;
+
+    /// <summary>A regen's head: another cover, the description alternating per epoch (the short line, then one long enough to wrap to three
+    /// lines in a 216 DIP rail, so every regen exercises the description's hand-over and its height) and a new revision.</summary>
+    static void StageRegenHead(int list, string tag)
+    {
+        var t = Current.Playlists;
+        RetainText(ref t.Image[list], Intern(Utf8(Cover(17 + s_regenEpoch * 5))));
+        RetainText(ref t.Description[list], Intern(Utf8(s_regenEpoch % 2 == 1
+            ? "Suzan & Freek, sombr, Conan Gray and more"
+            : "The songs you keep coming back to, from Suzan & Freek, sombr and Conan Gray to the quieter ones in between.")));
+        RetainText(ref t.Revision[list], Intern(Utf8("9" + s_regenEpoch.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + tag)));
+        t.Version[list]++;
+        t.MarkDirty();
+    }
+
+    /// <summary>`state regen-edit`: a small remote edit over the membership the page shows (another device): display rows 2, 5 and 6 leave, row 9
+    /// moves to row 3, and new tracks land at rows 1, 4 and 30 (the last below the first screen), taken from `tr70`..`tr130` (neither pl6's seed
+    /// nor `regen` uses them); the count stays. A new cover, the alternating description and a new revision ride it.</summary>
+    public static void StageRegenEdit()
+    {
+        int list = ResolveSeedSlot(EntityKind.Playlist, FakeColdPlaylistUri);
+        if (list == Table.None) return;
+        var current = Current.Edges.PlaylistTracks.Targets(list);
+        if (current.Length < 30) return;
+        s_regenEpoch++;
+        StageRegenHead(list, "edit");
+        // Rows 2, 5 and 6 leave and row 9 moves; the rest keep their order around the four placed rows (final rows 1, 3, 4 and 30).
+        var rest = new List<int>(current.Length);
+        for (int i = 0; i < current.Length; i++)
+            if (i != 1 && i != 4 && i != 5 && i != 8) rest.Add(current[i]);
+        int moved = current[8];
+        var rows = new int[rest.Count + 4];
+        for (int pos = 0, next = 0; pos < rows.Length; pos++)
+            rows[pos] = pos switch
+            {
+                0 => Fresh(0),        // a new row 1
+                2 => moved,           // row 9 → row 3
+                3 => Fresh(1),        // a new row 4
+                29 => Fresh(2),       // a new row 30
+                _ => rest[next++],
+            };
+        var payload = new PlaylistTrackEdge[rows.Length];
+        for (int k = 0; k < payload.Length; k++) payload[k] = new PlaylistTrackEdge(StringId.Empty, 0, Table.None, 0, 0, 0, 0);
+        Current.Edges.PlaylistTracks.Replace(list, rows, payload, EdgeState.Complete, rows.Length);
+        Current.PublishAll();
+
+        static int Fresh(int j) => ResolveSeedSlot(EntityKind.Track, TrackUri(70 + Wrap(s_regenEpoch * 3 + j, 61)));
+    }
+
+    /// <summary>`state rescope`: a login's scope switch (<c>Spotify.Session.AdoptWelcome</c>: the welcome names another market or tier than the
+    /// scope the app booted on). A new, EMPTY table set replaces the one every page is bound to, the freshness stamps of the old one are
+    /// forgotten (the library's publish hook does that in a real session) and the deck re-binds: a page showing a list now has an unknown row
+    /// with nothing asked. `rescope-land` then lands the seed in the new set as the disk warm-up lands a restored list: whole, and never
+    /// revalidated in this scope. The owner's log, 2026-11-15: a playlist restored at launch was opened before the session was online, the
+    /// welcome switched the scope under it, and the page held its list on the loading arm for minutes.</summary>
+    public static void StageRescope()
+    {
+        // Switch's own steps but one: the retired set's text is NOT handed back (the inspector leaks it for the life of the process). The
+        // page's last frames still draw the old set's ids, and a Debug build asserts on an id taken again inside its quarantine.
+        var key = Current.Key;
+        uint epoch = Current.Epoch + 1;
+        s_dirty.Clear();
+        Current = new Scope(key with { Market = key.Market == "ZZ" ? "US" : "ZZ" }) { Epoch = epoch };
+        ResolveMe(Current);
+        StoreWarm(Current);
+        BumpScopeEpoch();
+        ListStamps.ForgetAll();
+        Playback.Rebind();
+        Current.PublishAll();
+    }
+
+    /// <summary>`state rescope-land`, a few frames after `rescope`: the seed lands in the new table set, the restored list Complete as from
+    /// disk.</summary>
+    public static void StageRescopeLand() => SeedFake(Platform.Clock.SeedEpoch);
 
     /// <summary>Stage 2: every cold row's own fields land at once (one batch answer), the in-flight stamps clear.</summary>
     public static void StageColdFaces()

@@ -7,6 +7,7 @@ sent code, reported bugs, asked for features and helped track problems down. Tha
 
 | Who | What |
 |---|---|
+| [@0dm](https://github.com/0dm) | Solid previous and next buttons and spacing in Classic's player bar, and no outline round the bar after a click ([#235](https://github.com/christosk92/WaveeMusic/pull/235)), in Wavee 0.3.11 |
 | [@ZERO949](https://github.com/ZERO949) | Scroll over the volume slider to change the volume ([#220](https://github.com/christosk92/WaveeMusic/pull/220)), in Wavee 0.3.8 |
 
 ## Bug reports and ideas

@@ -5,9 +5,9 @@ release **independently** — and by two different mechanisms:
 
 | | Gallery | Wavee |
 |---|---|---|
-| Trigger | push tag `v*` → `.github/workflows/msix.yml` | **run `ops/release/wavee-release.ps1` on this machine** |
+| Trigger | push tag `v*` → `.github/workflows/msix.yml` | **run `ops/release/release.ps1 -Version <v> -Go` on this machine** |
 | Tag prefix | `v*` | **`wavee-v*`** |
-| Script | `ops/build/pack-msix.ps1` | `ops/release/wavee-release.ps1` (which calls `ops/build/pack-wavee-msix.ps1` per arch) |
+| Script | `ops/build/pack-msix.ps1` | `ops/release/release.ps1` + `ReleaseRunner.psm1` (which call `ops/build/pack-wavee-msix.ps1` per arch) |
 | Manifest | `ops/build/AppxManifest.xml` | `ops/build/Wavee.AppxManifest.xml` |
 | `.appinstaller` template | `ops/build/AppInstaller.template.xml` | `ops/build/Wavee.AppInstaller.template.xml` |
 | Package identity | `MarTeco.FluentGpu` | **`cproducts.Wavee`** |
@@ -33,7 +33,7 @@ Four artefacts, three of them permanent:
 
 | Thing | Value | Lifetime |
 |---|---|---|
-| **Version tag** | `wavee-vX.Y.Z` (annotated, on `main`) | immutable, never deleted |
+| **Version tag** | `wavee-vX.Y.Z` (annotated, on the release commit of `release/X.Y.Z`, which then merges into `main`) | immutable, never deleted |
 | **Version release** | the GitHub release on that tag — the `.msix` packages + the notes assets | immutable |
 | **Rolling feed release** | **`wavee-stable`** — carries `Wavee.arm64.appinstaller`, `Wavee.x64.appinstaller` and `whatsnew-index.json`, replaced with `--clobber` on every release | **the anchor: created once, never renamed, never deleted** |
 | **Codename** | one per **MINOR** (the sea series: Abyss 0.1, Breaker 0.2, Crest 0.3, Drift 0.4, Ebb, Fetch, …); patches inherit it | per minor |
@@ -49,35 +49,38 @@ before touching that release. `releases/latest` is **not** the Wavee feed: that 
 the gallery, which versions independently under `v*`.
 
 **The version numbers.** Windows compares exactly one thing: the MSIX `Identity/@Version` **quad**
-`M.m.p.WaveeBuild`. `WaveeBuild` is a committed monotonic counter that only the release script increments; the semver
+`M.m.p.WaveeBuild`. `WaveeBuild` is a committed monotonic counter that only the release runner increments; the semver
 and the codename are display and routing values.
 
 ```
-semver    0.2.0                        <- hand-edited in Wavee.Version.props
-codename  Breaker                      <- hand-edited, one per minor
-quad      0.2.0.7                      <- M.m.p + <WaveeBuild>, script-owned
+semver    0.2.0                        <- release.ps1 -Version, written into Wavee.Version.props
+codename  Breaker                      <- release.ps1 -Codename, one per minor
+quad      0.2.0.7                      <- M.m.p + <WaveeBuild>, runner-owned
 info      0.2.0+build.7.sha.d4227b3    <- stamped by the pack script
 ```
 
 ---
 
-## 1. The three hand edits (before you run anything)
+## 1. What you author (before you run anything)
 
-1. **`src/apps/Wavee/Wavee.Version.props`** — set `<WaveeVersion>` (the semver `M.m.p`) and, on a new minor,
-   `<WaveeCodename>`. **Never touch `<WaveeBuild>`** — the script bumps and commits it; hand-editing it breaks the
-   monotonic feed gate.
-2. **`CHANGELOG.md`** — add `## [X.Y.Z] - unreleased` with `### Added` / `### Changed` / `### Fixed` / `### Removed` /
-   `### Known limitations` sections. The script replaces `unreleased` with today's UTC date; the release tool parses
-   that entry into the What's new page's itemised list, so a bullet that is not in the changelog does not ship.
-   Bullets may carry `(#123)` / `(!123)` refs — the tool resolves each one against GitHub.
-3. **`ops/release/wavee/<semver>/whatsnew.json`** (+ an optional `media/` beside it) — the editorial layer: tagline, up
-   to three hero highlights, notices. Authoring rules and the exact field-ownership table are in
-   **`ops/release/wavee/README.md`**. Budgets the validator enforces: **≤150 KB** per still, **≤16 MB** per motion
-   file (raised 2026-11-11 for 60 fps motion highlights), **≤17.5 MB** total, no GIFs, no duplicate basenames, and deep links must be `wavee://open?route=<known route>`.
+Releases come from the open release branch, `release/<semver>`: every change reached it by PR, with a change file in
+`changes/unreleased/` when a listener notices it (the flow: `docs/plans/wavee/release-flow-design.md`). You author one
+thing:
+
+- **`ops/release/wavee/<semver>/whatsnew.json`** (+ an optional `media/` beside it), merged into the release branch:
+  the editorial layer, tagline, up to three hero highlights, notices. Authoring rules and the exact field-ownership
+  table are in **`ops/release/wavee/README.md`**. Budgets the validator enforces: **≤150 KB** per still, **≤16 MB**
+  per motion file, **≤17.5 MB** total, no GIFs, no duplicate basenames, and deep links must be
+  `wavee://open?route=<known route>`. A hotfix needs no highlight (the page shows the fix list). A highlight's
+  `community` credit fills itself from the CHANGELOG items it shares an issue with.
 
 Leave `sections`, `links`, `packageVersion`, `date`, `generatedAt` and the `media` hash list empty — the tool writes
-them. Everything in that folder ships **inside the MSIX** as well as as release assets, so every byte there is a byte
-in every install.
+them. Everything in that folder ships **inside the MSIX** as well as as release assets.
+
+Everything else is the runner's: `<WaveeVersion>` comes from `-Version`, `<WaveeCodename>` from `-Codename` on a new
+minor, `<WaveeBuild>` goes up by one, the CHANGELOG section is assembled from the change files (you curate it after
+`-Go -To changelog`), and the theme contract version is raised from the change files' `contract:` fields. Never
+hand-edit `<WaveeBuild>`: the feed's monotonic gate depends on it.
 
 ---
 
@@ -94,110 +97,82 @@ in every install.
 | **`gh` authenticated** — `gh auth login` | used for the release, the feed, and (via `gh auth token`) the issue/PR lookups the notes tool makes |
 | **`src/apps/Wavee.PlayPlay` junction** | a release build is **PlayPlay-inclusive**; preflight hard-fails without it. `-PublicOnly` opts out and builds the public variant deliberately |
 | **The crash Worker's `wrangler`, logged in** — the `symbols` phase uploads with `ops\crash\worker\node_modules\.bin\wrangler.cmd`, never a global one | `npm --prefix ops/crash/worker ci`, then `npx wrangler login` inside `ops/crash/worker`; preflight `wrangler (crash symbols)` runs `wrangler whoami` |
-| **1Password CLI (`op`), unlocked** — the crash ingest key (§5b) | `op read "op://Personal/Wavee crash ingest key/credential" --account my.1password.eu` must print the key (Windows Hello unlock); or pass `-CrashIngestKey` |
+| **1Password CLI (`op`), unlocked** — the crash ingest key (§5b) | `op read "op://Personal/Wavee crash ingest key/credential" --account my.1password.eu` must print the key (Windows Hello unlock); preflight checks `op whoami` first and prints `op signin --account my.1password.eu` |
 
-The junction is per-checkout and is **not** inherited by a Claude scratchpad — `CLAUDE.md` carries the exact
-`New-Item -ItemType Junction` recipe if you are releasing from one.
+The junction is per-checkout: a `-Go` links the release worktree's junction to the one in the checkout you run it from
+(`CLAUDE.md` carries the `New-Item -ItemType Junction` recipe for a checkout that has none).
 
 ---
 
-## 3. Rehearse: `-DryRun`
+## 3. The dry run (the default)
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-release.ps1 -DryRun -SkipTests
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -Version 0.3.12
 ```
 
-A dry run does everything up to and including **signing**, then stops before any commit, tag or upload. It never
-touches the working tree: instead of dating `CHANGELOG.md` in place it dates a **copy** inside the staging folder and
-points the release tool at that, so `git status` stays clean and `<WaveeBuild>` is not bumped. It ends by printing the
-exact `git push` / `gh release` commands a real run would issue next.
+Without `-Go` the runner changes nothing: it reads `origin/release/<semver>`, prints the preflight table (each item
+`ok`, `action` with the command that fixes it, or `note`) and then every step's commands, and exits 2 when an item
+needs action, else 0. `-Preflight -Json` and `-Status -Json` give the same facts as JSON (for a UI); `-Status` says what
+is done and what is next for a run in progress.
 
-Drop `-SkipTests` when you want the gate (one Release build of `Wavee.slnx`) inside the rehearsal; that is what a
-real run does by default.
-
-Review `artifacts\release\<semver>-dryrun\`:
-
-- [ ] `Wavee_<quad>_arm64.msix` and `Wavee_<quad>_x64.msix` — both present, both **Trusted-Signed** (the script
-      verifies each with `signtool verify /pa`), both carrying the quad you expect
-- [ ] `Wavee.arm64.appinstaller` / `Wavee.x64.appinstaller` — root `Version` = the new quad, `MainPackage/@Uri` points
-      at the **version tag's** msix, the root `Uri` points at the **feed**
-- [ ] `whatsnew.json` — the merged document: your tagline and highlights **plus** the changelog sections, dated, with
-      issue/PR titles and states resolved
-- [ ] `whatsnew-index.json` — newest-first, this release prepended to whatever the feed already had
-- [ ] `RELEASE_BODY.md` — reads like a release, not like a diff
-- [ ] the media files, flat, by basename; `THIRD-PARTY-NOTICES.txt`; `MANIFEST.txt` (sha256 over every asset)
-- [ ] `Wavee-<quad>-win-arm64-symbols.zip` and `Wavee-<quad>-win-x64-symbols.zip` — each holding `Wavee.pdb`,
-      `Wavee.map.xml` and `SYMBOLS.txt` (§5b); the unzipped copies sit under `symbols\<quad>\win-<arch>\`
-- [ ] `git status` clean
-
-Then **install the arm64 package** (`Add-AppxPackage artifacts\release\<semver>-dryrun\Wavee_<quad>_arm64.msix`) and
-smoke it:
-
-- [ ] Settings › About — `Wavee X.Y.Z "Codename"`, the quad, the sha, the channel pill
-- [ ] the What's new page renders from the **embedded** copy (`Assets/whatsnew/`) with no network
-- [ ] Settings › Privacy & diagnostics › Developer › **Simulate an update** walks every update state (toast → progress →
-      installing → after-update dialog) with no network
-- [ ] first-run wizard, sign-in, play a track, `start wavee://open?route=settings` focuses the *running* instance, and
-      a test toast round-trips (packaged AUMID path)
+Before a minor, also rehearse the update path locally (§8): that is the only rehearsal of what installed clients do.
 
 ---
 
 ## 4. The real run
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-release.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -Version 0.3.12 -Go -To changelog
+#   curate CHANGELOG [0.3.12] and ops\release\wavee\0.3.12\whatsnew.json in C:\WAVEE\release\0.3.12\WaveeMusic, commit
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -Version 0.3.12 -Go -PauseBefore feed
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -Version 0.3.12 -Go
 ```
 
-That is the whole command. The run is a ledger of phases; each one records itself in
-`artifacts\release\<semver>\release-state.json`.
+Run it from any checkout (the owner's is `C:\WAVEE\fgpu\WaveeMusic`). A `-Go` makes or reuses the **release worktree**
+`C:\WAVEE\release\<semver>\`: `WaveeMusic` at `origin/release/<semver>`, `fluent-gpu` detached at the branch's
+`engine.lock`, the PlayPlay junction linked to the invoking checkout's, `ops\build\signing\metadata.json` copied from
+it, wrangler installed there; then it relaunches the worktree's own `release.ps1`, so the runner on the release branch
+is the one that runs. State: `%LOCALAPPDATA%\WaveeRelease\<semver>\` (`state.json`, `runner.lock`, one log per step).
+Staging: `<worktree>\artifacts\release\<semver>\`. Every `-Go` ends with a Windows toast naming the exit code and the
+step.
 
-| # | Phase | What it does |
-|---|---|---|
-| 0 | `preflight` | the gate table below; on any hard failure nothing has happened yet |
-| 1a | `bump` | `<WaveeBuild> + 1`; `CHANGELOG.md` `unreleased` → today (UTC); asserts the diff touched **only** those two files |
-| 2 | `notes` | `Wavee.ReleaseTool validate` → `<staging>\notes\` (`whatsnew.json`, `whatsnew-index.json`, `RELEASE_BODY.md`, `store-listing.txt`, `media/`). Reads the feed's published `whatsnew-index.json` first — a 404 means "first release", and **any other failure stops the run**: phase 10 clobbers that file, so a one-entry index would erase the published history. Exit 2 also when a referenced issue/PR could not be read from GitHub (`--allow-unresolved` ships the authored title/state anyway). When there is a previous `wavee-v*` tag, also writes `<staging>\commits.json` (every commit in `<prevTag>..HEAD`, parsed for closing keywords and PR refs) and passes it with `--previous-tag`/`--commits`, so the tool renders the `## Resolved issues` section and re-does the issue/CHANGELOG cross-check itself. On failure it restores both files and un-marks the bump |
-| 1b | `tag` | commits those two files (`release: Wavee <semver> <codename> (build <quad>)`) and creates the annotated tag — **locally** |
-| 3 | `packArm64` | `pack-wavee-msix.ps1 -Arch arm64 … -NoSign` with the crash ingest URL and key, then asserts the package's identity name / version / arch / publisher — that `Wavee-<quad>-win-arm64-symbols.zip` (the PDB of exactly that exe, §5b) landed next to it — and the **stamp evidence**: the packed `Wavee.exe` carries the crash URL and key (§5b) |
-| 4 | `packX64` | the same for x64 (or `-X64Msix <path>` to adopt a prebuilt package; its symbols zip is adopted from next to it when present, with a warning otherwise; an adopted package must pass the stamp evidence too) |
-| 3b | `symbols` | for each arch, `Publish-WaveeSymbolMap`: `Wavee.ReleaseTool symbol-map --pdb <staging>\symbols\<quad>\win-<arch>\Wavee.pdb --exe <extracted from the staged .msix>` → `Wavee.symmap`, then the crash Worker's `wrangler r2 object put wavee-crash/symbols/<quad>/win-<arch>.symmap --remote`. This is what lets the crash-ingest Worker resolve a report's RVAs server-side (§5b); `-DryRun`/`-NoUpload` build the map but skip the upload with a `Warn` |
-| 5 | `sign` | **one** Azure Trusted Signing `signtool` call over every `.msix`, then verifies each |
-| 6 | `appinstaller` | one `.appinstaller` per architecture from the template; re-parses each to prove the substitution |
-| 7 | `stage` | flattens the assets into the staging folder and writes `MANIFEST.txt`; the symbols zips are version-release assets like the packages (never feed assets) |
-| 8 | `push` | pushes the branch, then the tag — refuses unless `origin/<branch> == HEAD~1` |
-| 9 | `release` | `gh release`: draft → upload → publish — always `--latest=false` (`releases/latest` belongs to the gallery's feed) |
-| 10 | `feed` | repoints `wavee-stable` (and `wavee-beta` if it exists) — **always last**: this is the moment installed clients see the release |
-| 11 | `verify` | assets + byte sizes vs staged, the feed live at the new quad **and pointing at this release's msix** (`MainPackage/@Uri`, not only the root `Version`), msix `Content-Length`, optional install |
-| 12 | `notify` | best-effort: comments on every GitHub issue this release's commits closed (never closes or reopens one; skips an issue that already carries a comment naming this tag). Runs **after** verify, so a failure here is `Warn`ed and the phase left incomplete — the release is already live either way; `-Resume` retries just this step |
+**A step that reality reports as done is skipped**, so a second `-Go` continues where the first stopped; a new commit on
+the release branch after the bump re-runs the notes and the packs (a local tag moves with it; a pushed tag never moves).
 
-**Preflight gates** (hard unless noted): version props parse · semver + quad (a `beta` semver is refused — the beta
-channel needs its own package identity and is not built yet) · staging folder free (`-Force` replaces it, `-Resume`
-continues it) · working tree clean · on `<Branch>` · `HEAD == origin/<Branch>` · the tag is free locally, on origin and
-as a release · `CHANGELOG.md` has a `## [<semver>] - <date|unreleased>` heading · `ops/release/wavee/<semver>/whatsnew.json`
-exists · the PlayPlay junction is present · Windows SDK tools · x64 cross toolchain · a Trusted Signing token ·
-`gh auth` · **wrangler (crash symbols)** — the crash Worker's `ops\crash\worker\node_modules\.bin\wrangler.cmd`
-is installed (`npm --prefix ops/crash/worker ci`) and `wrangler whoami` says it is logged in (`npx wrangler login`
-in `ops/crash/worker`); it is what the `symbols` phase uploads with, and SKIPs under `-DryRun`/`-NoUpload` ·
-*(soft)* whether a `wavee-beta` feed exists and will be repointed too ·
-**crash ingest** — hard for `stable`, `beta` and `store`: the URL (default `https://crash.cproducts.dev`) must be
-https and the ingest key non-empty — read from 1Password unless `-CrashIngestKey` is passed (§5b); only `dev` may
-ship unstamped, and the message never contains the key · **feed monotonic** (the new quad
-must be strictly greater than each feed's current root `Version`, on every architecture, and the semver must not go
-backwards — the gate itself is always hard, but an *unreachable* feed is downgraded to a warning under `-DryRun` /
-`-NoUpload`, where nothing can be published) · **issue refs** *(hard)* — every commit in `<prevTag>..HEAD` that
-closes an issue (`Fixes #n` / `Closes #n` / …) must be cited by the CHANGELOG `[<semver>]` entry's trailing `(#n)`
-group, and every `(#n)` the entry cites must be closed by a commit in range; disagreement fails with one line per
-mismatch (see `.claude/skills/github-triage/SKILL.md`) · **issue coverage** *(soft)* — warns when a CHANGELOG bullet
-cites no issue at all. Both SKIP on the first release of a `-TagPrefix` (there is no previous tag to range over) ·
-gates (one `dotnet build Wavee.slnx -c Release`; no Debug build).
+| # | Step | What it does | Done when |
+|---|---|---|---|
+| 0 | `preflight` | read-only; the list below | |
+| 1 | `changelog` | `Wavee.ReleaseTool changelog assemble`: the CHANGELOG `[<semver>] - unreleased` section from the change files, the contract bump and `docs/themes/contract-history.md`, new contributors in `CONTRIBUTORS.md`; deletes the change files; commits | no change file left and the CHANGELOG has `[<semver>]` |
+| 2 | `bump` | `<WaveeVersion>`, `<WaveeCodename>` (with `-Codename`), `<WaveeBuild>+1`; dates the CHANGELOG heading (UTC); commits `release: Wavee <semver> <codename> (build <quad>)` | that commit is on the branch since the previous tag |
+| 3 | `notes` | `Wavee.ReleaseTool validate` into `<staging>\notes\` (reads the published `whatsnew-index.json` first: a 404 means first release, any other failure stops, because `feed` clobbers it); `commits.json` marks each commit `firstParent`, so the body's commit fold lists merge commits only; checks the body is under GitHub's 125,000 characters | recorded for the release commit, the outputs exist, `packageVersion` is the quad |
+| 4 | `tag` | annotated `wavee-v<semver>` at the release commit, and in the engine worktree at the pinned engine commit (locally) | both tags at the right commits |
+| 5 | `pack-arm64`, `pack-x64` | `pack-wavee-msix.ps1 -NoSign` with the crash ingest URL and the key (`op read`, once per run, never logged); asserts identity, publisher, crash stamp, PlayReady export, symbols zip | the staged package carries this quad and was built from this commit |
+| 6 | `symbols` | per arch, `Wavee.ReleaseTool symbol-map`, then `wrangler r2 object put` of the `.symmap`, `Wavee.exe` and the symbols zip (4 tries each, backoff 5/15/45 s) | recorded for this quad with the staged hashes |
+| 7 | `sign` | one Azure Trusted Signing `signtool` call over every `.msix` | `signtool verify /pa` passes on each |
+| 8 | `stage` | one `.appinstaller` per arch, the flattened assets, `MANIFEST.txt` | the staged files match the manifest |
+| 9 | `push` | the release branch (fast-forward only) and both tags; when origin moved meanwhile it stops: merge origin into the worktree branch and `-Go` again | origin has the release commit and both tags |
+| 10 | `release` | `gh release`: draft, upload, publish, always `--latest=false` (`releases/latest` belongs to the gallery) | published, every asset byte-equal to the staged file |
+| 11 | `feed` | repoints `wavee-stable` (and `wavee-beta` if it exists): **the moment installs see the release** | every feed serves this quad and this release's msix on both arches |
+| 12 | `open-next` | creates `release/<next patch>` from the release head and moves every open PR off `release/<semver>` and `main`, one comment each | the branch exists and no open PR targets either |
+| 13 | `merge-main` | opens and merges a PR `release/<semver>` -> `main` with a merge commit (never deleting the branch) | the release commit is in `main` |
+| 14 | `forward-port` | a hotfix only (§6b): merges the hotfix branch into the renamed next branch through a PR | the hotfix head is in the next branch |
+| 15 | `store-submit` | `wavee-store-submit.ps1` (the Store engine, §5c) packs, uploads and commits the Store submission | the Store ledger, or `msstore`, shows it committed |
+| 16 | `notify` | comments on every issue the release closed (never closes or reopens one) | each carries the release comment |
+| 17 | `store-poll` | waits up to `-PollMinutes` (15) for Published; not reaching it is no failure | Published (`WAITING` otherwise; `-Status` reports it) |
 
-Useful switches: `-SkipTests` (skip that last gate) · `-PublicOnly` (build without PlayPlay) · `-SkipArch x64` /
-`-X64Msix <path>` · `-NoUpload` (real bump and tag, stop before pushing) · `-NoSign` (only with `-DryRun` / `-NoUpload`)
-· `-NoNotes` (requires `-Force`; a degraded release with a placeholder body) · `-InstallFromFeed` (phase 11 installs
-the host-arch package from the published feed) · `-Force` (relaxes the branch / HEAD / staging checks) ·
-`-CrashIngestUrl <url>` (defaults to `https://crash.cproducts.dev`, the crash Worker's one hostname — ingest, API
-and dashboard; `ops/crash/README.md` step 5 — stamped into the build exactly like the update feed's base URL, and
-what the `symbols` phase uploads maps for) · `-CrashIngestKey <key>` (overrides the 1Password read; empty, the
-default, means `op read`. Either way the key is never logged or written to `release-state.json` — §5b).
+**Preflight** (1Password first, with `op signin --account my.1password.eu` as the fix): Windows SDK tools · x64 cross
+toolchain · a Trusted Signing token and `metadata.json` · `gh` admin on both repos · wrangler logged in · the PlayPlay
+junction (unless `-PublicOnly`) · `origin/release/<semver>` · `engine.lock` on that branch and the commit in fluent-gpu ·
+the runner and `ops/release/wavee/<semver>/whatsnew.json` on the branch · valid change files · **feed monotonic** (the
+new quad above both feed heads) · the tag free in both repos · `-Codename` on a new minor · **issue refs** (every commit
+in `<prevTag>..` that closes an issue matches the change files' `issues:`, later the CHANGELOG entry's `(#n)`) ·
+PRs into `main` (a note: `-RetargetPrs -Go` moves them). Items only some steps need turn `ok` once those steps are done,
+so a `-Go` days later just to poll the Store is not refused by an expired token.
+
+**Switches:** `-From`, `-To`, `-Only`, `-PauseBefore <step[,step]>` (a pause exits 4; the next `-Go` with the same
+`-PauseBefore` continues and pauses at the next one) · `-Codename <name>` · `-SkipArch x64` / `-X64Msix <path>` (adopt
+a prebuilt x64 package) · `-PublicOnly` (no PlayPlay; the Store still needs it) · `-PollMinutes <n>`. Exit codes: 0
+done, 1 usage, 2 preflight refused (nothing changed), 3 stopped on a condition, 4 paused.
 
 ---
 
@@ -276,13 +251,12 @@ the Worker only alerts for builds whose map it holds (`docs/guide/crash-diagnost
 **wrangler is the crash Worker's own.** The upload runs `ops\crash\worker\node_modules\.bin\wrangler.cmd`
 (`Get-WranglerPath`), never a global `wrangler`: install it once with `npm --prefix ops/crash/worker ci` and log in
 with `npx wrangler login` from inside `ops/crash/worker`. Preflight's `wrangler (crash symbols)` check runs
-`wrangler whoami` against that binary (skipped under `-DryRun`/`-NoUpload`), so an expired login fails before
+`wrangler whoami` against that binary, so an expired login fails before
 anything is packed or signed.
 
 **Every shipping build is stamped.** The ingest URL defaults to `https://crash.cproducts.dev`; the ingest key is read
-from 1Password — `op read "op://Personal/Wavee crash ingest key/credential" --account my.1password.eu` — unless
-`-CrashIngestKey` is passed (`Resolve-CrashIngestKey`). The key is cached for the process, so it also works on
-`-Resume`, and it is **never logged or written to `release-state.json`**; a failing `op read` throws without echoing
+from 1Password — `op read "op://Personal/Wavee crash ingest key/credential" --account my.1password.eu`, once per run
+(`Resolve-CrashIngestKey`); it is **never logged, put on a command line or written to `state.json`**; a failing `op read` throws without echoing
 its output. The `crash ingest` gate is **hard** for `stable`, `beta` and `store`: no https URL or no key, no release
 — such a build's crashes could never reach the service. Only `dev` may ship unstamped. After packing, the **stamp
 evidence** check (`Assert-CrashIngestStamp`, per arch, including an adopted `-X64Msix`) reads `Wavee.exe` out of the
@@ -319,98 +293,71 @@ Things to know:
 
 ---
 
-## 5c. After the feed: the Microsoft Store submission
+## 5c. The Microsoft Store submission
 
-The Microsoft Store leg is a **separate runbook**, run from the still-checked-out tag right after §5 verifies:
+The Store is part of the run: step `store-submit` calls `ops\release\wavee-store-submit.ps1` from the release worktree
+(which sits at the tag, as that script requires), and `store-poll` checks it. Nobody runs the Store script by hand any
+more; its own ledger (`artifacts/store/<semver>`, schema 2) is what the runner reads for "done".
 
-```powershell
-powershell -File ops\release\wavee-store-submit.ps1        # -DryRun to rehearse; also -Resume / -Abort / -Status
-powershell -File ops\release\wavee-store-submit.ps1 -ListingDir <deliver>   # also refresh the en-US listing art
-```
+It builds one SDK `.msixbundle` containing **both** Store-channel MSIX packages, then wraps that single bundle in
+`Wavee_<storeQuad>_arm64_x64_store.msixupload`. Store quad: `(M+1).m.(p*100+build).0`. The Store packages are
+crash-stamped like the feed's (§5b), and a `symbols` phase uploads `symbols/<storeQuad>/win-<arch>.symmap`. The script
+validates the nested manifests, unchanged package hashes and executable/symbol provenance before uploading.
 
-`-ListingDir` points at a listing refresh (the store kit's `deliver` folder): `screenshots\` (NN-name.png +
-NN-name.caption.txt, names different from the ones being replaced), `trailer\` (`<name>.mp4`, `<name>-thumb.png`
-1920x1080, optional `title.txt`, else "Wavee <semver>") and `super-hero\` (16:9, 1920x1080 or 3840x2160). Everything
-is checked before the Store is touched, uploaded in the package's zip, and asserted on the Store's copy after the
-update (`ops/release/store/listing.md`).
+Before commit it reconciles the **whole** package inventory: only the new upload remains active; known superseded
+package IDs are marked `PendingDelete`. It preserves listing metadata and patches en-US notes. Every Store release goes
+to everyone at once (no gradual rollout, decision D4). Ingestion starts after commit; certification is not publication:
+`store-poll` reports `WAITING` until Published, and `-Status` shows it later.
 
-It builds one SDK `.msixbundle` containing **both** Store-channel MSIX packages, then wraps that single bundle
-in `Wavee_<storeQuad>_arm64_x64_store.msixupload`. Store quad remains `(M+1).m.(p*100+build).0`.
-The Store packages are crash-stamped exactly like the feed's (§5b): the same `-CrashIngestUrl` / `-CrashIngestKey`
-parameters and 1Password key source, the same hard `crash ingest` and `wrangler (crash symbols)` preflight checks,
-and the stamp evidence after packing (also for `-PackageDir` / `-X64Msix` adoption). A **`symbols`** phase after
-pack and before `msixupload` uploads `symbols/<storeQuad>/win-<arch>.symmap` (`-DryRun` builds the maps and skips
-the upload).
-The script validates the nested manifests, unchanged package hashes and executable/symbol provenance before
-uploading. Partial architecture releases and `-Force` are refused. Source builds additionally require a clean
-engine checkout and record its commit; repair releases should adopt the original archived bytes.
-
-For a packaging-only repair, run updated tooling separately from the clean released application checkout:
-
-```powershell
-powershell -File ops\release\wavee-store-submit.ps1 `
-    -SourceRoot C:\wavee\waveemusic-store-0.2.8-x64 `
-    -PackageDir C:\wavee\waveemusic\artifacts\store\0.2.8 `
-    -NotesDir C:\wavee\waveemusic\artifacts\release\0.2.8\notes `
-    -OutputDir artifacts\store-bundle-repair -DryRun
-# Inspect the evidence, then repeat without -DryRun. Future releases use their own tag/version directories.
-```
-
-`-PackageDir` requires both Store MSIX files and `symbols/<quad>/win-<arch>/{SYMBOLS.txt,Wavee.map.xml}`.
-It never probes private source or rebuilds the application. The source checkout must match the tag on origin,
-including on resume. No fake source markers, dirty-source overrides, version bumps or GitHub feed changes.
-
-Before commit the script reconciles the **whole** package inventory: only the new upload remains active;
-known superseded package IDs are marked `PendingDelete`. It preserves listing metadata and patches en-US notes.
-Automatic publishing remains `Immediate`. Ingestion starts after commit; certification is not publication.
-The recognized bundle may be one `Neutral` row, so verify that row against the locally inspected child packages,
-not an expectation of two top-level Store rows. Only verified `Published` completes the poll phase.
-
-Staging is `artifacts/store/<semver>` by default (relative to the tooling checkout). The schema-2 ledger records
-source commit, package/executable evidence, artifact hashes and submission ID. `-Resume` requires the original
-source/output arguments and validates staged bytes again. Adoption paths are recorded and restored so an
-interrupted archived-package run cannot silently become a source rebuild. Old schema-1 ledgers cannot resume publication.
-Interrupted commits are reconciled by exact ID without republishing. Ambiguous interrupted uploads stop for
-inspection instead of deleting a possibly unrelated draft. Abort only deletes an owned uncommitted draft and
-retains local evidence. API snapshots omit upload URLs and listing credentials.
-
-Use `-Status` for inspection, or `-Resume` to continue bounded monitoring after timeout. Do not edit an API-created
-submission in Partner Center. The account setup and API ownership rule are in the onboarding guide §6.
-Mutating runs hold a product-scoped machine mutex; do not create external/manual drafts while automation runs.
+Do not edit an API-created submission in Partner Center. The account setup and API ownership rule are in the
+onboarding guide §6. Mutating runs hold a product-scoped machine mutex; do not create external/manual drafts while
+automation runs.
 
 | Symptom | What it means | Recovery |
 |---|---|---|
-| Preflight: a pending submission exists | a draft is already open on the product; `msstore publish` would silently delete it, so the script refuses instead | finish or delete the pending submission first — and if it was hand-made in Partner Center, finish it **there** (an API-created one is deleted with `msstore submission delete`) |
-| `msstore` authentication fails | the Entra client secret expired (Entra policy) | new secret in Entra → `msstore reconfigure` again (onboarding guide §6) |
-| Certification failed | the Store rejected the submission | `-Status` prints the errors; fix the cause, `msstore submission delete`, re-run the script |
-| The poll timed out | publication is not yet verified | inspect with `-Status`; use the same source/output arguments with `-Resume` to monitor again |
+| a pending submission exists | a draft is already open on the product; `msstore publish` would silently delete it, so the engine refuses | finish or delete the pending submission first (a hand-made one in Partner Center, an API-created one with `msstore submission delete`) |
+| `msstore` authentication fails | the Entra client secret expired | new secret in Entra -> `msstore reconfigure` (onboarding guide §6) |
+| certification failed | the Store rejected the submission | read the errors with `-Status`; fix the cause; `msstore submission delete`; move `artifacts\store\<semver>` aside (its ledger says committed) and `-Go` again |
+| `store-poll` says `WAITING` | certification is still running | nothing: `-Status` later, or `-Go -Only store-poll` |
 
 ---
 
 ## 6. When something fails
 
-| Symptom | What it means | Recovery |
-|---|---|---|
-| Preflight hard-fails | nothing has happened yet | fix it and re-run |
-| `issue refs` failed | a commit's `Fixes #n` and the CHANGELOG `[<semver>]` entry's `(#n)` disagree | add the missing `(#n)` to the CHANGELOG bullet, or add the missing `Fixes #n` trailer to the commit (amend/reword before pushing); re-run. See `.claude/skills/github-triage/SKILL.md` |
-| `feed monotonic gate failed` | the new quad is not strictly greater than a live feed head | something was published out of band, or `<WaveeBuild>` was hand-edited; bump forward, never sideways |
-| Notes validation fails (exit 2) | the release is not shippable; every problem is listed | fix `whatsnew.json` / `CHANGELOG.md`. The script already restored both files and un-marked the bump — just run again |
-| Pack or signing fails | the tag exists **locally only** | fix, then `-Resume` (nothing is rebuilt, the counter is not bumped again); or `-Abort` to unwind |
-| `origin/<branch> is X but HEAD~1 is Y` | someone pushed while the release was building | rebase the release commit onto origin, then `-Resume` |
-| **Tag pushed but the upload died** | the commit and tag are public; the release may still be a draft | **`-Resume`.** Staging is hash-verified against `MANIFEST.txt` first, then the run continues from the exact phase that failed. A draft release is invisible to users, and the feed has not moved yet |
-| The feed did not come up at the new quad | GitHub asset-replacement lag | `Test-WaveeFeedLive` already retried 6 × 10 s; run `-Resume` (phase 11) |
-| `notify failed` | phase 12 could not comment on a resolved issue (`gh` hiccup, rate limit) | the release is already live and the feed already moved; `-Resume` retries just this phase |
-| A bad build shipped | — | see §7 |
+Fix the cause and run the same `-Go` again: done steps are skipped.
 
-`-Resume` restarts at the first phase that is not `done`. `-Abort` unwinds an **un-pushed** run completely: it refuses
-if `pushed` is true, verifies the tag points at `HEAD` and that `HEAD`'s message is the one this run wrote, then
-`git tag -d`, `git reset --hard HEAD~1`, and deletes the staging folder.
+| Where it stopped | State | What to do |
+|---|---|---|
+| preflight (exit 2) | nothing happened | fix each `action` item and run again |
+| `changelog` | a change file is invalid, or the CHANGELOG already has `[<semver>]` | fix the file on the release branch by PR, or fold late change files into the curated section by hand |
+| notes validation | the release is not shippable; every problem is listed | fix `whatsnew.json` or the CHANGELOG section in the release worktree, commit, `-Go` |
+| a pack or `sign` | the tags are local only | fix, `-Go` (nothing done is redone); or `-Abort -Go` to delete the local tags and the runner's commits |
+| `push`: origin moved | a PR merged into the release branch while the run built | merge `origin/release/<semver>` into the worktree branch, `-Go` (the notes and packs re-run for the new commit) |
+| after `push`, before `feed` | the commit and tags are public; a draft release is invisible; installs see nothing | `-Go`. **Never delete a pushed tag** |
+| `feed` did not come up | GitHub asset lag | `-Go` again |
+| `merge-main` refused | the ruleset blocked the merge | read the message; `-Go` again once fixed (never `--admin`) |
+| `notify` failed | the release is live | `-Go` retries just that step |
+| a bad build shipped | | §6b (hotfix) or §7 (rollback) |
 
 **Never delete a pushed release tag.** Installed clients, the feed's `MainPackage/@Uri` and `whatsnew-index.json` all
-resolve through it; deleting it breaks installs that already point at it. A bad build is fixed by the **next patch** —
-`git revert`, bump to `X.Y.Z+1`, cut it. Optionally mark the bad release a prerelease
-(`gh release edit wavee-vX.Y.Z --prerelease`) so the release page flags it while the replacement builds; the feed
-itself only moves when the script repoints it.
+resolve through it (the tag ruleset refuses it anyway). Optionally mark the bad release a prerelease
+(`gh release edit wavee-vX.Y.Z --prerelease`) while the fix builds.
+
+## 6b. Hotfix
+
+A hotfix is an ordinary release cut from the shipped tag. It takes the next patch, so the waiting work moves up one.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -Hotfix 0.3.12        # dry run: what it renames and creates
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -Hotfix 0.3.12 -Go
+```
+
+It renames the open `release/0.3.12` to `release/0.3.13` (its open PRs follow: a base-branch rename retargets them;
+the `release/**` ruleset may need the owner's bypass for the rename) and creates `release/0.3.12` from `wavee-v0.3.11`
+(its `engine.lock` is the engine that shipped). The fix is a normal PR into `release/0.3.12` with a change file
+(`kind: fixed`); an engine fix goes on `wavee-hotfix/0.3.12` in fluent-gpu from its `wavee-v0.3.11` tag, and the
+hotfix's `engine.lock` points at it. Then `release.ps1 -Version 0.3.12 -Go` releases it (no highlight needed), and
+`forward-port` merges it into `release/0.3.13`.
 
 ---
 
@@ -421,18 +368,22 @@ reach already-installed clients and moves them **back**. That is a real lever, a
 installs that are already out there.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-release.ps1 `
-    -RepointFeed 0.2.0 -AllowDowngrade
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -RepointFeed 0.3.11 -AllowDowngrade       # dry run
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -RepointFeed 0.3.11 -AllowDowngrade -Go
 ```
 
-It finds the release `wavee-v0.2.0`, reads the quad off its `.msix` asset names, regenerates both `.appinstaller`
+It finds the release `wavee-v0.3.11`, reads the quad off its `.msix` asset names, regenerates both `.appinstaller`
 documents pointing at that release, uploads them to `wavee-stable`, and waits for the feed to come up at that quad.
-`whatsnew-index.json` is deliberately left alone — the index is cumulative history, not a pointer. The monotonic gate
-is inverted only by `-AllowDowngrade`, which prints a warning naming the clients it will move backwards.
+`whatsnew-index.json` is deliberately left alone — the index is cumulative history, not a pointer. Without
+`-AllowDowngrade` a move backwards is refused.
 
-**Roll-forward is still the default.** A downgrade re-runs the installer on every client and cannot un-write user data
-a bad build already wrote, so use it only when the shipped build is actively harmful; otherwise revert on `main`, cut
-`X.Y.Z+1`, and let the normal monotonic path carry everyone forward.
+**Fix forward is still the default.** A downgrade re-runs the installer on every client and cannot un-write user data a
+bad build already wrote, so use it only when the shipped build is actively harmful; otherwise ship a hotfix (§6b).
+The Store cannot downgrade: Store installs always roll forward with the hotfix.
+
+**Downgrade safety.** Everything persistent must stay readable by the previous release: the library cache is safe by
+design (fingerprint-named, never migrated); settings readers ignore keys they do not know and never rewrite them; a
+format an older build cannot read ships in two releases (read both first, write the new one a release later).
 
 A user who cannot wait: `Get-AppxPackage cproducts.Wavee | Remove-AppxPackage`, install the good `.msix` directly, then
 open the feed `.appinstaller` once the fix ships to re-join the update channel.
@@ -634,51 +585,11 @@ AppXSvc reaching `127.0.0.1`.
 
 ---
 
-## 8b. (optional) scratch feed on GitHub
+## 8b. (retired) scratch feed on GitHub
 
-The local harness above replaces this for everyday work. Keep this recipe for the one thing it cannot cover: that the
-real GitHub release plumbing (draft, upload, clobber, the rolling feed tag) behaves. Every switch below redirects the
-run into a throwaway namespace — a different feed release, a different tag prefix and a different branch — so the real
-`wavee-stable`, the real `wavee-v*` tags and `main` are untouched. The feed name is **build-time metadata**
-(`pack-wavee-msix.ps1 -FeedRelease`, stamped into the assembly), so a test package genuinely polls the test feed;
-there is no env var and no runtime switch.
-
-```powershell
-git checkout -b release-test
-powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-release.ps1 `
-    -FeedRelease wavee-stable-test -TagPrefix wavee-test-v -Branch release-test -Force -SkipTests -InstallFromFeed
-```
-
-The sequence:
-
-- **A.** With props at `0.2.0` / `Breaker`, run the command above. It publishes `wavee-test-v0.2.0` plus the
-  `wavee-stable-test` feed and — thanks to `-InstallFromFeed` — installs the host-arch package **through the feed**, so
-  the App Installer association exists. Launch it: About shows the quad, What's new renders from the embedded doc,
-  `Get-AppxPackageAutoUpdateSettings` lists the test feed, and diagnostics reports `association = true`.
-- **B.** Bump props to `0.2.1` (still `Breaker`), add `## [0.2.1] - unreleased`, and author
-  `ops/release/wavee/0.2.1/whatsnew.json`. Re-run the same command **without** `-InstallFromFeed`. The feed head moves
-  to the new quad.
-- **C.** In-app path on the still-installed A: within the check cadence a toast offers the update → **Update now** →
-  progress → "Restarting…" → Windows relaunches into B with the after-update dialog. Failure drills: kill the network
-  mid-download (Failed › Network + Retry); press **Later** (Snoozed, no re-toast); turn the metered toggle off on a
-  metered network (Failed › Metered).
-- **D.** OS silent path: `Remove-AppxPackage`, then install A's bare `.msix` directly (no association). Diagnostics now
-  shows `association = false` and offers **Repair auto-update**; clicking it restores the association. Close the app
-  and launch again — App Installer applies B silently on that launch. This is the only place the OS path is
-  observable, and the place `0x80073D02 ERROR_PACKAGES_IN_USE` shows up if a module child process survived.
-- **E.** Resume / abort drills: kill the script during phase 9 → `-Resume` finishes it (the draft was never public).
-  Run it once more → it fails at "tag exists". `-Abort` on an un-pushed run restores the tree.
-- **F.** Cleanup:
-
-  ```powershell
-  gh release delete wavee-test-v0.2.0 --repo christosk92/WaveeMusic --cleanup-tag --yes
-  gh release delete wavee-test-v0.2.1 --repo christosk92/WaveeMusic --cleanup-tag --yes
-  gh release delete wavee-stable-test --repo christosk92/WaveeMusic --cleanup-tag --yes
-  git push origin --delete release-test
-  git tag -d wavee-test-v0.2.0 wavee-test-v0.2.1
-  Get-AppxPackage cproducts.Wavee | Remove-AppxPackage
-  Remove-Item artifacts\release -Recurse -Force
-  ```
+The scratch-feed recipe redirected the old script into a throwaway tag prefix and feed (`-FeedRelease`, `-TagPrefix`,
+`-Branch`). The runner has no such redirection: it always works on `release/<semver>`, `wavee-v*` and `wavee-stable`.
+The local end-to-end (§8) is the rehearsal of the update path; the runner's dry run (§3) is the rehearsal of a release.
 
 ---
 

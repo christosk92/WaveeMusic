@@ -80,4 +80,8 @@ public sealed record NotificationsProps
 
     /// <summary>The state and verbs the rows reach.</summary>
     public required INotificationsHost Host { get; init; }
+
+    /// <summary>The header's settings door (W-Notifications' gear, design 5.4): closes the panel and opens Settings at the Notifications category.
+    /// Null: no door. Appended (contract 1.117).</summary>
+    public Action? OpenSettings { get; init; }
 }
