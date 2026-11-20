@@ -1,7 +1,7 @@
 # How a change travels: idea -> spike -> feature -> release -> main (design)
 
-Status: **design, decisions taken by the owner on 2026-11-19/20** (section 13). Nothing here is built yet; section 14 is
-the order to build it. It replaces three habits that failed during 0.3.11: pushing to `main`, editing one shared
+Status: **built 2026-11-20** (steps 1-7 of section 14; decisions in section 13). The runner's `-Go` paths are proven by
+the first release on it (0.3.12); the runbook is `docs/guide/releasing-wavee.md`. It replaces three habits that failed during 0.3.11: pushing to `main`, editing one shared
 CHANGELOG list and one shared contract number in every PR, and a release script whose `-Resume` trusts a state file
 instead of looking at reality. The release runner borrows its rules from ISOPlanner's production runner
 (`isoplanner-api/Tools/release`): a plain run is a dry run, `-Go` acts, and every step decides from reality whether it is

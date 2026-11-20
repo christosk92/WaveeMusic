@@ -5,41 +5,38 @@ description: Use when cutting, publishing, or troubleshooting a Wavee MSIX relea
 
 # Releasing Wavee (signed MSIX, local only)
 
-> **Changing (2026-11-20).** `main` is protected (PR only), so `wavee-release.ps1`, which pushes `main` and works on
-> `main`, can no longer cut a release. Releases move to `release/<v>` branches and a new runner
-> (`ops/release/release.ps1`: dry run by default, `-Go`, steps judged from reality, the Store folded in), designed in
-> `docs/plans/wavee/release-flow-design.md` and summarised in the `wavee-contributing` skill. 0.3.12 is the first release
-> on it. What follows stays true for packaging, signing, symbols, the feed and its gotchas, which the runner reuses.
+> Releases run from the open `release/<v>` branch with the runner `ops/release/release.ps1` (since 2026-11-20; `main` is
+> protected and only the runner moves it). The flow from idea to release: `docs/plans/wavee/release-flow-design.md` and
+> the `wavee-contributing` skill. **Agents never start a `-Go` run on their own**; a dry run and `-Status` are read-only.
 
 Wavee ships as a **NativeAOT, packaged-Win32 full-trust MSIX** (arm64 + x64, x64 via the MSVC `HostArm64\x64` cross
 toolchain), signed by **Azure Trusted Signing** and published to GitHub Releases on **this** repo. **There is no CI
 job**: a CI checkout has no `src/apps/Wavee.PlayPlay` junction and would silently publish the public-only variant, so a
-release is cut on the dev box by `ops/release/wavee-release.ps1`.
+release is cut on the dev box by `ops/release/release.ps1`.
 
 ## Cut a release
 
 ```powershell
-# 1. hand edits: src/apps/Wavee/Wavee.Version.props (<WaveeVersion> semver, <WaveeCodename> one per MINOR - NEVER <WaveeBuild>),
-#    CHANGELOG.md "## [X.Y.Z] - unreleased", ops/release/wavee/<semver>/whatsnew.json (+ media/)
-# 2. rehearse
-powershell -File ops\release\wavee-release.ps1 -DryRun -SkipTests
-# 3. ship (14 phases; the feed is repointed LAST)
-powershell -File ops\release\wavee-release.ps1
-# failure after the tag was pushed -> re-run with -Resume; abandon -> -Abort; feed only -> -RepointFeed
+# 0. author ops/release/wavee/<semver>/whatsnew.json (+ media/) and merge it into release/<semver>; nothing else is hand-edited
+powershell -File ops\release\release.ps1 -Version 0.3.12                       # dry run: preflight + every step's commands
+powershell -File ops\release\release.ps1 -Version 0.3.12 -Go -To changelog      # assemble the change files; curate in C:\WAVEE\release\0.3.12\WaveeMusic; commit
+powershell -File ops\release\release.ps1 -Version 0.3.12 -Go -PauseBefore feed  # build, sign, push, publish; stop before installs see it
+powershell -File ops\release\release.ps1 -Version 0.3.12 -Go                    # feed, open-next, merge-main, Store, notify; done steps are skipped
+# -Status [-Json] where it is; -Hotfix <v>; -RetargetPrs; -RepointFeed <older> -AllowDowngrade; -Abort (each dry until -Go)
 ```
 
 | Thing | Value |
 |---|---|
-| Tag | `wavee-vX.Y.Z` — created **by the script**, annotated, never deleted |
-| Script chain | `ops/release/wavee-release.ps1` → `ops/build/pack-wavee-msix.ps1` (one arch per call) + `ops/build/Wavee.Build.psm1` + `ops/release/Wavee.Release.psm1` |
+| Tag | `wavee-vX.Y.Z` — created **by the runner** on the release commit (and in fluent-gpu at `engine.lock`), annotated, never moved or deleted (ruleset) |
+| Script chain | `ops/release/release.ps1` + `ReleaseRunner.psm1` → `ops/build/pack-wavee-msix.ps1` (one arch per call) + `ops/build/Wavee.Build.psm1` + `ops/release/Wavee.Release.psm1` |
 | Manifest / template | `ops/build/Wavee.AppxManifest.xml`, `ops/build/Wavee.AppInstaller.template.xml` (silent: `ShowPrompt="false"`) |
 | Package identity | `cproducts.Wavee` (publisher `CN=cproducts, O=cproducts, L=Utrecht, S=Utrecht, C=NL` — must equal the cert subject) |
-| Version | `Wavee.Version.props`; MSIX quad = `M.m.p.<WaveeBuild>` (the script bumps `WaveeBuild`) |
-| Notes | `CHANGELOG.md` + `ops/release/wavee/<semver>/whatsnew.json`, validated/rendered by `Wavee.ReleaseTool` |
+| Version | `Wavee.Version.props`; MSIX quad = `M.m.p.<WaveeBuild>` (the runner writes `WaveeVersion` and bumps `WaveeBuild`) |
+| Notes | change files -> `CHANGELOG.md` (`changelog assemble`) + `ops/release/wavee/<semver>/whatsnew.json`, validated/rendered by `Wavee.ReleaseTool` |
 | Version-release assets | `Wavee_<quad>_arm64.msix`, `Wavee_<quad>_x64.msix`, `Wavee-<quad>-win-<arch>-symbols.zip` (one per arch: `Wavee.pdb` + `Wavee.map.xml` + `SYMBOLS.txt`), `whatsnew.json`, media, `THIRD-PARTY-NOTICES.txt`, `MANIFEST.txt` |
 | Update feed | rolling release **`wavee-stable`** → `Wavee.arm64.appinstaller`, `Wavee.x64.appinstaller`, `whatsnew-index.json` (`--clobber`, repointed last); every install has this URL baked in |
-| Crash symbol maps | phase `symbols` (between `packX64` and `sign`), `Publish-WaveeSymbolMap`: `Wavee.ReleaseTool symbol-map` → `Wavee.symmap` per arch, uploaded with the crash Worker's own `ops/crash/worker/node_modules/.bin/wrangler.cmd` to `wavee-crash/symbols/<quad>/win-<arch>.symmap` — what the crash-ingest Worker resolves report RVAs against (and what it needs before it sends a Discord alert). The Store script's own `symbols` phase uploads `symbols/<storeQuad>/win-<arch>.symmap` |
-| Crash ingest stamp | URL defaults to `https://crash.cproducts.dev`; the key comes from `op read "op://Personal/Wavee crash ingest key/credential" --account my.1password.eu` unless `-CrashIngestKey` is passed — never logged, never written to `release-state.json`. Preflight `crash ingest` is **HARD** for `stable`/`beta`/`store` (only `dev` ships unstamped); after packing, **stamp evidence** (`Assert-CrashIngestStamp`) proves each `Wavee.exe` carries the URL and key. Same in `wavee-store-submit.ps1` (docs/guide/releasing-wavee.md §5b) |
+| Crash symbol maps | step `symbols` (between `pack-x64` and `sign`; each upload retried 4 times), `Publish-WaveeSymbolMap`: `Wavee.ReleaseTool symbol-map` → `Wavee.symmap` per arch, uploaded with the crash Worker's own `ops/crash/worker/node_modules/.bin/wrangler.cmd` to `wavee-crash/symbols/<quad>/win-<arch>.symmap` — what the crash-ingest Worker resolves report RVAs against (and what it needs before it sends a Discord alert). The Store script's own `symbols` phase uploads `symbols/<storeQuad>/win-<arch>.symmap` |
+| Crash ingest stamp | URL defaults to `https://crash.cproducts.dev`; the key comes from `op read "op://Personal/Wavee crash ingest key/credential" --account my.1password.eu` (preflight checks `op whoami` first) — never logged, never on a command line, never written to `state.json`. Every shipping build is stamped (only `dev` ships unstamped); after packing, **stamp evidence** (`Assert-CrashIngestStamp`) proves each `Wavee.exe` carries the URL and key. Same in `wavee-store-submit.ps1` (docs/guide/releasing-wavee.md §5b) |
 
 Verify:
 
@@ -49,11 +46,10 @@ Import-Module ops\release\Wavee.Release.psm1
 Get-WaveeFeedVersion christosk92/WaveeMusic wavee-stable arm64   # the feed head clients poll
 ```
 
-The **Microsoft Store leg is a separate runbook**: `ops\release\wavee-store-submit.ps1`, run after the feed release
-from the same tag (`-DryRun` / `-Resume` / `-Abort` / `-Status`) — see `docs/guide/microsoft-store-onboarding.md`.
-It crash-stamps the Store packages like the feed's (same params, preflight checks and 1Password key; stamp evidence
-also for `-PackageDir` / `-X64Msix` adoption) and has a `symbols` phase after pack, before `msixupload`, uploading
-`symbols/<storeQuad>/win-<arch>.symmap` (`-DryRun` builds the maps, skips the upload).
+The **Microsoft Store leg is part of the run**: steps `store-submit` and `store-poll` call `ops\release\wavee-store-submit.ps1`
+(the runner's Store engine; nobody runs it by hand) from the release worktree at the tag — see
+`docs/guide/releasing-wavee.md` §5c and `docs/guide/microsoft-store-onboarding.md`. It crash-stamps the Store packages
+like the feed's and uploads `symbols/<storeQuad>/win-<arch>.symmap` before the `msixupload`.
 
 Store releases require one SDK-built **arm64 + x64 .msixbundle** inside the upload, never two loose MSIX files
 in a ZIP or a single-architecture repair. Use the Store script's `-PackageDir` to adopt verified archived Store

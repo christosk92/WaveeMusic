@@ -138,7 +138,7 @@ A few rules the codebase enforces strictly:
   `private-runtimes`, and related tooling). That derivation is intentionally kept out of this repo — see
   `README.md` and the pre-commit hook in `.githooks/`.
 - CI workflows that build the app. There is no CI here by design — releases are cut locally via
-  `ops/release/wavee-release.ps1`. If you want automation, discuss it first.
+  `ops/release/release.ps1`. If you want automation, discuss it first.
 - Large drive-by reformatting mixed into a functional change. Keep formatting and behavior changes in
   separate PRs.
 

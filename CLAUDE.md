@@ -18,7 +18,7 @@ first; the build fails with one clear sentence otherwise. **Engine rules live in
 how to build UI (signals, hooks, `Element` records, motion, the zero-alloc discipline). Engine changes are made
 in `..\fluent-gpu` and verified there (`dotnet build src/FluentGpu.slnx`).
 
-**There is no CI.** Nothing builds on GitHub: releases are cut locally by `ops/release/wavee-release.ps1`
+**There is no CI.** Nothing builds on GitHub: releases are cut locally by `ops/release/release.ps1`
 (both arches, Azure Trusted Signing, uploaded with `gh`). The `wavee-stable` feed and `wavee-v*` tags live on
 **this** repository (`github.com/christosk92/WaveeMusic`).
 
@@ -48,7 +48,7 @@ dotnet build Wavee.slnx                                   # Debug — the app, p
 dotnet run --project src/apps/Wavee -- --fake             # offline FakeData demo (no login / network)
 powershell -File ops/release/tests/local-update-e2e.ps1 -Scenario inapp   # elevated; the real update path over a loopback feed
 powershell -File ops/release/tests/local-update-e2e.ps1 -Scenario os      # elevated; App Installer's silent on-launch update
-powershell -File ops/release/wavee-release.ps1 -DryRun -SkipTests         # release rehearsal; the real thing without -DryRun
+powershell -File ops/release/release.ps1 -Version 0.3.12                   # dry run (preflight + every step's commands); -Go releases
 ```
 
 There are no tests (banned 2026-10-20; the build and the pre-commit hook reject new ones). Verify UI with the headless

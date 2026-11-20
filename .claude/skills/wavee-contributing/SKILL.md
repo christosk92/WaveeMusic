@@ -15,10 +15,10 @@ is what an agent needs to act on it.
 | `main` protected: PR only, merge commits only, no force push, no deletion | **live** (2026-11-20) |
 | `release/**` branches: no deletion, no force push | **live**; the open one is `release/0.3.12` |
 | tags `wavee-v*`, `wavee-stable` (and `wavee-v*` in fluent-gpu): never moved or deleted | **live** |
-| change files in `changes/unreleased/` | **write them now**; the assembler (`Wavee.ReleaseTool changelog assemble`) lands before 0.3.12 ships |
-| `engine.lock` (the pinned fluent-gpu commit) | coming. Until then the engine is the sibling checkout at fluent-gpu `main` |
-| `tools/pr-check.py` | coming. Until then check the items of "Before you open a PR" by hand |
-| `ops/release/release.ps1` (the new runner) | coming. `wavee-release.ps1` can no longer release: it pushes `main`, which the ruleset refuses. 0.3.12 ships with the new runner |
+| change files in `changes/unreleased/` | **live**: `Wavee.ReleaseTool changes check` validates them, the runner's `changelog` step assembles them |
+| `engine.lock` (the pinned fluent-gpu commit) | **live**: the runner builds the release against it; `pr-check.py` checks a bump |
+| `tools/pr-check.py` | **live**: `python -I tools/pr-check.py` (the current branch) or `--pr <n>` |
+| `ops/release/release.ps1` (the runner) | **live**; the old `wavee-release.ps1` is gone. 0.3.12 is the first release on it, so its `-Go` paths are proven by that release |
 
 ## The rules
 
@@ -67,6 +67,8 @@ a regression that never shipped.
 
 ## Before you open a PR
 
+- `python -I tools/pr-check.py` passes (it checks the base, the change file, the contract declaration, `Fixes #n`
+  against `issues:`, `engine.lock`, private material and test files; a reviewer runs `--pr <n>`).
 - Branch from and target `release/<next>`; the diff against it shows only your change.
 - One logical change per PR. The description covers everything in the diff (a resize and a scrollbar fix in one PR need
   both described, or two PRs).
@@ -92,17 +94,17 @@ move those PRs first (GitHub's auto-delete closes PRs whose base disappears).
 
 ## Releases, hotfixes, rollback (owner only)
 
-- **Release** (`ops/release/release.ps1 -Version <v>`, when built): a plain run is a dry run; `-Go` acts; done steps are
-  skipped on the next `-Go`. `-Go -To changelog` assembles the change files so the owner can curate the section and the
-  What's new highlights. Steps: preflight, changelog, bump, tag, pack, symbols, sign, GitHub release, feed, merge-main,
-  open-next, Store submit, notify, Store poll. Agents never start a `-Go` run on their own.
+- **Release** (`ops/release/release.ps1 -Version <v>`; the runbook is `docs/guide/releasing-wavee.md`): a plain run is a
+  dry run; `-Go` acts; done steps are skipped on the next `-Go`. `-Go -To changelog` assembles the change files so the
+  owner can curate the section and the What's new highlights. Steps: preflight, changelog, bump, notes, tag, pack-arm64,
+  pack-x64, symbols, sign, stage, push, release, feed, open-next, merge-main, forward-port (hotfix), store-submit,
+  notify, store-poll. Agents never start a `-Go` run on their own; the dry run and `-Status` are read-only.
 - **Watch window**: 48 h after the feed moves: crash rate (`https://crash.cproducts.dev`), Store failures
   (`tools/store-failures.ps1`), new issues. S1 (crash at start or on a common path, data loss, wiped login, playback
   broken, security) -> hotfix now.
 - **Hotfix**: `release.ps1 -Hotfix <v>` renames the open `release/<v>` one patch up (its PRs follow) and makes a new
   `release/<v>` from the shipped tag; the fix is a normal PR into it, released by the runner with no highlight needed,
   then forward-ported. An engine fix goes on `wavee-hotfix/<v>` in fluent-gpu from the engine's `wavee-v<prev>` tag.
-  Until the runner exists, the owner does these steps by hand.
 - **Rollback**, first to last resort: fix forward; point the feed back (`-RepointFeed <prev> -AllowDowngrade`, moves
   installed copies back); mark the GitHub release a prerelease. The Store cannot downgrade: it rolls forward.
 - **Downgrade safety**: anything persistent stays readable by the previous release (the library cache is

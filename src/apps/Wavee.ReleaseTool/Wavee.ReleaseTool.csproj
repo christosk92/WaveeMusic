@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The release notes validator/emitter. Run by hand (or by ops\release\wavee-release.ps1) with `dotnet run`;
+  <!-- The release notes validator/emitter. Run by hand (or by ops\release\release.ps1) with `dotnet run`;
        never published, never packaged. It compiles the two CORE partials by name (ReleaseNotes.cs,
        ReleaseNotes.Model.cs, namespace Wavee, plan §3.3) instead of referencing Wavee.csproj, so the release-notes
        model and the changelog parser it validates are literally the ones the app deserializes at runtime, without

@@ -9,7 +9,7 @@ namespace Wavee.ReleaseTool;
 
 /// <summary>
 /// <c>wavee-release</c> — the release-notes validator and emitter. Invoked by
-/// <c>ops\release\wavee-release.ps1</c> (phase 2) as <c>dotnet run --project src\apps\Wavee.ReleaseTool -- validate …</c>,
+/// the release runner <c>ops\release\release.ps1</c> (step <c>notes</c>) as <c>dotnet run --project src\apps\Wavee.ReleaseTool -- validate …</c>,
 /// and by hand for the <c>render</c> preview. The release runner also runs <c>changes check</c> (its preflight) and
 /// <c>changelog assemble</c> (its changelog step) on the change files in <c>changes/unreleased/</c>.
 /// </summary>

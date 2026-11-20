@@ -7,7 +7,7 @@ the short form for agents that do not load `CLAUDE.md` automatically.
   `..\fluent-gpu` (`$(EngineRoot)` in `Directory.Build.props`). Engine rules, the UI programming model and the
   `fluentgpu` skill live there — `..\fluent-gpu\CLAUDE.md`, `..\fluent-gpu\AGENTS.md`.
 - **Build & verify:** `dotnet build Wavee.slnx` (Debug), then the headless inspector
-  (`docs/guide/agent-inspect.md`). No tests exist and none may be added. No CI exists; releases are local (`ops/release/wavee-release.ps1`).
+  (`docs/guide/agent-inspect.md`). No tests exist and none may be added. No CI exists; releases are local (`ops/release/release.ps1 -Version <v>`: a dry run without `-Go`).
 - **PlayPlay (private, never committed here):** `src/apps/.native/**`, `src/apps/Wavee.PlayPlay/**`, `private-runtimes/**`,
   `src/apps/tmp_*`, `ops/tools/playplay_*`, `ops/tools/x64_*`, `ops/*/pyghidra*`, `docs/plans/wavee/{wavee-playplay*,playplay-*,spotiload-offline-path}.md`,
   `**/playplay-runtime.json`. Read and edit freely; commit/push only in the private `wavee-playplay-private` repo.
