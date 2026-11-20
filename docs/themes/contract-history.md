@@ -18,6 +18,8 @@ first: a version that names a branch (`pinned-home 1.117`) was numbered on that 
   a grip on the aside's edge and commits the width on release; 0 = never dragged) (#229)
 - the optional `TrackUnavailableBarArgs.Dismiss` / `.DismissLabel` (the unavailable bar's close button, per list until
   the app restarts) (#231)
+- the optional `HintProps.DismissLabel` (a hint's own words for its dismiss, such as Keep it on the Lossless badge's tip;
+  null = the theme's usual Not now or close glyph)
 
 ## Before 2026-11-20 (hand-written, oldest first)
 

@@ -73,7 +73,7 @@
         "kind": "image",
         "src": "media/lossless-and-more.jpg",
         "srcLight": "media/lossless-and-more-light.jpg",
-        "alt": "Classic's player bar with the Lossless badge after the artist and its FLAC 24/96 tooltip",
+        "alt": "WinUI's player bar with Lossless after the artist, and the tip above it: You're listening in lossless, with Hide badge and Keep it",
         "width": 1200,
         "height": 675
       }

@@ -12,8 +12,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Added
 
-- **Lossless in the player bar.** While a lossless stream plays, Classic's artist line ends with "· Lossless"; hover it
-  for the exact format, such as FLAC 24/96. A community contribution from @0dm, thank you. (#227)
+- **Lossless in the player bar, in every theme.** While a lossless stream plays, the artist line ends with "· Lossless"
+  in Classic, WinUI and Zune (Zune's in its lowercase); hover it for the exact format, such as FLAC 24/96. Settings >
+  Sound > Quality has a "Show the Lossless badge" switch to hide it, and when the badge first appears a small tip above
+  the player bar asks whether to hide it or keep it. The badge is a community contribution from @0dm, thank you. (#227)
 - **Close the bar about songs that can't be played.** Its new ✕ hides it on that list until Wavee restarts; other lists
   still show theirs. A community contribution from @0dm, thank you. (#231)
 
@@ -24,9 +26,14 @@ versions separately under `v*` and is not tracked in this file.)
   sliver of volume. A community contribution from @0dm, thank you. (#256)
 - **A Home shelf's page dots fade in and out in Classic.** When resizing the window changes how many pages a shelf has,
   the dot that comes or goes fades instead of popping.
+- **Settings links to Wavee's new website.** The Website link in Settings > Help & about > Links now opens
+  www.cproducts.dev/wavee; the source code on GitHub is one row below it, "Source on GitHub".
 
 ### Fixed
 
+- **Smooth song changes.** Starting another song or pressing Next no longer lets the old song crackle out for a moment
+  or clips the first fraction of a second off the new one, most noticeable on Bluetooth headphones: the old song fades
+  out and the new one starts from its very first note, without Wavee closing and reopening your speakers in between.
 - **Liked Songs plays on your other device.** While a phone or another computer is playing, clicking a song in Liked
   Songs now starts it there, from that song, instead of stopping the other device. If Wavee cannot start Liked Songs
   there, it leaves that device playing and tells you.
@@ -65,6 +72,14 @@ versions separately under `v*` and is not tracked in this file.)
   for once per session. Home now asks for the new picks' songs as they arrive, a pick whose card changed shows its own
   songs instead of the previous card's, and a pick that has none shows its cover instead of empty tiles. All themes; the
   Release Spotlight's songs too.
+- **Your shortcuts keep their shape when the window changes.** After the side panel opened or the window was resized,
+  the shortcuts grid on Home kept the width it had before: tiles in one row came out different sizes, the last tile ran
+  past the edge, and turning the page showed a cut-off piece of the page before it and a tile with no picture or name.
+  In every theme, each page is now exactly as wide as the grid and the tiles follow a new width at once. In WinUI and
+  Zune, the arrow that appears on hover to go to the next page now sits on the right edge, not the left.
+- **The Canvas in the side panel's Now playing follows the panel.** While you drag the panel wider or narrower in WinUI,
+  the fade over the Canvas video now resizes with it instead of hanging as a pale box over the picture, and in the
+  light theme the thin grey line between the faded Canvas and "Next up" is gone. Zune's panel gets the same fixes.
 - **Date added shows whenever the song list has room for it.** A playlist or Liked Songs no longer hides its Date added
   column in a mid-size window or beside a docked queue while the title column has plenty of space (WinUI, and Classic
   and Zune in a small window). In WinUI, where the Album column does not fit, the album moves next to the artist under
