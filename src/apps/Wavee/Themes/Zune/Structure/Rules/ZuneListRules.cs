@@ -400,9 +400,11 @@ public static class ZuneListRules
 
     /// <summary>Small (Z-Album-Small: # · title · time · "...", Z-Sizes-Breakpoints "album from 900"): the Album lane may show once the list column's
     /// table ladder admits it (a playlist's or Liked Songs' list, a window near the top of the tier; an album's own rows have none), no Plays lane,
-    /// the Date lane only on a quiet list; the density's rows. The insights stay a sheet over the list (no aside docks below Standard).</summary>
+    /// the Date lane wherever the ladder admits it too (from 560: the boards kept it to a quiet list; the owner overruled that on 2026-11-20, "date added.
+    /// it has plenty of space, why hidden!", a 760-DIP list at a 1000 window had no date); the density's rows. The insights stay a sheet over the list (no
+    /// aside docks below Standard).</summary>
     public static DetailTierLayout Small { get; } = new(
-        new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: false, DateColumn: false, HoverActions: true, DurationWidth: HoverTimeLane,
+        new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: false, DateColumn: true, HoverActions: true, DurationWidth: HoverTimeLane,
             PageMenu: DetailPageMenu.Hero),   // Z-Album-Small: ONE "more", the ring's (audit B8 r2)
         InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
 
