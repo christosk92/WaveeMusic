@@ -187,9 +187,10 @@ says "Unavailable" in the time lane, a drop target a 2-px accent line on the top
 40; W-RowStates' 32 is the specimen), so `WinUiDensityOption.Rows` publishes `ModernArt` 40 (compact density 32 in the 40).
 
 **The lanes and the tiers.** The lanes are the core's; WinUI states the heart in its own lane before the time (`DetailTableTier.HeartTrailing`). The list
-column's table ladder (`Rules\Tiers.Lists.cs`, `WinUiListTiers`): below 560 the table is the two-line row, 560-859 drops Plays, Date and Album, from 860 every
-lane (Added-by never: no WinUI board draws it), each edge held 24 on widening. The window's own bands (`WinUiListRules.DetailTiers`, the record W6a extends):
-Compact < 641 the Compact row form (56 tall, a 40 cover, no column header, title over "artists - album" or "artists - 598.9M plays" on an album, the time, the
+column's table ladder (`Rules\Tiers.Lists.cs`, `WinUiListTiers`, on the list column, so a docked pane that narrows the list moves it): from 860 every lane
+(Added-by never: no WinUI board draws it); below 860 the Album lane folds into the title's subline ("artists - album"); Date added and Plays stay while the
+title keeps its floor beside them (`DateFrom`, 504: W-Tiers dropped them below 860, the owner overruled it on 2026-11-20); each edge held 24 on widening. The window's own bands
+(`WinUiListRules.DetailTiers`, the record W6a extends): Compact < 641 the Compact row form (56 tall, a 40 cover, no column header, title over "artists - album" or "artists - 598.9M plays" on an album, the time, the
 heart and a 40 "..." on every row, `KeepDuration`), Small no versions chevron lane (`VersionsLane`), Huge the board's 72 rows with a 64 cover.
 
 **Row size.** The "..." menu's "Row size" rows (`WinUiTrackChrome.CommandKit.DensityItems`) read the PUBLISHED rung and request `style.rowDensity` for the WinUI
