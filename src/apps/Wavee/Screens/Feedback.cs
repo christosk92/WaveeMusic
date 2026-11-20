@@ -144,9 +144,8 @@ public static partial class Feedback
             if (quad.Length > 0) sb.Append(" (").Append(quad).Append(')');
             if (commit.Length > 0) sb.Append(" · ").Append(commit);
 
-            string install = isStore ? ReportChannels.InstallSources[0]
-                           : isPackaged && !isDev ? ReportChannels.InstallSources[1]
-                           : ReportChannels.InstallSources[2];
+            var source = isStore ? InstallChannel.Store : isPackaged && !isDev ? InstallChannel.Sideload : InstallChannel.Source;
+            string install = ReportChannels.InstallSources[(int)source];
 
             string arch = osArch switch { "X64" => "x64", "Arm64" => "ARM64", _ => ReportChannels.NotSure };
 

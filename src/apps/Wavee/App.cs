@@ -200,6 +200,7 @@ public static class App
         if (gui)
         {
             Shell.StartUpdater();        // AFTER Diagnostics.InstallServices: the updater reads Update.Host.IsMetered at start (WP-6.R)
+            RateNudge.Boot(Platform.Settings);   // AFTER StartUpdater (UpdatedFrom / PreviousRunVersion are known) and Crash.Host.BeginGuiRun, BEFORE the shell mounts; the headless inspect boot resets it itself
             Crash.Uploader.Install(Playback.ToUi);   // the outbox drains on connectivity edges; after the updater, same UI poster as Platform.Network (crash-diagnostics plan B.5)
         }
         if (!Platform.Args.Fake)         // --fake stays providerless; its tracks answer from the word-synced fixture instead
@@ -337,6 +338,7 @@ public static class App
         // The exit tail (G-012), after the loop and while the log is still alive: layout write, telemetry batch, audio,
         // video, the graph store, the stream caches, then the platform (whose log sink flushes last).
         Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Library);
+        RateNudge.Flush();               // a session that ends mid-track still counts its listening; settings are still open here
         Spotify.Library.Shutdown();      // its watches and settle timers, and the pin store's hook, before the sidebar's layout write
         Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Sidebar);
         Sidebar.Shutdown();

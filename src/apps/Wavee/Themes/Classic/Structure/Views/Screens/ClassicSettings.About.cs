@@ -67,6 +67,12 @@ internal static partial class ClassicSettings
                 return group is not null;
             case "help.links.website" or "help.links.source" or "help.links.thirdPartyNotices" or "help.links.openDataFolder":
                 return group is not null;   // the links card draws them (a result draws its own clickable row)
+            case "help.links.rate" or "help.links.star":
+                // Owner, 2026-11-20: Classic follows WinUI's style, so the support door is WinUI's link card: its own clickable card with the
+                // caption and the open-in-new glyph (it sits in its own group, so LinksCard never sees it).
+                string door = row.Id;
+                card = CardRow(row, isClickEnabled: true, onClick: () => Dial(door).Writer.Run!(), actionIcon: Icons.OpenInNewWindow);
+                return true;
             case "help.links.licenses":
                 card = new BoxEl
                 {

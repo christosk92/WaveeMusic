@@ -63,6 +63,27 @@ public static partial class SettingsSpec
                 Make("help.showSummaryAgain", K.Action, Strings.Update.About.ShowSummaryAgain,
                     SettingsWriter.OfAction("about.showSummaryAgain", SettingsVerbs.ShowSummaryAgain), legacy: ["showSummaryAgain"])),
 
+            // "Support Wavee": its own group, never inside `links` (Classic's LinksCard would draw the door as a plain link; the door is
+            // a link card of its own in every theme). A Store install sees the rate door and switch, a GitHub or source build the star
+            // one; a Store install never reads "star" or the repo.
+            Group("support", Strings.Settings.Groups.Help.Support, null,
+                Make("help.links.rate", K.Action, Strings.RateNudge.Door.Rate,
+                    SettingsWriter.OfAction("about.link:rate", RateNudge.DoorPrimary), captionKey: Strings.RateNudge.Door.RateSub,
+                    visible: static _ => RateNudge.DoorAsk(RateNudge.Channel) == RateNudge.Ask.Rate),
+                // A caption may be a key or resolved text (SettingsPageModel.Text passes non-keys through): the count is text.
+                Make("help.links.star", K.Action, Strings.RateNudge.Door.Star,
+                    SettingsWriter.OfAction("about.link:star", RateNudge.DoorPrimary),
+                    caption: static _ => RateNudge.StarCount is { } n ? Strings.RateNudge.Door.StarSubCount(n) : Strings.RateNudge.Door.StarSub,
+                    visible: static _ => RateNudge.DoorAsk(RateNudge.Channel) == RateNudge.Ask.Star),
+                Make("help.rate.ask", K.Toggle, Strings.RateNudge.Setting.Rate,
+                    SettingsWriter.OfToggle("rate.ask", RateNudge.SetEnabled), caption: static _ => RateNudge.CapHint(),
+                    value: static _ => RateNudge.Current.Enabled,
+                    visible: static _ => RateNudge.CardAsk(RateNudge.Channel) == RateNudge.Ask.Rate),
+                Make("help.star.ask", K.Toggle, Strings.RateNudge.Setting.Star,
+                    SettingsWriter.OfToggle("star.ask", RateNudge.SetEnabled), caption: static _ => RateNudge.CapHint(),
+                    value: static _ => RateNudge.Current.Enabled,
+                    visible: static _ => RateNudge.CardAsk(RateNudge.Channel) == RateNudge.Ask.Star)),
+
             Group("feedback", Strings.Settings.Groups.Help.Feedback, Strings.Settings.Feedback.Subtitle,
                 Make("help.feedback.report", K.Action, Strings.Settings.Feedback.ReportProblem,
                     SettingsWriter.OfAction("feedback.report", SettingsVerbs.ReportProblem), legacy: ["reportProblem"],

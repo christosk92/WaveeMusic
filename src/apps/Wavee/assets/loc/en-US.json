@@ -1514,7 +1514,7 @@
       "system": { "startup": "Startup", "window": "Window and notification area", "language": "Language", "links": "Links", "graphics": "Graphics" },
       "storage": { "onThisPc": "On this PC", "playbackCache": "Playback cache", "metadataCache": "Metadata cache", "reset": "Reset" },
       "account": { "signedIn": "Account", "privacy": "Privacy", "crashReports": "Crash reports" },
-      "help": { "about": "About Wavee", "feedback": "Feedback", "shortcuts": "Keyboard shortcuts", "diagnostics": "Diagnostics", "developer": "Developer", "links": "Links and licenses" }
+      "help": { "about": "About Wavee", "support": "Support Wavee", "feedback": "Feedback", "shortcuts": "Keyboard shortcuts", "diagnostics": "Diagnostics", "developer": "Developer", "links": "Links and licenses" }
     },
     "search": {
       "$comment": "The settings search (Screens/SettingsSearch.cs, design 4). stopWords leave a query (never a phrase); intentWords are soft (they add when they match and never have to). breadcrumb is where a result lives; the rest are the results page's no-match and close-match lines (phase 4 draws them; the inspector's settings verb prints them).",
@@ -5293,5 +5293,44 @@
     "sleepTimer": { "text": "Falling asleep? Set a sleep timer.", "action": "Sleep timer" },
     "cacheFull": { "text": "Your playback cache is almost full ({used} of {budget}).", "action": "Change size" },
     "losslessBadge": { "title": "You're listening in lossless", "text": "This badge shows while a lossless stream plays.", "action": "Hide badge", "dismiss": "Keep it", "done": "Badge hidden" }
+  },
+  "rateNudge": {
+    "$comment": "The rate & star nudge (Screens/RateNudge*.cs, docs/plans/wavee/rate-nudge-implementation.md §10): the corner card, the doors (Settings → About, the account menu, the after-update plate) and the switch. First person (owner, 2026-11-20). A rate.* or plate.rate string is read by Store installs: it never names GitHub or a star.",
+    "rate": {
+      "title": "Rate Wavee in the Microsoft Store",
+      "body": "I build Wavee on my own. If it has earned a place on your PC, a rating in the Store helps other people find it.",
+      "milestoneBody": "I build Wavee on my own. If it has been good company, a rating in the Store helps other people find it.",
+      "primary": "Rate in the Store"
+    },
+    "star": {
+      "title": "Star Wavee on GitHub",
+      "body": "I build Wavee on my own, in the open. If it has earned a place on your PC, a star helps other people find it.",
+      "milestoneBody": "I build Wavee on my own, in the open. If it has been good company, a star helps other people find it.",
+      "primary": "Star on GitHub",
+      "meta": "{count, plural, one {# person has starred it} other {# people have starred it}}"
+    },
+    "later": "Not now",
+    "never": "Don't ask again",
+    "big": "{hours} hours",
+    "bigCaption": "of music played in Wavee since {date}",
+    "bigStats": "{days, plural, one {on # listening day} other {on # listening days}}",
+    "thanks": "Thanks for rating Wavee",
+    "door": {
+      "rate": "Rate Wavee in the Microsoft Store",
+      "rateSub": "Opens the Store's rating dialog",
+      "star": "Star Wavee on GitHub",
+      "starSub": "Opens the repository in your browser",
+      "starSubCount": "Opens the repository in your browser · {count, plural, one {# star} other {# stars}}"
+    },
+    "setting": {
+      "rate": "Occasionally ask me to rate Wavee",
+      "star": "Occasionally ask me to star Wavee",
+      "hintTwice": "At most twice, ever",
+      "hintThreeTimes": "At most three times, ever"
+    },
+    "plate": {
+      "rate": "If this release made Wavee better for you, a rating in the Microsoft Store helps other people find it.",
+      "star": "If this release made Wavee better for you, a star on GitHub helps other people find it."
+    }
   }
 }

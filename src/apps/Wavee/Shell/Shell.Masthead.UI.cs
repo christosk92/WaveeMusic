@@ -108,6 +108,9 @@ public static partial class Shell
     /// what the chrome allocator reads to hand the caret to the new form across a mode flip.</summary>
     static readonly OmnibarModel s_omnibar = new(OmnibarPorts.Live());
 
+    /// <summary>The search box has keyboard focus (read-only; the rate nudge never interrupts typing).</summary>
+    public static bool SearchFocused => s_omnibar.SearchFocused.Peek();
+
     /// <summary>Ask the omnibar for keyboard focus (Ctrl+F — <see cref="IFrameVerbs.FocusSearch"/>).</summary>
     internal static void FocusSearch() => s_omnibar.Focus();
 

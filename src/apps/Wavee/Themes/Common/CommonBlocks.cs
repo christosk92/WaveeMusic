@@ -12,6 +12,7 @@
 //   Hint.Line              a hint on its surface (the neutral fallback)    CommonHint
 //   Hint.Explainer         a dial's explanation badge (stand-in, phase 3)  CommonHint
 //   Settings.Dials         a feature panel's dials (stand-in, phase 3)     CommonHint
+//   Shell.RateNudge        the rate & star card over the page              RateNudgeCard
 //
 // TIERS (themes plan 3.2, TC10): every block is tiered once for every theme, from the content tier and the height tier alone (`Rules\Tiers.cs`, `CommonTouch.cs`,
 // `CommonTierComponent.cs`); no theme has a board for them (owner Q18), so a block never names an edge of the ladder its theme draws.
@@ -46,5 +47,8 @@ public static class CommonBlocks
         views.Add(ViewKeys.Hint, hint ?? CommonHint.Hint, hintTemplateId);
         views.Add(ViewKeys.Explainer, explainer ?? CommonHint.Explainer, explainerTemplateId);
         views.Add(ViewKeys.SettingsDials, CommonHint.SettingsDials, "common.settings.dials");
+        // The rate & star card (rate-nudge-implementation.md §5.3): one picture for Classic, WinUI and Zune, each of which reaches it through
+        // its own call to this method (so no structure file names the key).
+        views.Add(ViewKeys.ShellRateNudge, RateNudgeCard.Template, "common.shell.rate-nudge");
     }
 }
