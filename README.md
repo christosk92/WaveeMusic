@@ -32,6 +32,10 @@
     <img src="https://get.microsoft.com/images/en-us%20dark.svg" height="64" alt="Get Wavee from the Microsoft Store" /></a>
 </p>
 
+<p align="center">
+  <b>Website:</b> <a href="https://www.cproducts.dev/wavee">cproducts.dev/wavee</a>
+</p>
+
 
 One ~30 MB MSIX, no bundled runtime, Mica, dynamic accent, 10k-row virtualized lists, synced lyrics, video,
 out-of-process playback modules (YouTube / Twitch / radio).
