@@ -8,7 +8,7 @@ namespace Wavee.ReleaseTool;
 /// <summary>
 /// <c>symbol-map</c> — reads a <c>Wavee.exe</c> + its matching <c>Wavee.pdb</c> and writes the binary <c>.symmap</c>
 /// the crash-ingest Worker resolves report RVAs against (crash &amp; diagnostics plan §I "Symbol map (.symmap) binary
-/// format"). Invoked by <c>ops\release\wavee-release.ps1</c>'s <c>symbols</c> phase, one call per architecture.
+/// format"). Invoked by the release runner's <c>symbols</c> step (<c>ops\release\release.ps1</c>), one call per architecture.
 /// </summary>
 static class SymbolMapCommand
 {

@@ -10,7 +10,8 @@
     Identity/@Version (the MSIX quad) = <WaveeVersion core>.<WaveeBuild>       -Quad overrides
     InformationalVersion              = <semver>+build.<N>.sha.<sha7>          -Semver / -Commit override
     channel                           = dev                                     -Channel overrides
-  ops/release/wavee-release.ps1 passes every value explicitly for a real release; nothing here bumps the counter.
+  The release runner (ops/release/release.ps1) passes every value explicitly for a real release; nothing here bumps
+  the counter.
 
 .EXAMPLE
   powershell -File ops\build\pack-wavee-msix.ps1
@@ -51,7 +52,7 @@ param(
   [string]$UpdateBaseUrl = 'https://github.com/christosk92/WaveeMusic/releases/download/',
   # The opt-in crash & diagnostics pipeline's ingest endpoint + public key (crash & diagnostics plan section B.5), stamped
   # exactly like -UpdateBaseUrl: build-time metadata only. Empty by default, so a plain dev pack never uploads
-  # anything; ops/release/wavee-release.ps1 passes both for a real release once the Cloudflare Worker exists.
+  # anything; the release runner (ops/release/release.ps1) passes both for a real release.
   [string]$CrashIngestUrl = '',
   [string]$CrashIngestKey = '',
   [switch]$PublicOnly,

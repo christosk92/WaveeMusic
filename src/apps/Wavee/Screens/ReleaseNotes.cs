@@ -1217,8 +1217,29 @@ public static partial class ReleaseNotes
             }
 
             AppendResolvedIssues(sb, doc, repo);
-            AppendOtherChanges(sb, doc, repo);
 
+            // The footer and the generated appendix are rendered first so the "Other changes" fold gets exactly the
+            // room left under GitHub's body cap: a long cycle (0.3.11 had 613 commits) otherwise passes 125,000
+            // characters and `gh release create` fails with HTTP 422 after the tag is already pushed.
+            var tail = new StringBuilder(1024);
+            AppendFooter(tail, doc, generatedNotes);
+            AppendOtherChanges(sb, doc, repo, GitHubBodyMaxChars - BodyCapMargin - sb.Length - tail.Length);
+            sb.Append(tail);
+            return sb.ToString();
+        }
+
+        /// <summary>GitHub's limit on a release body, in characters (<c>body is too long (maximum is 125000
+        /// characters)</c>).</summary>
+        public const int GitHubBodyMaxChars = 125_000;
+
+        /// <summary>Headroom under <see cref="GitHubBodyMaxChars"/>: GitHub counts characters, the builder counts
+        /// UTF-16 units, and a body may be re-rendered with or without the generated appendix.</summary>
+        const int BodyCapMargin = 4_000;
+
+        /// <summary>The release facts line, the changelog and compare links and, when supplied, the generated
+        /// <c>Commits &amp; contributors</c> fold.</summary>
+        static void AppendFooter(StringBuilder sb, ReleaseNotesDocument doc, string? generatedNotes)
+        {
             sb.Append("---\n\n");
             var facts = new List<string>(5);
             if (doc.Date.Length > 0) facts.Add("Released " + doc.Date);
@@ -1238,8 +1259,6 @@ public static partial class ReleaseNotes
                 sb.Append("<details><summary>Commits &amp; contributors</summary>\n\n")
                   .Append(generatedNotes.Trim()).Append("\n\n</details>\n");
             }
-
-            return sb.ToString();
         }
 
         /// <summary>The <c>## Resolved issues</c> block: one line per distinct issue number (ascending) the document
@@ -1325,16 +1344,40 @@ public static partial class ReleaseNotes
             sb.Append('\n');
         }
 
-        /// <summary>The folded <c>&lt;details&gt;Other changes&lt;/details&gt;</c> appendix — every commit in range
-        /// that cites no section item (<see cref="ReleaseNotesDocument.UnlinkedCommits"/>). Omitted when empty.</summary>
-        static void AppendOtherChanges(StringBuilder sb, ReleaseNotesDocument doc, string repo)
+        /// <summary>The folded <c>&lt;details&gt;Other changes&lt;/details&gt;</c> appendix — every first-parent commit in
+        /// range that cites no section item (<see cref="ReleaseNotesDocument.UnlinkedCommits"/> with
+        /// <see cref="ReleaseCommit.FirstParent"/>), newest first, in at most <paramref name="budget"/> characters. Commits
+        /// that do not fit are counted on a closing line that points at the compare view. Omitted when empty.</summary>
+        static void AppendOtherChanges(StringBuilder sb, ReleaseNotesDocument doc, string repo, int budget)
         {
-            if (doc.UnlinkedCommits.Length == 0) return;
-            sb.Append("<details><summary>Other changes</summary>\n\n");
-            foreach (var c in doc.UnlinkedCommits)
-                sb.Append("- [").Append(c.Short).Append("](https://github.com/").Append(repo).Append("/commit/")
-                  .Append(c.Sha).Append(") ").Append(EscapeMarkdown(c.Subject)).Append('\n');
-            sb.Append("\n</details>\n\n");
+            // One line per merged PR, not every work-in-progress commit of every lane: the release branch takes PRs as
+            // merge commits, and 0.3.11's fold listed 613 commits.
+            var listed = Array.FindAll(doc.UnlinkedCommits, static c => c.FirstParent);
+            if (listed.Length == 0) return;
+            const string open = "<details><summary>Other changes</summary>\n\n";
+            const string close = "\n</details>\n\n";
+            // Room for the open and close tags and the "N more" line (a compare URL is well under 200 characters).
+            int room = budget - open.Length - close.Length - 300;
+            var lines = new StringBuilder();
+            int shown = 0;
+            foreach (var c in listed)
+            {
+                int mark = lines.Length;
+                lines.Append("- [").Append(c.Short).Append("](https://github.com/").Append(repo).Append("/commit/")
+                     .Append(c.Sha).Append(") ").Append(EscapeMarkdown(c.Subject)).Append('\n');
+                if (lines.Length > room) { lines.Length = mark; break; }
+                shown++;
+            }
+            int more = listed.Length - shown;
+            sb.Append(open).Append(lines);
+            if (more > 0)
+            {
+                if (shown > 0) sb.Append('\n');
+                sb.Append("And ").Append(more).Append(more == 1 ? " more commit" : " more commits");
+                if (doc.Links.Compare.Length > 0) sb.Append(" in the compare view: ").Append(doc.Links.Compare);
+                sb.Append('\n');
+            }
+            sb.Append(close);
         }
 
         /// <summary>Backslash-escapes GitHub Flavored Markdown's special characters (<c>\ * _ ` [ ] &lt; &gt; ~ |</c>)

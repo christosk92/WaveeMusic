@@ -25,7 +25,7 @@
 
   <!-- Build identity. Wavee.Version.props is the single source of the semver, the per-minor codename and the
        monotonic release counter (WaveeBuild); ops/build/pack-wavee-msix.ps1 stamps the rest via /p: properties and
-       ops/release/wavee-release.ps1 owns the counter. Settings → About / crash headers / the update checker read all
+       the release runner (ops/release/release.ps1) owns the counter. Settings → About / crash headers / the update checker read all
        of it back through AssemblyMetadataAttribute (WaveeVersionInfo.Parse). -->
   <Import Project="Wavee.Version.props" />
   <PropertyGroup>
@@ -44,8 +44,8 @@
     <WaveeStoreId Condition="'$(WaveeStoreId)' == ''">9NJPVWTQPT9H</WaveeStoreId>
     <!-- The opt-in crash & diagnostics pipeline's ingest endpoint + public key (crash & diagnostics plan §B.5), stamped
          exactly like WaveeUpdateBaseUrl: build-time metadata, never a runtime switch. Empty on a plain `dotnet run` and
-         on every E2E package -> Crash.Uploader.Configured is false and nothing is ever sent. Only wavee-release.ps1's
-         `symbols` phase (via pack-wavee-msix.ps1 -CrashIngestUrl/-CrashIngestKey) sets these for a real release. -->
+         on every E2E package -> Crash.Uploader.Configured is false and nothing is ever sent. Only the release runner's
+         pack steps (via pack-wavee-msix.ps1 -CrashIngestUrl/-CrashIngestKey) sets these for a real release. -->
     <WaveeCrashIngestUrl Condition="'$(WaveeCrashIngestUrl)' == ''"></WaveeCrashIngestUrl>
     <WaveeCrashIngestKey Condition="'$(WaveeCrashIngestKey)' == ''"></WaveeCrashIngestKey>
     <!-- A local `dotnet run` is "0.2.0-dev"; the pack script stamps "<semver>+build.<N>.sha.<sha7>". -->

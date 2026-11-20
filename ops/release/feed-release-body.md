@@ -16,7 +16,7 @@ no way to re-point clients that are already out there, because the address they 
 
 ## What actually changes here
 
-`ops/release/wavee-release.ps1` runs `gh release upload --clobber` against this release as the **last** step of every
+The release runner (`ops/release/release.ps1`, step `feed`) runs `gh release upload --clobber` against this release as the **last** step of every
 release, replacing three assets in place:
 
 | Asset | What it is |
@@ -35,7 +35,7 @@ immutable; this release only points at them. That split is what makes a rollback
   version release, verifies it, and only then repoints the feed.
 - **The feed may go backwards, deliberately.** The `.appinstaller` sets `ForceUpdateFromAnyVersion="true"`, so pointing
   this feed at an older release is the one lever that reaches already-installed clients. That is the rollback path:
-  `wavee-release.ps1 -RepointFeed <older semver> -AllowDowngrade`.
+  `release.ps1 -RepointFeed <older semver> -AllowDowngrade -Go`.
 - **The feed must not go backwards by accident.** Every normal run passes a monotonic gate: the new quad must be
   strictly greater than the current root `Version` here, on every architecture, on every feed being repointed.
 - **`releases/latest` is not the feed.** That endpoint is repo-global and belongs to the FluentGpu gallery, which

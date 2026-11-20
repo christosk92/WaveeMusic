@@ -12,7 +12,7 @@ ops/release/wavee/0.2.0/
     docked-video.mp4
 ```
 
-`ops/release/wavee-release.ps1` runs `Wavee.ReleaseTool validate` over this folder (phase 2) and emits the
+The release runner (`ops/release/release.ps1`, step `notes`) runs `Wavee.ReleaseTool validate` over this folder and emits the
 artefacts the release actually publishes. **Nothing here is published verbatim**: the tool merges the authored
 document with the dated `CHANGELOG.md` entry and stamps the rest.
 

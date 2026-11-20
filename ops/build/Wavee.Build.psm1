@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   Shared build helpers for the MSIX pack scripts (pack-wavee-msix.ps1, pack-msix.ps1), publish-wavee-aot.ps1 and the
-  local release orchestrator (ops/release/wavee-release.ps1).
+  release runner (ops/release/release.ps1, ops/release/ReleaseRunner.psm1).
 
 .DESCRIPTION
   Everything here is Windows PowerShell 5.1 compatible and ASCII-only inside string literals: this file is saved
@@ -219,11 +219,13 @@ function Import-MsvcEnvironment {
 <#
 .SYNOPSIS
   Read src/apps/Wavee/Wavee.Version.props - the single source of the semver, codename and release counter.
+.DESCRIPTION
+  -Text parses the file's content instead (the release runner reads the props of a git ref without a checkout).
 .OUTPUTS
   @{ Version; Codename; Build; Path }
 #>
-function Get-WaveeVersionProps([string]$Path) {
-  $t = [IO.File]::ReadAllText($Path)
+function Get-WaveeVersionProps([string]$Path, [string]$Text) {
+  if ($PSBoundParameters.ContainsKey('Text')) { $t = $Text } else { $t = [IO.File]::ReadAllText($Path) }
   $m = [regex]::Match($t, '<WaveeVersion>([^<]+)</WaveeVersion>')
   $c = [regex]::Match($t, '<WaveeCodename>([^<]+)</WaveeCodename>')
   $b = [regex]::Match($t, '<WaveeBuild>(\d+)</WaveeBuild>')
@@ -233,7 +235,7 @@ function Get-WaveeVersionProps([string]$Path) {
 
 <#
 .SYNOPSIS
-  Rewrite the <WaveeBuild> counter in place (UTF-8, no BOM). Only ops/release/wavee-release.ps1 calls this.
+  Rewrite the <WaveeBuild> counter in place (UTF-8, no BOM). Only the release runner's bump step calls this.
 #>
 function Set-WaveeBuild([string]$Path, [int]$Build) {
   if ($Build -lt 0 -or $Build -gt 65535) { throw "WaveeBuild out of range: $Build" }
@@ -241,6 +243,24 @@ function Set-WaveeBuild([string]$Path, [int]$Build) {
   $rx = [regex]'<WaveeBuild>\d+</WaveeBuild>'
   if ($rx.Matches($t).Count -ne 1) { throw "expected exactly one <WaveeBuild> in $Path" }
   [IO.File]::WriteAllText($Path, $rx.Replace($t, "<WaveeBuild>$Build</WaveeBuild>"), (New-Object System.Text.UTF8Encoding $false))
+}
+
+<#
+.SYNOPSIS
+  Rewrite <WaveeVersion> and, when -Codename is given, <WaveeCodename> in place (UTF-8, no BOM). The release runner's
+  bump step sets the version it releases (the props are no longer a hand edit) and a new minor's codename.
+#>
+function Set-WaveeVersionProps([string]$Path, [string]$Version, [string]$Codename = '') {
+  $t = [IO.File]::ReadAllText($Path)
+  $rxV = [regex]'<WaveeVersion>[^<]*</WaveeVersion>'
+  if ($rxV.Matches($t).Count -ne 1) { throw "expected exactly one <WaveeVersion> in $Path" }
+  $t = $rxV.Replace($t, "<WaveeVersion>$Version</WaveeVersion>")
+  if ($Codename) {
+    $rxC = [regex]'<WaveeCodename>[^<]*</WaveeCodename>'
+    if ($rxC.Matches($t).Count -ne 1) { throw "expected exactly one <WaveeCodename> in $Path" }
+    $t = $rxC.Replace($t, "<WaveeCodename>$Codename</WaveeCodename>")
+  }
+  [IO.File]::WriteAllText($Path, $t, (New-Object System.Text.UTF8Encoding $false))
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -487,6 +507,36 @@ function Get-PeExportedNames {
 function Test-PeExport {
     param([Parameter(Mandatory = $true)][byte[]]$Bytes, [Parameter(Mandatory = $true)][string]$Name)
     (Get-PeExportedNames $Bytes) -contains $Name
+}
+
+<#
+.SYNOPSIS
+  The release gate over a packed .msix (video plan Q8 / G-152): FluentGpu.PlayReady.Native.dll must be in the package
+  and export FgPrRuntimeCreateOnAdapter for the architecture it was built for.
+.DESCRIPTION
+  That export is the only thing DesktopProtectedVideoPlayer P/Invokes into; a stale or missing DLL silently degrades
+  DRM video for every install of that architecture until the next release. Moved here from the old release script so
+  the runner's pack steps and any other packaging check read the same rule.
+#>
+function Assert-PlayReadyNativeExport {
+    param([Parameter(Mandatory = $true)][string]$MsixPath, [Parameter(Mandatory = $true)][string]$Arch)
+
+    $entryName = 'FluentGpu.PlayReady.Native.dll'
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($MsixPath)
+    try {
+        $entry = $zip.Entries | Where-Object { $_.FullName -eq $entryName }
+        if (-not $entry) {
+            throw "$(Split-Path -Leaf $MsixPath) ($Arch) ships no $entryName - DRM video would be unavailable for every $Arch install (rebuild ops/tools/playready-native for $Arch)"
+        }
+        $ms = New-Object System.IO.MemoryStream
+        $es = $entry.Open()
+        try { $es.CopyTo($ms) } finally { $es.Dispose() }
+        if (-not (Test-PeExport $ms.ToArray() 'FgPrRuntimeCreateOnAdapter')) {
+            throw "$entryName in $(Split-Path -Leaf $MsixPath) ($Arch) does not export FgPrRuntimeCreateOnAdapter - stale or mismatched native build; rebuild ops/tools/playready-native for $Arch"
+        }
+    }
+    finally { $zip.Dispose() }
 }
 
 # ---------------------------------------------------------------------------------------------------------------
