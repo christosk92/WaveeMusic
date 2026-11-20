@@ -43,6 +43,14 @@ namespace Wavee;
 
 public static partial class Shell
 {
+    /// <summary>The engine host's starting scene size, the window's and the headless inspector's alike (<c>AppHost</c>'s
+    /// <c>initialSceneCapacity</c>): the scene store and the render thread's snapshot slots start at the steady-state size, and the
+    /// idle trim never shrinks below it. Growing from 64 by doubling ~45 column arrays put LOH allocations and gen2 collections inside
+    /// the first scrolls and navigations (realize=6.8/13.9 ms frames with gc=…/1, 2026-09-23). The headless host once started at 64,
+    /// so its first scrolls paid that growth (a snapshot slot and the recorder's span table doubling, ~4.6 MB on one Liked Songs scroll
+    /// frame) and the inspector's GC counts described a host the app is not (2026-11-20).</summary>
+    internal const int SceneCapacity = 8192;
+
     // ══ 1. THE SHELL'S LIVE CELLS ═══════════════════════════════════════════════════════════════════════════════════
     //
     // Created ONCE, for the process. `Shell.Root` is mounted once and never remounted for a theme or a route change,
@@ -310,10 +318,7 @@ public static partial class Shell
                     // `--d3d12-debug`: the D3D12 debug layer, for the memory soak's live-object census (FluentApp.RequestGpuLiveCensus).
                     // A diagnostics launch only: the layer validates every call and costs frame time and memory.
                     D3D12DebugLayer = Array.IndexOf(Platform.Args.Argv, "--d3d12-debug") >= 0,
-                    // The scene store starts at its steady-state size and the idle trim never shrinks below it: growing
-                    // from 64 by doubling ~45 column arrays put LOH allocations and gen2 collections inside the first
-                    // scrolls and navigations (realize=6.8/13.9 ms frames with gc=…/1, 2026-09-23).
-                    InitialSceneCapacity = 8192,
+                    InitialSceneCapacity = SceneCapacity,
                     // App-wide UI zoom, seeded BEFORE the first frame (the theme discipline: no startup jump). Not the
                     // persisted level as it stands: the Auto zoom the 500 ms loop would settle this window on, so the first
                     // frame is final and nothing re-zooms half a second later.
