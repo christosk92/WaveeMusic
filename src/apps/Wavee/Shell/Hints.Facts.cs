@@ -23,6 +23,8 @@
 //   App mode while Mica ..... the App mode dial's write (`SettingsWrites` → `Hints.OnDialWritten`)
 //   cache near its budget ... `ChunkDiskCache.Occupancy` (NEW narrow read: the cache's running byte counter and its effective budget,
 //                             no directory walk)
+//   the Lossless badge up ... the hint watcher's effect on the player bar's `LosslessFormat` (the host's one rule: the switch, a lossless
+//                             stream opened on this device); the tip's slot is mounted only where the theme draws the badge
 
 using System.Diagnostics;
 using FluentGpu.Localization;
@@ -50,6 +52,7 @@ public static class HintFacts
     static bool s_daylistRolled, s_appModeWhileMica;
     static long s_audiobookMs, s_audiobookSince;
     static bool s_byHand, s_signInAsked;
+    static bool s_losslessBadge;   // the bar's Lossless badge has a format to show (the state now, not a count: a reset keeps it)
 
     /// <summary>Forget the session's facts (the inspector's <c>hint reset</c>).</summary>
     internal static void ResetSession()
@@ -221,6 +224,14 @@ public static class HintFacts
         Hints.Bump();
     }
 
+    /// <summary>The player bar's Lossless badge came up (a lossless stream opened on this device with the badge's switch on) or went.</summary>
+    public static void LosslessBadge(bool on)
+    {
+        if (on == s_losslessBadge) return;
+        s_losslessBadge = on;
+        Hints.Bump();
+    }
+
     /// <summary>A dial write that is itself a fact; true when it changed one.</summary>
     internal static bool DialWritten(string dialId)
     {
@@ -310,6 +321,10 @@ public static class HintFacts
         return s_audiobookSince > 0 && (hour >= HintRules.BedtimeHour || hour < HintRules.BedtimeEndHour)
                && s_audiobookMs + (Now - s_audiobookSince) >= HintRules.AudiobookPlayedMs;
     }
+
+    /// <summary>#18: the player bar's Lossless badge is up. The slot that asks is the one each theme mounts beside the badge, only where its bar
+    /// draws it (no tier drops it there), so "the first time the badge is on screen" is this fact read by that slot.</summary>
+    public static bool LosslessBadgeOnScreen() => s_losslessBadge;
 
     /// <summary>#16: the playback cache is 95 % of its budget (an unlimited cache never fills).</summary>
     public static bool CacheAlmostFull()

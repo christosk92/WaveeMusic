@@ -37,7 +37,7 @@ internal static class CommonHint
         {
             if (p.Act is { } act && p.ActionLabel is { } label)
                 actions.Add(CommonTouch.Button(label, act, target, accent: p.Action == HintAction.Inline) with { Key = "hint:" + p.Id + ":act" });
-            if (p.Dismiss is { } dismiss) actions.Add(CommonTouch.Link(Loc.Get(Strings.Hints.NotNow), dismiss, target) with { Key = "hint:" + p.Id + ":dismiss" });
+            if (p.Dismiss is { } dismiss) actions.Add(CommonTouch.Link(p.DismissLabel ?? Loc.Get(Strings.Hints.NotNow), dismiss, target) with { Key = "hint:" + p.Id + ":dismiss" });
         }
         var line = Ui.Body(p.Done ? p.DoneText ?? p.Text : p.Text) with { Shrink = 1f, MinWidth = 0f };
         return new BoxEl

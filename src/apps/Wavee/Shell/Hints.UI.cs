@@ -13,11 +13,11 @@
 //                   the target so the theme opens its TeachingTip or anchored line there (an overlay: nothing in the page moves).
 //   HomeBanner()    the InfoBar slot over the top of Home (hints #8 and #9): floats in the overlay layer under the runtime banner and
 //                   never reflows the page; mounted only while Home is the page.
-//   Watcher()       one zero box in the overlay layer whose effects read the signals some facts follow (an audiobook playing) and ask,
-//                   once per launch, whether it was by hand right after signing in.
+//   Watcher()       one zero box in the overlay layer whose effects read the signals some facts follow (an audiobook playing, the player
+//                   bar's Lossless badge) and ask, once per launch, whether it was by hand right after signing in.
 // Mounted: the lyrics footer (`AiLyrics.Footer`, every lyrics surface but the mini player's face) and the Home banner here; the devices
-// flyout, the bell panel's header, the queue panel, the player bar's play button and volume, the page head or back button and WinUI's title
-// bar by each theme's own surface (phase 6).
+// flyout, the bell panel's header, the queue panel, the player bar's play button, volume and Lossless badge, the page head or back button and
+// WinUI's title bar by each theme's own surface (phase 6).
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -140,6 +140,9 @@ public static partial class Hints
                 var current = Playback.Current.Peek();
                 HintFacts.AudiobookPlaying(playing && current.Kind == EntityKind.Episode && new Episode(current.Slot).IsAudiobookChapter);
             });
+            // The player bar's Lossless badge (auto-tracked through the bar's own read: the stream's format on each open, the badge's switch,
+            // the output's device; held under the full-screen stage as the bar is): the tip's trigger.
+            UseEffect(() => HintFacts.LosslessBadge(Shell.PlayerBarHost.Props.LosslessFormat?.Invoke() is not null));
             return Nothing;
         }
     }

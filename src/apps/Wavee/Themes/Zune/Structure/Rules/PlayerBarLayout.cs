@@ -32,6 +32,9 @@ public static class ZunePlayerLayout
     public const string BarKey = "zune-bar", SeekRowKey = "zune-bar-seek", SeekKey = "zune-bar-seek-line", RowKey = "zune-bar-row",
         DiscKey = "zune-bar-disc", LeftKey = "zune-bar-left", RightKey = "zune-bar-right";
 
+    /// <summary>The artists line's names and the Lossless mark after them (every theme's mark key, so the inspector finds it by one name).</summary>
+    public const string ArtistsLineKey = "np-artists-line", LosslessKey = "np-lossless";
+
     /// <summary>The panel bodies': the lyrics header's meta row, the queue's mode row, the hero's deck slot and meta, the device picker's column.</summary>
     public const string LyricsMetaKey = "zune-lyrics-meta", QueueModesKey = "zune-queue-modes", HeroSlotKey = "zune-hero-slot",
         HeroMetaKey = "zune-hero-meta", PickerKey = "zune-device-picker";
@@ -69,6 +72,14 @@ public static class ZunePlayerLayout
 
     /// <summary>Between two credited names on the artists line (and in its plain words: the marquee's restart key and tooltip).</summary>
     public const string CreditSeparator = ", ";
+
+    /// <summary>The Lossless mark's separator from the names ("artist · lossless"): the line's own type in its secondary ink; the word after it
+    /// in the accent, cased by the label role (Zune: lowercase), so only its ink sets it apart.</summary>
+    public const string LosslessSeparator = " · ";
+
+    /// <summary>The first level whose identity column holds the names AND the Lossless mark at Zune's type (full's 320 and up); below it the
+    /// names are what the line is for, and the mark's place stays empty (its holder kept, so a level crossing rebuilds nothing).</summary>
+    public const ZuneBarLevel LosslessFrom = ZuneBarLevel.Full;
 
     // ── the identity ─────────────────────────────────────────────────────────────────────────────────────────────────
 

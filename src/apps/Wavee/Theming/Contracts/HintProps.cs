@@ -76,7 +76,8 @@ public sealed record HintProps
     /// <summary>The button: an inline write through the dial's writer, a deep link, or opening the pointer's place. Null with no button.</summary>
     public Action? Act { get; init; }
 
-    /// <summary>"×" / "Not now": not again for the hint's snooze, the third retires it. Null for a state line.</summary>
+    /// <summary>"×" / "Not now" (or the hint's own <see cref="DismissLabel"/>): not again for the hint's snooze, the third retires it (some
+    /// retire on the first). Null for a state line.</summary>
     public Action? Dismiss { get; init; }
 
     /// <summary>"Don't show tips" (the overflow of every hint): writes the global switch. Null for a state line.</summary>
@@ -121,6 +122,12 @@ public sealed record HintProps
     /// <summary>A short heading for a template that titles its hint (a TeachingTip): the dial's own name ("Crossfade", "Audio
     /// normalization"), or null where the hint has no dial name. Contract 2.2.</summary>
     public string? Title { get; init; }
+
+    /// <summary>The hint's own words for <see cref="Dismiss"/> where the dismiss is an answer rather than a "later" (the Lossless badge's tip:
+    /// "Hide badge" or "Keep it"), or null for the theme's usual dismiss ("Not now", a close glyph). A template that words its dismiss says
+    /// these words instead; one that closes with a glyph draws them as a worded action in the glyph's place (never both: one verb, one
+    /// control). Null on a confirmation, whose dismiss only closes it. Optional.</summary>
+    public string? DismissLabel { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.Explainer"/> (design 6.5): a dial's explanation badge and the tip it opens. The core

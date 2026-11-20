@@ -11,6 +11,11 @@
 // rows instead of widening; and it is placed on the side the theme names (below or above the control: the side that covers least), aligned
 // to the control's start, centre or end and then held inside the surface's inset column, following the control while it is up.
 //
+// OUTSIDE A BAR. Where the surface is a bar whose rows stack (the player bar: the Lossless badge sits under the title, the heart beside them),
+// a line hung from the control's own edge lay over the rows above it. There the theme names the surface's edge instead (`HintFloatPlace.Edge`):
+// the line sits wholly outside the surface, the theme's gap from its edge (`EdgeGap`; 0 lays it on the edge, a band the bar grows), still
+// aligned along the control.
+//
 // The overlay is a raw one (the tooltip chrome's 167 ms fade), never a focus trap and never light-dismissed: the hint's own words answer it
 // (its action, "not now", "×"), it takes no focus, and the host closes it with its target. It opens again when the offer turns into its
 // confirmation.
@@ -27,8 +32,9 @@ namespace Wavee.Themes.Common;
 internal enum HintFloatAlign : byte { Start, Center, End }
 
 /// <summary>Where a floating line sits: below or above its control, its alignment, the inset it keeps from its surface's edges and the widest it
-/// grows (all the theme's Rules numbers).</summary>
-internal readonly record struct HintFloatPlace(bool Below, HintFloatAlign Align, float Inset, float MaxWidth);
+/// grows (all the theme's Rules numbers). <paramref name="Edge"/>: it hangs from the surface's own edge on its side (the player bar's top), wholly
+/// outside the surface and <paramref name="EdgeGap"/> from it, never over the surface's rows; otherwise from the control's edge.</summary>
+internal readonly record struct HintFloatPlace(bool Below, HintFloatAlign Align, float Inset, float MaxWidth, bool Edge = false, float EdgeGap = 0f);
 
 /// <summary>The anchored line's overlay (see the file header).</summary>
 internal static class CommonHintFloat
@@ -67,8 +73,10 @@ internal static class CommonHintFloat
                 return !node.IsNull && scene.IsLive(node) ? scene.AbsoluteRect(node) : new RectF(0f, 0f, window.Width, window.Height);
             }
             float width = MathF.Max(0f, MathF.Min(place.MaxWidth, Surface().W - 2f * place.Inset));
-            // The rect the line hangs from: the control's own edge, as wide as the line, slid along the surface's inset column so the line never
-            // leaves it. Read on every placement, so it follows the control and its surface while it is up.
+            bool edge = place.Edge && bounds is not null;   // a surface's edge needs the surface (the window has none to stay outside)
+            // The rect the line hangs from: the control's own edge (or, outside a bar, the surface's edge on its side), as wide as the line, slid
+            // along the surface's inset column so the line never leaves it. Read on every placement, so it follows the control and its surface
+            // while it is up.
             RectF Anchor()
             {
                 var node = target();
@@ -81,7 +89,18 @@ internal static class CommonHintFloat
                     _ => a.X,
                 };
                 float left = s.X + place.Inset, right = MathF.Max(left, s.X + s.W - place.Inset - width);
-                return new RectF(Math.Clamp(x, left, right), a.Y, width, a.H);
+                x = Math.Clamp(x, left, right);
+                if (!edge) return new RectF(x, a.Y, width, a.H);
+                // Outside the surface: the rect runs from the surface's edge (less the positioner's own flyout gap, so the theme's gap is the
+                // one between the line and the edge) to the control's far side, so a line with no room on its side flips past the control.
+                float m = FlyoutPositioner.FlyoutMargin;
+                if (place.Below)
+                {
+                    float bottom = MathF.Max(a.Y + a.H, s.Y + s.H + place.EdgeGap - m);
+                    return new RectF(x, a.Y, width, bottom - a.Y);
+                }
+                float top = MathF.Min(a.Y, s.Y - place.EdgeGap + m);
+                return new RectF(x, top, width, a.Y + a.H - top);
             }
             OverlayHandle handle = overlay.OpenAt(Anchor, () => build(hint, width),
                 place.Below ? FlyoutPlacement.BottomEdgeAlignedLeft : FlyoutPlacement.TopEdgeAlignedLeft,

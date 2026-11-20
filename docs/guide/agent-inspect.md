@@ -591,8 +591,10 @@ track follows its lyrics: render the stage while playing, no pause needed. `ago=
 `format=<badge>` makes the deck's load report that format badge and its open the format the badge names (`Playback.StageFormat`: the open's
 format, then the audio host's own reducer input), after the load
 lands so the fake open's "OGG 320" cannot overwrite it; without a `uri` it restamps the playing load. A FLAC badge stands a lossless stream:
-`play uri=spotify:track:tr3`, then `play format="FLAC 24/96"`, and Classic's bar shows its Lossless pill (`np-lossless`, its tooltip the badge)
-(Standard and wider; the bar reads the opened format, the badge is its tooltip) and the stage its format chip. The fake load lands on the wall clock; `play uri=` waits for it (up to 5 s) before it settles and replies
+`play uri=spotify:track:tr3`, then `play format="FLAC 24/96"`, and every theme's bar shows its Lossless mark after the artists (`np-lossless`, its
+tooltip the badge; Classic from Standard, WinUI in every full bar, Zune from its full level, 1240; the bar reads the opened format, the badge is its
+tooltip) and the stage its format chip. `setting id=sound.losslessBadge value=false` hides the mark at once (the host then hands the themes no
+format). The fake load lands on the wall clock; `play uri=` waits for it (up to 5 s) before it settles and replies
 `phase` and `loadFrames` (above), so the next command reads the playing bar; the remote line shows through the load as the title and artists do.
 
 ### `transport {do, value?, uri?, ms?}`
@@ -930,6 +932,19 @@ hint show id=ai-lyrics          # with the lyrics pane open: the stand-in in the
 setting id=crossfade value=true # retires the crossfade hint, and appears in `recent`
 hint list
 recent
+```
+
+The Lossless badge's tip (`lossless-badge`, the player bar's surface) points at the mark (`np-lossless`): WinUI's TeachingTip, Classic's and
+Zune's line, each wholly above the bar's top edge (never over its title row). Its slot is mounted wherever the bar's artists line holds the mark's
+place (the widths above), so stand a lossless stream there first, then force it. In every theme `click key=hint:lossless-badge:act` ("Hide
+badge") writes the switch off and turns the tip into its confirmation ("Badge hidden", `hint:lossless-badge:change`), and
+`hint:lossless-badge:dismiss` is "Keep it" (it retires the tip); WinUI's tip keys its bubble `hint:lossless-badge` and its row's buttons the
+same way (`:act`, `:dismiss`, `:more`). It skips the two minutes after launch; the track's first seconds still hold it.
+
+```text
+play uri=spotify:track:tr3
+play format="FLAC 24/96"
+hint show id=lossless-badge
 ```
 
 ### `find {key | prefix, visibleOnly?, depth?}`

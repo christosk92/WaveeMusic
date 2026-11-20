@@ -1572,6 +1572,7 @@
       "appearance.playsColumn": "play+count streams popularity column track+list",
       "sound.quality": "bitrate kbps lossless flac hi+res high+resolution bit+depth streaming+quality sound+quality 320 audiophile better+sound",
       "sound.meteredQuality": "mobile+data hotspot data+saver cellular limited+data metered",
+      "sound.losslessBadge": "quality sound+quality audio+quality lossless+mark lossless+label lossless+icon format+badge player+bar hide+lossless",
       "sound.normalization": "volume+jumps louder quieter too+quiet too+loud same+volume level+volume replaygain lufs songs+louder+than+others",
       "sound.normalization.mode": "loud quiet normal level volume",
       "sound.normalization.album": "album+volume track+gain album+gain",
@@ -2112,6 +2113,8 @@
       "seconds": "{value} seconds",
       "reset": "Reset",
       "resetCurve": "Reset curve to flat",
+      "losslessBadge": "Show the Lossless badge",
+      "losslessBadgeSub": "In the player bar while a lossless stream plays",
       "presets": {
         "flat": "Flat",
         "flatSub": "No processing - flat, transparent playback",
@@ -5288,6 +5291,7 @@
     "daylistOptions": { "text": "Daylist options" },
     "shortcuts": { "text": "Space plays and pauses. See every shortcut.", "action": "Shortcuts" },
     "sleepTimer": { "text": "Falling asleep? Set a sleep timer.", "action": "Sleep timer" },
-    "cacheFull": { "text": "Your playback cache is almost full ({used} of {budget}).", "action": "Change size" }
+    "cacheFull": { "text": "Your playback cache is almost full ({used} of {budget}).", "action": "Change size" },
+    "losslessBadge": { "title": "You're listening in lossless", "text": "This badge shows while a lossless stream plays.", "action": "Hide badge", "dismiss": "Keep it", "done": "Badge hidden" }
   }
 }

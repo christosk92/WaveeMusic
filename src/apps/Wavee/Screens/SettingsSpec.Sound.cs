@@ -1,6 +1,7 @@
 // ── Screens/SettingsSpec.Sound.cs — Sound: what you hear (the dials and their verbs) ───────────────────────────────────────────
 //
-// Role: CORE (settings rework phase 1). Quality (the streaming ladder with the D7 lossless rung, the metered cap) · Loudness and
+// Role: CORE (settings rework phase 1). Quality (the streaming ladder with the D7 lossless rung, the metered cap, the player bar's
+// Lossless badge) · Loudness and
 // volume (normalization, remember volume) · Equalizer (the curve bound to the live DSP) · Output and Connect (the output device the
 // device picker sets, this PC's Connect name).
 //
@@ -28,7 +29,13 @@ public static partial class SettingsSpec
             // "Unknown" included. The view words it; the dial carries no static caption.
             Make("sound.meteredQuality", K.Choice, Strings.Settings.Playback.MeteredQuality,
                 SettingsWriter.OfChoice("audio.meteredCap", SettingsVerbs.SetMeteredQuality), legacy: ["meteredQuality"], glyph: "RadioTower",
-                value: _ => Platform.Network.MeteredQualityCap.Peek(), choices: QualityChoices)),
+                value: _ => Platform.Network.MeteredQualityCap.Peek(), choices: QualityChoices),
+            // The player bar's Lossless badge, DEFAULT ON: the one display option about quality, after the two rungs it reports on (what is asked
+            // for, and the metered cap). Off, the bar's host hands every theme no format; the write bumps the bar's epoch, so it applies at once.
+            Make("sound.losslessBadge", K.Toggle, Strings.Settings.Sound.LosslessBadge,
+                SettingsWriter.OfToggle("playerBar.losslessBadge", WriteBool(Platform.Keys.PlayerBarLosslessBadge, _ => Prefs.PlayerBar.Bump())),
+                glyph: "Tag", captionKey: Strings.Settings.Sound.LosslessBadgeSub, value: BoolOf(Platform.Keys.PlayerBarLosslessBadge),
+                aliases: ["flac", "hires", "hi-res"])),
 
         Group("loudness", Strings.Settings.Groups.Sound.Loudness, null,
             // G-132 / D5: the switch, the mode and album mode all apply LIVE to the playing track.

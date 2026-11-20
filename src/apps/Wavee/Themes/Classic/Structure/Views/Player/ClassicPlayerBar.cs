@@ -162,6 +162,7 @@ internal static partial class ClassicPlayerBar
         Element titleSlot = Controls.TrimTip(titleEl, v.Marquee && !mini ? "" : props.TitleText(), titleRun) with { Key = titleKey };
 
         var metaKids = new List<Element>(3);
+        bool losslessDrawn = false;   // the mark's place is on the line (its tip's slot is mounted with it, below)
         if (mini)
         {
             // The second line: the artists or, while the output plays on another device, "Playing on" in their place (the bar's remote state at
@@ -197,6 +198,7 @@ internal static partial class ClassicPlayerBar
                 // shrinks to the column and scrolls, the mark held at the end. The mark is Standard and wider only: below it (Small's
                 // 800) its 51 DIP cut the names mid-word, and the names are what the line is for.
                 bool losslessRoom = barTier.MinLevel >= ClassicPlayerTiers.Comfortable && props.LosslessFormat is not null;
+                losslessDrawn = losslessRoom;
                 BoxEl names = v.Marquee
                     ? Marquee.Content(Embed.Comp(() => new Credits(props, compact: false)), Prop.Of(() => props.Credits().Line(ClassicTransportLayout.CreditSeparator)),
                         new Marquee.Style
@@ -215,7 +217,7 @@ internal static partial class ClassicPlayerBar
                         ?
                         [
                             names with { Key = "np-artists-line", Grow = 0f, Shrink = 1f },
-                            Embed.Comp(() => new LosslessMark(props)) with { Key = "np-lossless" },
+                            Embed.Comp(() => new LosslessMark(props, anchors.OnLossless)) with { Key = "np-lossless" },
                         ]
                         : [names with { Key = "np-artists-line", Grow = 0f, Shrink = 1f }],
                 });
@@ -621,12 +623,14 @@ internal static partial class ClassicPlayerBar
         // with the edge. The slot is the layout firewall (a title change re-solves THIS subtree only). It sits under an auto-sized root: the
         // view's anchor mirrors its root's DECLARED height, so a slot that was the root left the anchor (and the page above) at the new height
         // at once while the slot eased inside it.
-        // The hints that point at the play disc and the volume: zero boxes under the slot (no room), only where the control is drawn.
+        // The hints that point at the play disc, the volume and the Lossless mark: zero boxes under the slot (no room), only where the control is
+        // drawn (the mark's tip: wherever the line has the mark's place, so its confirmation outlives a "Hide badge").
         bool volumeShown = !mini && (v.Slots & (RightSlot.Volume | RightSlot.VolumeSlider)) != 0;
         Element[] hints = v.OwnsTransport && volumeShown
             ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)]
             : v.OwnsTransport ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar)]
             : volumeShown ? [Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)] : [];
+        if (losslessDrawn) hints = [.. hints, Hints.Pointer(HintSurfaces.PlayerBar, anchors.Lossless, anchors.Bar)];
         return new BoxEl
         {
             Direction = 1, Shrink = 0f,
@@ -725,13 +729,15 @@ internal static partial class ClassicPlayerBar
 
     /// <summary>The "· Lossless" mark after the credits line: plain text on the line's own type, the separator in its secondary ink and the word
     /// in the accent text ink, while a lossless stream plays on this device; its tooltip the stream's own badge ("FLAC 24/96"); nothing at all
-    /// otherwise. Its own component, so a format change re-renders the mark and not the bar.</summary>
-    private sealed class LosslessMark(PlayerBarProps props) : Component
+    /// otherwise. Its own component, so a format change re-renders the mark and not the bar. Its root is one box in both states (empty, 0 x 0,
+    /// with no lossless stream), captured by <paramref name="realized"/>: the badge tip's anchor, which outlives a "Hide badge" so the tip's
+    /// confirmation still points where the badge was.</summary>
+    private sealed class LosslessMark(PlayerBarProps props, Action<NodeHandle> realized) : Component
     {
         public override Element Render()
         {
             string? format = props.LosslessFormat?.Invoke();
-            if (format is null) return new BoxEl { HitTestVisible = false };
+            if (format is null) return new BoxEl { HitTestVisible = false, OnRealized = realized };
             var mark = new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
@@ -748,7 +754,7 @@ internal static partial class ClassicPlayerBar
                     },
                 ],
             };
-            return ToolTip.Wrap(mark, format);
+            return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, OnRealized = realized, Children = [ToolTip.Wrap(mark, format)] };
         }
     }
 
@@ -801,19 +807,22 @@ internal static partial class ClassicPlayerBar
     /// whose <paramref name="face"/> is either lit (opaque, hit-testable) or dark (transparent, inert) — cross-faded over
     /// the control token, never entered/exited, so a face lighting up moves NOTHING around it. The face's own
     /// <c>IsEnabled</c> should follow <paramref name="lit"/> too, so a dark face is not a focus stop.</summary>
-    /// <summary>The play disc's and the volume control's nodes, captured once per bar with stable delegates (a hint line's anchor).</summary>
+    /// <summary>The play disc's, the volume control's and the Lossless mark's nodes, captured once per bar with stable delegates (a hint line's
+    /// anchor).</summary>
     private sealed class HintAnchors
     {
-        NodeHandle _play, _volume;
-        public readonly Action<NodeHandle> OnPlay, OnVolume;
-        public readonly Func<NodeHandle> Play, Volume, Bar;   // Bar: the line stays inside the bar's band
+        NodeHandle _play, _volume, _lossless;
+        public readonly Action<NodeHandle> OnPlay, OnVolume, OnLossless;
+        public readonly Func<NodeHandle> Play, Volume, Lossless, Bar;   // Bar: the line stays inside the bar's band
 
         public HintAnchors(Ref<NodeHandle> bar)
         {
             OnPlay = h => _play = h;
             OnVolume = h => _volume = h;
+            OnLossless = h => _lossless = h;
             Play = () => _play;
             Volume = () => _volume;
+            Lossless = () => _lossless;
             Bar = () => bar.Value;
         }
     }
