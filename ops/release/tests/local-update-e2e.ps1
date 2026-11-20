@@ -1356,7 +1356,7 @@ function Publish-LocalFeed {
 function New-DatedChangelogCopy {
     <#
       A COPY of CHANGELOG.md with "## [<semver>] - unreleased" dated to today (UTC), which is the one edit
-      wavee-release.ps1's bump phase makes before handing the file to the release tool. A copy, because the harness
+      release runner's bump step makes before handing the file to the release tool. A copy, because the harness
       must leave `git status` exactly as it found it. Returns the path, or '' when there is nothing to date.
 
       (?=\r?$): CHANGELOG.md is CRLF on disk and .NET's multiline `$` only sees `\n`, so the CR is matched by a
