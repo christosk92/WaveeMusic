@@ -323,91 +323,6 @@ public static partial class Spotify
             return PostCommand(endpoint, targetDeviceId, buffer.WrittenSpan, ct);
         }
 
-        /// <summary>"Play this context from this row" on the device that owns playback — the desktop `play` envelope
-        /// (0.2.9 <c>OutboundEnvelope.Play</c>): an opaque, URI-only context, a play_origin, `prepare_play_options` with
-        /// the skip_to track and the shuffle override, and `play_options` interactive/replace/immediately.
-        /// <paramref name="feature"/> overrides the play_origin feature <see cref="PlayFeatureOf"/> derives from the uri (a Liked
-        /// Songs play names its playlist but the feature <see cref="LikedFeature"/>).</summary>
-        public static bool PlayContext(string targetDeviceId, string contextUri, string? trackUri, bool shuffle, CancellationToken ct,
-            int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false, string? feature = null)
-        {
-            if (!Egress.Admits(contextUri.AsSpan()) || (!string.IsNullOrEmpty(trackUri) && !Egress.Admits(trackUri.AsSpan())))
-            {
-                Log.Info("spotify", "play not forwarded: a non-Spotify item cannot play on another device");
-                return false;
-            }
-            var buffer = new ArrayBufferWriter<byte>(768);
-            PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs, skipUid, skipIndex, video,
-                feature);
-            return PostCommand("play", targetDeviceId, buffer.WrittenSpan, ct);
-        }
-
-        /// <summary>The uid a <c>skip_to</c> may carry: only the 32-lowercase-hex uid the owner's CONTEXT stamped on a row, else
-        /// null. Never our own <c>q&lt;n&gt;</c> or packed-hex mint — an owner that does not know the uid ignores it at best.
-        /// PURE.</summary>
-        public static string? SkipUidOf(string? uid)
-        {
-            if (uid is not { Length: 32 }) return null;
-            foreach (char c in uid) if (!(c is >= '0' and <= '9' or >= 'a' and <= 'f')) return null;
-            return uid;
-        }
-
-        /// <summary>The `play` envelope body. PURE (SpotifyConnectTests). <paramref name="trackUri"/> null/empty plays the
-        /// context from its head. `always_play_something` false and `license` premium as every desktop capture carries.
-        /// Owners match <c>skip_to</c> by uid, then uri, then index — a uri alone lands on the FIRST copy of a track that sits in
-        /// the context twice — so the row's <paramref name="skipUid"/> (<see cref="SkipUidOf"/>) and a known
-        /// <paramref name="skipIndex"/> (&gt;= 0) ride beside the uri; everything else stays thin. <paramref name="video"/> asks the
-        /// owner for the row's music video — the desktop's "song videos" play, <c>is_single_track_video_content</c> in the context
-        /// metadata (all.saz 1831). <paramref name="feature"/> null derives the play_origin feature from the uri.</summary>
-        public static void PlayBody(IBufferWriter<byte> into, string contextUri, string? trackUri, bool shuffle, string deviceId,
-            string commandId, string intentId, long nowMs, int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false,
-            string? feature = null)
-        {
-            using var w = new Utf8JsonWriter(into);
-            w.WriteStartObject();
-            w.WriteStartObject("command");
-            w.WriteString("endpoint", "play");
-            w.WriteStartObject("context");
-            w.WriteString("entity_uri", contextUri);
-            w.WriteString("uri", contextUri);
-            w.WriteString("url", "context://" + contextUri);
-            w.WriteStartObject("metadata");
-            if (video) w.WriteString("is_single_track_video_content", "true");
-            w.WriteEndObject();
-            w.WriteEndObject();
-            w.WriteStartObject("play_origin");
-            w.WriteString("feature_identifier", feature ?? PlayFeatureOf(contextUri));
-            w.WriteString("feature_version", "harmony");
-            w.WriteString("referrer_identifier", "harmony");
-            w.WriteEndObject();
-            w.WriteStartObject("prepare_play_options");
-            w.WriteBoolean("always_play_something", false);
-            if (fromMs >= 0) w.WriteNumber("seek_to", fromMs);
-            if (!string.IsNullOrEmpty(trackUri))
-            {
-                w.WriteStartObject("skip_to");
-                w.WriteString("track_uri", trackUri);
-                if (SkipUidOf(skipUid) is { } uid) w.WriteString("track_uid", uid);
-                if (skipIndex >= 0) w.WriteNumber("track_index", skipIndex);
-                w.WriteEndObject();
-            }
-            w.WriteString("license", "premium");
-            w.WriteStartObject("player_options_override");
-            w.WriteBoolean("shuffling_context", shuffle);
-            w.WriteEndObject();
-            w.WriteEndObject();
-            w.WriteStartObject("play_options");
-            w.WriteString("reason", "interactive");
-            w.WriteString("operation", "replace");
-            w.WriteString("trigger", "immediately");
-            w.WriteEndObject();
-            LoggingParams(w, deviceId, commandId, "", nowMs);
-            w.WriteEndObject();
-            w.WriteString("connection_type", "wlan");
-            w.WriteString("intent_id", intentId);
-            w.WriteEndObject();
-        }
-
         /// <summary>"Jump to this row of YOUR queue" on the device that owns playback — the desktop `next_track` envelope; with
         /// an empty <paramref name="trackUri"/> it is the plain skip button, which the official client also spells `next_track`
         /// (7 of 7 captured; the gateway rewrites it to `skip_next` for dealer delivery). Blocks; api threads only.</summary>
@@ -474,18 +389,6 @@ public static partial class Spotify
             w.WriteString("connection_type", "wlan");
             w.WriteString("intent_id", intentId);
             w.WriteEndObject();
-        }
-
-        /// <summary>The play_origin's feature for a context uri — the surface the desktop names for the same kind. PURE.</summary>
-        public static string PlayFeatureOf(string contextUri)
-        {
-            if (contextUri.StartsWith("spotify:playlist:", StringComparison.Ordinal)) return "playlist";
-            if (contextUri.StartsWith("spotify:album:", StringComparison.Ordinal)) return "album";
-            if (contextUri.StartsWith("spotify:artist:", StringComparison.Ordinal)) return "artist";
-            if (contextUri.StartsWith("spotify:show:", StringComparison.Ordinal)) return "show";
-            if (contextUri.Contains(":collection", StringComparison.Ordinal)) return "your_library";
-            if (contextUri.StartsWith("spotify:track:", StringComparison.Ordinal) || contextUri.StartsWith("spotify:episode:", StringComparison.Ordinal)) return "track";
-            return "harmony";
         }
 
         /// <summary>Volume is not a player verb: it is a PUT with a three-field `SetVolumeCommand` protobuf body,
@@ -659,12 +562,15 @@ public static partial class Spotify
             w.WriteEndObject();
         }
 
-        /// <summary><c>logging_params</c> as the captures carry it: received time echoing initiated time, the interaction id.</summary>
-        static void LoggingParams(Utf8JsonWriter w, string deviceId, string commandId, string interactionId, long nowMs)
+        /// <summary><c>logging_params</c> as the captures carry it: received time echoing initiated time, the interaction id.
+        /// <paramref name="receivedTime"/> false leaves the received time out, as every official play that names its page inline
+        /// does (bigone.saz 578, 1391; all.saz 1169).</summary>
+        static void LoggingParams(Utf8JsonWriter w, string deviceId, string commandId, string interactionId, long nowMs,
+            bool receivedTime = true)
         {
             w.WriteStartObject("logging_params");
             w.WriteNumber("command_initiated_time", nowMs);
-            w.WriteNumber("command_received_time", nowMs);
+            if (receivedTime) w.WriteNumber("command_received_time", nowMs);
             w.WriteStartArray("page_instance_ids"); w.WriteEndArray();
             w.WriteStartArray("interaction_ids");
             if (interactionId.Length > 0) w.WriteStringValue(interactionId);
@@ -687,6 +593,15 @@ public static partial class Spotify
             "disallow_reordering_in_context_tracks_reasons", "disallow_removing_from_next_tracks_reasons",
             "disallow_removing_from_context_tracks_reasons", "disallow_updating_context_reasons",
         ];
+
+        /// <summary><c>"restrictions": { the 22 lists, each empty }</c>: what every captured set_queue row, play context and
+        /// update_context context carries (moreptions.saz 794; bigone.saz 891, 605).</summary>
+        static void EmptyRestrictions(Utf8JsonWriter w)
+        {
+            w.WriteStartObject("restrictions");
+            foreach (string key in RestrictionKeys) { w.WriteStartArray(key); w.WriteEndArray(); }
+            w.WriteEndObject();
+        }
 
         /// <summary>One player verb POSTed to the owner's command route, and its one <c>connect.cmd</c> line
         /// (<see cref="LogCommand"/>). <paramref name="endpoint"/> is the verb as the body spells it, for the log only.</summary>

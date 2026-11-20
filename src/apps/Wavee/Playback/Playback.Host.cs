@@ -1161,10 +1161,11 @@ public static partial class Playback
         }
         if (s_fx.RemoteCmd == RemoteCmd.PlayContext)
         {
-            // The one play send (Playback.Host.Forward.cs): the Liked rule, then the envelope. The uid is spelled HERE (UI
-            // thread: the uid book is ours alone).
-            Span<char> uidChars = stackalloc char[UidBook.MaxChars];
-            string? skipUid = Spotify.Connect.SkipUidOf(new(uidChars[..s_uids.Format((ulong)s_fx.RemoteArg, uidChars)]));
+            // The one play send (Playback.Host.Forward.cs): the Liked rule, then the envelope. The uid is read HERE (UI thread:
+            // the uid book is ours alone), and only one the OWNER sent counts — a booked uid, its text exactly as the owner
+            // spelled it (20 or 32 hex from its context, remote-play plan 4.1). A packed 16-hex id is never booked, so a row
+            // id Wavee minted itself, which formats the same way, can never go out as a uid the owner does not know.
+            string? skipUid = Spotify.Connect.SkipUidOf(s_uids.TextOf((ulong)s_fx.RemoteArg));
             SendPlay(target, device, s_fx.RemoteContext, s_fx.RemoteTrack, s_fx.RemoteFlag, -1, skipUid, s_fx.RemoteVideo);
             return;
         }

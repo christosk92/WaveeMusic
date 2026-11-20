@@ -2199,6 +2199,8 @@ public readonly partial struct Track
             var src = _latest.Source;
             var view = ViewNow();
             if (view.Length == 0) return;
+            // Another device owns playback: the play goes THERE, and it is told the rows as shown (remote-play plan 4.1, 4.2).
+            Playback.PageFacts? facts = Playback.ForwardsPlays ? RemoteFacts(src, view) : null;
             if (!src.HasEpisodes)
             {
                 if ((uint)display >= (uint)view.Length) display = 0;
@@ -2206,7 +2208,7 @@ public readonly partial struct Track
                 try
                 {
                     for (int i = 0; i < view.Length; i++) refs[i] = new EntityRef(EntityKind.Track, src.At(view[i]).Slot);
-                    Playback.PlayRows(refs.AsSpan(0, view.Length), display, src.Context.Id);
+                    Playback.PlayRows(refs.AsSpan(0, view.Length), display, src.Context.Id, -1, facts);
                 }
                 finally { System.Buffers.ArrayPool<EntityRef>.Shared.Return(refs); }
                 return;
@@ -2222,7 +2224,24 @@ public readonly partial struct Track
                 refList.Add(new EntityRef(kind == EntityKind.Episode ? EntityKind.Episode : EntityKind.Track, slot));
             }
             if (refList.Count == 0) return;
-            Playback.PlayRows(refList.ToArray(), target, src.Context.Id);
+            Playback.PlayRows(refList.ToArray(), target, src.Context.Id, -1, facts);
+        }
+
+        /// <summary>What a play forwarded to another device sends beside the rows (remote-play plan 4.1, 4.2; read by
+        /// <c>Playback.ShapePlay</c>): per visible row, in display order, the uid its LIST gave it (a playlist's item id; none for
+        /// an album or the Liked list) and its index in the list's own order; then the view's sort, its trimmed text query, and
+        /// whether any other filter narrows it. Built only while another device owns playback, on a click.</summary>
+        Playback.PageFacts RemoteFacts(TableSource src, ReadOnlySpan<int> view)
+        {
+            var uids = new StringId[view.Length];
+            var origins = new int[view.Length];
+            for (int i = 0; i < view.Length; i++)
+            {
+                origins[i] = view[i];
+                uids[i] = src.ItemId(view[i]);
+            }
+            FilterState filters = _filters.Peek();
+            return new Playback.PageFacts(uids, origins, _sort.Peek(), _query.Peek().Trim(), !filters.IsDefault);
         }
 
         /// <summary>The page's ONE shuffle (G-264; 0.2.9 `DetailShell.Shuffle`): the command bar, its "…" item and the vertical
