@@ -1344,20 +1344,23 @@ public static partial class ReleaseNotes
             sb.Append('\n');
         }
 
-        /// <summary>The folded <c>&lt;details&gt;Other changes&lt;/details&gt;</c> appendix — every commit in range
-        /// that cites no section item (<see cref="ReleaseNotesDocument.UnlinkedCommits"/>), newest first, in at most
-        /// <paramref name="budget"/> characters. Commits that do not fit are counted on a closing line that points at
-        /// the compare view. Omitted when empty.</summary>
+        /// <summary>The folded <c>&lt;details&gt;Other changes&lt;/details&gt;</c> appendix — every first-parent commit in
+        /// range that cites no section item (<see cref="ReleaseNotesDocument.UnlinkedCommits"/> with
+        /// <see cref="ReleaseCommit.FirstParent"/>), newest first, in at most <paramref name="budget"/> characters. Commits
+        /// that do not fit are counted on a closing line that points at the compare view. Omitted when empty.</summary>
         static void AppendOtherChanges(StringBuilder sb, ReleaseNotesDocument doc, string repo, int budget)
         {
-            if (doc.UnlinkedCommits.Length == 0) return;
+            // One line per merged PR, not every work-in-progress commit of every lane: the release branch takes PRs as
+            // merge commits, and 0.3.11's fold listed 613 commits.
+            var listed = Array.FindAll(doc.UnlinkedCommits, static c => c.FirstParent);
+            if (listed.Length == 0) return;
             const string open = "<details><summary>Other changes</summary>\n\n";
             const string close = "\n</details>\n\n";
             // Room for the open and close tags and the "N more" line (a compare URL is well under 200 characters).
             int room = budget - open.Length - close.Length - 300;
             var lines = new StringBuilder();
             int shown = 0;
-            foreach (var c in doc.UnlinkedCommits)
+            foreach (var c in listed)
             {
                 int mark = lines.Length;
                 lines.Append("- [").Append(c.Short).Append("](https://github.com/").Append(repo).Append("/commit/")
@@ -1365,7 +1368,7 @@ public static partial class ReleaseNotes
                 if (lines.Length > room) { lines.Length = mark; break; }
                 shown++;
             }
-            int more = doc.UnlinkedCommits.Length - shown;
+            int more = listed.Length - shown;
             sb.Append(open).Append(lines);
             if (more > 0)
             {

@@ -209,19 +209,23 @@ release.ps1 -Version 0.3.12 -Status                  what is done, what is next
 | # | Step | Done when (judged from reality, so a second `-Go` skips it) |
 |---|---|---|
 | 0 | `preflight` | read-only: tools, signing token, 1Password unlocked (first, with the command that fixes it), `gh`, wrangler, PlayPlay junction, the release branch, the engine checkout at `engine.lock` and clean, feed monotonic, change files valid, every `Fixes #n` matched, PRs into `main` (listed for `-RetargetPrs`), the release body under GitHub's 125,000 characters |
-| 1 | `changelog` | `changes/unreleased/` is empty and `CHANGELOG.md` has `[v]` |
-| 2 | `bump` | the version props and the contract version say `v` on the release branch |
-| 3 | `tag` | `wavee-v<v>` exists at that commit locally and on origin, and in fluent-gpu at the pinned commit |
-| 4 | `pack-arm64`, `pack-x64` | a staged package with this quad, built from the tag commit, with the crash stamp |
-| 5 | `symbols` | R2 holds the maps and binaries for this quad (uploads retry with backoff: they are idempotent) |
-| 6 | `sign` | `signtool verify` passes on every package |
-| 7 | `release` | the GitHub release exists and its assets are byte-equal to the staged files |
-| 8 | `feed` | `wavee-stable` serves this quad and this release's package (**the moment installs see it**) |
-| 9 | `merge-main` | the release head is an ancestor of `main`. The runner moves open PRs off the branch, then opens and merges a PR `release/<v>` -> `main` (the ruleset lets `main` change only by PR) |
-| 10 | `open-next` | `release/<v+1>` exists and no open PR targets `release/<v>` or `main` |
-| 11 | `store-pack`, `store-submit` | Partner Center has a committed submission with this Store quad (to everyone at once: no gradual rollout) |
-| 12 | `notify` | every closed issue carries the release comment |
-| 13 | `store-poll` | the submission is Published (certification takes hours to days; `-Status` reports it) |
+| 1 | `changelog` | `changes/unreleased/` is empty and `CHANGELOG.md` has `[v]` (the release tool also raises the contract version, writes `contract-history.md` and credits new contributors) |
+| 2 | `bump` | a `release: Wavee <v> <codename> (build <quad>)` commit is on the branch: the version props say `v`, the build is one up, the CHANGELOG heading is dated |
+| 3 | `notes` | the release notes are validated into the staging folder for this commit (the commit fold lists merge commits only) |
+| 4 | `tag` | `wavee-v<v>` exists locally at the release commit, and in the engine worktree at the pinned commit |
+| 5 | `pack-arm64`, `pack-x64` | a staged package with this quad, built from this commit, with the crash stamp |
+| 6 | `symbols` | the maps and binaries for this quad are uploaded (each upload retried with backoff: uploads are idempotent) |
+| 7 | `sign` | `signtool verify` passes on every package |
+| 8 | `stage` | the `.appinstaller` files and the staged assets match `MANIFEST.txt` |
+| 9 | `push` | origin has the release commit on `release/<v>` and both tags (WaveeMusic and fluent-gpu) at the right commits |
+| 10 | `release` | the GitHub release exists, is published, and its assets are byte-equal to the staged files |
+| 11 | `feed` | `wavee-stable` serves this quad and this release's package on both architectures (**the moment installs see it**) |
+| 12 | `open-next` | `release/<v+1>` exists (made from the release head) and no open PR targets `release/<v>` or `main`: each moved PR gets one comment |
+| 13 | `merge-main` | the release commit is an ancestor of `main`: the runner opens and merges a PR `release/<v>` -> `main` with a merge commit (the ruleset lets `main` change only by PR) |
+| 14 | `forward-port` | (a hotfix only) `release/<v>` is merged into the renamed next branch |
+| 15 | `store-submit` | Partner Center has a committed submission for this Store quad (to everyone at once: no gradual rollout) |
+| 16 | `notify` | every issue the release closed carries the release comment |
+| 17 | `store-poll` | the submission is Published (certification takes hours to days; not reaching it within the run is no failure, `-Status` reports it) |
 
 - **The release notes' commit fold lists merge commits only** (`--first-parent` on the release branch): one line per
   PR, not every WIP commit of every lane. 0.3.11's fold had 613 commits and broke GitHub's body limit.
@@ -235,8 +239,8 @@ release.ps1 -Version 0.3.12 -Status                  what is done, what is next
 
 | Where it stopped | State | What to do |
 |---|---|---|
-| before `tag` reached origin | nothing public | fix, `-Go` again; or `-Abort` (deletes the local tag and the release commit) |
-| after the tag is public, before `feed` | the tag and maybe a draft release are public; installs see nothing | fix, `-Go` again. Never delete the tag |
+| before `push` | nothing public (the tags and commits are local to the release worktree) | fix, `-Go` again; or `-Abort -Go` (deletes the local tags and the runner's commits) |
+| after `push`, before `feed` | the tag and maybe a draft release are public; installs see nothing | fix, `-Go` again. Never delete the tag |
 | after `feed` | installs are updating | it shipped. Finish with `-Go`; a bad build goes to section 9 or 10 |
 
 ---
@@ -376,7 +380,7 @@ Ranked from first to last resort:
    fold from merge commits only.
 4. **`ContractVersion.cs`**: shrink to the constants and the rules; the history moves out.
 5. **The runner** `ops/release/release.ps1`: the steps of section 7 judged from reality, dry run by default, the Store
-   steps folded in (the separate Store script retires), the release worktree, `merge-main`, `open-next`, `-Hotfix`,
+   steps folded in (`wavee-store-submit.ps1` stays as the runner's Store engine; nobody runs it by hand), the release worktree, `merge-main`, `open-next`, `-Hotfix`,
    `forward-port`, `-RetargetPrs`, `-RepointFeed` kept, the engine tag, the toast. The current `wavee-release.ps1` is
    deleted when it lands (no legacy paths).
 6. **Contributor side**: `tools/pr-check.py`; `.claude/skills/wavee-contributing` (this flow plus the review findings,
