@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.12",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "Your phone plays what you pick in Wavee, Space and the volume behave again, and Lossless joins Classic's player bar.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "remote-play",
+      "title": "Your phone, played from Wavee",
+      "body": "While your phone or another computer is playing, Wavee now controls it the way Spotify's own app does. A song in Liked Songs starts there instead of stopping the phone, a playlist plays in the order and with the filter you see in Wavee, from the very row you clicked, and previous, shuffle and repeat arrive the way the phone expects. When a device says no, Wavee tells you. And a phone that keeps its volume to itself, like an iPhone, shows the volume slider and the mute button as locked.",
+      "kind": "improved",
+      "deepLink": "wavee://open?route=liked",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/remote-play.jpg",
+        "srcLight": "media/remote-play-light.jpg",
+        "alt": "Liked Songs in the WinUI theme playing on an iPhone, with the devices list open and the phone's volume locked",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "keys-and-volume",
+      "title": "Space, volume and mute behave again",
+      "body": "Space plays and pauses again from anywhere outside a text field, also right after Wavee starts, and with the player bar focused the arrow keys seek and change the volume. The volume slider starts at your volume instead of 0%, glides to 0 when you mute and back when you unmute, and a muted Wavee starts muted. The volume work is a community contribution from @0dm, thank you!",
+      "kind": "improved",
+      "community": [
+        "0dm"
+      ],
+      "issues": [
+        232,
+        256
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/keys-and-volume.jpg",
+        "srcLight": "media/keys-and-volume-light.jpg",
+        "alt": "The WinUI player bar while a song plays, with the volume slider at the listener's volume",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "lossless-and-more",
+      "title": "Lossless in the player bar, and more from the community",
+      "body": "A community contribution from @0dm, thank you! While a lossless stream plays, Classic's player bar says so; hover it for the exact format, such as FLAC 24/96. Drag the divider beside a playlist's Insights or an album's About panel to the width you like, and Wavee remembers it. A playlist's local files show their title, artist and length, the bar about songs that can't be played can be closed, and Find opens wherever the list is scrolled.",
+      "kind": "new",
+      "community": [
+        "0dm"
+      ],
+      "issues": [
+        227,
+        229,
+        230,
+        231
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/lossless-and-more.jpg",
+        "srcLight": "media/lossless-and-more-light.jpg",
+        "alt": "Classic's player bar with the Lossless badge after the artist and its FLAC 24/96 tooltip",
+        "width": 1200,
+        "height": 675
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}
