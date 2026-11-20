@@ -61,6 +61,16 @@ public static partial class Spotify
             }
         }
 
+        /// <summary>Is <paramref name="uri"/> the account's Liked Songs playlist as <see cref="KnownLikedPlaylist"/> knows it? False
+        /// while none is known. UI thread; allocation-free, and a uri of any other length is one compare (a cluster heartbeat
+        /// asks: <c>Playback.ContextOf</c>, remote-play plan 5.1).</summary>
+        public static bool IsKnownLikedPlaylist(ReadOnlySpan<byte> uri)
+        {
+            if (uri.Length != PlaylistPrefix.Length + PlaylistIdChars) return false;
+            string known = KnownLikedPlaylist;
+            return known.Length > 0 && SameAscii(uri, known);
+        }
+
         /// <summary>Keep <paramref name="uri"/> as the account's Liked Songs playlist, in memory and in the settings store; a value
         /// that is not a playlist uri, or the one already known, changes nothing. <paramref name="source"/> names where it came
         /// from, for the one log line. UI thread.</summary>

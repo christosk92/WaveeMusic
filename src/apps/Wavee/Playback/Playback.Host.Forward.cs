@@ -1,13 +1,14 @@
 // ── Playback/Playback.Host.Forward.cs ────────────────────────────────────────────────────────────────────────────────
 // A local play forwarded to the device that owns playback, under the Liked rule; the refusal any forward earns, which the
 // shell says as one toast per verb kind; the context and row a play names (a playlist's page inline, an album row by index,
-// an artist's Popular list); and the paced volume PUT (remote-play plan 1.1-1.4, 2.1, 2.3, 4.1, 4.2, 4.4, 2026-11-20)
+// an artist's Popular list); the update_context a list played in Wavee's order earns when its view changes; and the paced
+// volume PUT (remote-play plan 1.1-1.4, 2.1, 2.3, 4.1, 4.2, 4.4, 5.3, 2026-11-20)
 //
 // Role: SHELL
 // Owner: G
 // Wave: remote-play fixes (2026-11-20)
-// Budget: 450 lines
-// Spec: the remote-play gap analysis of 2026-11-20 (§2.1, §2.5, §2.8, §3, §5 phases 1-2 and 4) — a named partial of Playback.Host.cs
+// Budget: 550 lines
+// Spec: the remote-play gap analysis of 2026-11-20 (§2.1, §2.5, §2.7, §2.8, §3, §5 phases 1-2, 4 and 5.3) — a named partial of Playback.Host.cs
 //
 // THE SAME SHELL RULES AS THE PARENT: the UI thread owns the deck and the interner (C1), a send blocks and so runs on an api
 // thread (`Spotify.Api.Run`), and what it learns comes back through `ToUi` (C9).
@@ -154,6 +155,7 @@ public static partial class Playback
                         + (play.Page is { } page ? " page=" + page.Uris.Length + (page.Sorting.Length > 0 ? " sorted" : "")
                             + (page.Filter.Length > 0 ? " filtered" : "") : "")
                         + (video ? " video" : ""));
+                    if (play.Page is { } sent) NoteRemoteListPlayed(context, sent.SessionId);   // 5.3: the owner plays Wavee's order
                     RunForward(RemoteVerb.Play, device, () => Answered(RemoteVerb.Play, device,
                         Spotify.Connect.PlayContext(target, play.ContextUri, trackUri, shuffle, CancellationToken.None, fromMs, play.SkipUid,
                             play.SkipIndex, video, play.Feature, play.Page)));
@@ -278,6 +280,108 @@ public static partial class Playback
         if (scope is null || scope.MeSlot <= Table.None) return "";
         ReadOnlySpan<int> liked = scope.Edges.Liked.Targets(scope.MeSlot);
         return liked.IsEmpty ? "" : new Track(liked[0]).Uri.Text;
+    }
+
+    // ── 2a. the list another device plays in Wavee's order: update_context (5.3) ─────────────────────────────────────
+    //
+    // A playlist sent with its page (4.2) plays on the owner in the order Wavee showed. When that order changes in Wavee — a new
+    // sort, a new filter, a row added or removed — the official client tells the owner with `update_context`: the owner's
+    // session id and the context with the view's sort and filter in its metadata, no pages, no logging (bigone.saz 605; all.saz
+    // 546, 939; fresh.saz 512). Wavee does the same, only for the session that a page play of its own started:
+    //
+    //   SendPlay (a page) ─▶ NoteRemoteListPlayed: the list, the session id it minted, the owner's session before
+    //   cluster ─▶ NoteRemoteListCluster: the first cluster within RemoteListAdoptMs naming the list under a NEW session (or
+    //              the one minted) adopts it; a later cluster with another context or session forgets it
+    //   Track.Table's view changed ─▶ ListViewChanged ─▶ RemoteListDelayMs later (typing settles) ─▶ FlushListUpdate ─▶ api
+    //
+    // A view the owner cannot be told (a sort no capture spells, a filter beyond the text query, a query whose escaping is
+    // unknown) sends nothing: a wrong definition would re-order the phone's queue under the listener. UI thread throughout.
+
+    /// <summary>How long after a page play the owner's first cluster may adopt its session.</summary>
+    const long RemoteListAdoptMs = 30_000;
+    /// <summary>How long a view must hold still before its update goes: a typed filter sends once, when typing settles.</summary>
+    const int RemoteListDelayMs = 800;
+
+    static EntityId s_remoteList;
+    static long s_remoteListSentMs;
+    static ulong s_remoteListBefore, s_remoteListMinted, s_remoteListSession, s_ownerSession;
+    static string s_remoteListSessionText = "", s_remoteListSorting = "", s_remoteListFilter = "";
+    static Timer? s_remoteListTimer;
+    static readonly Action s_remoteListFlush = FlushListUpdate;
+    static readonly TimerCallback s_remoteListDue = static _ => ToUi(s_remoteListFlush);
+
+    /// <summary>A page play of <paramref name="list"/> went to the owner under <paramref name="sessionId"/>. UI thread.</summary>
+    static void NoteRemoteListPlayed(EntityId list, string sessionId)
+    {
+        s_remoteList = list;
+        s_remoteListSentMs = Environment.TickCount64;
+        s_remoteListBefore = s_ownerSession;
+        s_remoteListMinted = DeviceHash(sessionId);
+        s_remoteListSession = 0;
+        s_remoteListSessionText = "";
+    }
+
+    /// <summary>The owner's cluster (only while it owns playback): adopt the session that plays the list Wavee sent, or forget
+    /// it once the owner plays something else. Allocation-free on a heartbeat (one hash); the session text is made once, when
+    /// adopted. UI thread.</summary>
+    static void NoteRemoteListCluster(EntityId context, ReadOnlySpan<byte> sessionId)
+    {
+        ulong session = DeviceHash(sessionId);
+        s_ownerSession = session;
+        if (s_remoteList.IsEmpty) return;
+        if (s_remoteListSession == 0)
+        {
+            if (Environment.TickCount64 - s_remoteListSentMs > RemoteListAdoptMs) { ForgetRemoteList(); return; }
+            if (session != 0 && context.Equals(s_remoteList) && (session == s_remoteListMinted || session != s_remoteListBefore))
+            {
+                s_remoteListSession = session;
+                s_remoteListSessionText = System.Text.Encoding.UTF8.GetString(sessionId);
+                Log.Info("playback", "the owner plays " + s_remoteList.Text + " in Wavee's order: its view changes go as update_context");
+            }
+            return;
+        }
+        if (session != s_remoteListSession || !context.Equals(s_remoteList)) ForgetRemoteList();
+    }
+
+    /// <summary>No list plays in Wavee's order any more. UI thread.</summary>
+    static void ForgetRemoteList()
+    {
+        if (s_remoteList.IsEmpty) return;
+        s_remoteList = default;
+        s_remoteListSession = 0;
+        s_remoteListSessionText = "";
+        s_remoteListTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+    }
+
+    /// <summary>A list page's view changed — its sort, its filter, or its rows (<c>Track.Table</c>, remote-play plan 5.3). Nothing
+    /// unless the owner plays THIS list in Wavee's order; then the update is armed to go once the view holds still. UI thread;
+    /// a reference compare for every other list.</summary>
+    public static void ListViewChanged(EntityId context, Track.SortSpec sort, string query, bool otherFilters)
+    {
+        if (s_remoteListSession == 0 || context.IsEmpty || !context.Equals(s_remoteList) || s_state.Own.Kind != Owner.Foreign) return;
+        string? filter = otherFilters ? null : Spotify.Connect.FilterPredicate(query);
+        if (!Spotify.Connect.SortSayable(sort) || filter is null)
+        {
+            Log.Info("playback", "update_context not sent: the owner cannot be told this sort or filter");
+            s_remoteListTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+            return;
+        }
+        s_remoteListSorting = Spotify.Connect.SortingCriteria(sort.Column, sort.Descending);
+        s_remoteListFilter = filter;
+        (s_remoteListTimer ??= new Timer(s_remoteListDue)).Change(RemoteListDelayMs, Timeout.Infinite);
+    }
+
+    /// <summary>The armed update goes, when the owner still plays the list under the adopted session. UI thread; the send on an
+    /// api thread (its connect.cmd line says the answer; a refusal is not toasted — the listener did not ask the phone for
+    /// anything).</summary>
+    static void FlushListUpdate()
+    {
+        if (s_remoteListSession == 0 || s_state.Own.Kind != Owner.Foreign || !s_state.Context.Equals(s_remoteList)) return;
+        string target = Devices.IdOf(s_state.Own.Device);
+        if (target.Length == 0) return;
+        string session = s_remoteListSessionText, uri = s_remoteList.Text, sorting = s_remoteListSorting, filter = s_remoteListFilter;
+        Log.Info("playback", "update_context to the owner: context=" + uri + (sorting.Length > 0 ? " sorted" : "") + (filter.Length > 0 ? " filtered" : ""));
+        Spotify.Api.Run(() => Spotify.Connect.UpdateContext(target, session, uri, sorting, filter, CancellationToken.None));
     }
 
     // ── 3. the paced volume PUT (2.3) ─────────────────────────────────────────────────────────────────────────────────

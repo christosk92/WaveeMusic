@@ -438,8 +438,10 @@ public static partial class Spotify
         // ── 4a. the queue forwards (G-248) ───────────────────────────────────────────────────────────────────────────
 
         /// <summary>One row of a forwarded <c>set_queue</c>: its uri, its uid as the owner minted it ("" for a row we add),
-        /// and whether it sits in the user queue (<c>provider: "queue"</c>) rather than the context's continuation.</summary>
-        public readonly record struct QueueWireRow(string Uri, string Uid, bool Queued);
+        /// whether it sits in the user queue rather than the context's continuation, and — for a row the OWNER stated — its whole
+        /// <c>ProvidedTrack</c> as the owner sent it (<c>Track</c>, null for a row we add), which the echo writes back
+        /// with its own provider and metadata (remote-play plan 5.2).</summary>
+        public readonly record struct QueueWireRow(string Uri, string Uid, bool Queued, byte[]? Track = null);
 
         /// <summary>Append one track to the owner's queue (<c>add_to_queue</c>). Blocks; api threads only.</summary>
         public static bool AddToQueue(string targetDeviceId, string trackUri, CancellationToken ct)
@@ -486,9 +488,12 @@ public static partial class Spotify
         }
 
         /// <summary>The desktop's <c>set_queue</c> envelope (0.2.9 <c>OutboundEnvelope.SetQueue</c>): <c>queue_revision</c> as a
-        /// BARE unsigned number (it exceeds Int64), both track lists — each row with its uid (always written), a metadata
-        /// object carrying <c>is_queued: "true"</c> (a string) for a queued row, its provider, empty removed/blocked lists
-        /// and the 22 empty restriction lists the capture carries — then the options and logging params. PURE.</summary>
+        /// BARE unsigned number (it exceeds Int64), both track lists, then the options and logging params. PURE.
+        /// <para>An OWNER's row (<see cref="QueueWireRow.Track"/>) is echoed back as the owner stated it, key for key as
+        /// moreptions.saz 794 and qoptions.saz 58: uri, uid, its whole metadata map, ITS provider (<c>context</c>, <c>queue</c>,
+        /// <c>autoplay</c>), its removed and blocked lists, the 22 empty restriction lists, then <c>album_uri</c> and
+        /// <c>artist_uri</c> when it names them (remote-play plan 5.2). A row we add is uri, <c>uid: ""</c>, metadata
+        /// <c>is_queued: "true"</c> (a string), provider <c>queue</c>, empty lists (moreptions.saz 794, next_tracks #0).</para></summary>
         public static void SetQueueBody(IBufferWriter<byte> into, ulong queueRevision, ReadOnlySpan<QueueWireRow> prev,
             ReadOnlySpan<QueueWireRow> next, string deviceId, string commandId, string intentId, string interactionId, long nowMs)
         {
@@ -512,6 +517,7 @@ public static partial class Spotify
 
             static void QueueEntry(Utf8JsonWriter w, in QueueWireRow row)
             {
+                if (row.Track is { Length: > 0 } track) { OwnerEntry(w, in row, track); return; }
                 w.WriteStartObject();
                 w.WriteString("uri", row.Uri);
                 w.WriteString("uid", row.Uid ?? "");
@@ -521,10 +527,60 @@ public static partial class Spotify
                 w.WriteString("provider", row.Queued ? "queue" : "context");
                 w.WriteStartArray("removed"); w.WriteEndArray();
                 w.WriteStartArray("blocked"); w.WriteEndArray();
-                w.WriteStartObject("restrictions");
-                foreach (string key in RestrictionKeys) { w.WriteStartArray(key); w.WriteEndArray(); }
+                EmptyRestrictions(w);
                 w.WriteEndObject();
-                w.WriteEndObject();
+            }
+        }
+
+        /// <summary>One OWNER row of a set_queue, echoed from its <c>ProvidedTrack</c> (uri 1, uid 2, metadata 3, removed 4,
+        /// blocked 5, provider 6, album_uri 8, artist_uri 10): key for key as moreptions.saz 794. A metadata pair, a list entry or
+        /// a uri that is not valid UTF-8 is left out rather than failing the body; a row the owner gave no provider keeps
+        /// the one its queue flag implies. PURE (a cold path: one user click).</summary>
+        static void OwnerEntry(Utf8JsonWriter w, in QueueWireRow row, byte[] track)
+        {
+            ReadOnlySpan<byte> provider = default, album = default, artist = default;
+            w.WriteStartObject();
+            w.WriteString("uri", row.Uri);
+            w.WriteString("uid", row.Uid ?? "");
+            w.WriteStartObject("metadata");
+            var r = new Decode.ProtoReader(track);
+            while (r.Next())
+            {
+                switch (r.Field)
+                {
+                    case 3:
+                        {
+                            r.Message().Fields(1, 2, out var key, out var value);
+                            if (!key.IsEmpty && System.Text.Unicode.Utf8.IsValid(key) && System.Text.Unicode.Utf8.IsValid(value)) w.WriteString(key, value);
+                            break;
+                        }
+                    case 6: provider = r.Bytes(); break;
+                    case 8: album = r.Bytes(); break;
+                    case 10: artist = r.Bytes(); break;
+                    default: r.Skip(); break;
+                }
+            }
+            w.WriteEndObject();
+            if (!provider.IsEmpty && System.Text.Unicode.Utf8.IsValid(provider)) w.WriteString("provider", provider);
+            else w.WriteString("provider", row.Queued ? "queue" : "context");
+            StringList(w, "removed", track, 4);
+            StringList(w, "blocked", track, 5);
+            EmptyRestrictions(w);
+            if (!album.IsEmpty && System.Text.Unicode.Utf8.IsValid(album)) w.WriteString("album_uri", album);
+            if (!artist.IsEmpty && System.Text.Unicode.Utf8.IsValid(artist)) w.WriteString("artist_uri", artist);
+            w.WriteEndObject();
+
+            static void StringList(Utf8JsonWriter w, string name, byte[] track, int field)
+            {
+                w.WriteStartArray(name);
+                var r = new Decode.ProtoReader(track);
+                while (r.Next())
+                {
+                    if (r.Field != field || r.Wire != 2) { r.Skip(); continue; }
+                    ReadOnlySpan<byte> entry = r.Bytes();
+                    if (System.Text.Unicode.Utf8.IsValid(entry)) w.WriteStringValue(entry);
+                }
+                w.WriteEndArray();
             }
         }
 

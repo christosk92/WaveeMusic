@@ -68,6 +68,10 @@ public static partial class Spotify
             /// <summary>The owner plays the row as VIDEO (<c>track_player</c> / <c>media.type</c> = "video").</summary>
             public bool IsVideo;
             public long DurationMs;
+            /// <summary>The whole <c>ProvidedTrack</c> as the owner sent it — set for a cluster's <c>prev_tracks</c> /
+            /// <c>next_tracks</c> rows only: what a forwarded <c>set_queue</c> echoes back whole, its metadata map, provider,
+            /// removed/blocked lists and album/artist uris (remote-play plan 5.2, moreptions.saz 794). Empty elsewhere.</summary>
+            public TextRef Raw;
         }
 
         /// <summary>One <c>map&lt;string, string&gt;</c> entry of a cluster's <c>context_metadata</c>, kept whole so a takeover
@@ -448,18 +452,20 @@ public static partial class Spotify
                         {
                             if (prevStart < 0) prevStart = into.TrackCount;
                             ref var t = ref into.AddTrack();
-                            Track(r.Message(), into, ref t);
+                            ReadOnlySpan<byte> raw = r.Bytes();
+                            Track(new ProtoReader(raw), into, ref t);
                             if (t.Uri.IsEmpty) into.TrackCount--;
-                            else prev++;
+                            else { t.Raw = into.AddText(raw); prev++; }   // kept whole for a set_queue echo (5.2)
                             break;
                         }
                     case 20:                                       // next_tracks
                         {
                             if (nextStart < 0) nextStart = into.TrackCount;
                             ref var t = ref into.AddTrack();
-                            Track(r.Message(), into, ref t);
+                            ReadOnlySpan<byte> raw = r.Bytes();
+                            Track(new ProtoReader(raw), into, ref t);
                             if (t.Uri.IsEmpty) into.TrackCount--;
-                            else next++;
+                            else { t.Raw = into.AddText(raw); next++; }   // kept whole for a set_queue echo (5.2)
                             break;
                         }
                     case 23: delta.SessionId = into.AddText(r.Bytes()); break;

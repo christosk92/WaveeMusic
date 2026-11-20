@@ -709,7 +709,7 @@ public static partial class Playback
             d.PositionAsOfMs, d.TimestampMs, d.DurationMs,
             d.Shuffling, d.Repeat, d.ActiveVolume,
             d.NoPrev, d.NoNext, d.NoSeek,
-            Identify(buffer.Utf8(d.ContextUri)),    // the owner's context: what a takeover adopts (A4)
+            ContextOf(buffer.Utf8(d.ContextUri)),   // the owner's context: what a takeover adopts (A4); Liked folded (5.1)
             d.HasTrack && d.Track.IsVideo, (VideoSignals)d.VideoOffered, (VideoSignals)d.VideoDisallowed,
             d.HasTrack ? RemoteManifest(buffer.Utf8(d.Track.AssociatedVideoId), buffer.Utf8(d.Track.Uri)) : StringId.Empty,
             d.ActiveVolumeFixed);
@@ -722,10 +722,12 @@ public static partial class Playback
             s_foreign.Take(buffer, in d);
             s_contextWire = WireOf(buffer, in d, remote.Context);
             CaptureForeignOrigin(buffer, in d, remote.Context);   // what a takeover publishes on as the owner
+            NoteRemoteListCluster(remote.Context, buffer.Utf8(d.SessionId));   // a list it plays in Wavee's order (5.3)
         }
         else if (s_state.Own.Kind != Owner.Foreign)
         {
             s_foreign.Clear();
+            ForgetRemoteList();
             if (s_state.Own.Kind == Owner.Us) s_contextWire = default;   // Nobody keeps the departed owner's snapshot, label included
         }
     }
@@ -766,6 +768,19 @@ public static partial class Playback
 
     /// <summary>A wire uri → a packed identity. UI thread, so the text form may intern (C1).</summary>
     static EntityId Identify(ReadOnlySpan<byte> utf8) => utf8.IsEmpty ? default : EntityId.Parse(utf8);
+
+    /// <summary>A context uri a cluster or a controller names, as Wavee names it: the account's Liked Songs PLAYLIST
+    /// (<c>Spotify.Connect.KnownLikedPlaylist</c>) is Wavee's own Liked Songs, everything else is itself (remote-play plan 5.1).
+    /// The official client plays Liked Songs on another device as that playlist (bro.saz 352), and the phone then publishes
+    /// it as its context (capture record #1702: context_uri the playlist, format_list_type liked-songs). Mirrored as a
+    /// playlist, Wavee showed a second "Liked Songs" — the playlist page, 458 rows (log route pl:spotify:playlist:37i9…) — and
+    /// its own Liked page neither toggled nor named the play (gap analysis 2.9). Folded, the now-playing line says Liked Songs,
+    /// opening the context goes to Wavee's Liked page, and its ▶ pauses and resumes what plays. The playlist is learned from
+    /// such a cluster before this fold reads it (<c>Spotify.Connect.NoteLikedCluster</c>, only when its
+    /// liked_songs_collection_uri names THIS account, so a Jam host's Liked list stays a playlist). UI thread (the parse
+    /// interns); a heartbeat of any other context costs one length compare.</summary>
+    static EntityId ContextOf(ReadOnlySpan<byte> utf8)
+        => Spotify.Connect.IsKnownLikedPlaylist(utf8) ? EntityId.Parse(EntityUri.LikedCollection.AsSpan()) : Identify(utf8);
 
     /// <summary>Anything that edits the queue — a page's "Add to queue", a controller, an autoplay append, a reorder —
     /// bumps its version; the reducer re-arms the next row on the change (G-112).</summary>

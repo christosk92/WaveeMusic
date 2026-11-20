@@ -1,13 +1,14 @@
 // ── Spotify/Spotify.Connect.Play.cs ─────────────────────────────────────────────────────────────────────────────────
 // the `play` envelope a local play sends the device that owns playback, field for field as the official desktop client
 // sends it: the row by uid and index, a playlist's page inline in the order Wavee shows it with its sort and filter, the
-// artist's Popular list as its own context (remote-play plan 4.1, 4.2, 4.4, 4.5, 2026-11-20)
+// artist's Popular list as its own context (remote-play plan 4.1, 4.2, 4.4, 4.5, 2026-11-20); and `update_context`, the
+// same list's new sort or filter for the session that plays it (5.3)
 //
 // Role: SHELL (the send) + PURE writers and spellings
 // Owner: F
 // Wave: remote-play fixes (2026-11-20)
 // Budget: 350 lines
-// Spec: the remote-play gap analysis of 2026-11-20, §2.1, §2.3, §2.4, §2.5, §5 phase 4 (captures bigone.saz, all.saz,
+// Spec: the remote-play gap analysis of 2026-11-20, §2.1, §2.3, §2.4, §2.5, §2.7, §5 phases 4-5 (captures bigone.saz, all.saz,
 //       bro.saz, playback_remote.saz; evidence/play-shapes.tsv) — a named partial of Spotify.Connect.cs, split out of
 //       Spotify.Connect.Outbound.cs (already twice its budget) when the envelope grew its page
 //
@@ -56,8 +57,8 @@ public static partial class Spotify
 
         /// <summary>A playlist's rows as a play names them inline (remote-play plan 4.2): in the order Wavee shows them, each with
         /// the uid the list gave the row ("" for none) and — only when the view is sorted — its index in the list's own order
-        /// (<c>original_index</c>). <paramref name="sorting"/> and <paramref name="filter"/> are the context metadata's
-        /// <c>sorting.criteria</c> / <c>filtering.predicate</c> ("" = not written); <paramref name="sessionId"/> is the
+        /// (<c>original_index</c>). <c>sorting</c> and <c>filter</c> are the context metadata's
+        /// <c>sorting.criteria</c> / <c>filtering.predicate</c> ("" = not written); <c>sessionId</c> is the
         /// <c>prepare_play_options.session_id</c>, 22 base62 characters, minted per play (<see cref="NewSessionId"/>). Immutable
         /// once built (UI thread); the api thread only reads it.</summary>
         public sealed class PlayPage(string[] uris, string[] uids, int[]? originalIndex, string sorting, string filter, string sessionId)
@@ -276,6 +277,49 @@ public static partial class Spotify
             const string Artist = "spotify:artist:";
             if (artistUri.Length != Artist.Length + Base62.GidChars || !artistUri.StartsWith(Artist, StringComparison.Ordinal)) return null;
             return string.Concat(PopularListPrefix.AsSpan(), artistUri.AsSpan(Artist.Length));
+        }
+
+        // ── update_context: the playing list changed in Wavee (remote-play plan 5.3) ────────────────────────────────────
+
+        /// <summary>Tell the device that owns playback the context it plays has a new definition, without restarting it
+        /// (<c>update_context</c>): its session, the list's uri and the view's <paramref name="sorting"/> /
+        /// <paramref name="filter"/> ("" = not written). Blocks; api threads only.</summary>
+        public static bool UpdateContext(string targetDeviceId, string sessionId, string contextUri, string sorting, string filter,
+            CancellationToken ct)
+        {
+            if (sessionId.Length == 0 || !Egress.Admits(contextUri.AsSpan())) return false;
+            var buffer = new ArrayBufferWriter<byte>(1536);
+            UpdateContextBody(buffer, sessionId, contextUri, sorting, filter, NewId());
+            return PostCommand("update_context", targetDeviceId, buffer.WrittenSpan, ct);
+        }
+
+        /// <summary>The <c>update_context</c> body, key for key as the official client sends it: the endpoint, the owner's
+        /// <c>session_id</c>, the context (entity_uri, uri, url, the metadata — <c>filtering.predicate</c> and
+        /// <c>sorting.criteria</c> when the view has them — and the 22 empty restriction lists), NO pages and NO logging params;
+        /// then <c>connection_type</c> and <c>intent_id</c> (bigone.saz 605 on 1.3.10; all.saz 546 with empty metadata, 939 with a
+        /// sort; fresh.saz 512 for a session the sender did not start). PURE.</summary>
+        public static void UpdateContextBody(IBufferWriter<byte> into, string sessionId, string contextUri, string sorting, string filter,
+            string intentId)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", "update_context");
+            w.WriteString("session_id", sessionId);
+            w.WriteStartObject("context");
+            w.WriteString("entity_uri", contextUri);
+            w.WriteString("uri", contextUri);
+            w.WriteString("url", "context://" + contextUri);
+            w.WriteStartObject("metadata");
+            if (filter.Length > 0) w.WriteString("filtering.predicate", filter);
+            if (sorting.Length > 0) w.WriteString("sorting.criteria", sorting);
+            w.WriteEndObject();
+            EmptyRestrictions(w);
+            w.WriteEndObject();
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
         }
 
         /// <summary>A fresh <c>prepare_play_options.session_id</c>: 22 base62 characters, as every official page play mints one

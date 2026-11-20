@@ -1272,6 +1272,8 @@ public readonly partial struct Track
             // A frame that docks the selection bar (Zune): this table publishes the bar's model while the selection shows it, and withdraws it when the table goes.
             UseEffect(PublishSelectionDock);
             UseEffect(() => WithdrawSelectionDock, DepKey.Empty);
+            // Another device playing this list in the order shown hears a re-sort, a filter or an edit (remote-play plan 5.3).
+            UseEffect(WatchRemoteList);
             var live = UseMemo(() => new TableLive(_viewMemo!, SetFilters, _visible, PageBar), DepKey.Empty);
 
             var context = args.Source.Context;
@@ -2242,6 +2244,33 @@ public readonly partial struct Track
             }
             FilterState filters = _filters.Peek();
             return new Playback.PageFacts(uids, origins, _sort.Peek(), _query.Peek().Trim(), !filters.IsDefault);
+        }
+
+        /// <summary>The view a device playing this list in Wavee's order was last told about (remote-play plan 5.3): the context,
+        /// its membership (version and count) and the view's sort, query and filters.</summary>
+        readonly record struct RemoteListView(EntityId Context, uint Version, int Count, SortSpec Sort, string Query, FilterState Filters);
+
+        RemoteListView _remoteView;
+        bool _remoteViewSeeded;
+
+        /// <summary>An auto-tracked effect over the snapshot (it re-runs when the snapshot VALUE moves — a sort, a filter, the
+        /// membership — never per frame): once the list has fully landed, a change of its sort, filter or rows after the first
+        /// complete view is handed to <c>Playback.ListViewChanged</c>, which does nothing unless another device plays THIS list
+        /// in the order Wavee sent it (remote-play plan 5.3). A new context only re-seeds. No allocation (a value compare).</summary>
+        void WatchRemoteList()
+        {
+            var snap = _snapshot!.Value;
+            if (snap.State != EdgeState.Complete) return;
+            var view = new RemoteListView(snap.Context, snap.Version, snap.Count, snap.Sort, snap.Query, snap.Filters);
+            if (!_remoteViewSeeded || !view.Context.Equals(_remoteView.Context))
+            {
+                _remoteViewSeeded = true;
+                _remoteView = view;
+                return;
+            }
+            if (view.Equals(_remoteView)) return;
+            _remoteView = view;
+            Playback.ListViewChanged(snap.Context, snap.Sort, snap.Query, !snap.Filters.IsDefault);
         }
 
         /// <summary>The page's ONE shuffle (G-264; 0.2.9 `DetailShell.Shuffle`): the command bar, its "…" item and the vertical
