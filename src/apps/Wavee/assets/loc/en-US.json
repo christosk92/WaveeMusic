@@ -5313,6 +5313,7 @@
     "never": "Don't ask again",
     "big": "{hours} hours",
     "bigCaption": "of music played in Wavee since {date}",
+    "bigStats": "{days, plural, one {on # listening day} other {on # listening days}}",
     "thanks": "Thanks for rating Wavee",
     "door": {
       "rate": "Rate Wavee in the Microsoft Store",

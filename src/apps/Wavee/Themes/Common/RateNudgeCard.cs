@@ -12,10 +12,13 @@
 //            motion keeps the fade alone. It never takes focus; the pointer over it or keyboard focus on one of its buttons holds its
 //            clock (`Hold`), so it never tucks away under a reader.
 //
-//   ├─ row     the app's mark (the About hero's accent tile and music note, `rate-nudge:icon`) beside the words: the milestone's big line
-//   │          and its caption (`rate-nudge:big`), the title (`:title`), the body (`:body`), the star count (`:meta`, a GitHub card only)
-//   └─ actions the primary (accent, the Store's bag or a star, `:primary`), Not now (`:later`), and Don't ask again pushed to the end as a
-//              link (`:never`). A narrow card wraps the link onto its own line. At Compact every target is 40 DIP (`CommonTouch`).
+//   Two layouts, the concept's (rate-nudge artifact, concepts A and B):
+//   MILESTONE  head: the app icon (`:icon`) beside the milestone (`:big`: "100 hours" in the accent ink, the "of music played in Wavee since"
+//              line in the primary ink, "on 41 listening days" in the secondary); a divider; the body (`:body`); the star count (`:meta`)
+//   PLAIN      head: the app icon beside the title (`:title`), the body and the star count (the launch ask, and a policy without milestones)
+//   actions    the primary (accent, the Store's bag or a star, `:primary`), Not now (`:later`), and Don't ask again pushed to the end as a
+//              quiet underlined link in the secondary ink (`:never`) that wraps onto two lines rather than leave the row. At Compact every
+//              target is 40 DIP (`CommonTouch`).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -77,18 +80,63 @@ internal static class RateNudgeCard
             Enter = motion, Exit = motion, Transition = Rules.Motion,
             OnHoverMove = _ => { if (hovered.Value) return; hovered.Value = true; Sync(); },
             OnPointerExit = () => { hovered.Value = false; Sync(); },
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Start, MinWidth = 0f,
-                    Children = [Mark(), Words(view)],
-                },
-                Actions(p, view, target, Focus),
-            ],
+            Children = view.Big is { } big
+                ? [Head(Milestone(big, view)), Divider(), .. Reading(view), Actions(p, view, target, Focus)]
+                : [Head(Plain(view)), Actions(p, view, target, Focus)],
         };
         return Lane([card]);
     }
+
+    /// <summary>The app icon beside the head's words, top-aligned.</summary>
+    static BoxEl Head(BoxEl words) => new()
+    {
+        Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Start, MinWidth = 0f,
+        Children = [Mark(), words],
+    };
+
+    /// <summary>A milestone's head: the number in the accent ink, what it counts in the primary ink, the listening days in the secondary.</summary>
+    static BoxEl Milestone(string big, RateNudgeView view)
+    {
+        var lines = new List<Element>(3) { R.Type.StatHero(big, null) with { Color = Tok.AccentTextPrimary, Wrap = TextWrap.Wrap } };
+        if (view.BigCaption is { } caption)
+            lines.Add(Wrapping(R.Type.TrackTitle(caption)));
+        if (view.BigStats is { } stats)
+            lines.Add(Secondary(R.Type.DenseMeta(stats)));
+        return Column(Rules.BigKey, lines);
+    }
+
+    /// <summary>A plain head: the title, then the body and the star count beside the icon.</summary>
+    static BoxEl Plain(RateNudgeView view)
+    {
+        var lines = new List<Element>(3)
+        {
+            Wrapping(R.Type.TrackTitle(view.Title)) with { Key = Rules.TitleKey, Case = R.Case.For(LabelKind.Heading) },
+        };
+        lines.AddRange(Reading(view));
+        return Column(null, lines);
+    }
+
+    /// <summary>The body and, on a GitHub card with a count, the star line under it.</summary>
+    static Element[] Reading(RateNudgeView view)
+    {
+        TextEl body = Secondary(R.Type.TrackMeta(view.Body)) with { Key = Rules.BodyKey };
+        if (view.Meta is not { } meta) return [body];
+        return
+        [
+            body,
+            new BoxEl
+            {
+                Key = Rules.MetaKey, Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Children = [Ui.Icon(Icons.FavoriteStar, Rules.MetaGlyph, Tok.TextSecondary), Secondary(R.Type.MicroMeta(meta))],
+            },
+        ];
+    }
+
+    static BoxEl Column(string? key, List<Element> lines)
+        => new() { Key = key, Direction = 1, Gap = Spacing.XXS, Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [.. lines] };
+
+    /// <summary>The hairline between a milestone's head and its body.</summary>
+    static BoxEl Divider() => new() { Height = Rules.Hairline, AlignSelf = FlexAlign.Stretch, Fill = Tok.StrokeDividerDefault };
 
     /// <summary>The full-bleed lane the card floats in (the overlay lane's last child: it takes what is left of the window, and its empty area
     /// passes every pointer through to the page). With no card it is out of hit-testing altogether, as the engine's dormant toast lane is.</summary>
@@ -99,60 +147,56 @@ internal static class RateNudgeCard
         Children = children,
     };
 
-    /// <summary>The app's mark: the About hero's accent tile with the music note, at the card's scale.</summary>
+    /// <summary>The app's own icon (the W the taskbar and the Store show), shipped beside the exe in assets\AppIcon, decoded at the card's size.</summary>
     static BoxEl Mark() => new()
     {
         Key = Rules.IconKey, Width = Rules.Icon, Height = Rules.Icon, Shrink = 0f,
-        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Corners = R.Shape.All(ShapeRole.Control), Fill = Tok.AccentSubtle,
-        Children = [Ui.Icon(Icons.MusicNote, Rules.IconGlyph, Tok.AccentTextPrimary)],
+        Children =
+        [
+            new ImageEl
+            {
+                Source = s_iconPath, Width = Rules.Icon, Height = Rules.Icon, Fit = ImageFit.Cover, DecodePx = Rules.IconDecodePx,
+                Corners = R.Shape.All(ShapeRole.Control), Placeholder = Tok.FillSubtleSecondary,
+            },
+        ],
     };
 
-    /// <summary>The words: the milestone line (when the ask is a milestone's), the title, the body, the star count (a GitHub card with a count).</summary>
-    static BoxEl Words(RateNudgeView view)
-    {
-        var lines = new List<Element>(4);
-        if (view.Big is { } big)
-        {
-            var milestone = new List<Element>(2) { R.Type.StatHero(big, null) with { Wrap = TextWrap.Wrap } };
-            if (view.BigCaption is { } caption) milestone.Add(Secondary(R.Type.DenseMeta(caption)));
-            lines.Add(new BoxEl { Key = Rules.BigKey, Direction = 1, MinWidth = 0f, Children = [.. milestone] });
-        }
-        lines.Add(R.Type.TrackTitle(view.Title) with
-        {
-            Key = Rules.TitleKey, Wrap = TextWrap.Wrap, MaxLines = 0, Trim = TextTrim.None, Shrink = 1f, MinWidth = 0f,
-            Case = R.Case.For(LabelKind.Heading),
-        });
-        lines.Add(Secondary(R.Type.DenseMeta(view.Body)) with { Key = Rules.BodyKey });
-        if (view.Meta is { } meta)
-        {
-            lines.Add(new BoxEl
-            {
-                Key = Rules.MetaKey, Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Children = [Ui.Icon(Icons.FavoriteStar, Rules.MetaGlyph, Tok.TextSecondary), Secondary(R.Type.MicroMeta(meta))],
-            });
-        }
-        return new BoxEl { Direction = 1, Gap = Spacing.XS, Shrink = 1f, MinWidth = 0f, Children = [.. lines] };
-    }
+    static readonly string s_iconPath = Path.Combine(AppContext.BaseDirectory, Rules.IconFolder, Rules.IconFile);
 
-    /// <summary>A caption line in the secondary ink that wraps (never trims: every word of the ask is read).</summary>
-    static TextEl Secondary(TextEl text)
-        => text with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 0, Trim = TextTrim.None, Shrink = 1f, MinWidth = 0f };
+    /// <summary>A line that wraps (never trims: every word of the ask is read).</summary>
+    static TextEl Wrapping(TextEl text)
+        => text with { Wrap = TextWrap.Wrap, MaxLines = 0, Trim = TextTrim.None, Shrink = 1f, MinWidth = 0f };
 
-    /// <summary>The buttons: the ask itself, Not now, and Don't ask again pushed to the end as a link. Focus on any of them holds the card.</summary>
+    /// <summary>A wrapping line in the secondary ink.</summary>
+    static TextEl Secondary(TextEl text) => Wrapping(text) with { Color = Tok.TextSecondary };
+
+    /// <summary>The buttons: the ask itself, Not now, and Don't ask again at the end as a quiet link. Focus on any of them holds the card.</summary>
     static BoxEl Actions(RateNudgeCardProps p, RateNudgeView view, float target, Action<bool> focus)
     {
         string glyph = view.Glyph == RateNudgeGlyph.Star ? Icons.FavoriteStar : Rules.StoreGlyph;
         return new BoxEl
         {
-            Direction = 0, Wrap = true, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
             Children =
             [
-                CommonTouch.Button(view.Primary, p.Primary, target, accent: true, glyph: glyph) with { Key = Rules.PrimaryKey, OnFocusChanged = focus },
-                CommonTouch.Button(view.Later, p.Later, target) with { Key = Rules.LaterKey, OnFocusChanged = focus },
-                new BoxEl { Grow = 1f, MinWidth = 0f, HitTestVisible = false },
-                CommonTouch.Link(view.Never, p.Never, target) with { Key = Rules.NeverKey, OnFocusChanged = focus },
+                CommonTouch.Button(view.Primary, p.Primary, target, accent: true, glyph: glyph) with { Key = Rules.PrimaryKey, OnFocusChanged = focus, Shrink = 0f },
+                CommonTouch.Button(view.Later, p.Later, target) with { Key = Rules.LaterKey, OnFocusChanged = focus, Shrink = 0f },
+                QuietLink(view.Never, p.Never, target, focus),
             ],
         };
     }
+
+    /// <summary>Don't ask again: the secondary ink, underlined, right-aligned at the row's end, wrapping onto a second line rather than leaving
+    /// the row (a hyperlink's hover and press fills, the hand cursor, a 40-DIP target at Compact).</summary>
+    static BoxEl QuietLink(string text, Action click, float target, Action<bool> focus) => new()
+    {
+        Key = Rules.NeverKey, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = target, Justify = FlexJustify.Center, AlignItems = FlexAlign.End,
+        Padding = Edges4.All(Spacing.XS), Corners = R.Shape.All(ShapeRole.Control),
+        Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+        Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Hyperlink, OnClick = click, OnFocusChanged = focus,
+        Children =
+        [
+            Secondary(R.Type.DenseMeta(text)) with { Underline = true, TextAlign = TextAlign.End, Grow = 0f },
+        ],
+    };
 }

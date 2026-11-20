@@ -23,8 +23,14 @@ internal static class RateNudgeRules
     /// <summary>The gap between the card's bottom and the player bar's top.</summary>
     public const float AboveBar = 14f;
 
-    /// <summary>The app's mark (the About hero's accent tile with the music note, at the card's scale): its edge and its glyph.</summary>
-    public const float Icon = 38f, IconGlyph = 18f;
+    /// <summary>The app's icon at the card's scale, and the size it is decoded at (two device pixels per DIP covers a 200 % display).</summary>
+    public const float Icon = 44f, IconDecodePx = 96f;
+
+    /// <summary>Where the icon ships: `assets\**` is copied beside the exe (Wavee.csproj), the 1254-px source the .ico is cut from.</summary>
+    public const string IconFolder = "assets/AppIcon", IconFile = "appicon-source.png";
+
+    /// <summary>The divider between a milestone's head and its body.</summary>
+    public const float Hairline = 1f;
 
     /// <summary>The star before the count line, at the meta line's scale.</summary>
     public const float MetaGlyph = 12f;

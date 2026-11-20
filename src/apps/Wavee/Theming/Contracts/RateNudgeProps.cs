@@ -9,12 +9,12 @@ using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
 
-/// <summary>One card's resolved words. <c>Meta</c> is the star count line (a GitHub card with a known count, else null); <c>Big</c>
-/// and <c>BigCaption</c> are the milestone line ("100 hours", "of music played in Wavee since July 2"), null on a card that is not
-/// a milestone's.</summary>
+/// <summary>One card's resolved words. <c>Meta</c> is the star count line (a GitHub card with a known count, else null); <c>Big</c>,
+/// <c>BigCaption</c> and <c>BigStats</c> are the milestone ("100 hours", "of music played in Wavee since July 2", "on 41 listening
+/// days"), null on a card that is not a milestone's.</summary>
 public sealed record RateNudgeView(
     string Title, string Body, string? Meta,
-    string? Big, string? BigCaption,
+    string? Big, string? BigCaption, string? BigStats,
     string Primary, string Later, string Never,
     RateNudgeGlyph Glyph);
 

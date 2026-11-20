@@ -68,12 +68,12 @@ public static partial class RateNudge
     static RateNudgeView ViewFor(Card c) => c.Ask == Ask.Rate
         ? new(Loc.Get(Strings.RateNudge.Rate.Title),
               Loc.Get(c.Milestone is null ? Strings.RateNudge.Rate.Body : Strings.RateNudge.Rate.MilestoneBody), null,
-              Big(c), BigCaption(c),
+              Big(c), BigCaption(c), BigStats(c),
               Loc.Get(Strings.RateNudge.Rate.Primary), Loc.Get(Strings.RateNudge.Later), Loc.Get(Strings.RateNudge.Never), RateNudgeGlyph.Store)
         : new(Loc.Get(Strings.RateNudge.Star.Title),
               Loc.Get(c.Milestone is null ? Strings.RateNudge.Star.Body : Strings.RateNudge.Star.MilestoneBody),
               StarCount is { } n ? Strings.RateNudge.Star.Meta(n) : null,
-              Big(c), BigCaption(c),
+              Big(c), BigCaption(c), BigStats(c),
               Loc.Get(Strings.RateNudge.Star.Primary), Loc.Get(Strings.RateNudge.Later), Loc.Get(Strings.RateNudge.Never), RateNudgeGlyph.Star);
 
     /// <summary>"25 hours": the milestone the ask waited for, or null on a card that is not a milestone's.</summary>
@@ -85,9 +85,13 @@ public static partial class RateNudge
     {
         if (c.Milestone is null || Current.CountedSince is not { } since) return null;
         DateTimeOffset local = since.ToLocalTime();
-        string pattern = local.Year == s_seams.Now().ToLocalTime().Year ? "MMMM d" : "MMMM d, yyyy";
+        // A no-break space keeps "July 30" on one line when the caption wraps (Zune's larger type).
+        string pattern = local.Year == s_seams.Now().ToLocalTime().Year ? "MMMM d" : "MMMM d, yyyy";
         return Strings.RateNudge.BigCaption(local.ToString(pattern, DiscoCardText.Culture()));
     }
+
+    /// <summary>"on 41 listening days" under a milestone (the ledger's ListenDays), or null on a card that is not a milestone's.</summary>
+    static string? BigStats(Card c) => c.Milestone is null ? null : Strings.RateNudge.BigStats(Current.ListenDays);
 
     /// <summary>The doors' verb (the Settings → About dial, the account menu, the after-update plate's footer): one home, the same flow as
     /// the card's primary. False: nothing on the page to re-read.</summary>
