@@ -506,7 +506,7 @@ internal sealed class ZunePanelFrame : Component
 internal sealed record ZuneBleedProps(NowPlayingHeroProps NowPlaying, float Width);
 
 /// <summary>The edge-to-edge canvas (BleedZune): the ground, the canvas over it from the panel's top, its lower half fading into the ground in the
-/// dark kind (in the light kind the veil behind the copy and the foot's dissolve into the light ground, <see cref="Deck.LightScope"/>), the pivots'
+/// dark kind (<see cref="Deck.DarkFade"/>; in the light kind the veil behind the copy and the foot's dissolve into the light ground, <see cref="Deck.LightScope"/>), the pivots'
 /// scrim and the artist's name in giant light type (the media scope's ink) drifting over it. Shown while the Canvas style rests with a canvas to play; it fades
 /// in and out. A component: the name follows the playing track without re-rendering the frame.</summary>
 internal sealed class ZuneBleed : Component
@@ -517,8 +517,9 @@ internal sealed class ZuneBleed : Component
     {
         var p = UseProps<ZuneBleedProps>();
         var np = p.NowPlaying;
+        // The committed width answers only until the canvas and the layers that end it have measured the panel: they ride the width the
+        // host lays the panel out at, and the canvas's foot (Deck.Bleed.cs, "one box, one clock").
         float width = p.Width;
-        float vh = MathF.Round(width * ZunePanelBodies.BleedAspect), fade = MathF.Round(vh * ZunePanelBodies.BleedFadeShare);
         ColorF ground = Tok.FillSolidBase, shade = Deck.BleedShade(ground);
         var ink = new CanvasInk(true);
         var track = np.NowTrack();
@@ -534,11 +535,7 @@ internal sealed class ZuneBleed : Component
                 np.BleedVideo(width),
                 R.IsLight
                     ? Deck.LightScope(np, width, ZunePanelBodies.BleedMetaLift, ground)
-                    : new BoxEl
-                    {
-                        AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, vh - fade, 0f, 0f), Height = fade,
-                        Gradient = Ui.GradientDown(new GradientStop(0f, ground with { A = 0f }), new GradientStop(ZunePanelBodies.BleedFadeFull, ground)),
-                    },
+                    : Deck.DarkFade(width, ZunePanelBodies.BleedFadeShare, ZunePanelBodies.BleedFadeFull, ground),
                 new BoxEl
                 {
                     AlignSelf = FlexAlign.Start, Height = ZunePanelBodies.BleedHeadScrimH,
