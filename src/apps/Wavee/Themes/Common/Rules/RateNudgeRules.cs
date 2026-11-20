@@ -4,6 +4,7 @@
 // rhythm come from the active style's tokens and roles; these are the card's own geometry and its motion.
 
 using FluentGpu.Animation;
+using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 
 namespace Wavee.Themes.Common;
@@ -18,13 +19,24 @@ internal static class RateNudgeRules
 
     /// <summary>The card's widest extent: a reading line of the body in three lines or so. A window narrower than this plus the side margins
     /// gets a card as wide as the window allows (never wider: it hugs, capped here).</summary>
-    public const float Width = 336f;
+    public const float Width = 368f;   // the milestone caption ("of music played in Wavee since July 30") stays one line beside the icon
 
     /// <summary>The gap between the card's bottom and the player bar's top.</summary>
     public const float AboveBar = 14f;
 
-    /// <summary>The app's icon at the card's scale, and the size it is decoded at (two device pixels per DIP covers a 200 % display).</summary>
-    public const float Icon = 44f, IconDecodePx = 96f;
+    /// <summary>The size the app's icon is decoded at. Its edge is not a number here: it spans the head's first two lines (the card reads
+    /// them off the style's roles), about 60 DIP in WinUI; 160 px covers that on a 250 % display.</summary>
+    public const float IconDecodePx = 160f;
+
+    /// <summary>The gap between the head's lines, which the icon's edge includes.</summary>
+    public const float LineGap = 2f;
+
+    /// <summary>Segoe UI's glyph box over its em, (ascent 2210 + descent 514) / 2048: a line is never shorter than its size times this.</summary>
+    public const float FaceBox = 1.33f;
+
+    /// <summary>The star before the GitHub count, in GitHub's gold: the premium ink WinUI's and Classic's account menus give Spotify
+    /// Premium's star, per app mode (read per render, so a mode switch re-resolves it).</summary>
+    public static ColorF StarInk => Theme.Dark ? ColorF.FromRgba(0xE6, 0xC2, 0x6C) : ColorF.FromRgba(0x8A, 0x63, 0x12);
 
     /// <summary>Where the icon ships: `assets\**` is copied beside the exe (Wavee.csproj), the 1254-px source the .ico is cut from.</summary>
     public const string IconFolder = "assets/AppIcon", IconFile = "appicon-source.png";

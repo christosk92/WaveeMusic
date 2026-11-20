@@ -81,40 +81,53 @@ internal static class RateNudgeCard
             OnHoverMove = _ => { if (hovered.Value) return; hovered.Value = true; Sync(); },
             OnPointerExit = () => { hovered.Value = false; Sync(); },
             Children = view.Big is { } big
-                ? [Head(Milestone(big, view)), Divider(), .. Reading(view), Actions(p, view, target, Focus)]
-                : [Head(Plain(view)), Actions(p, view, target, Focus)],
+                ? [Milestone(big, view), Divider(), .. Reading(view), Actions(p, view, target, Focus)]
+                : [Plain(view), Actions(p, view, target, Focus)],
         };
         return Lane([card]);
     }
 
-    /// <summary>The app icon beside the head's words, top-aligned.</summary>
-    static BoxEl Head(BoxEl words) => new()
+    /// <summary>The app icon beside the head's words. The icon spans exactly the head's first two lines: its top is the first line's
+    /// top, its bottom the second line's bottom (the two line heights and the column's gap, read off the active style's own roles,
+    /// so it holds in every theme and at every type size).</summary>
+    static BoxEl Head(float first, float second, BoxEl words) => new()
     {
         Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Start, MinWidth = 0f,
-        Children = [Mark(), words],
+        Children = [Mark(first + Rules.LineGap + second), words],
     };
 
-    /// <summary>A milestone's head: the number in the accent ink, what it counts in the primary ink, the listening days in the secondary.</summary>
+    /// <summary>A milestone's head: the number in the accent ink, what it counts in the primary ink, the listening days in the secondary.
+    /// The icon spans the number and the caption.</summary>
     static BoxEl Milestone(string big, RateNudgeView view)
     {
-        var lines = new List<Element>(3) { R.Type.StatHero(big, null) with { Color = Tok.AccentTextPrimary, Wrap = TextWrap.Wrap } };
-        if (view.BigCaption is { } caption)
-            lines.Add(Wrapping(R.Type.TrackTitle(caption)));
+        SpanTextEl number = R.Type.StatHero(big, null) with { Color = Tok.AccentTextPrimary, Wrap = TextWrap.Wrap };
+        var lines = new List<Element>(3) { number };
+        float second = 0f;
+        if (view.BigCaption is { } text)
+        {
+            TextEl caption = Wrapping(R.Type.TrackTitle(text));
+            lines.Add(caption);
+            second = LineOf(caption.LineHeight, caption.Size);
+        }
         if (view.BigStats is { } stats)
             lines.Add(Secondary(R.Type.DenseMeta(stats)));
-        return Column(Rules.BigKey, lines);
+        return Head(LineOf(number.LineHeight, number.Size), second, Column(Rules.BigKey, lines));
     }
 
-    /// <summary>A plain head: the title, then the body and the star count beside the icon.</summary>
+    /// <summary>A plain head: the title, then the body and the star count beside the icon. The icon spans the title and the body's first line.</summary>
     static BoxEl Plain(RateNudgeView view)
     {
-        var lines = new List<Element>(3)
-        {
-            Wrapping(R.Type.TrackTitle(view.Title)) with { Key = Rules.TitleKey, Case = R.Case.For(LabelKind.Heading) },
-        };
-        lines.AddRange(Reading(view));
-        return Column(null, lines);
+        TextEl title = Wrapping(R.Type.TrackTitle(view.Title)) with { Key = Rules.TitleKey, Case = R.Case.For(LabelKind.Heading) };
+        Element[] reading = Reading(view);
+        var lines = new List<Element>(3) { title };
+        lines.AddRange(reading);
+        TextEl body = (TextEl)reading[0];
+        return Head(LineOf(title.LineHeight, title.Size), LineOf(body.LineHeight, body.Size), Column(null, lines));
     }
+
+    /// <summary>The height a role's line takes: its line height, or the face's own box where that is taller (a display numeral set tight,
+    /// as WinUI's 28/36 and Zune's 40/48: the line grows to the glyph box, so the icon must too).</summary>
+    static float LineOf(float lineHeight, float size) => MathF.Max(lineHeight, size * Rules.FaceBox);
 
     /// <summary>The body and, on a GitHub card with a count, the star line under it.</summary>
     static Element[] Reading(RateNudgeView view)
@@ -127,13 +140,13 @@ internal static class RateNudgeCard
             new BoxEl
             {
                 Key = Rules.MetaKey, Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Children = [Ui.Icon(Icons.FavoriteStar, Rules.MetaGlyph, Tok.TextSecondary), Secondary(R.Type.MicroMeta(meta))],
+                Children = [Ui.Icon(Icons.FavoriteStarFill, Rules.MetaGlyph, Rules.StarInk), Secondary(R.Type.MicroMeta(meta))],
             },
         ];
     }
 
     static BoxEl Column(string? key, List<Element> lines)
-        => new() { Key = key, Direction = 1, Gap = Spacing.XXS, Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [.. lines] };
+        => new() { Key = key, Direction = 1, Gap = Rules.LineGap, Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [.. lines] };
 
     /// <summary>The hairline between a milestone's head and its body.</summary>
     static BoxEl Divider() => new() { Height = Rules.Hairline, AlignSelf = FlexAlign.Stretch, Fill = Tok.StrokeDividerDefault };
@@ -147,15 +160,15 @@ internal static class RateNudgeCard
         Children = children,
     };
 
-    /// <summary>The app's own icon (the W the taskbar and the Store show), shipped beside the exe in assets\AppIcon, decoded at the card's size.</summary>
-    static BoxEl Mark() => new()
+    /// <summary>The app's own icon (the W the taskbar and the Store show), shipped beside the exe in assets\AppIcon, at <paramref name="edge"/>.</summary>
+    static BoxEl Mark(float edge) => new()
     {
-        Key = Rules.IconKey, Width = Rules.Icon, Height = Rules.Icon, Shrink = 0f,
+        Key = Rules.IconKey, Width = edge, Height = edge, Shrink = 0f,
         Children =
         [
             new ImageEl
             {
-                Source = s_iconPath, Width = Rules.Icon, Height = Rules.Icon, Fit = ImageFit.Cover, DecodePx = Rules.IconDecodePx,
+                Source = s_iconPath, Width = edge, Height = edge, Fit = ImageFit.Cover, DecodePx = Rules.IconDecodePx,
                 Corners = R.Shape.All(ShapeRole.Control), Placeholder = Tok.FillSubtleSecondary,
             },
         ],
