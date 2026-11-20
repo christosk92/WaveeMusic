@@ -67,8 +67,8 @@ public static partial class Spotify
                 Body = buffer.WrittenSpan,
             };
             Api.Result result = Api.Send(RequestKind.Custom, args, ct);
-            ackId = result.Ok ? AckIdOf(result.Body) : null;
-            if (!result.Ok) Log.Warn("spotify", "connect " + TransferRoute + " rejected (" + result.Status + ")");
+            ackId = result.Ok ? AckIdOf(result.Bytes) : null;
+            LogCommand("transfer", result.Status, ackId);
             return result.Ok;
         }
 
@@ -179,7 +179,7 @@ public static partial class Spotify
                 w.WriteString("intent_id", NewId());
                 w.WriteEndObject();
             }
-            return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
+            return PostCommand(endpoint, targetDeviceId, buffer.WrittenSpan, ct);
         }
 
         /// <summary>"Play this context from this row" on the device that owns playback — the desktop `play` envelope
@@ -195,7 +195,7 @@ public static partial class Spotify
             }
             var buffer = new ArrayBufferWriter<byte>(768);
             PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs, skipUid, skipIndex, video);
-            return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
+            return PostCommand("play", targetDeviceId, buffer.WrittenSpan, ct);
         }
 
         /// <summary>The uid a <c>skip_to</c> may carry: only the 32-lowercase-hex uid the owner's CONTEXT stamped on a row, else
@@ -271,7 +271,7 @@ public static partial class Spotify
             if (!string.IsNullOrEmpty(trackUri) && !Egress.Admits(trackUri.AsSpan())) return false;
             var buffer = new ArrayBufferWriter<byte>(512);
             NextTrackBody(buffer, trackUri, trackUid, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
-            return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
+            return PostCommand("next_track", targetDeviceId, buffer.WrittenSpan, ct);
         }
 
         /// <summary>The `next_track` envelope body, as the official client's queue-row click sends it: the three option
@@ -310,7 +310,7 @@ public static partial class Spotify
             if (signal == Decode.VideoSignal.None) return false;
             var buffer = new ArrayBufferWriter<byte>(384);
             SignalBody(buffer, signal, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
-            return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
+            return PostCommand("signal", targetDeviceId, buffer.WrittenSpan, ct);
         }
 
         /// <summary>The `signal` envelope body, field for field as the official client sends it: endpoint, <c>signal_id</c>, the
@@ -365,7 +365,7 @@ public static partial class Spotify
                 Body = body[..n],
             };
             Api.Result result = Api.Send(RequestKind.Custom, args, ct);
-            if (!result.Ok) Log.Warn("spotify", "connect volume rejected (" + result.Status + ")");
+            LogCommand("volume", result.Status, result.Ok ? AckIdOf(result.Bytes) : null);
             return result.Ok;
         }
 
@@ -396,9 +396,7 @@ public static partial class Spotify
         {
             var buffer = new ArrayBufferWriter<byte>(512);
             AddToQueueBody(buffer, trackUri, OurDeviceId, NewId(), NewId(), Guid.NewGuid().ToString(), Playback.UnixNowMs());
-            bool ok = PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
-            Log.Info("spotify", "connect add_to_queue forwarded to the owner ok=" + ok);
-            return ok;
+            return PostCommand("add_to_queue", targetDeviceId, buffer.WrittenSpan, ct);
         }
 
         /// <summary>Rewrite the owner's queue (<c>set_queue</c>) — its own rows echoed back, ours spliced in. Blocks; api
@@ -409,10 +407,8 @@ public static partial class Spotify
             var buffer = new ArrayBufferWriter<byte>(4096);
             SetQueueBody(buffer, queueRevision, prev, next, OurDeviceId, NewId(), NewId(), Guid.NewGuid().ToString(),
                 Playback.UnixNowMs());
-            bool ok = PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
-            Log.Info("spotify", "connect set_queue forwarded to the owner rows=" + next.Length + " revision=" + queueRevision
-                + " ok=" + ok);
-            return ok;
+            Log.Info("spotify", "connect set_queue to the owner rows=" + next.Length + " revision=" + queueRevision);
+            return PostCommand("set_queue", targetDeviceId, buffer.WrittenSpan, ct);
         }
 
         /// <summary>The desktop's <c>add_to_queue</c> envelope (0.2.9 <c>OutboundEnvelope.AddToQueue</c>): the track as
@@ -542,22 +538,36 @@ public static partial class Spotify
             "disallow_removing_from_context_tracks_reasons", "disallow_updating_context_reasons",
         ];
 
-        static bool PostCommand(string prefix, string fromDeviceId, string targetDeviceId, ReadOnlySpan<byte> body,
-            HeaderSet headers, CancellationToken ct)
+        /// <summary>One player verb POSTed to the owner's command route, and its one <c>connect.cmd</c> line
+        /// (<see cref="LogCommand"/>). <paramref name="endpoint"/> is the verb as the body spells it, for the log only.</summary>
+        static bool PostCommand(string endpoint, string targetDeviceId, ReadOnlySpan<byte> body, CancellationToken ct)
         {
             Span<char> path = stackalloc char[256];
-            int length = CommandPath(prefix, fromDeviceId, targetDeviceId, path);
+            int length = CommandPath(PlayerCommandRoute, OurDeviceId, targetDeviceId, path);
             var args = new RequestArgs
             {
                 Path = path[..length],
                 Host = ApiHost.Spclient,
                 Verb = Verb.Post,
-                Headers = headers,
+                Headers = CommandHeaders,
                 Body = body,
             };
             Api.Result result = Api.Send(RequestKind.Custom, args, ct);
-            if (!result.Ok) Log.Warn("spotify", "connect " + prefix + " rejected (" + result.Status + ")");
+            LogCommand(endpoint, result.Status, result.Ok ? AckIdOf(result.Bytes) : null);
             return result.Ok;
+        }
+
+        /// <summary>ONE line for every command this device sends another (remote-play plan 0.1, 2026-11-20): every player verb,
+        /// the transfer and the volume PUT, with the endpoint, the status and the answer's <c>ack_id</c> (the value the next
+        /// cluster echoes when the owner applied it). Before it only a refusal left a line — the `wire.call` of a failed call —
+        /// so a log could not say whether a pause, a seek, a previous, a shuffle or a repeat was ever sent, or which ack a cluster
+        /// answered (gap analysis 1.3). A 2xx is Info, anything else Warn; both read <c>connect.cmd</c>. The device ids stay in the
+        /// route, out of the line.</summary>
+        static void LogCommand(string endpoint, int status, string? ackId)
+        {
+            string line = "connect.cmd endpoint=" + endpoint + " status=" + status + " ack=" + (ackId ?? "-");
+            if (status is >= 200 and < 300) Log.Info("spotify", line);
+            else Log.Warn("spotify", line + " rejected");
         }
 
         static string NewId() => Guid.NewGuid().ToString("N");
