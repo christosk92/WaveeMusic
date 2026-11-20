@@ -327,8 +327,10 @@ internal static partial class ZunePlayerBar
             Animate = reduced ? null : ZunePlayerTiers.SlotMotion,
             Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
             OnRealized = node => barNode.Value = node,
-            // A pointer click takes the bar's key map without drawing its focus ring round the whole bar; Tab still shows it.
-            OnClick = () => input.FocusNode?.Invoke(barNode.Value, false),
+            // A press on the bar's own ground takes its key map: the press handler makes that ground a press target, and the engine's
+            // pointer focus focuses the bar without its ring (Tab still shows it). NOT OnClick: that made the bar a button, so a focused
+            // bar spent Space on its own activation and never reached the key map (#232).
+            OnPointerPressed = static _ => { },
             OnKeyDown = e => props.OnKey(e, input.GetFocus?.Invoke() == barNode.Value),
             Children =
             [

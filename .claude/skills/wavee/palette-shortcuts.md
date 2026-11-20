@@ -40,8 +40,9 @@ A `>` prefix (VS Code) restricts the scan to commands. Typing without `>` also a
 | Ctrl+- / Ctrl+Shift+- / Ctrl+Numpad− | Zoom out | `ZoomOutChord` / `ZoomOutShiftChord` / `ZoomOutNumpadChord` → `ZoomStep(-1)` |
 | Ctrl+0 / Ctrl+Numpad0 | Reset zoom | `ZoomResetChord` / `ZoomResetNumpadChord` → `ZoomStep(0)` |
 | Ctrl+mouse-wheel | Zoom in/out | `InputHooks.ZoomWheel` (shell mount effect → `ZoomStep(±1)`). Mouse wheel only — the platform consumes Ctrl+touchpad scroll as pinch synthesis before the dispatcher. |
-| Space | Play/pause | `column.OnKeyDown` → `OnShellKey` (not an accelerator) |
-| Left / Right | Seek back / forward: 5 s, accelerating while held (15 s after 0.5 s, 30 s after 1.5 s) | Player bar focused, or the full-screen stage: `PlayerKey` → `Shell.BarKeyStep` → `KeyboardScrubLadder` |
+| Space | Play/pause | `column.OnKeyDown` → `OnShellKey` (not an accelerator); with nothing focused it starts at the column (`TakesUnfocusedKeys`); the focused bar's own map toggles it too |
+| Left / Right | Seek back / forward: 5 s, accelerating while held (15 s after 0.5 s, 30 s after 1.5 s) | Player bar focused (Tab, or a press on its own ground), or the full-screen stage: `PlayerKey` → `Shell.BarKeyStep` → `KeyboardScrubLadder` |
+| Up / Down | Volume ±5 % | Player bar focused: `PlayerKey` → `Playback.SetVolume` |
 | Shift+Left / Shift+Right | Fine seek: 1 s steps, no acceleration | same path, `PlayerKeyIntent.SeekBackFine` / `SeekForwardFine` |
 | Mouse XButton1/2 | — | **Not delivered.** `InputDispatcher` handles buttons 0/1/2 only. |
 
@@ -49,7 +50,9 @@ A `>` prefix (VS Code) restricts the scan to commands. Typing without `>` also a
 
 `InputDispatcher.OnKey` runs focused routing **before** accelerators, and accelerators only match Ctrl/Alt or F1–F12. Bare Space therefore never fires a `KeyAccelerator`. The shell listens on the chrome column's `OnKeyDown` so Space bubbles there only after the focused node declined it.
 
-Buttons consume Space as activation (dispatcher arms click, no bubble). Editors (`AutomationRole.Text` or `InteractionInfo.CharBit`) are skipped in `FocusedIsTextEditor` so a typed space is not also play/pause (`EditableText` inserts Space via `OnChar`, not `OnKeyDown`). Trust that contract; do not add a shell-level Space accelerator.
+**Nothing focused is the usual state** (no initial focus, a press on inert background clears it, a focused node that unmounts leaves none; the transport buttons never take focus on a click). The engine drops a key with no focused node unless a `BoxEl.TakesUnfocusedKeys` box takes it: every theme's frame column sets it beside `OnKeyDown = props.OnKeyDown`, so Space, Escape and Ctrl+Tab start at the column (#232). A new theme's frame must set it too. A dialog, menu or trapping flyout is its own focus scope: with nothing focused inside it, the column hears nothing.
+
+Buttons consume Space as activation (dispatcher arms click, no bubble), so a container that wants Space in its own key map must not carry `OnClick`: the player bar takes a press on its ground with `OnPointerPressed` (the engine's pointer focus focuses it, no ring), never `OnClick` (#232: the bar's focus-on-click made it a button and Space activated it). Editors (`AutomationRole.Text` or `InteractionInfo.CharBit`) are skipped in `FocusedIsTextEditor` so a typed space is not also play/pause (`EditableText` inserts Space via `OnChar`, not `OnKeyDown`). Trust that contract; do not add a shell-level Space accelerator.
 
 ### Seek keys: the keyboard scrub ladder
 

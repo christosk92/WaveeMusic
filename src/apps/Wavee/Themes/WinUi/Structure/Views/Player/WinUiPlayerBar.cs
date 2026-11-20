@@ -138,9 +138,11 @@ internal static partial class WinUiPlayerBar
                     Key = PL.BarKey, Direction = 1, ZStack = true, Height = WinUiPlayerTiers.HeightOf(window), Shrink = 0f, Fill = R.Layer.PlayerBar,
                     Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
                     OnRealized = node => barNode.Value = node,
-                    // A pointer click takes the bar's key map without drawing its focus ring round the whole bar (the board's bar has only
-                    // its top divider); Tab still lands on it with the keyboard focus visual.
-                    OnClick = () => input.FocusNode?.Invoke(barNode.Value, false),
+                    // A press on the bar's own ground takes its key map: the press handler makes that ground a press target, and the engine's
+                    // pointer focus focuses the bar without its ring (the board's bar has only its top divider); Tab still lands on it with the
+                    // keyboard focus visual. NOT OnClick: that made the bar a button, so a focused bar spent Space on its own activation and
+                    // never reached the key map (#232).
+                    OnPointerPressed = static _ => { },
                     OnKeyDown = e => props.OnKey(e, input.GetFocus?.Invoke() == barNode.Value),
                     Children = mini
                         ? [Body(body), Divider(), ProgressEdge(props, v), .. hints]
