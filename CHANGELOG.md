@@ -8,19 +8,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
-## [0.3.12] - unreleased
-
-### Added
-
-- **Close the bar about songs that can't be played.** Its new ✕ hides it on that list until Wavee restarts; other lists
-  still show theirs. (#231)
-
-### Fixed
-
-- **Local files in playlists show up.** A playlist's local files show their title, artist and length (greyed out: Wavee
-  can't play them yet) instead of empty rows, and their tags, video and Canvas answers are kept instead of being asked
-  for again on every visit. (#231)
-
 ## [0.3.11] - 2026-11-19
 
 ### Added
