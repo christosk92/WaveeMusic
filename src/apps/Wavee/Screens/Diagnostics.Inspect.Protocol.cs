@@ -624,7 +624,7 @@ public static partial class Diagnostics
                 Args = Join([Arg("state", ArgType.Enum, "minimized (the caption button), hidden (close to tray) or restored (the restore edge paints the next frame; then settle)", null, "minimized|hidden|restored"),
                              Arg("active", ArgType.Bool, "false blurs the window (the WindowBlur a deactivation sends: hover cleared, a pointer that was in leaves the window), true re-activates it (the pointer is back with the next move)"),
                              Arg("advance", ArgType.Float, "move the cold-maintenance clock this many ms ahead first (31000 makes a 30 s deadline due)", "0") with { Min = 0 },
-                             Arg("floor", ArgType.Int, "set the scene slab's trim floor (SceneStore.CapacityFloor; the app runs with 8192, an inspector mount with 0)") with { Min = 0 },
+                             Arg("floor", ArgType.Int, "set the scene slab's trim floor (SceneStore.CapacityFloor; a mount starts at the app's Shell.SceneCapacity, 8192)") with { Min = 0 },
                              IntArg("frames", "frames to run after the change when not restoring (parked frames while parked)", "2", 0, 100_000)], s_settleArgs),
             },
             new(Verb.Transport, "transport", "Drive the playback sequencer as the transport and the queue verbs do (next, prev, a natural end, shuffle, repeat, add/playnext, a track ruled unavailable) and read back the deck, the modes, the queue rows and the panel's up-next list; then settle", "transport do=next")
