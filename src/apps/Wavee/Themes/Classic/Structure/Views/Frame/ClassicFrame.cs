@@ -68,7 +68,9 @@ internal static class ClassicFrame
         {
             // Window-tall, bound: the content region yields instead of shoving the docked bar off the bottom.
             Direction = 1, Grow = 1f, Height = Prop.Of(() => props.Viewport.Value.Height),
-            OnKeyDown = props.OnKeyDown,
+            // The shell's keys (Space play/pause, Escape, Ctrl+Tab) also when NOTHING has focus: the usual state after a click on the page or at
+            // start-up. The engine drops a key with no focused node unless a TakesUnfocusedKeys box takes it.
+            OnKeyDown = props.OnKeyDown, TakesUnfocusedKeys = true,
             Children =
             [
                 .. props.Chords,

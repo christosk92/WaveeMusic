@@ -756,8 +756,11 @@ public static partial class Shell
         }
     }
 
-    /// <summary>Bare Escape and Space bubble here after every focused owner declined them. NOT accelerators (the
-    /// dispatcher only matches Ctrl/Alt/F-keys) and NOT KeyPreview (a single slot the overlay host re-assigns).</summary>
+    /// <summary>Bare Escape and Space bubble here after every focused owner declined them, and with NOTHING focused (the usual
+    /// state: at start-up, after a click on the page, after the focused node went away) they start here: every theme's frame
+    /// column carries <c>TakesUnfocusedKeys</c> beside this handler. NOT accelerators (the dispatcher only matches Ctrl/Alt/F-keys)
+    /// and NOT KeyPreview (a single slot the overlay host re-assigns). An open dialog or menu is its own focus scope, so it keeps
+    /// its keys even with nothing focused in it.</summary>
     static void OnShellKey(KeyEventArgs e)
     {
         if (e.Handled) return;
