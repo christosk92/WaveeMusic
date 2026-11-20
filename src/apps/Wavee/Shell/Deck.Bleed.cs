@@ -22,6 +22,14 @@
 // canvas ends `LightFoot` above the canvas's foot (`CopyFoot`), a veil only as dark as the copy needs sits behind the copy (`LightScope`: the
 // house scrim, a static floor plus the boost `MediaScrim` solves on the canvas's poster, capped well below black), and the canvas's last
 // `LightFoot` dissolves, eased, into the panel's light ground, which is where "Next up" starts: video, then the light panel.
+//
+// ONE BOX, ONE CLOCK (the owner, 2026-11-20: a pale rectangle over the canvas while the panel's seam is dragged, veil-wrong.png, and a
+// 1-px line between the fade and "Next up", fade-gap.png). The canvas and the layers that end it (`LightScope`, `DarkFade`) are each a
+// `BleedLayer`: they measure the width they are laid out at, never the width a frame hands them, and every edge they draw sits in a column
+// of boxes whose heights ease on the canvas's own motion, so the veil, the boost and the dissolve ride the canvas's foot on every frame of
+// a seam drag (WinUI lays the pane out at the drag's live width; the committed width moves only on release), a sheet (the sheet spans
+// the window, not the docked width) and a width that eases. The layers that end the canvas reach `FootOverlap` past its foot: the picture
+// is a hole erased to whole device pixels, a gradient's edge is antialiased.
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
@@ -68,6 +76,10 @@ public static partial class Deck
 {
     /// <summary>The edge-to-edge canvas's node key.</summary>
     public const string BleedKey = "npv-bleed";
+
+    /// <summary>The keys of the layers that end the canvas: the light kind's veil, boost (its clip) and dissolve, the dark kind's fade. A trace
+    /// of them beside <see cref="BleedKey"/> (`trace keys=npv-bleed,npv-bleed-foot` through a seam drag) shows each edge on the canvas's.</summary>
+    public const string BleedVeilKey = "npv-bleed-veil", BleedBoostKey = "npv-bleed-boost", BleedFootKey = "npv-bleed-foot", BleedFadeKey = "npv-bleed-fade";
 
     /// <summary>Under this, a view is drawn over the edge-to-edge canvas (the hero's lyrics peek while the canvas fills the panel): it paints
     /// with <c>new CanvasInk(true)</c>.</summary>
@@ -117,50 +129,101 @@ public static partial class Deck
     public static float CopyFoot(float vh, float panelHeight)
         => MathF.Min(vh - (R.IsLight ? LightFoot : 0f), panelHeight > 0f ? panelHeight : vh);
 
+    /// <summary>How far the layers that end the canvas (the light kind's dissolve, the dark kind's fade) reach past its foot, at full strength
+    /// (DIP). The picture is a hole the compositor fills, erased to WHOLE device pixels (the engine's <c>SliceRecorder.WholePx</c>: the nearest
+    /// pixel, so up to half a pixel below the canvas's box), while a gradient's edge is antialiased over its last pixel: a dissolve that ended
+    /// exactly at the foot left the hole's last row half bare, a 1-px line of the raw picture between the fade and "Next up" (fade-gap.png;
+    /// veil-right.png's row 845 is the picture's (190,172,193) between the dissolve's 242 and the ground's 243). Past the foot the layer
+    /// paints the panel's ground over that same opaque ground, which nothing sees; 2 DIP is two device pixels or more at every scale. Only the
+    /// LAST layer reaches past the foot: a layer under it that ended on the same edge would show through its antialiased last row (the light
+    /// kind's veil ends at the foot, <c>LightScopeView</c>).</summary>
+    public const float FootOverlap = 2f;
+
     /// <summary>The light kind's layers over the canvas (the file header): the veil behind the copy (whose top sits <paramref name="copyLift"/>
-    /// above <see cref="CopyFoot"/>) and the foot's dissolve into the panel's <paramref name="ground"/>. A ZStack layer at the panel's top, after
-    /// the canvas and before the head's scrim; a component, so the panel's height and the poster's measurement re-render only it.</summary>
+    /// above <see cref="CopyFoot"/>), the boost <see cref="MediaScrim"/> solves on the poster, and the foot's dissolve into the panel's
+    /// <paramref name="ground"/>. A ZStack layer at the panel's top, after the canvas and before the head's scrim; a component, so the panel's
+    /// height, the width it is laid out at and the poster's measurement re-render only it. <paramref name="panelWidth"/> answers only until the
+    /// layer has measured its own width (<see cref="BleedLayer"/>).</summary>
     public static Element LightScope(NowPlayingHeroProps np, float panelWidth, float copyLift, ColorF ground)
         => Embed.Comp(new LightScopeProps(np, panelWidth, copyLift, ground), static () => new LightScopeView());
 
     sealed record LightScopeProps(NowPlayingHeroProps NowPlaying, float PanelWidth, float CopyLift, ColorF Ground);
 
-    sealed class LightScopeView : Component
+    /// <summary>The light kind's scope. It took its geometry from the width the frame handed it, the COMMITTED width, while the canvas under
+    /// it measured its own: a seam drag in WinUI lays the pane out at the drag's live width (<c>DockWidth.Host</c>) and commits on release
+    /// (<c>PanelHost.ResizePanel</c>), so for the whole drag the scope hugged the boost's explicit committed width and ended at the committed
+    /// canvas's foot (veil-wrong.png: the dissolve's white stops at x 563 of a pane running to 655, and at y 865 of a canvas running to 1025,
+    /// 327 DIP x 16/9 against the live 388). Now it measures the box the canvas measures, and lays each layer out in a column whose boxes ease
+    /// on the canvas's motion: the veil's top eases as the copy's room does, its foot and the dissolve's ride the canvas's foot, the boost is
+    /// clipped to the canvas.</summary>
+    sealed class LightScopeView : BleedLayer
     {
         public override Element Render()
         {
             var p = UseProps<LightScopeProps>();
-            float w = p.PanelWidth, vh = BleedHeight(w);
+            float w = LaidWidth(p.PanelWidth), vh = BleedHeight(w);
             float copyFoot = CopyFoot(vh, p.NowPlaying.RailHeight.Value), copyTop = MathF.Max(0f, copyFoot - p.CopyLift);
-            float lead = MathF.Min(LightVeilLead, copyTop), veilTop = copyTop - lead, veilH = MathF.Max(1f, vh - veilTop);
+            float lead = MathF.Min(LightVeilLead, copyTop), veilTop = copyTop - lead;
+            // The veil ends AT the canvas's foot, inside the dissolve's opaque reach, never on the dissolve's own end: two layers ending on one
+            // fractional edge each antialias their last pixel row, and the dissolve's partial ground over the veil's partial black left a 1-px
+            // line of 243 x (1 - 0.42c + 0.42c^2), 218 at half coverage, across the panel between the fade and "Next up" (the owner's 10.png,
+            // WinUI light: the ground by y 818, a uniform (218,218,218) row at 820, the ground again). Ended here, the dissolve's full ground
+            // over the overlap covers the veil's edge row whole.
+            float veilH = MathF.Max(1f, vh - veilTop);
             var floor = new MediaScrim.Floor(veilTop, lead, LightVeilA);
             ColorF black = ColorF.FromRgba(0, 0, 0);   // the veil MediaScrim solves (its blend is black over the frame)
+            // The dissolve reaches the ground at the canvas's foot and holds it over the overlap (a gradient holds its last stop past it).
+            float foot = MathF.Min(LightFoot, vh), footH = foot + FootOverlap, reach = foot / footH;
             var fade = new GradientStop[FootEase.Length];
-            for (int i = 0; i < fade.Length; i++) fade[i] = new GradientStop(FootEase[i].At, p.Ground with { A = FootEase[i].A });
-            float foot = MathF.Min(LightFoot, vh);
-            return new BoxEl
+            for (int i = 0; i < fade.Length; i++) fade[i] = new GradientStop(FootEase[i].At * reach, p.Ground with { A = FootEase[i].A });
+            // Each column's boxes sum to the canvas's height (plus the overlap) at both ends of an ease, on the same curve, so each edge rides it.
+            return Root(
+                Column(Band(veilTop), Band(veilH) with
+                {
+                    Key = BleedVeilKey,
+                    Gradient = Ui.GradientDown(new GradientStop(0f, black with { A = 0f }), new GradientStop(lead / veilH, black with { A = LightVeilA }),
+                        new GradientStop(1f, black with { A = LightVeilA })),
+                }),
+                Column(Band(vh) with
+                {
+                    Key = BleedBoostKey, ZStack = true, ClipToBounds = true,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            AlignSelf = FlexAlign.Start, HitTestVisible = false,
+                            Children =
+                            [
+                                Controls.ScrimBoost(new Controls.ScrimBoostProps(CanvasVideo.Current.Value.Poster, w, vh,
+                                    [new MediaScrim.Band(0f, copyTop, w, copyFoot, MediaScrim.NeedBody)], floor, LightBoostCeiling, copyTop)),
+                            ],
+                        },
+                    ],
+                }),
+                Column(Band(vh - foot), Band(footH) with { Key = BleedFootKey, Gradient = Ui.GradientDown(fade) }));
+        }
+    }
+
+    /// <summary>The dark kind's end of the canvas: its lower <paramref name="share"/> fading into the panel's <paramref name="ground"/>, fully
+    /// by <paramref name="full"/> of that stretch, then the ground past the foot (<see cref="FootOverlap"/>). A ZStack layer at the panel's top,
+    /// after the canvas and before the head's scrim; it measures its own width and eases with the canvas (<see cref="BleedLayer"/>), so a seam
+    /// drag never leaves it at the committed canvas's height. <paramref name="panelWidth"/> answers until it has measured.</summary>
+    public static Element DarkFade(float panelWidth, float share, float full, ColorF ground)
+        => Embed.Comp(new DarkFadeProps(panelWidth, share, full, ground), static () => new DarkFadeView());
+
+    sealed record DarkFadeProps(float PanelWidth, float Share, float Full, ColorF Ground);
+
+    sealed class DarkFadeView : BleedLayer
+    {
+        public override Element Render()
+        {
+            var p = UseProps<DarkFadeProps>();
+            float vh = BleedHeight(LaidWidth(p.PanelWidth)), fade = MathF.Round(vh * p.Share), fadeH = fade + FootOverlap;
+            return Root(Column(Band(vh - fade), Band(fadeH) with
             {
-                AlignSelf = FlexAlign.Start, Height = vh, Shrink = 0f, ZStack = true, HitTestVisible = false,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, veilTop, 0f, 0f), Height = veilH,
-                        Gradient = Ui.GradientDown(new GradientStop(0f, black with { A = 0f }), new GradientStop(lead / veilH, black with { A = LightVeilA }),
-                            new GradientStop(1f, black with { A = LightVeilA })),
-                    },
-                    new BoxEl
-                    {
-                        AlignSelf = FlexAlign.Start, HitTestVisible = false,
-                        Children =
-                        [
-                            Controls.ScrimBoost(new Controls.ScrimBoostProps(CanvasVideo.Current.Value.Poster, w, vh,
-                                [new MediaScrim.Band(0f, copyTop, w, copyFoot, MediaScrim.NeedBody)], floor, LightBoostCeiling, copyTop)),
-                        ],
-                    },
-                    new BoxEl { AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, vh - foot, 0f, 0f), Height = foot, Gradient = Ui.GradientDown(fade) },
-                ],
-            };
+                Key = BleedFadeKey,
+                Gradient = Ui.GradientDown(new GradientStop(0f, p.Ground with { A = 0f }), new GradientStop(p.Full * fade / fadeH, p.Ground)),
+            }));
         }
     }
 
@@ -179,40 +242,60 @@ public static partial class Deck
 
     sealed record BleedProps(float PanelWidth);
 
-    sealed class BleedView : Component
+    sealed class BleedView : BleedLayer
+    {
+        public override Element Render()
+        {
+            var p = UseProps<BleedProps>();
+            float width = LaidWidth(p.PanelWidth);
+            // The root fills the panel's stack (it measures the width); a column at its top carries the canvas, whose height eases as a flex child.
+            return Root(Column(Band(BleedHeight(width)) with
+            {
+                Key = BleedKey, ZStack = true, ClipToBounds = true,
+                Children = [CanvasVideo.Layer(CanvasVideo.Surface.Bleed)],
+            }));
+        }
+    }
+
+    /// <summary>A layer of the edge-to-edge canvas: the canvas itself (<see cref="BleedView"/>) and the layers that end it
+    /// (<see cref="LightScopeView"/>, <see cref="DarkFadeView"/>). Its root fills the panel's stack and measures the width it is laid out at
+    /// (the width a frame hands it answers only before the first layout); its parts stand in columns at the stack's top, in boxes whose
+    /// heights ease on the canvas's motion. All of them measure the same box on the same layout pass and re-render on the same frame, so the
+    /// edges the layers draw ride the canvas's foot (the file header). <see cref="LaidWidth"/> comes before <see cref="Root"/> in a render (it
+    /// wires the measurement the root carries).</summary>
+    abstract class BleedLayer : Component
     {
         readonly FloatSignal _width = new(float.NaN);
         Action<RectF>? _onBounds;
 
-        public override Element Render()
+        /// <summary>The width the layer is laid out at (tracked: a change re-renders it), or <paramref name="fallback"/> before its first
+        /// layout.</summary>
+        protected float LaidWidth(float fallback)
         {
-            var p = UseProps<BleedProps>();
             _onBounds ??= r => { if (!(MathF.Abs(_width.Peek() - r.W) <= 0.25f)) _width.Value = r.W; };
             float w = _width.Value;
-            float width = float.IsFinite(w) && w > 0f ? w : p.PanelWidth;
-            // The root fills the panel's stack (it measures the width); a column at its top carries the canvas, whose height eases as a flex child.
-            return new BoxEl
-            {
-                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
-                ZStack = true, HitTestVisible = false, OnBoundsChanged = _onBounds,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 1, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Key = BleedKey, Height = BleedHeight(width), Shrink = 0f, ZStack = true, ClipToBounds = true, HitTestVisible = false,
-                                Animate = Design.Reduced ? null : StageHost.HeightMotion,
-                                Children = [CanvasVideo.Layer(CanvasVideo.Surface.Bleed)],
-                            },
-                        ],
-                    },
-                ],
-            };
+            return float.IsFinite(w) && w > 0f ? w : fallback;
         }
+
+        /// <summary>A box <paramref name="height"/> tall in a column, its height easing on the canvas's motion (none under reduced motion).</summary>
+        protected static BoxEl Band(float height) => new()
+        {
+            Height = height, Shrink = 0f, HitTestVisible = false, Animate = Design.Reduced ? null : StageHost.HeightMotion,
+        };
+
+        /// <summary>One column at the stack's top, as wide as the stack: a layer of <see cref="Root"/>.</summary>
+        protected static BoxEl Column(params Element[] parts) => new()
+        {
+            Direction = 1, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, HitTestVisible = false, Children = parts,
+        };
+
+        /// <summary>The root: it fills the panel's stack (as a component root too, the anchor mirroring it), measures it, and stacks
+        /// <paramref name="layers"/> in order.</summary>
+        protected BoxEl Root(params Element[] layers) => new()
+        {
+            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+            ZStack = true, HitTestVisible = false, OnBoundsChanged = _onBounds, Children = layers,
+        };
     }
 
     /// <summary>A slow horizontal drift for the ambient layers over the edge-to-edge canvas (Zune's giant artist name, the Classic mini player's visualizer lines): the
