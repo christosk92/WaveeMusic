@@ -1,13 +1,16 @@
 # `ops/release` - cutting a Wavee release
 
 Wavee is released by hand from this machine. There is no CI release job: a CI checkout has no
-`src/apps/Wavee.PlayPlay` junction, so it would silently ship the public-only variant.
+`src/apps/Wavee.PlayPlay` junction, so it would silently ship the public-only variant. Releases are cut from the open
+`release/<version>` branch (`main` is protected: it is what shipped, and only the runner moves it). The flow from idea
+to release is `docs/plans/wavee/release-flow-design.md`; agents read `.claude/skills/wavee-contributing`.
 
 | File | What it is |
 |---|---|
-| `wavee-release.ps1` | the orchestrator - 13 phases (0, 1a, 2, 1b, 3-11), a `release-state.json` ledger, `-Resume` / `-Abort` / `-RepointFeed` |
-| `Wavee.Release.psm1` | the pure helpers (semver, quad, feed monotonicity, `.appinstaller` substitution, manifest, `gh`) |
-| `wavee-store-submit.ps1` | Store runbook: pinned source or verified archived packages, one dual-architecture SDK bundle inside the upload, explicit package retirement, schema-2 hash/ownership ledger; `-SourceRoot` / `-PackageDir` / `-DryRun` / `-Resume` / `-Abort` / `-Status` |
+| `release.ps1` | the entry point: parameters, the lock, the exit code, the end-of-run toast |
+| `ReleaseRunner.psm1` | the runner: state, preflight, the steps and their "done when" checks, `-Hotfix`, `-RetargetPrs`, `-RepointFeed`, `-Abort` |
+| `Wavee.Release.psm1` | the pure helpers (semver, quad, feed monotonicity, `.appinstaller` substitution, manifest, `gh`, wrangler uploads with retries) |
+| `wavee-store-submit.ps1` | the runner's Store engine (steps `store-submit` and `store-poll` call it; nobody runs it by hand): one dual-architecture SDK bundle inside the upload, explicit package retirement, schema-2 hash/ownership ledger |
 | `Wavee.Store.psm1` | Store quad, nested bundle and executable provenance verification, upload assembly, release notes, status parsing and redacted CLI wrapper |
 | `Wavee.StoreSubmission.psm1` | Pure desired-package reconciliation, draft/ingested inventory checks and artifact-hash validation |
 | `feed-release-body.md` | the body of the rolling `wavee-stable` feed release - read it before touching that tag |
@@ -17,46 +20,33 @@ Wavee is released by hand from this machine. There is no CI release job: a CI ch
 The build side lives next door in `ops/build` (`Wavee.Build.psm1`, `pack-wavee-msix.ps1`,
 `Wavee.AppInstaller.template.xml`, `Wavee.AppxManifest.xml`).
 
-## The three hand edits, before you run anything
+## What you author
 
-1. `src/apps/Wavee/Wavee.Version.props` - `<WaveeVersion>` (semver) and `<WaveeCodename>` (per-MINOR, sea/wave
-   series: Abyss 0.1, Breaker 0.2, Crest 0.3, ...). **Never** touch `<WaveeBuild>`; the script owns it.
-2. `CHANGELOG.md` - a `## [<semver>] - unreleased` section with `### Added` / `Changed` / `Fixed` / `Removed` /
-   `Known limitations`. The script replaces `unreleased` with today's UTC date.
-3. `ops/release/wavee/<semver>/whatsnew.json` - tagline, up to three hero highlights, notices. Media (`.webp`/`.mp4`,
-   no GIFs) goes in `media/` beside it; the release tool enforces the per-file and total size budgets.
+Only `ops/release/wavee/<semver>/whatsnew.json` (tagline, up to three hero highlights, notices; a hotfix needs no
+highlight) and its `media/`, merged into the release branch. The version props, the CHANGELOG section (assembled from
+the change files in `changes/unreleased/`), the contract version and the build counter are the runner's.
 
-**Rehearse the update path first, locally.** `ops\release\tests\local-update-e2e.ps1` (elevated) generates both
-releases' notes, packs two versions against a loopback `.appinstaller`, publishes the second into the same feed and
-drives the whole update through Windows - no tag, no branch, nothing on GitHub. There are two paths and they race, so
-run it twice: `-Scenario inapp` (the default; A installed bare, so the app's own checker and install-on-quit are what
-apply the update) and `-Scenario os` (A installed through the feed, so App Installer applies it silently at the next
-activation - what most users will experience). It is the primary rehearsal; the GitHub scratch-feed recipe is only for
-the release plumbing itself. See `docs/guide/releasing-wavee.md` section 8.
+**Rehearse the update path first, locally.** `ops\release\tests\local-update-e2e.ps1` (elevated) packs two versions
+against a loopback `.appinstaller` and drives the whole update through Windows - no tag, no branch, nothing on
+GitHub. Run it twice: `-Scenario inapp` and `-Scenario os`. See `docs/guide/releasing-wavee.md` section 8.
 
-## The one command
+## The commands
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-release.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -Version 0.3.12              # dry run: preflight + every step's commands
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -Version 0.3.12 -Go -To changelog   # assemble the change files; curate; commit
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -Version 0.3.12 -Go -PauseBefore feed
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -Version 0.3.12 -Go               # continue: done steps are skipped
+powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\release.ps1 -Version 0.3.12 -Status
 ```
 
-Rehearse first - this builds and signs everything into `artifacts\release\<semver>-dryrun\` and stops before any
-commit, tag or upload, leaving `git status` clean:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-release.ps1 -DryRun
-```
-
-Useful switches: `-SkipTests` (skip the one Release build gate), `-NoUpload` (do everything up to staging,
-including the real bump and tag), `-SkipArch x64` or `-X64Msix <path>` when the x64 cross toolchain is unavailable,
-`-PublicOnly` for a build without PlayPlay, `-Resume` to finish a run that died, `-Abort` to unwind an un-pushed one,
-and `-RepointFeed <older semver> -AllowDowngrade` to roll the feed back.
-
-`-FeedRelease`, `-TagPrefix` and `-Branch` redirect the whole run into a throwaway namespace for the end-to-end
-rehearsal; the real feed is untouched.
+Also: `-Codename <name>` (a new minor), `-Hotfix <version>`, `-RetargetPrs`, `-RepointFeed <older semver>
+-AllowDowngrade`, `-Abort` (each a dry run until `-Go` is added), `-From`/`-To`/`-Only`/`-PauseBefore <step>`,
+`-SkipArch x64` or `-X64Msix <path>`, `-PublicOnly`, `-PollMinutes <n>`. State lives in
+`%LOCALAPPDATA%\WaveeRelease\<version>\`; a `-Go` works in its own worktree `C:\WAVEE\release\<version>\`.
 
 ## Full runbook
 
-**`docs/guide/releasing-wavee.md`** - the phase-by-phase walkthrough, what each failure means, the resume/abort
-table, the rollback procedure, and the scratch-feed test recipe. Signing specifics (Azure Trusted Signing, the
-`Azure subscription 1` gotcha, publisher mismatch) are in `.claude/skills/releasing/SKILL.md`.
+**`docs/guide/releasing-wavee.md`** - the steps, what each failure means, hotfixes, the rollback procedure. Signing
+specifics (Azure Trusted Signing, the `Azure subscription 1` gotcha, publisher mismatch) are in
+`.claude/skills/releasing/SKILL.md`.
