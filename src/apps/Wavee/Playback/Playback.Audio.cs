@@ -19,7 +19,7 @@
 // roster, and the host API the reducer's `Execute` calls. Nothing here writes a table or a signal that the reducer
 // owns: every result goes back as a posted `Input` stamped with the epoch it was started for (C1/C4).
 //
-// THE FIVE RULES THAT MAY NOT BE SIMPLIFIED, each of which is a shipped bug the current shape fixed:
+// THE SIX RULES THAT MAY NOT BE SIMPLIFIED, each of which is a shipped bug the current shape fixed:
 //
 //   1. ONE SERIALIZED CHAIN, AND AN EPOCH ON EVERYTHING. Ten `Next` clicks are ten reducer Steps and ONE Load effect
 //      (C3), but the ten CDN opens are this file's problem: they run in order on one chain, each carrying the epoch
@@ -47,6 +47,13 @@
 //   5. A PRIMED VOICE IS ONLY SPLICEABLE INTO A MIXER RUNNING AT THE RATE IT WAS RESAMPLED FOR. Every splice site
 //      re-checks `GaplessJoinClock.PrimedSlotMatches`; a 48 kHz prime joined into a 44.1 kHz session played at ~92 %
 //      speed for the rest of the track.
+//
+//   6. A TRACK SWITCH NEVER STOPS THE OUTPUT STREAM. Each load opens a new engine session, and the old one used to fade,
+//      drain, STOP its WASAPI client and release it, with the next client opened hundreds of ms later at the same format: on
+//      Bluetooth the idle link cut the old song's tail ("scratches out for a couple of buffers") and ate the new one's
+//      first ~0.3 s, while every session summary read clean. The outgoing session now fades to silence and holds there
+//      with the client running, and the next open adopts it (`DisposeSessionAsync`, `KeepOutput`); only a pause, a stop,
+//      a format reload or a different output stops or reopens the device.
 //
 // BIT DEPTH AND RATE, ONCE (FLAC plan §4.1). A decoder's output is `float32` at the SOURCE rate; 16-bit and 24-bit
 // differ only in the scale constant. The device opens ONCE at its own rate and is never reopened for a codec-rate
@@ -405,6 +412,19 @@ public static partial class Playback
         /// <summary>A default-device change concerns the session unless it plays on the chosen output.</summary>
         static bool FollowsDefault() => !s_onTarget;
 
+        /// <summary>The engine's question at a track switch (<c>PcmAudioPlayer.KeepOutput</c>): may the next session take over the RUNNING
+        /// stream the last one handed over, instead of opening a device? Only when it is still the output <see cref="OpenOutput"/> would
+        /// open now — THE RULE's own answer: the chosen output when it was opened as the chosen one, else the Windows default as it is
+        /// NOW (a default that changed between the two sessions, when no watcher was listening, gets a fresh open on the new one). The
+        /// engine has already ruled out a client that went inert or that a device-format change invalidated. Pump chain; one COM
+        /// lookup of the default.</summary>
+        static bool KeepOutput(IAudioEndpoint endpoint)
+        {
+            if (endpoint is not WasapiAudioDevice { EndpointInfo: { } info } device) return false;
+            if (s_outputTarget is { } target) return string.Equals(device.RequestedEndpointId, target, StringComparison.OrdinalIgnoreCase);
+            return device.RequestedEndpointId is null && string.Equals(WasapiPcm.DefaultEndpointId(), info.Id, StringComparison.Ordinal);
+        }
+
         /// <summary>An endpoint changed state or left: the session rebuilds when it is the chosen output (it left: move to the default; it came
         /// back: move to it).</summary>
         static bool ChosenOutputChanged(string endpointId)
@@ -637,6 +657,9 @@ public static partial class Playback
                     ? CreateSilentBackend()
                     : WasapiPcm.CreateBackend(s_effects, decoderFactory: TakePendingDecoder, openEndpoint: OpenOutput, followsDefault: FollowsDefault,
                         endpointChanged: ChosenOutputChanged);
+                // The output hand-over (a track switch keeps the WASAPI stream running: DisposeSessionAsync, KeepOutput): a real device
+                // only — the paced silent endpoint has no link to keep awake, and a null KeepOutput keeps its sessions as they were.
+                if (!s_forceSilent) backend.KeepOutput = KeepOutput;
                 s_backend = backend;
                 Volatile.Write(ref s_player, MediaPlayer.Build().WithBackend(MediaKind.PcmAudio, backend).Build());
                 ToUi(static () => Supported.Value = true);
@@ -756,7 +779,9 @@ public static partial class Playback
             // one boots the backend as the load's own first step, on the chain (G-124).
             SeedOnce();
             Crash.Trail.Note(Crash.AppTrail.TrackStart, (long)kind, fromMs);   // the crash trail: no ids, no titles
-            Interlocked.Exchange(ref s_loadStartedTicks, System.Diagnostics.Stopwatch.GetTimestamp());
+            long asked = System.Diagnostics.Stopwatch.GetTimestamp();
+            Interlocked.Exchange(ref s_loadStartedTicks, asked);
+            Interlocked.Exchange(ref s_switchAskedQpc, asked);                  // `audio.switch`: the time to the new song's first frame
             s_clockStale = true;
             // Play intent is the CALLER's, decided here and synchronously: a `Load` followed by `Pause` in the same Execute
             // pass (a paused restore, a paused reload) must open silently paused, so the load itself only reads it.
@@ -1042,7 +1067,13 @@ public static partial class Playback
         static async Task LoadCoreAsync(EntityRef row, EntityId id, uint epoch, int fromMs, PlayableKind kind, uint seekGen,
             long chain, CancellationToken token)
         {
-            await DisposeSessionAsync().ConfigureAwait(false);
+            // A real load that will play hands the outgoing stream over (DisposeSessionAsync): its next open adopts it. A fake one
+            // renders into its own silent session, and a paused one (a paused restore or reload) would only stop the adopted stream
+            // again, so both stop the outgoing stream as before.
+            bool fake = id.Provider == EntityProvider.Fake || Platform.Args.Fake;
+            bool play;
+            lock (s_gate) play = s_playIntent;
+            await DisposeSessionAsync(forLoad: true, handOver: !fake && play).ConfigureAwait(false);
             if (IsStale(chain) || token.IsCancellationRequested) return;
 
             lock (s_gate)
@@ -1083,7 +1114,7 @@ public static partial class Playback
             // A `--fake` load has no bytes at all: the silent voice runs the real graph for the declared duration. That holds
             // for EVERY load under --fake, including the seed's spotify-shaped track uris (`spotify:track:trN`, whose short id
             // is not a 22-char gid, so they classify as Spotify): there is no network to open them against.
-            if (id.Provider == EntityProvider.Fake || Platform.Args.Fake)
+            if (fake)
             {
                 await OpenSilentAsync(row, epoch, fromMs, chain).ConfigureAwait(false);
                 return;
@@ -1093,9 +1124,10 @@ public static partial class Playback
             if (!EnsureBackend()) { PostFault(Fault.RuntimeMissing, epoch); return; }
 
             IMediaByteSource? bytes = Open(id, token, out Opened opened, out Fault fault);
-            if (IsStale(chain) || token.IsCancellationRequested) { bytes?.Close(); return; }
+            if (IsStale(chain) || token.IsCancellationRequested) { bytes?.Close(); return; }   // the superseding load or stop owns a held stream
             if (bytes is null)
             {
+                ReleaseHeldOutput();   // no open follows this load: the outgoing stream held for it stops now, not at the hold's deadline
                 if (fault != Fault.None) PostFault(fault, epoch);
                 return;
             }
@@ -1154,6 +1186,9 @@ public static partial class Playback
             long openStart = System.Diagnostics.Stopwatch.GetTimestamp();
             Fault openFault = await AwaitOpenAsync(player.OpenAsync(source).AsTask(), bytes, token).ConfigureAwait(false);
             s_decoderForOpen.Value = null;
+            // The facade retired the outgoing session at the top of that open whatever its outcome: a held stream was parked in the
+            // backend (and adopted by this open, or released by the backend's own deadline), so this pump holds nothing any more.
+            lock (s_gate) s_heldOutput = null;
 
             // ALWAYS-ON, one line per load: which way the backend open went. The two silent exits below (a stale chain,
             // a cancelled token) and a backend that never created a session left NOTHING in the log — 2026-09-22, the
@@ -1193,6 +1228,7 @@ public static partial class Playback
                     pcm.DeviceRebuilt += OnDeviceRebuilt;
                 }
             }
+            if (pcm is not null) ArmSwitchLine(pcm, pcm.AdoptedOutput ? 0 : 1);
 
             try { player.SetVolume(Applied()); player.SetMuted(Muted.Peek()); player.SetRate(RateFor(s_id)); } catch { }
 
@@ -1269,6 +1305,7 @@ public static partial class Playback
                 s_activePrimaryId = session.PrimaryVoiceIdValue;
                 s_clockStale = false;
             }
+            ArmSwitchLine(session, reopened: -1);   // a silent session has no device to keep or reopen
             Post(Input.Duration((int)Math.Min(durMs, int.MaxValue), epoch));
             bool play;
             lock (s_gate) play = s_playIntent;
@@ -1318,10 +1355,44 @@ public static partial class Playback
             }
         }
 
-        static async Task DisposeSessionAsync()
+        /// <summary>How long the outgoing song fades at a track switch — the engine's pause ramp, and the length of the next song's
+        /// fade-in, so the switch is symmetric.</summary>
+        const int SwitchFadeMs = 20;
+
+        /// <summary>The outgoing session HANDED OVER at a track switch and not yet retired by the facade's next open (s_gate): its mix is
+        /// held at silence with the WASAPI stream running for that open to adopt. A load that never reaches its open (it failed, or a
+        /// stop superseded it) must release it (<see cref="ReleaseHeldOutput"/>); a superseding load keeps it for its own open.</summary>
+        static PcmAudioSession? s_heldOutput;
+
+        /// <summary>Stop a held stream no open is coming for: it fades from its silence, drains and stops like a pause, rather than
+        /// running on silent to the engine's own deadline (<c>PcmAudioSession.HandOverHoldMs</c>) — a running stream keeps the output
+        /// awake and the machine from sleeping.</summary>
+        static void ReleaseHeldOutput()
+        {
+            PcmAudioSession? held;
+            lock (s_gate) { held = s_heldOutput; s_heldOutput = null; }
+            try { held?.CancelHandOver(); } catch { }
+        }
+
+        /// <summary>Retire the live session. <paramref name="forLoad"/>: a track switch (the <c>audio.switch</c> line measures the outgoing
+        /// tail); <paramref name="handOver"/>: the next open will be a real one, so the outgoing WASAPI stream is HANDED OVER rather than
+        /// stopped (<c>PcmAudioSession.HandOverOutputAsync</c>).
+        /// <para>WHY THE HAND-OVER (the owner's report: "the old song scratches out for a couple of buffers and the new song skips maybe
+        /// 0.3 s"; AirPods over Bluetooth, shared mode). The fade below used to end in a STOP: it ramps only frames not yet written, so
+        /// the ~100 ms already queued (`bufFrames=4410`) played at full level, the 15 ms ramp after it, and the client stopped the moment
+        /// the queue read empty — with the ramp's last frames still in flight below WASAPI. The facade then released it and the next open
+        /// built a new client hundreds of ms later (607 ms in the logged switch) at the SAME 44.1 kHz/stereo/float format (`device format
+        /// open` on every switch).
+        /// For that whole gap the endpoint had no stream: the link idles, what was in flight at the stop is cut, and the next stream's
+        /// head is spent waking it. Every session summary read clean (`framesLost=0`) because none of it happens in the app's buffers.
+        /// Now the whole mix fades to silence and HOLDS there with the stream running; the facade's retire parks it in the backend and
+        /// the next open adopts it (<see cref="KeepOutput"/>), so the listener hears the queued audio, the fade, silence, and the next
+        /// song from its first frame on the same stream — never an idle endpoint. Refused (and the old fade-and-stop runs) when the
+        /// device is not running (paused), a format reload is pending, or the backend is the silent one.</para></summary>
+        static async Task DisposeSessionAsync(bool forLoad = false, bool handOver = false)
         {
             CancelSeekPrepare();                // a second decoder opening for a seek on the session going away has no purpose left
-            PcmAudioSession? session;
+            PcmAudioSession? session, held;
             IMediaByteSource? bytes, retiring, join, prep;
             IPreparedItem? prepared;
             bool wasSilent, audible;
@@ -1329,6 +1400,10 @@ public static partial class Playback
             EntityId summaryTrack = default;
             lock (s_gate)
             {
+                // A held stream from an earlier switch whose load never opened: a load keeps it for its own open; anything else
+                // (a stop, a shutdown, a fake load) releases it below.
+                held = s_heldOutput;
+                if (!handOver) s_heldOutput = null;
                 session = s_session;
                 wasSilent = s_silent;
                 audible = s_lastState is PlaybackState.Playing or PlaybackState.Buffering;
@@ -1366,14 +1441,48 @@ public static partial class Playback
                 session.DeviceFormatChanged -= OnDeviceFormatChanged;
                 session.DeviceRebuilt -= OnDeviceRebuilt;
             }
-            if (audible && session is not null)
+            if (!handOver && held is not null && !ReferenceEquals(held, session)) { try { held.CancelHandOver(); } catch { } }
+
+            int oldKind = SwitchOldNone;
+            long askSubmit = 0, askPlayed = 0, askQpc = System.Diagnostics.Stopwatch.GetTimestamp();
+            int askRate = 0;
+            if (session is not null)
             {
-                // A track change opens the next song while this session still plays: it holds ~500 ms of decoded PCM,
-                // so without this the old song ran on through the whole open and was then cut mid-waveform (a click).
-                // Fade it to silence and stop the endpoint now; bounded, because a wedged session must not stall the load.
-                try { await session.FadeOutAsync(TimeSpan.FromMilliseconds(15)).AsTask().WaitAsync(TimeSpan.FromMilliseconds(300)).ConfigureAwait(false); }
-                catch { }
+                // The outgoing tail, as the device counts it: what was submitted and played when the switch was asked (the played
+                // count is the clock thread's last sample, ≤ 15 ms old), against where the fade ends (`FadeEndSubmitIndex`).
+                askSubmit = session.SubmittedFrames;
+                askPlayed = session.RawPlayedFrames;
+                askRate = session.Format.SampleRate;
+                bool heldNow = false;
+                if (handOver && !wasSilent)
+                {
+                    // The session holds ~500 ms of decoded PCM and keeps rendering under the hold — at gain 0, so it runs on silent
+                    // through the whole open. Bounded, because a wedged session must not stall the load; a hold that did not land in
+                    // time is given up (it stops like a pause) and the load goes on with a fresh device.
+                    try
+                    {
+                        heldNow = await session.HandOverOutputAsync(TimeSpan.FromMilliseconds(SwitchFadeMs)).AsTask()
+                            .WaitAsync(TimeSpan.FromMilliseconds(300)).ConfigureAwait(false);
+                    }
+                    catch { try { session.CancelHandOver(); } catch { } }
+                }
+                if (heldNow)
+                {
+                    lock (s_gate) s_heldOutput = session;
+                    oldKind = SwitchOldHold;
+                }
+                else if (audible)
+                {
+                    // Not handed over (paused, a format reload pending, the silent backend, a fake load): fade it to silence and stop
+                    // the endpoint now, as before; bounded, because a wedged session must not stall the load.
+                    try { await session.FadeOutAsync(TimeSpan.FromMilliseconds(15)).AsTask().WaitAsync(TimeSpan.FromMilliseconds(300)).ConfigureAwait(false); }
+                    catch { }
+                    oldKind = SwitchOldStop;
+                }
+                else oldKind = SwitchOldIdle;   // paused or not yet sounding: nothing to fade, and a stopped device is not handed over
             }
+            // A load superseded before its open left the switch's facts (and its held stream) for this one: keep them.
+            if (forLoad && (session is not null || held is null)) NoteSwitchTail(oldKind, session, askSubmit, askPlayed, askRate, askQpc);
             if (prepared is not null) { try { await prepared.DisposeAsync().ConfigureAwait(false); } catch { } }
             if (wasSilent && session is not null)
             {
@@ -3893,6 +4002,7 @@ public static partial class Playback
             // A session torn down between ticks would otherwise fire a zombie `pos=0, playing` tick off stale state.
             if (sess is null) { StopTicker(); return; }
             if (s_parked) { StopTicker(); return; }             // F151: a parked song reports nothing — the video owns the deck
+            if (ReferenceEquals(Volatile.Read(ref s_switchSession), sess)) LogSwitchLine(sess);   // `audio.switch`, once per load
 
             PlaybackState state = silent || p is null ? sess.CurrentState : p.State.Peek();
             long rawPos = s_clockStale ? 0
@@ -5840,6 +5950,65 @@ public static partial class Playback
             Volatile.Write(ref s_mFirstAudioMs, ms);
             Volatile.Write(ref s_mFirstFromHead, fromHead ? 1 : 0);
             Log.Info("audio", $"audio.first-audio ms={ms} from={(fromHead ? "head" : "body")}");
+        }
+
+        // ── the switch line (`audio.switch`): one per load, once the new session has rendered its first block ─────────────────
+        // What a real run reads to tell a clean switch from the reported one ("the old song scratches out for a couple of buffers
+        // and the new song skips ~0.3 s"): how much of the old song still sounded after the switch was asked and whether its stream
+        // was held or stopped, whether the next song reopened the device, and the first frame it rendered (0 = its very beginning).
+        // Written on the pump chain, read on the tick thread, all under s_gate; the RT only stores two plain fields per session.
+        const int SwitchOldNone = 0, SwitchOldHold = 1, SwitchOldStop = 2, SwitchOldIdle = 3;
+        static long s_switchAskedQpc;                    // the Load call (Interlocked)
+        static int s_switchOld, s_switchReopened;        // SwitchOld*; 1 = a device was opened, 0 = the held stream was adopted, −1 = silent
+        static long s_switchOldFrames = -1, s_switchOldQueued = -1, s_switchOldAudibleMs = -1, s_switchOldFadeDoneMs = -1;
+        static PcmAudioSession? s_switchSession;         // the session the next line is for (null = logged / none)
+
+        /// <summary>Pump chain, at a switch's retire: the outgoing tail in frames (rendered after the ask, up to where the fade ended),
+        /// what was already queued in the device then, how long the old song kept sounding after the ask (queue + rendered tail), and
+        /// the wall time until the fade had landed. −1 where a figure is unknown (no outgoing session, a fade that never ended).</summary>
+        static void NoteSwitchTail(int kind, PcmAudioSession? session, long askSubmit, long askPlayed, int rate, long askQpc)
+        {
+            long end = session?.FadeEndSubmitIndex ?? -1;
+            long doneMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(askQpc).TotalMilliseconds;
+            lock (s_gate)
+            {
+                s_switchOld = kind;
+                s_switchOldFrames = end >= 0 ? Math.Max(0, end - askSubmit) : -1;
+                s_switchOldQueued = session is null ? -1 : Math.Max(0, askSubmit - askPlayed);
+                s_switchOldAudibleMs = end >= 0 && rate > 0 ? Math.Max(0, end - askPlayed) * 1000 / rate : -1;
+                s_switchOldFadeDoneMs = kind == SwitchOldNone ? -1 : doneMs;
+                s_switchSession = null;
+            }
+        }
+
+        /// <summary>Pump chain: the new session is live — its line is logged once it has rendered (<see cref="LogSwitchLine"/>).</summary>
+        static void ArmSwitchLine(PcmAudioSession session, int reopened)
+        {
+            lock (s_gate) { s_switchReopened = reopened; s_switchSession = session; }
+        }
+
+        /// <summary>Tick thread: the armed session's first block is out — log the switch once.</summary>
+        static void LogSwitchLine(PcmAudioSession sess)
+        {
+            long firstQpc = sess.FirstContentQpc;
+            if (firstQpc == 0) return;
+            int old, reopened;
+            long oldFrames, queued, audibleMs, doneMs;
+            EntityId track;
+            lock (s_gate)
+            {
+                if (!ReferenceEquals(s_switchSession, sess)) return;
+                s_switchSession = null;
+                old = s_switchOld; reopened = s_switchReopened;
+                oldFrames = s_switchOldFrames; queued = s_switchOldQueued; audibleMs = s_switchOldAudibleMs; doneMs = s_switchOldFadeDoneMs;
+                track = s_id;
+            }
+            long asked = Interlocked.Read(ref s_switchAskedQpc);
+            long firstMs = asked > 0 ? (firstQpc - asked) * 1000 / System.Diagnostics.Stopwatch.Frequency : -1;
+            Log.Info("audio", $"audio.switch old={(old switch { SwitchOldHold => "hold", SwitchOldStop => "stop", SwitchOldIdle => "idle", _ => "none" })} "
+                + $"oldFrames={oldFrames} oldQueuedFrames={queued} oldAudibleMs={audibleMs} oldFadeDoneMs={doneMs} "
+                + $"reopened={(reopened < 0 ? "-" : reopened.ToString(System.Globalization.CultureInfo.InvariantCulture))} "
+                + $"firstFrame={sess.FirstContentFrame} firstFrameMs={firstMs} rate={sess.Format.SampleRate} track={track.Text}");
         }
 
         /// <summary>Pump chain, when a timed seek's PCM is at the target: its latency and its kind.</summary>
