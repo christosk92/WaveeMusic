@@ -95,7 +95,7 @@ half-formed ideas → suggest Discussions › Ideas.
 
 ## Bugfix bookkeeping (every fix, no exceptions)
 
-`ops/release/wavee-release.ps1`'s `issue refs` gate (hard) cross-checks git closing keywords against the
+`ops/release/release.ps1`'s `issue refs` gate (hard) cross-checks git closing keywords against the
 CHANGELOG at release time, so every bugfix has to leave behind the same four things — the release reads and
 composes them, it never invents them:
 

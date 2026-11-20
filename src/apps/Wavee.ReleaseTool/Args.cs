@@ -14,11 +14,12 @@ sealed class Args
 
     Args(string command) => Command = command;
 
-    /// <summary>The verb — <c>validate</c> or <c>render</c>. Empty when none was given.</summary>
+    /// <summary>The command: <c>validate</c>, <c>render</c>, <c>symbol-map</c>, <c>changes</c> or <c>changelog</c>. Empty when none was given.</summary>
     public string Command { get; }
 
-    /// <summary>Unknown keys, reported so a typo is a usage error instead of a silent default.</summary>
-    public List<string> Unknown { get; } = [];
+    /// <summary>The bare tokens after the command: a two-word command's verb (<c>changes check</c>). A command that takes
+    /// none ignores them.</summary>
+    public List<string> Positional { get; } = [];
 
     /// <summary>
     /// Parses <c>&lt;command&gt; [--key value] [--flag]</c>. A key whose next token starts with <c>--</c>
@@ -31,7 +32,7 @@ sealed class Args
         for (int i = command.Length > 0 ? 1 : 0; i < argv.Length; i++)
         {
             string tok = argv[i];
-            if (!tok.StartsWith("--", StringComparison.Ordinal)) { a.Unknown.Add(tok); continue; }
+            if (!tok.StartsWith("--", StringComparison.Ordinal)) { a.Positional.Add(tok); continue; }
             string key = tok[2..];
             int eq = key.IndexOf('=');
             if (eq > 0) { a._values[key[..eq]] = key[(eq + 1)..]; continue; }
