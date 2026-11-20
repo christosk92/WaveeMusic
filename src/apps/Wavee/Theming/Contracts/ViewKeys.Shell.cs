@@ -16,4 +16,8 @@ public static partial class ViewKeys
     /// <summary>The content region's states: a page, an empty body, the not-found page and the offline lane
     /// (<see cref="ContentStateKind"/>). Mounted by the core content host. Props: <see cref="ContentStateProps"/>.</summary>
     public static readonly ViewKey<ContentStateProps> ShellContentState = new("Shell.ContentState");
+
+    /// <summary>The rate &amp; star card: bottom right over the page, above the player bar (rate-nudge-implementation.md §5). Mounted by the core
+    /// layer <c>RateNudge.Chrome()</c> in the overlay lane, which decides when it shows and resolves its words. Props: <see cref="RateNudgeCardProps"/>.</summary>
+    public static readonly ViewKey<RateNudgeCardProps> ShellRateNudge = new("Shell.RateNudge");
 }

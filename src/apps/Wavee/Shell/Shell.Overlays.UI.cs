@@ -110,6 +110,9 @@ public static partial class Shell
                     Feedback.Chrome(),
                     Crash.Chrome(),
                     ReleaseNotes.AfterUpdateChrome(),
+                    // The rate & star card (rate-nudge-implementation.md §5.2): after the after-update chrome, so the session is known; LAST,
+                    // because its full-bleed, pass-through lane takes what is left of the window and floats the card bottom right over the page.
+                    RateNudge.Chrome(),
                 ],
             };
         }
@@ -510,6 +513,13 @@ public static partial class Shell
                     bool privateOn = s_privateSession.Current is true;
                     items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Profile.PrivateSession), privateOn,
                         () => s_privateSession.WriteToggle(!privateOn, SettingsSurfaces.ProfileMenu), Icons.RevealPassword));
+                    break;
+                case Actions.ProfileRow.Support:
+                    // The rate & star door (rate-nudge-implementation.md §6): a Store install rates, every other install stars; the same flow as
+                    // the card's primary and the About door (RateNudge.DoorPrimary), never a second copy.
+                    items.Add(new MenuFlyoutItem(
+                        Loc.Get(RateNudge.DoorAsk(RateNudge.Channel) == RateNudge.Ask.Rate ? Strings.RateNudge.Door.Rate : Strings.RateNudge.Door.Star),
+                        Icons.FavoriteStar, Invoke: () => { close(); RateNudge.DoorPrimary(); }));
                     break;
                 case Actions.ProfileRow.LogOut:
                     items.Add(new MenuFlyoutItem(Loc.Get(Strings.Auth.LogOut), Icons.SignOut,

@@ -439,6 +439,8 @@ public static partial class Diagnostics
                     return Crossings(id, name, a);   // mounts a row at a time
                 case Inspect.Verb.Perf:
                     return Perf(id, name, a);   // on needs a mount; report and off read what was recorded
+                case Inspect.Verb.Nudge:
+                    return Nudge(id, name, a);   // fixtures need no mount; fire, tick, refresh and expectCard say so when unmounted
             }
 
             // Everything below needs a mount (the verb table says so: NeedsMount).
@@ -1030,6 +1032,7 @@ public static partial class Diagnostics
             // `feedback=bug|feature` opens the report form over the page (the surface the settings' About links open).
             if (a.Has("feedback"))
                 Feedback.Open(string.Equals(a.Str("feedback"), "feature", StringComparison.OrdinalIgnoreCase) ? Feedback.ReportKind.Feature : Feedback.ReportKind.Bug);
+            NudgeResetForMount();   // Diagnostics.Inspect.Nudge.cs: the rate/star nudge back to the `fresh` fixture on the inspector seams
             return true;
         }
 

@@ -1482,6 +1482,46 @@ home do=page key=nmf page=2 settle=false
 film frames=36 every=3 cols=4 scale=0.6 crop=home:tile:feed:spotify:section:wavee-mockup-nmf path=C:/WAVEE/scratch/x/pager.png keys=[home-shelf-card:spotify:playlist:37i9dQZEVXbp4UblnlhiEI]
 ```
 
+### `nudge {fixture?, channel?, session?, window?, policy?, clock?, trouble?, sessionAge?, starsCache?, stars?, store?, link?, fire?, tick?, raw?, reload?, refresh?, expect?, ...}`
+
+The rate/star nudge (`Screens/RateNudge*.cs`; verb in `Diagnostics.Inspect.Nudge.cs`). With no args it reads: the decision, the ledger, the
+card. It does not settle: step frames yourself (`frames 1300` is about 20.8 s on the 16 ms clock). `fire`, `tick`, `refresh` and
+`expectCard` need a mount. `mount` ends by putting the `fresh` fixture back, so no run inherits the last one.
+
+Order inside one command: `raw`, `fixture`, `channel`/`session`/`policy`/`sessionAge`/`starsCache`, `clock`, `trouble`, `window`/`store`/`link`/`stars`,
+`reload`, `refresh`, `fire`, `tick`, then the reply and the `expect*` gates. A fixture, `channel`, `session`, `policy`, `sessionAge`, `starsCache` or
+`trouble` re-seeds the host (the card and the armed track change are cleared); loading a fixture also resets every pin to its default.
+
+- `fixture=` loads a ledger, the calendar and the channel (Store unless said): `fresh`, `day3`, `eligible` (30 days, 18 listening days, 26 h: the 25 h
+  milestone card), `short-days`, `short-hours`, `asked-60`, `asked-130`, `asked-130-quiet`, `capped` (a new install's two asks used), `rated`,
+  `starred` (github), `opted-out`, `troubled` (-2 d), `troubled-old` (-8 d), `milestone-99`, `milestone-100`, and the install that predates
+  the feature: `existing` (just seeded, launch ask pending, `session=after-update`), `existing-lapsed`, `existing-later`, `existing-capped`.
+- The four fakes (the only ones): calendar time is the fake seed date plus `clock=` (an absolute offset: `+130d`, `-20d`, `+6h`, `reset`),
+  the window fact is `window=front|behind|minimized|tray` (default front), the Store dialog answers `store=succeeded|canceled|network|error|unavailable`
+  (default succeeded), and opening a URL answers `link=ok|fail` and records the URL (`launched`). The star fetch answers `stars=120|fail`
+  (default fail) and is counted (`stars.fetches`); `starsCache=86@-2h|86@-8d|none` seeds the cache; `refresh=true` runs the daily refresh now.
+- `fire=true` is a track boundary through the playback effect's own entry; `tick=true` the once-a-second check. A quiet moment is `nudge fire=true`,
+  `window advance=21000`, `frames 1300`, `nudge tick=true`. `trouble=now|-8d|none` writes a fault. `raw="<string>"` writes the ledger setting, `reload=true`
+  re-reads it (a bad value starts fresh). `sessionAge=<minutes>` ages this launch.
+- `expect=show:rate:1` (also `show:star:2`, `show:rate:1:launch`), `quiet:<Rule>` (`quiet:Idle`) or `closed`, comma-separable; `expectLedger=asks=1,last=NotNow,enabled=true`
+  (the `ledger.text` fields); `expectLaunched=<url prefix>|none`; `expectCard=shown|hidden`. A mismatch is `ok:false` with `error`
+  (`expected quiet:InstallAge, got show:rate:1`) and the same body, so `inspect.py --gate error` fails the run.
+
+Reply: `channel, now, decision{show, ask, kind, askNumber, closed, blocker{rule,stage,pass,detail}|null, earliest|null, checks[{rule,stage,pass,detail}]},
+ledger{text, raw}, card{shown, ask?, askNumber?, held?}, launched[], stars{shown, cached, fetches}, after`. `decision` is the host's last evaluation since the
+fixture (the one that showed the card, when one did), else a fresh one that is not acted on.
+
+```text
+mount w=1440 h=960 theme=winui route=home
+nudge fixture=eligible
+nudge fire=true
+window advance=21000
+frames 1300
+nudge tick=true expect=show:rate:1 expectCard=shown
+click key=rate-nudge:later
+nudge expectLedger=asks=1,last=NotNow expectCard=hidden
+```
+
 ## Typical workflows
 
 ### Hunt a hiccup

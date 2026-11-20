@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Quit,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -733,6 +733,35 @@ public static partial class Diagnostics
                              Arg("scale", ArgType.Float, "with film: each cell's scale of the frame", "0.5"),
                              Arg("crop", ArgType.Key, "with film: cells show only this node's drawn rect")], s_settleArgs),
             },
+            new(Verb.Nudge, "nudge", "Read or drive the rate/star nudge: the decision with every check, the ledger, the card. Load a fixture, pin a fact, fake the Store, fire a track boundary; expect= turns a mismatch into ok:false", "nudge fixture=eligible channel=store")
+            {
+                Acts = true,
+                Args =
+                [
+                    Arg("fixture", ArgType.Enum, "a named ledger, clock and channel (docs/guide/agent-inspect.md); loading one also resets every pin", null,
+                        "fresh|day3|eligible|short-days|short-hours|asked-60|asked-130|asked-130-quiet|capped|rated|starred|opted-out|troubled|troubled-old|milestone-99|milestone-100|existing|existing-lapsed|existing-later|existing-capped"),
+                    Arg("channel", ArgType.Enum, "the install source", null, "store|github|source"),
+                    Arg("session", ArgType.Enum, "this launch", null, "ordinary|after-update"),
+                    Arg("window", ArgType.Enum, "the window fact: a headless window is never the active one, so it is pinned (default front)", null, "front|behind|minimized|tray"),
+                    Arg("policy", ArgType.Enum, "the thresholds: default (milestones on) or plain (no milestone)", null, "default|plain"),
+                    Arg("starsCache", ArgType.String, "the cached star count: 86@-2h, 86@-8d, none"),
+                    Arg("stars", ArgType.String, "the star fetch's next answer: a count, or fail"),
+                    Arg("refresh", ArgType.Bool, "run RefreshStarsIfDue now (it runs at boot in the app); needs a mount"),
+                    Arg("clock", ArgType.String, "calendar time as an offset from the seed date: +130d, -2d, +6h, reset"),
+                    Arg("trouble", ArgType.String, "a fault at: now, -8d, none"),
+                    IntArg("sessionAge", "minutes since this launch (the launch ask's hold in the update session)", null, 0, 100000),
+                    Arg("store", ArgType.Enum, "the Store dialog's next answer (default succeeded)", null, "succeeded|canceled|network|error|unavailable"),
+                    Arg("link", ArgType.Enum, "whether opening a URL or URI works (default ok)", null, "ok|fail"),
+                    Arg("fire", ArgType.Bool, "a track boundary now, through RateNudge.OnTrackBoundary (the playback effect's own entry); needs a mount"),
+                    Arg("tick", ArgType.Bool, "run the once-a-second check now; needs a mount"),
+                    Arg("raw", ArgType.String, "write this raw ledger string to settings (with reload=true: the corrupt-value path)"),
+                    Arg("reload", ArgType.Bool, "re-read the ledger from settings: the persistence round trip"),
+                    Arg("expect", ArgType.String, "show:rate:1 | show:star:2 | show:rate:1:launch | quiet:<Rule> | closed (comma list): ok:false on a mismatch"),
+                    Arg("expectLedger", ArgType.String, "comma list of ledger fields that must match, e.g. asks=1,last=NotNow,enabled=true"),
+                    Arg("expectLaunched", ArgType.String, "a prefix the last launched URL must start with, or none"),
+                    Arg("expectCard", ArgType.Enum, "the card on screen; needs a mount", null, "shown|hidden"),
+                ],
+            },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
 
@@ -760,7 +789,7 @@ public static partial class Diagnostics
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
             "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
-            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages,
+            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };
