@@ -200,8 +200,9 @@ internal sealed class WinUiOverlayChrome : Component
                                 props.TimeText(false, Tok.OnMediaSecondary, props.Visible),
                                 new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false },
                                 // The glyph MUTES, like every other mute glyph; the slider keeps its own affordance beside it.
-                                ToolTip.Wrap(WinUiOnMedia.Glyph(facts.Muted ? Icons.Mute : Icons.Volume, props.ToggleMute, true),
-                                    Loc.Get(facts.Muted ? Strings.Player.Unmute : Strings.Player.Mute)),
+                                // locked beside the locked rail while the owner keeps its volume (remote-play plan 2.2)
+                                ToolTip.Wrap(WinUiOnMedia.Glyph(facts.Muted ? Icons.Mute : Icons.Volume, props.ToggleMute, VolumeSlider.Settable),
+                                    VolumeSlider.MuteTip(facts.Muted)),
                                 ToolTip.Wrap(WinUiOnMedia.Glyph(Icons.ChevronUp, ToggleVolume, true, h => volAnchor.Value = h),
                                     Loc.Get(Strings.Player.Volume)),
                                 ToolTip.Wrap(WinUiOnMedia.Glyph(Icons.More, ToggleMore, true, h => moreAnchor.Value = h),

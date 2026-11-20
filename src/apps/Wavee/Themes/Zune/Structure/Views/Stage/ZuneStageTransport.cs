@@ -625,13 +625,16 @@ internal sealed class ZuneStageMute : Component
     {
         var p = UseProps<Props>();
         bool muted = p.T.Muted();
+        bool settable = VolumeSlider.Settable;   // locked while the owner keeps its volume: the tertiary ink, no click (remote-play plan 2.2)
         var glyph = new BoxEl
         {
             Width = p.Box, Height = p.Box, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = p.T.ToggleMute, Cursor = CursorId.Hand,
-            Children = [new TextEl(muted ? Icons.Mute : Icons.Volume) { Size = p.Glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink, HoverColor = Ink.Ink }],
+            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = settable,
+            OnClick = settable ? p.T.ToggleMute : null, Cursor = settable ? CursorId.Hand : (CursorId?)null,
+            Children = [new TextEl(muted ? Icons.Mute : Icons.Volume) { Size = p.Glyph, FontFamily = Tok.Definition.Fonts.Icon,
+                Color = settable ? Ink.Ink : Ink.InkTertiary, HoverColor = settable ? Ink.Ink : Ink.InkTertiary }],
         };
-        return ToolTip.Wrap(glyph, Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute));
+        return ToolTip.Wrap(glyph, VolumeSlider.MuteTip(muted));
     }
 }
 

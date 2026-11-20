@@ -937,9 +937,11 @@ internal static partial class ClassicPlayerBar
             var anchor = UseRef<NodeHandle>(default);
             var handle = UseRef<OverlayHandle?>(null);
             bool popupForm = _popup;
+            bool settable = VolumeSlider.Settable;   // reactive: re-renders when the owner's volume turns fixed (remote-play plan 2.2)
 
             void Click()
             {
+                if (!settable) return;
                 if (!popupForm) { props.ToggleMute(); return; }
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
                 handle.Value = overlay.Open(
@@ -962,7 +964,9 @@ internal static partial class ClassicPlayerBar
                 handle.Value.ClosedAction = () => handle.Value = null;
             }
 
-            return BarButton(muted ? Icons.Mute : Icons.Volume, Click, true, false, _box, _glyph, h => anchor.Value = h);
+            // Locked (mute and popup form alike) while the owner keeps its volume; the tooltip then says why. No tooltip while settable, as before.
+            var button = BarButton(muted ? Icons.Mute : Icons.Volume, Click, settable, false, _box, _glyph, h => anchor.Value = h);
+            return settable ? button : ToolTip.Wrap(button, VolumeSlider.MuteTip(muted));
         }
     }
 

@@ -385,8 +385,10 @@ public static partial class Shell
             default:
             {
                 bool muted = Playback.Muted.Peek();
-                return new MenuFlyoutItem(Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute),
-                    muted ? Icons.Volume : Icons.Mute, true, static () => Playback.ToggleMute());
+                // Locked, and saying why, while the owner keeps its volume (remote-play plan 2.2); built at open time, so one read is enough.
+                bool settable = Theming.VolumeSlider.Settable;
+                return new MenuFlyoutItem(Theming.VolumeSlider.MuteTip(muted),
+                    muted ? Icons.Volume : Icons.Mute, settable, static () => Playback.ToggleMute());
             }
         }
     }

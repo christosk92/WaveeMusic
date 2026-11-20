@@ -2,6 +2,7 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Localization;
 using FluentGpu.Signals;
 
 namespace Wavee.Theming;
@@ -29,6 +30,25 @@ public static class VolumeSlider
     /// a render that asks re-renders when it flips (a device change, never a drag). For a rail that does not go through
     /// <see cref="Create"/> (the mini player's own slider passes it as its <c>isEnabled</c>).</summary>
     public static bool Settable => !Playback.VolumeFixed.Value;
+
+    /// <summary>The tooltip of every mute button (remote-play plan 2.2). While the volume is settable, what the button does ("Mute" or
+    /// "Unmute"); while the device that owns playback keeps its volume (an iPhone refuses a mute like a volume change: a mute for a remote
+    /// owner is a volume-0 PUT), the button is locked and says why, naming that device ("" falls back to "that device"). A REACTIVE read like
+    /// <see cref="Settable"/>: the device name is looked up the way the bar's "Playing on" line does (<c>Shell.DeviceRoster.RemoteSlot</c>).</summary>
+    public static string MuteTip(bool muted)
+    {
+        if (Settable) return Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute);
+        string name;
+        if (InspectSwitches.RemoteDevice is { } stood) name = stood;
+        else
+        {
+            _ = Playback.Devices.Changed.Value;
+            var rows = Playback.Devices.Rows;
+            int slot = Shell.DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
+            name = slot < 0 ? "" : rows[slot].Name ?? "";
+        }
+        return Strings.Player.Remote.VolumeFixed(name.Length > 0 ? name : Loc.Get(Strings.Player.Remote.ThatDevice));
+    }
 
     /// <summary>How long after the rail's own write an outside change still lands at once.</summary>
     const double OwnQuietMs = 300;

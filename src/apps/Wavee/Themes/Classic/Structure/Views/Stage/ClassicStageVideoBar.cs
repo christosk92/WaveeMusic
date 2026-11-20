@@ -268,11 +268,11 @@ internal sealed class ClassicStageVideoBar : Component
             UseSignalEffect(() => _level.SetIfChanged(t.Volume()));
             bool muted = t.Muted();
             bool open = p.Slider && _open.Value;
-            var mute = ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, t.ToggleMute, true) with
+            var mute = ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, t.ToggleMute, VolumeSlider.Settable) with
             {
                 Key = "picture:bar:mute",
                 OnFocusChanged = got => { if (got) _open.SetIfChanged(true); },
-            }, Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute));
+            }, VolumeSlider.MuteTip(muted));   // locked while the owner keeps its volume (remote-play plan 2.2)
             var style = Slider.DefaultStyle with
             {
                 RailFill = R.OnMedia.Ink with { A = ClassicStageGeometry.RailAlpha }, RailFillDisabled = R.OnMedia.Ink with { A = ClassicStageGeometry.RailDisabledAlpha },

@@ -401,15 +401,16 @@ internal static partial class CommonMiniPlayer
         var accent = m.Accent;
         bool muted = bar.Muted.Value;
         var vol = bar.Volume;
+        bool settable = global::Wavee.Theming.VolumeSlider.Settable;   // locked with the rail while the owner keeps its volume (remote-play plan 2.2)
         return new BoxEl
         {
             Key = H.VolumeKey, Height = H.VolumeRowH, Direction = 0, AlignItems = FlexAlign.Center, Gap = H.TallPanelGap,
             Margin = new Edges4(-H.CtrlBleedBottom, -H.CtrlBleedBottom, -H.CtrlBleedBottom, -H.CtrlBleedBottom),
             Children =
             [
-                Btn(m, muted ? Icons.Mute : Icons.Volume, bar.ToggleMute, true, Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute)),
+                Btn(m, muted ? Icons.Mute : Icons.Volume, bar.ToggleMute, settable, global::Wavee.Theming.VolumeSlider.MuteTip(muted)),
                 VolumeSlider(vol, bar.SetVolume, accent, m.Size.Width - 2f * st.Pad + 2f * H.CtrlBleedBottom - st.ButtonBox - H.VolumePctW - 2f * H.TallPanelGap,
-                    global::Wavee.Theming.VolumeSlider.Settable),
+                    settable),
                 new BoxEl { Width = H.VolumePctW, Direction = 0, Justify = FlexJustify.End, HitTestVisible = false,
                     Children = [st.Detail("") with { Text = Prop.Of(() => Percent(vol.Value)), Color = m.Ink2 }] },
             ],
