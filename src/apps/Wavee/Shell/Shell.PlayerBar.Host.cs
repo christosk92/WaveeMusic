@@ -94,10 +94,13 @@ public static partial class Shell
             },
             // the stage's format chip rule (Stage.Transport.ShowsQualityBadge), narrowed to a lossless badge; held under the stage like the title
             // Lossless is the OPENED format (the device picker's quality words read the same fact); the badge is only the tooltip's text.
+            // The badge's switch (Settings › Sound, the badge tip's "Hide badge") is decided HERE: off, no theme is handed a format, so none
+            // needs a check of its own; its writer bumps the player bar's epoch, so the badge goes (or comes back) at once.
             LosslessFormat = HeldUnderStage(static () =>
             {
                 // Read first, every time: the badge changes with every open, so this keeps the bind subscribed to the opened format too.
                 var fmt = Playback.StreamFormat.Value;
+                if (!Prefs.PlayerBar.ShowLosslessBadge()) return null;
                 if (fmt.IsEmpty || Theming.InspectSwitches.RemoteDevice is not null) return null;
                 _ = Playback.Devices.Changed.Value;
                 bool remote = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows) >= 0;

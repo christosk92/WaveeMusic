@@ -63,6 +63,10 @@ public static class WinUiPlayerLayout
     /// <summary>The separator between two credited names.</summary>
     public const string CreditSeparator = ", ";
 
+    /// <summary>The Lossless mark's separator from the names ("Artist · Lossless"): the line's own type in its secondary ink, the word after it in
+    /// the accent text ink at the line's weight (<see cref="SubWeight"/>), so only its ink sets it apart (Classic's mark, in WinUI's Caption).</summary>
+    public const string LosslessSeparator = " · ";
+
     /// <summary>The narrowest cut a later name is given in a credits line (an ellipsis and a letter); less room ends the line at the last
     /// whole name. The slot width's grid (DIP): a sub-DIP wobble re-lays nothing.</summary>
     public const float CreditMinCut = 16f, CreditSlotQuantum = 1f;

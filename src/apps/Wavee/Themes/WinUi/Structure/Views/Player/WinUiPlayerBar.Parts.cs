@@ -31,8 +31,49 @@ internal static partial class WinUiPlayerBar
     /// <summary>The props of the "playing on" line (<paramref name="Accent"/>: the Mini bar's accent line in place of the artists).</summary>
     internal sealed record RemoteProps(PlayerBarProps Bar, bool Accent);
 
-    /// <summary>The props of the credits line (<paramref name="Linked"/>: each name is a link; the Mini bar's door has none of its own).</summary>
-    internal sealed record CreditsProps(PlayerBarProps Bar, bool Linked);
+    /// <summary>The props of the credits line (<paramref name="Linked"/>: each name is a link; the Mini bar's door has none of its own).
+    /// <paramref name="Lossless"/>: the fitted line ends in the Lossless mark's holder, captured by it (null: the marquee's content, which the
+    /// mark sits beside); <paramref name="LosslessShown"/>: the bar draws the mark there (the full bar; the Mini bar keeps the holder empty).</summary>
+    internal sealed record CreditsProps(PlayerBarProps Bar, bool Linked, Action<NodeHandle>? Lossless = null, bool LosslessShown = false);
+
+    /// <summary>The props of the Lossless mark beside the marquee's credits (<paramref name="Shown"/>: the full bar draws it).</summary>
+    internal sealed record LosslessProps(PlayerBarProps Bar, Action<NodeHandle> Realized, bool Shown);
+
+    /// <summary>The Lossless mark's node key (every theme's: the inspector finds the mark by it).</summary>
+    internal const string LosslessKey = "np-lossless";
+
+    /// <summary>The Lossless mark's holder at the end of the artists line: ONE box in every state, captured by <paramref name="realized"/> (the
+    /// badge tip's anchor, which outlives a "Hide badge" so the tip's confirmation still points where the badge was). Empty (0 x 0) with no
+    /// <paramref name="format"/>; else " · Lossless" on the line's own type, the separator in its secondary ink and the word in the accent text
+    /// ink, its tooltip the stream's own badge ("FLAC 24/96").</summary>
+    internal static BoxEl LosslessHolder(string? format, Action<NodeHandle> realized)
+        => format is null
+            ? new BoxEl { Shrink = 0f, HitTestVisible = false, OnRealized = realized }
+            : new BoxEl
+            {
+                Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, OnRealized = realized,
+                Children =
+                [
+                    ToolTip.Wrap(new BoxEl
+                    {
+                        Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                        Children =
+                        [
+                            new TextEl(PL.LosslessSeparator) { Size = PL.SubSize, LineHeight = PL.SubLine, Weight = PL.SubWeight, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap },
+                            new TextEl(Loc.Get(Strings.Player.LosslessMark))
+                            {
+                                Size = PL.SubSize, LineHeight = PL.SubLine, Weight = PL.SubWeight, Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap,
+                            },
+                        ],
+                    }, format),
+                ],
+            };
+
+    /// <summary>The mark's natural width (" · Lossless" at the line's type): what the fitted credits line keeps free for it. NaN with no text seam
+    /// (a headless text backend): the line then keeps its uncut arrangement and the row's clip is the edge.</summary>
+    internal static float LosslessWidth()
+        => Controls.NaturalWidth(PL.LosslessSeparator + Loc.Get(Strings.Player.LosslessMark),
+            new TextEl(PL.LosslessSeparator) { Size = PL.SubSize, LineHeight = PL.SubLine, Weight = PL.SubWeight });
 
     /// <summary>The props of the mute button (<paramref name="Popup"/>: a level without the inline slider opens it in a flyout).</summary>
     internal sealed record VolumeProps(PlayerBarProps Bar, bool Popup);
@@ -474,7 +515,9 @@ internal sealed class WinUiRemoteLine : Component
 /// the identity). It re-renders only when its stamp moves; a held face keeps its credits, so the line never empties on a skip. In its slot
 /// (<see cref="WinUiCredits"/>) the line is laid out from the names' measured widths: the names that fit whole, then the next one cut to the
 /// room left with its ellipsis (<see cref="PL.CreditsFit"/>), the whole line in a tooltip while it is cut; inside the marquee
-/// (<see cref="WinUiCreditsRun"/>) every name lies at its full width.</summary>
+/// (<see cref="WinUiCreditsRun"/>) every name lies at its full width. The fitted line ends in the Lossless mark's holder
+/// (<see cref="WinUiPlayerBar.LosslessHolder"/>): the names are fitted to the slot less the mark, so the mark sits right after them and never
+/// pushes them out of the slot (the marquee's mark sits beside the marquee, <see cref="WinUiLosslessMark"/>).</summary>
 internal abstract class WinUiCreditsLine : Component
 {
     protected Element Line(WinUiPlayerBar.CreditsProps p, bool fit)
@@ -482,25 +525,34 @@ internal abstract class WinUiCreditsLine : Component
         var props = p.Bar;
         _ = UseComputed(props.CreditsStamp).Value;
         float slot = fit ? UseMeasuredWidth(PL.CreditSlotQuantum).Value : 0f;   // `fit` is the class's: the hook runs in every render or none
+        // The Lossless mark (read here: a stream turning lossless, or the badge's switch, re-fits this one line, never the bar).
+        string? lossless = p.Lossless is not null && p.LosslessShown ? props.LosslessFormat?.Invoke() : null;
         var credits = Reactive.Untrack(props.Credits);   // the stamp is the subscription: a direct read re-ran this on every catalog write
         // An episode's line is its show, one link; a track's, its credited names.
         var named = new List<PlayerCreditLink>(Math.Max(1, credits.Artists.Length));
         if (credits.Show is { } show) named.Add(show);
         else foreach (var link in credits.Artists) if (link.Text.Length > 0) named.Add(link);
-        if (named.Count == 0) return new BoxEl { Direction = 0, Height = PL.SubLine };
+        if (named.Count == 0) return WithMark(new BoxEl { Direction = 0, Height = PL.SubLine }, p, lossless);
         string line = string.Join(PL.CreditSeparator, named.ConvertAll(static l => l.Text));
         var style = Run(line);
 
-        // Fitted: the names that fit whole, then the next one cut (no slot yet, or no text seam: every name whole, the row's clip the edge).
+        // Fitted: the names that fit whole, then the next one cut (no slot yet, or no text seam: every name whole, the row's clip the edge),
+        // in the slot less the mark's width while the mark shows.
         int whole = named.Count;
         float cut = 0f;
         if (fit && slot > 0f)
         {
+            float room = slot;
+            if (lossless is not null)
+            {
+                float mark = WinUiPlayerBar.LosslessWidth();
+                if (!float.IsNaN(mark)) room = MathF.Max(0f, slot - mark);
+            }
             float separator = Controls.NaturalWidth(PL.CreditSeparator, style);
             Span<float> widths = named.Count <= 16 ? stackalloc float[named.Count] : new float[named.Count];
             bool measured = !float.IsNaN(separator);
             for (int i = 0; i < named.Count && measured; i++) measured = !float.IsNaN(widths[i] = Controls.NaturalWidth(named[i].Text, style));
-            if (measured) (whole, cut) = PL.CreditsFit(widths, separator, slot);
+            if (measured) (whole, cut) = PL.CreditsFit(widths, separator, room);
         }
         var kids = new List<Element>(named.Count * 2);
         int shown = cut > 0f ? whole + 1 : whole;
@@ -510,8 +562,24 @@ internal abstract class WinUiCreditsLine : Component
             kids.Add(Name(named[i], p, i == whole ? cut : float.NaN, out _));
         }
         var lineRow = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = fit, Children = kids.ToArray() };
-        return fit ? Controls.TrimTip(lineRow, line, style) : lineRow;
+        return WithMark(fit ? Controls.TrimTip(lineRow, line, style) : lineRow, p, lossless);
     }
+
+    /// <summary>The line followed by the Lossless mark's holder, or the line alone where the props carry no holder (the marquee's content). The
+    /// root is the slot's width (the measured width above); the names hug their fitted width in a column (the trim tip measures the run's own
+    /// slot there), the holder right after them.</summary>
+    static Element WithMark(Element names, WinUiPlayerBar.CreditsProps p, string? format)
+        => p.Lossless is not { } realized
+            ? names
+            : new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [names] },
+                    WinUiPlayerBar.LosslessHolder(format, realized) with { Key = WinUiPlayerBar.LosslessKey },
+                ],
+            };
 
     static TextEl Run(string text) => new(text) { Size = PL.SubSize, LineHeight = PL.SubLine, Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap };
 
@@ -545,4 +613,15 @@ internal sealed class WinUiCredits : WinUiCreditsLine
 internal sealed class WinUiCreditsRun : WinUiCreditsLine
 {
     public override Element Render() => Line(UseProps<WinUiPlayerBar.CreditsProps>(), fit: false);
+}
+
+/// <summary>The Lossless mark beside the marquee's credits (the marquee shrinks to the line less the mark and scrolls the names, the mark held at
+/// the end, as Classic's): its own component, so a stream turning lossless re-renders the mark and not the bar.</summary>
+internal sealed class WinUiLosslessMark : Component
+{
+    public override Element Render()
+    {
+        var p = UseProps<WinUiPlayerBar.LosslessProps>();
+        return WinUiPlayerBar.LosslessHolder(p.Shown ? p.Bar.LosslessFormat?.Invoke() : null, p.Realized);
+    }
 }

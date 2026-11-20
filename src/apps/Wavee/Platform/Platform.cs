@@ -172,6 +172,9 @@ public static partial class Platform
 
         // ── shell state ──
         public static readonly SettingKey<bool> PlayerBarShowRemaining = new("playerbar.duration.remaining", true);
+        /// <summary>The player bar's Lossless badge (Settings › Sound › Quality, and "Hide badge" on the badge's own tip). On, every theme's bar says
+        /// "Lossless" after the artists while a lossless stream plays on this device; off, the bar's host hands the themes no format, so none draws it.</summary>
+        public static readonly SettingKey<bool> PlayerBarLosslessBadge = new("playerbar.losslessBadge", true);
         public static readonly SettingKey<string> PlaylistDepositRecents = new("playlist.deposit.recents", "");
         public static readonly SettingKey<string> WorkspacePinnedTabs = new("workspace.tabs.pinned", "");
         /// <summary>The concerts the listener marked "interested" (a LOCAL set: the concert API has no interested / saved state of its own): ONE capped blob,

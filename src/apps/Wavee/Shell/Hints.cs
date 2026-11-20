@@ -33,7 +33,7 @@
 // `HintRules.ConfirmationMs` or with its own close.
 //
 // COST. Nothing here runs per frame: a slot re-evaluates when `Epoch` moves (a fact crossing its threshold, a show, a dismissal, a
-// retirement, a force) or when the time gate it waits on runs out; `Pick` walks the fifteen rows over plain fields and allocates
+// retirement, a force) or when the time gate it waits on runs out; `Pick` walks the sixteen rows over plain fields and allocates
 // nothing; props (strings) are built only for a hint that shows.
 
 using FluentGpu.Dsl;
@@ -76,6 +76,18 @@ public sealed record HintDef
 
     /// <summary>What the confirmation's "Change" opens after an inline write (a dial id or a category slug), or null for <see cref="Target"/>.</summary>
     public string? ChangeTarget { get; init; }
+
+    /// <summary>For <see cref="HintAction.Inline"/>: the value its button writes to the switch. On for every hint that offers a feature; off for one
+    /// that offers to hide what it points at (the Lossless badge's "Hide badge"), which then words its own confirmation (<see cref="DoneKey"/>).</summary>
+    public bool WritesOn { get; init; } = true;
+
+    /// <summary>The confirmation's words after the inline write (a loc key: "Badge hidden"), or null for the system's "On" (with the value
+    /// <see cref="ChangeTarget"/> holds).</summary>
+    public string? DoneKey { get; init; }
+
+    /// <summary>The Settings home may suggest it (owner decision 14). False for a tip about something on screen at this moment (the Lossless
+    /// badge's): out of that moment its words point at nothing, and a suggestion's show would spend its one show before the badge was ever seen.</summary>
+    public bool Suggested { get; init; } = true;
 
     /// <summary>For <see cref="HintAction.Point"/>: the node key of the control it points at.</summary>
     public string? Anchor { get; init; }
@@ -124,7 +136,7 @@ public static partial class Hints
     static IReadOnlyList<HintDef>? s_all;
 
     /// <summary>The fifteen placements of design 6.3 (rows 15 and 17 are deliberately no hint: the lyrics pane's ⋯ is the blur's door,
-    /// and private session is never advertised), in table order.</summary>
+    /// and private session is never advertised) and the Lossless badge's tip after them (18), in table order.</summary>
     public static IReadOnlyList<HintDef> All => s_all ??= Build();
 
     /// <summary>The index of the hint <paramref name="id"/> in <see cref="All"/>, or -1.</summary>
@@ -261,6 +273,17 @@ public static partial class Hints
                 Priority = 1, Drawn = true, TextKey = Strings.Hints.CacheFull.TextKey, ActionKey = Strings.Hints.CacheFull.Action, Words = HintFacts.CacheWords,
                 Trigger = HintFacts.CacheAlmostFull,
             },
+            // 18 — the player bar's Lossless badge, the first time it is on screen (after the design's table): a one-time tip that points at the
+            // badge (WinUI's TeachingTip; Classic's and Zune's line above the bar) and offers to hide it. "Hide badge" writes the switch OFF (then
+            // the confirmation, "Badge hidden", and its "Change"); the dismiss keeps the badge and retires the tip; a write of the switch anywhere
+            // retires it too. Never a Settings home suggestion: it is about the badge on screen now.
+            new()
+            {
+                Id = "lossless-badge", Target = "sound.losslessBadge", Surface = HintSurfaces.PlayerBar, Action = HintAction.Inline, Priority = 14,
+                TitleKey = Strings.Hints.LosslessBadge.Title, TextKey = Strings.Hints.LosslessBadge.Text, ActionKey = Strings.Hints.LosslessBadge.Action,
+                WritesOn = false, DoneKey = Strings.Hints.LosslessBadge.Done, MaxShows = 1, DismissRetires = true, Suggested = false, Drawn = true,
+                Trigger = HintFacts.LosslessBadgeOnScreen,
+            },
         ];
         Validate(all);
         return all;
@@ -275,6 +298,8 @@ public static partial class Hints
         {
             if (!seen.Add(def.Id)) throw new InvalidOperationException("Hints: the id '" + def.Id + "' is declared twice.");
             if (def.Id.AsSpan().IndexOfAny("|;,=") >= 0) throw new InvalidOperationException("Hints: '" + def.Id + "' holds a blob separator.");
+            if (def.Action == HintAction.Inline && !def.WritesOn && def.DoneKey is null)
+                throw new InvalidOperationException("Hints: '" + def.Id + "' writes its switch off, so its confirmation needs words of its own (DoneKey), never \"On\".");
             if (!IsDial(def.Target)) continue;
             SettingsDial dial = SettingsSpec.Dial(def.Target);
             if (def.Action == HintAction.Inline && dial.Kind != SettingsRowKind.Toggle)
@@ -534,7 +559,8 @@ public static partial class Hints
         {
             case HintAction.Inline:
                 s_done = def.Id;
-                SettingsSpec.Dial(def.Target).WriteToggle(true, SettingsSurfaces.Hint);   // retires every hint about the dial (OnDialWritten)
+                // On, or off for a hint that offers to hide what it points at (WritesOn); retires every hint about the dial (OnDialWritten).
+                SettingsSpec.Dial(def.Target).WriteToggle(def.WritesOn, SettingsSurfaces.Hint);
                 Bump();
                 break;
             default:
@@ -586,7 +612,7 @@ public static partial class Hints
             for (int i = 0; i < all.Count && picked.Count < HintRules.SuggestionCap; i++)
             {
                 HintDef def = all[i];
-                if (def.Priority != rank || def.IsState || def.Action == HintAction.Badge) continue;
+                if (def.Priority != rank || def.IsState || def.Action == HintAction.Badge || !def.Suggested) continue;
                 if (Judge(def, inApp: false) == Verdict.Qualifies) picked.Add(def);
             }
         return picked;
@@ -649,9 +675,10 @@ public static partial class Hints
     }
 
     /// <summary>The confirmation after an inline write (design 6.3): "On", and the value the "Change" link opens when that is a dial with a
-    /// value of its own ("On · Normal" for normalization's level).</summary>
+    /// value of its own ("On · Normal" for normalization's level); a hint that wrote its switch off says its own words ("Badge hidden").</summary>
     static string DoneWords(HintDef def)
     {
+        if (def.DoneKey is { } words) return Loc.Get(words);
         string on = Loc.Get(Strings.Hints.Done.On);
         if (def.ChangeTarget is not { } id || !SettingsSpec.TryDial(id, out SettingsDial dial)) return on;
         string value = SettingsPageModel.ValueWords(dial, dial.Current);

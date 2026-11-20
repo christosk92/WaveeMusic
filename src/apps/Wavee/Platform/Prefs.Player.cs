@@ -74,7 +74,8 @@ public static partial class Prefs
     /// <summary>A FIFTH epoch, named here deliberately rather than left for owner I to invent. 0.2.9 carries it (a
     /// five-line class embedded in the player bar) and the plan's §2 row names only four — so it is RECORDED as the one
     /// addition rather than smuggled in: the elapsed/remaining toggle is a preference the player bar AND the context
-    /// menu that flips it both read, which is the definition of cross-surface.</summary>
+    /// menu that flips it both read, which is the definition of cross-surface. The Lossless badge's switch rides the same epoch (Settings and the
+    /// badge's tip write it, the bar's host reads it).</summary>
     public static class PlayerBar
     {
         /// <inheritdoc cref="PlayerBar"/>
@@ -87,6 +88,14 @@ public static partial class Prefs
         {
             _ = Epoch.Value;
             return Platform.Settings.Get(Platform.Keys.PlayerBarShowRemaining);
+        }
+
+        /// <summary>Reactive read: may the bar show its Lossless badge while a lossless stream plays (on by default)? Its writer bumps the epoch,
+        /// so the badge comes and goes at once.</summary>
+        public static bool ShowLosslessBadge()
+        {
+            _ = Epoch.Value;
+            return Platform.Settings.Get(Platform.Keys.PlayerBarLosslessBadge);
         }
     }
 }

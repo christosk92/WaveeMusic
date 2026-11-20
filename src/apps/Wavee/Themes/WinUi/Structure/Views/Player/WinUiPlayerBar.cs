@@ -105,7 +105,7 @@ internal static partial class WinUiPlayerBar
         }, DepKey.From((int)faceRef.Kind, faceRef.Slot));
 
         // ── the identity ──────────────────────────────────────────────────────────────────────────────────────────────
-        var meta = MetaColumn(props, v, mini, look.MetaW, titleLinkHover, metaNode, marquees.Value);
+        var meta = MetaColumn(props, v, mini, look.MetaW, titleLinkHover, metaNode, marquees.Value, anchors.OnLossless);
         var art = new BoxEl
         {
             Key = "art", Width = look.Art, Height = look.Art, Shrink = 0f, ZStack = true, Animate = PL.MoveMotion,
@@ -311,27 +311,33 @@ internal static partial class WinUiPlayerBar
             Padding = mini ? PL.MiniPadding : PL.RowPadding,
             Children = [left, centre, rightColumn],
         };
-        // The hints that point at the play button and the volume (out of layout: their tips float), only where the control is drawn.
+        // The hints that point at the play button, the volume and the Lossless mark (out of layout: their tips float), only where the control is
+        // drawn (the mark's tip: wherever the full bar's artists line holds the mark's place, so its confirmation outlives a "Hide badge").
         bool volumeShown = !mini && (v.Slots & (RightSlot.Volume | RightSlot.VolumeSlider)) != 0;
         hints = v.OwnsTransport && volumeShown
             ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume)]
             : v.OwnsTransport ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play)]
             : volumeShown ? [Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume)] : [];
+        if (!mini && v.ShowTitleBlock && v.ShowArtistLine) hints = [.. hints, Hints.Pointer(HintSurfaces.PlayerBar, anchors.Lossless)];
         return Bar(row);
     }
 
-    /// <summary>The play button's and the volume control's nodes, captured once per bar with stable delegates (a TeachingTip's target).</summary>
+    /// <summary>The play button's, the volume control's and the Lossless mark's nodes, captured once per bar with stable delegates (a TeachingTip's
+    /// target).</summary>
     private sealed class HintAnchors
     {
-        public readonly Action<NodeHandle> OnPlay, OnVolume;
-        public readonly Func<NodeHandle> Play, Volume;
+        NodeHandle _lossless;
+        public readonly Action<NodeHandle> OnPlay, OnVolume, OnLossless;
+        public readonly Func<NodeHandle> Play, Volume, Lossless;
 
         public HintAnchors(Ref<NodeHandle> play, Ref<NodeHandle> volume)
         {
             OnPlay = h => play.Value = h;
             OnVolume = h => volume.Value = h;
+            OnLossless = h => _lossless = h;
             Play = () => play.Value;
             Volume = () => volume.Value;
+            Lossless = () => _lossless;
         }
     }
 
@@ -411,9 +417,10 @@ internal static partial class WinUiPlayerBar
     /// <summary>The title (a link to the album or the show), the artists (or, on a remote output, "Playing on …"; from Medium a third line).
     /// Each line is one slot of the column's width: a line that does not fit ends in an ellipsis with its full text in a tooltip, or, with
     /// the app's marquee setting on, the title and the artists are marquees of one group (the start at rest, a pass now and then, one line moving
-    /// at a time).</summary>
+    /// at a time). The artists line of the full bar ends in the Lossless mark ("Artist · Lossless") while a lossless stream plays, its holder
+    /// captured by <paramref name="losslessRealized"/> (the badge tip's anchor).</summary>
     private static BoxEl MetaColumn(PlayerBarProps props, PlayerBarView v, bool mini, float metaW, Signal<bool> titleLinkHover, Ref<NodeHandle> metaNode,
-                                    Marquee.Group marquees)
+                                    Marquee.Group marquees, Action<NodeHandle> losslessRealized)
     {
         const string titleKey = "np-title", artistsKey = "np-artists";
         Prop<ColorF> titleInk = Prop.Of(() => !mini && titleLinkHover.Value && props.TitleHasRoute() ? Tok.AccentTextPrimary : InkOf(props.TitleInk()));
@@ -451,18 +458,29 @@ internal static partial class WinUiPlayerBar
             });
         else if (v.ShowArtistLine)
         {
-            var credits = new CreditsProps(props, Linked: !mini);
+            // THE LOSSLESS MARK rides the line's end in the full bar ("Artist · Lossless"): the names come first, the mark right after them. It
+            // moves nothing: the lines are the level's slot, so the heart and the column never follow the text, and the names give way inside the
+            // slot as the line already does (the fitted line cut to the slot less the mark, the marquee shrunk to it and scrolling). Its holder is
+            // in the Mini bar's line too, kept empty: one tree across the 641 crossing.
             BoxEl line = v.Marquee
                 ? new BoxEl
                 {
                     Key = artistsKey, Height = PL.SubLine, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
                     Children =
                     [
-                        Marquee.Content(Embed.Comp(credits, static () => new WinUiCreditsRun()), Prop.Of(() => props.Credits().Line(PL.CreditSeparator)),
-                                        MarqueeStyle(PL.SubSize, PL.SubWeight, Prop.Of(static () => Tok.TextSecondary)), marquees, order: 1, identity: face),
+                        // The full bar's names hug their width (shrinking to the line less the mark), so the mark sits right after them.
+                        Marquee.Content(Embed.Comp(new CreditsProps(props, Linked: !mini), static () => new WinUiCreditsRun()),
+                                        Prop.Of(() => props.Credits().Line(PL.CreditSeparator)),
+                                        MarqueeStyle(PL.SubSize, PL.SubWeight, Prop.Of(static () => Tok.TextSecondary)), marquees, order: 1, identity: face)
+                            with { Key = "np-artists-line", Grow = mini ? 1f : 0f, Shrink = 1f },
+                        Embed.Comp(new LosslessProps(props, losslessRealized, Shown: !mini), static () => new WinUiLosslessMark()) with { Key = LosslessKey },
                     ],
                 }
-                : new BoxEl { Key = artistsKey, Direction = 1, ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(credits, static () => new WinUiCredits())] };
+                : new BoxEl
+                {
+                    Key = artistsKey, Direction = 1, ClipToBounds = true, MinWidth = 0f,
+                    Children = [Embed.Comp(new CreditsProps(props, Linked: !mini, Lossless: losslessRealized, LosslessShown: !mini), static () => new WinUiCredits())],
+                };
             // The Mini bar's line cross-fades with "Playing on" on the line itself: an exit with a set height (the marquee line's) fades where it
             // stands, it holds no space (FlexLayout's exit rule, audit B3bc), so no outer box of its own is needed.
             kids.Add(mini ? line with { Enter = PL.LineSwap, Exit = PL.LineSwap, Transition = PL.LineSwapMotion } : line);
