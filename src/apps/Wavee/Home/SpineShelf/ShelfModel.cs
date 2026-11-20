@@ -141,27 +141,14 @@ public static class ShelfModel
         {
             if (c.Header is not { } h) continue;
             // Until the lookup answers: five flat placeholders at the tiles' size. Once it has: exactly the songs it named (a short answer's tiles
-            // share the row), or none (the cover tile).
-            bool answered = c.Rows.Count > 0 || Answered(c.FooterSectionSlot) || LookupDone();
+            // share the row), or none (the cover tile; also when the lookup failed, so no tile waits on placeholders that never fill).
+            bool answered = c.Rows.Count > 0 || Home.PreviewsSettled(c.FooterSectionSlot);
             var songs = new ShelfSong[answered ? Math.Max(1, c.Rows.Count) : SpineShelfRules.Songs];
             for (int i = 0; i < songs.Length; i++) songs[i] = i < c.Rows.Count ? SongOf(c.Rows[i]) : ShelfSong.Blank;
             bool none = c.Rows.Count == 0 && answered;
             items.Add(new ShelfItem(h.Uri, h, h.Title, c.Over, c.Reason, SectionCopy.PreviewFacts(in h), h.Accent, songs) { NoSongs = none, Ordinal = items.Count });
         }
         return items.ToArray();
-    }
-
-    /// <summary>The lookup closed this section's preview list (its card was answered).</summary>
-    static bool Answered(int sectionSlot)
-        => sectionSlot > Table.None && Entities.Current.Edges.SectionPreviewTracks.State(sectionSlot) == EdgeState.Complete;
-
-    /// <summary>A facet's whole lookup has concluded: answered (a card it did not name has no preview songs to wait for) or failed (none
-    /// will come), so no tile waits on placeholders that never fill; the cover tile stands instead.</summary>
-    static bool LookupDone()
-    {
-        var marker = Entities.Current.Edges.HomePreviews;
-        for (int p = 0; p < marker.ParentCount; p++) if (marker.State(p) == EdgeState.Complete || marker.IsFailed(p)) return true;
-        return false;
     }
 
     /// <summary>A preview song's tile values, read live off the tables (allocates the resolved strings: a render-time read).</summary>

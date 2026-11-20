@@ -1553,7 +1553,7 @@ public static partial class Entities
             previews.Clear(s);
         }
         s_coldPreviews = cold.ToArray();
-        Current.Edges.HomePreviews.Clear(all.Slot);
+        Current.Edges.HomePreviews.MarkAsked(all.Slot, 0);   // the lookup on the wire, as the live door marks it: asked, no answer yet
         Current.PublishAll();
         return true;
     }
@@ -1578,13 +1578,83 @@ public static partial class Entities
         foreach (var (section, targets) in s_coldPreviews) previews.ReplaceRun(section, targets, default);
         s_coldPreviews = [];
         var all = HomeFeed();
-        if (all.IsValid) Current.Edges.HomePreviews.ReplaceRun(all.Slot, ReadOnlySpan<int>.Empty, default);
+        if (all.IsValid) MarkLookupAnswered(all.Slot);
         Current.PublishAll();
         return true;
     }
 
-    /// <summary>One facet's captured answer, then its baseline lookup (when the capture has one), through the live folds.</summary>
-    static bool LandHomeAnswer(string facet, string file, string fixture = "capture")
+    /// <summary>`state kind=home-reanswer`: All's next answer lands as a live re-fetch lands it (the daylist rollover asks the feed's sections
+    /// again every few hours, Home.Host.cs): the DOCUMENT only, its lookup left to the app's own demand (<see cref="SimulatePreviewLookup"/>
+    /// answers it). Over `home=live1` it is live2's answer, over anything else live1's: the owner's two days, between which ten baseline sections
+    /// are new and eight carry another card under the same section uri.</summary>
+    public static bool StageHomeReanswer()
+    {
+        string next = HomeFixture == "live1" ? "live2" : "live1";
+        if (!LandHomeAnswer("", "home.all." + next + ".json", next, withLookup: false)) return false;
+        Current.PublishAll();
+        return true;
+    }
+
+    /// <summary>The lookup capture each facet's document came with (`fixtures/lookup.&lt;facet&gt;[.&lt;name&gt;].json`), by facet id: what
+    /// <see cref="SimulatePreviewLookup"/> answers the app's ask from.</summary>
+    static readonly Dictionary<string, string> s_lookupFile = new(StringComparer.Ordinal);
+
+    /// <summary>The fake's answer to the app's baseline lookup ask (<see cref="Home.EnsurePreviews"/>): what the edge door, the provider and the
+    /// answer path do for <see cref="FetchEdge.HomePreviews"/> live, over the lookup capture the facet's document came with. The marker takes
+    /// the live marks (asked when the ask goes out, answered without a run of its own when it lands) and the answer goes through the live
+    /// preview fold on a later turn, so every reader sees what it sees live. <paramref name="refresh"/> asks again past an earlier ask
+    /// (<c>Entities.RefreshEdge</c>); without it an asked facet is left alone (the door's dedupe).</summary>
+    public static void SimulatePreviewLookup(Home h, bool refresh)
+    {
+        if (!h.IsValid) return;
+        var marker = Current.Edges.HomePreviews;
+        int slot = h.Slot;
+        if (!refresh && marker.WasAsked(slot, 0)) return;
+        marker.MarkAsked(slot, 0);
+        var scope = Current;
+        Spotify.Post(() => AnswerFakeLookup(scope, slot));
+    }
+
+    static void AnswerFakeLookup(Scope scope, int slot)
+    {
+        if (!ReferenceEquals(scope, Current)) return;    // the scope was replaced meanwhile
+        var home = new Home(slot);
+        if (!home.IsValid) return;
+        string facet = home.FacetId.IsEmpty ? "" : Strings.Resolve(home.FacetId);
+        byte[]? lookup = s_lookupFile.TryGetValue(facet, out var file) ? ReadBundledCapture(file) : null;
+        DecodeLookup(lookup, home.BaselinePreviewLinks(owedOnly: true));   // the live request: the sections that owe their songs
+        MarkLookupAnswered(slot);
+        Current.PublishAll();
+    }
+
+    /// <summary>A lookup answer through the live preview fold, for the (section, card) pairs it was asked for. A facet with no lookup
+    /// capture answers one that names no card: every asked section settles with no songs (its cover), as a live answer would.</summary>
+    static void DecodeLookup(byte[]? lookup, HomePreviewLink[] links)
+    {
+        if (links.Length == 0) return;
+        var p = Staging.Rent();
+        try
+        {
+            Spotify.Decode.FeedBaselineLookup(lookup ?? s_noLookup, links, p);
+            Commit(p);
+        }
+        finally { Staging.Return(p); }
+    }
+
+    static readonly byte[] s_noLookup = "{\"data\":{\"lookup\":[]}}"u8.ToArray();
+
+    /// <summary>The lookup answered, as the live door leaves its marker: asked, and answered without a run of its own (Fetch.EdgesAnswered's
+    /// NoRoute). Never a structural write: the live marker has none, and a reader that leaned on one passed only here.</summary>
+    static void MarkLookupAnswered(int homeSlot)
+    {
+        var marker = Current.Edges.HomePreviews;
+        marker.MarkAsked(homeSlot, 0);
+        marker.MarkUnanswered(homeSlot, 0);
+    }
+
+    /// <summary>One facet's captured answer, then its baseline lookup (when the capture has one), through the live folds.
+    /// <paramref name="withLookup"/> false lands the document alone, as a live re-fetch does (<see cref="StageHomeReanswer"/>).</summary>
+    static bool LandHomeAnswer(string facet, string file, string fixture = "capture", bool withLookup = true)
     {
         byte[]? answer = ReadBundledCapture(Path.Combine("fixtures", file));
         if (answer is null) return false;
@@ -1600,21 +1670,15 @@ public static partial class Entities
         var home = HomeFeed(facet.AsSpan());
         // A fixture of its own day carries its own lookups (`lookup.<facet>.<name>.json`); the derived ones share the capture's.
         string facetName = facet.Length == 0 ? "all" : facet;
-        byte[]? lookup = (fixture != "capture" ? ReadBundledCapture(Path.Combine("fixtures", "lookup." + facetName + "." + fixture + ".json")) : null)
-            ?? ReadBundledCapture(Path.Combine("fixtures", "lookup." + facetName + ".json"));
-        HomePreviewLink[] links = home.IsValid ? home.BaselinePreviewLinks() : [];
-        if (lookup is not null && links.Length > 0)
-        {
-            var p = Staging.Rent();
-            try
-            {
-                Spotify.Decode.FeedBaselineLookup(lookup, links, p);
-                Commit(p);
-            }
-            finally { Staging.Return(p); }
-        }
-        // The lookup is answered (or there is none to make): the fake registers no provider that could answer it.
-        if (home.IsValid) Current.Edges.HomePreviews.ReplaceRun(home.Slot, ReadOnlySpan<int>.Empty, default);
+        string own = Path.Combine("fixtures", "lookup." + facetName + "." + fixture + ".json"), shared = Path.Combine("fixtures", "lookup." + facetName + ".json");
+        byte[]? lookup = fixture != "capture" ? ReadBundledCapture(own) : null;
+        string? lookupFile = lookup is not null ? own : (lookup = ReadBundledCapture(shared)) is not null ? shared : null;
+        if (lookupFile is not null) s_lookupFile[facet] = lookupFile;
+        else s_lookupFile.Remove(facet);
+        if (!withLookup || !home.IsValid) return true;
+        // The live open asks the lookup for the answer's cards the moment it lands: the fixture's lookup is that answer.
+        DecodeLookup(lookup, home.BaselinePreviewLinks());
+        MarkLookupAnswered(home.Slot);
         return true;
     }
 

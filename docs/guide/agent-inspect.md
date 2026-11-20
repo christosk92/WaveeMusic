@@ -621,6 +621,13 @@ transport do=end                                                       # deck=tr
 `state kind=home-refresh` lands the pinned Home's next answer (the `second` fixture) over the one the page shows: a removed
 section keeps its place as a hidden entry, a new one sits after its server neighbour, a hidden one stays hidden.
 
+`state kind=home-reanswer` lands All's next answer the way a live re-fetch does (the daylist rollover re-asks the feed's sections every
+few hours): the document alone, over `home=live1` live2's and over anything else live1's (ten new baseline sections, eight that carry
+another card under the same uri). The baseline lookup is then the app's own ask: under `--fake` it is answered on the next turn from the
+lookup capture that document came with, through the live preview fold, and the lookup's marker takes the live door's marks (asked, then
+answered without a run of its own), as it does on every fixture load. Mount `home=live1`, scroll the Spine Shelf ("Because you like")
+into view, stage it with `trace=90 prefix=shelf:`: the open card's song tiles hold their place and fill in.
+
 `state kind=home-cold`, then `home-land`, `home-following` and `home-previews` (any order) stage a live open one answer at a time: cold
 forgets the All answer, the Following facet's answer and the baseline lookup the tables hold and seats All and Following in flight (the
 board shows its placeholders), each land step concludes one of them. Mount from another route (`route=browse`), stage `home-cold`, then

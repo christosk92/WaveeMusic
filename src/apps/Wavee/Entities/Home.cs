@@ -1177,36 +1177,99 @@ public readonly partial struct Home
     /// <summary>Every baseline section's own uri paired with the uri of the card it wraps, in section order — the
     /// UI-thread read <c>Fetch.FillPreviewMap</c> snapshots into the batch BEFORE the provider's thread ever runs
     /// (the provider cannot touch a table, WP-5.M). A baseline band is, in practice, one card (D2 plan); a section
-    /// with no card or no uri of its own contributes nothing.</summary>
-    public HomePreviewLink[] BaselinePreviewLinks()
+    /// with no card or no uri of its own contributes nothing. <paramref name="owedOnly"/> keeps the sections whose
+    /// preview list nothing has answered (<see cref="OwesPreviews"/>): what a later answer of the document needs asked.</summary>
+    public HomePreviewLink[] BaselinePreviewLinks(bool owedOnly = false)
     {
         var sections = SectionSlots;
         if (sections.Length == 0) return [];
         List<HomePreviewLink>? links = null;
         for (int i = 0; i < sections.Length; i++)
         {
-            var section = new Section(sections[i]);
-            if (section.Kind != SectionKind.HomeBaseline) continue;
-            string sectionUri = section.Id.Text;
-            if (sectionUri.Length == 0) continue;
-            var targets = section.CardSlots;
-            var kinds = section.CardKinds;
-            if (targets.Length == 0 || kinds.Length == 0) continue;
-            string cardUri = new HomeCard(new EntityRef(kinds[0].Kind, targets[0]), sections[i]).Uri;
-            if (cardUri.Length == 0) continue;
-            (links ??= new List<HomePreviewLink>(8)).Add(new HomePreviewLink(sectionUri, cardUri));
+            if (owedOnly && E.SectionPreviewTracks.State(sections[i]) != EdgeState.Unknown) continue;
+            if (PreviewLinkOf(sections[i]) is { } link) (links ??= new List<HomePreviewLink>(8)).Add(link);
         }
         return links?.ToArray() ?? [];
     }
 
-    /// <summary>D2's ONE demand, called once a facet's <see cref="HomeFields.Sections"/> answer is known — the same
-    /// pattern <see cref="EnsureFeed"/> is for the document (HomeScreen's mount/version-change effect, never the model
-    /// memo). Idempotent: the edge door dedupes on <see cref="Edges.HomePreviews"/>'s own ask mark, so a repeat call
-    /// this scope is a no-op.</summary>
+    /// <summary>Does a baseline section of this answer still owe its preview songs: one the lookup never answered, because it came
+    /// with a later answer of the document, or its card changed since (<see cref="VoidReplacedCardPreviews"/>)? Exactly the
+    /// sections <see cref="BaselinePreviewLinks"/> asks for with <c>owedOnly</c>.</summary>
+    public bool OwesPreviews
+    {
+        get
+        {
+            var sections = SectionSlots;
+            for (int i = 0; i < sections.Length; i++)
+                if (E.SectionPreviewTracks.State(sections[i]) == EdgeState.Unknown && PreviewLinkOf(sections[i]) is not null) return true;
+            return false;
+        }
+    }
+
+    /// <summary>A baseline section's (section uri, card uri) pair: its first card, the one the shelf shows. Null for any other
+    /// section, and for one with no uri or no card of its own.</summary>
+    static HomePreviewLink? PreviewLinkOf(int sectionSlot)
+    {
+        var section = new Section(sectionSlot);
+        if (section.Kind != SectionKind.HomeBaseline) return null;
+        string sectionUri = section.Id.Text;
+        if (sectionUri.Length == 0) return null;
+        var targets = section.CardSlots;
+        var kinds = section.CardKinds;
+        if (targets.Length == 0 || kinds.Length == 0) return null;
+        string cardUri = new HomeCard(new EntityRef(kinds[0].Kind, targets[0]), sectionSlot).Uri;
+        return cardUri.Length == 0 ? null : new HomePreviewLink(sectionUri, cardUri);
+    }
+
+    /// <summary>D2's demand, run whenever a facet's document is known (HomeScreen's demand effect re-runs on every Home
+    /// publication, never the model memo). The lookup is asked once per ANSWER of the document, for the sections that owe it:
+    /// never asked this scope (or a terminal failure un-asked it): ask; asked and still on the wire: wait; concluded while a
+    /// baseline section still owes its songs: the document answered again since (the daylist rollover re-asks the feed's
+    /// sections every few hours, a facet revisit refreshes it) with new sections, or another card in one, so ask AGAIN. The
+    /// request carries only the owed sections (<c>Fetch.FillPreviewMap</c>), and an answer settles every section it was asked
+    /// for (<c>Spotify.Decode.FeedBaselineLookup</c>), so nothing stays owed after it: this converges. Asked once per scope,
+    /// the owner's Home re-answered four times overnight and every new card's song tiles stayed empty grey (2026-11-20).</summary>
     public static void EnsurePreviews(Home h)
     {
         if (!h.IsValid || !h.HasBaselineSections) return;
-        Entities.EnsureEdge(FetchEdge.HomePreviews, h.Slot);
+        var marker = E.HomePreviews;
+        bool asked = marker.WasAsked(h.Slot, 0);
+        // Answered reads asked plus the door's "answered without a run of its own" mark (Fetch.EdgesAnswered): this marker never holds a run.
+        if (asked && (!marker.IsFailed(h.Slot) || !h.OwesPreviews)) return;
+        // --fake answers the ask from the lookup capture its document came with, through the live fold and the live marks (F15's pattern).
+        if (Platform.Args.Fake) { Entities.SimulatePreviewLookup(h, refresh: asked); return; }
+        if (asked) Entities.RefreshEdge(FetchEdge.HomePreviews, h.Slot);
+        else Entities.EnsureEdge(FetchEdge.HomePreviews, h.Slot);
+    }
+
+    /// <summary>Has the baseline lookup settled <paramref name="sectionSlot"/>'s preview songs? Answered (its list, empty when the
+    /// lookup named none for the card: the card shows its cover), or its facet's lookup FAILED (nothing comes until a retry: the
+    /// cover again, never placeholders that do not fill). False while the songs are owed and the lookup is on the wire or due (a
+    /// later answer's new card is asked by the next demand): the tiles hold their place and fill in. The Spine Shelf's and the
+    /// Release Spotlight's one rule.</summary>
+    public static bool PreviewsSettled(int sectionSlot)
+    {
+        if (sectionSlot <= Table.None) return false;
+        if (E.SectionPreviewTracks.State(sectionSlot) == EdgeState.Complete) return true;
+        var marker = E.HomePreviews;
+        for (int p = 0; p < T.Count; p++)
+            if (marker.IsFailed(p) && marker.FailureOf(p) != EdgeTableBase.NoRoute && E.HomeSection.IndexOf(p, sectionSlot) >= 0) return true;
+        return false;
+    }
+
+    /// <summary>A section's preview songs are its CARD's: the lookup is asked per card (<see cref="PreviewLinkOf"/>), and Spotify
+    /// reuses a baseline section's uri across answers for another card (the owner's live1 and live2: eight of twenty sections). A
+    /// first card that changes voids them, so the section owes its songs again and the next demand asks for the new card,
+    /// instead of the old card's songs playing under the new one. The edge commit calls it before a section's cards land (UI
+    /// thread, C1); <paramref name="kind"/> and <paramref name="slot"/> are the new first card, <c>None</c> for no card.</summary>
+    internal static void VoidReplacedCardPreviews(int sectionSlot, EntityKind kind, int slot)
+    {
+        var previews = E.SectionPreviewTracks;
+        if (previews.State(sectionSlot) == EdgeState.Unknown) return;
+        var targets = E.SectionCards.Targets(sectionSlot);
+        var kinds = E.SectionCards.Payload(sectionSlot);
+        if (targets.Length > 0 && kinds.Length > 0 && targets[0] == slot && kinds[0].Kind == kind) return;
+        previews.Clear(sectionSlot);
     }
 
     /// <summary>A band's demand (ch 12 §7a): <paramref name="fields"/> of the section row, then its cards' rows.
