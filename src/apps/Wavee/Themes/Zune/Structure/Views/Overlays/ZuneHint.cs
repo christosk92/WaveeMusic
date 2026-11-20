@@ -10,10 +10,12 @@
 //   floating     by a control (the play button, the volume, the queue's crossfade word) and at the top of Home: the same line on a band of the
 //                player bar's own ink (no ring, no corners, no shadow: the bar grows a line), floating in the overlay layer at that control
 //                (`CommonHintFloat`), so the page under it never moves. It stays inside the surface the control lives in: in the queue panel the
-//                band runs under the modes row from edge to edge, its words on the panel's content column; above the player bar it keeps Zune's
-//                inset from the bar's ends, centred on the play disc or ending at the volume.
+//                band runs under the modes row from edge to edge, its words on the panel's content column; above the player bar it lies on the
+//                bar's top edge (never over its rows: the lossless word sits under the title), keeps Zune's inset from the bar's ends, centred on
+//                the play disc or the lossless word or ending at the volume.
 //
-// A state line (the metered cap) keeps its "change" word and has no "not now". After an inline write: the confirmation ("on · normal") and its
+// A hint with its own words for the dismiss says them in "not now"'s place (the Lossless badge's "keep it"). A state line (the metered cap)
+// keeps its "change" word and has no "not now". After an inline write: the confirmation ("on · normal") and its
 // accent "change". Keys: `hint:<id>`, the words `:act`, `:change`, `:dismiss`, `:more`. The entrance slides the line in from the right as it
 // fades (Zune's words arrive sideways). Every word is at least the tier's target (the kit's commands).
 
@@ -59,12 +61,14 @@ internal static class ZuneHint
     }
 
     /// <summary>Where a floating line sits in its surface: under the queue's modes row, edge to edge in the panel (it covers the list, not the
-    /// words); above the player bar's play disc (centred) and volume (end-aligned), Zune's inset from the bar's ends.</summary>
+    /// words); on the player bar's top edge (never over its rows), centred on the play disc or the lossless word, ending at the volume, Zune's
+    /// inset from the bar's ends.</summary>
     static HintFloatPlace PlaceOf(string surface) => surface switch
     {
         HintSurfaces.QueuePanel => new(Below: true, HintFloatAlign.Start, ZuneHintRules.QueueInset, ZuneHintRules.FloatMaxWidth),
-        HintSurfaces.PlayerVolume => new(Below: false, HintFloatAlign.End, ZuneHintRules.FloatInset, ZuneHintRules.FloatMaxWidth),
-        _ => new(Below: false, HintFloatAlign.Center, ZuneHintRules.FloatInset, ZuneHintRules.FloatMaxWidth),
+        HintSurfaces.PlayerVolume => new(Below: false, HintFloatAlign.End, ZuneHintRules.FloatInset, ZuneHintRules.FloatMaxWidth,
+            Edge: true, EdgeGap: ZuneHintRules.FloatGap),
+        _ => new(Below: false, HintFloatAlign.Center, ZuneHintRules.FloatInset, ZuneHintRules.FloatMaxWidth, Edge: true, EdgeGap: ZuneHintRules.FloatGap),
     };
 
     /// <summary>The line on a band of the player bar's ink, <paramref name="width"/> wide (its words wrap inside it).</summary>
@@ -94,7 +98,7 @@ internal static class ZuneHint
         else
         {
             if (p.Act is { } act && p.ActionLabel is { } label) kids.Add(k.Cmd(label, act, accent: true) with { Key = key + ":act" });
-            if (p.Dismiss is { } dismiss) kids.Add(k.Cmd(Loc.Get(Strings.Hints.NotNow), dismiss) with { Key = key + ":dismiss" });
+            if (p.Dismiss is { } dismiss) kids.Add(k.Cmd(p.DismissLabel ?? Loc.Get(Strings.Hints.NotNow), dismiss) with { Key = key + ":dismiss" });
             if (p.NeverTips is { } never) kids.Add(Embed.Comp(new MoreProps(key, never, lay), static () => new More()) with { Key = key + ":more" });
         }
         return new BoxEl

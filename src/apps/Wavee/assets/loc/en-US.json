@@ -5290,6 +5290,6 @@
     "shortcuts": { "text": "Space plays and pauses. See every shortcut.", "action": "Shortcuts" },
     "sleepTimer": { "text": "Falling asleep? Set a sleep timer.", "action": "Sleep timer" },
     "cacheFull": { "text": "Your playback cache is almost full ({used} of {budget}).", "action": "Change size" },
-    "losslessBadge": { "title": "You're listening in lossless", "text": "This badge shows while a lossless stream plays.", "action": "Hide badge", "done": "Badge hidden" }
+    "losslessBadge": { "title": "You're listening in lossless", "text": "This badge shows while a lossless stream plays.", "action": "Hide badge", "dismiss": "Keep it", "done": "Badge hidden" }
   }
 }

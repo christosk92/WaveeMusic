@@ -12,8 +12,9 @@
 // later session); at most N shows on N different days; "×" snoozes 30 days and the third dismissal retires (some retire on the first);
 // "Tips about features" off (`notifications.tips`) shows none; retired for good when its dial is written from anywhere
 // (`SettingsWrites` → `OnDialWritten`) or, once it has shown, when the state it suggests is reached; never while the setup wizard
-// runs, another dialog or flyout is open, the window is hidden or minimised, in the first two minutes after launch, or in the first
-// seconds of a track. State lines are state, not hints: shown every time, never counted, untouched by the switch.
+// runs, another dialog or flyout is open, the window is hidden or minimised, in the first two minutes after launch (bar a tip about what is
+// on screen this moment, the Lossless badge's: `HintDef.IgnoresLaunchGrace`), or in the first seconds of a track. State lines are state,
+// not hints: shown every time, never counted, untouched by the switch.
 //
 // PRIORITY (owner decision 14): state lines first, then the hint of the surface on screen (a slot only ever asks for its own surface),
 // then `HintDef.Priority` (1 first), ordered by what missing it costs. The Settings home's Suggestions take the top three in the same
@@ -100,6 +101,14 @@ public sealed record HintDef
 
     /// <summary>"×" retires it at once (one-time offers).</summary>
     public bool DismissRetires { get; init; }
+
+    /// <summary>The dismiss's own words (a loc key: "Keep it"), or null for each theme's usual dismiss ("Not now", a close glyph). For a hint
+    /// whose dismiss is an answer that retires it (<see cref="DismissRetires"/>), not a "later".</summary>
+    public string? DismissKey { get; init; }
+
+    /// <summary>It may show in the first minutes after launch (<see cref="HintRules.LaunchGraceMs"/>): a tip about something on screen this
+    /// moment (the Lossless badge's), which the grace would only make late, never better timed. Every other gate holds.</summary>
+    public bool IgnoresLaunchGrace { get; init; }
 
     /// <summary>The dials whose write retires it; null = its <see cref="Target"/> when that is a dial.</summary>
     public IReadOnlyList<string>? RetiredBy { get; init; }
@@ -273,15 +282,19 @@ public static partial class Hints
                 Priority = 1, Drawn = true, TextKey = Strings.Hints.CacheFull.TextKey, ActionKey = Strings.Hints.CacheFull.Action, Words = HintFacts.CacheWords,
                 Trigger = HintFacts.CacheAlmostFull,
             },
-            // 18 — the player bar's Lossless badge, the first time it is on screen (after the design's table): a one-time tip that points at the
-            // badge (WinUI's TeachingTip; Classic's and Zune's line above the bar) and offers to hide it. "Hide badge" writes the switch OFF (then
-            // the confirmation, "Badge hidden", and its "Change"); the dismiss keeps the badge and retires the tip; a write of the switch anywhere
-            // retires it too. Never a Settings home suggestion: it is about the badge on screen now.
+            // 18 — the player bar's Lossless badge while it is on screen (after the design's table): a tip that points at the badge (WinUI's
+            // TeachingTip; Classic's and Zune's line above the bar) and asks to hide it or keep it, on up to three days until it is answered, as
+            // the other tips. "Hide badge" writes the switch OFF (then the confirmation, "Badge hidden", and its "Change"); "Keep it" (the dismiss,
+            // in its own words) keeps the badge and retires the tip; a click elsewhere only sets it aside for the session; a write of the switch
+            // anywhere retires it too. It does not wait out the two minutes after launch (the owner: "dont wait until 2 minutes of app to show
+            // the tooltip"): it is about the badge on screen now, so it comes once the badge is up and the track is past its first seconds.
+            // Never a Settings home suggestion, for the same reason.
             new()
             {
                 Id = "lossless-badge", Target = "sound.losslessBadge", Surface = HintSurfaces.PlayerBar, Action = HintAction.Inline, Priority = 14,
                 TitleKey = Strings.Hints.LosslessBadge.Title, TextKey = Strings.Hints.LosslessBadge.Text, ActionKey = Strings.Hints.LosslessBadge.Action,
-                WritesOn = false, DoneKey = Strings.Hints.LosslessBadge.Done, MaxShows = 1, DismissRetires = true, Suggested = false, Drawn = true,
+                WritesOn = false, DoneKey = Strings.Hints.LosslessBadge.Done, DismissKey = Strings.Hints.LosslessBadge.Dismiss,
+                MaxShows = 3, DismissRetires = true, Suggested = false, IgnoresLaunchGrace = true, Drawn = true,
                 Trigger = HintFacts.LosslessBadgeOnScreen,
             },
         ];
@@ -388,7 +401,7 @@ public static partial class Hints
         if (overlayOpen && !InFlyout(def.Surface)) { recheckMs = HintRules.BlockedRecheckMs; return true; }
         if (!Residency.WindowOnScreen()) { recheckMs = HintRules.BlockedRecheckMs; return true; }
         long sinceLaunch = Log.SinceStartMs;
-        if (sinceLaunch < HintRules.LaunchGraceMs) { recheckMs = HintRules.LaunchGraceMs - sinceLaunch; return true; }
+        if (!def.IgnoresLaunchGrace && sinceLaunch < HintRules.LaunchGraceMs) { recheckMs = HintRules.LaunchGraceMs - sinceLaunch; return true; }
         long position = Playback.PositionMs.Peek();
         if (Playback.IsPlaying.Peek() && position < HintRules.TrackStartGraceMs) { recheckMs = HintRules.TrackStartGraceMs - position; return true; }
         return false;
@@ -671,6 +684,7 @@ public static partial class Hints
             Target = target,
             SetAside = def.IsState ? null : setAside,
             Title = TitleOf(def),
+            DismissLabel = !def.IsState && !done && def.DismissKey is { } dismissKey ? Loc.Get(dismissKey) : null,
         };
     }
 

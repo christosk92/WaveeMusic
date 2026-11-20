@@ -79,7 +79,7 @@ internal static partial class WinUiPlayerBar
         var playNode = rc.UseRef<NodeHandle>(default);
         var volumeNode = rc.UseRef<NodeHandle>(default);
         var hintAnchors = rc.UseRef<HintAnchors?>(null);
-        hintAnchors.Value ??= new HintAnchors(playNode, volumeNode);
+        hintAnchors.Value ??= new HintAnchors(playNode, volumeNode, barNode);
         var anchors = hintAnchors.Value;
 
         // The heart pops on the same playable's save edge only, on the captured node.
@@ -312,25 +312,26 @@ internal static partial class WinUiPlayerBar
             Children = [left, centre, rightColumn],
         };
         // The hints that point at the play button, the volume and the Lossless mark (out of layout: their tips float), only where the control is
-        // drawn (the mark's tip: wherever the full bar's artists line holds the mark's place, so its confirmation outlives a "Hide badge").
+        // drawn (the mark's tip: wherever the full bar's artists line holds the mark's place, so its confirmation outlives a "Hide badge"). The
+        // bar is each tip's surface: the tip floats above the bar's top edge, never over its rows (the mark sits under the title).
         bool volumeShown = !mini && (v.Slots & (RightSlot.Volume | RightSlot.VolumeSlider)) != 0;
         hints = v.OwnsTransport && volumeShown
-            ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume)]
-            : v.OwnsTransport ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play)]
-            : volumeShown ? [Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume)] : [];
-        if (!mini && v.ShowTitleBlock && v.ShowArtistLine) hints = [.. hints, Hints.Pointer(HintSurfaces.PlayerBar, anchors.Lossless)];
+            ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar), Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)]
+            : v.OwnsTransport ? [Hints.Pointer(HintSurfaces.PlayButton, anchors.Play, anchors.Bar)]
+            : volumeShown ? [Hints.Pointer(HintSurfaces.PlayerVolume, anchors.Volume, anchors.Bar)] : [];
+        if (!mini && v.ShowTitleBlock && v.ShowArtistLine) hints = [.. hints, Hints.Pointer(HintSurfaces.PlayerBar, anchors.Lossless, anchors.Bar)];
         return Bar(row);
     }
 
     /// <summary>The play button's, the volume control's and the Lossless mark's nodes, captured once per bar with stable delegates (a TeachingTip's
-    /// target).</summary>
+    /// target), and the bar's own (the tips' surface: they float above its top edge).</summary>
     private sealed class HintAnchors
     {
         NodeHandle _lossless;
         public readonly Action<NodeHandle> OnPlay, OnVolume, OnLossless;
-        public readonly Func<NodeHandle> Play, Volume, Lossless;
+        public readonly Func<NodeHandle> Play, Volume, Lossless, Bar;
 
-        public HintAnchors(Ref<NodeHandle> play, Ref<NodeHandle> volume)
+        public HintAnchors(Ref<NodeHandle> play, Ref<NodeHandle> volume, Ref<NodeHandle> bar)
         {
             OnPlay = h => play.Value = h;
             OnVolume = h => volume.Value = h;
@@ -338,6 +339,7 @@ internal static partial class WinUiPlayerBar
             Play = () => play.Value;
             Volume = () => volume.Value;
             Lossless = () => _lossless;
+            Bar = () => bar.Value;
         }
     }
 

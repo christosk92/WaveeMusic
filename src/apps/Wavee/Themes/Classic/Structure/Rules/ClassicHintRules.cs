@@ -43,6 +43,10 @@ public static class ClassicHintRules
     /// <summary>A floating strip keeps this far from its surface's edges (the player bar's).</summary>
     public const float FloatInset = 12f;
 
+    /// <summary>Above the player bar a floating strip keeps this far over the bar's top edge (a flyout's own gap): it lies over the page,
+    /// never over the bar's rows.</summary>
+    public const float FloatGap = 4f;
+
     /// <summary>In the queue panel it keeps to the panel's content column (the panel's own 14 side padding).</summary>
     public const float QueueInset = 14f;
 

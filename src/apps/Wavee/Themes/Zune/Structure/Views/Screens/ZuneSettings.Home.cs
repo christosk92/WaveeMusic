@@ -170,7 +170,7 @@ internal static partial class ZuneSettings
         else
         {
             if (p.Act is { } act && p.ActionLabel is { } label) kids.Add(k.Cmd(label, act, accent: true) with { Key = keyPrefix + p.Id + ":act" });
-            if (p.Dismiss is { } dismiss) kids.Add(k.Cmd(Loc.Get(Strings.Hints.NotNow), dismiss) with { Key = keyPrefix + p.Id + ":dismiss" });
+            if (p.Dismiss is { } dismiss) kids.Add(k.Cmd(p.DismissLabel ?? Loc.Get(Strings.Hints.NotNow), dismiss) with { Key = keyPrefix + p.Id + ":dismiss" });
         }
         return new BoxEl
         {

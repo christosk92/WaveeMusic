@@ -3,19 +3,26 @@
 // WinUI draws a hint in WinUI's own two controls, never a ContentDialog:
 //
 //   InfoBar      where the hint lives IN a panel (the lyrics pane's footer, on an opaque base because the full screen's lyrics lie over art;
-//                the devices flyout under its menu, the bell panel under its header, the top of Home): Informational, closable (the ✕ is "not now": the hint's own snooze), its one action as the InfoBar's button
-//                (an inline switch the accent button, a link the standard one, a state line's "Change" a hyperlink and no ✕), and a "⋯" whose menu
+//                the devices flyout under its menu, the bell panel under its header, the top of Home): Informational, closable (the ✕ is "not
+//                now": the hint's own snooze; a hint with its own words for the dismiss has a button of them beside the action instead), its one
+//                action as the InfoBar's button (an inline switch the accent button, a link the standard one, a state line's "Change" a hyperlink
+//                and no ✕), and a "⋯" whose menu
 //                offers "Don't show tips". A two-sentence line puts its first sentence in the title (W-InContext: "Want every word timed as it is
 //                sung?" over "Word-by-word lyrics run on this PC."). On Home it floats on an opaque card with the flyout elevation (it lies over
 //                the page, as the runtime banner does). After an inline write: the confirmation ("On · Normal") and its "Change" link.
-//   TeachingTip  where the hint POINTS at one control (the play button, the volume slider, the queue's Crossfade switch, the back button, the
-//                title bar): targeted, light dismiss, no focus taken (the engine tip has no focus trap); the dial's name as its title, the line as
-//                its body, the action button and "Not now" in its footer, the "⋯" in its foot. A click elsewhere sets it aside for the session;
-//                "Not now" snoozes it. After an inline write the tip is replaced by the confirmation tip (its title, "On", "Change").
+//   TeachingTip  where the hint POINTS at one control (the play button, the volume slider, the Lossless badge, the queue's Crossfade switch,
+//                the back button, the title bar): targeted, light dismiss, no focus taken (the engine tip has no focus trap). Compact, as WinUI's
+//                own: the title, the one line, then ONE row: the action and the dismiss as buttons at their own width (an inline switch's action the
+//                accent one; the dismiss in the hint's own words, "Keep it", else "Not now"), the "⋯" at the row's end. The dismiss is the row's
+//                button, so the tip's header ✕ is not drawn (one verb, one control). A click elsewhere sets it aside for the session; "Not now"
+//                snoozes it. After an inline write the tip is replaced by the confirmation tip (its title, "On", "Change" and the header ✕).
+//                Over the player bar the tip floats wholly ABOVE the bar, never over its rows (the Lossless badge sits under the title, so a tip
+//                hung from the badge itself covered the title and the heart): it hangs from the bar's top edge, its tail on the control's
+//                centre, WinUI's flyout gap between (`BarTopOverlay`).
 //
-// Keys: the InfoBar's host and the tip's bubble are `hint:<id>`, the parts `hint:<id>:act`, `:change`, `:more`. The entrance is the notification
-// card's (a short rise and fade); the tip's is the engine's TeachingTip expand. Nothing here moves the page: an in-place slot eases its own
-// height (core), the Home banner and the tip float.
+// Keys: the InfoBar's host and the tip's bubble are `hint:<id>`, the parts `hint:<id>:act`, `:dismiss`, `:change`, `:more` (the tip's included).
+// The entrance is the notification card's (a short rise and fade); the tip's is the engine's TeachingTip expand. Nothing here moves the page:
+// an in-place slot eases its own height (core), the Home banner and the tip float.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -97,7 +104,8 @@ internal static class WinUiHint
     {
         string key = "hint:" + p.Id;
         var (title, message) = Lead(p.Done ? p.DoneText ?? p.Text : p.Text);
-        var actions = new List<Element>(2);
+        bool worded = !p.Done && p.Dismiss is not null && p.DismissLabel is not null;
+        var actions = new List<Element>(3);
         if (p.Done)
         {
             if (p.Change is { } change && p.ChangeLabel is { } changeLabel) actions.Add(CommonTouch.Link(changeLabel, change, target) with { Key = key + ":change" });
@@ -108,6 +116,8 @@ internal static class WinUiHint
                 actions.Add(p.Action == HintAction.State
                     ? CommonTouch.Link(label, act, target) with { Key = key + ":act" }
                     : CommonTouch.Button(label, act, target, accent: p.Action == HintAction.Inline) with { Key = key + ":act" });
+            // A dismiss in the hint's own words is a button beside the action, in the ✕'s place (the bar is then not closable).
+            if (worded) actions.Add(CommonTouch.Button(p.DismissLabel!, p.Dismiss!, target) with { Key = key + ":dismiss" });
             if (p.NeverTips is { } never) actions.Add(More(key, never, target));
         }
         Element? action = actions.Count switch
@@ -121,7 +131,7 @@ internal static class WinUiHint
         parts[InfoBar.PartCloseButton] = target > 0f
             ? b => b with { Key = key + ":dismiss", MinWidth = target, MinHeight = target }
             : b => b with { Key = key + ":dismiss" };
-        return InfoBar.Create(InfoBarSeverity.Informational, title, message, onClose: p.Dismiss, isClosable: p.Dismiss is not null,
+        return InfoBar.Create(InfoBarSeverity.Informational, title, message, onClose: worded ? null : p.Dismiss, isClosable: !worded && p.Dismiss is not null,
             actionButton: action, parts: parts);
     }
 
@@ -158,10 +168,17 @@ internal static class WinUiHint
             return s_zero;
         }
 
-        static Action? Open(IOverlayService overlay, TipProps p)
+        Action? Open(IOverlayService overlay, TipProps p)
         {
             var hint = p.Hint;
             if (hint.Target is not { } target) return null;
+            // Above a surface (the player bar): the tip hangs from the surface's top edge, never over its rows (see the file header).
+            if (p.Placement == TeachingTip.PlacementMode.Top && hint.Bounds is { } bounds && Context.Scene is { } scene)
+                overlay = new BarTopOverlay(overlay, () => BarTop(scene, target, bounds));
+            string key = "hint:" + hint.Id;
+            Element? actions = Actions(hint, p.Target);
+            // The row says the dismiss in words: no header ✕ beside it. A confirmation keeps the ✕ (its dismiss only closes it).
+            bool rowDismisses = !hint.Done && hint.Dismiss is not null;
             bool ours = false;   // our own close (unmount, the offer turning into its confirmation) is no answer
             OverlayHandle handle = TeachingTip.Show(overlay, target, t =>
             {
@@ -169,37 +186,21 @@ internal static class WinUiHint
                 t.Body = hint.Done ? hint.DoneText ?? hint.Text : hint.Text;
                 t.IsLightDismissEnabled = true;
                 t.PreferredPlacement = p.Placement;
-                if (hint.Done)
+                // The buttons are the row's (WinUI's footer as one compact row with the "⋯"), not the engine's split footer: no action or
+                // close content, so the footer collapses and the row takes its place under the line.
+                if (actions is not null)
                 {
-                    if (hint.Change is { } change && hint.ChangeLabel is { } changeLabel) { t.ActionButtonContent = changeLabel; t.ActionButtonClick = change; }
-                }
-                else
-                {
-                    if (hint.Act is { } act && hint.ActionLabel is { } label)
-                    {
-                        t.ActionButtonContent = label;
-                        t.ActionButtonClick = act;
-                        t.ActionButtonIsAccent = hint.Action == HintAction.Inline;
-                    }
-                    t.CloseButtonContent = Loc.Get(Strings.Hints.NotNow);
-                    if (hint.NeverTips is { } never)
-                    {
-                        t.HeroContent = new BoxEl
-                        {
-                            Direction = 0, Justify = FlexJustify.End, Grow = 1f, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-                            Padding = WinUiHintRules.TipFootPadding,
-                            Children = [More("hint:" + hint.Id, never, p.Target)],
-                        };
-                        t.HeroContentPlacement = TeachingTip.HeroPlacement.Bottom;
-                    }
+                    t.HeroContent = actions;
+                    t.HeroContentPlacement = TeachingTip.HeroPlacement.Bottom;
                 }
                 var parts = new TemplateParts();
-                parts[TeachingTip.PartBubble] = b => b with { Key = "hint:" + hint.Id };
+                parts[TeachingTip.PartBubble] = b => b with { Key = key };
+                if (rowDismisses) parts[TeachingTip.PartCloseButton] = b => b with { Visible = false };
                 t.Parts = parts;
                 t.Closed = reason =>
                 {
                     if (ours) return;
-                    if (reason == TeachingTip.CloseReason.CloseButton) hint.Dismiss?.Invoke();   // "Not now" (the ✕ of a confirmation)
+                    if (reason == TeachingTip.CloseReason.CloseButton) hint.Dismiss?.Invoke();   // the ✕ of a confirmation
                     else hint.SetAside?.Invoke();                                                  // a click elsewhere, Escape
                 };
             });
@@ -209,5 +210,78 @@ internal static class WinUiHint
                 handle.Close();
             };
         }
+
+        /// <summary>The rect a tip above its surface hangs from: the control's own span across (the tail on its centre), from the surface's top
+        /// edge down to the control's foot (a tip that has no room above flips below the control, never over it). Read on every placement, so
+        /// it follows the bar. Without a live control it stands on the surface itself (the host closes the tip once its control, the owner, is
+        /// gone); with neither, the empty rect, and the host closes it.</summary>
+        static RectF BarTop(FluentGpu.Scene.SceneStore scene, Func<NodeHandle> target, Func<NodeHandle> bounds)
+        {
+            var node = target();
+            var surface = bounds();
+            bool control = !node.IsNull && scene.IsLive(node);
+            bool bar = !surface.IsNull && scene.IsLive(surface);
+            if (!control) return bar ? scene.AbsoluteRect(surface) : default;
+            RectF a = scene.AbsoluteRect(node);
+            float top = bar ? MathF.Min(a.Y, scene.AbsoluteRect(surface).Y) : a.Y;
+            return new RectF(a.X, top, a.W, a.Y + a.H - top);
+        }
+
+        /// <summary>The tip's one row: the action and the dismiss as buttons at their own width from the content's start (WinUI's compact
+        /// footer; the action the accent button for an inline switch), the "⋯" at the row's end; on a confirmation its "Change". Null with
+        /// nothing to offer.</summary>
+        static Element? Actions(HintProps hint, float target)
+        {
+            string key = "hint:" + hint.Id;
+            var buttons = new List<Element>(2);
+            if (hint.Done)
+            {
+                if (hint.Change is { } change && hint.ChangeLabel is { } changeLabel) buttons.Add(CommonTouch.Button(changeLabel, change, target) with { Key = key + ":change" });
+            }
+            else
+            {
+                if (hint.Act is { } act && hint.ActionLabel is { } label)
+                    buttons.Add(CommonTouch.Button(label, act, target, accent: hint.Action == HintAction.Inline) with { Key = key + ":act" });
+                if (hint.Dismiss is { } dismiss)
+                    buttons.Add(CommonTouch.Button(hint.DismissLabel ?? Loc.Get(Strings.Hints.NotNow), dismiss, target) with { Key = key + ":dismiss" });
+            }
+            Element? more = !hint.Done && hint.NeverTips is { } never ? More(key, never, target) : null;
+            if (buttons.Count == 0 && more is null) return null;
+            var group = new BoxEl
+            {
+                Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = WinUiHintRules.TipButtonGap, Shrink = 1f, MinWidth = 0f,
+                Children = [.. buttons],
+            };
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Gap = WinUiHintRules.TipButtonGap,
+                Grow = 1f, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Padding = WinUiHintRules.TipRowPadding,
+                Children = more is { } m ? [group, m] : [group],
+            };
+        }
+    }
+
+    /// <summary>The overlay a tip above its surface opens through. <c>TeachingTip.Show</c> anchors to a node; this hands the host, in that
+    /// node's place, the rect the tip hangs from (<c>Tip.BarTop</c>), live on every placement, and keeps the node as the owner, so the tip
+    /// still closes with its control and nests its "⋯" menu as before. Everything else is the host's own.</summary>
+    sealed class BarTopOverlay(IOverlayService inner, Func<RectF> rect) : IOverlayService
+    {
+        public OverlayHandle Open(Func<NodeHandle> anchor, Func<Element> content, FlyoutPlacement placement = FlyoutPlacement.BottomLeft)
+            => inner.OpenAt(rect, content, placement, default, anchor);
+
+        public OverlayHandle Open(Func<NodeHandle> anchor, Func<Element> content, FlyoutPlacement placement, PopupOptions options)
+            => inner.OpenAt(rect, content, placement, options, anchor);
+
+        public OverlayHandle OpenAt(Func<RectF> anchorRect, Func<Element> content, FlyoutPlacement placement, PopupOptions options = default, Func<NodeHandle>? owner = null)
+            => inner.OpenAt(anchorRect, content, placement, options, owner);
+
+        public OverlayHandle OpenAtLocal(Func<NodeHandle> owner, Point2 local, Func<Element> content, FlyoutPlacement placement = FlyoutPlacement.BottomEdgeAlignedLeft, PopupOptions options = default)
+            => inner.OpenAtLocal(owner, local, content, placement, options);
+
+        public void CloseTop() => inner.CloseTop();
+        public void CloseAll() => inner.CloseAll();
+        public bool AnyOpen => inner.AnyOpen;
+        public bool IsAnchorPinned(NodeHandle scope) => inner.IsAnchorPinned(scope);
+        public FluentGpu.Signals.IReadSignal<int> PinEpoch => inner.PinEpoch;
     }
 }

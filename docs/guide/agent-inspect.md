@@ -935,10 +935,11 @@ recent
 ```
 
 The Lossless badge's tip (`lossless-badge`, the player bar's surface) points at the mark (`np-lossless`): WinUI's TeachingTip, Classic's and
-Zune's line above the bar. Its slot is mounted wherever the bar's artists line holds the mark's place (the widths above), so stand a lossless
-stream there first, then force it. In Classic and Zune `click key=hint:lossless-badge:act` ("Hide badge") writes the switch off and turns the
-line into its confirmation ("Badge hidden", `hint:lossless-badge:change`); WinUI's tip keys only its bubble (`hint:lossless-badge`), its buttons
-are the TeachingTip's own (click them by position inside the bubble's rect).
+Zune's line, each wholly above the bar's top edge (never over its title row). Its slot is mounted wherever the bar's artists line holds the mark's
+place (the widths above), so stand a lossless stream there first, then force it. In every theme `click key=hint:lossless-badge:act` ("Hide
+badge") writes the switch off and turns the tip into its confirmation ("Badge hidden", `hint:lossless-badge:change`), and
+`hint:lossless-badge:dismiss` is "Keep it" (it retires the tip); WinUI's tip keys its bubble `hint:lossless-badge` and its row's buttons the
+same way (`:act`, `:dismiss`, `:more`). It skips the two minutes after launch; the track's first seconds still hold it.
 
 ```text
 play uri=spotify:track:tr3
