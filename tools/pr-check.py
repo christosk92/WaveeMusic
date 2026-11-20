@@ -212,9 +212,13 @@ def main(argv):
     if 'CHANGELOG.md' in changed:
         rep.error('changelog', 'CHANGELOG.md is edited: add a change file in changes/unreleased/ instead '
                                '(changes/README.md); the release assembles the CHANGELOG')
-    if CONTRACT_VERSION in changed:
-        rep.error('contract', 'ContractVersion.cs is edited: leave the number alone and set contract: additive|breaking '
-                              'in the change file; the release raises the version')
+    if CONTRACT_VERSION in changed and changed[CONTRACT_VERSION] != 'D':
+        def version_at(rev):
+            text = git('show', f'{rev}:{CONTRACT_VERSION}', cwd=root, check=False)
+            return tuple(re.findall(r'public const int (?:Major|Minor) = (\d+);', text))
+        if version_at(mb) != version_at(head):
+            rep.error('contract', 'ContractVersion.cs changes the version: leave the number alone and set '
+                                  'contract: additive|breaking in the change file; the release raises it')
 
     # change files
     change_paths = [f for f in files if f.startswith('changes/unreleased/') and f.endswith('.md')
