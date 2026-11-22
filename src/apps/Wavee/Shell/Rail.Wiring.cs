@@ -237,7 +237,13 @@ internal static class RailWiring
         }
     }
 
-    static FriendsProps BuildFriends() => new()
+    static FriendsProps BuildFriends()
+    {
+        Spotify.Friends.Attach();   // the feed's host fills Rail.Friends' seams before the panel first mounts (#277)
+        return BuildFriendsProps();
+    }
+
+    static FriendsProps BuildFriendsProps() => new()
     {
         Feed = new FriendsFeed(),
         SetActive = static active => Shell.PanelHost.Shared.SetFriendsActive(active),

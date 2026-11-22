@@ -2154,6 +2154,17 @@ public static partial class Spotify
             return Get(w.Written, ApiHost.Spclient, CommonJson, ct);
         }
 
+        /// <summary>One friend's presence, asked when a <c>hm://presence2/user/&lt;id&gt;</c> push says it changed (#277).
+        /// A 404 or 403 means that friend is no longer visible.</summary>
+        public static Result FriendPresence(string userId, CancellationToken ct)
+        {
+            Span<char> path = stackalloc char[256];
+            var w = new PathWriter(path);
+            w.Append("/presence-view/v1/user/");
+            w.AppendEscaped(userId);
+            return Get(w.Written, ApiHost.Spclient, CommonJson, ct);
+        }
+
         public static Result Notifications(int limit, CancellationToken ct)
         {
             Span<char> path = stackalloc char[128];

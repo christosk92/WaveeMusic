@@ -296,8 +296,8 @@ public static partial class Rail
     // ── 6. the friends feed (stage B; FriendsPanel.cs, FriendsBridge.cs; ch 21 G6, §9.6 Q5) ─────────────────────────
 
     /// <summary>The friend-activity feed as the panel reads it: the rows are <c>Edges.Friends</c> under ONE synthetic
-    /// parent, and the coarse state and the two host verbs are seams the Spotify host fills. With no host attached the
-    /// feed reads OFFLINE — the 0.2.9 <c>NullFriendActivityService</c> answer `--fake` shows ("Sign in to see…").</summary>
+    /// parent, and the coarse state and the two host verbs are seams <c>Spotify.Friends</c> fills (#277): it seeds the run
+    /// from the presence feed, applies presence pushes, and reads OFFLINE ("Sign in to see…") only while signed out.</summary>
     public static class Friends
     {
         /// <summary>The synthetic parent every friend edge hangs off (slot 0 is "none" everywhere).</summary>
