@@ -17,7 +17,7 @@
 //   erase over a DComp visual beneath it), so everything drawn BEFORE it is erased where it overlaps and everything
 //   drawn AFTER it covers the picture. Those layers are pass-through, so the mini player still takes its drag.
 //
-//   column = 14 zero-size chord boxes · [chrome row] · content region · [player dock]
+//   column = 17 zero-size chord boxes · [chrome row] · content region · [player dock]
 //            └ the bracketed bands and the content region COLLAPSE (bound Visible, still mounted) under full-screen video
 //              OR the fullscreen stage (FrameModel.ChromeMounted): out of layout, paint and hit-test, subtree inactive
 //   content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
@@ -211,6 +211,10 @@ public static partial class Shell
     static readonly KeyAccelerator SettingsChord = new(OemCommaVk, KeyModifiers.Ctrl);
     static readonly KeyAccelerator BackChord = new(Keys.Left, KeyModifiers.Alt);
     static readonly KeyAccelerator ForwardChord = new(Keys.Right, KeyModifiers.Alt);
+    // Ctrl+Left / Ctrl+Right skip tracks (Spotify's chord). A focused text editor takes them first (word jump), since
+    // accelerators only match after focused routing declines the key; the reducer folds the skip restrictions.
+    static readonly KeyAccelerator PrevTrackChord = new(Keys.Left, KeyModifiers.Ctrl);
+    static readonly KeyAccelerator NextTrackChord = new(Keys.Right, KeyModifiers.Ctrl);
     static readonly KeyAccelerator FullscreenChord = new(Keys.F11, KeyModifiers.None);
     static readonly KeyAccelerator ZoomInChord = new(Keys.OemPlus, KeyModifiers.Ctrl);
     static readonly KeyAccelerator ZoomInShiftChord = new(Keys.OemPlus, KeyModifiers.Ctrl | KeyModifiers.Shift);
@@ -224,7 +228,7 @@ public static partial class Shell
     static BoxEl Chord(KeyAccelerator chord, Action onFire)
         => new() { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false, Accelerator = chord, OnClick = onFire };
 
-    /// <summary>The fifteen chord boxes the frame's column mounts first, in this order. Behaviour the shell owns (what a chord
+    /// <summary>The seventeen chord boxes the frame's column mounts first, in this order. Behaviour the shell owns (what a chord
     /// DOES is <see cref="FrameVerbs"/>), built once; the structure's frame places them (<c>ShellFrameProps.Chords</c>).</summary>
     static readonly IReadOnlyList<Element> s_chords =
     [
@@ -234,6 +238,8 @@ public static partial class Shell
         Chord(SettingsChord, static () => FrameVerbs.Shared.OpenSettings()),
         Chord(BackChord, static () => FrameVerbs.Shared.GoBack()),
         Chord(ForwardChord, static () => FrameVerbs.Shared.GoForward()),
+        Chord(PrevTrackChord, static () => Playback.Previous("ctrl-left")),
+        Chord(NextTrackChord, static () => Playback.Next("ctrl-right")),
         Chord(FullscreenChord, static () => FrameVerbs.Shared.ToggleFullscreen()),
         Chord(ZoomInChord, static () => FrameVerbs.Shared.Zoom(+1)),
         Chord(ZoomInShiftChord, static () => FrameVerbs.Shared.Zoom(+1)),
