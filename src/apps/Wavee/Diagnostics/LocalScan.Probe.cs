@@ -87,6 +87,7 @@ public static class LocalScanProbe
         LocalScanStats cold = scan.ScanRoot(folder, startup: false, dirty: null);
         line("cold " + cold.Summary());
         line(string.Create(c, $"index entries={index.Count} unplayable={index.UnplayableCount} missing={index.MissingCount} cloud={index.CloudOnlyCount} video={index.VideoCount} folders={index.Folders().Length} logBytes={index.LogBytes}"));
+        foreach (string l in Census(index)) line(l);
         if (cold.Offline) return;
 
         // persist: compaction + the start-up load
@@ -125,6 +126,33 @@ public static class LocalScanProbe
 
         if (changeTest && workDir is not null) ChangeTest(index, folder, workDir, line);
         index.Detach();
+    }
+
+    /// <summary>What the readers made of the files: formats, playable, estimated lengths, durations, the reasons for the
+    /// unplayable ones (reason text only: never a path).</summary>
+    static IEnumerable<string> Census(LocalIndex index)
+    {
+        var formats = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        var why = new Dictionary<string, int>(StringComparer.Ordinal);
+        var durations = new List<int>();
+        int playable = 0, estimated = 0, tagged = 0, covers = 0;
+        foreach (LocalEntry e in index.Snapshot())
+        {
+            if (e.Tags.Kind != LocalKind.Audio) continue;
+            string f = e.Format.ToString();
+            formats[f] = formats.GetValueOrDefault(f) + 1;
+            if (e.Playable) playable++;
+            else why[e.Why] = why.GetValueOrDefault(e.Why) + 1;
+            if (e.Tags.DurationEstimated) estimated++;
+            if (e.Tags.Title.Length > 0) tagged++;
+            if (e.Tags.Cover.Exists) covers++;
+            if (e.Tags.DurationMs > 0) durations.Add(e.Tags.DurationMs);
+        }
+        durations.Sort();
+        yield return FormattableString.Invariant($"census audio={index.Count} playable={playable} tagged={tagged} covers={covers} estimatedLength={estimated} withLength={durations.Count}")
+            + (durations.Count > 0 ? FormattableString.Invariant($" lengthMs min={durations[0]} median={durations[durations.Count / 2]} max={durations[^1]}") : "")
+            + " formats=" + string.Join(",", formats.Select(static p => p.Key + ":" + p.Value.ToString(CultureInfo.InvariantCulture)));
+        foreach (var w in why.OrderByDescending(static p => p.Value).Take(5)) yield return "census unplayable " + w.Value + "x why=\"" + w.Key + "\"";
     }
 
     /// <summary>README check 3: on every FAT/exFAT volume present, does a listing report ChangeTime (zero, equal to the

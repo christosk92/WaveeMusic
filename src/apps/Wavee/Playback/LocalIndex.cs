@@ -669,7 +669,7 @@ public sealed class LocalIndex
         LocalTagSet t = e.Tags;
         string name = NameOf(e.RelativePath);
         int folder = FolderSlotOf(s, e.RootId, FolderOf(e.RelativePath));
-        string rule = t.Title.Length > 0 ? t.Title : Path.GetFileNameWithoutExtension(name);
+        string rule = string.IsNullOrWhiteSpace(t.Title) ? Path.GetFileNameWithoutExtension(name) : t.Title;   // LocalTags.TitleOrFileName's rule
         s.Rows[slot] = new Row
         {
             LocalId = e.LocalId, Size = e.Size, Write = e.WriteTicks, Change = e.ChangeTicks, LastSeen = e.LastSeenTicks, CoverOffset = t.Cover.Offset,
@@ -747,7 +747,7 @@ public sealed class LocalIndex
     {
         if (s.MatchTitles.TryGetValue(slot, out string? special)) return special;
         ref Row row = ref s.Rows[slot];
-        return row.Title.Length > 0 ? row.Title : Path.GetFileNameWithoutExtension(row.Name!);
+        return string.IsNullOrWhiteSpace(row.Title) ? Path.GetFileNameWithoutExtension(row.Name!) : row.Title;
     }
 
     static Shared InternShared(Store s, in LocalTagSet t, string why)
