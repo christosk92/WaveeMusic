@@ -13,7 +13,9 @@
 // the root, cheap with fingerprints; a failed watch reopens with backoff (1 s doubling to 60 s).
 //
 // USB. An open watch handle blocks "safely remove": on a USB root the handle is registered with the PnP manager
-// (`CM_Register_Notification`, DEVICEHANDLE) and closed on query-remove; the root is then offline until the next request.
+// (`CM_Register_Notification`, DEVICEHANDLE) and closed on query-remove; the root is then offline. A volume arriving (a USB
+// drive plugged back in, a new volume mounted) is reported by `WatchVolumeArrivals` (the volume device interface): the
+// façade then walks and watches every folder that is offline or unwatched.
 
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
@@ -43,6 +45,63 @@ public sealed partial class LocalScan
 
     /// <summary>Roots with a live watch handle.</summary>
     public int WatcherCount => _watchers.Count;
+
+    /// <summary>Is this root watched now (false after a USB drive was removed)?</summary>
+    public bool IsWatched(string rootPath) => _watchers.ContainsKey(rootPath);
+
+    /// <summary>Call <paramref name="onArrival"/> (a PnP thread; do not block) whenever a volume arrives: a USB drive plugged
+    /// in, a volume mounted. Null when the registration is refused. Dispose to stop.</summary>
+    public static IDisposable? WatchVolumeArrivals(Action onArrival) => VolumeArrivals.Register(onArrival);
+
+    sealed unsafe partial class VolumeArrivals : IDisposable
+    {
+        readonly Action _onArrival;
+        GCHandle _self;
+        nint _notify;
+
+        VolumeArrivals(Action onArrival) => _onArrival = onArrival;
+
+        public static VolumeArrivals? Register(Action onArrival)
+        {
+            var v = new VolumeArrivals(onArrival);
+            v._self = GCHandle.Alloc(v);
+            byte* filter = stackalloc byte[416];   // CM_NOTIFY_FILTER
+            new Span<byte>(filter, 416).Clear();
+            *(uint*)filter = 416;                  // cbSize
+            *(uint*)(filter + 8) = 0;              // CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE
+            *(Guid*)(filter + 16) = new Guid(0x53f5630d, 0xb6bf, 0x11d0, 0x94, 0xf2, 0x00, 0xa0, 0xc9, 0x1e, 0xfb, 0x8b);   // GUID_DEVINTERFACE_VOLUME
+            nint notify;
+            if (CM_Register_Notification(filter, GCHandle.ToIntPtr(v._self), &OnInterface, &notify) != 0)
+            {
+                v._self.Free();
+                return null;
+            }
+            v._notify = notify;
+            return v;
+        }
+
+        [UnmanagedCallersOnly]
+        static uint OnInterface(nint notify, nint context, uint action, nint data, uint size)
+        {
+            if (action == 0 /*DEVICEINTERFACEARRIVAL*/ && GCHandle.FromIntPtr(context).Target is VolumeArrivals v)
+            {
+                try { v._onArrival(); }
+                catch (Exception ex) { Log.Warn("local", "local.volume arrival handler failed", ex); }
+            }
+            return 0;
+        }
+
+        public void Dispose()
+        {
+            nint notify = Interlocked.Exchange(ref _notify, 0);
+            if (notify != 0) CM_Unregister_Notification(notify);
+            if (_self.IsAllocated) _self.Free();
+        }
+
+        [LibraryImport("cfgmgr32.dll")]
+        private static partial uint CM_Register_Notification(void* filter, nint context, delegate* unmanaged<nint, nint, uint, nint, uint, uint> callback, nint* notify);
+        [LibraryImport("cfgmgr32.dll")] private static partial uint CM_Unregister_Notification(nint notify);
+    }
 
     sealed class Debounce(LocalScan scan, string rootPath, int delayMs) : IDisposable
     {

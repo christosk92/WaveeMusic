@@ -75,6 +75,8 @@ public static class LocalScanProbe
         line($"medium={NtDirectory.MediumOf(folder)} network={(NtDirectory.IsNetworkPath(folder) ? 1 : 0)} elevated={(Environment.IsPrivilegedProcess ? 1 : 0)} os={Environment.OSVersion.Version}");
         line("check1 " + LocalScan.JournalCheck(folder));
         foreach (string check in ChangeTimeChecks()) line("check3 " + check);
+        using (IDisposable? arrivals = LocalScan.WatchVolumeArrivals(static () => { }))
+            line("volume-arrivals registered=" + (arrivals is null ? 0 : 1));
 
         // cold: an empty index
         string? bin = workDir is null ? null : Path.Combine(workDir, LocalIndex.FileName);
@@ -97,13 +99,12 @@ public static class LocalScanProbe
             index.Detach();
             index = null!;
             scan = null!;
-            long before = GC.GetTotalMemory(true);
-            clock.Restart();
+            // Each measure in a method of its own: a Debug build keeps a method's locals alive to its end.
+            long recordsBytes = MeasureRecords(bin);
+            (long indexBytes, double loadMs, int loaded) = MeasureLoad(bin);
             index = new LocalIndex();
-            int loaded = index.Load(bin);
-            double loadMs = clock.Elapsed.TotalMilliseconds;
-            long after = GC.GetTotalMemory(true);
-            line(string.Create(c, $"persist compactMs={compactMs:0.0} binBytes={bytes} loadMs={loadMs:0.0} loaded={loaded} indexMB={(after - before) / 1048576.0:0.0} managedMB={after / 1048576.0:0.0}"));
+            index.Load(bin);
+            line(string.Create(c, $"persist compactMs={compactMs:0.0} binBytes={bytes} loadMs={loadMs:0.0} loaded={loaded} indexMB={indexBytes / 1048576.0:0.0} snapshotMB={recordsBytes / 1048576.0:0.0}"));
             scan = new LocalScan(index);
         }
 
@@ -217,6 +218,63 @@ public static class LocalScanProbe
         {
             scan.Unwatch(lib);
         }
+    }
+
+    /// <summary>What a loaded index holds alive, and how long the load took.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static (long Bytes, double Ms, int Loaded) MeasureLoad(string bin)
+    {
+        long before = LiveBytes();
+        var clock = Stopwatch.StartNew();
+        LocalIndex index = LoadIndex(bin, out int loaded);
+        double ms = clock.Elapsed.TotalMilliseconds;
+        long after = LiveBytes();
+        index.Detach();
+        GC.KeepAlive(index);
+        return (after - before, ms, loaded);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static LocalIndex LoadIndex(string bin, out int loaded)
+    {
+        var index = new LocalIndex();
+        loaded = index.Load(bin);
+        return index;
+    }
+
+    /// <summary>What a full <c>Snapshot()</c> (a record per file, as P2's restate takes it) holds alive on its own.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static long MeasureRecords(string bin)
+    {
+        long before = LiveBytes();
+        (LocalEntry[] Entries, LocalFolder[] Folders) records = LoadRecords(bin);
+        long after = LiveBytes();
+        GC.KeepAlive(records.Entries);
+        GC.KeepAlive(records.Folders);
+        return after - before;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static (LocalEntry[], LocalFolder[]) LoadRecords(string bin)
+    {
+        LocalIndex index = LoadIndex(bin, out _);
+        var records = (index.Snapshot(), index.Folders());
+        index.Detach();
+        return records;
+    }
+
+    /// <summary>Live managed bytes after a compacting full collection (heap size less fragmentation): what the objects
+    /// still reachable really take, which <c>GC.GetTotalMemory</c> does not say on a fragmented heap.</summary>
+    static long LiveBytes()
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+        }
+        GCMemoryInfo info = GC.GetGCMemoryInfo(GCKind.FullBlocking);
+        return info.HeapSizeBytes - info.FragmentedBytes;
     }
 
     static long Id(LocalIndex index, string path) => index.TryGetByPath(path, out LocalEntry? e) ? e.LocalId : -1;

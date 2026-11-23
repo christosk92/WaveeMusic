@@ -252,7 +252,8 @@ public sealed partial class LocalScan
             }
 
             var walk = new Walk(this, root, rootPath, rootHandle, rootId, volume, stats, targets);
-            walk.Run();
+            try { walk.Run(); }
+            finally { _index.ReleaseScanMaps(); }   // the move-pairing maps live only while a scan pairs
             stats.Cancelled = Cancelled(rootPath);
             stats.Complete = !stats.Cancelled && stats.FoldersFailed == 0 && targets is null;
             if (!stats.Cancelled)
@@ -537,10 +538,7 @@ public sealed partial class LocalScan
                 {
                     // Equal fingerprint: nothing read, nothing compared. Unless a cloud entry was hydrated without its times
                     // moving (the fingerprint holds names, sizes and times, not the cloud bits): those folders are diffed.
-                    existing = _index.EntriesIn(root.RootId, job.RelPath);
-                    bool hadCloud = false;
-                    foreach (LocalEntry e in existing) if (e.State == LocalState.CloudOnly) { hadCloud = true; break; }
-                    if (!hadCloud)
+                    if (!_index.FolderHasCloud(root.RootId, job.RelPath))
                     {
                         Interlocked.Increment(ref stats.FoldersSkipped);
                         Interlocked.Add(ref stats.FilesSeen, files.Count - images.Count);

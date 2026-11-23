@@ -10,7 +10,9 @@
 // then every folder gets a start-up scan (journal catch-up where it can) and a watcher. Adding a folder walks it; removing
 // one drops its entries (they are not "missing": the user took the folder away) and stops its watcher at the next folder
 // boundary of a running scan; "Rescan" walks (fingerprints make it cheap). Network folders are reconciled every 45 minutes.
-// When the scanner goes idle the change log is compacted into the bin.
+// After a resume from sleep every folder is caught up again (the journal where it can, else a warm walk; network folders a
+// walk, after the SMB redirector's 10 s); when a volume arrives (a USB drive back in, a new volume mounted) every folder that is
+// offline or unwatched is walked and watched again. When the scanner goes idle the change log is compacted into the bin.
 //
 // SIGNALS. `Epoch` (UI thread) moves at most four times a second while a scan commits folders, and once when it ends; a
 // surface reads the counters and `Index.Version` under it. Nothing here runs per frame.
@@ -34,7 +36,8 @@ public static class LocalLibrary
     static string? s_binPath;
     static bool s_attached, s_fixture;
     static int s_postPending, s_loaded;
-    static Timer? s_post, s_idle, s_reconcile;
+    static Timer? s_post, s_idle, s_reconcile, s_resume, s_resumeNetwork, s_arrival;
+    static IDisposable? s_volumes;
 
     /// <summary>Moves (UI thread) when the index or a scan's progress changed: at most four times a second, and once at the end.</summary>
     public static readonly Signal<int> Epoch = new(0);
@@ -88,6 +91,14 @@ public static class LocalLibrary
         }
         s_idle = new Timer(static _ => CompactIfIdle(), null, Timeout.Infinite, Timeout.Infinite);
         s_reconcile = new Timer(static _ => ReconcileNetwork(), null, TimeSpan.FromMinutes(45), TimeSpan.FromMinutes(45));
+        s_resume = new Timer(static _ => CatchUpAfterResume(), null, Timeout.Infinite, Timeout.Infinite);
+        s_arrival = new Timer(static _ => WalkArrived(), null, Timeout.Infinite, Timeout.Infinite);
+        s_resumeNetwork = new Timer(static _ => { foreach (string f in Folders) if (NtDirectory.IsNetworkPath(f)) s_scan.RequestFull(f); }, null, Timeout.Infinite, Timeout.Infinite);
+        // Playback.Os holds the PowerSession subscription; a handler attached later is still raised (OS power thread: no blocking).
+        try { FluentGpu.WindowsApi.Power.PowerSession.Resumed += static () => s_resume?.Change(5_000, Timeout.Infinite); }
+        catch (Exception ex) { Log.Warn("local", "local.power resume subscribe failed", ex); }
+        // A volume arrived: give the mount two seconds to settle, then walk what was away (PnP thread: no blocking).
+        s_volumes = LocalScan.WatchVolumeArrivals(static () => s_arrival?.Change(2_000, Timeout.Infinite));
         new Thread(static () =>
         {
             int loaded = s_binPath is { } bin ? s_index.Load(bin) : 0;
@@ -169,6 +180,32 @@ public static class LocalLibrary
         if (s_fixture || Volatile.Read(ref s_loaded) == 0) return;
         foreach (string f in Folders)
             if (folder is null || string.Equals(f, folder, StringComparison.OrdinalIgnoreCase)) StartFolder(f, startup: false);
+    }
+
+    /// <summary>After a resume: the journal catch-up (else a warm walk) for local folders; a walk for network folders once the
+    /// SMB redirector's listing cache (10 s) has passed. Watchers that died with the network reopen on their own.</summary>
+    static void CatchUpAfterResume()
+    {
+        if (s_fixture || Volatile.Read(ref s_loaded) == 0) return;
+        Log.Info("local", "local.resume folders=" + Folders.Count);
+        foreach (string f in Folders)
+        {
+            if (!NtDirectory.IsNetworkPath(f)) s_scan.RequestStartup(f);
+        }
+        s_resumeNetwork?.Change(10_000, Timeout.Infinite);
+    }
+
+    /// <summary>A volume arrived: every folder that is offline or has no watcher (a USB drive taken out) is walked and watched.</summary>
+    static void WalkArrived()
+    {
+        if (s_fixture || Volatile.Read(ref s_loaded) == 0) return;
+        foreach (string f in Folders)
+        {
+            if (s_scan.IsWatched(f) && StateOf(f) is not (LocalRootState.Offline or LocalRootState.Unknown)) continue;
+            if (!Directory.Exists(f)) continue;
+            Log.Info("local", "local.volume arrived; walking a folder that was away");
+            StartFolder(f, startup: false);
+        }
     }
 
     static void ReconcileNetwork()

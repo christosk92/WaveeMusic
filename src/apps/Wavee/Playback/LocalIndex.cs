@@ -4,12 +4,20 @@
 //
 // Role: CORE (any thread; one Lock)
 // Spec: C:\WAVEE\fgpu\handoff\request-plans\240-local-playlist-files-implementation.md §3.3, §3.4 (the walk), D13;
-//       the shared types: Playback/Local.Types.cs (240-p1-contract.md)
+//       the shared types: Playback/Local.Types.cs (240-p1-contract.md, revision 2)
 //
-// SHAPE. Entries and folders are immutable records, replaced whole. The scanner commits PER FOLDER (`Apply(LocalScanBatch)`):
-// the folder's records and its fingerprint land together, so the UI fills folder by folder and an interrupted scan resumes
-// where it stopped (a folder whose batch never landed still has its old fingerprint, so the next scan lists it again).
-// Every commit bumps `Version`; readers (the UI thread, the api threads, the audio pump) take the lock for one probe.
+// SHAPE. The scanner commits PER FOLDER (`Apply(LocalScanBatch)`): the folder's records and its fingerprint land together, so
+// the UI fills folder by folder and an interrupted scan resumes where it stopped (a folder whose batch never landed still has
+// its old fingerprint, so the next scan lists it again). Every commit bumps `Version`; readers take the lock for one probe.
+//
+// MEMORY (about 13-15 MB at 50,000 files). The index does NOT keep a `LocalEntry` object per file: it keeps one compact
+// `Row` per file in an array (narrow numbers, the file NAME only, its folder through a shared folder table) and builds the
+// `LocalEntry` record when a reader asks (`TryGet`, `EntriesIn`, `Snapshot`, a match's candidates). Repeated strings (album,
+// album artist, every artist value, the artist arrays themselves, the reasons) go through one intern table as they are
+// applied or loaded. The match maps are open-addressing tables of (64-bit key hash, row slot) pairs; a lookup verifies its
+// candidates, so a hash collision never answers a wrong entry. LocalId -> slot is a plain array (ids are dense: assigned in
+// order, never reused). The move-pairing maps (file id, size + write time) exist only while a scan needs them
+// (`ReleaseScanMaps`). Track, disc, year, bitrate and video sizes are stored clamped to 0-65535.
 //
 // IDENTITY (D13). `LocalId` is assigned at first sight from a persisted high-water mark and never reused: a move or a
 // rename keeps it (the scanner pairs before and after reading), a deleted file keeps it while it is `Missing`.
@@ -19,15 +27,20 @@
 // placeholder indexed from its listing alone; never opened). Video entries (D19) are indexed but never counted or matched.
 //
 // THE FILES (beside audiofiles.tsv, under Cache). `localindex.bin`: magic, format version, generation, the id high-water
-// mark, the roots, ONE string table (artist and album names repeat), the folders, the entries; written to a temp file and
-// moved over the old one. `localindex.log`: an append-only list of records (a folder batch, a root change, a purge), each
-// length-prefixed and checksummed, so a one-file change writes a few hundred bytes instead of the whole index. The log
-// carries the bin's generation: a log left behind by a compaction that crashed between its two steps is ignored. Compacted
-// into the bin when it passes 2 MB and when the scanner goes idle. A file this build cannot read is ignored (the next scan
-// rebuilds the index); the index is a cache, outside the entity store (which is reaped on every schema change).
+// mark, the roots, ONE string table, the folders, the entries; written to a temp file and moved over the old one.
+// `localindex.log`: an append-only list of records (a folder batch, a root change, a purge), each length-prefixed and
+// checksummed, so a one-file change writes a few hundred bytes instead of the whole index. The log carries the bin's
+// generation: a log left behind by a compaction that crashed between its two steps is ignored. Compacted into the bin when it
+// passes 2 MB and when the scanner goes idle. A LOAD builds a whole new store off the lock and swaps it in; a COMPACTION copies
+// the records under the lock and writes them off it. A file this build cannot read is ignored (the next scan rebuilds the
+// index); the index is a cache, outside the entity store (which is reaped on every schema change).
+//
+// MATCH LOG. Every `Match` writes one always-on `local.match` line: the tier that answered (or none), the candidate count, and
+// the matched FILE NAME only, never its folder (paths hold the account name).
 
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Wavee;
@@ -66,9 +79,12 @@ public sealed class LocalIndex
     const uint BinMagic = 0x494C_5657 /*"WVLI"*/, LogMagic = 0x4C4C_5657 /*"WVLL"*/;
     const int FormatVersion = 1;
     const byte RecBatch = 1, RecRoot = 2, RecRootRemoved = 3, RecPurge = 4;
+    const byte FlagPlayable = 1, FlagEstimated = 2, FlagHasAudio = 4;
 
     /// <summary>The bin's path under <c>Platform.LocalFolder</c>, beside <c>audiofiles.tsv</c>. PURE.</summary>
     public static string PathUnder(string localFolder) => Path.Combine(localFolder, "Wavee", "Cache", FileName);
+
+    // ── storage ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
     readonly record struct PathKey(int Root, string Path);
     sealed class PathKeyComparer : IEqualityComparer<PathKey>
@@ -77,63 +93,187 @@ public sealed class LocalIndex
         public bool Equals(PathKey a, PathKey b) => a.Root == b.Root && string.Equals(a.Path, b.Path, StringComparison.OrdinalIgnoreCase);
         public int GetHashCode(PathKey k) => HashCode.Combine(k.Root, StringComparer.OrdinalIgnoreCase.GetHashCode(k.Path));
     }
-    readonly record struct IdKey(uint Volume, UInt128 Id);
 
-    /// <summary>A 64-bit hash -> LocalIds multimap: one slot per key, a list only for a key that really holds several ids. A
-    /// lookup verifies its candidates, so a hash collision can never answer a wrong entry. It keeps the match maps at a few
-    /// bytes per entry instead of a key string and a list per key.</summary>
-    sealed class IdMultiMap
+    /// <summary>One file, compact. <see cref="Name"/> null = a free slot.</summary>
+    struct Row
     {
-        readonly Dictionary<ulong, long> _one = new();
-        readonly Dictionary<ulong, List<long>> _many = new();
-
-        public void Add(ulong key, long id)
-        {
-            if (_many.TryGetValue(key, out List<long>? ids)) { if (!ids.Contains(id)) ids.Add(id); return; }
-            if (!_one.TryGetValue(key, out long one)) { _one[key] = id; return; }
-            if (one == id) return;
-            _one.Remove(key);
-            _many[key] = [one, id];
-        }
-
-        public void Remove(ulong key, long id)
-        {
-            if (_one.TryGetValue(key, out long one)) { if (one == id) _one.Remove(key); return; }
-            if (!_many.TryGetValue(key, out List<long>? ids) || !ids.Remove(id)) return;
-            if (ids.Count == 1) { _one[key] = ids[0]; _many.Remove(key); }
-        }
-
-        /// <summary>The ids under a key into <paramref name="into"/> (cleared first).</summary>
-        public void Get(ulong key, List<long> into)
-        {
-            into.Clear();
-            if (_one.TryGetValue(key, out long one)) into.Add(one);
-            else if (_many.TryGetValue(key, out List<long>? ids)) into.AddRange(ids);
-        }
-
-        public void Clear() { _one.Clear(); _many.Clear(); }
+        public long LocalId, Size, Write, Change, LastSeen, CoverOffset;
+        public ulong FileIdLo, FileIdHi;
+        public string? Name;
+        public string Title;
+        public Shared Shared;        // album, album artist, artists, reason: one object per distinct set (an album's tracks share it)
+        public int Folder, DurationMs, CoverLength;
+        public uint Volume, Attributes;
+        public ushort Track, Disc, Year, Bitrate, VideoWidth, VideoHeight;
+        public byte Format, State, Kind, Mime, Encoding, PictureType, Flags;
     }
 
-    static ulong HashOf(string key) => XxHash3.HashToUInt64(System.Runtime.InteropServices.MemoryMarshal.AsBytes(key.AsSpan()));
+    /// <summary>What the tracks of one album (and one reason) have in common, interned: one reference per row instead of four.</summary>
+    sealed record Shared(string Album, string AlbumArtist, string[] Artists, string Why);
 
-    static ulong HashOf(long size, long write)
+    /// <summary>One folder: its path (shared by every file in it), its record when listed, its files' slots.</summary>
+    sealed class FolderSlot(int root, string rel)
     {
-        Span<long> both = [size, write];
-        return XxHash3.HashToUInt64(System.Runtime.InteropServices.MemoryMarshal.AsBytes(both));
+        public readonly int Root = root;
+        public readonly string Rel = rel;
+        public LocalFolder? Record;
+        public List<int>? Members;
+    }
+
+    /// <summary>Open addressing over DISTINCT 64-bit keys, each holding one row slot, or (for a key several rows share: an
+    /// untagged "Track 01" in every album) a group list. About 16-20 bytes a key; a shared key costs one list, never a probe
+    /// cluster.</summary>
+    sealed class HashSlots
+    {
+        ulong[] _keys = new ulong[16];
+        int[] _values = Empty(16);      // >= 0: one slot; <= -2: group -(v + 2); -1: empty
+        readonly List<List<int>?> _groups = new();
+        readonly Stack<int> _freeGroups = new();
+        int _count;
+
+        static int[] Empty(int n) { var a = new int[n]; Array.Fill(a, -1); return a; }
+        int Home(ulong key) => (int)(((key >> 32) * (ulong)(uint)_values.Length) >> 32);
+        int Next(int i) => i + 1 == _values.Length ? 0 : i + 1;
+
+        public void EnsureCapacity(int keys)
+        {
+            int want = (int)(keys / 0.75) + 1;
+            if (want > _values.Length) Rehash(want);
+        }
+
+        int Find(ulong key)
+        {
+            int i = Home(key);
+            while (_values[i] != -1)
+            {
+                if (_keys[i] == key) return i;
+                i = Next(i);
+            }
+            return ~i;   // not there: the complement of the empty cell that ends the run
+        }
+
+        public void Add(ulong key, int slot)
+        {
+            int i = Find(key);
+            if (i >= 0)
+            {
+                int v = _values[i];
+                if (v >= 0)
+                {
+                    if (v == slot) return;
+                    int g;
+                    if (_freeGroups.Count > 0) { g = _freeGroups.Pop(); _groups[g] = [v, slot]; }
+                    else { g = _groups.Count; _groups.Add([v, slot]); }
+                    _values[i] = -(g + 2);
+                }
+                else
+                {
+                    List<int> group = _groups[-(v + 2)]!;
+                    if (!group.Contains(slot)) group.Add(slot);
+                }
+                return;
+            }
+            if ((_count + 1) * 4 > _values.Length * 3)
+            {
+                Rehash((int)((_count + 1) / 0.6) + 1);
+                i = Find(key);
+            }
+            _keys[~i] = key;
+            _values[~i] = slot;
+            _count++;
+        }
+
+        public void Remove(ulong key, int slot)
+        {
+            int i = Find(key);
+            if (i < 0) return;
+            int v = _values[i];
+            if (v >= 0)
+            {
+                if (v != slot) return;
+                Delete(i);
+                return;
+            }
+            int g = -(v + 2);
+            List<int> group = _groups[g]!;
+            group.Remove(slot);
+            if (group.Count > 1) return;
+            _groups[g] = null;
+            _freeGroups.Push(g);
+            if (group.Count == 1) _values[i] = group[0];
+            else Delete(i);
+        }
+
+        /// <summary>Backward-shift deletion: pull later members of the run into the hole when their home allows it.</summary>
+        void Delete(int i)
+        {
+            int hole = i, j = i;
+            while (true)
+            {
+                j = Next(j);
+                if (_values[j] == -1) break;
+                int home = Home(_keys[j]);
+                bool movable = hole <= j ? (home <= hole || home > j) : (home <= hole && home > j);
+                if (!movable) continue;
+                _keys[hole] = _keys[j];
+                _values[hole] = _values[j];
+                hole = j;
+            }
+            _values[hole] = -1;
+            _count--;
+        }
+
+        public void Get(ulong key, List<int> into)
+        {
+            into.Clear();
+            int i = Find(key);
+            if (i < 0) return;
+            int v = _values[i];
+            if (v >= 0) into.Add(v);
+            else into.AddRange(_groups[-(v + 2)]!);
+        }
+
+        void Rehash(int capacity)
+        {
+            ulong[] keys = _keys;
+            int[] values = _values;
+            _keys = new ulong[capacity];
+            _values = Empty(capacity);
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (values[i] == -1) continue;
+                int j = Home(keys[i]);
+                while (_values[j] != -1) j = Next(j);
+                _keys[j] = keys[i];
+                _values[j] = values[i];
+            }
+        }
+    }
+
+    /// <summary>Everything the index holds. A load builds a new one off the lock and swaps it in.</summary>
+    sealed class Store
+    {
+        public Row[] Rows = new Row[64];
+        public int RowCount;                               // slots in use or freed (the high-water mark)
+        public readonly Stack<int> Free = new();
+        public int[] SlotOfId = [];                        // LocalId -> slot + 1 (0 = none)
+        public readonly List<FolderSlot> Folders = new();
+        public readonly Dictionary<PathKey, int> FolderIndex = new(PathKeyComparer.Instance);
+        public readonly HashSlots Exact = new(), Loose = new(), Names = new();
+        public HashSlots? ByFileId, BySizeWrite;           // only while a scan pairs moves
+        public readonly HashSet<string> Strings = new(StringComparer.Ordinal);
+        public readonly Dictionary<string, string[]> ArtistArrays = new(StringComparer.Ordinal);
+        public readonly Dictionary<Shared, Shared> SharedSets = new();
+        public readonly Dictionary<int, string> MatchTitles = new();   // slot -> match title, only where it is not the rule
+        public readonly Dictionary<int, LocalRoot> Roots = new();
+        public long NextId = 1;
+        public int Audio, Unplayable, Missing, Cloud, Video, Entries;
     }
 
     readonly Lock _gate = new();
     readonly Lock _fileGate = new();   // held across apply + log append, so the log's order is the memory's order
-    readonly Dictionary<long, LocalEntry> _byId = new();
-    readonly Dictionary<PathKey, long> _byPath = new(PathKeyComparer.Instance);
-    readonly Dictionary<IdKey, long> _byFileId = new();
-    readonly IdMultiMap _bySizeWrite = new();
-    readonly Dictionary<PathKey, LocalFolder> _folders = new(PathKeyComparer.Instance);
-    readonly Dictionary<PathKey, HashSet<long>> _members = new(PathKeyComparer.Instance);
-    readonly IdMultiMap _exact = new(), _loose = new(), _names = new();
-    readonly Dictionary<int, LocalRoot> _roots = new();
-    long _nextId = 1;
-    int _version, _audio, _unplayable, _missing, _cloud, _video;
+    Store _s = new();
+    int _version;
 
     string? _binPath, _logPath;
     FileStream? _log;
@@ -144,31 +284,39 @@ public sealed class LocalIndex
     /// <summary>Bumped by every change a reader could see (a commit, a load, a root change, a purge).</summary>
     public int Version => Volatile.Read(ref _version);
     /// <summary>Audio entries held, every state (video entries are not counted, D19).</summary>
-    public int Count { get { lock (_gate) return _audio; } }
+    public int Count { get { lock (_gate) return _s.Audio; } }
     /// <summary>Audio entries this build cannot play (no decoder, D7; or unreadable).</summary>
-    public int UnplayableCount { get { lock (_gate) return _unplayable; } }
+    public int UnplayableCount { get { lock (_gate) return _s.Unplayable; } }
     /// <summary>Audio entries in the Missing state.</summary>
-    public int MissingCount { get { lock (_gate) return _missing; } }
+    public int MissingCount { get { lock (_gate) return _s.Missing; } }
     /// <summary>Audio entries that are cloud-only placeholders.</summary>
-    public int CloudOnlyCount { get { lock (_gate) return _cloud; } }
+    public int CloudOnlyCount { get { lock (_gate) return _s.Cloud; } }
     /// <summary>Video entries (indexed for later, D19).</summary>
-    public int VideoCount { get { lock (_gate) return _video; } }
+    public int VideoCount { get { lock (_gate) return _s.Video; } }
     /// <summary>Bytes in the change log (compacted at 2 MB).</summary>
     public long LogBytes { get { lock (_fileGate) return _log?.Length ?? 0; } }
 
     public bool TryGet(long localId, [NotNullWhen(true)] out LocalEntry? entry)
     {
-        lock (_gate) return _byId.TryGetValue(localId, out entry);
+        lock (_gate)
+        {
+            int slot = SlotOf(_s, localId);
+            entry = slot < 0 ? null : Materialize(_s, slot);
+        }
+        return entry is not null;
     }
 
     /// <summary>The entry at <paramref name="relativePath"/> under root <paramref name="rootId"/> (case-insensitive).</summary>
     public bool TryGetByPath(int rootId, string relativePath, [NotNullWhen(true)] out LocalEntry? entry)
     {
+        entry = null;
+        string folder = FolderOf(relativePath), name = NameOf(relativePath);
         lock (_gate)
         {
-            if (_byPath.TryGetValue(new PathKey(rootId, relativePath), out long id)) return _byId.TryGetValue(id, out entry);
+            if (!_s.FolderIndex.TryGetValue(new PathKey(rootId, folder), out int f) || _s.Folders[f].Members is not { } members) return false;
+            foreach (int slot in members)
+                if (string.Equals(_s.Rows[slot].Name, name, StringComparison.OrdinalIgnoreCase)) { entry = Materialize(_s, slot); return true; }
         }
-        entry = null;
         return false;
     }
 
@@ -187,7 +335,7 @@ public sealed class LocalIndex
         int best = -1;
         lock (_gate)
         {
-            foreach (LocalRoot root in _roots.Values)
+            foreach (LocalRoot root in _s.Roots.Values)
             {
                 string r = root.Path.TrimEnd('\\');
                 if (r.Length <= best) continue;
@@ -206,16 +354,22 @@ public sealed class LocalIndex
     /// <summary>The full path of an entry (its root's path + its relative path), or null when its root is gone.</summary>
     public string? FullPathOf(LocalEntry entry)
     {
-        lock (_gate) return _roots.TryGetValue(entry.RootId, out LocalRoot? root) ? Join(root.Path, entry.RelativePath) : null;
+        lock (_gate) return _s.Roots.TryGetValue(entry.RootId, out LocalRoot? root) ? Join(root.Path, entry.RelativePath) : null;
     }
 
     public static string Join(string root, string relative) => relative.Length == 0 ? root : root.TrimEnd('\\') + "\\" + relative;
 
-    /// <summary>Every entry (video included), ordered by root then path. A copy.</summary>
+    /// <summary>Every entry (video included), ordered by root then path. Builds a record per file: not for a hot path.</summary>
     public LocalEntry[] Snapshot()
     {
         LocalEntry[] all;
-        lock (_gate) { all = new LocalEntry[_byId.Count]; _byId.Values.CopyTo(all, 0); }
+        lock (_gate)
+        {
+            all = new LocalEntry[_s.Entries];
+            int n = 0;
+            for (int slot = 0; slot < _s.RowCount; slot++)
+                if (_s.Rows[slot].Name is not null) all[n++] = Materialize(_s, slot);
+        }
         Array.Sort(all, static (a, b) => a.RootId != b.RootId ? a.RootId.CompareTo(b.RootId) : string.Compare(a.RelativePath, b.RelativePath, StringComparison.OrdinalIgnoreCase));
         return all;
     }
@@ -223,22 +377,26 @@ public sealed class LocalIndex
     /// <summary>Every listed folder. A copy.</summary>
     public LocalFolder[] Folders()
     {
-        lock (_gate) { var all = new LocalFolder[_folders.Count]; _folders.Values.CopyTo(all, 0); return all; }
+        var list = new List<LocalFolder>();
+        lock (_gate) foreach (FolderSlot f in _s.Folders) if (f.Record is { } r) list.Add(r);
+        return list.ToArray();
     }
 
     /// <summary>The listed folders under one root. A copy.</summary>
     public List<LocalFolder> FoldersOf(int rootId)
     {
         var list = new List<LocalFolder>();
-        lock (_gate)
-            foreach (LocalFolder f in _folders.Values)
-                if (f.RootId == rootId) list.Add(f);
+        lock (_gate) foreach (FolderSlot f in _s.Folders) if (f.Root == rootId && f.Record is { } r) list.Add(r);
         return list;
     }
 
     public bool TryGetFolder(int rootId, string relativePath, [NotNullWhen(true)] out LocalFolder? folder)
     {
-        lock (_gate) return _folders.TryGetValue(new PathKey(rootId, relativePath), out folder);
+        lock (_gate)
+        {
+            folder = _s.FolderIndex.TryGetValue(new PathKey(rootId, relativePath), out int f) ? _s.Folders[f].Record : null;
+            return folder is not null;
+        }
     }
 
     /// <summary>The entries whose file sits directly in a folder. A copy.</summary>
@@ -247,54 +405,99 @@ public sealed class LocalIndex
         var list = new List<LocalEntry>();
         lock (_gate)
         {
-            if (!_members.TryGetValue(new PathKey(rootId, folderPath), out HashSet<long>? ids)) return list;
-            foreach (long id in ids)
-                if (_byId.TryGetValue(id, out LocalEntry? e)) list.Add(e);
+            if (!_s.FolderIndex.TryGetValue(new PathKey(rootId, folderPath), out int f) || _s.Folders[f].Members is not { } members) return list;
+            foreach (int slot in members) list.Add(Materialize(_s, slot));
         }
         return list;
     }
 
-    /// <summary>The entry that holds a file id on a volume (NTFS/ReFS move identity), if any.</summary>
+    /// <summary>Does a folder hold a cloud-only entry? (The scanner diffs such a folder even when its fingerprint is equal.)
+    /// No record is built.</summary>
+    public bool FolderHasCloud(int rootId, string folderPath)
+    {
+        lock (_gate)
+        {
+            if (!_s.FolderIndex.TryGetValue(new PathKey(rootId, folderPath), out int f) || _s.Folders[f].Members is not { } members) return false;
+            foreach (int slot in members) if (_s.Rows[slot].State == (byte)LocalState.CloudOnly) return true;
+        }
+        return false;
+    }
+
+    /// <summary>The entry that holds a file id on a volume (NTFS/ReFS move identity), if any. Builds the scan-time map on
+    /// first use (<see cref="ReleaseScanMaps"/> drops it).</summary>
     public bool TryGetByFileId(uint volumeSerial, UInt128 fileId, [NotNullWhen(true)] out LocalEntry? entry)
     {
         entry = null;
         if (fileId == 0) return false;
-        lock (_gate) return _byFileId.TryGetValue(new IdKey(volumeSerial, fileId), out long id) && _byId.TryGetValue(id, out entry);
+        var slots = new List<int>(2);
+        lock (_gate)
+        {
+            Store s = _s;
+            if (s.ByFileId is null)
+            {
+                s.ByFileId = new HashSlots();
+                s.ByFileId.EnsureCapacity(s.Entries);
+                for (int slot = 0; slot < s.RowCount; slot++)
+                    if (s.Rows[slot].Name is not null && (s.Rows[slot].FileIdLo | s.Rows[slot].FileIdHi) != 0) s.ByFileId.Add(HashOf(s.Rows[slot].Volume, s.Rows[slot].FileIdLo, s.Rows[slot].FileIdHi), slot);
+            }
+            s.ByFileId.Get(HashOf(volumeSerial, (ulong)fileId, (ulong)(fileId >> 64)), slots);
+            foreach (int slot in slots)
+            {
+                ref Row row = ref s.Rows[slot];
+                if (row.Volume == volumeSerial && row.FileIdLo == (ulong)fileId && row.FileIdHi == (ulong)(fileId >> 64)) { entry = Materialize(s, slot); return true; }
+            }
+        }
+        return false;
     }
 
-    /// <summary>Entries with this exact size and write time (the move identity where ids are not stable). A copy.</summary>
+    /// <summary>Entries with this exact size and write time (the move identity where ids are not stable). A copy. Builds the
+    /// scan-time map on first use.</summary>
     public List<LocalEntry> BySizeAndWrite(long size, long writeTicks)
     {
         var list = new List<LocalEntry>();
+        var slots = new List<int>(2);
         lock (_gate)
         {
-            var ids = new List<long>(2);
-            _bySizeWrite.Get(HashOf(size, writeTicks), ids);
-            foreach (long id in ids)
-                if (_byId.TryGetValue(id, out LocalEntry? e) && e.Size == size && e.WriteTicks == writeTicks) list.Add(e);
+            Store s = _s;
+            if (s.BySizeWrite is null)
+            {
+                s.BySizeWrite = new HashSlots();
+                s.BySizeWrite.EnsureCapacity(s.Entries);
+                for (int slot = 0; slot < s.RowCount; slot++)
+                    if (s.Rows[slot].Name is not null) s.BySizeWrite.Add(HashOf(s.Rows[slot].Size, s.Rows[slot].Write), slot);
+            }
+            s.BySizeWrite.Get(HashOf(size, writeTicks), slots);
+            foreach (int slot in slots)
+                if (s.Rows[slot].Size == size && s.Rows[slot].Write == writeTicks) list.Add(Materialize(s, slot));
         }
         return list;
     }
 
+    /// <summary>Drop the move-pairing maps a scan built (the scanner calls it when a root's scan ends).</summary>
+    public void ReleaseScanMaps()
+    {
+        lock (_gate) { _s.ByFileId = null; _s.BySizeWrite = null; }
+    }
+
     public LocalRoot[] Roots()
     {
-        lock (_gate) { var all = new LocalRoot[_roots.Count]; _roots.Values.CopyTo(all, 0); return all; }
+        lock (_gate) { var all = new LocalRoot[_s.Roots.Count]; _s.Roots.Values.CopyTo(all, 0); return all; }
     }
 
     public bool TryGetRoot(int rootId, [NotNullWhen(true)] out LocalRoot? root)
     {
-        lock (_gate) return _roots.TryGetValue(rootId, out root);
+        lock (_gate) return _s.Roots.TryGetValue(rootId, out root);
     }
 
     /// <summary>A fresh LocalId: never handed out before, never reused (D13).</summary>
-    public long NewId() { lock (_gate) return _nextId++; }
+    public long NewId() { lock (_gate) return _s.NextId++; }
 
     // ── matching (§3.4) ──────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The §3.4 walk for a <c>spotify:local:</c> row's decoded parts: tier 1 the exact map (first, last and joined
     /// artists), 1 s tolerance (5 s for an estimated length); tier 2, only when the row's artist and album are empty, the file
     /// name map, 1 s; tier 3 the loose map, 2 s. A candidate outside the tolerance is never picked. Missing and cloud-only
-    /// entries match too (the row shows them as missing or downloadable); video entries never do.</summary>
+    /// entries match too (the row shows them as missing or downloadable); video entries never do. Logs one `local.match` line.</summary>
     public LocalMatchResult Match(string title, string artist, string album, int uriSeconds)
     {
         string exactTitle = LocalMatch.Exact(title), exactArtist = LocalMatch.Exact(artist);
@@ -302,33 +505,43 @@ public sealed class LocalIndex
         string looseKey = LocalMatch.Key(LocalMatch.Loose(title), LocalMatch.Loose(artist));
         bool untaggedShape = artist.Length == 0 && album.Length == 0;
         var candidates = new List<LocalEntry>(4);
+        LocalMatchResult r = default;
+        int keyed = 0;
         lock (_gate)
         {
-            if (TryTier(_exact, exactKey, 1, uriSeconds, album, candidates, out LocalMatchResult r)) return r;
-            if (untaggedShape && TryTier(_names, exactTitle, 2, uriSeconds, album, candidates, out r)) return r;
-            if (TryTier(_loose, looseKey, 3, uriSeconds, album, candidates, out r)) return r;
+            bool found = TryTier(_s.Exact, exactKey, 1, uriSeconds, album, candidates, ref keyed, out r)
+                         || (untaggedShape && TryTier(_s.Names, exactTitle, 2, uriSeconds, album, candidates, ref keyed, out r))
+                         || TryTier(_s.Loose, looseKey, 3, uriSeconds, album, candidates, ref keyed, out r);
+            if (!found) r = new LocalMatchResult(null, 0, keyed);
         }
-        return new LocalMatchResult(null, 0, 0);
+        // Always on (§3.4): which tier answered and how many shared its key; the FILE NAME only, never the folder.
+        Log.Info("local", r.Entry is { } e
+            ? "local.match tier=" + r.Tier + " candidates=" + r.Candidates + " seconds=" + uriSeconds + " file=" + NameOf(e.RelativePath)
+            : "local.match miss keyed=" + keyed + " seconds=" + uriSeconds + " untagged=" + (untaggedShape ? 1 : 0));
+        return r;
     }
 
-    bool TryTier(IdMultiMap map, string key, byte tier, int uriSeconds, string album, List<LocalEntry> candidates, out LocalMatchResult result)
+    bool TryTier(HashSlots map, string key, byte tier, int uriSeconds, string album, List<LocalEntry> candidates, ref int keyed, out LocalMatchResult result)
     {
         result = default;
         if (key.Length == 0) return false;
-        var ids = new List<long>(2);
-        map.Get(HashOf(key), ids);
-        if (ids.Count == 0) return false;
+        var slots = new List<int>(2);
+        map.Get(HashOf(key), slots);
         candidates.Clear();
-        foreach (long id in ids)
+        int sharing = 0;
+        foreach (int slot in slots)
         {
-            if (!_byId.TryGetValue(id, out LocalEntry? e) || !HasKey(e, tier, key)) continue;   // a hash collision never answers
+            if (!HasKey(_s, slot, tier, key)) continue;   // a hash collision never answers
+            sharing++;
+            LocalEntry e = Materialize(_s, slot);
             int tolerance = tier switch { 1 => e.Tags.DurationEstimated ? 5 : 1, 2 => 1, _ => 2 };
             if (LocalMatch.DurationAgrees(uriSeconds, e.Tags.DurationMs, tolerance)) candidates.Add(e);
         }
+        keyed += sharing;
         if (candidates.Count == 0) return false;
-        int pick = LocalMatch.Pick(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(candidates), album, uriSeconds);
+        int pick = LocalMatch.Pick(CollectionsMarshal.AsSpan(candidates), album, uriSeconds);
         if (pick < 0) return false;
-        result = new LocalMatchResult(candidates[pick], tier, ids.Count);
+        result = new LocalMatchResult(candidates[pick], tier, sharing);
         return true;
     }
 
@@ -340,9 +553,11 @@ public sealed class LocalIndex
         if (batch.IsEmpty) return;
         lock (_fileGate)
         {
-            lock (_gate) ApplyLocked(batch);
+            lock (_gate) ApplyTo(_s, batch);
             Interlocked.Increment(ref _version);
-            AppendLocked(RecBatch, w => WriteBatch(w, batch));
+            long nextId;
+            lock (_gate) nextId = _s.NextId;
+            AppendLocked(RecBatch, w => WriteBatch(w, batch, nextId));
         }
         CompactIfLarge();
     }
@@ -352,7 +567,7 @@ public sealed class LocalIndex
     {
         lock (_fileGate)
         {
-            lock (_gate) _roots[root.RootId] = root;
+            lock (_gate) _s.Roots[root.RootId] = root;
             Interlocked.Increment(ref _version);
             AppendLocked(RecRoot, w => WriteRoot(w, root));
         }
@@ -364,7 +579,7 @@ public sealed class LocalIndex
     {
         lock (_fileGate)
         {
-            lock (_gate) RemoveRootLocked(rootId);
+            lock (_gate) RemoveRootFrom(_s, rootId);
             Interlocked.Increment(ref _version);
             AppendLocked(RecRootRemoved, w => w.Write(rootId));
         }
@@ -376,103 +591,207 @@ public sealed class LocalIndex
     {
         var ids = new List<long>();
         lock (_gate)
-            foreach (LocalEntry e in _byId.Values)
-                if (e.RootId == rootId && e.State == LocalState.Missing && e.LastSeenTicks < beforeTicks) ids.Add(e.LocalId);
+        {
+            Store s = _s;
+            for (int slot = 0; slot < s.RowCount; slot++)
+            {
+                ref Row row = ref s.Rows[slot];
+                if (row.Name is not null && s.Folders[row.Folder].Root == rootId && row.State == (byte)LocalState.Missing && row.LastSeen < beforeTicks) ids.Add(row.LocalId);
+            }
+        }
         if (ids.Count == 0) return 0;
         lock (_fileGate)
         {
-            lock (_gate) foreach (long id in ids) RemoveLocked(id);
+            lock (_gate) foreach (long id in ids) Remove(_s, id);
             Interlocked.Increment(ref _version);
             AppendLocked(RecPurge, w => { w.Write(ids.Count); foreach (long id in ids) w.Write(id); });
         }
         return ids.Count;
     }
 
-    /// <summary>Empty the index in memory (the inspector's fixtures; a load that found nothing usable).</summary>
+    /// <summary>Empty the index in memory (the inspector's fixtures).</summary>
     public void Clear()
     {
-        lock (_gate) ClearLocked();
+        lock (_gate) _s = new Store();
         Interlocked.Increment(ref _version);
     }
 
-    void ClearLocked()
+    static void ApplyTo(Store s, LocalScanBatch batch)
     {
-        _byId.Clear(); _byPath.Clear(); _byFileId.Clear(); _bySizeWrite.Clear(); _folders.Clear(); _members.Clear();
-        _exact.Clear(); _loose.Clear(); _names.Clear(); _roots.Clear();
-        _nextId = 1; _audio = _unplayable = _missing = _cloud = _video = 0;
-    }
-
-    void ApplyLocked(LocalScanBatch batch)
-    {
-        foreach (long id in batch.Removes) RemoveLocked(id);
+        foreach (long id in batch.Removes) Remove(s, id);
         foreach (LocalEntry e in batch.Upserts)
         {
-            RemoveLocked(e.LocalId);
-            InsertLocked(e);
+            Remove(s, e.LocalId);
+            Insert(s, e);
         }
-        var key = new PathKey(batch.RootId, batch.FolderPath);
-        if (batch.RemoveFolder) _folders.Remove(key);
-        else if (batch.Folder is { } folder) _folders[key] = folder;
+        if (batch.RemoveFolder)
+        {
+            if (s.FolderIndex.TryGetValue(new PathKey(batch.RootId, batch.FolderPath), out int f)) s.Folders[f].Record = null;
+        }
+        else if (batch.Folder is { } folder) s.Folders[FolderSlotOf(s, batch.RootId, batch.FolderPath)].Record = folder with { Images = InternAll(s, folder.Images) };
     }
 
-    void RemoveRootLocked(int rootId)
+    static void RemoveRootFrom(Store s, int rootId)
     {
-        _roots.Remove(rootId);
+        s.Roots.Remove(rootId);
         var ids = new List<long>();
-        foreach (LocalEntry e in _byId.Values) if (e.RootId == rootId) ids.Add(e.LocalId);
-        foreach (long id in ids) RemoveLocked(id);
-        var folders = new List<PathKey>();
-        foreach (PathKey k in _folders.Keys) if (k.Root == rootId) folders.Add(k);
-        foreach (PathKey k in folders) _folders.Remove(k);
+        for (int slot = 0; slot < s.RowCount; slot++)
+            if (s.Rows[slot].Name is not null && s.Folders[s.Rows[slot].Folder].Root == rootId) ids.Add(s.Rows[slot].LocalId);
+        foreach (long id in ids) Remove(s, id);
+        foreach (FolderSlot f in s.Folders) if (f.Root == rootId) f.Record = null;
     }
 
-    void InsertLocked(LocalEntry e)
+    static int FolderSlotOf(Store s, int rootId, string folder)
     {
-        _byId[e.LocalId] = e;
-        if (e.LocalId >= _nextId) _nextId = e.LocalId + 1;
-        _byPath[new PathKey(e.RootId, e.RelativePath)] = e.LocalId;
-        if (e.FileId != 0) _byFileId[new IdKey(e.VolumeSerial, e.FileId)] = e.LocalId;
-        _bySizeWrite.Add(HashOf(e.Size, e.WriteTicks), e.LocalId);
-        var folder = new PathKey(e.RootId, FolderOf(e.RelativePath));
-        if (!_members.TryGetValue(folder, out HashSet<long>? members)) _members[folder] = members = new HashSet<long>();
-        members.Add(e.LocalId);
-        if (e.Tags.Kind == LocalKind.Video) { _video++; return; }
-        _audio++;
-        if (!e.Playable) _unplayable++;
-        if (e.State == LocalState.Missing) _missing++;
-        else if (e.State == LocalState.CloudOnly) _cloud++;
-        foreach (string k in MatchKeys(e, loose: false)) _exact.Add(HashOf(k), e.LocalId);
-        foreach (string k in MatchKeys(e, loose: true)) _loose.Add(HashOf(k), e.LocalId);
-        _names.Add(HashOf(NameKey(e)), e.LocalId);
+        var key = new PathKey(rootId, folder);
+        if (s.FolderIndex.TryGetValue(key, out int f)) return f;
+        f = s.Folders.Count;
+        s.Folders.Add(new FolderSlot(rootId, folder));
+        s.FolderIndex[key] = f;
+        return f;
     }
 
-    void RemoveLocked(long id)
+    static int SlotOf(Store s, long localId) => localId > 0 && localId < s.SlotOfId.Length ? s.SlotOfId[localId] - 1 : -1;
+
+    static void Insert(Store s, LocalEntry e)
     {
-        if (!_byId.Remove(id, out LocalEntry? e)) return;
-        var pathKey = new PathKey(e.RootId, e.RelativePath);
-        if (_byPath.TryGetValue(pathKey, out long at) && at == id) _byPath.Remove(pathKey);
-        var idKey = new IdKey(e.VolumeSerial, e.FileId);
-        if (e.FileId != 0 && _byFileId.TryGetValue(idKey, out long holder) && holder == id) _byFileId.Remove(idKey);
-        _bySizeWrite.Remove(HashOf(e.Size, e.WriteTicks), id);
-        var folder = new PathKey(e.RootId, FolderOf(e.RelativePath));
-        if (_members.TryGetValue(folder, out HashSet<long>? members)) { members.Remove(id); if (members.Count == 0) _members.Remove(folder); }
-        if (e.Tags.Kind == LocalKind.Video) { _video--; return; }
-        _audio--;
-        if (!e.Playable) _unplayable--;
-        if (e.State == LocalState.Missing) _missing--;
-        else if (e.State == LocalState.CloudOnly) _cloud--;
-        foreach (string k in MatchKeys(e, loose: false)) _exact.Remove(HashOf(k), id);
-        foreach (string k in MatchKeys(e, loose: true)) _loose.Remove(HashOf(k), id);
-        _names.Remove(HashOf(NameKey(e)), id);
+        int slot;
+        if (s.Free.Count > 0) slot = s.Free.Pop();
+        else
+        {
+            if (s.RowCount == s.Rows.Length) Array.Resize(ref s.Rows, Math.Max(64, s.Rows.Length + s.Rows.Length / 4));
+            slot = s.RowCount++;
+        }
+        if (e.LocalId >= s.SlotOfId.Length) Array.Resize(ref s.SlotOfId, (int)Math.Max(e.LocalId + 1, s.SlotOfId.Length + s.SlotOfId.Length / 4 + 64));
+        s.SlotOfId[e.LocalId] = slot + 1;
+        if (e.LocalId >= s.NextId) s.NextId = e.LocalId + 1;
+
+        LocalTagSet t = e.Tags;
+        string name = NameOf(e.RelativePath);
+        int folder = FolderSlotOf(s, e.RootId, FolderOf(e.RelativePath));
+        string rule = t.Title.Length > 0 ? t.Title : Path.GetFileNameWithoutExtension(name);
+        s.Rows[slot] = new Row
+        {
+            LocalId = e.LocalId, Size = e.Size, Write = e.WriteTicks, Change = e.ChangeTicks, LastSeen = e.LastSeenTicks, CoverOffset = t.Cover.Offset,
+            FileIdLo = (ulong)e.FileId, FileIdHi = (ulong)(e.FileId >> 64),
+            Name = name, Title = t.Title, Shared = InternShared(s, t, e.Why),
+            Folder = folder, DurationMs = t.DurationMs, CoverLength = t.Cover.Length, Volume = e.VolumeSerial, Attributes = e.Attributes,
+            Track = Clamp(t.TrackNumber), Disc = Clamp(t.DiscNumber), Year = Clamp(t.Year), Bitrate = Clamp(t.BitrateKbps),
+            VideoWidth = Clamp(t.VideoWidth), VideoHeight = Clamp(t.VideoHeight),
+            Format = (byte)e.Format, State = (byte)e.State, Kind = (byte)t.Kind, Mime = (byte)t.Cover.Mime, Encoding = (byte)t.Cover.Encoding,
+            PictureType = t.Cover.PictureType,
+            Flags = (byte)((e.Playable ? FlagPlayable : 0) | (t.DurationEstimated ? FlagEstimated : 0) | (t.HasAudio ? FlagHasAudio : 0)),
+        };
+        if (e.MatchTitle != rule) s.MatchTitles[slot] = e.MatchTitle;
+        (s.Folders[folder].Members ??= new List<int>(4)).Add(slot);
+        s.Entries++;
+        ref Row row = ref s.Rows[slot];
+        s.ByFileId?.Add(HashOf(row.Volume, row.FileIdLo, row.FileIdHi), slot);
+        s.BySizeWrite?.Add(HashOf(row.Size, row.Write), slot);
+        if (t.Kind == LocalKind.Video) { s.Video++; return; }
+        s.Audio++;
+        if (!e.Playable) s.Unplayable++;
+        if (e.State == LocalState.Missing) s.Missing++;
+        else if (e.State == LocalState.CloudOnly) s.Cloud++;
+        foreach (string k in MatchKeys(e.MatchTitle, t.Artists, loose: false)) s.Exact.Add(HashOf(k), slot);
+        foreach (string k in MatchKeys(e.MatchTitle, t.Artists, loose: true)) s.Loose.Add(HashOf(k), slot);
+        s.Names.Add(HashOf(NameKey(name)), slot);
+    }
+
+    static void Remove(Store s, long id)
+    {
+        int slot = SlotOf(s, id);
+        if (slot < 0) return;
+        ref Row row = ref s.Rows[slot];
+        string title = MatchTitleOf(s, slot);
+        s.ByFileId?.Remove(HashOf(row.Volume, row.FileIdLo, row.FileIdHi), slot);
+        s.BySizeWrite?.Remove(HashOf(row.Size, row.Write), slot);
+        s.Folders[row.Folder].Members!.Remove(slot);
+        if (row.Kind == (byte)LocalKind.Video) s.Video--;
+        else
+        {
+            s.Audio--;
+            if ((row.Flags & FlagPlayable) == 0) s.Unplayable--;
+            if (row.State == (byte)LocalState.Missing) s.Missing--;
+            else if (row.State == (byte)LocalState.CloudOnly) s.Cloud--;
+            foreach (string k in MatchKeys(title, row.Shared.Artists, loose: false)) s.Exact.Remove(HashOf(k), slot);
+            foreach (string k in MatchKeys(title, row.Shared.Artists, loose: true)) s.Loose.Remove(HashOf(k), slot);
+            s.Names.Remove(HashOf(NameKey(row.Name!)), slot);
+        }
+        row = default;
+        s.MatchTitles.Remove(slot);
+        s.SlotOfId[id] = 0;
+        s.Free.Push(slot);
+        s.Entries--;
+    }
+
+    static LocalEntry Materialize(Store s, int slot)
+    {
+        ref Row row = ref s.Rows[slot];
+        FolderSlot folder = s.Folders[row.Folder];
+        string name = row.Name!;
+        Shared shared = row.Shared;
+        var tags = new LocalTagSet((LocalKind)row.Kind, row.Title, shared.Artists, shared.Album, shared.AlbumArtist, row.Track, row.Disc, row.Year,
+            row.DurationMs, (row.Flags & FlagEstimated) != 0, row.Bitrate,
+            new LocalCover(row.CoverOffset, row.CoverLength, (LocalCoverMime)row.Mime, (LocalCoverEncoding)row.Encoding, row.PictureType),
+            row.VideoWidth, row.VideoHeight, (row.Flags & FlagHasAudio) != 0);
+        string matchTitle = MatchTitleOf(s, slot);
+        return new LocalEntry(row.LocalId, folder.Root, folder.Rel.Length == 0 ? name : folder.Rel + "\\" + name, row.Volume,
+            new UInt128(row.FileIdHi, row.FileIdLo), row.Size, row.Write, row.Change, row.Attributes, (Spotify.Audio.Format)row.Format, tags,
+            matchTitle, (LocalState)row.State, row.LastSeen, (row.Flags & FlagPlayable) != 0, shared.Why);
+    }
+
+    /// <summary>A row's match title: the side table's when it is not the rule, else the title tag, else the file name without
+    /// its extension.</summary>
+    static string MatchTitleOf(Store s, int slot)
+    {
+        if (s.MatchTitles.TryGetValue(slot, out string? special)) return special;
+        ref Row row = ref s.Rows[slot];
+        return row.Title.Length > 0 ? row.Title : Path.GetFileNameWithoutExtension(row.Name!);
+    }
+
+    static Shared InternShared(Store s, in LocalTagSet t, string why)
+    {
+        var shared = new Shared(Intern(s, t.Album), Intern(s, t.AlbumArtist), InternArtists(s, t.Artists), Intern(s, why));
+        if (s.SharedSets.TryGetValue(shared, out Shared? existing)) return existing;
+        s.SharedSets[shared] = shared;
+        return shared;
+    }
+
+    static ushort Clamp(int v) => (ushort)Math.Clamp(v, 0, ushort.MaxValue);
+
+    static string Intern(Store s, string text)
+    {
+        if (text.Length == 0) return "";
+        if (s.Strings.TryGetValue(text, out string? shared)) return shared;
+        s.Strings.Add(text);
+        return text;
+    }
+
+    static string[] InternAll(Store s, string[] texts)
+    {
+        for (int i = 0; i < texts.Length; i++) texts[i] = Intern(s, texts[i]);
+        return texts;
+    }
+
+    /// <summary>One shared array per distinct artist list (an album's tracks share theirs), its values interned.</summary>
+    static string[] InternArtists(Store s, string[] artists)
+    {
+        if (artists.Length == 0) return [];
+        string key = artists.Length == 1 ? artists[0] : string.Join('\u001f', artists);
+        if (s.ArtistArrays.TryGetValue(key, out string[]? shared)) return shared;
+        var copy = new string[artists.Length];
+        for (int i = 0; i < copy.Length; i++) copy[i] = Intern(s, artists[i]);
+        s.ArtistArrays[artists.Length == 1 ? copy[0] : key] = copy;
+        return copy;
     }
 
     /// <summary>The keys an entry is filed under (§3.4/§3.5): its match title with the first artist, the last artist and the
     /// ", "-joined artists (duplicates folded); an entry with no artist is filed under the empty artist.</summary>
-    static IEnumerable<string> MatchKeys(LocalEntry e, bool loose)
+    static IEnumerable<string> MatchKeys(string matchTitle, string[] artists, bool loose)
     {
         Func<string, string> norm = loose ? LocalMatch.Loose : LocalMatch.Exact;
-        string title = norm(e.MatchTitle);
-        string[] artists = e.Tags.Artists;
+        string title = norm(matchTitle);
         if (artists.Length == 0) { yield return LocalMatch.Key(title, ""); yield break; }
         string first = LocalMatch.Key(title, norm(artists[0]));
         yield return first;
@@ -484,14 +803,30 @@ public sealed class LocalIndex
     }
 
     /// <summary>The file-name key (tier 2): <c>Exact</c> of the name without its extension.</summary>
-    static string NameKey(LocalEntry e) => LocalMatch.Exact(Path.GetFileNameWithoutExtension(e.RelativePath));
+    static string NameKey(string fileName) => LocalMatch.Exact(Path.GetFileNameWithoutExtension(fileName));
 
-    /// <summary>Is <paramref name="key"/> really one of the entry's keys for this tier (the check behind a hashed lookup)?</summary>
-    static bool HasKey(LocalEntry e, byte tier, string key)
+    /// <summary>Is <paramref name="key"/> really one of the row's keys for this tier (the check behind a hashed lookup)?</summary>
+    static bool HasKey(Store s, int slot, byte tier, string key)
     {
-        if (tier == 2) return NameKey(e) == key;
-        foreach (string k in MatchKeys(e, loose: tier == 3)) if (k == key) return true;
+        ref Row row = ref s.Rows[slot];
+        if (row.Name is null || row.Kind == (byte)LocalKind.Video) return false;
+        if (tier == 2) return NameKey(row.Name) == key;
+        foreach (string k in MatchKeys(MatchTitleOf(s, slot), row.Shared.Artists, loose: tier == 3)) if (k == key) return true;
         return false;
+    }
+
+    static ulong HashOf(string key) => XxHash3.HashToUInt64(MemoryMarshal.AsBytes(key.AsSpan()));
+
+    static ulong HashOf(long size, long write)
+    {
+        Span<long> both = [size, write];
+        return XxHash3.HashToUInt64(MemoryMarshal.AsBytes(both));
+    }
+
+    static ulong HashOf(uint volume, ulong lo, ulong hi)
+    {
+        Span<ulong> all = [volume, lo, hi];
+        return XxHash3.HashToUInt64(MemoryMarshal.AsBytes(all));
     }
 
     /// <summary>The folder part of a relative file path ("" for a file directly in the root).</summary>
@@ -501,45 +836,51 @@ public sealed class LocalIndex
         return slash < 0 ? "" : relativePath[..slash];
     }
 
+    static string NameOf(string relativePath)
+    {
+        int slash = relativePath.LastIndexOf('\\');
+        return slash < 0 ? relativePath : relativePath[(slash + 1)..];
+    }
+
     // ── the files ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Read the bin and replay the log into memory, then keep the log open for appends. Background thread; never
-    /// throws. A file this build cannot read is ignored (and replaced by the next compaction). Returns the entries loaded.</summary>
+    /// <summary>Read the bin and replay the log into a NEW store built off the lock, swap it in, then keep the log open for
+    /// appends. Background thread; never throws. A file this build cannot read is ignored (and replaced by the next
+    /// compaction). Returns the audio entries loaded.</summary>
     public int Load(string binPath)
     {
         string logPath = Path.ChangeExtension(binPath, ".log");
-        lock (_fileGate)
+        lock (_fileGate)   // a commit waits for the load; readers keep reading the old store until the swap
         {
             _binPath = binPath;
             _logPath = logPath;
+            var store = new Store();
             ulong generation = 0;
-            lock (_gate)
+            try
             {
-                ClearLocked();
-                try
+                if (File.Exists(binPath))
                 {
-                    if (File.Exists(binPath))
-                    {
-                        using var stream = new FileStream(binPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
-                        using var r = new BinaryReader(stream, Encoding.UTF8);
-                        if (!ReadBinLocked(r, out generation)) { ClearLocked(); generation = 0; }
-                    }
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or EndOfStreamException or InvalidDataException or ArgumentException or FormatException)
-                {
-                    Log.Warn("local", "local.index.load bin unreadable; rebuilding (" + ex.GetType().Name + ")");
-                    ClearLocked();
-                    generation = 0;
+                    using var stream = new FileStream(binPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
+                    using var r = new BinaryReader(stream, Encoding.UTF8);
+                    if (!ReadBin(store, r, out generation)) { store = new Store(); generation = 0; }
                 }
             }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or EndOfStreamException or InvalidDataException or ArgumentException or FormatException or IndexOutOfRangeException)
+            {
+                Log.Warn("local", "local.index.load bin unreadable; rebuilding (" + ex.GetType().Name + ")");
+                store = new Store();
+                generation = 0;
+            }
             _generation = generation;
-            OpenLogLocked(replay: true);
+            OpenLogLocked(store, replay: true);
+            lock (_gate) _s = store;
         }
         Interlocked.Increment(ref _version);
         return Count;
     }
 
-    /// <summary>Write the whole index to the bin (temp file + move) and start an empty log. Any background thread.</summary>
+    /// <summary>Write the whole index to the bin (temp file + move) and start an empty log. The records are copied under the
+    /// lock; the file is written off it. Any background thread.</summary>
     public bool Compact()
     {
         lock (_fileGate)
@@ -547,14 +888,29 @@ public sealed class LocalIndex
             if (_binPath is not { } binPath) return false;
             ulong generation = _generation + 1;
             string tmp = binPath + "." + Environment.ProcessId + ".tmp";
+            LocalEntry[] entries;
+            LocalFolder[] folders;
+            LocalRoot[] roots;
+            long nextId;
+            lock (_gate)
+            {
+                Store s = _s;
+                entries = new LocalEntry[s.Entries];
+                int n = 0;
+                for (int slot = 0; slot < s.RowCount; slot++) if (s.Rows[slot].Name is not null) entries[n++] = Materialize(s, slot);
+                var fs = new List<LocalFolder>();
+                foreach (FolderSlot f in s.Folders) if (f.Record is { } rec) fs.Add(rec);
+                folders = fs.ToArray();
+                roots = new LocalRoot[s.Roots.Count];
+                s.Roots.Values.CopyTo(roots, 0);
+                nextId = s.NextId;
+            }
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(binPath)!);
                 using (var stream = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
                 using (var w = new BinaryWriter(stream, new UTF8Encoding(false)))
-                {
-                    lock (_gate) WriteBinLocked(w, generation);
-                }
+                    WriteBin(w, generation, nextId, roots, folders, entries);
                 File.Move(tmp, binPath, overwrite: true);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -566,7 +922,7 @@ public sealed class LocalIndex
             _generation = generation;
             _log?.Dispose();
             _log = null;
-            OpenLogLocked(replay: false);
+            OpenLogLocked(null, replay: false);
             return true;
         }
     }
@@ -582,14 +938,14 @@ public sealed class LocalIndex
         lock (_fileGate) { _log?.Dispose(); _log = null; _binPath = _logPath = null; }
     }
 
-    void OpenLogLocked(bool replay)
+    void OpenLogLocked(Store? replayInto, bool replay)
     {
         if (_logPath is not { } logPath) return;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
             var log = new FileStream(logPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1 << 12);
-            long good = replay ? ReplayLog(log) : -1;
+            long good = replay && replayInto is not null ? ReplayLog(replayInto, log) : -1;
             if (good < 0)
             {
                 // No usable log (none, another generation, or a fresh start after a compaction): a header for this generation.
@@ -608,9 +964,9 @@ public sealed class LocalIndex
         }
     }
 
-    /// <summary>Replay every whole record of a log of this generation; returns the offset after the last good record, or -1
-    /// when the log is not one this index can replay (another generation, another format, empty).</summary>
-    long ReplayLog(FileStream log)
+    /// <summary>Replay every whole record of a log of this generation into <paramref name="store"/>; returns the offset after
+    /// the last good record, or -1 when the log is not one this index can replay.</summary>
+    long ReplayLog(Store store, FileStream log)
     {
         if (log.Length < 16) return -1;
         log.Seek(0, SeekOrigin.Begin);
@@ -618,41 +974,38 @@ public sealed class LocalIndex
         if (r.ReadUInt32() != LogMagic || r.ReadInt32() != FormatVersion || r.ReadUInt64() != _generation) return -1;
         long good = log.Position;
         int records = 0;
-        lock (_gate)
+        while (log.Length - log.Position >= 9)
         {
-            while (log.Length - log.Position >= 9)
+            int length = r.ReadInt32();
+            if (length <= 0 || length > log.Length - log.Position - 4) break;
+            byte[] body = r.ReadBytes(length);
+            uint sum = r.ReadUInt32();
+            if (body.Length != length || (uint)XxHash3.HashToUInt64(body) != sum) break;
+            try
             {
-                int length = r.ReadInt32();
-                if (length <= 0 || length > log.Length - log.Position - 4) break;
-                byte[] body = r.ReadBytes(length);
-                uint sum = r.ReadUInt32();
-                if (body.Length != length || (uint)XxHash3.HashToUInt64(body) != sum) break;
-                try
-                {
-                    using var br = new BinaryReader(new MemoryStream(body), Encoding.UTF8);
-                    ReplayRecordLocked(br);
-                }
-                catch (Exception ex) when (ex is EndOfStreamException or InvalidDataException or ArgumentException or FormatException)
-                {
-                    break;
-                }
-                good = log.Position;
-                records++;
+                using var br = new BinaryReader(new MemoryStream(body), Encoding.UTF8);
+                ReplayRecord(store, br);
             }
+            catch (Exception ex) when (ex is EndOfStreamException or InvalidDataException or ArgumentException or FormatException)
+            {
+                break;
+            }
+            good = log.Position;
+            records++;
         }
         if (records > 0) Log.Info("local", "local.index.log replayed records=" + records);
         return good;
     }
 
-    void ReplayRecordLocked(BinaryReader r)
+    static void ReplayRecord(Store s, BinaryReader r)
     {
         byte type = r.ReadByte();
         switch (type)
         {
-            case RecBatch: ApplyLocked(ReadBatch(r)); break;
-            case RecRoot: { LocalRoot root = ReadRoot(r); _roots[root.RootId] = root; break; }
-            case RecRootRemoved: RemoveRootLocked(r.ReadInt32()); break;
-            case RecPurge: { int n = r.ReadInt32(); for (int i = 0; i < n; i++) RemoveLocked(r.ReadInt64()); break; }
+            case RecBatch: ApplyTo(s, ReadBatch(s, r)); break;
+            case RecRoot: { LocalRoot root = ReadRoot(r); s.Roots[root.RootId] = root; break; }
+            case RecRootRemoved: RemoveRootFrom(s, r.ReadInt32()); break;
+            case RecPurge: { int n = r.ReadInt32(); for (int i = 0; i < n; i++) Remove(s, r.ReadInt64()); break; }
             default: throw new InvalidDataException("unknown log record " + type);
         }
     }
@@ -683,50 +1036,60 @@ public sealed class LocalIndex
 
     // ── the bin ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    void WriteBinLocked(BinaryWriter w, ulong generation)
+    static void WriteBin(BinaryWriter w, ulong generation, long nextId, LocalRoot[] roots, LocalFolder[] folders, LocalEntry[] entries)
     {
-        // One string table for every string the entries hold: artist and album names repeat across a library.
+        // One string table for every string the records hold: artist and album names repeat across a library.
         var table = new Dictionary<string, int>(StringComparer.Ordinal);
         var order = new List<string>();
         void Intern(string s) { if (!table.ContainsKey(s)) { table[s] = order.Count; order.Add(s); } }
-        foreach (LocalEntry e in _byId.Values)
+        foreach (LocalEntry e in entries)
         {
             Intern(e.RelativePath); Intern(e.Tags.Title); Intern(e.Tags.Album); Intern(e.Tags.AlbumArtist); Intern(e.MatchTitle); Intern(e.Why);
             foreach (string a in e.Tags.Artists) Intern(a);
         }
-        foreach (LocalFolder f in _folders.Values) { Intern(f.RelativePath); foreach (string i in f.Images) Intern(i); }
+        foreach (LocalFolder f in folders) { Intern(f.RelativePath); foreach (string i in f.Images) Intern(i); }
 
-        w.Write(BinMagic); w.Write(FormatVersion); w.Write(generation); w.Write(_nextId);
-        w.Write(_roots.Count);
-        foreach (LocalRoot root in _roots.Values) WriteRoot(w, root);
+        w.Write(BinMagic); w.Write(FormatVersion); w.Write(generation); w.Write(nextId);
+        w.Write(roots.Length);
+        foreach (LocalRoot root in roots) WriteRoot(w, root);
         w.Write(order.Count);
         foreach (string s in order) w.Write(s);
         Func<string, int> index = s => table[s];
-        w.Write(_folders.Count);
-        foreach (LocalFolder f in _folders.Values) WriteFolder(w, f, index);
-        w.Write(_byId.Count);
-        foreach (LocalEntry e in _byId.Values) WriteEntry(w, e, index);
+        w.Write(folders.Length);
+        foreach (LocalFolder f in folders) WriteFolder(w, f, index);
+        w.Write(entries.Length);
+        foreach (LocalEntry e in entries) WriteEntry(w, e, index);
         w.Write(BinMagic);   // a trailer: a truncated bin is refused whole
     }
 
-    bool ReadBinLocked(BinaryReader r, out ulong generation)
+    static bool ReadBin(Store s, BinaryReader r, out ulong generation)
     {
         generation = 0;
         if (r.ReadUInt32() != BinMagic || r.ReadInt32() != FormatVersion) return false;
         generation = r.ReadUInt64();
         long nextId = r.ReadInt64();
         int roots = r.ReadInt32();
-        for (int i = 0; i < roots; i++) { LocalRoot root = ReadRoot(r); _roots[root.RootId] = root; }
+        for (int i = 0; i < roots; i++) { LocalRoot root = ReadRoot(r); s.Roots[root.RootId] = root; }
         int strings = r.ReadInt32();
         var table = new string[strings];
         for (int i = 0; i < strings; i++) table[i] = r.ReadString();
         Func<string> next = () => table[r.Read7BitEncodedInt()];
         int folders = r.ReadInt32();
-        for (int i = 0; i < folders; i++) { LocalFolder f = ReadFolder(r, next); _folders[new PathKey(f.RootId, f.RelativePath)] = f; }
+        for (int i = 0; i < folders; i++)
+        {
+            LocalFolder f = ReadFolder(r, next);
+            s.Folders[FolderSlotOf(s, f.RootId, f.RelativePath)].Record = f with { Images = InternAll(s, f.Images) };
+        }
         int entries = r.ReadInt32();
-        for (int i = 0; i < entries; i++) InsertLocked(ReadEntry(r, next));
+        // Sized once for what is coming: no growth slack in the rows, the id array or the match maps.
+        s.Rows = new Row[Math.Max(64, entries + entries / 16)];
+        s.SlotOfId = new int[Math.Max(nextId + 1, 1)];
+        s.Exact.EnsureCapacity(entries + entries / 8);
+        s.Loose.EnsureCapacity(entries + entries / 8);
+        s.Names.EnsureCapacity(entries);
+        for (int i = 0; i < entries; i++) Insert(s, ReadEntry(r, next));
         if (r.ReadUInt32() != BinMagic) return false;
-        _nextId = Math.Max(_nextId, nextId);
+        s.NextId = Math.Max(s.NextId, nextId);
         return true;
     }
 
@@ -740,10 +1103,10 @@ public sealed class LocalIndex
     static LocalRoot ReadRoot(BinaryReader r)
         => new(r.ReadInt32(), r.ReadString(), r.ReadUInt32(), r.ReadUInt64(), r.ReadInt64(), r.ReadInt64());
 
-    void WriteBatch(BinaryWriter w, LocalScanBatch batch)
+    static void WriteBatch(BinaryWriter w, LocalScanBatch batch, long nextId)
     {
         Func<string, int>? inline = null;
-        w.Write(batch.RootId); w.Write(batch.FolderPath); w.Write(batch.RemoveFolder); w.Write(_nextId);
+        w.Write(batch.RootId); w.Write(batch.FolderPath); w.Write(batch.RemoveFolder); w.Write(nextId);
         w.Write(batch.Folder is not null);
         if (batch.Folder is { } folder) WriteFolder(w, folder, inline);
         w.Write(batch.Upserts.Count);
@@ -752,10 +1115,10 @@ public sealed class LocalIndex
         foreach (long id in batch.Removes) w.Write(id);
     }
 
-    LocalScanBatch ReadBatch(BinaryReader r)
+    static LocalScanBatch ReadBatch(Store s, BinaryReader r)
     {
         var batch = new LocalScanBatch(r.ReadInt32(), r.ReadString()) { RemoveFolder = r.ReadBoolean() };
-        _nextId = Math.Max(_nextId, r.ReadInt64());
+        s.NextId = Math.Max(s.NextId, r.ReadInt64());
         Func<string> inline = r.ReadString;
         if (r.ReadBoolean()) batch.Folder = ReadFolder(r, inline);
         int upserts = r.ReadInt32();
