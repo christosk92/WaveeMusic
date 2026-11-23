@@ -897,6 +897,23 @@ settings focus=lyrics.ai                    # opens Lyrics & Now playing on the 
 goto deeplink="wavee://open?route=settings&arg=playback/playback.crossfade"   # the same door from a link
 ```
 
+### `drop {path, import?}`
+
+Reads a local file with the tag readers (`LocalTags.TryRead`, #240) and imports it into Local files the way a dropped file
+is staged before it plays (`Playlist.ImportLocalFile`): the row gets the file's title tag (else its file name), its
+artists, album and length. `import=false` only reads (nothing is staged; no mount needed), which makes it the diagnostic
+over real files. The reply carries every field read: `format`, `why` (the reason a file is unplayable or unread), `kind`
+(`Audio`/`Video`, with `videoW`, `videoH`, `hasAudio`), `title`, `titleOrFileName`, `artists[]`, `album`, `albumArtist`,
+`track`, `disc`, `year`, `durationMs`, `estimated` (a bitrate estimate), `kbps`, `cover{exists, offset, length, mime,
+encoding, pictureType}` (where the picture is; its bytes are never read), `keys{exactTitle, looseTitle, exactArtist,
+looseArtist}` (`LocalMatch`), `spotifyUri` (as the official client would name the file), `readMs`, and with an import
+`row{imported, uri, title, artist, album, durationMs, duration}`. It does not play the file.
+
+```text
+drop path=C:/music/song.flac
+drop path=C:/music/song.mp3 import=false
+```
+
 ### `hint {do, id?, blob?}` and `recent {clear?}`
 
 The in-app hints (settings rework phase 3: `Shell/Hints.cs`, the table of design 6.3, and the budget of 6.2) and Recently changed.

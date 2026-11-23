@@ -429,6 +429,8 @@ public static partial class Diagnostics
                     return Setting(id, name, a);   // the store needs no mount; a mounted one settles after the write
                 case Inspect.Verb.Settings:
                     return SettingsSearchVerb(id, name, a);   // a query needs no mount; focus= navigates (it says so when nothing is mounted)
+                case Inspect.Verb.Drop:
+                    return Drop(id, name, a);      // the read needs no mount; the import settles on a mounted one
                 case Inspect.Verb.Hint:
                     return Hint(id, name, a);      // the table and the blob need no mount; `show` settles on a mounted one
                 case Inspect.Verb.Recent:

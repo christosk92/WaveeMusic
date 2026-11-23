@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Quit,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Drop, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -607,6 +607,12 @@ public static partial class Diagnostics
                              Arg("model", ArgType.String, "the registry page's model (contract 1.116): the category list, the open category and arrival, the home's facts, this category's body (a slug; empty: the open one), with q= the box's results"),
                              Arg("press", ArgType.Enum, "the page box's key handler: down|up move the highlight through the results, enter opens the highlighted dial, esc clears then leaves", null, "down|up|enter|esc")], s_settleArgs),
             },
+            new(Verb.Drop, "drop", "Read a local file's format, tags, length and cover location with the tag readers (#240) and import it into Local files as a drop does (import=false: the read alone); the reply is every field read and the row's face; then settle", "drop path=C:/music/song.flac")
+            {
+                Positional = ["path"],
+                Args = Join([Arg("path", ArgType.String, "the file to read"),
+                             Arg("import", ArgType.Bool, "false: read the file and stage nothing", "true")], s_settleArgs),
+            },
             new(Verb.Hint, "hint", "The in-app hints (settings rework phase 3): list every hint with its budget and verdict, force one's trigger true for one mount (show), forget every hint's budget and the use facts (reset), or read and load the persisted blob (state)", "hint show id=ai-lyrics")
             {
                 Positional = ["do", "id"],
@@ -789,7 +795,7 @@ public static partial class Diagnostics
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
             "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
-            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge,
+            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge, "drop" => Verb.Drop,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };
