@@ -870,7 +870,7 @@ public static partial class Playback
         // used to write the setting, bump SettingsEpoch (re-rendering every settings subscriber) per frame.
         if (s_fx.PersistVolume && Platform.Settings.Get(Platform.Keys.RememberVolume))
             Platform.Settings.Set(Platform.Keys.SavedVolume, s_fx.VolumeValue);
-        if (s_fx.PrepareNext) Audio.Prepare(s_fx.NextRow, s_fx.NextId);
+        if (s_fx.PrepareNext) Audio.Prepare(s_fx.NextRow, s_fx.NextId, s_fx.NextKind);
         if (s_fx.Prefetch2) PumpPrefetch(s_fx.Prefetch2Row, s_fx.Prefetch2Id);   // the farther row first: the nearer one's caches stay newest
         if (s_fx.Prefetch) PumpPrefetch(s_fx.PrefetchRow, s_fx.PrefetchId);
         if (s_fx.Fetch) EnsureRow(s_fx.FetchId);
