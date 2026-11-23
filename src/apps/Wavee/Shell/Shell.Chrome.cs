@@ -279,8 +279,12 @@ public static partial class Shell
         /// <param name="budget">The budget (null = the active one).</param>
         /// <param name="tabs">The structure offers tabs (<c>ShellCapabilities.Tabs</c>, P5 ZK). False: the row has no tab island at all (no
         /// strip, no count button, no "+" slot) and prices none, so the search and the identity get its room.</param>
+        /// <param name="resized">The width moved since <paramref name="previous"/> was resolved. The promotion reserve exists to stop a
+        /// stage blinking while a resize drag hovers at its threshold, so it holds a stage back only then. At an unchanged width a
+        /// stage that fits is admitted at once: the chip settling from "Connecting" to the avatar after sign-in, the name landing, a
+        /// tab closing or a tier's budget must not leave bell, friends and pin hidden until the next resize (the reserve used to).</param>
         public static Chrome Resolve(float width, float naturalTabExtent, Chrome? previous = null,
-            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, ChromeBudget? budget = null, bool tabs = true)
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, ChromeBudget? budget = null, bool tabs = true, bool resized = true)
         {
             var b = ShellPolicy.BudgetOr(budget);
             // No tabs: the count form's arithmetic with nothing to seat (no "+" slot, a zero island, a viewport floor of zero), and the
@@ -291,6 +295,7 @@ public static partial class Shell
             naturalTabExtent = !tabs ? 0f : b.TabsAsCount ? b.NavButtonW : MathF.Max(b.TabViewportMinW, naturalTabExtent);
             var candidate = StageFor(width, naturalTabExtent, chip, b, tabs);
             if (previous is not { } old) return Compose(width, naturalTabExtent, in candidate, chip, null, b);
+            if (!resized) return Compose(width, naturalTabExtent, in candidate, chip, old.LeadClusterW, b);
 
             var reserved = StageFor(MathF.Max(0f, width - b.PromotionHysteresisW), naturalTabExtent, chip, b, tabs);
             var held = new Stage(

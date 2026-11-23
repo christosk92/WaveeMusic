@@ -199,6 +199,10 @@ public static partial class Shell
         Min = panel.MinWidth, Max = panel.MaxWidth, Polarity = SplitterPolarity.Leading, ShowIndicator = true, InvertCollapsed = true,
     };
 
+    /// <summary>The window width the chrome row was last resolved at (the frame's allocation effect): a resolve at the same width is
+    /// not a resize, so the promotion reserve does not apply.</summary>
+    static float s_chromeResolvedW = float.NaN;
+
     // The shell chords. KeyPreview is modifier-blind, so every chord rides the dispatcher's accelerator seam (matched after
     // focused routing declines it). Zoom is spelled per VK: Ctrl+Shift+= types "+" on many layouts and the keypad keys are
     // distinct VKs — eight chords, three verbs.
@@ -544,8 +548,13 @@ public static partial class Shell
                 // THE CAPABILITIES (P5 ZK): no forward button drops Forward from the budget; no tabs drops the whole tab island.
                 var caps = ShellCaps.Tracked;
                 // THE NAME is priced at what it measures (PriceName also subscribes this effect to the identity: a name landing re-allocates).
+                // The promotion reserve is for a resize drag only: at an unchanged width (sign-in settling the chip, the name landing,
+                // a tab closing) a stage that fits enters at once.
+                // The first resolve is not a resize either: the seed it would hold against was never on screen.
+                bool resized = !float.IsNaN(s_chromeResolvedW) && w != s_chromeResolvedW;
+                s_chromeResolvedW = w;
                 var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value),
-                    PriceName(ShellCaps.Budget(ShellPolicy.Tracked.Chrome.BudgetFor(tiers.Window), caps)), caps.ShowsTabStrip);
+                    PriceName(ShellCaps.Budget(ShellPolicy.Tracked.Chrome.BudgetFor(tiers.Window), caps)), caps.ShowsTabStrip, resized);
                 if (FrameRules.ReissueSearchFocus(old.SearchMode, next.SearchMode, s_omnibar.SearchFocused.Peek(), s_omnibar.FlyoutOpen.Peek()))
                     s_omnibar.Focus();
                 ChromeLayout.SetIfChanged(next);
