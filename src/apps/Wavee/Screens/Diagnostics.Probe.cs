@@ -750,7 +750,7 @@ public static partial class Diagnostics
 
         /// <summary>`play`/`queue` of a local file: its path (or <c>wavee:local:file:</c> uri) imported as a Local Files row, as a
         /// drop does. Loop thread.</summary>
-        static bool LocalRow(string arg, out EntityRef row, out string error)
+        internal static bool LocalRow(string arg, out EntityRef row, out string error)
         {
             row = default;
             string? path = arg.StartsWith(Playlist.LocalFilePrefix, StringComparison.Ordinal)
