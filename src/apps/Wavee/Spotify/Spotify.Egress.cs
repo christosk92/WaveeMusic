@@ -84,9 +84,10 @@ public static partial class Spotify
         public const int MaxLocalUriBytes = 768;
 
         /// <summary><c>spotify:local:&lt;artist&gt;:&lt;album&gt;:&lt;title&gt;:&lt;seconds&gt;</c> into <paramref name="into"/>:
-        /// each part UTF-8 and form-encoded (unreserved <c>A-Za-z0-9-_.*</c> kept, space as <c>+</c>, everything else
-        /// <c>%XX</c>), so no part can contain a <c>:</c>. Returns the bytes written, or 0 when there is no title or it
-        /// would not fit. Built from the row's TAGS only — the file's path is never an input.</summary>
+        /// each part UTF-8 and form-encoded the way the official client encodes it (#240 capture §4.1, E1): the unreserved
+        /// <c>A-Za-z0-9-_.~</c> kept, space as <c>+</c>, everything else uppercase <c>%XX</c> (so <c>! ' ( ) *</c> are always
+        /// escaped), and the length in whole seconds, TRUNCATED. No part can contain a <c>:</c>. Returns the bytes written, or 0
+        /// when there is no title or it would not fit. Built from the row's TAGS only — the file's path is never an input.</summary>
         public static int LocalTrackUri(string? artist, string? album, string? title, long durationMs, Span<byte> into)
         {
             if (string.IsNullOrEmpty(title)) return 0;
@@ -118,7 +119,7 @@ public static partial class Spotify
                         byte b = utf8[i];
                         if (n + 3 > into.Length) return false;
                         if (b is >= (byte)'a' and <= (byte)'z' or >= (byte)'A' and <= (byte)'Z' or >= (byte)'0' and <= (byte)'9'
-                            or (byte)'-' or (byte)'_' or (byte)'.' or (byte)'*') into[n++] = b;
+                            or (byte)'-' or (byte)'_' or (byte)'.' or (byte)'~') into[n++] = b;
                         else if (b == (byte)' ') into[n++] = (byte)'+';
                         else
                         {

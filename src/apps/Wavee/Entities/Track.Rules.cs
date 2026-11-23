@@ -669,8 +669,9 @@ public readonly partial struct Track
     /// artist runs ask this per row (Entities.cs: never per row per frame).</summary>
     public bool IsLocalItem => IsValid && Uri.Id.Form == EntityForm.Text && LocalTrackUri.Is(Uri.Text);
 
-    /// <summary>The artist a local item's uri names, or "" for any other row.</summary>
-    public string LocalArtist => IsLocalItem ? LocalTrackUri.NamesOf(Uri.Text).Artist : "";
+    /// <summary>The artist a local item's uri names, or a local file's artist tag (<see cref="Playlist.LocalNamesOf"/>), or "" for any
+    /// other row.</summary>
+    public string LocalArtist => IsLocalItem ? LocalTrackUri.NamesOf(Uri.Text).Artist : IsLocal ? Playlist.LocalNamesOf(Uri.Text).Artist : "";
 
     /// <summary>How many artists the row draws: its billed artists, or the one a local item's uri names.</summary>
     public int DisplayArtistCount => ArtistSlots.Length is > 0 and var n ? n : LocalArtist.Length > 0 ? 1 : 0;

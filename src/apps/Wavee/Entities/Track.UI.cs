@@ -373,8 +373,10 @@ public readonly partial struct Track
     internal static (EntityUri Uri, string Name) ContainerOf(Track t)
     {
         int slot = t.AlbumSlot;
-        // A playlist's local file names its album in its uri: plain text, no page behind it (Track.LocalUri.cs).
-        if (slot <= 0) return t.IsLocalItem ? (default, LocalTrackUri.NamesOf(t.Uri.Text).Album) : (default, "");
+        // A playlist's local file names its album in its uri, a local file in its tags: plain text, no page behind it (Track.LocalUri.cs).
+        if (slot <= 0)
+            return t.IsLocalItem ? (default, LocalTrackUri.NamesOf(t.Uri.Text).Album)
+                 : t.IsLocal ? (default, Playlist.LocalNamesOf(t.Uri.Text).Album) : (default, "");
         if (t.IsPodcast)
         {
             var show = new Show(slot);

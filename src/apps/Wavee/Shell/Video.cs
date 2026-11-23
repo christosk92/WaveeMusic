@@ -1029,7 +1029,7 @@ public static partial class Video
         /// mp4 is playable because a dropped/picked video attaches as its own override and plays with its embedded
         /// audio).</summary>
         public static (string Name, string Spec) PlayableFilter(string label)
-            => (label, "*.mp3;*.ogg;*.flac;*" + Extension);
+            => (label, "*.mp3;*.ogg;*.flac;*.m4a;*.aac;*" + Extension);
 
         /// <summary>Extension test (case-insensitive, culture-invariant — a path is not prose).</summary>
         public static bool IsMp4(string? path)

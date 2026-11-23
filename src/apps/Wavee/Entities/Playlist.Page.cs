@@ -1343,18 +1343,32 @@ public readonly partial struct Playlist
         Entities.Publish();
     }
 
-    /// <summary>Import one file into the Local Files membership: a COMPLETE row at construction (0.2.9 <c>ForLocalFile</c>:
-    /// the file name as its title, availability stated, no album, no artists), appended to the local list.</summary>
+    /// <summary>Import one file, reading its tags here (<see cref="LocalTags.TryRead(string, out Spotify.Audio.Format, out LocalTagSet, out string)"/>).
+    /// For a caller that is not the UI thread (the headless <c>--file</c> host); the drop reads the tags off the UI thread first.</summary>
     public static Track ImportLocalFile(string path)
+    {
+        LocalTags.TryRead(path, out _, out LocalTagSet tags, out _);
+        return ImportLocalFile(path, in tags);
+    }
+
+    /// <summary>Import one file into the Local Files membership: a COMPLETE row at construction (0.2.9 <c>ForLocalFile</c>, #240 P1a):
+    /// its title tag (else the file name), its artists as the credit line, its album, its length, availability stated; appended to
+    /// the local list. The artist and album are names, not rows (<see cref="LocalNamesOf"/>).</summary>
+    public static Track ImportLocalFile(string path, in LocalTagSet tags)
     {
         var scope = Entities.Current;
         string uri = LocalFileUri(path);
+        string artists = LocalArtistLine(in tags);
         var staging = Staging.Rent();
         staging.Epoch = scope.Epoch;
         ref var row = ref staging.Tracks.RowFor(new StagedId(staging.AddText(Encoding.UTF8.GetBytes(uri))), Authority.Local,
             (uint)(TrackFields.Identity | TrackFields.Availability));
-        row.Title = staging.AddText(Encoding.UTF8.GetBytes(LocalTitleOf(path)));
+        string title = string.IsNullOrWhiteSpace(tags.Title) ? LocalTitleOf(path) : tags.Title;
+        row.Title = staging.AddText(Encoding.UTF8.GetBytes(title));
+        if (artists.Length > 0) row.ArtistLine = staging.AddText(Encoding.UTF8.GetBytes(artists));
+        row.DurationMs = Math.Max(0, tags.DurationMs);
         row.Flags = (uint)TrackFlags.Local;
+        NoteLocalNames(uri, artists, tags.Album ?? "");
         Entities.Commit(staging);
         Staging.Return(staging);
         if (!scope.Tracks.TryGetSlot(uri.AsSpan(), out int slot)) return default;
@@ -1377,7 +1391,19 @@ public readonly partial struct Playlist
         var action = ClassifyDrop(paths, out string path);
         if (action == LocalDropAction.None) { Notify.Say(Loc.Get(Strings.LocalFile.Rejected), InfoBarSeverity.Error); return; }
         if (Playback.Audio.LocalPath is null) { Notify.Say(Loc.Get(Strings.LocalFile.NotReady), InfoBarSeverity.Informational); return; }
-        var track = ImportLocalFile(path);
+        // The tags are read off the UI thread (one head read, maybe a tail read: a slow drive must not stall a frame), then the row
+        // is staged and played back on it.
+        _ = Task.Run(() =>
+        {
+            LocalTags.TryRead(path, out _, out LocalTagSet tags, out _);
+            Spotify.Post(() => PlayImported(path, action, tags));
+        });
+    }
+
+    /// <summary>UI thread: the dropped file's row, staged with its tags, then played (an .mp4 attached to its own row first).</summary>
+    static void PlayImported(string path, LocalDropAction action, LocalTagSet tags)
+    {
+        var track = ImportLocalFile(path, in tags);
         if (!track.IsValid) { Notify.Say(Loc.Get(Strings.LocalFile.Rejected), InfoBarSeverity.Error); return; }
         if (action == LocalDropAction.PlayVideo && Video.Overrides.Attach(track.Uri.Text, path, path, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null)
         {
