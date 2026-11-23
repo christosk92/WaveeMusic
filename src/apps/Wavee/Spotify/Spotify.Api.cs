@@ -2143,27 +2143,17 @@ public static partial class Spotify
         public static Result LikedContentFilters(string? etag, CancellationToken ct)
             => Send(LikedContentFiltersRoute, [], ct, etag);
 
-        /// <summary>The friend-activity seed, per dealer connection id. A 404 is an EMPTY feed, not a failure — the
-        /// service answers 404 for an account that follows nobody.</summary>
-        public static Result FriendFeed(string connectionId, CancellationToken ct)
-        {
-            Span<char> path = stackalloc char[256];
-            var w = new PathWriter(path);
-            w.Append("/presence-view/v2/init-friend-feed/");
-            w.AppendEscaped(connectionId);
-            return Get(w.Written, ApiHost.Spclient, CommonJson, ct);
-        }
+        /// <summary>The friend-activity feed (#277): every followed friend's latest listening, what the desktop client's
+        /// panel reads. A JSON POST with NO metrics or salt query (the service answers 404 to one that carries them).</summary>
+        public static Result ListeningActivity(int limit, CancellationToken ct)
+            => PostEncoded("/listening-activity/v1/feed", ApiHost.Spclient, CommonJson,
+                Encoding.UTF8.GetBytes("{\"unused\":true,\"resultLimit\":" + limit.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}"),
+                "application/json", null, ct);
 
-        /// <summary>One friend's presence, asked when a <c>hm://presence2/user/&lt;id&gt;</c> push says it changed (#277).
-        /// A 404 or 403 means that friend is no longer visible.</summary>
-        public static Result FriendPresence(string userId, CancellationToken ct)
-        {
-            Span<char> path = stackalloc char[256];
-            var w = new PathWriter(path);
-            w.Append("/presence-view/v1/user/");
-            w.AppendEscaped(userId);
-            return Get(w.Written, ApiHost.Spclient, CommonJson, ct);
-        }
+        /// <summary>The older buddy list (<c>presence-view/v1/buddylist</c>): the friends feed's fallback, carrying its own
+        /// titles and names.</summary>
+        public static Result FriendBuddylist(CancellationToken ct)
+            => Get("/presence-view/v1/buddylist", ApiHost.Spclient, CommonJson, ct);
 
         public static Result Notifications(int limit, CancellationToken ct)
         {

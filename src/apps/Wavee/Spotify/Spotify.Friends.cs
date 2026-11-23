@@ -1,19 +1,22 @@
 // ── Spotify/Spotify.Friends.cs — the friend-activity feed's host (#277) ─────────────────────────────────────────────
 //
 // Fills `Edges.Friends` (under `Rail.Friends.Feed`) and `Rail.Friends.State`, and assigns the panel's two seams
-// (`Rail.Friends.SetActive`, `Rail.Friends.Refresh`). The behaviour is 0.2.9's `SpotifyFriendActivityService`:
+// (`Rail.Friends.SetActive`, `Rail.Friends.Refresh`). It reads what the desktop client's panel reads (and what spotifast
+// reads through librespot):
 //
-//   seed     GET /presence-view/v2/init-friend-feed/<dealer connection id>   (404 = follows nobody: an EMPTY feed)
-//            on: the panel shown while Idle / Offline / Error · a NEW connection id · Retry · 30 min without news
-//   delta    dealer hm://presence2/user/<id>  →  GET /presence-view/v1/user/<id>  →  upsert that row (404/403: drop it)
-//            a newer push for the same friend supersedes the older fetch; a fresh seed supersedes every pending one
-//   offline  signed out / no connection id: state Offline and the run cleared (the next account never sees these rows)
+//   feed      POST /listening-activity/v1/feed {"unused":true,"resultLimit":100}  — every followed friend's latest track
+//             polled every 15 s while the panel is open, and only then; also on open, a new connection and Retry
+//   fallback  GET /presence-view/v1/buddylist  — when the feed fails (it carries its own words)
+//   words     the feed names only identities, so the friends' users, tracks and context playlists are ENSURED through
+//             the fetch layer; a watch on the track table fills each row's album and artist as tracks land
+//   offline   signed out: state Offline and the run cleared (the next account never sees these rows)
 //
-// UI thread except the bodies handed to `Api.Run` and `OnDealerPush` (dealer thread, which only posts). `--fake` lands
-// the fake feed through the real decoder (Entities.Fake.Friends.cs). Plan: docs/plans/wavee/friend-activity-implementation.md.
+// (The v2 init-friend-feed + hm://presence2 pushes 0.2.9 used answered a handful of stale rows: replaced.) UI thread
+// except the bodies handed to `Api.Run` and the poll timer (which only posts). `--fake` lands the fake feed through the
+// real decoder (Entities.Fake.Friends.cs). Plan: docs/plans/wavee/friend-activity-implementation.md.
 
 using System.Globalization;
-using System.Text;
+using FluentGpu.Signals;
 
 namespace Wavee;
 
@@ -21,50 +24,74 @@ public static partial class Spotify
 {
     public static class Friends
     {
-        /// <summary>Re-seed after this long with the panel visible and no seed or push heard (0.2.9's watchdog).</summary>
-        public const long WatchdogMs = 30 * 60_000L;
+        /// <summary>The poll cadence while the panel is open (the desktop client's).</summary>
+        public const int PollMs = 15_000;
+        /// <summary>How many friends one answer may carry.</summary>
+        const int Limit = 100;
 
-        static readonly byte[] PresencePrefix = "hm://presence2/user/"u8.ToArray();
+        static bool s_attached, s_active, s_inflight, s_again;
+        static uint s_generation;                        // bumped on sign-out: an answer from before it is dropped
+        static int s_lastRows = -1;
+        static Timer? s_poll;
+        static ReactiveRuntime? s_runtime;
+        static Effect? s_refill;
+        static bool s_flushPosted;
+        static readonly Action s_flush = static () => { s_flushPosted = false; s_runtime?.Flush(); };
 
-        static bool s_attached, s_active;
-        static string s_seedFor = "";                 // the connection id of the newest seed: older answers are dropped
-        static long s_lastHeardMs = long.MinValue / 2; // the newest seed or push, on the app's monotonic clock
-        static int s_gen;
-        static readonly Dictionary<string, int> s_userGen = new(StringComparer.Ordinal);   // per-friend: the newest fetch wins
-
-        /// <summary>Assign the panel's seams, once. Idempotent; called from the panel's props builder so the app and the
-        /// headless inspector both attach it before the panel first mounts.</summary>
+        /// <summary>Assign the panel's seams and start the album/artist watch, once. Idempotent; called from the panel's
+        /// props builder so the app and the headless inspector both attach it before the panel first mounts.</summary>
         public static void Attach()
         {
             if (s_attached) return;
             s_attached = true;
             Rail.Friends.SetActive = SetActive;
-            Rail.Friends.Refresh = static () => Seed("retry");
+            Rail.Friends.Refresh = static () => Load("retry");
+            s_runtime = new ReactiveRuntime { FrameRequested = RequestFlush };
+            s_refill = new Effect(s_runtime, WatchTracks);
             if (Platform.Args.Fake) LandFake();
+        }
+
+        static void RequestFlush()
+        {
+            if (s_flushPosted) return;
+            s_flushPosted = true;
+            Post(s_flush);
+        }
+
+        /// <summary>Tracked: the scope, the friends run and the track table. A track row that landed may give a friend's
+        /// row its album and artist; posts the refill (a watch never writes a table inline).</summary>
+        static void WatchTracks()
+        {
+            _ = Entities.ScopeEpoch.Value;
+            var scope = Entities.Current;
+            _ = scope.Tracks.Changed.Value;
+            _ = scope.Edges.Friends.Changed.Value;
+            Post(static () => { if (Entities.RefillFriends()) Entities.Publish(); });
         }
 
         static void SetActive(bool active)
         {
             s_active = active;
-            if (!active) return;
-            if (Rail.Friends.State.Peek() is Rail.Friends.FeedState.Idle or Rail.Friends.FeedState.Offline or Rail.Friends.FeedState.Error)
-                Seed("shown");
-            else if (Playback.FrameNowMs() - s_lastHeardMs >= WatchdogMs) Seed("watchdog");
+            if (active)
+            {
+                s_poll ??= new Timer(static _ => Post(static () => { if (s_active) Load("poll"); }), null, Timeout.Infinite, Timeout.Infinite);
+                s_poll.Change(PollMs, PollMs);
+                Load("shown");
+            }
+            else s_poll?.Change(Timeout.Infinite, Timeout.Infinite);
         }
 
-        /// <summary>UI thread (Session's AnnounceDevice effect): a NEW dealer connection id. The feed is tied to the id it
-        /// was asked for, so a visible or populated feed re-seeds.</summary>
+        /// <summary>UI thread (Session's AnnounceDevice effect): a NEW dealer connection — back online, so a visible panel reloads.</summary>
         public static void OnConnection()
         {
-            if (!s_attached) return;
-            if (s_active || Entities.Current.Edges.Friends.Count(Rail.Friends.Feed) > 0) Seed("connection");
+            if (s_attached && s_active) Load("connection");
         }
 
         /// <summary>UI thread (Session's SignedOut effect): no feed, and no rows left for the next account.</summary>
         public static void OnSignedOut()
         {
-            s_seedFor = "";
-            s_userGen.Clear();
+            s_generation++;
+            s_lastRows = -1;
             if (Entities.Current.Edges.Friends.Count(Rail.Friends.Feed) > 0)
             {
                 Entities.Current.Edges.Friends.Clear(Rail.Friends.Feed);
@@ -73,119 +100,119 @@ public static partial class Spotify
             Rail.Friends.State.Value = Rail.Friends.FeedState.Offline;
         }
 
-        /// <summary>Dealer thread: is this MESSAGE a presence push? Taken (true) when it is; the fetch is posted to the UI
-        /// thread, which owns the generations.</summary>
-        public static bool OnDealerPush(ReadOnlySpan<byte> uri)
-        {
-            if (!uri.StartsWith(PresencePrefix)) return false;
-            var tail = uri[PresencePrefix.Length..];
-            if (tail.IsEmpty) return true;
-            string userId = Encoding.UTF8.GetString(tail);
-            Post(() => FetchUser(userId));
-            return true;
-        }
+        // ── the load ────────────────────────────────────────────────────────────────────────────────────────────────
 
-        // ── the seed ────────────────────────────────────────────────────────────────────────────────────────────────
-
-        static void Seed(string why)
+        static void Load(string why)
         {
             if (Platform.Args.Fake) { LandFake(); return; }
-            string conn = ConnectionId();
-            if (conn.Length == 0 || !Current.IsOnline)
+            if (!Current.IsOnline)
             {
-                Rail.Friends.State.Value = Rail.Friends.FeedState.Offline;
+                if (Entities.Current.Edges.Friends.Count(Rail.Friends.Feed) == 0) Rail.Friends.State.Value = Rail.Friends.FeedState.Offline;
                 return;
             }
-            s_seedFor = conn;
-            s_lastHeardMs = Playback.FrameNowMs();
-            s_userGen.Clear();                                   // a fresh seed carries every friend a pending fetch would
+            if (s_inflight) { s_again |= why != "poll"; return; }   // one request at a time; a user's ask runs once more after it
+            s_inflight = true;
             if (Entities.Current.Edges.Friends.Count(Rail.Friends.Feed) == 0) Rail.Friends.State.Value = Rail.Friends.FeedState.Loading;
 
-            uint epoch = Entities.Current.Epoch;
+            uint epoch = Entities.Current.Epoch, generation = s_generation;
+            long nowMs = Playback.UnixNowMs();
             bool queued = Api.Run(() =>
             {
                 var s = Staging.Rent();
                 s.Epoch = epoch;
-                int status = 0;
-                bool ok = false;
+                var report = new Report { Why = why };
                 try
                 {
-                    var answer = Api.FriendFeed(conn, CancellationToken.None);
-                    status = answer.Status;
-                    if (answer.Ok) ok = Decode.FriendFeed(answer.Bytes, s);
-                    else if (answer.Status == 404) { s.FriendsBatch(FriendsOp.Replace); ok = true; }
+                    var answer = Api.ListeningActivity(Limit, CancellationToken.None);
+                    report.Status = answer.Status;
+                    if (answer.Ok)
+                    {
+                        report.Ok = Decode.ListeningFeed(answer.Bytes, s, nowMs, out report.Entries, out report.Skipped);
+                        if (!report.Ok) report.Shape = Decode.FriendFeedShape(answer.Bytes);
+                    }
+                    if (!report.Ok)
+                    {
+                        // The fallback: the buddy list, which carries its own words.
+                        var buddies = Api.FriendBuddylist(CancellationToken.None);
+                        report.Source = "buddylist " + buddies.Status.ToString(CultureInfo.InvariantCulture);
+                        if (buddies.Ok) report.Ok = Decode.FriendFeed(buddies.Bytes, s, out report.Entries, out report.Skipped);
+                    }
                 }
-                catch (Exception ex) { Log.Warn("friends", "seed failed", ex); }
-                Post(() => LandSeed(conn, s, ok, status, why));
+                catch (Exception ex) { Log.Warn("friends", "load failed", ex); }
+                Post(() => Land(generation, s, report));
             });
-            if (!queued) LandFailure();
+            if (!queued) { s_inflight = false; LandFailure(); }
         }
 
-        static void LandSeed(string conn, Staging s, bool ok, int status, string why)
+        /// <summary>What one load learned, for the always-on line: counts, statuses and key names only.</summary>
+        sealed class Report
+        {
+            public string Why = "", Source = "", Skipped = "", Shape = "";
+            public int Status, Entries;
+            public bool Ok;
+        }
+
+        static void Land(uint generation, Staging s, Report report)
         {
             try
             {
-                if (!string.Equals(conn, s_seedFor, StringComparison.Ordinal)) return;   // a newer seed went out, or signed out
-                if (!ok)
+                s_inflight = false;
+                if (generation != s_generation) return;          // signed out while it flew
+                if (!report.Ok)
                 {
-                    Log.Warn("friends", "seed answered " + status.ToString(CultureInfo.InvariantCulture) + " why=" + why);
+                    Log.Warn("friends", "feed answered " + report.Status.ToString(CultureInfo.InvariantCulture)
+                        + (report.Shape.Length > 0 ? " shape={" + report.Shape + "}" : "")
+                        + (report.Source.Length > 0 ? " fallback=" + report.Source : "") + " why=" + report.Why);
                     LandFailure();
                     return;
                 }
                 Entities.Commit(s);
                 Entities.Publish();
                 Rail.Friends.State.Value = Rail.Friends.FeedState.Ready;
-                Log.Info("friends", "seed landed rows=" + Entities.Current.Edges.Friends.Count(Rail.Friends.Feed).ToString(CultureInfo.InvariantCulture)
-                    + " why=" + why);
+                EnsureWords();
+
+                int rows = Entities.Current.Edges.Friends.Count(Rail.Friends.Feed);
+                var (dropped, dropKinds) = Entities.LastFriendsDropped;
+                // A poll that changed nothing says nothing (every 15 s); everything else is one line.
+                if (report.Why != "poll" || rows != s_lastRows || dropped > 0)
+                    Log.Info("friends", "feed landed rows=" + rows.ToString(CultureInfo.InvariantCulture)
+                        + " entries=" + report.Entries.ToString(CultureInfo.InvariantCulture)
+                        + " dropped=" + dropped.ToString(CultureInfo.InvariantCulture) + (dropKinds.Length > 0 ? " (" + dropKinds + ")" : "")
+                        + (report.Skipped.Length > 0 ? " skipped=[" + report.Skipped + "]" : "")
+                        + " source=" + (report.Source.Length > 0 ? report.Source : "listening-activity") + " why=" + report.Why);
+                s_lastRows = rows;
             }
-            finally { Staging.Return(s); }
+            finally
+            {
+                Staging.Return(s);
+                if (s_again) { s_again = false; Load("again"); }
+            }
         }
 
-        /// <summary>A failed seed keeps the rows it held (rows win, <c>Rail.Friends.SurfaceFor</c>); with none, the error face.</summary>
+        /// <summary>A failed load keeps the rows it held (rows win, <c>Rail.Friends.SurfaceFor</c>); with none, the error face.</summary>
         static void LandFailure()
         {
             if (Entities.Current.Edges.Friends.Count(Rail.Friends.Feed) == 0) Rail.Friends.State.Value = Rail.Friends.FeedState.Error;
         }
 
-        // ── one friend's delta ──────────────────────────────────────────────────────────────────────────────────────
-
-        static void FetchUser(string userId)
+        /// <summary>The words the feed does not carry: each friend's name and avatar, each track's title, cover and artists,
+        /// each context playlist's name — one batch per table through the fetch layer (it skips what is already known).</summary>
+        static void EnsureWords()
         {
-            if (s_seedFor.Length == 0) return;                  // no feed yet: the seed will carry this friend
-            s_lastHeardMs = Playback.FrameNowMs();
-            int gen = ++s_gen;
-            s_userGen[userId] = gen;
-            uint epoch = Entities.Current.Epoch;
-            byte[] userUri = Encoding.UTF8.GetBytes("spotify:user:" + userId);
-            bool queued = Api.Run(() =>
+            var run = Entities.Current.Edges.Friends.Payload(Rail.Friends.Feed);
+            if (run.IsEmpty) return;
+            var users = new User[run.Length];
+            var tracks = new Track[run.Length];
+            var contexts = new List<Playlist>(run.Length);
+            for (int i = 0; i < run.Length; i++)
             {
-                var s = Staging.Rent();
-                s.Epoch = epoch;
-                try
-                {
-                    var answer = Api.FriendPresence(userId, CancellationToken.None);
-                    if (answer.Ok) Decode.FriendOne(answer.Bytes, userUri, s);
-                    else if (answer.Status is 404 or 403) s.FriendsBatch(FriendsOp.Remove, new StagedId(s.AddText(userUri)));
-                    else Log.Info("friends", "presence answered " + answer.Status.ToString(CultureInfo.InvariantCulture));
-                }
-                catch (Exception ex) { Log.Info("friends", "presence fetch failed: " + ex.Message); }
-                Post(() => LandUser(userId, gen, s));
-            });
-            if (!queued) s_userGen.Remove(userId);
-        }
-
-        static void LandUser(string userId, int gen, Staging s)
-        {
-            try
-            {
-                if (!s_userGen.TryGetValue(userId, out int newest) || newest != gen) return;   // superseded
-                s_userGen.Remove(userId);
-                if (s.FriendsOpOf == FriendsOp.None) return;
-                Entities.Commit(s);
-                Entities.Publish();
-                Rail.Friends.State.Value = Rail.Friends.FeedState.Ready;
+                users[i] = new User(run[i].UserSlot);
+                tracks[i] = new Track(run[i].TrackSlot);
+                if (run[i].ContextSlot > 0) contexts.Add(new Playlist(run[i].ContextSlot));
             }
-            finally { Staging.Return(s); }
+            Entities.Ensure(users, UserFields.Identity);
+            Entities.Ensure(tracks, TrackFields.Identity);
+            if (contexts.Count > 0) Entities.Ensure(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(contexts), PlaylistFields.Identity);
         }
 
         // ── --fake ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -197,7 +224,8 @@ public static partial class Spotify
             try
             {
                 s.Epoch = Entities.Current.Epoch;
-                if (!Decode.FriendFeed(Entities.FakeFriendFeed(Playback.UnixNowMs()), s)) return;
+                long now = Playback.UnixNowMs();
+                if (!Decode.ListeningFeed(Entities.FakeFriendFeed(now), s, now, out _, out _)) return;
                 Entities.Commit(s);
                 Entities.Publish();
                 Rail.Friends.State.Value = Rail.Friends.FeedState.Ready;

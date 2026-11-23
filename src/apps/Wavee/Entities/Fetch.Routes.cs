@@ -182,7 +182,7 @@ public enum SpclientRoute : byte
     CollectionPage,
     /// <summary><c>/playlist/v2/list/recents/page</c> (and its <c>/diff</c> once a revision is held).</summary>
     Recents,
-    /// <summary><c>/presence-view/v2/init-friend-feed/&lt;connection&gt;</c>.</summary>
+    /// <summary><c>/listening-activity/v1/feed</c>.</summary>
     FriendFeed,
     /// <summary><c>/user-profile-view/v3/profile/&lt;id&gt;?playlist_limit=10&amp;artist_limit=10&amp;episode_limit=10&amp;market=from_token</c>
     /// on spclient.wg (protobuf): the profile's name, avatar, colour, counts, flags and the viewer's follow — AND its

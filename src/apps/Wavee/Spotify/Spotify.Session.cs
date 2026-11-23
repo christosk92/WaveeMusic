@@ -302,7 +302,7 @@ public static partial class Spotify
         if ((fx & SessionEffects.OpenDealer) != 0) StartDealer(s.Epoch);
         if ((fx & SessionEffects.ApBackoff) != 0) ArmApRetry(in s);
         if ((fx & SessionEffects.DealerBackoff) != 0) ArmDealerRetry(in s);
-        if ((fx & SessionEffects.AnnounceDevice) != 0) { Connect.AnnounceDevice(); Friends.OnConnection(); }   // a new connection id: the friend feed is tied to it (#277)
+        if ((fx & SessionEffects.AnnounceDevice) != 0) { Connect.AnnounceDevice(); Friends.OnConnection(); }
     }
 
     /// <summary>UI THREAD (the <see cref="SessionEffects.SignedOut"/> effect): the account is gone from this PC. Playback
