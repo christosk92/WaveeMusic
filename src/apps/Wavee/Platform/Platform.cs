@@ -183,6 +183,9 @@ public static partial class Platform
         /// <summary>The playlists whose "Video" toggle is on (play their music videos): ONE capped blob, most recent first, the playlist uris
         /// joined by a space. Read and written ONLY through <see cref="PlaylistVideo"/>, which owns the format.</summary>
         public static readonly SettingKey<string> PlaylistVideoFirst = new("playlist.videoFirst", "");
+        /// <summary>The music folders on this PC (#240): their full paths joined by '|' (a character no Windows path holds). Read and
+        /// written ONLY through <see cref="LocalLibrary"/>, which owns the format.</summary>
+        public static readonly SettingKey<string> MusicFolders = new("local.musicFolders", "");
 
         // ── podcasts ──
         /// <summary>The podcast show page's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most

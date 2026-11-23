@@ -193,6 +193,8 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
     <!-- §2.7 — pure-managed (AOT-safe) zstd decode for the Content-Encoding: zstd /changes + /diff playlist-v2 responses. -->
     <PackageReference Include="ZstdSharp.Port" Version="0.8.6" />
+    <!-- #240: xxHash3-64 for the local index (folder fingerprints, the log's record checksums) and the album-art cache key. Microsoft, AOT-safe. -->
+    <PackageReference Include="System.IO.Hashing" Version="10.0.1" />
     <!-- STEP 4 — the persistent cold tier (offline-first source of truth). Portable native bundle (win/mac/linux). -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
     <!-- NU1903: Microsoft.Data.Sqlite 10.0.8 pulls the transitive SQLitePCLRaw.lib.e_sqlite3 2.1.11, which ships a SQLite

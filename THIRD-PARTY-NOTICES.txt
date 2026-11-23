@@ -83,6 +83,11 @@ stb_vorbis  1.22 (algorithms transliterated, not vendored)
   url:     https://github.com/nothings/stb
   note:    Wavee's Ogg Vorbis decoder (src/apps/Wavee/Playback/Playback.Audio.Vorbis.cs) transliterates parts of stb_vorbis.c where the Vorbis I specification leaves the implementation open. Copyright (c) 2017 Sean Barrett.
 
+System.IO.Hashing  10.0.1
+  license: MIT
+  authors: Microsoft
+  url:     https://dot.net/
+
 System.Security.Cryptography.ProtectedData  9.0.0
   license: MIT
   authors: Microsoft
