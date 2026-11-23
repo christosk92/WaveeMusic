@@ -1662,37 +1662,29 @@ public static partial class Playback
                 => packet.Length >= 7 && packet[0] == 3 ? FromCommentBlock(packet[7..]) : default;
 
             /// <summary>A Vorbis comment BLOCK (vendor string, count, then length-prefixed <c>KEY=value</c> fields, all little-endian) — the body of a
-            /// Vorbis comment header after its 7-byte prefix, and of a FLAC VORBIS_COMMENT block. The last of a repeated key wins.</summary>
+            /// Vorbis comment header after its 7-byte prefix, and of a FLAC VORBIS_COMMENT block, walked by <see cref="VorbisComments"/>. The last of a
+            /// repeated key wins; a block cut short keeps the fields before the cut.</summary>
             public static ReplayGainTags FromCommentBlock(ReadOnlySpan<byte> block)
             {
-                int pos = 0;
-                if (!ReadLe(block, ref pos, out uint vendor) || vendor > (uint)(block.Length - pos)) return default;
-                pos += (int)vendor;
-                if (!ReadLe(block, ref pos, out uint count)) return default;
-                ReadOnlySpan<byte> trackGain = default, trackPeak = default, albumGain = default, albumPeak = default;
-                for (uint i = 0; i < count; i++)
-                {
-                    if (!ReadLe(block, ref pos, out uint len) || len > (uint)(block.Length - pos)) break;
-                    ReadOnlySpan<byte> field = block.Slice(pos, (int)len);
-                    pos += (int)len;
-                    int eq = field.IndexOf((byte)'=');
-                    if (eq <= 0) continue;
-                    ReadOnlySpan<byte> key = field[..eq], value = field[(eq + 1)..];
-                    if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_TRACK_GAIN"u8)) trackGain = value;
-                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_TRACK_PEAK"u8)) trackPeak = value;
-                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_ALBUM_GAIN"u8)) albumGain = value;
-                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_ALBUM_PEAK"u8)) albumPeak = value;
-                }
-                return Of(trackGain, trackPeak, albumGain, albumPeak);
+                var gains = new GainFields();
+                VorbisComments.ForEach(block, ref gains);
+                return Of(gains.TrackGain, gains.TrackPeak, gains.AlbumGain, gains.AlbumPeak);
             }
 
-            static bool ReadLe(ReadOnlySpan<byte> b, ref int pos, out uint v)
+            /// <summary>The four ReplayGain values of one comment block, as the walk finds them.</summary>
+            ref struct GainFields : VorbisComments.IVisitor
             {
-                v = 0;
-                if (pos < 0 || pos + 4 > b.Length) return false;
-                v = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(b[pos..]);
-                pos += 4;
-                return true;
+                public ReadOnlySpan<byte> TrackGain, TrackPeak, AlbumGain, AlbumPeak;
+
+                public void Field(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, long valueAt)
+                {
+                    if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_TRACK_GAIN"u8)) TrackGain = value;
+                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_TRACK_PEAK"u8)) TrackPeak = value;
+                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_ALBUM_GAIN"u8)) AlbumGain = value;
+                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_ALBUM_PEAK"u8)) AlbumPeak = value;
+                }
+
+                public readonly void LargeField(ReadOnlySpan<byte> key, long valueAt, int valueLength) { }
             }
 
             static ReadOnlySpan<byte> TrimAscii(ReadOnlySpan<byte> s)
@@ -4632,7 +4624,7 @@ public static partial class Playback
         };
 
         /// <summary>A file the user dropped or imported. The FORMAT comes from the bytes, never the extension — the
-        /// extension gate is the user-facing rule ("Wavee plays .mp3, .ogg, .flac and .mp4 files"), the content is what the
+        /// extension gate is the user-facing rule ("Wavee plays .mp3, .flac, .ogg, .m4a, .aac and .mp4 files"), the content is what the
         /// decoder is chosen by, and a file whose content names no decoder this build has is REFUSED here
         /// (<see cref="Fault.Unsupported"/>, one log line saying what it is) — never handed to a guessed one. The old
         /// fallback was "anything else is MP3", which sent every .mp4 to NLayer (2026-10-06).</summary>
@@ -4679,6 +4671,7 @@ public static partial class Playback
                 case LocalKind.Decodable:
                     format = probe.Format;
                     bytes = new FileByteSource(path);
+                    durationMs = LocalLengthMs(path);
                     break;
                 case LocalKind.Mp4 when mp4 is not null && Modules.AacAudioDecoder.IsAvailable():
                     format = Spotify.Audio.Format.Aac;
@@ -4702,6 +4695,21 @@ public static partial class Playback
 
         /// <summary>How much of a local file the probe reads: enough for MPEG audio's two-frame check at any bitrate.</summary>
         const int LocalProbeBytes = 8 * 1024;
+
+        /// <summary>A decodable local file's length from its headers (#240 P1a, <see cref="LocalTags"/>): FLAC's STREAMINFO, Ogg's last
+        /// granule, an MP3's Xing/VBRI frame count. A length that is only a bitrate ESTIMATE (an MP3 without a Xing block, raw ADTS)
+        /// answers 0 instead: the gapless join schedules off this number (<c>GaplessJoinClock.JoinFrameFor</c>), and a short guess
+        /// would start the next song early. The row keeps the estimate as its displayed length.</summary>
+        static long LocalLengthMs(string path)
+        {
+            if (!LocalTags.TryRead(path, out _, out LocalTagSet tags, out string why))
+            {
+                Log.Info("audio", "audio.local length unread: " + why);
+                return 0;
+            }
+            Log.Info("audio", $"audio.local length durMs={tags.DurationMs} estimated={(tags.DurationEstimated ? 1 : 0)} kbps={tags.BitrateKbps}");
+            return tags.DurationEstimated ? 0 : tags.DurationMs;
+        }
 
         static int ReadUpTo(Stream s, byte[] buffer)
         {
