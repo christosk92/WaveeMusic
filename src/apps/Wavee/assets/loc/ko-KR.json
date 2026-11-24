@@ -25,7 +25,8 @@
     },
     "trackFacts": {
       "unavailableShort": "사용 불가",
-      "unavailableReason": "이 곡은 재생할 수 없습니다"
+      "unavailableReason": "이 곡은 재생할 수 없습니다",
+      "localReason": "로컬 파일: 음악 폴더에서 찾을 수 없습니다"
     },
     "artist": "아티스트",
     "songCount": "{count, plural, other {#곡}}",
@@ -600,6 +601,18 @@
       "remove": "제거",
       "folderMenu": "이 폴더 더 보기",
       "folderOptions": "옵션",
+      "network": "네트워크",
+      "offline": "오프라인",
+      "signInTo": "{server}에 로그인해야 합니다",
+      "wakingServer": "{server} 깨우는 중…",
+      "spinningUp": "(디스크 회전 시작 중)",
+      "signInAction": "로그인",
+      "retry": "다시 시도",
+      "checkedNow": "방금 확인함",
+      "checkedMinutes": "{count}분 전에 확인함",
+      "checkedHours": "{count}시간 전에 확인함",
+      "checkedDays": "{count, plural, other {#일}} 전에 확인함",
+      "cadence": "{when} · 45분마다, 다시 연결될 때 확인",
       "options": "추가 옵션",
       "optionsSub": "폴더 감시, 배터리 절약 모드, 클라우드 전용 파일, 찾을 수 없는 곡",
       "watch": "폴더 변경 감시",

@@ -1,7 +1,8 @@
 // ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Storage.cs — Storage's sections (themes plan 6.3, Z8b; settings rework phase 4) ─────────────────
 //
 // Music on this PC (#240 S3, the plan's §3.8 Zune wireframe): "music folders" and its sentence, a line per folder (the path as typed, wrapping; its words
-// lowercase; "options" opens the folder's card), the status line with the scan's bar, then the command words; "more options" is its two settings' rows.
+// lowercase; "options" opens the folder's card; a network folder adds its share's state and one verb, S13), the status line with the scan's bar, then the
+// command words; "more options" is its two settings' rows.
 // The words are the core's (`SettingsMusic`).
 //
 // Board Z-Settings-Sections ("downloads & storage"), without its downloads (owner Q29 / NQ4: no offline playback, so no downloaded songs, no "remove all downloads"):
@@ -165,39 +166,96 @@ internal static partial class ZuneSettings
         };
 
         /// <summary>One folder: the path as the user typed it (the 15/20 voice, wrapping, never lowered), its words (lowercase; a state in the caution ink) and
-        /// "options". Compact stacks the words under the path.</summary>
+        /// "options". Compact stacks the words under the path. A network folder (S13) shows the path the user knows, "1,204 songs · network" under it,
+        /// the share's state in a column that keeps two lines and the scan's bar in every state, and the state's one verb ("sign in", "retry") in a slot
+        /// of its own before "options": a state change swaps the words and the verb in place.</summary>
         Element FolderLine(ZuneKit k, SettingsMusic.FolderLine line)
         {
             string folder = line.Path;
-            var path = R.Type.TrackTitle(folder) with
+            bool network = line.Network;
+            var path = R.Type.TrackTitle(line.Display) with
             {
-                Color = line.Lead is null ? Tok.TextPrimary : Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f, Grow = 1f, Shrink = 1f, Basis = 0f,
+                Color = line.Dim ? Tok.TextSecondary : Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f, Grow = 1f, Shrink = 1f, Basis = 0f,
             };
             var words = new List<Element>(2);
-            if (line.Lead is { } lead)
+            if (!network && line.Lead is { } lead)
                 words.Add(ZuneText.Meta(line.Rest.Length > 0 ? lead + " · " : lead) with { Color = Tok.SystemFillCaution, Shrink = 0f });
-            if (line.Rest.Length > 0) words.Add(ZuneText.Meta(line.Rest) with { Shrink = 1f });
+            if (!network && line.Rest.Length > 0) words.Add(ZuneText.Meta(line.Rest) with { Shrink = 1f });
             bool stack = k.Lay.StacksRows;
+            if (network)
+            {
+                // A network folder's words wrap as one paragraph (the lead in its ink, the rest in the secondary), lowercase as every word Zune writes.
+                var meta = R.Type.DenseMeta("");
+                var spans = new List<TextSpan>(2);
+                if (line.Lead is { } netLead)
+                {
+                    bool caution = line.LeadTone == SettingsMusic.Tone.Caution;
+                    spans.Add(new TextSpan(ZuneText.Word(line.Rest.Length == 0 ? netLead : caution ? netLead + " · " : netLead + " "),
+                        Color: caution ? Tok.SystemFillCaution : Tok.TextPrimary));
+                }
+                if (line.Rest.Length > 0) spans.Add(new TextSpan(ZuneText.Word(line.Rest), Color: Tok.TextSecondary));
+                words.Add(new SpanTextEl(spans.ToArray())
+                {
+                    Size = meta.Size, LineHeight = meta.LineHeight, Color = Tok.TextSecondary, Shrink = 1f, MinWidth = 0f,
+                    Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis,
+                });
+            }
             var status = new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = stack ? 1f : 0f, Width = stack ? float.NaN : Z.MusicStatusW,
-                Children = words.ToArray(),
+                Key = "zs:music:line:" + folder, Direction = 0, AlignItems = network ? FlexAlign.Start : FlexAlign.Center, MinWidth = 0f,
+                MinHeight = network ? Z.MusicTwoLines : 0f, Shrink = stack ? 1f : 0f,
+                Width = stack || network ? float.NaN : Z.MusicStatusW, Children = words.ToArray(),
             };
             var options = k.Cmd(Loc.Get(Strings.Settings.Music.FolderOptions), () => Open(folder, k)) with
             {
                 Key = "zs:music:options:" + folder, OnRealized = h => _anchors[folder] = h,
             };
-            Element text = stack
-                ? new BoxEl { Direction = 1, Gap = Z.LabelGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [path with { Grow = 0f, Basis = float.NaN }, status] }
-                : new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.RowColumnGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [path, status] };
-            var verbs = new List<Element>(2);
-            // A folder that refuses this user: "fix permissions" beside its options (board 15).
-            if (line.Fix is { } fix) verbs.Add(k.Cmd(SettingsMusic.FixLabel, fix) with { Key = "zs:music:fix:" + folder });
-            verbs.Add(options);
+            if (!network)
+            {
+                Element text = stack
+                    ? new BoxEl { Direction = 1, Gap = Z.LabelGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [path with { Grow = 0f, Basis = float.NaN }, status] }
+                    : new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.RowColumnGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [path, status] };
+                var verbs = new List<Element>(2);
+                // A folder that refuses this user: "fix permissions" beside its options (board 15).
+                if (line.Fix is { } fix) verbs.Add(k.Cmd(SettingsMusic.FixLabel, fix) with { Key = "zs:music:fix:" + folder });
+                verbs.Add(options);
+                return new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinHeight = Z.MusicRowH, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                    Children = [text, .. verbs],
+                };
+            }
+
+            // ── a network folder ──
+            var where = new BoxEl
+            {
+                Direction = 1, Gap = Z.LabelGap, MinWidth = 0f, Grow = stack ? 0f : 1f, Shrink = 1f, Basis = stack ? float.NaN : 0f,
+                Children = [path with { Grow = 0f, Basis = float.NaN }, ZuneText.Meta(line.Sub ?? "") with { Color = Tok.TextTertiary }],
+            };
+            var bar = ProgressBar.Determinate(Math.Max(0f, line.Fraction), stack ? Z.MusicNetBarWidthCompact : Z.MusicNetStatusW)
+                with { Key = "zs:music:netbar:" + folder, Opacity = line.Fraction >= 0f ? 1f : 0f };
+            var state = new BoxEl
+            {
+                Direction = 1, Gap = Z.MusicStatusGap, MinWidth = 0f, Shrink = stack ? 1f : 0f, Width = stack ? float.NaN : Z.MusicNetStatusW,
+                Children = [status, bar],
+            };
+            Element text2 = stack
+                ? new BoxEl { Direction = 1, Gap = Z.LabelGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [where, state] }
+                : new BoxEl { Direction = 0, AlignItems = FlexAlign.Start, Gap = Z.RowColumnGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [where, state] };
+            var verb = line.Action;
+            // The verb's slot is laid out in every state, so a verb that comes or goes never moves the words beside it.
+            var slot = new BoxEl
+            {
+                Key = "zs:music:verbslot:" + folder, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, MinWidth = Z.MusicVerbW, Shrink = 0f,
+                Children = SettingsMusic.VerbKey(verb) is { } verbKey
+                    ? [k.Cmd(Loc.Get(verbKey), () => SettingsMusic.Run(verb, folder), accent: verb == SettingsMusic.Verb.SignIn) with { Key = "zs:music:verb:" + folder }]
+                    : [],
+            };
             return new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinHeight = Z.MusicRowH, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-                Children = [text, .. verbs],
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinHeight = Z.MusicNetRowH, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Padding = new Edges4(0f, Z.MusicNetPadY, 0f, Z.MusicNetPadY),
+                Children = [text2, slot, options],
             };
         }
 

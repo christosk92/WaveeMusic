@@ -1124,7 +1124,10 @@ public readonly partial struct Track
                 bool dismissed = UnavailableBarDismissals.Has(h._contextText);
                 bool shown = template is not null && !dismissed && FilterModel.OffersHide(in tally, in filters);
                 UseLayoutEffect(() => h._unavailableShown.Value = shown, DepKey.From(shown));
-                bool secondary = tally.Missing > 0;
+                // The second verb: a playlist's local files that are not in the music folders open Settings at the folders (#240 D5); an indexed
+                // list's missing songs open their review. A list has one or the other: playlist items are never indexed files.
+                bool addFolder = tally.LocalFiles > 0, review = !addFolder && tally.Missing > 0;
+                bool secondary = addFolder || review;
                 UseLayoutEffect(() => h._unavailableSecondary.Value = secondary, DepKey.From(secondary));
                 if (template is null) return new BoxEl();
                 bool vertical = h.HeroFormLive;
@@ -1140,8 +1143,8 @@ public readonly partial struct Track
                     Explained = tally.Total > 0 ? UnavailableExplained(in tally) : Strings.Detail.Filter.Unavailable.Summary(count: count),
                     ActionLabel = Strings.Detail.Filter.Unavailable.Hide(count: count),
                     Hide = h._hideUnavailable,
-                    SecondaryLabel = tally.Missing > 0 ? LocalFilesList.ReviewLabel : "",
-                    Secondary = tally.Missing > 0 ? _review ??= () => LocalFilesList.OpenReview(_overlay) : null,
+                    SecondaryLabel = addFolder ? Loc.Get(Strings.Detail.Filter.Unavailable.AddMusicFolder) : review ? LocalFilesList.ReviewLabel : "",
+                    Secondary = addFolder ? LibraryActivity.OpenSettings : review ? _review ??= () => LocalFilesList.OpenReview(_overlay) : null,
                     // The list's context at CLICK time (the host is reused across pages).
                     Dismiss = h._contextText.Length > 0 ? h._dismissUnavailable ??= () => UnavailableBarDismissals.Add(h._contextText) : null,
                     DismissLabel = Loc.Get(Strings.Detail.Filter.Unavailable.Dismiss),

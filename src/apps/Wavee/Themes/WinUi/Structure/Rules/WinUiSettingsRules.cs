@@ -271,6 +271,14 @@ internal static class WinUiSettingsRules
     /// <summary>The row's "⋯" and "✕" buttons (32 square; the Compact target lifts them to 40) and their glyphs.</summary>
     public const float MusicIconButton = 32f, MusicMoreGlyph = 16f, MusicRemoveGlyph = 12f;
 
+    /// <summary>A network folder's row (S13): 64 tall, the network glyph's gap to the path, the 12-DIP words under the path, the scan's bar under the
+    /// state line and its gap, and the two lines Compact keeps for that line in every state.</summary>
+    public const float MusicNetRowHeight = 64f, MusicNetGlyphGap = 10f, MusicSubSize = 12f, MusicNetBarWidth = 240f, MusicNetBarGap = 6f, MusicTwoLines = 36f;
+
+    /// <summary>The slot a network folder's one verb (Sign in, Retry) stands in at every state: wide enough for either word in English, Dutch
+    /// and Korean, so a verb that comes or goes resizes nothing.</summary>
+    public const float MusicVerbSlotW = 96f;
+
     /// <summary>The status row under the folders: 64 tall, the time-left aside's 12-DIP type, the bar's width (Compact a narrower one) and its gap under
     /// the line.</summary>
     public const float MusicStatusHeight = 64f, MusicAsideSize = 12f, MusicBarWidth = 320f, MusicBarWidthCompact = 200f, MusicBarGap = 8f;

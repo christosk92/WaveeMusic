@@ -427,9 +427,14 @@ public static class ZuneSettingsRules
 
     /// <summary>A folder line's least height (the empty sentence holds the same), the words' column beside the path, the block's gaps (between its parts;
     /// the status line over its bar), the bar's width.</summary>
-    public const float MusicRowH = 44f, MusicStatusW = 260f, MusicBlockGap = 12f, MusicStatusGap = 6f, MusicBarWidth = 300f;
+    public const float MusicRowH = 44f, MusicStatusW = 340f, MusicBlockGap = 12f, MusicStatusGap = 6f, MusicBarWidth = 300f;
     /// <summary>An unreadable subfolder stands in under its music folder (board 15).</summary>
     public const float MusicSubIndent = 24f;
+
+    /// <summary>A network folder's line (S13): its least height and padding, the state column's width (and the bar's at Compact), the two lines that
+    /// column keeps in every state, and the slot its one verb stands in. The state column, the slot and their gap take the local folders' words
+    /// column (`MusicStatusW` = 232 + 12 + 96: either verb in English, Dutch and Korean), so every folder's words start on one line.</summary>
+    public const float MusicNetRowH = 64f, MusicNetPadY = 6f, MusicNetStatusW = 232f, MusicNetBarWidthCompact = 200f, MusicTwoLines = 36f, MusicVerbW = 96f;
 
     /// <summary>A folder's options card: its width and padding.</summary>
     public const float MusicOptionsW = 240f;

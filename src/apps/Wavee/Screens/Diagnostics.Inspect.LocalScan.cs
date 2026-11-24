@@ -15,18 +15,32 @@ public static partial class Diagnostics
 {
     public sealed partial class InspectSession
     {
-        /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing|paused|noaccess`.</summary>
+        /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing|paused|noaccess|checking|network-online|network-waking|network-slow|network-signin|network-offline|folder` (folder: with path=).</summary>
         string MusicFoldersState(int id, string name, Inspect.Args a)
         {
             string v = a.Has("value") ? a.Str("value").ToLowerInvariant() : "ready";
-            if (v is not ("none" or "scanning" or "ready" or "offline" or "changed" or "missing" or "listing" or "paused" or "noaccess" or "checking")) return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline|changed|missing|listing|paused|noaccess|checking, not '" + v + "'");
-            LocalLibrary.InspectFixture(v);
-            LocalCollectionFixture.Fill(v);   // #240 P2-page: the "On this PC" collection on top (albums, years, formats)
+            string scanned = "";
+            if (v == "folder")
+            {
+                // `value=folder path=<a folder of music>`: the real scanner over real files (#240 P4's empirical matching).
+                string path = a.Str("path");
+                if (path.Length == 0 || !Directory.Exists(path)) return Inspect.Reply.Fail(id, name, "state kind=music-folders value=folder wants path=<a folder of music>, not '" + path + "'");
+                scanned = LocalLibrary.InspectFolder(path);
+            }
+            else if (v is not ("none" or "scanning" or "ready" or "offline" or "changed" or "missing" or "listing" or "paused" or "noaccess" or "checking"
+                or "network-online" or "network-waking" or "network-slow" or "network-signin" or "network-offline"))
+                return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline|changed|missing|listing|paused|noaccess|checking|network-online|network-waking|network-slow|network-signin|network-offline|folder, not '" + v + "'");
+            if (v != "folder")
+            {
+                LocalLibrary.InspectFixture(v);
+                LocalCollectionFixture.Fill(v);   // #240 P2-page: the "On this PC" collection on top (albums, years, formats)
+            }
             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
             return Settled(id, name, a, w =>
             {
                 w.WriteString("kind", "music-folders");
                 w.WriteString("value", v);
+                if (scanned.Length > 0) w.WriteString("scan", scanned);
                 w.WriteString("library", LocalLibrary.StateWord);
                 w.WriteNumber("folders", LocalLibrary.Folders.Count);
                 w.WriteNumber("entries", LocalLibrary.Index.Count);

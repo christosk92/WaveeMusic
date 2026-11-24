@@ -4521,8 +4521,14 @@ public static partial class Playback
         }
 
         /// <inheritdoc cref="SourceRoute"/>
-        public static SourceRoute RouteOf(EntityProvider provider) => provider switch
+        /// <remarks>A playlist's <c>spotify:local:</c> item (#240 §3.7, D1 a) is a TEXT-form Spotify track: it plays from the file the
+        /// local index matched (<see cref="LocalLibrary.PlaysLocally"/>, one probe under a lock, no id text read on the pump), and an
+        /// unmatched one has no bytes anywhere (extended-metadata answers 404 for it, report 3.3), so it is not sent down the CDN
+        /// ladder. A catalogue track is gid-form and pays one failed form test, per open, never per buffer.</remarks>
+        public static SourceRoute RouteOf(EntityId id) => id.Provider switch
         {
+            EntityProvider.Spotify when id.Form == EntityForm.Text && id.Kind == EntityKind.Track
+                => LocalLibrary.PlaysLocally(id) ? SourceRoute.Local : SourceRoute.None,
             EntityProvider.Spotify => SourceRoute.Spotify,
             EntityProvider.WaveePodcast => SourceRoute.Podcast,
             EntityProvider.Local => SourceRoute.Local,
@@ -4540,7 +4546,7 @@ public static partial class Playback
         {
             opened = default;
             fault = Fault.None;
-            switch (RouteOf(id.Provider))
+            switch (RouteOf(id))
             {
                 case SourceRoute.Spotify:
                     return SpotifySource(id, ct, prepared, out opened, out fault);
@@ -4632,7 +4638,17 @@ public static partial class Playback
         {
             opened = default;
             string? path = LocalPath?.Invoke(id);
-            if (path is not { Length: > 0 } || !File.Exists(path)) { fault = Fault.Unavailable; return null; }
+            // #240 §3.16: a song on a network folder whose last probe found it offline is refused at once, before any I/O (an open on a
+            // dead share blocks for the redirector's minute-long timeout, here on the audio pump).
+            if (path is { Length: > 0 } && LocalLibrary.IsUnreachable(path)) { fault = Fault.Unavailable; return null; }
+            if (path is not { Length: > 0 }) { fault = Fault.Unavailable; return null; }
+            if (!File.Exists(path))
+            {
+                // The file went between the scan and the play (§3.7): a rescan greys its row instead of failing it again on the next try.
+                if (LocalLibrary.Index.TryGetByPath(path, out _)) ToUi(static () => LocalLibrary.Rescan());
+                fault = Fault.Unavailable;
+                return null;
+            }
 
             LocalProbe probe;
             Mp4AacTrack? mp4 = null;
@@ -4670,7 +4686,8 @@ public static partial class Playback
             {
                 case LocalKind.Decodable:
                     format = probe.Format;
-                    bytes = new FileByteSource(path);
+                    // A network share is read ahead on its own thread (a slow or sleeping NAS buffers instead of stalling the decoder).
+                    bytes = NtDirectory.IsNetworkPath(path) ? new NetworkByteSource(path) : new FileByteSource(path);
                     durationMs = LocalLengthMs(path);
                     break;
                 case LocalKind.Mp4 when mp4 is not null && Modules.AacAudioDecoder.IsAvailable():

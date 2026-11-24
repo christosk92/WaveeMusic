@@ -218,27 +218,40 @@ internal static partial class ClassicSettings
 
         /// <summary>One folder: its state mark, the path, its line ("4,812 songs · 12 can't be played", or the state in the caution ink), "⋯" (Show in
         /// Explorer, Rescan this folder, Remove) and "✕" (remove; no confirm, the toast offers Undo). Compact stacks the path over its line and lifts
-        /// both buttons to the 40-DIP target.</summary>
+        /// both buttons to the 40-DIP target. A network folder (S13, board boards240/NetworkStates) is taller: the network glyph, the path the user
+        /// knows over "1,204 songs · network", the share's state as its line (with the scan's bar, kept in place at every state) and the state's one
+        /// verb (Sign in, Retry) before "⋯": a state change swaps words, mark and verb inside the same extent.</summary>
         Element FolderRow(SettingsMusic.FolderLine line, bool touch)
         {
             string folder = line.Path;
-            var path = new TextEl(folder)
+            var path = new TextEl(line.Display)
             {
-                Size = ClassicSettingsRules.MusicTextSize, FontFamily = ClassicSettingsRules.MusicPathFont, Color = line.Lead is null ? Tok.TextPrimary : Tok.TextSecondary,
+                Size = ClassicSettingsRules.MusicTextSize, FontFamily = ClassicSettingsRules.MusicPathFont, Color = line.Dim ? Tok.TextSecondary : Tok.TextPrimary,
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
             };
-            var words = new List<Element>(2);
+            // The folder's words are one paragraph (the lead in its ink, the rest in the secondary): Compact wraps it onto a second line rather than
+            // cut it, and a network row keeps two lines for it in every state.
+            bool wrap = touch;
+            var spans = new List<TextSpan>(2);
             if (line.Lead is { } lead)
-                words.Add(new TextEl(line.Rest.Length > 0 ? lead + " · " : lead)
-                    { Size = ClassicSettingsRules.MusicTextSize, Color = Tok.SystemFillCaution, Shrink = 0f, MaxLines = 1 });
-            if (line.Rest.Length > 0)
-                // Compact wraps the folder's words onto a second line rather than cut them.
-                words.Add(new TextEl(line.Rest)
-                {
-                    Size = ClassicSettingsRules.MusicTextSize, Color = Tok.TextSecondary, Shrink = 1f, MinWidth = 0f,
-                    Wrap = touch ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = touch ? 2 : 1, Trim = touch ? TextTrim.WordEllipsis : TextTrim.CharacterEllipsis,
-                });
-            var status = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f, Children = words.ToArray() };
+            {
+                bool caution = line.LeadTone == SettingsMusic.Tone.Caution;
+                spans.Add(new TextSpan(line.Rest.Length == 0 ? lead : caution ? lead + " · " : lead + " ", Color: caution ? Tok.SystemFillCaution : Tok.TextPrimary));
+            }
+            if (line.Rest.Length > 0) spans.Add(new TextSpan(line.Rest, Color: Tok.TextSecondary));
+            var status = new BoxEl
+            {
+                Key = "settings:music:line:" + folder, Direction = 0, AlignItems = line.Network && touch ? FlexAlign.Start : FlexAlign.Center, MinWidth = 0f, Shrink = 1f,
+                MinHeight = line.Network && touch ? ClassicSettingsRules.MusicTwoLines : 0f,
+                Children =
+                [
+                    new SpanTextEl(spans.ToArray())
+                    {
+                        Size = ClassicSettingsRules.MusicTextSize, Color = Tok.TextSecondary, Shrink = 1f, MinWidth = 0f,
+                        Wrap = wrap ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = wrap ? 2 : 1, Trim = wrap ? TextTrim.WordEllipsis : TextTrim.CharacterEllipsis,
+                    },
+                ],
+            };
 
             var buttonStyle = IconButton.DefaultStyle with { Size = touch ? s_layout.Target : ClassicSettingsRules.MusicIconButton };
             var more = ToolTip.Wrap(IconButton.Create(Icons.More, () => OpenMenu(folder), buttonStyle with { GlyphSize = ClassicSettingsRules.MusicMoreGlyph })
@@ -247,29 +260,103 @@ internal static partial class ClassicSettings
                 buttonStyle with { GlyphSize = ClassicSettingsRules.MusicRemoveGlyph }) with { Key = "settings:music:remove:" + folder, Shrink = 0f },
                 Loc.Get(Strings.Settings.Music.Remove));
 
-            // A folder that refuses this user: Fix permissions (board 15) beside its verbs, or under its words at Compact (no room beside).
-            BoxEl? fixButton = line.Fix is { } fix ? StdButton(SettingsMusic.FixLabel, fix) with { Key = "settings:music:fix:" + folder, Shrink = 0f } : null;
-            Element text = touch
-                ? new BoxEl
+            if (!line.Network)
+            {
+                // A folder that refuses this user: Fix permissions (board 15) beside its words, or under them at Compact (no room beside).
+                BoxEl? fixButton = line.Fix is { } fix ? StdButton(SettingsMusic.FixLabel, fix) with { Key = "settings:music:fix:" + folder, Shrink = 0f } : null;
+                Element text = touch
+                    ? new BoxEl
+                    {
+                        Direction = 1, Gap = ClassicSettingsRules.MusicStackGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                        Children = fixButton is null ? [path, status] : [path, status, fixButton with { AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, Spacing.XS, 0f, 0f) }],
+                    }
+                    : new BoxEl
+                    {
+                        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.L, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                        // A state's lead ("Can't read this folder · ") keeps its natural width and the path ellipsizes first; Fix permissions sits in
+                        // this box in both forms (beside the words here, under them at Compact): a crossing keeps its node.
+                        Children = fixButton is null ? [path with { Width = ClassicSettingsRules.MusicPathWidth }, (line.Lead is null ? status with { Grow = 1f, Basis = 0f } : status with { Grow = 1f, Shrink = 0f })]
+                            : [path with { Width = ClassicSettingsRules.MusicPathWidth }, (line.Lead is null ? status with { Grow = 1f, Basis = 0f } : status with { Grow = 1f, Shrink = 0f }), fixButton],
+                    };
+                return new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = touch ? Spacing.M : Spacing.L, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                    MinHeight = ClassicSettingsRules.MusicRowHeight, Padding = new Edges4(Spacing.L, Spacing.XS, touch ? Spacing.XS : Spacing.L, Spacing.XS),
+                    Children = [MarkCell(line.Mark), text, more, remove],
+                };
+            }
+
+            // ── a network folder ──
+            var where = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicSettingsRules.MusicNetGlyphGap, MinWidth = 0f, Shrink = 1f,
+                Children =
+                [
+                    Icon(SegoeGlyphs.NetworkFolder, ClassicSettingsRules.MusicMarkSize, Tok.TextSecondary) with { Shrink = 0f },
+                    new BoxEl
+                    {
+                        Direction = 1, MinWidth = 0f, Shrink = 1f,
+                        Children =
+                        [
+                            path,
+                            new TextEl(line.Sub ?? "") { Size = ClassicSettingsRules.MusicSubSize, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                        ],
+                    },
+                ],
+            };
+            // The scan's bar under the line: always laid out (a slow share walks with it), shown only while this share is walked.
+            var bar = ProgressBar.Determinate(Math.Max(0f, line.Fraction), touch ? ClassicSettingsRules.MusicBarWidthCompact : ClassicSettingsRules.MusicNetBarWidth)
+                with { Key = "settings:music:netbar:" + folder, Opacity = line.Fraction >= 0f ? 1f : 0f };
+            // Wide: the line stays on the row's middle and the bar lies under it at the cell's foot (two layers), so the line sits where the board
+            // draws it in every state; Compact stacks them.
+            // The state's one verb (Sign in, Retry) stands in a place every state keeps: a slot of its own before "⋯" (Compact: a band of the target's
+            // height under the line), so a verb that comes or goes moves and resizes nothing.
+            Element[] verbKids = [];
+            if (SettingsMusic.VerbKey(line.Action) is { } verbKey)
+            {
+                var verb = line.Action;
+                verbKids = [(verb == SettingsMusic.Verb.SignIn
+                    ? AccentButton(Loc.Get(verbKey), () => SettingsMusic.Run(verb, folder))
+                    : StdButton(Loc.Get(verbKey), () => SettingsMusic.Run(verb, folder))) with { Key = "settings:music:verb:" + folder, Shrink = 0f }];
+            }
+            var kids = new List<Element>(6) { MarkCell(line.Mark) };
+            if (touch)
+                kids.Add(new BoxEl
                 {
                     Direction = 1, Gap = ClassicSettingsRules.MusicStackGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                    Children = fixButton is null ? [path, status] : [path, status, fixButton with { AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, Spacing.XS, 0f, 0f) }],
-                }
-                : new BoxEl
+                    Children =
+                    [
+                        where,
+                        new BoxEl { Direction = 1, Gap = ClassicSettingsRules.MusicNetBarGap, MinWidth = 0f, Children = [status, bar] },
+                        new BoxEl
+                        {
+                            Key = "settings:music:verbslot:" + folder, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, MinHeight = s_layout.Target,
+                            Children = verbKids,
+                        },
+                    ],
+                });
+            else
+            {
+                // The line stays on the row's middle and the bar lies under it at the cell's foot (two layers), so the line sits where the board draws
+                // it in every state.
+                kids.Add(where with { Width = ClassicSettingsRules.MusicPathWidth, Shrink = 0f });
+                kids.Add(new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.L, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                    // A state's lead ("Can't read this folder · ") keeps its natural width and the path ellipsizes first; Fix permissions sits in
-                    // this box in both forms (beside the words here, under them at Compact): a crossing keeps its node.
-                    Children = fixButton is null ? [path with { Width = ClassicSettingsRules.MusicPathWidth }, (line.Lead is null ? status with { Grow = 1f, Basis = 0f } : status with { Grow = 1f, Shrink = 0f })]
-                        : [path with { Width = ClassicSettingsRules.MusicPathWidth }, (line.Lead is null ? status with { Grow = 1f, Basis = 0f } : status with { Grow = 1f, Shrink = 0f }), fixButton],
-                };
-            var kids = new List<Element>(5) { MarkCell(line.Mark), text };
+                    ZStack = true, Direction = 1, MinWidth = 0f, Shrink = 1f, Grow = 1f, Basis = 0f, AlignSelf = FlexAlign.Stretch,
+                    Children = [status with { AlignSelf = FlexAlign.Center }, bar with { AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start }],
+                });
+                kids.Add(new BoxEl
+                {
+                    Key = "settings:music:verbslot:" + folder, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                    MinWidth = ClassicSettingsRules.MusicVerbSlotW, Shrink = 0f, Children = verbKids,
+                });
+            }
             kids.Add(more);
             kids.Add(remove);
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = touch ? Spacing.M : Spacing.L, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-                MinHeight = ClassicSettingsRules.MusicRowHeight, Padding = new Edges4(Spacing.L, Spacing.XS, touch ? Spacing.XS : Spacing.L, Spacing.XS),
+                MinHeight = ClassicSettingsRules.MusicNetRowHeight, Padding = new Edges4(Spacing.L, Spacing.S, touch ? Spacing.XS : Spacing.L, Spacing.S),
                 Children = kids.ToArray(),
             };
         }
@@ -319,7 +406,8 @@ internal static partial class ClassicSettings
             };
         }
 
-        /// <summary>The row's state mark in its fixed cell: up to date (the success check), working (a ring), needs you (the caution mark).</summary>
+        /// <summary>The row's state mark in its fixed cell: up to date (the success check), working (a ring), needs you (the caution mark), a share that
+        /// wants a sign-in (the lock) or answers slowly (the gauge).</summary>
         static Element MarkCell(SettingsMusic.Mark mark) => new BoxEl
         {
             Width = ClassicSettingsRules.MusicMarkCell, Height = ClassicSettingsRules.MusicMarkCell, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
@@ -328,6 +416,8 @@ internal static partial class ClassicSettings
                 SettingsMusic.Mark.Ok => [Icon(Icons.Accept, ClassicSettingsRules.MusicMarkSize, Tok.SystemFillSuccess)],
                 SettingsMusic.Mark.Busy => [ProgressRing.Indeterminate(size: ClassicSettingsRules.MusicMarkSize)],
                 SettingsMusic.Mark.Caution => [Icon(Icons.Warning, ClassicSettingsRules.MusicMarkSize, Tok.SystemFillCaution)],
+                SettingsMusic.Mark.Lock => [Icon(Icons.Lock, ClassicSettingsRules.MusicMarkSize, Tok.SystemFillCaution)],
+                SettingsMusic.Mark.Slow => [Icon(SegoeGlyphs.SlowConnection, ClassicSettingsRules.MusicMarkSize, Tok.TextSecondary)],
                 _ => [],
             },
         };

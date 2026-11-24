@@ -915,6 +915,10 @@ public static class SegoeGlyphs
     /// (<c>Icons.FullScreen</c>), is the APP's (the stage: the title bar's button, the player bar's rows), so the two never share
     /// a glyph (the owner, 2026-11-10).</summary>
     public static readonly string VideoFullScreen = Of(0xE9A6);
+    /// <summary>A drive over a network bar (Segoe "MapDrive"): a music folder on a NAS or a share (#240 S13).</summary>
+    public static readonly string NetworkFolder = Of(0xE8CE);
+    /// <summary>A gauge at half (Segoe "SpeedMedium"): a share that answers, but slowly (#240 S13).</summary>
+    public static readonly string SlowConnection = Of(0xEC49);
 }
 
 /// <summary>The app's font FILES, resolved next to the exe (assets/fonts/*, shipped by the csproj's assets Content

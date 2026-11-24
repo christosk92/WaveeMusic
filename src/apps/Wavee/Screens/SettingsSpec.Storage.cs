@@ -27,7 +27,7 @@ public static partial class SettingsSpec
         // is a read-only parent whose children are the two library settings (the views draw it as an expander; Zune draws its rows).
         Group("music", Strings.Settings.Groups.Storage.Music, null,
             Make("storage.music.folders", K.Composite, Strings.Settings.Music.Folders,
-                SettingsWriter.Owned("SettingsVerbs.RemoveMusicFolder/RevealMusicFolder/RescanMusicFolder"), glyph: "Folder",
+                SettingsWriter.Owned("SettingsVerbs.RemoveMusicFolder/RevealMusicFolder/RescanMusicFolder/SignInMusicFolder"), glyph: "Folder",
                 captionKey: Strings.Settings.Music.FoldersSub, aliases: ["local files", "mp3", "flac", "ogg", "m4a", "nas"]),
             Make("storage.music.add", K.Action, Strings.Settings.Music.Add,
                 SettingsWriter.OfAction("music.addFolder", SettingsVerbs.AddMusicFolder), parent: "storage.music.folders", glyph: "FolderOpen"),
@@ -325,8 +325,11 @@ public static partial class SettingsVerbs
     /// <summary>A folder row's "Show in Explorer".</summary>
     public static void RevealMusicFolder(string folder) => LocalLibrary.Reveal(folder);
 
-    /// <summary>A folder row's "Rescan this folder".</summary>
+    /// <summary>A folder row's "Rescan this folder", and a network folder's "Retry".</summary>
     public static void RescanMusicFolder(string folder) => LocalLibrary.Rescan(folder);
+
+    /// <summary>A network folder's "Sign in": the Windows credential dialog for its share (off the UI thread), then a walk.</summary>
+    public static void SignInMusicFolder(string folder) => LocalLibrary.SignIn(folder);
 
     /// <summary>"Watch folders for changes": persists and starts or stops the watchers.</summary>
     public static bool SetMusicWatch(bool on)

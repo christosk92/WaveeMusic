@@ -204,7 +204,7 @@ public static partial class LocalLibrary
     public static bool AddFolder(string path, out string reason, Action<string>? landed = null)
     {
         string folder;
-        try { folder = Normalize(path); }
+        try { folder = ToStoredPath(Normalize(path)); }   // a mapped network letter is stored as its UNC path (§3.16)
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { reason = "missing"; return false; }
         lock (s_gate)
         {
@@ -391,6 +391,20 @@ public static partial class LocalLibrary
     /// refuses this user and a subfolder that could not be read. Every value but `changed` clears the session's changes, so the diff from the previous fixture
     /// announces nothing.
     /// The next `InspectFixture("none")` empties it again.</summary>
+    /// <summary>The inspector's real-file library (#240 P4 checks): <paramref name="path"/> as the one music folder, walked and read by the
+    /// real scanner, synchronously, into the in-memory index (never the app's own index file), then restated. Returns the scan's summary line.</summary>
+    public static string InspectFolder(string path)
+    {
+        InspectFixture("none");
+        lock (s_gate) s_folders = [path];
+        LocalScanStats stats = s_scan.ScanRoot(path, startup: false, dirty: null);
+        s_states[path] = stats.Offline ? LocalRootState.Offline : LocalRootState.Online;
+        s_scan.Last[path] = stats;
+        Epoch.Value++;
+        RestateNow();
+        return stats.Summary();
+    }
+
     public static void InspectFixture(string value)
     {
         // `paused`: the scanning fixture held by battery saver (S11 "Scanning paused · battery saver").
@@ -405,9 +419,12 @@ public static partial class LocalLibrary
         s_index.Clear();
         s_states.Clear();
         const string music = @"C:\Users\Listener\Music", usb = @"E:\Music";
+        // network-online|waking|slow|signin|offline: the ready library plus a NAS share in that state (S13).
+        const string nas = @"\\nas\share\flac";
+        bool network = value.StartsWith("network-", StringComparison.Ordinal);
         // checking: the ready library plus a share just added, its reachability being asked (F4).
         const string checking = @"\\nas\share\new music";
-        lock (s_gate) s_folders = value == "none" ? [] : value == "checking" ? [music, usb, checking] : [music, usb];
+        lock (s_gate) s_folders = value == "none" ? [] : network ? [music, usb, nas] : value == "checking" ? [music, usb, checking] : [music, usb];
         if (value != "none")
         {
             s_index.SetRoot(new LocalRoot(1, music, 0x1234_ABCD, 0, 0, DateTime.UtcNow.Ticks));
@@ -433,6 +450,14 @@ public static partial class LocalLibrary
                 if (value != "missing")
                     loose.Upserts.Add(new LocalEntry(21, 1, "demo take.wav", 0x1234_ABCD, 2001, 41_000_000, now, now, 0x20, Spotify.Audio.Format.Unknown, untagged with { DurationMs = 0, DurationEstimated = false },
                         "demo take", LocalState.Present, now, false, "No WAV decoder in this build", now));
+                // #240 P4: the files two of the fake playlist X5's spotify:local: items name (Entities.Fake.Library.cs, LocalItemUris): a
+                // tagged one (June Harbor, "Coastline", 273 s in the uri, 273.4 s here: tier 1) and an untagged one whose file name is the
+                // title (":::Voice+Memo+12:47", 47.6 s: tier 1 on the file-name title). X5's third item ("Lanterns (Live)") stays unmatched.
+                loose.Upserts.Add(new LocalEntry(25, 1, @"June Harbor\Coastal Hours\04 Coastline.flac", 0x1234_ABCD, 2005, 32_000_000, now, now, 0x20, Spotify.Audio.Format.Flac,
+                    new LocalTagSet(LocalKind.Audio, "Coastline", ["June Harbor"], "Coastal Hours", "June Harbor", 4, 1, 2020, 273_400, false, 900, LocalCover.None, 0, 0, true, 44_100, 16, 2),
+                    "Coastline", LocalState.Present, now, true, "", now));
+                loose.Upserts.Add(new LocalEntry(26, 1, "Voice Memo 12.m4a", 0x1234_ABCD, 2006, 760_000, now, now, 0x20, Spotify.Audio.Format.Aac,
+                    untagged with { DurationMs = 47_600 }, "Voice Memo 12", LocalState.Present, now, true, "", now));
                 loose.Upserts.Add(new LocalEntry(22, 1, "old mix.mp3", 0x1234_ABCD, 2002, 7_000_000, now, now, 0x20, Spotify.Audio.Format.Mp3, untagged, "old mix", LocalState.Missing, now - TimeSpan.TicksPerDay * 3, true, "", now));
             }
             if (value == "missing")
@@ -463,19 +488,43 @@ public static partial class LocalLibrary
             usbFolder.Upserts.Add(new LocalEntry(31, 2, @"Live\Unreleased.flac", 0x0BAD_F00D, 0, 52_000_000, now, 0, 0x0040_0020, Spotify.Audio.Format.Unknown,
                 new LocalTagSet(LocalKind.Audio, "", [], "", "", 0, 0, 0, 0, false, 0, LocalCover.None, 0, 0, true, 0, 0, 0), "Unreleased", LocalState.CloudOnly, now, true, "", now));
             if (value != "listing") s_index.Apply(usbFolder);
+            if (network)
+            {
+                s_index.SetRoot(new LocalRoot(3, nas, 0x5EA5_0001, 0, 0, DateTime.UtcNow.Ticks));
+                var share = new LocalScanBatch(3, "Lossless") { Folder = new LocalFolder(3, "Lossless", 500, 0xFACE, [], true) };
+                string[] flac = ["Night Ferry", "Glass Rain", "Static Bloom", "Paper Lanterns"];
+                for (int i = 0; i < flac.Length; i++)
+                    share.Upserts.Add(new LocalEntry(50 + i, 3, $@"Lossless\{i + 1:00} {flac[i]}.flac", 0x5EA5_0001, (UInt128)(5000 + i), 33_000_000 + i, now, now, 0x20,
+                        Spotify.Audio.Format.Flac, new LocalTagSet(LocalKind.Audio, flac[i], ["Coral Hours"], "Lossless", "Coral Hours", i + 1, 1, 2023, 224_000 + i * 9_000,
+                            false, 1100, LocalCover.None, 0, 0, true, 44_100, 16, 2), flac[i], LocalState.Present, now, true, "", now));
+                s_index.Apply(share);
+            }
             // The last scan as the board draws it: 2 minutes ago, 1.8 s (ready and offline); none while the first scan runs.
             s_scan.Last.Clear();
             if (value is not ("scanning" or "listing"))
                 s_scan.Last[music] = new LocalScanStats { FinishedTicks = DateTime.UtcNow.Ticks - TimeSpan.TicksPerMinute * 2, TotalMs = 1800, Unreadable = noAccess ? ["Live"] : [] };
+            // The share was last walked 12 minutes ago (the board's "Checked 12 min ago").
+            if (network) s_scan.Last[nas] = new LocalScanStats { FinishedTicks = DateTime.UtcNow.Ticks - TimeSpan.TicksPerMinute * 12, TotalMs = 2400 };
             s_fixtureProgress = value switch
             {
                 "scanning" => new ScanProgress(true, music, ScanPhase.Reading, 412, 4812, 1930, 4812, 1930, 48, 40, 212),
                 // The first second of the first scan: the folders are being listed, no total yet (an indeterminate bar).
                 "listing" => new ScanProgress(true, music, ScanPhase.Listing, 3, 0, 0, 0, 0, 0, 0, 0),
+                // A slow share is walked gently: the board's 380 of 1,204.
+                "network-slow" => new ScanProgress(true, nas, ScanPhase.Reading, 40, 1204, 380, 1204, 380, 6, 140, 31),
                 _ => default,
             };
             s_states[music] = value switch { "scanning" or "listing" => LocalRootState.Scanning, "offline" => LocalRootState.Offline, _ => LocalRootState.Online };
             s_states[usb] = value == "offline" ? LocalRootState.Offline : noAccess ? LocalRootState.NoAccess : LocalRootState.Online;
+            if (network)
+                s_states[nas] = value switch
+                {
+                    "network-waking" => LocalRootState.Waking,
+                    "network-slow" => LocalRootState.Slow,
+                    "network-signin" => LocalRootState.SignInNeeded,
+                    "network-offline" => LocalRootState.Offline,
+                    _ => LocalRootState.Online,
+                };
             if (value == "checking") s_states[checking] = LocalRootState.Checking;
         }
         Epoch.Value++;

@@ -607,7 +607,13 @@ and `upNext` (the queue panel's rows in display order, `<section>:<id>`, section
 `end` (the track ran out with nothing prepared, the natural-end path), `seek ms=`, `shuffle value=on|off`, `repeat value=off|all|one`,
 `add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue), `dead uri=` (the catalog rules that track
 unavailable, so the walk steps past it) or `duration ms=` (the decoder reports the playing row's real length: the same row's duration
-changes, as a music video's length replacing the song's does; the seek rail's rescale, `status log="seek.rescale"`). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
+changes, as a music video's length replacing the song's does; the seek rail's rescale, `status log="seek.rescale"`). `do=putstate` returns the connect-state PUT body the deck would send (base64) and `do=telemetry` the playing row's
+RawCoreStream and closing segment as its registration would report them (base64, with `contentUri`, `localContentUri`); nothing
+is sent (`--fake` sends no telemetry). A playlist's matched `spotify:local:` row adds `deckFile` (the file's name, never its
+folder). `do=inbound file=<json>` decodes a controller's Connect `play`/`transfer` command body with the app's own decoders and hands it to
+the host as the dealer glue does (no dealer, no ack). `play uri=<row> context=spotify:playlist:<id>` with the row in that list plays the list's own rows from it, as a
+double-tap on the row does. `state kind=music-folders value=folder path=<dir>` runs the real scanner over a real folder into the
+in-memory index (#240's real-file matching; the app's index file is never touched). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
 end of a context behaves as it does online; `setting id=autoplay value=false` turns it off. A sequence of `transport do=end` (or
 `do=next`) replies is the sequence of tracks played:
 
