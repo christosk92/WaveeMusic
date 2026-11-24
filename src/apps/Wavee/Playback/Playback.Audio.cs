@@ -3455,6 +3455,10 @@ public static partial class Playback
                 s_id = s_joinId;
                 // #48 Mix: a mix join announces when A is over, with B already InStart + OutDuration in (0 for gapless).
                 joinedAtMs = AnnouncedMixLocked();
+                // The playhead (raw − s_activeStartMs) starts where B already is: InStart + OutDuration, plus how late this
+                // tick runs past the join frame. A gapless join keeps its start at the announce, as before.
+                if (joinedAtMs > 0)
+                    s_activeStartMs = rawPos - joinedAtMs - Math.Max(0, (sess.SampleClock - s_joinFrame) * 1000 / Math.Max(1, sess.Format.SampleRate));
                 s_activeJoinFrame = s_joinFrame + GaplessJoinClock.MsToFrames(Math.Max(0, s_joinDurMs - joinedAtMs), sess.Format.SampleRate);
                 s_anchorClock = s_joinFrame;
                 s_anchorPlayheadMs = joinedAtMs;
