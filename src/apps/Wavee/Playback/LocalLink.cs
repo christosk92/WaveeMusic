@@ -314,6 +314,8 @@ public static partial class LocalLink
         for (int i = 0; i < g.Files.Count && i < c.Tracks.Count; i++)
         {
             if (c.Tracks[i] is not { } t) continue;
+            // A file the user linked on its own (a version: LinkVersion, an attached video) keeps its link when its album is matched.
+            if (s_linkGroup.TryGetValue(g.Files[i], out string? own) && own != g.Key && s_decided.TryGetValue(own, out Decided? od) && od.Decision == LinkDecision.Accepted) continue;
             s_links[g.Files[i]] = t;
             s_linkGroup[g.Files[i]] = g.Key;
         }
