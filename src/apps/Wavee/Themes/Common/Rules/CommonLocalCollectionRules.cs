@@ -15,7 +15,10 @@ namespace Wavee.Themes.Common;
 /// <summary>Node keys and fixed geometry of the shared collection page.</summary>
 internal static class CommonLocalCollectionRules
 {
-    public const string PageKey = "lc-page", HeroKey = "lc-hero", PivotKey = "lc-pivot", BodyKey = "lc-body", ScrollKey = "lc-scroll";
+    public const string PageKey = "lc-page", HeroKey = "lc-hero", PivotKey = "lc-pivot", BodyKey = "lc-body", ScrollKey = "lc-scroll", HeadKey = "lc-head";
+
+    /// <summary>The pivot switch's clock (ms): WinUI's incoming 300 on its decelerate, the head's cross-fade and the body's slide.</summary>
+    public const float HeadInMs = 300f;
     public const string ShelfKey = "lc-shelf", WallKey = "lc-wall", ArtistsKey = "lc-artists", FoldersKey = "lc-folders", InsightsKey = "lc-insights";
 
     /// <summary>The hero's mosaic: rows and columns of covers, its strength over the page ground, the fade into the ground.</summary>
