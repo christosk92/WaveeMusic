@@ -9,6 +9,7 @@
 
 using System.Threading;
 
+using FluentGpu.Localization;
 using FluentGpu.Media;
 
 namespace Wavee;
@@ -23,6 +24,9 @@ public static partial class Playback
         static AuxAudioOutput? s_output;
         static string s_openId = "";
         static int s_applying, s_reapply, s_applied;
+        static Timer? s_statusTimer;
+        static string s_lastStatus = "";
+        static long s_relocLogged;
 
         /// <summary>The generator (its status, the reader lease).</summary>
         public static LtcGenerator Generator => s_generator;
@@ -32,6 +36,60 @@ public static partial class Playback
 
         /// <summary>The endpoint the open output was asked for ("" when none is open).</summary>
         public static string OpenId { get { lock (s_gate) return s_openId; } }
+
+        /// <summary>The Settings row's words: Off, Opening the output, Not responding, Waiting for playback, or "Timecode at 30 fps". The
+        /// running timecode itself is on Diagnostics › Playback runtime (the row changes only when the state does). Any thread.</summary>
+        public static string StatusLine()
+        {
+            if (!Platform.Settings.Get(Platform.Keys.TimecodeLtcEnabled)) return Loc.Get(Strings.Settings.Sound.Timecode.StatusOff);
+            AuxAudioOutput? output = Output;
+            if (output is null)
+                return Loc.Get(SettingsVerbs.TimecodeDeviceIsMusic() ? Strings.Settings.Sound.Timecode.IsMusic : Strings.Settings.Sound.Timecode.StatusOpening);
+            switch (output.State.Peek())
+            {
+                case AudioDeviceState.Retrying or AudioDeviceState.Faulted: return Loc.Get(Strings.Settings.Sound.Timecode.StatusNotResponding);
+                case AudioDeviceState.Building: return Loc.Get(Strings.Settings.Sound.Timecode.StatusOpening);
+            }
+            LtcGenerator.Status st = s_generator.Read();
+            if (!st.Locked) return Loc.Get(Strings.Settings.Sound.Timecode.StatusWaiting);
+            return Strings.Settings.Sound.Timecode.StatusSending(Loc.Get(RateKey(st.Rate)));
+        }
+
+        /// <summary>The loc key of a rate's words ("30 fps").</summary>
+        public static string RateKey(LtcRate rate) => rate switch
+        {
+            LtcRate.Fps24 => Strings.Settings.Sound.Timecode.Fps24,
+            LtcRate.Fps25 => Strings.Settings.Sound.Timecode.Fps25,
+            LtcRate.Fps2997Drop => Strings.Settings.Sound.Timecode.Fps2997,
+            _ => Strings.Settings.Sound.Timecode.Fps30,
+        };
+
+        /// <summary>While an output is open, once a second: a changed status phrase re-reads the Settings page (on the UI thread).</summary>
+        static void WatchStatus(bool on)
+        {
+            if (on) s_statusTimer ??= new Timer(static _ =>
+            {
+                LogRelocations();
+                string now = StatusLine();
+                if (string.Equals(now, s_lastStatus, StringComparison.Ordinal)) return;
+                s_lastStatus = now;
+                Playback.ToUi(static () => Settings.Bump());
+            }, null, 1000, 1000);
+            else { s_statusTimer?.Dispose(); s_statusTimer = null; }
+            Playback.ToUi(static () => Settings.Bump());
+        }
+
+        /// <summary>The always-on log of the generator's relocations (category <c>timecode</c>): each with the instant it is heard, the label
+        /// and the timeline epoch that caused it. Read on the status timer (the aux thread never logs).</summary>
+        static void LogRelocations()
+        {
+            long n = s_generator.Read().Relocations;
+            for (long i = Math.Max(s_relocLogged, n - 8); i < n; i++)
+                if (s_generator.TryGetRelocation(i, out long qpc, out long frame, out long epoch))
+                    Log.Info("timecode", "ltc relocate #" + (i + 1) + " at=" + qpc + " label=" + Timecode.Format(frame, s_generator.Current.Rate)
+                        + " epoch=" + (epoch >> 32) + "." + (epoch & 0xFFFF_FFFFL));
+            s_relocLogged = n;
+        }
 
         /// <summary>The settings as a generator configuration.</summary>
         public static LtcGenerator.Config ConfigFromSettings()
@@ -88,10 +146,11 @@ public static partial class Playback
                         try { close.Dispose(); } catch (Exception ex) { Log.Warn("timecode", "ltc close failed", ex); }
                         Log.Info("timecode", "ltc close");
                     }
-                    if (want.Length == 0) continue;
+                    if (want.Length == 0) { WatchStatus(false); continue; }
                     AuxAudioOutput output = Audio.OpenAux(want, s_generator);
                     output.Start();
                     lock (s_gate) { s_output = output; s_openId = want; }
+                    WatchStatus(true);
                     Log.Info("timecode", "ltc open id=" + want + " rate=" + s_generator.Current.Rate + (Audio.SilentEndpoint ? " (silent endpoint)" : ""));
                 }
             }
@@ -110,6 +169,8 @@ public static partial class Playback
         {
             AuxAudioOutput? close;
             lock (s_gate) { close = s_output; s_output = null; s_openId = ""; }
+            s_statusTimer?.Dispose();
+            s_statusTimer = null;
             try { close?.Dispose(); } catch { }
         }
     }

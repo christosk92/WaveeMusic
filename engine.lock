@@ -1,5 +1,5 @@
 # The fluent-gpu commit this branch builds and releases with (the engine keeps its own flow; Wavee pins it here).
 # Bump it in the Wavee PR that needs newer engine code, after the engine PR merged into fluent-gpu main.
 # The release runner checks the engine out at exactly this commit and tags it wavee-v<version> in fluent-gpu.
-# PINNED TO AN UNMERGED ENGINE PR: christosk92/fluent-gpu#87 (feat/timeline-tap). Bump to its merge commit on fluent-gpu main after that PR merges.
-c15c012e839df3f542ece00e44938e96e423afcb
+# PINNED TO AN UNMERGED ENGINE PR: christosk92/fluent-gpu#88 (feat/aux-output, stacked on #87). Bump to its merge commit on fluent-gpu main after both PRs merge.
+4f7ee5920bd948e05e537922212fe6cf69f643a8

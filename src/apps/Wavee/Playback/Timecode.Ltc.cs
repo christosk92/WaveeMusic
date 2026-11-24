@@ -11,9 +11,9 @@
 // "transport stopped" state. Outside 0.8x..1.25x (an episode at 2x) it sends real-time frames and relocates as needed.
 //
 // THE READER is diagnostics code, not a test: a bi-phase mark decoder over the generator's own output (edge intervals -> bits ->
-// the sync word -> the label), run only while leased (the diagnostics page, the inspector verb). It proves that what is sent
-// decodes to what was meant; it shares the word layout with the encoder, so the layout itself was checked once by an independent
-// decoder (Timecode.cs header).
+// the sync word -> the label), always on while the generator runs (a sign test per sample on the aux thread). It proves that what
+// is sent decodes to what was meant (Diagnostics › Playback runtime, `timecode do=status`); it shares the word layout with the
+// encoder, so the layout itself was checked once by an independent decoder (Timecode.cs header).
 
 using System.Threading;
 
@@ -33,46 +33,49 @@ public sealed class LtcGenerator : IAuxAudioGenerator
     long _epoch;
     float _gain;                // 0..1, ramps 5 ms toward 1 while playing and 0 while not
     readonly LtcReader _reader = new();
-    int _readerLeases;
     LtcRate _encRate;
+    bool _relocatedThisBlock;
+
+    // The last relocations, for the host's log (aux thread writes slot [n & 7] then bumps the count; the host reads behind it).
+    readonly long[] _relocQpc = new long[8];
+    readonly long[] _relocFrame = new long[8];
+    readonly long[] _relocEpoch = new long[8];
 
     // published for diagnostics (aux thread writes, any thread reads)
-    long _sentFrame = -1, _relocations, _blocks, _lastEpochSeen;
+    long _sentFrame = -1, _relocations, _blocks;
     long _errorBits;            // double: the last block's error, LTC frames
     int _state;                 // 0 silent, 1 locked
-    long _matches, _mismatches, _completedSeen;
+    long _matches, _mismatches;
 
     /// <summary>Apply new settings (any thread). The next block reads them; a rate change relocates.</summary>
     public void Configure(Config config) => Volatile.Write(ref _config, config);
 
     public Config Current => Volatile.Read(ref _config);
 
-    /// <summary>Run the self-check reader while the returned lease is held (the diagnostics page, the inspector verb).</summary>
-    public IDisposable LeaseReader()
+    /// <summary>Relocation <paramref name=index/> (0-based; only the last eight are kept): the instant its first frame is heard, the LTC
+    /// frame it jumped to, the timeline epoch that caused it. False when it is no longer kept.</summary>
+    public bool TryGetRelocation(long index, out long qpc100ns, out long frame, out long epoch)
     {
-        if (Interlocked.Increment(ref _readerLeases) == 1) _reader.Reset();
-        return new ReaderLease(this);
-    }
-
-    sealed class ReaderLease(LtcGenerator owner) : IDisposable
-    {
-        int _done;
-        public void Dispose() { if (Interlocked.Exchange(ref _done, 1) == 0) Interlocked.Decrement(ref owner._readerLeases); }
+        long n = Interlocked.Read(ref _relocations);
+        qpc100ns = frame = epoch = 0;
+        if (index < 0 || index >= n || index < n - 8) return false;
+        qpc100ns = _relocQpc[index & 7]; frame = _relocFrame[index & 7]; epoch = _relocEpoch[index & 7];
+        return true;
     }
 
     /// <summary>A reading of the generator for the diagnostics page and the inspector (any thread).</summary>
     public readonly record struct Status(bool Locked, long SentFrame, double ErrorFrames, long Relocations, long Blocks,
-        bool Reading, long ReadFrame, long ReadCount, long Matches, long Mismatches, LtcRate Rate);
+        long ReadFrame, long ReadCount, long Matches, long Mismatches, LtcRate Rate);
 
     public Status Read() => new(Volatile.Read(ref _state) == 1, Interlocked.Read(ref _sentFrame),
         BitConverter.Int64BitsToDouble(Interlocked.Read(ref _errorBits)), Interlocked.Read(ref _relocations), Interlocked.Read(ref _blocks),
-        Volatile.Read(ref _readerLeases) > 0, _reader.LastFrame, _reader.Completed, Interlocked.Read(ref _matches),
-        Interlocked.Read(ref _mismatches), Volatile.Read(ref _config).Rate);
+        _reader.LastFrame, _reader.Completed, Interlocked.Read(ref _matches), Interlocked.Read(ref _mismatches), Volatile.Read(ref _config).Rate);
 
     /// <inheritdoc/>
     public void Render(Span<float> dst, int frames, in AuxBlock block)
     {
         Interlocked.Increment(ref _blocks);
+        _relocatedThisBlock = false;
         Config cfg = Volatile.Read(ref _config);
         float rampStep = 1f / Math.Max(1, block.SampleRate / 200);   // 5 ms
         bool live = Playback.Timeline.TryRead(out Playback.Timeline.Snapshot t) && t.Playing;
@@ -104,7 +107,12 @@ public sealed class LtcGenerator : IAuxAudioGenerator
             _enc.Relocate((long)Math.Floor(target), target - Math.Floor(target), cfg.Amplitude);
             _epoch = t.Epoch;
             _locked = true;
+            long n = Interlocked.Read(ref _relocations);
+            _relocQpc[n & 7] = block.FirstFrameAudibleQpc100ns;
+            _relocFrame[n & 7] = (long)Math.Floor(target);
+            _relocEpoch[n & 7] = t.Epoch;
             Interlocked.Increment(ref _relocations);
+            _relocatedThisBlock = true;
             error = 0;
         }
         else _enc.SetAmplitude(cfg.Amplitude);
@@ -133,12 +141,12 @@ public sealed class LtcGenerator : IAuxAudioGenerator
 
     void FeedReader(Span<float> dst, int frames, in AuxBlock block)
     {
-        if (Volatile.Read(ref _readerLeases) == 0) return;
         long before = _reader.Completed;
         _reader.Feed(dst, frames, block.Channels, block.SampleRate, Timecode.FramesPerSecond(Volatile.Read(ref _config).Rate),
             Volatile.Read(ref _config).Rate);
         long done = _reader.Completed;
-        if (done == before || _state == 0) return;
+        // A block that relocated may end a word that straddles the jump: not a fair comparison, and the next word is.
+        if (done == before || _state == 0 || _relocatedThisBlock) return;
         // The last word the reader completed is the frame the encoder finished last: the one before the frame in progress.
         if (_reader.LastFrame == _enc.Frame - 1) Interlocked.Increment(ref _matches);
         else Interlocked.Increment(ref _mismatches);

@@ -635,12 +635,14 @@ public static partial class Diagnostics
                              Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead; a spotify:show: uri for audiobook"),
                              Arg("ms", ArgType.Int, "the seek target (seek), the new length (duration)", "0")], s_settleArgs),
             },
-            new(Verb.Timecode, "timecode", "Read the playback timeline tap (#154): the master track, its audible position, rate, flags and epoch as Playback.Timeline composes them, and the engine anchor with its publisher counters; samples= takes a series every= ms apart (run as frames when mounted: the headless endpoint is paced by the frame clock)", "timecode do=status samples=5 every=200")
+            new(Verb.Timecode, "timecode", "Read the playback timeline tap and the LTC output (#154), or set a timecode dial: the master track, its audible position, rate, flags and epoch as Playback.Timeline composes them, and the engine anchor with its publisher counters; samples= takes a series every= ms apart (run as frames when mounted: the headless endpoint is paced by the frame clock)", "timecode do=status samples=5 every=200")
             {
                 Positional = ["do"],
-                Args = [Arg("do", ArgType.Enum, "status", "status", "status"),
+                Args = [Arg("do", ArgType.Enum, "status, or set (key=, value=: the Settings rows' own verbs)", "status", "status|set"),
                         IntArg("samples", "readings to take, every= ms apart (one reply, a `series` array when more than one)", "1", 1, 2000),
-                        IntArg("every", "ms between readings", "200", 0, 60_000)],
+                        IntArg("every", "ms between readings", "200", 0, 60_000),
+                        Arg("key", ArgType.Enum, "with do=set: the timecode dial", null, "enabled|device|rate|start|level|offset"),
+                        Arg("value", ArgType.String, "with do=set: true|false, an endpoint id (headless: any), 24|25|29.97|30, 0|1, dB, ms")],
             },
             new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, customize, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); drive a Spine Shelf (shelf) or a Release Spotlight card (spotlight); acting ones settle", "home do=pin uri=spotify:album:al2")
             {

@@ -27,7 +27,26 @@ public static partial class Diagnostics
         string Timecode(int id, string name, Inspect.Args a)
         {
             string verb = a.Str("do").ToLowerInvariant();
-            if (verb.Length > 0 && verb != "status") return Inspect.Reply.Fail(id, name, "timecode wants do=status, not '" + verb + "'");
+            if (verb == "set")
+            {
+                // The Settings rows' own verbs (SettingsVerbs), by the dial the row shows: what a user's click writes.
+                string key = a.Str("key").ToLowerInvariant(), value = a.Str("value");
+                bool ok = key switch
+                {
+                    "enabled" => SettingsVerbs.SetTimecodeEnabled(value is "1" or "true" or "on"),
+                    "device" => SetTimecodeDeviceId(value),
+                    "rate" => SettingsVerbs.SetTimecodeRate(RateIndex(value)),
+                    "start" => SettingsVerbs.SetTimecodeStartHour(value is "1" or "01" or "01:00:00:00" ? 1 : 0),
+                    "level" => float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float db) && SettingsVerbs.SetTimecodeLevel(db),
+                    "offset" => float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float ms) && SettingsVerbs.SetTimecodeOffset(ms),
+                    _ => false,
+                };
+                if (!ok) return Inspect.Reply.Fail(id, name, "timecode do=set wants key=enabled|device|rate|start|level|offset and a value it accepts");
+                // The output opens on a worker: give it a moment so the reply already reads it.
+                for (int i = 0; i < 50 && !string.Equals(Playback.TimecodeOutput.WantedId(), Playback.TimecodeOutput.OpenId, StringComparison.OrdinalIgnoreCase); i++) Thread.Sleep(10);
+                return Inspect.Reply.Ok(id, name, static w => WriteTimecode(w));
+            }
+            if (verb.Length > 0 && verb != "status") return Inspect.Reply.Fail(id, name, "timecode wants do=status|set, not '" + verb + "'");
             int samples = Math.Clamp(a.Int("samples", 1), 1, 2000);
             int every = Math.Clamp(a.Int("every", 200), 0, 60_000);
             if (samples == 1) return Inspect.Reply.Ok(id, name, static w => WriteTimecode(w));
@@ -78,6 +97,23 @@ public static partial class Diagnostics
             }
         }
 
+        static int RateIndex(string v) => v.ToLowerInvariant() switch
+        {
+            "24" => 0, "25" => 1, "29.97" or "2997" or "29.97df" or "df" => 2, "30" => 3, _ => -1,
+        };
+
+        /// <summary>The device by id, as the Settings row writes it. Headless there is no roster: any id stands for the silent endpoint.</summary>
+        static bool SetTimecodeDeviceId(string id)
+        {
+            var devices = Playback.Audio.Devices.Peek();
+            for (int i = 0; i < devices.Length; i++)
+                if (string.Equals(devices[i].Id, id, StringComparison.OrdinalIgnoreCase)) return SettingsVerbs.SetTimecodeDevice(i + 1);
+            if (!Playback.Audio.SilentEndpoint) return false;
+            Platform.Settings.Set(Platform.Keys.TimecodeLtcDeviceId, id);
+            Playback.TimecodeOutput.Apply();
+            return true;
+        }
+
         static void WriteTimecode(Utf8JsonWriter w)
         {
             long now = Playback.Timeline.NowQpc100ns();
@@ -110,6 +146,29 @@ public static partial class Diagnostics
                 w.WriteNumber("outputDelayMs", session.OutputDelayFrames * 1000.0 / Math.Max(1, session.Format.SampleRate));
                 w.WriteNumber("sampleClock", session.SampleClock);
             }
+            w.WriteEndObject();
+            w.WriteStartObject("ltc");
+            w.WriteString("status", Playback.TimecodeOutput.StatusLine());
+            w.WriteString("device", Playback.TimecodeOutput.OpenId);
+            if (Playback.TimecodeOutput.Output is { } output)
+            {
+                var os = output.Stats;
+                w.WriteString("state", output.State.Peek().ToString());
+                w.WriteNumber("auxRate", os.SampleRate);
+                w.WriteNumber("blocks", os.Blocks);
+                w.WriteNumber("underruns", os.Underruns);
+                w.WriteNumber("auxLatencyMs", os.StreamLatencyFrames * 1000.0 / Math.Max(1, os.SampleRate));
+            }
+            LtcGenerator.Status g = Playback.TimecodeOutput.Generator.Read();
+            w.WriteString("rate", g.Rate.ToString());
+            w.WriteBoolean("locked", g.Locked);
+            w.WriteString("sent", g.SentFrame >= 0 ? global::Wavee.Timecode.Format(g.SentFrame, g.Rate) : "");
+            w.WriteString("read", g.ReadFrame >= 0 ? global::Wavee.Timecode.Format(g.ReadFrame, g.Rate) : "");
+            w.WriteNumber("readCount", g.ReadCount);
+            w.WriteNumber("matches", g.Matches);
+            w.WriteNumber("mismatches", g.Mismatches);
+            w.WriteNumber("errorMs", Math.Round(g.ErrorFrames * 1000.0 / global::Wavee.Timecode.FramesPerSecond(g.Rate), 3));
+            w.WriteNumber("relocations", g.Relocations);
             w.WriteEndObject();
         }
 

@@ -301,17 +301,19 @@ public static partial class SettingsVerbs
     }
 
     /// <summary>The level, dB (-24..0, whole dB).</summary>
-    public static void SetTimecodeLevel(float db)
+    public static bool SetTimecodeLevel(float db)
     {
         Platform.Settings.Set(Platform.Keys.TimecodeLtcLevelDb, (int)MathF.Round(Math.Clamp(db, -24f, 0f)));
         Playback.TimecodeOutput.Apply();
+        return true;
     }
 
     /// <summary>The offset, ms (-500..+500, whole ms).</summary>
-    public static void SetTimecodeOffset(float ms)
+    public static bool SetTimecodeOffset(float ms)
     {
         Platform.Settings.Set(Platform.Keys.TimecodeOffsetMs, (int)MathF.Round(Math.Clamp(ms, -500f, 500f)));
         Playback.TimecodeOutput.Apply();
+        return true;
     }
 
     public static int OutputDeviceIndex(string? deviceId)

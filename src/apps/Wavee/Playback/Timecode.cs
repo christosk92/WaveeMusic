@@ -68,8 +68,8 @@ public static class Timecode
     /// <summary>The 80-bit word for a label: bits 0-63 in <paramref name="lo"/>, the sync word in <paramref name="hi"/> (bit 64 = bit 0).</summary>
     public static void Pack(int h, int m, int s, int f, LtcRate rate, out ulong lo, out ushort hi)
     {
-        lo = (ulong)(f % 10) | (ulong)(f / 10) << 8 | (ulong)(s % 10) << 16 | (ulong)(s / 10) << 24
-           | (ulong)(m % 10) << 32 | (ulong)(m / 10) << 40 | (ulong)(h % 10) << 48 | (ulong)(h / 10) << 56;
+        lo = (uint)(f % 10) | (ulong)(uint)(f / 10) << 8 | (ulong)(uint)(s % 10) << 16 | (ulong)(uint)(s / 10) << 24
+           | (ulong)(uint)(m % 10) << 32 | (ulong)(uint)(m / 10) << 40 | (ulong)(uint)(h % 10) << 48 | (ulong)(uint)(h / 10) << 56;
         if (rate == LtcRate.Fps2997Drop) lo |= 1UL << 10;
         hi = 0xBFFC;                                            // 0011 1111 1111 1101, bit 64 first
         int ones = BitOperations.PopCount(lo) + BitOperations.PopCount(hi);
