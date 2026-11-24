@@ -88,14 +88,16 @@ public static partial class SettingsSpec
             Make("sound.connectName", K.Fact, Strings.Settings.Devices.ThisPc, SettingsWriter.ReadOnly, legacy: ["thisPc"],
                 captionKey: Strings.Settings.Devices.ThisPcSub, value: _ => Playback.DeviceName)),
 
-        // #154: timecode for lighting and video software. The switch is enabled once an output is chosen; the output is chosen while it
-        // is off (so the switch can come on), and the other dials grey with the switch. Every write reaches the LTC output at once
+        // #154: timecode for lighting and video software. The switch comes on once an output is chosen; the output is chosen while it is
+        // off (so the switch can come on), and the other dials grey with the switch. Every write reaches the LTC output at once
         // (Playback.TimecodeOutput.Apply: a dial is heard on the next 10 ms block).
         Group("timecode", Strings.Settings.Groups.Sound.Timecode, null,
             Make("sound.timecode", K.Toggle, Strings.Settings.Sound.Timecode.Send,
                 SettingsWriter.OfToggle("timecode.ltc.enabled", SettingsVerbs.SetTimecodeEnabled), glyph: "Clock",
-                captionKey: Strings.Settings.Sound.Timecode.SendSub, value: BoolOf(Platform.Keys.TimecodeLtcEnabled),
-                enabled: static f => f.TimecodeDeviceChosen ? SettingsEnablement.On : SettingsEnablement.Off(Strings.Settings.Sound.Timecode.ChooseFirst),
+                // Never disabled: the output is chosen INSIDE this switch's expander, and a disabled expander does not open. Until an output is
+                // chosen the caption says so and the writer refuses "on".
+                caption: static f => f.TimecodeDeviceChosen ? Strings.Settings.Sound.Timecode.SendSub : Strings.Settings.Sound.Timecode.ChooseFirst,
+                value: BoolOf(Platform.Keys.TimecodeLtcEnabled),
                 aliases: ["ltc", "smpte", "timecode", "clx", "resolume", "vj"]),
             Make("sound.timecode.device", K.Choice, Strings.Settings.Sound.Timecode.Device,
                 SettingsWriter.OfChoice("timecode.ltc.device", SettingsVerbs.SetTimecodeDevice), parent: "sound.timecode",
