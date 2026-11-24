@@ -65,6 +65,10 @@ public static partial class Playback
             uint BeatsA, uint BeatsB, uint CuesA, uint CuesB, uint ListVersion, bool ListenWithout);
 
         static FollowKey s_key;
+        static MixTiming? s_bench;
+
+        /// <summary>`--mix-bench` only (Diagnostics.MixBench.cs): every pair plays this timing, whatever the planner would say.</summary>
+        internal static void Bench(MixTiming timing) => s_bench = timing;
         static (EntityId, EntityId) s_ensured;
 
         /// <summary>After every drain: re-plan when the pair, the playlist's mix data, the overrides, or the analysis of
@@ -86,7 +90,7 @@ public static partial class Playback
             if (key == s_key) return;
             s_key = key;
 
-            var timing = PlanPair(in s, cur, next, provider, pl);
+            var timing = s_bench is { } bench && !next.IsNone ? bench : PlanPair(in s, cur, next, provider, pl);
             if (timing.Mix && s_ensured != (key.Cur, key.Next))
             {
                 // The analysis the planner reads, for the playing and the next row (plan §3.3: "for the playing track and

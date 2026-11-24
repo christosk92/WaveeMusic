@@ -81,6 +81,29 @@ public static partial class Diagnostics
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();
+                // The planner's timing for every adjacent pair (plan §3.5's reference table: read beside the capture's §3.3).
+                w.WriteStartArray("timings");
+                for (int i = 0; i + 1 < targets.Length; i++)
+                {
+                    var t = Playback.Mix.PlanListPair(slot, i, i + 1);
+                    w.WriteStartObject();
+                    w.WriteNumber("from", i);
+                    w.WriteString("source", t.Source.ToString());
+                    if (!t.Mix) w.WriteString("whyNot", t.WhyNot.ToString());
+                    else
+                    {
+                        w.WriteNumber("preset", t.Preset);
+                        w.WriteNumber("outStartMs", t.OutStartMs);
+                        w.WriteNumber("outDurMs", t.OutDurationMs);
+                        w.WriteNumber("inStartMs", t.InStartMs);
+                        w.WriteNumber("inDurMs", t.InDurationMs);
+                        w.WriteNumber("audibleEndMs", t.AudibleEndMs);
+                    }
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
+                var cur = Playback.Mix.Current;
+                w.WriteString("playingPair", cur.Mix ? cur.Source + " out=" + cur.OutStartMs + " dur=" + cur.OutDurationMs + " in=" + cur.InStartMs : "none (" + cur.WhyNot + ")");
             });
         }
 
