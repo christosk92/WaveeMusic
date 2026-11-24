@@ -38,6 +38,10 @@ public static class ModuleMethods
     /// <summary>Invoke a user-pressed <see cref="ModuleAction"/>.</summary>
     public const string Action = "module/action";
 
+    /// <summary>Notification: the app's playback timeline changed, or one second passed while an observer is enabled
+    /// (<see cref="TimelineState"/>; capability <c>timeline</c>). Sent only to a module that declares that capability.</summary>
+    public const string Timeline = "playback/timeline";
+
     // ---- module -> host -------------------------------------------------------------------------------------
 
     /// <summary>Notification: a live "now playing" correction.</summary>
