@@ -6,6 +6,8 @@
 // per-pair opt-out (decision D16), so the record lives on this PC only and says so ("Saved on this PC only" in the label's
 // tooltip line of the Transitions view). Checked while the pair is opted out; running it again removes the record.
 
+using FluentGpu.Localization;
+
 namespace Wavee;
 
 public static class MixMenu
@@ -57,8 +59,7 @@ public static class MixMenu
             if (MixOverrides.TryGet(uri, from, to, out _) || MixData.TryGet(p.Slot, from, out _)) edited++;
         }
         return edited == 0 ? Loc.Get(Strings.Mix.MixedLine)
-            : Loc.Format(Strings.Mix.MixedLineEdited, ("edited", edited.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-                         ("count", pairs.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            : Strings.Mix.MixedLineEdited(edited, pairs);
     }
 
     /// <summary>The list bar offers the Mix toggle: the playlist is mixed, or it is the user's own and Spotify says it may be mixed.</summary>

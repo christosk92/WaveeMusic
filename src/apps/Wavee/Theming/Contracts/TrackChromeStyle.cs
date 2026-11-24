@@ -106,7 +106,7 @@ internal interface ITrackCommandKit
     /// is tuned or its strip is open. Appended (contract 1.120); a structure without one draws the labelled command.</summary>
     Element TuneCommand(string label, bool lit, Action onClick) => Labeled(Icons.RefineSparkle, label, lit, onClick, null);
 
-    /// <summary>#48: the list bar's Mix toggle: "Mix", or "Mix on" lit while the playlist plays mixed on this PC. It takes Tune's slot (a
+    /// <summary>#48: the list bar's Mix toggle: "Mix", lit (the accent plate, as Tune's) while the playlist plays mixed on this PC. It takes Tune's slot (a
     /// playlist the user can mix has no Tune). Appended (contract: additive); a structure without one draws the labelled command.</summary>
     Element MixCommand(string label, bool on, Action onClick) => Labeled(Icons.Equalizer, label, on, onClick, null);
 

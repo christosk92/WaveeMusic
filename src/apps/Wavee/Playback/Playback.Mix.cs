@@ -15,6 +15,8 @@
 
 using FluentGpu.Signals;
 
+using FluentGpu.Localization;
+
 namespace Wavee;
 
 public static partial class Playback
@@ -127,7 +129,7 @@ public static partial class Playback
             {
                 var row = Entities.Ref(CurrentNext);
                 string title = row.Kind == EntityKind.Track && !row.IsNone ? new global::Wavee.Track(row.Slot).Title : "";
-                s_mixingText = Loc.Format(Strings.Mix.MixingInto, ("title", title));
+                s_mixingText = Strings.Mix.MixingInto(title);
                 s_mixingFor = CurrentNext;
             }
             return s_mixingText;

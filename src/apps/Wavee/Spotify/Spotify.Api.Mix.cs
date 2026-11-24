@@ -66,7 +66,7 @@ public static partial class Spotify
             string id = Entities.MixPlaylistId(p.Slot), uri = p.Uri.Text;
             if (id.Length == 0) { settled?.Invoke(false); return; }
             MixData.SetLens(id, true);
-            if (!Net.Run(() =>
+            if (!Library.Net.Run(() =>
                 {
                     Span<byte> head = stackalloc byte[Encode.MaxRevisionBytes];
                     Api.Result read = Api.Playlist(id, CancellationToken.None);

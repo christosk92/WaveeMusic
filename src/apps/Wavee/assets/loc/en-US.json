@@ -5338,7 +5338,6 @@
     "mixingInto": "Mixing into {title}",
     "mixedLine": "Mixed",
     "mixedLineEdited": "Mixed · {edited} of {count} transitions edited",
-    "mix": "Mix",
-    "mixOn": "Mix on"
+    "label": "Mix"
   }
 }

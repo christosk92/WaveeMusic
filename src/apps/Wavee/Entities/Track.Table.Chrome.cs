@@ -311,7 +311,8 @@ public readonly partial struct Track
             else if (hasMix)
             {
                 bool on = P.MixLit?.Invoke() ?? false;
-                left.Add(MeasuredCommand(1, "cmd:mix", Kit.MixCommand(Loc.Get(on ? Strings.Mix.MixOn : Strings.Mix.Mix), on,
+                // One word in both states (Tune's precedent): the lit plate is the state, so flipping it never resizes the bar.
+                left.Add(MeasuredCommand(1, "cmd:mix", Kit.MixCommand(Loc.Get(Strings.Mix.Label), on,
                     _mixToggle ??= () => _latest.Profile.MixToggle?.Invoke()), live));
             }
 
