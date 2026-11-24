@@ -2490,7 +2490,15 @@ public static partial class Modules
                 while (_heldCount < srcCh)
                 {
                     if (_eof) return Tail(dst);
-                    if (!_reader!.TryReadFrame(out ReadOnlySpan<byte> frame, out _)) { _eof = true; return Tail(dst); }
+                    if (!_reader!.TryReadFrame(out ReadOnlySpan<byte> frame, out _))
+                    {
+                        // The transform runs one frame behind: at the end of the input it still holds the last frame. Drain it, then
+                        // serve what came out before the resampler's tail.
+                        _eof = true;
+                        _decoder!.Drain();
+                        DrainRaw();
+                        continue;
+                    }
                     PushAndDrain(frame, primingPhase: false);
                     if (_faulted)
                     {
