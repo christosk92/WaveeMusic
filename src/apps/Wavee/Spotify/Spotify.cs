@@ -2026,8 +2026,10 @@ public static partial class Spotify
                 w.Append("/playlist/v2/playlist/");
                 w.AppendEscaped(args.Id);
                 w.Append("/signals");
+                // #48 Mix: the `mix-state` signal (args.Flag) carries the mix lens and its own sync-reason {1:16,2:1} (capture report §3.1);
+                // every other signal keeps the captured {1:15,2:1}.
                 return new Request(Verb.Post, ApiHost.Spclient, w.Written,
-                    Mutation | HeaderSet.AcceptProtobuf, args.Body, "CA8QAQ==");
+                    Mutation | HeaderSet.AcceptProtobuf | (args.Flag ? HeaderSet.MixLens : HeaderSet.None), args.Body, args.Flag ? "CBAQAQ==" : "CA8QAQ==");
 
             case RequestKind.RootlistRead:
                 w.Append("/playlist/v2/user/");

@@ -5332,5 +5332,13 @@
       "rate": "If this release made Wavee better for you, a rating in the Microsoft Store helps other people find it.",
       "star": "If this release made Wavee better for you, a star on GitHub helps other people find it."
     }
+  },
+  "mix": {
+    "dontMixIntoNext": "Don't mix into the next song",
+    "mixingInto": "Mixing into {title}",
+    "mixedLine": "Mixed",
+    "mixedLineEdited": "Mixed · {edited} of {count} transitions edited",
+    "mix": "Mix",
+    "mixOn": "Mix on"
   }
 }

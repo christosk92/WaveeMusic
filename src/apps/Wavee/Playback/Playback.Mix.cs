@@ -86,7 +86,7 @@ public static partial class Playback
                 cur.Kind == EntityKind.Track ? edges.TrackCues.Version(cur.Slot) : 0,
                 next.Kind == EntityKind.Track ? edges.TrackCues.Version(next.Slot) : 0,
                 pl > 0 ? edges.PlaylistTracks.Version(pl) : 0,
-                pl > 0 && MixListenWithout.Is(Entities.MixPlaylistId(pl)));
+                pl > 0 && MixListenWithout.Is(new global::Wavee.Playlist(pl)));
             if (key == s_key) return;
             s_key = key;
 
@@ -113,6 +113,34 @@ public static partial class Playback
             Audio.SetMix(s.CurrentId, key.Next, next, in timing);
         }
 
+        static string? s_mixingText;
+        static EntityId s_mixingFor;
+
+        /// <summary>"Mixing into &lt;next title&gt;" while a join is planned for the playing track; null otherwise. Reads
+        /// <see cref="Changed"/> (a bind that calls it follows the plan). UI thread.</summary>
+        public static string? LabelWhilePlanned()
+        {
+            _ = Changed.Value;
+            var t = Current;
+            if (!t.Mix || CurrentNext.IsEmpty) return null;
+            if (s_mixingFor != CurrentNext || s_mixingText is null)
+            {
+                var row = Entities.Ref(CurrentNext);
+                string title = row.Kind == EntityKind.Track && !row.IsNone ? new global::Wavee.Track(row.Slot).Title : "";
+                s_mixingText = Loc.Format(Strings.Mix.MixingInto, ("title", title));
+                s_mixingFor = CurrentNext;
+            }
+            return s_mixingText;
+        }
+
+        /// <summary>The label inside the overlap (<paramref name="positionMs"/> in [mix-out, audible end)), else null.</summary>
+        public static string? LabelAt(long positionMs)
+        {
+            var text = LabelWhilePlanned();
+            var t = Current;
+            return text is not null && positionMs >= t.OutStartMs && positionMs < t.AudibleEndMs ? text : null;
+        }
+
         static void EnsureAnalysis(EntityRef row)
         {
             if (row.Kind != EntityKind.Track || row.IsNone) return;
@@ -129,7 +157,7 @@ public static partial class Playback
             if (pl <= 0) return MixTiming.Refused(MixWhyNot.NotMixed);
             var p = new global::Wavee.Playlist(pl);
             if (!p.MixOn) return MixTiming.Refused(MixWhyNot.NotMixed);
-            if (MixListenWithout.Is(Entities.MixPlaylistId(pl))) return MixTiming.Refused(MixWhyNot.ListenWithoutMix);
+            if (MixListenWithout.Is(p)) return MixTiming.Refused(MixWhyNot.ListenWithoutMix);
             if (cur.IsNone || next.IsNone) return MixTiming.Refused(MixWhyNot.NotMixed);
             if (provider != QueueProvider.Context) return MixTiming.Refused(MixWhyNot.UserQueued);
             if (cur.Kind != EntityKind.Track || next.Kind != EntityKind.Track || s.Kind != PlayableKind.Audio)

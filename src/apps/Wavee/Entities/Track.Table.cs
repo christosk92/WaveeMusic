@@ -333,6 +333,11 @@ public readonly partial struct Track
         public Func<Element?>? TuneStrip { get; init; }
         /// <summary>Is Tune lit (the mix is tuned, or its strip is open)? A tracked read. Appended (contract 1.120).</summary>
         public Func<bool>? TuneLit { get; init; }
+        /// <summary>#48 Mix: the list bar's Mix toggle (turn Mix on; listen with or without it on this PC); null = no toggle. It takes the Tune
+        /// slot when there is no Tune.</summary>
+        public Action? MixToggle { get; init; }
+        /// <summary>Is Mix on for this playlist on this PC? A tracked read: the toggle follows it.</summary>
+        public Func<bool>? MixLit { get; init; }
         /// <summary>Expanded-row BODY (Track.Drawer.cs, M Wave 5), handed the row's track and DISPLAY index; the host pads it
         /// by <see cref="RowMetrics.DrawerIndent"/>. Null = no chevron lane.</summary>
         public Func<Track, int, Element?>? Drawer { get; init; }

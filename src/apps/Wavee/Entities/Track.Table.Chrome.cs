@@ -86,6 +86,9 @@ public readonly partial struct Track
         // the unavailable-songs bar (contract 1.22): its verb, whether it is on (the hero arm's clip inset follows it), and its cached tally
         Action _hideUnavailable = null!;
         Action? _dismissUnavailable;
+        /// <summary>#48: the list bar's Mix verb, built once (the profile's own verb, read at click time).</summary>
+        Action? _mixToggle;
+
         /// <summary>The list bar's Tune verb, built once (the profile's own verb, read at click time).</summary>
         Action? _tuneToggle;
         readonly Signal<bool> _unavailableShown = new(false);
@@ -256,6 +259,9 @@ public readonly partial struct Track
             bool pageBar = PageBar;
             // A structure that draws Tune in its hero at this tier (DetailTableTier.TuneInHero, WinUI) leaves it off the bar: one home per verb.
             bool hasTune = P.Tune is not null && !(vertical && ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table.TuneInHero);
+            // #48 Mix: the Mix toggle rides Tune's slot (and its measured width) on a playlist that has no Tune.
+            bool hasMix = !hasTune && P.MixToggle is not null;
+            bool hasTuneSlot = hasTune || hasMix;
             var insights = BarInsights;
             bool explicitSearch = _searchExpanded.Value;
             var w = _toolbarWidths;
@@ -273,7 +279,7 @@ public readonly partial struct Track
             _inlineSelect = select is not null;
             if (findWord) fitPane = MathF.Max(0f, fitPane - MathF.Max(0f, _findWordW - CommandBarLayout.SearchIconWidth));
             if (select is not null) fitPane = MathF.Max(0f, fitPane - CommandBarLayout.Gap - _selectW);
-            var fit = CommandBarLayout.Resolve(fitPane, in widths, vertical, hasTune, insights is not null, explicitSearch, _toolbarFit);
+            var fit = CommandBarLayout.Resolve(fitPane, in widths, vertical, hasTuneSlot, insights is not null, explicitSearch, _toolbarFit);
             if (pageBar) fit = fit with { Inline = fit.Inline | InlineCommand.Shuffle };
             if (!explicitSearch) _searchOpenFit = null;
             else if (_searchOpenFit is { } latched && MathF.Abs(latched.Available - pane) <= 0.5f) fit = latched.Fit;
@@ -302,6 +308,12 @@ public readonly partial struct Track
                 left.Add(MeasuredCommand(1, "cmd:tune", ToolTip.Wrap(
                     Kit.TuneCommand(Loc.Get(Strings.Detail.Tuning.Tune), P.TuneLit?.Invoke() ?? false, _tuneToggle ??= () => _latest.Profile.Tune?.Invoke()),
                     Loc.Get(Strings.Detail.Tuning.Tooltip)), live));
+            else if (hasMix)
+            {
+                bool on = P.MixLit?.Invoke() ?? false;
+                left.Add(MeasuredCommand(1, "cmd:mix", Kit.MixCommand(Loc.Get(on ? Strings.Mix.MixOn : Strings.Mix.Mix), on,
+                    _mixToggle ??= () => _latest.Profile.MixToggle?.Invoke()), live));
+            }
 
             var view = new List<Element>(2);
             if (fit.Has(InlineCommand.Filter))

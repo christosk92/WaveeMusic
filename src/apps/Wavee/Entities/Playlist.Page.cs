@@ -306,6 +306,9 @@ public readonly partial struct Playlist
         readonly Func<ColorF> _accent;
         readonly Func<PageStamp> _stamp;
         readonly Action _demand, _demandRows, _observe, _activated, _tune, _holdExpired, _toYourEpisodes, _bindTune;
+        /// <summary>#48 Mix: the list bar's toggle and its lit read (built once; they read the page's playlist at call time).</summary>
+        readonly Action _mixToggle;
+        readonly Func<bool> _mixLit;
         /// <summary>Tune's strip and its state on this page (the strip opens inline under the list bar).</summary>
         readonly TuneSession _tuneSession = new();
         string _routeKey = "";
@@ -349,6 +352,8 @@ public readonly partial struct Playlist
             _activated = Activated;
             _tune = _tuneSession.Toggle;
             _bindTune = () => _tuneSession.Bind(_playlist);
+            _mixToggle = () => MixMenu.Toggle(_playlist);
+            _mixLit = () => { _ = Entities.Current.Playlists.Changed.Value; return MixMenu.Lit(_playlist); };
             _editable = () => _playlist.Editable;
             _deposit = Deposit;
             _moveRows = (rows, at) => Spotify.PlaylistEdits.MoveRows(_playlist, rows, at);
@@ -470,7 +475,9 @@ public readonly partial struct Playlist
             bool facts = stamp.Facts;
             float lensExtent = lensMemo.Value;
 
-            int profileMask = PageRules.ProfileMask(editable, recs, tune, _local, lensExtent);
+            // #48 Mix: the toggle shows on a mixed playlist, or on the user's own one Spotify says may be mixed (kind 235).
+            bool mixable = !_local && MixMenu.Offered(pl);
+            int profileMask = PageRules.ProfileMask(editable, recs, tune, _local, lensExtent) ^ (mixable ? 1 << 30 : 0);
             if (_profile is null || _profileMask != profileMask)
             {
                 _profileMask = profileMask;
@@ -484,6 +491,8 @@ public readonly partial struct Playlist
                     Tune = tune ? _tune : null,
                     TuneStrip = tune ? _tuneSession.Strip : null,
                     TuneLit = tune ? _tuneSession.Lit : null,
+                    MixToggle = mixable ? _mixToggle : null,
+                    MixLit = mixable ? _mixLit : null,
                     LensHeader = _lensHeader,
                     LensExtent = lensExtent,
                     Drawer = Track.DrawerSeam,
@@ -693,6 +702,8 @@ public readonly partial struct Playlist
             int count = countKnown && pl.TrackCount > 0 ? pl.TrackCount : slots.Length;
             string? meta = arm != MetaArm.Text ? null
                 : Detail.Text.PlaylistMeta(count, totalMs, durationsKnown && slots.Length > 0, pl.Knows(PlaylistFields.Saves) ? pl.Saves : 0, pl.EpisodeCount);
+            // #48 Mix: a mixed playlist says so on the meta line, with how many of its transitions are edited (Entities/Mix.Menu.cs).
+            if (meta is not null && !_local && MixMenu.MetaSuffix(pl) is { } mixed) meta += " · " + mixed;
 
             // While the head waits with the list, no cover is latched: the held copy's art is never shown, so it can never be swapped out.
             string? incoming = Controls.ArtUrl(pl.ImageId);

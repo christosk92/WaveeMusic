@@ -217,7 +217,7 @@ public static partial class Entities
             string id = MixPlaylistId(slot);
             if (id.Length == 0) continue;
             var flags = (PlaylistMixFlags)playlists.MixFlags[slot];
-            bool lens = PlaylistMixRules.On(flags) && !MixListenWithout.Is(id);
+            bool lens = PlaylistMixRules.On(flags) && !MixListenWithout.Is(new global::Wavee.Playlist(slot));
             MixData.SetLens(id, lens);
             // Once per playlist per session: a lens read that still names no mix lens must not loop.
             if (lens && PlaylistMixRules.OwesLensRead(flags)
@@ -246,6 +246,16 @@ public static class MixListenWithout
         foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) set.Add(part);
         return set;
     }
+
+    /// <summary>The key a playlist's choice is stored under: its bare id, or its uri for a text id (the fake seed).</summary>
+    public static string KeyOf(Playlist p)
+    {
+        string id = Entities.MixPlaylistId(p.Slot);
+        return id.Length > 0 ? id : p.Uri.Text;
+    }
+
+    /// <summary>Is this playlist set to play without Mix on this PC?</summary>
+    public static bool Is(Playlist p) => p.IsValid && Is(KeyOf(p));
 
     /// <summary>Is this playlist (bare id) set to play without Mix on this PC? Thread safe for reads after the first load
     /// on the UI thread (the provider never calls it).</summary>

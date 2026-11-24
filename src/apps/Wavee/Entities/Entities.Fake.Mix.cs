@@ -11,6 +11,18 @@ namespace Wavee;
 
 public static partial class Entities
 {
+    /// <summary>--fake's answer to Spotify.Mixes.TurnOn: the row reads as a list the server just mixed (the lens applied, the list
+    /// and XM bits set). There is no account to write with.</summary>
+    public static void FakeMixOn(Playlist p)
+    {
+        if (!p.IsValid) return;
+        var t = Current.Playlists;
+        t.MixFlags[p.Slot] |= (uint)(PlaylistMixFlags.ListMix | PlaylistMixFlags.AllowCustom | PlaylistMixFlags.CanViewTransition
+                                     | PlaylistMixFlags.LensApplied | PlaylistMixFlags.XmMixState | PlaylistMixFlags.XmAutoLens);
+        t.Bump(p.Slot);
+        Log.Info("mix", "fake: mix on");
+    }
+
     internal static partial class LibrarySeed
     {
         public const string MixUri = "spotify:playlist:plmix";
