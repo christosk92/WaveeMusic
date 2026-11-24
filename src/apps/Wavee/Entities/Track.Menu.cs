@@ -200,12 +200,23 @@ public readonly partial struct Track
             if (local)
             {
                 if (LocalFilesList.ShowInFolderItem(one) is { } reveal) rows.Add(reveal);
-                // "Your files and Spotify" (F-B): a song in the music folders always offers "Find on Spotify…": matching on, the review opens on its
-                // group (its candidates with their evidence, a search, Not on Spotify); off, the opt-in asks first, then finds it. A linked song
-                // also offers "Remove link" (F-G).
-                if (LocalLibrary.TryLocalIdOf(one.Uri.Text, out long localId))
+                // "Your files and Spotify" (F-B): EVERY local row with a file behind it offers "Find on Spotify…" (a music-folder file, an added
+                // one, audio or video, a playlist item the index matched): matching on, the review opens on its group (its candidates with their
+                // evidence, a search, Not on Spotify); off, the opt-in asks first, then finds it. A linked song also offers "Remove link" (F-G).
+                var overlay = o.PickerOverlay ?? DrawerOverlay;
+                if (!LocalLibrary.TryLocalIdOf(one.Uri.Text, out long localId)) localId = LocalLibrary.LocalIdOf(one.Id);
+                if (localId == 0 && LocalFilesList.FileOf(one) is { } loosePath)
                 {
-                    var overlay = o.PickerOverlay ?? DrawerOverlay;
+                    // A row staged from its path alone (the headless --file host, an older build's drop): it joins the library first.
+                    rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.FindOnSpotify), Icons.Link, true, () =>
+                    {
+                        bool read = LocalTags.TryRead(loosePath, out Spotify.Audio.Format format, out LocalTagSet tags, out string why);
+                        if (LocalLibrary.AddFile(loosePath, format, in tags, read, why) is { IsValid: true } added && LocalLibrary.TryLocalIdOf(added.Uri.Text, out long id))
+                            LocalLinkPage.FindOnSpotify(id, overlay);
+                    }));
+                }
+                if (localId != 0)
+                {
                     // Phase 2: "Rename…" (a Wavee-side name, show-only; Undo on its toast).
                     rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.Rename), Icons.Edit, true, () => LocalLinkPage.OpenRename(localId, overlay)));
                     rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.FindOnSpotify), Icons.Link, true, () => LocalLinkPage.FindOnSpotify(localId, overlay)));
