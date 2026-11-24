@@ -17,6 +17,14 @@ public static partial class Diagnostics
         /// <summary>`mix {uri?, recipe?}`.</summary>
         string MixVerb(int id, string name, Inspect.Args a)
         {
+            if (a.Has("mixstate"))
+            {
+                // The `mix-state` (turn Mix on) body Wavee would POST for this revision (hex): compared byte-for-byte with the capture's #057.
+                var hex = a.Str("mixstate");
+                var rev = Convert.FromHexString(hex);
+                var body = Spotify.Api.MixStateOnBody(rev);
+                return Inspect.Reply.Ok(id, name, w => { w.WriteString("body", Convert.ToHexString(body).ToLowerInvariant()); w.WriteNumber("bytes", body.Length); });
+            }
             if (a.Has("recipe"))
             {
                 string b64 = a.Str("recipe");
