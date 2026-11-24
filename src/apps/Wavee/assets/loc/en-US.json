@@ -2153,6 +2153,7 @@
       "signIn": "Sign in needed",
       "folderScanning": "Scanning…",
       "waking": "Waking up…",
+      "checking": "Checking…",
       "slow": "Slow connection · scanning gently",
       "notScanned": "Not scanned yet",
       "scanning": "Scanning {folder} · {done} of {total}",
