@@ -773,6 +773,7 @@ internal static partial class CommonLocalCollectionParts
             var verbs = p.Verbs;
 
             string folder = opened?.Folder ?? "";
+            string keyed = opened?.ViewKey ?? "";   // the list and its scroll: a rename keeps them (LocalOpened.ViewKey)
             LocalFolderNode? node = folder.Length > 0 && v.Folders.TryGetValue(folder, out var n) ? n : null;
             if (node is null && folder.Length > 0 && _held is { } held && held.Key == folder) node = held;
             _held = node;
@@ -841,7 +842,7 @@ internal static partial class CommonLocalCollectionParts
             bool grid = code >= 2, compact = code is 0 or 2;
             // Keyed by what it shows, never by the fold's version: a fold that lands while a card is pressed (a rescan after a disk verb, the watcher)
             // re-renders the rows in place, so the press and its release meet the same card (a remount between them lost the click or the menu).
-            Element list = Measured(K.FoldersKey + ":" + (folder.Length == 0 ? "top" : folder) + ":" + code + ":" + size + ":" + (stacked ? "s" : "w"), w =>
+            Element list = Measured(K.FoldersKey + ":" + (keyed.Length == 0 ? "top" : keyed) + ":" + code + ":" + size + ":" + (stacked ? "s" : "w"), w =>
             {
                 int cols = 1;
                 float cell = 0f, itemH;
@@ -864,7 +865,7 @@ internal static partial class CommonLocalCollectionParts
                                    : Gut("lc-folder-row", MathF.Max(0f, g - SurfaceGeometry.RowPad), FolderRow(children[i - tilesAt], open, verbs, menus, compact))
                         : i == songsAt ? songsHead
                         : SongRow(files[i - songsAt - 1], g, lay.FileColumn, verbs));
-            }, p.RouteKey + ":folders:" + folder);
+            }, p.RouteKey + ":folders:" + keyed);
             var body = new BoxEl { Key = "lc-folders-area", Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Children = [list] };
             // The empty area (between and under the cards, beside the songs) opens the browser's menu; a card's own menu wins where it stands.
             return menus is null ? body : ContextSheets.Attach(body, overlay!, () => menus.Area(folder, fp.Views));
@@ -1090,7 +1091,7 @@ internal static partial class CommonLocalCollectionParts
         public (string Key, LayoutTransition? Enter) Step(string bodyKey, LocalPivot pivot, LocalOpened? opened, ThemeFacts facts)
         {
             bool detail = opened?.IsOpenOver(pivot) == true;
-            string key = bodyKey + ":" + pivot.ToString() + (detail ? ":open:" + opened!.Folder : ":list");
+            string key = bodyKey + ":" + pivot.ToString() + (detail ? ":open:" + opened!.ViewKey : ":list");
             LayoutTransition? enter = null;
             if (_seen && pivot == _pivot && key != _key && opened is { } o) enter = Drill(o.Back, o.Flown, facts);
             _seen = true;

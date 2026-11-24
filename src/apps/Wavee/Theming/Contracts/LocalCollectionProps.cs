@@ -13,7 +13,8 @@
 // Later ("Your files and Spotify", phase 1): `LocalCollectionPageProps.Link` (LocalLinkProps.cs). Later (the library look, #240): `LocalArtistSort`,
 // `LocalCollectionPageProps.ArtistSort/SetArtistSort/ListView/ListSize/Filter` (the Albums and Artists pivots wear the library's toolbar).
 // Later (list-detail, #240): `LocalCollectionPageProps.Selected/Pick/Pane` (the Albums and Artists lists select a row and show its detail beside them).
-// Later (folder management, #240): `LocalFolderMenus`, `LocalCollectionPageProps.FolderMenus`.
+// Later (folder management, #240): `LocalFolderMenus`, `LocalCollectionPageProps.FolderMenus`, `LocalOpened.Keyed/ViewKey` (a renamed open folder
+// keeps its view).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -172,6 +173,14 @@ public sealed record LocalOpened(LocalPivot From, string Folder, string Root, st
 
     /// <summary>The header cover's flight key: the album card's at the root an album opened, else the folder tile's.</summary>
     public string HeaderTile => Album.Length > 0 && Folder == Root ? AlbumTile(Album) : FolderTile(Folder);
+
+    /// <summary>The folder key the open view was first keyed by, kept when a rename moves <see cref="Folder"/> (it or a folder above it): null
+    /// until then. Every step in, out or back starts a view of its own (null again).</summary>
+    public string? Keyed { get; init; }
+
+    /// <summary>What keys the open view (its body, its list, its scroll): a rename keeps it, so the view follows the new name in place, with no
+    /// remount, no replayed drill and its scroll kept.</summary>
+    public string ViewKey => Keyed ?? Folder;
 }
 
 /// <summary>The verbs of the page, built once by the core host.</summary>
