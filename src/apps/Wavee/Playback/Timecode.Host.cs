@@ -110,6 +110,42 @@ public static partial class Playback
             return string.Equals(id, Audio.MusicEndpointId(), StringComparison.OrdinalIgnoreCase) ? "" : id;
         }
 
+        /// <summary>Set one timecode dial by name through the Settings rows' own verbs (what a click writes): the inspector's
+        /// <c>timecode do=set</c> and the developer link <c>wavee://diag?cmd=timecode</c>. <paramref name="key"/>: enabled, device,
+        /// rate, start, level, offset. A device id not in the roster is taken as given where the music is on no device (the silent
+        /// endpoint, `--fake`). False for a key or value it does not accept.</summary>
+        public static bool Set(string key, string value)
+        {
+            value ??= "";
+            switch ((key ?? "").ToLowerInvariant())
+            {
+                case "enabled": return SettingsVerbs.SetTimecodeEnabled(value is "1" or "true" or "on");
+                case "device":
+                {
+                    var devices = Audio.Devices.Peek();
+                    for (int i = 0; i < devices.Length; i++)
+                        if (string.Equals(devices[i].Id, value, StringComparison.OrdinalIgnoreCase)) return SettingsVerbs.SetTimecodeDevice(i + 1);
+                    if (Audio.MusicEndpointId() is not null || value.Length == 0) return false;
+                    Platform.Settings.Set(Platform.Keys.TimecodeLtcDeviceId, value);
+                    Apply();
+                    return true;
+                }
+                case "rate":
+                    return SettingsVerbs.SetTimecodeRate(value.ToLowerInvariant() switch
+                    {
+                        "24" => 0, "25" => 1, "29.97" or "2997" or "29.97df" or "df" => 2, "30" => 3, _ => -1,
+                    });
+                case "start": return SettingsVerbs.SetTimecodeStartHour(value is "1" or "01" or "01:00:00:00" ? 1 : 0);
+                case "level":
+                    return float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float db)
+                           && SettingsVerbs.SetTimecodeLevel(db);
+                case "offset":
+                    return float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float ms)
+                           && SettingsVerbs.SetTimecodeOffset(ms);
+                default: return false;
+            }
+        }
+
         /// <summary>The first load applies the saved settings once (a later call is a no-op).</summary>
         public static void ApplyOnce()
         {

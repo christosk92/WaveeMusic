@@ -30,17 +30,7 @@ public static partial class Diagnostics
             if (verb == "set")
             {
                 // The Settings rows' own verbs (SettingsVerbs), by the dial the row shows: what a user's click writes.
-                string key = a.Str("key").ToLowerInvariant(), value = a.Str("value");
-                bool ok = key switch
-                {
-                    "enabled" => SettingsVerbs.SetTimecodeEnabled(value is "1" or "true" or "on"),
-                    "device" => SetTimecodeDeviceId(value),
-                    "rate" => SettingsVerbs.SetTimecodeRate(RateIndex(value)),
-                    "start" => SettingsVerbs.SetTimecodeStartHour(value is "1" or "01" or "01:00:00:00" ? 1 : 0),
-                    "level" => float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float db) && SettingsVerbs.SetTimecodeLevel(db),
-                    "offset" => float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float ms) && SettingsVerbs.SetTimecodeOffset(ms),
-                    _ => false,
-                };
+                bool ok = Playback.TimecodeOutput.Set(a.Str("key"), a.Str("value"));
                 if (!ok) return Inspect.Reply.Fail(id, name, "timecode do=set wants key=enabled|device|rate|start|level|offset and a value it accepts");
                 // The output opens on a worker: give it a moment so the reply already reads it.
                 for (int i = 0; i < 50 && !string.Equals(Playback.TimecodeOutput.WantedId(), Playback.TimecodeOutput.OpenId, StringComparison.OrdinalIgnoreCase); i++) Thread.Sleep(10);
@@ -95,23 +85,6 @@ public static partial class Diagnostics
                 double spent = System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
                 if (due > spent) Thread.Sleep(TimeSpan.FromMilliseconds(due - spent));
             }
-        }
-
-        static int RateIndex(string v) => v.ToLowerInvariant() switch
-        {
-            "24" => 0, "25" => 1, "29.97" or "2997" or "29.97df" or "df" => 2, "30" => 3, _ => -1,
-        };
-
-        /// <summary>The device by id, as the Settings row writes it. Headless there is no roster: any id stands for the silent endpoint.</summary>
-        static bool SetTimecodeDeviceId(string id)
-        {
-            var devices = Playback.Audio.Devices.Peek();
-            for (int i = 0; i < devices.Length; i++)
-                if (string.Equals(devices[i].Id, id, StringComparison.OrdinalIgnoreCase)) return SettingsVerbs.SetTimecodeDevice(i + 1);
-            if (!Playback.Audio.SilentEndpoint) return false;
-            Platform.Settings.Set(Platform.Keys.TimecodeLtcDeviceId, id);
-            Playback.TimecodeOutput.Apply();
-            return true;
         }
 
         static void WriteTimecode(Utf8JsonWriter w)
