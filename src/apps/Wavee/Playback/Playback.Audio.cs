@@ -92,8 +92,8 @@ public static partial class Playback
         /// interpolates from `PosMs + (now − PosQpc)` and only needs the truth once a second.</summary>
         const int PositionSampleMs = 1_000;
 
-        /// <summary>A 0 ms hand-off commits inside the last 1.5 s — several ticks before the boundary, so a missed
-        /// tick still leaves room.</summary>
+        /// <summary>A hand-off is committed (scheduled at its frame) this long before it starts — inside the last 1.5 s for a
+        /// 0 ms join, 1.5 s before the fade's start for a crossfade — several ticks early, so a missed tick still leaves room.</summary>
         const int GaplessCommitLeadMs = 1_500;
 
         /// <summary>`Ended` is HELD for up to ~4 s while a prepare is still filling. A degraded join beats a hard
@@ -104,9 +104,11 @@ public static partial class Playback
         /// persisted value beyond it once, because older builds offered 30 s).</summary>
         public const int MaxCrossfadeMs = 12_000;
 
-        /// <summary>How long before the end the arm snapshot is taken. `max(fade, 2 s)`: a 0 ms join still needs the
-        /// diagnostic line, and the line is what tells a log reader WHY a boundary was a hard cut.</summary>
-        public static int ArmLeadMs(int fadeMs) => Math.Max(fadeMs, 2_000);
+        /// <summary>How long before the end the arm snapshot is taken: at or before the commit window opens
+        /// (<see cref="HandOffAt"/>), so the line is written while nothing is in flight yet. 2 s for a 0 ms join, which
+        /// still needs the line; the fade plus the commit lead for a crossfade. The line is what tells a log reader WHY a
+        /// boundary was a hard cut.</summary>
+        public static int ArmLeadMs(int fadeMs) => fadeMs > 0 ? fadeMs + GaplessCommitLeadMs : 2_000;
 
         /// <summary>The window in which an unprepared endgame is worth nudging the reducer about — once per track. A
         /// track SHORTER than the margin is its own window: a 6 s interlude must ask on its first tick or never.</summary>
@@ -134,7 +136,8 @@ public static partial class Playback
             bool handOffInFlight)
         {
             if (handOffInFlight || !prepared || !overlapAllowed || durationMs <= 0) return HandOff.None;
-            if (fadeMs > 0) return positionMs >= durationMs - fadeMs ? HandOff.Crossfade : HandOff.None;
+            // The crossfade ENDS on A's last frame, so it starts `fadeMs` before it; it is committed one lead earlier still.
+            if (fadeMs > 0) return positionMs >= durationMs - fadeMs - GaplessCommitLeadMs ? HandOff.Crossfade : HandOff.None;
             return positionMs >= durationMs - GaplessCommitLeadMs ? HandOff.Gapless : HandOff.None;
         }
 
@@ -573,6 +576,9 @@ public static partial class Playback
         static long s_prepDurMs;
         static bool s_prepOverlap;
         static int s_prepInFlight;
+        // The kind the prepared (then the joining) voice plays as: written to `s_activeKind` when the splice commits, so the
+        // NEXT boundary is decided on the kind that is playing, not the one the last load started (#240 §3.13 item 4).
+        static PlayableKind s_prepKind, s_joinKind;
 
         // the pending hand-off (B armed into the live mixer, not yet audible)
         static bool s_joinPending, s_crossfadeInFlight;
@@ -805,7 +811,8 @@ public static partial class Playback
         /// <para>OFF THE PUMP CHAIN (its CDN open blocks, and a seek or a pause must not queue behind it) and under its own
         /// token. The SAME id already prepared or being prepared is a no-op — the reducer re-emits the effect whenever the
         /// next row might have changed (G-112) — and a DIFFERENT id replaces the slot. <paramref name="kind"/> is the next
-        /// playable's: a boundary across kinds is never spliced (<see cref="MediaSwitch.AllowCrossfade"/>).</para></summary>
+        /// playable's (the reducer's <c>Effects.NextKind</c>): a boundary that touches video is never spliced
+        /// (<see cref="MediaSwitch.AllowCrossfade"/>).</para></summary>
         public static void Prepare(EntityRef row, EntityId id, PlayableKind kind = PlayableKind.Audio)
         {
             SeedOnce();
@@ -1205,12 +1212,18 @@ public static partial class Playback
             if (player.Error.Peek() is { } err) { bytes.Close(); PostFault(LocalOpenFault(MapError(err), bytes), epoch); return; }
 
             var pcm = player.Session as PcmAudioSession;
+            if (pcm is not null && !opened.DurationExact)
+            {
+                opened = WithDecodedLength(in opened, decoder.Gapless.ExactFrames, pcm.VoiceTotalFrames, pcm.Format.SampleRate);
+                LogLocalLength(in opened, prepared: false);
+            }
             lock (s_gate)
             {
                 s_bytes = bytes;
                 s_activeDecoder = decoder;
                 s_session = pcm;
                 s_silent = false;
+                s_opened = opened;
                 s_activeStartMs = 0;
                 s_activeDurMs = opened.DurationMs;
                 s_crossfadeInFlight = false;
@@ -3284,8 +3297,8 @@ public static partial class Playback
                 PcmAudioSession? session;
                 PcmAudioPlayer? backend;
                 PlayableKind activeKind;
-                bool silent;
-                lock (s_gate) { session = s_session; backend = s_backend; activeKind = s_activeKind; silent = s_silent; }
+                bool silent, activeExact;
+                lock (s_gate) { session = s_session; backend = s_backend; activeKind = s_activeKind; silent = s_silent; activeExact = s_opened.DurationExact; }
                 if (session is null || backend is null || silent || token.IsCancellationRequested) return;   // nothing to hand off from
 
                 // `prepared`: the next ring is sized for the hand-off out of the shared read-ahead budget (Vorbis plan §5.3).
@@ -3307,6 +3320,11 @@ public static partial class Playback
                 PrepareContext ctx = PrepareContext.For(session.Format, session.NormalizationMode, session.ReferenceLufsValue);
                 item = await backend.PrepareAsync(source, ctx, token).ConfigureAwait(false);
                 s_decoderForOpen.Value = null;
+                if (!opened.DurationExact)
+                {
+                    opened = WithDecodedLength(in opened, decoder.Gapless.ExactFrames, item.TotalFrames, session.Format.SampleRate);
+                    LogLocalLength(in opened, prepared: true);
+                }
 
                 lock (s_gate)
                 {
@@ -3317,9 +3335,12 @@ public static partial class Playback
                     s_prepOpened = opened;
                     s_prepId = id;
                     s_prepDurMs = opened.DurationMs;
-                    // A cross-kind boundary (audio → video, or either → a local file) changes HOSTS, so there is
-                    // nothing to splice into: `MediaSwitch` is the one authority on that.
-                    s_prepOverlap = MediaSwitch.AllowCrossfade(activeKind, kind);
+                    s_prepKind = kind;
+                    // A boundary that touches video changes HOSTS, so there is nothing to splice into: `MediaSwitch` is the
+                    // one authority on that. Audio and local files share the host and splice like Spotify → Spotify, unless
+                    // the OUTGOING track's length is an estimate: a fade or a join is scheduled against that length, and a
+                    // short guess would cut the song's tail, so that boundary stays a reload at the real end (§3.13).
+                    s_prepOverlap = MediaSwitch.AllowCrossfade(activeKind, kind) && activeExact;
                     item = null;                                    // adopted: the finally below leaves them alone
                     bytes = null;
                 }
@@ -3336,14 +3357,19 @@ public static partial class Playback
             }
         }
 
-        /// <summary>Arm B into the LIVE mixer at the active track's natural-end frame. A is never faded and never
-        /// truncated and the `IAudioClient` never stops — this is the butt-join, and it is why `GainEnvelope.Constant`
-        /// rather than a zero-length fade (rule 3).</summary>
-        static bool CommitGaplessJoin(PcmAudioSession sess, IPreparedItem item)
+        /// <summary>Arm B into the LIVE mixer at a FRAME decided now, ahead of time, and flip identity when the clock reaches it
+        /// (<see cref="AnnounceGaplessJoin"/>). The `IAudioClient` never stops.
+        /// <para><paramref name="fadeMs"/> 0: the butt-join at the active track's natural-end frame. A is never faded and never
+        /// truncated, which is why `GainEnvelope.Constant` rather than a zero-length fade (rule 3).</para>
+        /// <para><paramref name="fadeMs"/> &gt; 0: the crossfade, scheduled the same way. It ENDS on A's natural-end frame
+        /// (<see cref="GaplessJoinClock.ScheduleFade"/>): A fades out and B fades in over the same frames on one equal-power curve,
+        /// so the tracks overlap by exactly the fade. It used to start on whichever 200 ms tick first found the window open,
+        /// so a 5 s fade overlapped the content for only 4.71-4.96 s, and A's fade ran past A's last sample.</para></summary>
+        static bool CommitHandOff(PcmAudioSession sess, IPreparedItem item, int fadeMs)
         {
             if (!GaplessJoinClock.PrimedSlotMatches(item.MixRate, sess.Format.SampleRate))
             {
-                Log.Info("audio", "join abandoned reason=rate-mismatch");
+                Log.Info("audio", (fadeMs > 0 ? "crossfade" : "join") + " abandoned reason=rate-mismatch");
                 Interlocked.Increment(ref s_mGaplessAbandoned);
                 DisposePreparedSlot();
                 return false;
@@ -3361,19 +3387,29 @@ public static partial class Playback
             lock (s_gate) activeEnd = exact ? JoinFrameExact(s_anchorClock, s_anchorPlayheadMs, exactFrames, rate) : s_activeJoinFrame;
             if (exact) remaining = Math.Max(remaining, (activeEnd - clock) * 1000 / Math.Max(1, rate));
             long join = GaplessJoinClock.ScheduleJoin(activeEnd, clock, remaining, rate);
+            int fadeFrames = 0;
+            if (fadeMs > 0) (join, fadeFrames) = GaplessJoinClock.ScheduleFade(join, clock, fadeMs * rate / 1000, item.TotalFrames);
+            // Both envelopes carry absolute mixer frames: before `join` B is pinned at 0 and A at 1, so neither changes until the
+            // clock reaches the frame, however early this runs. Built here, off the render thread (each allocates its table).
+            GainEnvelope incoming = fadeFrames > 0 ? GainEnvelope.Fade(FadeKind.In, join, fadeFrames, CrossCurve.EqualPower) : GainEnvelope.Constant;
+            GainEnvelope? outgoing = fadeFrames > 0 ? GainEnvelope.Fade(FadeKind.Out, join, fadeFrames, CrossCurve.EqualPower) : null;
             float rg = sess.ReplayGainScalarFor(item.Loudness);
             lock (s_gate)
             {
-                if (!sess.TryAddCrossfadeVoice(item.AudioVoice!, GainEnvelope.Constant, join, rg, sess.BuildVoiceChain(), id))
+                if (!sess.TryAddCrossfadeVoice(item.AudioVoice!, incoming, join, rg, sess.BuildVoiceChain(), id))
                     return false;
+                if (outgoing is not null) sess.SetVoiceEnvelope(s_activePrimaryId, outgoing);
                 NoteBakedFactor(id, s_prepDecoder, in s_prepOpened);       // V-PA15: what the joining voice's decoder folded
                 s_joinExact = exact;
+                s_joinFadeMs = fadeFrames > 0 ? (int)(fadeFrames * 1000L / rate) : 0;
+                s_joinOutgoingVoiceId = s_activePrimaryId;
                 s_joinPending = true;
                 s_joinFrame = join;
                 s_joinVoiceId = id;
                 s_joinVoice = item.AudioVoice;
                 s_joinTotalFrames = item.TotalFrames;
                 s_joinId = s_prepId;
+                s_joinKind = s_prepKind;
                 s_joinDurMs = s_prepDurMs;
                 s_joinBytes = s_prepBytes;
                 s_joinDecoder = s_prepDecoder;
@@ -3386,7 +3422,10 @@ public static partial class Playback
                 s_prepDurMs = 0;
                 s_prepOverlap = false;
             }
-            Log.Info("audio", $"gapless armed join={join} clock={clock} remainMs={remaining} exact={(exact ? 1 : 0)}");
+            if (fadeFrames > 0)
+                Log.Info("audio", $"crossfade armed start={join} frames={fadeFrames} end={join + fadeFrames} clock={clock} remainMs={remaining} exact={(exact ? 1 : 0)}");
+            else
+                Log.Info("audio", $"gapless armed join={join} clock={clock} remainMs={remaining} exact={(exact ? 1 : 0)}");
             return true;
         }
 
@@ -3416,8 +3455,10 @@ public static partial class Playback
             EntityId joined;
             lock (s_gate)
             {
-                if (s_joinExact) Interlocked.Increment(ref s_mGaplessExact);
+                if (s_joinFadeMs > 0) Interlocked.Increment(ref s_mCrossfades);
+                else if (s_joinExact) Interlocked.Increment(ref s_mGaplessExact);
                 else Interlocked.Increment(ref s_mGaplessDegraded);
+                s_joinFadeMs = 0;
                 voice = s_joinVoice;
                 totalFrames = s_joinTotalFrames;
                 outgoing = s_loadEpoch;
@@ -3434,6 +3475,7 @@ public static partial class Playback
                 s_activePrimaryId = s_joinVoiceId;
                 s_activeDurMs = s_joinDurMs;
                 s_id = s_joinId;
+                s_activeKind = s_joinKind;
                 s_activeJoinFrame = s_joinFrame + GaplessJoinClock.MsToFrames(s_joinDurMs, sess.Format.SampleRate);
                 s_anchorClock = s_joinFrame;
                 s_anchorPlayheadMs = 0;
@@ -3452,69 +3494,6 @@ public static partial class Playback
             PostHandedOff(outgoing, joined, 0);
         }
 
-        /// <summary>A real crossfade: B fades IN and A's current primary fades OUT, same start frame, same length,
-        /// one `EqualPower` curve. Both voices run the shared DSP chain and B carries its own ReplayGain scalar.</summary>
-        static bool CommitCrossfade(PcmAudioSession sess, IPreparedItem item, long rawPos, int fadeMs)
-        {
-            if (!GaplessJoinClock.PrimedSlotMatches(item.MixRate, sess.Format.SampleRate))
-            {
-                Log.Info("audio", "crossfade abandoned reason=rate-mismatch");
-                Interlocked.Increment(ref s_mGaplessAbandoned);
-                DisposePreparedSlot();
-                return false;
-            }
-            long id = ++s_nextVoiceId;
-            long start = sess.SampleClock;
-            int fadeFrames = fadeMs * sess.Format.SampleRate / 1000;
-            float rg = sess.ReplayGainScalarFor(item.Loudness);
-            uint outgoing;
-            EntityId joined;
-            lock (s_gate)
-            {
-                if (!sess.TryAddCrossfadeVoice(item.AudioVoice!,
-                        GainEnvelope.Fade(FadeKind.In, start, fadeFrames, CrossCurve.EqualPower),
-                        start, rg, sess.BuildVoiceChain(), id))
-                    return false;
-                sess.SetVoiceEnvelope(s_activePrimaryId,
-                    GainEnvelope.Fade(FadeKind.Out, start, fadeFrames, CrossCurve.EqualPower));
-                NoteBakedFactor(id, s_prepDecoder, in s_prepOpened);       // V-PA15: what the incoming voice's decoder folded
-
-                outgoing = s_loadEpoch;
-                joined = s_prepId;
-                s_crossfadeInFlight = true;
-                s_retiringBytes = s_bytes;
-                s_bytes = s_prepBytes;
-                s_activeDecoder = s_prepDecoder;
-                s_opened = s_prepOpened;
-                s_activeStartMs = rawPos;
-                s_activePrimaryId = id;
-                s_activeDurMs = s_prepDurMs;
-                s_id = s_prepId;
-                s_activeJoinFrame = start + GaplessJoinClock.MsToFrames(s_prepDurMs, sess.Format.SampleRate);
-                s_anchorClock = start;
-                s_anchorPlayheadMs = 0;
-                s_prepItem = null;
-                s_prepBytes = null;
-                s_prepDecoder = null;
-                s_prepId = default;
-                s_prepDurMs = 0;
-                s_prepOverlap = false;
-                s_armLogged = false;
-                s_lastEndgameAskMs = -1;
-                s_endgameAskCount = 0;
-                if (item.AudioVoice is { } fadeVoice)
-                {
-                    try { sess.SetActiveVoice(id, fadeVoice, TimeSpan.FromMilliseconds(s_activeDurMs), item.TotalFrames); }
-                    catch (Exception ex) { Log.Warn("audio", "set active voice failed", ex); }
-                }
-            }
-            Interlocked.Increment(ref s_mCrossfades);
-            Log.Info("audio", $"crossfade committed start={start} frames={fadeFrames}");
-            PromoteLiveBody();
-            PostHandedOff(outgoing, joined, 0);
-            return true;
-        }
-
         /// <summary>The joined voice's body is the PLAYING body now: it is what `Stream.Stats` describes, and its ring grows
         /// from the hand-off's ≤ 30 s to the tier the link has earned (G-114).</summary>
         static void PromoteLiveBody()
@@ -3531,13 +3510,15 @@ public static partial class Playback
         /// <c>PrepareLost</c> — see <see cref="AfterSeekLanded"/>).</summary>
         static bool AbandonPendingJoin(PcmAudioSession? sess, string reason)
         {
-            long voiceId;
+            long voiceId, outgoingFaded;
             IMediaByteSource? bytes;
             lock (s_gate)
             {
                 if (!s_joinPending) return false;
                 s_joinPending = false;
                 voiceId = s_joinVoiceId;
+                outgoingFaded = s_joinFadeMs > 0 ? s_joinOutgoingVoiceId : 0;
+                s_joinFadeMs = 0;
                 bytes = s_joinBytes;
                 s_joinBytes = null;
                 s_joinDecoder = null;
@@ -3547,6 +3528,9 @@ public static partial class Playback
             Interlocked.Increment(ref s_mGaplessAbandoned);
             Log.Info("audio", "join abandoned reason=" + reason);
             try { sess?.SetVoiceEnvelope(voiceId, GainEnvelope.Fade(FadeKind.Out, 0, 1, CrossCurve.Linear)); } catch { }
+            // A scheduled crossfade also set A's fade-out: A keeps playing at full level (before the fade's start frame it was
+            // still at 1; past it, the step back is from at most one tick into an equal-power fade, under 1 %).
+            if (outgoingFaded != 0) { try { sess?.SetVoiceEnvelope(outgoingFaded, GainEnvelope.Constant); } catch { } }
             if (bytes is not null) { try { bytes.Close(); } catch { } }
             return true;
         }
@@ -4025,9 +4009,12 @@ public static partial class Playback
             if (state == PlaybackState.Playing && plan.LogArm)
             {
                 s_armLogged = true;
+                // 0 a hand-off is set up · 2 the prepare is still building · 3 no overlap across this boundary (video)
+                // · 4 nothing prepared or building · 5 no overlap: the outgoing local file's length is an estimate (an MP3
+                // without a Xing/LAME block, raw ADTS), so the boundary reloads at the real end (#240 §3.13).
                 int reason = s_prepItem is null && Volatile.Read(ref s_prepInFlight) == 0 ? 4
                            : s_prepItem is null ? 2
-                           : !s_prepOverlap ? 3 : 0;
+                           : !s_prepOverlap ? (s_opened.DurationExact ? 3 : 5) : 0;
                 Log.Info("audio", $"[gapless] arm remainMs={plan.RemainMs} fadeMs={fadeMs} "
                     + $"primed={prepared} overlap={s_prepOverlap} reason={reason} clock={sess.SampleClock}");
             }
@@ -4052,13 +4039,11 @@ public static partial class Playback
                             s_crossfadeInFlight || s_joinPending))
                 {
                     case HandOff.Crossfade:
-                        if (CommitCrossfade(sess, item, rawPos, fadeMs)) pos = ActivePositionMs();
-                        break;
                     case HandOff.Gapless:
-                        // Never into a session a device reload may replace, and never off a stale clock: with a stale
-                        // playhead `dur − pos` reads as "the whole track remains" and the join is scheduled off a
-                        // clock that is not this track's.
-                        if (GaplessJoinClock.CanCommit(s_clockStale, softReloading: false)) CommitGaplessJoin(sess, item);
+                        // Both are SCHEDULED at a frame (CommitHandOff). Never into a session a device reload may replace, and
+                        // never off a stale clock: with a stale playhead `dur − pos` reads as "the whole track remains" and the
+                        // hand-off is scheduled off a clock that is not this track's.
+                        if (GaplessJoinClock.CanCommit(s_clockStale, softReloading: false)) CommitHandOff(sess, item, fadeMs);
                         break;
                 }
             }
@@ -4483,10 +4468,13 @@ public static partial class Playback
         /// decoder factory switches on; <see cref="Label"/> is what the stage badge and the deck faces print
         /// (ch 21 §10 item 77, ch 23 W18/W19). <see cref="Peak"/> is the linear true peak the normalization gain is capped
         /// by (<see cref="NormalizationFactor"/>), 0 when unknown. <see cref="AlbumGainDb"/>/<see cref="AlbumPeak"/> are the same
-        /// pair for the album (D5): what album mode picks, 0 when the source carries none.</summary>
+        /// pair for the album (D5): what album mode picks, 0 when the source carries none. <see cref="DurationExact"/> is
+        /// false when <see cref="DurationMs"/> is an estimate a splice must not be scheduled against (a local MP3 without a
+        /// Xing/LAME block, raw ADTS), or — with <see cref="DurationMs"/> 0 — a local file whose length the decoder has not
+        /// read yet (<see cref="WithDecodedLength"/>; #240 §3.13).</summary>
         public readonly record struct Opened(
             Spotify.Audio.Format Format, long DurationMs, float GainDb, string Label, int BitrateKbps, bool IsLive,
-            float Peak = 0f, float AlbumGainDb = 0f, float AlbumPeak = 0f);
+            float Peak = 0f, float AlbumGainDb = 0f, float AlbumPeak = 0f, bool DurationExact = true);
 
         /// <summary>Where a module playable's bytes come from (owner T's `Platform/Modules.Host.cs`, Wave 6). A SEAM
         /// rather than a call, so Wave 3 builds and runs with no module host at all: an unattached provider answers
@@ -4706,9 +4694,31 @@ public static partial class Playback
                     return null;
             }
             fault = Fault.None;
-            opened = new Opened(format, durationMs, 0f, LabelFor(format, 0, 0), 0, IsLive: false);
+            // An MP4's length is its sample table's (exact). FLAC, MP3, Ogg and ADTS carry theirs in headers the decoder
+            // reads: 0 and not exact until `WithDecodedLength` fills it in once the decoder has opened.
+            opened = new Opened(format, durationMs, 0f, LabelFor(format, 0, 0), 0, IsLive: false, DurationExact: durationMs > 0);
             return bytes;
         }
+
+        /// <summary>A local file opened with no length (<see cref="LocalSource"/> reads no audio header), once its decoder has
+        /// read the headers: EXACT when the decoder knows the stream's true end (FLAC STREAMINFO, an MP3's Xing/LAME block, an
+        /// Ogg file's last granule), else the voice's estimated length (<paramref name="voiceFrames"/>: an MP3 without a Xing
+        /// block is a bitrate estimate; raw ADTS has none, 0) marked NOT exact, so no crossfade or join is ever scheduled from
+        /// a guess that could cut the song's tail (#240 §3.13). Anything that already has a length is returned unchanged. PURE.</summary>
+        public static Opened WithDecodedLength(in Opened opened, long exactFrames, long voiceFrames, int mixRate)
+        {
+            if (opened.DurationExact || opened.DurationMs > 0 || mixRate <= 0) return opened;
+            return exactFrames >= 0
+                ? opened with { DurationMs = exactFrames * 1000 / mixRate, DurationExact = true }
+                : opened with { DurationMs = Math.Max(0, voiceFrames) * 1000 / mixRate };
+        }
+
+        /// <summary>One line per local open saying which length the boundary will be decided on, so a log reader knows why a
+        /// local boundary was a hand-off or a reload (an estimate never carries a splice; no length never reaches the endgame).</summary>
+        static void LogLocalLength(in Opened opened, bool prepared)
+            => Log.Info("audio", $"audio.local length durMs={opened.DurationMs} exact={(opened.DurationExact ? 1 : 0)} fmt={opened.Format} "
+                                 + $"prepared={(prepared ? 1 : 0)}"
+                                 + (opened.DurationExact ? "" : opened.DurationMs > 0 ? " — an estimate: no overlap at its end" : " — unknown: no endgame, a reload at its end"));
 
         /// <summary>How much of a local file the probe reads: enough for MPEG audio's two-frame check at any bitrate.</summary>
         const int LocalProbeBytes = 8 * 1024;
@@ -5949,6 +5959,10 @@ public static partial class Playback
         static int s_mFirstAudioMs = -1, s_mFirstFromHead, s_mLastSeekMs, s_mLastSeekLatencyMs = -1, s_mLastSeekKind, s_mSeeks;
         static int s_mGaplessExact, s_mGaplessDegraded, s_mGaplessAbandoned, s_mCrossfades;
         static bool s_joinExact;                   // the pending join's exactness, decided at commit (s_gate)
+        // The pending hand-off's fade (0 = a butt-join) and the outgoing voice it fades out, so an abandon can give A its
+        // level back (s_gate).
+        static int s_joinFadeMs;
+        static long s_joinOutgoingVoiceId;
 
         /// <summary>Decode-thread: one decoded packet/frame of <paramref name="frames"/> source frames took
         /// <paramref name="ticks"/>. Two Interlocked adds, no allocation.</summary>
