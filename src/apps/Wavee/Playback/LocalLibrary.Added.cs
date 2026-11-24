@@ -50,15 +50,6 @@ public static partial class LocalLibrary
         return track;
     }
 
-    /// <summary>A file dropped in (the shell's drop, "Play a file", the inspector's drop): <see cref="AddFile"/>, and a video is attached to its
-    /// own row, so it plays as video (the attached-video path, until the local-video lane plays local videos itself). UI thread.</summary>
-    public static Track AddDropped(string path, Spotify.Audio.Format format, in LocalTagSet tags, bool read, string why)
-    {
-        Track track = AddFile(path, format, in tags, read, why);
-        if (track.IsValid && Playlist.IsLocalVideoFile(path)) Video.Overrides.Attach(track.Uri.Text, path, path, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        return track;
-    }
-
     /// <summary>"Remove from Local Files" on an added file: it leaves the library (the file stays on disk). Returns the entry, for
     /// <see cref="RestoreAdded"/>, or null when it is not an added file. UI thread.</summary>
     public static LocalEntry? RemoveAdded(long localId)

@@ -2602,9 +2602,10 @@ public static partial class Playback
             StopTicker();
             Log.Warn("video", $"[video] fault={kind} key={Tail(key)} reopen={reopenNow} — {message}");
             if (live is not null && HostRules.InvalidateManifest(live.IsSegmented, err?.UnderlyingCode, reopenNow)) ManifestMemo.Invalidate(live.Key);
-            if (live is { FilePath: not null, PlayableUri.Length: > 0 } local && OnOverrideFailed is { } quarantine)
+            // Only an ATTACHMENT is quarantined (a local video file has no attachment: its fault demotes the row as any video's does).
+            if (live is { FilePath: not null, PlayableUri.Length: > 0, OverrideSourceKey: not null } local && OnOverrideFailed is { } quarantine)
             {
-                string uri = local.PlayableUri, sourceKey = local.OverrideSourceKey ?? "";
+                string uri = local.PlayableUri, sourceKey = local.OverrideSourceKey;
                 ToUi(() => quarantine(uri, sourceKey));
             }
             Post(Input.Audio(AudioSignal.Failed, epoch, FrameNowMs(), (long)kind));

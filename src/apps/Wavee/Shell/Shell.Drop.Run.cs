@@ -195,8 +195,8 @@ public static partial class DropAnywhere
             foreach (var (path, format, tags, read, why) in rows)
             {
                 // A dropped file is a library entry ("Added files", LocalLibrary.Added.cs): indexed, kept, listed like a music-folder file.
-                // A dropped .mp4 plays through the existing video path: attached to its own row (plan §3.17).
-                var track = LocalLibrary.AddDropped(path, format, in tags, read, why);
+                // A video file is its own row's video (TrackFlags.LocalVideoFile, from its tags): it plays on the video host, nothing attached.
+                var track = LocalLibrary.AddFile(path, format, in tags, read, why);
                 if (!track.IsValid) { _skipped++; continue; }
                 refs[n++] = new EntityRef(EntityKind.Track, track.Slot);
             }

@@ -931,8 +931,45 @@ public static partial class Playback
         uint flags = t.Flags[row.Slot];
         bool local = (flags & (uint)TrackFlags.Local) != 0 || t.Id[row.Slot].Provider == EntityProvider.Local;
         // A self-contained music video has its own manifest id and may carry no association flag (the deck's facts read the same).
-        bool hasVideo = (flags & (uint)TrackFlags.VideoMask) != 0 || !t.VideoGid[row.Slot].IsEmpty;
+        // …and a track a local video file is linked to as its version plays that file (Video.LocalVideos).
+        bool hasVideo = (flags & (uint)TrackFlags.VideoMask) != 0 || !t.VideoGid[row.Slot].IsEmpty || Video.LocalVideos.IsLinked(t.Id[row.Slot]);
         return MediaSwitch.KindOf(videoWanted && hasVideo, local);
+    }
+
+    /// <summary>Is <paramref name="row"/> a local VIDEO file (<see cref="TrackFlags.LocalVideoFile"/>: its own file has a picture)? Such a row
+    /// asks for its picture whatever the wish: <see cref="DeckKind"/> loads it on the video host and the deck turns the surface on for it
+    /// (<see cref="LocalVideoWish"/>). The user's "audio only" holds while the row plays (the wish then reads false); the next load of a
+    /// local video asks for its picture again.</summary>
+    public static bool IsLocalVideoRow(EntityRef row)
+    {
+        if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null) return false;
+        TrackTable t = Entities.Current.Tracks;
+        return (uint)row.Slot < (uint)t.Count && (t.Flags[row.Slot] & (uint)TrackFlags.LocalVideoFile) != 0;
+    }
+
+    /// <summary>The kind a row goes on the deck in: <see cref="KindOfRow"/> under the wish the deck will hold for it. A local video file
+    /// is wanted as video (the deck turns the wish on as it lands); while the wish is on only for a local video
+    /// (<see cref="State.VideoByLocal"/>) any other row reads it off, as it will once it lands. Every load and every next-row arm reads this,
+    /// so a prepared splice never disagrees with the load that follows.</summary>
+    static PlayableKind DeckKind(in State s, EntityRef row)
+        => KindOfRow(row, IsLocalVideoRow(row) || (s.VideoWanted && !s.VideoByLocal));
+
+    /// <summary>A row the user chose or the queue reached is on the deck (a Claim or an Advance): a local video file turns the video mode on
+    /// for itself (the surface opens at the preferred placement, as a "watch" does) when nothing had it on; leaving local videos turns
+    /// it off again when they were what turned it on, so the songs after one play as they did before it. A wish the user set is never
+    /// touched.</summary>
+    static void LocalVideoWish(ref State s, ref Effects fx)
+    {
+        if (IsLocalVideoRow(s.Current))
+        {
+            if (s.VideoWanted || s.Kind != PlayableKind.Video) return;
+            VideoMode(ref s, ref fx, on: true);
+            s.VideoByLocal = true;
+        }
+        else if (s.VideoByLocal)
+        {
+            VideoMode(ref s, ref fx, on: false);
+        }
     }
 
     // ── 4b. which rows the deck may land on ────────────────────────────────────────────────────────────────────────
@@ -997,7 +1034,7 @@ public static partial class Playback
         EntityRef next = s.RoutesLocal && s.HasCurrent && s.Phase is Phase.Loading or Phase.Playing or Phase.Paused
             ? NaturalNext(in s, out nextCursor)
             : default;
-        PlayableKind nextKind = next.IsNone ? PlayableKind.Audio : GatedKind(in s, next, KindOfRow(next, s.VideoWanted));
+        PlayableKind nextKind = next.IsNone ? PlayableKind.Audio : GatedKind(in s, next, DeckKind(in s, next));
         EntityId id = !next.IsNone && MediaSwitch.AllowCrossfade(s.Kind, nextKind)
             ? next.Id
             : default;
@@ -1012,7 +1049,7 @@ public static partial class Playback
             if (at >= 0 && at != s.Cursor.Index)
             {
                 EntityRef row = Queue.RefAt(at);
-                if (MediaSwitch.AllowCrossfade(nextKind, GatedKind(in s, row, KindOfRow(row, s.VideoWanted)))) { next2 = row; id2 = row.Id; }
+                if (MediaSwitch.AllowCrossfade(nextKind, GatedKind(in s, row, DeckKind(in s, row)))) { next2 = row; id2 = row.Id; }
             }
         }
         // A parked deck (a restore, a stop) warms what follows it but prepares nothing: there is no voice to join.
@@ -1211,7 +1248,7 @@ public static partial class Playback
         EntityRef next = NaturalNext(in s, out QueueCursor cursor);
         // The joined row is a repeat-context wrap: the rows after it become the next lap (Advance's rule).
         if (!next.IsNone && s.Repeat == RepeatMode.Context && cursor.Index <= s.Cursor.Index) fx.Lap = true;
-        PlayableKind nextKind = next.IsNone ? PlayableKind.Audio : GatedKind(in s, next, KindOfRow(next, s.VideoWanted));
+        PlayableKind nextKind = next.IsNone ? PlayableKind.Audio : GatedKind(in s, next, DeckKind(in s, next));
         if (next.IsNone || !next.Id.Equals(i.Id) || !MediaSwitch.AllowCrossfade(s.Kind, nextKind))
         {
             // The listener hears a row the queue no longer puts next (an edit, a shuffle or a repeat change raced the
@@ -1283,6 +1320,7 @@ public static partial class Playback
     static void EmitLoad(ref State s, ref Effects fx, LoadOrigin why, bool paused, bool explicitPosition = false)
     {
         if (!explicitPosition && s.PosMs == 0 && why is LoadOrigin.Claim or LoadOrigin.Advance) s.PosMs = EpisodeStartOf(s.CurrentId);
+        if (why is LoadOrigin.Claim or LoadOrigin.Advance) LocalVideoWish(ref s, ref fx);
         Bump(ref s);
         s.LoadEpoch = s.Epoch;
         s.LoadWhy = why;
@@ -1360,7 +1398,7 @@ public static partial class Playback
     static void DoVideoPlacement(ref State s, in Input i, ref Effects fx)
     {
         bool wanted = (i.IntArg & 1) != 0, explicitSwitch = (i.IntArg & 2) != 0;
-        if (s.VideoWanted != wanted) { s.VideoWanted = wanted; s.VideoRetries = 0; }   // a repeated "on" re-decides the row's kind (a lit badge's click)
+        if (s.VideoWanted != wanted) { s.VideoWanted = wanted; s.VideoRetries = 0; s.VideoByLocal = false; }   // a repeated "on" re-decides the row's kind (a lit badge's click); a changed wish is the user's
         if (!s.HasCurrent) return;
         if (!s.RoutesLocal)
         {
@@ -1401,13 +1439,14 @@ public static partial class Playback
         => kind == PlayableKind.Video && s.VideoScreenBlocked && ScreenGatesVideo(row) ? KindOfRow(row, videoWanted: false) : kind;
 
     /// <summary>Does a screen that cannot carry HDCP keep <paramref name="row"/> off its video? A catalogue music video is PlayReady-protected;
-    /// the user's own clip (<see cref="TrackFlags.VideoOverride"/>) and a podcast episode's video are not gated: they play on any screen.</summary>
+    /// the user's own clip (<see cref="TrackFlags.VideoOverride"/>), a local video file (<see cref="TrackFlags.LocalVideoFile"/>) and a podcast
+    /// episode's video are not gated: they play on any screen.</summary>
     public static bool ScreenGatesVideo(EntityRef row)
     {
         if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null) return false;
         TrackTable t = Entities.Current.Tracks;
         if ((uint)row.Slot >= (uint)t.Count) return false;
-        return (t.Flags[row.Slot] & (uint)TrackFlags.VideoOverride) == 0;
+        return (t.Flags[row.Slot] & (uint)(TrackFlags.VideoOverride | TrackFlags.LocalVideoFile)) == 0;
     }
 
     /// <summary>A video load failed (<paramref name="retry"/>) or found no source at all (not a retry). A failing load spends
@@ -1423,7 +1462,7 @@ public static partial class Playback
             ReloadHost(ref s, in i, ref fx, PlayableKind.Video, LoadOrigin.VideoRecovery);
             return;
         }
-        if (retry) s.VideoWanted = false;
+        if (retry) { s.VideoWanted = false; s.VideoByLocal = false; }
         fx.VideoIntent = true;
         fx.VideoIntentOn = !retry;
         fx.VideoIntentWhy = fault == Fault.None ? Fault.Unavailable : fault;

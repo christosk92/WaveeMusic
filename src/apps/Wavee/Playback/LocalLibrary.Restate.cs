@@ -76,8 +76,9 @@ public static partial class LocalLibrary
 
     /// <summary>One row as the list shows it.</summary>
     /// <param name="Image">A cover the row shows: Spotify's, for a file whose accepted match shows Spotify's info ("Your files and Spotify"); else null.</param>
+    /// <param name="Tags">The file's tags: a video file's row is staged as one (Playlist.StateLocalVideo: the film glyph, the video host, its size).</param>
     sealed record Face(long LocalId, string Title, string Artists, string Album, string SortArtist, int Disc, int Track, int DurationMs,
-                       bool Unavailable, LocalState State, string FullPath, ulong Hash, string? Image = null, ulong Own = 0);
+                       bool Unavailable, LocalState State, string FullPath, ulong Hash, string? Image = null, ulong Own = 0, LocalTagSet Tags = default);
 
     /// <param name="Links">The <see cref="LocalLink.Shown"/> version the faces were built from.</param>
     sealed record Pass(int Version, List<Face> Faces, Dictionary<int, Counts> Counts, int Albums, int Links = 0);
@@ -213,7 +214,7 @@ public static partial class LocalLibrary
         ulong hash = HashFace(title, artists + "\0" + (image ?? ""), album, t.DurationMs, unavailable, e.State);
         // The file's own face: what "What changed" counts (a match accepted or undone changes what a row shows, never the file).
         ulong own = HashFace(e.MatchTitle, Playlist.LocalArtistLine(in t), t.Album, t.DurationMs, unavailable, e.State);
-        return new Face(e.LocalId, title, artists, album, sortArtist, t.DiscNumber, t.TrackNumber, t.DurationMs, unavailable, e.State, full, hash, image, own);
+        return new Face(e.LocalId, title, artists, album, sortArtist, t.DiscNumber, t.TrackNumber, t.DurationMs, unavailable, e.State, full, hash, image, own, t);
     }
 
     static ulong HashFace(string title, string artists, string album, int durationMs, bool unavailable, LocalState state)
@@ -298,16 +299,20 @@ public static partial class LocalLibrary
         for (int i = from; i < to; i++)
         {
             Face f = faces[i];
+            LocalTagSet tags = f.Tags;
             string uri = UriOf(f.LocalId);
             ref var row = ref staging.Tracks.RowFor(new StagedId(staging.AddText(Encoding.UTF8.GetBytes(uri))), Authority.Local,
-                (uint)(TrackFields.Identity | TrackFields.Availability));
+                (uint)(TrackFields.Identity | TrackFields.Availability) | Playlist.LocalVideoFields(in tags));
             row.Title = staging.AddText(Encoding.UTF8.GetBytes(f.Title));
             if (f.Artists.Length > 0) row.ArtistLine = staging.AddText(Encoding.UTF8.GetBytes(f.Artists));
             // The cover: an accepted Spotify match's ("Your files and Spotify", show-only), else the one LocalArt already found (a peek: staging
             // never queues an extraction; a row asks on first display, `LocalArt.Want`). StageCovers re-stages through here, so both arrive one way.
-            if ((f.Image ?? LocalArt.Known(f.LocalId)) is { Length: > 0 } cover) row.Image = staging.AddText(Encoding.UTF8.GetBytes(cover));
+            // A video file's cover is a still of it (LocalArt.FileCoverUri: asked for here, the row re-stated when it lands, StageLocalImages).
+            string? still = tags.Kind == LocalKind.Video ? LocalArt.FileCoverUri(f.FullPath) : null;
+            if ((f.Image ?? LocalArt.Known(f.LocalId) ?? still) is { Length: > 0 } cover) row.Image = staging.AddText(Encoding.UTF8.GetBytes(cover));
             row.DurationMs = Math.Max(0, f.DurationMs);
             row.Flags = (uint)(TrackFlags.Local | (f.Unavailable ? TrackFlags.Unavailable : 0));
+            Playlist.StateLocalVideo(ref row, in tags);   // a video file: the film glyph, the video host, its size (#240 local video)
             Playlist.NoteLocalNames(uri, f.Artists, f.Album);
             s_staged[f.LocalId] = f;
         }
@@ -325,6 +330,14 @@ public static partial class LocalLibrary
         if (faces.Count == 0) return;
         StageChunk(faces, 0, faces.Count);
         Entities.Publish();
+    }
+
+    /// <summary>A video still landed for <paramref name="fullPath"/> (Playlist.StageLocalImages): re-state its indexed row, if it has one. UI thread.</summary>
+    internal static bool StageStill(string fullPath)
+    {
+        if (!s_index.TryGetByPath(fullPath, out LocalEntry? e) || !s_staged.ContainsKey(e.LocalId)) return false;
+        StageCovers([e.LocalId]);
+        return true;
     }
 
     /// <summary>The indexed file behind a track id: an indexed row's, or a matched playlist item's; 0 for any other row. ANY THREAD.</summary>
