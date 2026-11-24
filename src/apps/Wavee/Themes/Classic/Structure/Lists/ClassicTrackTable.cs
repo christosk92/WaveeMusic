@@ -399,7 +399,8 @@ internal static class ClassicTrackTable
             Visible = durationInline ? (Prop<bool>)true : Prop.Of(() =>
             {
                 var p = r.P;
-                return RowCellRules.ShowMeta(false, Track.ArtistInTitle(in p, setArtist), Track.ShowAlbumInMeta(in p, false, setAlbum), Track.Badge(in p));
+                return RowCellRules.ShowMeta(false, Track.ArtistInTitle(in p, setArtist), Track.ShowAlbumInMeta(in p, false, setAlbum), Track.Badge(in p))
+                    || Track.Withheld(in p, Track.NowUnix);   // a withheld row's line states why
             }),
             Children =
             [
@@ -427,13 +428,13 @@ internal static class ClassicTrackTable
                     {
                         var p = r.P;
                         var d = p.Track.ForDisplay;
-                        return RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, d)) > 0;
+                        return Track.CreditSpeaks(d, ArtistCount(in p), HasContainer(in p, d));
                     }),
                     OnSpanClick = index =>
                     {
                         var p = r.Presentation.Peek();
                         var d = p.Track.ForDisplay;
-                        int target = RowCellRules.LinkTarget(index, ArtistCount(in p), HasContainer(in p, d));
+                        int target = RowCellRules.LinkTarget(index - Track.CreditLeadSpans(d, ArtistCount(in p), HasContainer(in p, d)), ArtistCount(in p), HasContainer(in p, d));
                         if (target >= 0) Track.GoToArtistAt(d, target);
                         else if (target == RowCellRules.Container) Track.GoToContainer(d);
                     },
@@ -442,7 +443,7 @@ internal static class ClassicTrackTable
                 {
                     var p = r.P;
                     var d = p.Track.ForDisplay;
-                    bool lead = RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, d)) > 0;
+                    bool lead = Track.CreditSpeaks(d, ArtistCount(in p), HasContainer(in p, d));
                     string duration = LaneLabel(in p, Track.NowUnix);
                     return lead ? ClassicTrackRowLayout.InlineDurationLead + duration : duration;
                 }))
@@ -545,7 +546,7 @@ internal static class ClassicTrackTable
             var p = r.P;
             var d = p.Track.ForDisplay;
             ColorF ink = classic && p.State.IsNow ? Tok.AccentTextPrimary : Tok.TextSecondary;
-            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, ink);
+            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, ink, withNote: false);
             return buffer.Current;
         }))
         {
@@ -716,8 +717,8 @@ internal static class ClassicTrackTable
 
     // ── span fills (the SpanBuffer twins of BuildLinkSpans / BuildClassicSpans) ──────────────────────────────────────
 
-    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink = default)
-        => Track.FillCreditSpans(b, t, artistCount, container, " · ", ink);
+    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink = default, bool withNote = true)
+        => Track.FillCreditSpans(b, t, artistCount, container, " · ", ink, withNote);
 
     static void FillClassicSpans(SpanBuffer b, Track t, int artistCount, bool showVideo, ushort weight, ColorF primary, ColorF secondary,
                                  ColorF tertiary)

@@ -354,7 +354,7 @@ internal static class ZuneTrackTable
         if (d.IsPodcast) return true;
         int artists = Track.ArtistInTitle(in p, setArtist) ? d.DisplayArtistCount : 0;
         bool container = Track.ShowAlbumInMeta(in p, false, setAlbum) && Track.ContainerOf(d).Name.Length > 0;
-        return RowCellRules.LinkSpanCount(artists, container) > 0;
+        return Track.CreditSpeaks(d, artists, container);   // a withheld row's reason speaks too
     }
 
     /// <summary>The subline: [EPISODE] · [E] · the artists · the album as one bound span run that collapses when it has nothing to say;
@@ -399,13 +399,13 @@ internal static class ZuneTrackTable
                     Visible = Prop.Of(() =>
                     {
                         var p = r.P;
-                        return RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay)) > 0;
+                        return Track.CreditSpeaks(p.Track.ForDisplay, ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay));
                     }),
                     OnSpanClick = index =>
                     {
                         var p = r.Presentation.Peek();
                         var d = p.Track.ForDisplay;
-                        int target = RowCellRules.LinkTarget(index, ArtistCount(in p), HasContainer(in p, d));
+                        int target = RowCellRules.LinkTarget(index - Track.CreditLeadSpans(d, ArtistCount(in p), HasContainer(in p, d)), ArtistCount(in p), HasContainer(in p, d));
                         if (target >= 0) Track.GoToArtistAt(d, target);
                         else if (target == RowCellRules.Container) Track.GoToContainer(d);
                     },
@@ -413,7 +413,7 @@ internal static class ZuneTrackTable
                 new TextEl(Prop.Of(() =>
                 {
                     var p = r.P;
-                    bool lead = RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay)) > 0;
+                    bool lead = Track.CreditSpeaks(p.Track.ForDisplay, ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay));
                     string duration = Track.DurationLabel(in p, Track.NowUnix);
                     return lead ? ZuneListRules.InlineDurationLead + duration : duration;
                 }))
@@ -437,7 +437,7 @@ internal static class ZuneTrackTable
             buffer.Clear();
             var p = r.P;
             var d = p.Track.ForDisplay;
-            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, ZuneListRules.RowInk(p.State.IsNow, R.Ink.AccentAction, Tok.TextSecondary));
+            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, ZuneListRules.RowInk(p.State.IsNow, R.Ink.AccentAction, Tok.TextSecondary), withNote: false);
             return buffer.Current;
         }))
         {
@@ -612,8 +612,8 @@ internal static class ZuneTrackTable
         }, CellKey.Expand);
 
     /// <summary>The artists and the container as one link run (separators are not links).</summary>
-    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink)
-        => Track.FillCreditSpans(b, t, artistCount, container, " · ", ink);
+    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink, bool withNote = true)
+        => Track.FillCreditSpans(b, t, artistCount, container, " · ", ink, withNote);
 
     // ══ THE SKIN ═════════════════════════════════════════════════════════════════════════════════════════════════════════
 
