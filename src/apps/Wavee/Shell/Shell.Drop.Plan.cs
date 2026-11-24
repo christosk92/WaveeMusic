@@ -288,7 +288,9 @@ public static partial class DropAnywhere
                     var entries = ReadPlaylist(playlist);
                     total = entries.Count;
                     count = 0;
-                    foreach (string e in entries) if (File.Exists(e)) count++;
+                    // "found" = what the drop will queue: an existing file of a kind Wavee plays (a .wma entry is not one)
+                    foreach (string e in entries)
+                        if ((Playlist.IsLocalAudioFile(e) || Playlist.IsLocalVideoFile(e)) && File.Exists(e)) count++;
                 }
                 else
                 {
