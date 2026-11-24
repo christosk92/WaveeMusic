@@ -4823,6 +4823,22 @@
         "ring": "decoded ring",
         "far": "network fetch",
         "disk": "disk cache"
+      },
+      "timecode": {
+        "title": "Timecode",
+        "track": "Track",
+        "position": "Position",
+        "state": "State",
+        "playing": "Playing",
+        "held": "Held",
+        "transition": "in a transition to {track}",
+        "rate": "Rate",
+        "epoch": "Epoch",
+        "anchor": "Engine anchor",
+        "outputDelay": "Output delay",
+        "publisher": "Publisher",
+        "publisherValue": "{anchors} anchors · {epochs} epochs · {drift} by drift",
+        "nothing": "Nothing is playing on this PC"
       }
     },
     "podcastWire": {

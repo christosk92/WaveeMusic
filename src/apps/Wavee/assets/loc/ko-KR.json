@@ -916,6 +916,22 @@
         "ring": "디코딩된 링 버퍼",
         "far": "네트워크 요청",
         "disk": "디스크 캐시"
+      },
+      "timecode": {
+        "title": "타임코드",
+        "track": "트랙",
+        "position": "위치",
+        "state": "상태",
+        "playing": "재생 중",
+        "held": "정지됨",
+        "transition": "{track}(으)로 전환 중",
+        "rate": "속도",
+        "epoch": "에포크",
+        "anchor": "엔진 앵커",
+        "outputDelay": "출력 지연",
+        "publisher": "게시",
+        "publisherValue": "앵커 {anchors}개 · 에포크 {epochs}개 · 드리프트 {drift}개",
+        "nothing": "이 PC에서 재생 중인 항목이 없습니다"
       }
     }
   },
