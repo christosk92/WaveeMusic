@@ -20,6 +20,8 @@ internal static class CommonLocalFilesRules
     public const string ScanKey = "local-scan:line", ScanBarKey = "local-scan:bar";
     public const string PillKey = "local-pill";
     public const string TagKey = "local-tag";
+    /// <summary>The file mark on a Spotify row a file in the music folders is linked to ("Your files and Spotify").</summary>
+    public const string FileMarkKey = "linked-file";
     public const string ReviewKey = "local-review", ReviewRowKey = "local-review:row:", LocateKey = "local-review:locate:", RemoveKey = "local-review:remove:";
 
     // ── the empty state (board 6: a 600 column centred in the list, the 440 line, 24 to the buttons, 8 to the caption, 40 to the 152 drop zone) ──

@@ -79,7 +79,7 @@ internal static class ZuneTrackDrawer
         for (int i = 0; i < entries.Count; i++)
         {
             var e = entries[i];
-            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks);
+            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks, e.Label);
             body[2 + i] = ConnectedRow(e.RowKey, row, isLast: i == entries.Count - 1);
         }
         if (a.Link is { } link) body = [.. body, LinkSection(link)];
@@ -307,10 +307,10 @@ internal static class ZuneTrackDrawer
         ],
     };
 
-    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks)
+    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks, string? label = null)
     {
         Track parent = a.Track;
-        var meta = new List<Element>(6) { Meta(KindLabel(kind), Tok.TextTertiary) with { Case = R.Case.For(LabelKind.Label) } };
+        var meta = new List<Element>(6) { Meta(label ?? KindLabel(kind), Tok.TextTertiary) with { Case = R.Case.For(LabelKind.Label) } };
         if (version.Knows(TrackFields.Audio) && version.Tempo > 0)
         {
             if (version.CamelotColor != 0)
@@ -431,6 +431,7 @@ internal static class ZuneTrackDrawer
         DrawerRules.VideoKind => Loc.Get(Strings.Detail.Versions.MusicVideo),
         DrawerRules.AudioKind => Loc.Get(Strings.Detail.Versions.AlternateAudio),
         DrawerRules.SpotifyKind => Loc.Get(Strings.LocalFiles.Link.OnSpotify),
+        DrawerRules.FileKind => Loc.Get(Strings.LocalFiles.Link.YourFile),
         _ => Loc.Get(Strings.Detail.Versions.ThisTrack),
     };
 }

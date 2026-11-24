@@ -361,7 +361,12 @@ internal static class ClassicTrackTable
             new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
-                Children = [new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [runs[0], runs[1]] }, CommonLocalFiles.RowTag(r)],
+                // A Spotify song a file in the music folders is linked to wears the file mark after its title ("Your files and Spotify").
+                Children =
+                [
+                    new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [runs[0], runs[1]] }, CommonLocalFiles.RowTag(r),
+                    CommonLocalFiles.LinkedFileMark(r, ClassicTrackRowLayout.FilmGlyphSize, Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : Tok.TextTertiary)),
+                ],
             },
             BoundMetadataLine(r, setArtist, setAlbum, durationInline: !RowMetrics.ShowDuration(in set)),
         ];
@@ -527,7 +532,8 @@ internal static class ClassicTrackTable
         {
             Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S,
             ClipToBounds = true,
-            Children = [lead, CommonLocalFiles.RowTag(r), badge],
+            // A Spotify song a file in the music folders is linked to wears the file mark, trailing as the EXPLICIT mark does ("Your files and Spotify").
+            Children = [lead, CommonLocalFiles.RowTag(r), CommonLocalFiles.LinkedFileMark(r, ClassicTrackRowLayout.FilmGlyphSize, Ink(static () => Tok.TextTertiary)), badge],
         };
     }
 

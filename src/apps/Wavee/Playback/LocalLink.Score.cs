@@ -11,6 +11,9 @@
 //   3  title, artist, length the album's name and artist agree and at least half the lengths line up      → Likely
 //                            (a song: title and artist agree and the length is within 3 s)               → Likely "Title, artist and length"
 //   4  anything weaker       a name alone, or a length that is off                                       → Check  (the user picks)
+// A length off by more than the slack caps a candidate at Check, whatever else agrees: a song's ISRC with its length 33 s off is another edit (a
+// video's audio, a radio edit), never Exact, so "Accept exact matches automatically" never takes it; it says "Lengths differ: 4:12 vs 3:39". An
+// album is Exact or Strong only when no mapped song's length is off.
 // A song with two or more candidates that are equally good (same rung, both within 3 s) is a Check: the user picks between them.
 // Fingerprints (AcoustID) are a later rung, for files whose tags say nothing.
 //
@@ -63,19 +66,23 @@ public static partial class LocalLink
             for (int k = 0; k < album.Tracks.Count; k++)
                 if (!used[k] && SameTitle(files[i].Title, album.Tracks[k].Title)) { mapped[i] = album.Tracks[k]; used[k] = true; break; }
         }
-        int isrc = 0, lengths = 0, titles = 0;
+        int isrc = 0, lengths = 0, titles = 0, off = 0;
         for (int i = 0; i < n; i++)
         {
             if (mapped[i] is not { } t) continue;
             titles++;
             if (files[i].Isrc.Length > 0 && t.Isrc.Length > 0 && files[i].Isrc == t.Isrc) isrc++;
-            if (files[i].DurationMs > 0 && Math.Abs(t.DurationMs - files[i].DurationMs) <= AlbumSlackMs) lengths++;
+            if (files[i].DurationMs > 0 && t.DurationMs > 0)
+            {
+                if (Math.Abs(t.DurationMs - files[i].DurationMs) <= AlbumSlackMs) lengths++;
+                else if (Math.Abs(t.DurationMs - files[i].DurationMs) > SongSlackMs) off++;
+            }
         }
         bool nameOk = SameAlbum(albumTitle, album.Title), artistOk = SameArtist(albumArtist, album.Artist);
         (LinkConfidence c, LinkEvidence e, int hits) =
-            n > 0 && isrc == n ? (LinkConfidence.Exact, LinkEvidence.SameIsrc, isrc)
+            n > 0 && isrc == n && off == 0 ? (LinkConfidence.Exact, LinkEvidence.SameIsrc, isrc)
             : n > 0 && (nameOk || artistOk) && lengths == n && (n >= 2 || nameOk && artistOk) ? (LinkConfidence.Strong, LinkEvidence.LengthsLineUp, lengths)
-            : n > 0 && isrc * 2 >= n && isrc > 0 ? (LinkConfidence.Strong, LinkEvidence.SameIsrc, isrc)
+            : n > 0 && isrc * 2 >= n && isrc > 0 && off == 0 ? (LinkConfidence.Strong, LinkEvidence.SameIsrc, isrc)
             : nameOk && artistOk && lengths * 2 >= n && lengths > 0 ? (LinkConfidence.Likely, LinkEvidence.LengthsLineUp, lengths)
             : nameOk && artistOk ? (LinkConfidence.Check, LinkEvidence.TitleArtist, titles)
             : (LinkConfidence.Check, LinkEvidence.TitleOnly, titles);
@@ -91,9 +98,12 @@ public static partial class LocalLink
         bool artist = f.Artist.Length > 0 && SameArtist(f.Artist, t.Artists);
         int delta = f.DurationMs > 0 && t.DurationMs > 0 ? t.DurationMs - f.DurationMs : int.MaxValue;
         bool length = delta != int.MaxValue && Math.Abs(delta) <= SongSlackMs;
+        bool off = delta != int.MaxValue && !length;   // another edit: never above Check, never accepted for the user
+        bool sameIsrc = f.Isrc.Length > 0 && f.Isrc == t.Isrc;
         (LinkConfidence c, LinkEvidence e) =
-            f.Isrc.Length > 0 && f.Isrc == t.Isrc ? (LinkConfidence.Exact, LinkEvidence.SameIsrc)
+            sameIsrc && !off ? (LinkConfidence.Exact, LinkEvidence.SameIsrc)
             : title && artist && length ? (LinkConfidence.Likely, LinkEvidence.TitleArtistLength)
+            : off && (title || sameIsrc) ? (LinkConfidence.Check, LinkEvidence.LengthsDiffer)
             : title && artist ? (LinkConfidence.Check, LinkEvidence.TitleArtist)
             : (LinkConfidence.Check, LinkEvidence.TitleOnly);
         string detail = t.Artists + (t.Album.Length > 0 ? " · " + t.Album : "") + " · " + Clock(t.DurationMs);

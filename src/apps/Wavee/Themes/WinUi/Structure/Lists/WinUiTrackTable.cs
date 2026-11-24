@@ -343,6 +343,8 @@ internal static class WinUiTrackTable
                 // (the boards drew none; the owner asked for one mark everywhere, 2026-11-07). A bound flip after the title: the video group landing
                 // late (the row's TrackVersion) shows it without moving the title's start.
                 Glyph(Icons.Movie, WinUiListRules.FilmGlyph, RowInk(r, static () => Tok.TextTertiary), Prop.Of(() => r.P.Track.HasVideo)) with { Shrink = 0f },
+                // A Spotify song a file in the music folders is linked to wears the file mark after its title ("Your files and Spotify").
+                CommonLocalFiles.LinkedFileMark(r, WinUiListRules.FilmGlyph, RowInk(r, static () => Tok.TextTertiary)),
                 // A row with no subline of its own (an album's one-line rows) wears the "on this PC" ring after its title.
                 .. oneLineMark ? new Element[] { WinUiRowCells.OnThisPcMark(RowInk(r, static () => Tok.TextSecondary)) with { Visible = Prop.Of(() => r.P.State.OnThisPc) } } : []
             ],

@@ -23,7 +23,9 @@
 //
 // WHAT AN ACCEPTED MATCH SHOWS (show-only, US3). With Spotify's info winning: the file's row in the Songs table (title, artists, album, the
 // cover), the album's card on the page (name, artist, year, cover), and the file's drawer, whose "Versions and formats" offers the Spotify
-// version beside the file. The matching title of the file (`LocalEntry.MatchTitle`) never changes: a playlist's `spotify:local:` item still
+// version beside the file; read backwards, the Spotify song's own "Versions and formats" lists the file ("Your file · MP3 320": play it, queue
+// it, show it in its folder, Remove link) and its row wears the file mark. Playback stays Spotify's: which source plays is the user's click
+// ("Prefer my files" is a later phase). The matching title of the file (`LocalEntry.MatchTitle`) never changes: a playlist's `spotify:local:` item still
 // finds the file by its own name. Unlinking (US10, F-G) returns the file to its own info at once.
 
 using System.Globalization;
@@ -123,6 +125,17 @@ public static partial class LocalLink
         _ = s_version.Value;
         return LocalLibrary.TryLocalIdOf(uri, out long id) && s_links.ContainsKey(id);
     }
+
+    /// <summary>The files in the music folders an accepted match links to this Spotify track (the link read backwards: the Spotify song's
+    /// "Versions and formats" lists them, its row wears the file mark). Empty for most. Tracked: reads <see cref="Version"/>.</summary>
+    public static IReadOnlyList<long> FilesFor(string spotifyUri)
+    {
+        _ = s_version.Value;
+        return s_byTrack.TryGetValue(spotifyUri, out long[]? ids) ? ids : [];
+    }
+
+    /// <summary>Spotify track uri → the accepted files linked to it (rebuilt with every decision).</summary>
+    static Dictionary<string, long[]> s_byTrack = new(StringComparer.Ordinal);
 
     /// <summary>A song group's key.</summary>
     public static string SongKey(long localId) => "song:" + localId.ToString(CultureInfo.InvariantCulture);
@@ -374,6 +387,16 @@ public static partial class LocalLink
     /// <summary>Rebuild the immutable maps a row and a card read, and restate the rows when they moved.</summary>
     static void RebuildShown()
     {
+        var byTrack = new Dictionary<string, List<long>>(StringComparer.Ordinal);
+        foreach (var (id, t) in s_links)
+            if (s_linkGroup.TryGetValue(id, out string? key) && s_decided.TryGetValue(key, out Decided? d) && d.Decision == LinkDecision.Accepted)
+            {
+                if (!byTrack.TryGetValue(t.Uri, out var ids)) byTrack[t.Uri] = ids = [];
+                ids.Add(id);
+            }
+        var reversed = new Dictionary<string, long[]>(byTrack.Count, StringComparer.Ordinal);
+        foreach (var (uri, ids) in byTrack) reversed[uri] = [.. ids];
+        s_byTrack = reversed;
         var tracks = new Dictionary<long, LinkTrack>();
         foreach (var (id, t) in s_links)
             if (s_linkGroup.TryGetValue(id, out string? key) && s_decided.TryGetValue(key, out Decided? d) && d.Decision == LinkDecision.Accepted && d.SpotifyWins)

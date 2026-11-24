@@ -29,6 +29,8 @@ public static class LocalLinkWords
         LinkEvidence.LengthsLineUp => W.LengthsLineUp(Number(c.Hits), Number(c.Of)),
         LinkEvidence.TitleArtistLength => Loc.Get(W.TitleArtistLength),
         LinkEvidence.TitleArtist => album ? Loc.Get(W.AlbumArtist) : W.TitleArtist(Delta(c.DeltaMs)),
+        // The file's length is Spotify's less the delta (Spotify minus file).
+        LinkEvidence.LengthsDiffer => W.LengthsDiffer(LocalLink.Clock(c.DurationMs - c.DeltaMs), LocalLink.Clock(c.DurationMs)),
         _ => Loc.Get(W.TitleOnly),
     };
 
@@ -81,6 +83,12 @@ public static class LocalLinkWords
         string a = W.OfferAlbums(albums, Number(albums)), s = W.OfferSongs(songs, Number(songs));
         return W.Offer(albums > 0 && songs > 0 ? W.OfferBoth(a, s) : songs > 0 ? s : a);
     }
+
+    /// <summary>A linked file's label in its Spotify song's "Versions and formats": "Your file · MP3 320" ("Your file" when the format is unknown).</summary>
+    public static string FileLabel(long localId)
+        => LocalLibrary.Index.TryGet(localId, out LocalEntry? e)
+           && LocalCollection.QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample) is { Length: > 0 } q
+            ? W.YourFileAs(q) : Loc.Get(W.YourFile);
 
     /// <summary>The file drawer's Spotify line: "Linked to Savin' Me · Nickelback" and, when the review still holds the group, the evidence; else
     /// "Not linked to Spotify", or a "Not on Spotify" group's line.</summary>

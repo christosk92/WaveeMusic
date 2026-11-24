@@ -33,6 +33,9 @@ public enum LinkEvidence : byte
     TitleArtist,
     /// <summary>"No ISRC, title only".</summary>
     TitleOnly,
+    /// <summary>"Lengths differ: 4:12 vs 3:39": the song's length is off by more than the slack (another edit, a video's audio). Never above Check,
+    /// whatever else agrees (an ISRC included), so it is never accepted for the user.</summary>
+    LengthsDiffer,
 }
 
 /// <summary>What the user decided about a group. Sticky across rescans and restarts (persisted by <see cref="LocalLink"/>).</summary>

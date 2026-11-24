@@ -177,6 +177,16 @@ internal static class CommonLocalFiles
     public static Element RowTag(global::Wavee.Track.BoundRow r)
         => Flow.Show(() => LocalFilesList.MarkOf(r.P.Track) != LocalFilesList.Mark.None, Tag(r));
 
+    /// <summary>"Your files and Spotify": the file mark a Spotify row wears at rest after its title when a file in the music folders is linked to it (an
+    /// accepted match read backwards), its tooltip saying so. Its own glyph, never the "on this PC" ring (that one is Spotify's audio cached here).
+    /// Mounted only on a linked row; <paramref name="size"/> and <paramref name="ink"/> are the theme's after-title glyph's (the film glyph's).</summary>
+    public static Element LinkedFileMark(global::Wavee.Track.BoundRow r, float size, Prop<ColorF> ink)
+        => Flow.Show(() => r.P.Track.HasLinkedFile, ToolTip.Wrap(new BoxEl
+        {
+            Key = Rules.FileMarkKey, Shrink = 0f, AlignItems = FlexAlign.Center,
+            Children = [new TextEl(Icons.Document) { FontFamily = Tok.Definition.Fonts.Icon, Size = size, Color = ink, Shrink = 0f }],
+        }, FluentGpu.Localization.Loc.Get(Strings.LocalFiles.Link.FileMark)));
+
     static Element Tag(global::Wavee.Track.BoundRow r)
     {
         Func<bool> moved = () => LocalFilesList.MarkOf(r.P.Track) == LocalFilesList.Mark.Moved;

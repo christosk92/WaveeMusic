@@ -141,8 +141,12 @@ public readonly partial struct Track
                 case DrawerRules.VideoRow.Reserved: entries.Add((DrawerRules.VideoKind, default)); break;
             }
             for (int i = edgeVideo ? 1 : 0; i < ordered; i++) entries.Add((DrawerRules.AudioKind, new Track(targets[order[i]])));
-            // A file whose match was accepted offers the Spotify version beside itself (show-only: which source plays is the user's click).
+            // A file whose match was accepted offers the Spotify version beside itself (show-only: which source plays is the user's click), and the
+            // Spotify song lists the files linked to it ("Your file · MP3 320"; playback stays Spotify's unless the user plays the file).
             if (LinkedSpotify(t) is { IsValid: true } spotify) entries.Add((DrawerRules.SpotifyKind, spotify));
+            var files = t.IsLocal ? [] : LocalLink.FilesFor(t.Uri.Text);
+            foreach (long file in files)
+                if (Entities.Track(EntityUri.Parse(LocalLibrary.UriOf(file))) is { IsValid: true } mine) entries.Add((DrawerRules.FileKind, mine));
 
             var facts = FactsFor(t, p.Options);
             bool arriving = _opened;
@@ -155,7 +159,8 @@ public readonly partial struct Track
                 bool reserved = kind == DrawerRules.VideoKind && !version.IsValid;
                 string rowKey = kind == DrawerRules.VideoKind ? DrawerRules.VideoRowKey : version.Uri.Text;
                 bool isNow = !reserved && !playing.IsEmpty && playing == version.Id;
-                drawn[i] = new TrackDrawerEntry(kind, version, rowKey, isNow, reserved, i == 0 ? peaks : null);
+                string? label = kind == DrawerRules.FileKind && LocalLibrary.TryLocalIdOf(version.Uri.Text, out long fileId) ? LocalLinkWords.FileLabel(fileId) : null;
+                drawn[i] = new TrackDrawerEntry(kind, version, rowKey, isNow, reserved, i == 0 ? peaks : null, label);
             }
             return style.Body(new TrackDrawerBodyArgs
             {
@@ -296,6 +301,22 @@ public readonly partial struct Track
             var cell = _handle;
             if (p is null || cell is null || Controls.IsNullOverlay(overlay) || !p.Version.IsValid) return;
             if (cell.Value is { IsOpen: true } open) { open.Close(); return; }
+            // A linked file has no format ladder: its caret opens the file's own menu (Play next, Play after, Show in folder, Remove link).
+            if (p.Kind == DrawerRules.FileKind)
+            {
+                if (Menu([p.Version], new MenuOptions(ShowGoToAlbum: false, PickerOverlay: overlay)) is not { Rows.Count: > 0 } model) return;
+                // The menu's primary strip (Play, Play next, Play after) as rows first: a flyout under a caret has no strip.
+                var rows = new List<MenuFlyoutItem>(model.Primary.Count + model.Rows.Count + 1);
+                foreach (var c in model.Primary)
+                    if (c.Kind == AppBarCommandKind.Button) rows.Add(new MenuFlyoutItem(c.Label, c.Icon, c.Enabled, c.Invoke));
+                if (rows.Count > 0) rows.Add(MenuFlyoutItem.Separator);
+                rows.AddRange(model.Rows);
+                var menu = overlay.Open(_anchorOf, () => MenuFlyout.Create(rows, _close, size: OverlayFit.MenuSize), FlyoutPlacement.BottomEdgeAlignedRight,
+                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
+                menu.ClosedAction = () => { if (ReferenceEquals(cell.Value, menu)) cell.Value = null; };
+                cell.Value = menu;
+                return;
+            }
             var ladder = p.Version.Formats;
             if (ladder.IsEmpty) return;
             Span<int> order = stackalloc int[Math.Min(ladder.Length, 32)];
@@ -397,6 +418,9 @@ public readonly partial struct Track
         /// <summary>"Your files and Spotify": the Spotify track a file in the music folders is linked to (an accepted match), offered beside
         /// the file in its "Versions and formats".</summary>
         public const byte SpotifyKind = 3;
+        /// <summary>Read backwards: a file in the music folders linked to this Spotify song, offered in its "Versions and formats" ("Your file ·
+        /// MP3 320"). Its play half plays the file; its caret opens the file's own menu (queue it, Show in folder, Remove link).</summary>
+        public const byte FileKind = 4;
 
         public enum VideoRow : byte { None, Reserved, Edge, Counterpart }
 

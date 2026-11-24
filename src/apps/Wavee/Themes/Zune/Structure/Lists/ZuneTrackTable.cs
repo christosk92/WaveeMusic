@@ -331,7 +331,12 @@ internal static class ZuneTrackTable
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
             // Local Files' session mark ("new", "moved", #240 S5) after the title: mounted only on a marked row.
-            Children = [new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] }, CommonLocalFiles.RowTag(r), film, lone],
+            // A Spotify song a file in the music folders is linked to wears the file mark after its title ("Your files and Spotify").
+            Children =
+            [
+                new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] }, CommonLocalFiles.RowTag(r), film,
+                CommonLocalFiles.LinkedFileMark(r, ZuneListRules.FilmGlyph, RowInk(r, static () => Tok.TextTertiary)), lone,
+            ],
         };
         var column = new BoxEl
         {

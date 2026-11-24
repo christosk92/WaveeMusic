@@ -705,11 +705,16 @@ public readonly partial struct Track
         if (!IsValid) return false;
         var versions = Entities.Current.Edges.TrackVersions;
         _ = versions.Changed.Value;
-        // "Your files and Spotify": a file whose match was accepted has its Spotify version to show.
-        int linked = IsLocal && LocalLink.HasLink(Uri.Text) ? 1 : 0;
+        // "Your files and Spotify": a file whose match was accepted has its Spotify version to show, and that Spotify song its files.
+        int linked = IsLocal ? (LocalLink.HasLink(Uri.Text) ? 1 : 0) : LocalLink.FilesFor(Uri.Text).Count;
         return TableRules.HasVersionsOf(Uri.Kind == EntityKind.Track, HasVideo, VideoCounterpart.IsValid,
                                         versions.Targets(Slot).Length + linked);
     }
+
+    /// <summary>"Your files and Spotify": a Spotify song a file in the music folders is linked to (an accepted match), read backwards. Its row
+    /// wears the file mark at rest (distinct from the "on this PC" ring, which is Spotify's own audio cached). Tracked: reads
+    /// <see cref="LocalLink.Version"/>.</summary>
+    public bool HasLinkedFile => IsValid && !IsLocal && LocalLink.FilesFor(Uri.Text).Count > 0;
 
     // ══ 5b. FOR DISPLAY — the relink redirection ═════════════════════════════════════════════════════════════════════
 

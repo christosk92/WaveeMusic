@@ -85,7 +85,7 @@ internal static class WinUiTrackDrawer
         for (int i = 0; i < entries.Count; i++)
         {
             var e = entries[i];
-            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks);
+            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks, e.Label);
             body[2 + i] = ConnectedRow(e.RowKey, row, isLast: i == entries.Count - 1);
         }
         if (a.Link is { } link) body = [.. body, LinkSection(link)];
@@ -325,10 +325,10 @@ internal static class WinUiTrackDrawer
         ],
     };
 
-    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks)
+    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks, string? label = null)
     {
         Track parent = a.Track;
-        var meta = new List<Element>(6) { Caption(KindLabel(kind)).Tertiary() };
+        var meta = new List<Element>(6) { Caption(label ?? KindLabel(kind)).Tertiary() };
         if (version.Knows(TrackFields.Audio) && version.Tempo > 0)
         {
             // The swatch leads the tempo exactly as the row's own tempo lane does (Track.TempoCell) — one idiom, two places.
@@ -414,6 +414,7 @@ internal static class WinUiTrackDrawer
         DrawerRules.VideoKind => Loc.Get(Strings.Detail.Versions.MusicVideo),
         DrawerRules.AudioKind => Loc.Get(Strings.Detail.Versions.AlternateAudio),
         DrawerRules.SpotifyKind => Loc.Get(Strings.LocalFiles.Link.OnSpotify),
+        DrawerRules.FileKind => Loc.Get(Strings.LocalFiles.Link.YourFile),
         _ => Loc.Get(Strings.Detail.Versions.ThisTrack),
     };
 
