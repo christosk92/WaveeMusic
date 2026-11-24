@@ -46,6 +46,12 @@ public interface ISettingsFacts
     bool EqualizerEnabled { get; }
     bool CrossfadeEnabled { get; }
 
+    /// <summary>#154: a timecode output is chosen (the "Send timecode" switch is enabled only then).</summary>
+    bool TimecodeDeviceChosen { get; }
+
+    /// <summary>#154: the "Send timecode" switch is on (its child dials follow it).</summary>
+    bool TimecodeEnabled { get; }
+
     /// <summary>The attached-videos roster store exists.</summary>
     bool VideoOverridesPresent { get; }
 
@@ -92,6 +98,8 @@ public sealed class LiveSettingsFacts : ISettingsFacts
     public bool CanDerive => Spotify.Audio.CanDerive;
     public bool EqualizerEnabled => Platform.Settings.Get(Platform.Keys.EqualizerEnabled);
     public bool CrossfadeEnabled => Platform.Settings.Get(Platform.Keys.CrossfadeEnabled);
+    public bool TimecodeDeviceChosen => Platform.Settings.Get(Platform.Keys.TimecodeLtcDeviceId).Length > 0;
+    public bool TimecodeEnabled => Platform.Settings.Get(Platform.Keys.TimecodeLtcEnabled);
     public bool VideoOverridesPresent => Video.Overrides.Present;
     public bool SidebarEditing => Sidebar.Editing.Value;
     public bool SidebarModified => SidebarLayoutRules.IsModified(Sidebar.State.Of(Sidebar.Layout.Value), Sidebar.LibraryView.Value);

@@ -409,6 +409,26 @@ public static partial class Playback
             return new WasapiAudioDevice(format);
         }
 
+        /// <summary>#154: a second output for generated PCM (the LTC output) on <paramref name="endpointId"/>, filled by
+        /// <paramref name="generator"/>. Under the silent endpoint (`--inspect`, `--silent`) it is the paced silent endpoint on the same
+        /// clock as the music's, so the generator and its reader run headless. Not started.</summary>
+        internal static AuxAudioOutput OpenAux(string endpointId, IAuxAudioGenerator generator)
+            => s_forceSilent
+                ? new AuxAudioOutput(static () => NewSilentEndpoint(SilentFormat), generator)
+                : WasapiPcm.CreateAuxOutput(endpointId, generator);
+
+        /// <summary>The render endpoint the music plays on, or null when it plays on none (`--fake`'s silent voice, the silent endpoint):
+        /// the chosen output, else the Windows default as the roster names it. Any thread; no device call.</summary>
+        internal static string? MusicEndpointId()
+        {
+            if (s_forceSilent || Platform.Args.Fake) return null;
+            string chosen = Platform.Settings.Get(Platform.Keys.OutputDeviceId);
+            if (chosen.Length > 0) return chosen;
+            foreach (LocalAudioDevice d in Devices.Peek())
+                if (d.IsDefault) return d.Id;
+            return null;
+        }
+
         /// <summary>A default-device change concerns the session unless it plays on the chosen output.</summary>
         static bool FollowsDefault() => !s_onTarget;
 
@@ -756,6 +776,7 @@ public static partial class Playback
         public static void Shutdown()
         {
             s_disposed = true;
+            TimecodeOutput.Close();
             StopTicker();
             try { s_ticker?.Dispose(); } catch { }
             s_ticker = null;
@@ -778,6 +799,7 @@ public static partial class Playback
             // A fake playable has no bytes and plays through the silent voice: it needs the DSP seed, never a device. A real
             // one boots the backend as the load's own first step, on the chain (G-124).
             SeedOnce();
+            TimecodeOutput.ApplyOnce();                                         // #154: the saved LTC output opens with the first load
             Crash.Trail.Note(Crash.AppTrail.TrackStart, (long)kind, fromMs);   // the crash trail: no ids, no titles
             long asked = System.Diagnostics.Stopwatch.GetTimestamp();
             Interlocked.Exchange(ref s_loadStartedTicks, asked);

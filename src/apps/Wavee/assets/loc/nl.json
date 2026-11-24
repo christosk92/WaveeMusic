@@ -934,7 +934,13 @@
         "outputDelay": "Uitvoervertraging",
         "publisher": "Publicatie",
         "publisherValue": "{anchors} ankers · {epochs} epochs · {drift} door drift",
-        "nothing": "Er speelt niets af op deze pc"
+        "nothing": "Er speelt niets af op deze pc",
+        "ltc": "LTC-uitvoer",
+        "ltcSent": "Verzonden · teruggelezen",
+        "ltcError": "Afwijking · verplaatsingen",
+        "aux": "LTC-apparaat",
+        "auxValue": "{state} · {rate} Hz · {latency} ms vertraging · {underruns} onderlopen",
+        "none": "Verzendt niet"
       }
     }
   },
