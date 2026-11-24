@@ -163,6 +163,23 @@ public static partial class Playback
             int outFrames = (int)GaplessJoinClock.MsToFrames(plan.OutDurationMs, rate);
             int inFrames = (int)GaplessJoinClock.MsToFrames(plan.InDurationMs, rate);
             if (outFrames <= 0 || inFrames <= 0) return false;
+            // Where the mix meets the crossfade fix (GaplessJoinClock.ScheduleFade): when A's length is decoded truth, the
+            // mix-out never runs past A's last sample. A plan whose out-end lies beyond it (a catalogue length longer than
+            // the file) is shortened to end on that frame, as a late fade is; a start at or past it is too late.
+            long outMs = plan.OutDurationMs;
+            long exactFrames = ActiveExactFrames(sess);
+            if (exactFrames >= 0)
+            {
+                long activeEnd;
+                lock (s_gate) activeEnd = JoinFrameExact(s_anchorClock, s_anchorPlayheadMs, exactFrames, rate);
+                if (startFrame >= activeEnd) return false;
+                if (startFrame + outFrames > activeEnd)
+                {
+                    Log.Info("audio", $"[mix] out shortened to A's exact end: {outFrames} -> {activeEnd - startFrame} frames");
+                    outFrames = (int)(activeEnd - startFrame);
+                    outMs = outFrames * 1000L / rate;
+                }
+            }
             MixRender.Build(in plan, rate, startFrame, outFrames, inFrames,
                 out var outTable, out var inTable, out var outAuto, out var inAuto);
             var gate = new AudioTransitionGate(startFrame);
@@ -189,8 +206,15 @@ public static partial class Playback
                 s_joinBytes = s_prepBytes;
                 s_joinDecoder = s_prepDecoder;
                 s_joinOpened = s_prepOpened;
-                s_joinStartMs = s_prepStartMs + plan.OutDurationMs;
+                s_joinStartMs = s_prepStartMs + outMs;
                 s_joinMix = true;
+                // The base hand-off's join state (#284 / local files): the joining kind, and no plain fade (the mix
+                // carries its own curves; AnnounceGaplessJoin publishes no fade transition, AbandonPendingJoin restores
+                // no fade: CancelMixLocked puts A back).
+                s_joinKind = s_prepKind;
+                s_joinFadeMs = 0;
+                s_joinFadeFrames = 0;
+                s_joinOutgoingVoiceId = s_activePrimaryId;
                 s_mixGate = gate;
                 s_mixOutVoice = s_activePrimaryId;
                 s_mixStartFrameValue = startFrame;

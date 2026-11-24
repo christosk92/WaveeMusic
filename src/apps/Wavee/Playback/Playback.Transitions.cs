@@ -988,15 +988,17 @@ public static partial class Playback
 
     /// <summary>Re-arm the pump's idea of the next row. Called on every load, on the endgame signal and whenever the
     /// queue, the shuffle or the repeat mode may have changed what comes next. Idempotent: the same row in the same arm
-    /// state emits nothing. A spliceable next row (audio after audio) is PREFETCHED until the endgame opens, then
-    /// PREPARED; a row that stops being next cancels the prepared slot.</summary>
+    /// state emits nothing. A spliceable next row (both sides on the audio host: Spotify audio or a local file,
+    /// <see cref="MediaSwitch.AllowCrossfade"/>) is PREFETCHED until the endgame opens, then PREPARED; a row that stops
+    /// being next cancels the prepared slot.</summary>
     static void ArmNext(ref State s, ref Effects fx)
     {
         QueueCursor nextCursor = QueueCursor.None;
         EntityRef next = s.RoutesLocal && s.HasCurrent && s.Phase is Phase.Loading or Phase.Playing or Phase.Paused
             ? NaturalNext(in s, out nextCursor)
             : default;
-        EntityId id = !next.IsNone && s.Kind == PlayableKind.Audio && GatedKind(in s, next, KindOfRow(next, s.VideoWanted)) == PlayableKind.Audio
+        PlayableKind nextKind = next.IsNone ? PlayableKind.Audio : GatedKind(in s, next, KindOfRow(next, s.VideoWanted));
+        EntityId id = !next.IsNone && MediaSwitch.AllowCrossfade(s.Kind, nextKind)
             ? next.Id
             : default;
         // The row after the next one is warmed too, forward only (a wrap row's successor is never past the deck row).
@@ -1010,7 +1012,7 @@ public static partial class Playback
             if (at >= 0 && at != s.Cursor.Index)
             {
                 EntityRef row = Queue.RefAt(at);
-                if (GatedKind(in s, row, KindOfRow(row, s.VideoWanted)) == PlayableKind.Audio) { next2 = row; id2 = row.Id; }
+                if (MediaSwitch.AllowCrossfade(nextKind, GatedKind(in s, row, KindOfRow(row, s.VideoWanted)))) { next2 = row; id2 = row.Id; }
             }
         }
         // A parked deck (a restore, a stop) warms what follows it but prepares nothing: there is no voice to join.
@@ -1045,6 +1047,7 @@ public static partial class Playback
         fx.PrepareNext = true;
         fx.NextRow = next;
         fx.NextId = id;
+        fx.NextKind = nextKind;
     }
 
     /// <summary>The pump dropped the join it had scheduled for the prepared row — a seek moved the playhead out from under the
@@ -1208,7 +1211,8 @@ public static partial class Playback
         EntityRef next = NaturalNext(in s, out QueueCursor cursor);
         // The joined row is a repeat-context wrap: the rows after it become the next lap (Advance's rule).
         if (!next.IsNone && s.Repeat == RepeatMode.Context && cursor.Index <= s.Cursor.Index) fx.Lap = true;
-        if (next.IsNone || !next.Id.Equals(i.Id) || GatedKind(in s, next, KindOfRow(next, s.VideoWanted)) != PlayableKind.Audio)
+        PlayableKind nextKind = next.IsNone ? PlayableKind.Audio : GatedKind(in s, next, KindOfRow(next, s.VideoWanted));
+        if (next.IsNone || !next.Id.Equals(i.Id) || !MediaSwitch.AllowCrossfade(s.Kind, nextKind))
         {
             // The listener hears a row the queue no longer puts next (an edit, a shuffle or a repeat change raced the
             // prepare). Hard-cut to the truth: the Load replaces the joined voice.
@@ -1220,7 +1224,7 @@ public static partial class Playback
         uint from = s.LoadEpoch;
         s.HasBeenPlayingForMs += Math.Max(0, i.NowMs - s.PosQpc);
         ReportEnd(ref s, ref fx, PlayReason.TrackDone, s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
-        PutOnDeck(ref s, in i, next, i.Id, cursor, PlayableKind.Audio, (int)Math.Clamp(i.LongArg, 0, int.MaxValue), paused: false);
+        PutOnDeck(ref s, in i, next, i.Id, cursor, nextKind, (int)Math.Clamp(i.LongArg, 0, int.MaxValue), paused: false);
         s.Phase = Phase.Playing;                          // audible already: this is not a load
         s.StartReason = PlayReason.TrackDone;
         Bump(ref s);
@@ -1667,10 +1671,12 @@ public static partial class Playback
         public static SwitchAction Decide(PlayableKind current, PlayableKind next)
             => current == next ? SwitchAction.LoadOnCurrent : SwitchAction.SwapThenLoad;
 
-        /// <summary>Whether a crossfade / prepared-next transition is allowed across this boundary. Crossfade is an
-        /// AUDIO-only, same-kind capability; every cross-kind boundary and every video boundary is a HARD CUT.</summary>
+        /// <summary>Whether a prepared-next splice (crossfade or gapless join) is allowed across this boundary: both sides
+        /// play on the audio host, Spotify audio and local files alike (they share the mixer, and the prepare resamples the
+        /// next voice for the live mix rate; #240 §3.13). Every boundary that touches video is a hard cut. Whether the
+        /// outgoing track's LENGTH can carry a splice is the pump's question (an estimated local length never does).</summary>
         public static bool AllowCrossfade(PlayableKind from, PlayableKind to)
-            => from == to && from == PlayableKind.Audio;
+            => from != PlayableKind.Video && to != PlayableKind.Video;
 
         /// <summary>The Connect <c>track_player</c> metadata value: <c>"video"</c> for <see cref="PlayableKind.Video"/>,
         /// else <c>"audio"</c> (a local file plays through the audio host and therefore also reports audio).</summary>
@@ -1856,6 +1862,20 @@ public static partial class Playback
             long join = Math.Max(activeJoinFrame, sampleClockNow);
             long bound = sampleClockNow + MsToFrames(Math.Max(0L, remainingMs), rate) + rate / 10;
             return Math.Min(join, bound);
+        }
+
+        /// <summary>Where a crossfade starts and how long it runs, given the outgoing voice's end frame
+        /// (<paramref name="activeEnd"/>, already bounded by <see cref="ScheduleJoin"/>): it ENDS on that frame, so the
+        /// outgoing track's last sample is the fade's last frame and the two tracks overlap by exactly the fade. Never in the
+        /// past: a commit that comes too late for the whole fade starts now and shortens the fade to what is left, so the
+        /// fade-out still ends where the content does. Never longer than the incoming voice (<paramref name="incomingFrames"/>,
+        /// −1 when unknown). PURE.</summary>
+        public static (long Start, int Frames) ScheduleFade(long activeEnd, long sampleClockNow, int fadeFrames, long incomingFrames)
+        {
+            long start = Math.Max(activeEnd - fadeFrames, sampleClockNow);
+            long frames = Math.Max(1L, Math.Min(fadeFrames, activeEnd - start));
+            if (incomingFrames > 0) frames = Math.Min(frames, incomingFrames);
+            return (start, (int)frames);
         }
 
         /// <summary>A primed voice is only spliceable into a mixer running at the rate it was resampled for.</summary>

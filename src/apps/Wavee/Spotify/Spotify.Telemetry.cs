@@ -267,6 +267,9 @@ public static partial class Spotify
         public static void Enqueue(string eventName, byte[] payload)
         {
             if (Egress.NamesWaveeUri(payload)) { Log.Warn("spotify", "gabo event " + eventName + " named a non-Spotify uri; not sent"); return; }
+            // `--fake` (the demo seed, the inspector) has no account: nothing is journaled or sent. Before #240 no fake play reached here (a
+            // fake track is not a Spotify id); a playlist's spotify:local: item is one.
+            if (Platform.Args.Fake) { Log.Info("spotify", "telemetry.fake event=" + eventName + " bytes=" + payload.Length + " not sent"); return; }
             if (Volatile.Read(ref s_booted) == 0) Boot();
             Interlocked.Increment(ref s_sequence);
             long sequence = NextEventSequence(eventName);
@@ -421,6 +424,9 @@ public static partial class Spotify
         {
             public PlaybackIds Ids;
             public string ContentUri, PlayContext, Provider, ReasonStart, SourceStart, AudioFormatName;
+            /// <summary>A local file's real <c>spotify:local:…</c> uri (RawCoreStream field 41), "" for any other play. While it is set,
+            /// <see cref="ContentUri"/> is the blanked <see cref="LocalContentUriBlank"/> on every event of the registration.</summary>
+            public string? LocalContentUri;
             /// <summary>The player session the stream STARTED in, as the text put-state publishes it ("" for video or none) —
             /// captured at <see cref="Started"/>, so a later new session does not rewrite it.</summary>
             public string? PlayerSessionId;
@@ -434,18 +440,27 @@ public static partial class Spotify
 
         static bool s_firstPlayInSession = true;
 
+        /// <summary>What a local file's play names as its <c>content_uri</c>: the four parts blanked (capture report 3.8, 4.1). The real uri
+        /// rides <c>local_content_uri</c>.</summary>
+        public const string LocalContentUriBlank = "spotify:local::::";
+
         /// <summary>A track started. Emits the five open-time events the desktop client sends before the first
-        /// sample is heard, and returns the registration the caller keeps until the track ends.</summary>
+        /// sample is heard, and returns the registration the caller keeps until the track ends. <paramref name="localContentUri"/>: a
+        /// local file's <c>spotify:local:…</c> uri (#240 E7): every event of the registration then names
+        /// <see cref="LocalContentUriBlank"/> as its content, and the RawCoreStream carries the real uri in <c>local_content_uri</c>, as the
+        /// official client reports a local play (capture report 3.8).</summary>
         public static Registration Started(in PlaybackIds ids, string contentUri, string contextUri, string provider,
             string reasonStart, byte[]? mediaId, int bitrateKbps, string audioFormatName,
-            long durationMs, long positionMs, string playerSessionId)
+            long durationMs, long positionMs, string playerSessionId, string localContentUri = "")
         {
+            if (localContentUri.Length > 0) contentUri = LocalContentUriBlank;
             contextUri = Egress.Filter(contextUri);            // a Spotify track played from a local context names no context
             long now = NowMs();
             var registration = new Registration
             {
                 Ids = ids,
                 ContentUri = contentUri,
+                LocalContentUri = localContentUri,
                 PlayContext = contextUri.Length > 0 ? contextUri : contentUri,
                 Provider = provider.Length > 0 ? provider : "context",
                 ReasonStart = reasonStart.Length > 0 ? reasonStart : "clickrow",
@@ -591,6 +606,7 @@ public static partial class Spotify
                 AudioFormat = FormatName(in r),
                 PlayContext = r.PlayContext,
                 ContentUri = r.ContentUri,
+                LocalContentUri = r.LocalContentUri ?? "",
                 Provider = r.Provider,
                 Referrer = r.SourceStart,
                 CoreVersion = CoreVersion,
@@ -679,6 +695,7 @@ public static partial class Spotify
         public static string ContextKind(string contextUri)
         {
             if (contextUri.Length == 0) return "unknown";
+            if (contextUri == Egress.LocalFilesUri) return "local_files";   // the official client's source for a Local Files play (report 3.8)
             int first = contextUri.IndexOf(':');
             if (first < 0) return "unknown";
             int second = contextUri.IndexOf(':', first + 1);
@@ -773,6 +790,11 @@ public static partial class Spotify
 
         static void QueueRevision(Rs.CreateResumePointRevisionRequest revision)
         {
+            if (Platform.Args.Fake)
+            {
+                Log.Info("spotify", "telemetry.fake revision entity=" + revision.EntityUri + " item=" + (revision.Revision?.Value?.ItemUri ?? "") + " not sent");
+                return;
+            }
             if (Volatile.Read(ref s_booted) == 0) Boot();
             lock (ResumeGate)
             {

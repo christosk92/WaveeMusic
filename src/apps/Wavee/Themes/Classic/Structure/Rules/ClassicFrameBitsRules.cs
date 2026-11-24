@@ -72,14 +72,6 @@ internal static class ClassicFrameBitsRules
     /// <summary>The lane's top pad: the card's top edge sits exactly 64 DIP down.</summary>
     public static float PaletteLaneTop => Spacing.XXXL * 2f;
 
-    // ── the file-drop cue ───────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The drop pill's padding.</summary>
-    public static readonly Edges4 FileDropPillPadding = new(18f, 10f, 18f, 10f);
-
-    /// <summary>The drop pill's text size.</summary>
-    public const float FileDropTextSize = 14f;
-
     // ── the setup wizard's cover scrim ──────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The dim's fade, in milliseconds (0 under reduced motion).</summary>

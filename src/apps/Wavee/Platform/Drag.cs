@@ -101,7 +101,7 @@ public readonly record struct DragChipModel(string? Title, string? Subtitle, str
         var artists = first.ArtistSlots;
         string? subtitle = artists.Length > 0
             ? Nz(new Artist(artists[0]).Name)
-            : Nz(Entities.Strings.Resolve(first.ArtistLineId));
+            : Nz(first.CreditLine);
         return new(
             Nz(first.Title) ?? Nz(name),
             subtitle,
@@ -499,7 +499,7 @@ public static partial class Drag
     public static DragChipSpec? Chip(DragState state)
     {
         if (!string.Equals(state.Kind, Resource, StringComparison.Ordinal))
-            return ExtraChip?.Invoke(state) ?? ReorderChip?.Invoke(state);
+            return DropAnywhere.Chip(state) ?? ExtraChip?.Invoke(state) ?? ReorderChip?.Invoke(state);
 
         if (Unwrap(state.Payload) is not { } payload) return null;
         var model = payload.ChipModel();
@@ -545,7 +545,10 @@ public static partial class Drag
     public static Element? LikedChipArt { get; set; }
 
     /// <summary>The ONE preview mounted at the shell root (`DragPreviewLayer.Of`).</summary>
-    public static readonly Func<DragState, Element?> Preview = DragChip.Resolve(Chip);
+    static readonly Func<DragState, Element?> s_standardPreview = DragChip.Resolve(Chip);
+
+    /// <summary>The ONE preview: the refusal card over a row that refuses local files (it wraps the whole reason), else the standard chip.</summary>
+    public static readonly Func<DragState, Element?> Preview = static state => DropAnywhere.RefusalChip(in state) ?? s_standardPreview(state);
 
     /// <summary>The art-less fallback tile: the same kind glyphs the sidebar uses, so a cover-less drag still reads as
     /// "a playlist" / "an album" rather than as a generic note.</summary>
@@ -594,7 +597,7 @@ public static partial class Drag
                               int hidden, bool showArtwork)
     {
         string title = track is { } t0 && t0.Title is { Length: > 0 } name ? name : fallback;
-        string subtitle = track is { } t1 ? Entities.Strings.Resolve(t1.ArtistLineId) : "";
+        string subtitle = track is { } t1 ? t1.CreditLine : "";
         Element art = track is { } t
             ? Controls.Artwork(Controls.ArtUrl(t.ImageId), artEdge, artEdge, Radii.Control)
             : new BoxEl

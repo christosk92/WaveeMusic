@@ -164,4 +164,26 @@ internal static partial class WinUiSettings
 
     /// <summary>The output device: "System default", then the endpoints in roster order (the dial's live words; a plugged headset re-reads the page).</summary>
     static Element OutputDeviceCard(RowCtx x) => DialCard(BaseCard(x, DialCombo(x.Row, x.Row.Choices, WinUiSettingsRules.WideComboWidth)));
+
+    // ── timecode (#154) ──────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The timecode output: "Choose an output", then the endpoints (the wide combo, like the music's output).</summary>
+    static Element TimecodeDeviceCard(RowCtx x) => DialCard(BaseCard(x, DialCombo(x.Row, x.Row.Choices, WinUiSettingsRules.WideComboWidth)));
+
+    static readonly Slider.SliderOptions s_timecodeLevelOptions = new()
+    {
+        Min = -24f, Max = 0f, Step = 1f, TickFrequency = 6f, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture) + " dB",
+    };
+    static readonly Slider.SliderOptions s_timecodeOffsetOptions = new()
+    {
+        Min = -500f, Max = 500f, Step = 5f, TickFrequency = 250f, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture) + " ms",
+    };
+
+    /// <summary>The LTC level (-24 to 0 dB).</summary>
+    static Element TimecodeLevelCard(RowCtx x) => DialCard(BaseCard(x, DialSlider(x.Row, s_timecodeLevelOptions, WinUiSettingsRules.SliderLength)));
+
+    /// <summary>The timecode offset (-500 to +500 ms).</summary>
+    static Element TimecodeOffsetCard(RowCtx x) => DialCard(BaseCard(x, DialSlider(x.Row, s_timecodeOffsetOptions, WinUiSettingsRules.SliderLength)));
 }

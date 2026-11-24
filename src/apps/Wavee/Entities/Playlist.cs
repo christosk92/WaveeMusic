@@ -1454,10 +1454,32 @@ public readonly partial struct Playlist
 
     public enum LocalDropAction : byte { None, PlayAudio, PlayVideo }
 
+    /// <summary>The audio a drop or the file picker plays: what <c>Playback.Audio.LocalSource</c> decodes (.m4a and .aac since #240).</summary>
     public static bool IsLocalAudioFile(string? path)
         => path is { Length: > 0 } && (path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".flac", StringComparison.OrdinalIgnoreCase));
+            || path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".flac", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".aac", StringComparison.OrdinalIgnoreCase));
     public static bool IsLocalVideoFile(string? path) => path is { Length: > 0 } && path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The artist and album a local track's TAGS name (a file has no artist or album row: they are names), keyed by the track's
+    /// uri. Written where a local track is staged (<see cref="ImportLocalFile(string, in LocalTagSet)"/>, the fake seed); read by the row's
+    /// credit and album lanes (<c>Track.LocalArtist</c>, <c>TrackUI.ContainerOf</c>) the way a playlist's local item reads its uri's.
+    /// UI THREAD. The music-folder index (#240 P2) answers for the files it holds; this map is the dropped files' and the fixtures'.</summary>
+    public static (string Artist, string Album) LocalNamesOf(string uri)
+        => s_localNames.TryGetValue(uri, out var names) ? names : ("", "");
+
+    /// <inheritdoc cref="LocalNamesOf"/>
+    public static void NoteLocalNames(string uri, string artist, string album)
+    {
+        if (artist.Length == 0 && album.Length == 0) s_localNames.Remove(uri);
+        else s_localNames[uri] = (artist, album);
+    }
+
+    static readonly Dictionary<string, (string Artist, string Album)> s_localNames = new(StringComparer.Ordinal);
+
+    /// <summary>A tag set's artists as one credit: the values joined with ", " (the form §3.4 also keys).</summary>
+    public static string LocalArtistLine(in LocalTagSet tags) => tags.Artists is not { Length: > 0 } artists ? ""
+        : artists.Length == 1 ? artists[0] : string.Join(", ", artists);
 
     /// <summary>0.2.9 <c>LocalPlayables.ClassifyDrop</c>: audio wins over video; the first playable path is picked.</summary>
     public static LocalDropAction ClassifyDrop(IReadOnlyList<string>? paths, out string picked)

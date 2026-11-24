@@ -84,9 +84,10 @@ public static partial class Spotify
         public const int MaxLocalUriBytes = 768;
 
         /// <summary><c>spotify:local:&lt;artist&gt;:&lt;album&gt;:&lt;title&gt;:&lt;seconds&gt;</c> into <paramref name="into"/>:
-        /// each part UTF-8 and form-encoded (unreserved <c>A-Za-z0-9-_.*</c> kept, space as <c>+</c>, everything else
-        /// <c>%XX</c>), so no part can contain a <c>:</c>. Returns the bytes written, or 0 when there is no title or it
-        /// would not fit. Built from the row's TAGS only — the file's path is never an input.</summary>
+        /// each part UTF-8 and form-encoded the way the official client encodes it (#240 capture §4.1, E1): the unreserved
+        /// <c>A-Za-z0-9-_.~</c> kept, space as <c>+</c>, everything else uppercase <c>%XX</c> (so <c>! ' ( ) *</c> are always
+        /// escaped), and the length in whole seconds, TRUNCATED. No part can contain a <c>:</c>. Returns the bytes written, or 0
+        /// when there is no title or it would not fit. Built from the row's TAGS only — the file's path is never an input.</summary>
         public static int LocalTrackUri(string? artist, string? album, string? title, long durationMs, Span<byte> into)
         {
             if (string.IsNullOrEmpty(title)) return 0;
@@ -118,7 +119,7 @@ public static partial class Spotify
                         byte b = utf8[i];
                         if (n + 3 > into.Length) return false;
                         if (b is >= (byte)'a' and <= (byte)'z' or >= (byte)'A' and <= (byte)'Z' or >= (byte)'0' and <= (byte)'9'
-                            or (byte)'-' or (byte)'_' or (byte)'.' or (byte)'*') into[n++] = b;
+                            or (byte)'-' or (byte)'_' or (byte)'.' or (byte)'~') into[n++] = b;
                         else if (b == (byte)' ') into[n++] = (byte)'+';
                         else
                         {
@@ -135,7 +136,8 @@ public static partial class Spotify
         }
 
         /// <summary>The deck's track uri as connect-state is told it, into <paramref name="into"/>: a Spotify id formatted,
-        /// a local track as <see cref="LocalTrackUri"/> from the window's tags, anything else nothing (0).</summary>
+        /// a local track by the name its wire row was minted with (<see cref="Playback.WireRow.LocalUri"/>, the same name it had
+        /// in next_tracks), else as <see cref="LocalTrackUri"/> from the window's tags, anything else nothing (0).</summary>
         public static int TrackUri(in Playback.Snapshot snap, Span<byte> into)
         {
             if (!snap.HasTrack || snap.Track.IsEmpty) return 0;
@@ -144,8 +146,29 @@ public static partial class Spotify
             if (snap.Track.Provider != EntityProvider.Local || snap.Track.Kind != EntityKind.Track || snap.Wire.Window is not { } window)
                 return 0;
             ref readonly Playback.WireRow row = ref window.Current;
+            if (row.LocalUri.Length > 0)
+                return System.Text.Encoding.UTF8.GetByteCount(row.LocalUri) > into.Length ? 0 : System.Text.Encoding.UTF8.GetBytes(row.LocalUri, into);
             return LocalTrackUri(row.ArtistName, row.AlbumTitle, row.Title, snap.DurationMs, into);
         }
+
+        // ── the Local Files context (#240 E4, capture report 3.4) ──────────────────────────────────────────────────────
+
+        /// <summary>The name the official client publishes its Local Files list under.</summary>
+        public const string LocalFilesUri = "spotify:local-files";
+
+        /// <summary>Is <paramref name="context"/> Wavee's own Local Files list (<c>wavee:local:playlist:all</c>, the one local playlist)? It
+        /// is published as <see cref="LocalFilesUri"/>, never by its own id. PURE (two field reads).</summary>
+        public static bool IsLocalFiles(EntityId context) => context.Provider == EntityProvider.Local && context.Kind == EntityKind.Playlist;
+
+        /// <summary>Is <paramref name="uri"/> the official Local Files context (<c>spotify:local-files</c>, or its
+        /// <c>spotify:internal:local-files</c> spelling, report 4.1)?</summary>
+        public static bool NamesLocalFiles(scoped ReadOnlySpan<byte> uri)
+            => uri.SequenceEqual("spotify:local-files"u8) || uri.SequenceEqual("spotify:internal:local-files"u8);
+
+        /// <summary>Does the deck play a local file: a Wavee local file, or a playlist's <c>spotify:local:</c> item (<paramref name="trackUri"/>,
+        /// the deck's uri as <see cref="TrackUri"/> wrote it)? The put-state's <c>playback_quality</c> then states <c>local_file</c> (E5). PURE.</summary>
+        public static bool PlaysLocalFile(EntityId track, scoped ReadOnlySpan<byte> trackUri)
+            => track.Kind == EntityKind.Track && (track.Provider == EntityProvider.Local || trackUri.StartsWith("spotify:local:"u8));
 
         // ── the put-state snapshot ───────────────────────────────────────────────────────────────────────────────────
 
@@ -160,7 +183,8 @@ public static partial class Spotify
         {
             if (!s.HasTrack) return s;                         // the encoder writes no player half: nothing to name
             bool trackOk = Admits(s.Track);
-            bool contextOk = s.Context.IsEmpty || Admits(s.Context);
+            // Our Local Files list stays: the encoder names it spotify:local-files (E4), its own id never leaves.
+            bool contextOk = s.Context.IsEmpty || Admits(s.Context) || IsLocalFiles(s.Context);
             bool windowOk = s.Wire.Window is not { } held || Clean(held);
             bool videoOk = s.VideoGid.Length == 0 || AdmitsVideoGid(s.VideoGid);
             if (trackOk && contextOk && windowOk && videoOk) return s;
@@ -172,7 +196,8 @@ public static partial class Spotify
                 s.Wire.PrivateSession, s.Wire.OutputDevice, s.Wire.CommandSender, s.Wire.PlaybackRate,
                 contextOk && window is not null ? s.Wire.Origin : null, s.Wire.OutputType, contextOk && s.Wire.Audiobook,
                 contextOk ? s.Wire.LikedPlaylist : null, contextOk ? s.Wire.LikedOwner : null,
-                contextOk ? s.Wire.Mix : null);   // #48: numbers and curves only, about an admitted context
+                contextOk ? s.Wire.Mix : null,   // #48: numbers and curves only, about an admitted context
+                contextOk ? s.Wire.LocalFilesTracks : 0);
             if (!trackOk && !local)
                 return new Playback.Snapshot(in s.Device, s.IsActive, s.Reason, s.MessageId, s.Volume, s.ClientTimestampMs,
                     s.StartedPlayingAtMs, s.HasBeenPlayingForMs, false, default, default, "", 0, s.TimestampMs, 0,
@@ -191,6 +216,7 @@ public static partial class Spotify
             if (!Clean(in window.Current)) return false;
             foreach (ref readonly Playback.WireRow row in window.Prev) if (!Admits(row.Id) || !Clean(in row)) return false;
             foreach (ref readonly Playback.WireRow row in window.Next) if (!Admits(row.Id) || !Clean(in row)) return false;
+            // (a Wavee local row is never "clean": its own id is scrubbed and its minted LocalUri names it, Kept below)
             return true;
         }
 
@@ -205,13 +231,15 @@ public static partial class Spotify
             return new Playback.WireWindow(in current, Kept(window.Prev), Kept(window.Next), window.ContextIndex,
                 Filter(window.AutoplayStation));
 
+            // A Wavee local file stays under its minted spotify:local: name (E3: the official client lists them in prev/next).
             static Playback.WireRow[] Kept(ReadOnlySpan<Playback.WireRow> rows)
             {
                 int n = 0;
-                foreach (ref readonly Playback.WireRow row in rows) if (Admits(row.Id)) n++;
+                foreach (ref readonly Playback.WireRow row in rows) if (Admits(row.Id) || row.LocalUri.Length > 0) n++;
                 var kept = new Playback.WireRow[n];
                 n = 0;
-                foreach (ref readonly Playback.WireRow row in rows) if (Admits(row.Id)) kept[n++] = Scrub(in row, dropCover: false);
+                foreach (ref readonly Playback.WireRow row in rows)
+                    if (Admits(row.Id) || row.LocalUri.Length > 0) kept[n++] = Scrub(in row, dropCover: row.LocalUri.Length > 0);
                 return kept;
             }
         }
@@ -219,6 +247,6 @@ public static partial class Spotify
         static Playback.WireRow Scrub(in Playback.WireRow row, bool dropCover)
             => new(Filter(row.Id), row.ItemId, row.UidText, row.Provider, row.Title, row.ArtistName, row.AlbumTitle,
                 dropCover || !AdmitsImage(row.Image) ? null : row.Image, Filter(row.AlbumId), Filter(row.ArtistId),
-                row.DecisionId, row.QueuedBy);
+                row.DecisionId, row.QueuedBy, Admits(row.Id) ? null : row.LocalUri);
     }
 }

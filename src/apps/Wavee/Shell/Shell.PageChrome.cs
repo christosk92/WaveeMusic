@@ -157,8 +157,12 @@ public static partial class Shell
         /// <summary>The page kinds that publish their row 2 (views, actions, the entity's name) from their first frame on: a route of one whose page has
         /// not spoken yet has its row coming. The page commits a frame before its effect publishes, so without this a band folded row 2 away for
         /// that frame and brought it back (album to album, artist to artist: audit B7, B5b).</summary>
+        /// <remarks>Every kind here publishes a row on every visit (a page that sometimes publishes none, a vacant search, would hold the place for a
+        /// frame and then fold it). "On this PC" (its pivots) and Recents (its pivots and Overview) publish from their effects too and have no route-level
+        /// row 2: without them here the band folded row 2 on the landing frame and brought it back a frame later, the page under it jumping 32 DIP
+        /// up and back (#240).</remarks>
         static bool PublishesRow(RouteKind kind) => kind is RouteKind.Album or RouteKind.Playlist or RouteKind.Artist or RouteKind.Show
-            or RouteKind.Episode or RouteKind.User or RouteKind.ProfileList;
+            or RouteKind.Episode or RouteKind.User or RouteKind.ProfileList or RouteKind.Local or RouteKind.Recents;
         static readonly List<string> s_lru = [];
 
         static string KeyOf(in Route r) => NameOf(r) + "\u001F" + (ArgOf(r) ?? "") + "\u001F" + r.Tab.ToString(System.Globalization.CultureInfo.InvariantCulture);

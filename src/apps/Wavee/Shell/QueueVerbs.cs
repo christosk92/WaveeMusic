@@ -191,7 +191,7 @@ public static partial class Shell
                                             () => Remove(itemId, index, row)));
             }
             string name = Loc.Get(SectionNameKey(section));
-            string artists = Entities.Strings.Resolve(track.ArtistLineId);
+            string artists = track.CreditLine;
             return new ContextMenuModel(strip, list,
                 Actions.Menu.Header(Controls.ArtUrl(track.ImageId), track.Title, artists.Length > 0 ? artists + " · " + name : name));
         }

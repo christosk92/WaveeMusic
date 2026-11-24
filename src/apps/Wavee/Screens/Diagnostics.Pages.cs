@@ -336,6 +336,22 @@ public static partial class Diagnostics
             delay = Strings.Diagnostics.Playback.Ms(session.OutputDelayFrames * 1000 / rate);
             counters = Strings.Diagnostics.Playback.Timecode.PublisherValue(st.Publishes, st.Epochs, st.DriftEpochs);
         }
+        // The LTC output (#154 phase 3): the aux device, what the generator sends, what its reader decodes back, the chase error.
+        string? aux = null, sent = null, ltcError = null;
+        if (Playback.TimecodeOutput.Output is { } output)
+        {
+            var os = output.Stats;
+            aux = Strings.Diagnostics.Playback.Timecode.AuxValue(output.State.Peek().ToString(), os.SampleRate,
+                os.StreamLatencyFrames * 1000 / Math.Max(1, os.SampleRate), os.Underruns);
+            LtcGenerator.Status g = Playback.TimecodeOutput.Generator.Read();
+            if (g.Locked || g.ReadCount > 0)
+            {
+                sent = (g.SentFrame >= 0 ? Timecode.Format(g.SentFrame, g.Rate) : "\u2014") + " \u00b7 "
+                       + (g.ReadFrame >= 0 ? Timecode.Format(g.ReadFrame, g.Rate) : "\u2014")
+                       + " (" + g.Matches.ToString(inv) + " ok, " + g.Mismatches.ToString(inv) + " off)";
+                ltcError = (g.ErrorFrames * 1000.0 / Timecode.FramesPerSecond(g.Rate)).ToString("0.00", inv) + " ms \u00b7 " + g.Relocations.ToString(inv);
+            }
+        }
         return new DiagCard(Loc.Get(Strings.Diagnostics.Playback.Timecode.Title),
         [
             Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.Track), live ? t.Track.Text : Loc.Get(Strings.Diagnostics.Playback.Timecode.Nothing)),
@@ -346,6 +362,10 @@ public static partial class Diagnostics
             Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.Anchor), anchor),
             Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.OutputDelay), delay),
             Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.Publisher), counters),
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.Ltc), Playback.TimecodeOutput.StatusLine()),
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.Aux), aux),
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.LtcSent), sent),
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.LtcError), ltcError),
         ]);
 
         static string Clock(long micros)

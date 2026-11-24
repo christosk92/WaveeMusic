@@ -38,6 +38,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Zune;
@@ -299,29 +300,7 @@ internal static class ZuneTrackTable
     {
         const int decodePx = Track.RowArtDecodePx;
         Func<string?> url = () => Track.RowArtUrl(r.P.Track.ForDisplay);
-        var corners = R.Shape.All(Wavee.Theming.Roles.ShapeRole.Cover);
-        return new BoxEl
-        {
-            ZStack = true, Width = art, Height = art, ClipToBounds = true, Corners = corners,
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = art, Height = art, Corners = corners,
-                    Fill = Prop.Of(() =>
-                    {
-                        string? u = url();
-                        if (u is { Length: > 0 }) _ = Wavee.Palette.Watch(u).Value;
-                        return Design.PlaceholderFor(u);
-                    }),
-                },
-                new ImageEl
-                {
-                    Source = Prop.Of(() => url() ?? ""), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = decodePx,
-                    Corners = corners, Placeholder = ColorF.Transparent,
-                },
-            ],
-        };
+        return Controls.BoundArtwork(url, art, R.Shape.All(Wavee.Theming.Roles.ShapeRole.Cover), decodePx);
     }
 
     // ── title · subline ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -351,7 +330,13 @@ internal static class ZuneTrackTable
         var line = new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
-            Children = [new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] }, film, lone],
+            // Local Files' session mark ("new", "moved", #240 S5) after the title: mounted only on a marked row.
+            // A Spotify song a file in the music folders is linked to wears the file mark after its title ("Your files and Spotify").
+            Children =
+            [
+                new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] }, CommonLocalFiles.RowTag(r), film,
+                CommonLocalFiles.LinkedFileMark(r, ZuneListRules.FilmGlyph, RowInk(r, static () => Tok.TextTertiary)), lone,
+            ],
         };
         var column = new BoxEl
         {
@@ -374,7 +359,7 @@ internal static class ZuneTrackTable
         if (d.IsPodcast) return true;
         int artists = Track.ArtistInTitle(in p, setArtist) ? d.DisplayArtistCount : 0;
         bool container = Track.ShowAlbumInMeta(in p, false, setAlbum) && Track.ContainerOf(d).Name.Length > 0;
-        return RowCellRules.LinkSpanCount(artists, container) > 0;
+        return Track.CreditSpeaks(d, artists, container);   // a withheld row's reason speaks too
     }
 
     /// <summary>The subline: [EPISODE] · [E] · the artists · the album as one bound span run that collapses when it has nothing to say;
@@ -419,13 +404,13 @@ internal static class ZuneTrackTable
                     Visible = Prop.Of(() =>
                     {
                         var p = r.P;
-                        return RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay)) > 0;
+                        return Track.CreditSpeaks(p.Track.ForDisplay, ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay));
                     }),
                     OnSpanClick = index =>
                     {
                         var p = r.Presentation.Peek();
                         var d = p.Track.ForDisplay;
-                        int target = RowCellRules.LinkTarget(index, ArtistCount(in p), HasContainer(in p, d));
+                        int target = RowCellRules.LinkTarget(index - Track.CreditLeadSpans(d, ArtistCount(in p), HasContainer(in p, d)), ArtistCount(in p), HasContainer(in p, d));
                         if (target >= 0) Track.GoToArtistAt(d, target);
                         else if (target == RowCellRules.Container) Track.GoToContainer(d);
                     },
@@ -433,7 +418,7 @@ internal static class ZuneTrackTable
                 new TextEl(Prop.Of(() =>
                 {
                     var p = r.P;
-                    bool lead = RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay)) > 0;
+                    bool lead = Track.CreditSpeaks(p.Track.ForDisplay, ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay));
                     string duration = Track.DurationLabel(in p, Track.NowUnix);
                     return lead ? ZuneListRules.InlineDurationLead + duration : duration;
                 }))
@@ -457,7 +442,7 @@ internal static class ZuneTrackTable
             buffer.Clear();
             var p = r.P;
             var d = p.Track.ForDisplay;
-            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, ZuneListRules.RowInk(p.State.IsNow, R.Ink.AccentAction, Tok.TextSecondary));
+            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, ZuneListRules.RowInk(p.State.IsNow, R.Ink.AccentAction, Tok.TextSecondary), withNote: false);
             return buffer.Current;
         }))
         {
@@ -632,21 +617,8 @@ internal static class ZuneTrackTable
         }, CellKey.Expand);
 
     /// <summary>The artists and the container as one link run (separators are not links).</summary>
-    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink)
-    {
-        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
-        for (int i = 0; i < artistCount; i++)
-        {
-            if (i > 0) b.Add(new TextSpan(", ", Color: ink));
-            var (name, link) = Track.ArtistAt(t, i);
-            b.Add(new TextSpan(name, Color: ink, IsLink: link));
-        }
-        if (container.Name is { Length: > 0 })
-        {
-            if (artistCount > 0) b.Add(new TextSpan(" · ", Color: ink));
-            b.Add(new TextSpan(container.Name, Color: ink, IsLink: container.Uri.IsValid));
-        }
-    }
+    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink, bool withNote = true)
+        => Track.FillCreditSpans(b, t, artistCount, container, " · ", ink, withNote);
 
     // ══ THE SKIN ═════════════════════════════════════════════════════════════════════════════════════════════════════════
 

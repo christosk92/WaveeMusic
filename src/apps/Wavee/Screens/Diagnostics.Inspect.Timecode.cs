@@ -27,7 +27,16 @@ public static partial class Diagnostics
         string Timecode(int id, string name, Inspect.Args a)
         {
             string verb = a.Str("do").ToLowerInvariant();
-            if (verb.Length > 0 && verb != "status") return Inspect.Reply.Fail(id, name, "timecode wants do=status, not '" + verb + "'");
+            if (verb == "set")
+            {
+                // The Settings rows' own verbs (SettingsVerbs), by the dial the row shows: what a user's click writes.
+                bool ok = Playback.TimecodeOutput.Set(a.Str("key"), a.Str("value"));
+                if (!ok) return Inspect.Reply.Fail(id, name, "timecode do=set wants key=enabled|device|rate|start|level|offset and a value it accepts");
+                // The output opens on a worker: give it a moment so the reply already reads it.
+                for (int i = 0; i < 50 && !string.Equals(Playback.TimecodeOutput.WantedId(), Playback.TimecodeOutput.OpenId, StringComparison.OrdinalIgnoreCase); i++) Thread.Sleep(10);
+                return Inspect.Reply.Ok(id, name, static w => WriteTimecode(w));
+            }
+            if (verb.Length > 0 && verb != "status") return Inspect.Reply.Fail(id, name, "timecode wants do=status|set, not '" + verb + "'");
             int samples = Math.Clamp(a.Int("samples", 1), 1, 2000);
             int every = Math.Clamp(a.Int("every", 200), 0, 60_000);
             if (samples == 1) return Inspect.Reply.Ok(id, name, static w => WriteTimecode(w));
@@ -110,6 +119,35 @@ public static partial class Diagnostics
                 w.WriteNumber("outputDelayMs", session.OutputDelayFrames * 1000.0 / Math.Max(1, session.Format.SampleRate));
                 w.WriteNumber("sampleClock", session.SampleClock);
             }
+            w.WriteEndObject();
+            w.WriteStartObject("ltc");
+            w.WriteString("status", Playback.TimecodeOutput.StatusLine());
+            w.WriteString("device", Playback.TimecodeOutput.OpenId);
+            if (Playback.TimecodeOutput.Output is { } output)
+            {
+                var os = output.Stats;
+                w.WriteString("state", output.State.Peek().ToString());
+                w.WriteNumber("auxRate", os.SampleRate);
+                w.WriteNumber("blocks", os.Blocks);
+                w.WriteNumber("underruns", os.Underruns);
+                w.WriteNumber("auxLatencyMs", os.StreamLatencyFrames * 1000.0 / Math.Max(1, os.SampleRate));
+            }
+            LtcGenerator.Status g = Playback.TimecodeOutput.Generator.Read();
+            w.WriteString("rate", g.Rate.ToString());
+            w.WriteBoolean("locked", g.Locked);
+            w.WriteString("sent", g.SentFrame >= 0 ? global::Wavee.Timecode.Format(g.SentFrame, g.Rate) : "");
+            w.WriteString("read", g.ReadFrame >= 0 ? global::Wavee.Timecode.Format(g.ReadFrame, g.Rate) : "");
+            w.WriteNumber("readCount", g.ReadCount);
+            w.WriteNumber("matches", g.Matches);
+            w.WriteNumber("mismatches", g.Mismatches);
+            w.WriteNumber("errorMs", Math.Round(g.ErrorFrames * 1000.0 / global::Wavee.Timecode.FramesPerSecond(g.Rate), 3));
+            w.WriteNumber("relocations", g.Relocations);
+            w.WriteEndObject();
+            var (sent, observers) = Modules.TimelineFanOutStats;
+            w.WriteStartObject("clx");
+            w.WriteBoolean("enabled", Platform.Settings.Get(Platform.Keys.TimecodeClxEnabled));
+            w.WriteNumber("observers", observers);
+            w.WriteNumber("notificationsSent", sent);
             w.WriteEndObject();
         }
 

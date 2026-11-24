@@ -210,10 +210,17 @@ public static partial class Shell
         if (r.IsNone) return null;
         return r.Kind switch
         {
-            EntityKind.Track when new Track(r.Slot) is { IsValid: true } t && t.Knows(TrackFields.Image) => Controls.ArtUrl(t.ImageId),
+            EntityKind.Track when new Track(r.Slot) is { IsValid: true } t && t.Knows(TrackFields.Image) => Controls.ArtUrl(t.ImageId) ?? WantLocalCover(t),
             EntityKind.Episode when new Episode(r.Slot) is { IsValid: true } e && e.Knows(EpisodeFields.Image) => Controls.ArtUrl(e.ImageId),
             _ => null,
         };
+    }
+
+    /// <summary>The bar shows a local file with no cover: ask for it (<see cref="LocalArt.Want"/>); null meanwhile, so the slot draws the no-art tile.</summary>
+    static string? WantLocalCover(Track t)
+    {
+        LocalArt.Want(t);
+        return null;
     }
 
     /// <summary>Title → the album (a track) or the show (an episode). Resolved at INVOKE time, against the row the
@@ -274,7 +281,12 @@ public static partial class Shell
         }
 
         var t = new Track(r.Slot);
-        if (!t.IsValid || !t.Knows(TrackFields.Artists)) return PlayerCredits.None;
+        if (!t.IsValid) return PlayerCredits.None;
+        // A local row credits a NAME (its tag, its uri's, else "Unknown artist"): one inert entry, no artist page behind it. It has no
+        // artist edge to wait for (a spotify:local: item never knows Artists), so it is answered before the partial-list gate.
+        if (t.IsLocalRow && t.ArtistSlots.Length == 0)
+            return new PlayerCredits { Artists = [CreditLink(t.LocalCredit, Route.None, "local:" + r.Slot)] };
+        if (!t.Knows(TrackFields.Artists)) return PlayerCredits.None;
         var slots = t.ArtistSlots.ToArray();
         if (slots.Length == 0) return PlayerCredits.None;
 
