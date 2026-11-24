@@ -186,7 +186,8 @@ internal sealed class CommonActivityFlyout : CommonTierComponent
     /// at rest (empty), so a scan starting never moves the head's words.</summary>
     static Element Head(float target) => new BoxEl
     {
-        Key = Rules.HeadKey, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, MinHeight = target,
+        Key = Rules.HeadKey, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+        MinHeight = MathF.Max(target, Rules.HeadTop + Rules.PauseHeight + Rules.HeadBottom),   // the verb's row is reserved at rest
         Padding = new Edges4(Rules.Pad, Rules.HeadTop, Rules.HeadEnd, Rules.HeadBottom),
         Children =
         [
@@ -200,7 +201,7 @@ internal sealed class CommonActivityFlyout : CommonTierComponent
             Ui.Spacer(),
             LibraryActivity.CanPause
                 ? CommonTouch.Button(LibraryActivity.PauseLabel, LibraryActivity.TogglePause, target,
-                    glyph: LibraryActivity.PausedNow ? Icons.Play : Icons.Pause) with { Key = Rules.PauseKey, Shrink = 0f, Margin = new Edges4(Rules.MarkGap, 0f, 0f, 0f) }
+                    glyph: LibraryActivity.PausedNow ? Icons.Play : Icons.Pause) with { Key = Rules.PauseKey, Shrink = 0f, MinWidth = Rules.PauseMinWidth, Margin = new Edges4(Rules.MarkGap, 0f, 0f, 0f) }
                 : new BoxEl { Key = Rules.PauseKey, Shrink = 0f },
         ],
     };

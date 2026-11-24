@@ -141,7 +141,8 @@ internal static class ZuneLocalCollection
                 R.Type.TrackMeta(X.StatsText(view, withSongs: false)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f, Margin = new Edges4(0f, Z.StatsGap, 0f, 0f) },
                 new BoxEl
                 {
-                    Key = "lc-activity", Direction = 0, Gap = Z.StatusGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Margin = new Edges4(0f, Z.StatusGap, 0f, 0f),
+                    // One height in every state (the "edit home" verb's 40, which the first scan's line fits inside): a scan starting never moves the shelves.
+                    Key = "lc-activity", Direction = 0, Gap = Z.StatusGap, AlignItems = FlexAlign.Center, MinWidth = 0f, MinHeight = Z.VerbH, Margin = new Edges4(0f, Z.StatusGap, 0f, 0f),
                     // A first scan shows the shared scan line and bar (S4) where the state word stands.
                     Children = p.FirstScan() ? [p.ScanLine(float.NaN, false)] :
                     [

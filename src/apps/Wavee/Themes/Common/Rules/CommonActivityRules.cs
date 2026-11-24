@@ -25,6 +25,12 @@ internal static class CommonActivityRules
         FooterKey = "activity-flyout:footer", RescanKey = "activity-flyout:rescan", SettingsKey = "activity-flyout:settings",
         PauseKey = "activity-flyout:pause";
 
+    /// <summary>The head's Pause / Resume keeps one width whichever word it says (the label swap never moves the head's words).</summary>
+    public const float PauseMinWidth = 104f;
+
+    /// <summary>The verb's height, reserved in the head at rest so a scan starting never pushes the flyout down.</summary>
+    public const float PauseHeight = 32f;
+
     // ── the chip (board: 180 x 20 at the label's x, its top 5 above the row's foot; the cell grows 36 → 56) ──
 
     /// <summary>The chip's reserved width: every state's words fit it, so a state change never resizes it.</summary>
