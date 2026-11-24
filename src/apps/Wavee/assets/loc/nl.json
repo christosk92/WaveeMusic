@@ -25,7 +25,8 @@
     },
     "trackFacts": {
       "unavailableShort": "Niet beschikbaar",
-      "unavailableReason": "Dit nummer kan niet worden afgespeeld"
+      "unavailableReason": "Dit nummer kan niet worden afgespeeld",
+      "localReason": "Een lokaal bestand: niet gevonden in je muziekmappen"
     },
     "artist": "ARTIEST",
     "songCount": "{count, plural, one {# nummer} other {# nummers}}",

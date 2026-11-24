@@ -330,7 +330,7 @@
       "unavailable": "Audio unavailable",
       "unavailableShort": "Unavailable",
       "unavailableReason": "This song isn’t available to play",
-      "localReason": "A local file: Wavee can’t play local files yet",
+      "localReason": "A local file: not found in your music folders",
       "$comment2": "Camelot encodes mode in its own suffix — the B ring is major, the A ring minor — so these two words are the only key wording we can state honestly. They are lowercase because they follow a tonic: \"8B · C major\".",
       "major": "major",
       "minor": "minor"

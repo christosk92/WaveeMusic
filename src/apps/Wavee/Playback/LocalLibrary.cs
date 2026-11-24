@@ -321,6 +321,20 @@ public static partial class LocalLibrary
     /// scan's first second (nothing read, no total). Every value but `changed` clears the session's changes, so the diff from the previous fixture
     /// announces nothing.
     /// The next `InspectFixture("none")` empties it again.</summary>
+    /// <summary>The inspector's real-file library (#240 P4 checks): <paramref name="path"/> as the one music folder, walked and read by the
+    /// real scanner, synchronously, into the in-memory index (never the app's own index file), then restated. Returns the scan's summary line.</summary>
+    public static string InspectFolder(string path)
+    {
+        InspectFixture("none");
+        lock (s_gate) s_folders = [path];
+        LocalScanStats stats = s_scan.ScanRoot(path, startup: false, dirty: null);
+        s_states[path] = stats.Offline ? LocalRootState.Offline : LocalRootState.Online;
+        s_scan.Last[path] = stats;
+        Epoch.Value++;
+        RestateNow();
+        return stats.Summary();
+    }
+
     public static void InspectFixture(string value)
     {
         s_fixture = true;
@@ -358,6 +372,14 @@ public static partial class LocalLibrary
                 if (value != "missing")
                     loose.Upserts.Add(new LocalEntry(21, 1, "demo take.wav", 0x1234_ABCD, 2001, 41_000_000, now, now, 0x20, Spotify.Audio.Format.Unknown, untagged with { DurationMs = 0, DurationEstimated = false },
                         "demo take", LocalState.Present, now, false, "No WAV decoder in this build"));
+                // #240 P4: the files two of the fake playlist X5's spotify:local: items name (Entities.Fake.Library.cs, LocalItemUris): a
+                // tagged one (June Harbor, "Coastline", 273 s in the uri, 273.4 s here: tier 1) and an untagged one whose file name is the
+                // title (":::Voice+Memo+12:47", 47.6 s: tier 1 on the file-name title). X5's third item ("Lanterns (Live)") stays unmatched.
+                loose.Upserts.Add(new LocalEntry(25, 1, @"June Harbor\Coastal Hours\04 Coastline.flac", 0x1234_ABCD, 2005, 32_000_000, now, now, 0x20, Spotify.Audio.Format.Flac,
+                    new LocalTagSet(LocalKind.Audio, "Coastline", ["June Harbor"], "Coastal Hours", "June Harbor", 4, 1, 2020, 273_400, false, 900, LocalCover.None, 0, 0, true),
+                    "Coastline", LocalState.Present, now, true, ""));
+                loose.Upserts.Add(new LocalEntry(26, 1, "Voice Memo 12.m4a", 0x1234_ABCD, 2006, 760_000, now, now, 0x20, Spotify.Audio.Format.Aac,
+                    untagged with { DurationMs = 47_600 }, "Voice Memo 12", LocalState.Present, now, true, ""));
                 loose.Upserts.Add(new LocalEntry(22, 1, "old mix.mp3", 0x1234_ABCD, 2002, 7_000_000, now, now, 0x20, Spotify.Audio.Format.Mp3, untagged, "old mix", LocalState.Missing, now - TimeSpan.TicksPerDay * 3, true, ""));
             }
             if (value == "missing")

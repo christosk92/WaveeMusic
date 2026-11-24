@@ -314,6 +314,10 @@ public static partial class Diagnostics
             // (there is no Shell here - see ResolveLyricsRequest below).
             Spotify.Library.Install();
             Lyrics.Boot(ResolveLyricsRequest, Spotify.Api.GetTextAsync, Spotify.SpclientBaseUrl);
+            // #240: the profile's music folders, loaded, scanned and restated as the app does at boot (App.cs), and the local seam
+            // (Modules.InstallUi's, which this host does not run): a playlist's spotify:local: item plays from them.
+            Playback.Audio.LocalPath = LocalLibrary.PathOf;
+            LocalLibrary.Use(Platform.LocalFolder);
             if (o.Silent) Playback.Audio.UseSilentEndpoint();
             s_connect = o.Connect;
             Spotify.Connect.AnnounceOnOnline = o.Connect;             // the session's own hello on Online, once per connection; off unless --connect
@@ -656,6 +660,7 @@ public static partial class Diagnostics
                         if (!EntityId.TryParse(c.Arg0.AsSpan(), out EntityId id) || !id.IsPlayable) { error = "not a track or episode uri"; return false; }
                         EntityRef row = Entities.Ref(id);
                         if (row.IsNone) { error = "no row for " + c.Arg0; return false; }
+                        LocalLibrary.RuleItem(id);
                         Queue.Enqueue(row);
                         return true;
                     }
@@ -703,11 +708,14 @@ public static partial class Diagnostics
         {
             error = "";
             code = Headless.ExitCode.Assertion;
-            if (!Spotify.Current.IsOnline) { error = "the session is not online"; code = Headless.ExitCode.Fault; return false; }
             if (!EntityId.TryParse(c.Arg0.AsSpan(), out EntityId id)) { error = "not a spotify uri: " + c.Arg0; return false; }
+            // A playlist's spotify:local: item plays from the music folders: no session needed (#240 P4's real-decode runs).
+            bool localItem = LocalTrackUri.Is(c.Arg0);
+            if (!Spotify.Current.IsOnline && !localItem) { error = "the session is not online"; code = Headless.ExitCode.Fault; return false; }
             if (c.Int1 >= 0) Platform.Settings.Set(Platform.Keys.PlaybackQuality, c.Int1);
             EntityRef row = Entities.Ref(id);
             if (row.IsNone) { error = "no table for kind " + id.Kind; return false; }
+            LocalLibrary.RuleItem(id);
             s_playPostedAt = nowMs;
             s_pending = default;
 

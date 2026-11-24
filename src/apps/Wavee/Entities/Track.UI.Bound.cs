@@ -230,7 +230,8 @@ public readonly partial struct Track
     /// available to play" (a terminal verdict names no cause the client could state honestly) or "Releases {date}".
     /// Null for a playable row.</summary>
     internal static string? WithheldReason(Track t, long now)
-        => t.IsLocalItem ? Loc.Get(Strings.Detail.TrackFacts.LocalReason)
+        // A playlist's local file the music folders do not have (#240 D5); a matched one plays and states nothing here.
+        => t.IsLocalItem ? (t.Unplayable() ? Loc.Get(Strings.Detail.TrackFacts.LocalReason) : null)
          // "Not found at D:\Music\…\Song.flac since 12 Nov", "D:\Music is offline", "Wavee can’t play this file’s format yet" (#240 S6).
          : t.IsLocal && LocalFilesList.LongReason(t) is { } local ? local
          : RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch

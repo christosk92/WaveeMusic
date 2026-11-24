@@ -86,9 +86,11 @@ public static partial class LocalLibrary
     static Dictionary<EntityId, long> s_pathMap = new();
 
     /// <summary>The file a track id plays from, or null: an indexed file through the path map (one probe under a lock, no id
-    /// text read), a dropped file through its path form. ANY THREAD (the audio pump).</summary>
+    /// text read), a matched playlist item through the item map, a dropped file through its path form. ANY THREAD (the audio pump).</summary>
     public static string? PathOf(EntityId id)
     {
+        // A playlist's matched spotify:local: item (D1 a): its own id, the file the index matched (LocalLibrary.Items.cs).
+        if (id.Provider == EntityProvider.Spotify) return PathOfItem(id);
         long localId;
         lock (s_pathGate) { if (!s_pathMap.TryGetValue(id, out localId)) localId = 0; }
         return localId != 0 ? PathOf(localId) : Playlist.LocalPathOf(id);
@@ -98,7 +100,7 @@ public static partial class LocalLibrary
     public static int DurationMsOf(EntityId id)
     {
         long localId;
-        lock (s_pathGate) { if (!s_pathMap.TryGetValue(id, out localId)) return 0; }
+        lock (s_pathGate) { if (!s_pathMap.TryGetValue(id, out localId) && !s_itemMap.TryGetValue(id, out localId)) return 0; }
         return s_index.TryGet(localId, out LocalEntry? e) ? Math.Max(0, e.Tags.DurationMs) : 0;
     }
 
@@ -289,6 +291,7 @@ public static partial class LocalLibrary
                 local.Refold();
             }
             Entities.Publish();
+            RestateItems();   // step 2: the playlists' spotify:local: items this session saw, re-ruled against the new index
         }
         finally
         {

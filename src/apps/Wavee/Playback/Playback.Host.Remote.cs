@@ -454,7 +454,11 @@ public static partial class Playback
         if (!uri.IsEmpty)
         {
             EntityId id = EntityId.Parse(uri);
-            if (id.IsPlayable) target = Queue.Pack(Entities.Ref(id));
+            if (id.IsPlayable)
+            {
+                target = Queue.Pack(Entities.Ref(id));
+                LocalLibrary.RuleItem(id);   // the owner's spotify:local: row: its uri's face, lit when this PC has the file
+            }
         }
         ReadOnlySpan<byte> uid = s_foreign.Utf8Uid(next, index);
         ulong itemId = target == 0 || uid.IsEmpty ? 0UL : s_uids.ItemIdOf(uid, s_foreign.UidOccurrence(next, index));

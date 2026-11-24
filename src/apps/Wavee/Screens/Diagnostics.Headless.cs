@@ -359,6 +359,8 @@ public static partial class Diagnostics
         /// turns it into an EntityId on the loop thread, where interning is legal.</summary>
         static bool IsSpotifyUri(string uri, bool containers)
         {
+            // A playlist's local file (#240): spotify:local:<artist>:<album>:<title>:<seconds>, played from the music folders.
+            if (EntityUri.KindOf(uri.AsSpan()) == EntityKind.Track && LocalTrackUri.Is(uri)) return true;
             if (!uri.StartsWith("spotify:", StringComparison.Ordinal)) return false;
             int last = uri.LastIndexOf(':');
             ReadOnlySpan<char> id = uri.AsSpan(last + 1);

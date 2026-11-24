@@ -25,7 +25,8 @@
     },
     "trackFacts": {
       "unavailableShort": "사용 불가",
-      "unavailableReason": "이 곡은 재생할 수 없습니다"
+      "unavailableReason": "이 곡은 재생할 수 없습니다",
+      "localReason": "로컬 파일: 음악 폴더에서 찾을 수 없습니다"
     },
     "artist": "아티스트",
     "songCount": "{count, plural, other {#곡}}",
