@@ -163,6 +163,7 @@ internal sealed class CommonActivityFlyout : CommonTierComponent
         _ = tick.Value;
         float target = CommonTiers.Target(TierContext.WindowOf(ReadTier()));
         var viewport = UseContextSignal(Viewport.Size);
+        var overlay = UseContext(Overlay.Service);
         float width = MathF.Max(0f, MathF.Min(Rules.Width, viewport.Value.Width - 2f * Rules.WindowEdge));
         Action close = p.Close;
 
@@ -172,7 +173,7 @@ internal sealed class CommonActivityFlyout : CommonTierComponent
         var changes = LibraryActivity.Changes();
         if (changes.Length > 0) kids.Add(Section(Rules.ChangesKey, Changes(changes, target, close)));
         var attention = LibraryActivity.Attention();
-        if (attention.Length > 0) kids.Add(Section(Rules.AttentionKey, Attention(attention, target, close)));
+        if (attention.Length > 0) kids.Add(Section(Rules.AttentionKey, Attention(attention, target, close, overlay)));
         kids.Add(Footer(target, close));
         return new BoxEl
         {
@@ -308,7 +309,7 @@ internal sealed class CommonActivityFlyout : CommonTierComponent
     };
 
     /// <summary>"Needs attention": one line and one verb each (Retry rescans the folder and keeps the flyout open; Review and See which open Local Files).</summary>
-    static Element Attention(LibraryActivity.AttentionLine[] lines, float target, Action close)
+    static Element Attention(LibraryActivity.AttentionLine[] lines, float target, Action close, IOverlayService? overlay)
     {
         var rows = new List<Element>(lines.Length + 1)
         {
@@ -324,7 +325,8 @@ internal sealed class CommonActivityFlyout : CommonTierComponent
         };
         foreach (var line in lines)
         {
-            Action act = line.Act;
+            // Review opens the missing songs' dialog over the page (S2, S6); the other verbs act on their own.
+            Action act = line.ActOver is { } over ? () => over(overlay) : line.Act;
             bool leaves = line.Mark == LibraryActivity.AttentionMark.Files;
             var words = new List<Element>(2)
             {

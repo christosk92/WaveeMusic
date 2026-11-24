@@ -60,7 +60,10 @@ public static class LibraryActivity
     public enum AttentionMark : byte { Folder, Files }
 
     /// <summary>One item that needs the user: a stable id, its line, the line under it ("" for none), its one verb and what the verb does.</summary>
-    public readonly record struct AttentionLine(string Id, AttentionMark Mark, string Text, string Sub, string Verb, Action Act);
+    /// <param name="ActOver">A verb that opens over the page (the missing songs' Review dialog): the flyout calls it with its overlay instead of
+    /// <paramref name="Act"/>.</param>
+    public readonly record struct AttentionLine(string Id, AttentionMark Mark, string Text, string Sub, string Verb, Action Act,
+        Action<FluentGpu.Controls.IOverlayService?>? ActOver = null);
 
     /// <summary>Subscribe the caller to the library: the scan's progress and the list's restate.</summary>
     public static void Track()
@@ -199,7 +202,7 @@ public static class LibraryActivity
                 LocalLibrary.AttentionKind.NoAccess => new("noaccess:" + folder, AttentionMark.Folder, Strings.LocalFiles.Activity.NoAccess(folder), "",
                     Loc.Get(Strings.LocalFiles.Activity.FixPermissions), () => LocalLibrary.FixPermissions(folder)),
                 LocalLibrary.AttentionKind.Missing => new("missing", AttentionMark.Files, Strings.LocalFiles.Activity.MissingSongs(a.Count), "",
-                    Loc.Get(Strings.LocalFiles.Activity.Review), OpenLocalFiles),
+                    Loc.Get(Strings.LocalFiles.Activity.Review), OpenLocalFiles, LocalFilesList.OpenReview),
                 _ => new("unplayable", AttentionMark.Files, Strings.LocalFiles.Activity.Unplayable(a.Count), "",
                     Loc.Get(Strings.LocalFiles.Activity.SeeWhich), OpenLocalFiles),
             };
