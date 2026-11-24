@@ -191,13 +191,11 @@ public static partial class DropAnywhere
         {
             var refs = new EntityRef[rows.Length];
             int n = 0;
-            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             foreach (var (path, tags) in rows)
             {
                 var track = Playlist.ImportLocalFile(path, in tags);
                 if (!track.IsValid) { _skipped++; continue; }
-                // A dropped .mp4 plays through the existing video path: attached to its own row (plan §3.17).
-                if (Playlist.IsLocalVideoFile(path)) Video.Overrides.Attach(track.Uri.Text, path, path, now);
+                // A video file is its own row's video (TrackFlags.LocalVideoFile, from its tags): it plays on the video host, nothing attached.
                 refs[n++] = new EntityRef(EntityKind.Track, track.Slot);
             }
             if (n == 0) return;

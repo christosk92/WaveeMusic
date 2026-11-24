@@ -264,7 +264,15 @@ internal static class WinUiPanel
     private static Element NowPlaying(PanelProps props, PanelView view, bool sheet, bool swapIn)
     {
         bool card = view.Pinned == PanelPinned.DockedVideo;
-        Element occupant = card ? DockedCap(props, docked: true, view.Width) : Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying);
+        // The docked video holds the hero's place at the video's own aspect; the track's title and line stay under it (the Video tab's
+        // block), so the slot reads as the cover turned into the picture rather than the track going away.
+        Element occupant = card
+            ? new BoxEl
+            {
+                Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
+                Children = [DockedCap(props, docked: true, view.Width), Embed.Comp(props.NowPlaying, static () => new WinUiDockedMeta())],
+            }
+            : Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying);
         Element pinned = new BoxEl
         {
             Key = "np-pinned", Direction = 1, Shrink = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
@@ -646,6 +654,21 @@ internal sealed class WinUiSheetTransport : Component
 /// <summary>The video tab: the playing track's title and line under the docked card, then "Next up" (built from WinUI's parts: no board).</summary>
 internal sealed class WinUiPanelVideoArm : Component
 {
+    /// <summary>The playing track's title (two lines at most) and its credit and album line, as the video's caption.</summary>
+    internal static void TrackLines(Track track, List<Element> into)
+    {
+        if (!track.IsValid) return;
+        into.Add(new TextEl(track.Title)
+        {
+            Size = B.HeroTitleSize, LineHeight = B.HeroTitleLine, Weight = B.HeroTitleWeight, Color = Tok.TextPrimary,
+            MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+        });
+        string artists = track.CreditLine, album = track.Album.IsValid ? track.Album.Title : "";
+        string meta = artists.Length == 0 ? album : album.Length == 0 ? artists : artists + " · " + album;
+        if (meta.Length > 0)
+            into.Add(new TextEl(meta) { Size = B.HeroArtistSize, LineHeight = B.HeroArtistLine, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
+    }
+
     public override Element Render()
     {
         var props = UseProps<PanelProps>();
@@ -653,23 +676,25 @@ internal sealed class WinUiPanelVideoArm : Component
         var track = now.NowTrack();
         props.SubscribeVideoBody();
         var content = new List<Element>(5);
-        if (track.IsValid)
-        {
-            content.Add(new TextEl(track.Title)
-            {
-                Size = B.HeroTitleSize, LineHeight = B.HeroTitleLine, Weight = B.HeroTitleWeight, Color = Tok.TextPrimary,
-                MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
-            });
-            string artists = track.CreditLine, album = track.Album.IsValid ? track.Album.Title : "";
-            string meta = artists.Length == 0 ? album : album.Length == 0 ? artists : artists + " · " + album;
-            if (meta.Length > 0)
-                content.Add(new TextEl(meta) { Size = B.HeroArtistSize, LineHeight = B.HeroArtistLine, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
-        }
+        TrackLines(track, content);
         content.AddRange(WinUiPanel.UpNext(now.HasNextUp(), now.NextUp));
         return ScrollView(new BoxEl
         {
             Direction = 1, Gap = B.HeroGap, Padding = B.HeroPadding,
             Children = content.ToArray(),
         }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
+    }
+}
+
+/// <summary>The docked video's caption in the Now playing slot: the playing track's title and line under the picture (the Video tab's block,
+/// <see cref="WinUiPanelVideoArm.TrackLines"/>), at the hero's padding, so the tab still names what is playing.</summary>
+internal sealed class WinUiDockedMeta : Component
+{
+    public override Element Render()
+    {
+        var props = UseProps<NowPlayingHeroProps>();
+        var lines = new List<Element>(2);
+        WinUiPanelVideoArm.TrackLines(props.NowTrack(), lines);
+        return new BoxEl { Key = "np-docked-meta", Direction = 1, Gap = B.HeroGap, Padding = B.HeroPadding, Shrink = 0f, Children = lines.ToArray() };
     }
 }

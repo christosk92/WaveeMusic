@@ -100,6 +100,10 @@ public static partial class Diagnostics
                     w.WriteString("album", Playlist.LocalNamesOf(track.Uri.Text).Album);
                     w.WriteNumber("durationMs", track.DurationMs);
                     w.WriteString("duration", Track.Format.DurationCell(track.DurationMs));
+                    // #240 local video: the row's kind and its cover (a video's still from the LocalArt cache once it has landed: a later
+                    // `drop` of the same file, or `status`, reads it).
+                    w.WriteBoolean("video", track.IsLocalVideo);
+                    w.WriteString("image", track.ImageId.IsEmpty ? "" : Entities.Strings.Resolve(track.ImageId));
                 }
                 w.WriteEndObject();
             }

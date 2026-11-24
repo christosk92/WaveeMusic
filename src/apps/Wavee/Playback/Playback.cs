@@ -1103,6 +1103,10 @@ public static partial class Playback
         public uint HoldLoadEpoch;
         /// <summary>The placement wants video: a row that has one loads on the video host (G-141).</summary>
         public bool VideoWanted;
+        /// <summary>The wish is on only because a local video file landed on the deck (<see cref="LocalVideoWish"/>): it ends when the deck
+        /// leaves local videos, so the rows after one play as they would have before it. Any change of the wish the deck did not make
+        /// itself (the user's switch, a fault's demotion) makes it the user's again.</summary>
+        public bool VideoByLocal;
         /// <summary>The screen the video is on cannot carry HDCP (<see cref="InputKind.VideoScreen"/>): a row whose video is protected loads
         /// on the audio host whatever <see cref="VideoWanted"/> says. <see cref="VideoWanted"/> is kept, so the row goes back to its video
         /// the moment the screen can show it.</summary>
@@ -1872,7 +1876,7 @@ public static partial class Playback
         s.StartedPlayingAtMs = activeSince;
         s.HasBeenPlayingForMs = 0;
         s.AutoSkips = 0;                                  // a chosen row is a fresh intent: the guard starts over
-        PlayableKind kind = i.PlayKind == PlayableKind.Audio ? KindOfRow(row, s.VideoWanted) : i.PlayKind;
+        PlayableKind kind = i.PlayKind == PlayableKind.Audio ? DeckKind(in s, row) : i.PlayKind;
         // A play that ASKED for video (a controller's single-track video play, a "watch" click) is the video mode: the wish
         // sticks for the rows after it, and the shell opens the surface to show it.
         if (kind == PlayableKind.Video && i.PlayKind == PlayableKind.Video) VideoMode(ref s, ref fx, on: true);
@@ -1969,7 +1973,7 @@ public static partial class Playback
         EntityRef row = Queue.RefAt(at);
 
         ReportEnd(ref s, ref fx, why, natural && s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
-        PutOnDeck(ref s, in i, row, row.Id, cursor, KindOfRow(row, s.VideoWanted), 0, paused: false);
+        PutOnDeck(ref s, in i, row, row.Id, cursor, DeckKind(in s, row), 0, paused: false);
         s.StartReason = why;
         EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false);
         fx.Snapshot = true;
@@ -1991,7 +1995,7 @@ public static partial class Playback
     static void ReplayFromStart(ref State s, in Input i, ref Effects fx, PlayReason why)
     {
         ReportEnd(ref s, ref fx, why, s.Position(i.NowMs));
-        PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, KindOfRow(s.Current, s.VideoWanted), 0, paused: false);
+        PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, DeckKind(in s, s.Current), 0, paused: false);
         s.StartReason = why;
         EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false, explicitPosition: true);
         fx.Snapshot = true;
@@ -2114,7 +2118,7 @@ public static partial class Playback
             }
             else fromMs = verdict.Ms;
 
-            PutOnDeck(ref s, in i, row, id, cursor, KindOfRow(row, s.VideoWanted), fromMs, paused: false);
+            PutOnDeck(ref s, in i, row, id, cursor, DeckKind(in s, row), fromMs, paused: false);
             s.StartReason = PlayReason.PlayButton;
             EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused: false);
             if (!id.IsEmpty && !RowNamesId(row, id)) { fx.Fetch = true; fx.FetchId = id; fx.FetchEpoch = s.Epoch; }
@@ -2950,7 +2954,7 @@ public static partial class Playback
         }
         else fromMs = verdict.Ms;
 
-        PutOnDeck(ref s, in i, row, id, cursor, KindOfRow(row, s.VideoWanted), fromMs, paused);
+        PutOnDeck(ref s, in i, row, id, cursor, DeckKind(in s, row), fromMs, paused);
         s.StartReason = PlayReason.PlayButton;
         EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused);
         if (!id.IsEmpty && !RowNamesId(row, id)) { fx.Fetch = true; fx.FetchId = id; fx.FetchEpoch = s.Epoch; }
@@ -3219,6 +3223,7 @@ public static partial class Playback
     static void VideoMode(ref State s, ref Effects fx, bool on)
     {
         if (s.VideoWanted != on) { s.VideoWanted = on; s.VideoRetries = 0; }
+        s.VideoByLocal = false;
         fx.VideoIntent = true;
         fx.VideoIntentOn = on;
         fx.VideoIntentWhy = Fault.None;
