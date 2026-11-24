@@ -69,7 +69,9 @@ public static partial class Diagnostics
         public static string ProfileArg(string[] args)
         {
             int i = Array.IndexOf(args, "--profile");
-            return i >= 0 && i + 1 < args.Length ? args[i + 1] : "";
+            if (i >= 0 && i + 1 < args.Length) return args[i + 1];
+            // `--local-scan` is a probe: without --profile it logs into a scratch profile, never the user's own (F4's minor finding).
+            return Array.IndexOf(args, "--local-scan") >= 0 ? Path.Combine(Path.GetTempPath(), "wavee-localscan-profile") : "";
         }
 
         /// <summary>`--stress-audio ...` (playback-smoothness plan §4.18): the on-box load test. Windowless like `--headless`; the

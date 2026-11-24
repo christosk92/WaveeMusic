@@ -136,20 +136,53 @@ public static partial class LocalLibrary
     }
 
     /// <summary>The user's Music folder when it exists and is not already covered by a music folder (the "Add my Music folder"
-    /// offer, S4 and S3), else null.</summary>
+    /// offer, S4 and S3), else null. Never touches the disk on the caller's thread (F4): until the one background check answers, null.</summary>
     public static string? DefaultMusicFolder
     {
         get
         {
             // Fixtures never show this machine's account folder (a render may be published).
             if (s_fixture) return Folders.Count == 0 ? @"C:\Users\Listener\Music" : null;
-            string music = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
-            if (music.Length == 0 || !Directory.Exists(music)) return null;
-            string folder = Normalize(music);
+            if (Interlocked.CompareExchange(ref s_musicCheck, 1, 0) == 0) CheckMusicFolder();
+            if (Volatile.Read(ref s_musicCheck) != 2 || Volatile.Read(ref s_music) is not { } folder) return null;
             foreach (string f in Folders)
                 if (string.Equals(f, folder, StringComparison.OrdinalIgnoreCase) || Contains(f, folder)) return null;
             return folder;
         }
+    }
+
+    static int s_musicCheck;      // 0 not asked, 1 asking, 2 answered
+    static string? s_music;
+
+    /// <summary>Is the user's Music folder there? Asked once, off the UI thread (it can be redirected to a share); the answer moves
+    /// <see cref="Epoch"/>, so Settings and Local Files compose the offer again.</summary>
+    static void CheckMusicFolder()
+    {
+        new Thread(static () =>
+        {
+            string? found = null;
+            try
+            {
+                string music = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
+                if (music.Length > 0 && ReachOf(Normalize(music)) is LocalRootState.Online or LocalRootState.Waking or LocalRootState.Slow) found = Normalize(music);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or IOException or UnauthorizedAccessException) { }
+            Volatile.Write(ref s_music, found);
+            Volatile.Write(ref s_musicCheck, 2);
+            Log.Info("local", "local.music-folder offer=" + (found is null ? 0 : 1));
+            Playback.ToUi(static () => Epoch.Value++);
+        })
+        { IsBackground = true, Name = "Wavee.LocalLibrary.MusicFolder", Priority = ThreadPriority.BelowNormal }.Start();
+    }
+
+    /// <summary>Is <paramref name="folder"/> there? A network path: the scanner's reachability probe (§3.16: 3 s for an answer, the
+    /// server's TCP 445 asked beside it, 20 s at most while a NAS wakes; never a blocking open of a dead share). A local one:
+    /// <see cref="Directory.Exists"/>, Unknown when it is not there. BLOCKS: call it on a background thread.</summary>
+    static LocalRootState ReachOf(string folder)
+    {
+        if (NtDirectory.IsNetworkPath(folder)) return LocalScan.ProbeReach(folder);
+        try { return Directory.Exists(folder) ? LocalRootState.Online : LocalRootState.Unknown; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return LocalRootState.Unknown; }
     }
 
     /// <summary>"Show in Explorer" for a music folder (S3). UI thread; never throws.</summary>
@@ -159,35 +192,67 @@ public static partial class LocalLibrary
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { Log.Warn("local", "local.reveal failed", ex); }
     }
 
-    /// <summary>Add a music folder (UI thread). False with a reason word: "missing" (not a folder), "duplicate", "inside" (it
-    /// sits in a folder already added). True with reason "combined" when it holds folders already added: they are replaced by
-    /// it (S11 "Combined into …"); otherwise reason "".</summary>
-    public static bool AddFolder(string path, out string reason)
+    /// <summary>Add a music folder (UI thread; it never touches the disk here, F4). False at once with a reason word: "missing" (not a
+    /// path), "duplicate", "inside" (it sits in a folder already added). Otherwise true: the folder is listed at once in the
+    /// <see cref="LocalRootState.Checking"/> state, and a background thread asks whether it is there (<see cref="ReachOf"/>: the
+    /// reachability probe for a network path, so a dead share answers in seconds instead of freezing the window). <paramref name="landed"/>
+    /// then hears, on the UI thread: "" (kept), "combined" (kept; the folders it holds were replaced by it, S11), "offline" / "signin" (a
+    /// network folder kept in that state, as one that goes away later is) or "missing" (a local path that is not there: taken back out).</summary>
+    public static bool AddFolder(string path, out string reason, Action<string>? landed = null)
     {
         string folder;
         try { folder = Normalize(path); }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { reason = "missing"; return false; }
-        if (!Directory.Exists(folder)) { reason = "missing"; return false; }
-        var replaced = new List<string>();
         lock (s_gate)
         {
             foreach (string f in s_folders)
             {
                 if (string.Equals(f, folder, StringComparison.OrdinalIgnoreCase)) { reason = "duplicate"; return false; }
                 if (Contains(f, folder)) { reason = "inside"; return false; }
-                if (Contains(folder, f)) replaced.Add(f);
             }
+            s_folders = [.. s_folders, folder];   // listed at once; stored once it answers (Persist skips a folder still checking)
         }
-        foreach (string child in replaced) RemoveFolder(child);   // their files come back under the parent's walk
-        lock (s_gate)
+        s_states[folder] = LocalRootState.Checking;
+        Epoch.Value++;
+        reason = "";
+        if (s_fixture) return true;   // the inspector's checking state: it stays checking
+        new Thread(() =>
         {
-            s_folders = [.. s_folders, folder];
-            Persist();
-        }
-        reason = replaced.Count > 0 ? "combined" : "";
-        if (s_attached && Volatile.Read(ref s_loaded) != 0) StartFolder(folder, startup: false);
-        NoteProgress();
+            LocalRootState reach = ReachOf(folder);
+            Playback.ToUi(() => Landed(folder, reach, landed));
+        })
+        { IsBackground = true, Name = "Wavee.LocalLibrary.Check", Priority = ThreadPriority.BelowNormal }.Start();
         return true;
+    }
+
+    /// <summary>UI thread: the check answered. A folder removed meanwhile stays removed.</summary>
+    static void Landed(string folder, LocalRootState reach, Action<string>? landed)
+    {
+        bool listed;
+        lock (s_gate) listed = Array.Exists(s_folders, f => string.Equals(f, folder, StringComparison.OrdinalIgnoreCase));
+        Log.Info("local", "local.add reach=" + reach + " network=" + (NtDirectory.IsNetworkPath(folder) ? 1 : 0) + " listed=" + (listed ? 1 : 0));
+        if (!listed) { s_states.TryRemove(folder, out _); return; }
+        if (reach == LocalRootState.Unknown)
+        {
+            lock (s_gate) s_folders = Array.FindAll(s_folders, f => !string.Equals(f, folder, StringComparison.OrdinalIgnoreCase));
+            s_states.TryRemove(folder, out _);
+            Epoch.Value++;
+            landed?.Invoke("missing");
+            return;
+        }
+        var replaced = new List<string>();
+        lock (s_gate)
+            foreach (string f in s_folders)
+                if (!string.Equals(f, folder, StringComparison.OrdinalIgnoreCase) && Contains(folder, f)) replaced.Add(f);
+        foreach (string child in replaced) RemoveFolder(child);   // their files come back under the parent's walk
+        // Reachable: the scan states it from here (Scanning, then Online). Away: kept in its state, as a network folder that goes away is.
+        if (reach is LocalRootState.Offline or LocalRootState.SignInNeeded) s_states[folder] = reach;
+        else s_states.TryRemove(folder, out _);
+        lock (s_gate) Persist();
+        if (s_attached && Volatile.Read(ref s_loaded) != 0) StartFolder(folder, startup: false);
+        Epoch.Value++;
+        NoteProgress();
+        landed?.Invoke(replaced.Count > 0 ? "combined" : reach == LocalRootState.Offline ? "offline" : reach == LocalRootState.SignInNeeded ? "signin" : "");
     }
 
     /// <summary>Remove a music folder (UI thread): its watcher stops, a running scan of it stops at the next folder boundary, and
@@ -299,7 +364,8 @@ public static partial class LocalLibrary
     static void Persist()
     {
         if (s_fixture) return;   // fixtures never write the setting
-        Platform.Settings.Set(Platform.Keys.MusicFolders, string.Join('|', s_folders));
+        // A folder still being checked (AddFolder) is stored once it answers.
+        Platform.Settings.Set(Platform.Keys.MusicFolders, string.Join('|', Array.FindAll(s_folders, static f => StateOf(f) != LocalRootState.Checking)));
     }
 
     /// <summary>A folder as stored: full, no trailing separator (a drive root keeps its backslash).</summary>
@@ -329,7 +395,9 @@ public static partial class LocalLibrary
         s_index.Clear();
         s_states.Clear();
         const string music = @"C:\Users\Listener\Music", usb = @"E:\Music";
-        lock (s_gate) s_folders = value == "none" ? [] : [music, usb];
+        // checking: the ready library plus a share just added, its reachability being asked (F4).
+        const string checking = @"\\nas\share\new music";
+        lock (s_gate) s_folders = value == "none" ? [] : value == "checking" ? [music, usb, checking] : [music, usb];
         if (value != "none")
         {
             s_index.SetRoot(new LocalRoot(1, music, 0x1234_ABCD, 0, 0, DateTime.UtcNow.Ticks));
@@ -398,6 +466,7 @@ public static partial class LocalLibrary
             };
             s_states[music] = value switch { "scanning" or "listing" => LocalRootState.Scanning, "offline" => LocalRootState.Offline, _ => LocalRootState.Online };
             s_states[usb] = value == "offline" ? LocalRootState.Offline : LocalRootState.Online;
+            if (value == "checking") s_states[checking] = LocalRootState.Checking;
         }
         Epoch.Value++;
         RestateNow();   // the Local Files list shows the fixture at once (no thread)

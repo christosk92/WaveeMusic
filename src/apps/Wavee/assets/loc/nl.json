@@ -585,6 +585,7 @@
       "signIn": "Aanmelden nodig",
       "folderScanning": "Scannen…",
       "waking": "Wordt wakker…",
+      "checking": "Controleren…",
       "slow": "Trage verbinding · rustig scannen",
       "notScanned": "Nog niet gescand",
       "scanning": "{folder} scannen · {done} van {total}",
