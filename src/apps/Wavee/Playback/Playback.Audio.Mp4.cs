@@ -40,16 +40,30 @@ public static partial class Playback
 
             /// <summary>The track's length, from the container; 0 when it did not say.</summary>
             long DurationMs { get; }
+
+            /// <summary>The encoder delay (AAC priming) at the stream's start and the count of real samples after it, in
+            /// <see cref="TrimTimescale"/> units (the decoder's output rate in practice), from the edit list or <c>iTunSMPB</c>;
+            /// -1 each when the container says nothing (raw ADTS, an MP4 without either).</summary>
+            long PrimingSamples { get; }
+            /// <inheritdoc cref="PrimingSamples"/>
+            long ValidSamples { get; }
+            /// <summary>The units <see cref="PrimingSamples"/> and <see cref="ValidSamples"/> count in (the media timescale).</summary>
+            int TrimTimescale { get; }
         }
 
         /// <summary>One AAC sound track's sample table, read out of an MP4 <c>moov</c>. <see cref="Profile"/> is the ADTS profile
-        /// (MPEG-4 object type − 1), <see cref="SamplingFrequencyIndex"/> the CORE rate's index (HE-AAC doubles it on output).</summary>
+        /// (MPEG-4 object type − 1), <see cref="SamplingFrequencyIndex"/> the CORE rate's index (HE-AAC doubles it on output).
+        /// <see cref="PrimingSamples"/>/<see cref="ValidSamples"/> are the gapless trim in <see cref="Timescale"/> units (-1 when the
+        /// file has neither an edit list nor <c>iTunSMPB</c>); <see cref="DurationMs"/> is the real length when they are known
+        /// (the media header's includes the priming).</summary>
         public sealed record Mp4AacTrack(int Profile, int SamplingFrequencyIndex, int CoreSampleRate, int Channels,
-            long[] Offsets, int[] Sizes, long DurationMs);
+            long[] Offsets, int[] Sizes, long DurationMs, long PrimingSamples = -1, long ValidSamples = -1, int Timescale = 0);
 
         /// <summary>The MP4 reading. PURE over a seekable stream: no decoder, no engine.</summary>
         public static class Mp4
         {
+            const uint Mvhd = 0x6D766864, Edts = 0x65647473, Elst = 0x656C7374, Udta = 0x75647461, Meta = 0x6D657461,
+                Ilst = 0x696C7374, FreeForm = 0x2D2D2D2D, NameBox = 0x6E616D65, DataBox = 0x64617461;
             const uint Ftyp = 0x66747970, Moov = 0x6D6F6F76, Moof = 0x6D6F6F66, Mdat = 0x6D646174, Wide = 0x77696465,
                 Trak = 0x7472616B, Mdia = 0x6D646961, Hdlr = 0x68646C72, Mdhd = 0x6D646864, Minf = 0x6D696E66,
                 Stbl = 0x7374626C, Stsd = 0x73747364, Stsz = 0x7374737A, Stz2 = 0x73747A32, Stsc = 0x73747363,
@@ -140,19 +154,86 @@ public static partial class Playback
                     if (!TrySamples(stbl, fileLength, out long[] offsets, out int[] sizes, out why)) continue;
 
                     int rate = Rates[sfi];
-                    long durationMs = 0;
+                    long durationMs = 0, timescale = 0;
                     if (Child(mdia, Mdhd, out ReadOnlySpan<byte> mdhd) && mdhd.Length >= 24)
                     {
                         bool v1 = mdhd[0] == 1;
-                        long timescale = v1 ? (mdhd.Length >= 32 ? U32(mdhd, 20) : 0) : U32(mdhd, 12);
+                        timescale = v1 ? (mdhd.Length >= 32 ? U32(mdhd, 20) : 0) : U32(mdhd, 12);
                         long units = v1 ? (mdhd.Length >= 32 ? (long)BinaryPrimitives.ReadUInt64BigEndian(mdhd[24..]) : 0) : U32(mdhd, 16);
                         if (timescale > 0 && units > 0 && units != uint.MaxValue) durationMs = units * 1000 / timescale;
                     }
+                    if (timescale <= 0 || timescale > int.MaxValue) timescale = rate;
                     if (durationMs <= 0) durationMs = (long)sizes.Length * 1024 * 1000 / rate;
-                    track = new Mp4AacTrack(profile, sfi, rate, channels, offsets, sizes, durationMs);
+                    // The encoder delay: iTunSMPB when the file carries one (exact counts), else the track's edit list.
+                    if (!TryITunSmpb(moov, out long priming, out long valid)) TryEditList(moov, trak, timescale, out priming, out valid);
+                    if (priming >= 0 && valid > 0) durationMs = valid * 1000 / timescale;
+                    track = new Mp4AacTrack(profile, sfi, rate, channels, offsets, sizes, durationMs, priming, valid, (int)timescale);
                     return true;
                 }
                 return false;
+            }
+
+            /// <summary>The track's edit list as AAC gapless trim: the first non-empty edit's <c>media_time</c> is the priming (in
+            /// media timescale units) and its <c>segment_duration</c> (movie timescale) the real length. What ffmpeg writes (priming
+            /// 1024) and Apple writes beside <c>iTunSMPB</c> (2112). -1 each when there is no usable edit. PURE.</summary>
+            static bool TryEditList(ReadOnlySpan<byte> moov, ReadOnlySpan<byte> trak, long mediaTimescale, out long priming, out long valid)
+            {
+                priming = valid = -1;
+                if (!Child(moov, Mvhd, out ReadOnlySpan<byte> mvhd) || mvhd.Length < 20) return false;
+                long movieTimescale = mvhd[0] == 1 ? (mvhd.Length >= 24 ? U32(mvhd, 20) : 0) : U32(mvhd, 12);
+                if (movieTimescale <= 0 || !Child(trak, Edts, out ReadOnlySpan<byte> edts) || !Child(edts, Elst, out ReadOnlySpan<byte> elst)
+                    || elst.Length < 8) return false;
+                bool v1 = elst[0] == 1;
+                long count = U32(elst, 4);
+                int entry = v1 ? 20 : 12;
+                for (long i = 0; i < count && 8 + (i + 1) * entry <= elst.Length; i++)
+                {
+                    int at = 8 + (int)i * entry;
+                    long segment = v1 ? (long)BinaryPrimitives.ReadUInt64BigEndian(elst[at..]) : U32(elst, at);
+                    long mediaTime = v1 ? BinaryPrimitives.ReadInt64BigEndian(elst[(at + 8)..]) : BinaryPrimitives.ReadInt32BigEndian(elst[(at + 4)..]);
+                    if (mediaTime < 0) continue;                                      // an empty edit (a delay before the media)
+                    if (segment <= 0) return false;
+                    priming = mediaTime;
+                    valid = (long)Math.Round((double)segment * mediaTimescale / movieTimescale);
+                    return true;
+                }
+                return false;
+            }
+
+            /// <summary>Apple's <c>iTunSMPB</c> (<c>moov/udta/meta/ilst/----</c>, name <c>iTunSMPB</c>): space-separated hex fields, the
+            /// 2nd the priming, the 3rd the padding, the 4th the real sample count, in output samples. PURE.</summary>
+            static bool TryITunSmpb(ReadOnlySpan<byte> moov, out long priming, out long valid)
+            {
+                priming = valid = -1;
+                if (!Child(moov, Udta, out ReadOnlySpan<byte> udta) || !Child(udta, Meta, out ReadOnlySpan<byte> meta) || meta.Length < 4) return false;
+                if (!Child(meta[4..], Ilst, out ReadOnlySpan<byte> ilst)) return false;  // `meta` is a full box: version/flags first
+                int cursor = 0;
+                while (NextBox(ilst, ref cursor, out uint type, out ReadOnlySpan<byte> item))
+                {
+                    if (type != FreeForm || !Child(item, NameBox, out ReadOnlySpan<byte> name) || name.Length < 4
+                        || !name[4..].SequenceEqual("iTunSMPB"u8) || !Child(item, DataBox, out ReadOnlySpan<byte> data) || data.Length < 8)
+                        continue;
+                    ReadOnlySpan<byte> text = data[8..];                               // type + locale
+                    Span<long> fields = stackalloc long[4];
+                    int n = 0, i = 0;
+                    while (n < 4 && i < text.Length)
+                    {
+                        while (i < text.Length && text[i] == (byte)' ') i++;
+                        long v = 0;
+                        int digits = 0;
+                        while (i < text.Length && HexDigit(text[i]) >= 0) { v = v * 16 + HexDigit(text[i]); i++; digits++; }
+                        if (digits == 0) break;
+                        fields[n++] = v;
+                    }
+                    if (n < 4 || fields[3] <= 0) return false;
+                    priming = fields[1];
+                    valid = fields[3];
+                    return true;
+                }
+                return false;
+
+                static int HexDigit(byte c) => c is >= (byte)'0' and <= (byte)'9' ? c - '0'
+                    : c is >= (byte)'A' and <= (byte)'F' ? c - 'A' + 10 : c is >= (byte)'a' and <= (byte)'f' ? c - 'a' + 10 : -1;
             }
 
             /// <summary>The first sample description: an <c>mp4a</c> entry whose <c>esds</c> names AAC, as ADTS fields.</summary>
@@ -506,6 +587,12 @@ public static partial class Playback
             public int FrameCount => _track.Sizes.Length;
 
             public long DurationMs => _track.DurationMs;
+
+            public long PrimingSamples => _track.PrimingSamples;
+
+            public long ValidSamples => _track.ValidSamples;
+
+            public int TrimTimescale => _track.Timescale;
 
             public long OffsetOfFrame(int frame) => _virtual[Math.Clamp(frame, 0, FrameCount)];
 
