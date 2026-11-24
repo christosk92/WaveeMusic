@@ -5,6 +5,12 @@
 // waking up, slow), its state mark, and the one status line under the folders (the running scan with its progress, else when the last
 // scan ran). Every sentence is built here from `LocalLibrary`'s facts, so no theme words a state of its own.
 //
+// NETWORK FOLDERS (S13, plan §3.16). A folder on a share says so under its path ("1,204 songs · network") and its line is the share's
+// state: online ("Checked 12 min ago · checks every 45 min and on reconnect"), waking up ("Waking up \\nas… (disks spinning up)"), slow
+// ("Slow connection · scanning gently", with the scan's bar while it walks), sign in needed ("\\nas needs you to sign in" and Sign in)
+// or offline ("Offline · 1,204 songs kept" and Retry). A state change swaps the words, the mark and the one verb in place: a network row
+// keeps one extent in every state.
+//
 // LIVE. A view reads these under `Track()` (the library's two signals: the scan's progress at most four times a second, the list's
 // restate). The registry composes the folder card's buttons from facts (`ISettingsFacts.MusicFolderCount`, `DefaultMusicFolderOffered`);
 // a change the page did not make itself (a fixture, a folder added from elsewhere) re-composes it through `Stale` (the view bumps the page).
@@ -32,12 +38,38 @@ public static class SettingsMusic
         Ok,
         /// <summary>Working (scanning, waking a network drive): a ring.</summary>
         Busy,
-        /// <summary>Needs the user (offline, sign-in needed, slow): the caution mark.</summary>
+        /// <summary>Needs the user (offline): the caution mark.</summary>
         Caution,
+        /// <summary>A share that wants a sign-in: the lock, in the caution ink.</summary>
+        Lock,
+        /// <summary>A share that answers slowly: the gauge, in the secondary ink.</summary>
+        Slow,
     }
 
-    /// <summary>One folder's line: the path, the lead words in the caution ink ("Drive offline"), the rest in the secondary ink, the mark.</summary>
-    public readonly record struct FolderLine(string Path, string? Lead, string Rest, Mark Mark);
+    /// <summary>The ink of a line's lead words.</summary>
+    public enum Tone : byte
+    {
+        /// <summary>The caution ink ("Drive offline", "\\nas needs you to sign in").</summary>
+        Caution,
+        /// <summary>The primary ink ("Waking up \\nas…": working, not wrong).</summary>
+        Primary,
+    }
+
+    /// <summary>The one verb a network folder's state offers beside its line.</summary>
+    public enum Verb : byte
+    {
+        None,
+        /// <summary>"Sign in": the Windows credential dialog for the share (<see cref="LocalLibrary.SignIn"/>).</summary>
+        SignIn,
+        /// <summary>"Retry": look at the share again now (<see cref="LocalLibrary.Rescan"/>).</summary>
+        Retry,
+    }
+
+    /// <summary>One folder's line: the path as stored and as the user knows it (<see cref="LocalLibrary.DisplayOf"/>), the lead words in
+    /// their <see cref="LeadTone"/> ("Drive offline"), the rest in the secondary ink, the mark, and for a network folder the words under its
+    /// path ("1,204 songs · network"), its verb and its scan's fraction (-1: no bar). <see cref="Dim"/>: the path steps back (offline).</summary>
+    public readonly record struct FolderLine(string Path, string Display, string? Lead, string Rest, Mark Mark, bool Network = false, string? Sub = null,
+        Tone LeadTone = Tone.Caution, Verb Action = Verb.None, float Fraction = -1f, bool Dim = false);
 
     /// <summary>The status line under the folders: the words, the time left beside them (a running scan), and the scan's fraction (-1: no
     /// determinate scan to show).</summary>
@@ -57,25 +89,85 @@ public static class SettingsMusic
     public static FolderLine Line(string folder)
     {
         var f = LocalLibrary.FactsOf(folder);
+        if (f.Network) return NetworkLine(folder, f);
         switch (f.State)
         {
             case LocalRootState.Offline:
-                return new(folder, Loc.Get(Strings.Settings.Music.DriveOffline), f.Songs > 0 ? Kept(f.Songs) : "", Mark.Caution);
+                return new(folder, folder, Loc.Get(Strings.Settings.Music.DriveOffline), f.Songs > 0 ? Kept(f.Songs) : "", Mark.Caution, Dim: true);
             case LocalRootState.SignInNeeded:
-                return new(folder, Loc.Get(Strings.Settings.Music.SignIn), f.Songs > 0 ? Kept(f.Songs) : "", Mark.Caution);
+                return new(folder, folder, Loc.Get(Strings.Settings.Music.SignIn), f.Songs > 0 ? Kept(f.Songs) : "", Mark.Lock);
             case LocalRootState.Waking:
-                return new(folder, null, Loc.Get(Strings.Settings.Music.Waking), Mark.Busy);
+                return new(folder, folder, null, Loc.Get(Strings.Settings.Music.Waking), Mark.Busy);
             case LocalRootState.Slow:
-                return new(folder, null, Loc.Get(Strings.Settings.Music.Slow), Mark.Caution);
+                return new(folder, folder, null, Loc.Get(Strings.Settings.Music.Slow), Mark.Slow);
         }
-        if (f.Scanning || f.State == LocalRootState.Scanning) return new(folder, null, Loc.Get(Strings.Settings.Music.FolderScanning), Mark.Busy);
-        if (f.State == LocalRootState.Unknown && f.Songs == 0) return new(folder, null, Loc.Get(Strings.Settings.Music.NotScanned), Mark.None);
+        if (f.Scanning || f.State == LocalRootState.Scanning) return new(folder, folder, null, Loc.Get(Strings.Settings.Music.FolderScanning), Mark.Busy);
+        if (f.State == LocalRootState.Unknown && f.Songs == 0) return new(folder, folder, null, Loc.Get(Strings.Settings.Music.NotScanned), Mark.None);
         string rest = Songs(f.Songs);
         int unplayable = Math.Max(0, f.Unplayable - f.Missing);
         if (unplayable > 0) rest += Separator + Strings.Settings.Music.Unplayable(Number(unplayable));
         if (f.Missing > 0) rest += Separator + Strings.Settings.Music.Missing(Number(f.Missing));
-        return new(folder, null, rest, f.State == LocalRootState.Online ? Mark.Ok : Mark.None);
+        return new(folder, folder, null, rest, f.State == LocalRootState.Online ? Mark.Ok : Mark.None);
     }
+
+    /// <summary>A network folder's line (S13): its songs under the path, the share's state as the line, the state's one verb.</summary>
+    static FolderLine NetworkLine(string folder, LocalLibrary.FolderFacts f)
+    {
+        string display = LocalLibrary.DisplayOf(folder);
+        string sub = Songs(f.Songs) + Separator + Loc.Get(Strings.Settings.Music.Network);
+        string server = ServerOf(folder);
+        var p = LocalLibrary.Progress;
+        float fraction = p.Active && string.Equals(p.Folder, folder, StringComparison.OrdinalIgnoreCase) && p.Fraction >= 0 ? (float)p.Fraction : -1f;
+        FolderLine line = new(folder, display, null, "", Mark.None, Network: true, Sub: sub, Fraction: fraction);
+        switch (f.State)
+        {
+            case LocalRootState.Offline:
+                return line with { Lead = Loc.Get(Strings.Settings.Music.Offline), Rest = f.Songs > 0 ? Kept(f.Songs) : "", Mark = Mark.Caution, Action = Verb.Retry, Dim = true };
+            case LocalRootState.SignInNeeded:
+                return line with { Lead = Strings.Settings.Music.SignInTo(server), Mark = Mark.Lock, Action = Verb.SignIn };
+            case LocalRootState.Waking:
+                return line with { Lead = Strings.Settings.Music.WakingServer(server), LeadTone = Tone.Primary, Rest = Loc.Get(Strings.Settings.Music.SpinningUp), Mark = Mark.Busy };
+            case LocalRootState.Slow:
+                return line with { Rest = Loc.Get(Strings.Settings.Music.Slow), Mark = Mark.Slow };
+        }
+        if (f.Scanning || f.State == LocalRootState.Scanning) return line with { Rest = Loc.Get(Strings.Settings.Music.FolderScanning), Mark = Mark.Busy };
+        if (f.LastScanUtcTicks <= 0) return line with { Rest = Loc.Get(Strings.Settings.Music.NotScanned) };
+        var (unit, count) = Notify.RelativeAge(Math.Max(0, (DateTime.UtcNow.Ticks - f.LastScanUtcTicks) / TimeSpan.TicksPerMillisecond));
+        string when = unit switch
+        {
+            RelativeUnit.Now => Loc.Get(Strings.Settings.Music.CheckedNow),
+            RelativeUnit.Minutes => Strings.Settings.Music.CheckedMinutes(count),
+            RelativeUnit.Hours => Strings.Settings.Music.CheckedHours(count),
+            _ => Strings.Settings.Music.CheckedDays(count),
+        };
+        return line with { Rest = Strings.Settings.Music.Cadence(when), Mark = f.State == LocalRootState.Online ? Mark.Ok : Mark.None };
+    }
+
+    /// <summary>The server of a network folder as the user names it: its share up to the second backslash (`\\nas\share` gives `\\nas`).</summary>
+    static string ServerOf(string folder)
+    {
+        string share = LocalLibrary.ShareOf(folder) ?? folder;
+        int cut = share.Length > 2 ? share.IndexOf('\\', 2) : -1;
+        return cut > 0 ? share[..cut] : share;
+    }
+
+    /// <summary>A network folder's verb, run.</summary>
+    public static void Run(Verb verb, string folder)
+    {
+        switch (verb)
+        {
+            case Verb.SignIn: SettingsVerbs.SignInMusicFolder(folder); break;
+            case Verb.Retry: SettingsVerbs.RescanMusicFolder(folder); break;
+        }
+    }
+
+    /// <summary>The verb's word (a loc key), or null.</summary>
+    public static string? VerbKey(Verb verb) => verb switch
+    {
+        Verb.SignIn => Strings.Settings.Music.SignInAction,
+        Verb.Retry => Strings.Settings.Music.Retry,
+        _ => null,
+    };
 
     /// <summary>The status line under the folders.</summary>
     public static StatusLine Status()

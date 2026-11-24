@@ -4632,6 +4632,9 @@ public static partial class Playback
         {
             opened = default;
             string? path = LocalPath?.Invoke(id);
+            // #240 §3.16: a song on a network folder whose last probe found it offline is refused at once, before any I/O (an open on a
+            // dead share blocks for the redirector's minute-long timeout, here on the audio pump).
+            if (path is { Length: > 0 } && LocalLibrary.IsUnreachable(path)) { fault = Fault.Unavailable; return null; }
             if (path is not { Length: > 0 } || !File.Exists(path)) { fault = Fault.Unavailable; return null; }
 
             LocalProbe probe;
@@ -4670,7 +4673,8 @@ public static partial class Playback
             {
                 case LocalKind.Decodable:
                     format = probe.Format;
-                    bytes = new FileByteSource(path);
+                    // A network share is read ahead on its own thread (a slow or sleeping NAS buffers instead of stalling the decoder).
+                    bytes = NtDirectory.IsNetworkPath(path) ? new NetworkByteSource(path) : new FileByteSource(path);
                     durationMs = LocalLengthMs(path);
                     break;
                 case LocalKind.Mp4 when mp4 is not null && Modules.AacAudioDecoder.IsAvailable():

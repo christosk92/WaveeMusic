@@ -124,6 +124,7 @@ public static class LocalScanProbe
         LocalScanStats startup = scan.ScanRoot(folder, startup: true, dirty: null);
         line("startup " + startup.Summary());
 
+        if (NtDirectory.IsNetworkPath(folder)) line("network-reader " + NetworkReaderCheck(index));
         if (changeTest && workDir is not null) ChangeTest(index, folder, workDir, line);
         index.Detach();
     }
@@ -289,6 +290,39 @@ public static class LocalScanProbe
         var records = (index.Snapshot(), index.Folders());
         index.Detach();
         return records;
+    }
+
+    /// <summary>Read the largest indexed file through <see cref="NetworkByteSource"/> (start to end, then three seeks: back to the
+    /// start, the middle, near the end) and compare every byte with a plain read of the same file. One line for the probe.</summary>
+    static string NetworkReaderCheck(LocalIndex index)
+    {
+        LocalEntry? pick = null;
+        foreach (LocalEntry e in index.Snapshot()) if (e.State == LocalState.Present && (pick is null || e.Size > pick.Size)) pick = e;
+        if (pick is null || index.FullPathOf(pick) is not { } path) return "skipped: no file";
+        byte[] expected = File.ReadAllBytes(path);
+        var source = new NetworkByteSource(path);
+        var clock = Stopwatch.StartNew();
+        if (!source.TryOpen(default)) return "open failed";
+        try
+        {
+            byte[] got = new byte[expected.Length];
+            int at = 0, n;
+            while (at < got.Length && (n = source.Read(got.AsSpan(at, Math.Min(64 * 1024, got.Length - at)))) > 0) at += n;
+            bool whole = at == expected.Length && got.AsSpan().SequenceEqual(expected);
+            double fullMs = clock.Elapsed.TotalMilliseconds;
+            int seeksOk = 0;
+            foreach (long offset in (long[])[0, expected.Length / 2, Math.Max(0, expected.Length - 5000)])
+            {
+                source.Seek(offset);
+                var buf = new byte[Math.Min(4096, expected.Length - (int)offset)];
+                int r = 0;
+                while (r < buf.Length && (n = source.Read(buf.AsSpan(r))) > 0) r += n;
+                if (r == buf.Length && buf.AsSpan().SequenceEqual(expected.AsSpan((int)offset, buf.Length))) seeksOk++;
+            }
+            return string.Create(CultureInfo.InvariantCulture,
+                $"bytes={expected.Length} identical={(whole ? 1 : 0)} seeks={seeksOk}/3 fullReadMs={fullMs:0.0} bufferingNow={NetworkByteSource.Buffering}");
+        }
+        finally { source.Close(); }
     }
 
     /// <summary>Live managed bytes after a compacting full collection (heap size less fragmentation): what the objects

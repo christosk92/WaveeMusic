@@ -15,11 +15,13 @@ public static partial class Diagnostics
 {
     public sealed partial class InspectSession
     {
-        /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing`.</summary>
+        /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing|network-online|network-waking|network-slow|network-signin|network-offline`.</summary>
         string MusicFoldersState(int id, string name, Inspect.Args a)
         {
             string v = a.Has("value") ? a.Str("value").ToLowerInvariant() : "ready";
-            if (v is not ("none" or "scanning" or "ready" or "offline" or "changed" or "missing" or "listing")) return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline|changed|missing|listing, not '" + v + "'");
+            if (v is not ("none" or "scanning" or "ready" or "offline" or "changed" or "missing" or "listing"
+                or "network-online" or "network-waking" or "network-slow" or "network-signin" or "network-offline"))
+                return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline|changed|missing|listing|network-online|network-waking|network-slow|network-signin|network-offline, not '" + v + "'");
             LocalLibrary.InspectFixture(v);
             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
             return Settled(id, name, a, w =>

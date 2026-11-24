@@ -165,7 +165,7 @@ public static partial class LocalLibrary
     public static bool AddFolder(string path, out string reason)
     {
         string folder;
-        try { folder = Normalize(path); }
+        try { folder = ToStoredPath(Normalize(path)); }   // a mapped network letter is stored as its UNC path (§3.16)
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { reason = "missing"; return false; }
         if (!Directory.Exists(folder)) { reason = "missing"; return false; }
         var replaced = new List<string>();
@@ -329,7 +329,10 @@ public static partial class LocalLibrary
         s_index.Clear();
         s_states.Clear();
         const string music = @"C:\Users\Listener\Music", usb = @"E:\Music";
-        lock (s_gate) s_folders = value == "none" ? [] : [music, usb];
+        // network-online|waking|slow|signin|offline: the ready library plus a NAS share in that state (S13).
+        const string nas = @"\\nas\share\flac";
+        bool network = value.StartsWith("network-", StringComparison.Ordinal);
+        lock (s_gate) s_folders = value == "none" ? [] : network ? [music, usb, nas] : [music, usb];
         if (value != "none")
         {
             s_index.SetRoot(new LocalRoot(1, music, 0x1234_ABCD, 0, 0, DateTime.UtcNow.Ticks));
@@ -385,19 +388,43 @@ public static partial class LocalLibrary
             usbFolder.Upserts.Add(new LocalEntry(31, 2, @"Live\Unreleased.flac", 0x0BAD_F00D, 0, 52_000_000, now, 0, 0x0040_0020, Spotify.Audio.Format.Unknown,
                 new LocalTagSet(LocalKind.Audio, "", [], "", "", 0, 0, 0, 0, false, 0, LocalCover.None, 0, 0, true), "Unreleased", LocalState.CloudOnly, now, true, ""));
             if (value != "listing") s_index.Apply(usbFolder);
+            if (network)
+            {
+                s_index.SetRoot(new LocalRoot(3, nas, 0x5EA5_0001, 0, 0, DateTime.UtcNow.Ticks));
+                var share = new LocalScanBatch(3, "Lossless") { Folder = new LocalFolder(3, "Lossless", 500, 0xFACE, [], true) };
+                string[] flac = ["Night Ferry", "Glass Rain", "Static Bloom", "Paper Lanterns"];
+                for (int i = 0; i < flac.Length; i++)
+                    share.Upserts.Add(new LocalEntry(50 + i, 3, $@"Lossless\{i + 1:00} {flac[i]}.flac", 0x5EA5_0001, (UInt128)(5000 + i), 33_000_000 + i, now, now, 0x20,
+                        Spotify.Audio.Format.Flac, new LocalTagSet(LocalKind.Audio, flac[i], ["Coral Hours"], "Lossless", "Coral Hours", i + 1, 1, 2023, 224_000 + i * 9_000,
+                            false, 1100, LocalCover.None, 0, 0, true), flac[i], LocalState.Present, now, true, ""));
+                s_index.Apply(share);
+            }
             // The last scan as the board draws it: 2 minutes ago, 1.8 s (ready and offline); none while the first scan runs.
             s_scan.Last.Clear();
             if (value is not ("scanning" or "listing"))
                 s_scan.Last[music] = new LocalScanStats { FinishedTicks = DateTime.UtcNow.Ticks - TimeSpan.TicksPerMinute * 2, TotalMs = 1800 };
+            // The share was last walked 12 minutes ago (the board's "Checked 12 min ago").
+            if (network) s_scan.Last[nas] = new LocalScanStats { FinishedTicks = DateTime.UtcNow.Ticks - TimeSpan.TicksPerMinute * 12, TotalMs = 2400 };
             s_fixtureProgress = value switch
             {
                 "scanning" => new ScanProgress(true, music, ScanPhase.Reading, 412, 4812, 1930, 4812, 1930, 48, 40, 212),
                 // The first second of the first scan: the folders are being listed, no total yet (an indeterminate bar).
                 "listing" => new ScanProgress(true, music, ScanPhase.Listing, 3, 0, 0, 0, 0, 0, 0, 0),
+                // A slow share is walked gently: the board's 380 of 1,204.
+                "network-slow" => new ScanProgress(true, nas, ScanPhase.Reading, 40, 1204, 380, 1204, 380, 6, 140, 31),
                 _ => default,
             };
             s_states[music] = value switch { "scanning" or "listing" => LocalRootState.Scanning, "offline" => LocalRootState.Offline, _ => LocalRootState.Online };
             s_states[usb] = value == "offline" ? LocalRootState.Offline : LocalRootState.Online;
+            if (network)
+                s_states[nas] = value switch
+                {
+                    "network-waking" => LocalRootState.Waking,
+                    "network-slow" => LocalRootState.Slow,
+                    "network-signin" => LocalRootState.SignInNeeded,
+                    "network-offline" => LocalRootState.Offline,
+                    _ => LocalRootState.Online,
+                };
         }
         Epoch.Value++;
         RestateNow();   // the Local Files list shows the fixture at once (no thread)
