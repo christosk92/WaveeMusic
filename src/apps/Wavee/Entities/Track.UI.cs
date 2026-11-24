@@ -82,8 +82,14 @@ public readonly partial struct Track
         bool isNow = IsNowPlaying(t);
         bool playing = isNow && Playback.IsPlaying.Value;
         bool buffering = extraBuffering || (isNow && (Playback.Buffering.Value || Playback.Pending.Load.Value));
-        return new RowState(isNow, playing, buffering, isTop, LikedNow(t), t.Slot > 0 && Playback.OnThisPc.Of(t.Id));
+        return new RowState(isNow, playing, buffering, isTop, LikedNow(t), OnThisPcOf(t));
     }
+
+    /// <summary>The row's "on this PC" fact (<see cref="Playback.OnThisPc"/>): a SPOTIFY track whose audio is cached here. A local file, or a
+    /// playlist's <c>spotify:local:</c> item, has no Spotify audio to cache: it never carries the mark (the fake spread hashed its
+    /// <c>wavee:local:file:~&lt;id&gt;</c> uri, whose id the scan hands out in a different order every run, so the mark sat on some local rows
+    /// and moved from run to run). A tracked read.</summary>
+    internal static bool OnThisPcOf(Track t) => t.Slot > 0 && !t.IsLocalRow && Playback.OnThisPc.Of(t.Id);
 
     /// <summary>Is this the playable the deck is on? A subscribing read of <c>Playback.CurrentId</c> — compared by
     /// IDENTITY, not slot, so a podcast row (a Track-table row whose playable is an episode) and a remote device's freshly

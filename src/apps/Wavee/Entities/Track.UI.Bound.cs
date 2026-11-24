@@ -201,7 +201,7 @@ public readonly partial struct Track
 
     /// <summary>The ONE dim predicate for a bare track (the skin's check lane, which has no presentation): withheld, or unreachable offline.</summary>
     internal static bool DimmedTrack(Track t, long now)
-        => t.IsValid && (t.NotYetOut(now) || t.Unplayable() || OfflineGone(t, t.Slot > 0 && Playback.OnThisPc.Of(t.Id)));
+        => t.IsValid && (t.NotYetOut(now) || t.Unplayable() || OfflineGone(t, OnThisPcOf(t)));
 
     /// <summary>The ONE dim predicate: a withheld row, or one the offline session cannot reach.</summary>
     internal static bool Dimmed(in RowPresentation p, long now) => Withheld(in p, now) || OfflineGone(in p);
