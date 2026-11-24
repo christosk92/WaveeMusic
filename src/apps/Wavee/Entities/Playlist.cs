@@ -92,6 +92,18 @@ public enum PlaylistFields : uint
     /// existing `Knows(Row)`/`Knows(All)` caller wait on a per-subject REST call the cheap batchable routes never
     /// make. Read through <c>Playlist.Knows(PlaylistFields.TrackCount)</c> alone.</summary>
     TrackCount = 1 << 9,
+    /// <summary>#48 Mix, the list half: the format attributes (<c>mix</c>, <c>mix-type</c>, <c>has-custom-transitions</c>,
+    /// <c>automix.*</c>) and the applied lenses (f22) of a v2 read (<see cref="PlaylistTable.MixFlags"/>'s low byte,
+    /// <see cref="PlaylistTable.MixLensEtag"/>). Not in <see cref="All"/>: no existing <c>Knows(All)</c> waits on it.</summary>
+    Mix = 1 << 10,
+    /// <summary>#48 Mix: extended metadata 225 (mix state), batchable with the header kinds.</summary>
+    MixState = 1 << 11,
+    /// <summary>#48 Mix: extended metadata 170 (auto lens).</summary>
+    MixLens = 1 << 12,
+    /// <summary>#48 Mix: extended metadata 235 (mixability trait, gates the Mix button [inferred]).</summary>
+    Mixability = 1 << 13,
+    /// <summary>The three Mix kinds a page asks with its header: one batched extended-metadata POST.</summary>
+    MixKinds = MixState | MixLens | Mixability,
 
     /// <summary>What a card, a sidebar row or a picker row paints.</summary>
     Row = Identity | Accent,
@@ -225,6 +237,11 @@ public sealed class PlaylistTable : Table
     public Column<uint> TuningRevision;
     /// <summary>The wire's own cold-start accent (opaque ARGB, 0 = none) — see <see cref="PlaylistFields.Accent"/>.</summary>
     public Column<uint> Accent;
+    /// <summary>#48 Mix: <see cref="PlaylistMixFlags"/> (Entities/Mix.cs).</summary>
+    public Column<uint> MixFlags;
+    /// <summary>#48 Mix: the mix lens's etag from the last lens read (SelectedListContent f22). A Save changes the items
+    /// and this etag but not the revision (capture report §3.2).</summary>
+    public Column<StringId> MixLensEtag;
 
     /// <summary><see cref="PlaylistFlags"/>.</summary>
     public Column<uint> Flags;
@@ -287,6 +304,8 @@ public sealed class PlaylistTable : Table
         TuningSelected.EnsureCapacity(capacity);
         TuningRevision.EnsureCapacity(capacity);
         Accent.EnsureCapacity(capacity);
+        MixFlags.EnsureCapacity(capacity);
+        MixLensEtag.EnsureCapacity(capacity);
         Flags.EnsureCapacity(capacity);
         Notice.EnsureCapacity(capacity);
         EpisodeCount.EnsureCapacity(capacity);
@@ -314,6 +333,7 @@ public sealed class PlaylistTable : Table
         ClearText(ref ChartRankType, slot);
         ClearText(ref TuningSelected, slot);
         ClearText(ref Revision, slot);
+        ClearText(ref MixLensEtag, slot);
     }
 }
 
@@ -493,6 +513,11 @@ public readonly partial struct Playlist(int slot) : IEquatable<Playlist>
     public int ChartUpdatedAt => T.ChartUpdatedAt[Slot];
     public StringId ChartRankTypeId => T.ChartRankType[Slot];
     public StringId TuningSelectedId => T.TuningSelected[Slot];
+    /// <summary>#48 Mix facts (<see cref="PlaylistMixFlags"/>).</summary>
+    public PlaylistMixFlags MixFlags => (PlaylistMixFlags)T.MixFlags[Slot];
+    /// <summary>Spotify has Mix on for this playlist (<see cref="PlaylistMixRules.On"/>).</summary>
+    public bool MixOn => PlaylistMixRules.On(MixFlags);
+    public StringId MixLensEtagId => T.MixLensEtag[Slot];
 
     // ── membership ──────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -626,6 +651,11 @@ public struct StagedPlaylist : IStagedRow
     /// <summary>The owning account — resolved to a user SLOT at commit, so a byline binds before the profile lands.</summary>
     public StagedId OwnerUri;
     public TextRef ChartRankType, TuningSelected;
+    /// <summary>#48: the mix lens etag (f22), when the answer was read through it.</summary>
+    public TextRef MixLensEtag;
+    /// <summary>#48: <see cref="PlaylistMixFlags"/> this answer asserts, and the bits it speaks for (a list read the low
+    /// byte, an extended-metadata kind its own bit).</summary>
+    public uint MixFlags, MixFlagsMask;
     /// <summary>The daylist edition's words (<see cref="PlaylistTable.DaylistTerms"/>), written with <see cref="PlaylistFields.Daylist"/>.</summary>
     public TextRef DaylistTerms, DaylistLinks, DaylistBasis;
     /// <summary>The membership revision in its wire spelling; written whenever present (no group gate).</summary>
@@ -806,6 +836,17 @@ public static partial class Entities
                 t.Applied(slot, (uint)PlaylistFields.Tuning, authority, ref t.ExtrasAuthority);
             }
 
+            // #48 Mix: the flags merge by mask like Flags below (each answer speaks for its own half); the groups are
+            // stamped so the planner stops asking; the etag is written by the read that carried it.
+            if (row.MixFlagsMask != 0)
+            {
+                uint mix = (t.MixFlags[slot] & ~row.MixFlagsMask) | (row.MixFlags & row.MixFlagsMask);
+                if (mix != t.MixFlags[slot]) { t.MixFlags[slot] = mix; t.Bump(slot); }
+            }
+            if (!row.MixLensEtag.IsEmpty) t.SetText(ref t.MixLensEtag, slot, s.Intern(row.MixLensEtag));
+            uint mixGroups = row.Known & (uint)(PlaylistFields.Mix | PlaylistFields.MixKinds);
+            if (mixGroups != 0) t.Applied(slot, mixGroups, authority, ref t.ExtrasAuthority);
+
             if (!row.Revision.IsEmpty) t.SetText(ref t.Revision, slot, s.Intern(row.Revision));   // the newest head, ungated
             // Flags last and outside the group gates: a mask says exactly which bits this answer speaks about, the
             // latching tombstone is never cleared, and the app's own bits (create lifecycle, the derived column facts)
@@ -823,6 +864,7 @@ public static partial class Entities
         }
 
         CommitTuningOptions(s);
+        CommitMix(s);
     }
 
     /// <summary>Is this playlist the account's own? The OWNER ROW decides whenever it and the account are known: the owner is the

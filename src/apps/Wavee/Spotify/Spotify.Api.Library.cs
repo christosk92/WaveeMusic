@@ -93,8 +93,11 @@ public static partial class Spotify
             ListKind.Show => new Route(Verb.Get, ApiHost.Spclient, "/playlist/v2/show/" + Escaped(id), RecentsHeaders, RequestKind.PlaylistRead, "CAwQAQ==", Zstd: true),
             ListKind.Rootlist => new Route(Verb.Get, ApiHost.Spclient,
                 "/playlist/v2/user/" + Escaped(id) + "/rootlist" + ListDecorations + "&length=120", RecentsHeaders, RequestKind.RootlistRead, "CAU=", Zstd: true),
+            // #48 Mix: a list Spotify has mixed is read through the mix lens (MixData's set, kept by the commit), so its
+            // items carry the stored transitions and the per-item mixability.
             _ => new Route(Verb.Get, ApiHost.Spclient,
-                "/playlist/v2/playlist/" + Escaped(id) + ListDecorations, RecentsHeaders, RequestKind.PlaylistRead, "CAwQAQ==", Zstd: true),
+                "/playlist/v2/playlist/" + Escaped(id) + ListDecorations,
+                RecentsHeaders | (MixData.ReadsWithLens(id) ? HeaderSet.MixLens : HeaderSet.None), RequestKind.PlaylistRead, "CAwQAQ==", Zstd: true),
         };
 
         /// <summary>The revision-gated /diff read of a list. <paramref name="revision"/> is the wire spelling
@@ -258,6 +261,11 @@ public static partial class Spotify
         static ListRead ReadList(ListKind kind, string id, string? revision, ListRow[]? baseline, ref FetchOutcome outcome)
         {
             if (revision is not { Length: > 0 }) return new ListRead(FullRead(kind, id, ref outcome));
+            // #48 Mix: a lens read changes the items without moving the revision (capture report §3.2), so a /diff against
+            // a revision says nothing about a mixed list's transitions. Its identity is (revision, lens etag) and the
+            // applied-lenses spelling of the mix etag on a diff is not captured (plan O11): a mixed list is always read
+            // in full, through its lens.
+            if (kind == ListKind.Playlist && MixData.ReadsWithLens(id)) return new ListRead(FullRead(kind, id, ref outcome));
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             Result diff = Send(WithPushReason(ListDiffRoute(kind, id, revision), kind, id), [], CancellationToken.None);
             ListReplay.Outcome decided = diff.Ok || diff.NotModified

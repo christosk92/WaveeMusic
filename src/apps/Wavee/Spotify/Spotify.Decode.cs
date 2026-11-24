@@ -79,6 +79,8 @@ public static partial class Spotify
             AudioAttributes = 222,
             /// <summary>The three-band waveform (G-044, <c>Edges.TrackWaveform</c>).</summary>
             Waveforms = 237,
+            /// <summary>#48 Mix (Spotify.Decode.Mix.cs): cue points, beats; mix state, auto lens, mixability trait.</summary>
+            Cuepoints = 28, MixBeats = 217, AutoLens = 170, MixState = 225, MixabilityTrait = 235,
         }
 
         /// <summary>THE protobuf parser for this app's read path: a cursor over one frame, a field-number switch, and
@@ -1291,6 +1293,9 @@ public static partial class Spotify
                 case Ext.RecommendedPlaylists: RecommendedPlaylists(payload, entityUri, s); break;
                 case Ext.AudioAssociations: AudioAssociations(payload, entityUri, s); break;
                 case Ext.Waveforms: Waveform(payload, entityUri, s); break;
+                case Ext.MixBeats: MixBeats(payload, entityUri, s); break;
+                case Ext.Cuepoints: Cuepoints(payload, entityUri, s); break;
+                case Ext.MixState or Ext.AutoLens or Ext.MixabilityTrait: PlaylistMixKind(kind, payload, entityUri, s); break;
                 default: break;
             }
         }
@@ -1937,6 +1942,7 @@ public static partial class Spotify
                     if (a.Field == 1) edge.Aux = UserUri(s, a.Bytes());       // added_by (a username, not a uri)
                     else if (a.Field == 2) edge.At = Instant((long)a.Varint()); // timestamp: ms (recents) or s — Instant reads both
                     else if (a.Field == 11) Chart(a.Message(), ref edge);
+                    else if (a.Field == 14) { edge.B0 |= PlaylistItemFlags.Mixable; a.Skip(); }   // #48: set-transition = editable
                     else if (a.Field == 12) edge.Text = Hex(s, a.Bytes());    // item_id — the reconciler key
                     else a.Skip();
                 }
@@ -1947,7 +1953,8 @@ public static partial class Spotify
             {
                 attribute.Fields(1, 2, out var key, out var value);
                 if (key.IsEmpty) return;
-                if (Is(key, "status")) edge.B1 = ChartStatus(value);
+                if (Is(key, "not-mixable")) { if (Is(value, "true")) edge.B0 |= PlaylistItemFlags.NotMixable; }   // #48
+                else if (Is(key, "status")) edge.B1 = ChartStatus(value);
                 else if (Is(key, "current_pos")) edge.U0 = Clamp(Number(value));
                 else if (Is(key, "previous_pos")) edge.U1 = Clamp(Number(value));
 

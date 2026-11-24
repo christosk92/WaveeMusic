@@ -81,6 +81,12 @@ public enum FetchEdge : byte
     /// <summary>The audio-analysis beat grid (<c>Edges.TrackBeats</c>): one spclient JSON read per track
     /// (<see cref="SpclientRoute.AudioAnalysis"/>), parent = track.</summary>
     TrackBeats,
+    /// <summary>#48 Mix: kind 217's beat grid into the same <c>Edges.TrackBeats</c>, plus its analysis id (the grid a
+    /// recipe pins). Asked for the tracks a mixed playlist is about to join; the JSON route above stays the visualizer's
+    /// until kind 217 is shown to be served outside a mixed list (plan O12).</summary>
+    TrackMixBeats,
+    /// <summary>#48 Mix: kind 28's start and end cue (<c>Edges.TrackCues</c>).</summary>
+    TrackCues,
     // synthetic subjects' children
     /// <summary>A Home feed's bands (<c>Edges.HomeSection</c>). A band's own cards are no relation here: the section
     /// row's <c>SectionFields.Whole</c> asks them, and the query layer walks them to the end.</summary>
@@ -224,6 +230,9 @@ public static class FetchRoutes
     /// <summary><c>CURATION_EXPERIENCE_TRAIT</c>: on a track it names the account's Liked Songs playlist
     /// (<c>Spotify.Connect.AskLikedPlaylist</c>). Asked on its own, never by a table's route.</summary>
     public const int CurationExperience = 246;
+    /// <summary>#48 Mix kinds (capture report §3.5): cue points and beats per track; mix state, auto lens and the
+    /// mixability trait per playlist.</summary>
+    public const int Cuepoints = 28, MixBeats = 217, AutoLens = 170, MixState = 225, MixabilityTrait = 235;
 
     // ── the entity tables' routes, most capable first ──
 
@@ -284,7 +293,7 @@ public static class FetchRoutes
         // The v2 read is the one answer that carries the capability block; justified by it alone.
         FetchRoute.Spclient(SpclientRoute.PlaylistRead,
             (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities | PlaylistFields.Format
-                 | PlaylistFields.Daylist | PlaylistFields.Chart | PlaylistFields.Tuning),
+                 | PlaylistFields.Daylist | PlaylistFields.Chart | PlaylistFields.Tuning | PlaylistFields.Mix),
             primary: (uint)(PlaylistFields.Capabilities | PlaylistFields.Daylist | PlaylistFields.Chart | PlaylistFields.Tuning)),
         // The detail page's own facts justify the per-playlist pathfinder read; the ACCENT alone does not — it is the
         // cold-start colour a card already has from the home / search / library answer it came in, and a sidebar asking
@@ -297,6 +306,11 @@ public static class FetchRoutes
         FetchRoute.Metadata(ListMetadataV2, (uint)(PlaylistFields.Identity | PlaylistFields.Format)),
         FetchRoute.Spclient(SpclientRoute.PermissionBase, (uint)PlaylistFields.Visibility),
         FetchRoute.Spclient(SpclientRoute.Popcount, (uint)PlaylistFields.Saves),
+        // #48 Mix: the three playlist kinds the official client asks with the header (capture report §2 step 3). They
+        // ride the same batched extended-metadata POST as kind 205.
+        FetchRoute.Metadata(MixState, (uint)PlaylistFields.MixState),
+        FetchRoute.Metadata(AutoLens, (uint)PlaylistFields.MixLens),
+        FetchRoute.Metadata(MixabilityTrait, (uint)PlaylistFields.Mixability),
     ];
 
     static readonly FetchRoute[] s_show =
@@ -467,6 +481,8 @@ public static class FetchRoutes
         FetchEdge.TrackVersions => FetchRoute.Metadata(AudioAssociations, 0),
         FetchEdge.TrackWaveform => FetchRoute.Metadata(ThreeBandWaveforms, 0),
         FetchEdge.TrackBeats => FetchRoute.Spclient(SpclientRoute.AudioAnalysis, 0),
+        FetchEdge.TrackMixBeats => FetchRoute.Metadata(MixBeats, 0),
+        FetchEdge.TrackCues => FetchRoute.Metadata(Cuepoints, 0),
         FetchEdge.TrackCanvas => FetchRoute.Metadata(CanvasV1, 0),
         FetchEdge.HomeSections => FetchRoute.Pathfinder(PathfinderOp.Home, 0),
         FetchEdge.HomePreviews => FetchRoute.Pathfinder(PathfinderOp.FeedBaselineLookup, 0),

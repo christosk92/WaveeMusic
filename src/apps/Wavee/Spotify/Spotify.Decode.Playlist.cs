@@ -151,6 +151,8 @@ public static partial class Spotify
                 ref var head = ref s.Playlists.RowFor(id, Authority.Full, 0);
                 head.Revision = s.AddText(ascii);
             }
+            // #48 Mix: the format attributes, the lens etag (f22) and the stored recipes (Spotify.Decode.Mix.cs).
+            MixList(attributes, selectedListContent, contents, sawContents, in id, s);
             // A diff answer carries no attributes: it says nothing about these groups, so nothing more is staged.
             if (attributes.IsEmpty) return;
 

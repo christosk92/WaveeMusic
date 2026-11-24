@@ -1840,6 +1840,9 @@ public static partial class Spotify
         /// <summary>The bare word <c>Accept: protobuf</c> — what the official client puts on the connect-state transfer POST
         /// (capture 2026-10-01, 3 of 3); not the <c>application/protobuf</c> of <see cref="AcceptProtobuf"/>.</summary>
         AcceptBareProtobuf = 1 << 23,
+        /// <summary>#48 Mix: <c>spotify-apply-lenses: mix,auto</c> (instead of <see cref="ApplyLenses"/>'s <c>auto</c>) and
+        /// <c>spotify-list-player-enabled: true</c>, as the official client sends on a mixed list (capture report §3.6).</summary>
+        MixLens = 1 << 24,
     }
 
     /// <summary>Which request. One per FAMILY, not one per caller: <c>Spotify.Api.cs</c>'s function per request picks
