@@ -96,7 +96,11 @@ public static class LocalCollection
     /// <summary>The album key the page's verbs take: (album artist or first artist, album), case-folded.</summary>
     public static string AlbumKey(string artist, string album) => artist.ToUpperInvariant() + " / " + album.ToUpperInvariant();
 
-    static string ArtistOf(in LocalTagSet t) => t.AlbumArtist.Length > 0 ? t.AlbumArtist : t.FirstArtist;
+    /// <summary>The artist the collection files a song under (its albums, the Artists pivot, the counts): the album artist tag, else the name a
+    /// row shows (<see cref="LocalNames.Display"/>: the first artist tag, else an untagged "Artist - Title" file name's artist), else "". The rows'
+    /// own rule, so a song the Songs list shows "by Nickelback" is Nickelback's here too. "Unknown artist" is a row's display fallback only
+    /// (<c>Track.LocalCredit</c>): an unnamed song files under no artist and is never counted as one. Display only: matching reads the tags.</summary>
+    public static string ArtistOf(LocalEntry e) => e.Tags.AlbumArtist.Length > 0 ? e.Tags.AlbumArtist : LocalNames.Display(e.Tags, e.MatchTitle).Artist;
 
     /// <summary>The ids of the playable files in an album, in disc/track order (UI thread or any).</summary>
     public static List<long> AlbumFiles(string key)
@@ -105,7 +109,7 @@ public static class LocalCollection
         foreach (var e in LocalLibrary.Index.Snapshot())
         {
             if (e.State == LocalState.Missing || !e.Playable || e.Tags.Album.Length == 0) continue;
-            if (AlbumKey(ArtistOf(e.Tags), e.Tags.Album) != key) continue;
+            if (AlbumKey(ArtistOf(e), e.Tags.Album) != key) continue;
             list.Add((e.Tags.DiscNumber, e.Tags.TrackNumber, e.MatchTitle, e.LocalId));
         }
         list.Sort(static (a, b) => a.Disc != b.Disc ? a.Disc.CompareTo(b.Disc) : a.Track != b.Track ? a.Track.CompareTo(b.Track) : string.CompareOrdinal(a.Title, b.Title));
@@ -120,7 +124,7 @@ public static class LocalCollection
         foreach (var e in all) if (e.State != LocalState.Missing && e.Playable && keep(e)) list.Add(e);
         list.Sort(static (a, b) =>
         {
-            int c = string.Compare(ArtistOf(a.Tags), ArtistOf(b.Tags), StringComparison.OrdinalIgnoreCase);
+            int c = string.Compare(ArtistOf(a), ArtistOf(b), StringComparison.OrdinalIgnoreCase);
             if (c == 0) c = string.Compare(a.Tags.Album, b.Tags.Album, StringComparison.OrdinalIgnoreCase);
             if (c == 0) c = a.Tags.DiscNumber.CompareTo(b.Tags.DiscNumber);
             if (c == 0) c = a.Tags.TrackNumber.CompareTo(b.Tags.TrackNumber);
@@ -138,7 +142,7 @@ public static class LocalCollection
         return rel.Length == 0 || (e.RelativePath.Length > rel.Length && e.RelativePath.StartsWith(rel, StringComparison.OrdinalIgnoreCase) && e.RelativePath[rel.Length] == '\\');
     }
 
-    public static bool IsArtist(LocalEntry e, string key) => ArtistOf(e.Tags).ToUpperInvariant() == key;
+    public static bool IsArtist(LocalEntry e, string key) => ArtistOf(e).ToUpperInvariant() == key;
 
     public static bool InDecade(LocalEntry e, int decade) => e.Tags.Year > 0 && e.Tags.Year / 10 * 10 == decade;
 
@@ -222,8 +226,8 @@ public static class LocalCollection
             if (t.Album.Length > 0 && t.TrackNumber == 0) noTrack++;
             if (t.Title.Length > 0 && t.DurationMs > 0) { var dk = (t.Title.ToUpperInvariant(), t.FirstArtist.ToUpperInvariant(), t.DurationMs / 2000); dupes[dk] = dupes.GetValueOrDefault(dk) + 1; }
 
-            // Albums and artists (tagged files only).
-            string artist = ArtistOf(t);
+            // Albums (album-tagged files) and artists (any file that names one, its file name's split included).
+            string artist = ArtistOf(e);
             if (t.Album.Length > 0)
             {
                 string key = AlbumKey(artist, t.Album);

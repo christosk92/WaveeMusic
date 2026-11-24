@@ -129,7 +129,7 @@ public static partial class LocalLink
 
     /// <summary>The group a file belongs to: its album's key, or its own song key when it has no album tag.</summary>
     public static string GroupKeyOf(LocalEntry e)
-        => e.Tags.Album.Length > 0 ? LocalCollection.AlbumKey(e.Tags.AlbumArtist.Length > 0 ? e.Tags.AlbumArtist : e.Tags.FirstArtist, e.Tags.Album) : SongKey(e.LocalId);
+        => e.Tags.Album.Length > 0 ? LocalCollection.AlbumKey(LocalCollection.ArtistOf(e), e.Tags.Album) : SongKey(e.LocalId);
 
     /// <summary>The offer's count: of <paramref name="albums"/> (the collection's), those no decision covers yet.</summary>
     public static int OfferCount(int albums) => Math.Max(0, albums - s_decidedAlbums);

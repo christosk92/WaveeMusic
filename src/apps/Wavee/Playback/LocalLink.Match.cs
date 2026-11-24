@@ -117,7 +117,7 @@ public static partial class LocalLink
             list.Sort(static (a, b) => a.Tags.DiscNumber != b.Tags.DiscNumber ? a.Tags.DiscNumber.CompareTo(b.Tags.DiscNumber)
                 : a.Tags.TrackNumber != b.Tags.TrackNumber ? a.Tags.TrackNumber.CompareTo(b.Tags.TrackNumber) : string.CompareOrdinal(a.MatchTitle, b.MatchTitle));
             LocalTagSet t = list[0].Tags;
-            string artist = t.AlbumArtist.Length > 0 ? t.AlbumArtist : t.FirstArtist;
+            string artist = LocalCollection.ArtistOf(list[0]);
             int year = 0;
             foreach (LocalEntry e in list) year = Math.Max(year, e.Tags.Year);
             string quality = LocalCollection.QualityOf(list[0].Format, list[0].Tags.BitrateKbps, list[0].Tags.SampleRate, list[0].Tags.BitsPerSample);
