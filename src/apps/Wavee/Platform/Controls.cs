@@ -628,6 +628,7 @@ public static partial class Controls
         var wash = R.Wash;
         float pull = wash.HeroVeilPull;
         ColorF veil = ColorF.Lerp(layer, accent, pull);
+        VeilFloor floor = VeilFloor.Of(veil, accent, layer, pull);
         if (vertical && !float.IsNaN(hold))
         {
             // A held vertical veil (the copy over the photograph's lower part): it eases in above the copy and holds its peak from the copy's top
@@ -636,30 +637,63 @@ public static partial class Controls
             if (ramp > 0f)
                 return GradientDown(
                     new GradientStop(0f, veil with { A = 0f }),
-                    new GradientStop(at * HeroVeilRampShare, veil with { A = 0.35f }),
-                    new GradientStop(at, veil with { A = wash.HeroVeilPeak }),
-                    new GradientStop(1f, veil with { A = HeroVeilPlate })) with { AxisLengthPx = ramp };
+                    new GradientStop(at * HeroVeilRampShare, veil with { A = floor.Lift(0.35f) }),
+                    new GradientStop(at, veil with { A = floor.Lift(wash.HeroVeilPeak) }),
+                    new GradientStop(1f, veil with { A = floor.Lift(HeroVeilPlate) })) with { AxisLengthPx = ramp };
             return GradientDown(
                 new GradientStop(0f, veil with { A = 0f }),
-                new GradientStop(at * HeroVeilRampShare, veil with { A = 0.35f }),
-                new GradientStop(at, veil with { A = wash.HeroVeilPeak }),
-                new GradientStop(1f, veil with { A = wash.HeroVeilPeak }));
+                new GradientStop(at * HeroVeilRampShare, veil with { A = floor.Lift(0.35f) }),
+                new GradientStop(at, veil with { A = floor.Lift(wash.HeroVeilPeak) }),
+                new GradientStop(1f, veil with { A = floor.Lift(wash.HeroVeilPeak) }));
         }
         if (vertical)
         {
-            float top = wash.HeroVeilPeak;
+            float top = floor.Lift(wash.HeroVeilPeak);
             return GradientDown(
                 new GradientStop(0f, veil with { A = 0f }),
-                new GradientStop(0.45f, veil with { A = 0.35f }),
+                new GradientStop(0.45f, veil with { A = floor.Lift(0.35f) }),
                 new GradientStop(0.82f, veil with { A = top }),
                 new GradientStop(1f, veil with { A = 0f }));
         }
         float h = HeroVeilHoldOf(hold);
         return GradientRight(
-            new GradientStop(0f, veil with { A = HeroVeilEdge }),
-            new GradientStop(h, veil with { A = HeroVeilPlate }),
-            new GradientStop(h + HeroVeilShoulder, veil with { A = HeroVeilShoulderAlpha }),
+            new GradientStop(0f, veil with { A = floor.Lift(HeroVeilEdge) }),
+            new GradientStop(h, veil with { A = floor.Lift(HeroVeilPlate) }),
+            new GradientStop(h + HeroVeilShoulder, veil with { A = floor.Lift(HeroVeilShoulderAlpha) }),
             new GradientStop(1f, veil with { A = 0f }));
+    }
+
+    /// <summary>The floor a user's colour set (#184) puts under <see cref="ArtistHeroVeil"/>'s stops. The veil's alphas were tuned on the board for the
+    /// theme's OWN inks; a set's softer ink (Catppuccin Latte's text is 7 : 1 on its page, Classic's own near-black far more) needs a stronger veil
+    /// to read as well. Each stop takes <see cref="ColorScience.PlateAlphaFor"/> for the set's primary and for its secondary ink against the theme's
+    /// own inks over the theme's own veil: never below the board's alpha, and with no set on screen the identity (the board's alphas, untouched).</summary>
+    readonly struct VeilFloor
+    {
+        readonly bool _active, _light;
+        readonly ColorF _veil, _ownVeil, _ink, _ink2, _ownInk, _ownInk2;
+
+        VeilFloor(ColorF veil, ColorF ownVeil, bool light, ColorF ink, ColorF ink2, ColorF ownInk, ColorF ownInk2)
+        {
+            _active = true;
+            _veil = veil; _ownVeil = ownVeil; _light = light; _ink = ink; _ink2 = ink2; _ownInk = ownInk; _ownInk2 = ownInk2;
+        }
+
+        public static VeilFloor Of(ColorF veil, ColorF accent, ColorF layer, float pull)
+        {
+            if (Wavee.Theming.ThemeHost.OwnTokensUnderColours(Tok.Theme) is not { } own) return default;
+            // The theme's own veil: its own layer, pulled toward the same accent (the neutral rung is the layer itself).
+            ColorF ownLayer = own.FillLayerDefault;
+            ColorF ownVeil = ColorF.Lerp(ownLayer, accent == layer ? ownLayer : accent, pull);
+            return new VeilFloor(veil, ownVeil, Tok.Theme == ThemeKind.Light, Tok.TextPrimary, Tok.TextSecondary, own.TextPrimary, own.TextSecondary);
+        }
+
+        /// <summary>The board's <paramref name="authored"/> alpha, raised as far as the set's inks need (see the type).</summary>
+        public float Lift(float authored)
+        {
+            if (!_active) return authored;
+            return MathF.Max(ColorScience.PlateAlphaFor(_ink, _ownInk, _veil, _ownVeil, _light, authored),
+                ColorScience.PlateAlphaFor(_ink2, _ownInk2, _veil, _ownVeil, _light, authored));
+        }
     }
 
     /// <summary>The horizontal veil's alpha at <paramref name="x"/> (a fraction of its width) for <paramref name="hold"/>, clamped as

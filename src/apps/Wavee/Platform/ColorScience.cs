@@ -271,6 +271,35 @@ public static class ColorScience
         return 1f;
     }
 
+    /// <summary>The alpha of a plate (a veil, a scrim) of colour <paramref name="plate"/> over art that gives a user's colour set's <paramref name="ink"/>
+    /// the contrast the theme's OWN <paramref name="ownInk"/> gets over the theme's own <paramref name="ownPlate"/> at the board's
+    /// <paramref name="authored"/> alpha (capped at <see cref="TextContrast"/>), judged over two reference covers: the worst one (black under a light
+    /// ground, white under a dark one) and a mid grey (a typical photograph). Never below <paramref name="authored"/>, so with the theme's own ink and
+    /// plate it returns <paramref name="authored"/> exactly. 0 stays 0 (a fade's clear end). Inks may be translucent. Pure; a bounded 0.01 walk.</summary>
+    public static float PlateAlphaFor(ColorF ink, ColorF ownInk, ColorF plate, ColorF ownPlate, bool lightGround, float authored)
+    {
+        if (authored <= 0f) return authored;
+        ColorF worst = lightGround ? new ColorF(0f, 0f, 0f, 1f) : new ColorF(1f, 1f, 1f, 1f);
+        ColorF grey = new(0.5f, 0.5f, 0.5f, 1f);
+        float a = authored;
+        a = MathF.Max(a, Need(worst));
+        return MathF.Max(a, Need(grey));
+
+        float Need(ColorF cover)
+        {
+            float target = MathF.Min(Read(ownInk, ownPlate, authored, cover), TextContrast);
+            for (float x = authored; x < 1f; x += 0.01f)
+                if (Read(ink, plate, x, cover) >= target) return x;
+            return 1f;
+        }
+
+        static float Read(ColorF ink, ColorF plate, float alpha, ColorF cover)
+        {
+            ColorF ground = ColorContrast.Flatten(plate with { A = alpha }, cover);
+            return ColorContrast.Ratio(ColorContrast.Flatten(ink, ground), ground);
+        }
+    }
+
     /// <summary>The page accent's CONTRAST FLOOR (tuned Classic D13): an artwork accent is the ink of the hearts and the
     /// accent text AND the fill of the Play button, so it must pass <see cref="TextContrast"/> both ways: as ink against
     /// the page <paramref name="ground"/>, and under its own legible label ink (<see cref="ColorContrast.PickContrast(in ColorF)"/>).

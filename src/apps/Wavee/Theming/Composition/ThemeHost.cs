@@ -428,6 +428,17 @@ public static class ThemeHost
         ThemePickerFacts.Publish(new PickerState(ThemeCatalog.Installed, theme.Manifest.Id));
     }
 
+    /// <summary>The token set the active STYLE draws for <paramref name="kind"/> with no colour set: its own inks and layers, what a surface tuned
+    /// against them compares a user's colour set with (`Controls.ArtistHeroVeil`, #184). Null when <paramref name="kind"/> has no colour set (the
+    /// tokens on screen ARE the style's own) or before <see cref="Install"/>. The style's memo returns the instance it already built.</summary>
+    public static TokenSet? OwnTokensUnderColours(ThemeKind kind)
+    {
+        if (!s_installed || Colours.For(kind) is null) return null;
+        ThemeDefinition own = s_current.Peek().Style.Definition(s_values.Style,
+            new Wavee.Theming.Colours.StyleInputs(OsAccent, Wavee.Theming.Colours.ColourPair.None));
+        return kind == ThemeKind.Light ? own.Light : own.Dark;
+    }
+
     /// <summary>Publishes the active composition's facts again: what changes a fact from outside the composition calls it (a colour set or the
     /// light/dark kind moving the artwork veto, #184). A no-op before <see cref="Install"/>.</summary>
     public static void RepublishFacts()
