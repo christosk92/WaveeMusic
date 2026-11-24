@@ -250,15 +250,6 @@ public static partial class Shell
     [CoreHost]
     sealed class FrameRoot : Component
     {
-        readonly DropTargetSpec _fileDrop = new([DropKinds.Files],
-            OnEnter: static _ => FileDropOver.Value = true,
-            OnLeave: static _ => FileDropOver.Value = false,
-            OnDrop: static s =>
-            {
-                FileDropOver.Value = false;
-                if (s.Payload is FileDropData { Count: > 0 } files) OnFilesDropped?.Invoke(files.Paths);
-            });
-
         readonly Signal<float> _sidebarFade = new(1f);
         readonly Signal<float> _railFade = new(1f);
         readonly Signal<bool> _sidebarDragging = new(false);
@@ -576,7 +567,7 @@ public static partial class Shell
                 var track = new Track(cur.Slot);
                 string title = track.Title;
                 if (title.Length == 0) return;
-                string artist = Entities.Strings.Resolve(track.ArtistLineId);
+                string artist = track.CreditLine;
                 Announcer.SayThrottled(artist.Length == 0 ? title : title + ", " + artist);
             });
 
@@ -627,7 +618,7 @@ public static partial class Shell
             DockedPanes = RailWiring.DockedPanes,
             Chords = s_chords,
             OnKeyDown = OnShellKey,
-            FileDrop = _fileDrop,
+            FileDrop = DropAnywhere.Window,   // drop anywhere (#240 §3.15): the catch-all under every precise target
             OnSidebarColumnRealized = static h => s_sidebarColumn = h,
             OnContentRegionRealized = static h => { s_contentRegion = h; PublishScrimClip(); },
             OnContentRegionBounds = static _ => PublishScrimClip(),
@@ -646,7 +637,7 @@ public static partial class Shell
             VideoPipLayer = static () => Video.PipLayer(),
             VideoFullscreenLayer = static () => Video.FullscreenLayer(),
             Overlays = static () => Overlays(),
-            FileDropCue = new FileDropProps { Over = FileDropOver },
+            FileDropCue = DropAnywhere.Props,
             CommandPalette = s_paletteProps,
             CoverScrim = s_coverScrimProps,
             DragChip = s_dragChipProps,
@@ -786,6 +777,8 @@ public static partial class Shell
                     e.Handled = true;
                     break;
             }
+            // Nothing else took it: a step the page opened in place (a detail over its list) steps out (Shell.PageBack.cs).
+            if (!e.Handled && PageStepBack()) e.Handled = true;
             return;
         }
         if (e.KeyCode == Keys.Space && FrameRules.SpaceTogglesPlayback(false, FocusedIsTextEditor()))
@@ -816,16 +809,30 @@ public static partial class Shell
             Sidebar.UserCollapsed.Peek(), Sidebar.OverlayOpen.Peek(), Sidebar.Width.Peek(), Sidebar.PresentedWidth.Peek(), rendered);
     }
 
+    /// <summary>Re-read the content region's rect now (a drag arming the drop panel: layout is settled then, while the bounds event can
+    /// fire before the root has its size).</summary>
+    internal static void RefreshContentRegion() => PublishScrimClip();
+
     static void PublishScrimClip()
     {
         if (s_scene is not { } scene || s_contentRegion.IsNull || !scene.IsLive(s_contentRegion)) return;
         RectF r = scene.AbsoluteRect(s_contentRegion);
         scene.SpotlightScrimClip = r.IsEmpty ? null : r;
+        // The drop panel centres on the page, not the window (board 22): the content region less a docked sidebar on its left, as an
+        // offset from the window's centre.
+        RectF root = scene.AbsoluteRect(scene.Root);
+        float left = r.X;
+        if (!s_sidebarColumn.IsNull && scene.IsLive(s_sidebarColumn) && scene.AbsoluteRect(s_sidebarColumn) is { IsEmpty: false } side
+            && side.X <= r.X + 1f && side.X + side.W < r.X + r.W)
+            left = Math.Max(left, side.X + side.W);
+        var centre = r.IsEmpty || root.IsEmpty ? default
+            : new Point2((left + r.X + r.W) / 2f - (root.X + root.W / 2f), r.Y + r.H / 2f - (root.Y + root.H / 2f));
+        if (DropAnywhere.CentreOffset.Peek() != centre) DropAnywhere.CentreOffset.Value = centre;
     }
 
     // ── the small frame views' props (T4c) ──────────────────────────────────────────────────────────────────────────────
     //
-    // The file-drop cue (`Shell.FileDrop`, bound to `FileDropOver`), the setup wizard's cover scrim (`Shell.CoverScrim`), the drag
+    // The drop panel (`Shell.FileDrop`, its state and targets `DropAnywhere.Props`), the setup wizard's cover scrim (`Shell.CoverScrim`), the drag
     // chip layer (`Shell.DragChip`) and the frame-rate overlay (`Shell.Fps`) are the structure's pictures
     // (`Themes\Classic\Structure\Views\FrameBits\ClassicFrameBits.cs`); these are the decisions they bind to. Cached statics, so
     // an equal record skips the template.

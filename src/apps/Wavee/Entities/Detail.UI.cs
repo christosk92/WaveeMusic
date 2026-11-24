@@ -321,12 +321,18 @@ public static partial class Detail
         /// playlist's recommended songs.</summary>
         public Func<Element>? Aside { get; init; }
 
+        /// <summary>A status row the head draws under its facts while the page has one to say (Local Files' first scan: "Reading your music · 1,930 of
+        /// 4,812" and its bar, #240 S4): present only while it speaks, so it arrives and leaves with the head's own row motion; its body follows its
+        /// own signals. Handed the width the head's words take, and whether the head draws it in a one-line slot (its line never wraps; its bar hangs
+        /// under it). Appended (#240 P2).</summary>
+        public Func<float, bool, Element>? Status { get; init; }
+
         internal int Mask()
             => (Cover is null ? 0 : 1) | (CompactCover is null ? 0 : 2) | (Title is null ? 0 : 4)
              | (Attribution is null ? 0 : 8) | (Description is null ? 0 : 16) | (Pulse is null ? 0 : 32)
              | (Chart is null ? 0 : 64) | (PreRelease is null ? 0 : 128) | (ReleasePanel is null ? 0 : 256)
              | (LikedFacts is null ? 0 : 512) | (Trailing is null ? 0 : 1024) | (Episodes is null ? 0 : 2048)
-             | (Aside is null ? 0 : 4096);
+             | (Aside is null ? 0 : 4096) | (Status is null ? 0 : 8192);
 
         public bool Equals(FrameSlots? o) => o is not null && Mask() == o.Mask();
         public override int GetHashCode() => Mask();
@@ -587,6 +593,7 @@ public static partial class Detail
         readonly Func<Element> _sPulse, _sChart, _sPreRelease, _sTrailing, _sTrailingVertical;
         readonly Func<bool, Element> _sReleasePanel, _sEpisodes;
         readonly Func<Element> _sAside;
+        readonly Func<float, bool, Element> _sStatus;
         FrameActions? _trampActions;
         int _trampActionsMask = -1;
         FrameSlots? _trampSlots;
@@ -643,6 +650,7 @@ public static partial class Detail
             _sReleasePanel = outer => _latest?.Slots.ReleasePanel?.Invoke(outer) ?? new BoxEl();
             _sTrailingVertical = VerticalTrailing;
             _sAside = () => _latest?.Slots.Aside?.Invoke() ?? new BoxEl();
+            _sStatus = (w, oneLine) => _latest?.Slots.Status?.Invoke(w, oneLine) ?? new BoxEl();
 
             // ── INSIGHTS SHEET (additive) ──
             _returnInsightsFocus = ReturnInsightsFocus;
@@ -1135,6 +1143,7 @@ public static partial class Detail
                     ReleasePanel = s.ReleasePanel is null ? null : _sReleasePanel,
                     Trailing = s.Trailing is null ? null : _sTrailing,
                     Episodes = s.Episodes is null ? null : _sEpisodes,
+                    Status = s.Status is null ? null : _sStatus,
                 };
             }
             return _trampSlots;

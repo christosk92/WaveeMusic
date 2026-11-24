@@ -330,6 +330,10 @@ public static class ZuneDetailRules
     public const float AboutNameSize = 40f, AboutNameLine = 48f, AboutNamePadX = 16f, AboutNamePadBottom = 10f, AboutBodySize = 14f, AboutBodyLine = 20f,
         AboutMetaSize = 13f, AboutImageDecode = 640f, AboutScrimTail = 0.6f;
 
+    /// <summary>The contrast the about band's 40-DIP name needs over its photo (large text): the scrim's tail rises above <see cref="AboutScrimTail"/>
+    /// only when the ink would read under it over the worst photo (<c>ColorScience.ScrimAlphaFor</c>; a colour set's softer ink, #184).</summary>
+    public const float AboutNameFloor = 3f;
+
     /// <summary>See <see cref="AboutNameSize"/>.</summary>
     public const int AboutNameLines = 2, AboutBioLines = 3;
 

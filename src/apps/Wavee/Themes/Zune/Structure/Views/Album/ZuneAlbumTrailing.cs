@@ -163,7 +163,7 @@ internal static class ZuneAlbumTrailing
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Z.HeroIdentityGap,
                     Children =
                     [
-                        R.Type.Eyebrow(Loc.Get(customVideo ? Strings.VideoOverride.CustomLabel : Strings.Detail.WatchOfficialVideo)) with
+                        R.Type.Eyebrow(Loc.Get(customVideo ? Strings.LinkedVideo.CustomLabel : Strings.Detail.WatchOfficialVideo)) with
                         {
                             Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                         },
@@ -382,7 +382,7 @@ internal static class ZuneAlbumTrailing
                 new BoxEl
                 {
                     HitTestVisible = false, MinWidth = 0f,
-                    Gradient = Ui.GradientDown(new GradientStop(0f, Tok.FillSolidBase with { A = 0f }), new GradientStop(1f, Tok.FillSolidBase with { A = Z.AboutScrimTail })),
+                    Gradient = Ui.GradientDown(new GradientStop(0f, Tok.FillSolidBase with { A = 0f }), new GradientStop(1f, Tok.FillSolidBase with { A = ColorScience.ScrimAlphaFor(Tok.TextPrimary, Tok.FillSolidBase, Z.AboutNameFloor, Z.AboutScrimTail) })),
                 },
                 new BoxEl
                 {

@@ -108,7 +108,7 @@ public static partial class Queue
         Track d = t.ForDisplay;
         bool thin = !d.Knows(TrackFields.Title);
         string album = !thin && d.Album is { IsValid: true } al && al.Knows(AlbumFields.Title) ? al.Title : "";
-        return new QueueRowText(t.Uri.Text, thin ? "" : d.Title, Entities.Strings.Resolve(d.ArtistLineId), Controls.ArtUrl(d.ImageId),
+        return new QueueRowText(t.Uri.Text, thin ? "" : d.Title, d.CreditLine, Controls.ArtUrl(d.ImageId),
                            d.DurationMs, thin, d.IsExplicit, Album: album);
     }
 
@@ -290,11 +290,12 @@ public static partial class Queue
                 DragStyle = new DragVisualStyle { Lift = DragLift.Stationary, Opacity = FluentGpu.Controls.Drag.SourceDimOpacity },
                 // Released outside the list commits nothing: no surface takes a queue row as a copy.
                 RequireDropOnList = true,
-                CanAcceptForeign = static p => Drag.Unwrap(p) is { CanCopyTracks: true },
+                // An OS drop (files, folders, a playlist file, track links: #240 D15) lands at the line too (List widens the kinds).
+                CanAcceptForeign = static p => Drag.Unwrap(p) is { CanCopyTracks: true } || DropAnywhere.QueueAccepts(p),
                 ForeignRefusalCaption = static p => Drag.Unwrap(p) is { } r
                     ? Loc.Get(r.FromQueue ? Strings.Drag.ReorderHint : r.Kind == DragKind.Artist ? Strings.Drag.CantAddArtist : Strings.Drag.NothingToAdd)
                     : null,
-                ForeignCaption = static (_, _) => Loc.Get(Strings.Drag.AddToQueue),
+                ForeignCaption = static (p, _) => DropAnywhere.QueueCaption(p) ?? Loc.Get(Strings.Drag.AddToQueue),
             };
             Reorder.ExtentOf = ExtentAt;
             Reorder.ItemOf = PayloadAt;
@@ -379,6 +380,8 @@ public static partial class Queue
             _ = Platform.SettingsChanged.Value;
             return (Shell.QueueVerbs.CrossfadeEnabled(), Shell.QueueVerbs.CrossfadeLength());
         };
+        /// <summary>The Mix pair (the queue's "Mixing" line and the Crossfade row's note, #48), a value the memo compares.</summary>
+        protected static readonly Func<(string Line, string Note)> s_mix = static () => (Playback.Mix.QueueLine(), Playback.Mix.CrossfadeNote());
         static readonly Func<bool> s_autoplayListed = static () => { _ = Platform.SettingsChanged.Value; return Shell.QueueModel.AutoplayListed(Shell.QueueModel.AutoplayEnabled(), Playback.Repeat.Value); };
         static readonly Func<string?> s_contextName = static () =>
         {
@@ -506,7 +509,23 @@ public static partial class Queue
         public Element List(Element body, string key, float leadExtent = 0f)
         {
             Reorder.LeadExtent = leadExtent;
-            return Reorder.List(body).As<BoxEl>() with { Grow = 0f, Key = key };
+            var list = Reorder.List(body).As<BoxEl>();
+            return list with { Grow = 0f, Key = key, DropTarget = OsWidened(list.DropTarget) };
+        }
+
+        DropTargetSpec? _osSpec;
+
+        /// <summary>The lane's drop target taking OS drags as well (#240 D15, board 24): the same handlers, the same line and gate,
+        /// the kinds widened, and the spotlight lit for an OS payload only (an in-app drag keeps its look). Built once.</summary>
+        DropTargetSpec? OsWidened(DropTargetSpec? spec)
+        {
+            if (spec is null || Viewer) return spec;
+            return _osSpec ??= spec with
+            {
+                AcceptKinds = [.. spec.AcceptKinds, .. DropAnywhere.OsKinds],
+                VisualPolicy = DropTargetVisualPolicy.Spotlight,
+                SpotlightWhen = static s => DropAnywhere.IsOsPayload(s.Payload) && DropAnywhere.PlanOf(s).QueueTakes,
+            };
         }
 
         public DragSource? OwnDrag(ulong itemId, int index, EntityRef row)
@@ -544,7 +563,11 @@ public static partial class Queue
         }
 
         void CommitForeign(object? payload, int fromIndex, Reorderable? from, Reorderable to, int slot)
-            => Verbs.DropInsert(payload, QueueMovePlan.InsertIndex(new ReadOnlySpan<QueueSlot>(_slots, 0, _slotCount), slot));
+        {
+            int userIndex = QueueMovePlan.InsertIndex(new ReadOnlySpan<QueueSlot>(_slots, 0, _slotCount), slot);
+            if (DropAnywhere.IsOsPayload(payload)) DropAnywhere.DropOnQueue(payload, userIndex);
+            else Verbs.DropInsert(payload, userIndex);
+        }
     }
 
     /// <summary>The queue row as a drag: its track travels for the chip, and <c>SourceQueueItemId</c> marks it a reorder
@@ -596,6 +619,7 @@ public static partial class Queue
             Prologue(rail: true);
             // The crossfade switch and its length through a value memo: the panel re-renders when either changes, not on every settings write.
             var crossfade = UseComputed(s_crossfade).Value;
+            var mix = UseComputed(s_mix).Value;
             UseEffect(() => Pages.Reset(), DepKey.From(ContextId.GetHashCode()));
             var counts = Model.Counts;
             BuildSlots(QueueSlots.Realized(counts.Queue, Pages.Of(QueueSection.Queue).Value, PageSize),
@@ -629,6 +653,8 @@ public static partial class Queue
                 Crossfade = crossfade.On,
                 CrossfadeLength = crossfade.Length,
                 OpenCrossfadeLength = Shell.QueueVerbs.OpenCrossfadeLength,
+                MixLine = mix.Line,
+                CrossfadeNote = mix.Note,
             });
         }
 
@@ -697,6 +723,7 @@ public static partial class Queue
         {
             Prologue(rail: false);
             var crossfade = UseComputed(s_crossfade).Value;   // the "between songs" pair's second switch and its length, as the rail reads them
+            var mix = UseComputed(s_mix).Value;
             UseEffect(() => Pages.Reset(), DepKey.From(ContextId.GetHashCode()));
             int pages = Pages.Of(QueueSection.Queue).Value;
             var counts = Model.Counts;
@@ -714,6 +741,8 @@ public static partial class Queue
                 Crossfade = crossfade.On,
                 CrossfadeLength = crossfade.Length,
                 OpenCrossfadeLength = Shell.QueueVerbs.OpenCrossfadeLength,
+                MixLine = mix.Line,
+                CrossfadeNote = mix.Note,
             });
         }
     }

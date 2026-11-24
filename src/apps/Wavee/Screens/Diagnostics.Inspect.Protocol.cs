@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Quit,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Timecode, Drop, LocalScan, LocalIndex, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -346,7 +346,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-book", "cold-book-chapters", "cold-book-facts", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "home-reanswer", "home-cold", "home-land", "home-following", "home-previews", "daylist-generic", "daylist-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-book", "cold-book-chapters", "cold-book-facts", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "home-reanswer", "home-cold", "home-land", "home-following", "home-previews", "daylist-generic", "daylist-land", "head", "head-land", "ai", "runtime", "hdcp", "music-folders", "spotify-match", "linked-video", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -521,12 +521,14 @@ public static partial class Diagnostics
                     Arg("words", ArgType.Bool, "with kind=ai ai=timed: the playing track's lyrics also take word timing (each line's words share its span; the store upgrade a cached result takes), so the lyrics surfaces draw it word by word (a line-synced fake: mount lyrics=line); the next mount empties the lyrics store", "false"),
                     Arg("runtime", ArgType.Enum, "with kind=runtime: the Playback settings' runtime card's staged status (no runtime installed or loaded; the next mount puts the boot's back); problem: the error bar with the diagnostics doors and Retry setup, setup: the not-set-up bar, ready: the facts", "problem", string.Join("|", InspectSession.RuntimeCases)),
                     Arg("issue", ArgType.Enum, "with kind=runtime runtime=problem: the typed reason the bar names", "wrongarch", string.Join("|", InspectSession.RuntimeIssues)),
+                    Arg("value", ArgType.Enum, "with kind=music-folders: the local library seeded in memory (no disk, no thread, no setting): none (no folder), scanning (two folders, the first mid-scan), ready (both scanned: an album, loose and unplayable files, a missing one, a cloud-only one), offline (both folders unreachable, their entries kept), changed (ready plus a background change just restated: +4 added, 1 moved), missing (ready with three missing songs and no other unplayable file), listing (the first scan's first second: two folders, nothing read yet), paused (scanning held by battery saver), noaccess (ready, but one music folder refuses this user and a subfolder of the other could not be read), checking (ready plus a network share just added, its reachability being asked off the UI thread), network-online|network-waking|network-slow|network-signin|network-offline (ready plus a NAS share, \\\\nas\\share\\flac, last walked 12 min ago, in that state; slow walks it), folder (path= as the one music folder, walked and read by the real scanner into the in-memory index, synchronously: #240's real-file matching), startup (path= as the one music folder of the in-memory settings, then the app's own start-up, LocalLibrary.Use, over the scratch profile's index file on its own threads: the load, the start-up scan and the restate land over the next frames; once per process, before any other value; state kind=rescope after it is the login's scope switch); with kind=spotify-match (\"Your files and Spotify\"): off (matching off), offer (matching off, the offer on On this PC's Home), matching (the fake catalogue's albums as files, half matched, the chip counting), review (all matched, the review open), focus (the review opened on one untagged song, as Spotify match… opens it), accepted (Exact and Strong accepted, the review closed), versions (phase 2: two copies of Savin' Me both linked to the fake Savin' Me, the copy renamed Savin' Me (hardstyle remix) and set to play by default), versions-spotify (the same, no default chosen), link (the index as it is, e.g. after music-folders value=startup: each file linked to the fake song of its title closest in length, a file named ...remix... set to play by default); with kind=linked-video (a Spotify track's video version, Shell/Video.LinkedVideos.cs): attach (uri= path=: the file joins the library, linked as the track's video, as the menu's Link a video file and the row's .mp4 drop do), seed-legacy (uri= path=: an old-style attachment in the old store, as an older build left it), migrate (the start-up move of the old store into links), unlink (uri=), default (uri=: Play by default picks the track's video version), list (the reply only)", "ready", "none|scanning|ready|offline|changed|missing|listing|paused|noaccess|checking|network-online|network-waking|network-slow|network-signin|network-offline|folder|startup|off|offer|matching|review|focus|accepted|versions|versions-spotify|link|attach|seed-legacy|migrate|unlink|default|list"),
+                    Arg("path", ArgType.String, "with kind=music-folders value=folder or startup: the folder of real music files to scan (the app's own index file is never touched); with kind=linked-video: the video file"),
                     Arg("hdcp", ArgType.Enum, "with kind=hdcp: the video's screen as the HDCP guard would judge it (no real screen): blocked = protection did not take there (the song plays, every video surface shows the protected-video warning), clear = the window moved to a screen that carries HDCP (the block lifts, the row goes back to its video); the next mount puts the boot's guard back", "blocked", "blocked|clear")], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")
             {
                 Positional = ["kind"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("kind", ArgType.Enum, "the dialog", null, "crash|hang|report|lightbox")], s_settleArgs),
+                Args = Join([Arg("kind", ArgType.Enum, "the dialog (rename: the Rename dialog on the spotify-match versions fixture's copy)", null, "crash|hang|report|lightbox|rename")], s_settleArgs),
             },
             new(Verb.Skeleton, "skeleton", "Compare a page's loading skeleton with the page loaded: the pending fixture (it never loads) against the loaded uri, every shown key's top and height and every Skel.Region's height, in DIP; firstMoved is the jump a person sees when the data lands", "skeleton loaded=spotify:artist:ar3")
             {
@@ -591,6 +593,15 @@ public static partial class Diagnostics
                 Args = [Arg("fixture", ArgType.Enum, "the fixture", "book-titled", "show-episodic|show-serial|book-titled|book-tracks|book-inprogress|book-finished"),
                         Arg("path", ArgType.Path, "also write the dump's JSON to this file")],
             },
+            new(Verb.Mix, "mix", "#48 Mix: one playlist's Mix data (list and XM flags, lens etag, each row's mixable bits, beat grid, cue points and stored recipe), or a raw recipe decoded", "mix uri=spotify:playlist:plmix")
+            {
+                Positional = ["uri"],
+                Args = [Arg("uri", ArgType.String, "the playlist (default: the fake mixed playlist)"),
+                        Arg("recipe", ArgType.String, "decode this base64 TransitionRecipe instead"),
+                        Arg("mixstate", ArgType.String, "print the mix-state (turn Mix on) body for this revision (hex)"),
+                        Arg("curves", ArgType.Int, "print the Connect metadata curves for this preset id (1 Fade, 3 Rise)"),
+                        Arg("window", ArgType.Int, "the window those curves are for, ms (8 units under 8 s, else 16)")],
+            },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {
                 Positional = ["id", "value"],
@@ -606,6 +617,18 @@ public static partial class Diagnostics
                              IntArg("limit", "results to list", "8", 1, 30),
                              Arg("model", ArgType.String, "the registry page's model (contract 1.116): the category list, the open category and arrival, the home's facts, this category's body (a slug; empty: the open one), with q= the box's results"),
                              Arg("press", ArgType.Enum, "the page box's key handler: down|up move the highlight through the results, enter opens the highlighted dial, esc clears then leaves", null, "down|up|enter|esc")], s_settleArgs),
+            },
+            new(Verb.Drop, "drop", "Read a local file's format, tags, length and cover location with the tag readers (#240) and import it into Local files as a drop does (import=false: the read alone); the reply is every field read and the row's face; then settle. With os=: play one step of an OS drag (files, folders, links, text) through the engine's external-drop seam at x,y, as the OLE target forwards a real one (#240 §3.15 drop anywhere): the reply is the effect, the drag's plan (kind, zones, chip, refusal) and the drop panel's state", "drop os=enter paths=C:/music/a.flac|C:/music/b.flac x=900 y=500")
+            {
+                Positional = ["path"],
+                Args = Join([Arg("path", ArgType.String, "the file to read"),
+                             Arg("import", ArgType.Bool, "false: read the file and stage nothing", "true"),
+                             Arg("os", ArgType.Enum, "an OS drag step: enter (with the payload), over, leave or drop", null, "enter|over|leave|drop"),
+                             Arg("paths", ArgType.String, "with os=: the dragged files and folders, '|'-joined (the engine hands them on enter); * offers files with an empty list (an engine that reads them only at drop)"),
+                             Arg("uris", ArgType.String, "with os=: the dragged links, '|'-joined (UniformResourceLocatorW / text/uri-list)"),
+                             Arg("text", ArgType.String, "with os=: the dragged text (CF_UNICODETEXT)"),
+                             Arg("x", ArgType.Float, "with os=: the pointer, window DIP (default: the window's centre)"),
+                             Arg("y", ArgType.Float, "with os=: the pointer, window DIP (default: the window's centre)")], s_settleArgs),
             },
             new(Verb.Hint, "hint", "The in-app hints (settings rework phase 3): list every hint with its budget and verdict, force one's trigger true for one mount (show), forget every hint's budget and the use facts (reset), or read and load the persisted blob (state)", "hint show id=ai-lyrics")
             {
@@ -630,10 +653,20 @@ public static partial class Diagnostics
             new(Verb.Transport, "transport", "Drive the playback sequencer as the transport and the queue verbs do (next, prev, a natural end, shuffle, repeat, add/playnext, a track ruled unavailable) and read back the deck, the modes, the queue rows and the panel's up-next list; then settle", "transport do=next")
             {
                 Positional = ["do", "value"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable), duration (ms=: the decoder reports the playing row's real length, a same-row duration change), audiobook (uri=: the catalogue classifies a show as a book), putstate (the connect-state PUT body the deck would send now, base64; nothing is sent)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate"),
+                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), pause, resume, seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable), duration (ms=: the decoder reports the playing row's real length, a same-row duration change), audiobook (uri=: the catalogue classifies a show as a book), putstate (the connect-state PUT body the deck would send now, base64; nothing is sent), telemetry (the playing row's RawCoreStream and closing segment as the registration would report them, base64; nothing is sent), inbound (file=: a controller's play/transfer command body, decoded and handed to the host as the dealer glue does)", "status", "status|next|prev|end|pause|resume|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate|telemetry|inbound"),
                              Arg("value", ArgType.String, "shuffle on|off, repeat off|all|one"),
                              Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead; a spotify:show: uri for audiobook"),
-                             Arg("ms", ArgType.Int, "the seek target (seek), the new length (duration)", "0")], s_settleArgs),
+                             Arg("ms", ArgType.Int, "the seek target (seek), the new length (duration)", "0"),
+                             Arg("file", ArgType.String, "with do=inbound: the command body (JSON) to decode and hand to the host")], s_settleArgs),
+            },
+            new(Verb.Timecode, "timecode", "Read the playback timeline tap and the LTC output (#154), or set a timecode dial: the master track, its audible position, rate, flags and epoch as Playback.Timeline composes them, and the engine anchor with its publisher counters; samples= takes a series every= ms apart (run as frames when mounted: the headless endpoint is paced by the frame clock)", "timecode do=status samples=5 every=200")
+            {
+                Positional = ["do"],
+                Args = [Arg("do", ArgType.Enum, "status, or set (key=, value=: the Settings rows' own verbs)", "status", "status|set"),
+                        IntArg("samples", "readings to take, every= ms apart (one reply, a `series` array when more than one)", "1", 1, 2000),
+                        IntArg("every", "ms between readings", "200", 0, 60_000),
+                        Arg("key", ArgType.Enum, "with do=set: the timecode dial", null, "enabled|device|rate|start|level|offset|clx"),
+                        Arg("value", ArgType.String, "with do=set: true|false, an endpoint id (headless: any), 24|25|29.97|30, 0|1, dB, ms")],
             },
             new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, customize, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); drive a Spine Shelf (shelf) or a Release Spotlight card (spotlight); acting ones settle", "home do=pin uri=spotify:album:al2")
             {
@@ -762,6 +795,17 @@ public static partial class Diagnostics
                     Arg("expectCard", ArgType.Enum, "the card on screen; needs a mount", null, "shown|hidden"),
                 ],
             },
+            new(Verb.LocalScan, "localscan", "Run the local-files scanner (#240) on a folder, read-only, against a private in-memory index: a cold scan, warm rescans and the start-up (journal) path, with the summary numbers; the app's index is not touched", "localscan path=D:/Music runs=3")
+            {
+                Positional = ["path"],
+                Args = [Arg("path", ArgType.String, "the folder of music to scan (read-only)"),
+                        IntArg("runs", "warm rescans (best and median reported)", "3", 1, 20)],
+            },
+            new(Verb.LocalIndex, "localindex", "List the app's local index (#240): every entry's LocalId, music folder id, relative path and state, every folder record and the hidden set, filtered by a relative path prefix; read-only", "localindex prefix=Artist")
+            {
+                Positional = ["prefix"],
+                Args = [Arg("prefix", ArgType.String, "the start of the relative paths to list (\"\" lists all)")],
+            },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
 
@@ -787,9 +831,9 @@ public static partial class Diagnostics
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "transport" => Verb.Transport, "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
-            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
+            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "mix" => Verb.Mix, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
-            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge,
+            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge, "timecode" => Verb.Timecode, "drop" => Verb.Drop, "localscan" => Verb.LocalScan, "localindex" => Verb.LocalIndex,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };

@@ -125,3 +125,37 @@ public sealed record ResolvedPlayable(
 /// <param name="Artists">New artists, or null to leave them alone.</param>
 /// <param name="ArtworkUrl">New artwork url, or null to leave it alone.</param>
 public sealed record MetadataUpdate(string PlayableId, string? Title, string[]? Artists, string? ArtworkUrl);
+
+/// <summary>
+/// What is audible on the app's PC, as one straight line: the <c>playback/timeline</c> notification (capability
+/// <c>timeline</c>). Sent when anything changes and once a second while playing; between notifications a module
+/// extrapolates locally, so the stdio transport's delay drops out:
+/// <c>position = PositionMicros + (now − AnchorTicks) / TicksPerSecond × 1e6 × Rate</c> while <see cref="Playing"/>, where
+/// <c>now</c> is <c>Stopwatch.GetTimestamp()</c> (QueryPerformanceCounter: one counter for every process on the machine).
+/// </summary>
+/// <param name="Uri">The playing item's uri (<c>spotify:track:…</c>, <c>spotify:local:…</c>, <c>wavee:module:…</c>); null when
+/// nothing plays on this PC (stopped, or playing on another Connect device).</param>
+/// <param name="Title">The item's title, when known.</param>
+/// <param name="Artist">The item's artists, joined, when known.</param>
+/// <param name="Album">The item's album or show, when known.</param>
+/// <param name="PositionMicros">Position inside the item at <paramref name="AnchorTicks"/>, audible on this PC.</param>
+/// <param name="AnchorTicks">A <c>Stopwatch.GetTimestamp()</c> value: the instant <paramref name="PositionMicros"/> is true for.</param>
+/// <param name="TicksPerSecond"><c>Stopwatch.Frequency</c> of the host, for a module not written in .NET.</param>
+/// <param name="DurationMs">The item's length; 0 when unknown (live). In a mixed playlist the track's effective end, which can be
+/// shorter than the file and can change while it plays.</param>
+/// <param name="Rate">Content seconds per second: 1.0 for music, the speed for an episode.</param>
+/// <param name="Playing">False while paused, buffering or stopped: the position holds.</param>
+/// <param name="Epoch">Changes on every discontinuity (a seek, a pause, a resume, a track change, a transition set or cleared).
+/// The same epoch is the same straight line, only re-anchored.</param>
+/// <param name="Bpm">The item's tempo when the app knows it; null otherwise.</param>
+/// <param name="Transition">A transition in flight (a crossfade, a mixed join), or null.</param>
+public sealed record TimelineState(string? Uri, string? Title, string? Artist, string? Album,
+    long PositionMicros, long AnchorTicks, long TicksPerSecond, long DurationMs, double Rate, bool Playing,
+    long Epoch, double? Bpm, TimelineTransition? Transition);
+
+/// <summary>A transition audible between two instants, in the same tick domain as <see cref="TimelineState.AnchorTicks"/>.</summary>
+/// <param name="IncomingUri">The item fading in.</param>
+/// <param name="StartTicks">When the transition starts being heard.</param>
+/// <param name="EndTicks">When it is over.</param>
+/// <param name="Master"><c>"outgoing"</c> or <c>"incoming"</c>: which item <see cref="TimelineState.Uri"/> names during it.</param>
+public sealed record TimelineTransition(string IncomingUri, long StartTicks, long EndTicks, string Master);

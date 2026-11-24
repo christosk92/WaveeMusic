@@ -11,6 +11,7 @@
 
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 
 namespace Wavee.Themes.WinUi;
 
@@ -30,6 +31,7 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.OverlayContextSheet, WinUiContextSheet.Template, "winui.overlay.context-sheet");
         views.Add(ViewKeys.DialogLogoutConfirm, WinUiLogoutConfirm.Template, "winui.dialog.logout-confirm");
         views.Add(ViewKeys.DialogPlayLink, WinUiPlayLink.Template, "winui.dialog.play-link");
+        CommonColourEditor.Register(views, "winui.dialog.colour-editor");   // one design with Classic (Themes/Common, #184)
         views.Add(ViewKeys.DialogSignature, WinUiSignature.Template, "winui.dialog.signature");
         views.Add(ViewKeys.DialogFolderPicker, WinUiDestinationPicker.Template, "winui.dialog.folder-picker");
         views.Add(ViewKeys.DialogSheet, WinUiCreditsSheet.Template, "winui.dialog.sheet");

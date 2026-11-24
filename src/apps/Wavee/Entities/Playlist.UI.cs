@@ -133,9 +133,13 @@ public readonly partial struct Playlist
     /// on BOTH arms, so the editable↔read-only flip is structural only). NOT keyed on the size: the size is a re-pushed prop, so a
     /// tier crossing that resizes the cover keeps the editor's node (owner rule: no tier, form or count in a key).</summary>
     public static Element CoverSlot(Playlist p, float size)
-        => p.IsValid && p.EditableMetadata && p.Uri.Provider == EntityProvider.Spotify
+    {
+        Element cover = p.IsValid && p.EditableMetadata && p.Uri.Provider == EntityProvider.Spotify
             ? Embed.Comp(new CoverProps(p.Slot, size), static () => new CoverEditor()) with { Key = "pl-cover", MorphId = GeneratedConnect(p) }
             : CoverArt(p, size, handOver: true, connect: true) with { MorphId = GeneratedConnect(p) };
+        // #48: the "Mixed" badge layer, always mounted (the badge shows and hides; the cover never remounts on a Mix switch).
+        return Embed.Comp(new MixCoverBadgeProps(p.Slot, cover), static () => new MixCoverBadge()) with { Key = "pl-cover-mix" };
+    }
 
     /// <summary>The hero's flight tag when its cover is GENERATED (a mosaic of member covers, a member's cover standing in, the placeholder): the
     /// whole cover is the connected navigation flight's dest (<see cref="Design.MorphKeys.Whole"/>). Null when the cover is the playlist's own
@@ -449,13 +453,10 @@ public readonly partial struct Playlist
             else
             {
                 var owner = p.Owner;
-                // The local-files playlist is owned by this computer, not by a person: it states "On this device" (the page's own owner words)
-                // with no portrait and no profile to open, whatever user row the store holds for it.
-                bool local = p.Slot == LocalFiles.Slot;
-                ownerName = local ? Loc.Get("localFile.onThisDevice") : NameOf(owner);
-                ownerImage = local ? null : Controls.ArtUrl(owner.ImageId);
+                ownerName = NameOf(owner);
+                ownerImage = Controls.ArtUrl(owner.ImageId);
                 // The owner opens their profile (#161): an owner row that cannot route (an invalid handle) stays the plain, inert run it was.
-                var profile = local ? Shell.Route.None : ProfileRoute.For(owner);
+                var profile = ProfileRoute.For(owner);
                 openOwner = profile.IsNone ? null : () => Shell.GoTo(profile);
             }
             return ViewSlots.View(ViewKeys.PlaylistOwner, new PlaylistOwnerProps(props.Width, pile, faces, overflow, label, ownerName, ownerImage, openOwner,

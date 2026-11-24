@@ -21,12 +21,37 @@ public sealed record HistoryMenuProps
     public required Action Close { get; init; }
 }
 
-/// <summary>The props of <see cref="ViewKeys.ShellFileDrop"/>: the cue the shell shows while a file is dragged over the window.</summary>
+/// <summary>The props of <see cref="ViewKeys.ShellFileDrop"/>: the drop panel the shell shows while an OS drag (files, folders, a
+/// playlist file, Spotify links) is over the window's empty space (#240 §3.15, UX S12): two to four large zones that fit what is
+/// dragged, each with a glyph and a one-line consequence. The core decides the zones and runs what a drop on one does; the theme
+/// draws the panel and hangs <see cref="PanelTarget"/> and <see cref="ZoneTarget"/> on its card and zones.</summary>
 public sealed record FileDropProps
 {
-    /// <summary>Is a file drag over the window? Bound by the template (a drag hover never re-renders the shell).</summary>
+    /// <summary>Is the panel showing (the pointer is over the window's ground, the card or a zone, with a payload Wavee can use)?
+    /// Bound by the template (a drag hover never re-renders the shell).</summary>
     public required IReadSignal<bool> Over { get; init; }
+
+    /// <summary>The live drag's zones, in order (a new array once per drag: the template re-renders on that edge only). Null: a host
+    /// with no drop panel (the cue alone).</summary>
+    public IReadSignal<DropZoneLook[]>? Zones { get; init; }
+
+    /// <summary>The zone under the pointer (-1: none). Bound: the hovered zone lights without a re-render.</summary>
+    public IReadSignal<int>? Hot { get; init; }
+
+    /// <summary>The content region's centre relative to the window's: the panel centres on the content, not the window (bound).</summary>
+    public IReadSignal<Point2>? CentreOffset { get; init; }
+
+    /// <summary>The panel card's drop target: a drop between the zones, and the spotlight's cut-out (the scrim never dims the panel).</summary>
+    public DropTargetSpec? PanelTarget { get; init; }
+
+    /// <summary>Zone i's drop target: it lights while the pointer is over it and runs that zone's verb on a drop.</summary>
+    public Func<int, DropTargetSpec>? ZoneTarget { get; init; }
 }
+
+/// <summary>One drop-panel zone: its glyph (in <paramref name="GlyphFont"/>, null for the icon font), its verb ("Play now") and its
+/// one-line consequence ("Replaces what's playing", "12 songs"), a thunk the template binds (a count lands when the folder listing
+/// does).</summary>
+public sealed record DropZoneLook(string Glyph, string? GlyphFont, string Title, Func<string> Detail);
 
 /// <summary>The props of <see cref="ViewKeys.ShellDragChip"/>: the layer that draws the chip that follows the pointer during a drag.</summary>
 public sealed record DragChipProps

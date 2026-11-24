@@ -1739,6 +1739,41 @@ no other home yet (lyrics, full screen, now playing, Home). Nothing in it names 
 - **Setup.Theme.** The wizard's second page (`WizardPage.Theme`, M7a: it replaced the Layout page and its two sidebar cards) mounts the `Setup.Theme` view (`ClassicSetup.ThemeTemplate`, on the Layout page's frame) with the picker and
   the options (`Setup.ThemeProps`): the wizard plate draws the generated option rows (the layout cards, the density, the surfaces cards and its two artwork toggles), no legacy rows and no actions.
 
+## 3a. Colours: the user's colour sets (#184)
+
+A user picks one colour set for light mode and one for dark (Settings › Appearance › Colours), app-wide: whichever theme is active
+draws it. The model is `Theming\Colours\`; a theme takes part through its STYLE only.
+
+- **The input.** `IStyleLayer.Definition(OptionValues style, in StyleInputs inputs)`: `inputs.OsAccent` as before, and `inputs.Colours`, a
+  `ColourPair` of a `ColourLadder?` per mode (null: the theme's own colours for that mode) and where the accent comes from
+  (`ColourPair.OwnsAccent`). A style memoizes on the inputs (`DefinitionMemo<TKey>`, a bounded LRU) and, with no set in either mode, must
+  return exactly the instance it returned before: the default look is byte-identical, and the verification compares it so.
+- **The ladder** (`ColourSolver.Resolve`) is final: deep, well, ground, panel, raised, dialog, placeholder; ink 7 : 1 on the ground and
+  4.5 : 1 on the raised plate; secondary and tertiary ink 4.5 : 1 on the ground, well and raised plate, in that order of strength; disabled
+  ink 3 : 1; the accent as a fill (3 : 1), as text (4.5 : 1 on the plates and on its own selection wash) and the ink on it (4.5 : 1);
+  severities floored like the accent text. A style never checks contrast itself.
+- **Mapping it.** `ColourTokens.Apply(baseSet, ladder, ownsAccent)` rewrites every colour of the engine's `TokenSet` (opaque members take
+  their rung; translucent ones keep their alpha and take the ladder's ink when they were ink-like, its ground when they were ground-like);
+  `ColourTokens.Shell` does the same for the engine shell palette; `ColourTokens.Ramp` builds the accent ramp whose dark shades are the dark
+  set's accent and light shades the light set's. Then the style lays its own look over it and feeds its role table the rungs:
+  Zune `ZuneGrounds` (rung for rung), WinUI `WinUiGrounds` (well = the window base, ground = the content layer, deep = the tab strip),
+  Classic `ClassicRoles.For` (well = the chrome ground, ground = the content surface).
+- **Material.** A mode with a set is opaque (`WindowMaterial.None`); a mode without one keeps the theme's material (Classic: no opinion,
+  which the engine resolves to the app's own Mica). A mixed pair flips light/dark on the theme transaction (`Appearance.Switch`).
+- **Options a set takes over** declare it: `ThemeOption.SetByColours = ColourOverride.Accent | Material | Artwork`. Their generated row
+  then shows disabled with "Set by your colours" while the set of the mode on screen owns that, never hidden. A theme's control must honour
+  a disabled row (Zune's swatch strip dims and stops taking clicks).
+- **Artwork** (plan D4). While the mode on screen has a set and Appearance › Colours › Artwork colours is off (the default), the theme host
+  publishes `ArtworkColorPolicy` with `Washes` and `AccentFromArtwork` false; `NowPlayingColors` is never vetoed (media surfaces). A
+  structure's own wash views read `ShellPolicy.Tracked.Artwork.Washes` beside their own wash option.
+- **Text over art.** A scrim made of the page's ground and tuned for a theme's own ink is floored for the ink it carries with
+  `ColorScience.ScrimAlphaFor(ink, ground, floor, authored)`: never below the board's alpha, so the default is unchanged.
+- **Data.** The built-in sets are generated from each project's own palette file (`ColourCatalog.Data.cs`'s header says which and how);
+  never type a value. Stored keys: `ColourKeys` (`theme.palette.*`).
+- **Verify** (`fg doc loop`): `setting id=appearance.colours.dark value=<i>` (index 0 is the theme's own) or `.light`, then render and
+  `lint` every surface you touched in a dark and a light set; trace a set change and an `appearance.appMode` flip with a mixed pair
+  (nothing may move or remount); render the default before and after on the base build in the same minute and compare the files.
+
 ## 4. Migrating a retired switch (`ThemeBootstrap`)
 
 Each M-PR that retires a presentation switch adds one named step to `ThemeBootstrap.Steps`:

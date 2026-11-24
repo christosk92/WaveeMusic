@@ -27,6 +27,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Classic;
@@ -300,29 +301,7 @@ internal static class ClassicTrackTable
     {
         const int decodePx = Track.RowArtDecodePx;
         Func<string?> url = () => Track.RowArtUrl(r.P.Track.ForDisplay);
-        return new BoxEl
-        {
-            ZStack = true, Width = art, Height = art, ClipToBounds = true,
-            Corners = CornerRadius4.All(Radii.Control),
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = art, Height = art, Corners = CornerRadius4.All(Radii.Control),
-                    Fill = Prop.Of(() =>
-                    {
-                        string? u = url();
-                        if (u is { Length: > 0 }) _ = Wavee.Palette.Watch(u).Value;
-                        return Design.PlaceholderFor(u);
-                    }),
-                },
-                new ImageEl
-                {
-                    Source = Prop.Of(() => url() ?? ""), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = decodePx,
-                    Corners = CornerRadius4.All(Radii.Control), Placeholder = ColorF.Transparent,
-                },
-            ],
-        };
+        return Controls.BoundArtwork(url, art, CornerRadius4.All(Radii.Control), decodePx);
     }
 
     // ── title · metadata ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -376,7 +355,21 @@ internal static class ClassicTrackTable
         var runs = BoundTitleRuns(r, inlineVideo: !classic, weight);
         Element[] column;
         if (classic) column = [BoundClassicTitleLine(r, runs, setArtist, weight)];
-        else column = [runs[0], runs[1], BoundMetadataLine(r, setArtist, setAlbum, durationInline: !RowMetrics.ShowDuration(in set))];
+        else column =
+        [
+            // The title (or its marquee) with Local Files' session mark after it ("New", "Moved", #240 S5; mounted only on a marked row).
+            new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
+                // A Spotify song a file in the music folders is linked to wears the file mark after its title ("Your files and Spotify").
+                Children =
+                [
+                    new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [runs[0], runs[1]] }, CommonLocalFiles.RowTag(r),
+                    CommonLocalFiles.LinkedFileMark(r, ClassicTrackRowLayout.FilmGlyphSize, Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : Tok.TextTertiary)),
+                ],
+            },
+            BoundMetadataLine(r, setArtist, setAlbum, durationInline: !RowMetrics.ShowDuration(in set)),
+        ];
         var titleCol = new BoxEl
         {
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
@@ -411,7 +404,8 @@ internal static class ClassicTrackTable
             Visible = durationInline ? (Prop<bool>)true : Prop.Of(() =>
             {
                 var p = r.P;
-                return RowCellRules.ShowMeta(false, Track.ArtistInTitle(in p, setArtist), Track.ShowAlbumInMeta(in p, false, setAlbum), Track.Badge(in p));
+                return RowCellRules.ShowMeta(false, Track.ArtistInTitle(in p, setArtist), Track.ShowAlbumInMeta(in p, false, setAlbum), Track.Badge(in p))
+                    || Track.Withheld(in p, Track.NowUnix);   // a withheld row's line states why
             }),
             Children =
             [
@@ -439,13 +433,13 @@ internal static class ClassicTrackTable
                     {
                         var p = r.P;
                         var d = p.Track.ForDisplay;
-                        return RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, d)) > 0;
+                        return Track.CreditSpeaks(d, ArtistCount(in p), HasContainer(in p, d));
                     }),
                     OnSpanClick = index =>
                     {
                         var p = r.Presentation.Peek();
                         var d = p.Track.ForDisplay;
-                        int target = RowCellRules.LinkTarget(index, ArtistCount(in p), HasContainer(in p, d));
+                        int target = RowCellRules.LinkTarget(index - Track.CreditLeadSpans(d, ArtistCount(in p), HasContainer(in p, d)), ArtistCount(in p), HasContainer(in p, d));
                         if (target >= 0) Track.GoToArtistAt(d, target);
                         else if (target == RowCellRules.Container) Track.GoToContainer(d);
                     },
@@ -454,7 +448,7 @@ internal static class ClassicTrackTable
                 {
                     var p = r.P;
                     var d = p.Track.ForDisplay;
-                    bool lead = RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, d)) > 0;
+                    bool lead = Track.CreditSpeaks(d, ArtistCount(in p), HasContainer(in p, d));
                     string duration = LaneLabel(in p, Track.NowUnix);
                     return lead ? ClassicTrackRowLayout.InlineDurationLead + duration : duration;
                 }))
@@ -538,7 +532,8 @@ internal static class ClassicTrackTable
         {
             Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S,
             ClipToBounds = true,
-            Children = [lead, badge],
+            // A Spotify song a file in the music folders is linked to wears the file mark, trailing as the EXPLICIT mark does ("Your files and Spotify").
+            Children = [lead, CommonLocalFiles.RowTag(r), CommonLocalFiles.LinkedFileMark(r, ClassicTrackRowLayout.FilmGlyphSize, Ink(static () => Tok.TextTertiary)), badge],
         };
     }
 
@@ -557,7 +552,7 @@ internal static class ClassicTrackTable
             var p = r.P;
             var d = p.Track.ForDisplay;
             ColorF ink = classic && p.State.IsNow ? Tok.AccentTextPrimary : Tok.TextSecondary;
-            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, ink);
+            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, ink, withNote: false);
             return buffer.Current;
         }))
         {
@@ -728,21 +723,8 @@ internal static class ClassicTrackTable
 
     // ── span fills (the SpanBuffer twins of BuildLinkSpans / BuildClassicSpans) ──────────────────────────────────────
 
-    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink = default)
-    {
-        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
-        for (int i = 0; i < artistCount; i++)
-        {
-            if (i > 0) b.Add(new TextSpan(", ", Color: ink));
-            var (name, link) = Track.ArtistAt(t, i);
-            b.Add(new TextSpan(name, Color: ink, IsLink: link));
-        }
-        if (container.Name is { Length: > 0 })
-        {
-            if (artistCount > 0) b.Add(new TextSpan(" · ", Color: ink));
-            b.Add(new TextSpan(container.Name, Color: ink, IsLink: container.Uri.IsValid));
-        }
-    }
+    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink = default, bool withNote = true)
+        => Track.FillCreditSpans(b, t, artistCount, container, " · ", ink, withNote);
 
     static void FillClassicSpans(SpanBuffer b, Track t, int artistCount, bool showVideo, ushort weight, ColorF primary, ColorF secondary,
                                  ColorF tertiary)

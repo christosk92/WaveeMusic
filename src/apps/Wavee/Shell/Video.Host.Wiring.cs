@@ -14,7 +14,7 @@
 // WHAT THIS FILE IS. The five places the placement machine (`Video.State`, this class) and the decode host
 // (`Playback.Video`) meet:
 //   1. `Install` — the composition root's one call: the resolver tiers, the demotion handler, the engine's log sink,
-//      the local-attachment roster, the persisted preferred placement.
+//      the local-linked video linked-video list, the persisted preferred placement.
 //   2. `PlacementPost` — what `State.Commit` tells the reducer (G-141). The reducer's `VideoWanted` is the INTENT, sticky
 //      across rows with no video (so the next row with one opens straight on the video host), and every ACTIVATION is
 //      re-posted (so a lit badge's click on a row already playing as audio swaps it to video).
@@ -46,13 +46,12 @@ public static partial class Video
     /// <summary>THE composition call (`App.cs`, after <c>Playback.Boot()</c> and before <c>Shell.InstallUi()</c>). Idempotent.</summary>
     public static void Install()
     {
-        Overrides.Attach(Platform.Settings);
-        Overrides.FakeClip = Platform.Args.FakeVideo;   // --fake --fake-video: in memory only (never in the roster, so never persisted)
-        Overrides.BrokenLink -= OnBrokenLink;
-        Overrides.BrokenLink += OnBrokenLink;
+        LinkedVideos.FakeClip = Platform.Args.FakeVideo;   // --fake --fake-video: in memory only (never linked, so never persisted)
+        LinkedVideos.BrokenLink -= OnBrokenLink;
+        LinkedVideos.BrokenLink += OnBrokenLink;
         Playback.Video.InstallLog();   // before any warm-up, so its `[video.native]` lines land in the app's log
         Hdcp.Install();                // before the window exists: its first monitor edge (the swapchain's) is the guard's first check
-        Playback.Video.OnOverrideFailed = OnOverrideFailed;
+        Playback.Video.OnLinkedVideoFailed = OnLinkedVideoFailed;
         Playback.Video.InstallResolver();   // IN FRONT of the resolver installed before (the modules' tier), never replacing it
         Playback.OnVideoIntent = OnIntent;
         var s = State.Surface.Peek();
@@ -79,17 +78,17 @@ public static partial class Video
             Notify.Say(Loc.Get(DemotedToastKey), InfoBarSeverity.Warning, dedupeKey: "video.demoted");
     }
 
-    /// <summary>An attached file failed to open: skip it for the rest of the session, so the reducer's retry resolves
+    /// <summary>A linked video version failed to open: skip it for the rest of the session, so the reducer's retry resolves
     /// to the source's own video (or to audio). UI thread.</summary>
-    static void OnOverrideFailed(string playableUri, string sourceKey)
+    static void OnLinkedVideoFailed(string playableUri, string path)
     {
-        Overrides.Quarantined(playableUri, sourceKey);
-        Notify.Say(Loc.Get(Strings.VideoOverride.UnplayableToast), InfoBarSeverity.Warning, dedupeKey: "video.override.unplayable");
+        LinkedVideos.Quarantined(playableUri, path);
+        Notify.Say(Loc.Get(Strings.LinkedVideo.UnplayableToast), InfoBarSeverity.Warning, dedupeKey: "video.override.unplayable");
     }
 
-    /// <summary>Raised by the resolver's tier-1 walk on an api thread, at most once per session per uri.</summary>
+    /// <summary>Raised when a track's linked video file is found gone, at most once per session per track.</summary>
     static void OnBrokenLink(string playableUri)
-        => Playback.ToUi(static () => Notify.Say(Loc.Get(Strings.VideoOverride.MissingToast), InfoBarSeverity.Warning,
+        => Playback.ToUi(static () => Notify.Say(Loc.Get(Strings.LinkedVideo.MissingToast), InfoBarSeverity.Warning,
             dedupeKey: "video.override.missing"));
 
     /// <summary>G-150: where the user likes to watch survives a restart; whether it is on never does.</summary>

@@ -21,6 +21,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Theming;
 using Wavee.Theming;
+using Wavee.Theming.Colours;
 using WindowMaterial = FluentGpu.Pal.WindowMaterial;
 
 namespace Wavee.Themes.WinUi;
@@ -66,6 +67,7 @@ public sealed class WinUiStyle : IStyleLayer
     {
         Apply = ApplyMode.Transaction,
         Contexts = [SettingsSurfaces.TitleBarMenu],
+        SetByColours = ColourOverride.Material,
     };
 
     /// <summary><c>style.rowDensity</c>: Default or Compact (<see cref="WinUiDensityOption"/>). Transaction.</summary>
@@ -74,17 +76,19 @@ public sealed class WinUiStyle : IStyleLayer
     /// <summary><c>style.useWindowsAccent</c>: the OS accent ramp (on, the default) or the theme's own #0078d4 ramp. Live (colour only).</summary>
     public static ToggleOption UseWindowsAccentOption { get; } = new(
         "useWindowsAccent", Strings.Theme.Winui.Style.UseWindowsAccent, Strings.Theme.Winui.Style.UseWindowsAccentSub,
-        Strings.Theme.Winui.Options.Group.Window, Default: true);
+        Strings.Theme.Winui.Options.Group.Window, Default: true)
+    {
+        SetByColours = ColourOverride.Accent,
+    };
 
     // ── the definition ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
     // Everything but the accent and the material, built once. Declared before anything that reads it (static initialisers run in textual order).
     private static readonly ThemeDefinition s_base = BaseDefinition();
 
-    private static readonly object s_gate = new();
-    private static readonly Dictionary<DefinitionKey, ThemeDefinition> s_definitions = new();
+    private static readonly DefinitionMemo<DefinitionKey> s_definitions = new();
 
-    private readonly record struct DefinitionKey(WinUiBackdrop Backdrop, AccentRamp Accent);
+    private readonly record struct DefinitionKey(WinUiBackdrop Backdrop, AccentRamp Accent, ColourPair Colours);
 
     /// <inheritdoc />
     public string Id => LayerId;
@@ -93,28 +97,56 @@ public sealed class WinUiStyle : IStyleLayer
     public ThemeOptionSchema Options { get; } = ThemeOptionSchema.Of(BackdropOption, DensityOption, UseWindowsAccentOption);
 
     /// <inheritdoc />
-    public ThemeDefinition Definition(OptionValues style, AccentRamp osAccent)
+    public ThemeDefinition Definition(OptionValues style, in StyleInputs inputs)
     {
         ArgumentNullException.ThrowIfNull(style);
         var backdrop = style.Get(BackdropOption.Key);
-        var accent = WinUiAccent.RampFor(style.Get(UseWindowsAccentOption.Key), osAccent);
-        var key = new DefinitionKey(backdrop, accent);
-        lock (s_gate)
-        {
-            if (s_definitions.TryGetValue(key, out var memo)) return memo;
-            var material = MaterialOf(backdrop);
-            var definition = s_base with
-            {
-                Accent = accent,
-                Materials = new MaterialPolicy { Light = material, Dark = material },
-            };
-            s_definitions.Add(key, definition);
-            return definition;
-        }
+        var accent = WinUiAccent.RampFor(style.Get(UseWindowsAccentOption.Key), inputs.OsAccent);
+        // No colour set in either mode is the board's look: the key and the build are exactly today's.
+        ColourPair colours = inputs.Colours.Any ? inputs.Colours : ColourPair.None;
+        return s_definitions.Get(new DefinitionKey(backdrop, accent, colours), static key => Build(key));
     }
 
+    // A mode with a colour set (#184) draws on NO material (plan D5: an exact palette cannot be exact over the wallpaper's Mica) and takes the
+    // set's grounds: the engine's token set from the ladder (`ColourTokens.Apply`), then WinUI's own deltas over it (`Grounded`), the role table's
+    // grounds. A mode without one keeps the backdrop the option picks, so a mixed pair has a material per mode and the light/dark flip takes the
+    // theme transaction (`Appearance.Switch`). When the set owns the accent, the ramp carries each mode's ladder accent.
+    private static ThemeDefinition Build(DefinitionKey key)
+    {
+        var material = MaterialOf(key.Backdrop);
+        ColourPair c = key.Colours;
+        if (!c.Any)
+            return s_base with { Accent = key.Accent, Materials = new MaterialPolicy { Light = material, Dark = material } };
+
+        bool owns = c.OwnsAccent;
+        var wavee = Design.Definition;
+        WinUiGrounds dark = WinUiGrounds.Of(c.Dark, dark: true), light = WinUiGrounds.Of(c.Light, dark: false);
+        return s_base with
+        {
+            Dark = c.Dark is { } ld ? Grounded(ColourTokens.Apply(wavee.Dark, ld, owns), dark) : s_base.Dark,
+            Light = c.Light is { } ll ? Grounded(ColourTokens.Apply(wavee.Light, ll, owns), light) : s_base.Light,
+            Accent = ColourTokens.Ramp(c, key.Accent),
+            Materials = new MaterialPolicy
+            {
+                Light = c.Light is null ? material : WindowMaterial.None,
+                Dark = c.Dark is null ? material : WindowMaterial.None,
+            },
+            AppRoles = WinUiRoles.For(light, dark),
+        };
+    }
+
+    // WinUI's deltas over a token set: the window and the page base are the base (the chrome stands on it; the content layer is a step off
+    // it), the pane plate the Mica Alt tone, Text 3 WinUI's own.
+    private static TokenSet Grounded(TokenSet t, WinUiGrounds g) => t with
+    {
+        WindowBackground = g.Base,
+        FillSolidBase = g.Base,
+        FillSolidBaseAlt = g.BaseAlt,
+        TextTertiary = g.TextTertiary,
+    };
+
     /// <summary>The definition at the style's defaults (Mica, the Windows accent; with no OS ramp read, the theme's blue).</summary>
-    public static ThemeDefinition DefaultDefinition { get; } = new WinUiStyle().Definition(OptionValues.Empty, AccentRamp.FluentDefault);
+    public static ThemeDefinition DefaultDefinition { get; } = new WinUiStyle().Definition(OptionValues.Empty, StyleInputs.Default);
 
     /// <summary>The window material of <paramref name="backdrop"/>.</summary>
     public static WindowMaterial MaterialOf(WinUiBackdrop backdrop) => backdrop switch
@@ -130,20 +162,8 @@ public sealed class WinUiStyle : IStyleLayer
         var wavee = Design.Definition;
         return wavee with
         {
-            Dark = wavee.Dark with
-            {
-                WindowBackground = WinUiTokens.DarkBase,
-                FillSolidBase = WinUiTokens.DarkBase,
-                FillSolidBaseAlt = WinUiTokens.DarkBaseAlt,
-                TextTertiary = WinUiTokens.DarkTextTertiary,
-            },
-            Light = wavee.Light with
-            {
-                WindowBackground = WinUiTokens.LightBase,
-                FillSolidBase = WinUiTokens.LightBase,
-                FillSolidBaseAlt = WinUiTokens.LightBaseAlt,
-                TextTertiary = WinUiTokens.LightTextTertiary,
-            },
+            Dark = Grounded(wavee.Dark, WinUiGrounds.DefaultDark),
+            Light = Grounded(wavee.Light, WinUiGrounds.DefaultLight),
             Fonts = new FontSet(WinUiRoles.TextFaceChain, wavee.Fonts.Icon),
             Controls = WinUiControls.Table,
             Accent = WinUiAccent.Default,

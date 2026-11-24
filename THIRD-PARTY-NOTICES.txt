@@ -12,6 +12,16 @@ Generated 2026-10-04 by ops/build/generate-third-party-notices.ps1.
 
 -------------------------------------------------------------------------------
 
+Catppuccin palette  1.8.0 (colour values, generated from palette.json)
+  license: MIT
+  url:     https://github.com/catppuccin/palette
+  note:    The Latte, Frappé, Macchiato and Mocha colour sets in Settings > Appearance > Colours (src/apps/Wavee/Theming/Colours/ColourCatalog.Data.cs). Copyright (c) 2021 Catppuccin.
+
+Dracula  colour values (from the Dracula theme's README)
+  license: MIT
+  url:     https://github.com/dracula/dracula-theme
+  note:    The Dracula colour set in Settings > Appearance > Colours (src/apps/Wavee/Theming/Colours/ColourCatalog.Data.cs). Copyright (c) 2023 Dracula Theme.
+
 Google.Protobuf  3.35.0
   license: BSD-3-Clause
   authors: Google Inc.
@@ -22,6 +32,11 @@ Grpc.Tools  2.81.0
   authors: The gRPC Authors
   url:     https://github.com/grpc/grpc
   note:    build-time (not redistributed as a binary; governs generated code)
+
+Gruvbox  colour values (from colors/gruvbox.vim)
+  license: MIT/X11
+  url:     https://github.com/morhetz/gruvbox
+  note:    The Gruvbox Light and Dark colour sets in Settings > Appearance > Colours (src/apps/Wavee/Theming/Colours/ColourCatalog.Data.cs). Author: morhetz (gruvbox.vim header).
 
 libFLAC  algorithms followed, not vendored
   license: BSD-3-Clause
@@ -43,10 +58,15 @@ Microsoft.UI.Reactor (Element/Component/hooks model + the pure-C# Yoga flexbox p
   url:     https://github.com/microsoft/microsoft-ui-reactor
   note:    FluentGpu's programming model (immutable Element records, Component, hooks) and its layout engine derive from Microsoft.UI.Reactor -- the original programming model (Element/Component/hooks) and the pure-C# Yoga flexbox port. Copyright (c) Microsoft Corporation.
 
-NLayer  1.15.0
+NLayer  3.0.1 + local fixes (vendored source: src/apps/vendor/NLayer, see its README.md)
   license: MIT
   authors: Mark Heath, Andrew Ward
   url:     https://github.com/naudio/NLayer
+
+Nord  colour values (from src/nord.css)
+  license: MIT
+  url:     https://github.com/nordtheme/nord
+  note:    The Nord Snow Storm and Polar Night colour sets in Settings > Appearance > Colours (src/apps/Wavee/Theming/Colours/ColourCatalog.Data.cs). Copyright (c) 2016-present Sven Greb.
 
 ONNX Runtime  1.30.0
   license: MIT
@@ -82,6 +102,11 @@ stb_vorbis  1.22 (algorithms transliterated, not vendored)
   license: MIT (dual-licensed MIT or public domain; used under MIT)
   url:     https://github.com/nothings/stb
   note:    Wavee's Ogg Vorbis decoder (src/apps/Wavee/Playback/Playback.Audio.Vorbis.cs) transliterates parts of stb_vorbis.c where the Vorbis I specification leaves the implementation open. Copyright (c) 2017 Sean Barrett.
+
+System.IO.Hashing  10.0.1
+  license: MIT
+  authors: Microsoft
+  url:     https://dot.net/
 
 System.Security.Cryptography.ProtectedData  9.0.0
   license: MIT

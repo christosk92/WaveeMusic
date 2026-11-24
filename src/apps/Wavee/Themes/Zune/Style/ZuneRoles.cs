@@ -101,9 +101,6 @@ public static class ZuneTokens
     public const float TrackA = 0.12f;
     /// <summary>A field's rule and the search pill's ring at rest: 18 % of the ink (Z-Part-TitleBar, Z-Dialogs).</summary>
     public const float FieldRuleA = 0.18f;
-
-    /// <summary>The ink of <paramref name="kind"/>.</summary>
-    public static ColorF InkOf(ThemeKind kind) => kind == ThemeKind.Light ? LightInk : DarkInk;
 }
 
 /// <summary>The roles of the Zune style.</summary>
@@ -123,7 +120,6 @@ public static class ZuneRoles
     private static readonly CaseRoles s_case = Case();
     private static readonly OnMediaLadder s_onMedia = OnMedia();
     private static readonly StageArmTable s_stageArm = StageArm();
-    private static readonly WashRoles s_wash = Wash();
     private static readonly LyricsInkRoles s_lyrics = Lyrics();
 
     /// <summary>Zune's table at its defaults: the pink accent, big numerals on.</summary>
@@ -132,17 +128,22 @@ public static class ZuneRoles
     /// <summary>The type roles with big numerals on (the table <see cref="TypeRoles.WithBigNumerals"/> starts from).</summary>
     public static TypeRoles TypeTable => s_type;
 
-    /// <summary>The table for an accent and the numerals option. <paramref name="followsWindows"/> reads the live accent tokens (the OS ramp the
-    /// definition carries) instead of the pair. Pure: equal inputs build equal tables.</summary>
-    public static WaveeStyleRoles For(ZuneAccentPair accent, bool followsWindows, bool bigNumerals) => new(
+    /// <summary>The table for an accent and the numerals option on the board's grounds.</summary>
+    public static WaveeStyleRoles For(ZuneAccentPair accent, bool followsWindows, bool bigNumerals)
+        => For(accent, followsWindows, bigNumerals, ZuneGrounds.DefaultLight, ZuneGrounds.DefaultDark);
+
+    /// <summary>The table for an accent, the numerals option and the grounds of each mode (the board's, or a user's colour set, #184).
+    /// <paramref name="followsWindows"/> reads the live accent tokens (the OS ramp, or a colour set's ramp, that the definition carries)
+    /// instead of the pair. Pure: equal inputs build equal tables.</summary>
+    public static WaveeStyleRoles For(ZuneAccentPair accent, bool followsWindows, bool bigNumerals, ZuneGrounds light, ZuneGrounds dark) => new(
         Type: s_type.WithBigNumerals(bigNumerals),
         Ink: Ink(accent, followsWindows),
-        Layer: Layer(accent, followsWindows),
+        Layer: Layer(accent, followsWindows, light, dark),
         Shape: s_shape,
         Space: s_space,
         OnMedia: s_onMedia,
         StageArm: s_stageArm,
-        Wash: s_wash,
+        Wash: Wash(light, dark),
         Lyrics: s_lyrics,
         Motion: s_motion,
         Case: s_case)
@@ -277,14 +278,8 @@ public static class ZuneRoles
         return new InkRoles(AccentAction: fill, AccentSelection: fill, AccentDecor: ink, PremiumText: ink, DataDot: ColorScience.DataDotInk);
     }
 
-    private static ColorRole Ground => ColorRole.Pair(light: ZuneTokens.LightGround, dark: ZuneTokens.DarkGround);
-    private static ColorRole Well => ColorRole.Pair(light: ZuneTokens.LightWell, dark: ZuneTokens.DarkWell);
-    private static ColorRole Panel => ColorRole.Pair(light: ZuneTokens.LightPanel, dark: ZuneTokens.DarkPanel);
-    private static ColorRole Raised => ColorRole.Pair(light: ZuneTokens.LightRaised, dark: ZuneTokens.DarkRaised);
-
-    private static ColorF InkAt(ThemeKind kind, float a) => ZuneTokens.InkOf(kind) with { A = a };
-
-    private static ColorRole InkWash(float a) => ColorRole.Pair(light: InkAt(ThemeKind.Light, a), dark: InkAt(ThemeKind.Dark, a));
+    private static ColorRole InkWash(ZuneGrounds light, ZuneGrounds dark, float a)
+        => ColorRole.Pair(light: light.Ink with { A = a }, dark: dark.Ink with { A = a });
 
     private static ColorRole Over(ColorRole top, ColorRole under) => ColorRole.Pair(
         light: ColorContrast.Over(top.Resolve(ThemeKind.Light), under.Resolve(ThemeKind.Light)),
@@ -292,28 +287,33 @@ public static class ZuneRoles
 
     // Flat and opaque: every band of the frame is the ground (no material rungs, no content step), the bar is the well, a floating pane
     // is the panel and floating chrome the raised plate. Rows carry no zebra; hover is the 5 % ink wash, selection the 12 % accent wash.
-    private static LayerRoles Layer(ZuneAccentPair accent, bool followsWindows)
+    private static LayerRoles Layer(ZuneAccentPair accent, bool followsWindows, ZuneGrounds light, ZuneGrounds dark)
     {
-        var hover = InkWash(ZuneTokens.HoverA);
-        var pressed = InkWash(ZuneTokens.PressedA);
+        var ground = ColorRole.Pair(light: light.Ground, dark: dark.Ground);
+        var well = ColorRole.Pair(light: light.Well, dark: dark.Well);
+        var panel = ColorRole.Pair(light: light.Panel, dark: dark.Panel);
+        var raised = ColorRole.Pair(light: light.Raised, dark: dark.Raised);
+        var hover = InkWash(light, dark, ZuneTokens.HoverA);
+        var pressed = InkWash(light, dark, ZuneTokens.PressedA);
+        ColorF inkLight = light.Ink, inkDark = dark.Ink;
         var selected = AccentWash(accent, followsWindows);
         return new LayerRoles(
-            Toolbar: Ground, Sidebar: Ground, PlayerBar: Well, FileArea: Ground, Content: Ground, ContentAlt: Well,
-            ShellGround: Ground, ContentSurface: Ground, ContentLayer: Ground, FloatingChrome: Raised, FloatingPane: Panel,
+            Toolbar: ground, Sidebar: ground, PlayerBar: well, FileArea: ground, Content: ground, ContentAlt: well,
+            ShellGround: ground, ContentSurface: ground, ContentLayer: ground, FloatingChrome: raised, FloatingPane: panel,
             RowZebra: ColorRole.Fixed(ColorF.Transparent),
             RowHover: hover, RowPressed: pressed, RowHoverZebra: hover, RowPressedZebra: pressed,
             SelectedRest: selected,
             SelectedHover: followsWindows
-                ? ColorRole.By(static k => ColorContrast.Over(InkAt(k, ZuneTokens.HoverA), Tok.AccentDefault with { A = ZuneTokens.SelectedAOf(k) }))
+                ? ColorRole.By(k => ColorContrast.Over((k == ThemeKind.Light ? inkLight : inkDark) with { A = ZuneTokens.HoverA }, Tok.AccentDefault with { A = ZuneTokens.SelectedAOf(k) }))
                 : Over(hover, selected),
             SelectedPressed: followsWindows
-                ? ColorRole.By(static k => ColorContrast.Over(InkAt(k, ZuneTokens.PressedA), Tok.AccentDefault with { A = ZuneTokens.SelectedAOf(k) }))
+                ? ColorRole.By(k => ColorContrast.Over((k == ThemeKind.Light ? inkLight : inkDark) with { A = ZuneTokens.PressedA }, Tok.AccentDefault with { A = ZuneTokens.SelectedAOf(k) }))
                 : Over(pressed, selected),
             ChromeHover: hover, ChromePressed: pressed,
             Badge: AccentRole(accent, followsWindows),
-            EventPlate: Panel,
-            EventHeroPlate: Well,
-            ArtPlaceholder: ColorRole.Pair(light: ZuneTokens.LightWell, dark: ZuneTokens.DarkPlaceholder));
+            EventPlate: panel,
+            EventHeroPlate: well,
+            ArtPlaceholder: ColorRole.Pair(light: light.Placeholder, dark: dark.Placeholder));
     }
 
     // ═════════════════════════════════════════════ ON MEDIA, STAGE, WASH, LYRICS ════════════════════════════════════════════
@@ -414,8 +414,8 @@ public static class ZuneRoles
                 new AccentLadder.Input(pageScheme is { } dp ? ColorScience.BackgroundDark(dp) : null, payloadAccent, definite),
                 null, ColorScience.BackgroundDark(ColorScience.Neutral), ColorScience.DarkFromPayload);
 
-    private static WashRoles Wash() => new(
-        NeutralGround: ColorRole.Pair(light: ZuneTokens.LightGround with { A = 0.03f }, dark: ZuneTokens.DarkGround with { A = 0.03f }),
+    private static WashRoles Wash(ZuneGrounds light, ZuneGrounds dark) => new(
+        NeutralGround: ColorRole.Pair(light: light.Ground with { A = 0.03f }, dark: dark.Ground with { A = 0.03f }),
         HeroAlpha: new ModePair<float>(0.055f, 0.10f),
         ShelfAlpha: new ModePair<float>(0.05f, 0.085f),
         HeroVeilPull: new ModePair<float>(0.16f, 0.24f),

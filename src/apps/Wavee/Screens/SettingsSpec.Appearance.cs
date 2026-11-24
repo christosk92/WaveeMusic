@@ -5,7 +5,10 @@
 // columns). Every write goes through the epoch it always bumped: marquee, fast navigation, the daylist clock, the Liked cover and the
 // list columns → `Prefs.Appearance`. A verb returns whether the PAGE must re-read.
 
+using FluentGpu.Dsl;
+using FluentGpu.Localization;
 using Wavee.Theming;
+using Wavee.Theming.Colours;
 using K = Wavee.SettingsRowKind;
 
 namespace Wavee;
@@ -52,6 +55,42 @@ public static partial class SettingsSpec
                 SettingsWriter.OfChoice("appearance.mode", SettingsVerbs.SetThemeMode), legacy: ["appMode"], glyph: "Sun",
                 captionKey: Strings.Settings.Appearance.ThemeSub, value: s => (int)Appearance.ModeOf(s.Get(Platform.Keys.ThemeMode)),
                 choices: [Strings.Settings.Choice.System, Strings.Settings.Choice.Light, Strings.Settings.Choice.Dark], contexts: [SettingsSurfaces.ProfileMenu])),
+
+        // Colours (#184): one colour set for light mode and one for dark, app-wide (whichever theme is active), switched by the App mode above.
+        // Index 0 of each is the theme's own colours. While a set is active the accent can come from it; a family with named accents
+        // (Catppuccin's fourteen) offers them for the mode on screen.
+        Group("colours", Strings.Settings.Groups.Appearance.Colours, Strings.Settings.Appearance.ColoursSub,
+            Make("appearance.colours.light", K.Choice, Strings.Settings.Appearance.ColoursLight,
+                SettingsWriter.OfChoice("colours.light", i => SettingsVerbs.PickColours(ThemeKind.Light, i)), glyph: "Sun",
+                value: _ => SettingsVerbs.ColoursIndex(ThemeKind.Light), liveChoices: () => SettingsVerbs.ColoursChoices(ThemeKind.Light)),
+            // My own set (the last choice, "Custom"): its editor opens from this row while it is the pick.
+            Make("appearance.colours.custom.light", K.Action, Strings.Settings.Appearance.ColoursCustomEdit,
+                SettingsWriter.OfAction("colours.custom.light", static () => SettingsVerbs.EditCustomColours(ThemeKind.Light)), glyph: "Edit",
+                captionKey: Strings.Settings.Appearance.ColoursCustomEditSub, visible: static _ => ColourChoice.IsCustom(ThemeKind.Light)),
+            Make("appearance.colours.dark", K.Choice, Strings.Settings.Appearance.ColoursDark,
+                SettingsWriter.OfChoice("colours.dark", i => SettingsVerbs.PickColours(ThemeKind.Dark, i)), glyph: "Brush",
+                value: _ => SettingsVerbs.ColoursIndex(ThemeKind.Dark), liveChoices: () => SettingsVerbs.ColoursChoices(ThemeKind.Dark)),
+            Make("appearance.colours.custom.dark", K.Action, Strings.Settings.Appearance.ColoursCustomEdit,
+                SettingsWriter.OfAction("colours.custom.dark", static () => SettingsVerbs.EditCustomColours(ThemeKind.Dark)), glyph: "Edit",
+                captionKey: Strings.Settings.Appearance.ColoursCustomEditSub, visible: static _ => ColourChoice.IsCustom(ThemeKind.Dark)),
+            Make("appearance.colours.accent", K.Segmented, Strings.Settings.Appearance.ColoursAccent,
+                SettingsWriter.OfChoice("colours.accent", SettingsVerbs.SetColourAccent), glyph: "Design",
+                captionKey: Strings.Settings.Appearance.ColoursAccentSub, value: _ => (int)ColourChoice.AccentSource,
+                visible: static _ => ColourChoice.Current.Any,
+                choices: [Strings.Settings.Appearance.ColoursAccentTheme, Strings.Settings.Appearance.ColoursAccentPalette, Strings.Settings.Appearance.ColoursAccentOwn]),
+            Make("appearance.colours.accentOwn", K.Action, Strings.Settings.Appearance.ColoursAccentOwnPick,
+                SettingsWriter.OfAction("colours.accentOwn", static () => SettingsVerbs.ChooseOwnAccent()), glyph: "Design",
+                visible: static _ => ColourChoice.Current.Any && ColourChoice.AccentSource == AccentSource.Own),
+            Make("appearance.colours.accentPick", K.Choice, Strings.Settings.Appearance.ColoursAccentPick,
+                SettingsWriter.OfChoice("colours.accentPick", SettingsVerbs.PickNamedAccent), glyph: "Design",
+                value: _ => SettingsVerbs.NamedAccentIndex(), visible: static _ => SettingsVerbs.NamedAccentsShown(),
+                liveChoices: SettingsVerbs.NamedAccentChoices),
+            // Plan D4: off (the default) the window keeps the set's exact colours; on, the artwork tints it as the theme's own options say.
+            // Shown while the mode on screen has a set. The stage, its lyrics and the deck keep the cover's colours either way.
+            Make("appearance.colours.artwork", K.Toggle, Strings.Settings.Appearance.ColoursArtwork,
+                SettingsWriter.OfToggle("colours.artwork", SettingsVerbs.SetColourArtwork), glyph: "Picture",
+                captionKey: Strings.Settings.Appearance.ColoursArtworkSub, value: _ => ColourChoice.ArtworkOn,
+                visible: static _ => ColourChoice.SpecOf(Tok.Theme) is not null)),
 
         Group("sizeAndText", Strings.Settings.Groups.Appearance.SizeAndText, null,
             // A combo, not segments: thirteen items (Auto + twelve rungs). Index 0 is "Auto (N%)" for both Auto and Dense.
@@ -149,6 +188,101 @@ public static partial class SettingsVerbs
     {
         Appearance.SetMode((ThemeMode)Math.Clamp(mode, 0, 2));
         return true;
+    }
+
+    // ── Colours (#184) ───────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The colour set pick of <paramref name="kind"/>: index 0 the theme's own colours, index i the catalog's (i - 1)th set for that mode
+    /// (<see cref="ColourCatalog.For"/>). <see cref="ColourChoice.SetSpec"/> persists and applies it; an index no set has does nothing.</summary>
+    public static bool PickColours(ThemeKind kind, int index)
+    {
+        var specs = ColourCatalog.For(kind);
+        if (index < 0 || index > specs.Length + 1) return false;
+        return ColourChoice.SetSpec(kind, index == 0 ? null : index == specs.Length + 1 ? CustomColours.IdOf(kind) : specs[index - 1].Id);
+    }
+
+    /// <summary>The index of <paramref name="kind"/>'s stored set in <see cref="PickColours"/>' order (0: the theme's own colours).</summary>
+    public static int ColoursIndex(ThemeKind kind)
+    {
+        if (ColourChoice.IsCustom(kind)) return ColourCatalog.For(kind).Length + 1;
+        if (ColourChoice.SpecOf(kind) is not { } spec) return 0;
+        return ColourCatalog.For(kind).IndexOf(spec) + 1;
+    }
+
+    /// <summary>Where the accent comes from while a set is active: 0 the theme's, 1 the palette's, 2 my own (<see cref="AccentSource"/>). My own,
+    /// picked before any was chosen, starts as the set's accent, so the pick changes nothing until it is chosen.</summary>
+    public static bool SetColourAccent(int index)
+    {
+        if (index is < 0 or > 2) return false;
+        if (index == 2 && ColourChoice.OwnAccent is null && ColourChoice.SpecOf(Tok.Theme) is { } spec) ColourChoice.SetOwnAccent(spec.Seeds.Accent);
+        ColourChoice.SetAccentSource((AccentSource)index);
+        return true;
+    }
+
+    /// <summary>Opens the editor of <paramref name="kind"/>'s own set. The page re-reads after Apply through the colour epoch, not here.</summary>
+    public static bool EditCustomColours(ThemeKind kind)
+    {
+        ColourEditor.Open(SettingsContext.Overlay, kind);
+        return false;
+    }
+
+    /// <summary>Opens the editor of my own accent.</summary>
+    public static bool ChooseOwnAccent()
+    {
+        ColourEditor.OpenOwnAccent(SettingsContext.Overlay);
+        return false;
+    }
+
+    /// <summary>"Artwork colours" while a set is active (plan D4).</summary>
+    public static bool SetColourArtwork(bool on)
+    {
+        ColourChoice.SetArtwork(on);
+        return true;
+    }
+
+    /// <summary>The set on screen (the current mode's), or null.</summary>
+    static ColourSpec? SpecOnScreen() => ColourChoice.SpecOf(Tok.Theme);
+
+    /// <summary>True when the palette accent row shows: the accent comes from the palette and the set on screen names several.</summary>
+    public static bool NamedAccentsShown()
+        => ColourChoice.AccentSource == AccentSource.Palette && SpecOnScreen() is { Accents.IsDefaultOrEmpty: false };
+
+    /// <summary>The names of the on-screen set's accents (the family's own words, not localized).</summary>
+    public static IReadOnlyList<string> NamedAccentChoices()
+    {
+        if (SpecOnScreen() is not { } spec || spec.Accents.IsDefaultOrEmpty) return [];
+        var words = new string[spec.Accents.Length];
+        for (int i = 0; i < words.Length; i++) words[i] = spec.Accents[i].Name;
+        return words;
+    }
+
+    /// <summary>The index of the on-screen set's accent (its stored pick, else its default).</summary>
+    public static int NamedAccentIndex()
+    {
+        if (SpecOnScreen() is not { } spec || spec.Accents.IsDefaultOrEmpty) return -1;
+        string id = ColourChoice.NamedAccentOf(Tok.Theme) is { Length: > 0 } picked ? picked : spec.DefaultAccent ?? "";
+        for (int i = 0; i < spec.Accents.Length; i++)
+            if (string.Equals(spec.Accents[i].Id, id, StringComparison.Ordinal)) return i;
+        return -1;
+    }
+
+    /// <summary>Picks the on-screen set's accent at <paramref name="index"/> for the mode on screen.</summary>
+    public static bool PickNamedAccent(int index)
+    {
+        if (SpecOnScreen() is not { } spec || (uint)index >= (uint)spec.Accents.Length) return false;
+        ColourChoice.SetNamedAccent(Tok.Theme, spec.Accents[index].Id);
+        return true;
+    }
+
+    /// <summary>The words of <paramref name="kind"/>'s choices: "Theme default", then each set's family and name (proper nouns, not localized).</summary>
+    public static IReadOnlyList<string> ColoursChoices(ThemeKind kind)
+    {
+        var specs = ColourCatalog.For(kind);
+        var words = new string[specs.Length + 2];
+        words[0] = Loc.Get(Strings.Settings.Appearance.ColoursDefault);
+        for (int i = 0; i < specs.Length; i++) words[i + 1] = specs[i].DisplayName;
+        words[^1] = Loc.Get(Strings.Settings.Appearance.ColoursCustom);
+        return words;
     }
 
     /// <summary>The Zoom combo's pick: index 0 is "Auto (N%)" (mode = Auto, never Dense, applying the suggestion the row last

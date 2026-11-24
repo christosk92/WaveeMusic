@@ -25,6 +25,7 @@ using ShellPalette = FluentGpu.Dsl.ShellPalette;
 using ThemeKind = FluentGpu.Dsl.ThemeKind;
 using TokenSet = FluentGpu.Dsl.TokenSet;
 using Tok = FluentGpu.Dsl.Tok;
+using Wavee.Theming.Colours;
 
 namespace Wavee.Themes.Classic;
 
@@ -45,6 +46,17 @@ public static class ClassicRoles
     /// never names a theme and the first read of <c>R</c> cannot see an empty baseline.</summary>
     [ModuleInitializer]
     internal static void RegisterAsBaseline() => R.SetBaseline(Table);
+
+    /// <summary>The table with a user's colour set in either mode (#184): the layer and wash families take the set's rungs for a mode that has
+    /// one (the chrome ground is the set's well, the content surface its ground, the plates its raised plate, panel and placeholder) and keep
+    /// Classic's recipes for a mode that has none. Everything else reads the active definition's tokens and shell palette, which the style maps
+    /// from the set (<c>ColourTokens</c>), so it follows with no change here.</summary>
+    public static WaveeStyleRoles For(ColourLadder? light, ColourLadder? dark)
+        => light is null && dark is null ? Table : Table with { Layer = Layer(light, dark), Wash = Wash(light, dark) };
+
+    // A rung of the set of kind k, or Classic's recipe for a kind with no set.
+    private static ColorRole Rung(ColourLadder? light, ColourLadder? dark, Func<ColourLadder, ColorF> rung, Func<ThemeKind, ColorF> recipe)
+        => ColorRole.By(k => (k == ThemeKind.Light ? light : dark) is { } l ? rung(l) : recipe(k));
 
     private static TypeRoles Type()
     {
@@ -159,7 +171,27 @@ public static class ClassicRoles
 
     private static ColorF ContentSurfaceOf(ThemeKind k) => ColorScience.ContentSurface(SetOf(k), k);
 
-    private static LayerRoles Layer() => new(
+    private static LayerRoles Layer() => Layer(null, null);
+
+    private static LayerRoles Layer(ColourLadder? light, ColourLadder? dark) => light is null && dark is null ? BoardLayer() : BoardLayer() with
+    {
+        ShellGround = Rung(light, dark, static l => l.Well, ShellGroundOf),
+        ContentSurface = Rung(light, dark, static l => l.Ground, ContentSurfaceOf),
+        // Opaque: a set's content step is its ground over its well, which no white layer composites to.
+        ContentLayer = Rung(light, dark, static l => l.Ground, ColorScience.ContentLayer),
+        FloatingChrome = Rung(light, dark, static l => l.Well, ShellGroundOf),
+        FloatingPane = Rung(light, dark, static l => l.Ground, ContentSurfaceOf),
+        EventPlate = Rung(light, dark, static l => l.Raised, static k => k == ThemeKind.Dark ? EventPlateDark : Tok.FillCardSecondary),
+        EventHeroPlate = Rung(light, dark, static l => l.Panel, static k => k == ThemeKind.Dark ? EventHeroPlateDark : Tok.FillCardSecondary),
+        ArtPlaceholder = Rung(light, dark, static l => l.Placeholder, static k => k == ThemeKind.Dark ? ArtPlaceholderDark : ArtPlaceholderLight),
+    };
+
+    private static ColorF EventPlateDark => ColorF.FromRgba(0x1C, 0x1C, 0x1E);
+    private static ColorF EventHeroPlateDark => ColorF.FromRgba(0x1B, 0x1B, 0x1D);
+    private static ColorF ArtPlaceholderLight => ColorF.FromRgba(0xF2, 0xF2, 0xF2);
+    private static ColorF ArtPlaceholderDark => ColorF.FromRgba(0x2A, 0x2A, 0x2A);
+
+    private static LayerRoles BoardLayer() => new(
         // The translucent MUX rungs. The authenticated shell no longer PAINTS them (every chrome band is a paint-site omission over the
         // ground) but they stay published verbatim: the palette contrast gates measure the tint through them.
         Toolbar: ColorRole.By(static k => ShellOf(k).Toolbar),
@@ -191,10 +223,10 @@ public static class ClassicRoles
         ChromePressed: ColorRole.By(static _ => Tok.FillSubtleTertiary),
         Badge: ColorRole.By(static _ => Tok.AccentDefault),
         // The concert base fills that are NOT token swaps: a fixed near-black in dark, the card's secondary fill in light.
-        EventPlate: ColorRole.By(static k => k == ThemeKind.Dark ? ColorF.FromRgba(0x1C, 0x1C, 0x1E) : Tok.FillCardSecondary),
-        EventHeroPlate: ColorRole.By(static k => k == ThemeKind.Dark ? ColorF.FromRgba(0x1B, 0x1B, 0x1D) : Tok.FillCardSecondary),
+        EventPlate: ColorRole.By(static k => k == ThemeKind.Dark ? EventPlateDark : Tok.FillCardSecondary),
+        EventHeroPlate: ColorRole.By(static k => k == ThemeKind.Dark ? EventHeroPlateDark : Tok.FillCardSecondary),
         // Artwork is OPAQUE content: explicit opaque neutrals, never a translucent theme brush.
-        ArtPlaceholder: ColorRole.Pair(light: ColorF.FromRgba(0xF2, 0xF2, 0xF2), dark: ColorF.FromRgba(0x2A, 0x2A, 0x2A)));
+        ArtPlaceholder: ColorRole.Pair(light: ArtPlaceholderLight, dark: ArtPlaceholderDark));
 
     private static InkRoles Ink() => new(
         AccentAction: ColorRole.By(static _ => Tok.AccentDefault),
@@ -319,7 +351,14 @@ public static class ClassicRoles
 
     // DARK carries roughly TWICE the light strength (the same colour reads far weaker over the dark ground; the light ground has less headroom
     // before a wash turns into a smudge). Pairs are (light, dark).
-    private static WashRoles Wash() => new(
+    private static WashRoles Wash() => BoardWash();
+
+    private static WashRoles Wash(ColourLadder? light, ColourLadder? dark) => BoardWash() with
+    {
+        NeutralGround = Rung(light, dark, static l => l.Well with { A = 0.03f }, static k => ShellGroundOf(k) with { A = 0.03f }),
+    };
+
+    private static WashRoles BoardWash() => new(
         // Never Transparent: transparent is premultiplied BLACK, and cross-fading into or out of it drags the ramp toward black.
         NeutralGround: ColorRole.By(static k => ShellGroundOf(k) with { A = 0.03f }),
         HeroAlpha: new ModePair<float>(0.055f, 0.10f),

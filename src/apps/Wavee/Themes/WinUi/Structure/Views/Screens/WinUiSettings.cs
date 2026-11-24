@@ -60,9 +60,9 @@ internal static partial class WinUiSettings
         var results = s_resultsState.Value;
 
         // UNCONDITIONAL — above every branch (hook order).
-        hooks.UseEffect(() => (Action?)(static () => CloseVideoOverrideManager()), DepKey.Empty);
+        hooks.UseEffect(() => (Action?)(static () => CloseLinkedVideoManager()), DepKey.Empty);
         // The route is keep-alive: a PARKED page is not unmounted, so the same teardown rides the deactivation edge.
-        hooks.UseActivation(onDeactivated: static () => CloseVideoOverrideManager());
+        hooks.UseActivation(onDeactivated: static () => CloseLinkedVideoManager());
         // An emptied box (a clear, Escape, a link: the core clears it) leaves the results page. Auto-tracked: it re-runs on the query alone.
         hooks.UseEffect(() =>
         {
@@ -73,7 +73,7 @@ internal static partial class WinUiSettings
         string slug = props.Categories.IsDefaultOrEmpty ? "home" : props.Categories[category].Slug;
         bool showResults = results.Value && search.Active;
         bool playback = !showResults && slug == "playback";
-        hooks.UseEffect(() => { if (!playback) CloseVideoOverrideManager(); }, DepKey.From(playback ? 1 : 0));
+        hooks.UseEffect(() => { if (!playback) CloseLinkedVideoManager(); }, DepKey.From(playback ? 1 : 0));
 
         Element body;
         string view;

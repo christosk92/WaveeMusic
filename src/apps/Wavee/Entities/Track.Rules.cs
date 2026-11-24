@@ -669,11 +669,33 @@ public readonly partial struct Track
     /// artist runs ask this per row (Entities.cs: never per row per frame).</summary>
     public bool IsLocalItem => IsValid && Uri.Id.Form == EntityForm.Text && LocalTrackUri.Is(Uri.Text);
 
-    /// <summary>The artist a local item's uri names, or "" for any other row.</summary>
-    public string LocalArtist => IsLocalItem ? LocalTrackUri.NamesOf(Uri.Text).Artist : "";
+    /// <summary>The artist a local item's uri names, or a local file's artist tag (<see cref="Playlist.LocalNamesOf"/>), or "" for any
+    /// other row.</summary>
+    public string LocalArtist => IsLocalItem ? LocalTrackUri.NamesOf(Uri.Text).Artist : IsLocal ? Playlist.LocalNamesOf(Uri.Text).Artist : "";
 
-    /// <summary>How many artists the row draws: its billed artists, or the one a local item's uri names.</summary>
-    public int DisplayArtistCount => ArtistSlots.Length is > 0 and var n ? n : LocalArtist.Length > 0 ? 1 : 0;
+    /// <summary>A local row (a <c>wavee:local:file:</c> track, or a playlist's <c>spotify:local:</c> item, matched or not): its credit is a
+    /// name, never an artist row.</summary>
+    public bool IsLocalRow => IsLocal || IsLocalItem;
+
+    /// <summary>THE credit a local row SHOWS: its tagged or uri-named artist, or "Unknown artist" when it names none; "" for any other row.
+    /// For a file in the music folders the name comes from its face (<c>LocalLibrary.Restate</c>), which applies <see cref="LocalNames.Display"/>
+    /// first: an untagged "Artist - Title" file shows "Title" by "Artist" (the split changes the title too, so it is made where the face is,
+    /// title and artist together), and an accepted "Your files and Spotify" match shows Spotify's names. Only what is still unnamed after that
+    /// falls back here.
+    /// Display only: the stored artist stays empty, because a <c>spotify:local:</c> uri, its match (<c>LocalMatch</c>) and the Connect and
+    /// telemetry bodies (<c>Spotify.Egress</c>) need the real, empty name; they read <see cref="LocalArtist"/> or the names map, never this.
+    /// Not a link (there is no artist page behind it).</summary>
+    public string LocalCredit => !IsLocalRow ? "" : LocalArtist is { Length: > 0 } named ? named : Loc.Get(Strings.Track.UnknownArtist);
+
+    /// <summary>How many artists the row draws: its billed artists, or the one credit a local row shows (<see cref="LocalCredit"/>).</summary>
+    public int DisplayArtistCount => ArtistSlots.Length is > 0 and var n ? n : IsLocalRow ? 1 : 0;
+
+    /// <summary>The flat credit line a surface that draws one string shows (the queue, the video tab, the announce, menus): the commit-time
+    /// <see cref="ArtistLineId"/>, else a local row's <see cref="LocalCredit"/>. Resolves a string: never per row per frame.</summary>
+    public string CreditLine => Entities.Strings.Resolve(ArtistLineId) is { Length: > 0 } line ? line : LocalCredit;
+
+    /// <summary>The first credited artist's name, else a local row's <see cref="LocalCredit"/>: the OS media card and the tray show one name.</summary>
+    public string FirstCreditName => ArtistSlots is { Length: > 0 } slots ? new Artist(slots[0]).Name : LocalCredit;
 
     /// <summary>Does this row show the versions chevron (<see cref="TableRules.HasVersionsOf"/>)? Subscribes the versions
     /// relation's own <c>Changed</c>, so a bound read re-resolves when a drawer's fetch lands an alternate; the video
@@ -683,9 +705,16 @@ public readonly partial struct Track
         if (!IsValid) return false;
         var versions = Entities.Current.Edges.TrackVersions;
         _ = versions.Changed.Value;
+        // "Your files and Spotify": a file whose match was accepted has its Spotify version to show, and that Spotify song its files.
+        int linked = IsLocal ? (LocalLink.HasLink(Uri.Text) ? 1 : 0) : LocalLink.FilesFor(Uri.Text).Count;
         return TableRules.HasVersionsOf(Uri.Kind == EntityKind.Track, HasVideo, VideoCounterpart.IsValid,
-                                        versions.Targets(Slot).Length);
+                                        versions.Targets(Slot).Length + linked);
     }
+
+    /// <summary>"Your files and Spotify": a Spotify song a file in the music folders is linked to (an accepted match), read backwards. Its row
+    /// wears the file mark at rest (distinct from the "on this PC" ring, which is Spotify's own audio cached). Tracked: reads
+    /// <see cref="LocalLink.Version"/>.</summary>
+    public bool HasLinkedFile => IsValid && !IsLocal && LocalLink.FilesFor(Uri.Text).Count > 0;
 
     // ══ 5b. FOR DISPLAY — the relink redirection ═════════════════════════════════════════════════════════════════════
 
@@ -1030,10 +1059,19 @@ public readonly partial struct Track
     /// C-Unavailable-Compact). <paramref name="NotAvailable"/>: ruled unavailable with no release instant (<see cref="Track.Unplayable()"/>: withdrawn,
     /// region-locked, gone, "isn’t available in your country"); <paramref name="NotYetOut"/>: ruled unavailable until a release instant still ahead
     /// ("isn’t out yet"). A row is counted once, under the first that holds.</summary>
-    public readonly record struct UnavailableTally(int NotAvailable = 0, int NotYetOut = 0, int LocalFiles = 0)
+    public readonly record struct UnavailableTally(int NotAvailable = 0, int NotYetOut = 0, int LocalFiles = 0, int Missing = 0, int Format = 0, int Offline = 0)
     {
         /// <summary>Every row the filter would hide.</summary>
-        public int Total => NotAvailable + NotYetOut + LocalFiles;
+        public int Total => NotAvailable + NotYetOut + LocalFiles + Missing + Format + Offline;
+
+        /// <summary>This tally with one more indexed local file that cannot be played, by its cause (#240 S6: missing, a format Wavee cannot play
+        /// yet, its drive away). Its reasons are local, never "isn’t available in your country".</summary>
+        public UnavailableTally WithLocal(LocalFilesList.Cause cause) => cause switch
+        {
+            LocalFilesList.Cause.Missing => this with { Missing = Missing + 1 },
+            LocalFilesList.Cause.Offline => this with { Offline = Offline + 1 },
+            _ => this with { Format = Format + 1 },
+        };
 
         /// <summary>This tally with one more row of the given verdict (a playable or unruled row adds nothing). A playlist's local file
         /// (<paramref name="local"/>) is its own reason ("are local files"), never "isn’t available in your country".</summary>

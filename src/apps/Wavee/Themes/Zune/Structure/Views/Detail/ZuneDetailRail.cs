@@ -138,6 +138,8 @@ internal static class ZuneDetailRail
         var status = new List<Element>(2);
         if (!stacked && id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) status.Add(K.LateRow("rail:daylist", pulse()));
         if (!stacked && id.ChartNewEntries > 0 && slots.Chart is { } chart) status.Add(K.LateRow("rail:chart", chart()));
+        // The page's status while it has one (Local Files' first scan, #240 S4), leaving on the swap fade.
+        if (slots.Status is { } line) status.Add(K.LateRow("rail:status", line(w, false)) with { Exit = ZuneMotion.SwapFade });
         bool statusAfter = !stacked && shortWindow;
         if (!statusAfter) kids.AddRange(status);
         // The ring row eases its height (a Short window's play and saved can wrap it onto a second line), so the rows under it glide. Across the page

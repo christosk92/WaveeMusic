@@ -931,8 +931,47 @@ public static partial class Playback
         uint flags = t.Flags[row.Slot];
         bool local = (flags & (uint)TrackFlags.Local) != 0 || t.Id[row.Slot].Provider == EntityProvider.Local;
         // A self-contained music video has its own manifest id and may carry no association flag (the deck's facts read the same).
-        bool hasVideo = (flags & (uint)TrackFlags.VideoMask) != 0 || !t.VideoGid[row.Slot].IsEmpty;
+        // …and a track a local video file is linked to as its version plays that file (Video.LocalVideos).
+        bool hasVideo = (flags & (uint)TrackFlags.VideoMask) != 0 || !t.VideoGid[row.Slot].IsEmpty || Video.LocalVideos.IsLinked(t.Id[row.Slot]);
         return MediaSwitch.KindOf(videoWanted && hasVideo, local);
+    }
+
+    /// <summary>Is <paramref name="row"/> a local VIDEO file (<see cref="TrackFlags.LocalVideoFile"/>: its own file has a picture)? Such a row
+    /// asks for its picture whatever the wish: <see cref="DeckKind"/> loads it on the video host and the deck turns the surface on for it
+    /// (<see cref="LocalVideoWish"/>). The user's "audio only" holds while the row plays (the wish then reads false); the next load of a
+    /// local video asks for its picture again.</summary>
+    public static bool IsLocalVideoRow(EntityRef row)
+    {
+        if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null) return false;
+        TrackTable t = Entities.Current.Tracks;
+        if ((uint)row.Slot >= (uint)t.Count) return false;
+        // …and a Spotify track whose chosen default version is a video of mine ("Play by default": LocalLink.PlaysAsVideo).
+        return (t.Flags[row.Slot] & (uint)TrackFlags.LocalVideoFile) != 0 || LocalLink.PlaysAsVideo(t.Id[row.Slot]);
+    }
+
+    /// <summary>The kind a row goes on the deck in: <see cref="KindOfRow"/> under the wish the deck will hold for it. A local video file
+    /// is wanted as video (the deck turns the wish on as it lands); while the wish is on only for a local video
+    /// (<see cref="State.VideoByLocal"/>) any other row reads it off, as it will once it lands. Every load and every next-row arm reads this,
+    /// so a prepared splice never disagrees with the load that follows.</summary>
+    static PlayableKind DeckKind(in State s, EntityRef row)
+        => KindOfRow(row, IsLocalVideoRow(row) || (s.VideoWanted && !s.VideoByLocal));
+
+    /// <summary>A row the user chose or the queue reached is on the deck (a Claim or an Advance): a local video file turns the video mode on
+    /// for itself (the surface opens at the preferred placement, as a "watch" does) when nothing had it on; leaving local videos turns
+    /// it off again when they were what turned it on, so the songs after one play as they did before it. A wish the user set is never
+    /// touched.</summary>
+    static void LocalVideoWish(ref State s, ref Effects fx)
+    {
+        if (IsLocalVideoRow(s.Current))
+        {
+            if (s.VideoWanted || s.Kind != PlayableKind.Video) return;
+            VideoMode(ref s, ref fx, on: true);
+            s.VideoByLocal = true;
+        }
+        else if (s.VideoByLocal)
+        {
+            VideoMode(ref s, ref fx, on: false);
+        }
     }
 
     // ── 4b. which rows the deck may land on ────────────────────────────────────────────────────────────────────────
@@ -988,15 +1027,17 @@ public static partial class Playback
 
     /// <summary>Re-arm the pump's idea of the next row. Called on every load, on the endgame signal and whenever the
     /// queue, the shuffle or the repeat mode may have changed what comes next. Idempotent: the same row in the same arm
-    /// state emits nothing. A spliceable next row (audio after audio) is PREFETCHED until the endgame opens, then
-    /// PREPARED; a row that stops being next cancels the prepared slot.</summary>
+    /// state emits nothing. A spliceable next row (both sides on the audio host: Spotify audio or a local file,
+    /// <see cref="MediaSwitch.AllowCrossfade"/>) is PREFETCHED until the endgame opens, then PREPARED; a row that stops
+    /// being next cancels the prepared slot.</summary>
     static void ArmNext(ref State s, ref Effects fx)
     {
         QueueCursor nextCursor = QueueCursor.None;
         EntityRef next = s.RoutesLocal && s.HasCurrent && s.Phase is Phase.Loading or Phase.Playing or Phase.Paused
             ? NaturalNext(in s, out nextCursor)
             : default;
-        EntityId id = !next.IsNone && s.Kind == PlayableKind.Audio && GatedKind(in s, next, KindOfRow(next, s.VideoWanted)) == PlayableKind.Audio
+        PlayableKind nextKind = next.IsNone ? PlayableKind.Audio : GatedKind(in s, next, DeckKind(in s, next));
+        EntityId id = !next.IsNone && MediaSwitch.AllowCrossfade(s.Kind, nextKind)
             ? next.Id
             : default;
         // The row after the next one is warmed too, forward only (a wrap row's successor is never past the deck row).
@@ -1010,7 +1051,7 @@ public static partial class Playback
             if (at >= 0 && at != s.Cursor.Index)
             {
                 EntityRef row = Queue.RefAt(at);
-                if (GatedKind(in s, row, KindOfRow(row, s.VideoWanted)) == PlayableKind.Audio) { next2 = row; id2 = row.Id; }
+                if (MediaSwitch.AllowCrossfade(nextKind, GatedKind(in s, row, DeckKind(in s, row)))) { next2 = row; id2 = row.Id; }
             }
         }
         // A parked deck (a restore, a stop) warms what follows it but prepares nothing: there is no voice to join.
@@ -1045,6 +1086,7 @@ public static partial class Playback
         fx.PrepareNext = true;
         fx.NextRow = next;
         fx.NextId = id;
+        fx.NextKind = nextKind;
     }
 
     /// <summary>The pump dropped the join it had scheduled for the prepared row — a seek moved the playhead out from under the
@@ -1208,7 +1250,8 @@ public static partial class Playback
         EntityRef next = NaturalNext(in s, out QueueCursor cursor);
         // The joined row is a repeat-context wrap: the rows after it become the next lap (Advance's rule).
         if (!next.IsNone && s.Repeat == RepeatMode.Context && cursor.Index <= s.Cursor.Index) fx.Lap = true;
-        if (next.IsNone || !next.Id.Equals(i.Id) || GatedKind(in s, next, KindOfRow(next, s.VideoWanted)) != PlayableKind.Audio)
+        PlayableKind nextKind = next.IsNone ? PlayableKind.Audio : GatedKind(in s, next, DeckKind(in s, next));
+        if (next.IsNone || !next.Id.Equals(i.Id) || !MediaSwitch.AllowCrossfade(s.Kind, nextKind))
         {
             // The listener hears a row the queue no longer puts next (an edit, a shuffle or a repeat change raced the
             // prepare). Hard-cut to the truth: the Load replaces the joined voice.
@@ -1220,7 +1263,7 @@ public static partial class Playback
         uint from = s.LoadEpoch;
         s.HasBeenPlayingForMs += Math.Max(0, i.NowMs - s.PosQpc);
         ReportEnd(ref s, ref fx, PlayReason.TrackDone, s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
-        PutOnDeck(ref s, in i, next, i.Id, cursor, PlayableKind.Audio, (int)Math.Clamp(i.LongArg, 0, int.MaxValue), paused: false);
+        PutOnDeck(ref s, in i, next, i.Id, cursor, nextKind, (int)Math.Clamp(i.LongArg, 0, int.MaxValue), paused: false);
         s.Phase = Phase.Playing;                          // audible already: this is not a load
         s.StartReason = PlayReason.TrackDone;
         Bump(ref s);
@@ -1279,6 +1322,7 @@ public static partial class Playback
     static void EmitLoad(ref State s, ref Effects fx, LoadOrigin why, bool paused, bool explicitPosition = false)
     {
         if (!explicitPosition && s.PosMs == 0 && why is LoadOrigin.Claim or LoadOrigin.Advance) s.PosMs = EpisodeStartOf(s.CurrentId);
+        if (why is LoadOrigin.Claim or LoadOrigin.Advance) LocalVideoWish(ref s, ref fx);
         Bump(ref s);
         s.LoadEpoch = s.Epoch;
         s.LoadWhy = why;
@@ -1356,7 +1400,7 @@ public static partial class Playback
     static void DoVideoPlacement(ref State s, in Input i, ref Effects fx)
     {
         bool wanted = (i.IntArg & 1) != 0, explicitSwitch = (i.IntArg & 2) != 0;
-        if (s.VideoWanted != wanted) { s.VideoWanted = wanted; s.VideoRetries = 0; }   // a repeated "on" re-decides the row's kind (a lit badge's click)
+        if (s.VideoWanted != wanted) { s.VideoWanted = wanted; s.VideoRetries = 0; s.VideoByLocal = false; }   // a repeated "on" re-decides the row's kind (a lit badge's click); a changed wish is the user's
         if (!s.HasCurrent) return;
         if (!s.RoutesLocal)
         {
@@ -1397,13 +1441,14 @@ public static partial class Playback
         => kind == PlayableKind.Video && s.VideoScreenBlocked && ScreenGatesVideo(row) ? KindOfRow(row, videoWanted: false) : kind;
 
     /// <summary>Does a screen that cannot carry HDCP keep <paramref name="row"/> off its video? A catalogue music video is PlayReady-protected;
-    /// the user's own clip (<see cref="TrackFlags.VideoOverride"/>) and a podcast episode's video are not gated: they play on any screen.</summary>
+    /// the user's own clip (<see cref="TrackFlags.LinkedVideo"/>), a local video file (<see cref="TrackFlags.LocalVideoFile"/>) and a podcast
+    /// episode's video are not gated: they play on any screen.</summary>
     public static bool ScreenGatesVideo(EntityRef row)
     {
         if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null) return false;
         TrackTable t = Entities.Current.Tracks;
         if ((uint)row.Slot >= (uint)t.Count) return false;
-        return (t.Flags[row.Slot] & (uint)TrackFlags.VideoOverride) == 0;
+        return (t.Flags[row.Slot] & (uint)(TrackFlags.LinkedVideo | TrackFlags.LocalVideoFile)) == 0;
     }
 
     /// <summary>A video load failed (<paramref name="retry"/>) or found no source at all (not a retry). A failing load spends
@@ -1419,7 +1464,7 @@ public static partial class Playback
             ReloadHost(ref s, in i, ref fx, PlayableKind.Video, LoadOrigin.VideoRecovery);
             return;
         }
-        if (retry) s.VideoWanted = false;
+        if (retry) { s.VideoWanted = false; s.VideoByLocal = false; }
         fx.VideoIntent = true;
         fx.VideoIntentOn = !retry;
         fx.VideoIntentWhy = fault == Fault.None ? Fault.Unavailable : fault;
@@ -1667,10 +1712,12 @@ public static partial class Playback
         public static SwitchAction Decide(PlayableKind current, PlayableKind next)
             => current == next ? SwitchAction.LoadOnCurrent : SwitchAction.SwapThenLoad;
 
-        /// <summary>Whether a crossfade / prepared-next transition is allowed across this boundary. Crossfade is an
-        /// AUDIO-only, same-kind capability; every cross-kind boundary and every video boundary is a HARD CUT.</summary>
+        /// <summary>Whether a prepared-next splice (crossfade or gapless join) is allowed across this boundary: both sides
+        /// play on the audio host, Spotify audio and local files alike (they share the mixer, and the prepare resamples the
+        /// next voice for the live mix rate; #240 §3.13). Every boundary that touches video is a hard cut. Whether the
+        /// outgoing track's LENGTH can carry a splice is the pump's question (an estimated local length never does).</summary>
         public static bool AllowCrossfade(PlayableKind from, PlayableKind to)
-            => from == to && from == PlayableKind.Audio;
+            => from != PlayableKind.Video && to != PlayableKind.Video;
 
         /// <summary>The Connect <c>track_player</c> metadata value: <c>"video"</c> for <see cref="PlayableKind.Video"/>,
         /// else <c>"audio"</c> (a local file plays through the audio host and therefore also reports audio).</summary>
@@ -1856,6 +1903,20 @@ public static partial class Playback
             long join = Math.Max(activeJoinFrame, sampleClockNow);
             long bound = sampleClockNow + MsToFrames(Math.Max(0L, remainingMs), rate) + rate / 10;
             return Math.Min(join, bound);
+        }
+
+        /// <summary>Where a crossfade starts and how long it runs, given the outgoing voice's end frame
+        /// (<paramref name="activeEnd"/>, already bounded by <see cref="ScheduleJoin"/>): it ENDS on that frame, so the
+        /// outgoing track's last sample is the fade's last frame and the two tracks overlap by exactly the fade. Never in the
+        /// past: a commit that comes too late for the whole fade starts now and shortens the fade to what is left, so the
+        /// fade-out still ends where the content does. Never longer than the incoming voice (<paramref name="incomingFrames"/>,
+        /// −1 when unknown). PURE.</summary>
+        public static (long Start, int Frames) ScheduleFade(long activeEnd, long sampleClockNow, int fadeFrames, long incomingFrames)
+        {
+            long start = Math.Max(activeEnd - fadeFrames, sampleClockNow);
+            long frames = Math.Max(1L, Math.Min(fadeFrames, activeEnd - start));
+            if (incomingFrames > 0) frames = Math.Min(frames, incomingFrames);
+            return (start, (int)frames);
         }
 
         /// <summary>A primed voice is only spliceable into a mixer running at the rate it was resampled for.</summary>

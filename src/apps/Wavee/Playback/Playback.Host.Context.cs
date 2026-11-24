@@ -98,6 +98,7 @@ public static partial class Playback
         {
             EntityRef row = Entities.Ref(context);
             if (row.IsNone) return;
+            LocalLibrary.RuleItem(context);   // a spotify:local: uri played on its own (a link, the inspector): ruled before its play
             Span<EntityRef> one = [row];
             PlayRows(one, 0, context, fromMs);
             return;
@@ -655,14 +656,53 @@ public static partial class Playback
                 if (!payload[k].ItemId.IsEmpty)
                     canonical[targets[k]] = s_uids.ItemIdOf(System.Text.Encoding.UTF8.GetBytes(Entities.Strings.Resolve(payload[k].ItemId)));
         }
+        // A playlist's rows carry the list's own item ids (report 3.1: the item_id as lowercase hex IS the row's uid for connect-state,
+        // play commands and pathfinder), so a controller names the row Wavee plays — a spotify:local: item included (#240 E2) — by the
+        // uid every other client uses. A track listed twice takes its ids in list order; an id already in the queue is never reused.
+        Dictionary<int, System.Collections.Generic.Queue<ulong>>? listed = scope is not null && context.Kind == EntityKind.Playlist ? ListedItemIds(scope, context) : null;
+        HashSet<ulong>? used = null;
+        if (listed is not null)
+        {
+            used = new HashSet<ulong>();
+            for (int k = 0; k < rows.Length; k++) if (rows[k].ItemId != 0) used.Add(rows[k].ItemId);
+        }
         for (int k = 0; k < rows.Length; k++)
         {
             if (rows[k].ItemId != 0) continue;
             var row = Queue.Unpack(packed[k]);
             ulong item = row.Kind == EntityKind.Episode && canonical is not null && canonical.TryGetValue(row.Slot, out ulong held)
-                ? held : Queue.MintItemIds(1);
+                ? held : NextListed(listed, used, row) is var own and not 0 ? own : Queue.MintItemIds(1);
+            used?.Add(item);
             rows[k] = rows[k] with { ItemId = item };
         }
+    }
+
+    /// <summary>A playlist's track rows → their item ids in list order, booked in the uid book (a 16-hex id packs as itself). Null when the
+    /// list is not loaded here.</summary>
+    static Dictionary<int, System.Collections.Generic.Queue<ulong>>? ListedItemIds(Scope scope, EntityId playlist)
+    {
+        if (!scope.Playlists.TryGetSlot(playlist, out int list)) return null;
+        ReadOnlySpan<int> targets = scope.Edges.PlaylistTracks.Targets(list);
+        ReadOnlySpan<PlaylistTrackEdge> payload = scope.Edges.PlaylistTracks.Payload(list);
+        if (targets.IsEmpty) return null;
+        var listed = new Dictionary<int, System.Collections.Generic.Queue<ulong>>(targets.Length);
+        for (int k = 0; k < targets.Length && k < payload.Length; k++)
+        {
+            if (payload[k].Kind != PlaylistItemKind.Track || payload[k].ItemId.IsEmpty) continue;
+            ulong id = s_uids.ItemIdOf(System.Text.Encoding.UTF8.GetBytes(Entities.Strings.Resolve(payload[k].ItemId)));
+            if (id == 0) continue;
+            if (!listed.TryGetValue(targets[k], out System.Collections.Generic.Queue<ulong>? ids)) listed[targets[k]] = ids = new System.Collections.Generic.Queue<ulong>(1);
+            ids.Enqueue(id);
+        }
+        return listed;
+    }
+
+    /// <summary>The next unused listed item id of <paramref name="row"/>, or 0.</summary>
+    static ulong NextListed(Dictionary<int, System.Collections.Generic.Queue<ulong>>? listed, HashSet<ulong>? used, EntityRef row)
+    {
+        if (listed is null || used is null || row.Kind != EntityKind.Track || !listed.TryGetValue(row.Slot, out System.Collections.Generic.Queue<ulong>? ids)) return 0;
+        while (ids.TryDequeue(out ulong id)) if (!used.Contains(id)) return id;
+        return 0;
     }
 
     /// <summary>Append one controller row (its ref, its item id from the uid book, its provenance). With
@@ -684,6 +724,7 @@ public static partial class Playback
                 [System.Text.Encoding.UTF8.GetString(buffer.Utf8(track.ArtistUri))])))) return;
         EntityRef row = Entities.Ref(id);
         if (row.IsNone) return;
+        LocalLibrary.RuleItem(id);   // a playlist's spotify:local: row the controller's context names: matched → plays, else the gate steps over it
         QueueProvider provider = bucket == QueueBucket.UserQueue ? QueueProvider.Queue : RemotePlan.ProviderOf(buffer.Utf8(track.Provider));
         refs[n] = row;
         ulong itemId = distinct ? DistinctItemId(buffer.Utf8(track.Uid), kept, rows.AsSpan(0, n)) : s_uids.ItemIdOf(buffer.Utf8(track.Uid));
@@ -1156,6 +1197,7 @@ public static partial class Playback
         Rebind();                                          // a deck from a retired scope is carried before this one lands
         EntityRef row = Entities.Ref(point.Track);
         if (row.IsNone) return;
+        LocalLibrary.RuleItem(point.Track);
         QueueCursor cursor = Queue.Count == 0 && point.Rows is { Length: > 0 } persisted
             ? LayPersistedRows(persisted, point.Track, point.CursorIndex)
             : QueueCursor.None;
@@ -1218,6 +1260,7 @@ public static partial class Playback
                 if (!r.Id.IsPlayable) continue;
                 EntityRef row = Entities.Ref(r.Id);
                 if (row.IsNone) continue;
+                LocalLibrary.RuleItem(r.Id);
                 if (r.Id.Equals(track))
                 {
                     if (deck < 0 && r.Edge.Bucket == (byte)QueueBucket.NowPlaying) deck = count;
@@ -1285,6 +1328,9 @@ public static partial class Playback
     // ── 7. the play report: registration, resume points, the play log (G-076, G-079) ───────────────────────────────
 
     static Spotify.Telemetry.Registration s_registration;
+
+    /// <summary>The play registration the host holds for the playing row (the inspector's <c>transport do=telemetry</c>). UI thread.</summary>
+    internal static Spotify.Telemetry.Registration RegistrationForInspect => s_registration;
     static EntityId s_registeredId;
 
     /// <summary>Run one Step's report, in order: a seek, a pause and a resume belong to the registration that is open;
@@ -1333,19 +1379,46 @@ public static partial class Playback
 
         EntityId id = r.StartedId;
         PlayStarted?.Invoke(id, r.Context, unix);
-        if (id.Provider != EntityProvider.Spotify || !id.IsPlayable) return;
-        string uri = id.Text;
+        if (!id.IsPlayable) return;
+        // A local file (#240 E7, E8) is reported under its spotify:local: uri, blanked in content_uri, real in local_content_uri and in the
+        // play history, as the official client reports one (capture report 3.6, 3.8): a playlist's item by its own uri, a Wavee local file
+        // by the name its wire row was minted with (its tags, never its path; no title, no report). Nothing else that is not Spotify's.
+        string uri;
+        bool localFile, playedAsFile = false;
+        if (id.Provider == EntityProvider.Spotify && id.Kind == EntityKind.Track && LocalLibrary.PlayAsOf(id) is var file and not 0)
+        {
+            // "Your files and Spotify" phase 2: the Spotify song played one of your files by default. Reported as the local play it was (the
+            // file's own spotify:local: name), never as a streamed play of the song; Connect keeps showing the song the user started.
+            if (LocalLibrary.LocalUriOfFile(file) is not { } own) return;
+            uri = own.Uri;
+            localFile = playedAsFile = true;
+        }
+        else if (id.Provider == EntityProvider.Local && id.Kind == EntityKind.Track)
+        {
+            if (Entities.Current is not { } scope || !scope.Tracks.TryGetSlot(id, out int slot) || LocalUriOf(new Track(slot)) is not { } minted) return;
+            uri = minted.Uri;
+            localFile = true;
+        }
+        else if (id.Provider == EntityProvider.Spotify)
+        {
+            uri = id.Text;
+            localFile = id.Form == EntityForm.Text && LocalTrackUri.Is(uri);
+        }
+        else return;
         // A row that plays as VIDEO never opens the audio pump: PlayingOpened is then default(Opened), whose Label is null, and
         // the registration's format name blew up at Ended (Telemetry.FormatName) - on every video track end and, through
         // RetireForSignOut, on every quit while a video played (the window never closed).
         Audio.Opened opened = Audio.PlayingOpened;
         string formatLabel = opened.Label ?? "";
         byte[] mediaGid = new byte[16];   // RawCoreStream.media_id: the track's own gid, the one thing the royalty row names it by
-        s_registration = Spotify.Telemetry.Started(NewPlaybackIds(), uri, r.Context.IsEmpty ? "" : r.Context.Text,
-            ProviderText(), ReasonText(r.StartReason), id.WriteGid(mediaGid) == mediaGid.Length ? mediaGid : null,
+        // Our Local Files list is named as the official client names its own (E4): spotify:local-files.
+        string contextUri = r.Context.IsEmpty ? "" : Spotify.Egress.IsLocalFiles(r.Context) ? Spotify.Egress.LocalFilesUri : r.Context.Text;
+        s_registration = Spotify.Telemetry.Started(NewPlaybackIds(), uri, contextUri,
+            ProviderText(), ReasonText(r.StartReason), !playedAsFile && id.WriteGid(mediaGid) == mediaGid.Length ? mediaGid : null,
             opened.BitrateKbps, formatLabel,
             r.DurationMs > 0 ? r.DurationMs : opened.DurationMs, r.StartPosMs,
-            PlayerSession.TelemetryText(s_wireIds.SessionId, s_state.Kind == PlayableKind.Video));   // WireStarted already ran for this row
+            PlayerSession.TelemetryText(s_wireIds.SessionId, s_state.Kind == PlayableKind.Video),   // WireStarted already ran for this row
+            localContentUri: localFile ? uri : "");
         s_registeredId = id;
         if (s_state.ContentRate != 1f) Spotify.Telemetry.RateChanged(ref s_registration, r.StartPosMs, s_state.ContentRate);
         if (id.Kind == EntityKind.Episode)

@@ -52,8 +52,9 @@ internal static class ZuneDiscoveryKit
         => R.Type.MicroMeta(text) with { Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
     /// <summary>A link word: the 13 voice in the secondary ink, the primary on hover, a hand and a hyperlink role. <paramref name="target"/> is the
-    /// tier's minimum hit target (40 at Compact, 0 elsewhere): the word is centred in a box at least that tall and wide.</summary>
-    public static Element Link(string key, string text, Action go, float target = 0f)
+    /// tier's minimum hit target (40 at Compact, 0 elsewhere): the word is centred in a box at least that tall and wide. <paramref name="strong"/>: the
+    /// primary ink at rest too, for a word over scrimmed art, whose scrim is floored for the primary ink only (the bled daylist).</summary>
+    public static Element Link(string key, string text, Action go, float target = 0f, bool strong = false)
         => new BoxEl
         {
             Key = key, Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinWidth = target, MinHeight = target,
@@ -62,7 +63,7 @@ internal static class ZuneDiscoveryKit
             [
                 R.Type.DenseMeta(text) with
                 {
-                    Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary, Case = R.Case.For(LabelKind.Command),
+                    Color = strong ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary, Case = R.Case.For(LabelKind.Command),
                     MaxLines = 1, Wrap = TextWrap.NoWrap,
                 },
             ],

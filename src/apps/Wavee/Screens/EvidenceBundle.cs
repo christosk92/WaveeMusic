@@ -73,6 +73,9 @@ public static partial class Diagnostics
                 case DiagCommand.Xm: QueryExtensions(v.Uris ?? [], v.Kinds ?? [], v.Tag); break;
                 case DiagCommand.HomeCap: CaptureHome(v.Tag); break;
                 case DiagCommand.Drive: Drive.Apply(v); break;
+                case DiagCommand.Timecode:
+                    Reply("timecode", Playback.TimecodeOutput.Set(v.Mode, v.Face) ? "ok" : "refused", v.Mode + "=" + v.Face);
+                    break;
                 case DiagCommand.Shot or DiagCommand.Present or DiagCommand.Seek or DiagCommand.Stage or DiagCommand.Rail or DiagCommand.Reveal or DiagCommand.Video
                     or DiagCommand.Theme or DiagCommand.Mini or DiagCommand.Here:
                     StoreShot.Apply(v);   // the Store screenshot capture (StoreShot.cs)

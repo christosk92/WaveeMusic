@@ -162,6 +162,56 @@ public static partial class Controls
         return (tile with { Key = "shim" }).Skeletonized(false);
     }
 
+    /// <summary>The house mark for a cover slot with NO picture (no url at all: a local file with no embedded cover and no folder image, a
+    /// track the catalogue gave none): the music note the drag chip's art-less row and the local collection's calm tile already draw, centred
+    /// at <see cref="NoArtGlyphShare"/> of the slot's short edge in the tertiary ink. It lies OVER the slot's own placeholder (the
+    /// <see cref="CoverTile"/>, a hero's wash), so the slot keeps its size and a cover that lands later fades in over both: nothing moves.
+    /// Opted out of the derived skeleton (a pending region's slot is already the cover square). Null below <see cref="NoArtMinEdge"/>.</summary>
+    public static BoxEl? NoArtMark(float width, float height)
+    {
+        float edge = MathF.Min(width, height);
+        if (!(edge >= NoArtMinEdge)) return null;
+        return new BoxEl
+        {
+            Key = "noart", Width = width, Height = height, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
+            Children = [Ui.Icon(Icons.MusicNote, MathF.Round(edge * NoArtGlyphShare), Tok.TextTertiary)],
+        }.Skeletonized(false);
+    }
+
+    /// <summary>An art slot whose url is BOUND (a recycled list row: the row's cover follows its data without a re-render): the tile graded by
+    /// the url's palette, the image over it, and the no-art mark (<see cref="NoArtMark(float, float)"/>) shown while the url is empty. Every theme's
+    /// track-row thumb is this one recipe at its own corners. The url thunk runs in three binds (fill, source, mark): keep it cheap.</summary>
+    public static Element BoundArtwork(Func<string?> url, float edge, CornerRadius4 corners, int decodePx)
+    {
+        var tile = new BoxEl
+        {
+            Width = edge, Height = edge, Corners = corners,
+            Fill = Prop.Of(() =>
+            {
+                string? u = url();
+                if (u is { Length: > 0 }) _ = Wavee.Palette.Watch(u).Value;
+                return Design.PlaceholderFor(u);
+            }),
+        };
+        var image = new ImageEl
+        {
+            Source = Prop.Of(() => url() ?? ""), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = decodePx,
+            Corners = corners, Placeholder = ColorF.Transparent,
+        };
+        BoxEl? mark = NoArtMark(edge, edge);
+        return new BoxEl
+        {
+            ZStack = true, Width = edge, Height = edge, ClipToBounds = true, Corners = corners,
+            Children = mark is null ? [tile, image] : [tile, image, mark with { Visible = Prop.Of(() => url() is not { Length: > 0 }) }],
+        };
+    }
+
+    /// <summary>The no-art note's size as a share of the slot's short edge (a third, as the drag chip's 16 on its 40 row reads).</summary>
+    public const float NoArtGlyphShare = 0.36f;
+
+    /// <summary>The smallest slot that draws the note (a 12-DIP glyph); smaller slots keep the bare tile.</summary>
+    public const float NoArtMinEdge = 32f;
+
     /// <summary>An ARTWORK slot: a neutral <see cref="CoverTile"/> under the async image, which cross-fades in over
     /// it once decoded. The tile shares ONE decode handle with the image (matched W×H, any aspect).
     ///
@@ -233,6 +283,16 @@ public static partial class Controls
                     MorphId = connect ?? morphKey, Saturation = saturation, KeepWhileHidden = keepWhileHidden,
                     FocusX = crop.FocusX, FocusY = crop.FocusY, FocusFrameX = crop.FrameX, FocusFrameY = crop.FrameY,
                 };
+
+        // NO url at all is a slot with no picture, not one whose picture is coming: the tile (the morph branch included, since there is no
+        // image to fly) and the house no-art note over it. The player bar's thumbnail used to draw NOTHING here for a local file with no cover.
+        if (url is null)
+            return new BoxEl
+            {
+                ZStack = true, Width = width, Height = height, ClipToBounds = true,
+                Corners = CornerRadius4.All(corners),
+                Children = NoArtMark(width, height) is { } mark ? [CoverTile(null, width, height, corners), mark] : [CoverTile(null, width, height, corners)],
+            };
 
         return new BoxEl
         {
@@ -628,6 +688,7 @@ public static partial class Controls
         var wash = R.Wash;
         float pull = wash.HeroVeilPull;
         ColorF veil = ColorF.Lerp(layer, accent, pull);
+        VeilFloor floor = VeilFloor.Of(veil, accent, layer, pull);
         if (vertical && !float.IsNaN(hold))
         {
             // A held vertical veil (the copy over the photograph's lower part): it eases in above the copy and holds its peak from the copy's top
@@ -636,30 +697,63 @@ public static partial class Controls
             if (ramp > 0f)
                 return GradientDown(
                     new GradientStop(0f, veil with { A = 0f }),
-                    new GradientStop(at * HeroVeilRampShare, veil with { A = 0.35f }),
-                    new GradientStop(at, veil with { A = wash.HeroVeilPeak }),
-                    new GradientStop(1f, veil with { A = HeroVeilPlate })) with { AxisLengthPx = ramp };
+                    new GradientStop(at * HeroVeilRampShare, veil with { A = floor.Lift(0.35f) }),
+                    new GradientStop(at, veil with { A = floor.Lift(wash.HeroVeilPeak) }),
+                    new GradientStop(1f, veil with { A = floor.Lift(HeroVeilPlate) })) with { AxisLengthPx = ramp };
             return GradientDown(
                 new GradientStop(0f, veil with { A = 0f }),
-                new GradientStop(at * HeroVeilRampShare, veil with { A = 0.35f }),
-                new GradientStop(at, veil with { A = wash.HeroVeilPeak }),
-                new GradientStop(1f, veil with { A = wash.HeroVeilPeak }));
+                new GradientStop(at * HeroVeilRampShare, veil with { A = floor.Lift(0.35f) }),
+                new GradientStop(at, veil with { A = floor.Lift(wash.HeroVeilPeak) }),
+                new GradientStop(1f, veil with { A = floor.Lift(wash.HeroVeilPeak) }));
         }
         if (vertical)
         {
-            float top = wash.HeroVeilPeak;
+            float top = floor.Lift(wash.HeroVeilPeak);
             return GradientDown(
                 new GradientStop(0f, veil with { A = 0f }),
-                new GradientStop(0.45f, veil with { A = 0.35f }),
+                new GradientStop(0.45f, veil with { A = floor.Lift(0.35f) }),
                 new GradientStop(0.82f, veil with { A = top }),
                 new GradientStop(1f, veil with { A = 0f }));
         }
         float h = HeroVeilHoldOf(hold);
         return GradientRight(
-            new GradientStop(0f, veil with { A = HeroVeilEdge }),
-            new GradientStop(h, veil with { A = HeroVeilPlate }),
-            new GradientStop(h + HeroVeilShoulder, veil with { A = HeroVeilShoulderAlpha }),
+            new GradientStop(0f, veil with { A = floor.Lift(HeroVeilEdge) }),
+            new GradientStop(h, veil with { A = floor.Lift(HeroVeilPlate) }),
+            new GradientStop(h + HeroVeilShoulder, veil with { A = floor.Lift(HeroVeilShoulderAlpha) }),
             new GradientStop(1f, veil with { A = 0f }));
+    }
+
+    /// <summary>The floor a user's colour set (#184) puts under <see cref="ArtistHeroVeil"/>'s stops. The veil's alphas were tuned on the board for the
+    /// theme's OWN inks; a set's softer ink (Catppuccin Latte's text is 7 : 1 on its page, Classic's own near-black far more) needs a stronger veil
+    /// to read as well. Each stop takes <see cref="ColorScience.PlateAlphaFor"/> for the set's primary and for its secondary ink against the theme's
+    /// own inks over the theme's own veil: never below the board's alpha, and with no set on screen the identity (the board's alphas, untouched).</summary>
+    readonly struct VeilFloor
+    {
+        readonly bool _active, _light;
+        readonly ColorF _veil, _ownVeil, _ink, _ink2, _ownInk, _ownInk2;
+
+        VeilFloor(ColorF veil, ColorF ownVeil, bool light, ColorF ink, ColorF ink2, ColorF ownInk, ColorF ownInk2)
+        {
+            _active = true;
+            _veil = veil; _ownVeil = ownVeil; _light = light; _ink = ink; _ink2 = ink2; _ownInk = ownInk; _ownInk2 = ownInk2;
+        }
+
+        public static VeilFloor Of(ColorF veil, ColorF accent, ColorF layer, float pull)
+        {
+            if (Wavee.Theming.ThemeHost.OwnTokensUnderColours(Tok.Theme) is not { } own) return default;
+            // The theme's own veil: its own layer, pulled toward the same accent (the neutral rung is the layer itself).
+            ColorF ownLayer = own.FillLayerDefault;
+            ColorF ownVeil = ColorF.Lerp(ownLayer, accent == layer ? ownLayer : accent, pull);
+            return new VeilFloor(veil, ownVeil, Tok.Theme == ThemeKind.Light, Tok.TextPrimary, Tok.TextSecondary, own.TextPrimary, own.TextSecondary);
+        }
+
+        /// <summary>The board's <paramref name="authored"/> alpha, raised as far as the set's inks need (see the type).</summary>
+        public float Lift(float authored)
+        {
+            if (!_active) return authored;
+            return MathF.Max(ColorScience.PlateAlphaFor(_ink, _ownInk, _veil, _ownVeil, _light, authored),
+                ColorScience.PlateAlphaFor(_ink2, _ownInk2, _veil, _ownVeil, _light, authored));
+        }
     }
 
     /// <summary>The horizontal veil's alpha at <paramref name="x"/> (a fraction of its width) for <paramref name="hold"/>, clamped as

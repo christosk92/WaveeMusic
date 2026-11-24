@@ -582,6 +582,7 @@ public static partial class Playback
                 FollowQueue(now);
                 ObserveVideoFacts(now);                    // the deck row's video facts, before the PUT this drain sends
                 Execute();
+                Mix.Follow(in s_state);                    // #48: the playing pair's mix timing → the pump (Playback.Mix.cs)
                 s_forward.Clear();                         // every staged forward was folded in this drain (G-248)
                 Publish();
             }
@@ -870,7 +871,7 @@ public static partial class Playback
         // used to write the setting, bump SettingsEpoch (re-rendering every settings subscriber) per frame.
         if (s_fx.PersistVolume && Platform.Settings.Get(Platform.Keys.RememberVolume))
             Platform.Settings.Set(Platform.Keys.SavedVolume, s_fx.VolumeValue);
-        if (s_fx.PrepareNext) Audio.Prepare(s_fx.NextRow, s_fx.NextId);
+        if (s_fx.PrepareNext) Audio.Prepare(s_fx.NextRow, s_fx.NextId, s_fx.NextKind);
         if (s_fx.Prefetch2) PumpPrefetch(s_fx.Prefetch2Row, s_fx.Prefetch2Id);   // the farther row first: the nearer one's caches stay newest
         if (s_fx.Prefetch) PumpPrefetch(s_fx.PrefetchRow, s_fx.PrefetchId);
         if (s_fx.Fetch) EnsureRow(s_fx.FetchId);
@@ -1387,7 +1388,7 @@ public static partial class Playback
                     // A self-contained music video carries its OWN manifest id (TrackV4 field 38) and may have no association
                     // flag; "no video" is a verdict only once both answers are in: the Video group (kinds 99/182) AND this
                     // session's TrackV4 (Artists is the bit only a live answer sets — the gid is not persisted).
-                    hasVideo = t.HasVideo || !t.VideoGidId.IsEmpty;
+                    hasVideo = t.HasVideo || !t.VideoGidId.IsEmpty || Video.LocalVideos.IsLinked(id);   // a linked local video file too
                     known = hasVideo || (t.Knows(TrackFields.Video) && t.Knows(TrackFields.Artists))
                         || t.IsLocal || id.Provider != EntityProvider.Spotify;
                     manifest = hasVideo ? t.ManifestGidId : StringId.Empty;

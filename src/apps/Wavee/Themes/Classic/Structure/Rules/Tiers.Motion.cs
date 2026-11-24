@@ -71,6 +71,10 @@ public static class ClassicTierMotion
     /// <summary><see cref="RowsReflow"/>'s damping: critical, so the height never overshoots its rows.</summary>
     const float RowsDamping = 1f;
 
+    /// <summary><see cref="HeightReflow"/> that keeps easing while the window is dragged (same curve and time): a block whose height a TIER steps (the
+    /// unavailable bar's 50 to 58 at Compact) and whose slot follows it, so a crossing glides it instead of landing it in the resize's frame.</summary>
+    public static readonly LayoutTransition HeightReflowLive = HeightReflow with { AnimateDuringResize = true };
+
     /// <summary>A part a tier ADDS to a column or drops from it (the narrow drawer's account row, which the Compact tier moves out of the title
     /// bar): it opens or closes its height through real layout as it fades, so what follows it slides instead of stepping by its height.</summary>
     public static readonly LayoutTransition MakeRoom = new(TransitionChannels.Size | TransitionChannels.Opacity,

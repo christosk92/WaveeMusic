@@ -46,8 +46,14 @@ public interface ISettingsFacts
     bool EqualizerEnabled { get; }
     bool CrossfadeEnabled { get; }
 
+    /// <summary>#154: a timecode output is chosen (the "Send timecode" switch is enabled only then).</summary>
+    bool TimecodeDeviceChosen { get; }
+
+    /// <summary>#154: the "Send timecode" switch is on (its child dials follow it).</summary>
+    bool TimecodeEnabled { get; }
+
     /// <summary>The attached-videos roster store exists.</summary>
-    bool VideoOverridesPresent { get; }
+    bool LinkedVideosPresent { get; }
 
     /// <summary>The sidebar is in Edit mode (its layout verbs refuse and say so).</summary>
     bool SidebarEditing { get; }
@@ -77,6 +83,12 @@ public interface ISettingsFacts
     /// <summary>The active structure's pages fly a picture into the page it opens or grow a page out of its item (its page motion's
     /// <c>Connected</c> or <c>GrowInto</c>): the Connected animations dial shows only where there is something to switch off.</summary>
     bool PagesFly { get; }
+
+    /// <summary>How many music folders the local library has (Settings › Storage › Music on this PC: "Rescan now" needs one).</summary>
+    int MusicFolderCount { get; }
+
+    /// <summary>The user's Music folder exists and no music folder covers it yet: "Add my Music folder" is offered.</summary>
+    bool DefaultMusicFolderOffered { get; }
 }
 
 /// <summary>The live <see cref="ISettingsFacts"/> and the producers that touch the OS or the disk.</summary>
@@ -92,7 +104,9 @@ public sealed class LiveSettingsFacts : ISettingsFacts
     public bool CanDerive => Spotify.Audio.CanDerive;
     public bool EqualizerEnabled => Platform.Settings.Get(Platform.Keys.EqualizerEnabled);
     public bool CrossfadeEnabled => Platform.Settings.Get(Platform.Keys.CrossfadeEnabled);
-    public bool VideoOverridesPresent => Video.Overrides.Present;
+    public bool TimecodeDeviceChosen => Platform.Settings.Get(Platform.Keys.TimecodeLtcDeviceId).Length > 0;
+    public bool TimecodeEnabled => Platform.Settings.Get(Platform.Keys.TimecodeLtcEnabled);
+    public bool LinkedVideosPresent => Video.LinkedVideos.Present;
     public bool SidebarEditing => Sidebar.Editing.Value;
     public bool SidebarModified => SidebarLayoutRules.IsModified(Sidebar.State.Of(Sidebar.Layout.Value), Sidebar.LibraryView.Value);
     public bool AudioCacheAvailable => Spotify.Audio.DiskCache.Shared is not null;
@@ -110,6 +124,9 @@ public sealed class LiveSettingsFacts : ISettingsFacts
     public bool TestCrashBusy => SettingsFacts.TestCrashBusy.Value;
 
     public bool PagesFly => ShellPolicy.Now.PageMotion is { } motion && (motion.Connected is not null || motion.GrowInto is not null);
+
+    public int MusicFolderCount => LocalLibrary.Folders.Count;
+    public bool DefaultMusicFolderOffered => LocalLibrary.DefaultMusicFolder is not null;
 }
 
 /// <summary>What the settings page hands its verbs from the component context (the overlay host, the input hooks, the UI
@@ -181,11 +198,11 @@ public static class SettingsFacts
     public static string SidebarMigrationDropped() => Platform.Settings.Get(Platform.Keys.SidebarMigrationDropped);
 
     /// <summary>A video-override row's track title: the catalog's when the playable is a known track, else null (the roster shows the uri).</summary>
-    public static string? VideoOverrideTitle(string uri)
+    public static string? LinkedVideoTitle(string uri)
         => Entities.Current.Tracks.TryGetSlot(uri.AsSpan(), out int slot) && new Track(slot).Knows(TrackFields.Title) ? new Track(slot).Title : null;
 
     /// <summary>A video-override row's artist line, or null when the catalog does not know the track's artists.</summary>
-    public static string? VideoOverrideArtistLine(string uri)
+    public static string? LinkedVideoArtistLine(string uri)
         => Entities.Current.Tracks.TryGetSlot(uri.AsSpan(), out int slot) && new Track(slot).Knows(TrackFields.Artists)
             ? Entities.Strings.Resolve(new Track(slot).ArtistLineId) : null;
 

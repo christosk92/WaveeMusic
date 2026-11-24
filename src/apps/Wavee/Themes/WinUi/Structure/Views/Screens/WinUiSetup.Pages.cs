@@ -34,7 +34,8 @@ internal static partial class WinUiSetup
         {
             SetupText.Body(Loc.Get(Strings.Setup.Theme.Body)),
             props.ThemePicker(),
-            new BoxEl { Key = "setup:prefs", Direction = 1, Gap = WinUiSetupGeometry.BodySpacing, MinWidth = 0f, Children = [WinUiSettings.AppModeRow(), WinUiSettings.LanguageRow()] },
+            new BoxEl { Key = "setup:prefs", Direction = 1, Gap = WinUiSetupGeometry.BodySpacing, MinWidth = 0f, Children = [WinUiSettings.AppModeRow(),
+                WinUiSettings.ColoursRow("appearance.colours.light"), WinUiSettings.ColoursRow("appearance.colours.dark"), WinUiSettings.LanguageRow()] },
         };
         if (props.ThemeOptions() is { } options) kids.Add(options);
         return WizardFrame(Setup.WizardPage.Theme, Loc.Get(Strings.Setup.Theme.Title), SetupText.Stack(kids.ToArray()));

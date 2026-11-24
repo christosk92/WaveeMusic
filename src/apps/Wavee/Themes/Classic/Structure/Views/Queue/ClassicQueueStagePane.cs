@@ -220,7 +220,10 @@ internal sealed class ClassicQueueStagePane : Component
             new TextEl(Loc.Get(Strings.Player.Crossfade)) { Size = size, LineHeight = line, Color = Ink.Ink },
             ToggleSwitch.Create(_crossfade, _setCrossfade, style: toggle) with { Key = "stage:upnext:crossfade" },
         };
-        if (length && props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } open)
+        // While a mixed playlist plays the note "Mix is on for this playlist" stands where the length rests (#48).
+        if (length && props.CrossfadeNote.Length > 0)
+            kids.Add(new TextEl(props.CrossfadeNote) { Key = "stage:upnext:crossfade:note", Size = size, LineHeight = line, Color = Ink.InkSecondary, MaxLines = 1 });
+        else if (length && props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } open)
             kids.Add(ToolTip.Wrap(new BoxEl
             {
                 Key = "stage:upnext:crossfade:length", MinHeight = ClassicQueueRules.StageLinkMinH, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
