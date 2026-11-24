@@ -198,7 +198,7 @@ internal static class CommonLocalCollection
         for (int i = 0; i < labels.Length; i++) labels[i] = PivotWord((LocalPivot)i);
         var style = new SelectorBarStyle
         {
-            RestColor = Tok.TextSecondary, SelectedColor = Tok.TextPrimary, ItemHeight = L.PivotItemH, ItemPadding = L.PivotItemPad, ItemGap = L.PivotGap,
+            RestColor = Tok.TextSecondary, SelectedColor = Tok.TextPrimary, ItemHeight = L.PivotItemH, ItemGap = L.PivotGap,
         };
         var set = p.SetPivot;
         Element bar = SelectorBar.Create(labels, new Signal<int>((int)current), onChange: i => set((LocalPivot)i), parts: s_pivotParts, style: style, itemKeys: s_pivotKeys);
