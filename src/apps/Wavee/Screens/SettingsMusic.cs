@@ -98,7 +98,11 @@ public static class SettingsMusic
             case LocalRootState.NoAccess:
                 return new(folder, Loc.Get(Strings.Settings.Music.NoAccess), f.Songs > 0 ? Kept(f.Songs) : "", Mark.Caution, () => LocalLibrary.FixPermissions(folder));
         }
-        if (f.Scanning || f.State == LocalRootState.Scanning) return new(folder, null, Loc.Get(Strings.Settings.Music.FolderScanning), Mark.Busy);
+        if (f.Scanning || f.State == LocalRootState.Scanning)
+            // A held scan says so, without the ring (nothing is moving).
+            return LibraryActivity.PausedNow
+                ? new(folder, null, Loc.Get(Strings.Settings.Music.Paused), Mark.None)
+                : new(folder, null, Loc.Get(Strings.Settings.Music.FolderScanning), Mark.Busy);
         if (f.State == LocalRootState.Unknown && f.Songs == 0) return new(folder, null, Loc.Get(Strings.Settings.Music.NotScanned), Mark.None);
         string rest = Songs(f.Songs);
         int unplayable = Math.Max(0, f.Unplayable - f.Missing);
