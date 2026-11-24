@@ -333,6 +333,11 @@ internal static partial class WinUiSettings
     /// <summary>The app mode row (System · Light · Dark), as Settings draws it and as the setup wizard's Theme step shows it: one row, one writer.</summary>
     internal static Element AppModeRow() => OutsideRow("appearance.appMode", static (row, card) => AppModeCard(row, card));
 
+    /// <summary>A colour set row (<c>appearance.colours.light</c> / <c>.dark</c>, #184), as Settings draws it and as the setup wizard's Theme step shows it:
+    /// one row, one writer; its combo is the collapsed form (the pick's name, the list on demand).</summary>
+    internal static Element ColoursRow(string dialId)
+        => OutsideRow(dialId, static (row, card) => DialCard(card with { Control = DialCombo(row, row.Choices, WinUiSettingsRules.StageComboWidth) }));
+
     /// <summary>The language row, as Settings draws it and as the setup wizard's Theme step shows it: one row, one writer.</summary>
     internal static Element LanguageRow() => OutsideRow("system.language", static (row, card) => LanguageCard(row, card));
 
