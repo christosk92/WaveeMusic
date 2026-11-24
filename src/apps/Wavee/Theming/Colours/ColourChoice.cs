@@ -29,6 +29,18 @@ public static class ColourChoice
     /// <summary>The stored set of <paramref name="kind"/>, or null for the theme's own colours (an unknown id reads as null).</summary>
     public static ColourSpec? SpecOf(ThemeKind kind) => ColourCatalog.Find(Platform.Settings.Get(KeyOf(kind)), kind);
 
+    /// <summary>True when the colour set of the CURRENT mode takes over what <paramref name="what"/> names (a theme option's row then shows disabled
+    /// with "Set by your colours").</summary>
+    public static bool Overrides(ColourOverride what) => what switch
+    {
+        ColourOverride.Accent => s_current.OwnsAccent && s_current.For(Tok.Theme) is not null,
+        ColourOverride.Material => s_current.For(Tok.Theme) is not null,
+        _ => false,
+    };
+
+    /// <summary>The stored named accent of <paramref name="kind"/> (empty: the set's default).</summary>
+    public static string NamedAccentOf(ThemeKind kind) => Platform.Settings.Get(kind == ThemeKind.Light ? ColourKeys.AccentNameLight : ColourKeys.AccentNameDark);
+
     /// <summary>The stored accent source.</summary>
     public static AccentSource AccentSource => SourceOf(Platform.Settings.Get(ColourKeys.Accent));
 

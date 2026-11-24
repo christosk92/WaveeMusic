@@ -72,11 +72,17 @@ public sealed class ZuneStyle : IStyleLayer
         DescriptionKey: ZuneStyleKeys.AccentSub,
         Group: ZuneStyleKeys.GroupColour,
         Default: ZuneAccent.Pink.Dark,
-        Swatches: ImmutableArray.Create(ZuneAccent.Pink.Dark, ZuneAccent.Orange.Dark, ZuneAccent.Blue.Dark, ZuneAccent.Green.Dark, ZuneAccent.Purple.Dark));
+        Swatches: ImmutableArray.Create(ZuneAccent.Pink.Dark, ZuneAccent.Orange.Dark, ZuneAccent.Blue.Dark, ZuneAccent.Green.Dark, ZuneAccent.Purple.Dark))
+    {
+        SetByColours = ColourOverride.Accent,
+    };
 
     /// <summary><c>style.useWindowsAccent</c>: the OS accent ramp instead of the swatch. Live (colour only).</summary>
     public static ToggleOption UseWindowsAccentOption { get; } = new(
-        "useWindowsAccent", ZuneStyleKeys.UseWindowsAccent, ZuneStyleKeys.UseWindowsAccentSub, ZuneStyleKeys.GroupColour, Default: false);
+        "useWindowsAccent", ZuneStyleKeys.UseWindowsAccent, ZuneStyleKeys.UseWindowsAccentSub, ZuneStyleKeys.GroupColour, Default: false)
+    {
+        SetByColours = ColourOverride.Accent,
+    };
 
     /// <summary><c>style.density</c>: the row size (<see cref="ZuneDensityOption"/>). Transaction.</summary>
     public static SelectOption<ZuneDensity> DensityOption => ZuneDensityOption.Option;

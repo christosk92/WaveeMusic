@@ -21,8 +21,8 @@ namespace Wavee.Theming.Colours;
 public static partial class ColourCatalog
 {
     private static ImmutableArray<ColourSpec> Build() => ImmutableArray.Create(
-        WaveePaper(), CatppuccinLatte(),
-        WaveeInk(), CatppuccinFrappe(), CatppuccinMacchiato(), CatppuccinMocha());
+        WaveePaper(), CatppuccinLatte(), NordSnowStorm(), GruvboxLight(),
+        WaveeInk(), CatppuccinFrappe(), CatppuccinMacchiato(), CatppuccinMocha(), NordPolarNight(), GruvboxDark(), Dracula());
 
     private static ColorF Rgb(byte r, byte g, byte b) => ColorF.FromRgba(r, g, b);
 
@@ -86,4 +86,90 @@ public static partial class ColourCatalog
             Rgb(0xF5, 0xE0, 0xDC), Rgb(0xF2, 0xCD, 0xCD), Rgb(0xF5, 0xC2, 0xE7), Rgb(0xCB, 0xA6, 0xF7), Rgb(0xF3, 0x8B, 0xA8), Rgb(0xEB, 0xA0, 0xAC), Rgb(0xFA, 0xB3, 0x87),
             Rgb(0xF9, 0xE2, 0xAF), Rgb(0xA6, 0xE3, 0xA1), Rgb(0x94, 0xE2, 0xD5), Rgb(0x89, 0xDC, 0xEB), Rgb(0x74, 0xC7, 0xEC), Rgb(0x89, 0xB4, 0xFA), Rgb(0xB4, 0xBE, 0xFE)),
         DefaultAccent: "mauve");
+
+    // ── Nord (generated from nordtheme/nord src/nord.css, MIT) ──────────────────────────────────────────────────────────────────
+    // Polar Night: nord0 ground, nord1 raised, nord6 / nord4 / nord3 inks, Frost 2 (nord8) the accent. Snow Storm: nord6 ground and raised
+    // (nord5 is darker, the Latte case), nord5 well, nord4 deep, nord0 / nord3 inks, Frost 4 (nord10) the accent. Aurora's red, yellow, green
+    // are the severities.
+
+    private static ColourSpec NordPolarNight() => new("nord.polarnight", "Nord", "Polar Night", ThemeKind.Dark,
+        new ColourSeeds(Ground: Rgb(0x2E, 0x34, 0x40), Surface: Rgb(0x3B, 0x42, 0x52), Ink: Rgb(0xEC, 0xEF, 0xF4), InkMuted: Rgb(0xD8, 0xDE, 0xE9),
+            Accent: Rgb(0x88, 0xC0, 0xD0), InkFaint: Rgb(0x4C, 0x56, 0x6A),
+            Critical: Rgb(0xBF, 0x61, 0x6A), Caution: Rgb(0xEB, 0xCB, 0x8B), Success: Rgb(0xA3, 0xBE, 0x8C)),
+        ImmutableArray.Create(
+            new NamedAccent("nord7", "Frost 1", Rgb(0x8F, 0xBC, 0xBB)),
+            new NamedAccent("nord8", "Frost 2", Rgb(0x88, 0xC0, 0xD0)),
+            new NamedAccent("nord9", "Frost 3", Rgb(0x81, 0xA1, 0xC1)),
+            new NamedAccent("nord10", "Frost 4", Rgb(0x5E, 0x81, 0xAC)),
+            new NamedAccent("nord11", "Red", Rgb(0xBF, 0x61, 0x6A)),
+            new NamedAccent("nord12", "Orange", Rgb(0xD0, 0x87, 0x70)),
+            new NamedAccent("nord13", "Yellow", Rgb(0xEB, 0xCB, 0x8B)),
+            new NamedAccent("nord14", "Green", Rgb(0xA3, 0xBE, 0x8C)),
+            new NamedAccent("nord15", "Purple", Rgb(0xB4, 0x8E, 0xAD))),
+        DefaultAccent: "nord8");
+
+    private static ColourSpec NordSnowStorm() => new("nord.snowstorm", "Nord", "Snow Storm", ThemeKind.Light,
+        new ColourSeeds(Ground: Rgb(0xEC, 0xEF, 0xF4), Surface: Rgb(0xEC, 0xEF, 0xF4), Ink: Rgb(0x2E, 0x34, 0x40), InkMuted: Rgb(0x4C, 0x56, 0x6A),
+            Accent: Rgb(0x5E, 0x81, 0xAC), Well: Rgb(0xE5, 0xE9, 0xF0), Deep: Rgb(0xD8, 0xDE, 0xE9),
+            Critical: Rgb(0xBF, 0x61, 0x6A), Caution: Rgb(0xEB, 0xCB, 0x8B), Success: Rgb(0xA3, 0xBE, 0x8C)),
+        ImmutableArray.Create(
+            new NamedAccent("nord7", "Frost 1", Rgb(0x8F, 0xBC, 0xBB)),
+            new NamedAccent("nord8", "Frost 2", Rgb(0x88, 0xC0, 0xD0)),
+            new NamedAccent("nord9", "Frost 3", Rgb(0x81, 0xA1, 0xC1)),
+            new NamedAccent("nord10", "Frost 4", Rgb(0x5E, 0x81, 0xAC)),
+            new NamedAccent("nord11", "Red", Rgb(0xBF, 0x61, 0x6A)),
+            new NamedAccent("nord12", "Orange", Rgb(0xD0, 0x87, 0x70)),
+            new NamedAccent("nord13", "Yellow", Rgb(0xEB, 0xCB, 0x8B)),
+            new NamedAccent("nord14", "Green", Rgb(0xA3, 0xBE, 0x8C)),
+            new NamedAccent("nord15", "Purple", Rgb(0xB4, 0x8E, 0xAD))),
+        DefaultAccent: "nord10");
+
+    // ── Gruvbox (generated from morhetz/gruvbox colors/gruvbox.vim, MIT/X11), the medium contrast ──────────────────────────────
+    // Dark: dark0 ground, dark1 raised, dark0_hard well, light1 / light4 / dark4 inks, bright accents (orange the default). Light: light0 ground,
+    // light0_hard raised, light1 well, light2 deep, dark1 / dark4 / light4 inks, faded accents (orange the default).
+
+    private static ColourSpec GruvboxDark() => new("gruvbox.dark", "Gruvbox", "Dark", ThemeKind.Dark,
+        new ColourSeeds(Ground: Rgb(0x28, 0x28, 0x28), Surface: Rgb(0x3C, 0x38, 0x36), Ink: Rgb(0xEB, 0xDB, 0xB2), InkMuted: Rgb(0xA8, 0x99, 0x84),
+            Accent: Rgb(0xFE, 0x80, 0x19), Well: Rgb(0x1D, 0x20, 0x21), InkFaint: Rgb(0x7C, 0x6F, 0x64),
+            Critical: Rgb(0xFB, 0x49, 0x34), Caution: Rgb(0xFA, 0xBD, 0x2F), Success: Rgb(0xB8, 0xBB, 0x26)),
+        ImmutableArray.Create(
+            new NamedAccent("red", "Red", Rgb(0xFB, 0x49, 0x34)),
+            new NamedAccent("green", "Green", Rgb(0xB8, 0xBB, 0x26)),
+            new NamedAccent("yellow", "Yellow", Rgb(0xFA, 0xBD, 0x2F)),
+            new NamedAccent("blue", "Blue", Rgb(0x83, 0xA5, 0x98)),
+            new NamedAccent("purple", "Purple", Rgb(0xD3, 0x86, 0x9B)),
+            new NamedAccent("aqua", "Aqua", Rgb(0x8E, 0xC0, 0x7C)),
+            new NamedAccent("orange", "Orange", Rgb(0xFE, 0x80, 0x19))),
+        DefaultAccent: "orange");
+
+    private static ColourSpec GruvboxLight() => new("gruvbox.light", "Gruvbox", "Light", ThemeKind.Light,
+        new ColourSeeds(Ground: Rgb(0xFB, 0xF1, 0xC7), Surface: Rgb(0xF9, 0xF5, 0xD7), Ink: Rgb(0x3C, 0x38, 0x36), InkMuted: Rgb(0x7C, 0x6F, 0x64),
+            Accent: Rgb(0xAF, 0x3A, 0x03), Well: Rgb(0xEB, 0xDB, 0xB2), Deep: Rgb(0xD5, 0xC4, 0xA1), InkFaint: Rgb(0xA8, 0x99, 0x84),
+            Critical: Rgb(0x9D, 0x00, 0x06), Caution: Rgb(0xB5, 0x76, 0x14), Success: Rgb(0x79, 0x74, 0x0E)),
+        ImmutableArray.Create(
+            new NamedAccent("red", "Red", Rgb(0x9D, 0x00, 0x06)),
+            new NamedAccent("green", "Green", Rgb(0x79, 0x74, 0x0E)),
+            new NamedAccent("yellow", "Yellow", Rgb(0xB5, 0x76, 0x14)),
+            new NamedAccent("blue", "Blue", Rgb(0x07, 0x66, 0x78)),
+            new NamedAccent("purple", "Purple", Rgb(0x8F, 0x3F, 0x71)),
+            new NamedAccent("aqua", "Aqua", Rgb(0x42, 0x7B, 0x58)),
+            new NamedAccent("orange", "Orange", Rgb(0xAF, 0x3A, 0x03))),
+        DefaultAccent: "orange");
+
+    // ── Dracula (generated from dracula/dracula-theme README.md, MIT), dark only ───────────────────────────────────────────────
+    // Background ground, Current Line raised, Foreground / Comment inks, Purple the default accent. Its light variant (Alucard) is left out
+    // until its terms are read (plan D6).
+
+    private static ColourSpec Dracula() => new("dracula", "Dracula", "Dracula", ThemeKind.Dark,
+        new ColourSeeds(Ground: Rgb(0x28, 0x2A, 0x36), Surface: Rgb(0x44, 0x47, 0x5A), Ink: Rgb(0xF8, 0xF8, 0xF2), InkMuted: Rgb(0x62, 0x72, 0xA4),
+            Accent: Rgb(0xBD, 0x93, 0xF9), Critical: Rgb(0xFF, 0x55, 0x55), Caution: Rgb(0xF1, 0xFA, 0x8C), Success: Rgb(0x50, 0xFA, 0x7B)),
+        ImmutableArray.Create(
+            new NamedAccent("cyan", "Cyan", Rgb(0x8B, 0xE9, 0xFD)),
+            new NamedAccent("green", "Green", Rgb(0x50, 0xFA, 0x7B)),
+            new NamedAccent("orange", "Orange", Rgb(0xFF, 0xB8, 0x6C)),
+            new NamedAccent("pink", "Pink", Rgb(0xFF, 0x79, 0xC6)),
+            new NamedAccent("purple", "Purple", Rgb(0xBD, 0x93, 0xF9)),
+            new NamedAccent("red", "Red", Rgb(0xFF, 0x55, 0x55)),
+            new NamedAccent("yellow", "Yellow", Rgb(0xF1, 0xFA, 0x8C))),
+        DefaultAccent: "purple");
 }

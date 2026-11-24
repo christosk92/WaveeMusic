@@ -54,6 +54,17 @@ public sealed record OptionCondition(string OptionId, object EqualsValue)
     public OptionCondition? And { get; init; }
 }
 
+/// <summary>What a colour set takes over from a theme option (<see cref="ThemeOption.SetByColours"/>).</summary>
+public enum ColourOverride : byte
+{
+    /// <summary>Nothing: the option applies whatever colours are picked.</summary>
+    None,
+    /// <summary>The accent, while the set owns it (the accent source is the palette or my colour) in the current mode.</summary>
+    Accent,
+    /// <summary>The window material, while the current mode has a set (a set's mode is opaque, plan D5).</summary>
+    Material,
+}
+
 /// <summary>One option a layer or a composition declares. Subclasses are the kinds below; the members the store needs are
 /// internal and non-generic so it can persist any option without knowing its value type.</summary>
 public abstract record ThemeOption(string Id, string TitleKey, string? DescriptionKey, string Group,
@@ -63,6 +74,10 @@ public abstract record ThemeOption(string Id, string TitleKey, string? Descripti
     /// <summary>The surfaces of the SAME theme that draw this option in place (design 3.6, 5.4: WinUI's backdrop in its title bar's menu): the
     /// generated dial's <c>Contexts</c>, so Settings says "Also in" and a write from there records that surface. Empty for none.</summary>
     public IReadOnlyList<string> Contexts { get; init; } = Array.Empty<string>();
+
+    /// <summary>What a user's colour set (#184) takes over from this option for a mode it is active in: its row then shows disabled with the reason
+    /// "Set by your colours", never hidden (the stored value stays and returns when the set is cleared). <see cref="ColourOverride.None"/> for the rest.</summary>
+    public ColourOverride SetByColours { get; init; }
 
     /// <summary>False for a command or a reference: nothing is stored under its id.</summary>
     internal abstract bool HoldsValue { get; }

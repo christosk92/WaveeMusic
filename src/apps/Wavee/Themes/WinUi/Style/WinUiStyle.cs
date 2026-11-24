@@ -67,6 +67,7 @@ public sealed class WinUiStyle : IStyleLayer
     {
         Apply = ApplyMode.Transaction,
         Contexts = [SettingsSurfaces.TitleBarMenu],
+        SetByColours = ColourOverride.Material,
     };
 
     /// <summary><c>style.rowDensity</c>: Default or Compact (<see cref="WinUiDensityOption"/>). Transaction.</summary>
@@ -75,7 +76,10 @@ public sealed class WinUiStyle : IStyleLayer
     /// <summary><c>style.useWindowsAccent</c>: the OS accent ramp (on, the default) or the theme's own #0078d4 ramp. Live (colour only).</summary>
     public static ToggleOption UseWindowsAccentOption { get; } = new(
         "useWindowsAccent", Strings.Theme.Winui.Style.UseWindowsAccent, Strings.Theme.Winui.Style.UseWindowsAccentSub,
-        Strings.Theme.Winui.Options.Group.Window, Default: true);
+        Strings.Theme.Winui.Options.Group.Window, Default: true)
+    {
+        SetByColours = ColourOverride.Accent,
+    };
 
     // ── the definition ──────────────────────────────────────────────────────────────────────────────────────────────────────
 

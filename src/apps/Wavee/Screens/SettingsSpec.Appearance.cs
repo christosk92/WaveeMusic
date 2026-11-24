@@ -54,17 +54,27 @@ public static partial class SettingsSpec
             Make("appearance.appMode", K.Segmented, Strings.Settings.Appearance.AppMode,
                 SettingsWriter.OfChoice("appearance.mode", SettingsVerbs.SetThemeMode), legacy: ["appMode"], glyph: "Sun",
                 captionKey: Strings.Settings.Appearance.ThemeSub, value: s => (int)Appearance.ModeOf(s.Get(Platform.Keys.ThemeMode)),
-                choices: [Strings.Settings.Choice.System, Strings.Settings.Choice.Light, Strings.Settings.Choice.Dark], contexts: [SettingsSurfaces.ProfileMenu]),
-            // The colour set of each mode (#184): index 0 the theme's own colours, then the catalog's sets for that mode. Developer-only plain
-            // choices until the picker lands (plan phase 5); the inspector drives them with `setting id=appearance.colours.dark value=<i>`.
+                choices: [Strings.Settings.Choice.System, Strings.Settings.Choice.Light, Strings.Settings.Choice.Dark], contexts: [SettingsSurfaces.ProfileMenu])),
+
+        // Colours (#184): one colour set for light mode and one for dark, app-wide (whichever theme is active), switched by the App mode above.
+        // Index 0 of each is the theme's own colours. While a set is active the accent can come from it; a family with named accents
+        // (Catppuccin's fourteen) offers them for the mode on screen.
+        Group("colours", Strings.Settings.Groups.Appearance.Colours, Strings.Settings.Appearance.ColoursSub,
             Make("appearance.colours.light", K.Choice, Strings.Settings.Appearance.ColoursLight,
-                SettingsWriter.OfChoice("colours.light", i => SettingsVerbs.PickColours(ThemeKind.Light, i)), glyph: "Brush",
-                tier: SettingsTier.Developer, value: _ => SettingsVerbs.ColoursIndex(ThemeKind.Light),
-                liveChoices: () => SettingsVerbs.ColoursChoices(ThemeKind.Light)),
+                SettingsWriter.OfChoice("colours.light", i => SettingsVerbs.PickColours(ThemeKind.Light, i)), glyph: "Sun",
+                value: _ => SettingsVerbs.ColoursIndex(ThemeKind.Light), liveChoices: () => SettingsVerbs.ColoursChoices(ThemeKind.Light)),
             Make("appearance.colours.dark", K.Choice, Strings.Settings.Appearance.ColoursDark,
                 SettingsWriter.OfChoice("colours.dark", i => SettingsVerbs.PickColours(ThemeKind.Dark, i)), glyph: "Brush",
-                tier: SettingsTier.Developer, value: _ => SettingsVerbs.ColoursIndex(ThemeKind.Dark),
-                liveChoices: () => SettingsVerbs.ColoursChoices(ThemeKind.Dark))),
+                value: _ => SettingsVerbs.ColoursIndex(ThemeKind.Dark), liveChoices: () => SettingsVerbs.ColoursChoices(ThemeKind.Dark)),
+            Make("appearance.colours.accent", K.Segmented, Strings.Settings.Appearance.ColoursAccent,
+                SettingsWriter.OfChoice("colours.accent", SettingsVerbs.SetColourAccent), glyph: "Design",
+                captionKey: Strings.Settings.Appearance.ColoursAccentSub, value: _ => (int)ColourChoice.AccentSource,
+                visible: static _ => ColourChoice.Current.Any,
+                choices: [Strings.Settings.Appearance.ColoursAccentTheme, Strings.Settings.Appearance.ColoursAccentPalette]),
+            Make("appearance.colours.accentPick", K.Choice, Strings.Settings.Appearance.ColoursAccentPick,
+                SettingsWriter.OfChoice("colours.accentPick", SettingsVerbs.PickNamedAccent), glyph: "Design",
+                value: _ => SettingsVerbs.NamedAccentIndex(), visible: static _ => SettingsVerbs.NamedAccentsShown(),
+                liveChoices: SettingsVerbs.NamedAccentChoices)),
 
         Group("sizeAndText", Strings.Settings.Groups.Appearance.SizeAndText, null,
             // A combo, not segments: thirteen items (Auto + twelve rungs). Index 0 is "Auto (N%)" for both Auto and Dense.
@@ -180,6 +190,48 @@ public static partial class SettingsVerbs
     {
         if (ColourChoice.SpecOf(kind) is not { } spec) return 0;
         return ColourCatalog.For(kind).IndexOf(spec) + 1;
+    }
+
+    /// <summary>Where the accent comes from while a set is active: 0 the theme's, 1 the palette's (<see cref="AccentSource"/>).</summary>
+    public static bool SetColourAccent(int index)
+    {
+        if (index is < 0 or > 1) return false;
+        ColourChoice.SetAccentSource((AccentSource)index);
+        return true;
+    }
+
+    /// <summary>The set on screen (the current mode's), or null.</summary>
+    static ColourSpec? SpecOnScreen() => ColourChoice.SpecOf(Tok.Theme);
+
+    /// <summary>True when the palette accent row shows: the accent comes from the palette and the set on screen names several.</summary>
+    public static bool NamedAccentsShown()
+        => ColourChoice.AccentSource == AccentSource.Palette && SpecOnScreen() is { Accents.IsDefaultOrEmpty: false };
+
+    /// <summary>The names of the on-screen set's accents (the family's own words, not localized).</summary>
+    public static IReadOnlyList<string> NamedAccentChoices()
+    {
+        if (SpecOnScreen() is not { } spec || spec.Accents.IsDefaultOrEmpty) return [];
+        var words = new string[spec.Accents.Length];
+        for (int i = 0; i < words.Length; i++) words[i] = spec.Accents[i].Name;
+        return words;
+    }
+
+    /// <summary>The index of the on-screen set's accent (its stored pick, else its default).</summary>
+    public static int NamedAccentIndex()
+    {
+        if (SpecOnScreen() is not { } spec || spec.Accents.IsDefaultOrEmpty) return -1;
+        string id = ColourChoice.NamedAccentOf(Tok.Theme) is { Length: > 0 } picked ? picked : spec.DefaultAccent ?? "";
+        for (int i = 0; i < spec.Accents.Length; i++)
+            if (string.Equals(spec.Accents[i].Id, id, StringComparison.Ordinal)) return i;
+        return -1;
+    }
+
+    /// <summary>Picks the on-screen set's accent at <paramref name="index"/> for the mode on screen.</summary>
+    public static bool PickNamedAccent(int index)
+    {
+        if (SpecOnScreen() is not { } spec || (uint)index >= (uint)spec.Accents.Length) return false;
+        ColourChoice.SetNamedAccent(Tok.Theme, spec.Accents[index].Id);
+        return true;
     }
 
     /// <summary>The words of <paramref name="kind"/>'s choices: "Theme default", then each set's family and name (proper nouns, not localized).</summary>
