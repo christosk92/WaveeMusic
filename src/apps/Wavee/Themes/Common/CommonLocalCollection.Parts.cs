@@ -734,7 +734,10 @@ internal static class CommonLocalCollectionParts
     static Element FolderTile(LocalFolderNode f, float w, Action<string> open, LocalCollectionVerbs verbs)
     {
         string key = f.Key;
+        // The folder's picture (board 20): its own cover or folder image, else a 2 x 2 mosaic of the covers inside, else ONE placeholder glyph. The
+        // small folder badge marks a picture as a folder's; the glyph tile already is one, so it carries no badge (it drew the folder twice).
         Element art;
+        bool pictured = true;
         if (f.Cover is not null) art = Art(f.Cover, w, f.Key, f.Name);
         else if (f.Mosaic.Count >= 2)
         {
@@ -745,11 +748,14 @@ internal static class CommonLocalCollectionParts
         }
         else if (f.Mosaic.Count == 1) art = Art(f.Mosaic[0], w, f.Key, f.Name);
         else
+        {
+            pictured = false;
             art = new BoxEl
             {
                 Width = w, Height = w, Corners = R.Shape.All(ShapeRole.Cover), Fill = Design.WatchedPlaceholder(null), BorderWidth = L.ChipBorder, BorderColor = Tok.StrokeCardDefault,
                 Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Children = [Icon(Icons.Folder, L.FolderGlyph, Tok.TextTertiary)],
             };
+        }
         var meta = new List<Element>(2) { Ell(Meta(P.Songs(f.Songs) + " · " + Length(f.DurationMs))) };
         if (f.Quality.Length > 0)
             meta.Add(new BoxEl
@@ -758,32 +764,37 @@ internal static class CommonLocalCollectionParts
                 Corners = R.Shape.All(ShapeRole.Control), BorderWidth = L.ChipBorder, BorderColor = Tok.StrokeControlDefault,
                 Children = [R.Type.MicroMeta(f.Quality) with { Color = Tok.TextSecondary }],
             });
-        return new BoxEl
+        Element picture = pictured
+            ? new BoxEl
+            {
+                ZStack = true, Width = w, Height = w, Layout = L.SizeReflow,
+                Children =
+                [
+                    art,
+                    Corner(new BoxEl
+                    {
+                        Width = L.ChipH, Height = L.ChipH, Shrink = 0f,
+                        Corners = R.Shape.All(ShapeRole.Control), Fill = Tok.FillSolidBase with { A = 0.82f }, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+                        Children = [Icon(Icons.Folder, L.ChipGlyph, Tok.TextPrimary)],
+                    }, bottom: true, end: false, L.PillInset),
+                ],
+            }
+            : new BoxEl { ZStack = true, Width = w, Height = w, Layout = L.SizeReflow, Children = [art] };
+        Element tile = new BoxEl
         {
             Key = "lc-folder:" + key, Direction = 1, Width = w, Shrink = 0f, Gap = L.CardTextGap, Cursor = CursorId.Hand, OnClick = () => open(key), Layout = L.SizeReflow,
             Children =
             [
-                new BoxEl
-                {
-                    ZStack = true, Width = w, Height = w, Layout = L.SizeReflow,
-                    Children =
-                    [
-                        art,
-                        Corner(new BoxEl
-                        {
-                            Width = L.ChipH, Height = L.ChipH, Shrink = 0f,
-                            Corners = R.Shape.All(ShapeRole.Control), Fill = Tok.FillSolidBase with { A = 0.82f }, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-                            Children = [Icon(Icons.Folder, L.ChipGlyph, Tok.TextPrimary)],
-                        }, bottom: true, end: false, L.PillInset),
-                    ],
-                },
+                picture,
                 new BoxEl
                 {
                     Direction = 1, Height = L.CardTextH, MinWidth = 0f,
+                    // The folder's NAME ("Music"); its full path is the tooltip.
                     Children = [Ell(R.Type.CardTitle(f.Name) with { Color = Tok.TextPrimary }), new BoxEl { Direction = 0, Gap = L.ChipInner, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = meta.ToArray() }],
                 },
             ],
         };
+        return f.Path.Length > 0 ? ToolTip.Wrap(tile, f.Path) : tile;
     }
 
     static Element SongRow(LocalSongItem s, float g, bool fileColumn, LocalCollectionVerbs verbs)
