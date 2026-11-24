@@ -49,19 +49,20 @@ public static partial class DropAnywhere
     }
 
     /// <summary>Put the plan's songs where <paramref name="how"/> says (UI thread); <paramref name="at"/> is the queue-relative
-    /// index of a queue drop.</summary>
+    /// index of a queue drop. THE one path every target that takes local files runs (the panel's zones, the window's catch-all,
+    /// Local Files' sidebar row and page, the queue's line, the player bar): each dropped file becomes a library entry ("Added
+    /// files", <see cref="LocalLibrary.AddFile"/>) whatever playback then does with it. When playback cannot take the songs (local
+    /// playback not wired yet, or another device plays and the drop was for the queue) they are still kept, and the toast says why
+    /// they did not play.</summary>
     public static void Deposit(DropPlan plan, DropDeposit how, int at = 0)
     {
         if (plan.Kind == DropPayloadKind.Links) { DepositLinks(plan, how); return; }
         if (!plan.IsLocal) return;
-        if (Playback.Audio.LocalPath is null) { Notify.Say(Loc.Get(Strings.LocalFile.NotReady), InfoBarSeverity.Informational); return; }
-        if (how != DropDeposit.PlayNow && Shell.QueueModel.IsViewer())
-        {
+        string? unplaced = Playback.Audio.LocalPath is null ? Loc.Get(Strings.LocalFile.NotReady)
             // Another device plays: a file on this PC cannot join its queue.
-            Notify.Say(Loc.Get(Strings.Drop.QueueOnThisPc), InfoBarSeverity.Warning);
-            return;
-        }
-        new Expansion(plan, how, at).Start();
+            : how != DropDeposit.PlayNow && Shell.QueueModel.IsViewer() ? Loc.Get(Strings.Drop.QueueOnThisPc)
+            : null;
+        new Expansion(plan, how, at, unplaced).Start();
     }
 
     // ── links (D16) ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -126,8 +127,9 @@ public static partial class DropAnywhere
 
     // ── the expansion ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>One drop's walk → read → stage → deposit, with its toast and its Undo.</summary>
-    sealed class Expansion(DropPlan plan, DropDeposit how, int at)
+    /// <summary>One drop's walk → read → stage → deposit, with its toast and its Undo. <paramref name="unplaced"/>: why playback cannot
+    /// take the songs (they are only kept in Local Files), or null.</summary>
+    sealed class Expansion(DropPlan plan, DropDeposit how, int at, string? unplaced)
     {
         readonly FloatSignal _progress = new(0f);
         readonly List<ulong> _queued = [];
@@ -201,29 +203,32 @@ public static partial class DropAnywhere
                 refs[n++] = new EntityRef(EntityKind.Track, track.Slot);
             }
             if (n == 0) return;
-            var span = refs.AsSpan(0, n);
             _landed += n;
+            if (unplaced is null) Place(refs.AsSpan(0, n));   // else kept only: nothing plays or queues (Finish says why)
+            if (_toast is null && (_landed >= ToastFrom || Environment.TickCount64 - _started > ToastAfterMs)) ShowProgress(plan.Songs.Peek());
+            int expected = plan.Songs.Peek();
+            if (expected > 0) _progress.Value = Math.Clamp(_landed / (float)expected, 0f, 1f);
+        }
+
+        /// <summary>UI thread: put a landed batch where the drop said (the first batch of a Play plays at once).</summary>
+        void Place(ReadOnlySpan<EntityRef> span)
+        {
             if (how == DropDeposit.PlayNow && !_played)
             {
                 // The first batch plays at once (the first song is the first row); the walk goes on behind it.
                 _played = true;
                 Playback.PlayRows(span, 0, Playlist.LocalFiles.Id);
+                return;
             }
-            else
+            _before ??= ItemIds();
+            int index = how switch
             {
-                _before ??= ItemIds();
-                int index = how switch
-                {
-                    DropDeposit.PlayNext => _inserted,
-                    DropDeposit.At => at + _inserted,
-                    _ => int.MaxValue,
-                };
-                _inserted += Queue.InsertUser(span, Playback.Snap().Cursor, index);
-                Shell.QueueVerbs.Changed();
-            }
-            if (_toast is null && (_landed >= ToastFrom || Environment.TickCount64 - _started > ToastAfterMs)) ShowProgress(plan.Songs.Peek());
-            int expected = plan.Songs.Peek();
-            if (expected > 0) _progress.Value = Math.Clamp(_landed / (float)expected, 0f, 1f);
+                DropDeposit.PlayNext => _inserted,
+                DropDeposit.At => at + _inserted,
+                _ => int.MaxValue,
+            };
+            _inserted += Queue.InsertUser(span, Playback.Snap().Cursor, index);
+            Shell.QueueVerbs.Changed();
         }
 
         void ShowProgress(int expected)
@@ -244,6 +249,11 @@ public static partial class DropAnywhere
                 foreach (QueueEdge row in Queue.Rows)
                     if (row.ItemId != 0 && !_before.Contains(row.ItemId)) _queued.Add(row.ItemId);
             string songs = _capped ? Strings.Drop.SongsCapped(_landed) : Strings.Detail.SongCount(_landed);
+            if (unplaced is not null)
+            {
+                Notify.Say(unplaced, InfoBarSeverity.Warning, title: Strings.Drop.Kept(songs));
+                return;
+            }
             if (how == DropDeposit.PlayNow)
             {
                 // Small plays say nothing (the player bar is the answer); a big one closes its progress toast with what played.
