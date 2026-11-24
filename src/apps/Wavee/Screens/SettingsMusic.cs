@@ -98,6 +98,8 @@ public static class SettingsMusic
                 return new(folder, folder, Loc.Get(Strings.Settings.Music.SignIn), f.Songs > 0 ? Kept(f.Songs) : "", Mark.Lock);
             case LocalRootState.Waking:
                 return new(folder, folder, null, Loc.Get(Strings.Settings.Music.Waking), Mark.Busy);
+            case LocalRootState.Checking:   // just added: its existence or reachability is being asked off the UI thread (F4)
+                return new(folder, folder, null, Loc.Get(Strings.Settings.Music.Checking), Mark.Busy);
             case LocalRootState.Slow:
                 return new(folder, folder, null, Loc.Get(Strings.Settings.Music.Slow), Mark.Slow);
         }
@@ -129,6 +131,8 @@ public static class SettingsMusic
                 return line with { Lead = Strings.Settings.Music.WakingServer(server), LeadTone = Tone.Primary, Rest = Loc.Get(Strings.Settings.Music.SpinningUp), Mark = Mark.Busy };
             case LocalRootState.Slow:
                 return line with { Rest = Loc.Get(Strings.Settings.Music.Slow), Mark = Mark.Slow };
+            case LocalRootState.Checking:   // just added: its reachability is being asked off the UI thread (F4)
+                return line with { Rest = Loc.Get(Strings.Settings.Music.Checking), Mark = Mark.Busy };
         }
         if (f.Scanning || f.State == LocalRootState.Scanning) return line with { Rest = Loc.Get(Strings.Settings.Music.FolderScanning), Mark = Mark.Busy };
         if (f.LastScanUtcTicks <= 0) return line with { Rest = Loc.Get(Strings.Settings.Music.NotScanned) };
