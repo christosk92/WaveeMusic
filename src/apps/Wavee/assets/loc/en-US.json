@@ -312,7 +312,13 @@
       "versionsAndFormats": "Versions and formats",
       "moreFor": "More for {title}",
       "watch": "Watch",
-      "playAsAudio": "Play as audio"
+      "playAsAudio": "Play as audio",
+      "useAsThumbnail": "Use as thumbnail",
+      "thumbCover": "Album cover",
+      "thumbFrame": "Frame from the video",
+      "chooseFrame": "Choose frame…",
+      "chooseFrameTitle": "Choose a frame",
+      "useThisFrame": "Use this frame"
     },
     "trackFacts": {
       "$comment": "The expanded track row's details strip. It states EVERY fact the track carries at EVERY list width, because the table's own lanes are a function of width and drop Plays / BPM · Key / Added by / Date added as the list narrows. Labels are nouns, not sentences: each one sits above its value in a compact tile. Only present facts render — the sole — dash is the enrichment-pending state for tempo/key (extension kind 222) and stream counts (kind 185).",

@@ -171,7 +171,21 @@ public static partial class Video
     public static class LinkedVideoMirror
     {
         static readonly Dictionary<EntityId, string> Index = new();
+        static readonly Dictionary<EntityId, string> Frames = new();   // the frame a track's video version wears (#240 version cards)
         static readonly Lock Gate = new();
+
+        /// <summary>The frame a track's linked video version wears (its <c>VideoImage</c>: the album's video card, the queue's still, the stage's
+        /// poster), or none (the album cover was chosen). The commit's question after the Video arm, which a catalogue answer would overwrite.</summary>
+        public static bool TryFrame(EntityId id, out string frame)
+        {
+            frame = "";
+            lock (Gate)
+            {
+                if (Frames.Count == 0 || !Frames.TryGetValue(id, out string? found)) return false;
+                frame = found;
+                return true;
+            }
+        }
 
         /// <summary>Does the row's track have a linked video version, and where (the commit's question for every staged row)?</summary>
         public static bool TryPath(EntityId id, out string path)
@@ -188,31 +202,40 @@ public static partial class Video
         }
 
         /// <summary>The links moved (LocalLink.FeedVideos): track uri → its video file, before and now. Writes the rows that changed. UI thread.</summary>
-        public static void Apply(IReadOnlyDictionary<string, string> before, IReadOnlyDictionary<string, string> now)
+        public static void Apply(IReadOnlyDictionary<string, LinkedVideoFeed> before, IReadOnlyDictionary<string, LinkedVideoFeed> now)
         {
-            var changed = new List<(EntityId Id, string? Path)>();
+            var changed = new List<(EntityId Id, LinkedVideoFeed? Feed)>();
             lock (Gate)
             {
                 foreach (var (uri, _) in before)
-                    if (!now.ContainsKey(uri) && EntityId.TryParse(uri, out EntityId gone)) { Index.Remove(gone); changed.Add((gone, null)); }
-                foreach (var (uri, path) in now)
-                    if ((!before.TryGetValue(uri, out string? was) || was != path) && EntityId.TryParse(uri, out EntityId id)) { Index[id] = path; changed.Add((id, path)); }
+                    if (!now.ContainsKey(uri) && EntityId.TryParse(uri, out EntityId gone)) { Index.Remove(gone); Frames.Remove(gone); changed.Add((gone, null)); }
+                foreach (var (uri, feed) in now)
+                    if ((!before.TryGetValue(uri, out LinkedVideoFeed? was) || was != feed) && EntityId.TryParse(uri, out EntityId id))
+                    {
+                        Index[id] = feed.Path;
+                        if (feed.Frame is { } f) Frames[id] = f; else Frames.Remove(id);
+                        changed.Add((id, feed));
+                    }
             }
             if (changed.Count == 0 || Entities.Current is not { } scope) return;
             var t = scope.Tracks;
             bool any = false;
-            foreach (var (id, path) in changed)
+            foreach (var (id, feed) in changed)
             {
                 if (!t.TryGetSlot(id, out int slot) || slot <= Table.None) continue;
-                if (path is not null)
+                if (feed is not null)
                 {
                     t.Flags[slot] |= (uint)TrackFlags.LinkedVideo;
-                    t.SetText(ref t.LocalVideo, slot, Entities.Strings.Intern(path));
+                    t.SetText(ref t.LocalVideo, slot, Entities.Strings.Intern(feed.Path));
+                    // The video's picture (the album's video card, the queue's still, the stage's poster): its frame, or none for the cover.
+                    if (feed.Frame is { } frame) t.SetText(ref t.VideoImage, slot, Entities.Strings.Intern(frame));
+                    else if ((t.Flags[slot] & (uint)TrackFlags.HasVideo) == 0) t.ClearText(ref t.VideoImage, slot);
                 }
                 else
                 {
                     t.Flags[slot] &= ~(uint)TrackFlags.LinkedVideo;
                     t.ClearText(ref t.LocalVideo, slot);
+                    if ((t.Flags[slot] & (uint)TrackFlags.HasVideo) == 0) t.ClearText(ref t.VideoImage, slot);
                 }
                 t.Bump(slot);   // not the Video group's Known bit: this is the user's link, not a catalogue answer
                 any = true;

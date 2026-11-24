@@ -69,6 +69,18 @@ public readonly partial struct Track
         }
         // A video of mine (its own file, or a Spotify song whose linked video version it plays): watch it, or hear it.
         uint videoBits = version.FlagBits & (uint)(TrackFlags.LocalVideoFile | TrackFlags.LinkedVideo);
+        // A video file of mine: the picture it wears ("Use as thumbnail": the album cover, a frame from the video, or a frame the user picks).
+        if (mine != 0 && LocalLink.IsVideo(mine))
+        {
+            long thumb = LocalLink.ThumbOf(mine);
+            rows.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Versions.UseAsThumbnail),
+            [
+                MenuFlyoutItem.RadioItem(Loc.Get(Strings.Detail.Versions.ThumbCover), thumb < 0, () => LocalLink.SetThumb(mine, -1)),
+                MenuFlyoutItem.RadioItem(Loc.Get(Strings.Detail.Versions.ThumbFrame), thumb >= 0, () => { if (thumb < 0) LocalLink.SetThumb(mine, 0); }),
+                MenuFlyoutItem.Separator,
+                new MenuFlyoutItem(Loc.Get(Strings.Detail.Versions.ChooseFrame), Icons.Edit, true, () => LocalLinkPage.OpenChooseFrame(mine, overlay)),
+            ], Icons.Picture));
+        }
         if (videoBits != 0)
         {
             var row = new EntityRef(EntityKind.Track, version.Slot);

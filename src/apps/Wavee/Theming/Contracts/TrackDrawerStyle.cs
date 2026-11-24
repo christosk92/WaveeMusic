@@ -55,7 +55,11 @@ internal sealed record TrackDrawerLink(string Head, string Line, bool Linked, st
 /// answers) or an alternate audio.</summary>
 /// <param name="Label">The core's own label for the entry's meta line in place of its kind's ("Your file · MP3 320", a linked file on its Spotify
 /// song); null: the kind's.</param>
-internal readonly record struct TrackDrawerEntry(byte Kind, Track Version, string RowKey, bool IsNow, bool Reserved, float[]? Peaks, string? Label = null);
+/// <param name="Picture">The version's own picture where it is not its row's art (#240 version cards: a video of mine wears a frame from it); null:
+/// the row's art.</param>
+/// <param name="Wide">The picture is a video's (16:9, the music-video row's thumbnail); its slot is reserved while the frame is still being made.</param>
+internal readonly record struct TrackDrawerEntry(byte Kind, Track Version, string RowKey, bool IsNow, bool Reserved, float[]? Peaks, string? Label = null,
+    string? Picture = null, bool Wide = false);
 
 /// <summary>What one render of the core drawer host decided.</summary>
 internal sealed class TrackDrawerBodyArgs

@@ -54,15 +54,16 @@ public static unsafe class VideoFrame
     }
 
     /// <summary>The still of <paramref name="path"/> as JPEG bytes, or null (no video stream, no decoder for it, an unreadable file).
+    /// <paramref name="atMs"/>: the frame at that time (a frame the user chose, "Choose frame…"); negative: at <see cref="At"/> of its length.
     /// Blocks for the open, the seek and a few decodes: worker thread only.</summary>
-    public static byte[]? Grab(string path)
+    public static byte[]? Grab(string path, long atMs = -1)
     {
         s_why = null;
         if (Failed(MFStartup(MfVersion, MfStartupLite), "MFStartup")) return null;
         using var crashRegion = FluentGpu.Foundation.CrashTrail.Enter(FluentGpu.Foundation.NativeRegion.WicDecode, "video-frame", 0);
         try
         {
-            if (Still(path, out int w, out int h) is not { } bgr) return null;
+            if (Still(path, atMs, out int w, out int h) is not { } bgr) return null;
             byte[]? jpeg = Encode(bgr, w, h);
             if (jpeg is null) s_why ??= "encode";
             return jpeg;
@@ -71,7 +72,7 @@ public static unsafe class VideoFrame
     }
 
     /// <summary>The frame as 24-bit BGR rows, top-down, <paramref name="w"/> x <paramref name="h"/>.</summary>
-    static byte[]? Still(string path, out int w, out int h)
+    static byte[]? Still(string path, long atMs, out int w, out int h)
     {
         w = h = 0;
         IMFAttributes* attributes = null;
@@ -115,9 +116,11 @@ public static unsafe class VideoFrame
             long target = 0;
             if (reader->GetPresentationAttribute(MediaSource, &durationKey, &duration).SUCCEEDED)
             {
-                target = (long)(duration.uhVal.QuadPart * At);
+                long length = (long)duration.uhVal.QuadPart;   // 100 ns units
+                target = atMs >= 0 ? Math.Min(atMs * 10_000L, Math.Max(0L, length - 10_000_000L)) : (long)(length * At);
                 PropVariantClear(&duration);
             }
+            else if (atMs > 0) target = atMs * 10_000L;
             if (target > 0)
             {
                 PROPVARIANT position = default;

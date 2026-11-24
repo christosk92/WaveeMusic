@@ -55,6 +55,39 @@ public static partial class LocalLink
         return 0;
     }
 
+    /// <summary>What a video file of mine wears as its picture (#240 version cards, "Use as thumbnail"): absent = a frame from the video (its own
+    /// still), -1 = the album cover, &gt; 0 = the frame the user chose at that time (ms).</summary>
+    static readonly Dictionary<long, long> s_thumbs = new();
+
+    /// <summary>The picture choice of a file: -1 the album cover, 0 the video's own still, &gt; 0 the chosen frame's time (ms). Tracked.</summary>
+    public static long ThumbOf(long localId)
+    {
+        _ = s_version.Value;
+        return s_thumbs.TryGetValue(localId, out long c) ? c : 0;
+    }
+
+    /// <summary>"Use as thumbnail": the album cover (-1), a frame from the video (0), or the frame at a time (ms). UI thread.</summary>
+    public static void SetThumb(long localId, long choice)
+    {
+        if (choice == 0) s_thumbs.Remove(localId);
+        else s_thumbs[localId] = choice;
+        Publish();
+        Save();
+    }
+
+    /// <summary>The picture of a video file of mine as its own version wears it: the chosen frame, else its still (asked for when not made yet: null
+    /// until it lands); null for the album-cover choice and for any file that is not a video. Any thread (LocalArt is).</summary>
+    public static string? FrameUrlOf(long localId)
+    {
+        if (!IsVideo(localId) || LocalLibrary.PathOf(localId) is not { } path) return null;
+        long c = s_thumbs.TryGetValue(localId, out long v) ? v : 0;
+        if (c < 0) return null;
+        return (c > 0 ? LocalArt.FrameUri(path, c) : null) ?? LocalArt.FileCoverUri(path);
+    }
+
+    /// <summary>Does the file wear a frame (16:9) rather than the album cover? A video whose choice is not the cover.</summary>
+    public static bool WearsFrame(long localId) => IsVideo(localId) && !(s_thumbs.TryGetValue(localId, out long c) && c < 0);
+
     /// <summary>Is the indexed file a video? Any thread.</summary>
     public static bool IsVideo(long localId) => LocalLibrary.Index.TryGet(localId, out LocalEntry? e) && e.Tags.Kind == LocalKind.Video;
 

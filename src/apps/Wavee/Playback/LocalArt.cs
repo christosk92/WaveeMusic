@@ -121,6 +121,54 @@ public static class LocalArt
         return null;
     }
 
+    /// <summary>The frame at <paramref name="atMs"/> of a video the user chose for its picture ("Choose frame…"), if it is in the cache; null when
+    /// it is not (never made, or the cache was cleared: the caller falls back to the video's own still). Memoised. Any thread.</summary>
+    public static string? FrameUri(string fullPath, long atMs)
+    {
+        string? name = FrameName(fullPath, atMs);
+        if (name is null) return null;
+        lock (s_gate) { if (s_frames.TryGetValue(name, out string? known)) return known; }
+        string path = Path.Combine(CacheDir, name);
+        string? uri = File.Exists(path) ? FileUri(path) : null;
+        if (uri is not null) lock (s_gate) s_frames[name] = uri;
+        return uri;
+    }
+
+    /// <summary>Make the frame at <paramref name="atMs"/> (the "Choose frame…" scrubber, and its Save): grabbed once, stored in Cache\art beside the
+    /// stills. Its file:/// uri, or null (no picture there). Blocks: worker thread only.</summary>
+    public static string? MakeFrame(string fullPath, long atMs)
+    {
+        if (FrameUri(fullPath, atMs) is { } known) return known;
+        if (FrameName(fullPath, atMs) is not { } name) return null;
+        if (VideoFrame.Grab(fullPath, atMs) is not { } jpeg)
+        {
+            Log.Info("local", "local.art frame failed file=" + Path.GetFileName(fullPath) + " at=" + atMs + " why=" + VideoFrame.LastFailure);
+            return null;
+        }
+        string dir = CacheDir, path = Path.Combine(dir, name);
+        Directory.CreateDirectory(dir);
+        string tmp = path + "." + Environment.ProcessId + ".tmp";
+        File.WriteAllBytes(tmp, jpeg);
+        File.Move(tmp, path, overwrite: true);
+        string uri = FileUri(path);
+        lock (s_gate) s_frames[name] = uri;
+        Log.Info("local", "local.art frame file=" + Path.GetFileName(fullPath) + " at=" + atMs + " bytes=" + jpeg.Length);
+        return uri;
+    }
+
+    static readonly Dictionary<string, string> s_frames = new(StringComparer.Ordinal);
+
+    /// <summary>A chosen frame's file name: the video (path, size, write time) and the time, hashed, as a still's is.</summary>
+    static string? FrameName(string fullPath, long atMs)
+    {
+        FileInfo info;
+        try { info = new FileInfo(fullPath); } catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException) { return null; }
+        if (!info.Exists) return null;
+        string key = fullPath.ToUpperInvariant() + "|" + info.Length.ToString(CultureInfo.InvariantCulture) + "|" + info.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture)
+                     + "|@" + atMs.ToString(CultureInfo.InvariantCulture);
+        return XxHash3.HashToUInt64(System.Runtime.InteropServices.MemoryMarshal.AsBytes(key.AsSpan())).ToString("x16", CultureInfo.InvariantCulture) + ".jpg";
+    }
+
     /// <summary>The album's cover: the first track of (album artist or first artist, album) with art, same rules. Any thread.</summary>
     public static string? AlbumCoverUri(string albumArtistOrArtist, string album)
     {

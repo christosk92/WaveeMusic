@@ -79,7 +79,7 @@ internal static class ZuneTrackDrawer
         for (int i = 0; i < entries.Count; i++)
         {
             var e = entries[i];
-            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks, e.Label);
+            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks, e.Label, e.Picture, e.Wide);
             body[2 + i] = ConnectedRow(e.RowKey, row, isLast: i == entries.Count - 1);
         }
         if (a.Link is { } link) body = [.. body, LinkSection(link)];
@@ -307,7 +307,8 @@ internal static class ZuneTrackDrawer
         ],
     };
 
-    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks, string? label = null)
+    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks, string? label = null,
+                              string? picture = null, bool wide = false)
     {
         Track parent = a.Track;
         // #240 version cards: the card's menu (right-click, Shift+F10, the menu key, its "⋯"), F2, and an inline title for a version of mine.
@@ -339,7 +340,7 @@ internal static class ZuneTrackDrawer
             HoverFill = Prop.Of(static () => R.Layer.RowPressed),
             Children =
             [
-                Thumb(version, parent, kind, isNow, a.PlayVersion),
+                Thumb(version, parent, kind, isNow, a.PlayVersion, picture, wide),
                 new BoxEl
                 {
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ZuneListRules.DrawerTextGap,
@@ -420,12 +421,15 @@ internal static class ZuneTrackDrawer
 
     /// <summary>16:9 with a play badge for the video, the bare square otherwise, at the Cover radius; the now-playing overlay on the version
     /// that IS the deck's item.</summary>
-    static Element Thumb(Track version, Track parent, byte kind, bool isNow, Action<Track, Track, byte> playVersion)
+    // A video of mine (#240 version cards) wears its own frame in the music video's 16:9 thumbnail (the same slot height as the square, so the
+    // card keeps its height and the row's text column only starts further right), with the music video's play badge: one idiom for a video
+    // version in this list, whichever it is. While its frame is being made the slot is reserved (the no-art tile), so nothing moves when it lands.
+    static Element Thumb(Track version, Track parent, byte kind, bool isNow, Action<Track, Track, byte> playVersion, string? picture = null, bool wide = false)
     {
-        bool video = kind == DrawerRules.VideoKind;
+        bool video = kind == DrawerRules.VideoKind || wide;
         float w = video ? DrawerRules.VideoThumbW : DrawerRules.AudioThumb;
         float h = video ? DrawerRules.VideoThumbH : DrawerRules.AudioThumb;
-        string? url = Controls.ArtUrl(video && !parent.VideoImageId.IsEmpty ? parent.VideoImageId : version.ImageId);
+        string? url = wide ? picture : Controls.ArtUrl(video && !parent.VideoImageId.IsEmpty ? parent.VideoImageId : version.ImageId);
         Element art = Controls.Artwork(url, w, h, R.Shape.Cover);
         if (!isNow && !video) return art;
         Element layer = isNow
