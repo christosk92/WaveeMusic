@@ -1491,7 +1491,7 @@ public readonly partial struct Playlist
     static void PickAndPlay()
     {
         Pickers.Pick(
-            PickerRequest.Open(Loc.Get(Strings.LocalFile.PickTitle), Video.OverrideUx.PlayableFilter(Loc.Get(Strings.LocalFile.Filter))),
+            PickerRequest.Open(Loc.Get(Strings.LocalFile.PickTitle), Video.LinkedVideoUx.PlayableFilter(Loc.Get(Strings.LocalFile.Filter))),
             done: picked => { if (picked is { Length: > 0 }) PlayFiles([picked]); },
             failed: ex => Log.Warn("localfile", "file picker failed", ex));
     }

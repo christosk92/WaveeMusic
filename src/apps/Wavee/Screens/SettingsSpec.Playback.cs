@@ -2,7 +2,7 @@
 //
 // Role: CORE (settings rework phase 1). Between songs (autoplay, crossfade bound to the live DSP) · Player bar · Podcasts and
 // audiobooks (the episode speed the speed menus set) · Videos and Canvas (quality, the metered cap, prepare-ahead, Canvas, the
-// end countdown, the attached videos) · Previews on Home (the Home shelf's preview sound) · Playback runtime (the runtime card's doors).
+// end countdown, the linked videos) · Previews on Home (the Home shelf's preview sound) · Playback runtime (the runtime card's doors).
 //
 // Every crossfade write persists and then pushes the WHOLE state to `Playback.Audio` (`SetCrossfade`), so the ear follows the slider.
 
@@ -73,16 +73,16 @@ public static partial class SettingsSpec
             Make("playback.video.endCountdown", K.Toggle, Strings.Settings.Playback.VideoEndCountdown,
                 SettingsWriter.OfToggle("video.endCountdown", SettingsVerbs.SetVideoEndCountdown), legacy: ["videoEndCountdown"], glyph: "Clock",
                 captionKey: Strings.Settings.Playback.VideoEndCountdownSub, value: BoolOf(Platform.Keys.VideoEndCountdown)),
-            // "Clear all" is the ONE confirmed verb (N times, no per-row undo); no roster store → the whole row greys, no control.
-            Make("playback.videoOverrides", K.Action, Strings.VideoOverride.SettingsHeader,
-                SettingsWriter.OfAction("video.overrides.clearAll", SettingsVerbs.ClearAllVideoOverrides), legacy: ["videoOverrides"], glyph: "Edit",
-                captionKey: Strings.VideoOverride.SettingsSub, aliases: ["mp4"],
-                enabled: f => f.VideoOverridesPresent ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true,
-                confirm: new SettingsConfirm(Strings.VideoOverride.ClearAll, Strings.VideoOverride.ClearAllBody, Strings.VideoOverride.ClearAll)),
-            // The manager flyout's per-item verbs (replace · locate · show in Explorer · remove) are `SettingsVerbs` members.
-            Make("playback.videoOverrides.item", K.Composite, Strings.VideoOverride.Manage,
-                SettingsWriter.Owned("SettingsVerbs.RemoveVideoOverride/PickVideoOverride/RevealInExplorer"),
-                legacy: ["videoOverrideItem"], parent: "playback.videoOverrides")),
+            // "Unlink all" is the ONE confirmed verb (N times, no per-row undo). The list is the linked video versions (Shell/Video.LinkedVideos.cs).
+            Make("playback.linkedVideos", K.Action, Strings.LinkedVideo.SettingsHeader,
+                SettingsWriter.OfAction("video.linked.unlinkAll", SettingsVerbs.ClearAllLinkedVideos), legacy: ["videoOverrides"], glyph: "Edit",
+                captionKey: Strings.LinkedVideo.SettingsSub, aliases: ["mp4", "video"],
+                enabled: f => f.LinkedVideosPresent ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true,
+                confirm: new SettingsConfirm(Strings.LinkedVideo.ClearAll, Strings.LinkedVideo.ClearAllBody, Strings.LinkedVideo.ClearAll)),
+            // The manager flyout's per-item verbs (replace · locate · show in Explorer · unlink) are `SettingsVerbs` members.
+            Make("playback.linkedVideos.item", K.Composite, Strings.LinkedVideo.Manage,
+                SettingsWriter.Owned("SettingsVerbs.RemoveLinkedVideo/PickLinkedVideo/RevealInExplorer"),
+                legacy: ["videoOverrideItem"], parent: "playback.linkedVideos")),
 
         // Home's song previews (the Spine Shelf and the Release Spotlight play a song's preview on hover, muted by default): their sound, the
         // same writer as the shelf's sound button (`PreviewAudio.SetSound`; the button writes the dial from Home).
@@ -193,58 +193,58 @@ public static partial class SettingsVerbs
         return true;
     }
 
-    /// <summary>Detach every attached video (confirmed first): one log line and one toast.</summary>
-    public static bool ClearAllVideoOverrides()
+    /// <summary>Unlink every linked video (confirmed first): one log line and one toast. The files stay in the library.</summary>
+    public static bool ClearAllLinkedVideos()
     {
-        var all = Video.Overrides.All();
+        var all = Video.LinkedVideos.All();
         int removed = 0;
         for (int i = 0; i < all.Count; i++)
-            if (Video.Overrides.Remove(all[i].Uri)) removed++;
-        Log.Event(WaveeLogLevel.Info, "ui", "override.settings.clear_all", "detached every attached video",
+            if (Video.LinkedVideos.Remove(all[i].Uri)) removed++;
+        Log.Event(WaveeLogLevel.Info, "ui", "linkedvideo.settings.clear_all", "unlinked every video",
             fields: [WaveeLogField.Of("count", removed)]);
-        Notify.Say(Loc.Get(Strings.VideoOverride.ClearedAll), InfoBarSeverity.Success);
+        Notify.Say(Loc.Get(Strings.LinkedVideo.ClearedAll), InfoBarSeverity.Success);
         return false;
     }
 
-    /// <summary>The manager's "Remove": detach one video — applied at once, with a toast carrying Undo, never a dialog.</summary>
-    public static void RemoveVideoOverride(string uri, string path, string sourceKey)
+    /// <summary>The manager's "Unlink": unlink one video — applied at once, with a toast carrying Undo, never a dialog.</summary>
+    public static void RemoveLinkedVideo(string uri, string path, string sourceKey)
     {
-        if (!Video.Overrides.Remove(uri)) return;
-        Log.Event(WaveeLogLevel.Info, "ui", "override.settings.remove", "detached the attached video",
+        if (!Video.LinkedVideos.Remove(uri)) return;
+        Log.Event(WaveeLogLevel.Info, "ui", "linkedvideo.settings.remove", "unlinked the video",
             fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", path)]);
-        Notify.Say(Loc.Get(Strings.VideoOverride.Removed), InfoBarSeverity.Success, Loc.Get(Strings.VideoOverride.Undo),
+        Notify.Say(Loc.Get(Strings.LinkedVideo.Removed), InfoBarSeverity.Success, Loc.Get(Strings.LinkedVideo.Undo),
             () =>
             {
-                if (Video.Overrides.Attach(uri, path, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null)
-                    Notify.Say(Loc.Get(Strings.VideoOverride.RejectedNotFound), InfoBarSeverity.Error);
+                if (Video.LinkedVideos.Attach(uri, path, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null)
+                    Notify.Say(Loc.Get(Strings.LinkedVideo.RejectedNotFound), InfoBarSeverity.Error);
             });
     }
 
     /// <summary>The manager's "Replace" / "Locate": pick, validate (a refusal is an ERROR toast), attach, success toast. Locate
     /// spells the deepest surviving folder into the dialog caption (<paramref name="start"/>).</summary>
-    public static void PickVideoOverride(string uri, string sourceKey, string title, string? start)
+    public static void PickLinkedVideo(string uri, string sourceKey, string title, string? start)
     {
-        var filter = Video.OverrideUx.PickerFilter(Loc.Get(Strings.VideoOverride.Filter));
+        var filter = Video.LinkedVideoUx.PickerFilter(Loc.Get(Strings.LinkedVideo.Filter));
         Pickers.Pick(PickerRequest.Open(start is null ? title : title + " — " + start, filter),
-            done: picked => { if (picked is not null) PickedVideoOverride(uri, sourceKey, picked); },
+            done: picked => { if (picked is not null) PickedLinkedVideo(uri, sourceKey, picked); },
             failed: ex => Notify.Say(ex.Message, InfoBarSeverity.Error));
     }
 
-    /// <summary><see cref="PickVideoOverride"/>'s answer, on the UI thread once the dialog (its own thread) has closed.</summary>
-    public static void PickedVideoOverride(string uri, string sourceKey, string picked)
+    /// <summary><see cref="PickLinkedVideo"/>'s answer, on the UI thread once the dialog (its own thread) has closed.</summary>
+    public static void PickedLinkedVideo(string uri, string sourceKey, string picked)
     {
-        var rejection = Video.OverrideUx.Validate(picked, Video.Overrides.FileExists);
+        var rejection = Video.LinkedVideoUx.Validate(picked, Video.LinkedVideos.FileExists);
         if (rejection != Video.AttachRejection.None)
         {
-            Notify.Say(Loc.Get(rejection == Video.AttachRejection.NotMp4 ? Strings.VideoOverride.RejectedNotMp4 : Strings.VideoOverride.RejectedNotFound), InfoBarSeverity.Error);
-            Log.Event(WaveeLogLevel.Warning, "ui", "override.attach.rejected", "the picked file was refused",
+            Notify.Say(Loc.Get(rejection == Video.AttachRejection.NotMp4 ? Strings.LinkedVideo.RejectedNotMp4 : Strings.LinkedVideo.RejectedNotFound), InfoBarSeverity.Error);
+            Log.Event(WaveeLogLevel.Warning, "ui", "linkedvideo.attach.rejected", "the picked file was refused",
                 fields: [WaveeLogField.Of("path", picked), WaveeLogField.Of("reason", rejection == Video.AttachRejection.NotMp4 ? "not-mp4" : "not-found")]);
             return;
         }
-        if (Video.Overrides.Attach(uri, picked, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null) return;
-        Log.Event(WaveeLogLevel.Info, "ui", "override.settings.replace", "replaced the attached video",
+        if (Video.LinkedVideos.Attach(uri, picked, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null) return;
+        Log.Event(WaveeLogLevel.Info, "ui", "linkedvideo.settings.replace", "replaced the linked video",
             fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", picked)]);
-        Notify.Say(Loc.Get(Strings.VideoOverride.Replaced), InfoBarSeverity.Success);
+        Notify.Say(Loc.Get(Strings.LinkedVideo.Replaced), InfoBarSeverity.Success);
     }
 
     /// <summary>"Show in Explorer": select the file. Fail-soft (logged).</summary>

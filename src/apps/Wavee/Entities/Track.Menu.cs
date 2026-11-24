@@ -400,15 +400,15 @@ public readonly partial struct Track
     }
 
     /// <summary>Video ▸ — the user's local video override for ONE playable. Which rows exist is
-    /// <c>Video.OverrideUx.MenuFor</c>, which walks the SAME tier decision playback takes; each row is the registered
+    /// <c>Video.LinkedVideoUx.MenuFor</c>, which walks the SAME tier decision playback takes; each row is the registered
     /// <c>ActionId.*Video</c> verb (absent until its owner registers it), Remove behind a separator. Null — the row
     /// absent — with no curation roster or no row to show.</summary>
     static MenuFlyoutItem? VideoItem(Track t, in ActionContext ctx)
     {
-        if (!Video.Overrides.Present || !t.Uri.IsValid) return null;
+        if (!Video.LinkedVideos.Present || !t.Uri.IsValid) return null;
         string uri = t.Uri.Text;
-        var which = Video.OverrideUx.MenuFor(true, uri, Video.Overrides.Present, Video.Overrides.Has(uri),
-                                              Video.Overrides.Decide(uri).Tier);
+        var which = Video.LinkedVideoUx.MenuFor(true, uri, Video.LinkedVideos.Present, Video.LinkedVideos.Has(uri),
+                                              Video.LinkedVideos.Decide(uri).Tier);
         if (which == Video.MenuItems.None) return null;
         var items = new List<MenuFlyoutItem>(6);
         if ((which & Video.MenuItems.Attach) != 0 && Actions.Menu.Row(ActionId.AttachVideo, in ctx) is { } attach) items.Add(attach);
@@ -421,7 +421,7 @@ public readonly partial struct Track
             if (items.Count > 0) items.Add(Actions.Menu.Separator);
             items.Add(remove);
         }
-        return items.Count == 0 ? null : Actions.Menu.SubMenu(Loc.Get(Strings.VideoOverride.MenuTitle), items, ActionIcons.Video);
+        return items.Count == 0 ? null : Actions.Menu.SubMenu(Loc.Get(Strings.LinkedVideo.MenuTitle), items, ActionIcons.Video);
     }
 
     /// <summary>The identity strip: 38 art · title · "artists · album" for one track; "{n} songs selected" over

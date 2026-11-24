@@ -3,7 +3,7 @@
 // From `Screens\Settings.UI.Playback.cs`. Sound: the audio quality (the D7 lossless rung, each rung's sentence), the metered cap and its live status line, the
 // loudness level's combo, the equalizer (the curve bound to the live DSP, the preset, Reset). Playback: crossfade (its slider and number box in lock-step), the
 // video quality and metered cap combos, the playback runtime card (ready expander / not-set-up bar / problem bar). The attached videos' row and its "Manage"
-// flyout are `ClassicSettings.VideoOverrides.cs`; every other Sound and Playback dial is the generic grammar.
+// flyout are `ClassicSettings.LinkedVideos.cs`; every other Sound and Playback dial is the generic grammar.
 //
 // THE LIVE DSP is the verbs'. Every equalizer / crossfade write persists and then pushes the WHOLE state to the live graph (`SettingsVerbs.SetEqBand`,
 // `CommitCrossfade`), so the ear follows the curve while it is dragged; this view keeps only the mirrors of its frozen controls (a combo's selection signal).
@@ -20,7 +20,7 @@ namespace Wavee.Themes.Classic;
 
 internal static partial class ClassicSettings
 {
-    // ══ 1. STABLE CONTROL STATE (0.2.9 `SettingsPage.Playback.cs:31-41`, `VideoOverrides.cs:30-40`) ═════════════════
+    // ══ 1. STABLE CONTROL STATE (0.2.9 `SettingsPage.Playback.cs:31-41`, `LinkedVideos.cs:30-40`) ═════════════════
 
     // ComboBox / NumberBox / Slider bind ONE signal instance for their life: these are seeded per page mount.
     static readonly Signal<int> s_quality = new(Platform.Keys.PlaybackQuality.Default);
@@ -53,8 +53,8 @@ internal static partial class ClassicSettings
 
     // The "Manage" flyout: its handle and the anchor (a wrapper around the button — Button owns its own root props).
     // ROOT-LIFETIME (RootScope.cs): the flyout and its anchor belong to the mounted root's tree and overlay host.
-    static readonly RootState<OverlayHandle?> s_voHandleState = new("Settings.VideoOverrides.Handle");
-    static readonly RootState<NodeHandle> s_voAnchorState = new("Settings.VideoOverrides.Anchor");
+    static readonly RootState<OverlayHandle?> s_voHandleState = new("Settings.LinkedVideos.Handle");
+    static readonly RootState<NodeHandle> s_voAnchorState = new("Settings.LinkedVideos.Anchor");
     static OverlayHandle? s_voHandle { get => s_voHandleState.Value; set => s_voHandleState.Value = value; }
     static NodeHandle s_voAnchor { get => s_voAnchorState.Value; set => s_voAnchorState.Value = value; }
 

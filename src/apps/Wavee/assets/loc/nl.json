@@ -937,7 +937,7 @@
     "saveToLibrary": "Opslaan in je bibliotheek",
     "removeFromLibrary": "Verwijderen uit je bibliotheek"
   },
-  "videoOverride": {
+  "linkedVideo": {
     "menuTitle": "Video",
     "attach": "Videobestand koppelen…",
     "replace": "Videobestand vervangen…",

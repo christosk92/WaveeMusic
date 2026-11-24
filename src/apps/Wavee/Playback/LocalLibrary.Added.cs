@@ -19,13 +19,15 @@ public static partial class LocalLibrary
     /// has it (a music-folder file, an earlier drop; a missing one comes back under its old id, with its link and rename). The tags were read
     /// off the UI thread (<paramref name="read"/>: the reader understood the file; <paramref name="format"/>: what it decodes as). Returns the
     /// row's track, or default when the path is not a file. UI thread.</summary>
-    public static Track AddFile(string path, Spotify.Audio.Format format, in LocalTagSet tags, bool read, string why)
+    /// <param name="allowMissing">A file that is not there is added as Missing (the migration of an old attachment whose file is gone: nothing
+    /// is lost, it comes back when the drive does).</param>
+    public static Track AddFile(string path, Spotify.Audio.Format format, in LocalTagSet tags, bool read, string why, bool allowMissing = false)
     {
         string full;
         try { full = Path.GetFullPath(path); }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { return default; }
         var info = new FileInfo(full);
-        if (!info.Exists) return default;
+        if (!info.Exists && !allowMissing) return default;
         EnsureAddedRoot();
         if (!s_index.TryRelative(full, out int rootId, out string rel)) return default;
         LocalEntry? known = s_index.TryGetByPath(rootId, rel, out LocalEntry? k) ? k : null;
@@ -35,8 +37,10 @@ public static partial class LocalLibrary
             bool video = tags.Kind == LocalKind.Video;
             // A video plays through the video path (its own row's attachment, the local-video lane): it is playable when the reader knew it.
             bool playable = read && (format != Spotify.Audio.Format.Unknown || video);
-            var entry = new LocalEntry(known?.LocalId ?? s_index.NewId(), rootId, rel, 0, 0, info.Length, info.LastWriteTimeUtc.ToFileTimeUtc(), 0,
-                (uint)info.Attributes, format, tags, LocalTags.TitleOrFileName(tags, info.Name), LocalState.Present, now, playable, playable ? "" : why,
+            bool there = info.Exists;
+            var entry = new LocalEntry(known?.LocalId ?? s_index.NewId(), rootId, rel, 0, 0, there ? info.Length : 0, there ? info.LastWriteTimeUtc.ToFileTimeUtc() : 0, 0,
+                there ? (uint)info.Attributes : 0, format, tags, LocalTags.TitleOrFileName(tags, info.Name), there ? LocalState.Present : LocalState.Missing, now,
+                playable || (!there && video), playable ? "" : why,
                 known is { FirstSeenTicks: > 0 } ? known.FirstSeenTicks : now);
             var batch = new LocalScanBatch(rootId, DirOf(rel));
             batch.Upserts.Add(entry);

@@ -107,10 +107,16 @@ public static class LocalLinkWords
         return file != 0 ? W.FileMarkPlays(LocalLinkPage.FileName(file)) : Loc.Get(W.FileMark);
     }
 
+    /// <summary>A version row's label: "Your file · MP3 320", or for a video "Your video · 1280×720" (a linked video version).</summary>
     public static string FileLabel(long localId)
-        => LocalLibrary.Index.TryGet(localId, out LocalEntry? e)
-           && LocalCollection.QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample) is { Length: > 0 } q
-            ? W.YourFileAs(q) : Loc.Get(W.YourFile);
+    {
+        if (!LocalLibrary.Index.TryGet(localId, out LocalEntry? e)) return Loc.Get(W.YourFile);
+        if (e.Tags.Kind == LocalKind.Video)
+            return e.Tags.VideoWidth > 0 && e.Tags.VideoHeight > 0
+                ? W.YourVideoAs(e.Tags.VideoWidth.ToString(System.Globalization.CultureInfo.CurrentCulture) + "×" + e.Tags.VideoHeight.ToString(System.Globalization.CultureInfo.CurrentCulture))
+                : Loc.Get(W.YourVideo);
+        return LocalCollection.QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample) is { Length: > 0 } q ? W.YourFileAs(q) : Loc.Get(W.YourFile);
+    }
 
     /// <summary>The file drawer's Spotify line: "Linked to Savin' Me · Nickelback" and, when the review still holds the group, the evidence; else
     /// "Not linked to Spotify", or a "Not on Spotify" group's line.</summary>

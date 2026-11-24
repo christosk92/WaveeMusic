@@ -31,7 +31,7 @@ internal static partial class ZuneSettings
             "sound.equalizer.preset" => PresetRow(d, row),
             "sound.equalizer.curve" => EqCurveRow(d, row),
             "sound.outputDevice" => OutputDeviceRow(d, row),
-            "playback.videoOverrides" => Embed.Comp(new VideoArgs(row, d.Focus), static () => new VideoOverridesRow()) with { Key = "zs:video-overrides" },
+            "playback.linkedVideos" => Embed.Comp(new VideoArgs(row, d.Focus), static () => new LinkedVideosRow()) with { Key = "zs:video-overrides" },
             "playback.runtime" => Embed.Comp(new RuntimeArgs(row), static () => new RuntimeBlock()) with { Key = "zs:runtime" },
             "lyrics.ai" => Embed.Comp(new AiArgs(row, d.Focus), static () => new AiLyricsRow()) with { Key = "zs:ai" },
             "notifications.quiet.from" => QuietRange(d, row),
@@ -66,7 +66,7 @@ internal static partial class ZuneSettings
     /// <summary>The dial has a Zune section (it is never one of a run of plain command words).</summary>
     static bool HasComposite(string id)
         => id is "help.feedback.report" or "help.feedback.suggest" or "help.feedback.ask" or "help.logs.viewer" or "help.logs.files" or "help.update.hero"
-           or "playback.videoOverrides" or "playback.runtime" or "storage.cache.location"
+           or "playback.linkedVideos" or "playback.runtime" or "storage.cache.location"
            || StoragePart(id) is not null;
 
     /// <summary>A dial another dial's section draws (the plan in the account card, the curve's reset, the quiet hours' end beside their start), and the

@@ -272,7 +272,7 @@ internal static partial class WinUiSettings
             case "playback.episodeSpeed": return EpisodeSpeedCard(x);
             case "playback.video.quality": return VideoQualityCard(x);
             case "playback.video.meteredQuality": return MeteredVideoCard(x);
-            case "playback.videoOverrides": return VideoOverridesCard(x);
+            case "playback.linkedVideos": return LinkedVideosCard(x);
             case "playback.runtime": return RuntimeCard(x);
             // Lyrics & Now playing
             case "lyrics.blur": return LyricsBlurCard(x);

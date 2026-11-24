@@ -944,7 +944,9 @@ public static partial class Playback
     {
         if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null) return false;
         TrackTable t = Entities.Current.Tracks;
-        return (uint)row.Slot < (uint)t.Count && (t.Flags[row.Slot] & (uint)TrackFlags.LocalVideoFile) != 0;
+        if ((uint)row.Slot >= (uint)t.Count) return false;
+        // …and a Spotify track whose chosen default version is a video of mine ("Play by default": LocalLink.PlaysAsVideo).
+        return (t.Flags[row.Slot] & (uint)TrackFlags.LocalVideoFile) != 0 || LocalLink.PlaysAsVideo(t.Id[row.Slot]);
     }
 
     /// <summary>The kind a row goes on the deck in: <see cref="KindOfRow"/> under the wish the deck will hold for it. A local video file
@@ -1439,14 +1441,14 @@ public static partial class Playback
         => kind == PlayableKind.Video && s.VideoScreenBlocked && ScreenGatesVideo(row) ? KindOfRow(row, videoWanted: false) : kind;
 
     /// <summary>Does a screen that cannot carry HDCP keep <paramref name="row"/> off its video? A catalogue music video is PlayReady-protected;
-    /// the user's own clip (<see cref="TrackFlags.VideoOverride"/>), a local video file (<see cref="TrackFlags.LocalVideoFile"/>) and a podcast
+    /// the user's own clip (<see cref="TrackFlags.LinkedVideo"/>), a local video file (<see cref="TrackFlags.LocalVideoFile"/>) and a podcast
     /// episode's video are not gated: they play on any screen.</summary>
     public static bool ScreenGatesVideo(EntityRef row)
     {
         if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null) return false;
         TrackTable t = Entities.Current.Tracks;
         if ((uint)row.Slot >= (uint)t.Count) return false;
-        return (t.Flags[row.Slot] & (uint)(TrackFlags.VideoOverride | TrackFlags.LocalVideoFile)) == 0;
+        return (t.Flags[row.Slot] & (uint)(TrackFlags.LinkedVideo | TrackFlags.LocalVideoFile)) == 0;
     }
 
     /// <summary>A video load failed (<paramref name="retry"/>) or found no source at all (not a retry). A failing load spends

@@ -35,7 +35,7 @@ internal static partial class ClassicSettings
             case "playback.episodeSpeed": card = CardRow(row, Embed.Comp(static () => new EpisodeSpeedSlider())); return true;
             case "playback.video.quality": card = CardRow(row, VideoQualityCombo()); return true;
             case "playback.video.meteredQuality": card = CardRow(row, MeteredVideoCombo()); return true;
-            case "playback.videoOverrides": card = VideoOverridesRow(row); return true;
+            case "playback.linkedVideos": card = LinkedVideosRow(row); return true;
             case "playback.runtime": card = RuntimeCard(row); return true;
             // Lyrics & Now playing
             case "lyrics.blur": card = CardRow(row, LyricsBlurControl()); return true;

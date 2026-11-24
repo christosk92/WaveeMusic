@@ -133,7 +133,9 @@ public readonly partial struct Track
             Span<int> order = stackalloc int[Math.Min(kinds.Length, MaxVersionRows)];
             int ordered = DrawerRules.VersionOrder(kinds, order);
             bool edgeVideo = ordered > 0 && kinds[order[0]].Kind == TrackVersionKind.Video;
-            switch (DrawerRules.VideoRowFor(t.HasVideo, edges.TrackVersions.Readiness(t.Slot), edgeVideo,
+            // The catalogue's own video (not a linked video version of mine: that one is listed below with the other files).
+            bool catalogueVideo = (t.FlagBits & (uint)TrackFlags.HasVideo) != 0;
+            switch (DrawerRules.VideoRowFor(catalogueVideo, edges.TrackVersions.Readiness(t.Slot), edgeVideo,
                                             t.VideoCounterpart.IsValid))
             {
                 case DrawerRules.VideoRow.Edge: entries.Add((DrawerRules.VideoKind, new Track(targets[order[0]]))); break;

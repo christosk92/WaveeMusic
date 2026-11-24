@@ -112,6 +112,7 @@ public static partial class LocalLink
         try { if (File.Exists(s_path)) Read(File.ReadAllLines(s_path, Encoding.UTF8)); }
         catch (Exception ex) { Log.Warn("local.link", "local.link.load failed", ex); }
         Publish();
+        Video.LinkedVideos.MigrateLegacy();   // once: the old attached videos become linked video versions (Shell/Video.LinkedVideos.cs)
         if (s_enabled.Peek()) StartMatching();
     }
 
@@ -401,6 +402,7 @@ public static partial class LocalLink
         var reversed = new Dictionary<string, long[]>(byTrack.Count, StringComparer.Ordinal);
         foreach (var (uri, ids) in byTrack) reversed[uri] = [.. ids];
         s_byTrack = reversed;
+        FeedVideos();   // a linked video version is its track's video (LocalLink.Video.cs)
         var tracks = new Dictionary<long, LinkTrack>();
         foreach (var (id, t) in s_links)
             if (s_linkGroup.TryGetValue(id, out string? key) && s_decided.TryGetValue(key, out Decided? d) && d.Decision == LinkDecision.Accepted && d.SpotifyWins)

@@ -53,7 +53,7 @@ public interface ISettingsFacts
     bool TimecodeEnabled { get; }
 
     /// <summary>The attached-videos roster store exists.</summary>
-    bool VideoOverridesPresent { get; }
+    bool LinkedVideosPresent { get; }
 
     /// <summary>The sidebar is in Edit mode (its layout verbs refuse and say so).</summary>
     bool SidebarEditing { get; }
@@ -106,7 +106,7 @@ public sealed class LiveSettingsFacts : ISettingsFacts
     public bool CrossfadeEnabled => Platform.Settings.Get(Platform.Keys.CrossfadeEnabled);
     public bool TimecodeDeviceChosen => Platform.Settings.Get(Platform.Keys.TimecodeLtcDeviceId).Length > 0;
     public bool TimecodeEnabled => Platform.Settings.Get(Platform.Keys.TimecodeLtcEnabled);
-    public bool VideoOverridesPresent => Video.Overrides.Present;
+    public bool LinkedVideosPresent => Video.LinkedVideos.Present;
     public bool SidebarEditing => Sidebar.Editing.Value;
     public bool SidebarModified => SidebarLayoutRules.IsModified(Sidebar.State.Of(Sidebar.Layout.Value), Sidebar.LibraryView.Value);
     public bool AudioCacheAvailable => Spotify.Audio.DiskCache.Shared is not null;
@@ -198,11 +198,11 @@ public static class SettingsFacts
     public static string SidebarMigrationDropped() => Platform.Settings.Get(Platform.Keys.SidebarMigrationDropped);
 
     /// <summary>A video-override row's track title: the catalog's when the playable is a known track, else null (the roster shows the uri).</summary>
-    public static string? VideoOverrideTitle(string uri)
+    public static string? LinkedVideoTitle(string uri)
         => Entities.Current.Tracks.TryGetSlot(uri.AsSpan(), out int slot) && new Track(slot).Knows(TrackFields.Title) ? new Track(slot).Title : null;
 
     /// <summary>A video-override row's artist line, or null when the catalog does not know the track's artists.</summary>
-    public static string? VideoOverrideArtistLine(string uri)
+    public static string? LinkedVideoArtistLine(string uri)
         => Entities.Current.Tracks.TryGetSlot(uri.AsSpan(), out int slot) && new Track(slot).Knows(TrackFields.Artists)
             ? Entities.Strings.Resolve(new Track(slot).ArtistLineId) : null;
 

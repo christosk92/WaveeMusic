@@ -1588,7 +1588,7 @@ public static partial class Spotify
         /// (ch 02 GAP-6's second image per track). Ported from `VideoProjector.ParseAssoc`.
         ///
         /// <para>A payload with no association is a real NEGATIVE and still writes the group: the row then knows
-        /// there is no video and the film lane stops asking. The `VideoOverride` bit is untouched here — the commit
+        /// there is no video and the film lane stops asking. The `LinkedVideo` bit is untouched here — the commit
         /// keeps a user-attached mp4 alive across a catalogue answer that carries none (ch 01 GAP 7).</para></summary>
         public static void VideoAssociations(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
         {

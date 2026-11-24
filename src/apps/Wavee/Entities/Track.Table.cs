@@ -2748,8 +2748,9 @@ public readonly partial struct Track
                 source, source is null ? null : rows.ToArray());
         }
 
-        /// <summary>An OS file drag over a row attaches a local video override. The target only ACCEPTS a drop carrying an
-        /// .mp4, so any other file falls through to the shell's play-this-file target instead of being swallowed (ch 04 §6).</summary>
+        /// <summary>An OS file drag over a row links the .mp4 to the row's track as its video version (the file joins the library:
+        /// Video.LinkedVideos.Attach). The target only ACCEPTS a drop carrying an .mp4, so any other file falls through to the shell's
+        /// play-this-file target instead of being swallowed (ch 04 §6).</summary>
         DropTargetSpec VideoDrop(IReadSignal<int> index, int start) => new(
             [DropKinds.Files],
             OnEnter: _ => _videoDropRow.Value = index.Peek(),
@@ -2757,15 +2758,15 @@ public readonly partial struct Track
             OnDrop: session =>
             {
                 _videoDropRow.Value = -1;
-                if (session.Payload is not FileDropData files || Video.OverrideUx.FirstMp4(files.Paths) is not { } mp4) return;
+                if (session.Payload is not FileDropData files || Video.LinkedVideoUx.FirstMp4(files.Paths) is not { } mp4) return;
                 var t = DisplayTrack(index.Peek() - start);
                 if (!t.IsValid) return;
-                var result = Video.Overrides.Attach(t.Uri.Text, mp4, mp4, Store.ToUnix(Entities.Now));
-                Notify.Say(Loc.Get(result is null ? Strings.VideoOverride.RejectedNotFound : Strings.VideoOverride.Attached),
+                var result = Video.LinkedVideos.Attach(t.Uri.Text, mp4, mp4, Store.ToUnix(Entities.Now));
+                Notify.Say(Loc.Get(result is null ? Strings.LinkedVideo.RejectedNotFound : Strings.LinkedVideo.Attached),
                     result is null ? InfoBarSeverity.Error : InfoBarSeverity.Success);
             })
         {
-            CanAccept = static session => session.Payload is FileDropData f && Video.OverrideUx.FirstMp4(f.Paths) is not null,
+            CanAccept = static session => session.Payload is FileDropData f && Video.LinkedVideoUx.FirstMp4(f.Paths) is not null,
         };
 
         // ══ 8. THE ROW SKIN, THE DRAWER, THE PRESENTATION ═══════════════════════════════════════════════════════════
@@ -2788,7 +2789,7 @@ public readonly partial struct Track
             var interact = scope.OnInteraction;
             bool classic = shape.Set.Classic;
             bool plain = !classic && VerticalArm && !ColumnsForm && !rowFlow;   // the hero form's STACKED flow: plain full-bleed rows
-            var drop = Video.Overrides.Present ? VideoDrop(index, start) : null;
+            var drop = Video.LinkedVideos.Present ? VideoDrop(index, start) : null;
             Func<bool> cue = drop is null ? _false : () => _videoDropRow.Value == index.Value;
 
             var templates = RowTemplatesFor(classic);

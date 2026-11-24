@@ -160,7 +160,7 @@ public static class App
         if (Platform.Args.Fake) Playback.Audio.UseFake(Entities.FakeOutputs());  // --fake: a stable outputs roster and a format echo for the device picker (audit B5b)
         Modules.Boot(startIdleTimer: gui);   // the headless host sweeps nothing: its idle timer would outlive a test
         Video.Install();                 // the video host: resolver tiers (chained after the module tier), demotion, engine log sink, attachments, placement preference (B7)
-        Video.InstallMirror();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.VideoOverride/LocalVideo; after Install, which loads the roster
+        Video.LinkedVideoMirror.ApplyFakeClip();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.LinkedVideo/LocalVideo; after Install, which loads the roster
         Sidebar.Boot();                  // design, pane state, the layout document and pins; before its action seams and the UI (B6)
         HomeBoardStore.Boot();           // the pinned Home's per-account document (home.acct-<hash>.json); after Sidebar.Boot: its folder and pins
         Sidebar.InstallActionSeams();    // Actions.Services.IsPinned / SetPinned (J1)

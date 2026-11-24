@@ -17,7 +17,7 @@ public static partial class LocalLink
         string key = SongKey(localId);
         if (s_linkGroup.TryGetValue(localId, out string? old) && old != key) { s_links.Remove(localId); s_linkGroup.Remove(localId); }
         Decided d = DecidedOf(key);
-        s_decided[key] = d with { Decision = LinkDecision.Accepted, Chosen = song.Uri.Text, SpotifyWins = true };
+        s_decided[key] = d with { Decision = LinkDecision.Accepted, Chosen = song.Uri.Text, SpotifyWins = song.Title.Length > 0 };
         s_links[localId] = TrackOf(song, default);
         s_linkGroup[localId] = key;
         if (s_groups.TryGetValue(key, out LinkGroup? g)) s_groups[key] = g with { Decision = LinkDecision.Accepted };
@@ -43,6 +43,16 @@ public static partial class LocalLink
         return 0;
 
         static bool Playable(long id) => LocalLibrary.Index.TryGet(id, out LocalEntry? e) && e.State != LocalState.Missing;
+    }
+
+    /// <summary>The track's video version, a missing one included (what Settings lists and the menu offers to repair), or 0. UI thread.</summary>
+    public static long VideoFileOf(string spotifyUri)
+    {
+        _ = s_version.Value;
+        if (!s_byTrack.TryGetValue(spotifyUri, out long[]? files)) return 0;
+        if (s_defaults.TryGetValue(spotifyUri, out long chosen) && chosen != 0 && IsVideo(chosen)) return chosen;
+        foreach (long id in files) if (IsVideo(id)) return id;
+        return 0;
     }
 
     /// <summary>Is the indexed file a video? Any thread.</summary>
