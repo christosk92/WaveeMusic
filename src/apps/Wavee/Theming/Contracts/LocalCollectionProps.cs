@@ -2,13 +2,14 @@
 //
 // The core host (`Entities/LocalCollection.Page.cs`) folds the local index into ONE immutable view (`LocalCollectionView`,
 // computed off the UI thread by `Playback/LocalCollection.cs` on every `LocalLibrary.Epoch` / `LocalArt.Epoch` move) and hands the
-// active theme this props record: the view as a live signal, the remembered pivot, the album sort and the open folder as live
+// active theme this props record: the view as a live signal, the remembered pivot, the album sort and the open detail as live
 // signals, and every verb as a delegate built once. Albums and artists here are NAMES from the files' tags, never Spotify entities.
 // Covers are `file:///` uris from `LocalArt` (null: not extracted yet, or none). Quality is a short label ("FLAC", "Hi-Res 24/96",
 // "MP3 320") or "".
 //
 // Contract additions (declared, not numbered): `ViewKeys.LocalCollectionPage` and every type in this file; later (#240 P2 gaps):
-// `LocalShelf`, `LocalShelfSlot`, `LocalCollectionPageProps.Shelves/ShowShelf/MoveShelf/Drop`, `LocalCollectionView.HiResSongs/LastScanTicks`.
+// `LocalShelf`, `LocalShelfSlot`, `LocalCollectionPageProps.Shelves/ShowShelf/MoveShelf/Drop`, `LocalCollectionView.HiResSongs/LastScanTicks`; later still
+// (#240 detail motion): `LocalOpened`, `LocalCollectionPageProps.Opened` in place of the bare `Folder` signal.
 
 using FluentGpu.Dsl;
 using FluentGpu.Signals;
@@ -124,6 +125,31 @@ public sealed record LocalCollectionView
     public static LocalCollectionView Empty { get; } = new();
 }
 
+/// <summary>What the page has opened over a pivot (a detail: list -> detail, #240): a folder from the Folders browser's tiles, or an album's folder
+/// from an album card (the Albums wall, Home's shelves). The pivot's list stays where it was; Back (the breadcrumb, the title bar's Back, Esc)
+/// steps out a folder at a time and, from the folder it was opened at, returns to that list.</summary>
+/// <param name="From">The pivot it was opened over: the detail shows only there.</param>
+/// <param name="Folder">The open folder's node key; "" once the detail is closed (the record stays for the way back's motion: the list shows).</param>
+/// <param name="Root">The folder the detail was opened at from the pivot's list; "" for the Folders browser (its trail starts at the music folders).</param>
+/// <param name="Album">The album card that opened <paramref name="Root"/> (its key), or "": the root's header is then that album's cover and title.</param>
+/// <param name="Back">The last step went out (Back, a breadcrumb to an ancestor), not in: the body's switch plays the drill back.</param>
+/// <param name="Flown">The last step flies a cover (the connected flight is up): the body's switch keeps only its fades, so the cover is the one
+/// thing that travels.</param>
+public sealed record LocalOpened(LocalPivot From, string Folder, string Root, string Album, bool Back, bool Flown)
+{
+    /// <summary>The flight key of a folder tile and of that folder's header cover.</summary>
+    public static string FolderTile(string folderKey) => "local:folder:" + folderKey;
+
+    /// <summary>The flight key of an album card and of the header of the album's folder opened from it.</summary>
+    public static string AlbumTile(string albumKey) => "local:album:" + albumKey;
+
+    /// <summary>Is the detail open over <paramref name="pivot"/>?</summary>
+    public bool IsOpenOver(LocalPivot pivot) => From == pivot && Folder.Length > 0;
+
+    /// <summary>The header cover's flight key: the album card's at the root an album opened, else the folder tile's.</summary>
+    public string HeaderTile => Album.Length > 0 && Folder == Root ? AlbumTile(Album) : FolderTile(Folder);
+}
+
 /// <summary>The verbs of the page, built once by the core host.</summary>
 public sealed record LocalCollectionVerbs
 {
@@ -148,8 +174,11 @@ public sealed record LocalCollectionPageProps
     public required Action<LocalPivot> SetPivot { get; init; }
     public required IReadSignal<LocalAlbumSort> Sort { get; init; }
     public required Action<LocalAlbumSort> SetSort { get; init; }
-    /// <summary>The Folders browser's open folder ("" = the music folders themselves).</summary>
-    public required IReadSignal<string> Folder { get; init; }
+    /// <summary>The detail over a pivot (<see cref="LocalOpened"/>; open while its <c>Folder</c> is not ""), or null: every pivot shows its list (the Folders
+    /// browser its music folders).</summary>
+    public required IReadSignal<LocalOpened?> Opened { get; init; }
+    /// <summary>Open a folder from a tile (a step in, the tile's cover flying into the header) or a breadcrumb (an ancestor: a step out); "" returns to
+    /// the pivot's list.</summary>
     public required Action<string> OpenFolder { get; init; }
     /// <summary>The Songs pivot: the existing track table over the Local Files list, unchanged.</summary>
     public required Func<Element> Songs { get; init; }

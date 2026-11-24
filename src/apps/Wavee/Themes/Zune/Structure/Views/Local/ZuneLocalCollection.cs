@@ -10,6 +10,8 @@
 //      └─ SkelRegionEl (the first fold)
 //          home:   ScrollView [ head (mosaic · "collection" · count + "songs" · stats · state) · the shared Home shelves ]
 //          others: the shared body of the pivot (wall, artists, songs table, folders, insights) on the frame's gutter
+//          a detail open over a pivot (LocalOpened: a folder, an album's folder): the shared folder view, its step keyed and moved by the
+//          structure's drill (CommonLocalCollectionParts.DetailMotion: Zune declares none, so the core's quick fade)
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -52,6 +54,11 @@ internal static class ZuneLocalCollection
         Func<bool>? _pending;
         Func<Element>? _content, _shimmer;
         HostProps? _hp;
+        IReadSignal<ThemeFacts>? _facts;
+        readonly X.DetailMotion _detail = new();
+        (string Key, LayoutTransition? Enter) _step;
+        IReadOnlyList<LocalShelfSlot>? _shelves;
+        bool _reveal;
 
         public override Element Render()
         {
@@ -59,12 +66,16 @@ internal static class ZuneLocalCollection
             _hp = hp;
             var p = hp.Page;
             _pending ??= () => p.View.Value.Version == 0;
-            _content ??= () => Page(_hp!, _hp!.Page.View.Value);
-            _shimmer ??= () => Page(_hp!, X.Seed);
-            _ = p.Pivot.Value;
+            _facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
+            _content ??= () => Page(_hp!, _hp!.Page.View.Value, _step, _facts!.Peek(), _reveal);
+            _shimmer ??= () => Page(_hp!, X.Seed, default, _facts!.Peek(), false);
+            var pivot = p.Pivot.Value;
             _ = p.Sort.Value;
-            _ = p.Folder.Value;
-            _ = p.Shelves.Value;
+            _step = _detail.Step("zlc-body", pivot, p.Opened.Value, _facts.Peek());
+            // Home's shelves as last rendered: a change is "Edit home" showing or hiding one (X.HomeBody's reveal).
+            var shelves = p.Shelves.Value;
+            _reveal = _shelves is not null && !ReferenceEquals(shelves, _shelves);
+            _shelves = shelves;
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, DropTarget = p.Drop,
@@ -73,7 +84,7 @@ internal static class ZuneLocalCollection
         }
     }
 
-    static Element Page(HostProps hp, LocalCollectionView view)
+    static Element Page(HostProps hp, LocalCollectionView view, (string Key, LayoutTransition? Enter) step, ThemeFacts facts, bool reveal)
     {
         var p = hp.Page;
         float g = hp.Gutter;
@@ -81,19 +92,24 @@ internal static class ZuneLocalCollection
         // No music folder: the Local Files onboarding (S4), shared with the list.
         if (p.Onboarding() is { } onboarding) return X.Gut("lc-empty", g, onboarding, grow: true);
         var pivot = p.Pivot.Peek();
-        Element body = pivot switch
+        var opened = p.Opened.Peek();
+        // A detail open over the pivot: the shared folder view, its breadcrumb starting at "collection" (Folders) or at the pivot it was opened from.
+        Element body = opened?.IsOpenOver(pivot) == true
+            ? X.FolderBrowser(view, opened, p.OpenFolder, p.Verbs, lay, g, pivot == LocalPivot.Folders ? Loc.Get(P.Collection) : CommonLocalCollection.PivotWord(pivot), p.RouteKey)
+            : pivot switch
         {
             LocalPivot.Home => ScrollView(new BoxEl
             {
                 Key = Z.ColumnKey, Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, H.PageBottom),
-                Children = [Head(p, view, lay, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, lay, g, p.Shelves.Peek())],
+                Children = [Head(p, view, lay, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, lay, g, p.Shelves.Peek(), reveal)],
             }) with { Key = "zlc-scroll:home", Grow = 1f, MinWidth = 0f, ScrollKey = p.RouteKey + ":home" },
             LocalPivot.Albums => X.AlbumWall(view, p.Sort.Peek(), p.SetSort, p.Verbs, lay, g, p.RouteKey),
             LocalPivot.Artists => X.ArtistGrid(view, p.Verbs, lay, g, p.RouteKey),
             LocalPivot.Songs => X.Gut("lc-songs", g, p.Songs(), grow: true),
-            LocalPivot.Folders => X.FolderBrowser(view, p.Folder.Peek(), p.OpenFolder, p.Verbs, lay, g, Loc.Get(P.Collection), p.RouteKey),
+            LocalPivot.Folders => X.FolderBrowser(view, null, p.OpenFolder, p.Verbs, lay, g, Loc.Get(P.Collection), p.RouteKey),
             _ => X.Insights(view, lay, g, p.RouteKey),
         };
+        body = X.DetailSlot(step.Key ?? "zlc-body:" + pivot.ToString() + ":list", body, step.Enter, X.DetailMotion.Exit(pivot, opened, facts));
         return new BoxEl
         {
             Key = "zlc-body:" + pivot.ToString(), Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Padding = new Edges4(0f, H.PageTop, 0f, 0f),

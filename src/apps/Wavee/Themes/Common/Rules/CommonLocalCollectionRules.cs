@@ -63,6 +63,10 @@ internal static class CommonLocalCollectionRules
     /// <summary>A song row in the Folders browser.</summary>
     public const float SongRowH = 40f, SongNumberW = 36f, SongQualityW = 96f, SongTimeW = 56f, SongColGap = 16f;
 
+    /// <summary>An open folder's (or album's) header under the breadcrumb: the gap between its cover and its words, the air under it, the gap
+    /// between the title and its meta line.</summary>
+    public const float DetailGap = 20f, DetailBottom = 24f, DetailMetaGap = 4f;
+
     /// <summary>A folder tile's glyph when it has no picture.</summary>
     public const float FolderGlyph = 32f, MusicGlyph = 28f;
 
@@ -135,11 +139,14 @@ internal sealed record CommonLocalCollectionLayout
     public required bool ActionsBeside { get; init; }
     /// <summary>A clickable chip's (folder, sort, "See all") height: the board's 28, the 40 hit target at Compact.</summary>
     public required float ChipH { get; init; }
+    /// <summary>The cover of an open folder's (or album's) header: the picture its tile's cover flies into. One size at every tier, as the hero's
+    /// mosaic tile is: the header is a fixed row of the folder's list, whose extent a tier crossing would otherwise step (the rows under it jumped).</summary>
+    public required float DetailCover { get; init; }
 
     static CommonLocalCollectionLayout Std(WidthTier t) => new()
     {
         Tier = t, Card = 164f, CardGap = 16f, WallMin = 168f, WallGap = 20f, ArtistMin = 140f, DecadeMin = 240f,
-        FileColumn = true, ActionsBeside = true, ChipH = L.ChipH,
+        FileColumn = true, ActionsBeside = true, ChipH = L.ChipH, DetailCover = 144f,
     };
 
     static readonly CommonLocalCollectionLayout[] s_records =

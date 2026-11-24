@@ -777,6 +777,8 @@ public static partial class Shell
                     e.Handled = true;
                     break;
             }
+            // Nothing else took it: a step the page opened in place (a detail over its list) steps out (Shell.PageBack.cs).
+            if (!e.Handled && PageStepBack()) e.Handled = true;
             return;
         }
         if (e.KeyCode == Keys.Space && FrameRules.SpaceTogglesPlayback(false, FocusedIsTextEditor()))
