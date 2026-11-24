@@ -1532,7 +1532,7 @@ public static partial class Diagnostics
             Spotify.Boot();
             Playback.Boot();
             Spotify.Api.Boot();
-            Playback.Audio.LocalPath = Playlist.LocalPathOf;          // a local file's id → its path (Modules.InstallUi's seam, which this host does not run)
+            Playback.Audio.LocalPath = LocalLibrary.PathOf;          // a local file's id → its path (Modules.InstallUi's seam, which this host does not run)
             if (o.NeedsLogin) Spotify.Login();
 
             s_tick = new Timer(static _ =>

@@ -89,6 +89,8 @@ public readonly partial struct Track
         /// <summary>The list bar's Tune verb, built once (the profile's own verb, read at click time).</summary>
         Action? _tuneToggle;
         readonly Signal<bool> _unavailableShown = new(false);
+        /// <summary>The bar carries its second verb (Review, #240 S6): a structure may give it another band.</summary>
+        readonly Signal<bool> _unavailableSecondary = new(false);
         UnavailableTally _tally;
         uint _tallyVersion, _tallyPublication;
         bool _tallySeeded;
@@ -1011,7 +1013,12 @@ public readonly partial struct Track
         /// <summary>The band the bar takes in the hero arm's pinned chrome while it is on (0 while off): the rows' clip inset adds it. Reading it
         /// subscribes the caller to the bar's on / off edge and to the structure's tier read, never to the tally.</summary>
         float UnavailableBarExtent()
-            => HasUnavailableBar && _unavailableShown.Value ? MathF.Max(0f, _listStyle!.Chrome.UnavailableBarExtent?.Invoke(TiersNow()) ?? 0f) : 0f;
+        {
+            if (!HasUnavailableBar || !_unavailableShown.Value) return 0f;
+            var chrome = _listStyle!.Chrome;
+            var extent = _unavailableSecondary.Value ? chrome.UnavailableBarExtentWithSecondary ?? chrome.UnavailableBarExtent : chrome.UnavailableBarExtent;
+            return MathF.Max(0f, extent?.Invoke(TiersNow()) ?? 0f);
+        }
 
         /// <summary>The rows <see cref="FilterFlags.PlayableOnly"/> would hide, by why (<see cref="FilterModel.HiddenByPlayable"/>: the filter's own
         /// rule), over the whole membership. Cached per (membership version, track publication) like <see cref="CapsNow"/>; reading it subscribes
@@ -1029,7 +1036,10 @@ public readonly partial struct Track
                 var t = src.At(i);
                 if (!t.IsValid) continue;
                 bool unplayable = t.Unplayable(), notYetOut = t.NotYetOut(now);
-                if (FilterModel.HiddenByPlayable(notYetOut, unplayable)) tally = tally.With(notYetOut, unplayable, t.IsLocalItem);
+                if (!FilterModel.HiddenByPlayable(notYetOut, unplayable)) continue;
+                // An indexed local file says its own reason (missing, a format, its drive away): one index probe per such row, per publication.
+                var cause = unplayable && t.IsLocal ? LocalFilesList.CauseOf(t) : LocalFilesList.Cause.None;
+                tally = cause != LocalFilesList.Cause.None ? tally.WithLocal(cause) : tally.With(notYetOut, unplayable, t.IsLocalItem);
             }
             _tally = tally;
             _tallySeeded = true; _tallyVersion = version; _tallyPublication = publication;
@@ -1040,10 +1050,22 @@ public readonly partial struct Track
         /// C-Unavailable), or one shared reason ("…: they aren’t out yet.").</summary>
         static string UnavailableExplained(in UnavailableTally tally)
         {
-            // One reason: its "all" form ("…: they’re local files."); several: each counted, in this order.
-            int kinds = (tally.NotAvailable > 0 ? 1 : 0) + (tally.NotYetOut > 0 ? 1 : 0) + (tally.LocalFiles > 0 ? 1 : 0);
+            // One reason: its "all" form ("…: they’re local files."); several: each counted, in this order. Indexed local files (the Local Files list)
+            // say their own reasons: every one missing is the missing songs' sentence (#240 S6), else "can’t be played here: one is missing, …".
+            if (LocalFilesList.BarWords(in tally) is { } local) return local.Explained;
+            int localKinds = (tally.Missing > 0 ? 1 : 0) + (tally.Format > 0 ? 1 : 0) + (tally.Offline > 0 ? 1 : 0);
+            int kinds = (tally.NotAvailable > 0 ? 1 : 0) + (tally.NotYetOut > 0 ? 1 : 0) + (tally.LocalFiles > 0 ? 1 : 0) + localKinds;
             string reasons;
-            if (kinds <= 1)
+            if (localKinds > 0)
+            {
+                var parts = new List<string>(4);
+                if (tally.NotAvailable > 0) parts.Add(Strings.Detail.Filter.Unavailable.Region(count: tally.NotAvailable));
+                if (tally.NotYetOut > 0) parts.Add(Strings.Detail.Filter.Unavailable.Upcoming(count: tally.NotYetOut));
+                if (tally.LocalFiles > 0) parts.Add(Strings.Detail.Filter.Unavailable.Local(count: tally.LocalFiles));
+                parts.Add(LocalFilesList.Reasons(in tally));
+                reasons = string.Join(", ", parts);
+            }
+            else if (kinds <= 1)
                 reasons = tally.NotAvailable > 0 ? Strings.Detail.Filter.Unavailable.AllRegion(count: tally.NotAvailable)
                         : tally.LocalFiles > 0 ? Strings.Detail.Filter.Unavailable.AllLocal(count: tally.LocalFiles)
                         : Strings.Detail.Filter.Unavailable.AllUpcoming(count: tally.NotYetOut);
@@ -1086,10 +1108,13 @@ public readonly partial struct Track
         sealed class TableUnavailableBar(TableHost host) : Component
         {
             Func<UnavailableTally>? _tally;
+            IOverlayService? _overlay;
+            Action? _review;
 
             public override Element Render()
             {
                 var h = host;
+                _overlay = UseContext(Overlay.Service);
                 // Through a memo: the tally reads every track publication, and a render that read it directly re-ran (and re-worded the bar)
                 // on each one; the memo re-renders it only when the tally itself moves.
                 var tally = UseComputed(_tally ??= h.UnavailableNow).Value;
@@ -1099,17 +1124,24 @@ public readonly partial struct Track
                 bool dismissed = UnavailableBarDismissals.Has(h._contextText);
                 bool shown = template is not null && !dismissed && FilterModel.OffersHide(in tally, in filters);
                 UseLayoutEffect(() => h._unavailableShown.Value = shown, DepKey.From(shown));
+                bool secondary = tally.Missing > 0;
+                UseLayoutEffect(() => h._unavailableSecondary.Value = secondary, DepKey.From(secondary));
                 if (template is null) return new BoxEl();
                 bool vertical = h.HeroFormLive;
                 float insetX = vertical ? RowMetrics.PadXFor(h.ShapeValue.Set.Tier) : RowMetrics.RowInset;
                 int count = Math.Max(1, tally.Total);
+                // Indexed local files word their own short form ("3 songs are missing", "2 songs can’t be played here."), and while any is missing the
+                // bar is the missing songs' banner too: Review beside Hide them (#240 S6, one home for the message).
+                var local = LocalFilesList.BarWords(in tally);
                 return template(new TrackUnavailableBarArgs
                 {
                     Shown = shown,
-                    Summary = Strings.Detail.Filter.Unavailable.Summary(count: count),
+                    Summary = local?.Summary ?? Strings.Detail.Filter.Unavailable.Summary(count: count),
                     Explained = tally.Total > 0 ? UnavailableExplained(in tally) : Strings.Detail.Filter.Unavailable.Summary(count: count),
                     ActionLabel = Strings.Detail.Filter.Unavailable.Hide(count: count),
                     Hide = h._hideUnavailable,
+                    SecondaryLabel = tally.Missing > 0 ? LocalFilesList.ReviewLabel : "",
+                    Secondary = tally.Missing > 0 ? _review ??= () => LocalFilesList.OpenReview(_overlay) : null,
                     // The list's context at CLICK time (the host is reused across pages).
                     Dismiss = h._contextText.Length > 0 ? h._dismissUnavailable ??= () => UnavailableBarDismissals.Add(h._contextText) : null,
                     DismissLabel = Loc.Get(Strings.Detail.Filter.Unavailable.Dismiss),

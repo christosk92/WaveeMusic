@@ -1031,10 +1031,19 @@ public readonly partial struct Track
     /// C-Unavailable-Compact). <paramref name="NotAvailable"/>: ruled unavailable with no release instant (<see cref="Track.Unplayable()"/>: withdrawn,
     /// region-locked, gone, "isn’t available in your country"); <paramref name="NotYetOut"/>: ruled unavailable until a release instant still ahead
     /// ("isn’t out yet"). A row is counted once, under the first that holds.</summary>
-    public readonly record struct UnavailableTally(int NotAvailable = 0, int NotYetOut = 0, int LocalFiles = 0)
+    public readonly record struct UnavailableTally(int NotAvailable = 0, int NotYetOut = 0, int LocalFiles = 0, int Missing = 0, int Format = 0, int Offline = 0)
     {
         /// <summary>Every row the filter would hide.</summary>
-        public int Total => NotAvailable + NotYetOut + LocalFiles;
+        public int Total => NotAvailable + NotYetOut + LocalFiles + Missing + Format + Offline;
+
+        /// <summary>This tally with one more indexed local file that cannot be played, by its cause (#240 S6: missing, a format Wavee cannot play
+        /// yet, its drive away). Its reasons are local, never "isn’t available in your country".</summary>
+        public UnavailableTally WithLocal(LocalFilesList.Cause cause) => cause switch
+        {
+            LocalFilesList.Cause.Missing => this with { Missing = Missing + 1 },
+            LocalFilesList.Cause.Offline => this with { Offline = Offline + 1 },
+            _ => this with { Format = Format + 1 },
+        };
 
         /// <summary>This tally with one more row of the given verdict (a playable or unruled row adds nothing). A playlist's local file
         /// (<paramref name="local"/>) is its own reason ("are local files"), never "isn’t available in your country".</summary>

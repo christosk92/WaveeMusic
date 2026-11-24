@@ -186,6 +186,11 @@ public static partial class Platform
         /// <summary>The music folders on this PC (#240): their full paths joined by '|' (a character no Windows path holds). Read and
         /// written ONLY through <see cref="LocalLibrary"/>, which owns the format.</summary>
         public static readonly SettingKey<string> MusicFolders = new("local.musicFolders", "");
+        /// <summary>Settings › Storage › Music on this PC › "Watch folders for changes" (#240 S3): live updates on; off, folders
+        /// are scanned at start, on "Rescan now" and when a drive comes back.</summary>
+        public static readonly SettingKey<bool> MusicWatch = new("local.watch", true);
+        /// <summary>Settings › Storage › Music on this PC › "Keep missing songs for" (#240 S3): 30, 60 or 90 days.</summary>
+        public static readonly SettingKey<int> MusicMissingDays = new("local.missingDays", 60);
 
         // ── podcasts ──
         /// <summary>The podcast show page's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most

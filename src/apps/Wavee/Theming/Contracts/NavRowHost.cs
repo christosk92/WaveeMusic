@@ -35,6 +35,10 @@ internal interface INavRowHost
     /// <summary>The compact (rail) flag THE PUBLISHED PLAN WAS BUILT WITH: a tile, not a row.</summary>
     bool CompactPlan { get; }
 
+    /// <summary>This pane is the narrow overlay drawer (Narrow and Tiny bands), not the docked pane: a row whose height must hold across the
+    /// drawer's tiers (the library activity chip's lane, #240) sizes for the touch target here.</summary>
+    bool InDrawer { get; }
+
     /// <summary>The grid column count the published plan's strips were cut with.</summary>
     int GridColumns { get; }
 

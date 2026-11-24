@@ -1,5 +1,9 @@
 // ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Storage.cs — Storage's cards (settings rework 7.1) ──────────────────────────────────────
 //
+// Music on this PC (#240 S3) is the WinUI card (board boards240/Main; the owner converges Classic on WinUI's layout): one expander, its header the words and
+// the two add buttons, its body the folder rows (a state mark, the path, the folder's line, "⋯" and "✕") in drawer reveals and the status row with
+// "Rescan now". The words are the core's (`SettingsMusic`).
+//
 // From `Screens\Settings.UI.Storage.cs`. The census under On this PC's header (spinner / usage card / failed bar), the nine fixed hues on the bar, the legend and
 // the category rows' accents, the playback cache's rows (the three-mode budget editor, the cache location, the cached bodies and keys with their clears), the
 // metadata cache, the factory reset. The census itself (the phase, the snapshot, the cache status, the key count, the metadata stats; the first visit to Storage
@@ -10,13 +14,16 @@
 // are DELETED, with their strings.
 
 using System.Globalization;
+using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Sdk.Streams;
 using Wavee.Theming.Contracts;
+using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Classic;
 
@@ -67,6 +74,239 @@ internal static partial class ClassicSettings
         if (Dial("storage.metadata.budget").Current is int meta) s_metaBudget.Value = meta;
     }
 
+    // ══ 0. MUSIC ON THIS PC (#240 S3): the WinUI card (board boards240/Main), in Classic's file ═══════════════════════════════════════
+
+    /// <summary>The music folders card, the WinUI layout: an expander whose header is the words, the glyph and the two add buttons (the child dials, each
+    /// framed as its row), and whose one item is the folder rows and the status row with "Rescan now". Open at first. "More options" is the generic
+    /// expander of its two settings.</summary>
+    static Element MusicFoldersCard(SettingsBodyRow row)
+    {
+        var head = new List<Element>(2);
+        if (ChildRow(row, MusicAddDefaultDial) is { } offer) head.Add(Framed(offer, StdButton(offer.Label, () => RunDial(offer.Dial))));
+        if (ChildRow(row, MusicAddDial) is { } add) head.Add(Framed(add, AccentButton(add.Label, () => RunDial(add.Dial))));
+        return SettingsExpander.Create(new SettingsExpander.Options
+        {
+            Header = row.Label,
+            Description = row.Description,
+            HeaderIcon = GlyphOf(row.Dial),
+            // One line of buttons beside the words; Compact puts them under the words.
+            Content = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Children = head.ToArray() },
+            Alignment = s_layout.Touch ? SettingsCard.ContentAlignment.Vertical : SettingsCard.ContentAlignment.Right,
+            Items = [Embed.Comp(new MusicProps(row), static () => new MusicFolders()) with { Key = "settings:music:body" }],
+            IsExpanded = ExpandCell(row.Id, true),
+        }) with { Key = "settings:expander:" + row.Id };
+    }
+
+    /// <summary>Press an action dial; the page re-reads when it asks.</summary>
+    static void RunDial(SettingsDial dial)
+    {
+        if (dial.Writer.Run is { } run && run()) Settings.Bump();
+    }
+
+    const string MusicAddDial = "storage.music.add", MusicAddDefaultDial = "storage.music.addDefault", MusicRescanDial = "storage.music.rescan";
+
+    sealed record MusicProps(SettingsBodyRow Row);
+
+    /// <summary>The folder rows and the status row. It follows the library (its scan progress at most four times a second, its restate) and the
+    /// clock (the age of the last scan). A row that appears or leaves rides the drawer reveal; with no folder the empty sentence holds one row's
+    /// height, so adding the first folder moves nothing below.</summary>
+    sealed class MusicFolders : SettingsComponent
+    {
+        readonly Dictionary<string, NodeHandle> _anchors = new(StringComparer.OrdinalIgnoreCase);
+        OverlayHandle? _menu;
+
+        public override Element Render()
+        {
+            var layout = UseLayout();
+            var row = UseProps<MusicProps>().Row;
+            SettingsMusic.Track();
+            var tick = UseSignal(0);
+            UseInterval(() => tick.Value = tick.Peek() + 1, ClassicSettingsRules.MusicAgoTickMs);
+            _ = tick.Value;
+
+            var folders = SettingsMusic.Folders;
+            var rescan = ChildRow(row, MusicRescanDial);
+            bool composedWith = rescan is { Enabled: true };
+            bool composedOffered = ChildRow(row, MusicAddDefaultDial) is not null;
+            UseEffect(() => { if (SettingsMusic.Stale(composedWith, composedOffered)) Settings.Bump(); },
+                DepKey.From(folders.Count * 4 + (composedWith ? 2 : 0) + (composedOffered ? 1 : 0)));
+
+            var kids = new List<Element>(folders.Count + 1);
+            if (folders.Count == 0) kids.Add(MusicDrawer("settings:music:empty", EmptyRow()));
+            foreach (string folder in folders)
+                kids.Add(MusicDrawer("settings:music:folder:" + folder, FolderRow(SettingsMusic.Line(folder), layout.Touch)));
+            if (_anchors.Count > folders.Count) PruneAnchors(folders);
+
+            var status = SettingsMusic.Status();
+            float barW = layout.Touch ? ClassicSettingsRules.MusicBarWidthCompact : ClassicSettingsRules.MusicBarWidth;
+            Element bar = status.Scanning && status.Fraction < 0f
+                ? ProgressBar.Indeterminate(barW) with { Key = "settings:music:bar:busy" }
+                : ProgressBar.Determinate(Math.Max(0f, status.Fraction), barW) with { Key = "settings:music:bar", Opacity = status.Scanning ? 1f : 0f };
+            Element rescanButton = StdButton(Loc.Get(Strings.Settings.Music.Rescan), () => { if (rescan is { } r && r.Dial.Writer.Run is { } run && run()) Settings.Bump(); },
+                isEnabled: rescan is { Enabled: true } && !status.Scanning);
+            kids.Add(new BoxEl
+            {
+                // Compact stacks the line (and its bar) over "Rescan now": beside it the line would ellipsize to nothing.
+                Key = "settings:music:status", Direction = (byte)(layout.Touch ? 1 : 0), AlignItems = layout.Touch ? FlexAlign.Start : FlexAlign.Center,
+                Gap = layout.Touch ? Spacing.M : Spacing.L, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                MinHeight = ClassicSettingsRules.MusicStatusHeight,
+                Padding = new Edges4(MusicTextInset(layout.Touch), Spacing.S, Spacing.L, Spacing.S),
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 1, Gap = ClassicSettingsRules.MusicBarGap, Grow = 1f, Shrink = 1f, Basis = layout.Touch ? float.NaN : 0f, MinWidth = 0f,
+                        AlignSelf = layout.Touch ? FlexAlign.Stretch : FlexAlign.Auto,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
+                                Children =
+                                [
+                                    new TextEl(status.Text)
+                                    {
+                                        Key = "settings:music:status:text", Size = ClassicSettingsRules.MusicTextSize,
+                                        Color = status.Scanning ? Tok.TextPrimary : Tok.TextSecondary,
+                                        Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                                    },
+                                    new TextEl(status.Aside)
+                                    {
+                                        Size = ClassicSettingsRules.MusicAsideSize, Color = Tok.TextSecondary, Shrink = 0f, MaxLines = 1,
+                                    },
+                                ],
+                            },
+                            bar,
+                        ],
+                    },
+                    rescan is { } rescanRow ? Framed(rescanRow, rescanButton) : rescanButton,
+                ],
+            });
+            return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = kids.ToArray() };
+        }
+
+        /// <summary>A row in its drawer: the clip box whose presented height springs as it mounts and leaves, the rows below riding it; a hairline
+        /// under it (the last one is the divider over the status row).</summary>
+        static Element MusicDrawer(string key, Element row) => new BoxEl
+        {
+            Key = key, Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, ClipToBounds = true, Animate = Design.Reveal.Drawer,
+            Children = [row, new BoxEl { Height = 1f, AlignSelf = FlexAlign.Stretch, Fill = Tok.StrokeDividerDefault }],
+        };
+
+        /// <summary>Where the folder rows' text starts (past the row's padding, the mark's cell and the gap): the empty sentence and the status line
+        /// stand on it. Compact's rows keep the mark too, closer.</summary>
+        static float MusicTextInset(bool touch) => Spacing.L + ClassicSettingsRules.MusicMarkCell + (touch ? Spacing.M : Spacing.L);
+
+        /// <summary>No folder yet: the sentence in one row's height.</summary>
+        static Element EmptyRow() => new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = ClassicSettingsRules.MusicRowHeight,
+            Padding = new Edges4(MusicTextInset(s_layout.Touch), Spacing.S, Spacing.L, Spacing.S),
+            Children =
+            [
+                new TextEl(Loc.Get(Strings.Settings.Music.Empty))
+                    { Size = ClassicSettingsRules.MusicTextSize, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap },
+            ],
+        };
+
+        /// <summary>One folder: its state mark, the path, its line ("4,812 songs · 12 can't be played", or the state in the caution ink), "⋯" (Show in
+        /// Explorer, Rescan this folder, Remove) and "✕" (remove; no confirm, the toast offers Undo). Compact stacks the path over its line and lifts
+        /// both buttons to the 40-DIP target.</summary>
+        Element FolderRow(SettingsMusic.FolderLine line, bool touch)
+        {
+            string folder = line.Path;
+            var path = new TextEl(folder)
+            {
+                Size = ClassicSettingsRules.MusicTextSize, FontFamily = ClassicSettingsRules.MusicPathFont, Color = line.Lead is null ? Tok.TextPrimary : Tok.TextSecondary,
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+            };
+            var words = new List<Element>(2);
+            if (line.Lead is { } lead)
+                words.Add(new TextEl(line.Rest.Length > 0 ? lead + " · " : lead)
+                    { Size = ClassicSettingsRules.MusicTextSize, Color = Tok.SystemFillCaution, Shrink = 0f, MaxLines = 1 });
+            if (line.Rest.Length > 0)
+                // Compact wraps the folder's words onto a second line rather than cut them.
+                words.Add(new TextEl(line.Rest)
+                {
+                    Size = ClassicSettingsRules.MusicTextSize, Color = Tok.TextSecondary, Shrink = 1f, MinWidth = 0f,
+                    Wrap = touch ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = touch ? 2 : 1, Trim = touch ? TextTrim.WordEllipsis : TextTrim.CharacterEllipsis,
+                });
+            var status = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f, Children = words.ToArray() };
+
+            var buttonStyle = IconButton.DefaultStyle with { Size = touch ? s_layout.Target : ClassicSettingsRules.MusicIconButton };
+            var more = ToolTip.Wrap(IconButton.Create(Icons.More, () => OpenMenu(folder), buttonStyle with { GlyphSize = ClassicSettingsRules.MusicMoreGlyph })
+                with { Key = "settings:music:more:" + folder, Shrink = 0f, OnRealized = h => _anchors[folder] = h }, Loc.Get(Strings.Settings.Music.FolderMenu));
+            var remove = ToolTip.Wrap(IconButton.Create(Icons.Cancel, () => SettingsVerbs.RemoveMusicFolder(folder),
+                buttonStyle with { GlyphSize = ClassicSettingsRules.MusicRemoveGlyph }) with { Key = "settings:music:remove:" + folder, Shrink = 0f },
+                Loc.Get(Strings.Settings.Music.Remove));
+
+            Element text = touch
+                ? new BoxEl
+                {
+                    Direction = 1, Gap = ClassicSettingsRules.MusicStackGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                    Children = [path, status],
+                }
+                : new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.L, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                    Children = [path with { Width = ClassicSettingsRules.MusicPathWidth }, status with { Grow = 1f, Basis = 0f }],
+                };
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = touch ? Spacing.M : Spacing.L, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                MinHeight = ClassicSettingsRules.MusicRowHeight, Padding = new Edges4(Spacing.L, Spacing.XS, touch ? Spacing.XS : Spacing.L, Spacing.XS),
+                Children = [MarkCell(line.Mark), text, more, remove],
+            };
+        }
+
+        /// <summary>The row's state mark in its fixed cell: up to date (the success check), working (a ring), needs you (the caution mark).</summary>
+        static Element MarkCell(SettingsMusic.Mark mark) => new BoxEl
+        {
+            Width = ClassicSettingsRules.MusicMarkCell, Height = ClassicSettingsRules.MusicMarkCell, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Children = mark switch
+            {
+                SettingsMusic.Mark.Ok => [Icon(Icons.Accept, ClassicSettingsRules.MusicMarkSize, Tok.SystemFillSuccess)],
+                SettingsMusic.Mark.Busy => [ProgressRing.Indeterminate(size: ClassicSettingsRules.MusicMarkSize)],
+                SettingsMusic.Mark.Caution => [Icon(Icons.Warning, ClassicSettingsRules.MusicMarkSize, Tok.SystemFillCaution)],
+                _ => [],
+            },
+        };
+
+        /// <summary>The folder's one menu, anchored at its "⋯"; a second press closes it.</summary>
+        void OpenMenu(string folder)
+        {
+            if (SettingsContext.Overlay is not { } overlay) return;
+            if (_menu is { IsOpen: true } open) { open.Close(); return; }
+            var items = new List<MenuFlyoutItem>(4)
+            {
+                new(Loc.Get(Strings.Settings.Music.ShowInExplorer), Icons.FolderOpen, true, () => SettingsVerbs.RevealMusicFolder(folder)),
+                new(Loc.Get(Strings.Settings.Music.RescanFolder), Icons.Refresh, true, () => SettingsVerbs.RescanMusicFolder(folder)),
+                MenuFlyoutItem.Separator,
+                new(Loc.Get(Strings.Settings.Music.Remove), Icons.Delete, true, () => SettingsVerbs.RemoveMusicFolder(folder)),
+            };
+            var handle = overlay.Open(() => _anchors.TryGetValue(folder, out var a) ? a : NodeHandle.Null,
+                () => MenuFlyout.Create(items, () => _menu?.Close(), size: OverlayFit.MenuSize),
+                FlyoutPlacement.BottomEdgeAlignedRight,
+                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
+            _menu = handle;
+            handle.ClosedAction = () => { if (ReferenceEquals(_menu, handle)) _menu = null; };
+        }
+
+        /// <summary>A removed folder's "⋯" handle goes; the others keep theirs (a realization callback fires once per node).</summary>
+        void PruneAnchors(IReadOnlyList<string> folders)
+        {
+            List<string>? stale = null;
+            foreach (string key in _anchors.Keys)
+            {
+                bool live = false;
+                for (int i = 0; i < folders.Count && !live; i++) live = string.Equals(folders[i], key, StringComparison.OrdinalIgnoreCase);
+                if (!live) (stale ??= []).Add(key);
+            }
+            if (stale is null) return;
+            foreach (string key in stale) _anchors.Remove(key);
+        }
+    }
+
     // ══ 2. THE CENSUS AND THE ROWS (W15 loading · W16 ready · W18 failed) ═════════════════════════════════════════
 
     /// <summary>On this PC's census under its header: the spinner while it reads, the usage card when it lands, the failed bar with Retry.</summary>
@@ -112,6 +352,7 @@ internal static partial class ClassicSettings
             "storage.cache.audioBodies" => StorageRow(row, 4, Loc.Get(Strings.Settings.Storage.AudioBodiesSub), s?.AudioBody),
             "storage.cache.licenseKeys" => StorageRow(row, 5, storage.KeyCount is not { } keys ? Loc.Get(Strings.Settings.Storage.LicenseKeysSub)
                 : keys == 1 ? Loc.Get(Strings.Settings.Storage.LicenseKeysCountOne) : Strings.Settings.Storage.LicenseKeysCount(keys), s?.LicenseDb),
+            "storage.music.folders" => MusicFoldersCard(row),
             "storage.cache.budget" => CardRow(row, BodyBudgetControl(s, storage.Audio)),
             "storage.cache.location" => CacheLocationRow(row, storage.AudioDirectory, facts),
             "storage.metadata.budget" => CardRow(row,

@@ -219,6 +219,13 @@ internal sealed class TrackUnavailableBarArgs
     /// <summary>The ✕'s name and tooltip ("Close"). Appended (contract 2.10).</summary>
     public string DismissLabel { get; init; } = "";
 
+    /// <summary>A second verb's word, drawn before <see cref="ActionLabel"/> in the action lane ("Review" while the list holds missing local files,
+    /// #240 S6), or "" for none. Appended (#240 P2).</summary>
+    public string SecondaryLabel { get; init; } = "";
+
+    /// <summary>The second verb (opens the missing songs' review), or null: none. Appended (#240 P2).</summary>
+    public Action? Secondary { get; init; }
+
     /// <summary>The bar's horizontal edges in the chrome: the rows' gutter in the hero arm, the row plates' inset in the two-column arm.</summary>
     public required float InsetX { get; init; }
 
@@ -265,6 +272,10 @@ public sealed class TrackChromeTemplates
     /// <summary>The band the bar takes in the chrome while shown, its gap to what follows included, in the tiers the table is drawn in (contract
     /// 1.24): the hero arm's pinned chrome adds it to the rows' clip inset. Null (or no <see cref="UnavailableBar"/>): 0.</summary>
     internal Func<global::Wavee.Theming.TierFacts, float>? UnavailableBarExtent { get; init; }
+
+    /// <summary>The band the bar takes while it carries a second verb (<see cref="TrackUnavailableBarArgs.Secondary"/>: Review), where that differs (a Compact
+    /// bar that takes its verbs on a line of their own). Null: <see cref="UnavailableBarExtent"/>. Appended (#240 P2).</summary>
+    internal Func<global::Wavee.Theming.TierFacts, float>? UnavailableBarExtentWithSecondary { get; init; }
 
     /// <summary>The theme draws NO table chrome (command bar, chips, lens, column header, the hero's toolbar) over an empty list that carries its recommendations lead (an owned, empty
     /// playlist: the lead and its finder are the page), and reads <see cref="Detail.ListCount.EmptyLead"/> for the same fact elsewhere. False (the default) keeps the chrome: Classic's.</summary>

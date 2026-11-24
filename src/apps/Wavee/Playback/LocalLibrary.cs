@@ -26,10 +26,15 @@ using FluentGpu.Signals;
 namespace Wavee;
 
 /// <summary>The local library (see the file header).</summary>
-public static class LocalLibrary
+public static partial class LocalLibrary
 {
     static readonly LocalIndex s_index = new();
-    static readonly LocalScan s_scan = new(s_index) { Progressed = NoteProgress, RootState = NoteRootState };
+    static readonly LocalScan s_scan = new(s_index)
+    {
+        Progressed = NoteProgress,
+        RootState = NoteRootState,
+        MissingGrace = static () => TimeSpan.FromDays(Math.Clamp(Platform.Settings.Get(Platform.Keys.MusicMissingDays), 7, 365)),
+    };
     static readonly ConcurrentDictionary<string, LocalRootState> s_states = new(StringComparer.OrdinalIgnoreCase);
     static readonly Lock s_gate = new();
     static string[] s_folders = [];
@@ -114,29 +119,72 @@ public static class LocalLibrary
     {
         if (startup) s_scan.RequestStartup(folder);
         else s_scan.RequestFull(folder);
-        s_scan.Watch(folder);
+        if (Platform.Settings.Get(Platform.Keys.MusicWatch)) s_scan.Watch(folder);
+    }
+
+    /// <summary>"Watch folders for changes" (S3): on starts a watcher per folder and catches up (the journal where it can);
+    /// off stops them. UI thread; persists the setting.</summary>
+    public static void SetWatching(bool on)
+    {
+        Platform.Settings.Set(Platform.Keys.MusicWatch, on);
+        if (s_fixture || Volatile.Read(ref s_loaded) == 0) return;
+        foreach (string f in Folders)
+        {
+            if (on) { s_scan.Watch(f); s_scan.RequestStartup(f); }
+            else s_scan.Unwatch(f);
+        }
+    }
+
+    /// <summary>The user's Music folder when it exists and is not already covered by a music folder (the "Add my Music folder"
+    /// offer, S4 and S3), else null.</summary>
+    public static string? DefaultMusicFolder
+    {
+        get
+        {
+            // Fixtures never show this machine's account folder (a render may be published).
+            if (s_fixture) return Folders.Count == 0 ? @"C:\Users\Listener\Music" : null;
+            string music = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
+            if (music.Length == 0 || !Directory.Exists(music)) return null;
+            string folder = Normalize(music);
+            foreach (string f in Folders)
+                if (string.Equals(f, folder, StringComparison.OrdinalIgnoreCase) || Contains(f, folder)) return null;
+            return folder;
+        }
+    }
+
+    /// <summary>"Show in Explorer" for a music folder (S3). UI thread; never throws.</summary>
+    public static void Reveal(string folder)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", "\"" + folder + "\"") { UseShellExecute = true })?.Dispose(); }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { Log.Warn("local", "local.reveal failed", ex); }
     }
 
     /// <summary>Add a music folder (UI thread). False with a reason word: "missing" (not a folder), "duplicate", "inside" (it
-    /// sits in a folder already added), "contains" (it holds one already added: remove that one first).</summary>
+    /// sits in a folder already added). True with reason "combined" when it holds folders already added: they are replaced by
+    /// it (S11 "Combined into …"); otherwise reason "".</summary>
     public static bool AddFolder(string path, out string reason)
     {
         string folder;
         try { folder = Normalize(path); }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { reason = "missing"; return false; }
         if (!Directory.Exists(folder)) { reason = "missing"; return false; }
+        var replaced = new List<string>();
         lock (s_gate)
         {
             foreach (string f in s_folders)
             {
                 if (string.Equals(f, folder, StringComparison.OrdinalIgnoreCase)) { reason = "duplicate"; return false; }
                 if (Contains(f, folder)) { reason = "inside"; return false; }
-                if (Contains(folder, f)) { reason = "contains"; return false; }
+                if (Contains(folder, f)) replaced.Add(f);
             }
+        }
+        foreach (string child in replaced) RemoveFolder(child);   // their files come back under the parent's walk
+        lock (s_gate)
+        {
             s_folders = [.. s_folders, folder];
             Persist();
         }
-        reason = "";
+        reason = replaced.Count > 0 ? "combined" : "";
         if (s_attached && Volatile.Read(ref s_loaded) != 0) StartFolder(folder, startup: false);
         NoteProgress();
         return true;
@@ -226,7 +274,7 @@ public static class LocalLibrary
     {
         // At most four posts a second; the post bumps the signal on the UI thread.
         if (Interlocked.Exchange(ref s_postPending, 1) != 0) return;
-        s_post ??= new Timer(static _ => Playback.ToUi(static () => { Volatile.Write(ref s_postPending, 0); Epoch.Value++; }), null, Timeout.Infinite, Timeout.Infinite);
+        s_post ??= new Timer(static _ => Playback.ToUi(static () => { Volatile.Write(ref s_postPending, 0); Epoch.Value++; MaybeRestate(); }), null, Timeout.Infinite, Timeout.Infinite);
         s_post.Change(250, Timeout.Infinite);
         if (!s_scan.Busy) s_idle?.Change(30_000, Timeout.Infinite);   // idle: compact the log in 30 s unless a scan starts
     }
@@ -267,11 +315,16 @@ public static class LocalLibrary
 
     // ── the inspector's fixtures (§5) ───────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>`state kind=music-folders value=none|scanning|ready|offline`: a fixed in-memory folder list and index (no disk, no
-    /// thread, no setting). The next `InspectFixture("none")` empties it again.</summary>
+    /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing`: a fixed in-memory folder list and index (no disk, no
+    /// thread, no setting). `changed` is ready plus a background change just restated (+4 added · 1 moved: the chip's "Updated · +4", four new rows
+    /// tagged "New", "Ambre" tagged "Moved"); `missing` is ready with three missing songs and no other unplayable file (S6); `listing` is the first
+    /// scan's first second (nothing read, no total). Every value but `changed` clears the session's changes, so the diff from the previous fixture
+    /// announces nothing.
+    /// The next `InspectFixture("none")` empties it again.</summary>
     public static void InspectFixture(string value)
     {
         s_fixture = true;
+        s_fixtureProgress = default;
         s_index.Detach();
         s_index.Clear();
         s_states.Clear();
@@ -284,7 +337,7 @@ public static class LocalLibrary
             long now = DateTime.UtcNow.Ticks;
             var album = new LocalScanBatch(1, @"Nils Frahm\Spaces") { Folder = new LocalFolder(1, @"Nils Frahm\Spaces", 101, 0xF00D, ["cover.jpg"], true) };
             string[] titles = ["An Aborted Beginning", "Says", "Hammers", "Improvisation for Coughs and a Cell Phone", "Familiar", "Ode", "Over There, It's Raining", "Ambre"];
-            int count = value == "scanning" ? 3 : titles.Length;
+            int count = value == "scanning" ? 3 : value == "listing" ? 0 : titles.Length;
             for (int i = 0; i < count; i++)
             {
                 var tags = new LocalTagSet(LocalKind.Audio, titles[i], ["Nils Frahm"], "Spaces", "Nils Frahm", i + 1, 1, 2013, 180_000 + i * 31_000, false, 920,
@@ -295,21 +348,78 @@ public static class LocalLibrary
             s_index.Apply(album);
             var loose = new LocalScanBatch(1, "") { Folder = new LocalFolder(1, "", 100, 0xBEEF, [], true) };
             var untagged = new LocalTagSet(LocalKind.Audio, "", [], "", "", 0, 0, 0, 214_000, true, 0, LocalCover.None, 0, 0, true);
-            loose.Upserts.Add(new LocalEntry(20, 1, "voice memo 03.mp3", 0x1234_ABCD, 2000, 3_400_000, now, now, 0x20, Spotify.Audio.Format.Mp3, untagged, "voice memo 03", LocalState.Present, now, true, ""));
-            loose.Upserts.Add(new LocalEntry(21, 1, "demo take.wav", 0x1234_ABCD, 2001, 41_000_000, now, now, 0x20, Spotify.Audio.Format.Unknown, untagged with { DurationMs = 0, DurationEstimated = false },
-                "demo take", LocalState.Present, now, false, "No WAV decoder in this build"));
-            loose.Upserts.Add(new LocalEntry(22, 1, "old mix.mp3", 0x1234_ABCD, 2002, 7_000_000, now, now, 0x20, Spotify.Audio.Format.Mp3, untagged, "old mix", LocalState.Missing, now - TimeSpan.TicksPerDay * 3, true, ""));
-            s_index.Apply(loose);
+            if (value != "listing")
+            {
+                loose.Upserts.Add(new LocalEntry(20, 1, "voice memo 03.mp3", 0x1234_ABCD, 2000, 3_400_000, now, now, 0x20, Spotify.Audio.Format.Mp3, untagged, "voice memo 03", LocalState.Present, now, true, ""));
+                // `missing` is the review's case (S6): every song the bar counts is missing, so the unplayable demo is not there.
+                if (value != "missing")
+                    loose.Upserts.Add(new LocalEntry(21, 1, "demo take.wav", 0x1234_ABCD, 2001, 41_000_000, now, now, 0x20, Spotify.Audio.Format.Unknown, untagged with { DurationMs = 0, DurationEstimated = false },
+                        "demo take", LocalState.Present, now, false, "No WAV decoder in this build"));
+                loose.Upserts.Add(new LocalEntry(22, 1, "old mix.mp3", 0x1234_ABCD, 2002, 7_000_000, now, now, 0x20, Spotify.Audio.Format.Mp3, untagged, "old mix", LocalState.Missing, now - TimeSpan.TicksPerDay * 3, true, ""));
+            }
+            if (value == "missing")
+            {
+                // Two more gone, the board's (boards240/Missing): a tagged pair last seen 12 and 6 days ago.
+                loose.Upserts.Add(new LocalEntry(23, 1, @"Live\Attic Tapes.flac", 0x1234_ABCD, 2003, 31_000_000, now, now, 0x20, Spotify.Audio.Format.Flac,
+                    new LocalTagSet(LocalKind.Audio, "Attic Tapes", ["Nova Kite"], "Satellite Heart", "Nova Kite", 3, 1, 2021, 251_000, false, 900, LocalCover.None, 0, 0, true),
+                    "Attic Tapes", LocalState.Missing, now - TimeSpan.TicksPerDay * 12, true, ""));
+                loose.Upserts.Add(new LocalEntry(24, 1, @"Coral Hours\Rewind.flac", 0x1234_ABCD, 2004, 29_000_000, now, now, 0x20, Spotify.Audio.Format.Flac,
+                    new LocalTagSet(LocalKind.Audio, "Rewind", ["Coral Hours"], "Wavee Sessions Vol. 2", "Coral Hours", 4, 1, 2022, 239_000, false, 900, LocalCover.None, 0, 0, true),
+                    "Rewind", LocalState.Missing, now - TimeSpan.TicksPerDay * 6, true, ""));
+            }
+            if (value == "changed")
+            {
+                // The background change the chip and the pill announce (S5): four new songs in a folder that just arrived.
+                string[] fresh = ["Paper Lanterns", "Night Ferry", "Glass Rain", "Static Bloom"];
+                string[] by = ["Mia Solace", "Coral Hours", "Nova Kite", "Sable & Sun"];
+                for (int i = 0; i < fresh.Length; i++)
+                    loose.Upserts.Add(new LocalEntry(40 + i, 1, $@"New\{fresh[i]}.flac", 0x1234_ABCD, (UInt128)(4000 + i), 28_000_000 + i, now, now, 0x20, Spotify.Audio.Format.Flac,
+                        new LocalTagSet(LocalKind.Audio, fresh[i], [by[i]], "", by[i], 0, 0, 2024, 201_000 + i * 17_000, false, 900, LocalCover.None, 0, 0, true),
+                        fresh[i], LocalState.Present, now, true, ""));
+            }
+            if (loose.Upserts.Count > 0) s_index.Apply(loose);
             var usbFolder = new LocalScanBatch(2, "Live") { Folder = new LocalFolder(2, "Live", 300, 0xCAFE, [], true) };
             usbFolder.Upserts.Add(new LocalEntry(30, 2, @"Live\Encore.m4a", 0x0BAD_F00D, 0, 9_000_000, now, 0, 0x20, Spotify.Audio.Format.Aac,
                 new LocalTagSet(LocalKind.Audio, "Encore", ["Ólafur Arnalds", "Nils Frahm"], "Live", "", 1, 1, 2015, 402_000, false, 256, LocalCover.None, 0, 0, true),
                 "Encore", LocalState.Present, now, true, ""));
             usbFolder.Upserts.Add(new LocalEntry(31, 2, @"Live\Unreleased.flac", 0x0BAD_F00D, 0, 52_000_000, now, 0, 0x0040_0020, Spotify.Audio.Format.Unknown,
                 new LocalTagSet(LocalKind.Audio, "", [], "", "", 0, 0, 0, 0, false, 0, LocalCover.None, 0, 0, true), "Unreleased", LocalState.CloudOnly, now, true, ""));
-            s_index.Apply(usbFolder);
-            s_states[music] = value switch { "scanning" => LocalRootState.Scanning, "offline" => LocalRootState.Offline, _ => LocalRootState.Online };
+            if (value != "listing") s_index.Apply(usbFolder);
+            // The last scan as the board draws it: 2 minutes ago, 1.8 s (ready and offline); none while the first scan runs.
+            s_scan.Last.Clear();
+            if (value is not ("scanning" or "listing"))
+                s_scan.Last[music] = new LocalScanStats { FinishedTicks = DateTime.UtcNow.Ticks - TimeSpan.TicksPerMinute * 2, TotalMs = 1800 };
+            s_fixtureProgress = value switch
+            {
+                "scanning" => new ScanProgress(true, music, ScanPhase.Reading, 412, 4812, 1930, 4812, 1930, 48, 40, 212),
+                // The first second of the first scan: the folders are being listed, no total yet (an indeterminate bar).
+                "listing" => new ScanProgress(true, music, ScanPhase.Listing, 3, 0, 0, 0, 0, 0, 0, 0),
+                _ => default,
+            };
+            s_states[music] = value switch { "scanning" or "listing" => LocalRootState.Scanning, "offline" => LocalRootState.Offline, _ => LocalRootState.Online };
             s_states[usb] = value == "offline" ? LocalRootState.Offline : LocalRootState.Online;
         }
         Epoch.Value++;
+        RestateNow();   // the Local Files list shows the fixture at once (no thread)
+        if (value == "changed")
+        {
+            // A background change as the restate pass counts one (S5): the chip's "Updated · +4", the flyout's "What changed".
+            LastChanges = new SessionChanges(4, 1, 0, 0, 0);
+            Changes = new SessionChanges(4, 1, 0, 0, 0);
+            // What the rows say for the session: the four new ones "New", "Ambre" "Moved" (from where it was before).
+            s_new.Clear();
+            s_movedFrom.Clear();
+            for (long id = 40; id < 44; id++) s_new.Add(id);
+            s_movedFrom[8] = music + @"\Unsorted\Ambre.flac";
+            Restated.Value++;
+        }
+        else
+        {
+            // Every other value is a seeded library, not a change: the diff against the previous fixture announces nothing.
+            LastChanges = default;
+            Changes = default;
+            s_new.Clear();
+            s_movedFrom.Clear();
+        }
     }
 }

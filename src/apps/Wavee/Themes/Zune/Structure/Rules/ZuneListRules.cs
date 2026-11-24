@@ -243,8 +243,15 @@ public static class ZuneListRules
     public static readonly Edges4 UnavailablePadding = new(12f, 0f, 8f, 0f);
 
     /// <summary>The band the bar takes in the chrome while shown at a window tier: its height and the air under it.</summary>
-    public static float UnavailableExtent(WidthTier window)
-        => (window == WidthTier.Compact ? UnavailableCompactHeight : UnavailableHeight) + UnavailableBelow;
+    public static float UnavailableExtent(WidthTier window, bool secondary = false)
+        => (window != WidthTier.Compact ? UnavailableHeight : secondary ? UnavailableTwoLineHeight : UnavailableCompactHeight) + UnavailableBelow;
+
+    /// <summary>The Compact bar that carries a second verb (review, #240 S6): the sentence on its line, the 40 verbs on theirs (6 + 18 + 12 + 40 + 6), and the
+    /// sentence line's flex basis (wider than any Compact bar, so the verbs always wrap under it).</summary>
+    public const float UnavailableTwoLineHeight = 82f, UnavailableLineBasis = 640f;
+
+    /// <summary>The two-line bar's padding.</summary>
+    public static readonly Edges4 UnavailableTwoLinePadding = new(12f, 6f, 8f, 6f);
 
     /// <summary>The bar says why (the sentence with its reasons) from Standard; Compact and Small say the short one.</summary>
     public static bool UnavailableExplains(WidthTier window) => window >= WidthTier.Standard;

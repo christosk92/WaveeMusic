@@ -27,6 +27,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Classic;
@@ -376,7 +377,16 @@ internal static class ClassicTrackTable
         var runs = BoundTitleRuns(r, inlineVideo: !classic, weight);
         Element[] column;
         if (classic) column = [BoundClassicTitleLine(r, runs, setArtist, weight)];
-        else column = [runs[0], runs[1], BoundMetadataLine(r, setArtist, setAlbum, durationInline: !RowMetrics.ShowDuration(in set))];
+        else column =
+        [
+            // The title (or its marquee) with Local Files' session mark after it ("New", "Moved", #240 S5; mounted only on a marked row).
+            new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
+                Children = [new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [runs[0], runs[1]] }, CommonLocalFiles.RowTag(r)],
+            },
+            BoundMetadataLine(r, setArtist, setAlbum, durationInline: !RowMetrics.ShowDuration(in set)),
+        ];
         var titleCol = new BoxEl
         {
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
@@ -538,7 +548,7 @@ internal static class ClassicTrackTable
         {
             Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S,
             ClipToBounds = true,
-            Children = [lead, badge],
+            Children = [lead, CommonLocalFiles.RowTag(r), badge],
         };
     }
 

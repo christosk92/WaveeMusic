@@ -336,6 +336,13 @@ public readonly partial struct Track
         /// <summary>Expanded-row BODY (Track.Drawer.cs, M Wave 5), handed the row's track and DISPLAY index; the host pads it
         /// by <see cref="RowMetrics.DrawerIndent"/>. Null = no chevron lane.</summary>
         public Func<Track, int, Element?>? Drawer { get; init; }
+        /// <summary>The body of a list KNOWN to be empty in place of "Nothing here yet" (Local Files' onboarding, #240 S4); null from it keeps the
+        /// table's own words. A tracked read: the body follows what it reads. While it answers an element the list is the page (the theme draws no
+        /// table chrome over it, as over an empty playlist's lead). Null member = the table's own words.</summary>
+        public Func<Element?>? EmptyBody { get; init; }
+        /// <summary>A layer over the rows (Local Files' "4 new songs" pill, #240 S5), handed the list's scroll handle and the band the list pins at its
+        /// top. It floats: nothing in the list moves for it. Null = none.</summary>
+        public Func<FluentGpu.Scroll.Runtime.ScrollHandle, float, Element>? ListOverlay { get; init; }
 
         public static TableProfile From(Detail.Config config) => new()
         {
@@ -346,7 +353,7 @@ public readonly partial struct Track
         int Seams => (Editable is null ? 0 : 1) | (ContentFilterBar is null ? 0 : 2) | (LensHeader is null ? 0 : 4)
                      | (PlayFrom is null ? 0 : 8) | (Deposit is null ? 0 : 16) | (MoveRows is null ? 0 : 32)
                      | (RemoveRows is null ? 0 : 64) | (Recommendations is null ? 0 : 128) | (Tune is null ? 0 : 256)
-                     | (Drawer is null ? 0 : 512);
+                     | (Drawer is null ? 0 : 512) | (EmptyBody is null ? 0 : 1024) | (ListOverlay is null ? 0 : 2048);
 
         public bool Equals(TableProfile? other)
             => other is not null && (ReferenceEquals(this, other)
@@ -1365,15 +1372,18 @@ public readonly partial struct Track
             var listState = Playlist.RowsStateOf(snap.State is EdgeState.Partial or EdgeState.Complete, snap.Count, visible);
             bool recsLive = recsCapable && listState is PlaylistRowsState.Rows or PlaylistRowsState.Empty;
             int listTotal = visible + (recsLive ? 1 : 0);
+            // An empty list the page gives a body of its own (Local Files' onboarding) is the page as the recommendations lead is: the same lead fact.
+            bool bodyLead = listState == PlaylistRowsState.Empty && P.EmptyBody?.Invoke() is not null;
+            bool emptyLead = (recsLive || bodyLead) && listState == PlaylistRowsState.Empty;
             UseLayoutEffect(() =>
             {
                 _visible.Value = visible;
                 _listCount.Value = listTotal;
                 _recsCapable.Value = recsCapable;
-                _emptyLead.Value = recsLive && listState == PlaylistRowsState.Empty;
-            }, DepKey.From(visible, listTotal, (recsLive ? 1 : 0) | (recsCapable ? 2 : 0), listState == PlaylistRowsState.Empty ? 1 : 0));
+                _emptyLead.Value = emptyLead;
+            }, DepKey.From(visible, listTotal, (recsLive ? 1 : 0) | (recsCapable ? 2 : 0) | (emptyLead ? 4 : 0), listState == PlaylistRowsState.Empty ? 1 : 0));
             UseEffect(PublishHeroHeight);
-            var listCount = CountNow(in snap, visible) with { EmptyLead = recsLive && listState == PlaylistRowsState.Empty };
+            var listCount = CountNow(in snap, visible) with { EmptyLead = emptyLead };
             UseEffect(() => { if (_latest.ListCount is { } target) target.Value = listCount; },
                       DepKey.From(listCount.Shown, listCount.Total, (int)(listCount.ShownMs / 1000L),
                                   (listCount.Filtered ? 1 : 0) | (listCount.DurationsKnown ? 2 : 0) | (listCount.EmptyLead ? 4 : 0)));
@@ -1426,6 +1436,13 @@ public readonly partial struct Track
                 ScrollScope = vertical && !trailing ? TableScope : null,
             };
 
+            // A layer over the rows (Local Files' pill, #240 S5): it floats over the list's own viewport, under the band the list pins while scrolled.
+            if (!trailing && P.ListOverlay is { } overlay)
+                listKeyed = new BoxEl
+                {
+                    ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1,
+                    Children = [listKeyed, overlay(_listScroll, vertical ? stickyInset : 0f)],
+                };
             Element body = trailing ? TrailingBody(listKeyed, vertical, stickyInset, in shape, chips, lens) : listKeyed;
             var column = new BoxEl
             {
@@ -2066,6 +2083,8 @@ public readonly partial struct Track
         /// died), else the empty / no-match sentence. There is no error/offline arm inside the table (ch 04 W9).</summary>
         Element Placeholder(PlaylistRowsState state, in Shape shape)
         {
+            // The page's own body for a list known to be empty (Local Files' onboarding, #240 S4); a tracked read, so the body follows its facts.
+            if (state == PlaylistRowsState.Empty && P.EmptyBody?.Invoke() is { } body) return body;
             if (state == PlaylistRowsState.Loading)
             {
                 var geometry = shape;

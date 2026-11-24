@@ -24,6 +24,7 @@ public static partial class Sidebar
         SidebarLayoutId INavRowHost.Layout => Config.Layout;
         SidebarRowPlan INavRowHost.Plan => Plan;
         bool INavRowHost.CompactPlan => CompactPlan;
+        bool INavRowHost.InDrawer => InDrawer;
         int INavRowHost.GridColumns => GridColumns;
         string INavRowHost.SearchText => SearchText;
         Signal<float> INavRowHost.ExpandedWidth => ExpandedWidth;

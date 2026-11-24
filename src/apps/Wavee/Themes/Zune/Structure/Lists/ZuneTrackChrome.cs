@@ -56,6 +56,7 @@ internal static class ZuneTrackChrome
         UnavailableBar = UnavailableBar,
         HidesChromeOnEmptyLead = true,   // Z-State-Empty-Playlist: the lead and its finder are the page, no sort, filter or header over nothing
         UnavailableBarExtent = static tiers => ZuneListRules.UnavailableExtent(tiers.Policy is null ? WidthTier.Standard : tiers.Window),
+        UnavailableBarExtentWithSecondary = static tiers => ZuneListRules.UnavailableExtent(tiers.Policy is null ? WidthTier.Standard : tiers.Window, secondary: true),
     };
 
     static WidthTier TierOf(in TierFacts tiers) => tiers.Policy is null ? WidthTier.Standard : tiers.Window;
@@ -73,35 +74,64 @@ internal static class ZuneTrackChrome
         var tier = TierOf(a.Tiers);
         bool compact = tier == WidthTier.Compact;
         var meta = R.Type.DenseMeta("");
+        // Compact's targets are 40 (the bar is 44 there to hold them).
+        var size = compact ? ControlSize.Large : ControlSize.Medium;
+        // A Compact bar that carries a second verb (review, #240 S6) takes its verbs on a line of their own under the sentence. ONE tree in both forms (a
+        // wrapping row), so a crossing glides the parts instead of rebuilding them.
+        bool twoLines = compact && a.Secondary is not null;
         Element bar = new BoxEl
         {
-            Key = "unavailable:bar", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneListRules.UnavailableGap, MinWidth = 0f,
-            Height = compact ? ZuneListRules.UnavailableCompactHeight : ZuneListRules.UnavailableHeight, Shrink = 0f, Grow = 1f, Basis = 0f,
-            Animate = Design.Reduced ? null : ZuneMotion.HeightResize,
-            Padding = ZuneListRules.UnavailablePadding, Margin = new Edges4(0f, 0f, 0f, ZuneListRules.UnavailableBelow),
+            Key = "unavailable:bar", Direction = 0, Wrap = twoLines, AlignItems = FlexAlign.Center, Gap = ZuneListRules.UnavailableGap, MinWidth = 0f,
+            Height = twoLines ? ZuneListRules.UnavailableTwoLineHeight : compact ? ZuneListRules.UnavailableCompactHeight : ZuneListRules.UnavailableHeight,
+            Shrink = 0f, Grow = 1f, Basis = 0f,
+            // The tier's step (40 to 44 at Compact) eases through the window's resize too: the slot around it follows this height, it states none of its own.
+            Animate = Design.Reduced ? null : ZuneMotion.HeightResizeLive,
+            Padding = twoLines ? ZuneListRules.UnavailableTwoLinePadding : ZuneListRules.UnavailablePadding, Margin = new Edges4(0f, 0f, 0f, ZuneListRules.UnavailableBelow),
             Fill = Prop.Of(static () => R.Layer.FloatingPane),
             Children =
             [
-                Icon(Icons.Info, ZuneListRules.UnavailableGlyph, R.Ink.AccentDecor) with { Shrink = 0f },
-                new TextEl(ZuneListRules.UnavailableExplains(tier) ? a.Explained : a.Summary)
+                new BoxEl
                 {
-                    Size = meta.Size, LineHeight = meta.LineHeight, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    Key = "unavailable:line", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneListRules.UnavailableGap, MinWidth = 0f,
+                    Grow = 1f, Shrink = 1f, Basis = twoLines ? ZuneListRules.UnavailableLineBasis : 0f, Layout = Design.Reduced ? null : ZuneDetailKit.Shove,
+                    Children =
+                    [
+                        Icon(Icons.Info, ZuneListRules.UnavailableGlyph, R.Ink.AccentDecor) with { Shrink = 0f },
+                        new TextEl(ZuneListRules.UnavailableExplains(tier) ? a.Explained : a.Summary)
+                        {
+                            Size = meta.Size, LineHeight = meta.LineHeight, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                            MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                        },
+                    ],
                 },
-                Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
+                new BoxEl
+                {
+                    Key = "unavailable:verbs", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneListRules.UnavailableGap, Shrink = 0f,
+                    Grow = twoLines ? 1f : 0f, Justify = FlexJustify.End, Layout = Design.Reduced ? null : ZuneDetailKit.Shove,
+                    Children =
+                    [
+
+                // A second verb (review, while the list holds missing local files: the bar is their band too) stands before hide them.
+                a.Secondary is { } secondary
+                    ? Button.Create(a.SecondaryLabel, secondary, ButtonAppearance.Standard, size, isEnabled: a.Shown) with { Key = "unavailable:secondary", Shrink = 0f }
+                    : new BoxEl { Shrink = 0f },
+                Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, size, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
                 // The ✕: closes the bar on this list until the app restarts. Mounted (with its tooltip) only while the bar shows: every list mounts this
                 // bar, and a tooltip host on each hidden one cost a one-time 4.6 MB on a Liked Songs scroll.
                 a.Dismiss is { } dismiss && a.Shown
-                    ? ToolTip.Wrap(Button.Create("", dismiss, ButtonAppearance.Subtle, glyph: Icons.ChromeClose)
+                    ? ToolTip.Wrap(Button.Create("", dismiss, ButtonAppearance.Subtle, size, glyph: Icons.ChromeClose)
                         with { Key = "unavailable:dismiss", Shrink = 0f }, a.DismissLabel)
                     : new BoxEl { Shrink = 0f },
+                    ],
+                },
             ],
         };
-        // The list's inset either side is a pair of easing spacers (a crossing moves it: the hero list's gutter ↔ the plates' inset), never padding.
+        // The list's inset either side is a pair of easing spacers (a crossing moves it: the hero list's gutter ↔ the plates' inset), never padding. The slot is
+        // the disclosure (0 while off, the bar's own height while on): it never states the tier's height, so a crossing moves only the easing bar.
         return new BoxEl
         {
             Key = "unavailable", Direction = 0, AlignItems = FlexAlign.Start, MinWidth = 0f, ClipToBounds = true, Shrink = 0f,
-            Height = a.Shown ? ZuneListRules.UnavailableExtent(tier) : 0f,
+            Height = a.Shown ? float.NaN : 0f,
             Animate = Design.Reduced ? null : Design.Reveal.Resize,
             Children = [ZuneFrameRules.Gutter(a.InsetX), bar, ZuneFrameRules.Gutter(a.InsetX)],
         };

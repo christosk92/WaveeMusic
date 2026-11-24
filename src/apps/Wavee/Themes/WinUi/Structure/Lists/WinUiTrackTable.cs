@@ -39,6 +39,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.WinUi;
@@ -358,6 +359,8 @@ internal static class WinUiTrackTable
             [
                 new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] },
                 WinUiRowCells.ExplicitMark() with { Visible = Prop.Of(() => r.P.Track.ForDisplay.IsExplicit) },
+                // Local Files' session mark ("New", "Moved", #240 S5): mounted only on a marked row.
+                CommonLocalFiles.RowTag(r),
                 // A song with a music video wears the film glyph after its title, as the eager rows, the queue panel and every other theme's table do
                 // (the boards drew none; the owner asked for one mark everywhere, 2026-11-07). A bound flip after the title: the video group landing
                 // late (the row's TrackVersion) shows it without moving the title's start.
