@@ -117,6 +117,7 @@ public readonly partial struct Track
             _ = edges.TrackVersions.Changed.Value;
             _ = edges.TrackWaveform.Changed.Value;
             var playing = Playback.CurrentId.Value;          // a version row that IS the deck's item re-skins
+            _ = LocalLink.Version.Value;                      // a file's accepted match comes and goes (accept, unlink)
             var t = p.Track;
             UseEffect(_demand, DepKey.From(t.Slot, (int)epoch));
             UseEffect(_demandVersions);
@@ -140,6 +141,8 @@ public readonly partial struct Track
                 case DrawerRules.VideoRow.Reserved: entries.Add((DrawerRules.VideoKind, default)); break;
             }
             for (int i = edgeVideo ? 1 : 0; i < ordered; i++) entries.Add((DrawerRules.AudioKind, new Track(targets[order[i]])));
+            // A file whose match was accepted offers the Spotify version beside itself (show-only: which source plays is the user's click).
+            if (LinkedSpotify(t) is { IsValid: true } spotify) entries.Add((DrawerRules.SpotifyKind, spotify));
 
             var facts = FactsFor(t, p.Options);
             bool arriving = _opened;
@@ -184,6 +187,8 @@ public readonly partial struct Track
                 Entities.Ensure(MemoryMarshal.Cast<int, Track>(targets), TrackFields.Identity | TrackFields.Audio | TrackFields.Files);
             var counterpart = p.Track.VideoCounterpart;
             if (counterpart.IsValid) Entities.Ensure(counterpart, TrackFields.Identity);
+            _ = LocalLink.Version.Value;
+            if (LinkedSpotify(p.Track) is { IsValid: true } spotify) Entities.Ensure(spotify, TrackFields.Identity | TrackFields.Audio | TrackFields.Files);
         }
 
         // The waveform's 0..1 peaks, re-derived only when the relation's version moves (never per render): the kept
@@ -201,6 +206,12 @@ public readonly partial struct Track
             return _peaks.Length == 0 ? null : _peaks;
         }
     }
+
+    /// <summary>The Spotify track an indexed file's accepted match links it to ("Your files and Spotify"), or none.</summary>
+    static Track LinkedSpotify(Track t)
+        => t.IsLocal && LocalLibrary.TryLocalIdOf(t.Uri.Text, out long id) && LocalLink.LinkOf(id) is { } link
+            ? Entities.Track(EntityUri.Parse(link.Uri))
+            : default;
 
     // ══ 3. THE FACTS STRIP (ch 01 W14) ═══════════════════════════════════════════════════════════════════════════════
 
@@ -372,6 +383,9 @@ public readonly partial struct Track
         public const string VideoRowKey = "v:video";
         public const int WaveBars = 64, MaxOverrides = 256;
         public const byte SelfRow = 0, VideoKind = 1, AudioKind = 2;
+        /// <summary>"Your files and Spotify": the Spotify track a file in the music folders is linked to (an accepted match), offered beside
+        /// the file in its "Versions and formats".</summary>
+        public const byte SpotifyKind = 3;
 
         public enum VideoRow : byte { None, Reserved, Edge, Counterpart }
 

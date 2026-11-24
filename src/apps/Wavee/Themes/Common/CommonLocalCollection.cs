@@ -72,6 +72,7 @@ internal static class CommonLocalCollection
             _ = p.Sort.Value;
             _ = p.Folder.Value;
             _ = p.Shelves.Value;
+            _ = p.Link?.Reviewing.Value;
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, DropTarget = p.Drop,
@@ -87,13 +88,15 @@ internal static class CommonLocalCollection
         // No music folder: the Local Files onboarding (S4), shared with the list.
         if (p.Onboarding() is { } onboarding) return X.Gut("lc-empty", hp.Gutter, onboarding, grow: true);
         float g = hp.Gutter;
+        // "Your files and Spotify": the review takes the page's place while it is open (board 29: On this PC › Review matches).
+        if (p.Link is { } link && link.Reviewing.Peek() is not null) return X.LinkReview(link, g, p.RouteKey);
         Element bar = Pivot(p, pivot, g);
         if (pivot == LocalPivot.Home)
         {
             Element column = new BoxEl
             {
                 Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, L.PageBottom),
-                Children = [Hero(p, view, hp.Lay, g, hp.TitleKey), bar, .. X.HomeBody(view, p.Verbs, p.SetPivot, hp.Lay, g, p.Shelves.Peek())],
+                Children = [Hero(p, view, hp.Lay, g, hp.TitleKey), bar, X.LinkOffer(p.Link, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, hp.Lay, g, p.Shelves.Peek())],
             };
             return ScrollView(column) with { Key = L.ScrollKey + ":home", Grow = 1f, MinWidth = 0f, ScrollKey = p.RouteKey + ":home" };
         }

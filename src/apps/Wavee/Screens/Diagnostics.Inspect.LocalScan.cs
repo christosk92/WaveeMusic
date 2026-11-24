@@ -54,6 +54,39 @@ public static partial class Diagnostics
             });
         }
 
+        /// <summary>`state kind=spotify-match value=off|offer|matching|review|focus|accepted` ("Your files and Spotify", LocalLink.Fixture.cs).</summary>
+        string SpotifyMatchState(int id, string name, Inspect.Args a)
+        {
+            string v = a.Has("value") ? a.Str("value").ToLowerInvariant() : "review";
+            if (Array.IndexOf(LocalLink.FixtureValues.Split('|'), v) < 0)
+                return Inspect.Reply.Fail(id, name, "state kind=spotify-match wants value=" + LocalLink.FixtureValues + ", not '" + v + "'");
+            string why = LocalLink.InspectFixture(v);
+            if (why.Length > 0) return Inspect.Reply.Fail(id, name, why);
+            if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
+            return Settled(id, name, a, w =>
+            {
+                var view = LocalLink.View.Peek();
+                w.WriteString("kind", "spotify-match");
+                w.WriteString("value", v);
+                w.WriteString("phase", view.Phase.ToString().ToLowerInvariant());
+                w.WriteNumber("groups", view.Groups.Count);
+                w.WriteNumber("exact", view.Exact);
+                w.WriteNumber("strong", view.Strong);
+                w.WriteNumber("likely", view.Likely);
+                w.WriteNumber("check", view.Check);
+                w.WriteNumber("accepted", view.Accepted);
+                w.WriteString("reviewing", LocalLink.Reviewing.Peek() ?? "");
+                w.WriteStartArray("evidence");
+                foreach (var g in view.Groups)
+                    w.WriteStringValue(g.Key + " | " + g.Confidence + " | " + (g.Best is { } b ? LocalLinkWords.Evidence(b, g.IsAlbum) + " | " + b.Uri : "none"));
+                w.WriteEndArray();
+                // The asks matching made, with the pathfinder bodies a real session posts (`Spotify.Api.SearchBody`).
+                w.WriteStartArray("requests");
+                foreach (string r in LocalLink.Requests) w.WriteStringValue(r);
+                w.WriteEndArray();
+            });
+        }
+
         /// <summary>`localscan path=<folder> runs=N`.</summary>
         string LocalScanVerb(int id, string name, Inspect.Args a)
         {

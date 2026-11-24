@@ -64,6 +64,43 @@ internal static class CommonLocalCollectionParts
         ],
     };
 
+    // ── "Your files and Spotify" (#240 phase 1) ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>The offer's slot on Home, under the pivot (board 28 ①): its own component (the offer is tracked), revealed as it comes and
+    /// closing its height as it goes ("Not now", matching turned on), so the shelves below glide.</summary>
+    public static Element LinkOffer(LocalLinkPageProps? link, float g)
+        => link is null ? new BoxEl { Key = "ll-offer-slot" } : Embed.Comp(new OfferSlotProps(link, g), static () => new OfferSlot()) with { Key = "ll-offer-slot" };
+
+    sealed record OfferSlotProps(LocalLinkPageProps Link, float Gutter);
+
+    sealed class OfferSlot : Component
+    {
+        public override Element Render()
+        {
+            var sp = UseProps<OfferSlotProps>();
+            var offer = sp.Link.Offer();
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f,
+                Children = offer is null
+                    ? []
+                    :
+                    [
+                        new BoxEl
+                        {
+                            Key = "ll-offer-box", Direction = 1, MinWidth = 0f, ClipToBounds = true, Animate = Design.Reveal.Drawer,
+                            Children = [Gut("ll-offer", sp.Gutter, FluentGpu.Theming.Slots.View(ViewKeys.LocalLinkOffer, offer), top: CommonLocalCollectionRules.LinkOfferTop)],
+                        },
+                    ],
+            };
+        }
+    }
+
+    /// <summary>The review in the page's place (board 29), on the page gutter, in its own scroll.</summary>
+    public static Element LinkReview(LocalLinkPageProps link, float g, string routeKey)
+        => ScrollView(Gut("ll-review", g, FluentGpu.Theming.Slots.View(ViewKeys.LocalLinkReview, link.Review)))
+            with { Key = L.ScrollKey + ":link-review", Grow = 1f, MinWidth = 0f, ScrollKey = routeKey + ":link-review" };
+
     // ── words ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
     static TextEl Ell(TextEl t) => t with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f };

@@ -293,9 +293,20 @@ public static class LocalCollection
         long today = local.Date.ToUniversalTime().Ticks;
         long week = local.Date.AddDays(-(((int)local.DayOfWeek + 6) % 7)).ToUniversalTime().Ticks;
         long month = new DateTime(local.Year, local.Month, 1).ToUniversalTime().Ticks;
+        var linked = LocalLink.ShownAlbums;   // "Your files and Spotify": an accepted album shows Spotify's name, artist, year and cover
         foreach (var a in albums.Values)
         {
             string? cover = LocalArt.AlbumCoverUri(a.Artist, a.Title) ?? LocalCollectionFixture.CoverOf(a.Artist, a.Title);
+            if (linked.TryGetValue(a.Key, out LinkAlbum? shown))
+            {
+                cover = shown.Cover ?? cover;
+                coverOf[a.Key] = cover;
+                var w = a.Added >= today ? LocalAddedWhen.Today : a.Added >= week ? LocalAddedWhen.ThisWeek : a.Added >= month ? LocalAddedWhen.ThisMonth : LocalAddedWhen.Earlier;
+                string q = a.Lossless > 0 && a.Lossy == 0 ? QualityOf(a.Format, 0, a.MinRate, a.MinBits) : a.Lossy > 0 && !a.MixedFormat ? QualityOf(a.Format, a.MaxKbps) : "";
+                cards.Add(new LocalAlbumCard(a.Key, shown.Title, shown.Artist.Length > 0 ? shown.Artist : a.Artist, shown.Year > 0 ? shown.Year : a.Year, a.Tracks, a.Duration, q,
+                    a.Lossless > 0 && a.Lossy == 0, w == LocalAddedWhen.Today, cover, a.Added, w, KeyOf(a.Root, a.Folder)));
+                continue;
+            }
             coverOf[a.Key] = cover;
             var when = a.Added >= today ? LocalAddedWhen.Today : a.Added >= week ? LocalAddedWhen.ThisWeek : a.Added >= month ? LocalAddedWhen.ThisMonth : LocalAddedWhen.Earlier;
             // An album is hi-res only when every lossless track is (its lowest rate and depth decide).

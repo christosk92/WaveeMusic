@@ -48,6 +48,10 @@ public static partial class SettingsSpec
             Make("storage.music.readCloud", K.Toggle, Strings.Settings.Music.ReadCloud,
                 SettingsWriter.OfToggle("music.readCloud", SettingsVerbs.SetMusicReadCloud), parent: "storage.music.options", glyph: "Download",
                 captionKey: Strings.Settings.Music.ReadCloudSub, value: BoolOf(Platform.Keys.MusicReadCloud), aliases: ["onedrive", "cloud"]),
+            // "Your files and Spotify" (#240 phase 1): the opt-in's switch, where the offer's "Not now" leaves it.
+            Make("storage.music.spotifyMatch", K.Toggle, Strings.LocalFiles.Link.Setting,
+                SettingsWriter.OfToggle("music.spotifyMatch", SettingsVerbs.SetMusicSpotifyMatch), parent: "storage.music.options", glyph: "Link",
+                captionKey: Strings.LocalFiles.Link.SettingSub, value: BoolOf(LocalLink.OnKey), aliases: ["spotify", "match", "covers", "tags", "isrc"]),
             Make("storage.music.keepMissing", K.Choice, Strings.Settings.Music.KeepMissing,
                 SettingsWriter.OfChoice("music.keepMissing", SettingsVerbs.SetMusicMissingDays), parent: "storage.music.options", glyph: "Clock",
                 captionKey: Strings.Settings.Music.KeepMissingSub, value: static s => SettingsMusic.MissingDaysIndex(s.Get(Platform.Keys.MusicMissingDays)),
@@ -342,6 +346,14 @@ public static partial class SettingsVerbs
     public static bool SetMusicPauseOnSaver(bool on)
     {
         LocalLibrary.SetPauseOnSaver(on);
+        return true;
+    }
+
+    /// <summary>"Match my music with Spotify": on matches in the background (the review collects the answers); off stops it and keeps every
+    /// decision already made.</summary>
+    public static bool SetMusicSpotifyMatch(bool on)
+    {
+        LocalLink.SetEnabled(on);
         return true;
     }
 

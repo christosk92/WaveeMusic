@@ -8,7 +8,7 @@
 // "MP3 320") or "".
 //
 // Contract additions (declared, not numbered): `ViewKeys.LocalCollectionPage` and every type in this file; later (#240 P2 gaps):
-// `LocalShelf`, `LocalShelfSlot`, `LocalCollectionPageProps.Shelves/ShowShelf/MoveShelf/Drop`, `LocalCollectionView.HiResSongs/LastScanTicks`.
+// `LocalShelf`, `LocalShelfSlot`, `LocalCollectionPageProps.Shelves/ShowShelf/MoveShelf/Drop`, `LocalCollectionView.HiResSongs/LastScanTicks`; later ("Your files and Spotify", phase 1): `LocalCollectionPageProps.Link` (LocalLinkProps.cs).
 
 using FluentGpu.Dsl;
 using FluentGpu.Signals;
@@ -166,6 +166,8 @@ public sealed record LocalCollectionPageProps
     /// <summary>The page as a precise drop target (§3.15): the theme sets it on the page's root box. Local songs play and stay in Local Files, a
     /// folder becomes a music folder.</summary>
     public required FluentGpu.Foundation.DropTargetSpec Drop { get; init; }
+    /// <summary>"Your files and Spotify" (the offer and the review); null: the host offers none of it.</summary>
+    public LocalLinkPageProps? Link { get; init; }
     /// <summary>"On this PC".</summary>
     public required string Title { get; init; }
     public required string RouteKey { get; init; }

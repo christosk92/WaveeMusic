@@ -42,6 +42,8 @@ internal static class CommonLocalCollectionRules
     public static readonly Edges4 PivotItemPad = new(12f, 0f, 12f, 0f);
 
     /// <summary>A Home section: the gap above it, the head row's height and its gap to the cards, a group label's gap.</summary>
+    /// <summary>"Your files and Spotify"'s offer under the pivot (board 28: 20 under the pivot's hairline).</summary>
+    public const float LinkOfferTop = 20f;
     public const float SectionTop = 28f, HeadGap = 12f, GroupLabelGap = 8f, GroupGap = 16f, PageBottom = 48f, SeeAllGlyph = 12f;
 
     /// <summary>A card's words under its cover (two lines), the gap between cover and words; the pill's inset, padding and height.</summary>

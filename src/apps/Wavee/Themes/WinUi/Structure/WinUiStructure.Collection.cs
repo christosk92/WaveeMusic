@@ -17,5 +17,8 @@ public sealed partial class WinUiStructure
 
         // #240 P2: "On this PC", the collection page WinUI and Classic share (Themes/Common), on WinUI's page inset.
         Common.CommonLocalCollection.Register(views, "winui.collection.local", static f => WinUiTiers.InsetOf(in f), WinUiFrameLayout.PageTitleKey);
+        // "Your files and Spotify" (#240 phase 1): the offer (an InfoBar) and the review (settings cards), WinUI's controls.
+        views.Add(ViewKeys.LocalLinkOffer, Common.CommonLocalLink.Offer, "winui.local-link.offer");
+        views.Add(ViewKeys.LocalLinkReview, Common.CommonLocalLink.Review, "winui.local-link.review");
     }
 }

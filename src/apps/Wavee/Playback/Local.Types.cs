@@ -30,7 +30,8 @@ public readonly record struct LocalTagSet(
     int BitrateKbps,
     LocalCover Cover,
     int VideoWidth, int VideoHeight, bool HasAudio,  // Kind == Video only (D19); 0/0/true for audio
-    int SampleRate, int BitsPerSample, int Channels)  // the audio stream's; 0 = unknown (BitsPerSample 0 for lossy formats)
+    int SampleRate, int BitsPerSample, int Channels,  // the audio stream's; 0 = unknown (BitsPerSample 0 for lossy formats)
+    string Isrc = "")            // the recording's ISRC (ID3 TSRC, Vorbis ISRC), upper case, or "" (#240 "Your files and Spotify": the Exact rung)
 {
     public string FirstArtist => Artists.Length > 0 ? Artists[0] : "";
 }

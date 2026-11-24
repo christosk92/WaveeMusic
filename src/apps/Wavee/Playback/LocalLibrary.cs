@@ -114,6 +114,9 @@ public static partial class LocalLibrary
             Log.Info("local", "local.index.load entries=" + loaded + " folders=" + Folders.Count + " log=" + s_index.LogBytes);
             foreach (string folder in Folders) StartFolder(folder, startup: true);
             NoteProgress();
+            // "Your files and Spotify": the kept decisions load once the index is in (matching, when on, folds the index).
+            string? cacheDir = s_binPath is { } path ? Path.GetDirectoryName(path) : null;
+            Playback.ToUi(() => LocalLink.Use(cacheDir));
         })
         { IsBackground = true, Name = "Wavee.LocalLibrary.Load", Priority = ThreadPriority.BelowNormal }.Start();
     }

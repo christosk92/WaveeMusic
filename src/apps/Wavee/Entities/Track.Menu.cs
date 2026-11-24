@@ -189,6 +189,10 @@ public readonly partial struct Track
             if (ActionRules.CanStartTrackRadio(ctx.Target) && Actions.Menu.Row(ActionId.GoToSongRadio, in ctx) is { } radio)
                 rows.Add(radio);
             if (VideoItem(one, in ctx) is { } video) rows.Add(video);
+            // "Your files and Spotify" (F-B): a song in the music folders opens the review on its group (its match, its evidence, the
+            // candidates, a search, Not on Spotify). Only while matching is on: off, there is nothing to review.
+            if (LocalLink.Enabled.Peek() && one.IsLocal && LocalLibrary.TryLocalIdOf(one.Uri.Text, out long localId))
+                rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.SpotifyMatch), Icons.Link, true, () => LocalLink.OpenMatchFor(localId)));
         }
 
         // the surface's extras

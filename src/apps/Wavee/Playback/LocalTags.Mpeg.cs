@@ -182,7 +182,7 @@ public static partial class LocalTags
         return id.Length > 0;
     }
 
-    enum FrameKind : byte { None, Title, Artist, Album, AlbumArtist, Track, Disc, Year, Date, Length, Picture }
+    enum FrameKind : byte { None, Title, Artist, Album, AlbumArtist, Track, Disc, Year, Date, Length, Picture, Isrc }
 
     static FrameKind FrameKindOf(uint id, int version) => version == 2
         ? id switch
@@ -196,6 +196,7 @@ public static partial class LocalTags
             0x545945 => FrameKind.Year,         // TYE
             0x544C45 => FrameKind.Length,       // TLE
             0x504943 => FrameKind.Picture,      // PIC
+            0x545243 => FrameKind.Isrc,         // TRC
             _ => FrameKind.None,
         }
         : id switch
@@ -210,6 +211,7 @@ public static partial class LocalTags
             0x54445243 => FrameKind.Date,        // TDRC
             0x544C454E => FrameKind.Length,      // TLEN
             0x41504943 => FrameKind.Picture,     // APIC
+            0x54535243 => FrameKind.Isrc,        // TSRC
             _ => FrameKind.None,
         };
 
@@ -244,6 +246,7 @@ public static partial class LocalTags
             case FrameKind.AlbumArtist: b.SetAlbumArtist(value); break;
             case FrameKind.Track: b.SetTrack(LeadingInt(value)); break;
             case FrameKind.Disc: b.SetDisc(LeadingInt(value)); break;
+            case FrameKind.Isrc: b.SetIsrc(value); break;
             case FrameKind.Year or FrameKind.Date: b.SetYear(YearOf(value)); break;
             case FrameKind.Length:
                 if (long.TryParse(value.AsSpan().Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long ms))

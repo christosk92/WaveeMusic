@@ -400,6 +400,7 @@ internal static class ZuneTrackDrawer
     {
         DrawerRules.VideoKind => Loc.Get(Strings.Detail.Versions.MusicVideo),
         DrawerRules.AudioKind => Loc.Get(Strings.Detail.Versions.AlternateAudio),
+        DrawerRules.SpotifyKind => Loc.Get(Strings.LocalFiles.Link.OnSpotify),
         _ => Loc.Get(Strings.Detail.Versions.ThisTrack),
     };
 }

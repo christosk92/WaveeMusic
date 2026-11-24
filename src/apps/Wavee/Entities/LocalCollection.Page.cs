@@ -149,6 +149,7 @@ public static class LocalCollectionPage
                 ShowShelf = LocalHome.Show,
                 MoveShelf = LocalHome.Move,
                 Drop = DropAnywhere.LocalFiles,
+                Link = LocalLinkPage.Props,
                 Title = Loc.Get(P.Title),
                 RouteKey = _routeKey,
             };

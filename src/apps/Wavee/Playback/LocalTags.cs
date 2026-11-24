@@ -339,7 +339,7 @@ public static partial class LocalTags
     /// read before a fallback). Artists come from one source: the first source that names any keeps all of its values.</summary>
     sealed class Builder
     {
-        public string Title = "", Album = "", AlbumArtist = "";
+        public string Title = "", Album = "", AlbumArtist = "", Isrc = "";
         public readonly List<string> Artists = [];
         int _artistSource = -1;
         public int Track, Disc, Year, DurationMs, BitrateKbps, VideoWidth, VideoHeight, SampleRate, Bits, Channels;
@@ -353,6 +353,20 @@ public static partial class LocalTags
         public void SetTrack(int v) { if (Track == 0 && v > 0) Track = v; }
         public void SetDisc(int v) { if (Disc == 0 && v > 0) Disc = v; }
         public void SetYear(int v) { if (Year == 0 && v is >= 1000 and <= 2999) Year = v; }
+        /// <summary>An ISRC: 12 letters and digits once the dashes and spaces are gone (CC-XXX-YY-NNNNN), kept upper case; anything else is ignored.</summary>
+        public void SetIsrc(string v)
+        {
+            if (Isrc.Length != 0) return;
+            Span<char> code = stackalloc char[12];
+            int n = 0;
+            foreach (char c in v)
+            {
+                if (c is '-' or ' ' or (char)0) continue;
+                if (!char.IsAsciiLetterOrDigit(c) || n == 12) return;
+                code[n++] = char.ToUpperInvariant(c);
+            }
+            if (n == 12 && char.IsAsciiLetter(code[0]) && char.IsAsciiLetter(code[1])) Isrc = new string(code);
+        }
 
         /// <summary>One artist field from <paramref name="source"/> (a tag; its fields accumulate in order). ONE splitting rule for
         /// every format (contract revision 2): a field splits on NUL, on <c>;</c> and on a spaced <c>" / "</c>, never on a bare
@@ -416,7 +430,7 @@ public static partial class LocalTags
 
         public LocalTagSet Build() => new(Kind, Title, [.. Artists], Album, AlbumArtist, Track, Disc, Year,
             DurationMs, DurationEstimated && DurationMs > 0, BitrateKbps, Cover, Kind == LocalKind.Video ? VideoWidth : 0,
-            Kind == LocalKind.Video ? VideoHeight : 0, Kind != LocalKind.Video || HasAudio, SampleRate, Bits, Channels);
+            Kind == LocalKind.Video ? VideoHeight : 0, Kind != LocalKind.Video || HasAudio, SampleRate, Bits, Channels, Isrc);
 
         static string Clean(string v) => v.Trim().Trim('\0').Trim();
     }

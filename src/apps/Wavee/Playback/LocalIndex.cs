@@ -77,7 +77,7 @@ public sealed class LocalIndex
     public static readonly TimeSpan MissingGrace = TimeSpan.FromDays(60);
     const long CompactLogBytes = 2L * 1024 * 1024;
     const uint BinMagic = 0x494C_5657 /*"WVLI"*/, LogMagic = 0x4C4C_5657 /*"WVLL"*/;
-    const int FormatVersion = 2;   // 2: the stream format (rate, bits, channels) and the first-seen time; an older file is rebuilt by a scan
+    const int FormatVersion = 3;   // 2: the stream format (rate, bits, channels) and the first-seen time; 3: the ISRC. An older file is rebuilt by a scan
     const byte RecBatch = 1, RecRoot = 2, RecRootRemoved = 3, RecPurge = 4;
     const byte FlagPlayable = 1, FlagEstimated = 2, FlagHasAudio = 4;
 
@@ -101,6 +101,7 @@ public sealed class LocalIndex
         public ulong FileIdLo, FileIdHi;
         public string? Name;
         public string Title;
+        public string? Isrc;         // null when the file names none (most files)
         public Shared Shared;        // album, album artist, artists, reason: one object per distinct set (an album's tracks share it)
         public int Folder, DurationMs, CoverLength, SampleRate;
         public uint Volume, Attributes;
@@ -675,7 +676,7 @@ public sealed class LocalIndex
             LocalId = e.LocalId, Size = e.Size, Write = e.WriteTicks, Change = e.ChangeTicks, LastSeen = e.LastSeenTicks, FirstSeen = e.FirstSeenTicks,
             CoverOffset = t.Cover.Offset, SampleRate = t.SampleRate, Bits = (byte)Math.Clamp(t.BitsPerSample, 0, 255), Channels = (byte)Math.Clamp(t.Channels, 0, 255),
             FileIdLo = (ulong)e.FileId, FileIdHi = (ulong)(e.FileId >> 64),
-            Name = name, Title = t.Title, Shared = InternShared(s, t, e.Why),
+            Name = name, Title = t.Title, Isrc = t.Isrc.Length > 0 ? t.Isrc : null, Shared = InternShared(s, t, e.Why),
             Folder = folder, DurationMs = t.DurationMs, CoverLength = t.Cover.Length, Volume = e.VolumeSerial, Attributes = e.Attributes,
             Track = Clamp(t.TrackNumber), Disc = Clamp(t.DiscNumber), Year = Clamp(t.Year), Bitrate = Clamp(t.BitrateKbps),
             VideoWidth = Clamp(t.VideoWidth), VideoHeight = Clamp(t.VideoHeight),
@@ -735,7 +736,7 @@ public sealed class LocalIndex
         var tags = new LocalTagSet((LocalKind)row.Kind, row.Title, shared.Artists, shared.Album, shared.AlbumArtist, row.Track, row.Disc, row.Year,
             row.DurationMs, (row.Flags & FlagEstimated) != 0, row.Bitrate,
             new LocalCover(row.CoverOffset, row.CoverLength, (LocalCoverMime)row.Mime, (LocalCoverEncoding)row.Encoding, row.PictureType),
-            row.VideoWidth, row.VideoHeight, (row.Flags & FlagHasAudio) != 0, row.SampleRate, row.Bits, row.Channels);
+            row.VideoWidth, row.VideoHeight, (row.Flags & FlagHasAudio) != 0, row.SampleRate, row.Bits, row.Channels, row.Isrc ?? "");
         string matchTitle = MatchTitleOf(s, slot);
         return new LocalEntry(row.LocalId, folder.Root, folder.Rel.Length == 0 ? name : folder.Rel + "\\" + name, row.Volume,
             new UInt128(row.FileIdHi, row.FileIdLo), row.Size, row.Write, row.Change, row.Attributes, (Spotify.Audio.Format)row.Format, tags,
@@ -1168,7 +1169,7 @@ public sealed class LocalIndex
         w.Write(t.TrackNumber); w.Write(t.DiscNumber); w.Write(t.Year); w.Write(t.DurationMs); w.Write(t.DurationEstimated); w.Write(t.BitrateKbps);
         w.Write(t.Cover.Offset); w.Write(t.Cover.Length); w.Write((byte)t.Cover.Mime); w.Write((byte)t.Cover.Encoding); w.Write(t.Cover.PictureType);
         w.Write(t.VideoWidth); w.Write(t.VideoHeight); w.Write(t.HasAudio);
-        w.Write(t.SampleRate); w.Write((byte)Math.Clamp(t.BitsPerSample, 0, 255)); w.Write((byte)Math.Clamp(t.Channels, 0, 255));
+        w.Write(t.SampleRate); w.Write((byte)Math.Clamp(t.BitsPerSample, 0, 255)); w.Write((byte)Math.Clamp(t.Channels, 0, 255)); Str(w, t.Isrc, index);
         Str(w, e.MatchTitle, index); w.Write((byte)e.State); w.Write(e.LastSeenTicks); w.Write(e.FirstSeenTicks); w.Write(e.Playable); Str(w, e.Why, index);
     }
 
@@ -1194,8 +1195,9 @@ public sealed class LocalIndex
         int vw = r.ReadInt32(), vh = r.ReadInt32();
         bool hasAudio = r.ReadBoolean();
         int sampleRate = r.ReadInt32(), bits = r.ReadByte(), channels = r.ReadByte();
+        string isrc = str();
         var tags = new LocalTagSet(kind, title, artists, album, albumArtist, track, disc, year, duration, estimated, bitrate, cover, vw, vh, hasAudio,
-            sampleRate, bits, channels);
+            sampleRate, bits, channels, isrc);
         string matchTitle = str();
         var state = (LocalState)r.ReadByte();
         long lastSeen = r.ReadInt64(), firstSeen = r.ReadInt64();

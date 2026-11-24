@@ -684,8 +684,10 @@ public readonly partial struct Track
         if (!IsValid) return false;
         var versions = Entities.Current.Edges.TrackVersions;
         _ = versions.Changed.Value;
+        // "Your files and Spotify": a file whose match was accepted has its Spotify version to show.
+        int linked = IsLocal && LocalLink.HasLink(Uri.Text) ? 1 : 0;
         return TableRules.HasVersionsOf(Uri.Kind == EntityKind.Track, HasVideo, VideoCounterpart.IsValid,
-                                        versions.Targets(Slot).Length);
+                                        versions.Targets(Slot).Length + linked);
     }
 
     // ══ 5b. FOR DISPLAY — the relink redirection ═════════════════════════════════════════════════════════════════════

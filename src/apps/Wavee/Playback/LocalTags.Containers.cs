@@ -32,6 +32,7 @@ public static partial class LocalTags
                      || Ascii.EqualsIgnoreCase(key, "ALBUM_ARTIST"u8)) b.SetAlbumArtist(Encoding.UTF8.GetString(value));
             else if (Ascii.EqualsIgnoreCase(key, "TRACKNUMBER"u8)) b.SetTrack(LeadingInt(Encoding.UTF8.GetString(value)));
             else if (Ascii.EqualsIgnoreCase(key, "DISCNUMBER"u8)) b.SetDisc(LeadingInt(Encoding.UTF8.GetString(value)));
+            else if (Ascii.EqualsIgnoreCase(key, "ISRC"u8)) b.SetIsrc(Encoding.UTF8.GetString(value));
             else if (Ascii.EqualsIgnoreCase(key, "DATE"u8) || Ascii.EqualsIgnoreCase(key, "YEAR"u8)) b.SetYear(YearOf(Encoding.UTF8.GetString(value)));
         }
 

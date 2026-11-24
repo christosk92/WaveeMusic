@@ -59,5 +59,8 @@ public static class CommonBlocks
         views.Add(ViewKeys.LocalFilesScan, CommonLocalFiles.Scan, "common.local-files.scan");
         views.Add(ViewKeys.LocalFilesPill, CommonLocalFiles.Pill, "common.local-files.pill");
         views.Add(ViewKeys.LocalFilesReview, CommonLocalFiles.Review, "common.local-files.review");
+        // "Your files and Spotify" (#240 phase 1): the opt-in dialog's body, one picture in every theme's dialog. The offer and the review are each
+        // structure's own (WinUI and Classic: CommonLocalLink; Zune: ZuneLocalLink).
+        views.Add(ViewKeys.LocalLinkOptIn, CommonLocalLink.OptIn, "common.local-link.opt-in");
     }
 }

@@ -70,14 +70,16 @@ public static partial class LocalLibrary
     public static string? MovedFrom(long localId) => s_movedFrom.TryGetValue(localId, out string? from) ? from : null;
 
     /// <summary>One row as the list shows it.</summary>
+    /// <param name="Image">A cover the row shows: Spotify's, for a file whose accepted match shows Spotify's info ("Your files and Spotify"); else null.</param>
     sealed record Face(long LocalId, string Title, string Artists, string Album, string SortArtist, int Disc, int Track, int DurationMs,
-                       bool Unavailable, LocalState State, string FullPath, ulong Hash);
+                       bool Unavailable, LocalState State, string FullPath, ulong Hash, string? Image = null, ulong Own = 0);
 
-    sealed record Pass(int Version, List<Face> Faces, Dictionary<int, Counts> Counts, int Albums);
+    /// <param name="Links">The <see cref="LocalLink.Shown"/> version the faces were built from.</param>
+    sealed record Pass(int Version, List<Face> Faces, Dictionary<int, Counts> Counts, int Albums, int Links = 0);
 
     // UI thread
     static readonly Dictionary<long, Face> s_staged = new();
-    static int s_restatedVersion = -1, s_wantedVersion = -1;
+    static int s_restatedVersion = -1, s_wantedVersion = -1, s_restatedLinks = -1;
     static bool s_restating, s_baselined;
     static long s_lastRestateStart;
 
@@ -109,7 +111,8 @@ public static partial class LocalLibrary
     {
         if (!s_attached && !s_fixture) return;
         int version = s_index.Version;
-        if (version == s_restatedVersion || s_restating) { s_wantedVersion = version; return; }
+        bool linksMoved = LocalLink.ShownVersion != s_restatedLinks;
+        if ((version == s_restatedVersion && !linksMoved) || s_restating) { s_wantedVersion = linksMoved ? -2 : version; return; }
         long now = Environment.TickCount64;
         if (Scanning && now - s_lastRestateStart < 1000) { s_wantedVersion = version; return; }   // the next progress post retries
         s_restating = true;
@@ -120,6 +123,25 @@ public static partial class LocalLibrary
             Playback.ToUi(() => BeginStaging(pass));
         })
         { IsBackground = true, Name = "Wavee.LocalLibrary.Restate", Priority = ThreadPriority.BelowNormal }.Start();
+    }
+
+    /// <summary>What an accepted match shows changed ("Your files and Spotify"): restate the rows whose faces it moves. UI thread.</summary>
+    public static void RestateForLinks()
+    {
+        if (s_fixture) { if (!s_restating) RestateNow(); return; }
+        MaybeRestate();
+    }
+
+    /// <summary>The inspector's link fixture changed the index: restate now. UI thread.</summary>
+    internal static void InspectRestate()
+    {
+        Epoch.Value++;
+        RestateNow();
+        // A seeded library, not a change: nothing to announce.
+        LastChanges = default;
+        Changes = default;
+        s_new.Clear();
+        s_movedFrom.Clear();
     }
 
     /// <summary>Synchronous pass (the inspector's fixtures: no thread, the list is right on the next frame). UI thread.</summary>
@@ -134,6 +156,9 @@ public static partial class LocalLibrary
     static Pass BuildPass()
     {
         int version = s_index.Version;
+        // "Your files and Spotify": what an accepted match shows in place of the file's own info (an immutable map, any thread).
+        int linksVersion = LocalLink.ShownVersion;
+        var shown = LocalLink.Shown;
         LocalEntry[] entries = s_index.Snapshot();
         (Dictionary<int, Counts> counts, int albums) = CountPass(entries);
         var offlineRoots = new HashSet<int>();
@@ -148,8 +173,18 @@ public static partial class LocalLibrary
             string sortArtist = t.AlbumArtist.Length > 0 ? t.AlbumArtist : t.FirstArtist;
             bool unavailable = !e.Playable || e.State == LocalState.Missing || offlineRoots.Contains(e.RootId);
             string full = s_index.FullPathOf(e) ?? e.RelativePath;
-            ulong hash = HashFace(e.MatchTitle, artists, t.Album, t.DurationMs, unavailable, e.State);
-            faces.Add(new Face(e.LocalId, e.MatchTitle, artists, t.Album, sortArtist, t.DiscNumber, t.TrackNumber, t.DurationMs, unavailable, e.State, full, hash));
+            // What the row shows (display only; the matching title stays the file's): an accepted match's Spotify info, else an untagged file's
+            // name split as "Artist - Title", else the tags.
+            string title = e.MatchTitle, album = t.Album;
+            string? image = null;
+            if (shown.TryGetValue(e.LocalId, out LinkTrack? link))
+                (title, artists, album, image) = (link.Title, link.Artists, link.Album, link.Cover);
+            else if (artists.Length == 0)
+                (title, artists) = LocalNames.Display(in t, e.MatchTitle);
+            ulong hash = HashFace(title, artists + "\0" + (image ?? ""), album, t.DurationMs, unavailable, e.State);
+            // The file's own face: what "What changed" counts (a match accepted or undone changes what a row shows, never the file).
+            ulong own = HashFace(e.MatchTitle, Playlist.LocalArtistLine(in t), t.Album, t.DurationMs, unavailable, e.State);
+            faces.Add(new Face(e.LocalId, title, artists, album, sortArtist, t.DiscNumber, t.TrackNumber, t.DurationMs, unavailable, e.State, full, hash, image, own));
         }
         faces.Sort(static (a, b) =>
         {
@@ -160,7 +195,7 @@ public static partial class LocalLibrary
             if (c == 0) c = string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase);
             return c != 0 ? c : a.LocalId.CompareTo(b.LocalId);
         });
-        return new Pass(version, faces, counts, albums);
+        return new Pass(version, faces, counts, albums, linksVersion);
     }
 
     static ulong HashFace(string title, string artists, string album, int durationMs, bool unavailable, LocalState state)
@@ -201,7 +236,7 @@ public static partial class LocalLibrary
             if (!s_baselined) continue;
             if (f.State == LocalState.Missing && old.State != LocalState.Missing) missing++;
             else if (f.State != LocalState.Missing && old.State == LocalState.Missing) back++;
-            else edited++;
+            else if (old.Own != f.Own) edited++;
         }
         var gone = new List<long>();
         foreach (long id in s_staged.Keys) if (!seen.Contains(id)) gone.Add(id);
@@ -242,6 +277,7 @@ public static partial class LocalLibrary
                 (uint)(TrackFields.Identity | TrackFields.Availability));
             row.Title = staging.AddText(Encoding.UTF8.GetBytes(f.Title));
             if (f.Artists.Length > 0) row.ArtistLine = staging.AddText(Encoding.UTF8.GetBytes(f.Artists));
+            if (f.Image is { Length: > 0 } image) row.Image = staging.AddText(Encoding.UTF8.GetBytes(image));
             row.DurationMs = Math.Max(0, f.DurationMs);
             row.Flags = (uint)(TrackFlags.Local | (f.Unavailable ? TrackFlags.Unavailable : 0));
             Playlist.NoteLocalNames(uri, f.Artists, f.Album);
@@ -296,10 +332,15 @@ public static partial class LocalLibrary
         finally
         {
             s_restatedVersion = pass.Version;
+            s_restatedLinks = pass.Links;
             s_restating = false;
             if (any) Restated.Value++;
         }
-        if (s_wantedVersion != s_restatedVersion && s_wantedVersion >= 0) MaybeRestate();
+        if ((s_wantedVersion != s_restatedVersion && s_wantedVersion >= 0) || s_wantedVersion == -2 || LocalLink.ShownVersion != s_restatedLinks)
+        {
+            s_wantedVersion = -1;
+            MaybeRestate();
+        }
     }
 
     static bool SameMembers(ReadOnlySpan<int> current, List<int> wanted)

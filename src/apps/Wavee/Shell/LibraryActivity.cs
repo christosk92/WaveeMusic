@@ -4,7 +4,8 @@
 // `CommonActivityChip`), and in Zune's band (`ZuneBandActivity`); a click opens the one flyout (`CommonActivityFlyout`). Every sentence is built
 // here from `LocalLibrary`'s facts, so no theme words a state of its own, and every verb the flyout offers is here.
 //
-//   CHIP     hidden with no music folder; else, first match wins: a scan running ("Scanning · 1,930 of 6,016", a ring), the announcement
+//   CHIP     hidden with no music folder; else, first match wins: a scan running ("Scanning · 1,930 of 6,016", a ring), matching with Spotify
+//            running ("Matching · 12 of 48", a ring; "Your files and Spotify"), the announcement
 //            after a background change ("Updated · +4", a tick; the view holds it for `UpdatedMs` after `LocalLibrary.Restated` moves with
 //            news), what needs the user ("2 need attention", an amber dot), else idle (no words: nothing to report).
 //   FLYOUT   the head ("Music on this PC · Up to date"), the four phases (listing, reading tags with its bar, rate and time left, matching
@@ -70,6 +71,7 @@ public static class LibraryActivity
     {
         _ = LocalLibrary.Epoch.Value;
         _ = LocalLibrary.Restated.Value;
+        _ = LocalLink.View.Value;   // "Your files and Spotify": matching's progress (board 28 ③)
     }
 
     /// <summary>The restate counter (an effect that announces "Updated" reads it, and so follows it).</summary>
@@ -91,6 +93,9 @@ public static class LibraryActivity
             return new(ChipKind.Scanning, p.FilesSeen > 0
                 ? Strings.LocalFiles.Activity.ChipScanning(Number(p.FilesDone), Number(p.FilesSeen))
                 : Loc.Get(Strings.LocalFiles.Activity.ChipListing));
+        // "Your files and Spotify" matching in the background (board 28 ③: "Matching · 12 of 48", a ring), after the scan it follows.
+        if (LocalLink.Matching && LocalLink.Progress is var (done, total) && total > 0)
+            return new(ChipKind.Scanning, LocalLinkWords.Chip(done, total));
         if (announcing && LocalLibrary.LastChanges is { Total: > 0 } news)
             return new(ChipKind.Updated, news.Added > 0
                 ? Strings.LocalFiles.Activity.ChipUpdated(Number(news.Added))

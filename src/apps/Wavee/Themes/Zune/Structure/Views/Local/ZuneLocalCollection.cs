@@ -65,6 +65,7 @@ internal static class ZuneLocalCollection
             _ = p.Sort.Value;
             _ = p.Folder.Value;
             _ = p.Shelves.Value;
+            _ = p.Link?.Reviewing.Value;
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, DropTarget = p.Drop,
@@ -81,12 +82,14 @@ internal static class ZuneLocalCollection
         // No music folder: the Local Files onboarding (S4), shared with the list.
         if (p.Onboarding() is { } onboarding) return X.Gut("lc-empty", g, onboarding, grow: true);
         var pivot = p.Pivot.Peek();
-        Element body = pivot switch
+        // "Your files and Spotify": the review takes the page's place while it is open (the shared picture, in Zune's type and case).
+        bool reviewing = p.Link is { } link && link.Reviewing.Peek() is not null;
+        Element body = reviewing ? X.LinkReview(p.Link!, g, p.RouteKey) : pivot switch
         {
             LocalPivot.Home => ScrollView(new BoxEl
             {
                 Key = Z.ColumnKey, Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, H.PageBottom),
-                Children = [Head(p, view, lay, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, lay, g, p.Shelves.Peek())],
+                Children = [Head(p, view, lay, g), X.LinkOffer(p.Link, 0f), .. X.HomeBody(view, p.Verbs, p.SetPivot, lay, g, p.Shelves.Peek())],
             }) with { Key = "zlc-scroll:home", Grow = 1f, MinWidth = 0f, ScrollKey = p.RouteKey + ":home" },
             LocalPivot.Albums => X.AlbumWall(view, p.Sort.Peek(), p.SetSort, p.Verbs, lay, g, p.RouteKey),
             LocalPivot.Artists => X.ArtistGrid(view, p.Verbs, lay, g, p.RouteKey),
@@ -96,7 +99,7 @@ internal static class ZuneLocalCollection
         };
         return new BoxEl
         {
-            Key = "zlc-body:" + pivot.ToString(), Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Padding = new Edges4(0f, H.PageTop, 0f, 0f),
+            Key = "zlc-body:" + (reviewing ? "review" : pivot.ToString()), Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Padding = new Edges4(0f, H.PageTop, 0f, 0f),
             Children = [body],
         };
     }

@@ -675,6 +675,8 @@ public static partial class Diagnostics
                         if (kind == "hdcp") return HdcpState(id, name, a);
                         // The local library's music folders seeded in memory (#240 §5; Diagnostics.Inspect.LocalScan.cs).
                         if (kind == "music-folders") return MusicFoldersState(id, name, a);
+                        // "Your files and Spotify" (#240 phase 1): the index, the fake catalogue's albums as files, and the matcher run over them.
+                        if (kind == "spotify-match") return SpotifyMatchState(id, name, a);
                         // A detail page's header unknown in place (an artist's: its chart rows still in flight), then its landing (Entities.Fake.Cold.cs, audit B7 r2).
                         if (kind == "head")
                         {
