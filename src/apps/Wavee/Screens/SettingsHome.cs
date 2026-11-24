@@ -38,12 +38,13 @@ public static class SettingsHome
         new("account", Strings.Settings.Landing.Glance.Account, AccountValue(), "account.identity"),
     ];
 
-    /// <summary>"WinUI · Dark".</summary>
+    /// <summary>"WinUI · Dark", or "WinUI · Mocha · Dark" while a colour set is active for the mode on screen (#184).</summary>
     static string ThemeValue()
     {
         string theme = "";
         foreach (ThemePickerEntry entry in ThemePickerFacts.State.Peek().Entries(developerMode: true))
             if (entry.Selected) theme = Loc.Get(entry.NameKey);
+        if (Wavee.Theming.Colours.ColourChoice.SpecOf(FluentGpu.Dsl.Tok.Theme) is { } colours) theme += " · " + colours.Name;
         string mode = Loc.Get(Platform.Settings.Get(Platform.Keys.ThemeMode) switch
         {
             1 => Strings.Settings.Choice.Light,

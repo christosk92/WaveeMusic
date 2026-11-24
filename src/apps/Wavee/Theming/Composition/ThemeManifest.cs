@@ -91,9 +91,10 @@ public interface IStyleLayer
     /// <summary>The style's options.</summary>
     ThemeOptionSchema Options { get; }
 
-    /// <summary>The definition for these option values and the OS accent. Pure and memoized per (stamp, accent): the same
-    /// inputs return the same instance. <c>AppRoles</c> is the style's <c>WaveeStyleRoles</c>.</summary>
-    ThemeDefinition Definition(OptionValues style, AccentRamp osAccent);
+    /// <summary>The definition for these option values and the inputs (the OS accent and the user's colour sets, #184). Pure and memoized
+    /// per (stamp, inputs): the same inputs return the same instance. A style maps <see cref="Colours.StyleInputs.Colours"/>' ladder onto its
+    /// own colours for each mode that has one; a mode with none keeps the style's own. <c>AppRoles</c> is the style's <c>WaveeStyleRoles</c>.</summary>
+    ThemeDefinition Definition(OptionValues style, in Colours.StyleInputs inputs);
 
     /// <summary>The metrics for these option values.</summary>
     StyleMetrics Metrics(OptionValues style);

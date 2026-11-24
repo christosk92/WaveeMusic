@@ -46,7 +46,7 @@ public static partial class Shell
         OnNewTab = static () => WorkspaceVerbs.Shared.OpenTab(new Route(RouteKind.Home)),
         NewTabDrop = s_newTabDrop,
         OnTabExtent = static extent => s_tabExtent.SetIfChanged(Chrome.TabExtentFromMetrics(extent)),
-        CanBack = static () => Shell.CanBack.Value,
+        CanBack = static () => Shell.CanGoBack(),   // the history, or a step the page opened in place (Shell.PageBack.cs)
         CanForward = static () => Shell.CanForward.Value,
         GoBack = Shell.GoBack,
         GoForward = Shell.GoForward,

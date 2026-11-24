@@ -43,6 +43,7 @@ internal static class ClassicTrackChrome
     {
         UnavailableBar = UnavailableBar,
         UnavailableBarExtent = static tiers => ClassicDetailTiers.Of(in tiers).Unavailable.Extent,
+        UnavailableBarExtentWithSecondary = static tiers => ClassicDetailTiers.Of(in tiers).Unavailable.ExtentWithSecondary,
     };
 
     // ══ THE UNAVAILABLE-SONGS BAR ════════════════════════════════════════════════════════════════════════════════════
@@ -54,21 +55,46 @@ internal static class ClassicTrackChrome
     static Element UnavailableBar(TrackUnavailableBarArgs a)
     {
         var g = ClassicDetailTiers.Of(a.Tiers).Unavailable;
+        // A Compact bar that carries a second verb (Review, #240 S6) takes its verbs on a line of their own under the sentence. ONE tree in both forms (a
+        // wrapping row), so a crossing glides the parts instead of rebuilding them.
+        bool twoLines = g.TwoLines && a.Secondary is not null;
         Element bar = new BoxEl
         {
-            Key = "unavailable:bar", Direction = 0, AlignItems = FlexAlign.Center, Gap = g.Gap, MinWidth = 0f, Grow = 1f, Basis = 0f,
-            Height = g.Height, Shrink = 1f, Padding = g.Padding, Margin = new Edges4(0f, 0f, 0f, g.GapBelow),
+            Key = "unavailable:bar", Direction = 0, Wrap = twoLines, AlignItems = FlexAlign.Center, Gap = g.Gap, MinWidth = 0f, Grow = 1f, Basis = 0f,
+            Height = twoLines ? g.TwoLineHeight : g.Height, Shrink = 1f, Padding = twoLines ? g.TwoLinePadding : g.Padding,
+            Margin = new Edges4(0f, 0f, 0f, g.GapBelow),
+            // The tier's step (50 to 58 at Compact) eases through the window's resize: the slot around it follows this height, it states none of its own.
+            Animate = Design.Reduced ? null : ClassicTierMotion.HeightReflowLive,
             Corners = Radii.ControlAll, BorderWidth = 1f,
             Fill = Prop.Of(static () => Tok.FillCardDefault), BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
             Children =
             [
-                Icon(Icons.Info, g.Glyph, Tok.AccentDefault) with { Shrink = 0f },
-                new TextEl(g.Explains ? a.Explained : a.Summary)
+                new BoxEl
                 {
-                    Size = g.TextSize, LineHeight = g.TextLine, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    Key = "unavailable:line", Direction = 0, AlignItems = FlexAlign.Center, Gap = g.Gap, MinWidth = 0f, Grow = 1f, Shrink = 1f,
+                    Basis = twoLines ? g.LineBasis : 0f, Layout = Design.Reduced ? null : ClassicTierMotion.Shove,
+                    Children =
+                    [
+                        Icon(Icons.Info, g.Glyph, Tok.AccentDefault) with { Shrink = 0f },
+                        new TextEl(g.Explains ? a.Explained : a.Summary)
+                        {
+                            Size = g.TextSize, LineHeight = g.TextLine, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                            MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                        },
+                    ],
                 },
-                Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
+                new BoxEl
+                {
+                    Key = "unavailable:verbs", Direction = 0, AlignItems = FlexAlign.Center, Gap = g.Gap, Shrink = 0f, Grow = twoLines ? 1f : 0f,
+                    Justify = FlexJustify.End, Layout = Design.Reduced ? null : ClassicTierMotion.Shove,
+                    Children =
+                    [
+
+                // A second verb (Review, while the list holds missing local files: the bar is their banner too) stands before Hide them.
+                a.Secondary is { } secondary
+                    ? Button.Create(a.SecondaryLabel, secondary, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:secondary", Shrink = 0f, Layout = Design.Reduced ? null : ClassicTierMotion.Shove }
+                    : new BoxEl { Shrink = 0f },
+                Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f, Layout = Design.Reduced ? null : ClassicTierMotion.Shove },
                 // The ✕: closes the bar on this list until the app restarts. Mounted (with its tooltip) only while the bar shows: every list mounts this
                 // bar, and a tooltip host on each hidden one cost a one-time 4.6 MB on a Liked Songs scroll. Folded, a spacer of its size holds the row.
                 a.Dismiss is { } dismiss && a.Shown
@@ -81,6 +107,8 @@ internal static class ClassicTrackChrome
                         Children = [Icon(Icons.ChromeClose, g.Glyph, Tok.TextSecondary)],
                     }, a.DismissLabel)
                     : new BoxEl { Width = a.Dismiss is null ? float.NaN : g.Height - g.Padding.Top - g.Padding.Bottom, Shrink = 0f },
+                    ],
+                },
             ],
         };
         // The bar stands between two easing gutters (not a padding: a padding cannot ease), so a crossing that moves the rows' inset (the detail page's
@@ -88,7 +116,8 @@ internal static class ClassicTrackChrome
         return new BoxEl
         {
             Key = "unavailable", Direction = 1, MinWidth = 0f, ClipToBounds = true, Shrink = 0f,
-            Height = a.Shown ? g.Extent : 0f,
+            // The disclosure (0 while off, the bar's own height while on): it never states the tier's height, so a crossing moves only the easing bar.
+            Height = a.Shown ? float.NaN : 0f,
             Animate = Design.Reduced ? null : ClassicUnavailableBar.Motion,
             Children =
             [

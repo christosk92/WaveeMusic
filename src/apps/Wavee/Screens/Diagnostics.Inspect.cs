@@ -425,10 +425,14 @@ public static partial class Diagnostics
                     return Views(id, name, a);
                 case Inspect.Verb.PodcastPages:
                     return PodcastPagesVerb(id, name, a);
+                case Inspect.Verb.Mix:
+                    return MixVerb(id, name, a);
                 case Inspect.Verb.Setting:
                     return Setting(id, name, a);   // the store needs no mount; a mounted one settles after the write
                 case Inspect.Verb.Settings:
                     return SettingsSearchVerb(id, name, a);   // a query needs no mount; focus= navigates (it says so when nothing is mounted)
+                case Inspect.Verb.Drop:
+                    return Drop(id, name, a);      // the read needs no mount; the import settles on a mounted one
                 case Inspect.Verb.Hint:
                     return Hint(id, name, a);      // the table and the blob need no mount; `show` settles on a mounted one
                 case Inspect.Verb.Recent:
@@ -439,8 +443,14 @@ public static partial class Diagnostics
                     return Crossings(id, name, a);   // mounts a row at a time
                 case Inspect.Verb.Perf:
                     return Perf(id, name, a);   // on needs a mount; report and off read what was recorded
+                case Inspect.Verb.LocalScan:
+                    return LocalScanVerb(id, name, a);   // a private index; needs no mount
+                case Inspect.Verb.LocalIndex:
+                    return LocalIndexVerb(id, name, a);   // reads the app's index; needs no mount
                 case Inspect.Verb.Nudge:
                     return Nudge(id, name, a);   // fixtures need no mount; fire, tick, refresh and expectCard say so when unmounted
+                case Inspect.Verb.Timecode:
+                    return Timecode(id, name, a);   // the tap is read off the playback statics: no mount
             }
 
             // Everything below needs a mount (the verb table says so: NeedsMount).
@@ -638,7 +648,7 @@ public static partial class Diagnostics
                         // on every mount), report (Report a problem) through its own chrome. A developer's probe; `esc` closes it. The reply's `over` names the page
                         // underneath.
                         string kind = a.Str("kind").ToLowerInvariant();
-                        if (kind is not ("crash" or "hang" or "report" or "lightbox")) return Inspect.Reply.Fail(id, name, "dialog wants kind=crash|hang|report|lightbox, not '" + kind + "'");
+                        if (kind is not ("crash" or "hang" or "report" or "lightbox" or "rename")) return Inspect.Reply.Fail(id, name, "dialog wants kind=crash|hang|report|lightbox|rename, not '" + kind + "'");
                         if (kind == "report") Feedback.Open(Feedback.ReportKind.Bug);
                         else
                         {
@@ -646,6 +656,12 @@ public static partial class Diagnostics
                             if (Controls.IsNullOverlay(overlay)) return Inspect.Reply.Fail(id, name, "the shell's overlay host is not bound yet (run frames 30 and try again)");
                             // lightbox: the artist gallery's lightbox over the bundled photographs, the bright one first (text and chrome over a photograph)
                             if (kind == "lightbox") Artist.GalleryOpen(overlay, LightboxPhotos(), 0);
+                            // rename: "Your files and Spotify" phase 2's Rename dialog on the spotify-match versions fixture's copy (LocalLink.Fixture.cs)
+                            else if (kind == "rename")
+                            {
+                                if (LocalLink.FixtureCopy == 0) return Inspect.Reply.Fail(id, name, "dialog kind=rename wants state kind=spotify-match value=versions first");
+                                LocalLinkPage.OpenRename(LocalLink.FixtureCopy, overlay);
+                            }
                             else Crash.OpenFakePrompt(overlay, kind == "hang" ? Crash.Kind.Hang : Crash.Kind.Managed);
                         }
                         RunFrames(40);
@@ -669,6 +685,11 @@ public static partial class Diagnostics
                         if (kind == "runtime") return RuntimeState(id, name, a);
                         // The video's screen cannot (or again can) carry HDCP: the guard's verdict without a real screen (Diagnostics.Inspect.Hdcp.cs).
                         if (kind == "hdcp") return HdcpState(id, name, a);
+                        // The local library's music folders seeded in memory (#240 §5; Diagnostics.Inspect.LocalScan.cs).
+                        if (kind == "music-folders") return MusicFoldersState(id, name, a);
+                        // "Your files and Spotify" (#240 phase 1): the index, the fake catalogue's albums as files, and the matcher run over them.
+                        if (kind == "spotify-match") return SpotifyMatchState(id, name, a);
+                        if (kind == "linked-video") return LinkedVideoState(id, name, a);
                         // A detail page's header unknown in place (an artist's: its chart rows still in flight), then its landing (Entities.Fake.Cold.cs, audit B7 r2).
                         if (kind == "head")
                         {

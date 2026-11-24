@@ -99,7 +99,7 @@ public static partial class Entities
     /// <summary>Owner O's seed, namespaced so its helpers cannot collide with the other owners' seed partials. Inside it
     /// <c>Track</c>, <c>Playlist</c>, <c>User</c> … are Entities' FACTORY METHODS, so the handle types are spelled
     /// <c>global::Wavee.*</c>.</summary>
-    internal static class LibrarySeed
+    internal static partial class LibrarySeed
     {
         // ── fixture constants (the WP-5.O contract §5) ─────────────────────────────────────────────────────────────
 
@@ -123,11 +123,37 @@ public static partial class Entities
 
         static readonly string[] s_extraTitles = ["My Playlist #7", "Cafe Mosaic", "Deleted Mix", "Private Share", "My Playlist #8", "Mixed Bag"];
 
-        /// <summary>0.2.9 <c>FakeData.LocalSeed</c> (:344-351), titles only — a local row has no album and no credit here.</summary>
+        /// <summary>0.2.9 <c>FakeData.LocalSeed</c> (:344-351): the titles, and (#240 P1a) the tags a file would carry. Rows 4 and 8
+        /// are untagged (no artist, no album: the shape of a file named after its title); row 10 credits two artists.</summary>
         static readonly string[] s_localTitles =
         [
             "Sunset Boulevard", "Paper Planes", "Northern Lights", "Coastline", "Old Cassette", "Rainy Window", "First Snow",
             "Long Drive Home", "Attic Tapes", "Quiet Hours", "Garden Path", "Backroads", "Harbor Lights", "Morning Pages",
+        ];
+
+        static readonly string[] s_localArtists =
+        [
+            "Mara Lind", "Otto Vale", "Mara Lind", "June Harbor", "", "Silas Reed", "Nova Field",
+            "Otto Vale", "", "Ellis Grey", "June Harbor, Silas Reed", "Nova Field", "June Harbor", "Ellis Grey",
+        ];
+
+        static readonly string[] s_localAlbums =
+        [
+            "Small Rooms", "Low Tide", "Small Rooms", "Coastal Hours", "", "Low Tide", "Winter Field Notes",
+            "Low Tide", "", "Kitchen Radio", "Coastal Hours", "Winter Field Notes", "Coastal Hours", "Kitchen Radio",
+        ];
+
+        /// <summary>The fake local track's length: 2:30 to 4:49.</summary>
+        static int LocalDurationMs(int i) => 150_000 + (i * 41 % 140) * 1000;
+
+        /// <summary>#240 P1a fixtures: three <c>spotify:local:</c> items at the end of X5 — one names fake local track 3 exactly
+        /// (artist, album, title, its truncated seconds), one names no file Wavee has, one has an empty artist and album (an
+        /// untagged file in the official client).</summary>
+        public static readonly string[] LocalItemUris =
+        [
+            "spotify:local:June+Harbor:Coastal+Hours:Coastline:" + (LocalDurationMs(3) / 1000).ToString(CultureInfo.InvariantCulture),
+            "spotify:local:Rhea+Moss:Night+Ferry:Lanterns+%28Live%29:201",
+            "spotify:local:::Voice+Memo+12:47",
         ];
 
         /// <summary>0.2.9 <c>FakeData.Descriptors</c> (:63), primary-first, cycling.</summary>
@@ -164,6 +190,7 @@ public static partial class Entities
                 StageCorePlaylists(s, now0);
                 StageExtras(s);
                 StageLocal(s);
+                StageMix(s);
                 StageTrackKnowns(s);
                 StageQAlbums(s);
                 Commit(s);
@@ -177,6 +204,7 @@ public static partial class Entities
             LandTuning();
             LandExtras(now0);
             LandLocal();
+            LandMix(now0);
             LandTags();
             LandCredits();
             LandContentFilters();
@@ -257,7 +285,10 @@ public static partial class Entities
             p6.Format = (byte)PlaylistFormat.InspiredByMix;
         }
 
-        static int ExtraRows(int k) => k switch { 0 => 0, 1 => 12, 2 => 10, 3 => 8, 4 => 0, _ => 20 };
+        static int ExtraRows(int k) => k switch { 0 => 0, 1 => 12, 2 => 10, 3 => 8, 4 => 0, _ => 20 + LocalItemCount };
+
+        /// <summary>X5's trailing <c>spotify:local:</c> items (<see cref="LocalItemUris"/>).</summary>
+        const int LocalItemCount = 3;
 
         /// <summary>X0-X5: the arms no base playlist reaches — reachable by route (<c>pl:spotify:playlist:plxN</c>), not in
         /// the sidebar tree (the base rootlist's seven items are a pinned count).</summary>
@@ -336,9 +367,21 @@ public static partial class Entities
                 ref var row = ref s.Tracks.RowFor(Text(s, LocalTrackUri(i)), Authority.Seed,
                     (uint)(TrackFields.Identity | TrackFields.Availability));
                 row.Title = Text(s, s_localTitles[i]);
-                row.DurationMs = 150_000 + (i * 41 % 140) * 1000;
+                row.ArtistLine = Text(s, s_localArtists[i]);
+                row.DurationMs = LocalDurationMs(i);
                 // Availability stated, not defaulted: a playable-only filter must not hide the local library (FakeData.cs:364).
                 row.Flags = (uint)TrackFlags.Local;
+                global::Wavee.Playlist.NoteLocalNames(LocalTrackUri(i), s_localArtists[i], s_localAlbums[i]);
+            }
+
+            // The playlist's local items: each row's face is its own uri (Track.LocalUri.cs), as a real list landing stages it. The
+            // fake answers no metadata ask for a spotify:local: id (the wire answers 404 and ends the ask), so the row also states its
+            // credits as known: otherwise a theme that reveals a row with its credits would hold it on its skeleton for good.
+            foreach (string uri in LocalItemUris)
+            {
+                int before = s.Tracks.Count;
+                global::Wavee.LocalTrackUri.StageFace(s, new StagedId(Text(s, uri)), uri);
+                if (s.Tracks.Count > before) s.Tracks[s.Tracks.Count - 1].Known |= (uint)TrackFields.Artists;
             }
         }
 
@@ -487,7 +530,8 @@ public static partial class Entities
                 x4.SettleCreate(false);
             }
 
-            // X5 — twenty rows, three of them episodes (rows 5, 12 and 18), a stamp on every row.
+            // X5 — twenty rows, three of them episodes (rows 5, 12 and 18), a stamp on every row; then the three local items
+            // (#240: a match, a miss, an empty artist).
             var x5 = new global::Wavee.Playlist(SlotOf(EntityKind.Playlist, ExtraUri(5)));
             if (x5.IsValid)
             {
@@ -501,7 +545,13 @@ public static partial class Entities
                     edges[k] = new PlaylistTrackEdge(ItemIdFor(105, k), (int)(now0 - k * 5 * Hour), me, 0, 0, 0, 0,
                         isEpisode ? PlaylistItemKind.Episode : PlaylistItemKind.Track);
                 }
-                Land(x5, targets[..20], edges[..20]);
+                for (int j = 0; j < LocalItemCount; j++)
+                {
+                    int k = 20 + j;
+                    targets[k] = SlotOf(EntityKind.Track, LocalItemUris[j]);
+                    edges[k] = new PlaylistTrackEdge(ItemIdFor(105, k), (int)(now0 - k * 5 * Hour), me, 0, 0, 0, 0);
+                }
+                Land(x5, targets[..(20 + LocalItemCount)], edges[..(20 + LocalItemCount)]);
             }
         }
 

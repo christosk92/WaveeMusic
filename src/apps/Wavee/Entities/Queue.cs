@@ -581,6 +581,17 @@ public static partial class Queue
         return next >= 0;
     }
 
+    /// <summary><see cref="TryPeek(in QueueCursor, out EntityRef)"/> plus WHO put the next row there (#48 Mix: only the
+    /// context's own continuation is mixed; a row queued by the user or autoplay gets the base hand-off).</summary>
+    public static bool TryPeek(in QueueCursor cursor, out EntityRef row, out QueueProvider provider)
+    {
+        var rows = Rows;
+        int next = NextIndex(rows, cursor.Index);
+        row = next < 0 ? default : RefAt(next);
+        provider = next < 0 ? QueueProvider.Context : (QueueProvider)rows[next].Provider;
+        return next >= 0;
+    }
+
     /// <summary>Move the cursor to the next playable row. False at the end of the queue, with the cursor left where it
     /// was — the reducer turns that into <c>Phase.Ended</c>, never into a silent wrap (§4.7).</summary>
     public static bool TryAdvance(ref QueueCursor cursor, out EntityRef row)

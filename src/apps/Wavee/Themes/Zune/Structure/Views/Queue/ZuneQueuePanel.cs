@@ -66,7 +66,7 @@ internal sealed class ZuneQueuePanelView : Component
     readonly FluentGpu.Scene.ExtentTableVirtualLayout _layout = new();
     float[] _extents = new float[64];
     int[] _kinds = new int[64];   // per item: a lane slot position (>= 0), or one of the Item* kinds
-    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3;
+    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3, ItemMix = -4;
     /// <summary>The vacancy's estimate until its first measure.</summary>
     const float VacancyEstimate = 120f;
     Func<QueueSlot, float>? _extentOf;
@@ -115,6 +115,8 @@ internal sealed class ZuneQueuePanelView : Component
         float lead = 0f;
         if (queue.PlayingFrom is not null) { _kinds[n] = ItemPlayingFrom; _extents[n++] = Q.PlayingFromH; lead += Q.PlayingFromH; }
         if (!queue.NowPlaying.IsNone) { _kinds[n] = ItemNow; _extents[n++] = Q.NowH; lead += Q.NowH; }
+        // #48 Mix: "Mixing · Rise · 2.9 s" between the playing row and the next one, while the playing pair will mix.
+        if (!queue.NowPlaying.IsNone && props.MixLine.Length > 0) { _kinds[n] = ItemMix; _extents[n++] = Q.PlayingFromH; lead += Q.PlayingFromH; }
         for (int i = 0; i < lane.SlotCount; i++) { _kinds[n] = i; _extents[n++] = ExtentOf(lane.SlotAt(lane.ItemAt(i))); }
         if (queue.NothingPlaying) { _kinds[n] = ItemVacancy; _extents[n++] = -VacancyEstimate; }
         _layout.SetExtents(_extents.AsSpan(0, n), 0f, Q.BottomRoom);
@@ -135,7 +137,16 @@ internal sealed class ZuneQueuePanelView : Component
             ZunePlayerBar.Word(Loc.Get(Strings.Player.Crossfade), _toggleCrossfade, true, props.Crossfade, modeH, Q.WordSize, _onCrossfade, latchedInk: _ink?.Accent)
                 with { Key = "mode:crossfade" },
         };
-        if (props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } openLength)
+        // While a mixed playlist plays, the length gives way to the note "Mix is on for this playlist" (#48), on its own quiet line under the
+        // words (the row of four words has no room for a sentence).
+        Element? note = props.CrossfadeNote.Length > 0
+            ? new TextEl(props.CrossfadeNote)
+            {
+                Key = "mode:crossfade:note", Size = Q.WordSize, LineHeight = Q.WordLine, Color = _ink?.Tertiary ?? Tok.TextTertiary, Case = R.Case.For(LabelKind.Label),
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 0f, Margin = new Edges4(Q.ModeRowPadding.Left, 0f, Q.ModeRowPadding.Right, 0f),
+            }
+            : null;
+        if (note is null && props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } openLength)
             modes.Add(ToolTip.Wrap(ZunePlayerBar.Word(props.CrossfadeLength, openLength, true, false, modeH, Q.WordSize) with { Role = AutomationRole.Hyperlink },
                 Loc.Get(Strings.Player.CrossfadeLengthTip)) with { Key = "mode:crossfade:length" });
         return new BoxEl
@@ -148,6 +159,7 @@ internal sealed class ZuneQueuePanelView : Component
                     Key = ZuneQueue.ModesKey, Height = modeH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = Q.ModeRowPadding,
                     Children = modes.ToArray(),
                 },
+                note ?? new BoxEl { Key = "mode:crossfade:note", Visible = false },
                 body,
                 Hints.Pointer(HintSurfaces.QueuePanel, _crossfadeTarget, _panel),   // the crossfade hint's line floats at the word (a zero box: no room)
             ],
@@ -163,6 +175,7 @@ internal sealed class ZuneQueuePanelView : Component
         {
             case ItemPlayingFrom: return Inset(PlayingFrom(props.Queue.PlayingFrom.GetValueOrDefault().Name, props.OpenPlayingFrom, _ink));
             case ItemNow: return Inset(NowRow(props, _ink));
+            case ItemMix: return Inset(MixLine(props.MixLine, _ink));
             case ItemVacancy:
                 return Inset(new BoxEl
                 {
@@ -263,6 +276,13 @@ internal sealed class ZuneQueuePanelView : Component
     }
 
     /// <summary>"playing from" (cased) and the context's name (its own casing), at the foot of its 28; it opens the context when it has a page.</summary>
+    /// <summary>The Mix line (#48): "Mixing · Rise · 2.9 s" in the panel's quiet word, its first word in the accent ink (type, no stroke: Zune's grammar).</summary>
+    static Element MixLine(string text, ZunePanelInk? ink) => new BoxEl
+    {
+        Key = "qp:mix", Height = Q.PlayingFromH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+        Children = [new TextEl(text) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = ink?.Accent ?? Tok.AccentTextPrimary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
+    };
+
     static Element PlayingFrom(string source, Action? open, ZunePanelInk? ink) => new BoxEl
     {
         Key = "qp:ctx", Height = Q.PlayingFromH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.End, Gap = ZunePlayerLayout.FromGap,

@@ -4,8 +4,8 @@
 // part form-encoded (`Spotify.Egress.LocalTrackUri` writes the same shape for a local track Wavee plays). Spotify's catalogue
 // knows nothing about such an item, so a row that waits for it never lands: the playlist showed every local file as an
 // empty placeholder. The uri IS the row's face, the way the official client draws it: the title, the artist as the credit
-// line, the duration, and a confirmed "not playable here" (Wavee has no file to play it from; the full support is a
-// local-files folder matched against these names).
+// line, the duration. Whether it plays is the local index's answer (#240): a file in the user's music folders that matches the
+// uri's names and length plays under the row; otherwise the row stays greyed, "not found in your music folders".
 //
 // Staged wherever a playlist member is staged — the wire's full read (`Spotify.Decode.PlaylistRevision`) and the one list
 // staging the disk read and a replayed diff share (`Store.StageList`) — so every landing of the list re-states the face.
@@ -52,18 +52,46 @@ public static class LocalTrackUri
         return title.Length > 0;
     }
 
-    /// <summary>Stage the row <paramref name="uri"/> describes under <paramref name="id"/> (the member's own target): the title,
-    /// the artist as the credit line, the duration, and Availability = unavailable. The face groups at <see cref="Authority.Full"/>:
-    /// nothing else will ever answer for this row. No album row (a local file's album is a name, not an entity). A uri that
-    /// does not parse stages nothing.</summary>
+    /// <summary>Stage the row <paramref name="uri"/> describes under <paramref name="id"/> (the member's own target): the title, the artist
+    /// as the credit line, the duration, and its Availability, ruled by the local index (#240 §3.7): a file in the music folders that
+    /// matches (<see cref="LocalLibrary.MatchItem"/>) and can be played makes the row playable and <see cref="TrackFlags.Local"/>; no
+    /// match, or a match that is missing, on a drive that is away or in a format Wavee cannot play, keeps it unavailable. Both
+    /// Availability and the identity flags are WRITTEN, not or-ed (<c>TrackTable</c>'s commit replaces each group's bits), so a
+    /// later landing re-rules a row either way. The face groups at <see cref="Authority.Full"/>: nothing else will ever answer for
+    /// this row. No album row (a local file's album is a name, not an entity). The item is noted on the staging
+    /// (<see cref="Staging.NoteLocalItem"/>), so the commit adds its id to the path map and to the rows the index's next change
+    /// re-rules. A uri that does not parse stages nothing. Any thread: the index match takes the index's own lock.</summary>
     public static void StageFace(Staging s, in StagedId id, ReadOnlySpan<byte> uri)
     {
-        if (id.IsEmpty || !TryParse(uri, out string artist, out _, out string title, out int seconds)) return;
+        if (id.IsEmpty || id.Text.IsEmpty || !TryParse(uri, out string artist, out string album, out string title, out int seconds)) return;
+        Stage(s, in id, artist, title, seconds, LocalLibrary.MatchItem(title, artist, album, seconds));
+    }
+
+    /// <summary>Stage an item whose match the caller already has (the restate's re-rule, <c>LocalLibrary.RestateItems</c>): the same face,
+    /// no second match. A uri that does not parse stages nothing.</summary>
+    public static void StageFace(Staging s, in StagedId id, ReadOnlySpan<byte> uri, in LocalLibrary.ItemMatch m)
+    {
+        if (id.IsEmpty || id.Text.IsEmpty || !TryParse(uri, out string artist, out _, out string title, out int seconds)) return;
+        Stage(s, in id, artist, title, seconds, m);
+    }
+
+    static void Stage(Staging s, in StagedId id, string artist, string title, int seconds, in LocalLibrary.ItemMatch m)
+    {
         ref var row = ref s.Tracks.RowFor(id, Authority.Full, (uint)(TrackFields.Face | TrackFields.Availability));
+        // An item that plays one of your files wears what that file shows on this PC when you renamed it or accepted its match ("Your files
+        // and Spotify": the one rule, LocalNames.Face). The uri keeps the file's own names: other devices match the item by them.
+        if (m.Plays && m.LocalId != 0 && LocalLibrary.Index.TryGet(m.LocalId, out LocalEntry? file)
+            && (LocalLink.RenameOf(m.LocalId) is { } || LocalLink.Shown.ContainsKey(m.LocalId)))
+        {
+            var face = LocalNames.Face(file, LocalLink.Shown.TryGetValue(m.LocalId, out LinkTrack? link) ? link : null, LocalLink.RenameOf(m.LocalId));
+            (title, artist) = (face.Title, face.Artists);
+        }
         row.Title = s.AddText(Encoding.UTF8.GetBytes(title));
         if (artist.Length > 0) row.ArtistLine = s.AddText(Encoding.UTF8.GetBytes(artist));
-        row.DurationMs = (int)Math.Min((long)seconds * 1000, int.MaxValue);
-        row.Flags |= (uint)TrackFlags.Unavailable;
+        // The uri's seconds (as pathfinder reports them); a uri that names none (0) takes the file's own length when it matched.
+        row.DurationMs = seconds > 0 ? (int)Math.Min((long)seconds * 1000, int.MaxValue) : Math.Max(0, m.DurationMs);
+        row.Flags = m.Plays ? (uint)TrackFlags.Local : (uint)TrackFlags.Unavailable;
+        s.NoteLocalItem(id.Text, m.LocalId, m.Plays);
     }
 
     /// <inheritdoc cref="StageFace(Staging, in StagedId, ReadOnlySpan{byte})"/>

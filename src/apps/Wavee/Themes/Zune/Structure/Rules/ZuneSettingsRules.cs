@@ -397,6 +397,9 @@ public static class ZuneSettingsRules
     /// <summary>The stage's sensitivity (30 % to 150 %) and sync offset (-500 to 500 ms) sliders.</summary>
     public const float SensitivityMin = 0.3f, SensitivityMax = 1.5f, SensitivityStep = 0.05f, SyncOffsetMin = -500f, SyncOffsetMax = 500f, SyncOffsetStep = 10f;
 
+    /// <summary>The timecode level (-24 to 0 dB) and offset (-500 to 500 ms) sliders (#154).</summary>
+    public const float TimecodeLevelMin = -24f, TimecodeLevelMax = 0f, TimecodeLevelStep = 1f, TimecodeOffsetMin = -500f, TimecodeOffsetMax = 500f, TimecodeOffsetStep = 5f;
+
     /// <summary>The radio line's caption inset (under the radio's label).</summary>
     public const float RadioCaptionInset = 28f;
 
@@ -422,6 +425,26 @@ public static class ZuneSettingsRules
     /// <summary>The budget editor: the number box's width, the meter's, the percent cap and the fixed budget's least and greatest GiB.</summary>
     public const float BudgetBoxWidth = 150f, BudgetMeterWidth = 300f;
     public const double BudgetPercentMax = 90, BudgetGibMin = 0.0625, BudgetGibMax = 1 << 20;
+
+    // ── Music on this PC (#240 S3) ──
+
+    /// <summary>A folder line's least height (the empty sentence holds the same), the words' column beside the path, the block's gaps (between its parts;
+    /// the status line over its bar), the bar's width.</summary>
+    public const float MusicRowH = 44f, MusicStatusW = 340f, MusicBlockGap = 12f, MusicStatusGap = 6f, MusicBarWidth = 300f;
+    /// <summary>An unreadable subfolder stands in under its music folder (board 15).</summary>
+    public const float MusicSubIndent = 24f;
+
+    /// <summary>A network folder's line (S13): its least height and padding, the state column's width (and the bar's at Compact), the two lines that
+    /// column keeps in every state, and the slot its one verb stands in. The state column, the slot and their gap take the local folders' words
+    /// column (`MusicStatusW` = 232 + 12 + 96: either verb in English, Dutch and Korean), so every folder's words start on one line.</summary>
+    public const float MusicNetRowH = 64f, MusicNetPadY = 6f, MusicNetStatusW = 232f, MusicNetBarWidthCompact = 200f, MusicTwoLines = 36f, MusicVerbW = 96f;
+
+    /// <summary>A folder's options card: its width and padding.</summary>
+    public const float MusicOptionsW = 240f;
+    public static readonly Edges4 MusicOptionsPad = new(12f, 8f, 12f, 8f);
+
+    /// <summary>"scanned 2 minutes ago" re-reads its age this often.</summary>
+    public const float MusicAgoTickMs = 30_000f;
 
     // ── About, Privacy ────────────────────────────────────────────────────────────────────────────────────────────────────
 

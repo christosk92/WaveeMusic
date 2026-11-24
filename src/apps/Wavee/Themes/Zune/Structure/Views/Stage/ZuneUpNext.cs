@@ -140,7 +140,14 @@ internal sealed class ZuneStageUpNextColumn : Component
         // the "between songs" pair (design 5.4): crossfade beside autoplay, and its length as a quiet word that opens the duration in Settings
         // (the chips of a Compact window have no room for it there: its row holds the four words)
         words.Add(ModeWord(Strings.Player.Crossfade, props.Crossfade, props.Verbs.ToggleCrossfade, "stage:upnext:crossfade", set));
-        if (!_q.ModeChips && props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } openLength)
+        // While a mixed playlist plays the note "Mix is on for this playlist" stands where the length rests (#48).
+        if (!_q.ModeChips && props.CrossfadeNote.Length > 0)
+            words.Add(new TextEl(props.CrossfadeNote)
+            {
+                Key = "stage:upnext:crossfade:note", Size = Px(UR.ToggleSize), LineHeight = Px(UR.ToggleLine), Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Command),
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+            });
+        else if (!_q.ModeChips && props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } openLength)
             words.Add(ToolTip.Wrap(new BoxEl
             {
                 Key = "stage:upnext:crossfade:length", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = _target, Shrink = 0f,

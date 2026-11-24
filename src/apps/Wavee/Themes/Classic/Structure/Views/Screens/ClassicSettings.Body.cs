@@ -129,6 +129,10 @@ internal static partial class ClassicSettings
     /// <summary>The app mode row (System · Light · Dark), as Settings draws it and as the setup wizard's Theme step shows it: one row, one writer.</summary>
     internal static Element AppModeRow() => OutsideRow("appearance.appMode", static row => GenericCard(row));
 
+    /// <summary>A colour set row (<c>appearance.colours.light</c> / <c>.dark</c>, #184), as Settings draws it and as the setup wizard's Theme step shows it:
+    /// one row, one writer; its combo is the collapsed form (the pick's name, the list on demand).</summary>
+    internal static Element ColoursRow(string dialId) => OutsideRow(dialId, static row => GenericCard(row));
+
     /// <summary>The language row, as Settings draws it and as the setup wizard's Theme step shows it (one row, one writer), its combo on
     /// <paramref name="selected"/> (the wizard's own signal, seeded from the dial: <see cref="LanguageIndex"/>).</summary>
     internal static Element LanguageRow(Signal<int> selected) => OutsideRow("system.language", row => LanguageRow(row, selected));
@@ -160,6 +164,7 @@ internal static partial class ClassicSettings
         ("sound", "loudness") => Icons.Volume,
         ("sound", "equalizer") => Icons.Equalizer,
         ("sound", "output") => Icons.Speakers,
+        ("sound", "timecode") => Icons.Clock,
         ("playback", "betweenSongs") => Icons.Play,
         ("playback", "playerBar") => Icons.Pin,
         ("playback", "podcasts") => Icons.Microphone,
@@ -224,7 +229,7 @@ internal static partial class ClassicSettings
     static float ComboWidthOf(string id) => id switch
     {
         "system.tray.icon" or "system.language" => ClassicSettingsRules.GeneralComboWidth,
-        "sound.outputDevice" or "sound.quality" or "sound.meteredQuality" => ClassicSettingsRules.WideComboWidth,
+        "sound.outputDevice" or "sound.quality" or "sound.meteredQuality" or "sound.timecode.device" => ClassicSettingsRules.WideComboWidth,
         "sound.normalization.mode" or "sound.equalizer.preset" => ClassicSettingsRules.NarrowComboWidth,
         "lyrics.playerStyle" or "lyrics.playerStyle.finish" => ClassicSettingsRules.NpvComboWidth,
         "help.logs.viewerLevel" or "help.logs.fileLevel" => ClassicSettingsRules.LevelComboWidth,

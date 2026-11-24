@@ -45,14 +45,23 @@ internal static class ClassicLibraryPaneKit
     /// <para><paramref name="layout"/> is the library tier's record: its cover, stated height and gap (C-Library-Huge: a 160 cover in a 200 band, 24 from the words;
     /// 128 / 156 / 18 at Standard; C-Library-Small: a 96 cover in a 120 band, 146 stated, 16 from the words). A tier crossing eases the band's height (and the cover's edge) instead of snapping the rows under it.</para></summary>
     /// <para><paramref name="connect"/>: the cover's flight key (<c>Design.MorphKeys.ForUri</c>), for a structure that flies it (WinUI shows this pane); inert under Classic.</para>
-    public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta, ClassicLibraryLayout layout,
-                                     string? connect = null) => new BoxEl
+    /// <para><paramref name="open"/> null: the subject has no page (an artist of "On this PC"), so the block is no target at all (#240).</para>
+    public static Element PaneHeader(string? cover, string eyebrow, string title, Action? open, Element attribution, string meta, ClassicLibraryLayout layout,
+                                     string? connect = null)
+    {
+        var block = PaneHeaderBlock(cover, eyebrow, title, open, attribution, meta, layout, connect);
+        return open is null ? block : block.Interactive(Interaction.Subtle);
+    }
+
+    static BoxEl PaneHeaderBlock(string? cover, string eyebrow, string title, Action? open, Element attribution, string meta, ClassicLibraryLayout layout,
+                                 string? connect) => new BoxEl
     {
         // ONE target: cover + eyebrow + title + attribution + meta open the album. A title-only hyperlink left the cover inert in the library pane.
         Direction = 0, Gap = layout.PaneHeaderGap, AlignItems = FlexAlign.End, Shrink = 0f,
         Height = layout.PaneHeaderHeight, ClipToBounds = true, Animate = Design.Reveal.Resize,
         Padding = new Edges4(layout.PaneInsetLeft, ClassicTiers.PaneInset, layout.PaneTrail, layout.PaneHeaderPadBottom),
-        Corners = Radii.CardAll, Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
+        Corners = Radii.CardAll, Cursor = open is null ? default : CursorId.Hand, Focusable = open is not null,
+        Role = open is null ? default : AutomationRole.Button, OnClick = open,
         Children =
         [
             new BoxEl
@@ -69,7 +78,7 @@ internal static class ClassicLibraryPaneKit
                     R.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary },
                     TitleOf(title, layout) with
                     {
-                        Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
+                        Color = Tok.TextPrimary, HoverColor = open is null ? Tok.TextPrimary : Tok.AccentTextPrimary,
                         BrushTransitionMs = Design.Motion.Faster, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     },
                     attribution,
@@ -82,7 +91,7 @@ internal static class ClassicLibraryPaneKit
                 ],
             },
         ],
-    }.Interactive(Interaction.Subtle);
+    };
 
     /// <summary>The pane title: the page-hero rung, or the record's own size and line where it states them (C-Library-Small: 24 / 30).</summary>
     static TextEl TitleOf(string title, ClassicLibraryLayout layout)
@@ -131,7 +140,8 @@ internal static class ClassicLibraryPaneKit
     /// the edge. Now the spacer gives way first, then the label ellipsizes, and a trimmed label — only a trimmed one — gets its whole text as a tooltip (<c>Controls.TrimTip</c>). The
     /// tooltip wraps the LABEL, in a column slot of its own, rather than the whole link: that slot is exactly the text's box, so the trim test compares like with like (around the link it
     /// would measure a box 36 DIP wider than the text — padding, gap and glyph), and a ToolTip wrapper is `Shrink 0`, so it can only be sized as a COLUMN child (the engine's rule 11).</para></summary>
-    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open, float box = 0f, float insetLeft = float.NaN, float insetRight = ClassicTiers.PaneInset)
+    /// <para><paramref name="open"/> null: no page to open, no link (an artist of "On this PC", #240).</para>
+    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action? open, float box = 0f, float insetLeft = float.NaN, float insetRight = ClassicTiers.PaneInset)
     {
         string openLabel = Loc.Get(Strings.Library.OpenAlbum);
         TextEl label = R.Type.DenseMeta(openLabel) with
@@ -149,7 +159,7 @@ internal static class ClassicLibraryPaneKit
                 ClassicDetailKit.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle, box),
                 save, more,
                 new BoxEl { Grow = 1f },
-                new BoxEl
+                open is null ? new BoxEl() : new BoxEl
                 {
                     Direction = 0, Gap = ClassicLibraryPaneRules.OpenLinkGap, AlignItems = FlexAlign.Center, Corners = Radii.ControlAll, Shrink = 1f, MinWidth = 0f,
                     Padding = new Edges4(Spacing.S, ClassicLibraryPaneRules.OpenLinkPadY, Spacing.S, ClassicLibraryPaneRules.OpenLinkPadY),

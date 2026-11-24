@@ -234,7 +234,12 @@ internal sealed class ZuneBand : Component
                 (hooks.MoveFocusVisual ?? hooks.RestoreFocus)?.Invoke(lead);
         }, DepKey.From(orderKey, carousel ? 1 : 0, (int)tiers.Window, 0));
 
-        var row1Kids = new List<Element>(2) { pivotRun };
+        // The library activity word (#240 UX S1): Zune's chip, at the end of the run, before the pins; its slot is reserved (see ZuneBandActivity).
+        var row1Kids = new List<Element>(3)
+        {
+            pivotRun,
+            Embed.Comp(new ZuneBandActivity.Props(rec, _restInk!), static () => new ZuneBandActivity()) with { Key = ZuneActivityRules.SlotKey + ":host" },
+        };
         if (pins.Count > 0 || pinArmed) row1Kids.Add(PinsCached(pins, rec, pinDrop, pinArmed, overlay));
 
         var row1 = new BoxEl

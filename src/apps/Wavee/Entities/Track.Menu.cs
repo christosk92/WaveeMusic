@@ -139,20 +139,33 @@ public readonly partial struct Track
     }
 
     static readonly ActionId[] s_transportVerbs = [ActionId.Play, ActionId.PlayNext, ActionId.AddToQueue, ActionId.ToggleLike];
+    /// <summary>A local file's strip: no Save (Liked Songs holds Spotify tracks; a file cannot be saved there).</summary>
+    static readonly ActionId[] s_localTransportVerbs = [ActionId.Play, ActionId.PlayNext, ActionId.AddToQueue];
+
+    /// <summary>Every target is a local row (a file, or a playlist's spotify:local: item): the menu drops what only a Spotify track can do.</summary>
+    static bool AllLocal(in ActionContext ctx)
+    {
+        if (ctx.Target.Tracks is not { Count: > 0 } tracks) return false;
+        for (int i = 0; i < tracks.Count; i++) if (!tracks[i].IsLocalRow) return false;
+        return true;
+    }
 
     /// <summary>The grammar, in order (file header).</summary>
     static ContextMenuModel Compose(ActionContext ctx, in MenuOptions o)
     {
         var rows = new List<MenuFlyoutItem>(16);
+        // A local file (#240): no Save, Share, song radio or Video (none can work for a file); Show in folder and the remove that fits its origin.
+        bool local = AllLocal(in ctx);
+        var transport = local ? s_localTransportVerbs : s_transportVerbs;
         AppBarCommand[] strip;
         if (o.CompactRows)
         {
             // An Explorer-style labelled strip does not fit a 240-DIP pane, but the core verbs must still be there.
             strip = [];
-            Actions.Menu.AddRows(rows, in ctx, s_transportVerbs);
+            Actions.Menu.AddRows(rows, in ctx, transport);
             Actions.Menu.OpenGroup(rows);
         }
-        else strip = Actions.Menu.Strip(in ctx, s_transportVerbs);
+        else strip = Actions.Menu.Strip(in ctx, transport);
 
         // collection
         rows.Add(AddToPlaylistItem(in ctx, o.PickerOverlay));
@@ -179,16 +192,52 @@ public readonly partial struct Track
             }
         }
 
-        if (Actions.Menu.Share(in ctx) is { } share) rows.Add(share);
+        if (!local && Actions.Menu.Share(in ctx) is { } share) rows.Add(share);
 
         // the track kind's own extras
         if (ctx.Target.Single is { } one)
         {
-            if (ActionRules.CanViewCredits(ctx.Target) && Actions.Menu.Row(ActionId.ViewCredits, in ctx) is { } credits)
-                rows.Add(credits);
-            if (ActionRules.CanStartTrackRadio(ctx.Target) && Actions.Menu.Row(ActionId.GoToSongRadio, in ctx) is { } radio)
-                rows.Add(radio);
-            if (VideoItem(one, in ctx) is { } video) rows.Add(video);
+            if (local)
+            {
+                if (LocalFilesList.ShowInFolderItem(one) is { } reveal) rows.Add(reveal);
+                // "Your files and Spotify" (F-B): EVERY local row with a file behind it offers "Find on Spotify…" (a music-folder file, an added
+                // one, audio or video, a playlist item the index matched): matching on, the review opens on its group (its candidates with their
+                // evidence, a search, Not on Spotify); off, the opt-in asks first, then finds it. A linked song also offers "Remove link" (F-G).
+                var overlay = o.PickerOverlay ?? DrawerOverlay;
+                if (!LocalLibrary.TryLocalIdOf(one.Uri.Text, out long localId)) localId = LocalLibrary.LocalIdOf(one.Id);
+                if (localId == 0 && LocalFilesList.FileOf(one) is { } loosePath)
+                {
+                    // A row staged from its path alone (the headless --file host, an older build's drop): it joins the library first.
+                    rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.FindOnSpotify), Icons.Link, true, () =>
+                    {
+                        bool read = LocalTags.TryRead(loosePath, out Spotify.Audio.Format format, out LocalTagSet tags, out string why);
+                        if (LocalLibrary.AddFile(loosePath, format, in tags, read, why) is { IsValid: true } added && LocalLibrary.TryLocalIdOf(added.Uri.Text, out long id))
+                            LocalLinkPage.FindOnSpotify(id, overlay);
+                    }));
+                }
+                if (localId != 0)
+                {
+                    // Phase 2: "Rename…" (a Wavee-side name, show-only; Undo on its toast).
+                    rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.Rename), Icons.Edit, true, () => LocalLinkPage.OpenRename(localId, overlay)));
+                    rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.FindOnSpotify), Icons.Link, true, () => LocalLinkPage.FindOnSpotify(localId, overlay)));
+                    if (LocalLink.LinkOf(localId) is { } song)
+                    {
+                        // Phase 2: which of the song's versions plays when the song is played anywhere (this file, its other files, Spotify's).
+                        if (LocalLinkPage.DefaultMenu(song.Uri, song.Title) is { } plays) rows.Add(plays);
+                        rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.RemoveLink), Icons.Cancel, true, () => LocalLink.Unlink(localId)));
+                    }
+                }
+            }
+            else
+            {
+                if (ActionRules.CanViewCredits(ctx.Target) && Actions.Menu.Row(ActionId.ViewCredits, in ctx) is { } credits)
+                    rows.Add(credits);
+                if (ActionRules.CanStartTrackRadio(ctx.Target) && Actions.Menu.Row(ActionId.GoToSongRadio, in ctx) is { } radio)
+                    rows.Add(radio);
+                if (VideoItem(one, in ctx) is { } video) rows.Add(video);
+                // Phase 2: a Spotify song your files are versions of: which version plays when it is played.
+                if (LocalLinkPage.DefaultMenu(one.Uri.Text, one.Title) is { } plays) rows.Add(plays);
+            }
         }
 
         // the surface's extras
@@ -201,16 +250,26 @@ public readonly partial struct Track
                 rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.TrackFacts.ShowDetails), Icons.List, true, o.TrackDetails));
         }
 
+        // #48 Mix: the pair after this row, in a mixed playlist only (the verb is enabled exactly there)
+        if (AppActions.Find(ActionId.DontMixIntoNext) is { } mixVerb && mixVerb.EnabledFor(in ctx)
+            && Actions.Menu.Row(ActionId.DontMixIntoNext, in ctx) is { } dontMix)
+        {
+            Actions.Menu.OpenGroup(rows);
+            rows.Add(dontMix);
+        }
+
         // destructive, last, behind its own separator — present exactly when the REGISTERED verb says it can run (the
         // queue owner registers its own RemoveFromQueue first; whichever verb holds the id decides)
         bool removeRow = AppActions.Find(ActionId.RemoveFromThisPlaylist) is { } removeVerb && removeVerb.EnabledFor(in ctx);
         bool removeQueue = ctx.Target.Kind == TargetKind.QueueEntry
                            && AppActions.Find(ActionId.RemoveFromQueue) is { } dequeueVerb && dequeueVerb.EnabledFor(in ctx);
-        if (removeRow || removeQueue)
+        MenuFlyoutItem? removeFile = local && ctx.Target.Single is { } file && ctx.Target.Kind != TargetKind.QueueEntry ? LocalFilesList.RemoveItem(file) : null;
+        if (removeRow || removeQueue || removeFile is not null)
         {
             Actions.Menu.OpenGroup(rows);
             if (removeRow && Actions.Menu.Row(ActionId.RemoveFromThisPlaylist, in ctx) is { } remove) rows.Add(remove);
             if (removeQueue && Actions.Menu.Row(ActionId.RemoveFromQueue, in ctx) is { } dequeue) rows.Add(dequeue);
+            if (removeFile is { } hideOrRemove) rows.Add(hideOrRemove);
         }
 
         return new ContextMenuModel(strip, rows, HeaderFor(ctx.Target.Tracks));
@@ -341,15 +400,15 @@ public readonly partial struct Track
     }
 
     /// <summary>Video ▸ — the user's local video override for ONE playable. Which rows exist is
-    /// <c>Video.OverrideUx.MenuFor</c>, which walks the SAME tier decision playback takes; each row is the registered
+    /// <c>Video.LinkedVideoUx.MenuFor</c>, which walks the SAME tier decision playback takes; each row is the registered
     /// <c>ActionId.*Video</c> verb (absent until its owner registers it), Remove behind a separator. Null — the row
     /// absent — with no curation roster or no row to show.</summary>
     static MenuFlyoutItem? VideoItem(Track t, in ActionContext ctx)
     {
-        if (!Video.Overrides.Present || !t.Uri.IsValid) return null;
+        if (!Video.LinkedVideos.Present || !t.Uri.IsValid) return null;
         string uri = t.Uri.Text;
-        var which = Video.OverrideUx.MenuFor(true, uri, Video.Overrides.Present, Video.Overrides.Has(uri),
-                                              Video.Overrides.Decide(uri).Tier);
+        var which = Video.LinkedVideoUx.MenuFor(true, uri, Video.LinkedVideos.Present, Video.LinkedVideos.Has(uri),
+                                              Video.LinkedVideos.Decide(uri).Tier);
         if (which == Video.MenuItems.None) return null;
         var items = new List<MenuFlyoutItem>(6);
         if ((which & Video.MenuItems.Attach) != 0 && Actions.Menu.Row(ActionId.AttachVideo, in ctx) is { } attach) items.Add(attach);
@@ -362,7 +421,7 @@ public readonly partial struct Track
             if (items.Count > 0) items.Add(Actions.Menu.Separator);
             items.Add(remove);
         }
-        return items.Count == 0 ? null : Actions.Menu.SubMenu(Loc.Get(Strings.VideoOverride.MenuTitle), items, ActionIcons.Video);
+        return items.Count == 0 ? null : Actions.Menu.SubMenu(Loc.Get(Strings.LinkedVideo.MenuTitle), items, ActionIcons.Video);
     }
 
     /// <summary>The identity strip: 38 art · title · "artists · album" for one track; "{n} songs selected" over
@@ -450,6 +509,7 @@ public readonly partial struct Track
     /// a one-shot snapshot at menu open (a menu closes on invoke).</summary>
     public static void InstallActions()
     {
+        MixMenu.Register();                                  // #48: Don't mix into the next song (Entities/Mix.Menu.cs)
         if (s_actionsInstalled) return;
         s_actionsInstalled = true;
 

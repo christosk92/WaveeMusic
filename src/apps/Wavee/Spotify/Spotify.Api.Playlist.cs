@@ -652,7 +652,7 @@ public static partial class Spotify
             long now = NowMs();
             var members = new List<PlaylistMember>(tracks.Count);
             for (int i = 0; i < tracks.Count; i++)
-                if (tracks[i].IsValid && tracks[i].Id.Provider == EntityProvider.Spotify) members.Add(new PlaylistMember(tracks[i].Id.Text, Api.NewItemId(), now));
+                if (global::Wavee.Playlist.PlaylistItemUriOf(tracks[i]) is { } itemUri) members.Add(new PlaylistMember(itemUri, Api.NewItemId(), now));   // a local file: its spotify:local: name (D12)
             // A podcast row's episodes (their uris, read by the caller on the UI thread) after the tracks, in drop order.
             if (episodes is not null) foreach (string ep in episodes) members.Add(new PlaylistMember(ep, Api.NewItemId(), now));
             if (members.Count == 0)

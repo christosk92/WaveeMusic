@@ -54,6 +54,8 @@ namespace Wavee.Sdk.Protocol;
 [JsonSerializable(typeof(ResolvePreferences))]
 [JsonSerializable(typeof(ResolvedPlayable))]
 [JsonSerializable(typeof(MetadataUpdate))]
+[JsonSerializable(typeof(TimelineState))]
+[JsonSerializable(typeof(TimelineTransition))]
 [JsonSerializable(typeof(ModuleStatus))]
 [JsonSerializable(typeof(ModuleAction))]
 [JsonSerializable(typeof(ModuleAction[]))]

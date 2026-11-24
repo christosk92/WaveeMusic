@@ -89,11 +89,34 @@ internal static class ClassicTrackDrawer
         for (int i = 0; i < entries.Count; i++)
         {
             var e = entries[i];
-            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks);
+            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks, e.Label);
             body[2 + i] = ConnectedRow(e.RowKey, row, isLast: i == entries.Count - 1);
         }
+        if (a.Link is { } link) body = [.. body, LinkSection(link)];
         return new BoxEl { Direction = 1, MinWidth = 0f, Children = body };
     }
+
+    // "Your files and Spotify" (F-G): a file's Spotify section under its versions, headed as they are: the link glyph (lit once linked), the
+    // core's line ("Linked to Savin' Me · Nickelback · Title, artist and length", "Not linked to Spotify") and its one verb.
+    static Element LinkSection(TrackDrawerLink l) => new BoxEl
+    {
+        Key = "drawer-link", Direction = 1, MinWidth = 0f,
+        Children =
+        [
+            R.Type.Eyebrow(l.Head) with { Color = Tok.TextTertiary, Margin = new Edges4(0f, Spacing.M, 0f, ClassicTrackDrawerLayout.HeadBottom) },
+            new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, MinHeight = DrawerRules.RowH,
+                Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
+                Children =
+                [
+                    Icon(Icons.Link, ClassicTrackDrawerLayout.LinkGlyph, l.Linked ? Tok.AccentTextPrimary : Tok.TextTertiary) with { Shrink = 0f },
+                    OneLine(Caption(l.Line).Secondary()) with { Key = "drawer-link:line", Grow = 1f, Basis = 0f },
+                    Button.Create(l.ActionLabel, l.Act, ButtonAppearance.Standard, ControlSize.Medium) with { Key = "drawer-link:act", Shrink = 0f },
+                ],
+            },
+        ],
+    };
 
     // ══ THE FORMAT SPLIT BUTTON ══════════════════════════════════════════════════════════════════════════════════════
 
@@ -306,10 +329,10 @@ internal static class ClassicTrackDrawer
         ],
     };
 
-    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks)
+    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks, string? label = null)
     {
         Track parent = a.Track;
-        var meta = new List<Element>(6) { Caption(KindLabel(kind)).Tertiary() };
+        var meta = new List<Element>(6) { Caption(label ?? KindLabel(kind)).Tertiary() };
         if (version.Knows(TrackFields.Audio) && version.Tempo > 0)
         {
             // The swatch leads the tempo exactly as the row's own tempo lane does (Track.TempoCell) — one idiom, two places.
@@ -394,6 +417,8 @@ internal static class ClassicTrackDrawer
     {
         DrawerRules.VideoKind => Loc.Get(Strings.Detail.Versions.MusicVideo),
         DrawerRules.AudioKind => Loc.Get(Strings.Detail.Versions.AlternateAudio),
+        DrawerRules.SpotifyKind => Loc.Get(Strings.LocalFiles.Link.OnSpotify),
+        DrawerRules.FileKind => Loc.Get(Strings.LocalFiles.Link.YourFile),
         _ => Loc.Get(Strings.Detail.Versions.ThisTrack),
     };
 

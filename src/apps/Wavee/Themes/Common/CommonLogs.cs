@@ -377,7 +377,7 @@ internal static class CommonLogs
             };
             // The bare Short header has no Open folder button: it lives here.
             if (_layout.BareHeader) items.Add(new(Loc.Get(Strings.Logs.OpenFolder), Icons.Folder, true, host.OpenLogFolder));
-            // Same anchored-flyout shape as Shell.UI.cs's history menu and `ClassicSettings.VideoOverrides.cs`'s manager menu.
+            // Same anchored-flyout shape as Shell.UI.cs's history menu and `ClassicSettings.LinkedVideos.cs`'s manager menu.
             var handle = overlay.Open(() => _moreAnchor, () => MenuFlyout.Create(items, () => _menu?.Close(), size: OverlayFit.MenuSize),
                 FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });

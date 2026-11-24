@@ -164,9 +164,7 @@ public static partial class Design
     // recipes are Themes\Classic\Style\ClassicRoles.cs and the ground / content-step maths is `ColorScience.ShellGround` /
     // `ContentSurface` / `ContentLayer`.
     //
-    // TWO TOMBSTONES, kept so neither is re-invented:
-    //  · The palette PICKER (Settings + the profile menu) and its swatch preview are gone — Wavee always renders the
-    //    neutral palette. `Platform.cs`'s theme resolver survives as the ONE place a future preset would be named.
+    // A TOMBSTONE, kept so it is not re-invented:
     //  · The sticky context band has NO material here. It used to flatten the translucent content rung onto a
     //    neutral no-wallpaper reference tone, and that was still wrong: live Mica takes its colour from the USER'S
     //    DESKTOP and a constant cannot follow it (on a dark wallpaper it read as a solid black slab across the

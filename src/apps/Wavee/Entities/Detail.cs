@@ -1297,7 +1297,8 @@ public static partial class Detail
         bool RailResizable = true,
         bool Rail = true,               // false: no rail; the two-column arm is the page head over the list (tuned Classic D16)
         bool QuietRows = false,         // full-width plates, no zebra, regular-weight titles, the heart on hover only (D16)
-        bool DateGroups = false)        // the rows group by when they were added while the list is sorted by date (D16)
+        bool DateGroups = false,        // the rows group by when they were added while the list is sorted by date (D16)
+        bool LocalRows = false)         // every row is a file on this PC (#240): no heart lane (a file cannot be saved to Liked Songs)
     {
         public static Config Playlist => new(
             Kind: DetailKind.Playlist, TwoColumn: true, RailWidth: Design.Size.RailPlaylist, Badges: BadgeStyle.OwnerRow,

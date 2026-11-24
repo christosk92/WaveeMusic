@@ -1,0 +1,559 @@
+﻿using System;
+#if NET8_0_OR_GREATER
+using System.Runtime.InteropServices;
+#endif
+
+namespace NLayer
+{
+    public class MpegFile : IDisposable
+    {
+        System.IO.Stream _stream;
+        bool _closeStream, _eofFound;
+
+        Decoder.MpegStreamReader _reader;
+        MpegFrameDecoder _decoder;
+
+        object _seekLock = new object();
+        long _position;
+        int _encoderDelay, _encoderPadding;
+
+        // Samples still to drop from the decoder's output before the first one ReadSamples hands out: the leading
+        // delay at the start of the stream, or the distance from a seek's frame boundary to the requested sample.
+        // A count rather than a flag, so it can span frames (an MPEG-2/2.5 frame is only 576 samples long).
+        int _skipSamples;
+
+        // Where the real audio begins in the raw decoded stream, and how much of the raw end is not audio. The encoder
+        // delay and padding, adjusted for the Layer III synthesis filterbank's own delay when they come from a LAME
+        // tag: LAME stores only the encoder delay (576 for LAME 3.100) and its spec has a decoder skip delay + 528 + 1
+        // and trim padding - 529, so the trimmed LENGTH is unchanged and only the alignment moves. When the padding is
+        // smaller than 529 the decoded stream simply ends early: nothing is trimmed there, and the length is what can
+        // actually be read.
+        int _leadSamples, _trailSamples;
+
+        /// <summary>The Layer III decoder delay a LAME tag's <c>delay</c> field does not include (528 + 1).</summary>
+        const int LameDecoderDelay = 529;
+
+        /// <summary>The most frames a seek decodes unheard before its target (see <see cref="SeekPrerollFrames"/>).</summary>
+        const int MaxSeekPrerollFrames = 48;
+
+        /// <summary>
+        /// Construct Mpeg file representation from filename.
+        /// </summary>
+        /// <param name="fileName">The file which contains Mpeg data.</param>
+        public MpegFile(string fileName)
+        {
+            Init(System.IO.File.Open(fileName, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read), true);
+        }
+
+        /// <summary>
+        /// Construct Mpeg file representation from stream.
+        /// </summary>
+        /// <param name="stream">The input stream which contains Mpeg data.</param>
+        public MpegFile(System.IO.Stream stream)
+        {
+            Init(stream, false);
+        }
+
+        void Init(System.IO.Stream stream, bool closeStream)
+        {
+            _stream = stream;
+            _closeStream = closeStream;
+
+            _reader = new Decoder.MpegStreamReader(_stream);
+
+            _decoder = new MpegFrameDecoder();
+
+            _encoderDelay = _reader.EncoderDelay;
+            _encoderPadding = _reader.EncoderPadding;
+            var decoderDelay = _reader.EncoderDelayIsLame ? LameDecoderDelay : 0;
+            _leadSamples = _encoderDelay + decoderDelay;
+            _trailSamples = Math.Max(0, _encoderPadding - decoderDelay);
+            _skipSamples = _leadSamples;
+        }
+
+        // The number of samples (per channel) of real audio, or -1 when the stream's length is unknown.
+        long TrimmedSampleCount()
+        {
+            var count = _reader.SampleCount;
+            return count < 0 ? -1 : Math.Max(0L, count - _leadSamples - _trailSamples);
+        }
+
+        // Frames to decode unheard before a seek target so the bit reservoir holds everything the target frame refers
+        // back to: a Layer III frame's main data can begin main_data_begin bytes before it (up to 511 for MPEG-1, 255 for
+        // MPEG-2/2.5), and at the lowest bitrate a frame carries few main-data bytes (68 at 32 kbps / 44.1 kHz stereo,
+        // 11 at 8 kbps / 24 kHz mono). One more frame primes the filterbank overlap. Layers I and II keep no reservoir.
+        int SeekPrerollFrames()
+        {
+            var first = _reader.GetFirstFrame();
+            if (first == null) return 1;
+            if (first.Layer != MpegLayer.LayerIII) return 1;
+            var mpeg1 = first.Version == MpegVersion.Version1;
+            var mono = first.ChannelMode == MpegChannelMode.Mono;
+            var reach = mpeg1 ? 511 : 255;
+            var smallestFrame = mpeg1 ? 144 * 32000 / first.SampleRate : 72 * 8000 / first.SampleRate;
+            var sideInfo = mpeg1 ? (mono ? 17 : 32) : (mono ? 9 : 17);
+            var mainBytes = Math.Max(1, smallestFrame - 4 - 2 - sideInfo);          // - 2: a CRC, if any
+            return Math.Min(MaxSeekPrerollFrames, (reach + mainBytes - 1) / mainBytes + 1);
+        }
+
+        /// <summary>
+        /// Implements IDisposable.Dispose.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_closeStream)
+            {
+                _stream.Dispose();
+                _closeStream = false;
+            }
+        }
+        /// <summary>
+        /// Sample rate of source Mpeg, in Hertz.
+        /// </summary>
+        public int SampleRate { get { return _reader.SampleRate; } }
+
+        /// <summary>
+        /// Channel count of decoded output. This is the source channel count for
+        /// <see cref="NLayer.StereoMode.Both"/>, but 1 for the single-channel modes
+        /// (<see cref="NLayer.StereoMode.LeftOnly"/>, <see cref="NLayer.StereoMode.RightOnly"/>
+        /// and <see cref="NLayer.StereoMode.DownmixToMono"/>).
+        /// </summary>
+        public int Channels { get { return OutputChannels; } }
+
+        // The number of channels actually produced by ReadSamples, taking StereoMode into
+        // account. All of the byte/sample/position math below is in terms of output channels.
+        int OutputChannels { get { return StereoMode == StereoMode.Both ? _reader.Channels : 1; } }
+
+        /// <summary>
+        /// Whether the Mpeg stream supports seek operation.
+        /// </summary>
+        public bool CanSeek { get { return _reader.CanSeek; } }
+
+        /// <summary>
+        /// Data length of decoded data, in PCM.
+        /// </summary>
+        public long Length
+        {
+            get
+            {
+                var count = TrimmedSampleCount();
+                if (count < 0) return -1;
+                return count * OutputChannels * sizeof(float);
+            }
+        }
+
+        /// <summary>
+        /// Media duration of the Mpeg file.
+        /// </summary>
+        public TimeSpan Duration
+        {
+            get
+            {
+                var len = TrimmedSampleCount();
+                if (len < 0) return TimeSpan.Zero;
+                return TimeSpan.FromSeconds((double)len / _reader.SampleRate);
+            }
+        }
+
+        /// <summary>
+        /// Current decode position, in bytes of decoded float samples, counted from the first sample of real audio
+        /// (after the encoder delay is trimmed). Calling the setter will result in a seeking operation that lands on
+        /// exactly that sample.
+        /// </summary>
+        public long Position
+        {
+            get { return _position; }
+            set
+            {
+                if (!_reader.CanSeek) throw new InvalidOperationException("Cannot Seek!");
+                if (value < 0L) throw new ArgumentOutOfRangeException("value");
+
+                // we're thinking in 4-byte samples, pcmStep interleaved...  adjust accordingly. The requested sample is
+                // in the trimmed timeline; the stream is seeked in the raw one, where it sits _leadSamples later.
+                var target = value / sizeof(float) / OutputChannels;
+                var total = TrimmedSampleCount();
+                if (total >= 0 && target > total) throw new ArgumentOutOfRangeException("value");
+                var rawTarget = target + _leadSamples;
+
+                // start a few frames before the one we want and decode them unheard (see SeekPrerollFrames): with too
+                // little pre-roll the bit reservoir lacks the target frame's main data, the decoder drops that frame,
+                // and the read resumes a whole frame late.
+                var frameSamples = Math.Max(1, _reader.FirstFrameSampleCount);
+                var start = Math.Max(0L, rawTarget - (long)SeekPrerollFrames() * frameSamples);
+
+                lock (_seekLock)
+                {
+                    // seek the stream
+                    var newPos = _reader.SeekTo(start);
+                    if (newPos == -1) throw new ArgumentOutOfRangeException("value");
+
+                    _decoder.Reset();
+
+                    // decode every frame that ends at or before the target and throw its output away (the decoder resyncs
+                    // its reservoir and overlap); walking by each frame's own sample count stays exact with mixed sizes
+                    try
+                    {
+                        Decoder.MpegFrame frame;
+                        while ((frame = _reader.GetCurrentFrame()) != null && newPos + frame.SampleCount <= rawTarget)
+                        {
+                            frame = _reader.NextFrame();
+                            try { _decoder.DecodeFrame(frame, _readBuf, 0); }
+                            catch (System.IO.InvalidDataException) { _decoder.Reset(); }
+                            finally { frame.ClearBuffer(); }
+                            newPos += frame.SampleCount;
+                        }
+                    }
+                    catch (System.IO.EndOfStreamException)
+                    {
+                        // a truncated frame in the pre-roll: stop there, the state below is still made consistent
+                    }
+
+                    // newPos is the raw sample the next decoded frame starts on (a frame boundary at or before the
+                    // target): drop up to the requested sample so the read resumes exactly there.
+                    _skipSamples = (int)Math.Max(0L, target + _leadSamples - newPos);
+                    _position = target * sizeof(float) * OutputChannels;
+                    _eofFound = false;
+
+                    // clear the decoder & buffer
+                    _readBufOfs = _readBufLen = 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Current decode position, represented by time. Calling the setter will result in a seeking operation.
+        /// </summary>
+        public TimeSpan Time
+        {
+            get { return TimeSpan.FromSeconds((double)_position / sizeof(float) / OutputChannels / _reader.SampleRate); }
+            set { Position = (long)(value.TotalSeconds * _reader.SampleRate * OutputChannels * sizeof(float)); }
+        }
+
+        /// <summary>
+        /// Set the equalizer.
+        /// </summary>
+        /// <param name="eq">The equalizer, represented by an array of 32 adjustments in dB.</param>
+        public void SetEQ(float[] eq)
+        {
+            _decoder.SetEQ(eq);
+        }
+
+        /// <summary>
+        /// Stereo mode used in decoding.
+        /// </summary>
+        public StereoMode StereoMode
+        {
+            get { return _decoder.StereoMode; }
+            set { _decoder.StereoMode = value; }
+        }
+
+        /// <summary>
+        /// Read specified samples into provided buffer. Do exactly the same as <see cref="ReadSamples(float[], int, int)"/>
+        /// except that the data is written in type of byte, while still representing single-precision float (in local endian).
+        /// </summary>
+        /// <param name="buffer">Buffer to write. Floating point data will be actually written into this byte array.</param>
+        /// <param name="index">Writing offset on the destination buffer.</param>
+        /// <param name="count">Length of samples to be read, in bytes.</param>
+        /// <returns>Sample size actually reads, in bytes.</returns>
+        public int ReadSamples(byte[] buffer, int index, int count)
+        {
+            if (index < 0 || index + count > buffer.Length) throw new ArgumentOutOfRangeException("index");
+
+            // make sure we're asking for an even number of samples
+            count -= (count % sizeof(float));
+
+            return ReadSamplesImpl(buffer, index, count, 32);
+        }
+
+        /// <summary>
+        /// Read specified samples into provided buffer, as PCM format.
+        /// Result varies with diffirent <see cref="StereoMode"/>:
+        /// <list type="bullet">
+        /// <item>
+        /// <description>For <see cref="NLayer.StereoMode.Both"/>, sample data on both two channels will occur in turn (left first).</description>
+        /// </item>
+        /// <item>
+        /// <description>For <see cref="NLayer.StereoMode.LeftOnly"/> and <see cref="NLayer.StereoMode.RightOnly"/>, only data on
+        /// specified channel will occur.</description>
+        /// </item>
+        /// <item>
+        /// <description>For <see cref="NLayer.StereoMode.DownmixToMono"/>, two channels will be down-mixed into single channel.</description>
+        /// </item>
+        /// </list>
+        /// </summary>
+        /// <param name="buffer">Buffer to write.</param>
+        /// <param name="index">Writing offset on the destination buffer.</param>
+        /// <param name="count">Count of samples to be read.</param>
+        /// <returns>Sample count actually reads.</returns>
+        public int ReadSamples(float[] buffer, int index, int count)
+        {
+            if (index < 0 || index + count > buffer.Length) throw new ArgumentOutOfRangeException("index");
+
+            // ReadSampleImpl "thinks" in bytes, so adjust accordingly
+            return ReadSamplesImpl(buffer, index * sizeof(float), count * sizeof(float), 32) / sizeof(float);
+        }
+
+#if NET8_0_OR_GREATER
+        /// <summary>
+        /// Read samples into the provided span. Does exactly the same as
+        /// <see cref="ReadSamples(Span{float})"/> except that the data is written as bytes,
+        /// while still representing single-precision float (in local endian).
+        /// </summary>
+        /// <param name="buffer">Buffer to write. Floating point data will be actually written into this span.</param>
+        /// <returns>Sample size actually read, in bytes.</returns>
+        public int ReadSamples(Span<byte> buffer) => ReadSamplesImpl(buffer);
+
+        /// <summary>
+        /// Read samples into the provided span, as PCM format.
+        /// Result varies with <see cref="StereoMode"/> exactly as for
+        /// <see cref="ReadSamples(float[], int, int)"/>.
+        /// </summary>
+        /// <param name="buffer">Buffer to write.</param>
+        /// <returns>Sample count actually read.</returns>
+        public int ReadSamples(Span<float> buffer)
+            => ReadSamplesImpl(MemoryMarshal.AsBytes(buffer)) / sizeof(float);
+#endif
+
+        public int ReadSamplesInt16(byte[] buffer, int index, int count)
+        {
+            if (index < 0 || index + count > buffer.Length * sizeof(short)) throw new ArgumentOutOfRangeException("index");
+
+            return ReadSamplesImpl(buffer, index, count, 16) * sizeof(short) / sizeof(float);
+        }
+
+        public int ReadSamplesInt8(byte[] buffer, int index, int count)
+        {
+            if (index < 0 || index + count > buffer.Length * sizeof(float)) throw new ArgumentOutOfRangeException("index");
+
+            return ReadSamplesImpl(buffer, index, count, 8) * sizeof(byte) / sizeof(float);
+        }
+
+        float[] _readBuf = new float[1152 * 2];
+        int _readBufLen, _readBufOfs;
+
+        // Total logical bytes of real audio (excludes encoder delay and end padding)
+        long GetTotalBytes()
+        {
+            var count = TrimmedSampleCount();
+            return count >= 0 ? count * OutputChannels * sizeof(float) : long.MaxValue;
+        }
+
+        // Decode the next frame into _readBuf. Returns false once there is nothing
+        // more to deliver. Caller must hold _seekLock.
+        bool TryFillReadBuffer()
+        {
+            while (true)
+            {
+                if (_eofFound)
+                {
+                    return false;
+                }
+
+                var frame = _reader.NextFrame();
+                if (frame == null)
+                {
+                    _eofFound = true;
+                    return false;
+                }
+
+                try
+                {
+                    _readBufLen = _decoder.DecodeFrame(frame, _readBuf, 0) * sizeof(float);
+                    _readBufOfs = 0;
+
+                    // Drop the leading delay (or a seek's in-frame offset), across as many frames as it spans
+                    if (_skipSamples > 0)
+                    {
+                        var frameSamples = _readBufLen / sizeof(float) / OutputChannels;
+                        var drop = Math.Min(_skipSamples, frameSamples);
+                        _skipSamples -= drop;
+                        _readBufOfs = drop * OutputChannels * sizeof(float);
+                        // If the skip exhausted the entire buffer, mark it empty so we refill next iteration
+                        if (_readBufOfs >= _readBufLen)
+                        {
+                            _readBufLen = _readBufOfs = 0;
+                        }
+                    }
+                }
+                catch (System.IO.InvalidDataException)
+                {
+                    // bad frame...  try again...
+                    _decoder.Reset();
+                    _readBufOfs = _readBufLen = 0;
+                    continue;
+                }
+                catch (System.IO.EndOfStreamException)
+                {
+                    // no more frames
+                    _eofFound = true;
+                    return false;
+                }
+                finally
+                {
+                    frame.ClearBuffer();
+                }
+
+                return true;
+            }
+        }
+
+        // How many bytes of decoded audio can be handed out right now: whatever is
+        // buffered, clamped to the request and to the logical end of the stream.
+        // Returns 0 when the buffer is empty or the stream is spent.
+        int AvailableBytes(long totalBytes, int count)
+        {
+            if (_readBufLen <= _readBufOfs) return 0;
+
+            var temp = _readBufLen - _readBufOfs;
+            if (temp > count) temp = count;
+
+            // Don't deliver past the logical end. totalBytes is long.MaxValue when the
+            // stream's length is unknown (a non-seekable source with no VBR header), so
+            // stay in long arithmetic: truncating that subtraction to int wraps negative.
+            var remaining = totalBytes - _position;
+            if (temp > remaining) temp = (int)remaining;
+
+            return temp;
+        }
+
+        // Book-keeping after `temp` bytes have been copied out of _readBuf.
+        void AdvanceReadBuffer(int temp)
+        {
+            _position += temp;
+            _readBufOfs += temp;
+
+            // finally, mark the buffer as empty if we've read everything in it
+            if (_readBufOfs == _readBufLen)
+            {
+                _readBufLen = 0;
+            }
+        }
+
+        int ReadSamplesImpl(Array buffer, int index, int count, int bitDepth)
+        {
+            var cnt = 0;
+            var totalBytes = GetTotalBytes();
+
+            // lock around the entire read operation so seeking doesn't bork our buffers as we decode
+            lock (_seekLock)
+            {
+                while (count > 0)
+                {
+                    // Trim end padding: stop once we've delivered all real audio
+                    if (_position >= totalBytes)
+                    {
+                        _eofFound = true;
+                        break;
+                    }
+
+                    var temp = AvailableBytes(totalBytes, count);
+                    if (temp > 0)
+                    {
+                        if (bitDepth == 32)
+                        {
+                            Buffer.BlockCopy(_readBuf, _readBufOfs, buffer, index, temp);
+                        }
+                        else
+                        {
+                            // 8- and 16-bit output always targets a byte[] (the public
+                            // ReadSamplesInt8/ReadSamplesInt16 overloads both take byte[]).
+                            // Cast once and index directly; the previous Array.SetValue(object,...)
+                            // calls boxed every byte written - one box per 8-bit sample, two per
+                            // 16-bit sample. The arithmetic below is unchanged, so output is
+                            // bit-for-bit identical.
+                            var byteBuffer = (byte[])buffer;
+                            var srcBase = _readBufOfs / sizeof(float);
+                            var dstBase = index / sizeof(float);
+                            var sampleCount = temp / sizeof(float);
+
+                            if (bitDepth == 8)
+                            {
+                                for (int i = 0; i < sampleCount; i++)
+                                {
+                                    byteBuffer[dstBase + i] = (byte)Math.Round(127.5f * _readBuf[srcBase + i] + 127.5f);
+                                }
+                            }
+                            else // bitDepth == 16
+                            {
+                                for (int i = 0; i < sampleCount; i++)
+                                {
+                                    var value = (int)Math.Round(32767.5f * _readBuf[srcBase + i] - 0.5f);
+                                    if (value < 0)
+                                    {
+                                        value += 65536;
+                                    }
+
+                                    byteBuffer[2 * (dstBase + i)] = (byte)(value % 256);
+                                    byteBuffer[2 * (dstBase + i) + 1] = (byte)(value / 256);
+                                }
+                            }
+                        }
+
+                        // now update our counters...
+                        cnt += temp;
+
+                        count -= temp;
+                        index += temp;
+
+                        AdvanceReadBuffer(temp);
+                    }
+
+                    // if the buffer is empty, try to fill it
+                    //  NB: If we've already satisfied the read request, we'll still try to fill the buffer.
+                    //      This ensures there's data in the pipe on the next call
+                    if (_readBufLen == 0 && !TryFillReadBuffer())
+                    {
+                        break;
+                    }
+                }
+            }
+            return cnt;
+        }
+
+#if NET8_0_OR_GREATER
+        int ReadSamplesImpl(Span<byte> buffer)
+        {
+            var cnt = 0;
+            var totalBytes = GetTotalBytes();
+
+            // make sure we're asking for an even number of samples
+            var count = buffer.Length - (buffer.Length % sizeof(float));
+
+            // lock around the entire read operation so seeking doesn't bork our buffers as we decode
+            lock (_seekLock)
+            {
+                while (count > 0)
+                {
+                    // Trim end padding: stop once we've delivered all real audio
+                    if (_position >= totalBytes)
+                    {
+                        _eofFound = true;
+                        break;
+                    }
+
+                    var temp = AvailableBytes(totalBytes, count);
+                    if (temp > 0)
+                    {
+                        MemoryMarshal.AsBytes(_readBuf.AsSpan()).Slice(_readBufOfs, temp).CopyTo(buffer.Slice(cnt));
+
+                        // now update our counters...
+                        cnt += temp;
+                        count -= temp;
+
+                        AdvanceReadBuffer(temp);
+                    }
+
+                    // if the buffer is empty, try to fill it
+                    //  NB: If we've already satisfied the read request, we'll still try to fill the buffer.
+                    //      This ensures there's data in the pipe on the next call
+                    if (_readBufLen == 0 && !TryFillReadBuffer())
+                    {
+                        break;
+                    }
+                }
+            }
+            return cnt;
+        }
+#endif
+    }
+}

@@ -110,5 +110,33 @@
     "license": "Apache-2.0",
     "url": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-japanese",
     "note": "Japanese kana and kanji recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on Common Voice 6.1, CSS10 and the JSUT corpus (Saruwatari-Takamichi Lab, the University of Tokyo; https://sites.google.com/site/shinnosuketakamichi/publication/jsut; its audio is free for academic, non-commercial and personal use, commercial use by arrangement with the authors), converted like the English one. Optional download from models.cproducts.dev."
+  },
+  {
+    "name": "Catppuccin palette",
+    "version": "1.8.0 (colour values, generated from palette.json)",
+    "license": "MIT",
+    "url": "https://github.com/catppuccin/palette",
+    "note": "The Latte, Frappé, Macchiato and Mocha colour sets in Settings > Appearance > Colours (src/apps/Wavee/Theming/Colours/ColourCatalog.Data.cs). Copyright (c) 2021 Catppuccin."
+  },
+  {
+    "name": "Dracula",
+    "version": "colour values (from the Dracula theme's README)",
+    "license": "MIT",
+    "url": "https://github.com/dracula/dracula-theme",
+    "note": "The Dracula colour set in Settings > Appearance > Colours (src/apps/Wavee/Theming/Colours/ColourCatalog.Data.cs). Copyright (c) 2023 Dracula Theme."
+  },
+  {
+    "name": "Gruvbox",
+    "version": "colour values (from colors/gruvbox.vim)",
+    "license": "MIT/X11",
+    "url": "https://github.com/morhetz/gruvbox",
+    "note": "The Gruvbox Light and Dark colour sets in Settings > Appearance > Colours (src/apps/Wavee/Theming/Colours/ColourCatalog.Data.cs). Author: morhetz (gruvbox.vim header)."
+  },
+  {
+    "name": "Nord",
+    "version": "colour values (from src/nord.css)",
+    "license": "MIT",
+    "url": "https://github.com/nordtheme/nord",
+    "note": "The Nord Snow Storm and Polar Night colour sets in Settings > Appearance > Colours (src/apps/Wavee/Theming/Colours/ColourCatalog.Data.cs). Copyright (c) 2016-present Sven Greb."
   }
 ]

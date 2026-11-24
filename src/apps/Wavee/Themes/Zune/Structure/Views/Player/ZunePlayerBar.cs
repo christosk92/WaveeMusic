@@ -344,7 +344,7 @@ internal static partial class ZunePlayerBar
                 new BoxEl
                 {
                     Key = BarKey, Height = tier.BarH, Shrink = 0f, ZStack = true, Fill = R.Layer.PlayerBar,
-                    Animate = reduced ? null : ZunePlayerTiers.BarMotion,
+                    Animate = reduced ? null : ZunePlayerTiers.BarMotion, DropTarget = props.Verbs.OsDrop,
                     Children = layers.ToArray(),
                 },
             ],

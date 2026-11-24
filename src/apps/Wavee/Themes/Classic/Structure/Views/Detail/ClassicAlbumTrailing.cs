@@ -232,7 +232,7 @@ internal static class ClassicAlbumTrailing
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS,
             Children =
             [
-                R.Type.Eyebrow(Loc.Get(customVideo ? Strings.VideoOverride.CustomLabel : Strings.Detail.WatchOfficialVideo))
+                R.Type.Eyebrow(Loc.Get(customVideo ? Strings.LinkedVideo.CustomLabel : Strings.Detail.WatchOfficialVideo))
                     with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 Controls.TrimmedTitle(R.Type.RailHeader(v.Title)
                     with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }, v.Title),

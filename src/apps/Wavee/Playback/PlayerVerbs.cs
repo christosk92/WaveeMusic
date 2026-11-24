@@ -15,6 +15,7 @@
 // `Shell.DeviceVerbs`) and unit-tested without a reducer; this class composes them with the model.
 
 using FluentGpu.Controls;
+using FluentGpu.Foundation;
 
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
@@ -75,6 +76,10 @@ public interface IPlayerVerbs
 
     /// <summary>A drop on the transport: front-insert the dropped tracks (PLAY NEXT), never an immediate playback change.</summary>
     void DropPlayNext(DragPayload payload);
+
+    /// <summary>The bar's OS drop (#240 §3.15, board 22): audio files and Spotify links dropped anywhere on the bar play now; folders and
+    /// playlist files are not its to take. The views hang it on the bar's root (an in-app drag still meets the transport's own target).</summary>
+    DropTargetSpec OsDrop => DropAnywhere.PlayerBar;
 
     /// <summary>The now-playing track's context menu, or null while nothing is playing or the playable is not a track.</summary>
     ContextMenuModel? NowPlayingMenu();

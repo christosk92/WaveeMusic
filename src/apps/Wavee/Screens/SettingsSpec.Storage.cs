@@ -1,6 +1,7 @@
 // ── Screens/SettingsSpec.Storage.cs — Storage: what Wavee keeps on this PC (the dials and their verbs) ─────────────────────────
 //
-// Role: CORE (settings rework phase 1). On this PC (the census categories, each with its Open-folder door and, for two, a confirmed
+// Role: CORE (settings rework phase 1). Music on this PC (#240 S3: the music folders, their three buttons, watching and keeping missing
+// songs; the words every theme shows are `SettingsMusic`'s) · On this PC (the census categories, each with its Open-folder door and, for two, a confirmed
 // clear or remove) · Playback cache (the two switches, the three-mode budget, the cache location, the two stores) · Metadata cache ·
 // Reset (factory reset).
 //
@@ -9,6 +10,8 @@
 // call them, so a view never touches the disk or a cache itself. The census's results are the page's state; the dials only carry what
 // to do and when it is allowed.
 
+using FluentGpu.Controls;
+using FluentGpu.Localization;
 using Wavee.Sdk.Streams;
 using K = Wavee.SettingsRowKind;
 
@@ -19,6 +22,41 @@ public static partial class SettingsSpec
     static SettingsCategory StorageCategory() => new("storage", Strings.Settings.Categories.Storage.Title,
         Strings.Settings.Categories.Storage.Strip, Strings.Settings.Categories.Storage.Subtitle, "Folder",
     [
+        // #240 S3: the music folders Wavee plays (the local library). The folder list with its per-folder verbs (show in Explorer, rescan
+        // this folder, remove) is one composite drawn by each theme from `SettingsMusic`; its three buttons are child dials. "More options"
+        // is a read-only parent whose children are the two library settings (the views draw it as an expander; Zune draws its rows).
+        Group("music", Strings.Settings.Groups.Storage.Music, null,
+            Make("storage.music.folders", K.Composite, Strings.Settings.Music.Folders,
+                SettingsWriter.Owned("SettingsVerbs.RemoveMusicFolder/RevealMusicFolder/RescanMusicFolder/SignInMusicFolder"), glyph: "Folder",
+                captionKey: Strings.Settings.Music.FoldersSub, aliases: ["local files", "mp3", "flac", "ogg", "m4a", "nas"]),
+            Make("storage.music.add", K.Action, Strings.Settings.Music.Add,
+                SettingsWriter.OfAction("music.addFolder", SettingsVerbs.AddMusicFolder), parent: "storage.music.folders", glyph: "FolderOpen"),
+            Make("storage.music.addDefault", K.Action, Strings.Settings.Music.AddDefault,
+                SettingsWriter.OfAction("music.addDefault", SettingsVerbs.AddDefaultMusicFolder), parent: "storage.music.folders", glyph: "MusicNote",
+                visible: static f => f.DefaultMusicFolderOffered),
+            Make("storage.music.rescan", K.Action, Strings.Settings.Music.Rescan,
+                SettingsWriter.OfAction("music.rescan", SettingsVerbs.RescanMusic), parent: "storage.music.folders", glyph: "Refresh",
+                enabled: static f => f.MusicFolderCount > 0 ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true),
+            Make("storage.music.options", K.Fact, Strings.Settings.Music.Options, SettingsWriter.ReadOnly, glyph: "Equalizer",
+                captionKey: Strings.Settings.Music.OptionsSub),
+            Make("storage.music.watch", K.Toggle, Strings.Settings.Music.Watch,
+                SettingsWriter.OfToggle("music.watch", SettingsVerbs.SetMusicWatch), parent: "storage.music.options", glyph: "Bell",
+                captionKey: Strings.Settings.Music.WatchSub, value: BoolOf(Platform.Keys.MusicWatch)),
+            Make("storage.music.pauseOnSaver", K.Toggle, Strings.Settings.Music.PauseOnSaver,
+                SettingsWriter.OfToggle("music.pauseOnSaver", SettingsVerbs.SetMusicPauseOnSaver), parent: "storage.music.options", glyph: "Pause",
+                captionKey: Strings.Settings.Music.PauseOnSaverSub, value: BoolOf(Platform.Keys.MusicPauseOnSaver), aliases: ["battery", "energy saver"]),
+            Make("storage.music.readCloud", K.Toggle, Strings.Settings.Music.ReadCloud,
+                SettingsWriter.OfToggle("music.readCloud", SettingsVerbs.SetMusicReadCloud), parent: "storage.music.options", glyph: "Download",
+                captionKey: Strings.Settings.Music.ReadCloudSub, value: BoolOf(Platform.Keys.MusicReadCloud), aliases: ["onedrive", "cloud"]),
+            // "Your files and Spotify" (#240 phase 1): the opt-in's switch, where the offer's "Not now" leaves it.
+            Make("storage.music.spotifyMatch", K.Toggle, Strings.LocalFiles.Link.Setting,
+                SettingsWriter.OfToggle("music.spotifyMatch", SettingsVerbs.SetMusicSpotifyMatch), parent: "storage.music.options", glyph: "Link",
+                captionKey: Strings.LocalFiles.Link.SettingSub, value: BoolOf(LocalLink.OnKey), aliases: ["spotify", "match", "covers", "tags", "isrc"]),
+            Make("storage.music.keepMissing", K.Choice, Strings.Settings.Music.KeepMissing,
+                SettingsWriter.OfChoice("music.keepMissing", SettingsVerbs.SetMusicMissingDays), parent: "storage.music.options", glyph: "Clock",
+                captionKey: Strings.Settings.Music.KeepMissingSub, value: static s => SettingsMusic.MissingDaysIndex(s.Get(Platform.Keys.MusicMissingDays)),
+                choices: [Strings.Settings.Music.Days30, Strings.Settings.Music.Days60, Strings.Settings.Music.Days90])),
+
         Group("onThisPc", Strings.Settings.Groups.Storage.OnThisPc, null,
             // Each category's card: the size (the census, once it lands) + "Open folder"; the dial's writer is the folder door.
             FolderDial("storage.library", "library", Strings.Settings.Storage.Library, Strings.Settings.Storage.LibrarySub, "Album"),
@@ -229,6 +267,108 @@ public static partial class SettingsVerbs
         Platform.Settings.Set(Platform.Keys.MetadataCacheBudgetBytes, bytes);
         Store.Policy = Store.Policy with { ByteBudget = bytes };
         Store.Tick();
+        return true;
+    }
+
+    // ── Music on this PC (#240 S3) ──────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>"Add a folder…": the house folder picker (off the UI thread); the pick is added when it answers.</summary>
+    public static bool AddMusicFolder()
+    {
+        Pickers.Pick(PickerRequest.Folder(Loc.Get(Strings.Settings.Music.PickTitle)),
+            done: picked => { if (!string.IsNullOrWhiteSpace(picked)) AddMusicFolderAt(picked); },
+            failed: ex => Log.Warn("settings", "music folder picker failed", ex));
+        return false;
+    }
+
+    /// <summary>"Add my Music folder" (offered only while the user's Music folder is not covered).</summary>
+    public static bool AddDefaultMusicFolder()
+    {
+        if (LocalLibrary.DefaultMusicFolder is { } music) AddMusicFolderAt(music);
+        return false;
+    }
+
+    /// <summary>Add <paramref name="path"/>: the row shows at once as "Checking…" while the library asks off the UI thread whether it is
+    /// there (F4). A refusal says why in a toast (S11), at once or when the check answers, and so does a folder that replaced the ones
+    /// inside it; a network folder that is away is kept and its row says so.</summary>
+    internal static void AddMusicFolderAt(string path)
+    {
+        string? parent = LocalLibrary.ContainerOf(path);
+        if (!LocalLibrary.AddFolder(path, out string reason, landed: verdict => { Say(verdict, path, parent); Settings.Bump(); }))
+            Say(reason, path, parent);
+        Settings.Bump();
+
+        static void Say(string reason, string path, string? parent)
+        {
+            switch (reason)
+            {
+                case "combined": Notify.Say(Strings.Settings.Music.Combined(LocalLibrary.Normalize(path))); break;
+                case "inside": Notify.Say(Strings.Settings.Music.Inside(parent ?? ""), InfoBarSeverity.Warning); break;
+                case "duplicate": Notify.Say(Loc.Get(Strings.Settings.Music.Duplicate), InfoBarSeverity.Warning); break;
+                case "missing": Notify.Say(Loc.Get(Strings.Settings.Music.NotFound), InfoBarSeverity.Warning); break;
+            }
+        }
+    }
+
+    /// <summary>"Rescan now": a warm walk of every folder.</summary>
+    public static bool RescanMusic()
+    {
+        LocalLibrary.Rescan();
+        return false;
+    }
+
+    /// <summary>A folder row's remove: no confirm (nothing leaves the disk); the toast offers Undo, which adds the folder back.</summary>
+    public static void RemoveMusicFolder(string folder)
+    {
+        if (!LocalLibrary.RemoveFolder(folder)) return;
+        Notify.Say(Strings.Settings.Music.Removed(folder), actionLabel: Loc.Get(Strings.Settings.Music.Undo), onAction: () => AddMusicFolderAt(folder),
+            dedupeKey: "music.remove");
+        Settings.Bump();
+    }
+
+    /// <summary>A folder row's "Show in Explorer".</summary>
+    public static void RevealMusicFolder(string folder) => LocalLibrary.Reveal(folder);
+
+    /// <summary>A folder row's "Rescan this folder", and a network folder's "Retry".</summary>
+    public static void RescanMusicFolder(string folder) => LocalLibrary.Rescan(folder);
+
+    /// <summary>A network folder's "Sign in": the Windows credential dialog for its share (off the UI thread), then a walk.</summary>
+    public static void SignInMusicFolder(string folder) => LocalLibrary.SignIn(folder);
+
+    /// <summary>"Watch folders for changes": persists and starts or stops the watchers.</summary>
+    public static bool SetMusicWatch(bool on)
+    {
+        LocalLibrary.SetWatching(on);
+        return true;
+    }
+
+    /// <summary>"Pause scanning on battery saver": persists and holds or releases a running scan.</summary>
+    public static bool SetMusicPauseOnSaver(bool on)
+    {
+        LocalLibrary.SetPauseOnSaver(on);
+        return true;
+    }
+
+    /// <summary>"Match my music with Spotify": on matches in the background (the review collects the answers); off stops it and keeps every
+    /// decision already made.</summary>
+    public static bool SetMusicSpotifyMatch(bool on)
+    {
+        LocalLink.SetEnabled(on);
+        return true;
+    }
+
+    /// <summary>"Read tags of cloud-only files (downloads them)": persists; on, the folders are walked again to read them.</summary>
+    public static bool SetMusicReadCloud(bool on)
+    {
+        LocalLibrary.SetReadCloud(on);
+        return true;
+    }
+
+    /// <summary>"Keep missing songs for" 30 · 60 · 90 days.</summary>
+    public static bool SetMusicMissingDays(int index)
+    {
+        if ((uint)index >= (uint)SettingsMusic.MissingDays.Length) return false;
+        Platform.Settings.Set(Platform.Keys.MusicMissingDays, SettingsMusic.MissingDays[index]);
         return true;
     }
 
