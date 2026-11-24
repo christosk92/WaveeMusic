@@ -24,6 +24,9 @@ internal static class CommonColourEditorRules
     /// <summary>The selected well's accent ring.</summary>
     public const float SelectedRing = 2f;
 
+    /// <summary>The wells and picker column beside the preview: the picker's swatch and four fields on one line (364) and a little air.</summary>
+    public const float ColumnWidth = 372f;
+
     /// <summary>The picker's spectrum.</summary>
     public const float Spectrum = 220f;
 

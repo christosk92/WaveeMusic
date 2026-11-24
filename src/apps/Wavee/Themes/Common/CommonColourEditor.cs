@@ -60,7 +60,9 @@ internal static class CommonColourEditor
         };
         Element left = new BoxEl
         {
-            Key = "colours:wells", Direction = 1, Gap = Spacing.S, MinWidth = 0f, Shrink = 1f,
+            // Beside the preview the column is the picker's width (its wrapping field row would otherwise measure at its unwrapped width and
+            // push the preview off the card); stacked at Compact it is the card's width and the field row wraps inside it.
+            Key = "colours:wells", Direction = 1, Gap = Spacing.S, MinWidth = 0f, Shrink = 1f, Width = beside ? E.ColumnWidth : float.NaN,
             Children = [new BoxEl { Direction = 1, Children = wells }, picker],
         };
         Element right = new BoxEl
