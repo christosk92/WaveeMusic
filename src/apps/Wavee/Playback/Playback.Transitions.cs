@@ -1864,6 +1864,20 @@ public static partial class Playback
             return Math.Min(join, bound);
         }
 
+        /// <summary>Where a crossfade starts and how long it runs, given the outgoing voice's end frame
+        /// (<paramref name="activeEnd"/>, already bounded by <see cref="ScheduleJoin"/>): it ENDS on that frame, so the
+        /// outgoing track's last sample is the fade's last frame and the two tracks overlap by exactly the fade. Never in the
+        /// past: a commit that comes too late for the whole fade starts now and shortens the fade to what is left, so the
+        /// fade-out still ends where the content does. Never longer than the incoming voice (<paramref name="incomingFrames"/>,
+        /// −1 when unknown). PURE.</summary>
+        public static (long Start, int Frames) ScheduleFade(long activeEnd, long sampleClockNow, int fadeFrames, long incomingFrames)
+        {
+            long start = Math.Max(activeEnd - fadeFrames, sampleClockNow);
+            long frames = Math.Max(1L, Math.Min(fadeFrames, activeEnd - start));
+            if (incomingFrames > 0) frames = Math.Min(frames, incomingFrames);
+            return (start, (int)frames);
+        }
+
         /// <summary>A primed voice is only spliceable into a mixer running at the rate it was resampled for.</summary>
         public static bool PrimedSlotMatches(int primedMixRate, int sessionRate) => primedMixRate == sessionRate;
 
