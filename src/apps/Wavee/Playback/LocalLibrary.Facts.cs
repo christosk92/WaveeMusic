@@ -163,6 +163,16 @@ public static partial class LocalLibrary
         return missing;
     }
 
+    /// <summary>The indexed audio files Wavee cannot play that are still on disk (the attention line's "N files can't be played"), by path. UI thread.</summary>
+    public static List<LocalEntry> UnplayableEntries()
+    {
+        var list = new List<LocalEntry>();
+        foreach (LocalEntry e in s_index.Snapshot())
+            if (e.Tags.Kind == LocalKind.Audio && !e.Playable && e.State != LocalState.Missing) list.Add(e);
+        list.Sort(static (a, b) => string.Compare(a.RelativePath, b.RelativePath, StringComparison.OrdinalIgnoreCase));
+        return list;
+    }
+
     /// <summary>Background (the restate pass): the per-folder counts and the album count from the snapshot it already took.</summary>
     static (Dictionary<int, Counts> Counts, int Albums) CountPass(LocalEntry[] entries)
     {

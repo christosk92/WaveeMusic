@@ -558,21 +558,11 @@ internal static class WinUiTrackTable
     /// <summary>The artists, the container and a plain tail as one span run (separators and the tail are not links).</summary>
     static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, string tail, ColorF ink)
     {
-        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
-        for (int i = 0; i < artistCount; i++)
-        {
-            if (i > 0) b.Add(new TextSpan(", ", Color: ink));
-            var (name, link) = Track.ArtistAt(t, i);
-            b.Add(new TextSpan(name, Color: ink, IsLink: link));
-        }
-        if (container.Name is { Length: > 0 })
-        {
-            if (artistCount > 0) b.Add(new TextSpan(WinUiListRules.InlineLead, Color: ink));
-            b.Add(new TextSpan(container.Name, Color: ink, IsLink: container.Uri.IsValid));
-        }
+        int before = b.Current.Count;
+        Track.FillCreditSpans(b, t, artistCount, container, WinUiListRules.InlineLead, ink);
         if (tail.Length > 0)
         {
-            if (artistCount > 0 || container.Name is { Length: > 0 }) b.Add(new TextSpan(WinUiListRules.InlineLead, Color: ink));
+            if (b.Current.Count > before) b.Add(new TextSpan(WinUiListRules.InlineLead, Color: ink));
             b.Add(new TextSpan(tail, Color: ink));
         }
     }

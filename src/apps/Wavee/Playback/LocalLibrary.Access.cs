@@ -5,6 +5,8 @@
 // offline: the drive is there). A subfolder the walk could not open or list is in the last scan's `LocalScanStats.Unreadable`; it is shown nested
 // under its music folder, where Remove means "skip this subfolder": it stays on disk and is left out of every walk (`local.skip`, the full paths
 // joined by '|', read and written only here). Fix permissions opens the folder's Properties at its Security tab (the shell's own page).
+// A FILE the user hides from Local Files ("Hide from Local Files" on its row, or in the Review dialog) joins the same set: the same sticky skip,
+// one file instead of a folder. It is never deleted from disk; its index entry leaves, and the walk never reads it again until it is un-hidden.
 
 using System.Runtime.InteropServices;
 
@@ -53,6 +55,35 @@ public static partial class LocalLibrary
         NoteProgress();
     }
 
+    /// <summary>"Hide from Local Files" on an indexed file: leave it out of every walk from now on (the sticky skip above; it stays on disk) and drop
+    /// its entry, so its row leaves the list and stops needing attention. A MISSING file is removed as the Review's Remove does (nothing is on disk to
+    /// skip). Returns the full path it hid (for an Undo), or null when there was nothing to hide. UI thread.</summary>
+    public static string? HideFile(long localId)
+    {
+        if (!s_index.TryGet(localId, out LocalEntry? e)) return null;
+        if (e.State == LocalState.Missing) { RemoveMissing(localId); return null; }
+        string? full = s_index.FullPathOf(e);
+        if (full is null) return null;
+        var skipped = Skipped();
+        if (skipped.Add(full)) Platform.Settings.Set(Platform.Keys.MusicSkip, string.Join('|', skipped));
+        var batch = new LocalScanBatch(e.RootId, LocalIndex.FolderOf(e.RelativePath));
+        batch.Removes.Add(localId);
+        s_index.Apply(batch);
+        Log.Info("local", "local.hide id=" + localId);
+        NoteProgress();
+        return full;
+    }
+
+    /// <summary>Undo of <see cref="HideFile"/>: the file leaves the skip set and its folder is walked again (it comes back under a new id). UI thread.</summary>
+    public static void UnhideFile(string fullPath)
+    {
+        var skipped = Skipped();
+        if (!skipped.Remove(fullPath)) return;
+        Platform.Settings.Set(Platform.Keys.MusicSkip, string.Join('|', skipped));
+        if (ContainerOf(fullPath) is { } folder) Rescan(folder);
+        NoteProgress();
+    }
+
     static HashSet<string> Skipped()
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -60,7 +91,7 @@ public static partial class LocalLibrary
         return set;
     }
 
-    /// <summary>The scan's skip set for one music folder (relative paths), read as a walk starts (scan thread).</summary>
+    /// <summary>The scan's skip set for one music folder (relative paths: skipped subfolders and hidden files), read as a walk starts (scan thread).</summary>
     static HashSet<string> SkippedUnder(string root)
     {
         var rel = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

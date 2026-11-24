@@ -1362,6 +1362,36 @@ public readonly partial struct Playlist
         return new Track(slot);
     }
 
+    /// <summary>"Remove from Local Files" on a dropped file's row: its membership leaves the list (the file stays on disk). Returns where it was (for
+    /// <see cref="RestoreLocalFile"/>), or -1 when it was not listed. UI thread.</summary>
+    public static int RemoveLocalFile(int trackSlot)
+    {
+        var local = LocalFiles;
+        if (!local.IsValid) return -1;
+        var e = Entities.Current.Edges.PlaylistTracks;
+        int at = e.Targets(local.Slot).IndexOf(trackSlot);
+        if (at < 0) return -1;
+        s_removedEdge = e.Payload(local.Slot)[at];
+        e.RemoveAt(local.Slot, at);
+        local.Refold();
+        Entities.Publish();
+        return at;
+    }
+
+    /// <summary>Undo of <see cref="RemoveLocalFile"/>: the row goes back where it was, with its added date. UI thread.</summary>
+    public static void RestoreLocalFile(int trackSlot, int at)
+    {
+        var local = LocalFiles;
+        if (!local.IsValid || !new Track(trackSlot).IsValid) return;
+        var e = Entities.Current.Edges.PlaylistTracks;
+        if (e.Targets(local.Slot).IndexOf(trackSlot) >= 0) return;
+        e.Insert(local.Slot, trackSlot, s_removedEdge, Math.Min(at, e.Targets(local.Slot).Length));
+        local.Refold();
+        Entities.Publish();
+    }
+
+    static PlaylistTrackEdge s_removedEdge;
+
     /// <summary>The file picker's play (0.2.9 <c>LocalFileActions.PlayDropped</c>): audio wins over video; nothing
     /// playable is an Error toast; no local playback wired is Informational; an .mp4 attaches to its OWN row first.</summary>
     static void PlayFiles(IReadOnlyList<string> paths)

@@ -139,20 +139,33 @@ public readonly partial struct Track
     }
 
     static readonly ActionId[] s_transportVerbs = [ActionId.Play, ActionId.PlayNext, ActionId.AddToQueue, ActionId.ToggleLike];
+    /// <summary>A local file's strip: no Save (Liked Songs holds Spotify tracks; a file cannot be saved there).</summary>
+    static readonly ActionId[] s_localTransportVerbs = [ActionId.Play, ActionId.PlayNext, ActionId.AddToQueue];
+
+    /// <summary>Every target is a local row (a file, or a playlist's spotify:local: item): the menu drops what only a Spotify track can do.</summary>
+    static bool AllLocal(in ActionContext ctx)
+    {
+        if (ctx.Target.Tracks is not { Count: > 0 } tracks) return false;
+        for (int i = 0; i < tracks.Count; i++) if (!tracks[i].IsLocalRow) return false;
+        return true;
+    }
 
     /// <summary>The grammar, in order (file header).</summary>
     static ContextMenuModel Compose(ActionContext ctx, in MenuOptions o)
     {
         var rows = new List<MenuFlyoutItem>(16);
+        // A local file (#240): no Save, Share, song radio or Video (none can work for a file); Show in folder and the remove that fits its origin.
+        bool local = AllLocal(in ctx);
+        var transport = local ? s_localTransportVerbs : s_transportVerbs;
         AppBarCommand[] strip;
         if (o.CompactRows)
         {
             // An Explorer-style labelled strip does not fit a 240-DIP pane, but the core verbs must still be there.
             strip = [];
-            Actions.Menu.AddRows(rows, in ctx, s_transportVerbs);
+            Actions.Menu.AddRows(rows, in ctx, transport);
             Actions.Menu.OpenGroup(rows);
         }
-        else strip = Actions.Menu.Strip(in ctx, s_transportVerbs);
+        else strip = Actions.Menu.Strip(in ctx, transport);
 
         // collection
         rows.Add(AddToPlaylistItem(in ctx, o.PickerOverlay));
@@ -179,16 +192,23 @@ public readonly partial struct Track
             }
         }
 
-        if (Actions.Menu.Share(in ctx) is { } share) rows.Add(share);
+        if (!local && Actions.Menu.Share(in ctx) is { } share) rows.Add(share);
 
         // the track kind's own extras
         if (ctx.Target.Single is { } one)
         {
-            if (ActionRules.CanViewCredits(ctx.Target) && Actions.Menu.Row(ActionId.ViewCredits, in ctx) is { } credits)
-                rows.Add(credits);
-            if (ActionRules.CanStartTrackRadio(ctx.Target) && Actions.Menu.Row(ActionId.GoToSongRadio, in ctx) is { } radio)
-                rows.Add(radio);
-            if (VideoItem(one, in ctx) is { } video) rows.Add(video);
+            if (local)
+            {
+                if (LocalFilesList.ShowInFolderItem(one) is { } reveal) rows.Add(reveal);
+            }
+            else
+            {
+                if (ActionRules.CanViewCredits(ctx.Target) && Actions.Menu.Row(ActionId.ViewCredits, in ctx) is { } credits)
+                    rows.Add(credits);
+                if (ActionRules.CanStartTrackRadio(ctx.Target) && Actions.Menu.Row(ActionId.GoToSongRadio, in ctx) is { } radio)
+                    rows.Add(radio);
+                if (VideoItem(one, in ctx) is { } video) rows.Add(video);
+            }
         }
 
         // the surface's extras
@@ -206,11 +226,13 @@ public readonly partial struct Track
         bool removeRow = AppActions.Find(ActionId.RemoveFromThisPlaylist) is { } removeVerb && removeVerb.EnabledFor(in ctx);
         bool removeQueue = ctx.Target.Kind == TargetKind.QueueEntry
                            && AppActions.Find(ActionId.RemoveFromQueue) is { } dequeueVerb && dequeueVerb.EnabledFor(in ctx);
-        if (removeRow || removeQueue)
+        MenuFlyoutItem? removeFile = local && ctx.Target.Single is { } file && ctx.Target.Kind != TargetKind.QueueEntry ? LocalFilesList.RemoveItem(file) : null;
+        if (removeRow || removeQueue || removeFile is not null)
         {
             Actions.Menu.OpenGroup(rows);
             if (removeRow && Actions.Menu.Row(ActionId.RemoveFromThisPlaylist, in ctx) is { } remove) rows.Add(remove);
             if (removeQueue && Actions.Menu.Row(ActionId.RemoveFromQueue, in ctx) is { } dequeue) rows.Add(dequeue);
+            if (removeFile is { } hideOrRemove) rows.Add(hideOrRemove);
         }
 
         return new ContextMenuModel(strip, rows, HeaderFor(ctx.Target.Tracks));

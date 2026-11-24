@@ -409,7 +409,8 @@ public sealed partial class LocalScan
         readonly ConcurrentDictionary<long, LocalEntry> _vanished = new();
         readonly ConcurrentDictionary<long, byte> _claimed = new();
         readonly ConcurrentDictionary<string, byte> _failed = new(StringComparer.OrdinalIgnoreCase);
-        // The subfolders the user chose to leave out ("Can't read this folder" › Remove on a subfolder): never walked into.
+        // The subfolders the user chose to leave out ("Can't read this folder" › Remove on a subfolder): never walked into; and the files they hid
+        // from Local Files: never listed (so never read, never Missing).
         readonly HashSet<string> _skip = scan.SkippedOf(rootPath);
 
         /// <summary>The folders that failed to open or list, sorted (after <see cref="Run"/>).</summary>
@@ -595,6 +596,7 @@ public sealed partial class LocalScan
                             Push(new DirJob(dir.AddRef(), e.Name, childRel, e.FileId, Recurse: true));
                         continue;
                     }
+                    if (_skip.Count > 0 && _skip.Contains(Rel(job.RelPath, e.Name))) continue;
                     if (LocalTags.IsScanExtension(e.Name) || IsImage(e.Name)) files.Add(e);
                 }
                 if (present is not null)

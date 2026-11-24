@@ -231,8 +231,8 @@ internal static class CommonLocalFiles
             [
                 Wrapping(R.Type.DenseTitle(p.Body) with { Color = Tok.TextPrimary }),
                 list,
-                Wrapping(R.Type.DenseMeta(p.Note) with { Color = Tok.TextSecondary, Margin = new Edges4(0f, Rules.ReviewNoteTop, 0f, 0f) }),
-                Wrapping(R.Type.DenseMeta(p.Footer) with { Color = Tok.TextSecondary, Margin = new Edges4(0f, Rules.ReviewFooterTop, 0f, 0f) }),
+                Wrapping(R.Type.DenseMeta(p.Note) with { Color = Tok.TextSecondary, Margin = new Edges4(0f, Rules.ReviewNoteTop, 0f, 0f), Visible = p.Note.Length > 0 }),
+                Wrapping(R.Type.DenseMeta(p.Footer) with { Color = Tok.TextSecondary, Margin = new Edges4(0f, Rules.ReviewFooterTop, 0f, 0f), Visible = p.Footer.Length > 0 }),
             ],
         };
     }

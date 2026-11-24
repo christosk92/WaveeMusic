@@ -350,6 +350,33 @@ public readonly partial struct Track
         return spans;
     }
 
+    /// <summary>The credit run into a bound row's span buffer, every theme's table (each passes its own separator and ink): the artists ", " joined
+    /// (<see cref="ArtistAt"/>: a local row's credit included) and the container after <paramref name="separator"/>. An unplayable local file's
+    /// reason (<see cref="LocalFilesList.Note"/>: "Can't play: a WAV file") LEADS the run, so a narrow row keeps the reason when it trims the
+    /// artist, and the time lane never has to hold a word. A local row has no links (its credit and album are names), so leading spans shift
+    /// no link index. Separators and the note are not links.</summary>
+    internal static void FillCreditSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, string separator, ColorF ink)
+    {
+        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
+        string note = LocalFilesList.Note(t);
+        if (note.Length > 0)
+        {
+            b.Add(new TextSpan(note, Color: ink));
+            if (artistCount > 0 || container.Name is { Length: > 0 }) b.Add(new TextSpan(separator, Color: ink));
+        }
+        for (int i = 0; i < artistCount; i++)
+        {
+            if (i > 0) b.Add(new TextSpan(", ", Color: ink));
+            var (name, link) = ArtistAt(t, i);
+            b.Add(new TextSpan(name, Color: ink, IsLink: link));
+        }
+        if (container.Name is { Length: > 0 })
+        {
+            if (artistCount > 0) b.Add(new TextSpan(separator, Color: ink));
+            b.Add(new TextSpan(container.Name, Color: ink, IsLink: container.Uri.IsValid));
+        }
+    }
+
     /// <summary>Artist <paramref name="i"/> of a row's credit run: a billed artist (a link when it has a page), or a local row's credit
     /// (<see cref="Track.LocalCredit"/>: its tag or uri name, else "Unknown artist"; plain text, no page behind it). Every artist run reads its names here, the themes' table fills included.</summary>
     internal static (string Name, bool IsLink) ArtistAt(Track t, int i)

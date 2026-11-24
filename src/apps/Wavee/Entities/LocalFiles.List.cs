@@ -11,12 +11,17 @@
 //   PILL      a restate with news while the list is scrolled away from its top: "4 new songs · 1 moved" over the list (`LocalFiles.Pill`); a click
 //             glides to the top. Nothing in the list moves for it (it floats). Reaching the top by hand retires it too.
 //   TAGS      a row added this session wears "New", a row moved this session "Moved" (its tooltip: "Moved from …"), for the session.
-//   UNPLAYABLE an indexed file that cannot be played says why in the time lane: "Missing" (tooltip "Not found at <path> since 12 Nov"), "Drive
-//             offline", or the lane's "Unavailable" for a format Wavee cannot play yet; the unavailable bar counts them by cause (one home per
-//             message: the bar is the missing songs' banner too, with Review beside Hide them).
-//   REVIEW    the missing songs' dialog (`LocalFiles.Review` in the house ContentDialog): per file its title, artist, last-known path, "Not found since
-//             12 Nov · removed on 11 Jan", Locate… (a file picker: the pick is re-paired with the row, `LocalLibrary.Relocate`) and Remove
-//             (`LocalLibrary.RemoveMissing`); the keep-days footer.
+//   UNPLAYABLE an indexed file that cannot be played says why on its second line, after its artist: "Missing", "Offline", or "Can't play: a WAV
+//             file" (the index's own reason); the time lane keeps the file's length, so it never clips a word, and its tooltip carries the long
+//             reason ("Not found at <path> since 12 Nov"). The unavailable bar counts them by cause (one home per message: the bar is the missing
+//             songs' banner too, with Review beside Hide them).
+//   VERBS     a local row's menu drops what only a Spotify track can do (Save, Share, song radio, Video) and adds Show in folder and the remove that
+//             fits its origin: "Hide from Local Files" for a file in a music folder (a sticky skip, `LocalLibrary.HideFile`; never deleted from
+//             disk), "Remove from Local Files" for a dropped file; both with Undo.
+//   REVIEW    the files that need attention (`LocalFiles.Review` in the house ContentDialog): per missing file its title, artist, last-known path,
+//             "Not found since 12 Nov · removed on 11 Jan", Locate… (a file picker: the pick is re-paired with the row, `LocalLibrary.Relocate`)
+//             and Remove (`LocalLibrary.RemoveMissing`); per file Wavee cannot play, "Can't play: a WAV file", Show in folder and Hide; the
+//             keep-days footer. The sidebar's "1 needs attention" opens it, so every attention line can be resolved.
 //
 // LIVE. The hosts read `LocalLibrary.Epoch` (scan progress, at most four times a second) and `LocalLibrary.Restated` (the list changed). A row's
 // tag and reason are read in its bound cells, on a presentation change or a restate, never per frame.
@@ -69,14 +74,23 @@ public static class LocalFilesList
          : !e.Playable ? Cause.Format
          : Cause.None;
 
-    /// <summary>The time lane's short reason for an unplayable indexed row ("Missing", "Drive offline"), or null (the lane's own words then: a
-    /// format Wavee cannot play is "Unavailable", as every unplayable row).</summary>
-    public static string? ShortReason(Track t) => CauseOf(t) switch
+    /// <summary>Why an unplayable indexed row cannot play, as its second line states it after the artist: "Missing", "Offline", "Can't play: a WAV
+    /// file" (the index's own reason); "" for any other row. Read in a row's bound span run (a presentation change), never per frame.</summary>
+    public static string Note(Track t)
     {
-        Cause.Missing => Loc.Get(Strings.LocalFiles.List.MissingShort),
-        Cause.Offline => Loc.Get(Strings.LocalFiles.List.OfflineShort),
-        _ => null,
-    };
+        if (!t.IsLocal || !t.Unplayable() || !TryEntry(t, out LocalEntry e)) return "";
+        return CauseOf(e) switch
+        {
+            Cause.Missing => Loc.Get(Strings.LocalFiles.List.MissingShort),
+            Cause.Offline => Loc.Get(Strings.LocalFiles.List.OfflineShort),
+            Cause.Format => CantPlay(e),
+            _ => "",
+        };
+    }
+
+    /// <summary>"Can't play: a WAV file" from the index's reason, else the generic "Wavee can't play this file's format yet".</summary>
+    static string CantPlay(LocalEntry e)
+        => e.Why.Length > 0 ? Strings.LocalFiles.List.CantPlay(e.Why) : Loc.Get(Strings.LocalFiles.List.FormatReason);
 
     /// <summary>The time lane's tooltip for an unplayable indexed row: "Not found at D:\Music\…\Song.flac since 12 Nov", "D:\Music is offline", "Wavee
     /// can’t play this file’s format yet"; null for any other row.</summary>
@@ -345,10 +359,11 @@ public static class LocalFilesList
     public static void OpenReview(IOverlayService? overlay)
     {
         if (overlay is null || Controls.IsNullOverlay(overlay)) return;
-        int count = Math.Max(1, LocalLibrary.Index.MissingCount);
+        int missing = LocalLibrary.Index.MissingCount, unplayable = LocalLibrary.UnplayableEntries().Count;
         ContentDialog.Show(overlay, d =>
         {
-            d.Title = Strings.LocalFiles.Missing.Summary(count);
+            d.Title = unplayable == 0 ? Strings.LocalFiles.Missing.Summary(Math.Max(1, missing))
+                                      : Strings.LocalFiles.Missing.AttentionTitle(Math.Max(1, missing + unplayable));
             d.PrimaryText = "";
             d.CloseText = Loc.Get(Strings.Common.Close);
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
@@ -357,7 +372,8 @@ public static class LocalFilesList
         });
     }
 
-    /// <summary>The review's body: re-read when the list restates, so a file found again leaves it.</summary>
+    /// <summary>The review's body: re-read when the list restates, so a file found again (or hidden) leaves it. The missing files first (Locate…,
+    /// Remove), then the ones Wavee cannot play (Show in folder, Hide): the same row record, its first verb the one that fits.</summary>
     sealed class ReviewHost : Component
     {
         public override Element Render()
@@ -365,10 +381,22 @@ public static class LocalFilesList
             _ = LocalLibrary.Restated.Value;
             _ = LocalLibrary.Epoch.Value;
             var missing = LocalLibrary.MissingEntries();
+            var unplayable = LocalLibrary.UnplayableEntries();
             int keepDays = Math.Clamp(Platform.Settings.Get(Platform.Keys.MusicMissingDays), 7, 365);
             string locate = Loc.Get(Strings.LocalFiles.Missing.Locate), remove = Loc.Get(Strings.LocalFiles.Missing.Remove);
-            var rows = new LocalFilesReviewRow[missing.Count];
-            for (int i = 0; i < rows.Length; i++)
+            string reveal = Loc.Get(Strings.LocalFiles.List.ShowInFolder), hide = Loc.Get(Strings.LocalFiles.Missing.Hide);
+            var rows = new LocalFilesReviewRow[missing.Count + unplayable.Count];
+            for (int i = 0; i < unplayable.Count; i++)
+            {
+                LocalEntry e = unplayable[i];
+                string path = LocalLibrary.PathOf(e.LocalId) ?? e.RelativePath;
+                LocalTagSet tags = e.Tags;
+                long id = e.LocalId;
+                string title = e.MatchTitle;
+                rows[missing.Count + i] = new LocalFilesReviewRow(id.ToString(CultureInfo.InvariantCulture), title, Playlist.LocalArtistLine(in tags), path,
+                    CantPlay(e), reveal, () => SettingsVerbs.RevealInExplorer(path), hide, () => Hide(id, title));
+            }
+            for (int i = 0; i < missing.Count; i++)
             {
                 LocalEntry e = missing[i];
                 string path = LocalLibrary.PathOf(e.LocalId) ?? e.RelativePath;
@@ -383,10 +411,11 @@ public static class LocalFilesList
             }
             return ViewSlots.View(ViewKeys.LocalFilesReview, new LocalFilesReviewProps
             {
-                Body = Loc.Get(Strings.LocalFiles.Missing.Body),
+                Body = Loc.Get(unplayable.Count == 0 ? Strings.LocalFiles.Missing.Body : Strings.LocalFiles.Missing.AttentionBody),
                 Rows = rows,
-                Note = Loc.Get(Strings.LocalFiles.Missing.LocateNote),
-                Footer = Strings.LocalFiles.Missing.Footer(keepDays),
+                // Locate and the keep-days rule are the missing files' alone: no line for them when only unplayable files are listed.
+                Note = missing.Count > 0 ? Loc.Get(Strings.LocalFiles.Missing.LocateNote) : "",
+                Footer = missing.Count > 0 ? Strings.LocalFiles.Missing.Footer(keepDays) : "",
                 Empty = Loc.Get(Strings.LocalFiles.Missing.NoneLeft),
             });
         }
@@ -409,6 +438,51 @@ public static class LocalFilesList
                 }
             },
             failed: ex => Log.Warn("localfile", "locate picker failed (" + Path.GetFileName(lastPath) + ")", ex));
+    }
+
+    // ══ 7. A LOCAL ROW'S OWN VERBS ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The file behind a local row (an indexed file, a dropped one, a playlist item the index matched), or null.</summary>
+    public static string? FileOf(Track t) => t.IsValid && t.IsLocalRow ? LocalLibrary.PathOf(t.Id) : null;
+
+    /// <summary>"Show in folder": Explorer opens the file's folder with the file selected. Null for a row with no file behind it.</summary>
+    public static MenuFlyoutItem? ShowInFolderItem(Track t)
+        => FileOf(t) is { } path
+            ? new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.List.ShowInFolder), Icons.FolderOpen, true, () => SettingsVerbs.RevealInExplorer(path))
+            : null;
+
+    /// <summary>The remove that fits the row's origin: "Hide from Local Files" for a file in a music folder (the sticky skip; nothing leaves the disk),
+    /// "Remove from Local Files" for a dropped file (its row leaves the list); null for any other row (a playlist's spotify:local: item is the
+    /// playlist's to remove).</summary>
+    public static MenuFlyoutItem? RemoveItem(Track t)
+    {
+        if (!t.IsValid || !t.IsLocal) return null;
+        string uri = t.Uri.Text, title = t.Title;
+        if (LocalLibrary.TryLocalIdOf(uri, out long id))
+            return new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.List.Hide), Icons.Remove, true, () => Hide(id, title));
+        if (uri.StartsWith(Playlist.LocalFilePrefix, StringComparison.Ordinal))
+        {
+            int slot = t.Slot;
+            return new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.List.RemoveDropped), Icons.Remove, true, () => RemoveDropped(slot, title));
+        }
+        return null;
+    }
+
+    /// <summary>Hide an indexed file from Local Files, with Undo.</summary>
+    static void Hide(long id, string title)
+    {
+        if (LocalLibrary.HideFile(id) is not { } path) return;
+        Notify.Say(Strings.LocalFiles.List.Hidden(title), actionLabel: Loc.Get(Strings.LocalFiles.List.Undo), onAction: () => LocalLibrary.UnhideFile(path),
+                   dedupeKey: "local.hide");
+    }
+
+    /// <summary>Take a dropped file's row out of Local Files, with Undo (it goes back where it was).</summary>
+    static void RemoveDropped(int slot, string title)
+    {
+        int at = Playlist.RemoveLocalFile(slot);
+        if (at < 0) return;
+        Notify.Say(Strings.LocalFiles.List.Removed(title), actionLabel: Loc.Get(Strings.LocalFiles.List.Undo), onAction: () => Playlist.RestoreLocalFile(slot, at),
+                   dedupeKey: "local.hide");
     }
 
     /// <summary>The picker's filter: the extensions the scan reads.</summary>
