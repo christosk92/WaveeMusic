@@ -80,6 +80,7 @@ public static partial class Modules
         host.MetadataChanged += OnModuleMetadata;
         Fetch.Register(new ModuleFetchProvider());
         Playback.Audio.ModuleOpen = OpenAudio;             // G-110 / G-021: the module arm of the audio routing table
+        StartTimelineFanOut(host);                         // #154 G2c: `playback/timeline` to enabled observer modules
         InstallVideoTier();                                // G-148: a module `form: video` answer → `VideoSource.Clear`
         for (int i = 0; i < catalog.Rejections.Count; i++)
             Log.Info("module", "rejected " + catalog.Rejections[i].Dir + ": " + catalog.Rejections[i].Reason);
@@ -94,6 +95,7 @@ public static partial class Modules
         if (s_host is not { } host) return;
         Attach(null);
         host.MetadataChanged -= OnModuleMetadata;
+        StopTimelineFanOut();
         host.Dispose();
     }
 
@@ -299,6 +301,8 @@ public static partial class Modules
     public static class ModuleCapabilities
     {
         public const string Playback = "playback", Match = "match", Metadata = "metadata", Fallback = "fallback";
+        /// <summary>The module observes the playback timeline: it receives <c>playback/timeline</c> while it is enabled (#154 G2c).</summary>
+        public const string Timeline = "timeline";
         /// <summary>Host-service permissions ride the capability list under this prefix (one list, one gate).</summary>
         public const string PermissionPrefix = "permission:";
 
@@ -424,7 +428,7 @@ public static partial class Modules
         CancellationTokenSource? _pumpCts;
         ModuleProcessState _state = ModuleProcessState.Stopped;
         string[] _capabilities = [];
-        int _consecutiveFailedStarts, _openStreamLeases, _inFlight, _disposed;
+        int _consecutiveFailedStarts, _leases, _inFlight, _disposed;
         string? _lastError;
         DateTimeOffset _retryNotBefore = DateTimeOffset.MinValue, _lastUsedUtc;
         long _generation;
@@ -523,15 +527,23 @@ public static partial class Modules
             if (c is not null) services.Install(_module, c.Connection);
         }
 
-        /// <summary>A lease that keeps this process out of the idle stop while a byte stream is open.</summary>
-        public IDisposable AcquireStreamLease()
+        /// <summary>A lease that keeps this process out of the idle stop while it holds: an open byte stream (<c>"stream"</c>), an
+        /// enabled timeline observer (<c>"observer"</c>). <paramref name="why"/> names the holder in the log.</summary>
+        public IDisposable AcquireLease(string why)
         {
-            Interlocked.Increment(ref _openStreamLeases);
+            Interlocked.Increment(ref _leases);
             Touch();
-            return new StreamLease(this);
+            Log.Info(_category, "lease acquire why=" + why + " leases=" + Volatile.Read(ref _leases));
+            return new Lease(this, why);
         }
 
-        public bool HasOpenStreams => Volatile.Read(ref _openStreamLeases) > 0;
+        /// <summary>Send a notification, starting the process first when it is not running. Throws what a start throws.</summary>
+        public async Task NotifyAsync<T>(string method, T p, JsonTypeInfo<T> paramsInfo, CancellationToken ct)
+        {
+            IModuleChannel channel = await EnsureReadyAsync(ct).ConfigureAwait(false);
+            channel.Connection.Notify(method, p, paramsInfo);
+            Touch();
+        }
 
         async Task<IModuleChannel> EnsureReadyAsync(CancellationToken ct)
         {
@@ -677,7 +689,7 @@ public static partial class Modules
         {
             bool idle;
             lock (_stateGate)
-                idle = _state == ModuleProcessState.Ready && Volatile.Read(ref _openStreamLeases) == 0
+                idle = _state == ModuleProcessState.Ready && Volatile.Read(ref _leases) == 0
                        && Volatile.Read(ref _inFlight) == 0 && _now() - _lastUsedUtc >= ModuleTimeouts.Idle;
             if (idle) await StopAsync("idle", ct).ConfigureAwait(false);
         }
@@ -791,15 +803,16 @@ public static partial class Modules
             _startGate.Dispose();
         }
 
-        sealed class StreamLease(ModuleProcess owner) : IDisposable
+        sealed class Lease(ModuleProcess owner, string why) : IDisposable
         {
             int _released;
 
             public void Dispose()
             {
                 if (Interlocked.Exchange(ref _released, 1) != 0) return;
-                Interlocked.Decrement(ref owner._openStreamLeases);
+                int left = Interlocked.Decrement(ref owner._leases);
                 owner.Touch();
+                Log.Info(owner._category, "lease release why=" + why + " leases=" + left);
             }
         }
     }
@@ -1389,7 +1402,7 @@ public static partial class Modules
             _knownSize = open.Length is { } len && len > 0 ? len : 0;
             Seekable = open.Seekable;
             ContentType = open.ContentType;
-            _lease = process.AcquireStreamLease();
+            _lease = process.AcquireLease("stream");
         }
 
         public bool Seekable { get; }

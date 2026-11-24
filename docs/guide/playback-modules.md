@@ -155,7 +155,7 @@ looks like.
 | `publisher` | `"wavee"` marks a first-party bundled module; anything else is third-party (untrusted-confirmation on install). |
 | `protocolVersion` | The wire version this module speaks. |
 | `entry` | Executable (publish) or `.dll` (dev) to launch, **relative to the module directory** and never escaping it. |
-| `capabilities` | Declared, not probed: `playback`, `match`, `metadata`, `pages`, `fallback`, `search`, `browse`. `pages` means the module answers `module/page` (see [Pages](#pages)). `search`/`browse` are *declared only* in v1 — a later pass maps them onto `ICatalogSource`/`IOnlineCatalog` through `SourceRegistry`. |
+| `capabilities` | Declared, not probed: `playback`, `match`, `metadata`, `pages`, `fallback`, `timeline`, `search`, `browse`. `timeline` means the module observes playback (`playback/timeline`, [Observer modules](#observer-modules)). `pages` means the module answers `module/page` (see [Pages](#pages)). `search`/`browse` are *declared only* in v1 — a later pass maps them onto `ICatalogSource`/`IOnlineCatalog` through `SourceRegistry`. |
 | `urlPatterns` | Host substrings used as a **cheap prefilter** before a process is spawned. A bare `http(s)` url with no pattern hit is offered to every module that declares `match`, with `fallback` modules (radio) last. |
 | `menu` | Optional row in the profile menu's **Play ▸** submenu: `label` (or `labelLocKey`) plus the dialog's `placeholder`. |
 
@@ -196,6 +196,7 @@ the **same code on both sides** — the app host and `ModuleRunner` share them.
 | host→mod | `module/page` | `{entityId}` → `ModulePageDoc?` — the page for one of the module's entities (capability `pages`); `null` = nothing to show |
 | host→mod | `module/diagnostics` | — → `DiagnosticsReport {sections: [{title, rows: string[][]}]}` |
 | host→mod | `module/action` | `{id}` → `{ok, message?}` |
+| host→mod | `playback/timeline` (notification) | `TimelineState {uri?, title?, artist?, album?, positionMicros, anchorTicks, ticksPerSecond, durationMs, rate, playing, epoch, bpm?, transition?}` — capability `timeline`, enabled observers only ([Observer modules](#observer-modules)) |
 | mod→host | `playback/metadata` (notification) | `{playableId, title?, artists?, artworkUrl?}` — live "now playing" corrections |
 | mod→host | `playback/expired` (notification) | `{playableId}` — the locator died; the host re-resolves |
 | mod→host | `module/status` (notification) | `{state: ready\|needsSetup\|error, message?, actions[]}` — drives the generic setup card |
@@ -207,6 +208,36 @@ the **same code on both sides** — the app host and `ModuleRunner` share them.
 | both | `$/cancelRequest` (notification) | `{id}` — surfaces as the handler's `CancellationToken` |
 
 Every method name is a `const` on `Wavee.Sdk.Protocol.ModuleMethods`, so host and module cannot drift.
+
+### Observer modules
+
+A module that declares `timeline` follows what plays on this PC (a timecode sender, a lighting bridge) through
+`WaveeModule.OnTimelineAsync(TimelineState, ct)`. The host (`Platform/Modules.Timeline.cs`) sends one notification per
+change of the playback timeline (`Playback.Timeline.Changed`: a track, a seek, a pause, a resume, a transition, a new
+duration) and a keepalive once a second while something plays; "nothing plays here" (`uri` null: stopped, or playing on
+another Connect device) is sent once. The notification is an **anchor**, not a position stream: at `anchorTicks` (a
+`Stopwatch.GetTimestamp()` value, one counter for every process on the machine) the playhead was at `positionMicros`,
+moving at `rate` while `playing`, so a module extrapolates locally and the stdio delay drops out:
+
+```csharp
+long now = Stopwatch.GetTimestamp();
+double micros = s.PositionMicros + (s.Playing ? (now - s.AnchorTicks) * 1e6 / s.TicksPerSecond * s.Rate : 0);
+```
+
+`epoch` changes on every discontinuity; the same epoch is the same straight line. `durationMs` is the length the
+player shows (in a mixed playlist the track's effective end, which can change while it plays). `transition` names a
+crossfade or mixed join in flight, its edges in the same ticks, and which item `uri` names during it (`master`).
+
+Only an **enabled** observer receives it: 0.4 has no general per-module switch, and the host asks
+`Modules.TimelineObserverEnabled(id)` (the timecode settings answer for the bundled `wavee.clx`). An enabled observer is
+started by the first state it is sent and holds a lease (`ModuleProcess.AcquireLease("observer")`), so the idle sweep
+leaves it running; turning it off releases the lease and stops the process. An observer sees what the user plays: the
+capability is declared in the manifest so an install prompt can name it.
+
+The first observer is bundled: **`wavee.clx`** (`src/apps/modules/Wavee.Module.Clx`), switched by Settings › Sound › Timecode ›
+Send CLX on the network. It sends the timeline as CLX (github.com/ClockworksTech/CLX-Spec) to `239.0.0.1:3650`, TTL 1: Deck
+`0x01` at 60 Hz with the position extrapolated from the anchor, Meta `0x02` on a change and every 5 s, Control `0x00` once a
+second; its `module/diagnostics` rows count the packets.
 
 There is deliberately **no `host/http/proxy`**: modules own their own network.
 

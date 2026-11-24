@@ -412,6 +412,26 @@ public static partial class Playback
             return new WasapiAudioDevice(format);
         }
 
+        /// <summary>#154: a second output for generated PCM (the LTC output) on <paramref name="endpointId"/>, filled by
+        /// <paramref name="generator"/>. Under the silent endpoint (`--inspect`, `--silent`) it is the paced silent endpoint on the same
+        /// clock as the music's, so the generator and its reader run headless. Not started.</summary>
+        internal static AuxAudioOutput OpenAux(string endpointId, IAuxAudioGenerator generator)
+            => s_forceSilent
+                ? new AuxAudioOutput(static () => NewSilentEndpoint(SilentFormat), generator)
+                : WasapiPcm.CreateAuxOutput(endpointId, generator);
+
+        /// <summary>The render endpoint the music plays on, or null when it plays on none (`--fake`'s silent voice, the silent endpoint):
+        /// the chosen output, else the Windows default as the roster names it. Any thread; no device call.</summary>
+        internal static string? MusicEndpointId()
+        {
+            if (s_forceSilent || Platform.Args.Fake) return null;
+            string chosen = Platform.Settings.Get(Platform.Keys.OutputDeviceId);
+            if (chosen.Length > 0) return chosen;
+            foreach (LocalAudioDevice d in Devices.Peek())
+                if (d.IsDefault) return d.Id;
+            return null;
+        }
+
         /// <summary>A default-device change concerns the session unless it plays on the chosen output.</summary>
         static bool FollowsDefault() => !s_onTarget;
 
@@ -721,10 +741,10 @@ public static partial class Playback
         const int HeadlessPaceCapacityMs = 2000;
 
         /// <summary>The paced silent endpoint for <paramref name="format"/>: on the wall clock, or on <see cref="SilentPaceQpc"/> where the headless host set it
-        /// (its played count stamped on the wall clock still, the domain the session's projection extrapolates on).</summary>
+        /// (its played count stamped on that clock, which it also reports as the session's timebase, so the projection and the timeline tap extrapolate on it).</summary>
         static PacedSilentEndpoint NewSilentEndpoint(MixFormat format)
             => SilentPaceQpc is { } pace
-                ? new PacedSilentEndpoint(format, HeadlessPaceCapacityMs, pace, System.Diagnostics.Stopwatch.Frequency, wallStamps: true)
+                ? new PacedSilentEndpoint(format, HeadlessPaceCapacityMs, pace, System.Diagnostics.Stopwatch.Frequency, framePaced: true)
                 : new PacedSilentEndpoint(format);
 
         /// <summary>The silent backend: the same `PcmAudioPlayer` and RT feed shape `WasapiPcm.CreateBackend` builds, over
@@ -762,6 +782,7 @@ public static partial class Playback
         public static void Shutdown()
         {
             s_disposed = true;
+            TimecodeOutput.Close();
             StopTicker();
             try { s_ticker?.Dispose(); } catch { }
             s_ticker = null;
@@ -784,6 +805,7 @@ public static partial class Playback
             // A fake playable has no bytes and plays through the silent voice: it needs the DSP seed, never a device. A real
             // one boots the backend as the load's own first step, on the chain (G-124).
             SeedOnce();
+            TimecodeOutput.ApplyOnce();                                         // #154: the saved LTC output opens with the first load
             Crash.Trail.Note(Crash.AppTrail.TrackStart, (long)kind, fromMs);   // the crash trail: no ids, no titles
             long asked = System.Diagnostics.Stopwatch.GetTimestamp();
             Interlocked.Exchange(ref s_loadStartedTicks, asked);
@@ -1242,6 +1264,7 @@ public static partial class Playback
                 }
             }
             if (pcm is not null) ArmSwitchLine(pcm, pcm.AdoptedOutput ? 0 : 1);
+            PublishTimelineIdentity();
 
             try { player.SetVolume(Applied()); player.SetMuted(Muted.Peek()); player.SetRate(RateFor(s_id)); } catch { }
 
@@ -1319,6 +1342,7 @@ public static partial class Playback
                 s_clockStale = false;
             }
             ArmSwitchLine(session, reopened: -1);   // a silent session has no device to keep or reopen
+            PublishTimelineIdentity();
             Post(Input.Duration((int)Math.Min(durMs, int.MaxValue), epoch));
             bool play;
             lock (s_gate) play = s_playIntent;
@@ -1448,6 +1472,7 @@ public static partial class Playback
                 s_lastState = PlaybackState.Idle;
                 if (session is not null) { summary = RetireXruns(session); summaryTrack = s_id; }
             }
+            PublishTimelineIdentity();
             if (session is not null)
             {
                 LogSessionSummary(in summary, summaryTrack);
@@ -3312,6 +3337,7 @@ public static partial class Playback
                 NoteBakedFactor(id, s_prepDecoder, in s_prepOpened);       // V-PA15: what the joining voice's decoder folded
                 s_joinExact = exact;
                 s_joinFadeMs = fadeFrames > 0 ? (int)(fadeFrames * 1000L / rate) : 0;
+                s_joinFadeFrames = fadeFrames;
                 s_joinOutgoingVoiceId = s_activePrimaryId;
                 s_joinPending = true;
                 s_joinFrame = join;
@@ -3363,12 +3389,16 @@ public static partial class Playback
             long totalFrames;
             uint outgoing;
             EntityId joined;
+            long fadeStart, fadeFrames;
             lock (s_gate)
             {
                 if (s_joinFadeMs > 0) Interlocked.Increment(ref s_mCrossfades);
                 else if (s_joinExact) Interlocked.Increment(ref s_mGaplessExact);
                 else Interlocked.Increment(ref s_mGaplessDegraded);
+                fadeStart = s_joinFrame;
+                fadeFrames = s_joinFadeFrames;
                 s_joinFadeMs = 0;
+                s_joinFadeFrames = 0;
                 voice = s_joinVoice;
                 totalFrames = s_joinTotalFrames;
                 outgoing = s_loadEpoch;
@@ -3400,6 +3430,10 @@ public static partial class Playback
                 try { sess.SetActiveVoice(s_activePrimaryId, voice, TimeSpan.FromMilliseconds(s_activeDurMs), totalFrames); }
                 catch (Exception ex) { Log.Warn("audio", "set active voice failed", ex); }
             }
+            // D6: the join names the incoming track from its first frame; a crossfade's tap carries the fade as a transition
+            // (the scheduled fade starts on the join frame, so identity and transition start together).
+            PublishTimelineIdentity();
+            if (fadeFrames > 0) Timeline.SetTransition(joined, fadeStart, fadeStart + fadeFrames, Timeline.Master.Incoming);
             PromoteLiveBody();
             PostHandedOff(outgoing, joined, 0);
         }
@@ -3429,6 +3463,7 @@ public static partial class Playback
                 voiceId = s_joinVoiceId;
                 outgoingFaded = s_joinFadeMs > 0 ? s_joinOutgoingVoiceId : 0;
                 s_joinFadeMs = 0;
+                s_joinFadeFrames = 0;
                 bytes = s_joinBytes;
                 s_joinBytes = null;
                 s_joinDecoder = null;
@@ -3738,6 +3773,7 @@ public static partial class Playback
                 joinLost = s_joinLostBySeek;
                 s_joinLostBySeek = false;
             }
+            PublishTimelineIdentity();
             if (t0 != 0) RecordSeek(requestedMs, t0, before);
             uint stamp = epoch == 0 ? s_loadEpoch : epoch;
             if (joinLost) Post(Input.PrepareLost(stamp));
@@ -3819,6 +3855,7 @@ public static partial class Playback
                 return false;
             }
             LogSessionSummary(in summary, summaryTrack);
+            PublishTimelineIdentity();
             try { fresh.SetMuted(Muted.Peek()); } catch { }
             try { await old.DisposeAsync().ConfigureAwait(false); } catch { }
             if (play) { try { await fresh.PlayAsync().ConfigureAwait(false); } catch { } }
@@ -3845,6 +3882,26 @@ public static partial class Playback
         {
             try { Volatile.Read(ref s_player)?.SetRate(rate); }
             catch (Exception ex) { Log.Warn("audio", "speed change failed", ex); }
+        }
+
+        /// <summary>Publish the live identity into the timeline tap (#154 G2a): the session, the playing id, where it started on the
+        /// session clock and its length, read together under <c>s_gate</c> and published outside it (a <c>Changed</c> handler never
+        /// runs under the pump's lock). Episodes read the source domain, as <see cref="ActivePositionMs"/> does.</summary>
+        static void PublishTimelineIdentity()
+        {
+            PcmAudioSession? sess;
+            EntityId id;
+            long startMs, durMs;
+            bool sourceDomain;
+            lock (s_gate)
+            {
+                sess = s_clockStale ? null : s_session;
+                id = s_id;
+                startMs = s_activeStartMs;
+                durMs = s_activeDurMs;
+                sourceDomain = s_id.Kind == EntityKind.Episode && !s_silent;
+            }
+            Timeline.PublishIdentity(sess, id, startMs, durMs, sourceDomain);
         }
 
         static long ActivePositionMs()
@@ -3878,6 +3935,7 @@ public static partial class Playback
         static void TickCore()
         {
             if (s_disposed) { StopTicker(); return; }
+            Timeline.Poll();
             MediaPlayer? p = Volatile.Read(ref s_player);
             PcmAudioSession? sess;
             uint epoch, gen;
@@ -4840,7 +4898,7 @@ public static partial class Playback
         /// any other finite buffered sink and read empty once its content has drained and nothing further arrives — the
         /// engine's <c>Ended</c> gate (mixer drained AND <c>WritableFrames &gt;= CapacityFrames</c>) then opens on its
         /// own, the same way it does for a real device.</para></summary>
-        public sealed class PacedSilentEndpoint : IAudioEndpoint, IBufferedAudioSink, IAudioClockSource
+        public sealed class PacedSilentEndpoint : IAudioEndpoint, IBufferedAudioSink, IAudioClockSource, IAudioTimebase
         {
             /// <summary>The buffer a WASAPI shared-mode client gets by default, and what the feed's sizing assumes.</summary>
             public const int DefaultCapacityMs = 100;
@@ -4848,7 +4906,7 @@ public static partial class Playback
             readonly Lock _gate = new();
             readonly Func<long> _now;
             readonly long _ticksPerSecond;
-            readonly bool _wallStamps;
+            readonly bool _framePaced;
             long _written, _played, _lastTicks;
             bool _started;
 
@@ -4856,12 +4914,13 @@ public static partial class Playback
             /// <param name="capacityMs">The buffer, in milliseconds of audio.</param>
             /// <param name="clock">The monotonic clock in <paramref name="ticksPerSecond"/> units; the
             /// <see cref="System.Diagnostics.Stopwatch"/> by default. Tests pass a manual one.</param>
-            /// <param name="wallStamps">Stamp the played count with the WALL clock at the read rather than the pace clock: a pace clock in another epoch (the
-            /// headless frame clock) must not reach the session's projection, which extrapolates from the stamp on the wall clock.</param>
+            /// <param name="framePaced">The pace clock is not the wall clock (the headless frame clock, which moves only as frames run): the feed polls
+            /// rather than sleeping on a wait computed from the sample rate. The played count is stamped on the pace clock either way, and the endpoint
+            /// reports that clock as the session's <see cref="IAudioTimebase"/>, so the projection and the timeline tap never mix it with the wall clock.</param>
             public PacedSilentEndpoint(MixFormat format, int capacityMs = DefaultCapacityMs, Func<long>? clock = null,
-                long ticksPerSecond = 0, bool wallStamps = false)
+                long ticksPerSecond = 0, bool framePaced = false)
             {
-                _wallStamps = wallStamps && clock is not null;
+                _framePaced = framePaced && clock is not null;
                 Format = format;
                 CapacityFrames = Math.Max(1, (int)((long)Math.Max(1, format.SampleRate) * Math.Max(1, capacityMs) / 1000));
                 if (clock is null) _now = System.Diagnostics.Stopwatch.GetTimestamp;
@@ -4876,6 +4935,8 @@ public static partial class Playback
             public int CapacityFrames { get; }
             public int MixRate => Format.SampleRate;
             public long StreamLatencyFrames => 0;
+            /// <summary>The pace clock in 100 ns: the domain the played count is stamped in, and so the session's "now".</summary>
+            public long NowTicks100ns => (long)(_now() * (1e7 / _ticksPerSecond));
             public long WrittenFrames { get { lock (_gate) return _written; } }
             /// <summary>Frames queued and not yet "played".</summary>
             public int PaddingFrames { get { lock (_gate) { AdvanceLocked(); return (int)(_written - _played); } } }
@@ -4932,9 +4993,7 @@ public static partial class Playback
                 {
                     AdvanceLocked();
                     playedFrames = _played;
-                    qpc = _wallStamps
-                        ? (long)(System.Diagnostics.Stopwatch.GetTimestamp() * (1e7 / System.Diagnostics.Stopwatch.Frequency))
-                        : (long)(_lastTicks * (1e7 / _ticksPerSecond));
+                    qpc = (long)(_lastTicks * (1e7 / _ticksPerSecond));
                     return true;
                 }
             }
@@ -4955,7 +5014,7 @@ public static partial class Playback
                     // sample rate cannot follow: the feed polls instead, so the played count never starves while the feed sleeps on a wall-clock guess.
                     waitMs = !_started
                         ? timeoutMs
-                        : writable >= threshold || _wallStamps
+                        : writable >= threshold || _framePaced
                             ? 1
                             : (int)Math.Ceiling((threshold - writable) * 1000.0 / Math.Max(1, Format.SampleRate));
                 }
@@ -5872,6 +5931,7 @@ public static partial class Playback
         // The pending hand-off's fade (0 = a butt-join) and the outgoing voice it fades out, so an abandon can give A its
         // level back (s_gate).
         static int s_joinFadeMs;
+        static long s_joinFadeFrames;              // the same fade in mix frames, for the timeline tap's transition (s_gate)
         static long s_joinOutgoingVoiceId;
 
         /// <summary>Decode-thread: one decoded packet/frame of <paramref name="frames"/> source frames took

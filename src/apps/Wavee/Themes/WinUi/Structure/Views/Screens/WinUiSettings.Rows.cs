@@ -238,7 +238,7 @@ internal static partial class WinUiSettings
     /// <summary>An expander row opens collapsed, except where its switch is on and its items are its settings (crossfade, the equalizer).</summary>
     static bool InitiallyOpen(SettingsBodyRow row) => row.Id switch
     {
-        "playback.crossfade" or "sound.equalizer" => row.Value is true,
+        "playback.crossfade" or "sound.equalizer" or "sound.timecode" => row.Value is true,
         "appearance.theme" => true,
         "storage.music.folders" => true,
         _ => false,
@@ -264,6 +264,9 @@ internal static partial class WinUiSettings
             case "sound.normalization.mode": return NormalizationModeCard(x);
             case "sound.equalizer": return EqualizerCard(x);
             case "sound.outputDevice": return OutputDeviceCard(x);
+            case "sound.timecode.device": return TimecodeDeviceCard(x);
+            case "sound.timecode.level": return TimecodeLevelCard(x);
+            case "sound.timecode.offset": return TimecodeOffsetCard(x);
             // Playback
             case "playback.crossfade": return CrossfadeCard(x);
             case "playback.episodeSpeed": return EpisodeSpeedCard(x);

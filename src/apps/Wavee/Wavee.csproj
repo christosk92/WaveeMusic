@@ -143,6 +143,8 @@
                  Condition="Exists('$(MSBuildProjectDirectory)\..\modules\Wavee.Module.Twitch\Wavee.Module.Twitch.csproj')" />
     <WaveeModule Include="Radio" ModuleId="wavee.radio"
                  Condition="Exists('$(MSBuildProjectDirectory)\..\modules\Wavee.Module.Radio\Wavee.Module.Radio.csproj')" />
+    <WaveeModule Include="Clx" ModuleId="wavee.clx"
+                 Condition="Exists('$(MSBuildProjectDirectory)\..\modules\Wavee.Module.Clx\Wavee.Module.Clx.csproj')" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="@(WaveeModule->'..\modules\Wavee.Module.%(Identity)\Wavee.Module.%(Identity).csproj')"

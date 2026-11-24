@@ -255,6 +255,22 @@ public static partial class Platform
         public static readonly SettingKey<bool> PreviewSound = new("playback.preview.sound", false);
         public static readonly SettingKey<string> OutputDeviceId = new("playback.output.deviceId", "");
         public static readonly SettingKey<string> OutputDeviceName = new("playback.output.deviceName", "");
+        /// <summary>#154: send LTC on a second output while the music plays (Settings > Sound > Timecode). Off by default, and the switch
+        /// is enabled only once <see cref="TimecodeLtcDeviceId"/> names an output.</summary>
+        public static readonly SettingKey<bool> TimecodeLtcEnabled = new("timecode.ltc.enabled", false);
+        /// <summary>The LTC output: a render endpoint id, never the music's output, "" = none chosen (no "Match Windows": LTC on the
+        /// speakers is a loud square wave).</summary>
+        public static readonly SettingKey<string> TimecodeLtcDeviceId = new("timecode.ltc.deviceId", "");
+        /// <summary>The LTC frame rate: 0 = 24, 1 = 25, 2 = 29.97 drop-frame, 3 = 30 (<see cref="LtcRate"/>).</summary>
+        public static readonly SettingKey<int> TimecodeLtcRate = new("timecode.ltc.rate", 3);
+        /// <summary>The hour every track starts at: 0 (00:00:00:00) or 1 (01:00:00:00, the usual show convention).</summary>
+        public static readonly SettingKey<int> TimecodeStartHour = new("timecode.startHour", 1);
+        /// <summary>The LTC level, dBFS (-24..0).</summary>
+        public static readonly SettingKey<int> TimecodeLtcLevelDb = new("timecode.ltc.levelDb", -12);
+        /// <summary>The timecode offset, ms (-500..+500): added to where the music is heard, for a device whose latency is reported wrong.</summary>
+        public static readonly SettingKey<int> TimecodeOffsetMs = new("timecode.offsetMs", 0);
+        /// <summary>#154: run the bundled CLX module (wavee.clx), which sends the playback timeline as CLX on this network.</summary>
+        public static readonly SettingKey<bool> TimecodeClxEnabled = new("timecode.clx.enabled", false);
         public static readonly SettingKey<bool> EqualizerEnabled = new("playback.eq.enabled", false);
         public static readonly SettingKey<string> EqualizerPreset = new("playback.eq.preset", "flat");
         public static readonly SettingKey<string> EqualizerGains = new("playback.eq.gains", "0,0,0,0,0,0,0,0,0,0");

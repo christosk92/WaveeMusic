@@ -1004,6 +1004,28 @@
         "ring": "gedecodeerde ring",
         "far": "netwerkverzoek",
         "disk": "schijfcache"
+      },
+      "timecode": {
+        "title": "Tijdcode",
+        "track": "Nummer",
+        "position": "Positie",
+        "state": "Status",
+        "playing": "Speelt af",
+        "held": "Stilgezet",
+        "transition": "in een overgang naar {track}",
+        "rate": "Snelheid",
+        "epoch": "Epoch",
+        "anchor": "Engine-anker",
+        "outputDelay": "Uitvoervertraging",
+        "publisher": "Publicatie",
+        "publisherValue": "{anchors} ankers · {epochs} epochs · {drift} door drift",
+        "nothing": "Er speelt niets af op deze pc",
+        "ltc": "LTC-uitvoer",
+        "ltcSent": "Verzonden · teruggelezen",
+        "ltcError": "Afwijking · verplaatsingen",
+        "aux": "LTC-apparaat",
+        "auxValue": "{state} · {rate} Hz · {latency} ms vertraging · {underruns} onderlopen",
+        "none": "Verzendt niet"
       }
     }
   },
