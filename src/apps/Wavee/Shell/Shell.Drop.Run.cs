@@ -154,8 +154,11 @@ public static partial class DropAnywhere
             {
                 if (seen >= Cap) { _capped = true; return false; }
                 if (!Playlist.IsLocalAudioFile(path) && !Playlist.IsLocalVideoFile(path)) { Interlocked.Increment(ref _skipped); return true; }
+                // The reader is the judge, not the extension: a damaged or foreign file named .mp3 (or ALAC in an .m4a)
+                // reads as no format Wavee can play, and is counted as skipped instead of queued as a row that cannot play.
+                bool known = LocalTags.TryRead(path, out Spotify.Audio.Format format, out LocalTagSet tags, out _) && format != Spotify.Audio.Format.Unknown;
+                if (!known && !Playlist.IsLocalVideoFile(path)) { Interlocked.Increment(ref _skipped); return true; }
                 seen++;
-                LocalTags.TryRead(path, out _, out LocalTagSet tags, out _);
                 batch.Add((path, tags));
                 if (batch.Count >= BatchRows || !_played && how == DropDeposit.PlayNow)
                 {
