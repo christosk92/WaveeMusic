@@ -19,6 +19,7 @@ using Wavee.Theming.Roles;
 using static FluentGpu.Dsl.Ui;
 
 using L = Wavee.Themes.Common.CommonLocalCollectionRules;
+using K = Wavee.Themes.Common.CommonLocalCollectionRules;   // inside a Component, where `L` is the component's own method
 using P = Wavee.Strings.LocalFiles.Page;
 
 namespace Wavee.Themes.Common;
@@ -737,71 +738,149 @@ internal static partial class CommonLocalCollectionParts
 
     /// <summary>The Folders browser (<paramref name="opened"/> null: the music folders) or an open folder, an album's folder included (board 20): the
     /// breadcrumb from <paramref name="title"/> ("On this PC", or the pivot the album was opened from), the header (the folder's or the album's cover,
-    /// tagged for the flight from its tile, its name and counts), the folders inside as tiles, its own songs.</summary>
-    public static Element FolderBrowser(LocalCollectionView v, LocalOpened? opened, Action<string> open, LocalCollectionVerbs verbs, CommonLocalCollectionLayout lay,
-        float g, string title, string routeKey)
+    /// tagged for the flight from its tile, its name and counts), the folders inside as house cards (or rows), its own songs. With the page's
+    /// <see cref="LocalCollectionPageProps.FolderMenus"/> every folder card, row and the open header's "⋯" carry the folder's menu, and the empty area
+    /// and the breadcrumb the browser's. <paramref name="views"/>: the grid | list pair (the Albums and Artists view code) at the head's end; false
+    /// (Zune) lists the folders as cards only. The pair is the page's own two cells, never the structure's view control with its "⋯" of sizes: an
+    /// open folder's "⋯" stands in the same row, and two "⋯" side by side read as one menu twice.</summary>
+    public static Element FolderBrowser(LocalCollectionView v, LocalOpened? opened, LocalCollectionPageProps p, CommonLocalCollectionLayout lay, float g, string title,
+        bool views = false)
+        => Embed.Comp(new FolderProps(v, opened, p, lay, g, title, views), static () => new FolderHost()) with { Key = "lc-folders-host" };
+
+    sealed record FolderProps(LocalCollectionView View, LocalOpened? Opened, LocalCollectionPageProps Page, CommonLocalCollectionLayout Lay, float Gutter, string Title,
+        bool Views);
+
+    /// <summary>The browser's host: reads the view code (a grid | list pick re-renders the browser alone), holds the folder a detail shows while a
+    /// rename or a delete re-keys it (the fold lists the new key a moment later: the detail never falls back to the music folders meanwhile), and
+    /// attaches the empty area's menu.</summary>
+    sealed class FolderHost : Component
     {
-        string folder = opened?.Folder ?? "";
-        LocalFolderNode? node = folder.Length > 0 && v.Folders.TryGetValue(folder, out var n) ? n : null;
-        IReadOnlyList<string> childKeys = node?.Children ?? v.RootKeys;
-        var children = new List<LocalFolderNode>(childKeys.Count);
-        foreach (string k in childKeys) if (v.Folders.TryGetValue(k, out var c)) children.Add(c);
-        var files = node?.Files ?? [];
+        LocalFolderNode? _held;
 
-        // The breadcrumb: On this PC › the music folder › … › this folder; an album's folder starts at the pivot it was opened from (Albums ›
-        // the album's folder › …).
-        var trail = new List<(string Label, string Key)> { (title, "") };
-        var chain = new List<LocalFolderNode>();
-        string root = opened?.Root ?? "";
-        for (var at = node; at is not null; at = at.Key != root && at.ParentKey is { } pk && v.Folders.TryGetValue(pk, out var up) ? up : null) chain.Add(at);
-        for (int i = chain.Count - 1; i >= 0; i--) trail.Add((chain[i].Name, chain[i].Key));
-        var labels = new string[trail.Count];
-        for (int i = 0; i < labels.Length; i++) labels[i] = trail[i].Label;
-        Element crumbs = BreadcrumbBar.Create(labels, i => { if ((uint)i < (uint)trail.Count) open(trail[i].Key); }, size: ControlSize.Large);
-
-        int songs = node?.Songs ?? v.Songs;
-        long length = node?.DurationMs ?? v.DurationMs;
-        // An open folder with no folders inside leaves the "0 folders" out; the music folders' row always counts them.
-        string meta = (node is null || children.Count > 0 ? P.Folders(children.Count) + " · " : "") + P.Songs(songs) + " · " + Length(length);
-        // An open folder states its counts in its header; the music folders' row keeps them beside the breadcrumb.
-        var headKids = new List<Element>(5) { new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, Children = [crumbs] } };
-        if (node is null) headKids.Add(Ell(Meta(meta)));
-        headKids.Add(Spacer());
-        if (node is not null)
+        public override Element Render()
         {
-            string key = node.Key;
-            headKids.Add(Button.Create(Loc.Get(P.PlayFolder), () => verbs.PlayFolder(key), ButtonAppearance.Accent, glyph: Icons.Play, isEnabled: songs > 0));
-            headKids.Add(Button.Create(Loc.Get(P.Shuffle), () => verbs.ShuffleFolder(key), ButtonAppearance.Standard, glyph: Icons.Shuffle, isEnabled: songs > 0));
+            var fp = UseProps<FolderProps>();
+            var overlay = UseContext(Overlay.Service);
+            var p = fp.Page;
+            var v = fp.View;
+            var opened = fp.Opened;
+            var lay = fp.Lay;
+            float g = fp.Gutter;
+            int code = fp.Views ? Math.Clamp(p.ListView().Value, 0, 3) : 3;
+            int size = fp.Views ? Math.Clamp(p.ListSize().Value, 0, K.GridScale.Length - 1) : 1;
+            var menus = Controls.IsNullOverlay(overlay) ? null : p.FolderMenus;
+            Action<string> open = p.OpenFolder;
+            var verbs = p.Verbs;
+
+            string folder = opened?.Folder ?? "";
+            LocalFolderNode? node = folder.Length > 0 && v.Folders.TryGetValue(folder, out var n) ? n : null;
+            if (node is null && folder.Length > 0 && _held is { } held && held.Key == folder) node = held;
+            _held = node;
+            IReadOnlyList<string> childKeys = node?.Children ?? v.RootKeys;
+            var children = new List<LocalFolderNode>(childKeys.Count);
+            foreach (string k in childKeys) if (v.Folders.TryGetValue(k, out var c)) children.Add(c);
+            var files = node?.Files ?? [];
+
+            // The breadcrumb: On this PC › the music folder › … › this folder; an album's folder starts at the pivot it was opened from (Albums ›
+            // the album's folder › …).
+            var trail = new List<(string Label, string Key)> { (fp.Title, "") };
+            var chain = new List<LocalFolderNode>();
+            string root = opened?.Root ?? "";
+            for (var at = node; at is not null; at = at.Key != root && at.ParentKey is { } pk && v.Folders.TryGetValue(pk, out var up) ? up : null) chain.Add(at);
+            for (int i = chain.Count - 1; i >= 0; i--) trail.Add((chain[i].Name, chain[i].Key));
+            var labels = new string[trail.Count];
+            for (int i = 0; i < labels.Length; i++) labels[i] = trail[i].Label;
+            Element crumbs = BreadcrumbBar.Create(labels, i => { if ((uint)i < (uint)trail.Count) open(trail[i].Key); }, size: ControlSize.Large);
+
+            int songs = node?.Songs ?? v.Songs;
+            long length = node?.DurationMs ?? v.DurationMs;
+            // An open folder with no folders inside leaves the "0 folders" out; the music folders' row always counts them.
+            string meta = (node is null || children.Count > 0 ? P.Folders(children.Count) + " · " : "") + P.Songs(songs) + " · " + Length(length);
+
+            // The head: the breadcrumb (and the music folders' counts), then an open folder's Play, Shuffle and "⋯", then the view pair. Beside the
+            // breadcrumb where the head docks its actions beside the title; under it at Compact (a row of its own, so nothing wraps over the list).
+            var lead = new List<Element>(2) { new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, Children = [crumbs] } };
+            if (node is null) lead.Add(Ell(Meta(meta)));
+            var acts = new List<Element>(4);
+            float h = lay.ControlH;
+            var buttonSize = lay.Tier == WidthTier.Compact ? ControlSize.Large : ControlSize.Medium;
+            if (node is not null)
+            {
+                string key = node.Key;
+                acts.Add(Button.Create(Loc.Get(P.PlayFolder), () => verbs.PlayFolder(key), ButtonAppearance.Accent, buttonSize, glyph: Icons.Play, isEnabled: songs > 0));
+                acts.Add(Button.Create(Loc.Get(P.Shuffle), () => verbs.ShuffleFolder(key), ButtonAppearance.Standard, buttonSize, glyph: Icons.Shuffle, isEnabled: songs > 0));
+                if (menus is not null) acts.Add(HeadMore(overlay!, () => menus.Folder(key, true), h));
+            }
+            if (fp.Views) acts.Add(Embed.Comp(new ViewPairProps(p.ListView(), h), static () => new ViewPair()) with { Key = "lc-folder-view" });
+            bool stacked = !lay.ActionsBeside && acts.Count > 0;
+            BoxEl headBox = stacked
+                ? new BoxEl
+                {
+                    Key = "lc-folder-head", Direction = 1, Gap = K.ToolbarGap, MinWidth = 0f,
+                    Children =
+                    [
+                        new BoxEl { Direction = 0, Gap = K.ThumbGap, AlignItems = FlexAlign.Center, Height = K.SortRowH, MinWidth = 0f, Children = lead.ToArray() },
+                        new BoxEl { Direction = 0, Gap = K.ActionGap, AlignItems = FlexAlign.Center, Height = h, MinWidth = 0f, Children = node is null ? [Spacer(), .. acts] : acts.ToArray() },
+                    ],
+                }
+                : new BoxEl
+                {
+                    Key = "lc-folder-head", Direction = 0, Gap = K.ThumbGap, AlignItems = FlexAlign.Center, Height = K.SortRowH, MinWidth = 0f,
+                    Children = [.. lead, Spacer(), new BoxEl { Direction = 0, Gap = K.ActionGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = acts.ToArray() }],
+                };
+            // The breadcrumb's menu is the empty area's (Add a music folder, New folder inside, Rescan, Show in File Explorer, the view).
+            if (menus is not null) headBox = ContextSheets.Attach(headBox, overlay!, () => menus.Area(folder, fp.Views));
+            Element head = Gut("lc-folder-head", g, headBox, top: K.CompactTop, bottom: K.CompactTop);
+            float headH = 2f * K.CompactTop + (stacked ? K.SortRowH + K.ToolbarGap + h : K.SortRowH);
+            Element? header = node is null ? null : DetailHeader(v, opened!, node, meta, lay, g);
+            Element songsHead = Gut("lc-songs-head", g, new BoxEl
+            {
+                Direction = 0, Gap = K.ThumbGap, AlignItems = FlexAlign.Center, Height = K.SortRowH, MinWidth = 0f,
+                Children = [Heading(Loc.Get(P.SongsHere)), Ell(Meta(P.Songs(files.Count) + " · " + Length(node?.DurationHereMs ?? 0)))],
+            });
+            bool grid = code >= 2, compact = code is 0 or 2;
+            // Keyed by what it shows, never by the fold's version: a fold that lands while a card is pressed (a rescan after a disk verb, the watcher)
+            // re-renders the rows in place, so the press and its release meet the same card (a remount between them lost the click or the menu).
+            Element list = Measured(K.FoldersKey + ":" + (folder.Length == 0 ? "top" : folder) + ":" + code + ":" + size + ":" + (stacked ? "s" : "w"), w =>
+            {
+                int cols = 1;
+                float cell = 0f, itemH;
+                if (grid)
+                {
+                    (cols, cell) = Columns(w, g, lay.WallMin * K.GridScale[size], lay.CardGap);
+                    itemH = SurfaceGeometry.ShelfHeight(cell, 1f, compact ? 0 : 1, false, flush: true) + lay.CardGap;
+                }
+                else itemH = compact ? K.CompactRowH : K.RowH;
+                int tileRows = grid ? (children.Count + cols - 1) / cols : children.Count;
+                int tilesAt = header is null ? 1 : 2;
+                int songsAt = tilesAt + tileRows;
+                int rows = songsAt + (files.Count > 0 ? 1 + files.Count : 0);
+                return (rows,
+                    i => i == 0 ? headH : i < tilesAt ? lay.DetailCover + K.DetailBottom : i < songsAt ? itemH : i == songsAt ? K.SortRowH : K.SongRowH,
+                    i => i == 0 ? head
+                        : i < tilesAt ? header!
+                        : i < songsAt
+                            ? grid ? CardRow((i - tilesAt) * cols, children.Count, cols, lay.CardGap, g, k => FolderCard(children[k], cell, open, verbs, menus, compact))
+                                   : Gut("lc-folder-row", MathF.Max(0f, g - SurfaceGeometry.RowPad), FolderRow(children[i - tilesAt], open, verbs, menus, compact))
+                        : i == songsAt ? songsHead
+                        : SongRow(files[i - songsAt - 1], g, lay.FileColumn, verbs));
+            }, p.RouteKey + ":folders:" + folder);
+            var body = new BoxEl { Key = "lc-folders-area", Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Children = [list] };
+            // The empty area (between and under the cards, beside the songs) opens the browser's menu; a card's own menu wins where it stands.
+            return menus is null ? body : ContextSheets.Attach(body, overlay!, () => menus.Area(folder, fp.Views));
         }
-        Element head = Gut("lc-folder-head", g, new BoxEl
-        {
-            Key = "lc-folder-head", Direction = 0, Gap = L.ThumbGap, AlignItems = FlexAlign.Center, Wrap = true, MinWidth = 0f,
-
-            Children = headKids.ToArray(),
-        }, top: L.CompactTop, bottom: L.CompactTop);
-        Element? header = node is null ? null : DetailHeader(v, opened!, node, meta, lay, g);
-        Element songsHead = Gut("lc-songs-head", g, new BoxEl
-        {
-            Direction = 0, Gap = L.ThumbGap, AlignItems = FlexAlign.Center, Height = L.SortRowH, MinWidth = 0f,
-            Children = [Heading(Loc.Get(P.SongsHere)), Ell(Meta(P.Songs(files.Count) + " · " + Length(node?.DurationHereMs ?? 0)))],
-        });
-        return Measured(L.FoldersKey + ":" + v.Version + ":" + (folder.Length == 0 ? "top" : folder), w =>
-        {
-            var (cols, cell) = Columns(w, g, lay.WallMin, lay.CardGap);
-            int tileRows = (children.Count + cols - 1) / cols;
-            float tileH = cell + L.CardTextGap + L.CardTextH + lay.CardGap;
-            int tilesAt = header is null ? 1 : 2;
-            int songsAt = tilesAt + tileRows;
-            int rows = songsAt + (files.Count > 0 ? 1 + files.Count : 0);
-            return (rows,
-                i => i == 0 ? L.SortRowH + 2f * L.CompactTop : i < tilesAt ? lay.DetailCover + L.DetailBottom : i < songsAt ? tileH : i == songsAt ? L.SortRowH : L.SongRowH,
-                i => i == 0 ? head
-                    : i < tilesAt ? header!
-                    : i < songsAt ? CardRow((i - tilesAt) * cols, children.Count, cols, lay.CardGap, g, k => FolderTile(children[k], cell, open, verbs))
-                    : i == songsAt ? songsHead
-                    : SongRow(files[i - songsAt - 1], g, lay.FileColumn, verbs));
-        }, routeKey + ":folders:" + folder);
     }
+
+    static readonly ContextMenuOptions s_moreMenu = new()
+    {
+        PointerPlacement = FlyoutPlacement.BottomEdgeAlignedRight,
+        KeyboardPlacement = FlyoutPlacement.BottomEdgeAlignedRight,
+    };
+
+    /// <summary>The open folder's "⋯" beside its Play and Shuffle: the house icon action at the head's control height, its flyout the folder's menu.</summary>
+    static Element HeadMore(IOverlayService overlay, Func<ContextMenuModel?> menu, float h)
+        => ToolTip.Wrap(ContextSheets.Attach(Controls.IconAction(Icons.More, null, requestsContext: true, size: h) with { Key = "lc-folder-more" }, overlay, menu, s_moreMenu),
+            Loc.Get(Strings.Common.More));
 
     /// <summary>The header of an open folder (under the breadcrumb): its picture (the album's cover at the root an album card opened), tagged with
     /// the flight key of the tile that opens it (<see cref="LocalOpened.HeaderTile"/>), so that cover flies in here and back; its name over its
@@ -863,51 +942,81 @@ internal static partial class CommonLocalCollectionParts
         };
     }
 
-    static Element FolderTile(LocalFolderNode f, float w, Action<string> open, LocalCollectionVerbs verbs)
+    /// <summary>A folder card or row's surface data: its name over its counts, it opens on a click (Enter on the keyboard), its play disc plays it, and
+    /// its "⋯" and a right-click open the folder's menu (<see cref="LocalFolderMenus.Folder"/>).</summary>
+    static Controls.CardData FolderData(LocalFolderNode f, Action<string> open, LocalCollectionVerbs v, LocalFolderMenus? menus, bool second, Element cover)
     {
         string key = f.Key;
-        // The folder's picture (FolderArt). The small folder badge marks a picture as a folder's; the glyph tile already is one, so it carries no
-        // badge (it drew the folder twice). The picture flies into the folder's header when the tile opens it (LocalOpened.FolderTile).
-        Element art = FolderArt(f, w, LocalOpened.FolderTile(key), out bool pictured);
-        var meta = new List<Element>(2) { Ell(Meta(P.Songs(f.Songs) + " · " + Length(f.DurationMs))) };
-        if (f.Quality.Length > 0)
-            meta.Add(new BoxEl
-            {
-                Height = L.PillH, Padding = new Edges4(L.PillPadX, 0f, L.PillPadX, 0f), AlignItems = FlexAlign.Center, Shrink = 0f,
-                Corners = R.Shape.All(ShapeRole.Control), BorderWidth = L.ChipBorder, BorderColor = Tok.StrokeControlDefault,
-                Children = [R.Type.MicroMeta(f.Quality) with { Color = Tok.TextSecondary }],
-            });
-        Element picture = pictured
-            ? new BoxEl
-            {
-                ZStack = true, Width = w, Height = w, Layout = L.SizeReflow,
-                Children =
-                [
-                    art,
-                    Corner(new BoxEl
-                    {
-                        Width = L.ChipH, Height = L.ChipH, Shrink = 0f,
-                        Corners = R.Shape.All(ShapeRole.Control), Fill = Tok.FillSolidBase with { A = 0.82f }, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-                        Children = [Icon(Icons.Folder, L.ChipGlyph, Tok.TextPrimary)],
-                    }, bottom: true, end: false, L.PillInset),
-                ],
-            }
-            : new BoxEl { ZStack = true, Width = w, Height = w, Layout = L.SizeReflow, Children = [art] };
-        Element tile = new BoxEl
+        string line = f.Songs > 0
+            ? P.Songs(f.Songs) + " · " + Length(f.DurationMs) + (f.Quality.Length > 0 ? " · " + f.Quality : "")
+            : f.Children.Count > 0 ? P.Folders(f.Children.Count) : Loc.Get(Strings.LocalFiles.Folders.EmptyFolder);
+        return new Controls.CardData("wavee:local:folder:" + key, f.Name, second ? Second(line) : null, null, () => open(key),
+            f.Songs > 0 ? () => v.PlayFolder(key) : null, ShowMenu: menus is not null)
         {
-            Key = "lc-folder:" + key, Direction = 1, Width = w, Shrink = 0f, Gap = L.CardTextGap, Cursor = CursorId.Hand, OnClick = () => open(key), Layout = L.SizeReflow,
-            Children =
-            [
-                picture,
-                new BoxEl
-                {
-                    Direction = 1, Height = L.CardTextH, MinWidth = 0f,
-                    // The folder's NAME ("Music"); its full path is the tooltip.
-                    Children = [Ell(R.Type.CardTitle(f.Name) with { Color = Tok.TextPrimary }), new BoxEl { Direction = 0, Gap = L.ChipInner, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = meta.ToArray() }],
-                },
-            ],
+            CoverOverride = cover,
+            Menu = menus is null ? null : () => menus.Folder(key, false),
         };
-        return f.Path.Length > 0 ? ToolTip.Wrap(tile, f.Path) : tile;
+    }
+
+    /// <summary>A folder as the house card (the album wall's card: the plate, its hover and press, the play disc, the "⋯"): its picture filling the
+    /// cover (<see cref="FolderCover"/>), its full path the tooltip.</summary>
+    static Element FolderCard(LocalFolderNode f, float w, Action<string> open, LocalCollectionVerbs v, LocalFolderMenus? menus, bool compact)
+    {
+        // A tier crossing changes the cell: the card eases to its new size and place (the wall's reflow), so the row under it rides it.
+        Element card = Controls.Surface(FolderData(f, open, v, menus, !compact, FolderCover(f, w)), Shape.Shelf(compact ? 0 : 1) with { Flush = true }, w)
+            with { Key = "lc-folder:" + f.Key, Layout = L.CardReflow };
+        return f.Path.Length > 0 ? ToolTip.Wrap(card, f.Path) with { Key = "lc-folder-tip:" + f.Key } : card;
+    }
+
+    /// <summary>A folder as the house media row (the library's list row): the folder's picture at the row's art.</summary>
+    static Element FolderRow(LocalFolderNode f, Action<string> open, LocalCollectionVerbs v, LocalFolderMenus? menus, bool compact)
+    {
+        float edge = compact ? L.CompactRowArt : L.RowArt;
+        Element art = new BoxEl { Width = edge, Height = edge, Shrink = 0f, Children = [FolderArt(f, edge, LocalOpened.FolderTile(f.Key), out _)] };
+        return Controls.Surface(FolderData(f, open, v, menus, !compact, art), RowShape(compact)) with { Key = "lc-folder:" + f.Key };
+    }
+
+    /// <summary>A folder card's picture, filling the cover box the structure gives it: its own cover or folder image, else a 2 x 2 mosaic of the covers
+    /// inside, else the folder glyph; a picture wears the small folder badge (the glyph already is one). Tagged for the flight into the folder's
+    /// header (<see cref="LocalOpened.FolderTile"/>: a cover is the picture end, a mosaic or the glyph flies whole).</summary>
+    static Element FolderCover(LocalFolderNode f, float edge)
+    {
+        string flight = LocalOpened.FolderTile(f.Key);
+        string? picture = f.Cover ?? (f.Mosaic.Count == 1 ? f.Mosaic[0] : null);
+        var kids = new List<Element>(3);
+        bool pictured = true;
+        if (picture is not null) kids.AddRange(CardArt(picture, edge, Radii.Card, flight));
+        else if (f.Mosaic.Count >= 2)
+        {
+            var cells = new Element[2];
+            for (int r = 0; r < 2; r++)
+                cells[r] = new BoxEl
+                {
+                    Direction = 0, Grow = 1f, Basis = 0f, MinHeight = 0f,
+                    Children =
+                    [
+                        new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [Controls.CoverFill(f.Mosaic[(2 * r) % f.Mosaic.Count], 0f, L.MosaicDecode)] },
+                        new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [Controls.CoverFill(f.Mosaic[(2 * r + 1) % f.Mosaic.Count], 0f, L.MosaicDecode)] },
+                    ],
+                };
+            kids.Add(new BoxEl { Direction = 1, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Card), Children = cells });
+        }
+        else
+        {
+            pictured = false;
+            kids.Add(new BoxEl
+            {
+                Corners = CornerRadius4.All(Radii.Card), Fill = Design.WatchedPlaceholder(null), BorderWidth = L.ChipBorder, BorderColor = Tok.StrokeCardDefault,
+                Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Children = [Icon(Icons.Folder, L.FolderGlyph, Tok.TextTertiary)],
+            });
+        }
+        if (pictured)
+            kids.Add(Corner(new BoxEl
+            {
+                Width = L.ChipH, Height = L.ChipH, Shrink = 0f, Corners = R.Shape.All(ShapeRole.Control), Fill = Tok.FillSolidBase with { A = 0.82f },
+                Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Children = [Icon(Icons.Folder, L.ChipGlyph, Tok.TextPrimary)],
+            }, bottom: true, end: false, L.PillInset));
+        return new BoxEl { ZStack = true, MorphId = picture is null ? Design.MorphKeys.Whole(flight) : null, Children = kids.ToArray() };
     }
 
     static Element SongRow(LocalSongItem s, float g, bool fileColumn, LocalCollectionVerbs verbs)

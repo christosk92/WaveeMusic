@@ -445,6 +445,8 @@ public static partial class Diagnostics
                     return Perf(id, name, a);   // on needs a mount; report and off read what was recorded
                 case Inspect.Verb.LocalScan:
                     return LocalScanVerb(id, name, a);   // a private index; needs no mount
+                case Inspect.Verb.LocalIndex:
+                    return LocalIndexVerb(id, name, a);   // reads the app's index; needs no mount
                 case Inspect.Verb.Nudge:
                     return Nudge(id, name, a);   // fixtures need no mount; fire, tick, refresh and expectCard say so when unmounted
                 case Inspect.Verb.Timecode:

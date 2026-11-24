@@ -19,6 +19,7 @@
 // line and its toast, and the "N new songs" pill (S5) are the Local Files list's own (`LocalFilesList`), hosted here unchanged.
 
 using System.Runtime.InteropServices;
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
@@ -93,6 +94,11 @@ public static partial class LocalCollectionPage
         readonly Action _refold, _settle, _publishChrome, _withdrawChrome, _watchScan;
         bool _sawFirstScan;
         PageChromeSink _sink = PageChromeSink.None;
+        IOverlayService? _overlay;
+        readonly FolderVerbs _folders;
+        // A renamed folder whose open detail follows it once the fold lists the new key (old key, new key).
+        (string From, string To)? _renamed;
+        readonly Action _followRename;
         PageChromeRow? _chromeRow;
         LocalCollectionPageProps? _props;
         string _routeKey = "";
@@ -164,12 +170,16 @@ public static partial class LocalCollectionPage
                 ShuffleFolder = static key => PlayFiles(LocalCollection.FilesWhere(e => LocalCollection.InFolder(e, key)), shuffle: true),
                 PlayFile = static id => PlayFiles([id], shuffle: false),
             };
+            _folders = new FolderVerbs(() => _overlay, _openFolder, (from, to) => { _renamed = (from, to); _followRename!(); }, StepOutOf, _view, _verbs);
+            _followRename = FollowRename;
         }
 
         public override Element Render()
         {
             var p = UseProps<PageProps>();
             _routeKey = p.RouteKey;
+            _overlay = UseContext(Overlay.Service);
+            UseEffect(_followRename);
             UseEffect(_refold);
             UseEffect(_settle, DepKey.Empty);
             UseEffect(_watchScan);
@@ -216,6 +226,7 @@ public static partial class LocalCollectionPage
                 MoveShelf = LocalHome.Move,
                 Drop = DropAnywhere.LocalFiles,
                 Link = LocalLinkPage.Props,
+                FolderMenus = _folders.Menus,
                 Title = Loc.Get(P.Title),
                 RouteKey = _routeKey,
             };
@@ -301,6 +312,30 @@ public static partial class LocalCollectionPage
             _opened.Value = open with { Folder = "", Back = true, Flown = flown };
         }
 
+        /// <summary>A renamed folder's open detail (it, or a folder under it) follows the new key once the fold lists it; until then the detail keeps
+        /// the folder it shows. Runs as an effect on every fold and once at the rename.</summary>
+        void FollowRename()
+        {
+            var view = LocalCollection.View.Value;
+            if (_renamed is not { } r || !view.Folders.ContainsKey(r.To)) return;
+            _renamed = null;
+            if (_opened.Peek() is not { } open || open.Folder.Length == 0) return;
+            string Moved(string k) => k == r.From ? r.To : k.StartsWith(r.From + "\\", StringComparison.Ordinal) ? r.To + k[r.From.Length..] : k;
+            string folder = Moved(open.Folder), root = Moved(open.Root);
+            if (folder != open.Folder || root != open.Root) _opened.Value = open with { Folder = folder, Root = root, Back = false, Flown = false };
+        }
+
+        /// <summary>A folder left the browser (hidden, recycled, its music folder removed): a detail open on it or under it steps out to its parent, or
+        /// back to the list.</summary>
+        void StepOutOf(string key)
+        {
+            if (Shown is not { } open) return;
+            if (open.Folder != key && !open.Folder.StartsWith(key + "\\", StringComparison.Ordinal)) return;
+            string parent = ParentOf(LocalCollection.View.Peek(), key);
+            if (parent.Length == 0) Close(open);
+            else OpenFolder(parent);
+        }
+
         static string ParentOf(LocalCollectionView view, string key)
             => view.Folders.TryGetValue(key, out var n) && n.ParentKey is { } parent ? parent : "";
 
@@ -356,14 +391,7 @@ public static partial class LocalCollectionPage
     {
         if (ids.Count == 0) return;
         if (shuffle) Random.Shared.Shuffle(CollectionsMarshal.AsSpan(ids));
-        if (ids.Count > MaxQueued) ids.RemoveRange(MaxQueued, ids.Count - MaxQueued);
-        var scope = Entities.Current;
-        var rows = new List<EntityRef>(ids.Count);
-        foreach (long id in ids)
-        {
-            // The restate stages every indexed file as `wavee:local:file:~<LocalId>`; a file it has not staged yet is left out.
-            if (scope.Tracks.TryGetSlot(LocalLibrary.UriOf(id).AsSpan(), out int slot) && new Track(slot).IsValid) rows.Add(new EntityRef(EntityKind.Track, slot));
-        }
+        var rows = StagedRows(ids);
         if (rows.Count == 0) return;
         Playback.SetShuffle(false);
         Playback.PlayRows(CollectionsMarshal.AsSpan(rows), 0, Playlist.LocalFiles.Id);
