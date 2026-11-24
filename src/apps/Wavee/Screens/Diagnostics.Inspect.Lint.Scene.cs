@@ -502,21 +502,23 @@ public static partial class Diagnostics
             }
         }
 
-        /// <summary>Where a scroll bar's lane starts inside <paramref name="slop"/>, per side, measured out from <paramref name="rect"/> along its
-        /// middle line in 1 DIP steps (<c>InputDispatcher.IsOverScrollbarLane</c>: a press there is the bar's before any target's); -1 where no lane
-        /// lies within the slop. The top is not walked (a bar's lane runs down a viewport's side or along its foot). Read at capture so a replay
-        /// cuts a target's slop as the live lint does.</summary>
+        /// <summary>Where a scroll bar's lane starts on a target's hit rect, per side: walked from the middle of <paramref name="rect"/> out along its
+        /// middle line to the end of <paramref name="slop"/> in 1 DIP steps (<c>InputDispatcher.IsOverScrollbarLane</c>: a press there is the bar's
+        /// before any target's), and given as the distance out from the box edge, negative where the lane lies over the box itself (a field's clear
+        /// button under a dialog body's bar); <see cref="InspectLint.NoLane"/>'s negative infinity where none does. The top is not walked (a bar's
+        /// lane runs down a viewport's side or along its foot). Read at capture so a replay cuts a target's hit rect as the live lint does.</summary>
         static Edges4 LaneStops(InputDispatcher input, in RectF rect, in Edges4 slop)
         {
             float cy = rect.Y + rect.H / 2f, cx = rect.X + rect.W / 2f;
-            float right = -1f, left = -1f, bottom = -1f;
-            for (float d = 0f; d < slop.Right; d += 1f)
+            float halfW = MathF.Floor(rect.W / 2f), halfH = MathF.Floor(rect.H / 2f);
+            float right = float.NegativeInfinity, left = float.NegativeInfinity, bottom = float.NegativeInfinity;
+            for (float d = -halfW; d < slop.Right; d += 1f)
                 if (input.IsOverScrollbarLane(new Point2(rect.Right + d + 0.5f, cy))) { right = d; break; }
-            for (float d = 0f; d < slop.Left; d += 1f)
+            for (float d = -halfW; d < slop.Left; d += 1f)
                 if (input.IsOverScrollbarLane(new Point2(rect.X - d - 0.5f, cy))) { left = d; break; }
-            for (float d = 0f; d < slop.Bottom; d += 1f)
+            for (float d = -halfH; d < slop.Bottom; d += 1f)
                 if (input.IsOverScrollbarLane(new Point2(cx, rect.Bottom + d + 0.5f))) { bottom = d; break; }
-            return new Edges4(left, -1f, right, bottom);
+            return new Edges4(left, float.NegativeInfinity, right, bottom);
         }
 
         /// <summary>The shell's own intents, under every theme (a theme guide's follow them). The Winamp deck face (`Deck.Faces.cs`, key
