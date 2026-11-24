@@ -5372,6 +5372,8 @@
     "menu": "Mix options",
     "close": "Close",
     "stateEdited": "Edited",
-    "stateThisPc": "This PC"
+    "stateThisPc": "This PC",
+    "queueLine": "Mixing · {style}",
+    "crossfadeNote": "Mix is on for this playlist"
   }
 }

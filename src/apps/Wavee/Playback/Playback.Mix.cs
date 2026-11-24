@@ -103,7 +103,9 @@ public static partial class Playback
             }
             else if (!timing.Mix && timing.WhyNot is MixWhyNot.NoData && pl > 0) { EnsureAnalysis(cur); EnsureAnalysis(next); }
 
-            if (timing == Current && key.Next == CurrentNext) return;
+            bool contextMixed = pl > 0 && !key.ListenWithout && new global::Wavee.Playlist(pl).MixOn;
+            if (timing == Current && key.Next == CurrentNext && contextMixed == ContextMixed) return;
+            ContextMixed = contextMixed;
             Current = timing;
             CurrentNext = key.Next;
             Changed.Value = Changed.Peek() + 1;
@@ -113,6 +115,26 @@ public static partial class Playback
             else if (timing.WhyNot is not (MixWhyNot.None or MixWhyNot.NotMixed))
                 Log.Info("audio", "[mix] base hand-off why=" + timing.WhyNot);
             Audio.SetMix(s.CurrentId, key.Next, next, in timing);
+        }
+
+        /// <summary>The deck plays from a playlist whose Mix is on (and not listened to without it on this PC): the queue's Crossfade row
+        /// then says Mix covers this playlist (its own pairs; a queued song, a local file still get Crossfade).</summary>
+        public static bool ContextMixed { get; private set; }
+
+        /// <summary>The queue's line between the playing and the next row, "Mixing · Rise · 2.9 s" (or "Mixing · Auto"), while the
+        /// playing pair will mix; "" otherwise. Reads <see cref="Changed"/>. UI thread.</summary>
+        public static string QueueLine()
+        {
+            _ = Changed.Value;
+            var t = Current;
+            return t.Mix && !CurrentNext.IsEmpty ? Strings.Mix.QueueLine(MixSeams.ChipText(in t)) : "";
+        }
+
+        /// <summary>The Crossfade row's note, "Mix is on for this playlist", while <see cref="ContextMixed"/>; "" otherwise.</summary>
+        public static string CrossfadeNote()
+        {
+            _ = Changed.Value;
+            return ContextMixed ? Loc.Get(Strings.Mix.CrossfadeNote) : "";
         }
 
         static string? s_mixingText;

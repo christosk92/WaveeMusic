@@ -379,6 +379,8 @@ public static partial class Queue
             _ = Platform.SettingsChanged.Value;
             return (Shell.QueueVerbs.CrossfadeEnabled(), Shell.QueueVerbs.CrossfadeLength());
         };
+        /// <summary>The Mix pair (the queue's "Mixing" line and the Crossfade row's note, #48), a value the memo compares.</summary>
+        protected static readonly Func<(string Line, string Note)> s_mix = static () => (Playback.Mix.QueueLine(), Playback.Mix.CrossfadeNote());
         static readonly Func<bool> s_autoplayListed = static () => { _ = Platform.SettingsChanged.Value; return Shell.QueueModel.AutoplayListed(Shell.QueueModel.AutoplayEnabled(), Playback.Repeat.Value); };
         static readonly Func<string?> s_contextName = static () =>
         {
@@ -596,6 +598,7 @@ public static partial class Queue
             Prologue(rail: true);
             // The crossfade switch and its length through a value memo: the panel re-renders when either changes, not on every settings write.
             var crossfade = UseComputed(s_crossfade).Value;
+            var mix = UseComputed(s_mix).Value;
             UseEffect(() => Pages.Reset(), DepKey.From(ContextId.GetHashCode()));
             var counts = Model.Counts;
             BuildSlots(QueueSlots.Realized(counts.Queue, Pages.Of(QueueSection.Queue).Value, PageSize),
@@ -629,6 +632,8 @@ public static partial class Queue
                 Crossfade = crossfade.On,
                 CrossfadeLength = crossfade.Length,
                 OpenCrossfadeLength = Shell.QueueVerbs.OpenCrossfadeLength,
+                MixLine = mix.Line,
+                CrossfadeNote = mix.Note,
             });
         }
 
@@ -697,6 +702,7 @@ public static partial class Queue
         {
             Prologue(rail: false);
             var crossfade = UseComputed(s_crossfade).Value;   // the "between songs" pair's second switch and its length, as the rail reads them
+            var mix = UseComputed(s_mix).Value;
             UseEffect(() => Pages.Reset(), DepKey.From(ContextId.GetHashCode()));
             int pages = Pages.Of(QueueSection.Queue).Value;
             var counts = Model.Counts;
@@ -714,6 +720,8 @@ public static partial class Queue
                 Crossfade = crossfade.On,
                 CrossfadeLength = crossfade.Length,
                 OpenCrossfadeLength = Shell.QueueVerbs.OpenCrossfadeLength,
+                MixLine = mix.Line,
+                CrossfadeNote = mix.Note,
             });
         }
     }
