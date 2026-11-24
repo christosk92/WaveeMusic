@@ -34,6 +34,7 @@ public static partial class LocalLibrary
         Progressed = NoteProgress,
         RootState = NoteRootState,
         MissingGrace = static () => TimeSpan.FromDays(Math.Clamp(Platform.Settings.Get(Platform.Keys.MusicMissingDays), 7, 365)),
+        ReadCloudOnly = static () => Platform.Settings.Get(Platform.Keys.MusicReadCloud),
     };
     static readonly ConcurrentDictionary<string, LocalRootState> s_states = new(StringComparer.OrdinalIgnoreCase);
     static readonly Lock s_gate = new();
@@ -104,6 +105,7 @@ public static partial class LocalLibrary
         catch (Exception ex) { Log.Warn("local", "local.power resume subscribe failed", ex); }
         // A volume arrived: give the mount two seconds to settle, then walk what was away (PnP thread: no blocking).
         s_volumes = LocalScan.WatchVolumeArrivals(static () => s_arrival?.Change(2_000, Timeout.Infinite));
+        WatchBatterySaver();
         new Thread(static () =>
         {
             int loaded = s_binPath is { } bin ? s_index.Load(bin) : 0;
@@ -318,11 +320,14 @@ public static partial class LocalLibrary
     /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing`: a fixed in-memory folder list and index (no disk, no
     /// thread, no setting). `changed` is ready plus a background change just restated (+4 added · 1 moved: the chip's "Updated · +4", four new rows
     /// tagged "New", "Ambre" tagged "Moved"); `missing` is ready with three missing songs and no other unplayable file (S6); `listing` is the first
-    /// scan's first second (nothing read, no total). Every value but `changed` clears the session's changes, so the diff from the previous fixture
+    /// scan's first second (nothing read, no total); `paused` is scanning held by battery saver. Every value but `changed` clears the session's changes, so the diff from the previous fixture
     /// announces nothing.
     /// The next `InspectFixture("none")` empties it again.</summary>
     public static void InspectFixture(string value)
     {
+        // `paused`: the scanning fixture held by battery saver (S11 "Scanning paused · battery saver").
+        FixturePause(value == "paused" ? PauseReason.BatterySaver : PauseReason.None);
+        if (value == "paused") value = "scanning";
         s_fixture = true;
         s_fixtureProgress = default;
         s_index.Detach();

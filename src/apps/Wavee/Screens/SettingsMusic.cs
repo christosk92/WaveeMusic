@@ -40,8 +40,14 @@ public static class SettingsMusic
     public readonly record struct FolderLine(string Path, string? Lead, string Rest, Mark Mark);
 
     /// <summary>The status line under the folders: the words, the time left beside them (a running scan), and the scan's fraction (-1: no
-    /// determinate scan to show).</summary>
-    public readonly record struct StatusLine(string Text, string Aside, float Fraction, bool Scanning);
+    /// determinate scan to show). <paramref name="Paused"/>: the scan is held (the user's Pause, battery saver); the line's verb is Resume
+    /// (board 15 "Scanning paused · battery saver" [Resume]).</summary>
+    public readonly record struct StatusLine(string Text, string Aside, float Fraction, bool Scanning, bool Paused = false);
+
+    /// <summary>The status line's Resume while the scan is held.</summary>
+    public static readonly Action Resume = static () => LocalLibrary.ResumeNow();
+
+    public static string ResumeLabel => Loc.Get(Strings.Settings.Music.Resume);
 
     /// <summary>Subscribe the caller to the library: the scan's progress and the list's restate.</summary>
     public static void Track()
@@ -81,6 +87,13 @@ public static class SettingsMusic
     public static StatusLine Status()
     {
         var p = LocalLibrary.Progress;
+        if (LibraryActivity.PausedNow)
+        {
+            string held = LocalLibrary.PausedBy == LocalLibrary.PauseReason.BatterySaver
+                ? Loc.Get(Strings.Settings.Music.PausedSaver) : Loc.Get(Strings.Settings.Music.Paused);
+            string readOf = p.FilesSeen > 0 ? LibraryActivity.ReadOf(p.FilesDone, p.FilesSeen) : "";
+            return new(held, readOf, p.Active && p.Fraction >= 0 ? (float)p.Fraction : 0f, true, Paused: true);
+        }
         if (p.Active)
         {
             double fraction = p.Fraction;

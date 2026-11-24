@@ -36,6 +36,8 @@ public static class LibraryActivity
         Idle,
         /// <summary>A scan runs: a ring.</summary>
         Scanning,
+        /// <summary>A scan is held (the user's Pause, or battery saver): the pause mark.</summary>
+        Paused,
         /// <summary>A background change just landed: a tick.</summary>
         Updated,
         /// <summary>Something needs the user: the amber dot.</summary>
@@ -78,6 +80,10 @@ public static class LibraryActivity
     {
         if (LocalLibrary.Folders.Count == 0) return new(ChipKind.Hidden, "");
         var p = LocalLibrary.Progress;
+        if (PausedNow)
+            return new(ChipKind.Paused, LocalLibrary.PausedBy == LocalLibrary.PauseReason.BatterySaver
+                ? Loc.Get(Strings.LocalFiles.Activity.ChipPausedSaver)
+                : Loc.Get(Strings.LocalFiles.Activity.ChipPaused));
         if (p.Active || LocalLibrary.Scanning)
             return new(ChipKind.Scanning, p.FilesSeen > 0
                 ? Strings.LocalFiles.Activity.ChipScanning(Number(p.FilesDone), Number(p.FilesSeen))
@@ -99,9 +105,13 @@ public static class LibraryActivity
     /// <summary>"Music on this PC".</summary>
     public static string Title => Loc.Get(Strings.LocalFiles.Activity.Title);
 
-    /// <summary>The head's state word: "Scanning", "Offline" (every folder away), else "Up to date".</summary>
+    /// <summary>The head's state word: "Paused on battery saver" / "Paused", "Scanning", "Offline" (every folder away), else "Up to date".</summary>
     public static string StateWord()
     {
+        if (PausedNow)
+            return LocalLibrary.PausedBy == LocalLibrary.PauseReason.BatterySaver
+                ? Loc.Get(Strings.LocalFiles.Activity.StatePausedSaver)
+                : Loc.Get(Strings.LocalFiles.Activity.StatePaused);
         if (LocalLibrary.Progress.Active || LocalLibrary.Scanning) return Loc.Get(Strings.LocalFiles.Activity.StateScanning);
         return LocalLibrary.StateWord == "offline"
             ? Loc.Get(Strings.LocalFiles.Activity.StateOffline)
@@ -236,6 +246,22 @@ public static class LibraryActivity
         return Strings.LocalFiles.Activity.LastScan(when, took);
     }
 
+    /// <summary>A scan runs or waits to run: the flyout's head offers Pause (or Resume).</summary>
+    public static bool CanPause => LocalLibrary.Progress.Active || LocalLibrary.Scanning;
+
+    /// <summary>A scan that runs or waits is held (by the user or by battery saver).</summary>
+    public static bool PausedNow => LocalLibrary.PausedBy != LocalLibrary.PauseReason.None && CanPause;
+
+    /// <summary>"Pause", or "Resume" while held.</summary>
+    public static string PauseLabel => Loc.Get(PausedNow ? Strings.LocalFiles.Activity.Resume : Strings.LocalFiles.Activity.Pause);
+
+    /// <summary>The head's Pause / Resume: Resume releases the user's pause and, on battery saver, runs anyway until battery saver next turns on.</summary>
+    public static readonly Action TogglePause = static () =>
+    {
+        if (PausedNow) LocalLibrary.ResumeNow();
+        else LocalLibrary.SetPaused(true);
+    };
+
     /// <summary>"Rescan now" can run (no scan is running).</summary>
     public static bool CanRescan => !(LocalLibrary.Progress.Active || LocalLibrary.Scanning);
 
@@ -252,6 +278,9 @@ public static class LibraryActivity
 
     /// <summary>Opens Settings › Storage › Music on this PC at the music folders.</summary>
     public static readonly Action OpenSettings = static () => Settings.Open("storage.music.folders");
+
+    /// <summary>"1,930 of 6,016 read".</summary>
+    public static string ReadOf(int done, int total) => Strings.LocalFiles.Activity.ReadOf(Number(done), Number(total));
 
     static string Files(int n) => Strings.LocalFiles.Activity.Files(n, Number(n));
 

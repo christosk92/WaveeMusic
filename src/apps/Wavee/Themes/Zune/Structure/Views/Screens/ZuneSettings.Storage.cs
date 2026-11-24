@@ -135,7 +135,9 @@ internal static partial class ZuneSettings
             var cmds = new List<Element>(3);
             if (add is { } a) cmds.Add(k.Cmd(a.Label, RunOf(a), a.Enabled, accent: true) with { IsEnabled = a.Enabled, Key = SettingsKeys.ZuneRow(a.Id), OnRealized = NoteRow(a.Id) });
             if (offer is { } o) cmds.Add(k.Cmd(o.Label, RunOf(o), o.Enabled) with { IsEnabled = o.Enabled, Key = SettingsKeys.ZuneRow(o.Id), OnRealized = NoteRow(o.Id) });
-            if (rescan is { } r)
+            // A held scan offers "resume" where "rescan now" stands (board 15).
+            if (status.Paused) cmds.Add(k.Cmd(SettingsMusic.ResumeLabel, SettingsMusic.Resume, true, accent: true) with { Key = "zs:music:resume" });
+            else if (rescan is { } r)
                 cmds.Add(k.Cmd(r.Label, RunOf(r), r.Enabled && !status.Scanning) with { IsEnabled = r.Enabled && !status.Scanning, Key = SettingsKeys.ZuneRow(r.Id), OnRealized = NoteRow(r.Id) });
             kids.Add(new BoxEl
             {

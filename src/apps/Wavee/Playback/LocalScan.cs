@@ -105,6 +105,28 @@ public sealed partial class LocalScan
 
     public LocalScan(LocalIndex index) => _index = index;
 
+    readonly ManualResetEventSlim _go = new(true);
+
+    /// <summary>Paused (the user's Pause in the activity flyout, or battery saver): every worker waits before its next folder or file, so a
+    /// running scan holds where it is and resumes there. Nothing is lost: a folder half read finishes when the scan resumes.</summary>
+    public bool Paused => !_go.IsSet;
+
+    public void Pause() => _go.Reset();
+
+    public void Resume() => _go.Set();
+
+    /// <summary>Workers call this before each unit of work: returns at once unless paused.</summary>
+    void WaitIfPaused()
+    {
+        if (_go.IsSet) return;
+        Progressed?.Invoke();
+        _go.Wait();
+    }
+
+    /// <summary>Read the tags of cloud-only (OneDrive) files, which downloads them ("Read tags of cloud-only files", off by default): read when
+    /// a scan starts. Off, a placeholder is indexed from its listing alone (§3.6 "Cloud files").</summary>
+    public Func<bool> ReadCloudOnly { get; set; } = static () => false;
+
     /// <summary>How long a missing file is kept after a complete walk (the "Keep missing songs for" setting).</summary>
     public Func<TimeSpan> MissingGrace { get; set; } = static () => LocalIndex.MissingGrace;
 
@@ -178,6 +200,7 @@ public sealed partial class LocalScan
                 else { root = e.Current.Key; work = e.Current.Value; _pending.Remove(root); _running = root; Volatile.Write(ref _busy, 1); }
             }
             if (work is null) { _wake.WaitOne(); continue; }
+            WaitIfPaused();
             Progressed?.Invoke();
             try
             {
@@ -381,6 +404,8 @@ public sealed partial class LocalScan
         readonly Dictionary<string, List<string>> _children = new(StringComparer.OrdinalIgnoreCase);
         readonly Stopwatch _clock = Stopwatch.StartNew();
         readonly long _now = DateTime.UtcNow.Ticks;
+        // "Read tags of cloud-only files" as the walk starts: on, a placeholder is read like any file (which downloads it).
+        readonly bool _readCloud = scan.ReadCloudOnly();
 
         /// <summary>A re-read or re-pointed file keeps the time its LocalId was first indexed ("Recently added" orders by it); a new
         /// file is first seen now.</summary>
@@ -460,6 +485,7 @@ public sealed partial class LocalScan
                 _dirSignal.Wait();
                 if (_dirs.TryDequeue(out DirJob? job))
                 {
+                    scan.WaitIfPaused();
                     try { List(job, listing); }
                     catch (Exception ex)
                     {
@@ -482,6 +508,7 @@ public sealed partial class LocalScan
                 _readSignal.Wait();
                 if (_reads.TryDequeue(out ReadJob? job))
                 {
+                    scan.WaitIfPaused();
                     try { Read(job); }
                     catch (Exception ex)
                     {
@@ -590,7 +617,7 @@ public sealed partial class LocalScan
                     if (IsImage(f.Name)) continue;
                     Interlocked.Increment(ref stats.FilesSeen);
                     string rel = Rel(job.RelPath, f.Name);
-                    bool cloud = f.IsCloudOnly;
+                    bool cloud = f.IsCloudOnly && !_readCloud;
                     if (cloud) Interlocked.Increment(ref stats.CloudOnly);
                     if (byName.Remove(f.Name, out LocalEntry? e))
                     {

@@ -88,6 +88,7 @@ internal abstract class CommonActivityChipBase : CommonTierComponent
     {
         LibraryActivity.ChipKind.Scanning => ProgressRing.Indeterminate(size: Rules.ChipRing),
         LibraryActivity.ChipKind.Updated => Ui.Icon(Icons.Accept, Rules.ChipTick, Tok.AccentDefault),
+        LibraryActivity.ChipKind.Paused => Ui.Icon(Icons.Pause, Rules.ChipTick, Tok.SystemFillCaution),
         _ => new BoxEl { Width = Rules.Dot, Height = Rules.Dot, Shrink = 0f, Corners = Radii.FullAll, Fill = Tok.SystemFillCaution },
     };
 }
@@ -167,7 +168,7 @@ internal sealed class CommonActivityFlyout : CommonTierComponent
 
         // The running phase's bar spans its column (the engine's bar needs a definite width: the flyout's less its padding and the mark's cell).
         float bar = MathF.Max(0f, width - 2f * Rules.Pad - Rules.Mark - Rules.MarkGap);
-        var kids = new List<Element>(8) { Head(), Phases(LibraryActivity.Phases(), bar) };
+        var kids = new List<Element>(8) { Head(target), Phases(LibraryActivity.Phases(), bar) };
         var changes = LibraryActivity.Changes();
         if (changes.Length > 0) kids.Add(Section(Rules.ChangesKey, Changes(changes, target, close)));
         var attention = LibraryActivity.Attention();
@@ -180,10 +181,11 @@ internal sealed class CommonActivityFlyout : CommonTierComponent
         };
     }
 
-    /// <summary>"Music on this PC · Up to date".</summary>
-    static Element Head() => new BoxEl
+    /// <summary>"Music on this PC · Up to date", and while a scan runs or is held its Pause / Resume at the end (board 8). The verb's lane is kept
+    /// at rest (empty), so a scan starting never moves the head's words.</summary>
+    static Element Head(float target) => new BoxEl
     {
-        Key = Rules.HeadKey, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+        Key = Rules.HeadKey, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, MinHeight = target,
         Padding = new Edges4(Rules.Pad, Rules.HeadTop, Rules.HeadEnd, Rules.HeadBottom),
         Children =
         [
@@ -193,6 +195,11 @@ internal sealed class CommonActivityFlyout : CommonTierComponent
                 Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
                 Case = R.Case.For(LabelKind.Label),
             },
+            Ui.Spacer(),
+            LibraryActivity.CanPause
+                ? CommonTouch.Button(LibraryActivity.PauseLabel, LibraryActivity.TogglePause, target,
+                    glyph: LibraryActivity.PausedNow ? Icons.Play : Icons.Pause) with { Key = Rules.PauseKey, Shrink = 0f, Margin = new Edges4(Rules.MarkGap, 0f, 0f, 0f) }
+                : new BoxEl { Key = Rules.PauseKey, Shrink = 0f },
         ],
     };
 

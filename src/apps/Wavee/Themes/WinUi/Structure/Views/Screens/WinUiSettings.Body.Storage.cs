@@ -150,7 +150,9 @@ internal static partial class WinUiSettings
                             bar,
                         ],
                     },
-                    rescan is { } rescanRow ? ChildHost(x, rescanRow, rescanButton) : rescanButton,
+                    // A held scan offers Resume where "Rescan now" stands (board 15); the button's slot does not move.
+                    status.Paused ? AccentButton(SettingsMusic.ResumeLabel, SettingsMusic.Resume) with { Key = "settings:music:resume" }
+                    : rescan is { } rescanRow ? ChildHost(x, rescanRow, rescanButton) : rescanButton,
                 ],
             });
             return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = kids.ToArray() };

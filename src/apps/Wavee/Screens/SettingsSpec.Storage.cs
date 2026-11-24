@@ -42,6 +42,12 @@ public static partial class SettingsSpec
             Make("storage.music.watch", K.Toggle, Strings.Settings.Music.Watch,
                 SettingsWriter.OfToggle("music.watch", SettingsVerbs.SetMusicWatch), parent: "storage.music.options", glyph: "Bell",
                 captionKey: Strings.Settings.Music.WatchSub, value: BoolOf(Platform.Keys.MusicWatch)),
+            Make("storage.music.pauseOnSaver", K.Toggle, Strings.Settings.Music.PauseOnSaver,
+                SettingsWriter.OfToggle("music.pauseOnSaver", SettingsVerbs.SetMusicPauseOnSaver), parent: "storage.music.options", glyph: "Pause",
+                captionKey: Strings.Settings.Music.PauseOnSaverSub, value: BoolOf(Platform.Keys.MusicPauseOnSaver), aliases: ["battery", "energy saver"]),
+            Make("storage.music.readCloud", K.Toggle, Strings.Settings.Music.ReadCloud,
+                SettingsWriter.OfToggle("music.readCloud", SettingsVerbs.SetMusicReadCloud), parent: "storage.music.options", glyph: "Download",
+                captionKey: Strings.Settings.Music.ReadCloudSub, value: BoolOf(Platform.Keys.MusicReadCloud), aliases: ["onedrive", "cloud"]),
             Make("storage.music.keepMissing", K.Choice, Strings.Settings.Music.KeepMissing,
                 SettingsWriter.OfChoice("music.keepMissing", SettingsVerbs.SetMusicMissingDays), parent: "storage.music.options", glyph: "Clock",
                 captionKey: Strings.Settings.Music.KeepMissingSub, value: static s => SettingsMusic.MissingDaysIndex(s.Get(Platform.Keys.MusicMissingDays)),
@@ -322,6 +328,20 @@ public static partial class SettingsVerbs
     public static bool SetMusicWatch(bool on)
     {
         LocalLibrary.SetWatching(on);
+        return true;
+    }
+
+    /// <summary>"Pause scanning on battery saver": persists and holds or releases a running scan.</summary>
+    public static bool SetMusicPauseOnSaver(bool on)
+    {
+        LocalLibrary.SetPauseOnSaver(on);
+        return true;
+    }
+
+    /// <summary>"Read tags of cloud-only files (downloads them)": persists; on, the folders are walked again to read them.</summary>
+    public static bool SetMusicReadCloud(bool on)
+    {
+        LocalLibrary.SetReadCloud(on);
         return true;
     }
 

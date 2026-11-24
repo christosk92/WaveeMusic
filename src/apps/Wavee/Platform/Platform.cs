@@ -189,6 +189,12 @@ public static partial class Platform
         /// <summary>Settings › Storage › Music on this PC › "Watch folders for changes" (#240 S3): live updates on; off, folders
         /// are scanned at start, on "Rescan now" and when a drive comes back.</summary>
         public static readonly SettingKey<bool> MusicWatch = new("local.watch", true);
+        /// <summary>Settings › Storage › Music on this PC › "Pause scanning on battery saver" (#240 S3): on, a scan holds while Windows battery
+        /// saver is on and picks up where it was when it turns off.</summary>
+        public static readonly SettingKey<bool> MusicPauseOnSaver = new("local.pauseOnSaver", true);
+        /// <summary>Settings › Storage › Music on this PC › "Read tags of cloud-only files (downloads them)" (#240 S3): off, a OneDrive placeholder
+        /// is listed by its file name and never opened.</summary>
+        public static readonly SettingKey<bool> MusicReadCloud = new("local.readCloud", false);
         /// <summary>Settings › Storage › Music on this PC › "Keep missing songs for" (#240 S3): 30, 60 or 90 days.</summary>
         public static readonly SettingKey<int> MusicMissingDays = new("local.missingDays", 60);
 

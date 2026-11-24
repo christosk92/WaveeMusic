@@ -22,7 +22,8 @@ internal static class CommonActivityRules
     public const string FlyoutKey = "activity-flyout", HeadKey = "activity-flyout:head", PhasesKey = "activity-flyout:phases",
         PhaseKey = "activity-flyout:phase:", ChangesKey = "activity-flyout:changes", ChangeKey = "activity-flyout:change:",
         AttentionKey = "activity-flyout:attention", AttentionItemKey = "activity-flyout:attention:", VerbKey = "activity-flyout:verb:",
-        FooterKey = "activity-flyout:footer", RescanKey = "activity-flyout:rescan", SettingsKey = "activity-flyout:settings";
+        FooterKey = "activity-flyout:footer", RescanKey = "activity-flyout:rescan", SettingsKey = "activity-flyout:settings",
+        PauseKey = "activity-flyout:pause";
 
     // ── the chip (board: 180 x 20 at the label's x, its top 5 above the row's foot; the cell grows 36 → 56) ──
 
