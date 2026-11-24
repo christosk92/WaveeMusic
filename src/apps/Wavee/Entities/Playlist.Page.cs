@@ -79,7 +79,6 @@ public readonly partial struct Playlist
         Controls.Library ??= User.LibrarySeam;
         User.InstallSaveVerb();   // the container menus' Save / Follow, through that same seam
         Drag.LikedChipArt ??= User.LikedChipArt();
-        Shell.OnFilesDropped ??= PlayFiles;
         Shell.PickAndPlayFile ??= PickAndPlay;
         Track.MenuSeams.RemoveRows ??= static (host, _) =>
         {
@@ -1384,7 +1383,7 @@ public readonly partial struct Playlist
         return new Track(slot);
     }
 
-    /// <summary><c>Shell.OnFilesDropped</c> (0.2.9 <c>LocalFileActions.PlayDropped</c>): audio wins over video; nothing
+    /// <summary>The file picker's play (0.2.9 <c>LocalFileActions.PlayDropped</c>): audio wins over video; nothing
     /// playable is an Error toast; no local playback wired is Informational; an .mp4 attaches to its OWN row first.</summary>
     static void PlayFiles(IReadOnlyList<string> paths)
     {

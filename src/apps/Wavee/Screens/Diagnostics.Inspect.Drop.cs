@@ -24,6 +24,7 @@ public static partial class Diagnostics
         /// <summary>`drop {path, import?}`.</summary>
         string Drop(int id, string name, Inspect.Args a)
         {
+            if (a.Str("os") is { Length: > 0 } step) return OsDrag(id, name, a, step);
             string path = a.Str("path");
             if (path.Length == 0) return Inspect.Reply.Fail(id, name, "drop needs path=<file>");
             string full;
@@ -104,5 +105,57 @@ public static partial class Diagnostics
             RunFrames(2);
             return Settled(id, name, a, Body);
         }
+
+        /// <summary>`drop os=enter|over|leave|drop {paths|uris|text} {x,y}`: one step of an OS drag through the engine's external-drop
+        /// seam (DropAnywhere.Play), then the drag's plan and the drop panel's state; the step settles (and traces) like any acting verb.</summary>
+        string OsDrag(int id, string name, Inspect.Args a, string step)
+        {
+            if (_shell is null) return Inspect.Reply.Fail(id, name, "drop os= needs a mounted shell (mount first)");
+            static string[]? Split(string v) => v.Length == 0 ? null : v.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            // paths=* offers files with an EMPTY list on enter: an engine that reads the file list only at drop (the drop then hands
+            // the last enter's list, or none).
+            string[]? paths = a.Str("paths") == "*" ? [] : Split(a.Str("paths"));
+            if (paths is { Length: > 0 })
+                for (int i = 0; i < paths.Length; i++) paths[i] = Path.GetFullPath(paths[i]);
+            string[]? uris = Split(a.Str("uris"));
+            string text = a.Str("text");
+            var scene = _shell.Host.Scene;
+            var size = scene.AbsoluteRect(scene.Root);
+            var at = new FluentGpu.Foundation.Point2(a.Float("x", size.W / 2f), a.Float("y", size.H / 2f));
+            if (step == "enter" && paths is null && uris is null && text.Length == 0)
+                return Inspect.Reply.Fail(id, name, "drop os=enter needs paths=, uris= or text=");
+            // A drop of files hands the list again, as the OLE target does: the last enter's list when none is given.
+            if (step == "drop" && paths is null && uris is null && text.Length == 0) paths = _osPaths;
+            if (step == "enter") _osPaths = paths;
+            if (!DropAnywhere.Play(step, at, paths, uris, text, out string effect))
+                return Inspect.Reply.Fail(id, name, "the host wired no external-drop seam");
+            var plan = DropAnywhere.Current;
+            void Body(Utf8JsonWriter w)
+            {
+                w.WriteString("step", step);
+                w.WriteNumber("x", at.X);
+                w.WriteNumber("y", at.Y);
+                w.WriteString("effect", effect);
+                if (plan is not null)
+                {
+                    w.WriteString("kind", plan.Kind.ToString());
+                    w.WriteBoolean("pathsKnown", plan.PathsKnown);
+                    w.WriteStartArray("zones");
+                    foreach (var verb in plan.Verbs) w.WriteStringValue(verb.ToString());
+                    w.WriteEndArray();
+                    w.WriteNumber("songs", plan.Songs.Peek());
+                    w.WriteString("chip", plan.Chip);
+                    if (plan.Refusal is { } why) w.WriteString("refusal", why);
+                }
+                w.WriteBoolean("panelShown", DropAnywhere.Shown.Peek());
+                w.WriteNumber("hotZone", DropAnywhere.Hot.Peek());
+                w.WriteNumber("centreDx", DropAnywhere.CentreOffset.Peek().X);
+                w.WriteNumber("centreDy", DropAnywhere.CentreOffset.Peek().Y);
+            }
+            RunFrames(2);
+            return Settled(id, name, a, Body);
+        }
+
+        string[]? _osPaths;
     }
 }

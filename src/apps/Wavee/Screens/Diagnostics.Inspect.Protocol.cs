@@ -608,11 +608,17 @@ public static partial class Diagnostics
                              Arg("model", ArgType.String, "the registry page's model (contract 1.116): the category list, the open category and arrival, the home's facts, this category's body (a slug; empty: the open one), with q= the box's results"),
                              Arg("press", ArgType.Enum, "the page box's key handler: down|up move the highlight through the results, enter opens the highlighted dial, esc clears then leaves", null, "down|up|enter|esc")], s_settleArgs),
             },
-            new(Verb.Drop, "drop", "Read a local file's format, tags, length and cover location with the tag readers (#240) and import it into Local files as a drop does (import=false: the read alone); the reply is every field read and the row's face; then settle", "drop path=C:/music/song.flac")
+            new(Verb.Drop, "drop", "Read a local file's format, tags, length and cover location with the tag readers (#240) and import it into Local files as a drop does (import=false: the read alone); the reply is every field read and the row's face; then settle. With os=: play one step of an OS drag (files, folders, links, text) through the engine's external-drop seam at x,y, as the OLE target forwards a real one (#240 §3.15 drop anywhere): the reply is the effect, the drag's plan (kind, zones, chip, refusal) and the drop panel's state", "drop os=enter paths=C:/music/a.flac|C:/music/b.flac x=900 y=500")
             {
                 Positional = ["path"],
                 Args = Join([Arg("path", ArgType.String, "the file to read"),
-                             Arg("import", ArgType.Bool, "false: read the file and stage nothing", "true")], s_settleArgs),
+                             Arg("import", ArgType.Bool, "false: read the file and stage nothing", "true"),
+                             Arg("os", ArgType.Enum, "an OS drag step: enter (with the payload), over, leave or drop", null, "enter|over|leave|drop"),
+                             Arg("paths", ArgType.String, "with os=: the dragged files and folders, '|'-joined (the engine hands them on enter); * offers files with an empty list (an engine that reads them only at drop)"),
+                             Arg("uris", ArgType.String, "with os=: the dragged links, '|'-joined (UniformResourceLocatorW / text/uri-list)"),
+                             Arg("text", ArgType.String, "with os=: the dragged text (CF_UNICODETEXT)"),
+                             Arg("x", ArgType.Float, "with os=: the pointer, window DIP (default: the window's centre)"),
+                             Arg("y", ArgType.Float, "with os=: the pointer, window DIP (default: the window's centre)")], s_settleArgs),
             },
             new(Verb.Hint, "hint", "The in-app hints (settings rework phase 3): list every hint with its budget and verdict, force one's trigger true for one mount (show), forget every hint's budget and the use facts (reset), or read and load the persisted blob (state)", "hint show id=ai-lyrics")
             {

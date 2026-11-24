@@ -862,8 +862,7 @@
     "pickTitle": "재생할 파일을 선택하세요",
     "filter": "오디오 및 비디오",
     "rejected": "이 파일은 재생할 수 없습니다. Wavee는 .mp3, .flac, .ogg, .m4a, .aac, .mp4 파일을 재생합니다.",
-    "notReady": "로컬 재생이 아직 준비되지 않았습니다 — 먼저 로그인하세요.",
-    "dropHint": "파일을 놓으면 재생됩니다"
+    "notReady": "로컬 재생이 아직 준비되지 않았습니다 — 먼저 로그인하세요."
   },
   "theme": {
     "classic": {
@@ -1217,5 +1216,46 @@
       },
       "fallbackName": "프로필"
     }
+  },
+  "drop": {
+    "playNow": "지금 재생",
+    "playNowDetail": "재생 중인 곡을 바꿉니다",
+    "playNext": "다음에 재생",
+    "playNextDetail": "현재 곡 다음에",
+    "addToQueue": "대기열에 추가",
+    "afterQueued": "대기열의 곡 다음에",
+    "play": "재생",
+    "addMusicFolder": "음악 폴더로 추가",
+    "addMusicFolderDetail": "Wavee가 최신 상태로 유지합니다",
+    "playAsQueue": "대기열로 재생",
+    "open": "열기",
+    "openDetail": "Wavee에서 엽니다",
+    "files": "파일",
+    "counting": "곡 세는 중…",
+    "songsCapped": "{count, plural, other {#곡}} (처음부터)",
+    "foundOf": "{total} 중 {found} 찾음",
+    "folderCount": "{count, plural, other {폴더 #개}}",
+    "linkCount": "{count, plural, other {링크 #개}}",
+    "songsAfterQueued": "{songs}, 대기열의 곡 다음에",
+    "landHere": "{songs}이 여기에 들어갑니다",
+    "cantPlayType": "Wavee는 아직 {ext} 파일을 재생할 수 없습니다",
+    "nothingUsable": "Wavee가 재생할 수 있는 항목이 없습니다",
+    "onlySpotifyLinks": "Wavee는 Spotify 링크를 엽니다",
+    "localToSpotifyLater": "Spotify 재생목록에 로컬 파일 추가는 나중에 지원됩니다",
+    "queueOnThisPc": "다른 기기에서 재생 중입니다: 이 PC의 파일은 그 대기열에 넣을 수 없습니다",
+    "addingSongs": "곡 추가 중…",
+    "adding": "{songs} 추가 중…",
+    "added": "대기열에 {songs} 추가됨",
+    "addedSkipped": "대기열에 {songs} 추가됨 · {skipped}개 건너뜀",
+    "playing": "{songs} 재생 중",
+    "playingSkipped": "{songs} 재생 중 · {skipped}개 건너뜀",
+    "noneFound": "Wavee가 재생할 수 있는 곡을 찾지 못했습니다",
+    "undo": "실행 취소",
+    "musicFolderAdded": "{name}이(가) 음악 폴더가 되었습니다",
+    "musicFoldersAdded": "{count, plural, other {음악 폴더 #개 추가됨}}",
+    "alreadyMusicFolder": "{name}은(는) 이미 음악 폴더입니다",
+    "insideMusicFolder": "{name}은(는) 이미 음악 폴더 안에 있습니다",
+    "holdsMusicFolder": "{name}에 음악 폴더가 있습니다: 그 폴더를 먼저 제거하세요",
+    "notAFolder": "{name}은(는) Wavee가 열 수 있는 폴더가 아닙니다"
   }
 }

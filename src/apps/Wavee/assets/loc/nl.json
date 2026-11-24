@@ -865,8 +865,7 @@
     "pickTitle": "Kies een bestand om af te spelen",
     "filter": "Audio en video",
     "rejected": "Dat bestand kan niet worden afgespeeld. Wavee speelt .mp3-, .flac-, .ogg-, .m4a-, .aac- en .mp4-bestanden af.",
-    "notReady": "Lokaal afspelen is nog niet gereed — meld je eerst aan.",
-    "dropHint": "Zet een bestand neer om het af te spelen"
+    "notReady": "Lokaal afspelen is nog niet gereed — meld je eerst aan."
   },
   "theme": {
     "classic": {
@@ -1220,5 +1219,46 @@
       },
       "fallbackName": "Profiel"
     }
+  },
+  "drop": {
+    "playNow": "Nu afspelen",
+    "playNowDetail": "Vervangt wat er speelt",
+    "playNext": "Hierna afspelen",
+    "playNextDetail": "Na het huidige nummer",
+    "addToQueue": "Aan wachtrij toevoegen",
+    "afterQueued": "Na wat in de wachtrij staat",
+    "play": "Afspelen",
+    "addMusicFolder": "Toevoegen als muziekmap",
+    "addMusicFolderDetail": "Wavee houdt hem bij",
+    "playAsQueue": "Afspelen als wachtrij",
+    "open": "Openen",
+    "openDetail": "Opent het in Wavee",
+    "files": "Bestanden",
+    "counting": "Nummers tellen…",
+    "songsCapped": "{count, plural, one {# nummer} other {# nummers}} (de eerste)",
+    "foundOf": "{found} van {total} gevonden",
+    "folderCount": "{count, plural, one {# map} other {# mappen}}",
+    "linkCount": "{count, plural, one {# link} other {# links}}",
+    "songsAfterQueued": "{songs}, na wat in de wachtrij staat",
+    "landHere": "{songs} komen hier",
+    "cantPlayType": "Wavee kan {ext}-bestanden nog niet afspelen",
+    "nothingUsable": "Niets hier dat Wavee kan afspelen",
+    "onlySpotifyLinks": "Wavee opent Spotify-links",
+    "localToSpotifyLater": "Lokale bestanden aan een Spotify-playlist toevoegen komt later",
+    "queueOnThisPc": "Er speelt een ander apparaat: bestanden op deze pc kunnen niet in die wachtrij",
+    "addingSongs": "Nummers toevoegen…",
+    "adding": "{songs} toevoegen…",
+    "added": "{songs} aan de wachtrij toegevoegd",
+    "addedSkipped": "{songs} aan de wachtrij toegevoegd · {skipped} overgeslagen",
+    "playing": "{songs} spelen",
+    "playingSkipped": "{songs} spelen · {skipped} overgeslagen",
+    "noneFound": "Geen nummers gevonden die Wavee kan afspelen",
+    "undo": "Ongedaan maken",
+    "musicFolderAdded": "{name} is nu een muziekmap",
+    "musicFoldersAdded": "{count, plural, one {# muziekmap toegevoegd} other {# muziekmappen toegevoegd}}",
+    "alreadyMusicFolder": "{name} is al een muziekmap",
+    "insideMusicFolder": "{name} staat al in een muziekmap",
+    "holdsMusicFolder": "{name} bevat een muziekmap: verwijder die eerst",
+    "notAFolder": "{name} is geen map die Wavee kan openen"
   }
 }
