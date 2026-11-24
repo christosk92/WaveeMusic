@@ -229,10 +229,12 @@ internal static partial class WinUiSettings
                 : new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.L, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                    Children = [path with { Width = WinUiSettingsRules.MusicPathWidth }, status with { Grow = 1f, Basis = 0f }],
+                    // A state's lead ("Can't read this folder · ") keeps its natural width and the path ellipsizes first; Fix permissions sits in
+                    // this box in both forms (beside the words here, under them at Compact): a crossing keeps its node.
+                    Children = fixButton is null ? [path with { Width = WinUiSettingsRules.MusicPathWidth }, (line.Lead is null ? status with { Grow = 1f, Basis = 0f } : status with { Grow = 1f, Shrink = 0f })]
+                        : [path with { Width = WinUiSettingsRules.MusicPathWidth }, (line.Lead is null ? status with { Grow = 1f, Basis = 0f } : status with { Grow = 1f, Shrink = 0f }), fixButton],
                 };
             var kids = new List<Element>(5) { MarkCell(line.Mark), text };
-            if (fixButton is not null && !touch) kids.Add(fixButton);
             kids.Add(more);
             kids.Add(remove);
             return new BoxEl
@@ -260,7 +262,7 @@ internal static partial class WinUiSettings
                         // One mark cell further in than its folder's path, so its words stand on the folder rows' status column.
                         Width = touch ? float.NaN : WinUiSettingsRules.MusicPathWidth - WinUiSettingsRules.MusicMarkCell - Spacing.L,
                     },
-                    new TextEl(line.Lead) { Size = WinUiSettingsRules.MusicTextSize, Color = Tok.SystemFillCaution, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    new TextEl(line.Lead) { Size = WinUiSettingsRules.MusicTextSize, Color = Tok.SystemFillCaution, Shrink = 0f, MaxLines = 1 },   // never cut: the path yields first
                 ],
             };
             var verbs = new BoxEl
@@ -283,9 +285,8 @@ internal static partial class WinUiSettings
                 AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = WinUiSettingsRules.MusicRowHeight,
                 // Nested: one mark cell further in than its music folder's row.
                 Padding = new Edges4(Spacing.L + WinUiSettingsRules.MusicMarkCell + Spacing.L, Spacing.XS, touch ? Spacing.XS : Spacing.L, Spacing.XS),
-                Children = touch
-                    ? [new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f, Children = [mark, words] }, verbs]
-                    : [mark, words, verbs],
+                // One structure in both forms (a crossing keeps the nodes): the mark and the words, then the verbs beside (or under, at Compact).
+                Children = [new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = touch ? Spacing.M : Spacing.L, Grow = touch ? 0f : 1f, Shrink = 1f, Basis = touch ? float.NaN : 0f, MinWidth = 0f, Children = [mark, words] }, verbs],
             };
         }
 
