@@ -14,6 +14,9 @@
 //      │     the pivot   one node across every switch
 //      │     "lc-body"   the pivot's body, keyed per pivot: the structure's library pivot recipe (WinUI's: the new body slides in from the
 //      │                 side of its tab and decelerates, the old one fades fast; PageMotionPolicy.LibraryPivot), else the core's quick fade
+//      │                 └─ its list, or the detail open over it (LocalOpened: a folder, an album's folder), keyed per step: list -> detail is
+//      │                    the structure's drill (WinUI's drill in, Back its drill back; CommonLocalCollectionParts.DetailMotion) while the
+//      │                    tile's cover flies into the detail's header and home again (Shell.FlyInPage; the swap then keeps only its fades)
 //      │   Home:   ScrollView "lc-scroll:home" [ Recently added (Today / This week / Earlier this month) · Lossless · Shuffle by decade ]
 //      │   others: the pivot's body:
 //      │           Albums  sort chips + count · virtual cover wall          Artists  virtual grid of artist cards
@@ -69,6 +72,11 @@ internal static class CommonLocalCollection
         bool _hasShown;
         LayoutTransition? _swap;
         IReadSignal<ThemeFacts>? _facts;
+        readonly X.DetailMotion _detail = new();
+        (string Key, LayoutTransition? Enter) _step;
+        // Home's shelves as last rendered: a change is "Edit home" showing or hiding one (X.HomeBody's reveal).
+        IReadOnlyList<LocalShelfSlot>? _shelves;
+        bool _reveal;
 
         public override Element Render()
         {
@@ -77,8 +85,8 @@ internal static class CommonLocalCollection
             var p = hp.Page;
             _facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
             _pending ??= () => p.View.Value.Version == 0;
-            _content ??= () => Page(_hp!, _hp!.Page.View.Value, _swap);
-            _shimmer ??= () => Page(_hp!, X.Seed, null);
+            _content ??= () => Page(_hp!, _hp!.Page.View.Value, _swap, _step, _facts!.Peek(), _reveal);
+            _shimmer ??= () => Page(_hp!, X.Seed, null, default, _facts!.Peek(), false);
             var pivot = p.Pivot.Value;
             if (!_hasShown || pivot != _shown)
             {
@@ -89,8 +97,11 @@ internal static class CommonLocalCollection
                 _hasShown = true;
             }
             _ = p.Sort.Value;
-            _ = p.Folder.Value;
-            _ = p.Shelves.Value;
+            // The body under the pivot: its list or the open detail, and the step's drill when it changed under the same pivot.
+            _step = _detail.Step(CommonLocalCollectionRules.BodyKey, pivot, p.Opened.Value, _facts.Peek());
+            var shelves = p.Shelves.Value;
+            _reveal = _shelves is not null && !ReferenceEquals(shelves, _shelves);
+            _shelves = shelves;
             _ = p.Link?.Reviewing.Value;
             return new BoxEl
             {
@@ -113,10 +124,12 @@ internal static class CommonLocalCollection
     static FluentGpu.Animation.MotionTokenDef SwapClock => FluentGpu.Animation.MotionTokenDef.Eased(L.HeadInMs, Easing.EaseOut);
     static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
 
-    static Element Page(HostProps hp, LocalCollectionView view, LayoutTransition? swap)
+    static Element Page(HostProps hp, LocalCollectionView view, LayoutTransition? swap, (string Key, LayoutTransition? Enter) step, ThemeFacts facts, bool reveal)
     {
         var p = hp.Page;
         var pivot = p.Pivot.Peek();
+        var opened = p.Opened.Peek();
+        bool detail = opened?.IsOpenOver(pivot) == true;
         // No music folder: the Local Files onboarding (S4), shared with the list.
         if (p.Onboarding() is { } onboarding) return X.Gut("lc-empty", hp.Gutter, onboarding, grow: true);
         float g = hp.Gutter;
@@ -125,19 +138,22 @@ internal static class CommonLocalCollection
         bool home = pivot == LocalPivot.Home;
         Element bar = Pivot(p, pivot, g);
         Element head = home ? Hero(p, view, hp.Lay, g, hp.TitleKey) : CompactHead(p, view, hp.Lay, g, hp.TitleKey);
-        Element body = pivot switch
+        Element body = detail ? X.FolderBrowser(view, opened, p.OpenFolder, p.Verbs, hp.Lay, g, CrumbRoot(p, pivot), p.RouteKey) : pivot switch
         {
             LocalPivot.Home => ScrollView(new BoxEl
             {
                 Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, L.PageBottom),
-                Children = [X.LinkOffer(p.Link, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, hp.Lay, g, p.Shelves.Peek())],
+                Children = [X.LinkOffer(p.Link, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, hp.Lay, g, p.Shelves.Peek(), reveal)],
             }) with { Key = L.ScrollKey + ":home", Grow = 1f, MinWidth = 0f, ScrollKey = p.RouteKey + ":home" },
             LocalPivot.Albums => X.AlbumWall(view, p.Sort.Peek(), p.SetSort, p.Verbs, hp.Lay, g, p.RouteKey),
             LocalPivot.Artists => X.ArtistGrid(view, p.Verbs, hp.Lay, g, p.RouteKey),
             LocalPivot.Songs => X.Gut("lc-songs", g, p.Songs(), grow: true),
-            LocalPivot.Folders => X.FolderBrowser(view, p.Folder.Peek(), p.OpenFolder, p.Verbs, hp.Lay, g, p.Title, p.RouteKey),
+            LocalPivot.Folders => X.FolderBrowser(view, null, p.OpenFolder, p.Verbs, hp.Lay, g, p.Title, p.RouteKey),
             _ => X.Insights(view, hp.Lay, g, p.RouteKey),
         };
+        // The shimmer has no step (its key is the list's).
+        string slot = step.Key ?? L.BodyKey + ":" + pivot.ToString() + ":list";
+        body = X.DetailSlot(slot, body, step.Enter, X.DetailMotion.Exit(pivot, opened, facts));
         bool motion = swap is not null;
         return new BoxEl
         {
@@ -291,6 +307,10 @@ internal static class CommonLocalCollection
     /// <summary>WinUI/Classic's "Edit home": a subtle button with the sliders glyph, the board's.</summary>
     static readonly Func<Action, Action<NodeHandle>, Element> s_editTrigger = static (toggle, realize)
         => Button.Create(Loc.Get(P.EditHome), toggle, ButtonAppearance.Subtle, glyph: Icons.Equalizer) with { Key = CommonLocalEditHome.TriggerKey, OnRealized = realize };
+
+    /// <summary>The breadcrumb's first word over a detail: the Folders browser's own ("On this PC"); an album's folder opened over Albums or Home
+    /// starts at that pivot.</summary>
+    static string CrumbRoot(LocalCollectionPageProps p, LocalPivot pivot) => pivot == LocalPivot.Folders ? p.Title : PivotWord(pivot);
 
     /// <summary>A pivot's word (the core's words; the theme's case role applies).</summary>
     public static string PivotWord(LocalPivot p) => p switch

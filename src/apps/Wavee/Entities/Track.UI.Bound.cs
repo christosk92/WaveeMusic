@@ -201,7 +201,7 @@ public readonly partial struct Track
 
     /// <summary>The ONE dim predicate for a bare track (the skin's check lane, which has no presentation): withheld, or unreachable offline.</summary>
     internal static bool DimmedTrack(Track t, long now)
-        => t.IsValid && (t.NotYetOut(now) || t.Unplayable() || OfflineGone(t, t.Slot > 0 && Playback.OnThisPc.Of(t.Id)));
+        => t.IsValid && (t.NotYetOut(now) || t.Unplayable() || OfflineGone(t, OnThisPcOf(t)));
 
     /// <summary>The ONE dim predicate: a withheld row, or one the offline session cannot reach.</summary>
     internal static bool Dimmed(in RowPresentation p, long now) => Withheld(in p, now) || OfflineGone(in p);
@@ -222,10 +222,32 @@ public readonly partial struct Track
             _ => Format.DurationCell(t.ForDisplay.DurationMs),
         };
 
-    /// <summary>The bound row's duration lane: <see cref="DurationLabel(Track, long)"/>, but the row's MUSIC VIDEO length on a video-first
-    /// list (<see cref="RowPresentation.VideoMs"/>, <see cref="PlaylistVideo"/>) — what the list plays, as the official client shows it.</summary>
+    /// <summary>The bound row's duration lane: the clock, or the row's MUSIC VIDEO length on a video-first list (<see cref="RowPresentation.VideoMs"/>,
+    /// <see cref="PlaylistVideo"/>), what the list plays, as the official client shows it. A withheld row keeps its LENGTH here (a dash when it has
+    /// none) and says why at the head of its credit line (<see cref="WithheldNote"/>, every theme's bound table through
+    /// <see cref="FillCreditSpans"/>), as an unplayable local file does: a reason word never fits every lane ("Unavailab" at WinUI's Compact,
+    /// "Unavaila..." in Classic's lane at every width). The lane's tooltip keeps the long reason.</summary>
     internal static string DurationLabel(in RowPresentation p, long now)
-        => p.VideoMs > 0 && !Withheld(in p, now) ? Format.DurationCell(p.VideoMs) : DurationLabel(p.Track, now);
+    {
+        if (!Withheld(in p, now)) return p.VideoMs > 0 ? Format.DurationCell(p.VideoMs) : DurationLabel(p.Track, now);
+        int ms = p.Track.ForDisplay.DurationMs;
+        return ms > 0 ? Format.DurationCell(ms) : Format.Dash;
+    }
+
+    /// <summary>A withheld row's SHORT reason, which leads its credit line: an unplayable local file's (<see cref="LocalFilesList.Note"/>: "Can't play:
+    /// a WAV file", "Missing"), "Unavailable" for a ruled-unavailable track, the release date for a pending one; "" for a playable row.</summary>
+    internal static string WithheldNote(Track t, long now)
+    {
+        if (!t.IsValid) return "";
+        if (t.IsLocal) return LocalFilesList.Note(t);
+        if (t.IsLocalItem) return "";
+        return RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
+        {
+            RowCellRules.DurationKind.Unavailable => Loc.Get(Strings.Detail.TrackFacts.UnavailableShort),
+            RowCellRules.DurationKind.ReleaseDate => Format.ReleaseDateLabel(t.AvailableAt, now),
+            _ => "",
+        };
+    }
 
     /// <summary>A withheld row's LONG reason, the tooltip over its duration lane (tuned Classic L4): "This song isn't
     /// available to play" (a terminal verdict names no cause the client could state honestly) or "Releases {date}".

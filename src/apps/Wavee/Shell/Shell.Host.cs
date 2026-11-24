@@ -1053,6 +1053,7 @@ public static partial class Shell
 
     public static void GoBack()
     {
+        if (PageStepBack()) return;   // a step the page opened in place goes first (Shell.PageBack.cs)
         if (!BackStep(ref s_nav)) return;
         RedirectCurrent();
         ArmBack(Current.Peek(), s_nav.Current);   // the hero of the page being left flies back into its card (Shell.Connected.cs)

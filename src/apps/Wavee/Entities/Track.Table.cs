@@ -378,6 +378,10 @@ public readonly partial struct Track
         public bool ShowToolbar { get; init; } = true;
         /// <summary>Library master-detail pane (no hero, no recs).</summary>
         public bool Embedded { get; init; }
+        /// <summary>An <see cref="Embedded"/> table that spans a whole page's width (the "On this PC" Songs pivot), not a library pane's column: its rows
+        /// take the window tier's table form, as a playlist page's do (the Compact row: no column header, the 40 "…" lane), instead of the pane's
+        /// Standard form. False: the pane's form.</summary>
+        public bool PageWide { get; init; }
         /// <summary>HasTrailing body under the rows (album trailing, M Wave 5). Non-null on an <see cref="Embedded"/>
         /// table is also the opt-IN to the trailing geometry: the host keeps the profile's <c>HasTrailing</c> instead of
         /// dropping it, so the rows and this band share ONE scroller (<c>TableHost.ConfigOf</c>).</summary>
@@ -411,7 +415,7 @@ public readonly partial struct Track
             => other is not null && (ReferenceEquals(this, other)
                || (Source.Equals(other.Source) && Profile.Equals(other.Profile) && Equals(Vertical, other.Vertical)
                    && (Accent is null) == (other.Accent is null) && ShowToolbar == other.ShowToolbar
-                   && Embedded == other.Embedded && (Trailing is null) == (other.Trailing is null)
+                   && Embedded == other.Embedded && PageWide == other.PageWide && (Trailing is null) == (other.Trailing is null)
                    && ReferenceEquals(PlayAllCell, other.PlayAllCell) && ReferenceEquals(HeroHeight, other.HeroHeight)
                    && ReferenceEquals(Insights, other.Insights) && ReferenceEquals(ListCount, other.ListCount)
                    && WidthSeed == other.WidthSeed && string.Equals(ScrollKey, other.ScrollKey, StringComparison.Ordinal)
@@ -672,6 +676,7 @@ public readonly partial struct Track
         StringId[] _curIds = [], _prevIds = [];
         int _curLen, _prevLen;
         EdgeState _curState;
+        uint _orderScope;   // the `Entities.ScopeEpoch` the order's slots belong to: a scope switch retires the table set they index
 
         // ── memos (hook-owned; assigned every render, read by the rows) ────────────────────────────────────────────
         Memo<Snapshot>? _snapshot;
@@ -847,8 +852,9 @@ public readonly partial struct Track
             // Two ladders, in order: the tier admits the lanes this WIDTH allows, then relief takes back the ones the
             // identity lanes cannot pay for. Relief only subtracts, so this can never widen the table.
             // The window tier's table form (the structure's record: the Compact row, the lanes a band never admits, the row floors). Tracked, so
-            // a crossing re-shapes on the frame it commits. An embedded table (a library pane) keeps the density's rows and every lane (Track.EmbeddedForm).
-            var form = args.Embedded
+            // a crossing re-shapes on the frame it commits. An embedded table (a library pane) keeps the density's rows and every lane (Track.EmbeddedForm);
+            // one as wide as its page (TableArgs.PageWide) takes the tier's form, as the page's own table does.
+            var form = args.Embedded && !args.PageWide
                 ? Track.EmbeddedForm()
                 : ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table;
             var admitted = SetFor(in snap, args, TierNow(), form);
@@ -2961,7 +2967,12 @@ public readonly partial struct Track
             _curState = snap.State;
             _orderSeen = snap;
             _orderSeeded = true;
-            if (!membershipChanged) return;
+            // The baseline's slots index the table set it was read from: after a scope switch (the login's welcome) they name other rows or none,
+            // so the first membership in the new set re-seeds the order instead of being narrated against the old one.
+            uint scopeEpoch = Entities.ScopeEpoch.Peek();
+            bool sameScope = scopeEpoch == _orderScope;
+            _orderScope = scopeEpoch;
+            if (!membershipChanged || !sameScope) { if (!sameScope) _dropped.Clear(); return; }
             // The FLIP/fade reorder animation keys rows by Track identity (`MembershipDiff.Keys`) — an episode-
             // capable source (mixed Track/Episode) skips the choreography rather than mis-keying it; its rows still
             // reflow (Track.Table's plain layout pass), just without the fancy displacement narration.

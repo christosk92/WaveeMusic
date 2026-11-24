@@ -379,7 +379,7 @@ internal static class WinUiTrackTable
             {
                 var p = r.P;
                 return (p.State.OnThisPc && !oneLineMark) || compact || Track.ArtistInTitle(in p, setArtist) || Track.ShowAlbumInMeta(in p, false, setAlbum)
-                    || p.Track.ForDisplay.IsPodcast;
+                    || p.Track.ForDisplay.IsPodcast || Track.Withheld(in p, Track.NowUnix);   // a withheld row's line states why
             }),
             Children =
             [
@@ -407,13 +407,13 @@ internal static class WinUiTrackTable
                     Visible = Prop.Of(() =>
                     {
                         var p = r.P;
-                        return RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay)) > 0 || PlaysTail(in p).Length > 0;
+                        return Track.CreditSpeaks(p.Track.ForDisplay, ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay)) || PlaysTail(in p).Length > 0;
                     }),
                     OnSpanClick = index =>
                     {
                         var p = r.Presentation.Peek();
                         var d = p.Track.ForDisplay;
-                        int target = RowCellRules.LinkTarget(index, ArtistCount(in p), HasContainer(in p, d));
+                        int target = RowCellRules.LinkTarget(index - Track.CreditLeadSpans(d, ArtistCount(in p), HasContainer(in p, d)), ArtistCount(in p), HasContainer(in p, d));
                         if (target >= 0) Track.GoToArtistAt(d, target);
                         else if (target == RowCellRules.Container) Track.GoToContainer(d);
                     },
@@ -433,7 +433,7 @@ internal static class WinUiTrackTable
             buffer.Clear();
             var p = r.P;
             var d = p.Track.ForDisplay;
-            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, "", WinUiListRules.RowInk(p.State.IsNow, Tok.AccentTextPrimary, Tok.TextSecondary));
+            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, "", WinUiListRules.RowInk(p.State.IsNow, Tok.AccentTextPrimary, Tok.TextSecondary), withNote: false);
             return buffer.Current;
         }))
         {
@@ -556,10 +556,10 @@ internal static class WinUiTrackTable
         }, () => r.P.Track.HasVersions()), CellKey.Expand);
 
     /// <summary>The artists, the container and a plain tail as one span run (separators and the tail are not links).</summary>
-    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, string tail, ColorF ink)
+    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, string tail, ColorF ink, bool withNote = true)
     {
         int before = b.Current.Count;
-        Track.FillCreditSpans(b, t, artistCount, container, WinUiListRules.InlineLead, ink);
+        Track.FillCreditSpans(b, t, artistCount, container, WinUiListRules.InlineLead, ink, withNote);
         if (tail.Length > 0)
         {
             if (b.Current.Count > before) b.Add(new TextSpan(WinUiListRules.InlineLead, Color: ink));

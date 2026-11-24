@@ -368,6 +368,7 @@ public static partial class Spotify
         if (next == scope.Key) return;
         Entities.Switch(next);
         Playback.Rebind();               // G-241: the restored deck follows the scope switch before the next drain
+        LocalLibrary.Rebind();           // #240: the music folders' rows and the Local Files membership follow it too (start-up staged them into the old set)
         Log.Info("spotify", "catalog scope adopted (" + Platform.Redact(next.Account) + ", market " + next.Market
             + ", tier " + s.Tier + ")");
     }

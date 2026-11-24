@@ -408,6 +408,18 @@ public static partial class LocalLibrary
         return stats.Summary();
     }
 
+    /// <summary>The inspector's start-up (#240): the app's own boot path, <see cref="Use"/>, with <paramref name="path"/> as the one music folder of
+    /// the inspector's in-memory settings and the scratch profile's index file (whatever an earlier build left there loads, or is rebuilt): the load
+    /// thread, the start-up scan and the restate run as at an app start, on their own threads, landing over the next frames. Once per process, and
+    /// never after a fixture. Returns the index file it reads, or null when refused.</summary>
+    public static string? InspectStartup(string path)
+    {
+        if (s_fixture || s_attached) return null;
+        Platform.Settings.Set(Platform.Keys.MusicFolders, path);
+        Use(Platform.LocalFolder);
+        return s_binPath;
+    }
+
     public static void InspectFixture(string value)
     {
         // `paused`: the scanning fixture held by battery saver (S11 "Scanning paused · battery saver").

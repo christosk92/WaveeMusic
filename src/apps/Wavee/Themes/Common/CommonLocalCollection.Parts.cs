@@ -13,6 +13,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 using static FluentGpu.Dsl.Ui;
@@ -331,16 +332,22 @@ internal static class CommonLocalCollectionParts
 
     /// <summary>A cover; with none (not extracted yet, or the files carry none) a tile of the name's own colour with its initial, so a library
     /// without art still reads as a wall of albums rather than a grid of grey boxes. The colour is stable per name (<see cref="L.TintOf"/>).</summary>
-    static Element Art(string? cover, float size, string seed, string name, bool round = false)
+    /// <param name="flight">The connected flight's key (<see cref="LocalOpened.FolderTile"/>, <see cref="LocalOpened.AlbumTile"/>): a cover is the
+    /// picture end, a tile with none flies whole (<see cref="Design.MorphKeys.Whole"/>). Null: untagged.</param>
+    static Element Art(string? cover, float size, string seed, string name, bool round = false, string? flight = null)
     {
         var corners = round ? CornerRadius4.All(size / 2f) : R.Shape.All(ShapeRole.Cover);
         if (cover is not null)
-            return new BoxEl { Width = size, Height = size, Shrink = 0f, ClipToBounds = true, Corners = corners, Layout = L.SizeReflow, Children = [Controls.CoverFill(cover, 0f, L.CardDecode)] };
+            return new BoxEl
+            {
+                Width = size, Height = size, Shrink = 0f, ClipToBounds = true, Corners = corners, Layout = L.SizeReflow, MorphId = flight,
+                Children = [Controls.CoverFill(cover, 0f, L.CardDecode)],
+            };
         var (top, bottom) = L.TintOf(seed);
         string initial = InitialOf(name);
         return new BoxEl
         {
-            Width = size, Height = size, Shrink = 0f, Corners = corners, ClipToBounds = true, Layout = L.SizeReflow,
+            Width = size, Height = size, Shrink = 0f, Corners = corners, ClipToBounds = true, Layout = L.SizeReflow, MorphId = Design.MorphKeys.Whole(flight),
             Gradient = GradientDown(new GradientStop(0f, top), new GradientStop(1f, bottom)),
             Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
             Children = initial.Length == 0 ? [] : [(size >= L.InitialBigFrom ? R.Type.PageHero(initial) : R.Type.CardTitle(initial)) with { Color = L.InitialInk }],
@@ -360,7 +367,8 @@ internal static class CommonLocalCollectionParts
     {
         var hover = new Signal<bool>(false);
         string key = a.Key;
-        var cover = new List<Element>(4) { Art(a.Cover, w, a.Key, a.Title) };
+        // The cover flies into the header of the album's folder when the card opens it (LocalOpened.AlbumTile).
+        var cover = new List<Element>(4) { Art(a.Cover, w, a.Key, a.Title, flight: LocalOpened.AlbumTile(key)) };
         if (a.IsNew) cover.Add(NewTag());
         if (pill && a.Quality.Length > 0) cover.Add(Pill(a.Quality));
         cover.Add(new BoxEl
@@ -409,9 +417,13 @@ internal static class CommonLocalCollectionParts
     // ── Home (board 18) ─────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Home's shelves, in the user's order (<paramref name="shelves"/>; "Edit home"), the hidden ones left out.</summary>
+    /// <param name="reveal">True only on the render "Edit home" showed or hid a shelf: that shelf reveals or folds its height. A shelf that mounts with
+    /// Home itself (a pivot switch, Back from a detail opened over Home) arrives at its height: replaying every shelf's reveal pushed the
+    /// page open under the user, and kept the card Back flies home to under half visible.</param>
     public static Element[] HomeBody(LocalCollectionView v, LocalCollectionVerbs verbs, Action<LocalPivot> setPivot, CommonLocalCollectionLayout lay, float g,
-                                     IReadOnlyList<LocalShelfSlot> shelves)
+                                     IReadOnlyList<LocalShelfSlot> shelves, bool reveal)
     {
+        LayoutTransition shelfReveal = reveal ? L.ShelfReveal : L.ShelfReveal with { Enter = default };
         var kids = new List<Element>(3);
         Action seeAll = () => setPivot(LocalPivot.Albums);
         int shown = 0;
@@ -426,7 +438,7 @@ internal static class CommonLocalCollectionParts
             kids.Add(new BoxEl
             {
                 Key = "lc-home:" + id, Direction = 1, MinWidth = 0f, Layout = L.ShelfMove,
-                Children = shelf is null ? [] : [new BoxEl { Key = "lc-home-reveal:" + id, Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = L.ShelfReveal, Children = [shelf] }],
+                Children = shelf is null ? [] : [new BoxEl { Key = "lc-home-reveal:" + id, Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = shelfReveal, Children = [shelf] }],
             });
         }
         if (shown == 0 && v.Songs > 0)
@@ -708,19 +720,25 @@ internal static class CommonLocalCollectionParts
 
     // ── Folders (board 20) ──────────────────────────────────────────────────────────────────────────────────────────
 
-    public static Element FolderBrowser(LocalCollectionView v, string folder, Action<string> open, LocalCollectionVerbs verbs, CommonLocalCollectionLayout lay,
+    /// <summary>The Folders browser (<paramref name="opened"/> null: the music folders) or an open folder, an album's folder included (board 20): the
+    /// breadcrumb from <paramref name="title"/> ("On this PC", or the pivot the album was opened from), the header (the folder's or the album's cover,
+    /// tagged for the flight from its tile, its name and counts), the folders inside as tiles, its own songs.</summary>
+    public static Element FolderBrowser(LocalCollectionView v, LocalOpened? opened, Action<string> open, LocalCollectionVerbs verbs, CommonLocalCollectionLayout lay,
         float g, string title, string routeKey)
     {
+        string folder = opened?.Folder ?? "";
         LocalFolderNode? node = folder.Length > 0 && v.Folders.TryGetValue(folder, out var n) ? n : null;
         IReadOnlyList<string> childKeys = node?.Children ?? v.RootKeys;
         var children = new List<LocalFolderNode>(childKeys.Count);
         foreach (string k in childKeys) if (v.Folders.TryGetValue(k, out var c)) children.Add(c);
         var files = node?.Files ?? [];
 
-        // The breadcrumb: On this PC › the music folder › … › this folder.
+        // The breadcrumb: On this PC › the music folder › … › this folder; an album's folder starts at the pivot it was opened from (Albums ›
+        // the album's folder › …).
         var trail = new List<(string Label, string Key)> { (title, "") };
         var chain = new List<LocalFolderNode>();
-        for (var at = node; at is not null; at = at.ParentKey is { } pk && v.Folders.TryGetValue(pk, out var up) ? up : null) chain.Add(at);
+        string root = opened?.Root ?? "";
+        for (var at = node; at is not null; at = at.Key != root && at.ParentKey is { } pk && v.Folders.TryGetValue(pk, out var up) ? up : null) chain.Add(at);
         for (int i = chain.Count - 1; i >= 0; i--) trail.Add((chain[i].Name, chain[i].Key));
         var labels = new string[trail.Count];
         for (int i = 0; i < labels.Length; i++) labels[i] = trail[i].Label;
@@ -728,13 +746,12 @@ internal static class CommonLocalCollectionParts
 
         int songs = node?.Songs ?? v.Songs;
         long length = node?.DurationMs ?? v.DurationMs;
-        string meta = P.Folders(children.Count) + " · " + P.Songs(songs) + " · " + Length(length);
-        var headKids = new List<Element>(5)
-        {
-            new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, Children = [crumbs] },
-            Ell(Meta(meta)),
-            Spacer(),
-        };
+        // An open folder with no folders inside leaves the "0 folders" out; the music folders' row always counts them.
+        string meta = (node is null || children.Count > 0 ? P.Folders(children.Count) + " · " : "") + P.Songs(songs) + " · " + Length(length);
+        // An open folder states its counts in its header; the music folders' row keeps them beside the breadcrumb.
+        var headKids = new List<Element>(5) { new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, Children = [crumbs] } };
+        if (node is null) headKids.Add(Ell(Meta(meta)));
+        headKids.Add(Spacer());
         if (node is not null)
         {
             string key = node.Key;
@@ -747,6 +764,7 @@ internal static class CommonLocalCollectionParts
 
             Children = headKids.ToArray(),
         }, top: L.CompactTop, bottom: L.CompactTop);
+        Element? header = node is null ? null : DetailHeader(v, opened!, node, meta, lay, g);
         Element songsHead = Gut("lc-songs-head", g, new BoxEl
         {
             Direction = 0, Gap = L.ThumbGap, AlignItems = FlexAlign.Center, Height = L.SortRowH, MinWidth = 0f,
@@ -757,42 +775,85 @@ internal static class CommonLocalCollectionParts
             var (cols, cell) = Columns(w, g, lay.WallMin, lay.CardGap);
             int tileRows = (children.Count + cols - 1) / cols;
             float tileH = cell + L.CardTextGap + L.CardTextH + lay.CardGap;
-            int songsAt = 1 + tileRows;
+            int tilesAt = header is null ? 1 : 2;
+            int songsAt = tilesAt + tileRows;
             int rows = songsAt + (files.Count > 0 ? 1 + files.Count : 0);
             return (rows,
-                i => i == 0 ? L.SortRowH + 2f * L.CompactTop : i < songsAt ? tileH : i == songsAt ? L.SortRowH : L.SongRowH,
+                i => i == 0 ? L.SortRowH + 2f * L.CompactTop : i < tilesAt ? lay.DetailCover + L.DetailBottom : i < songsAt ? tileH : i == songsAt ? L.SortRowH : L.SongRowH,
                 i => i == 0 ? head
-                    : i < songsAt ? CardRow((i - 1) * cols, children.Count, cols, lay.CardGap, g, k => FolderTile(children[k], cell, open, verbs))
+                    : i < tilesAt ? header!
+                    : i < songsAt ? CardRow((i - tilesAt) * cols, children.Count, cols, lay.CardGap, g, k => FolderTile(children[k], cell, open, verbs))
                     : i == songsAt ? songsHead
                     : SongRow(files[i - songsAt - 1], g, lay.FileColumn, verbs));
         }, routeKey + ":folders:" + folder);
     }
 
-    static Element FolderTile(LocalFolderNode f, float w, Action<string> open, LocalCollectionVerbs verbs)
+    /// <summary>The header of an open folder (under the breadcrumb): its picture (the album's cover at the root an album card opened), tagged with
+    /// the flight key of the tile that opens it (<see cref="LocalOpened.HeaderTile"/>), so that cover flies in here and back; its name over its
+    /// counts (an album: its artist and year first). One fixed row of the list: the cover's height and the air under it.</summary>
+    static Element DetailHeader(LocalCollectionView v, LocalOpened opened, LocalFolderNode node, string meta, CommonLocalCollectionLayout lay, float g)
     {
-        string key = f.Key;
-        // The folder's picture (board 20): its own cover or folder image, else a 2 x 2 mosaic of the covers inside, else ONE placeholder glyph. The
-        // small folder badge marks a picture as a folder's; the glyph tile already is one, so it carries no badge (it drew the folder twice).
-        Element art;
-        bool pictured = true;
-        if (f.Cover is not null) art = Art(f.Cover, w, f.Key, f.Name);
-        else if (f.Mosaic.Count >= 2)
+        float size = lay.DetailCover;
+        string tag = opened.HeaderTile;
+        LocalAlbumCard? album = null;
+        if (opened.Album.Length > 0 && node.Key == opened.Root)
+            foreach (var a in v.Albums) if (a.Key == opened.Album) { album = a; break; }
+        Element art = album is not null ? Art(album.Cover, size, album.Key, album.Title, flight: tag) : FolderArt(node, size, tag, out _);
+        string name = album?.Title ?? node.Name;
+        string sub = album is null ? meta
+            : (album.Year > 0 ? album.Artist + " · " + album.Year.ToString(CultureInfo.InvariantCulture) : album.Artist) + " · " + meta;
+        return Gut("lc-detail-head", g, new BoxEl
+        {
+            Key = "lc-detail-head", Direction = 0, Gap = L.DetailGap, AlignItems = FlexAlign.Center, Height = size, MinWidth = 0f,
+            Children =
+            [
+                new BoxEl { Key = "lc-detail-cover", Width = size, Height = size, Shrink = 0f, Layout = L.SizeReflow, Children = [art] },
+                new BoxEl
+                {
+                    Direction = 1, Gap = L.DetailMetaGap, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                    Children =
+                    [
+                        R.Type.HeroTitle(name) with { Key = "lc-detail-title", Case = R.Case.For(LabelKind.Heading), Color = Tok.TextPrimary, MaxLines = 2, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                        Meta(sub) with { MaxLines = 2, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                    ],
+                },
+            ],
+        }, bottom: L.DetailBottom);
+    }
+
+    /// <summary>A folder's picture (board 20): its own cover or folder image, else a 2 x 2 mosaic of the covers inside, else ONE placeholder glyph,
+    /// tagged <paramref name="flight"/> (a mosaic or the glyph flies whole). <paramref name="pictured"/>: not the glyph tile.</summary>
+    static Element FolderArt(LocalFolderNode f, float w, string flight, out bool pictured)
+    {
+        pictured = true;
+        if (f.Cover is not null) return Art(f.Cover, w, f.Key, f.Name, flight: flight);
+        if (f.Mosaic.Count == 1) return Art(f.Mosaic[0], w, f.Key, f.Name, flight: flight);
+        if (f.Mosaic.Count >= 2)
         {
             float half = w / 2f;
             var cells = new Element[4];
-            for (int i = 0; i < 4; i++) cells[i] = new BoxEl { Width = half, Height = half, Children = [Controls.CoverFill(f.Mosaic[i % f.Mosaic.Count], 0f, L.MosaicDecode)] };
-            art = new BoxEl { Width = w, Height = w, Wrap = true, ClipToBounds = true, Corners = R.Shape.All(ShapeRole.Cover), Children = cells };
-        }
-        else if (f.Mosaic.Count == 1) art = Art(f.Mosaic[0], w, f.Key, f.Name);
-        else
-        {
-            pictured = false;
-            art = new BoxEl
+            for (int i = 0; i < 4; i++) cells[i] = new BoxEl { Width = half, Height = half, Layout = L.SizeReflow, Children = [Controls.CoverFill(f.Mosaic[i % f.Mosaic.Count], 0f, L.MosaicDecode)] };
+            return new BoxEl
             {
-                Width = w, Height = w, Corners = R.Shape.All(ShapeRole.Cover), Fill = Design.WatchedPlaceholder(null), BorderWidth = L.ChipBorder, BorderColor = Tok.StrokeCardDefault,
-                Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Children = [Icon(Icons.Folder, L.FolderGlyph, Tok.TextTertiary)],
+                Width = w, Height = w, Wrap = true, ClipToBounds = true, Corners = R.Shape.All(ShapeRole.Cover), Layout = L.SizeReflow,
+                MorphId = Design.MorphKeys.Whole(flight), Children = cells,
             };
         }
+        pictured = false;
+        return new BoxEl
+        {
+            Width = w, Height = w, Corners = R.Shape.All(ShapeRole.Cover), Fill = Design.WatchedPlaceholder(null), BorderWidth = L.ChipBorder, BorderColor = Tok.StrokeCardDefault,
+            Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Layout = L.SizeReflow, MorphId = Design.MorphKeys.Whole(flight),
+            Children = [Icon(Icons.Folder, L.FolderGlyph, Tok.TextTertiary)],
+        };
+    }
+
+    static Element FolderTile(LocalFolderNode f, float w, Action<string> open, LocalCollectionVerbs verbs)
+    {
+        string key = f.Key;
+        // The folder's picture (FolderArt). The small folder badge marks a picture as a folder's; the glyph tile already is one, so it carries no
+        // badge (it drew the folder twice). The picture flies into the folder's header when the tile opens it (LocalOpened.FolderTile).
+        Element art = FolderArt(f, w, LocalOpened.FolderTile(key), out bool pictured);
         var meta = new List<Element>(2) { Ell(Meta(P.Songs(f.Songs) + " · " + Length(f.DurationMs))) };
         if (f.Quality.Length > 0)
             meta.Add(new BoxEl
@@ -863,6 +924,60 @@ internal static class CommonLocalCollectionParts
             Padding = new Edges4(L.ChipPadX, 0f, L.ChipPadX, 0f), MinWidth = 0f, Corners = R.Shape.All(ShapeRole.Control),
             OnClick = s.Playable ? () => verbs.PlayFile(id) : null, Children = kids.ToArray(),
         }.Interactive(Interaction.ListRow, isEnabled: s.Playable));
+    }
+
+    // ── list -> detail motion (LocalOpened) ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The body under a pivot, list or open detail, keyed so a step in or out swaps it: <paramref name="enter"/> plays only on the step's own
+    /// render (null on a pivot switch, whose body the pivot's recipe moves, and on the page's first), the exit leg always (a node leaves with the leg
+    /// it last rendered: the list by drilling in, a detail by stepping back).</summary>
+    public static Element DetailSlot(string key, Element body, LayoutTransition? enter, LayoutTransition? exit) => new BoxEl
+    {
+        Key = key, Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Children = [body],
+        Layout = enter is { } e ? e with { Exit = exit?.Exit ?? default, ExitDynamics = exit?.ExitDynamics ?? exit?.Dynamics, ExitDelayMs = exit?.ExitDelayMs }
+               : exit is { } x ? x with { Enter = default } : null,
+    };
+
+    /// <summary>The structure's drill (<see cref="PageSwap.DrillIn"/> / <see cref="PageSwap.DrillBack"/>: WinUI's, its reduced fade under reduced motion),
+    /// else the core's quick same-kind fade; under a flight (<paramref name="flown"/>) only its fades (<c>Design.Nav.Quiet</c>), so the cover is the
+    /// one thing that travels, as a page swap under a flight is. Its legs only: never a FLIP of the body's own moves.</summary>
+    public static LayoutTransition? Drill(bool back, bool flown, ThemeFacts facts)
+    {
+        var motion = facts.Policies.PageMotion;
+        LayoutTransition? r = FluentGpu.Dsl.Motion.ReducedMotion ? motion.ReducedFade
+            : motion.Recipe?.Invoke(back ? PageSwap.DrillBack : PageSwap.DrillIn) ?? Design.Nav.SameKindSwap;
+        if (r is not { } t) return null;
+        if (flown && motion.ConnectedQuietPage) t = Design.Nav.Quiet(in t);
+        return t with { Channels = TransitionChannels.Opacity };
+    }
+
+    /// <summary>Does this structure fly a tile's cover into the detail (its connected spec)? A leaving body expects the flight's quiet leg then.</summary>
+    public static bool Flies(ThemeFacts facts) => facts.Policies.PageMotion.Connected is not null;
+
+    /// <summary>Which body a pivot shows and how it got there: tracks the last pivot and body key a host rendered, and answers the step's enter leg
+    /// when the body changed under the same pivot (a step in or out).</summary>
+    public sealed class DetailMotion
+    {
+        LocalPivot _pivot;
+        string _key = "";
+        bool _seen;
+
+        /// <summary>The body key for <paramref name="pivot"/> (its list, or the open detail) and the enter leg of this render (null: no step).</summary>
+        public (string Key, LayoutTransition? Enter) Step(string bodyKey, LocalPivot pivot, LocalOpened? opened, ThemeFacts facts)
+        {
+            bool detail = opened?.IsOpenOver(pivot) == true;
+            string key = bodyKey + ":" + pivot.ToString() + (detail ? ":open:" + opened!.Folder : ":list");
+            LayoutTransition? enter = null;
+            if (_seen && pivot == _pivot && key != _key && opened is { } o) enter = Drill(o.Back, o.Flown, facts);
+            _seen = true;
+            _pivot = pivot;
+            _key = key;
+            return (key, enter);
+        }
+
+        /// <summary>The leg a body leaves with: a list by drilling in, a detail by stepping back (both quiet where the structure flies).</summary>
+        public static LayoutTransition? Exit(LocalPivot pivot, LocalOpened? opened, ThemeFacts facts)
+            => Drill(back: opened?.IsOpenOver(pivot) == true, Flies(facts), facts);
     }
 
     // ── Insights (S10) ──────────────────────────────────────────────────────────────────────────────────────────────
