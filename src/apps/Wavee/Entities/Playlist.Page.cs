@@ -1424,17 +1424,18 @@ public readonly partial struct Playlist
         // is staged and played back on it.
         _ = Task.Run(() =>
         {
-            LocalTags.TryRead(path, out _, out LocalTagSet tags, out _);
-            Spotify.Post(() => PlayImported(path, action, tags));
+            bool read = LocalTags.TryRead(path, out Spotify.Audio.Format format, out LocalTagSet tags, out string why);
+            Spotify.Post(() => PlayImported(path, action, format, tags, read, why));
         });
     }
 
     /// <summary>UI thread: the dropped file's row, staged with its tags, then played (an .mp4 attached to its own row first).</summary>
-    static void PlayImported(string path, LocalDropAction action, LocalTagSet tags)
+    static void PlayImported(string path, LocalDropAction action, Spotify.Audio.Format format, LocalTagSet tags, bool read, string why)
     {
-        var track = ImportLocalFile(path, in tags);
+        // The picked file is a library entry ("Added files", LocalLibrary.Added.cs); a video is attached to its own row there.
+        var track = LocalLibrary.AddDropped(path, format, in tags, read, why);
         if (!track.IsValid) { Notify.Say(Loc.Get(Strings.LocalFile.Rejected), InfoBarSeverity.Error); return; }
-        if (action == LocalDropAction.PlayVideo && Video.Overrides.Attach(track.Uri.Text, path, path, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null)
+        if (action == LocalDropAction.PlayVideo && !Video.Overrides.TryGet(track.Uri.Text, out _))
         {
             Notify.Say(Loc.Get(Strings.LocalFile.Rejected), InfoBarSeverity.Error);
             return;

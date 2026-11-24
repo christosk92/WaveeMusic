@@ -148,7 +148,7 @@ public static partial class DropAnywhere
         /// <summary>Worker: the files in drop order, then each folder's walk, then the playlist's entries; tags read here.</summary>
         void Walk()
         {
-            var batch = new List<(string Path, LocalTagSet Tags)>(BatchRows);
+            var batch = new List<(string Path, Spotify.Audio.Format Format, LocalTagSet Tags, bool Read, string Why)>(BatchRows);
             int seen = 0;
             bool Take(string path)
             {
@@ -156,10 +156,11 @@ public static partial class DropAnywhere
                 if (!Playlist.IsLocalAudioFile(path) && !Playlist.IsLocalVideoFile(path)) { Interlocked.Increment(ref _skipped); return true; }
                 // The reader is the judge, not the extension: a damaged or foreign file named .mp3 (or ALAC in an .m4a)
                 // reads as no format Wavee can play, and is counted as skipped instead of queued as a row that cannot play.
-                bool known = LocalTags.TryRead(path, out Spotify.Audio.Format format, out LocalTagSet tags, out _) && format != Spotify.Audio.Format.Unknown;
+                bool read = LocalTags.TryRead(path, out Spotify.Audio.Format format, out LocalTagSet tags, out string why);
+                bool known = read && format != Spotify.Audio.Format.Unknown;
                 if (!known && !Playlist.IsLocalVideoFile(path)) { Interlocked.Increment(ref _skipped); return true; }
                 seen++;
-                batch.Add((path, tags));
+                batch.Add((path, format, tags, read, why));
                 if (batch.Count >= BatchRows || !_played && how == DropDeposit.PlayNow)
                 {
                     var rows = batch.ToArray();
@@ -187,17 +188,16 @@ public static partial class DropAnywhere
         }
 
         /// <summary>UI thread: stage a batch's rows and put them where the drop said.</summary>
-        void Land((string Path, LocalTagSet Tags)[] rows)
+        void Land((string Path, Spotify.Audio.Format Format, LocalTagSet Tags, bool Read, string Why)[] rows)
         {
             var refs = new EntityRef[rows.Length];
             int n = 0;
-            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            foreach (var (path, tags) in rows)
+            foreach (var (path, format, tags, read, why) in rows)
             {
-                var track = Playlist.ImportLocalFile(path, in tags);
-                if (!track.IsValid) { _skipped++; continue; }
+                // A dropped file is a library entry ("Added files", LocalLibrary.Added.cs): indexed, kept, listed like a music-folder file.
                 // A dropped .mp4 plays through the existing video path: attached to its own row (plan §3.17).
-                if (Playlist.IsLocalVideoFile(path)) Video.Overrides.Attach(track.Uri.Text, path, path, now);
+                var track = LocalLibrary.AddDropped(path, format, in tags, read, why);
+                if (!track.IsValid) { _skipped++; continue; }
                 refs[n++] = new EntityRef(EntityKind.Track, track.Slot);
             }
             if (n == 0) return;

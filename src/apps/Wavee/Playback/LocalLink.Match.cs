@@ -105,7 +105,7 @@ public static partial class LocalLink
         var songs = new List<LocalEntry>();
         foreach (LocalEntry e in LocalLibrary.Index.Snapshot())
         {
-            if (e.Tags.Kind != LocalKind.Audio || e.State == LocalState.Missing || !e.Playable || !keep(e)) continue;
+            if (e.State == LocalState.Missing || !e.Playable || !keep(e)) continue;   // a video is linked like a song
             string key = GroupKeyOf(e);
             if (!keepDecided && s_decided.TryGetValue(key, out Decided? d) && d.Decision is LinkDecision.Accepted or LinkDecision.NotOnSpotify) continue;
             if (e.Tags.Album.Length == 0) { songs.Add(e); continue; }

@@ -247,8 +247,7 @@ public static class LocalCollection
 
         foreach (var e in entries)
         {
-            if (e.Tags.Kind != LocalKind.Audio) continue;
-            songs++;
+            songs++;   // audio and video alike: a dropped music video is a song of the library (the owner overrode D19)
             bytes += e.Size;
             perRootSongs[e.RootId] = perRootSongs.GetValueOrDefault(e.RootId) + 1;
             if (e.State == LocalState.Missing) missing++;
@@ -305,7 +304,8 @@ public static class LocalCollection
                 artists[ak] = (ar.Name, ar.Albums, ar.Tracks + 1, ar.Song ?? facts.SongUri);
             }
 
-            // Folders: the file's folder and every folder above it up to its music folder.
+            // Folders: the file's folder and every folder above it up to its music folder (an added file is in none).
+            if (e.RootId == LocalIndex.AddedRoot) continue;
             var leaf = NodeOf(nodes, rootKeyOf, rootPath, e.RootId, DirOf(e.RelativePath));
             leaf.Files.Add(e);
             leaf.DurationHere += t.DurationMs;

@@ -464,7 +464,9 @@ public static class LocalFilesList
         if (!t.IsValid || !t.IsLocal) return null;
         string uri = t.Uri.Text, title = t.Title;
         if (LocalLibrary.TryLocalIdOf(uri, out long id))
-            return new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.List.Hide), Icons.Remove, true, () => Hide(id, title));
+            return LocalLibrary.IsAdded(id)
+                ? new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.List.RemoveDropped), Icons.Remove, true, () => RemoveAdded(id, title))
+                : new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.List.Hide), Icons.Remove, true, () => Hide(id, title));
         if (uri.StartsWith(Playlist.LocalFilePrefix, StringComparison.Ordinal))
         {
             int slot = t.Slot;
@@ -478,6 +480,14 @@ public static class LocalFilesList
     {
         if (LocalLibrary.HideFile(id) is not { } path) return;
         Notify.Say(Strings.LocalFiles.List.Hidden(title), actionLabel: Loc.Get(Strings.LocalFiles.List.Undo), onAction: () => LocalLibrary.UnhideFile(path),
+                   dedupeKey: "local.hide");
+    }
+
+    /// <summary>Take an added file out of the library, with Undo (it comes back under its own id: its link and rename are kept).</summary>
+    static void RemoveAdded(long id, string title)
+    {
+        if (LocalLibrary.RemoveAdded(id) is not { } entry) return;
+        Notify.Say(Strings.LocalFiles.List.Removed(title), actionLabel: Loc.Get(Strings.LocalFiles.List.Undo), onAction: () => LocalLibrary.RestoreAdded(entry),
                    dedupeKey: "local.hide");
     }
 

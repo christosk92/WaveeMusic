@@ -158,7 +158,7 @@ public static partial class LocalLibrary
     {
         var missing = new List<LocalEntry>();
         foreach (LocalEntry e in s_index.Snapshot())
-            if (e.Tags.Kind == LocalKind.Audio && e.State == LocalState.Missing) missing.Add(e);
+            if (e.State == LocalState.Missing) missing.Add(e);
         missing.Sort(static (a, b) => a.LastSeenTicks.CompareTo(b.LastSeenTicks));
         return missing;
     }
@@ -168,7 +168,7 @@ public static partial class LocalLibrary
     {
         var list = new List<LocalEntry>();
         foreach (LocalEntry e in s_index.Snapshot())
-            if (e.Tags.Kind == LocalKind.Audio && !e.Playable && e.State != LocalState.Missing) list.Add(e);
+            if (!e.Playable && e.State != LocalState.Missing) list.Add(e);
         list.Sort(static (a, b) => string.Compare(a.RelativePath, b.RelativePath, StringComparison.OrdinalIgnoreCase));
         return list;
     }
@@ -180,7 +180,6 @@ public static partial class LocalLibrary
         var albums = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (LocalEntry e in entries)
         {
-            if (e.Tags.Kind != LocalKind.Audio) continue;
             counts.TryGetValue(e.RootId, out Counts c);
             counts[e.RootId] = new Counts(c.Songs + 1, c.Unplayable + (e.Playable && e.State != LocalState.Missing ? 0 : 1),
                 c.Missing + (e.State == LocalState.Missing ? 1 : 0), c.Cloud + (e.State == LocalState.CloudOnly ? 1 : 0));

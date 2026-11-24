@@ -15,7 +15,8 @@
 // the UI thread then stages only the faces whose hash changed, 2,000 rows per frame (a 50,000-file first pass is 25 commits
 // over 25 frames, never one long frame), replaces the Local Files membership (indexed files by album artist, album, disc,
 // track, title; then any session-dropped file), and rebuilds the path map. Missing files stay listed and unavailable (S6);
-// files of an offline folder stay listed and unavailable (S7); video entries never enter the list (D19).
+// files of an offline folder stay listed and unavailable (S7); video entries are listed like songs (the owner overrode D19), and so are
+// the "Added files" (LocalLibrary.Added.cs: a dropped file is an indexed entry, staged at once by the drop).
 //
 // SCOPE. The rows and the membership live in the current catalog scope. The login's welcome switches it (`Entities.Switch`: a new, empty
 // table set), usually a moment after the start-up scan's first pass staged the rows, so `Rebind` (called beside `Playback.Rebind`) stages every
@@ -186,24 +187,7 @@ public static partial class LocalLibrary
         foreach (LocalRoot r in s_index.Roots())
             if (StateOf(r.Path) is LocalRootState.Offline or LocalRootState.SignInNeeded) offlineRoots.Add(r.RootId);
         var faces = new List<Face>(entries.Length);
-        foreach (LocalEntry e in entries)
-        {
-            if (e.Tags.Kind != LocalKind.Audio) continue;   // videos are indexed for later (D19), never listed
-            LocalTagSet t = e.Tags;
-            string artists = Playlist.LocalArtistLine(in t);
-            string sortArtist = t.AlbumArtist.Length > 0 ? t.AlbumArtist : t.FirstArtist;
-            bool unavailable = !e.Playable || e.State == LocalState.Missing || offlineRoots.Contains(e.RootId);
-            string full = s_index.FullPathOf(e) ?? e.RelativePath;
-            // What the row shows (display only; the matching title stays the file's): the one rule, LocalNames.Face (a rename, an accepted match's
-            // Spotify info, the tags, the file name's split).
-            var face = LocalNames.Face(e, shown.TryGetValue(e.LocalId, out LinkTrack? link) ? link : null, renames.TryGetValue(e.LocalId, out LocalRename? named) ? named : null);
-            (string title, string album, string? image) = (face.Title, face.Album, face.Image);
-            artists = face.Artists;
-            ulong hash = HashFace(title, artists + "\0" + (image ?? ""), album, t.DurationMs, unavailable, e.State);
-            // The file's own face: what "What changed" counts (a match accepted or undone changes what a row shows, never the file).
-            ulong own = HashFace(e.MatchTitle, Playlist.LocalArtistLine(in t), t.Album, t.DurationMs, unavailable, e.State);
-            faces.Add(new Face(e.LocalId, title, artists, album, sortArtist, t.DiscNumber, t.TrackNumber, t.DurationMs, unavailable, e.State, full, hash, image, own));
-        }
+        foreach (LocalEntry e in entries) faces.Add(FaceOf(e, shown, renames, offlineRoots));   // audio and video alike (the owner overrode D19)
         faces.Sort(static (a, b) =>
         {
             int c = string.Compare(a.SortArtist, b.SortArtist, StringComparison.OrdinalIgnoreCase);
@@ -214,6 +198,22 @@ public static partial class LocalLibrary
             return c != 0 ? c : a.LocalId.CompareTo(b.LocalId);
         });
         return new Pass(version, faces, counts, albums, linksVersion);
+    }
+
+    /// <summary>One entry's row face. What the row shows (display only; the matching title stays the file's) is the one rule, LocalNames.Face
+    /// (a rename, an accepted match's Spotify info, the tags, the file name's split).</summary>
+    static Face FaceOf(LocalEntry e, IReadOnlyDictionary<long, LinkTrack> shown, IReadOnlyDictionary<long, LocalRename> renames, HashSet<int> offlineRoots)
+    {
+        LocalTagSet t = e.Tags;
+        string sortArtist = t.AlbumArtist.Length > 0 ? t.AlbumArtist : t.FirstArtist;
+        bool unavailable = !e.Playable || e.State == LocalState.Missing || offlineRoots.Contains(e.RootId);
+        string full = s_index.FullPathOf(e) ?? e.RelativePath;
+        var face = LocalNames.Face(e, shown.TryGetValue(e.LocalId, out LinkTrack? link) ? link : null, renames.TryGetValue(e.LocalId, out LocalRename? named) ? named : null);
+        (string title, string artists, string album, string? image) = (face.Title, face.Artists, face.Album, face.Image);
+        ulong hash = HashFace(title, artists + "\0" + (image ?? ""), album, t.DurationMs, unavailable, e.State);
+        // The file's own face: what "What changed" counts (a match accepted or undone changes what a row shows, never the file).
+        ulong own = HashFace(e.MatchTitle, Playlist.LocalArtistLine(in t), t.Album, t.DurationMs, unavailable, e.State);
+        return new Face(e.LocalId, title, artists, album, sortArtist, t.DiscNumber, t.TrackNumber, t.DurationMs, unavailable, e.State, full, hash, image, own);
     }
 
     static ulong HashFace(string title, string artists, string album, int durationMs, bool unavailable, LocalState state)

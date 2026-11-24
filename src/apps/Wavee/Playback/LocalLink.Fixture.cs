@@ -88,7 +88,6 @@ public static partial class LocalLink
         int linked = 0;
         foreach (LocalEntry e in LocalLibrary.Index.Snapshot())
         {
-            if (e.Tags.Kind != LocalKind.Audio) continue;
             FileFacts f = FactsOf(e);
             Track best = default;
             for (int slot = Table.None + 1; slot < tracks.Count; slot++)

@@ -24,7 +24,8 @@
 //
 // STATES. Present; Missing (not found in a folder that was listed successfully under an online root: kept, still matches,
 // comes back without a tag read when it reappears unchanged, purged after 60 days by `PurgeMissing`); CloudOnly (a
-// placeholder indexed from its listing alone; never opened). Video entries (D19) are indexed but never counted or matched.
+// placeholder indexed from its listing alone; never opened). Video entries are indexed beside the audio; the playlist-item match maps
+// (tiers 1-3) stay audio-only, the library (counts, collection, Spotify links) lists them like songs (the owner overrode D19's "show nowhere").
 //
 // THE FILES (beside audiofiles.tsv, under Cache). `localindex.bin`: magic, format version, generation, the id high-water
 // mark, the roots, ONE string table, the folders, the entries; written to a temp file and moved over the old one.
@@ -45,7 +46,8 @@ using System.Text;
 
 namespace Wavee;
 
-/// <summary>A music folder as the index knows it: its id, its path, and the change-journal cursor of its volume.</summary>
+/// <summary>A music folder as the index knows it: its id, its path, and the change-journal cursor of its volume. The "Added files" root
+/// (<see cref="LocalIndex.AddedRoot"/>) has no path: its entries' relative paths are their full paths.</summary>
 public sealed record LocalRoot(int RootId, string Path, uint VolumeSerial, ulong JournalId, long NextUsn, long LastWalkTicks);
 
 /// <summary>One folder's commit (§3.6 step 7): its records and its fingerprint together.</summary>
@@ -75,6 +77,10 @@ public sealed class LocalIndex
     public const string FileName = "localindex.bin", LogFileName = "localindex.log";
     /// <summary>Missing entries older than this are purged after a complete walk (§3.3).</summary>
     public static readonly TimeSpan MissingGrace = TimeSpan.FromDays(60);
+
+    /// <summary>The root of the "Added files" (LocalLibrary.Added.cs): files dropped in from outside the music folders. No path (an entry's
+    /// relative path is its full path), never walked by the scanner, never a music folder.</summary>
+    public const int AddedRoot = -1;
     const long CompactLogBytes = 2L * 1024 * 1024;
     const uint BinMagic = 0x494C_5657 /*"WVLI"*/, LogMagic = 0x4C4C_5657 /*"WVLL"*/;
     const int FormatVersion = 3;   // 2: the stream format (rate, bits, channels) and the first-seen time; 3: the ISRC. An older file is rebuilt by a scan
@@ -339,6 +345,12 @@ public sealed class LocalIndex
             foreach (LocalRoot root in _s.Roots.Values)
             {
                 string r = root.Path.TrimEnd('\\');
+                if (r.Length == 0)
+                {
+                    // The "Added files" root holds any full path no music folder holds (a longer root, found later, wins).
+                    if (best < 0 && Path.IsPathFullyQualified(fullPath)) { rootId = root.RootId; relative = fullPath; best = 0; }
+                    continue;
+                }
                 if (r.Length <= best) continue;
                 if (fullPath.Length == r.Length && fullPath.Equals(r, StringComparison.OrdinalIgnoreCase)) { rootId = root.RootId; relative = ""; best = r.Length; }
                 else if (fullPath.Length > r.Length && fullPath[r.Length] == '\\' && fullPath.StartsWith(r, StringComparison.OrdinalIgnoreCase))
@@ -358,7 +370,7 @@ public sealed class LocalIndex
         lock (_gate) return _s.Roots.TryGetValue(entry.RootId, out LocalRoot? root) ? Join(root.Path, entry.RelativePath) : null;
     }
 
-    public static string Join(string root, string relative) => relative.Length == 0 ? root : root.TrimEnd('\\') + "\\" + relative;
+    public static string Join(string root, string relative) => relative.Length == 0 ? root : root.Length == 0 ? relative : root.TrimEnd('\\') + "\\" + relative;
 
     /// <summary>Every entry (video included), ordered by root then path. Builds a record per file: not for a hot path.</summary>
     public LocalEntry[] Snapshot()

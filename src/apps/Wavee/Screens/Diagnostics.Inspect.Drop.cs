@@ -37,7 +37,7 @@ public static partial class Diagnostics
             double readMs = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             bool import = a.Bool("import", true);
             Track track = default;
-            if (import) track = Playlist.ImportLocalFile(full, in tags);
+            if (import) track = LocalLibrary.AddDropped(full, format, in tags, ok, why);   // as the shell's drop: an "Added files" entry
 
             void Body(Utf8JsonWriter w)
             {
