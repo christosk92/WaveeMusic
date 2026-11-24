@@ -3329,7 +3329,7 @@ public readonly partial struct Track
             if (host.MixPlaylistSlot() > 0)
             {
                 _seam ??= Embed.Comp(() => new MixSeamLayer(_seamDisplay ??= () => _scope.Index.Value - _start, host.OriginalAt, host.MixPlaylistSlot,
-                    host.AccentRead, interactive: set.Tier <= 5, host.OpenSeam)) with { Key = "mix:seam:host" };
+                    host.AccentRead, interactive: set.Tier <= 5, host.OpenSeam, shape.RowH)) with { Key = "mix:seam:host" };
                 return new BoxEl
                 {
                     Key = "row:real", Direction = 0, Grow = 1f, ZStack = true, Animate = _entrance, Children = [body, _seam],

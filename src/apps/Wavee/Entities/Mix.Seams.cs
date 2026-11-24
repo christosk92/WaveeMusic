@@ -78,15 +78,17 @@ public static class MixSeams
         };
     }
 
-    /// <summary>The strip's height inside the row: room for the chip when chips show, else the hairline's hover band.</summary>
-    public static float StripHeight(bool chips) => chips ? Spacing.L : Spacing.M;
+    /// <summary>The strip's height inside the row: one caption line and a little air, so the handle and the chip sit inside the row's
+    /// bounds (the row clips; a strip shorter than the caption line cut the handle's descenders).</summary>
+    public static float StripHeight(bool chips) => Ui.Caption("").LineHeight + Spacing.XS;
 }
 
 /// <summary>The seam layer of one table row (the row's core wrapper stacks it over the theme's grid). Props: the row's index read and
 /// the host's reads; renders nothing for a plain row of a list that is not mixed.</summary>
 internal sealed class MixSeamLayer(Func<int> display, Func<int, int> originalAt, Func<int> playlistSlot, Func<ColorF> accent,
-                                   bool interactive, Action<int> open) : Component
+                                   bool interactive, Action<int> open, float rowHeight) : Component
 {
+    readonly float _rowHeight = rowHeight;
     readonly Func<int> _display = display;
     readonly Func<int, int> _originalAt = originalAt;
     readonly Func<int> _playlist = playlistSlot;
@@ -95,8 +97,17 @@ internal sealed class MixSeamLayer(Func<int> display, Func<int, int> originalAt,
     readonly Action<int> _open = open;
     int _index = -1;
 
+    Prop<float>? _hoverOpacity;
+    Action<Point2>? _enter;
+    Action? _exit;
+
     public override Element Render()
     {
+        // The hover band's opacity is a bound channel over one signal, written on the strip's enter and exit only (no state per move).
+        var hovered = UseFloatSignal(0f);
+        _hoverOpacity ??= Prop.Of(() => hovered.Value);
+        _enter ??= _ => { if (hovered.Peek() < 1f) hovered.Value = 1f; };
+        _exit ??= () => hovered.Value = 0f;
         var seam = UseComputed(() =>
         {
             _ = Entities.Current.Playlists.Changed.Value;          // the mix flags, a local record (its write bumps the row)
@@ -117,11 +128,12 @@ internal sealed class MixSeamLayer(Func<int> display, Func<int, int> originalAt,
         float h = MixSeams.StripHeight(chips);
         ColorF line = Tok.StrokeDividerDefault;
         var layers = new List<Element>(3);
-        if (seam.Mark == 3)
-            // The break: the hairline with a gap at its middle, always.
+        // The mark, always on and inert: the No-mix break, the edited dot, or the chip.
+        if (seam.Mark == 3 && !chips)
             layers.Add(new BoxEl
             {
-                Key = "mix:seam:break", Direction = 0, Grow = 1f, AlignItems = FlexAlign.End,
+                Key = "mix:seam:break", Direction = 0, AlignItems = FlexAlign.End, HitTestVisible = false,
+                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
                 Children =
                 [
                     new BoxEl { Key = "mix:seam:l", Grow = 1f, Height = 1f, Fill = line },
@@ -129,46 +141,63 @@ internal sealed class MixSeamLayer(Func<int> display, Func<int, int> originalAt,
                     new BoxEl { Key = "mix:seam:r", Grow = 1f, Height = 1f, Fill = line },
                 ],
             });
-        else if (!chips)
-            // The hairline across the row and the "⋯ Transition" handle: the plain pair's hover state.
-            layers.Add(new BoxEl
-            {
-                Key = "mix:seam:line", ZStack = true, Grow = 1f,
-                Children =
-                [
-                    new BoxEl { Height = 1f, AlignSelf = FlexAlign.End, Fill = line },
-                    new BoxEl
-                    {
-                        AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Margin = new Edges4(Spacing.XXL, 0f, 0f, 0f),
-                        Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Fill = Tok.WindowBackground, Corners = Radii.ControlAll,
-                        Children = [Ui.Caption("⋯ " + Loc.Get(Strings.Mix.Transition)) with { MaxLines = 1 }],
-                    },
-                ],
-            });
         if (seam.Mark == 2 && !chips)
             layers.Add(new BoxEl
             {
-                // The edited pair's dot: centred in the strip, so it never crosses the row's edge.
+                // Centred in the strip, so it never crosses the row's edge.
                 Key = "mix:seam:dot", Width = Spacing.S - 2f, Height = Spacing.S - 2f, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
-                Corners = Radii.Circle(Spacing.S - 2f), Fill = _accent(),
+                Corners = Radii.Circle(Spacing.S - 2f), Fill = _accent(), HitTestVisible = false,
             });
         if (chips)
             layers.Add(new BoxEl
             {
-                Key = "mix:seam:chip", AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
-                Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.ControlAll,
-                Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeDividerDefault, BorderWidth = 1f,
-                Children = [Ui.Caption(seam.Chip) with { MaxLines = 1, Color = seam.Mark == 2 ? _accent() : Tok.TextSecondary }],
+                // At the row's right end (the empty part of every theme's bottom edge), where the hover handle sits too.
+                Key = "mix:seam:chips", Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, HitTestVisible = false,
+                Children =
+                [
+                    new BoxEl { Grow = 1f },
+                    new BoxEl
+                    {
+                        Key = "mix:seam:chip", Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.ControlAll,
+                        Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeDividerDefault, BorderWidth = 1f,
+                        Children = [Ui.Caption(seam.Chip) with { MaxLines = 1, Color = seam.Mark == 2 ? _accent() : Tok.TextSecondary }],
+                    },
+                    new BoxEl { Width = Spacing.XXL },
+                ],
             });
-        // A plain pair paints nothing at rest: its strip fades in on hover (opacity only, no layout). The marks are always on.
-        bool hoverOnly = seam.Mark == 1 && !chips;
+        // The hover band (every pair but a chip's): a hairline across the row and the "⋯ Transition" handle, faded in while the pointer is
+        // on the strip (opacity only, no layout); it is the click target that opens the Transitions list.
+        if (!chips && _interactive)
+            layers.Add(new BoxEl
+            {
+                // A column, not a stack: the handle row above the hairline. The handle sits at the row's right end, where every theme's row
+                // leaves its bottom edge empty (the title lane's subtitle runs along the left half of that edge).
+                Key = "mix:seam:hover", Direction = 1, Grow = 1f, MinWidth = 0f, Opacity = _hoverOpacity!.Value,
+                Cursor = CursorId.Hand, OnClick = () => _open(_index), OnHoverMove = _enter, OnPointerExit = _exit,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, HitTestVisible = false,
+                        Children =
+                        [
+                            new BoxEl { Grow = 1f },
+                            new BoxEl
+                            {
+                                Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Fill = Tok.WindowBackground, Corners = Radii.ControlAll,
+                                Children = [Ui.Caption("⋯ " + Loc.Get(Strings.Mix.Transition)) with { MaxLines = 1 }],
+                            },
+                            new BoxEl { Width = Spacing.XXL },
+                        ],
+                    },
+                    new BoxEl { Height = 1f, Fill = line, HitTestVisible = false },
+                ],
+            });
+        // The strip is the layer: unaligned, so the row's z-stack gives it the row's full width (an aligned layer hugs its content), at the
+        // row's top; a transform (no relayout) moves it to the bottom edge. Only the strip takes the pointer: the row above it stays clickable.
         return new BoxEl
         {
-            Key = "mix:seam", ZStack = true, Height = h, AlignSelf = FlexAlign.End,
-            HitTestVisible = _interactive, Cursor = _interactive ? CursorId.Hand : null,
-            OnClick = _interactive ? () => _open(_index) : null,
-            Opacity = hoverOnly ? 0f : 1f,
-            WhileHover = hoverOnly && _interactive ? new MotionTarget { Opacity = 1f } : null,
+            Key = "mix:seam", ZStack = true, Height = h, Shrink = 0f, OffsetY = MathF.Max(0f, _rowHeight - h),
             Children = layers.ToArray(),
         };
     }
