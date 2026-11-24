@@ -586,6 +586,7 @@ public static partial class Entities
         BumpScopeEpoch();
         ListStamps.ForgetAll();
         Playback.Rebind();
+        LocalLibrary.Rebind();
         Current.PublishAll();
     }
 

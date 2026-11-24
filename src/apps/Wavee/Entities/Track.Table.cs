@@ -676,6 +676,7 @@ public readonly partial struct Track
         StringId[] _curIds = [], _prevIds = [];
         int _curLen, _prevLen;
         EdgeState _curState;
+        uint _orderScope;   // the `Entities.ScopeEpoch` the order's slots belong to: a scope switch retires the table set they index
 
         // ── memos (hook-owned; assigned every render, read by the rows) ────────────────────────────────────────────
         Memo<Snapshot>? _snapshot;
@@ -2966,7 +2967,12 @@ public readonly partial struct Track
             _curState = snap.State;
             _orderSeen = snap;
             _orderSeeded = true;
-            if (!membershipChanged) return;
+            // The baseline's slots index the table set it was read from: after a scope switch (the login's welcome) they name other rows or none,
+            // so the first membership in the new set re-seeds the order instead of being narrated against the old one.
+            uint scopeEpoch = Entities.ScopeEpoch.Peek();
+            bool sameScope = scopeEpoch == _orderScope;
+            _orderScope = scopeEpoch;
+            if (!membershipChanged || !sameScope) { if (!sameScope) _dropped.Clear(); return; }
             // The FLIP/fade reorder animation keys rows by Track identity (`MembershipDiff.Keys`) — an episode-
             // capable source (mixed Track/Episode) skips the choreography rather than mis-keying it; its rows still
             // reflow (Track.Table's plain layout pass), just without the fancy displacement narration.

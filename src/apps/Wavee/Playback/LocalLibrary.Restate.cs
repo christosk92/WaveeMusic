@@ -17,6 +17,10 @@
 // track, title; then any session-dropped file), and rebuilds the path map. Missing files stay listed and unavailable (S6);
 // files of an offline folder stay listed and unavailable (S7); video entries never enter the list (D19).
 //
+// SCOPE. The rows and the membership live in the current catalog scope. The login's welcome switches it (`Entities.Switch`: a new, empty
+// table set), usually a moment after the start-up scan's first pass staged the rows, so `Rebind` (called beside `Playback.Rebind`) stages every
+// face again into the new set and replaces its membership; the files did not change, so nothing is announced.
+//
 // WHAT CHANGED (S5). After the first pass (the baseline) every later pass counts added, moved, missing, back and changed
 // files for the session; new ids keep a "New" mark and moved ids remember where they were, for the session.
 //
@@ -75,8 +79,10 @@ public static partial class LocalLibrary
 
     sealed record Pass(int Version, List<Face> Faces, Dictionary<int, Counts> Counts, int Albums);
 
-    // UI thread
+    // UI thread. `s_staged` is what the rows of `s_stagedScope` hold: a catalog scope switch (the login's welcome, `Entities.Switch`) drops every
+    // row and the Local Files membership with the old table set, so the next pass stages every face again into the new one (`Rebind`).
     static readonly Dictionary<long, Face> s_staged = new();
+    static Scope? s_stagedScope;
     static int s_restatedVersion = -1, s_wantedVersion = -1;
     static bool s_restating, s_baselined;
     static long s_lastRestateStart;
@@ -104,12 +110,25 @@ public static partial class LocalLibrary
         return s_index.TryGet(localId, out LocalEntry? e) ? Math.Max(0, e.Tags.DurationMs) : 0;
     }
 
-    /// <summary>UI thread, from the progress post: start a pass when the index moved (at most once a second while a scan runs).</summary>
+    /// <summary>UI thread, right after a catalog scope switch (beside <c>Playback.Rebind</c>): the rows staged so far went with the old table set,
+    /// so restate into the new one even though the index did not move. A pass already in flight stages into whatever scope is current when it
+    /// lands, and <see cref="FinishPass"/> runs one more when the scope moved under it.</summary>
+    public static void Rebind()
+    {
+        if (!s_attached && !s_fixture) return;
+        if (s_stagedScope is null || ReferenceEquals(Entities.Current, s_stagedScope)) return;   // nothing staged yet, or already in this scope
+        if (s_fixture && !s_restating) { RestateNow(); return; }
+        MaybeRestate();
+    }
+
+    /// <summary>UI thread, from the progress post: start a pass when the index moved (at most once a second while a scan runs), or when the rows
+    /// were staged into a scope that is no longer current.</summary>
     static void MaybeRestate()
     {
         if (!s_attached && !s_fixture) return;
         int version = s_index.Version;
-        if (version == s_restatedVersion || s_restating) { s_wantedVersion = version; return; }
+        bool current = s_stagedScope is null || ReferenceEquals(Entities.Current, s_stagedScope);
+        if ((version == s_restatedVersion && current) || s_restating) { s_wantedVersion = version; return; }
         long now = Environment.TickCount64;
         if (Scanning && now - s_lastRestateStart < 1000) { s_wantedVersion = version; return; }   // the next progress post retries
         s_restating = true;
@@ -176,9 +195,12 @@ public static partial class LocalLibrary
         return h.GetCurrentHashAsUInt64();
     }
 
-    /// <summary>UI thread: diff against what is staged, count the session's changes, then stage the changed rows in chunks.</summary>
+    /// <summary>UI thread: diff against what is staged, count the session's changes, then stage the changed rows in chunks. Every row is staged
+    /// again when the scope moved since the last pass (its rows went with the old table set); the diff still counts only what the files did.</summary>
     static void BeginStaging(Pass pass, bool chunked = true)
     {
+        bool restageAll = !ReferenceEquals(Entities.Current, s_stagedScope);
+        s_stagedScope = Entities.Current;
         var changed = new List<Face>();
         int added = 0, moved = 0, missing = 0, back = 0, edited = 0;
         var seen = new HashSet<long>();
@@ -196,7 +218,12 @@ public static partial class LocalLibrary
                 moved++;
                 s_movedFrom.TryAdd(f.LocalId, old.FullPath);
             }
-            if (old.Hash == f.Hash) { if (!ReferenceEquals(old, f)) s_staged[f.LocalId] = f; continue; }
+            if (old.Hash == f.Hash)
+            {
+                if (restageAll) changed.Add(f);
+                else if (!ReferenceEquals(old, f)) s_staged[f.LocalId] = f;
+                continue;
+            }
             changed.Add(f);
             if (!s_baselined) continue;
             if (f.State == LocalState.Missing && old.State != LocalState.Missing) missing++;
@@ -319,7 +346,8 @@ public static partial class LocalLibrary
             s_restating = false;
             if (any) Restated.Value++;
         }
-        if (s_wantedVersion != s_restatedVersion && s_wantedVersion >= 0) MaybeRestate();
+        // The index moved during the pass, or the scope switched under a chunked one (its first rows went with the old table set): one more.
+        if ((s_wantedVersion != s_restatedVersion && s_wantedVersion >= 0) || !ReferenceEquals(Entities.Current, s_stagedScope)) MaybeRestate();
     }
 
     static bool SameMembers(ReadOnlySpan<int> current, List<int> wanted)

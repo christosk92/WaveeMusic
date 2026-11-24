@@ -613,7 +613,9 @@ is sent (`--fake` sends no telemetry). A playlist's matched `spotify:local:` row
 folder). `do=inbound file=<json>` decodes a controller's Connect `play`/`transfer` command body with the app's own decoders and hands it to
 the host as the dealer glue does (no dealer, no ack). `play uri=<row> context=spotify:playlist:<id>` with the row in that list plays the list's own rows from it, as a
 double-tap on the row does. `state kind=music-folders value=folder path=<dir>` runs the real scanner over a real folder into the
-in-memory index (#240's real-file matching; the app's index file is never touched). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
+in-memory index (#240's real-file matching; the app's index file is never touched). `value=startup path=<dir>` instead runs the app's own start-up (`LocalLibrary.Use`) with that folder over
+the scratch profile's `Wavee\Cache\localindex.bin` (copy an older build's index there first to replay its rebuild): the load, the
+start-up scan and the restate run on their threads and land over the next frames; `state kind=rescope` after it is the login's scope switch. Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
 end of a context behaves as it does online; `setting id=autoplay value=false` turns it off. A sequence of `transport do=end` (or
 `do=next`) replies is the sequence of tracks played:
 

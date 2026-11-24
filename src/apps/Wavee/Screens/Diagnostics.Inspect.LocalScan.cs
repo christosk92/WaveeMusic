@@ -15,7 +15,7 @@ public static partial class Diagnostics
 {
     public sealed partial class InspectSession
     {
-        /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing|paused|noaccess|checking|network-online|network-waking|network-slow|network-signin|network-offline|folder` (folder: with path=).</summary>
+        /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing|paused|noaccess|checking|network-online|network-waking|network-slow|network-signin|network-offline|folder|startup` (folder and startup: with path=).</summary>
         string MusicFoldersState(int id, string name, Inspect.Args a)
         {
             string v = a.Has("value") ? a.Str("value").ToLowerInvariant() : "ready";
@@ -27,10 +27,20 @@ public static partial class Diagnostics
                 if (path.Length == 0 || !Directory.Exists(path)) return Inspect.Reply.Fail(id, name, "state kind=music-folders value=folder wants path=<a folder of music>, not '" + path + "'");
                 scanned = LocalLibrary.InspectFolder(path);
             }
+            else if (v == "startup")
+            {
+                // `value=startup path=<a folder of music>`: the app's own start-up (LocalLibrary.Use) over the scratch profile's index file, on its
+                // threads; `state kind=rescope` after it is the login's scope switch. The rows land over the next frames.
+                string path = a.Str("path");
+                if (path.Length == 0 || !Directory.Exists(path)) return Inspect.Reply.Fail(id, name, "state kind=music-folders value=startup wants path=<a folder of music>, not '" + path + "'");
+                if (LocalLibrary.InspectStartup(path) is not { } index)
+                    return Inspect.Reply.Fail(id, name, "state kind=music-folders value=startup runs once per process, before any other music-folders state");
+                scanned = "startup index=" + index;
+            }
             else if (v is not ("none" or "scanning" or "ready" or "offline" or "changed" or "missing" or "listing" or "paused" or "noaccess" or "checking"
                 or "network-online" or "network-waking" or "network-slow" or "network-signin" or "network-offline"))
-                return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline|changed|missing|listing|paused|noaccess|checking|network-online|network-waking|network-slow|network-signin|network-offline|folder, not '" + v + "'");
-            if (v != "folder")
+                return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline|changed|missing|listing|paused|noaccess|checking|network-online|network-waking|network-slow|network-signin|network-offline|folder|startup, not '" + v + "'");
+            if (v is not ("folder" or "startup"))
             {
                 LocalLibrary.InspectFixture(v);
                 LocalCollectionFixture.Fill(v);   // #240 P2-page: the "On this PC" collection on top (albums, years, formats)
