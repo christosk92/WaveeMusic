@@ -51,29 +51,52 @@ public static partial class LocalLibrary
         long when = 0;
         double ms = 0;
         if (s_scan.Last.TryGetValue(folder, out LocalScanStats? last)) { when = last.FinishedTicks; ms = last.TotalMs; }
-        (LocalScanStats? running, string? root) = s_scan.Current;
-        bool scanning = running is not null && string.Equals(root, folder, StringComparison.OrdinalIgnoreCase)
+        ScanProgress running = Progress;
+        bool scanning = running.Active && string.Equals(running.Folder, folder, StringComparison.OrdinalIgnoreCase)
                         || StateOf(folder) == LocalRootState.Scanning;
         return new FolderFacts(folder, c.Songs, c.Unplayable, c.Missing, c.Cloud, StateOf(folder), NtDirectory.IsNetworkPath(folder), when, ms, scanning);
     }
 
-    /// <summary>The running scan's progress (any thread; the numbers are live counters).</summary>
-    public static ScanProgress Progress
+    /// <summary>The running scan's progress as the surfaces show it: the scanner's live counters as they stood when <see cref="Epoch"/> last
+    /// moved (see <see cref="Shown"/>), so every surface that reads it under the epoch tells the same scan.</summary>
+    public static ScanProgress Progress => s_fixture ? s_fixtureProgress : Shown.Progress;
+
+    /// <summary>The scan as of one <see cref="Epoch"/> value: its progress and whether a scan runs or waits.</summary>
+    sealed record ScanShown(int Epoch, ScanProgress Progress, bool Busy);
+
+    static ScanShown? s_shown;
+
+    /// <summary>The scanner's live facts, read once per <see cref="Epoch"/> value and held until it moves. The scan thread changes them at any
+    /// moment and the epoch follows at most four times a second, so a surface that rendered on the last move and one that mounts later (the
+    /// page's state line opening while the sidebar's chip already shows) would each read their own moment of the scan: the chip said
+    /// "Scanning · 2 of 2" while the page said "Up to date" until the next move. Read under the epoch, every surface sees the same reading and
+    /// they flip together when it moves.</summary>
+    static ScanShown Shown
     {
         get
         {
-            if (s_fixture) return s_fixtureProgress;
-            (LocalScanStats? s, string? root) = s_scan.Current;
-            if (s is null || root is null) return default;
-            int done = Volatile.Read(ref s.FilesUnchanged) + Volatile.Read(ref s.FilesRead) + Volatile.Read(ref s.CloudOnly);
-            int read = Volatile.Read(ref s.FilesRead), toRead = Volatile.Read(ref s.ToRead);
-            double seconds = Math.Max(0.001, (DateTime.UtcNow.Ticks - s.StartedTicks) / (double)TimeSpan.TicksPerSecond);
-            double rate = read / seconds;
-            int seen = Volatile.Read(ref s.FilesSeen);
-            double left = rate > 0 && toRead > read ? (toRead - read) / rate : 0;
-            ScanPhase phase = toRead > read || read > 0 ? ScanPhase.Reading : ScanPhase.Listing;
-            return new ScanProgress(true, root, phase, Volatile.Read(ref s.FoldersListed), seen, Math.Min(done, seen), toRead, read, rate, left, Albums);
+            int epoch = Epoch.Peek();
+            ScanShown? shown = Volatile.Read(ref s_shown);
+            if (shown is not null && shown.Epoch == epoch) return shown;
+            shown = new ScanShown(epoch, LiveProgress(), s_scan.Busy);
+            Volatile.Write(ref s_shown, shown);
+            return shown;
         }
+    }
+
+    /// <summary>The running scan's progress now (any thread; the numbers are live counters).</summary>
+    static ScanProgress LiveProgress()
+    {
+        (LocalScanStats? s, string? root) = s_scan.Current;
+        if (s is null || root is null) return default;
+        int done = Volatile.Read(ref s.FilesUnchanged) + Volatile.Read(ref s.FilesRead) + Volatile.Read(ref s.CloudOnly);
+        int read = Volatile.Read(ref s.FilesRead), toRead = Volatile.Read(ref s.ToRead);
+        double seconds = Math.Max(0.001, (DateTime.UtcNow.Ticks - s.StartedTicks) / (double)TimeSpan.TicksPerSecond);
+        double rate = read / seconds;
+        int seen = Volatile.Read(ref s.FilesSeen);
+        double left = rate > 0 && toRead > read ? (toRead - read) / rate : 0;
+        ScanPhase phase = toRead > read || read > 0 ? ScanPhase.Reading : ScanPhase.Listing;
+        return new ScanProgress(true, root, phase, Volatile.Read(ref s.FoldersListed), seen, Math.Min(done, seen), toRead, read, rate, left, Albums);
     }
 
     static ScanProgress s_fixtureProgress;

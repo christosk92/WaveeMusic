@@ -15,7 +15,8 @@
 // offline or unwatched is walked and watched again. When the scanner goes idle the change log is compacted into the bin.
 //
 // SIGNALS. `Epoch` (UI thread) moves at most four times a second while a scan commits folders, and once when it ends; a
-// surface reads the counters and `Index.Version` under it. Nothing here runs per frame.
+// surface reads the counters and `Index.Version` under it. `Scanning` and `Progress` are the scanner's live facts as they stood
+// at the last move (one reading per epoch value), so every surface tells the same scan. Nothing here runs per frame.
 //
 // FIXTURES. `InspectFixture` (the inspector's `state kind=music-folders value=…`) seeds a fixed in-memory folder list and index:
 // no disk, no thread, no setting written.
@@ -55,8 +56,8 @@ public static partial class LocalLibrary
     /// <summary>The music folders, as the user added them (full paths).</summary>
     public static IReadOnlyList<string> Folders { get { lock (s_gate) return s_folders; } }
 
-    /// <summary>A scan is running or queued.</summary>
-    public static bool Scanning => s_fixture ? s_states.Values.Any(static s => s == LocalRootState.Scanning) : s_scan.Busy;
+    /// <summary>A scan is running or queued, as the surfaces show it: as of the last <see cref="Epoch"/> move, with <see cref="Progress"/>.</summary>
+    public static bool Scanning => s_fixture ? s_states.Values.Any(static s => s == LocalRootState.Scanning) : Shown.Busy;
     /// <summary>Folders committed and files read since start (progress counters).</summary>
     public static int FoldersDone => s_scan.FoldersDone;
     public static int FilesRead => s_scan.FilesRead;
