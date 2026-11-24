@@ -714,9 +714,14 @@ public static partial class Diagnostics
         /// placement to audio ("Couldn't play the video") and close the surface a `video=` mount opened. The inspector's resolver answers
         /// nothing while the mount lives instead: the video join stays in flight (the poster, then the ring past its budget), as a slow
         /// manifest leaves it, and the next mount (<see cref="EndVideoJoins"/>) lets it answer "no video" once its playback is reset.
-        /// Once, right after <c>Shell.Headless.Boot</c>.</summary>
+        /// Once, right after <c>Shell.Headless.Boot</c>. A local video file (#240) needs no network: it resolves at once to its file (<c>Playback.Video.LocalVideos</c>), as it does in the app.</summary>
         public static void InstallVideoJoinHold()
-            => Playback.VideoResolver = static (_, _, _) => { Volatile.Read(ref s_videoJoin).Wait(); return null; };
+            => Playback.VideoResolver = static (id, _, _) =>
+            {
+                if (Playback.Video.LocalVideos.PathOf(id) is { } local) return Playback.Video.LocalVideos.Source(local) with { PlayableUri = id.Text };
+                Volatile.Read(ref s_videoJoin).Wait();
+                return null;
+            };
 
         /// <summary>Let every video resolve the last mount parked answer "no video" (after <see cref="ResetPlayback"/>: the reducer the
         /// answer reaches plays no video any more, so it changes nothing).</summary>

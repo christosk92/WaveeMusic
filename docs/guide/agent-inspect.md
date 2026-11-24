@@ -953,7 +953,10 @@ over real files. The reply carries every field read: `format`, `why` (the reason
 `track`, `disc`, `year`, `durationMs`, `estimated` (a bitrate estimate), `kbps`, `cover{exists, offset, length, mime,
 encoding, pictureType}` (where the picture is; its bytes are never read), `keys{exactTitle, looseTitle, exactArtist,
 looseArtist}` (`LocalMatch`), `spotifyUri` (as the official client would name the file), `readMs`, and with an import
-`row{imported, uri, title, artist, album, durationMs, duration}`. It does not play the file.
+`row{imported, uri, title, artist, album, durationMs, duration, video, image}` (`video`: the row is a local video file and plays as one;
+`image`: its cover, a video's still from the `LocalArt` cache once it has landed: a second `drop` of the file reads it). It does not play the
+file; `play <row uri>` does, and a local video resolves to its file at once (the inspector's video resolver holds only network videos), so
+it really opens on the video host headless (`status log="first.frame"`).
 
 ```text
 drop path=C:/music/song.flac
