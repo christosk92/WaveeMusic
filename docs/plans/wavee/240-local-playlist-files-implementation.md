@@ -8,6 +8,19 @@ Base code: `release/0.3.13` (the app). Every file:line below was read there. Pat
 relative to `src/apps/Wavee/` unless they start with a repo folder. Work branches from the 0.4 release branch once
 it exists.
 
+**Revision 2 (2026-11-23), the index research.** The owner asked for indexing that is very fast, handles deleted,
+modified, moved and renamed files well, and extracts album art. Ten community projects (Navidrome, gonic, MPD,
+Strawberry, Mixxx, beets, atldotnet, lofty-rs, music-metadata, spotifast) were read and the Windows file-system APIs
+researched; the synthesis is `docs/plans/wavee/local-index-research.md`. What changes here: §3.3 (the index), §3.5
+(the readers), §3.6 (the scan), a new §3.6a (album art), D8 (art moves **into** 0.4), new D13 (stable local ids) and
+D14 (scan concurrency), and the phases (P1 splits in two). Matching (§3.4) is unchanged; spotifast's own matcher
+(librespot's exact-key lookup with no tolerance) confirmed the ladder is the stricter and more tolerant design.
+
+**Revision 3 (2026-11-23), drop anywhere and network folders.** The owner: "we should also support general drag and
+drop into the app at any point, and what about network drives (NAS)". New §3.15 (drop anywhere), §3.16 (network
+folders), decisions D15 to D18, and two phase changes (P2 gains the drop zones, P2b network folders). The UX is in
+`240-local-files-ux.md` S12 and S13.
+
 ## Cross-plan notes (0.4)
 
 - **G1, local library groundwork, is owned by this plan (#240):** the music-folders setting, the tag scan and index,
@@ -118,7 +131,14 @@ What it cannot answer is in section 6 ("still open"); those points keep the mark
 | D10 | The Local Files list on Connect | (a) publish it as the official context `spotify:local-files` with the `local_list` restriction; (b) keep today's "track only, no context" | **(a)**, in P3. It is what a controller expects for this context, and `local_list` stops a controller offering a transfer that cannot work. |
 | D11 | An inbound Connect `play` of `spotify:local-files` | (a) refuse it cleanly; (b) play Wavee's own Local Files list | **(a) for 0.4.** The command names the row only by a uid the *sending* client made up for its own list (report 3.5); Wavee cannot know which file was meant, and starting a different song is worse than not starting. Revisit when uid generation is understood (section 6). |
 | D12 | Liked Songs and playlist writes | (a) read side only; (b) also like a local file and add one to a playlist from Wavee | **(a) for 0.4:** a local item already in Liked Songs or a playlist is matched and played like any other row. Writing (`collection/v2/write`, a playlist ADD with a fresh 8-byte `item_id`) is "After 0.4"; the server accepts both (report 3.1, 3.2). |
-| D8 | Embedded cover art | in 0.4 or after | **After 0.4.** Local rows show the placeholder cover as the Local Files list does today. I did not verify that the image pipeline takes a file or bytes source, so it is not a safe 0.4 promise. |
+| D8 | Embedded cover art | in 0.4 or after | **In 0.4 (owner, revision 2).** The image pipeline loads plain paths and `file:///` (`DefaultImageFetcher.cs:192-196`), as do the Windows media controls and toasts, so a cover extracted once into a content-addressed cache file works for every consumer with no engine change. §3.6a. |
+| D13 | The identity of a Local Files row | (a) `wavee:local:file:<base64(path)>` as today; (b) `wavee:local:file:<LocalId>`, a stable 64-bit id the index assigns at first sight | **(b) for files in music folders**: a move or rename keeps the row, its queue position and anything later attached to it. `LocalPathOf` resolves the id through the index. A dropped file outside every folder keeps the path form. Playlist rows keep their `spotify:local:` identity (D1). |
+| D15 | What a drop does | (a) today: anywhere in the window plays the first playable file; (b) **drop zones**: a drop panel with the actions that fit what is dragged, plus precise targets (queue, sidebar playlists, Local Files, the player bar) | **(b).** Files: Play now · Play next · Add to queue; a folder: Play it · Add as a music folder · Add to queue; a playlist file (`.m3u`, `.m3u8`, `.pls`): Play as a queue; a Spotify link or `spotify:` uri: Open · Play. Dropping on the queue inserts at the drop line; on a sidebar playlist adds Spotify songs now and local files once D12's writes land. §3.15. |
+| D16 | Links and text drops | (a) files only (the engine's one OS kind today); (b) **add `DropKinds.Text` and `DropKinds.Uri` to the engine** | **(b)**: dragging a song from Spotify's own app or a browser hands over `spotify:` uris or `open.spotify.com` links as text. The OLE host already receives the data object; it needs `CF_UNICODETEXT` and `UniformResourceLocatorW` read into two new payload types. An engine change in fluent-gpu (standing rule: fix the engine). |
+| D17 | Network folders in 0.4 | (a) SMB shares and mapped drives through Windows paths; (b) also music servers (OpenSubsonic: Navidrome, gonic, Airsonic; Jellyfin; DLNA/UPnP) | **(a) in 0.4**, done well (§3.16): UNC paths stored even when the user picks a mapped letter, Windows handles sign-in, a buffered reader so a slow or sleeping NAS never stutters, honest states (waking up, slow, offline). **(b) after 0.4** as "Music servers", a source of its own: many NAS users already run Navidrome or Jellyfin, and its API gives tags and covers without reading files. |
+| D18 | Offline copies of network music | (a) none in 0.4; (b) "Keep a copy on this PC" per network folder | **(a) for 0.4**, with the setting designed and the cache folder reserved; **(b) after 0.4.** The buffered reader already holds the playing and next song in memory. |
+| D19 | Local **video** files (`.mp4`, `.m4v`, `.mkv`, `.webm`) | (a) ignore them; (b) **index them now as video, show nothing in 0.4**; (c) a video library in 0.4 | **(b), owner 2026-11-23: "keep it in mind, don't build it now".** The scan records video files with `Kind = Video` (an MP4/M4V whose `moov` has a `vide` handler track is video; one with only `soun` is audio, as `.m4a` is), their length, resolution and cover/thumbnail location, and shows them nowhere. A later "Videos" pivot and player light up from the saved index without a rescan. §3.17. |
+| D14 | Scan concurrency | (a) one below-normal thread; (b) per drive kind | **(b):** directory queries SSD 8, HDD 1-2, USB 2-4, SMB 4-8; tag reads SSD 8-16, HDD 1, USB 2-4, SMB 8-16. Measured enumeration gains stop at 8 workers; a single thread leaves an SSD first scan bound by file-open latency. Every worker stays below normal priority and off the thread pool. |
 
 ---
 
@@ -167,52 +187,54 @@ Nothing here runs per frame. The row facts a table reads per frame are the exist
   **four** parts is `EntityKind.Track`; the two-part and one-part forms (`local-album`, `local-artist`, report 4.1)
   stay `Unknown`.
 
-### 3.3 The index entry and the file
+### 3.3 The index: folders, files, and the file on disk
 
 ```csharp
 // Playback/LocalIndex.cs
 namespace Wavee;
 
-/// <summary>One audio file in a music folder, as the scan read it. Immutable; replaced whole on a rescan.</summary>
+public enum LocalState : byte { Present, Missing, CloudOnly }
+
+/// <summary>One listed folder. Its fingerprint lets a rescan skip it without touching a single file.</summary>
+public sealed record LocalFolder(
+    int RootId, string RelativePath, UInt128 FileId,
+    ulong Fingerprint,                                    // xxHash3-64 over the sorted (name, size, write, change) of its audio + image entries
+    string[] Images,                                      // image file names seen in the listing (for §3.6a), no bytes read
+    bool Complete);                                       // false: a file failed to read; the folder is retried next scan
+
+/// <summary>One audio file. Immutable; replaced whole when it changes.</summary>
 public sealed record LocalEntry(
-    string Path, long Size, long ModifiedTicks,          // identity of the bytes: unchanged ⇒ the tags are not re-read
-    Spotify.Audio.Format Format, int DurationMs, int BitrateKbps,
-    string Title, string Artist, string Album, string AlbumArtist, int TrackNumber, int Year,
+    long LocalId,                                         // stable, assigned at first sight, never reused (D13)
+    int RootId, string RelativePath,
+    uint VolumeSerial, UInt128 FileId,                    // move/rename identity on NTFS/ReFS
+    long Size, long WriteTicks, long ChangeTicks,         // exact compare; ChangeTicks 0 where the volume does not report it
+    uint Attributes,                                      // cloud bits (RECALL_ON_DATA_ACCESS, RECALL_ON_OPEN, OFFLINE)
+    Spotify.Audio.Format Format, int DurationMs, bool DurationEstimated, int BitrateKbps,
+    string Title, string[] Artists, string Album, string AlbumArtist, int TrackNumber, int DiscNumber, int Year,
+    LocalCover Cover,                                     // where the front picture is; never its bytes (§3.6a)
+    LocalState State, long LastSeenTicks,
     bool Playable);                                       // false: an audio file this build has no decoder for (D7)
 
-/// <summary>The scanned library. One Lock; writers are the scan thread, readers are the UI thread, the api and store
-/// threads (StageFace) and the audio pump. Modelled on Playback.AudioFileMap.</summary>
-public sealed class LocalIndex
-{
-    public const string FileName = "localindex.tsv";      // Platform.LocalFolder\Wavee\Cache\, beside audiofiles.tsv
-    const string Header = "wavee.localindex.v1";
-
-    public int Version { get; }                           // bumped by Replace / Load; Volatile read
-    public int Count { get; }
-    public int UnplayableCount { get; }
-
-    /// <summary>Swap in a finished scan. Rebuilds both match maps under the lock, bumps Version.</summary>
-    public void Replace(IReadOnlyList<LocalEntry> entries);
-
-    /// <summary>The entry a playlist item names, or null. Any thread; allocates only the normalised key (never on a
-    /// frame: callers are a list landing, a restate and a track open).</summary>
-    public LocalEntry? Match(string artist, string album, string title, int seconds);
-
-    /// <summary>A stable snapshot for the UI thread's restate.</summary>
-    public LocalEntry[] Snapshot();
-
-    public int Load(string path);                         // background; 0 for a missing or foreign file
-    public bool Save(string path);                        // background; temp file + File.Move(overwrite: true)
-}
+public readonly record struct LocalCover(long Offset, int Length, byte Mime, byte Encoding, byte PictureType); // Encoding: raw | unsync | base64; Length 0 = none
 ```
 
-The file is one header line, then one tab-separated line per entry; a tab, CR or LF inside a tag is written as
-`\t`, `\r`, `\n` and a backslash as `\\`. It is a cache: a file this build cannot read is ignored and rebuilt by the
-next scan, exactly as `AudioFileMap.Load` treats its own (`OnThisPc.FileMap.cs:166-176`). It is deliberately **not**
-a table in the entity store: that file is named for its schema fingerprint and reaped on every DDL change
-(`Entities/Store.Files.cs:6-12`), which would throw the scan away with every release.
+`LocalIndex` keeps the members the first revision listed (`Version`, `Count`, `UnplayableCount`, `Match`,
+`Snapshot`, `Load`, `Save`) and gains `TryGet(long localId)`, `TryGetByPath`, `Folders`, and
+`Apply(LocalScanBatch)`: a scan commits **per folder** (the folder's records and its fingerprint together), so the
+UI fills folder by folder and an interrupted scan resumes where it stopped.
 
-Size: about 200 bytes per track, so 10 MB at 50,000 tracks, read once on a background thread at start.
+**On disk:** `localindex.bin` beside `audiofiles.tsv`, a versioned binary file (length-prefixed UTF-8, one string
+table for repeated artist and album names), written temp-file + `File.Move(overwrite: true)`, plus
+`localindex.log`, an append-only change log of folder batches so a one-file change does not rewrite the whole
+file; compacted into the `.bin` when idle or when the log passes 2 MB. It stays a cache outside the entity store
+(that file is reaped on every schema change, `Entities/Store.Files.cs:6-12`): a file this build cannot read is
+ignored and rebuilt. About 8-10 MB in RAM at 50,000 tracks.
+
+**Missing is a state, not a delete.** A file not seen in a folder that was listed **successfully**, under a root that
+is online, becomes `Missing` with `LastSeenTicks`; an offline root marks nothing. A missing entry keeps matching a
+playlist row as "missing" (greyed, reason "Not found in your music folders") and comes back without a tag read when
+it reappears with the same `(Size, WriteTicks, ChangeTicks)`. It is purged after 60 days. Nothing is ever purged
+after a partial, cancelled or failed walk (MPD and gonic lose data that way; Navidrome, Strawberry and Mixxx do not).
 
 ### 3.4 Matching (PURE, `Playback/LocalMatch.cs`)
 
@@ -296,10 +318,26 @@ Per format, reusing what exists:
 |---|---|---|---|
 | FLAC | `ClassifyLocal` (`Playback.Audio.cs:4729`) | `Flac.ParseHeaders` → `Tags` (`Playback.Audio.Flac.cs:144`), already has Title/Artist/Album/AlbumArtist/Date/TrackNumber | STREAMINFO total samples ÷ rate |
 | Ogg Vorbis | same | the comment header packet through the same comment-block walk `ReplayGainTags.FromCommentBlock` uses (`Playback.Audio.cs:1666`); **lift that walk into one shared `VorbisComments.ForEach(block, visitor)`** and make both callers use it (no second parser) | last page's granule position ÷ rate (read the file's last 64 KiB and find the last `OggS`) |
-| MP3 | same, past `Id3v2Length` (`:5058`) | **new** ID3v2 reader: v2.2 (`TT2`/`TP1`/`TAL`/`TRK`/`TYE`), v2.3 and v2.4 (`TIT2`/`TPE1`/`TALB`/`TPE2`/`TRCK`/`TYER`/`TDRC`), the four text encodings, unsynchronisation, v2.4 syncsafe frame sizes; `APIC` and every other frame skipped by seeking. Fallback: the 128-byte ID3v1 block at the end. | `Mp3Tag.TryProbe` total samples (`:3069`) when a Xing/Info block is there; else (file size − tag sizes) × 8 ÷ the first frame's bitrate |
+| MP3 | same, past `Id3v2Length` (`:5058`) | **new** ID3v2 reader: v2.2 (`TT2`/`TP1`/`TAL`/`TRK`/`TYE`), v2.3 and v2.4 (`TIT2`/`TPE1`/`TALB`/`TPE2`/`TRCK`/`TYER`/`TDRC`), the four text encodings, unsynchronisation, v2.4 syncsafe frame sizes; `APIC` and every other frame skipped by seeking. Fallback: the 128-byte ID3v1 block at the end. our own Xing/Info frame count (at 4 + side info) or VBRI (at +36) × samples per frame ÷ rate; `Mp3Tag.TryProbe` (`:3069`) only for the gapless trim, because it returns false without the LAME fields (`:2862`), searches only 192 bytes for sync and ignores VBRI; else (file size − ID3v2 − tail tags) × 8 ÷ the first frame's bitrate, flagged `DurationEstimated` |
 | MP4 / M4A | `Mp4.LooksLikeMp4` | **new** `moov/udta/meta/ilst` reader: `©nam`, `©ART`, `©alb`, `aART`, `trkn`, `©day` | `Mp4.TryReadAacTrack` → `DurationMs` (already read at `Playback.Audio.cs:4669`) |
 | ADTS .aac | `Modules.Adts` | ID3v2 if present | size ÷ first frame's bitrate (an estimate) |
 | WAV, Opus, Ogg FLAC, anything else with an audio extension | `ClassifyLocal`'s refusal | none | none; the entry is kept with `Playable = false` and its `Why` |
+
+**I/O shape (revision 2).** Every reader works on one `File.OpenHandle` (`FileOptions.None`, `FileShare.ReadWrite |
+Delete`) and `RandomAccess.Read` into a pooled 64 KB buffer: one head read at offset 0, at most one tail read (160
+bytes at `End-160` for ID3v1 + the APE footer with lofty's `APETAGEX` collision check; up to 64 KB for the Ogg last
+page), and one or two seeks (an MP4 `moov` after `mdat`; a FLAC PICTURE block before the comments; an Ogg comment
+packet spanning pages, skipped by summing lacing values). Fields are parsed from spans; only the wanted ones become
+strings. **Pictures are never read here:** the reader records the front cover's `LocalCover` (ID3 `APIC`/`PIC`
+type 3, else the first; FLAC PICTURE; Ogg `METADATA_BLOCK_PICTURE` as base64; MP4 `covr`; ID3 inside WAV/AIFF) and
+seeks past it, because a cover is most of a tag's bytes (every library studied still reads it). A bad field empties
+that field and never fails the file (lofty's best-attempt policy); a v2.3 tag with tag-level unsynchronisation is the
+one case read and decoded whole. ID3 text encoding 0 is decoded as **Windows-1252** (a 32-entry table over Latin-1,
+no CodePages package), and a counter logs files that used bytes 0x80-0x9F. Multi-value artists (v2.4 NUL, v2.3 `/`
+or `;`, repeated Vorbis `ARTIST`) are all kept; §3.4 keys the first, the last (librespot's rule, which the official
+desktop client inherits) and the joined form. Handles are closed on a small background pool, because Defender makes
+`CloseHandle` cost 1-10 ms; no memory-mapped reads (a USB or SMB read error would become an exception the reader
+cannot turn into a field-level failure). The per-format byte map is `local-index-research.md` → `tag-readers.md` §5.
 
 A file with no title tag takes its file name without the extension as its title (`Playlist.LocalTitleOf`,
 `Entities/Playlist.cs:1399`), the rule `ImportLocalFile` already uses.
@@ -308,27 +346,92 @@ The scan considers `.mp3 .flac .ogg .oga .m4a .mp4 .aac .wav .opus` (the last tw
 unplayable). The drop rule (`IsLocalAudioFile`, `Playlist.cs:1415`) gains `.m4a` and `.aac`, which `LocalSource`
 already decodes; the rejected-file sentence (`localFile.rejected`) is reworded to match.
 
-### 3.6 The scan (`Playback/LocalScan.cs`)
+### 3.6 The scan (`Playback/LocalScan.cs`, `Platform/NtDirectory.cs`)
 
-- **One background thread**, named `local-scan`, `IsBackground = true`, `ThreadPriority.BelowNormal`. Never the
-  UI thread, never the audio pump, never the thread pool (a 50,000-file first scan would hold a pool thread for
-  minutes).
-- **Incremental:** enumerate each folder recursively (`EnumerationOptions { RecurseSubdirectories = true,
-  IgnoreInaccessible = true, AttributesToSkip = Hidden | System | ReparsePoint }`), and for each file reuse the old
-  entry when `(Size, ModifiedTicks)` are unchanged; otherwise `LocalTags.TryRead`.
-- **A folder that cannot be opened** (unplugged drive, offline share) keeps its previous entries and is marked
-  offline for Settings; its rows are not dropped. The loc strings for the state already exist
-  (`statusDriveOffline`, `assets/loc/en-US.json`, the video-override roster).
-- **When:** at start after `LocalIndex.Load` (so the app is usable from the saved index at once), on every folder
-  add or remove, on "Rescan now", and from one `FileSystemWatcher` per folder (Created, Deleted, Renamed, Changed),
-  debounced 2 s into a rescan of that folder. A watcher that faults (network share) is dropped with one log line;
-  that folder then updates at start and on "Rescan now".
-- **Progress** is two numbers the scan thread writes with `Volatile.Write` (files seen, files read) and one
-  `Signal<int>` epoch bumped on the UI thread at most four times a second through the existing poster
-  (`Spotify.Post`, as `Pickers.cs:39` does). Settings binds its status text to that epoch.
-- **Cancel:** a new scan request cancels the running one through a `CancellationTokenSource`; a removed folder is
-  honoured at the next file boundary.
-- On finish: `LocalIndex.Replace`, `LocalIndex.Save` on the same thread, then post `LocalLibrary.Restate`.
+**Enumeration.** `NtDirectory` is our own walker on `NtQueryDirectoryFile` (`LibraryImport`, NativeAOT-clean) with
+`FileIdExtdDirectoryInformation` (128-bit file id, `ChangeTime`, reparse tag) and a per-volume fallback to
+`FileIdBothDirectoryInformation`; 64 KB pooled buffers; subdirectories opened relative to the parent handle. It
+returns size, times, attributes and id for a whole directory in one or a few calls without opening any file. (.NET's
+`FileSystemEnumerable` makes the same call with a 4 KB buffer and drops the id and `ChangeTime`.) Skipped:
+`$RECYCLE.BIN`, `System Volume Information`, hidden and system folders, and reparse-point **directories** (never
+followed). Reparse-point **files** are kept: OneDrive placeholders are reparse points.
+
+**A scan, in order:**
+
+1. **Load** the index (background) so the app is usable at once from the saved state.
+2. **Catch up (local NTFS).** `FSCTL_READ_UNPRIVILEGED_USN_JOURNAL` (Windows 10 1607+, no admin) from the stored
+   `(JournalId, NextUsn)` per volume; each record's parent id marks a folder dirty. A changed journal id, purged
+   entries or a refused call means a full warm walk. The control code is undocumented, so a capability probe gates
+   it and the walker is always the correct fallback.
+3. **Walk** the dirty folders (all folders when there is no journal): list, compute the fingerprint, compare with the
+   stored one. Equal: nothing more. Different: diff the entries by name. Unchanged `(Size, WriteTicks,
+   ChangeTicks)` keep their entry; the rest go to step 4. Comparisons are exact (`!=`), never "newer than" (MPD's
+   seconds truncation made every Windows file look modified).
+4. **Pair before reading.** Vanished and new files in this batch: the same volume + file id = moved or renamed (keep
+   `LocalId` and tags); else the same `(Size, WriteTicks, extension)` = moved (FAT/exFAT/SMB, whose ids are not
+   stable). The same path with a **new** file id is a safe-save by a tag editor: a modification. A vanished NTFS/ReFS
+   file whose new place is **outside** the scanned folders (moved elsewhere on the same drive) is found by id:
+   `OpenFileById(volume, FileId128)` then `GetFinalPathNameByHandleW` returns its new path in one call, with no admin
+   rights, no extra files and no scan. Inside a music folder it is re-pointed; outside, the row is offered as "Moved
+   to D:\Archive\…" with [Add that folder] instead of being marked missing. Hardlinks or shortcuts in a Wavee folder
+   were considered and rejected: they work only on the same NTFS volume (not exFAT, USB or SMB), a hardlink keeps a
+   file the user deleted alive on disk, and a tag editor's safe-save (write a temp file, rename over) leaves the link
+   pointing at the old bytes.
+5. **Read** new and changed files with `LocalTags` (§3.5), workers per D14, nearest-first so the folder being shown
+   fills first.
+6. **Pair after reading** what is still unpaired: the same tags key (`Exact(title)`, first artist, album, duration
+   within 1 s), else the same file name with a duration within 1 s, the longest shared path tail first (Mixxx).
+7. **Mark** the rest `Missing` (§3.3), **commit** the folder (records + fingerprint, `Complete` only if every read
+   succeeded), and post the batch to the UI thread through the existing poster.
+
+**Cloud files.** At start, `RtlSetProcessPlaceholderCompatibilityMode(PHCM_EXPOSE_PLACEHOLDERS)`. A file with
+`RECALL_ON_DATA_ACCESS`, `RECALL_ON_OPEN` or `OFFLINE` is **never opened** (opening downloads it): it is indexed from
+its path, size and times, title from the file name, length unknown, `State = CloudOnly`. When it is downloaded (a
+play, or "Always keep on this device") the attribute change marks it dirty and its tags are read.
+
+**Live updates.** One `ReadDirectoryChangesExW` (extended info) per root, recursive. An event only marks the nearest
+existing folder dirty; dirty folders are rescanned after a 300-500 ms debounce (10 s on SMB, whose redirector caches
+listings for 10 s). Overflow (`ERROR_NOTIFY_ENUM_DIR` or a zero-byte result) or an error: reopen with backoff and walk
+the root (cheap, thanks to fingerprints). exFAT/FAT/USB: `ReadDirectoryChangesW`, and a warm walk on device arrival;
+watch handles are released on `DBT_DEVICEQUERYREMOVE` so "safe removal" works. SMB: the watcher is a hint, plus a walk
+on reconnect, on resume from sleep, and a quiet reconcile every 45 minutes while the app is open. A dead share is
+probed for reachability on its own thread first (an SMB open can block 60-240 s).
+
+**When:** at start after the load, on every folder add or remove, on "Rescan now", on resume from sleep, and from the
+watchers. A new request for the same root merges into the running scan; a removed folder is honoured at the next
+folder boundary. **Progress** stays as the first revision: two `Volatile` counters and one epoch signal bumped at
+most four times a second. **Log:** one summary line per scan (folders listed, folders skipped by fingerprint, files
+read, bytes read, moves paired, missing marked, cloud-only, errors, ms per phase), always on.
+
+**Targets** (50,000 files in about 4,500 folders; extrapolated from published measurements, measured in P2 with the
+Diagnostics scan probe, §5):
+
+| Scenario | SSD | HDD | SMB (1 GbE) | USB 3 exFAT |
+|---|---|---|---|---|
+| Cold full scan | <= 20 s | 3-6 min | 30-90 s | 1-3 min |
+| Warm rescan, nothing changed | <= 300 ms | <= 1 s cached | 2-5 s | 1-3 s |
+| Start-up, journal intact | <= 50 ms | <= 50 ms | n/a | n/a |
+| One file changed -> row updated | <= 1 s | <= 1.5 s | 10-15 s | <= 1.5 s |
+| First rows visible during a cold scan | < 2 s | < 2 s | < 2 s | < 2 s |
+
+### 3.6a Album art (`Playback/LocalArt.cs`), D8
+
+- **At scan** nothing is read: the entry carries its `LocalCover`, the folder its image names (from the listing).
+- **Resolution, per track:** the embedded front cover → a folder image by fixed name (`cover`, `folder`, `front`,
+  `album`, the album title; `.jpg .jpeg .png .webp`, case-insensitive) → the parent folder's when the folder looks
+  like a disc folder (`CD1`, `Disc 2`, `Disk 3`) → the only image in the folder → none (the existing placeholder).
+  No candidate is ever decoded to choose (Strawberry decodes them all; Mixxx and Navidrome use fixed names).
+- **On first display:** `LocalArt.Request(localId)` queues work on a background worker (duplicate requests merged,
+  newest-visible first). One ranged read of the picture bytes (base64 or unsync decoded when needed), xxHash3-64 over
+  the encoded bytes, written once to `Cache\art\<hash>.<jpg|png|webp>` **without re-encoding**. The row's image
+  source becomes that file's `file:///` path through a signal, so `ImageEl` (which downsizes with `DecodePx`), the
+  player bar, the Windows media controls and toasts all use it unchanged. Tracks of one album share one file.
+- **Memo:** "no art" and "failed" are remembered per `(LocalId, Size, WriteTicks)` so a row never retries per frame.
+- **Warm-up:** after a scan, an idle-priority pass extracts covers for the first screenfuls of Local Files and for
+  local rows in recently opened playlists.
+- **Invalidation and cleanup:** a changed audio file has new times, so its cover location is re-read; a changed image
+  gets a new hash; after each scan a sweep deletes cache files no entry points at.
+- An engine seam (an image source that reads bytes on demand) is not needed for 0.4.
 
 ### 3.7 The façade, the restate and the play path
 
@@ -475,17 +578,10 @@ settings card with an expander, WinUI's own card and row kit.
    ⋯ = Show in Explorer      ✕ = Remove (no confirm: it removes nothing from disk; a toast offers Undo)
 ```
 
-**Classic** (`ClassicSettings.Storage.cs`, beside `StorageRow`, `:97-103`): the same content as Classic settings
-rows, using `Row(…)` and `StdButton(…)` as `ClassicSettings.VideoOverrides.cs` does; folders are child rows under
-the header row, the status and "Rescan now" a trailing child row.
-
-```
- Music folders                                   [ Add a folder… ] [ Add my Music folder ]
- Wavee plays the music in these folders, and the local files your playlists list.
-   D:\Music                         4,812 songs · 3 can't be played    [Show] [Remove]
-   \\nas\share\flac                 Drive offline · 1,204 songs kept   [Show] [Remove]
-   Scanning… 1,930 of 6,016                                            [ Rescan now ]
-```
+**Classic** (`ClassicSettings.Storage.cs`): **the WinUI layout above**, not a Classic-only design. The owner is
+converging Classic and WinUI (2026-11-23), so Classic draws the same card, rows and states; only its existing file
+hosts it until the two structures merge. The same holds for every other local-files surface in this plan and in
+`240-local-files-ux.md`: WinUI and Zune are designed, Classic follows WinUI.
 
 **Zune** (`ZuneSettings.Storage.cs`, composite case added in `ZuneSettings.Composites.cs` next to `:34`): Zune's
 lowercase display type and text verbs; nothing is shrunk to fit, a long path wraps or fades at the plate edge.
@@ -707,17 +803,112 @@ album (S, in P3). Without it a tagged local file would be published with an empt
 
 ---
 
+### 3.15 Drop anywhere (`Shell/Shell.Drop.cs`, D15, D16)
+
+**Today** (`Shell/Shell.UI.cs:253-260`): one window-wide `DropTargetSpec` accepting `DropKinds.Files`; `OnDrop` calls
+`Shell.OnFilesDropped` → `Playlist.PlayFiles`, which plays the **first** playable path (`ClassifyDrop`,
+`Entities/Playlist.cs:1421`) and ignores the rest, folders included. The cue is `FileDropOver` (a bool).
+
+**0.4.** The window target stays the catch-all, and gains a payload-aware **drop panel**; precise targets sit above
+it and win by the engine's nearest-target rule (`Foundation/Events.cs:386`: the nearest enabled accepting target under
+the pointer):
+
+| Target (nearest wins) | Accepts | What the drop does |
+|---|---|---|
+| A queue row gap (Queue panel) | files, folders, links | insert at the line; folders expand in file-name order |
+| A sidebar playlist | links now; local files after D12 | add to that playlist; a refusal caption says "Adding local files to a Spotify playlist comes later" |
+| The Local Files page | files, folders | files outside any music folder: played and kept for the session (D4); a folder: "Add as a music folder" or "Play it" |
+| The player bar | files, links | Play now |
+| A track row (existing, `Track.Table.cs:2704`) | one `.mp4` | attach the video, as today |
+| **The window (catch-all)** | everything | the drop panel: two to four large zones that fit the payload (below) |
+
+Drop panel zones by payload (computed once in `OnEnter` from `FileDropData` and cached; `OnOver` only hit-tests the
+zones, allocation-free as the engine contract requires):
+- **Audio files:** Play now · Play next · Add to queue.
+- **One or more folders:** Play · Add as a music folder · Add to queue.
+- **A playlist file** (`.m3u`, `.m3u8`, `.pls`; entries resolved relative to the file): Play as a queue. Saving it as a
+  Spotify playlist is after D12.
+- **Links / text** (D16): Open · Play. `spotify:` uris and `open.spotify.com/{track,album,playlist,artist,episode}`
+  links are parsed by the existing deep-link parser; anything else is refused.
+- **Nothing usable** (only `.docx`, `.zip`, unsupported audio): the engine's refusal cue with a reason ("Wavee can't
+  play .wma files yet"), via `DropTargetSpec.CanAccept` + the refusal caption seam.
+
+**Large drops** expand off the UI thread: a folder walk uses `NtDirectory` (§3.6) with a cap of 5,000 files per drop,
+a toast "Adding 1,240 songs…" with progress, and the first song starts playing as soon as it is found (Play) or the
+queue fills in announced batches (Add to queue). A network path in a drop follows §3.16 (buffered, never blocking).
+
+**Engine (D16):** `DropKinds.Text` (`TextDropData { string Text }`) and `DropKinds.Uri` (`UriDropData { string[] Uris }`)
+from `CF_UNICODETEXT`, `UniformResourceLocatorW` and `text/uri-list`, read by the OLE host where `CF_HDROP` is read
+today. Small; ships with P2.
+
+### 3.16 Network folders: NAS, SMB shares and mapped drives (D17, D18)
+
+**Adding.** "Add a folder…" already opens the Windows folder picker, which browses Network and mapped drives. Wavee
+then stores the **UNC path** (`WNetGetUniversalNameW` turns `Z:\Music` into `\\nas\share\Music`), so the folder
+survives a remapped letter and works from an elevated or packaged process where mapped letters are not visible. The
+Settings row shows the path the user knows, with the UNC in the tooltip.
+
+**Signing in is Windows' job.** Wavee never stores NAS credentials. Access denied (`ERROR_ACCESS_DENIED`,
+`ERROR_LOGON_FAILURE`) shows "Sign in to \\nas" → `WNetAddConnection3W(…, CONNECT_INTERACTIVE | CONNECT_PROMPT)`, the
+standard Windows credential dialog, which can remember the credentials in Credential Manager. A share that needs
+sign-in at every boot gets the same one-click state.
+
+**Reachability before every touch.** A dead SMB server can block an open or a listing for 60-240 s. Before the scan,
+the watcher or playback touches a network root, one probe on its own thread (`GetFileAttributesExW` on the root with a
+3 s budget, then a TCP connect to port 445 when that times out) classifies it: `Online`, `Waking` (answers after 3-20 s:
+a NAS spinning up its disks), `Slow`, `Offline`, `SignInNeeded`. The UI shows that state; nothing on the UI or audio
+thread ever waits on the network.
+
+**Scanning.** Directory queries per D14 (SMB 4-8 in flight), the watcher as a hint with a 10 s debounce (the SMB
+redirector caches listings for 10 s), a walk on reconnect, on resume from sleep and every 45 minutes while the app is
+open, tag reads SMB 8-16 in flight. Fingerprints make the periodic walk cheap: an unchanged 1,200-song share costs a
+few hundred small directory queries, no file opens.
+
+**Playback: a buffered reader** (`Playback/NetworkByteSource.cs`, used for any path under a network root, and for a
+dropped file on one). Today `FileByteSource` (fluent-gpu `AudioDecode.cs:16`) reads synchronously on the decoder thread
+with `Cancel()` a no-op, so a slow read is an audible stall and a sleeping NAS freezes the song. Instead:
+- A dedicated I/O thread reads the file in 1 MB chunks into a memory buffer ahead of the decoder (FLAC is 20-60 MB a
+  song; the whole song fits) and keeps the **next** song in the queue preloaded once the current one is fully read.
+- The decoder reads from memory; when it catches up with the reader the track reports **buffering**, the same state a
+  streamed Spotify track uses, so the player bar shows its existing buffering cue and "Waking up \\nas…" or
+  "Buffering from \\nas…".
+- A seek outside the buffered range restarts the reader at that offset; `Cancel()` abandons the outstanding read.
+- A share that drops mid-song: the buffered audio keeps playing; at its end the track pauses with "\\nas went
+  offline" and [Retry], never an error dialog.
+This needs no engine change: it implements `IMediaByteSource` in the app. The same source serves a slow USB 2 stick.
+
+**Offline copies** (D18, after 0.4): "Keep a copy on this PC" per network folder writes played or pinned songs into
+`Cache\network\` and plays from there when the share is offline.
+
+**Music servers** (D17 b, after 0.4): OpenSubsonic (Navidrome, gonic, Airsonic, and Jellyfin through its plugin) and
+DLNA/UPnP as a separate source, with tags and covers from the server instead of the files.
+
+### 3.17 Designed for later: local videos (D19, nothing built in 0.4)
+
+What 0.4 does so a video feature can arrive later without rework:
+- **Index:** `LocalEntry` gains `Kind : byte { Audio, Video }` and, for video, `Width`, `Height`, `HasAudio`. The MP4
+  reader already walks `moov/trak/mdia/hdlr`; a `vide` handler marks video. `.mkv`/`.webm` are recorded as video by
+  their EBML header with length only (no decoder planned). Video entries never enter Local Files, matching, playlists
+  or the counts in 0.4; Insights can later count them.
+- **Drop:** today's rule stays (an `.mp4` dropped on a track row attaches as that track's video; dropped alone it plays
+  through the existing video path, `Playback.Video`). The drop panel (§3.15) keeps a reserved "Watch" zone kind that 0.4
+  never shows.
+- **Later (not designed here):** a "Videos" pivot on the collection page, a video player surface reusing the existing
+  music-video playback and the stage, thumbnails from the shell cache or the first keyframe, and resume points.
+
 ## 4. Phases (all in 0.4; each one ships on its own)
 
 | # | Phase | What the user gets | Size | Engine |
 |---|---|---|---|---|
-| P1 | Tags and the index, no UI: `LocalTags`, `LocalMatch`, `LocalIndex`, `LocalScan`, `LocalLibrary` (folders API, no restate yet); `LocalSource` takes its duration from a one-off `LocalTags.TryRead` for a dropped file; `ImportLocalFile` stages the real title and artist; **the uri encoder's kept set (E1)** | A dropped file shows its real title, artist and length instead of its file name, and is named to Connect as the official client would name it | L | none |
-| P2 | Music folders: the Storage group in all three themes, the scan wired to it, `Restate` step 1 and step 3, the Local Files list filled from the folders, its empty-state action, the drop extensions, **and the base hand-off for local tracks (3.13)** | "General local files playback": add a folder, browse and play it from Local files, offline too, with the same crossfade or gapless join as any other song | L | none |
+| P1a | Readers and matching, no UI: `LocalTags` (all formats of §3.5, cover locations), `LocalMatch`; `LocalSource` takes its duration from a one-off `LocalTags.TryRead` for a dropped file; `ImportLocalFile` stages the real title and artist; **the uri encoder's kept set (E1)**; the `Normalize` check under invariant globalization | A dropped file shows its real title, artist and length instead of its file name, and is named to Connect as the official client would name it | L | none |
+| P1b | The index and the scanner, no UI: `NtDirectory`, `LocalIndex` (bin + log, folders, fingerprints, states), `LocalScan` (journal catch-up behind its probe, pairing, missing, per-folder commit), the watchers, cloud placeholders, `LocalLibrary` (folders API), the Diagnostics scan probe and its summary line | Nothing visible yet; the scan targets of §3.6 are measured on real drives | L | none |
+| P2 | Music folders: the Storage group in all three themes, the scan wired to it, `Restate` step 1 and step 3, the Local Files list filled from the folders with stable ids (D13), its empty-state action, the drop extensions, **album art (§3.6a)**, **the drop zones and the drop panel (§3.15) with the engine's text and link kinds (D16)**, **and the base hand-off for local tracks (3.13)** | "General local files playback": add a folder, browse and play it from Local files, offline too, with the same crossfade or gapless join as any other song | L | none |
+| P2b | **Network folders (§3.16):** UNC storage for mapped letters, the Windows sign-in path, the reachability probe and its states, SMB scan tuning, `NetworkByteSource` with next-song preloading and the buffering cue | A NAS behaves like a local folder: it wakes, buffers and goes offline visibly, and never stalls a song or the app | M | none |
 | P3 | **Connect and reports for a local play (3.14):** the Local Files list published as `spotify:local-files` with its rows and `local_list` (E3, E4), `playback_quality` local_file with `file_origin` and the two proto fields (E5), the telemetry local arm and play history for Local Files plays (E7, E8), the wire row's artist and album, the refusal of a remote `play` of `spotify:local-files` (D11) | Another device shows what Wavee plays from Local files the way it shows the official client's, and cannot start a transfer that would fail | M | none |
 | P4 | Playlist rows: the `spotify:local:` kind arm (3.2), `StageFace` from the index, `Restate` step 2, `RouteOf(EntityId)`, the uid check (E2), telemetry and play history with the playlist's own uri (E7, E8), a remote `play` by uid (3.14), the Liked Songs check (unverified item 4), the reworded reason | #240 itself: a playlist's local files play in place, from Wavee or from a remote | M | none |
 | P5 | The bar's "Add a music folder" (contract change, three themes) and the always-on match log lines | An unmatched row tells the user what to do about it | S | none |
 
-P1 → P2 → P3 → P4 → P5 in order; P5 could ship with P4, and P3 and P4 can swap if #240's rows are wanted first
+P1a → P1b → P2 → P2b → P3 → P4 → P5 in order (P1a and P1b touch different files and can run in parallel; P2b can run beside P3); P5 could ship with P4, and P3 and P4 can swap if #240's rows are wanted first
 (P4 then carries the telemetry arm). Each phase ends with a clean Debug build and the inspector pass in section 5,
 and adds its own change file.
 
@@ -726,7 +917,12 @@ and adds its own change file.
 
 ### After 0.4
 
-- Embedded cover art for local tracks (D8), once the image pipeline's file or bytes source is confirmed.
+- Local videos (D19, §3.17): a Videos pivot and player on top of the video entries 0.4 already indexes.
+
+- Music servers (D17 b): OpenSubsonic (Navidrome, gonic, Airsonic, Jellyfin) and DLNA/UPnP as a source of their own.
+- "Keep a copy on this PC" for network folders (D18).
+- Saving a dropped `.m3u` as a Spotify playlist, and dropping local files onto a Spotify playlist (both need D12's writes).
+
 - New decoders: WAV/PCM, Ogg Opus, ALAC (D7). The index already records these files as unplayable, so the day a
   decoder lands a rescan lights them up.
 - Local albums and artists as browsable entities (today a local file's album and artist are names, not rows).
