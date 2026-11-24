@@ -481,7 +481,7 @@ internal sealed class WinUiNavRow : Component
             MenuOverlay = _o.MenuOverlay,
             Menu = menu,
             Drag = drag,
-            DropTarget = PinSpec(section, section.Id, index),
+            DropTarget = PinSpec(section, section.Id, index) ?? _o.RouteDropSpec(key),   // Local Files takes an OS drag (#240 §3.15)
         };
         spec.LabelTooltip = LabelOverflows(title, 0, 0f, WinUiNavGeometry.LabelX(OneLine, glyph: true));
         Element row = Indicator(Tipped(WinUiEntityRow.Create(in spec), spec.LabelTooltip, title));
