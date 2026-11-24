@@ -15,7 +15,7 @@ using System.Net.Sockets;
 namespace Wavee;
 
 /// <summary>A music folder's state as the scan and the watcher see it (the façade's per-root fact; P2 draws it).</summary>
-public enum LocalRootState : byte { Unknown, Scanning, Online, Waking, Slow, Offline, SignInNeeded }
+public enum LocalRootState : byte { Unknown, Scanning, Online, Waking, Slow, Offline, SignInNeeded, NoAccess }
 
 public sealed partial class LocalScan
 {

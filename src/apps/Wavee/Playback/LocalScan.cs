@@ -52,6 +52,8 @@ public sealed class LocalScanStats
     public bool Offline, Complete, Cancelled, ExtdFallback;
     public string Reach = "", Journal = "";
     public int FoldersListed, FoldersSkipped, FoldersFailed, FoldersGone, DirtyFolders;
+    /// <summary>The folders this walk could not open or list (relative paths): S11's "Can't read this folder".</summary>
+    public string[] Unreadable = [];
     public int ToRead;
     public long StartedTicks, FinishedTicks;
     public int FilesSeen, FilesRead, FilesUnchanged, MovesPaired, MovesById, MovedOutside, PairedAfterRead, MissingMarked, Reappeared,
@@ -76,7 +78,8 @@ public sealed class LocalScanStats
 public sealed partial class LocalScan
 {
     static readonly string[] s_imageExtensions = [".jpg", ".jpeg", ".png", ".webp"];
-    const int StatusObjectNameNotFound = unchecked((int)0xC000_0034), StatusObjectPathNotFound = unchecked((int)0xC000_003A);
+    const int StatusObjectNameNotFound = unchecked((int)0xC000_0034), StatusObjectPathNotFound = unchecked((int)0xC000_003A),
+        StatusAccessDenied = unchecked((int)0xC000_0022);
 
     readonly LocalIndex _index;
     readonly Lock _gate = new();
@@ -122,6 +125,9 @@ public sealed partial class LocalScan
         Progressed?.Invoke();
         _go.Wait();
     }
+
+    /// <summary>The subfolders of a root to leave out of every walk (relative paths), read when a walk starts.</summary>
+    public Func<string, HashSet<string>> SkippedOf { get; set; } = static _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Read the tags of cloud-only (OneDrive) files, which downloads them ("Read tags of cloud-only files", off by default): read when
     /// a scan starts. Off, a placeholder is indexed from its listing alone (§3.6 "Cloud files").</summary>
@@ -256,11 +262,14 @@ public sealed partial class LocalScan
         // Reachability first: a dead SMB server can block an open for 60-240 s, so a network root is probed on its own thread.
         LocalRootState reach = NtDirectory.IsNetworkPath(rootPath) ? ProbeReach(rootPath) : LocalRootState.Online;
         stats.Reach = reach.ToString();
-        SafeFileHandle? rootHandle = reach is LocalRootState.Offline or LocalRootState.SignInNeeded ? null : NtDirectory.OpenDirectory(null, rootPath, out int openStatus);
+        int openStatus = 0;
+        SafeFileHandle? rootHandle = reach is LocalRootState.Offline or LocalRootState.SignInNeeded ? null : NtDirectory.OpenDirectory(null, rootPath, out openStatus);
         if (rootHandle is null)
         {
             stats.Offline = true;   // an offline root marks nothing: its entries keep their state
-            RootState?.Invoke(rootPath, reach == LocalRootState.SignInNeeded ? reach : LocalRootState.Offline);
+            // A local folder that is there but refuses this user is not offline: it needs its permissions fixed (S11).
+            bool denied = reach == LocalRootState.Online && openStatus == StatusAccessDenied;
+            RootState?.Invoke(rootPath, denied ? LocalRootState.NoAccess : reach == LocalRootState.SignInNeeded ? reach : LocalRootState.Offline);
             stats.TotalMs = total.Elapsed.TotalMilliseconds;
             return stats;
         }
@@ -301,6 +310,7 @@ public sealed partial class LocalScan
             var walk = new Walk(this, root, rootPath, rootHandle, rootId, volume, stats, targets);
             try { walk.Run(); }
             finally { _index.ReleaseScanMaps(); }   // the move-pairing maps live only while a scan pairs
+            stats.Unreadable = walk.Unreadable;
             stats.Cancelled = Cancelled(rootPath);
             stats.Complete = !stats.Cancelled && stats.FoldersFailed == 0 && targets is null;
             if (!stats.Cancelled)
@@ -399,6 +409,19 @@ public sealed partial class LocalScan
         readonly ConcurrentDictionary<long, LocalEntry> _vanished = new();
         readonly ConcurrentDictionary<long, byte> _claimed = new();
         readonly ConcurrentDictionary<string, byte> _failed = new(StringComparer.OrdinalIgnoreCase);
+        // The subfolders the user chose to leave out ("Can't read this folder" › Remove on a subfolder): never walked into.
+        readonly HashSet<string> _skip = scan.SkippedOf(rootPath);
+
+        /// <summary>The folders that failed to open or list, sorted (after <see cref="Run"/>).</summary>
+        public string[] Unreadable
+        {
+            get
+            {
+                var a = _failed.Keys.ToArray();
+                Array.Sort(a, StringComparer.OrdinalIgnoreCase);
+                return a;
+            }
+        }
         readonly ConcurrentBag<string> _goneRoots = new();
         readonly ConcurrentBag<LocalEntry> _fresh = new();   // new files read under a fresh id (step 6 may re-key them)
         readonly Dictionary<string, List<string>> _children = new(StringComparer.OrdinalIgnoreCase);
@@ -567,6 +590,7 @@ public sealed partial class LocalScan
                         if (!NtDirectory.WalksInto(e)) continue;
                         string childRel = Rel(job.RelPath, e.Name);
                         present?.Add(childRel);
+                        if (_skip.Contains(childRel)) { Interlocked.Increment(ref stats.FoldersSkipped); continue; }
                         if (job.Recurse || !_index.TryGetFolder(root.RootId, childRel, out _))
                             Push(new DirJob(dir.AddRef(), e.Name, childRel, e.FileId, Recurse: true));
                         continue;

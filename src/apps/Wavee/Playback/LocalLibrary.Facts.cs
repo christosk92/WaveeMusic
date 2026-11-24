@@ -32,7 +32,7 @@ public static partial class LocalLibrary
     /// <summary>One item that needs the user (S2 "Needs attention", S1's amber count).</summary>
     public readonly record struct AttentionItem(AttentionKind Kind, string Folder, int Count);
 
-    public enum AttentionKind : byte { FolderOffline, SignInNeeded, Missing, Unplayable }
+    public enum AttentionKind : byte { FolderOffline, SignInNeeded, Missing, Unplayable, NoAccess }
 
     readonly record struct Counts(int Songs, int Unplayable, int Missing, int Cloud);
 
@@ -91,6 +91,8 @@ public static partial class LocalLibrary
             FolderFacts facts = FactsOf(f);
             if (st == LocalRootState.Offline) items.Add(new AttentionItem(AttentionKind.FolderOffline, f, facts.Songs));
             else if (st == LocalRootState.SignInNeeded) items.Add(new AttentionItem(AttentionKind.SignInNeeded, f, facts.Songs));
+            else if (st == LocalRootState.NoAccess) items.Add(new AttentionItem(AttentionKind.NoAccess, f, facts.Songs));
+            foreach (string sub in UnreadableOf(f)) items.Add(new AttentionItem(AttentionKind.NoAccess, sub, 0));
         }
         if (missing > 0) items.Add(new AttentionItem(AttentionKind.Missing, "", missing));
         if (unplayable > 0) items.Add(new AttentionItem(AttentionKind.Unplayable, "", unplayable));

@@ -196,6 +196,8 @@ public static class LibraryActivity
                     a.Count > 0 ? Strings.Settings.Music.Kept(a.Count, Number(a.Count)) : "", Loc.Get(Strings.LocalFiles.Activity.Retry), () => LocalLibrary.Rescan(folder)),
                 LocalLibrary.AttentionKind.SignInNeeded => new("signin:" + folder, AttentionMark.Folder, Strings.LocalFiles.Activity.SignIn(folder),
                     a.Count > 0 ? Strings.Settings.Music.Kept(a.Count, Number(a.Count)) : "", Loc.Get(Strings.LocalFiles.Activity.Retry), () => LocalLibrary.Rescan(folder)),
+                LocalLibrary.AttentionKind.NoAccess => new("noaccess:" + folder, AttentionMark.Folder, Strings.LocalFiles.Activity.NoAccess(folder), "",
+                    Loc.Get(Strings.LocalFiles.Activity.FixPermissions), () => LocalLibrary.FixPermissions(folder)),
                 LocalLibrary.AttentionKind.Missing => new("missing", AttentionMark.Files, Strings.LocalFiles.Activity.MissingSongs(a.Count), "",
                     Loc.Get(Strings.LocalFiles.Activity.Review), OpenLocalFiles),
                 _ => new("unplayable", AttentionMark.Files, Strings.LocalFiles.Activity.Unplayable(a.Count), "",

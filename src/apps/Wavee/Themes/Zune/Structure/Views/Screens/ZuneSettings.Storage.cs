@@ -106,7 +106,12 @@ internal static partial class ZuneSettings
                     Direction = 0, AlignItems = FlexAlign.Center, MinHeight = Z.MusicRowH, MinWidth = 0f,
                     Children = [ZuneText.Prose(Loc.Get(Strings.Settings.Music.Empty)) with { Grow = 1f }],
                 }));
-            foreach (string folder in folders) list.Add(Drawer("zs:music:folder:" + folder, FolderLine(k, SettingsMusic.Line(folder))));
+            foreach (string folder in folders)
+            {
+                list.Add(Drawer("zs:music:folder:" + folder, FolderLine(k, SettingsMusic.Line(folder))));
+                // A subfolder Wavee could not read, under its music folder (board 15), with its two text verbs.
+                foreach (var subLine in SettingsMusic.Unreadable(folder)) list.Add(Drawer("zs:music:sub:" + subLine.Path, SubLine(k, subLine)));
+            }
             if (_anchors.Count > folders.Count) PruneAnchors(folders);
             kids.Add(new BoxEl { Key = "zs:music:list", Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = list.ToArray() });
 
@@ -185,12 +190,37 @@ internal static partial class ZuneSettings
             Element text = stack
                 ? new BoxEl { Direction = 1, Gap = Z.LabelGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [path with { Grow = 0f, Basis = float.NaN }, status] }
                 : new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.RowColumnGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [path, status] };
+            var verbs = new List<Element>(2);
+            // A folder that refuses this user: "fix permissions" beside its options (board 15).
+            if (line.Fix is { } fix) verbs.Add(k.Cmd(SettingsMusic.FixLabel, fix) with { Key = "zs:music:fix:" + folder });
+            verbs.Add(options);
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinHeight = Z.MusicRowH, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-                Children = [text, options],
+                Children = [text, .. verbs],
             };
         }
+
+        /// <summary>An unreadable subfolder (board 15): its path in the meta voice, stood in under its music folder, "can't read this folder" in the caution
+        /// ink, then "fix permissions" and "remove" (skip it). The words wrap; nothing is shrunk.</summary>
+        static Element SubLine(ZuneKit k, SettingsMusic.SubLine line) => new BoxEl
+        {
+            Direction = 1, Gap = Z.LabelGap, MinHeight = Z.MusicRowH, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Padding = new Edges4(Z.MusicSubIndent, 0f, 0f, 0f),
+            Children =
+            [
+                ZuneText.Meta(line.Path) with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f },
+                ZuneText.Meta(line.Lead) with { Color = Tok.SystemFillCaution, Wrap = TextWrap.Wrap, MinWidth = 0f },
+                new BoxEl
+                {
+                    Direction = 0, Wrap = true, Gap = Z.LinkGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Margin = new Edges4(-Z.CmdPadding.Left, 0f, 0f, 0f),
+                    Children =
+                    [
+                        k.Cmd(SettingsMusic.FixLabel, line.Fix) with { Key = "zs:music:sub:fix:" + line.Path },
+                        k.Cmd(Loc.Get(Strings.Settings.Music.Remove), line.Skip) with { Key = "zs:music:sub:skip:" + line.Path },
+                    ],
+                },
+            ],
+        };
 
         /// <summary>The folder's options card under its "options" word (light dismiss); a second press closes it.</summary>
         void Open(string folder, ZuneKit k)

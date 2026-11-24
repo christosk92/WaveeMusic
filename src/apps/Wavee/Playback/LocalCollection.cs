@@ -377,7 +377,7 @@ public static class LocalCollection
             {
                 LocalRootState.Scanning or LocalRootState.Waking => LocalChipState.Scanning,
                 LocalRootState.Offline => LocalChipState.Offline,
-                LocalRootState.SignInNeeded => LocalChipState.NoAccess,
+                LocalRootState.SignInNeeded or LocalRootState.NoAccess => LocalChipState.NoAccess,
                 LocalRootState.Unknown => LocalChipState.Waiting,
                 _ => LocalChipState.Ok,
             };

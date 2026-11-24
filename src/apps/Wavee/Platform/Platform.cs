@@ -189,6 +189,9 @@ public static partial class Platform
         /// <summary>Settings › Storage › Music on this PC › "Watch folders for changes" (#240 S3): live updates on; off, folders
         /// are scanned at start, on "Rescan now" and when a drive comes back.</summary>
         public static readonly SettingKey<bool> MusicWatch = new("local.watch", true);
+        /// <summary>The subfolders the user left out of their music folders ("Can't read this folder" › Remove on a subfolder, #240 S11): full
+        /// paths joined by '|'. Read and written ONLY through <see cref="LocalLibrary"/>.</summary>
+        public static readonly SettingKey<string> MusicSkip = new("local.skip", "");
         /// <summary>Settings › Storage › Music on this PC › "Pause scanning on battery saver" (#240 S3): on, a scan holds while Windows battery
         /// saver is on and picks up where it was when it turns off.</summary>
         public static readonly SettingKey<bool> MusicPauseOnSaver = new("local.pauseOnSaver", true);

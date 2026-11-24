@@ -35,6 +35,7 @@ public static partial class LocalLibrary
         RootState = NoteRootState,
         MissingGrace = static () => TimeSpan.FromDays(Math.Clamp(Platform.Settings.Get(Platform.Keys.MusicMissingDays), 7, 365)),
         ReadCloudOnly = static () => Platform.Settings.Get(Platform.Keys.MusicReadCloud),
+        SkippedOf = SkippedUnder,
     };
     static readonly ConcurrentDictionary<string, LocalRootState> s_states = new(StringComparer.OrdinalIgnoreCase);
     static readonly Lock s_gate = new();
@@ -320,7 +321,8 @@ public static partial class LocalLibrary
     /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing`: a fixed in-memory folder list and index (no disk, no
     /// thread, no setting). `changed` is ready plus a background change just restated (+4 added · 1 moved: the chip's "Updated · +4", four new rows
     /// tagged "New", "Ambre" tagged "Moved"); `missing` is ready with three missing songs and no other unplayable file (S6); `listing` is the first
-    /// scan's first second (nothing read, no total); `paused` is scanning held by battery saver. Every value but `changed` clears the session's changes, so the diff from the previous fixture
+    /// scan's first second (nothing read, no total); `paused` is scanning held by battery saver; `noaccess` is ready with a music folder that
+    /// refuses this user and a subfolder that could not be read. Every value but `changed` clears the session's changes, so the diff from the previous fixture
     /// announces nothing.
     /// The next `InspectFixture("none")` empties it again.</summary>
     public static void InspectFixture(string value)
@@ -328,6 +330,9 @@ public static partial class LocalLibrary
         // `paused`: the scanning fixture held by battery saver (S11 "Scanning paused · battery saver").
         FixturePause(value == "paused" ? PauseReason.BatterySaver : PauseReason.None);
         if (value == "paused") value = "scanning";
+        // `noaccess`: ready, but E:\Music refuses this user and C:\…\Music\Live could not be read (S11, board 15).
+        bool noAccess = value == "noaccess";
+        if (noAccess) value = "ready";
         s_fixture = true;
         s_fixtureProgress = default;
         s_index.Detach();
@@ -393,7 +398,7 @@ public static partial class LocalLibrary
             // The last scan as the board draws it: 2 minutes ago, 1.8 s (ready and offline); none while the first scan runs.
             s_scan.Last.Clear();
             if (value is not ("scanning" or "listing"))
-                s_scan.Last[music] = new LocalScanStats { FinishedTicks = DateTime.UtcNow.Ticks - TimeSpan.TicksPerMinute * 2, TotalMs = 1800 };
+                s_scan.Last[music] = new LocalScanStats { FinishedTicks = DateTime.UtcNow.Ticks - TimeSpan.TicksPerMinute * 2, TotalMs = 1800, Unreadable = noAccess ? ["Live"] : [] };
             s_fixtureProgress = value switch
             {
                 "scanning" => new ScanProgress(true, music, ScanPhase.Reading, 412, 4812, 1930, 4812, 1930, 48, 40, 212),
@@ -402,7 +407,7 @@ public static partial class LocalLibrary
                 _ => default,
             };
             s_states[music] = value switch { "scanning" or "listing" => LocalRootState.Scanning, "offline" => LocalRootState.Offline, _ => LocalRootState.Online };
-            s_states[usb] = value == "offline" ? LocalRootState.Offline : LocalRootState.Online;
+            s_states[usb] = value == "offline" ? LocalRootState.Offline : noAccess ? LocalRootState.NoAccess : LocalRootState.Online;
         }
         Epoch.Value++;
         RestateNow();   // the Local Files list shows the fixture at once (no thread)

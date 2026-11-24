@@ -36,8 +36,30 @@ public static class SettingsMusic
         Caution,
     }
 
-    /// <summary>One folder's line: the path, the lead words in the caution ink ("Drive offline"), the rest in the secondary ink, the mark.</summary>
-    public readonly record struct FolderLine(string Path, string? Lead, string Rest, Mark Mark);
+    /// <summary>One folder's line: the path, the lead words in the caution ink ("Drive offline"), the rest in the secondary ink, the mark; and
+    /// for a folder that refuses this user its Fix permissions (null otherwise; board 15).</summary>
+    public readonly record struct FolderLine(string Path, string? Lead, string Rest, Mark Mark, Action? Fix = null);
+
+    /// <summary>A subfolder Wavee could not read, nested under its music folder (board 15): its path, "Can't read this folder", Fix permissions
+    /// and Remove ("skip this subfolder": it stays on disk and is left out of scans).</summary>
+    public readonly record struct SubLine(string Path, string Lead, Action Fix, Action Skip);
+
+    /// <summary>"Fix permissions".</summary>
+    public static string FixLabel => Loc.Get(Strings.Settings.Music.FixPermissions);
+
+    /// <summary>The unreadable subfolders of a music folder (S11), each with its two verbs.</summary>
+    public static SubLine[] Unreadable(string folder)
+    {
+        string[] subs = LocalLibrary.UnreadableOf(folder);
+        var lines = new SubLine[subs.Length];
+        string lead = Loc.Get(Strings.Settings.Music.NoAccess);
+        for (int i = 0; i < subs.Length; i++)
+        {
+            string path = subs[i];
+            lines[i] = new SubLine(path, lead, () => LocalLibrary.FixPermissions(path), () => LocalLibrary.SkipFolder(path));
+        }
+        return lines;
+    }
 
     /// <summary>The status line under the folders: the words, the time left beside them (a running scan), and the scan's fraction (-1: no
     /// determinate scan to show). <paramref name="Paused"/>: the scan is held (the user's Pause, battery saver); the line's verb is Resume
@@ -73,6 +95,8 @@ public static class SettingsMusic
                 return new(folder, null, Loc.Get(Strings.Settings.Music.Waking), Mark.Busy);
             case LocalRootState.Slow:
                 return new(folder, null, Loc.Get(Strings.Settings.Music.Slow), Mark.Caution);
+            case LocalRootState.NoAccess:
+                return new(folder, Loc.Get(Strings.Settings.Music.NoAccess), f.Songs > 0 ? Kept(f.Songs) : "", Mark.Caution, () => LocalLibrary.FixPermissions(folder));
         }
         if (f.Scanning || f.State == LocalRootState.Scanning) return new(folder, null, Loc.Get(Strings.Settings.Music.FolderScanning), Mark.Busy);
         if (f.State == LocalRootState.Unknown && f.Songs == 0) return new(folder, null, Loc.Get(Strings.Settings.Music.NotScanned), Mark.None);
@@ -80,6 +104,8 @@ public static class SettingsMusic
         int unplayable = Math.Max(0, f.Unplayable - f.Missing);
         if (unplayable > 0) rest += Separator + Strings.Settings.Music.Unplayable(Number(unplayable));
         if (f.Missing > 0) rest += Separator + Strings.Settings.Music.Missing(Number(f.Missing));
+        int unreadable = LocalLibrary.UnreadableOf(folder).Length;
+        if (unreadable > 0) rest += Separator + Strings.Settings.Music.Unreadable(unreadable);
         return new(folder, null, rest, f.State == LocalRootState.Online ? Mark.Ok : Mark.None);
     }
 

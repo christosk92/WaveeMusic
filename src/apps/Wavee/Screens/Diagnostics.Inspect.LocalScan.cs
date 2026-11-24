@@ -15,11 +15,11 @@ public static partial class Diagnostics
 {
     public sealed partial class InspectSession
     {
-        /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing|paused`.</summary>
+        /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing|paused|noaccess`.</summary>
         string MusicFoldersState(int id, string name, Inspect.Args a)
         {
             string v = a.Has("value") ? a.Str("value").ToLowerInvariant() : "ready";
-            if (v is not ("none" or "scanning" or "ready" or "offline" or "changed" or "missing" or "listing" or "paused")) return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline|changed|missing|listing|paused, not '" + v + "'");
+            if (v is not ("none" or "scanning" or "ready" or "offline" or "changed" or "missing" or "listing" or "paused" or "noaccess")) return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline|changed|missing|listing|paused|noaccess, not '" + v + "'");
             LocalLibrary.InspectFixture(v);
             LocalCollectionFixture.Fill(v);   // #240 P2-page: the "On this PC" collection on top (albums, years, formats)
             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);

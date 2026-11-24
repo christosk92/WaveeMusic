@@ -134,7 +134,12 @@ internal static partial class ClassicSettings
             var kids = new List<Element>(folders.Count + 1);
             if (folders.Count == 0) kids.Add(MusicDrawer("settings:music:empty", EmptyRow()));
             foreach (string folder in folders)
+            {
                 kids.Add(MusicDrawer("settings:music:folder:" + folder, FolderRow(SettingsMusic.Line(folder), layout.Touch)));
+                // A subfolder Wavee could not read, nested under its music folder (board 15).
+                foreach (var subLine in SettingsMusic.Unreadable(folder))
+                    kids.Add(MusicDrawer("settings:music:sub:" + subLine.Path, SubRow(subLine, layout.Touch)));
+            }
             if (_anchors.Count > folders.Count) PruneAnchors(folders);
 
             var status = SettingsMusic.Status();
@@ -253,11 +258,60 @@ internal static partial class ClassicSettings
                     Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.L, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
                     Children = [path with { Width = ClassicSettingsRules.MusicPathWidth }, status with { Grow = 1f, Basis = 0f }],
                 };
+            var kids = new List<Element>(5) { MarkCell(line.Mark), text };
+            // A folder that refuses this user: Fix permissions beside its verbs (board 15).
+            if (line.Fix is { } fix) kids.Add(StdButton(SettingsMusic.FixLabel, fix) with { Key = "settings:music:fix:" + folder, Shrink = 0f });
+            kids.Add(more);
+            kids.Add(remove);
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = touch ? Spacing.M : Spacing.L, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
                 MinHeight = ClassicSettingsRules.MusicRowHeight, Padding = new Edges4(Spacing.L, Spacing.XS, touch ? Spacing.XS : Spacing.L, Spacing.XS),
-                Children = [MarkCell(line.Mark), text, more, remove],
+                Children = kids.ToArray(),
+            };
+        }
+
+        /// <summary>An unreadable subfolder under its music folder (board 15): the nesting elbow and the lock in the mark's cell, the path, "Can't
+        /// read this folder" in the caution ink, Fix permissions and Remove (skip it). Compact stacks the words over the two buttons.</summary>
+        static Element SubRow(SettingsMusic.SubLine line, bool touch)
+        {
+            var words = new BoxEl
+            {
+                Direction = (byte)(touch ? 1 : 0), AlignItems = touch ? FlexAlign.Start : FlexAlign.Center, Gap = touch ? ClassicSettingsRules.MusicStackGap : Spacing.L,
+                Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                Children =
+                [
+                    new TextEl(line.Path)
+                    {
+                        Size = ClassicSettingsRules.MusicTextSize, FontFamily = ClassicSettingsRules.MusicPathFont, Color = Tok.TextPrimary,
+                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f, Width = touch ? float.NaN : ClassicSettingsRules.MusicPathWidth,
+                    },
+                    new TextEl(line.Lead) { Size = ClassicSettingsRules.MusicTextSize, Color = Tok.SystemFillCaution, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                ],
+            };
+            var verbs = new BoxEl
+            {
+                Direction = 0, Gap = Spacing.M, Shrink = 0f, AlignItems = FlexAlign.Center,
+                Children =
+                [
+                    StdButton(SettingsMusic.FixLabel, line.Fix) with { Key = "settings:music:sub:fix:" + line.Path },
+                    StdButton(Loc.Get(Strings.Settings.Music.Remove), line.Skip) with { Key = "settings:music:sub:skip:" + line.Path },
+                ],
+            };
+            Element mark = new BoxEl
+            {
+                Width = ClassicSettingsRules.MusicMarkCell, Height = ClassicSettingsRules.MusicMarkCell, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Children = [Icon(Icons.Lock, ClassicSettingsRules.MusicMarkSize, Tok.SystemFillCaution)],
+            };
+            return new BoxEl
+            {
+                Direction = (byte)(touch ? 1 : 0), AlignItems = touch ? FlexAlign.Stretch : FlexAlign.Center, Gap = touch ? Spacing.M : Spacing.L,
+                AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = ClassicSettingsRules.MusicRowHeight,
+                // Nested: one mark cell further in than its music folder's row.
+                Padding = new Edges4(Spacing.L + ClassicSettingsRules.MusicMarkCell + Spacing.L, Spacing.XS, touch ? Spacing.XS : Spacing.L, Spacing.XS),
+                Children = touch
+                    ? [new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f, Children = [mark, words] }, verbs]
+                    : [mark, words, verbs],
             };
         }
 
