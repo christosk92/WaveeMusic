@@ -61,7 +61,7 @@ public static partial class Visualizer
         if (!track.IsValid) return "";
         var artist = Rail.NowPlayingArtist(track);
         string name = artist.IsValid ? artist.Name : "";
-        return name.Length > 0 ? name : Entities.Strings.Resolve(track.ArtistLineId);
+        return name.Length > 0 ? name : track.CreditLine;
     }
 
     static string ZuneAlbum(Track track) => track.IsValid && track.Album.IsValid ? track.Album.Title : "";

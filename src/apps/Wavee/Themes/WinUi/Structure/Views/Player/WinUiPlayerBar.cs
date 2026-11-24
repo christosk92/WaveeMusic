@@ -136,7 +136,7 @@ internal static partial class WinUiPlayerBar
                 new BoxEl
                 {
                     Key = PL.BarKey, Direction = 1, ZStack = true, Height = WinUiPlayerTiers.HeightOf(window), Shrink = 0f, Fill = R.Layer.PlayerBar,
-                    Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
+                    Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS), DropTarget = verbs.OsDrop,
                     OnRealized = node => barNode.Value = node,
                     // A press on the bar's own ground takes its key map: the press handler makes that ground a press target, and the engine's
                     // pointer focus focuses the bar without its ring (the board's bar has only its top divider); Tab still lands on it with the

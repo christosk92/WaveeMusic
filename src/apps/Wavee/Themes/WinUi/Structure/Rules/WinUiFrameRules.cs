@@ -221,13 +221,8 @@ public static class WinUiFrameRules
     /// <summary>The card's inner padding (4) and the gap under the box (4).</summary>
     public const float PalettePad = 4f, PaletteGap = 4f;
 
-    // ── the file drop, the cover scrim ───────────────────────────────────────────────────────────────────────────────────
+    // ── the cover scrim ───────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The drop pill's padding and text size.</summary>
-    public static readonly Edges4 FileDropPadding = new(16f, 10f, 16f, 10f);
-
-    /// <summary>The drop pill's text.</summary>
-    public const float FileDropTextSize = 14f;
 
     /// <summary>The setup wizard's cover scrim fade (0 under reduced motion).</summary>
     public const float CoverScrimFadeMs = 167f;

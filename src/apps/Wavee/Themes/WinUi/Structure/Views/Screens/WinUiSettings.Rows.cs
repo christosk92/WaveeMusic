@@ -240,6 +240,7 @@ internal static partial class WinUiSettings
     {
         "playback.crossfade" or "sound.equalizer" or "sound.timecode" => row.Value is true,
         "appearance.theme" => true,
+        "storage.music.folders" => true,
         _ => false,
     };
 
@@ -288,6 +289,8 @@ internal static partial class WinUiSettings
             case "system.language": return LanguageCard(x);
             case "system.gpu": return GpuCard(x);
             // Storage
+            case "storage.music.folders": return MusicFoldersCard(x);
+            case "storage.music.options": return MusicOptionsCard(x);
             case "storage.library" or "storage.runtime" or "storage.logs" or "storage.localStore" or "storage.imageCache" or "storage.aiModels"
                 or "storage.otherData" or "storage.cache.audioBodies" or "storage.cache.licenseKeys": return StorageRowCard(x);
             case "storage.cache.budget": return BudgetCard(x);

@@ -83,6 +83,10 @@ public static class ZuneMotion
     /// <summary><see cref="RowsResize"/>'s damping: critical, so the height never overshoots its rows.</summary>
     const float RowsDamping = 1f;
 
+    /// <summary><see cref="HeightResize"/> that keeps easing while the window is dragged (same curve and time): a block whose height a TIER steps (the
+    /// unavailable bar's 40 to 44 at Compact) and whose slot follows it, so a crossing glides it instead of landing it in the resize's frame.</summary>
+    public static readonly LayoutTransition HeightResizeLive = HeightResize with { AnimateDuringResize = true };
+
     /// <summary>The side panel's docked-card slot (B10: one node at every pivot): it glides to its place when a pivot change reorders it and the head (the
     /// pivot slide's clock), and its height eases between the card's and none when the video docks or leaves, so the head and the body ride it.</summary>
     public static readonly LayoutTransition CardSlot = new(TransitionChannels.Position | TransitionChannels.Size,

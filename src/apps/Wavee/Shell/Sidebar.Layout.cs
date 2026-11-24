@@ -59,7 +59,8 @@ public static class SidebarCatalogue
     static readonly SidebarSectionKind[] s_library =
         [SidebarSectionKind.Home, SidebarSectionKind.Pinned, SidebarSectionKind.Library, SidebarSectionKind.Settings];
 
-    static readonly string[] s_collectionItems = ["liked", "albums", "artists", "podcasts", "audiobooks"];
+    // "local" (Local files, #240) closes the list: the library activity chip stands under it (UX S1). A saved item order gains it at its end.
+    static readonly string[] s_collectionItems = ["liked", "albums", "artists", "podcasts", "audiobooks", "local"];
     static readonly string[] s_libraryKinds = ["albums", "artists", "podcasts", "audiobooks"];
 
     /// <summary>The layout's sections in catalogue (default) order.</summary>
@@ -132,7 +133,7 @@ public static class SidebarCatalogue
         => kind is SidebarSectionKind.Pinned or SidebarSectionKind.Collections or SidebarSectionKind.Playlists
             or SidebarSectionKind.Recent or SidebarSectionKind.NewReleases;
 
-    /// <summary>The section's hideable ITEMS in default order: Classic Collections = the five library pages (route keys);
+    /// <summary>The section's hideable ITEMS in default order: Classic Collections = the six library pages (route keys);
     /// Library's <c>library</c> section = the four hideable kinds (its "Filters"). Empty for every other section.</summary>
     public static IReadOnlyList<string> ItemsOf(SidebarLayoutId layout, SidebarSectionKind kind)
         => kind == SidebarSectionKind.Collections && layout == SidebarLayoutId.Classic ? s_collectionItems

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- NLayer, the managed MPEG audio decoder Wavee plays MP3 with (MIT, https://github.com/naudio/NLayer; LICENSE here).
+       VENDORED from upstream v3.0.1 (82f7a92) with the fixes Wavee needs ahead of an upstream release; see README.md for
+       the exact changes. Upstream's sources are kept as they are written (nullable off, explicit usings), so this
+       project opts out of the repo baseline's Nullable/ImplicitUsings; warnings stay errors. Go back to the NuGet
+       package once a release carries the fixes. -->
+  <PropertyGroup>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>NLayer</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+</Project>

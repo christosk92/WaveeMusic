@@ -628,6 +628,7 @@ public static partial class Spotify
             var table = Entities.TableFor(id.Kind);
             if (table is null) return false;
             targetSlot = table.Slot(id);
+            if (targetSlot > Table.None) LocalLibrary.RuleItem(id);   // a liked spotify:local: file (report 3.2): its uri's face, matched here
             return targetSlot > Table.None;
         }
 

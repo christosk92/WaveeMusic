@@ -2351,7 +2351,11 @@ public static partial class Modules
         float[] _out = [];
         bool _eof, _faulted;
 
-        public GaplessInfo Gapless => GaplessInfo.None;
+        /// <summary>The encoder delay and the real length, when the container states them (a local MP4's edit list or
+        /// <c>iTunSMPB</c>, <see cref="Playback.Audio.IAdtsFrameIndex.PrimingSamples"/>), in mix frames: the engine's trim then
+        /// drops the priming the decoder outputs first and stops on the last real sample, so a join is sample-exact and a
+        /// seek lands where it was asked. A live stream or raw ADTS says nothing: <see cref="GaplessInfo.None"/>.</summary>
+        public GaplessInfo Gapless { get; private set; } = GaplessInfo.None;
 
         /// <summary>The linear factor folded into this decoder's output (<see cref="Playback.Audio.IGainFolding"/>, V-PA15): the one figure
         /// it was built with — the module's stream has no header to learn a later one from — so the seek swap's baked-gain bookkeeping
@@ -2384,6 +2388,7 @@ public static partial class Modules
                 _srcRate = _decoder.OutputSampleRate > 0 ? _decoder.OutputSampleRate : header.SampleRate;
                 _srcChannels = _decoder.OutputChannels > 0 ? _decoder.OutputChannels : Math.Max(1, header.ChannelConfiguration);
                 _resampler = _srcRate != target.SampleRate ? new PolyphaseResampler(_srcRate, target.SampleRate, target.Channels) : null;
+                Gapless = TrimOf(_index, target.SampleRate);
                 TimeSpan duration = _index is { DurationMs: > 0 } indexed ? TimeSpan.FromMilliseconds(indexed.DurationMs) : TimeSpan.Zero;
                 info = new DecodedInfo(new MediaContentType(_index is null ? Container.Adts : Container.Mp4, CodecId.None, CodecId.Aac),
                     new MixFormat(_srcRate, _srcChannels), duration, default);
@@ -2397,6 +2402,16 @@ public static partial class Modules
                 Dispose();
                 return false;
             }
+        }
+
+        /// <summary>The container's priming and real length as gapless trim in mix frames, converted through time (so the
+        /// timescale the container counts in — the output rate, or HE-AAC's core rate — does not matter). PURE.</summary>
+        public static GaplessInfo TrimOf(Playback.Audio.IAdtsFrameIndex? index, int mixRate)
+        {
+            if (index is not { PrimingSamples: >= 0, ValidSamples: > 0, TrimTimescale: > 0 } t || mixRate <= 0) return GaplessInfo.None;
+            int lead = (int)Math.Round((double)t.PrimingSamples * mixRate / t.TrimTimescale);
+            long exact = (long)Math.Round((double)t.ValidSamples * mixRate / t.TrimTimescale);
+            return new GaplessInfo(lead, 0, exact, TailKnown: true);
         }
 
         void Prime(ReadOnlySpan<byte> firstFrame)
@@ -2548,9 +2563,13 @@ public static partial class Modules
         }
 
         /// <summary>A live body answers only "the start" (it has no timeline). An indexed source seeks to the AAC frame holding
-        /// <paramref name="frame"/> (mix-rate frames): the transform is flushed, the frame BEFORE it is decoded and discarded so
-        /// the MDCT overlap is primed (the first frame after a flush is half a window of nothing), and the answer is where the
-        /// audio actually resumes — a frame boundary, at most one AAC frame (~23 ms) before the ask.</summary>
+        /// <paramref name="frame"/> (mix-rate frames; the engine's trim has already added the priming). The transform is flushed and
+        /// fed from the frame BEFORE it (its output is half a window of nothing: it only primes the MDCT overlap), and every sample
+        /// the transform emits from there is COUNTED from that frame: the output stream after a flush starts at
+        /// <c>start × samples per frame</c>, however late the transform emits it. (The Windows AAC MFT runs one frame behind: the
+        /// first frame pushed after a flush, as at open, yields nothing, and the next push yields the first frame's audio. Treating
+        /// the target push's output as the target frame landed every seek one frame, ~23 ms, early.) The samples before the asked one
+        /// are dropped, so the audio resumes on the asked frame and the answer is that frame.</summary>
         public long Seek(long frame)
         {
             if (_decoder is null) return -1;
@@ -2570,15 +2589,22 @@ public static partial class Modules
                 _resampler?.Reset();
                 _eof = false;
                 _faulted = false;
-                for (int f = start; f < target; f++)
+                // Feed frames from `start` until the output counted from `start`'s first sample reaches the asked one, then drop
+                // everything before it (the pre-roll frame's half window included).
+                int srcCh = Math.Max(1, _srcChannels);
+                long skip = srcFrame - (long)start * outPerFrame;
+                while (_heldCount <= skip * srcCh && !_eof)
                 {
-                    if (!_reader.TryReadFrame(out ReadOnlySpan<byte> preroll, out _)) break;
-                    PushAndDrain(preroll, primingPhase: false);
-                    _heldStart = _heldCount = 0;                     // the pre-roll's output is never heard
+                    if (!_reader.TryReadFrame(out ReadOnlySpan<byte> next, out _)) { _eof = true; break; }
+                    PushAndDrain(next, primingPhase: false);
+                    if (_faulted) return -1;
                 }
-                if (_faulted) return -1;
-                long landedSrc = (long)target * outPerFrame;
-                return (long)Math.Round((double)landedSrc * mixRate / Math.Max(1, _srcRate));
+                long drop = Math.Min(Math.Max(0, skip) * srcCh, _heldCount);
+                _heldStart += (int)drop;
+                _heldCount -= (int)drop;
+                if (_heldCount <= 0) { _heldStart = 0; _heldCount = 0; }
+                long landedSrc = (long)start * outPerFrame + drop / srcCh;
+                return landedSrc == srcFrame ? Math.Max(0, frame) : (long)Math.Round((double)landedSrc * mixRate / Math.Max(1, _srcRate));
             }
             catch (Exception ex)
             {

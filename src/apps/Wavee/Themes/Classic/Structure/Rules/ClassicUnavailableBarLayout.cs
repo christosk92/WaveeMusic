@@ -50,10 +50,26 @@ public sealed record ClassicUnavailableBar
     /// <summary>The band the bar takes while shown: its height and the air under it (the hero arm's clip inset adds it).</summary>
     public float Extent => Height + GapBelow;
 
+    /// <summary>The bar takes its verbs on a line of their own under the sentence while it carries a second verb (Review, #240 S6): Compact's, where
+    /// three 40 verbs and the sentence do not share a line. Its height then (8 + 20 + 10 + 40 + 8).</summary>
+    public bool TwoLines { get; init; }
+
+    /// <inheritdoc cref="TwoLines"/>
+    public float TwoLineHeight { get; init; } = 86f;
+
+    /// <summary>The two-line form's padding, and its sentence line's flex basis (wider than any Compact bar, so the verbs always wrap under it).</summary>
+    public Edges4 TwoLinePadding { get; init; } = new(12f, 8f, 8f, 8f);
+
+    /// <inheritdoc cref="TwoLinePadding"/>
+    public float LineBasis { get; init; } = 640f;
+
+    /// <summary>The band the bar takes while it carries a second verb.</summary>
+    public float ExtentWithSecondary => (TwoLines ? TwoLineHeight : Height) + GapBelow;
+
     /// <summary>Compact (C-Unavailable-Compact).</summary>
     public static ClassicUnavailableBar Compact { get; } = new()
     {
-        Height = 58f, Padding = new Edges4(12f, 8f, 8f, 8f), ButtonSize = ControlSize.Large, GapBelow = 12f, Explains = false,
+        Height = 58f, Padding = new Edges4(12f, 8f, 8f, 8f), ButtonSize = ControlSize.Large, GapBelow = 12f, Explains = false, TwoLines = true,
     };
 
     /// <summary>Standard and Huge (C-Unavailable).</summary>
