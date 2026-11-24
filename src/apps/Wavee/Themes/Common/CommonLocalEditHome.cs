@@ -68,6 +68,15 @@ internal sealed class CommonLocalEditHome : Component
     /// <summary>The popup's card: re-renders on a change of the shelves (the rows keep their nodes and glide to a new place).</summary>
     sealed class Body : Component
     {
+        static readonly TemplateParts s_labelParts = LabelParts();
+
+        static TemplateParts LabelParts()
+        {
+            var parts = new TemplateParts();
+            parts.Set<TextEl>(CheckBox.PartLabel, static t => t with { Case = R.Case.For(LabelKind.Label) });
+            return parts;
+        }
+
         readonly Dictionary<LocalShelf, Signal<bool>> _checks = new();
 
         public override Element Render()
@@ -81,7 +90,7 @@ internal sealed class CommonLocalEditHome : Component
                 Key = "lc-edit-home:card", Direction = 1, Width = LR.EditW, Padding = Edges4.All(LR.EditPad), Gap = LR.EditGap,
                 Children =
                 [
-                    R.Type.DenseTitle(Loc.Get(P.EditHome)) with { Color = Tok.TextPrimary },
+                    R.Type.DenseTitle(Loc.Get(P.EditHome)) with { Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Heading) },
                     R.Type.TrackMeta(Loc.Get(P.EditHomeSub)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, Margin = new Edges4(0f, 0f, 0f, LR.EditGap) },
                     .. rows,
                 ],
@@ -100,7 +109,8 @@ internal sealed class CommonLocalEditHome : Component
                 Layout = LR.CardReflow,
                 Children =
                 [
-                    new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [CheckBox.Create(X.ShelfName(shelf), check, on => show(shelf, on))] },
+                    // The shelf's name in the style's label case (Zune lowercases it, as its shelf headings are).
+                    new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [CheckBox.Create(X.ShelfName(shelf), check, on => show(shelf, on), parts: s_labelParts)] },
                     ToolTip.Wrap(IconButton.Create(Icons.ChevronUp, () => move(shelf, -1), isEnabled: !first) with { Key = "lc-edit-up:" + shelf.ToString().ToLowerInvariant() },
                         Loc.Get(P.MoveUp)),
                     ToolTip.Wrap(IconButton.Create(Icons.ChevronDown, () => move(shelf, +1), isEnabled: !last) with { Key = "lc-edit-down:" + shelf.ToString().ToLowerInvariant() },
