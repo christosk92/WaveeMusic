@@ -60,7 +60,7 @@ internal static class CommonColourEditor
         };
         Element left = new BoxEl
         {
-            Key = "colours:wells", Direction = 1, Gap = Spacing.S, MinWidth = 0f, Shrink = 0f,
+            Key = "colours:wells", Direction = 1, Gap = Spacing.S, MinWidth = 0f, Shrink = 1f,
             Children = [new BoxEl { Direction = 1, Children = wells }, picker],
         };
         Element right = new BoxEl
