@@ -5,7 +5,10 @@
 // columns). Every write goes through the epoch it always bumped: marquee, fast navigation, the daylist clock, the Liked cover and the
 // list columns → `Prefs.Appearance`. A verb returns whether the PAGE must re-read.
 
+using FluentGpu.Dsl;
+using FluentGpu.Localization;
 using Wavee.Theming;
+using Wavee.Theming.Colours;
 using K = Wavee.SettingsRowKind;
 
 namespace Wavee;
@@ -51,7 +54,17 @@ public static partial class SettingsSpec
             Make("appearance.appMode", K.Segmented, Strings.Settings.Appearance.AppMode,
                 SettingsWriter.OfChoice("appearance.mode", SettingsVerbs.SetThemeMode), legacy: ["appMode"], glyph: "Sun",
                 captionKey: Strings.Settings.Appearance.ThemeSub, value: s => (int)Appearance.ModeOf(s.Get(Platform.Keys.ThemeMode)),
-                choices: [Strings.Settings.Choice.System, Strings.Settings.Choice.Light, Strings.Settings.Choice.Dark], contexts: [SettingsSurfaces.ProfileMenu])),
+                choices: [Strings.Settings.Choice.System, Strings.Settings.Choice.Light, Strings.Settings.Choice.Dark], contexts: [SettingsSurfaces.ProfileMenu]),
+            // The colour set of each mode (#184): index 0 the theme's own colours, then the catalog's sets for that mode. Developer-only plain
+            // choices until the picker lands (plan phase 5); the inspector drives them with `setting id=appearance.colours.dark value=<i>`.
+            Make("appearance.colours.light", K.Choice, Strings.Settings.Appearance.ColoursLight,
+                SettingsWriter.OfChoice("colours.light", i => SettingsVerbs.PickColours(ThemeKind.Light, i)), glyph: "Brush",
+                tier: SettingsTier.Developer, value: _ => SettingsVerbs.ColoursIndex(ThemeKind.Light),
+                liveChoices: () => SettingsVerbs.ColoursChoices(ThemeKind.Light)),
+            Make("appearance.colours.dark", K.Choice, Strings.Settings.Appearance.ColoursDark,
+                SettingsWriter.OfChoice("colours.dark", i => SettingsVerbs.PickColours(ThemeKind.Dark, i)), glyph: "Brush",
+                tier: SettingsTier.Developer, value: _ => SettingsVerbs.ColoursIndex(ThemeKind.Dark),
+                liveChoices: () => SettingsVerbs.ColoursChoices(ThemeKind.Dark))),
 
         Group("sizeAndText", Strings.Settings.Groups.Appearance.SizeAndText, null,
             // A combo, not segments: thirteen items (Auto + twelve rungs). Index 0 is "Auto (N%)" for both Auto and Dense.
@@ -149,6 +162,34 @@ public static partial class SettingsVerbs
     {
         Appearance.SetMode((ThemeMode)Math.Clamp(mode, 0, 2));
         return true;
+    }
+
+    // ── Colours (#184) ───────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The colour set pick of <paramref name="kind"/>: index 0 the theme's own colours, index i the catalog's (i - 1)th set for that mode
+    /// (<see cref="ColourCatalog.For"/>). <see cref="ColourChoice.SetSpec"/> persists and applies it; an index no set has does nothing.</summary>
+    public static bool PickColours(ThemeKind kind, int index)
+    {
+        var specs = ColourCatalog.For(kind);
+        if (index < 0 || index > specs.Length) return false;
+        return ColourChoice.SetSpec(kind, index == 0 ? null : specs[index - 1].Id);
+    }
+
+    /// <summary>The index of <paramref name="kind"/>'s stored set in <see cref="PickColours"/>' order (0: the theme's own colours).</summary>
+    public static int ColoursIndex(ThemeKind kind)
+    {
+        if (ColourChoice.SpecOf(kind) is not { } spec) return 0;
+        return ColourCatalog.For(kind).IndexOf(spec) + 1;
+    }
+
+    /// <summary>The words of <paramref name="kind"/>'s choices: "Theme default", then each set's family and name (proper nouns, not localized).</summary>
+    public static IReadOnlyList<string> ColoursChoices(ThemeKind kind)
+    {
+        var specs = ColourCatalog.For(kind);
+        var words = new string[specs.Length + 1];
+        words[0] = Loc.Get(Strings.Settings.Appearance.ColoursDefault);
+        for (int i = 0; i < specs.Length; i++) words[i + 1] = specs[i].DisplayName;
+        return words;
     }
 
     /// <summary>The Zoom combo's pick: index 0 is "Auto (N%)" (mode = Auto, never Dense, applying the suggestion the row last

@@ -21,6 +21,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Theming;
 using Wavee.Theming;
+using Wavee.Theming.Colours;
 using WindowMaterial = FluentGpu.Pal.WindowMaterial;
 
 namespace Wavee.Themes.WinUi;
@@ -81,8 +82,7 @@ public sealed class WinUiStyle : IStyleLayer
     // Everything but the accent and the material, built once. Declared before anything that reads it (static initialisers run in textual order).
     private static readonly ThemeDefinition s_base = BaseDefinition();
 
-    private static readonly object s_gate = new();
-    private static readonly Dictionary<DefinitionKey, ThemeDefinition> s_definitions = new();
+    private static readonly DefinitionMemo<DefinitionKey> s_definitions = new();
 
     private readonly record struct DefinitionKey(WinUiBackdrop Backdrop, AccentRamp Accent);
 
@@ -93,28 +93,24 @@ public sealed class WinUiStyle : IStyleLayer
     public ThemeOptionSchema Options { get; } = ThemeOptionSchema.Of(BackdropOption, DensityOption, UseWindowsAccentOption);
 
     /// <inheritdoc />
-    public ThemeDefinition Definition(OptionValues style, AccentRamp osAccent)
+    public ThemeDefinition Definition(OptionValues style, in StyleInputs inputs)
     {
         ArgumentNullException.ThrowIfNull(style);
         var backdrop = style.Get(BackdropOption.Key);
-        var accent = WinUiAccent.RampFor(style.Get(UseWindowsAccentOption.Key), osAccent);
-        var key = new DefinitionKey(backdrop, accent);
-        lock (s_gate)
+        var accent = WinUiAccent.RampFor(style.Get(UseWindowsAccentOption.Key), inputs.OsAccent);
+        return s_definitions.Get(new DefinitionKey(backdrop, accent), static key =>
         {
-            if (s_definitions.TryGetValue(key, out var memo)) return memo;
-            var material = MaterialOf(backdrop);
-            var definition = s_base with
+            var material = MaterialOf(key.Backdrop);
+            return s_base with
             {
-                Accent = accent,
+                Accent = key.Accent,
                 Materials = new MaterialPolicy { Light = material, Dark = material },
             };
-            s_definitions.Add(key, definition);
-            return definition;
-        }
+        });
     }
 
     /// <summary>The definition at the style's defaults (Mica, the Windows accent; with no OS ramp read, the theme's blue).</summary>
-    public static ThemeDefinition DefaultDefinition { get; } = new WinUiStyle().Definition(OptionValues.Empty, AccentRamp.FluentDefault);
+    public static ThemeDefinition DefaultDefinition { get; } = new WinUiStyle().Definition(OptionValues.Empty, StyleInputs.Default);
 
     /// <summary>The window material of <paramref name="backdrop"/>.</summary>
     public static WindowMaterial MaterialOf(WinUiBackdrop backdrop) => backdrop switch

@@ -13,6 +13,7 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Theming;
 using Wavee.Theming;
+using Wavee.Theming.Colours;
 
 namespace Wavee.Themes.Classic;
 
@@ -46,8 +47,9 @@ public sealed class ClassicStyle : IStyleLayer
     private static ThemeDefinition s_lastDefinition = s_definition;
 
     /// <inheritdoc />
-    public ThemeDefinition Definition(OptionValues style, AccentRamp osAccent)
+    public ThemeDefinition Definition(OptionValues style, in StyleInputs inputs)
     {
+        AccentRamp osAccent = inputs.OsAccent;
         if (osAccent == AccentRamp.FluentDefault) return s_definition;
         lock (s_gate)
         {

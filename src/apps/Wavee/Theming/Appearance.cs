@@ -96,6 +96,9 @@ public sealed class AppearanceModel
     /// <summary>The persisted preference.</summary>
     public ThemeMode Mode => Appearance.ModeOf(_ports.StoredMode);
 
+    /// <summary>A live colour change made elsewhere (a colour set, #184) asks for the same re-theme cross-fade a live mode change runs.</summary>
+    public void RequestTransition() => _transition?.Invoke(TransitionMs);
+
     /// <summary>The host's re-theme trigger (<c>ThemeControl.Request</c>); null = the swap simply does not animate.</summary>
     public void BindTransition(Action<float>? request) => _transition = request;
 
@@ -196,6 +199,9 @@ public static class Appearance
 
     /// <summary>Settings > Appearance > Theme.</summary>
     public static void SetMode(ThemeMode mode) => s_model.SetMode(mode);
+
+    /// <summary>The live re-theme cross-fade, for a colour change that went through <c>Tok.Use</c> in place (a colour set, #184).</summary>
+    public static void RequestTransition() => s_model.RequestTransition();
 
     /// <summary>The theme-flip verb the menu bench probe drives. Every user surface sets the mode itself through the App mode dial (Settings, the
     /// profile menu's System · Light · Dark), so System is never dropped by a flip.</summary>

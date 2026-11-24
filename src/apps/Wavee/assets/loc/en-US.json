@@ -1533,6 +1533,8 @@
     "terms": {
       "$comment": "What people type to find each dial (settings.terms.<dialId>; design 4.2, appendix A). Space-separated words, + joins a phrase. Titles, captions, choice labels and the invariant aliases (SettingsDial.Aliases) are indexed already: write the words a person has in mind instead (symptoms, other apps' and Windows' words, technical words), including the wrong word. A theme option's key is its dial id (appearance.option.<layer>.<option>), read only while its theme is active.",
       "appearance.theme": "look skin style design classic zune winui fluent windows+11 change+theme",
+      "appearance.colours.light": "palette colour+scheme color+scheme day light+theme catppuccin latte",
+      "appearance.colours.dark": "palette colour+scheme color+scheme night dark+theme oled black catppuccin mocha",
       "appearance.option.sidebar.reset": "sidebar default+sidebar restore+sidebar sections order",
       "appearance.option.sidebar.customize": "sidebar pins arrange reorder hide+sections customize+sidebar",
       "appearance.option.sidebar.resetEverything": "sidebar restore+defaults layouts density",
@@ -2000,6 +2002,9 @@
       "theme": "Theme",
       "themeSub": "System follows the Windows setting live",
       "appMode": "App mode",
+      "coloursLight": "Light colours",
+      "coloursDark": "Dark colours",
+      "coloursDefault": "Theme default",
       "rowDensity": "Row density",
       "rowDensitySub": "Choose how much music fits on screen; the miniature rows preview the real spacing.",
       "trackListStyle": "Track list style",

@@ -20,6 +20,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Theming;
 using Wavee.Theming;
+using Wavee.Theming.Colours;
 using WindowMaterial = FluentGpu.Pal.WindowMaterial;
 
 namespace Wavee.Themes.Zune;
@@ -93,8 +94,7 @@ public sealed class ZuneStyle : IStyleLayer
     // Everything but the accent and the roles, built once. Declared before anything that reads it (static initialisers run in textual order).
     private static readonly ThemeDefinition s_base = BaseDefinition();
 
-    private static readonly object s_gate = new();
-    private static readonly Dictionary<DefinitionKey, ThemeDefinition> s_definitions = new();
+    private static readonly DefinitionMemo<DefinitionKey> s_definitions = new();
 
     private readonly record struct DefinitionKey(int Accent, bool FollowsWindows, bool BigNumerals, AccentRamp Os);
 
@@ -105,28 +105,25 @@ public sealed class ZuneStyle : IStyleLayer
     public ThemeOptionSchema Options { get; } = ThemeOptionSchema.Of(AccentOption, UseWindowsAccentOption, DensityOption, BigNumeralsOption);
 
     /// <inheritdoc />
-    public ThemeDefinition Definition(OptionValues style, AccentRamp osAccent)
+    public ThemeDefinition Definition(OptionValues style, in StyleInputs inputs)
     {
         ArgumentNullException.ThrowIfNull(style);
         var pair = ZuneAccent.PairOf(style.Get(AccentOption.Key));
         bool followsWindows = style.Get(UseWindowsAccentOption.Key);
         bool bigNumerals = style.Get(BigNumeralsOption.Key);
-        var key = new DefinitionKey(Pack(pair.Dark), followsWindows, bigNumerals, followsWindows ? osAccent : default);
-        lock (s_gate)
+        var key = new DefinitionKey(Pack(pair.Dark), followsWindows, bigNumerals, followsWindows ? inputs.OsAccent : default);
+        return s_definitions.Get(key, k =>
         {
-            if (s_definitions.TryGetValue(key, out var memo)) return memo;
-            var definition = s_base with
+            return s_base with
             {
-                Accent = followsWindows ? osAccent : ZuneAccent.RampOf(pair),
-                AppRoles = ZuneRoles.For(pair, followsWindows, bigNumerals),
+                Accent = k.FollowsWindows ? k.Os : ZuneAccent.RampOf(pair),
+                AppRoles = ZuneRoles.For(pair, k.FollowsWindows, k.BigNumerals),
             };
-            s_definitions.Add(key, definition);
-            return definition;
-        }
+        });
     }
 
     /// <summary>The definition at the style's defaults (pink, big numerals, the swatch rather than the OS accent).</summary>
-    public static ThemeDefinition DefaultDefinition { get; } = new ZuneStyle().Definition(OptionValues.Empty, AccentRamp.FluentDefault);
+    public static ThemeDefinition DefaultDefinition { get; } = new ZuneStyle().Definition(OptionValues.Empty, StyleInputs.Default);
 
     private static int Pack(ColorF c)
     {
