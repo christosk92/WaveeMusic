@@ -94,6 +94,13 @@ public static partial class Playback
         // `play` envelope a row click forwards from the reducer (DoPlay → ForwardPlay), sent straight from the host
         // because there is no row to post yet.
         if (ForwardPlayToOwner(context, startAt, fromMs)) return;
+        // A list of files on this PC (Local Files) is no Spotify context: it plays from the rows it holds, never a resolve,
+        // which Spotify refuses for a wavee:local: uri (Play all and Shuffle on "On this PC" did nothing, #240).
+        if (context.Provider == EntityProvider.Local && context.Kind == EntityKind.Playlist)
+        {
+            PlayLocalList(context, startAt, fromMs);
+            return;
+        }
         if (context.IsPlayable)
         {
             EntityRef row = Entities.Ref(context);
@@ -128,12 +135,41 @@ public static partial class Playback
         PageFacts? facts = null)
     {
         if (!ForwardsPlays) return false;
+        if (PlaysOnlyHere(context, startAt))
+        {
+            Log.Info("playback", "a file on this PC plays here: the play claims playback from " + Devices.NameOf(s_state.Own.Device));
+            return false;
+        }
         string target = Devices.IdOf(s_state.Own.Device);
         if (target.Length == 0) { Log.Warn("playback", "play dropped: the owner is not in the roster"); return true; }
         // The one play send (Playback.Host.Forward.cs): the Liked rule, then the envelope.
         SendPlay(target, s_state.Own.Device, ForwardPlayEnvelope.For(context, startAt), startAt, s_state.Shuffle, fromMs, null, false,
             rows, start, facts);
         return true;
+    }
+
+    /// <summary>Does this play name a file on this PC (the row, or a list of them when no row is named)? Such a play is never handed to
+    /// another device: none can open the file (#240). PURE.</summary>
+    static bool PlaysOnlyHere(EntityId context, EntityId startAt)
+        => startAt.Provider == EntityProvider.Local || (startAt.IsEmpty && context.Provider == EntityProvider.Local);
+
+    /// <summary>A local list (Local Files) played from its own rows, from <paramref name="startAt"/> when it holds it; a shuffled play with
+    /// no row named starts on a random row, as a shuffled context resolve does. UI thread.</summary>
+    static void PlayLocalList(EntityId list, EntityId startAt, int fromMs)
+    {
+        EntityRef listRef = Entities.Ref(list);
+        if (listRef.IsNone) return;
+        ReadOnlySpan<int> slots = new Playlist(listRef.Slot).TrackSlots;
+        if (slots.Length == 0) { Log.Info("playback", "local list has nothing to play"); return; }
+        var rows = new EntityRef[slots.Length];
+        int start = -1;
+        for (int k = 0; k < slots.Length; k++)
+        {
+            rows[k] = new EntityRef(EntityKind.Track, slots[k]);
+            if (start < 0 && !startAt.IsEmpty && rows[k].Id.Equals(startAt)) start = k;
+        }
+        if (start < 0) start = s_state.Shuffle && startAt.IsEmpty ? Random.Shared.Next(rows.Length) : 0;
+        PlayRows(rows, start, list, fromMs);
     }
 
     /// <summary>Play a context named by its uri TEXT — a station (<c>spotify:station:track:…</c>), a radio, any context
@@ -336,6 +372,8 @@ public static partial class Playback
     public static void PlayRows(ReadOnlySpan<EntityRef> rows, int start, EntityId context, int fromMs = -1, PageFacts? facts = null)
     {
         if (Entities.Current is null || (uint)start >= (uint)rows.Length || rows[start].IsNone) return;
+        // A file on this PC claims playback here even while another device owns it (Input.HereBit): only this PC can open it.
+        bool here = ForwardsPlays && PlaysOnlyHere(context.IsEmpty ? rows[start].Id : context, rows[start].Id);
         // Another device owns playback: the click is a command to IT, sent BEFORE any local layout, Replace or publish —
         // local rows laid out now would sit under the owner's untouched header. The panel follows its next cluster.
         if (ForwardPlayToOwner(context.IsEmpty ? rows[start].Id : context, rows[start].Id, fromMs, rows, start, facts)) return;
@@ -371,7 +409,7 @@ public static partial class Playback
             // A video-first list (PlaylistVideo) starts in video mode; the reducer's wish then carries it to the rows after.
             PlayableKind kind = PlaylistVideo.IsVideoFirst(context) && RowMayHaveVideo(row) ? PlayableKind.Video : PlayableKind.Audio;
             Post(Input.PlayFrom(row, row.Id, context, Queue.CursorOf(deck), kind, Math.Max(0, fromMs), now,
-                ClaimCause.UserPlay, paused: false, explicitPosition: fromMs >= 0));
+                ClaimCause.UserPlay, paused: false, explicitPosition: fromMs >= 0, here: here));
             s_pageUrl = "";                                // the caller's rows ARE the context: nothing to page (G-242)
             if (!sameContext) ForgetAutoplayPage();
             Post(Input.ContextPages(context, morePages: false, now));
