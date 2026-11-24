@@ -107,8 +107,8 @@ update), Engadget's how-to (2026-07), Make Tech Easier (2025-09), and our own ca
 
 ### Themes
 - WinUI: the card is an inline expander card; presets a segmented row that scrolls at narrow widths; Customize an
-  expander. Zune: a full-width band, presets as large lowercase text tabs, Customize as a second band. Classic: the
-  card follows the list density; presets a compact segmented control; Customize three small combo boxes in one row.
+  expander. Zune: a full-width band, presets as large lowercase text tabs, Customize as a second band. Classic uses the
+  WinUI layout (the owner is converging the two; no Classic-only design).
 
 ## What needs capture round 2 (blocks shipping the control, not designing it)
 
