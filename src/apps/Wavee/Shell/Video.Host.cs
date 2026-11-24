@@ -45,7 +45,7 @@
 // Rules: UI thread only (C1). Nothing here allocates per frame — the effects are mount-wired and re-run on a signal
 // edge, never on a tick.
 //
-// Named partials: `Video.Overrides.cs` (the local-attachment roster) and `Video.Host.Wiring.cs` (gap batch B7: the
+// Named partials: `Video.LinkedVideos.cs` (the local-linked video linked-video list) and `Video.Host.Wiring.cs` (gap batch B7: the
 // composition call, the placement → playback post, the boundary fold, the host observer leaf).
 
 using FluentGpu.Dsl;

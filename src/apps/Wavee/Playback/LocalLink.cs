@@ -106,11 +106,13 @@ public static partial class LocalLink
         s_loaded = true;
         s_enabled.Value = Platform.Settings.Get(s_on);
         s_offerShown.Value = Platform.Settings.Get(s_offer);
+        s_preferFilesOn.Value = Platform.Settings.Get(s_preferFiles);
         if (cacheDir is null) { s_memoryOnly = true; return; }
         s_path = Path.Combine(cacheDir, "locallinks.tsv");
         try { if (File.Exists(s_path)) Read(File.ReadAllLines(s_path, Encoding.UTF8)); }
         catch (Exception ex) { Log.Warn("local.link", "local.link.load failed", ex); }
         Publish();
+        Video.LinkedVideos.MigrateLegacy();   // once: the old attached videos become linked video versions (Shell/Video.LinkedVideos.cs)
         if (s_enabled.Peek()) StartMatching();
     }
 
@@ -140,9 +142,10 @@ public static partial class LocalLink
     /// <summary>A song group's key.</summary>
     public static string SongKey(long localId) => "song:" + localId.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>The group a file belongs to: its album's key, or its own song key when it has no album tag.</summary>
+    /// <summary>The group a file belongs to: its album's key, or its own song key when it has no album tag. From the file's own names
+    /// (<see cref="LocalCollection.TagArtistOf"/>): what the collection shows for it (a link, a rename) never moves it to another group.</summary>
     public static string GroupKeyOf(LocalEntry e)
-        => e.Tags.Album.Length > 0 ? LocalCollection.AlbumKey(LocalCollection.ArtistOf(e), e.Tags.Album) : SongKey(e.LocalId);
+        => e.Tags.Album.Length > 0 ? LocalCollection.AlbumKey(LocalCollection.TagArtistOf(e), e.Tags.Album) : SongKey(e.LocalId);
 
     /// <summary>The offer's counts: of <paramref name="albums"/> and <paramref name="songs"/> (the collection's albums, and its songs with no album
     /// tag, each its own group), those no decision covers yet.</summary>
@@ -312,6 +315,8 @@ public static partial class LocalLink
         for (int i = 0; i < g.Files.Count && i < c.Tracks.Count; i++)
         {
             if (c.Tracks[i] is not { } t) continue;
+            // A file the user linked on its own (a version: LinkVersion, an attached video) keeps its link when its album is matched.
+            if (s_linkGroup.TryGetValue(g.Files[i], out string? own) && own != g.Key && s_decided.TryGetValue(own, out Decided? od) && od.Decision == LinkDecision.Accepted) continue;
             s_links[g.Files[i]] = t;
             s_linkGroup[g.Files[i]] = g.Key;
         }
@@ -397,6 +402,7 @@ public static partial class LocalLink
         var reversed = new Dictionary<string, long[]>(byTrack.Count, StringComparer.Ordinal);
         foreach (var (uri, ids) in byTrack) reversed[uri] = [.. ids];
         s_byTrack = reversed;
+        FeedVideos();   // a linked video version is its track's video (LocalLink.Video.cs)
         var tracks = new Dictionary<long, LinkTrack>();
         foreach (var (id, t) in s_links)
             if (s_linkGroup.TryGetValue(id, out string? key) && s_decided.TryGetValue(key, out Decided? d) && d.Decision == LinkDecision.Accepted && d.SpotifyWins)
@@ -404,9 +410,12 @@ public static partial class LocalLink
         var albums = new Dictionary<string, LinkAlbum>(StringComparer.Ordinal);
         foreach (var (key, a) in s_albumFaces)
             if (s_decided.TryGetValue(key, out Decided? d) && d.Decision == LinkDecision.Accepted && d.SpotifyWins) albums[key] = a;
-        if (Same(tracks, s_shown) && Same(albums, s_shownAlbums)) return;
+        bool versions = RebuildVersions();   // phase 2: the renames and which version plays
+        if (Same(tracks, s_shown) && Same(albums, s_shownAlbums) && !versions) return;
         s_shown = tracks;
         s_shownAlbums = albums;
+        WatchArtistArt();                     // a linked song's artist card wears its Spotify picture (LocalLink.ArtistArt.cs)
+        LocalLibrary.NotePlayAs(s_playAs);
         Interlocked.Increment(ref s_shownVersion);
         LocalLibrary.RestateForLinks();
         LocalCollection.Request();
@@ -429,8 +438,9 @@ public static partial class LocalLink
     //
     // One line per record, tab-separated, a tab or a line break inside a value becomes a space:
     //   G  key  decision  chosen-uri  spotify-wins(1|0)  rejected-uri rejected-uri …
-    //   L  local-id  group-key  track-uri  title  artists  album  album-uri  duration-ms  isrc  disc  number  cover  year
+    //   L  local-id  group-key  track-uri  title  artists  album  album-uri  duration-ms  isrc  disc  number  cover  year  album-artist
     //   A  group-key  album-uri  title  artist  year  cover
+    //   R, D  a rename and a song's default version (LocalLink.Versions.cs)
     // An unknown line is skipped, so a later version can add records an older one ignores.
 
     static void Read(string[] lines)
@@ -438,6 +448,7 @@ public static partial class LocalLink
         foreach (string line in lines)
         {
             string[] f = line.Split('\t');
+            if (ReadVersions(f)) continue;
             switch (f[0])
             {
                 case "G" when f.Length >= 5 && byte.TryParse(f[2], out byte decision) && decision <= (byte)LinkDecision.NotOnSpotify:
@@ -446,7 +457,7 @@ public static partial class LocalLink
                     s_decided[f[1]] = new Decided((LinkDecision)decision, f[3], f[4] == "1", rejected);
                     break;
                 case "L" when f.Length >= 14 && long.TryParse(f[1], NumberStyles.None, CultureInfo.InvariantCulture, out long id):
-                    s_links[id] = new LinkTrack(f[3], f[4], f[5], f[6], f[7], Int(f[8]), f[9], Int(f[10]), Int(f[11]), f[12].Length > 0 ? f[12] : null, Int(f[13]));
+                    s_links[id] = new LinkTrack(f[3], f[4], f[5], f[6], f[7], Int(f[8]), f[9], Int(f[10]), Int(f[11]), f[12].Length > 0 ? f[12] : null, Int(f[13]), f.Length > 14 ? f[14] : "");
                     s_linkGroup[id] = f[2];
                     break;
                 case "A" when f.Length >= 7:
@@ -479,11 +490,12 @@ public static partial class LocalLink
               .Append(Clean(t.Title)).Append('\t').Append(Clean(t.Artists)).Append('\t').Append(Clean(t.Album)).Append('\t').Append(Clean(t.AlbumUri)).Append('\t')
               .Append(t.DurationMs.ToString(CultureInfo.InvariantCulture)).Append('\t').Append(Clean(t.Isrc)).Append('\t').Append(t.Disc.ToString(CultureInfo.InvariantCulture))
               .Append('\t').Append(t.Number.ToString(CultureInfo.InvariantCulture)).Append('\t').Append(Clean(t.Cover ?? "")).Append('\t')
-              .Append(t.Year.ToString(CultureInfo.InvariantCulture)).Append('\n');
+              .Append(t.Year.ToString(CultureInfo.InvariantCulture)).Append('\t').Append(Clean(t.AlbumArtist)).Append('\n');
         }
         foreach (var (key, a) in s_albumFaces)
             sb.Append('A').Append('\t').Append(Clean(key)).Append('\t').Append(Clean(a.Uri)).Append('\t').Append(Clean(a.Title)).Append('\t').Append(Clean(a.Artist)).Append('\t')
               .Append(a.Year.ToString(CultureInfo.InvariantCulture)).Append('\t').Append(Clean(a.Cover ?? "")).Append('\n');
+        WriteVersions(sb, Clean);
         string text = sb.ToString();
         int generation = Interlocked.Increment(ref s_saving);
         ThreadPool.UnsafeQueueUserWorkItem(_ =>

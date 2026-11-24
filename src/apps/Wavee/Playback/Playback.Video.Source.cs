@@ -53,21 +53,18 @@ public static partial class Playback
         // ── 1. the tiers (G-056, G-148) ─────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Which tier of the walk answered (the `tier=` of `[video] resolve`).</summary>
-        public enum SourceTier : byte { None, Override, Chained, Manifest, Wire, Local }
+        public enum SourceTier : byte { None, Chained, Manifest, Wire, Local }
 
         /// <summary>The pure half of the walk: the tier that answers FIRST for what is known before any I/O.</summary>
         public static class SourceTiers
         {
-            /// <param name="overrideTier">The tier-1 decision for the playable (<c>Video.Overrides.Decide</c>).</param>
-            /// <param name="localFile">A local video file plays for the playable (<see cref="LocalVideos.PathOf"/>): its own, or its linked version.</param>
+            /// <param name="localFile">A local video file plays for the playable (<see cref="LocalVideos.PathOf"/>): its own, or its linked video
+            /// version (a Spotify track's video of mine: "Your files and Spotify", Shell/Video.LinkedVideos.cs).</param>
             /// <param name="spotifyTrack">The playable is a Spotify catalogue track (the only kind a manifest exists for).</param>
             /// <param name="manifestId">The catalogue's manifest id for the row, or empty.</param>
             /// <param name="chained">A resolver was installed before the tiers (the module tier) and answers for the rest.</param>
-            public static SourceTier First(global::Wavee.Video.OverrideTier overrideTier, bool localFile, bool spotifyTrack, string? manifestId,
-                                           bool chained)
+            public static SourceTier First(bool localFile, bool spotifyTrack, string? manifestId, bool chained)
             {
-                // A Broken or Quarantined attachment FALLS THROUGH: the link is kept for repair, the music never blocks.
-                if (overrideTier == global::Wavee.Video.OverrideTier.UseOverride) return SourceTier.Override;
                 if (localFile) return SourceTier.Local;
                 if (!spotifyTrack) return chained ? SourceTier.Chained : SourceTier.None;
                 return IsManifestId(manifestId) ? SourceTier.Manifest : SourceTier.Wire;
@@ -109,23 +106,21 @@ public static partial class Playback
             string uri = id.Text;
             if (forPlayback) ToUi(s_markResolving);
 
-            // Tier 1. `Decide` runs a File.Exists probe (seconds against an offline share) — which is why the walk is on an
-            // api thread and never inline on the UI thread. A Broken link raises `Overrides.BrokenLink` once per session.
-            var decision = global::Wavee.Video.Overrides.Decide(uri);
+            // A local video file first: the row's own, or a Spotify track's linked video version (a version whose open failed this session falls
+            // through to the catalogue's video: the link is kept, the music never blocks).
             bool spotifyTrack = id.Kind is EntityKind.Track or EntityKind.Episode && id.Provider == EntityProvider.Spotify;
             Func<EntityId, string, CancellationToken, VideoSource?>? chained = s_chained;
-            string? localFile = decision.Tier == global::Wavee.Video.OverrideTier.UseOverride ? null : LocalVideos.PathOf(id);
-            SourceTier tier = SourceTiers.First(decision.Tier, localFile is not null, spotifyTrack, manifestId, chained is not null);
+            string? localFile = LocalVideos.PathOf(id);
+            bool linked = localFile is not null && id.Provider != EntityProvider.Local;
+            if (linked && global::Wavee.Video.LinkedVideos.IsQuarantined(uri, localFile!)) (localFile, linked) = (null, false);
+            SourceTier tier = SourceTiers.First(localFile is not null, spotifyTrack, manifestId, chained is not null);
 
             VideoSource? source;
             bool cached = false;
             switch (tier)
             {
-                case SourceTier.Override:
-                    source = VideoSource.LocalFile(decision.Override.Path) with { PlayableUri = uri, OverrideSourceKey = decision.Override.SourceKey };
-                    break;
                 case SourceTier.Local:
-                    source = LocalVideos.Source(localFile!) with { PlayableUri = uri };
+                    source = LocalVideos.Source(localFile!) with { PlayableUri = uri, LinkedPath = linked ? localFile : null };
                     break;
                 case SourceTier.Chained:
                     source = chained!(id, manifestId, ct) is { } answered ? answered with { PlayableUri = uri } : null;
@@ -145,7 +140,7 @@ public static partial class Playback
             if (source is not null && tier is SourceTier.Manifest or SourceTier.Wire) source = source with { PlayableUri = uri };
 
             Log.Info("video", $"[video] resolve track={Tail(uri)} tier={TierName(tier)} key={(source is null ? "(none)" : Tail(source.Key))} " +
-                              $"cached={(cached ? "true" : "false")} override={decision.Tier} for={(forPlayback ? "playback" : "warm")} ms={FrameNowMs() - t0}");
+                              $"cached={(cached ? "true" : "false")} linked={(linked ? "true" : "false")} for={(forPlayback ? "playback" : "warm")} ms={FrameNowMs() - t0}");
             return source;
         }
 
@@ -159,13 +154,13 @@ public static partial class Playback
         }
 
         /// <summary>F257/F259: the source's tier as the `[video.mount]` line names it — <c>local</c> (a local video file, #240),
-        /// <c>override</c> (the user's attached local file, a clear MF MP4), <c>playready</c> (the protected path) or <c>clear</c> (a url a module row answered).
+        /// <c>linked</c> (a Spotify track's linked video version, a clear MF MP4), <c>playready</c> (the protected path) or <c>clear</c> (a url a module row answered).
         /// The ghost A/B reads it next to the natural / content / device sizes (docs/guide/video-ghost-ab.md).</summary>
         public static string MountTier(VideoSource? source) => source switch
         {
             null => "none",
-            { FilePath: not null, OverrideSourceKey: null } => "local",
-            { FilePath: not null } => "override",
+            { FilePath: not null, LinkedPath: null } => "local",
+            { FilePath: not null } => "linked",
             { IsDrm: true } => "playready",
             { IsSegmented: true } => "segmented",
             _ => "clear",
@@ -173,7 +168,7 @@ public static partial class Playback
 
         static string TierName(SourceTier t) => t switch
         {
-            SourceTier.Override => "override", SourceTier.Chained => "chained", SourceTier.Manifest => "manifest",
+            SourceTier.Chained => "chained", SourceTier.Manifest => "manifest",
             SourceTier.Wire => "wire", SourceTier.Local => "local", _ => "none",
         };
 

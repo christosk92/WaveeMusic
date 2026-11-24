@@ -81,10 +81,10 @@ public static partial class Playback
         /// delegate and a parsed descriptor, so it is session state on this host.</summary>
         /// <param name="Key">The content identity: the manifest id, the clear url, or `local:video:&lt;path&gt;`. The
         /// switch policy compares THIS, never the track slot — a relinked counterpart is the same video.</param>
-        /// <param name="PlayableUri">The playable this source was resolved FOR (a local attachment's quarantine pair, the
+        /// <param name="PlayableUri">The playable this source was resolved FOR (a linked video's quarantine pair, the
         /// log's `track=`). Empty for a source nobody resolved.</param>
-        /// <param name="OverrideSourceKey">A local attachment's recorded source key — the other half of the quarantine
-        /// pair (<c>Video.Overrides.Quarantined</c>).</param>
+        /// <param name="LinkedPath">A Spotify track's linked video version (the file): the other half of the quarantine pair
+        /// (<c>Video.LinkedVideos.Quarantined</c>). Null for any other source.</param>
         public sealed record VideoSource(
             string Key,
             string? ClearUrl = null,
@@ -96,7 +96,7 @@ public static partial class Playback
             int NaturalHeight = 0,
             bool IsLive = false,
             string PlayableUri = "",
-            string? OverrideSourceKey = null)
+            string? LinkedPath = null)
         {
             public bool IsDrm => DrmDescriptor is not null && LicenseRelay is not null;
 
@@ -692,9 +692,9 @@ public static partial class Playback
                 : 0;
         }
 
-        /// <summary>A local attachment failed to open: the shell quarantines the (playable uri, source key) pair for the
-        /// session and says so. Installed by `Video.Install`; invoked on the UI thread.</summary>
-        public static Action<string, string>? OnOverrideFailed { get; set; }
+        /// <summary>A linked video version failed to open: the shell skips the (playable uri, file) pair for the session and says
+        /// so. Installed by `Video.Install`; invoked on the UI thread.</summary>
+        public static Action<string, string>? OnLinkedVideoFailed { get; set; }
 
         /// <summary>Preload the native PlayReady component and start the CDM's once-per-process initialisation (the DLL's load
         /// plus its MF/PlayReady import chain, and the ~1.2 s first <c>CreateContentDecryptionModuleFactory</c>, all of which a cold
@@ -2602,11 +2602,11 @@ public static partial class Playback
             StopTicker();
             Log.Warn("video", $"[video] fault={kind} key={Tail(key)} reopen={reopenNow} — {message}");
             if (live is not null && HostRules.InvalidateManifest(live.IsSegmented, err?.UnderlyingCode, reopenNow)) ManifestMemo.Invalidate(live.Key);
-            // Only an ATTACHMENT is quarantined (a local video file has no attachment: its fault demotes the row as any video's does).
-            if (live is { FilePath: not null, PlayableUri.Length: > 0, OverrideSourceKey: not null } local && OnOverrideFailed is { } quarantine)
+            // Only a LINKED version is quarantined (a local video file's own row demotes as any video's does).
+            if (live is { FilePath: not null, PlayableUri.Length: > 0, LinkedPath: not null } local && OnLinkedVideoFailed is { } quarantine)
             {
-                string uri = local.PlayableUri, sourceKey = local.OverrideSourceKey;
-                ToUi(() => quarantine(uri, sourceKey));
+                string uri = local.PlayableUri, path = local.LinkedPath;
+                ToUi(() => quarantine(uri, path));
             }
             Post(Input.Audio(AudioSignal.Failed, epoch, FrameNowMs(), (long)kind));
         }

@@ -62,5 +62,6 @@ public static class CommonBlocks
         // "Your files and Spotify" (#240 phase 1): the opt-in dialog's body, one picture in every theme's dialog. The offer and the review are each
         // structure's own (WinUI and Classic: CommonLocalLink; Zune: ZuneLocalLink).
         views.Add(ViewKeys.LocalLinkOptIn, CommonLocalLink.OptIn, "common.local-link.opt-in");
+        views.Add(ViewKeys.LocalRename, CommonLocalLink.Rename, "common.local-link.rename");   // phase 2: the rename dialog's body, every theme
     }
 }

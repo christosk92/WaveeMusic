@@ -105,7 +105,7 @@ public static partial class LocalLink
         var songs = new List<LocalEntry>();
         foreach (LocalEntry e in LocalLibrary.Index.Snapshot())
         {
-            if (e.Tags.Kind != LocalKind.Audio || e.State == LocalState.Missing || !e.Playable || !keep(e)) continue;
+            if (e.State == LocalState.Missing || !e.Playable || !keep(e)) continue;   // a video is linked like a song
             string key = GroupKeyOf(e);
             if (!keepDecided && s_decided.TryGetValue(key, out Decided? d) && d.Decision is LinkDecision.Accepted or LinkDecision.NotOnSpotify) continue;
             if (e.Tags.Album.Length == 0) { songs.Add(e); continue; }
@@ -142,7 +142,13 @@ public static partial class LocalLink
 
     static FileFacts FactsOf(LocalEntry e)
     {
+        // The user's names when the file was renamed ("Savin' Me (hardstyle remix)" searches for the remix), else the display split.
         (string title, string artist) = LocalNames.Display(e.Tags, e.MatchTitle);
+        if (RenameOf(e.LocalId) is { } named)
+        {
+            if (named.Title.Length > 0) title = named.Title;
+            if (named.Artist.Length > 0) artist = named.Artist;
+        }
         return new FileFacts(e.LocalId, title, artist, e.Tags.Album, e.Tags.DurationMs, e.Tags.Isrc, e.Tags.DiscNumber, e.Tags.TrackNumber, e.Tags.Year);
     }
 
@@ -435,7 +441,7 @@ public static partial class LocalLink
         Album a = album.IsValid ? album : t.Album;
         string? cover = albumCover is { Length: > 0 } ? albumCover : Controls.ArtUrl(t.ImageId) ?? (a.IsValid ? Controls.ArtUrl(a.ImageId) : null);
         return new LinkTrack(t.Uri.Text, t.Title, Entities.Strings.Resolve(t.ArtistLineId), a.IsValid ? a.Title : "", a.IsValid ? a.Uri.Text : "", t.DurationMs,
-            Entities.Strings.Resolve(t.IsrcId), e.Disc, e.Number, cover, t.Year > 0 ? t.Year : a.IsValid ? a.Year : 0);
+            Entities.Strings.Resolve(t.IsrcId), e.Disc, e.Number, cover, t.Year > 0 ? t.Year : a.IsValid ? a.Year : 0, a.IsValid ? ArtistOf(a) : "");
     }
 
     static string ArtistOf(Album a)

@@ -98,11 +98,47 @@ public static class LocalCollection
     /// <summary>The album key the page's verbs take: (album artist or first artist, album), case-folded.</summary>
     public static string AlbumKey(string artist, string album) => artist.ToUpperInvariant() + " / " + album.ToUpperInvariant();
 
-    /// <summary>The artist the collection files a song under (its albums, the Artists pivot, the counts): the album artist tag, else the name a
-    /// row shows (<see cref="LocalNames.Display"/>: the first artist tag, else an untagged "Artist - Title" file name's artist), else "". The rows'
-    /// own rule, so a song the Songs list shows "by Nickelback" is Nickelback's here too. "Unknown artist" is a row's display fallback only
-    /// (<c>Track.LocalCredit</c>): an unnamed song files under no artist and is never counted as one. Display only: matching reads the tags.</summary>
-    public static string ArtistOf(LocalEntry e) => e.Tags.AlbumArtist.Length > 0 ? e.Tags.AlbumArtist : LocalNames.Display(e.Tags, e.MatchTitle).Artist;
+    /// <summary>Where the collection files a song: its artist, album, year and the pictures that go with them.</summary>
+    /// <param name="Cover">The linked Spotify song's cover (its album card's), null when the file is not linked.</param>
+    /// <param name="SongUri">The linked Spotify song (its artist card's picture is that song's artist's: <see cref="LocalLink.ArtistArtOf"/>), or null.</param>
+    public readonly record struct LocalFacts(string Artist, string Album, int Year, string? Cover, string? SongUri);
+
+    /// <summary>THE rule of where the collection files a song (its albums, artists, decades, Home's shelves and the counts), the rows' own
+    /// (<see cref="LocalNames.Face"/>): the user's rename (each field it sets) &gt; an accepted match's Spotify info (when Spotify's info wins: the
+    /// Spotify album, its artist, year and cover) &gt; the tags (the album artist, else the first artist) &gt; an untagged "Artist - Title" file
+    /// name's artist. So a song the Songs list shows "Nickelback · All the Right Reasons" is on that album card and Nickelback's artist card.
+    /// "Unknown artist" is a row's display fallback only (<c>Track.LocalCredit</c>): an unnamed song files under no artist. Display only:
+    /// matching and the link's groups read the file's own names (<see cref="TagArtistOf"/>). Any thread.</summary>
+    public static LocalFacts FactsOf(LocalEntry e)
+    {
+        string artist, album;
+        int year = e.Tags.Year;
+        string? cover = null, song = null;
+        if (LocalLink.Shown.TryGetValue(e.LocalId, out LinkTrack? link))
+        {
+            artist = link.AlbumArtist.Length > 0 ? link.AlbumArtist : FirstCredit(link.Artists);
+            album = link.Album;
+            if (link.Year > 0) year = link.Year;
+            (cover, song) = (link.Cover, link.Uri);
+        }
+        else (artist, album) = (TagArtistOf(e), e.Tags.Album);
+        if (LocalLink.RenameOf(e.LocalId) is { } named)
+        {
+            if (named.Artist.Length > 0) artist = named.Artist;
+            if (named.Album.Length > 0) album = named.Album;
+        }
+        return new LocalFacts(artist, album, year, cover, song);
+
+        static string FirstCredit(string line) => line.IndexOf(", ", StringComparison.Ordinal) is var at and > 0 ? line[..at] : line;
+    }
+
+    /// <summary>The artist the collection files a song under (<see cref="FactsOf"/>).</summary>
+    public static string ArtistOf(LocalEntry e) => FactsOf(e).Artist;
+
+    /// <summary>A file's OWN artist, from its names alone: the album artist tag, else the name an untagged row shows (<see cref="LocalNames.Display"/>:
+    /// the first artist tag, else an "Artist - Title" file name's artist), else "". The key of the file's link group: nothing shown moves it.</summary>
+    public static string TagArtistOf(LocalEntry e)
+        => e.Tags.AlbumArtist.Length > 0 ? e.Tags.AlbumArtist : LocalNames.Display(e.Tags, e.MatchTitle).Artist;
 
     /// <summary>The ids of the playable files in an album, in disc/track order (UI thread or any). <paramref name="unplayable"/>: every file of it, the
     /// ones Wavee cannot play (or that are missing) too, as the Local Files list keeps them, listed and unavailable (a pane's rows).</summary>
@@ -111,8 +147,9 @@ public static class LocalCollection
         var list = new List<(int Disc, int Track, string Title, long Id)>();
         foreach (var e in LocalLibrary.Index.Snapshot())
         {
-            if ((!unplayable && (e.State == LocalState.Missing || !e.Playable)) || e.Tags.Album.Length == 0) continue;
-            if (AlbumKey(ArtistOf(e), e.Tags.Album) != key) continue;
+            if (!unplayable && (e.State == LocalState.Missing || !e.Playable)) continue;
+            var f = FactsOf(e);
+            if (f.Album.Length == 0 || AlbumKey(f.Artist, f.Album) != key) continue;
             list.Add((e.Tags.DiscNumber, e.Tags.TrackNumber, e.MatchTitle, e.LocalId));
         }
         list.Sort(static (a, b) => a.Disc != b.Disc ? a.Disc.CompareTo(b.Disc) : a.Track != b.Track ? a.Track.CompareTo(b.Track) : string.CompareOrdinal(a.Title, b.Title));
@@ -128,8 +165,9 @@ public static class LocalCollection
         foreach (var e in all) if ((unplayable || (e.State != LocalState.Missing && e.Playable)) && keep(e)) list.Add(e);
         list.Sort(static (a, b) =>
         {
-            int c = string.Compare(ArtistOf(a), ArtistOf(b), StringComparison.OrdinalIgnoreCase);
-            if (c == 0) c = string.Compare(a.Tags.Album, b.Tags.Album, StringComparison.OrdinalIgnoreCase);
+            LocalFacts fa = FactsOf(a), fb = FactsOf(b);
+            int c = string.Compare(fa.Artist, fb.Artist, StringComparison.OrdinalIgnoreCase);
+            if (c == 0) c = string.Compare(fa.Album, fb.Album, StringComparison.OrdinalIgnoreCase);
             if (c == 0) c = a.Tags.DiscNumber.CompareTo(b.Tags.DiscNumber);
             if (c == 0) c = a.Tags.TrackNumber.CompareTo(b.Tags.TrackNumber);
             return c != 0 ? c : string.Compare(a.RelativePath, b.RelativePath, StringComparison.OrdinalIgnoreCase);
@@ -148,7 +186,7 @@ public static class LocalCollection
 
     public static bool IsArtist(LocalEntry e, string key) => ArtistOf(e).ToUpperInvariant() == key;
 
-    public static bool InDecade(LocalEntry e, int decade) => e.Tags.Year > 0 && e.Tags.Year / 10 * 10 == decade;
+    public static bool InDecade(LocalEntry e, int decade) => FactsOf(e).Year is var y && y > 0 && y / 10 * 10 == decade;
 
     // ── the fold ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -161,6 +199,7 @@ public static class LocalCollection
         public bool MixedFormat;
         public int Root;
         public string Folder = "";
+        public string? Cover;   // the first linked song's Spotify cover
     }
 
     sealed class FolderAcc
@@ -192,7 +231,7 @@ public static class LocalCollection
         var phase = word switch { "none" => LocalLibraryPhase.None, "scanning" => LocalLibraryPhase.Scanning, "offline" => LocalLibraryPhase.Offline, _ => LocalLibraryPhase.Ready };
 
         var albums = new Dictionary<string, AlbumAcc>(StringComparer.Ordinal);
-        var artists = new Dictionary<string, (string Name, HashSet<string> Albums, int Tracks)>(StringComparer.Ordinal);
+        var artists = new Dictionary<string, (string Name, HashSet<string> Albums, int Tracks, string? Song)>(StringComparer.Ordinal);
         var nodes = new Dictionary<string, FolderAcc>(StringComparer.Ordinal);
         var rootKeyOf = new Dictionary<int, string>();
         var rootPath = new Dictionary<int, string>();
@@ -209,8 +248,7 @@ public static class LocalCollection
 
         foreach (var e in entries)
         {
-            if (e.Tags.Kind != LocalKind.Audio) continue;
-            songs++;
+            songs++;   // audio and video alike: a dropped music video is a song of the library (the owner overrode D19)
             bytes += e.Size;
             perRootSongs[e.RootId] = perRootSongs.GetValueOrDefault(e.RootId) + 1;
             if (e.State == LocalState.Missing) missing++;
@@ -227,24 +265,26 @@ public static class LocalCollection
                 if (!IsLossless(e.Format) && t.BitrateKbps > 0) { string b = Round(t.BitrateKbps); bitrates[b] = bitrates.GetValueOrDefault(b) + 1; }
             }
             if (t.Title.Length == 0 && t.Artists.Length == 0) untagged++;
-            if (t.Album.Length == 0 && e.Playable && e.State != LocalState.Missing) { loose++; looseEntries.Add(e); }
+            LocalFacts facts = FactsOf(e);   // where the song is filed: a linked song under its Spotify album and artist
+            if (facts.Album.Length == 0 && e.Playable && e.State != LocalState.Missing) { loose++; looseEntries.Add(e); }
             if (t.Album.Length > 0 && t.AlbumArtist.Length == 0) noAlbumArtist++;
             if (t.Album.Length > 0 && t.TrackNumber == 0) noTrack++;
             if (t.Title.Length > 0 && t.DurationMs > 0) { var dk = (t.Title.ToUpperInvariant(), t.FirstArtist.ToUpperInvariant(), t.DurationMs / 2000); dupes[dk] = dupes.GetValueOrDefault(dk) + 1; }
 
-            // Albums (album-tagged files) and artists (any file that names one, its file name's split included).
-            string artist = ArtistOf(e);
-            if (t.Album.Length > 0)
+            // Albums (a song with an album, its tag's or its Spotify song's) and artists (any song that names one, its file name's split included).
+            string artist = facts.Artist, album = facts.Album;
+            if (album.Length > 0)
             {
-                string key = AlbumKey(artist, t.Album);
+                string key = AlbumKey(artist, album);
                 if (!albums.TryGetValue(key, out var a))
                 {
-                    a = new AlbumAcc { Key = key, Title = t.Album, Artist = artist, Format = e.Format, Root = e.RootId, Folder = AlbumFolderOf(e.RelativePath) };
+                    a = new AlbumAcc { Key = key, Title = album, Artist = artist, Format = e.Format, Root = e.RootId, Folder = AlbumFolderOf(e.RelativePath) };
                     albums[key] = a;
                 }
+                a.Cover ??= facts.Cover;
                 a.Tracks++;
                 a.Duration += t.DurationMs;
-                if (t.Year > 0 && (a.Year == 0 || t.Year < a.Year)) a.Year = t.Year;
+                if (facts.Year > 0 && (a.Year == 0 || facts.Year < a.Year)) a.Year = facts.Year;
                 long added = e.FirstSeenTicks > 0 ? e.FirstSeenTicks : e.LastSeenTicks;
                 if (added > a.Added) a.Added = added;
                 if (e.Format != a.Format) a.MixedFormat = true;
@@ -260,12 +300,13 @@ public static class LocalCollection
             if (artist.Length > 0)
             {
                 string ak = artist.ToUpperInvariant();
-                if (!artists.TryGetValue(ak, out var ar)) ar = (artist, new HashSet<string>(StringComparer.Ordinal), 0);
-                if (t.Album.Length > 0) ar.Albums.Add(AlbumKey(artist, t.Album));
-                artists[ak] = (ar.Name, ar.Albums, ar.Tracks + 1);
+                if (!artists.TryGetValue(ak, out var ar)) ar = (artist, new HashSet<string>(StringComparer.Ordinal), 0, null);
+                if (album.Length > 0) ar.Albums.Add(AlbumKey(artist, album));
+                artists[ak] = (ar.Name, ar.Albums, ar.Tracks + 1, ar.Song ?? facts.SongUri);
             }
 
-            // Folders: the file's folder and every folder above it up to its music folder.
+            // Folders: the file's folder and every folder above it up to its music folder (an added file is in none).
+            if (e.RootId == LocalIndex.AddedRoot) continue;
             var leaf = NodeOf(nodes, rootKeyOf, rootPath, e.RootId, DirOf(e.RelativePath));
             leaf.Files.Add(e);
             leaf.DurationHere += t.DurationMs;
@@ -273,7 +314,7 @@ public static class LocalCollection
             else if (leaf.Format != e.Format) leaf.Mixed = true;
             leaf.MinRate = Math.Min(leaf.MinRate, t.SampleRate);
             leaf.MinBits = Math.Min(leaf.MinBits, t.BitsPerSample);
-            if (t.Album.Length > 0) { string k = AlbumKey(artist, t.Album); if (!leaf.AlbumKeys.Contains(k)) leaf.AlbumKeys.Add(k); }
+            if (album.Length > 0) { string k = AlbumKey(artist, album); if (!leaf.AlbumKeys.Contains(k)) leaf.AlbumKeys.Add(k); }
             for (FolderAcc? n = leaf; n is not null; n = n.Parent is null ? null : nodes[n.Parent])
             {
                 n.Songs++;
@@ -315,20 +356,10 @@ public static class LocalCollection
         long today = local.Date.ToUniversalTime().Ticks;
         long week = local.Date.AddDays(-(((int)local.DayOfWeek + 6) % 7)).ToUniversalTime().Ticks;
         long month = new DateTime(local.Year, local.Month, 1).ToUniversalTime().Ticks;
-        var linked = LocalLink.ShownAlbums;   // "Your files and Spotify": an accepted album shows Spotify's name, artist, year and cover
         foreach (var a in albums.Values)
         {
-            string? cover = LocalArt.AlbumCoverUri(a.Artist, a.Title) ?? LocalCollectionFixture.CoverOf(a.Artist, a.Title);
-            if (linked.TryGetValue(a.Key, out LinkAlbum? shown))
-            {
-                cover = shown.Cover ?? cover;
-                coverOf[a.Key] = cover;
-                var w = a.Added >= today ? LocalAddedWhen.Today : a.Added >= week ? LocalAddedWhen.ThisWeek : a.Added >= month ? LocalAddedWhen.ThisMonth : LocalAddedWhen.Earlier;
-                string q = a.Lossless > 0 && a.Lossy == 0 ? QualityOf(a.Format, 0, a.MinRate, a.MinBits) : a.Lossy > 0 && !a.MixedFormat ? QualityOf(a.Format, a.MaxKbps) : "";
-                cards.Add(new LocalAlbumCard(a.Key, shown.Title, shown.Artist.Length > 0 ? shown.Artist : a.Artist, shown.Year > 0 ? shown.Year : a.Year, a.Tracks, a.Duration, q,
-                    a.Lossless > 0 && a.Lossy == 0, w == LocalAddedWhen.Today, cover, a.Added, w, KeyOf(a.Root, a.Folder)));
-                continue;
-            }
+            // A linked album (its songs filed under Spotify's album by FactsOf) wears Spotify's cover; else the folder's or the tags'.
+            string? cover = a.Cover ?? LocalArt.AlbumCoverUri(a.Artist, a.Title) ?? LocalCollectionFixture.CoverOf(a.Artist, a.Title);
             coverOf[a.Key] = cover;
             var when = a.Added >= today ? LocalAddedWhen.Today : a.Added >= week ? LocalAddedWhen.ThisWeek : a.Added >= month ? LocalAddedWhen.ThisMonth : LocalAddedWhen.Earlier;
             // An album is hi-res only when every lossless track is (its lowest rate and depth decide).
@@ -354,9 +385,9 @@ public static class LocalCollection
             var when = added >= today ? LocalAddedWhen.Today : added >= week ? LocalAddedWhen.ThisWeek : added >= month ? LocalAddedWhen.ThisMonth : LocalAddedWhen.Earlier;
             (string title, string artist) = LocalNames.Display(e.Tags, e.MatchTitle);
             string? cover = LocalArt.CoverUri(e.LocalId);
-            int year = e.Tags.Year;
+            int year = FactsOf(e).Year;
             if (shownLinks.TryGetValue(e.LocalId, out LinkTrack? link))
-                (title, artist, cover, year) = (link.Title, link.Artists, link.Cover ?? cover, link.Year > 0 ? link.Year : year);
+                (title, artist, cover) = (link.Title, link.Artists, link.Cover ?? cover);
             songCards.Add(new LocalSongCard(e.LocalId, title, artist, cover, QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample),
                 IsLossless(e.Format), year, added, when, when == LocalAddedWhen.Today));
         }
@@ -413,8 +444,9 @@ public static class LocalCollection
         var artistCards = new List<LocalArtistCard>(artists.Count);
         foreach (var (k, a) in artists)
         {
-            string? cover = null;
-            foreach (string ak in a.Albums) if (coverOf.GetValueOrDefault(ak) is { } c) { cover = c; break; }
+            // A linked artist wears its Spotify picture (read through the entity layer, LocalLink.ArtistArt.cs); else its first album's cover.
+            string? cover = a.Song is { } song ? LocalLink.ArtistArtOf(song) : null;
+            if (cover is null) foreach (string ak in a.Albums) if (coverOf.GetValueOrDefault(ak) is { } c) { cover = c; break; }
             artistCards.Add(new LocalArtistCard(k, a.Name, a.Albums.Count, a.Tracks, cover));
         }
         artistCards.Sort(static (x, y) => string.Compare(x.Name, y.Name, StringComparison.OrdinalIgnoreCase));

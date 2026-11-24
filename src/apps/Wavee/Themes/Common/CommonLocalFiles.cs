@@ -185,7 +185,7 @@ internal static class CommonLocalFiles
         {
             Key = Rules.FileMarkKey, Shrink = 0f, AlignItems = FlexAlign.Center,
             Children = [new TextEl(Icons.Document) { FontFamily = Tok.Definition.Fonts.Icon, Size = size, Color = ink, Shrink = 0f }],
-        }, FluentGpu.Localization.Loc.Get(Strings.LocalFiles.Link.FileMark)));
+        }, Prop.Of<string?>(() => LocalLinkWords.FileMarkTip(r.P.Track))));   // phase 2: names the file that plays by default
 
     static Element Tag(global::Wavee.Track.BoundRow r)
     {

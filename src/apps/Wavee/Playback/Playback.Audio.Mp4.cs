@@ -3,7 +3,7 @@
 // `Playback.Audio`, beside `LocalSource`, which is its only caller.
 //
 // WHY THIS EXISTS. A dropped or imported .mp4 is a local track first: it plays on the audio host (`PlayableKind.LocalFile`),
-// and the attached-video roster only lights the video BUTTON (Shell/Video.Overrides.Mirror.cs, "attaching a file lights the
+// and the attached-video roster only lights the video BUTTON (Shell/Video.LinkedVideos.Mirror.cs, "attaching a file lights the
 // button and plays nothing"), so the picture is the user's click away and the sound must come from here. `LocalSource` used to
 // sniff only Ogg / FLAC / ID3 / an MPEG sync and fall back to MP3 for anything else, so every MP4 reached NLayer and failed
 // with an IndexOutOfRangeException (2026-10-06).

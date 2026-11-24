@@ -1415,7 +1415,7 @@ public readonly partial struct Playlist
         foreach (var (path, cover) in covers)
         {
             string uri = LocalFileUri(path);
-            if (!scope.Tracks.TryGetSlot(uri.AsSpan(), out int slot)) continue;
+            if (!scope.Tracks.TryGetSlot(uri.AsSpan(), out int slot)) { LocalLibrary.StageStill(path); continue; }   // an indexed file's row (~id)
             var t = new Track(slot);
             if (!t.IsValid || !t.ImageId.IsEmpty) continue;
             ref var row = ref staging.Tracks.RowFor(new StagedId(staging.AddText(Encoding.UTF8.GetBytes(uri))), Authority.Local, (uint)TrackFields.Identity);
@@ -1470,15 +1470,16 @@ public readonly partial struct Playlist
         // is staged and played back on it.
         _ = Task.Run(() =>
         {
-            LocalTags.TryRead(path, out _, out LocalTagSet tags, out _);
-            Spotify.Post(() => PlayImported(path, tags));
+            bool read = LocalTags.TryRead(path, out Spotify.Audio.Format format, out LocalTagSet tags, out string why);
+            Spotify.Post(() => PlayImported(path, format, tags, read, why));
         });
     }
 
-    /// <summary>UI thread: the dropped file's row, staged with its tags, then played (a video file as a video: its row says so).</summary>
-    static void PlayImported(string path, LocalTagSet tags)
+    /// <summary>UI thread: the picked file's row (a library entry, "Added files": LocalLibrary.Added.cs), then played (a video file as a
+    /// video: its row says so).</summary>
+    static void PlayImported(string path, Spotify.Audio.Format format, LocalTagSet tags, bool read, string why)
     {
-        var track = ImportLocalFile(path, in tags);
+        var track = LocalLibrary.AddFile(path, format, in tags, read, why);
         if (!track.IsValid) { Notify.Say(Loc.Get(Strings.LocalFile.Rejected), InfoBarSeverity.Error); return; }
         // A video file is its own row's video (TrackFlags.LocalVideoFile, from its tags): it plays on the video host with no attachment.
         ReadOnlySpan<EntityRef> rows = [new EntityRef(EntityKind.Track, track.Slot)];
@@ -1490,7 +1491,7 @@ public readonly partial struct Playlist
     static void PickAndPlay()
     {
         Pickers.Pick(
-            PickerRequest.Open(Loc.Get(Strings.LocalFile.PickTitle), Video.OverrideUx.PlayableFilter(Loc.Get(Strings.LocalFile.Filter))),
+            PickerRequest.Open(Loc.Get(Strings.LocalFile.PickTitle), Video.LinkedVideoUx.PlayableFilter(Loc.Get(Strings.LocalFile.Filter))),
             done: picked => { if (picked is { Length: > 0 }) PlayFiles([picked]); },
             failed: ex => Log.Warn("localfile", "file picker failed", ex));
     }

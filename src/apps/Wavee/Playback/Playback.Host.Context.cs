@@ -1384,8 +1384,16 @@ public static partial class Playback
         // play history, as the official client reports one (capture report 3.6, 3.8): a playlist's item by its own uri, a Wavee local file
         // by the name its wire row was minted with (its tags, never its path; no title, no report). Nothing else that is not Spotify's.
         string uri;
-        bool localFile;
-        if (id.Provider == EntityProvider.Local && id.Kind == EntityKind.Track)
+        bool localFile, playedAsFile = false;
+        if (id.Provider == EntityProvider.Spotify && id.Kind == EntityKind.Track && LocalLibrary.PlayAsOf(id) is var file and not 0)
+        {
+            // "Your files and Spotify" phase 2: the Spotify song played one of your files by default. Reported as the local play it was (the
+            // file's own spotify:local: name), never as a streamed play of the song; Connect keeps showing the song the user started.
+            if (LocalLibrary.LocalUriOfFile(file) is not { } own) return;
+            uri = own.Uri;
+            localFile = playedAsFile = true;
+        }
+        else if (id.Provider == EntityProvider.Local && id.Kind == EntityKind.Track)
         {
             if (Entities.Current is not { } scope || !scope.Tracks.TryGetSlot(id, out int slot) || LocalUriOf(new Track(slot)) is not { } minted) return;
             uri = minted.Uri;
@@ -1406,7 +1414,7 @@ public static partial class Playback
         // Our Local Files list is named as the official client names its own (E4): spotify:local-files.
         string contextUri = r.Context.IsEmpty ? "" : Spotify.Egress.IsLocalFiles(r.Context) ? Spotify.Egress.LocalFilesUri : r.Context.Text;
         s_registration = Spotify.Telemetry.Started(NewPlaybackIds(), uri, contextUri,
-            ProviderText(), ReasonText(r.StartReason), id.WriteGid(mediaGid) == mediaGid.Length ? mediaGid : null,
+            ProviderText(), ReasonText(r.StartReason), !playedAsFile && id.WriteGid(mediaGid) == mediaGid.Length ? mediaGid : null,
             opened.BitrateKbps, formatLabel,
             r.DurationMs > 0 ? r.DurationMs : opened.DurationMs, r.StartPosMs,
             PlayerSession.TelemetryText(s_wireIds.SessionId, s_state.Kind == PlayableKind.Video),   // WireStarted already ran for this row

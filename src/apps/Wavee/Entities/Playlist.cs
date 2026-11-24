@@ -1481,6 +1481,17 @@ public readonly partial struct Playlist
 
     static readonly Dictionary<string, (string Artist, string Album)> s_localNames = new(StringComparer.Ordinal);
 
+    /// <summary>The uri a row is added to a Spotify playlist as: a Spotify track's own uri, or a local file's <c>spotify:local:</c> name, minted
+    /// with the official encoder from the file's OWN names (#240 D12, E1: the item other devices match the file by; Wavee shows the file's rename
+    /// where the item resolves to it here). Null for anything that never enters a playlist. UI thread.</summary>
+    public static string? PlaylistItemUriOf(Track t)
+    {
+        if (!t.IsValid) return null;
+        if (Spotify.Egress.Admits(t.Id)) return t.Id.Text is { Length: > 0 } uri ? uri : null;
+        if (t.Id.Provider == EntityProvider.Spotify && LocalTrackUri.Is(t.Uri.Text)) return t.Uri.Text;   // already a playlist's local item
+        return t.IsLocal && Playback.LocalUriOf(t) is { } local ? local.Uri : null;
+    }
+
     /// <summary>A tag set's artists as one credit: the values joined with ", " (the form §3.4 also keys).</summary>
     public static string LocalArtistLine(in LocalTagSet tags) => tags.Artists is not { Length: > 0 } artists ? ""
         : artists.Length == 1 ? artists[0] : string.Join(", ", artists);

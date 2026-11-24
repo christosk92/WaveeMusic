@@ -15,6 +15,9 @@ public static partial class ViewKeys
     /// <summary>"Your files and Spotify": the opt-in dialog's body (board 28). Props: <see cref="LocalLinkOptInProps"/>.</summary>
     public static readonly ViewKey<LocalLinkOptInProps> LocalLinkOptIn = new("LocalLink.OptIn");
 
+    /// <summary>"Your files and Spotify" phase 2: the rename dialog's body. Props: <see cref="LocalRenameProps"/>.</summary>
+    public static readonly ViewKey<LocalRenameProps> LocalRename = new("LocalLink.Rename");
+
     /// <summary>"Your files and Spotify": the review of the matches, in place of the page's body (boards 29, 30). Props: <see cref="LocalLinkReviewProps"/>.</summary>
     public static readonly ViewKey<LocalLinkReviewProps> LocalLinkReview = new("LocalLink.Review");
 }

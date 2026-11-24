@@ -934,7 +934,7 @@
     "saveToLibrary": "내 라이브러리에 저장",
     "removeFromLibrary": "내 라이브러리에서 삭제"
   },
-  "videoOverride": {
+  "linkedVideo": {
     "menuTitle": "비디오",
     "attach": "비디오 파일 체부…",
     "replace": "비디오 파일 교체…",

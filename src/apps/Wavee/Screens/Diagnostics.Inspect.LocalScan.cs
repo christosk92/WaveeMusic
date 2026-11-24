@@ -64,6 +64,57 @@ public static partial class Diagnostics
             });
         }
 
+        /// <summary>`state kind=linked-video value=attach|seed-legacy|migrate|unlink|list uri= path=`: a Spotify track's video version (one concept:
+        /// an attached video is a library file linked to the track; Shell/Video.LinkedVideos.cs). The reply lists every linked video, the track's
+        /// row bit, the video host's file for it and whether the old store still holds anything.</summary>
+        string LinkedVideoState(int id, string name, Inspect.Args a)
+        {
+            string v = a.Has("value") ? a.Str("value").ToLowerInvariant() : "list";
+            string uri = a.Str("uri"), path = a.Str("path");
+            string full = path.Length > 0 ? Path.GetFullPath(path) : "";
+            switch (v)
+            {
+                case "attach":
+                    if (Video.LinkedVideos.Attach(uri, full, full, 0) is null) return Inspect.Reply.Fail(id, name, "the attach was refused (a Spotify track uri= and an .mp4 path=)");
+                    break;
+                case "seed-legacy": Video.LinkedVideos.SeedLegacy(uri, full); break;
+                case "migrate": Video.LinkedVideos.MigrateLegacy(); break;
+                case "unlink": if (!Video.LinkedVideos.Remove(uri)) return Inspect.Reply.Fail(id, name, "the track has no linked video"); break;
+                case "default":   // "Play by default" on the track's video version (the drawer's and the menu's radio item)
+                    if (LocalLink.VideoFileOf(uri) is var video and not 0) LocalLink.SetDefault(uri, video);
+                    else return Inspect.Reply.Fail(id, name, "the track has no linked video");
+                    break;
+                case "list": break;
+                default: return Inspect.Reply.Fail(id, name, "state kind=linked-video wants value=attach|seed-legacy|migrate|unlink|default|list");
+            }
+            if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
+            return Settled(id, name, a, w =>
+            {
+                w.WriteString("kind", "linked-video");
+                w.WriteString("value", v);
+                w.WriteStartArray("linked");
+                foreach (var r in Video.LinkedVideos.All())
+                {
+                    var tid = EntityId.Parse(r.Uri.AsSpan());
+                    var row = Entities.Track(tid);
+                    w.WriteStringValue(r.Uri + " | " + Path.GetFileName(r.Path) + " | " + Video.LinkedVideos.Decide(r.Uri).Tier + " | rowHasVideo=" + row.HasVideo
+                        + " | host=" + (Playback.Video.LocalVideos.PathOf(tid) is { } p ? Path.GetFileName(p) : "none"));
+                }
+                w.WriteEndArray();
+                if (uri.Length > 0)
+                {
+                    var tid = EntityId.Parse(uri.AsSpan());
+                    w.WriteBoolean("trackHasVideo", Entities.Track(tid).HasVideo);
+                    w.WriteString("trackHost", Playback.Video.LocalVideos.PathOf(tid) ?? "");
+                    w.WriteNumber("trackVersions", LocalLink.FilesFor(uri).Count);
+                    w.WriteBoolean("playsAsVideo", LocalLink.PlaysAsVideo(tid));
+                    var row = Entities.Track(tid);
+                    w.WriteBoolean("deckLocalVideoRow", Playback.IsLocalVideoRow(new EntityRef(EntityKind.Track, row.Slot)));
+                }
+                w.WriteBoolean("legacyStoreEmpty", Platform.Settings.Get(new SettingKey<string>("video.overrides.v1", "")).Length == 0);
+            });
+        }
+
         /// <summary>`state kind=spotify-match value=off|offer|matching|review|focus|accepted` ("Your files and Spotify", LocalLink.Fixture.cs).</summary>
         string SpotifyMatchState(int id, string name, Inspect.Args a)
         {
@@ -86,6 +137,13 @@ public static partial class Diagnostics
                 w.WriteNumber("check", view.Check);
                 w.WriteNumber("accepted", view.Accepted);
                 w.WriteString("reviewing", LocalLink.Reviewing.Peek() ?? "");
+                // Phase 2: where the fake "Savin' Me" plays from (--fake plays never open a source, so the route is answered here).
+                var savin = EntityUri.Parse(LocalLink.FixtureCopy != 0 && LocalLink.LinkOf(LocalLink.FixtureCopy) is { } fl ? fl.Uri : "spotify:track:nb0n3").Id;   // the fixture copy's song, else the fake Savin' Me
+                long playsAs = LocalLibrary.PlayAsOf(savin);
+                w.WriteString("savinRoute", Playback.Audio.RouteOf(savin).ToString());
+                w.WriteNumber("savinPlaysAs", playsAs);
+                w.WriteString("savinPath", LocalLibrary.PathOf(savin) ?? "");
+                w.WriteString("savinReportAs", playsAs != 0 && LocalLibrary.LocalUriOfFile(playsAs) is { } own ? own.Uri : "");
                 w.WriteStartArray("evidence");
                 foreach (var g in view.Groups)
                     w.WriteStringValue(g.Key + " | " + g.Confidence + " | " + (g.Best is { } b ? LocalLinkWords.Evidence(b, g.IsAlbum) + " | " + b.Uri : "none"));
