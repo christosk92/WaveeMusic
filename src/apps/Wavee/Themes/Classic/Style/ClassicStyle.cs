@@ -50,6 +50,7 @@ public sealed class ClassicStyle : IStyleLayer
     public ThemeDefinition Definition(OptionValues style, in StyleInputs inputs)
     {
         AccentRamp osAccent = inputs.OsAccent;
+        if (inputs.Colours.Any) return s_coloured.Get(new ColouredKey(osAccent, inputs.Colours), static k => Coloured(k));
         if (osAccent == AccentRamp.FluentDefault) return s_definition;
         lock (s_gate)
         {
@@ -60,6 +61,38 @@ public sealed class ClassicStyle : IStyleLayer
             }
             return s_lastDefinition;
         }
+    }
+
+    // ── a user's colour sets (#184) ───────────────────────────────────────────────────────────────────────────────────────────
+
+    private readonly record struct ColouredKey(AccentRamp Os, ColourPair Colours);
+
+    private static readonly DefinitionMemo<ColouredKey> s_coloured = new();
+
+    // A mode with a colour set takes the engine's token set and shell palette from the ladder (`ColourTokens`), with the window on the set's well
+    // (Classic's chrome ground; the content step is its ground) and NO window material (plan D5: an exact palette cannot sit on the wallpaper's
+    // Mica). A mode without one keeps Classic's colours and no opinion on the material, which the engine resolves to the app's own Mica. The roles
+    // take the set's rungs where Classic derives a ground (`ClassicRoles.For`); the accent follows Windows as ever unless the set owns it.
+    private static ThemeDefinition Coloured(ColouredKey k)
+    {
+        ColourPair c = k.Colours;
+        bool owns = c.OwnsAccent;
+        AccentRamp themeRamp = k.Os == AccentRamp.FluentDefault ? s_definition.Accent : k.Os;
+        var d = s_definition;
+        return d with
+        {
+            Dark = c.Dark is { } ld ? ColourTokens.Apply(d.Dark, ld, owns) with { WindowBackground = ld.Well } : d.Dark,
+            Light = c.Light is { } ll ? ColourTokens.Apply(d.Light, ll, owns) with { WindowBackground = ll.Well } : d.Light,
+            DarkShell = c.Dark is { } sd ? ColourTokens.Shell(d.DarkShell, sd) : d.DarkShell,
+            LightShell = c.Light is { } sl ? ColourTokens.Shell(d.LightShell, sl) : d.LightShell,
+            Accent = ColourTokens.Ramp(c, themeRamp),
+            Materials = new MaterialPolicy
+            {
+                Light = c.Light is null ? null : FluentGpu.Pal.WindowMaterial.None,
+                Dark = c.Dark is null ? null : FluentGpu.Pal.WindowMaterial.None,
+            },
+            AppRoles = ClassicRoles.For(c.Light, c.Dark),
+        };
     }
 
     /// <inheritdoc />

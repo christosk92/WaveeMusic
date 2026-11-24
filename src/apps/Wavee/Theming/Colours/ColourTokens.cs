@@ -145,6 +145,20 @@ public static class ColourTokens
             Dark3: light is { } l ? AccentRamp.Derive(l.AccentInk).Dark1 : themeRamp.Dark3);
     }
 
+    /// <summary><paramref name="baseShell"/> (the engine's shell palette for one mode) in the ladder's colours: every translucent rung re-washed at
+    /// its own alpha (the row zebra, hover and press, the translucent bands), an opaque one the ground.</summary>
+    public static ShellPalette Shell(ShellPalette baseShell, ColourLadder l)
+    {
+        ArgumentNullException.ThrowIfNull(baseShell);
+        ArgumentNullException.ThrowIfNull(l);
+        bool dark = l.Kind == ThemeKind.Dark;
+        ColorF S(ColorF c) => Opaque(c) ? l.Ground : Rewash(c, l, dark);
+        return new ShellPalette(
+            Toolbar: S(baseShell.Toolbar), Sidebar: S(baseShell.Sidebar), PlayerBar: S(baseShell.PlayerBar), FileArea: S(baseShell.FileArea),
+            Content: S(baseShell.Content), ContentAlt: S(baseShell.ContentAlt), RowZebra: S(baseShell.RowZebra), RowHover: S(baseShell.RowHover),
+            RowHoverZebra: S(baseShell.RowHoverZebra), RowPressed: S(baseShell.RowPressed), RowPressedZebra: S(baseShell.RowPressedZebra));
+    }
+
     private static bool Opaque(ColorF c) => c.A >= 0.999f;
 
     /// <summary>A translucent member at its own alpha in the ladder's colour of its kind: the ink for an ink-like wash, the ground for a
