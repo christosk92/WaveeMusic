@@ -203,6 +203,11 @@ public static partial class Playback
                 s_prepStartMs = 0;
             }
             if (plan.Source == MixSource.Saved) Interlocked.Increment(ref s_mMixSaved); else Interlocked.Increment(ref s_mMixAuto);
+            // #154's timeline tap (plan §3.9, decision D14 (b)): the overlap is audible between these two mixer frames and the timecode keeps
+            // naming the OUTGOING track until it is over; the announce publishes the incoming identity, which drops the transition.
+            EntityId incoming;
+            lock (s_gate) incoming = s_joinId;
+            Timeline.SetTransition(incoming, startFrame, startFrame + outFrames, Timeline.Master.Outgoing);
             Log.Info("audio", $"[mix] scheduled source={plan.Source} preset={plan.Preset} out={plan.OutStartMs} outDur={plan.OutDurationMs} "
                 + $"in={plan.InStartMs} inDur={plan.InDurationMs} start={startFrame} lead={startFrame - sess.SampleClock} "
                 + $"auto={(outAuto is null ? "-" : "out")}{(inAuto is null ? "" : "+in")}");

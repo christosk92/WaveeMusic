@@ -117,6 +117,7 @@ public static partial class Diagnostics
             }
             if (s_o.SeekAtMs >= 0 && !s_seeked && now - s_t0 >= s_o.SeekAtMs) { s_seeked = true; Playback.SeekTo(s_o.SeekToMs); Print(now, "seek"); }
             if (now - s_lastPrint >= 1000) { s_lastPrint = now; Print(now, "tick"); }
+            if (now - s_lastTap >= 250) { s_lastTap = now; PrintTap(now); }
             if (now - s_t0 >= s_o.Seconds * 1000L + 500) Exit(0, "done");
         }
 
@@ -160,6 +161,22 @@ public static partial class Diagnostics
                 + "\",\"pos\":" + s.PosMs + ",\"dur\":" + s.DurationMs + ",\"crossfades\":" + m.Crossfades + ",\"gapless\":" + (m.GaplessExact + m.GaplessDegraded)
                 + ",\"abandoned\":" + m.GaplessAbandoned + ",\"mixSaved\":" + Playback.Audio.MixSavedCount + ",\"mixRefused\":" + Playback.Audio.MixRefusedCount
                 + ",\"mixCancelled\":" + Playback.Audio.MixCancelledCount + ",\"sounding\":" + (Playback.Audio.MixSounding ? 1 : 0) + "}");
+        }
+
+        static long s_lastTap;
+
+        /// <summary>#154's timeline tap as the bench sees it: the master track, its audible position, the transition and its master.</summary>
+        static void PrintTap(long now)
+        {
+            if (!Playback.Timeline.TryRead(out var t)) return;
+            string Name(EntityId id) => id == s_a.Id ? "A" : id == s_b.Id ? "B" : id.IsEmpty ? "-" : "?";
+            long nowQpc = Playback.Timeline.NowQpc100ns();
+            long pos = t.PositionMicros + (long)((nowQpc - t.AnchorQpc100ns) / 10.0 * t.Rate * ((t.State & Playback.Timeline.Flags.Playing) != 0 ? 1 : 0));
+            bool transition = (t.State & Playback.Timeline.Flags.Transition) != 0;
+            Console.Out.WriteLine("{\"kind\":\"tap\",\"t\":" + (now - s_t0) + ",\"track\":\"" + Name(t.Track) + "\",\"posMs\":" + pos / 1000
+                + ",\"durMs\":" + t.DurationMs + ",\"transition\":" + (transition ? 1 : 0)
+                + (transition ? ",\"incoming\":\"" + Name(t.Incoming) + "\",\"master\":\"" + t.MasterVoice + "\",\"inMs\":" + (t.TransitionStartQpc100ns - nowQpc) / 10_000
+                    + ",\"endInMs\":" + (t.TransitionEndQpc100ns - nowQpc) / 10_000 : "") + ",\"epoch\":" + t.Epoch + "}");
         }
 
         static void Exit(int code, string why)

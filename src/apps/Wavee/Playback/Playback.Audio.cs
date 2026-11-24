@@ -3563,13 +3563,14 @@ public static partial class Playback
         /// <c>PrepareLost</c> — see <see cref="AfterSeekLanded"/>).</summary>
         static bool AbandonPendingJoin(PcmAudioSession? sess, string reason)
         {
+            bool mixCancelled = false;
             long voiceId;
             IMediaByteSource? bytes;
             lock (s_gate)
             {
                 if (!s_joinPending) return false;
                 s_joinPending = false;
-                CancelMixLocked(sess);                     // #48: a mix join also puts A back (Playback.Audio.Mix.cs)
+                mixCancelled = CancelMixLocked(sess);      // #48: a mix join also puts A back (Playback.Audio.Mix.cs)
                 voiceId = s_joinVoiceId;
                 bytes = s_joinBytes;
                 s_joinBytes = null;
@@ -3578,6 +3579,7 @@ public static partial class Playback
                 s_joinId = default;
             }
             Interlocked.Increment(ref s_mGaplessAbandoned);
+            if (mixCancelled) Timeline.ClearTransition();   // #48: the tap's transition ends with the cancelled join
             Log.Info("audio", "join abandoned reason=" + reason);
             try { sess?.SetVoiceEnvelope(voiceId, GainEnvelope.Fade(FadeKind.Out, 0, 1, CrossCurve.Linear)); } catch { }
             if (bytes is not null) { try { bytes.Close(); } catch { } }
