@@ -300,29 +300,7 @@ internal static class ZuneTrackTable
     {
         const int decodePx = Track.RowArtDecodePx;
         Func<string?> url = () => Track.RowArtUrl(r.P.Track.ForDisplay);
-        var corners = R.Shape.All(Wavee.Theming.Roles.ShapeRole.Cover);
-        return new BoxEl
-        {
-            ZStack = true, Width = art, Height = art, ClipToBounds = true, Corners = corners,
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = art, Height = art, Corners = corners,
-                    Fill = Prop.Of(() =>
-                    {
-                        string? u = url();
-                        if (u is { Length: > 0 }) _ = Wavee.Palette.Watch(u).Value;
-                        return Design.PlaceholderFor(u);
-                    }),
-                },
-                new ImageEl
-                {
-                    Source = Prop.Of(() => url() ?? ""), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = decodePx,
-                    Corners = corners, Placeholder = ColorF.Transparent,
-                },
-            ],
-        };
+        return Controls.BoundArtwork(url, art, R.Shape.All(Wavee.Theming.Roles.ShapeRole.Cover), decodePx);
     }
 
     // ── title · subline ──────────────────────────────────────────────────────────────────────────────────────────────────

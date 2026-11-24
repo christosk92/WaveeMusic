@@ -46,6 +46,7 @@ public static class LocalArt
     static int s_postPending;
     static Timer? s_post;
     static string? s_cacheDir;
+    static readonly List<long> s_landed = new();   // covers found since the last UI post: their rows are re-stated with them
     static Dictionary<string, long[]>? s_albums;
     static int s_albumsVersion = -1;
 
@@ -67,6 +68,26 @@ public static class LocalArt
         EnsureWorker();
         s_wake.Set();
         return null;
+    }
+
+    /// <summary>The cover already found for this file, or null (none yet, or none at all). A PEEK: never queues. Any thread.</summary>
+    public static string? Known(long localId)
+    {
+        if (!LocalLibrary.Index.TryGet(localId, out LocalEntry? e)) return null;
+        lock (s_gate) return s_memo.TryGetValue(localId, out Memo m) && m.Size == e.Size && m.Write == e.WriteTicks ? m.Uri : null;
+    }
+
+    /// <summary>A surface is SHOWING this track with no cover (the row's art lane, the player bar): ask for its file's cover, the "first display"
+    /// above. When it lands the row is re-stated with it (<see cref="LocalLibrary.StageCovers"/>). A cover found earlier that the row does not carry
+    /// yet is handed over on the next UI turn (never from inside the render that asked). Cheap for any other row: a flag and an empty image id.
+    /// UI thread.</summary>
+    public static void Want(Track t)
+    {
+        if (!t.IsValid || !t.IsLocal || !t.ImageId.IsEmpty) return;
+        long id = LocalLibrary.LocalIdOf(t.Id);
+        if (id == 0 || CoverUri(id) is null) return;
+        lock (s_gate) { if (!s_landed.Contains(id)) s_landed.Add(id); }
+        NoteLanded();
     }
 
     /// <summary>The album's cover: the first track of (album artist or first artist, album) with art, same rules. Any thread.</summary>
@@ -136,7 +157,11 @@ public static class LocalArt
             {
                 Log.Info("local", "local.art failed file=" + Path.GetFileName(e.RelativePath) + " (" + ex.GetType().Name + ")");
             }
-            lock (s_gate) s_memo[id] = new Memo(e.Size, e.WriteTicks, uri);
+            lock (s_gate)
+            {
+                s_memo[id] = new Memo(e.Size, e.WriteTicks, uri);
+                if (uri is not null) s_landed.Add(id);
+            }
             if (uri is not null) NoteLanded();
         }
     }
@@ -144,7 +169,14 @@ public static class LocalArt
     static void NoteLanded()
     {
         if (Interlocked.Exchange(ref s_postPending, 1) != 0) return;
-        s_post ??= new Timer(static _ => Playback.ToUi(static () => { Volatile.Write(ref s_postPending, 0); Epoch.Value++; }), null, Timeout.Infinite, Timeout.Infinite);
+        s_post ??= new Timer(static _ => Playback.ToUi(static () =>
+        {
+            Volatile.Write(ref s_postPending, 0);
+            long[] landed;
+            lock (s_gate) { landed = s_landed.ToArray(); s_landed.Clear(); }
+            if (landed.Length > 0) LocalLibrary.StageCovers(landed);
+            Epoch.Value++;
+        }), null, Timeout.Infinite, Timeout.Infinite);
         s_post.Change(250, Timeout.Infinite);
     }
 

@@ -567,7 +567,7 @@ public static partial class Shell
                 var track = new Track(cur.Slot);
                 string title = track.Title;
                 if (title.Length == 0) return;
-                string artist = Entities.Strings.Resolve(track.ArtistLineId);
+                string artist = track.CreditLine;
                 Announcer.SayThrottled(artist.Length == 0 ? title : title + ", " + artist);
             });
 

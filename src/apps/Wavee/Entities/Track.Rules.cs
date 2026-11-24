@@ -673,8 +673,25 @@ public readonly partial struct Track
     /// other row.</summary>
     public string LocalArtist => IsLocalItem ? LocalTrackUri.NamesOf(Uri.Text).Artist : IsLocal ? Playlist.LocalNamesOf(Uri.Text).Artist : "";
 
-    /// <summary>How many artists the row draws: its billed artists, or the one a local item's uri names.</summary>
-    public int DisplayArtistCount => ArtistSlots.Length is > 0 and var n ? n : LocalArtist.Length > 0 ? 1 : 0;
+    /// <summary>A local row (a <c>wavee:local:file:</c> track, or a playlist's <c>spotify:local:</c> item, matched or not): its credit is a
+    /// name, never an artist row.</summary>
+    public bool IsLocalRow => IsLocal || IsLocalItem;
+
+    /// <summary>THE credit a local row SHOWS: its tagged or uri-named artist, or "Unknown artist" when it names none; "" for any other row.
+    /// Display only: the stored artist stays empty, because a <c>spotify:local:</c> uri, its match (<c>LocalMatch</c>) and the Connect and
+    /// telemetry bodies (<c>Spotify.Egress</c>) need the real, empty name; they read <see cref="LocalArtist"/> or the names map, never this.
+    /// Not a link (there is no artist page behind it).</summary>
+    public string LocalCredit => !IsLocalRow ? "" : LocalArtist is { Length: > 0 } named ? named : Loc.Get(Strings.Track.UnknownArtist);
+
+    /// <summary>How many artists the row draws: its billed artists, or the one credit a local row shows (<see cref="LocalCredit"/>).</summary>
+    public int DisplayArtistCount => ArtistSlots.Length is > 0 and var n ? n : IsLocalRow ? 1 : 0;
+
+    /// <summary>The flat credit line a surface that draws one string shows (the queue, the video tab, the announce, menus): the commit-time
+    /// <see cref="ArtistLineId"/>, else a local row's <see cref="LocalCredit"/>. Resolves a string: never per row per frame.</summary>
+    public string CreditLine => Entities.Strings.Resolve(ArtistLineId) is { Length: > 0 } line ? line : LocalCredit;
+
+    /// <summary>The first credited artist's name, else a local row's <see cref="LocalCredit"/>: the OS media card and the tray show one name.</summary>
+    public string FirstCreditName => ArtistSlots is { Length: > 0 } slots ? new Artist(slots[0]).Name : LocalCredit;
 
     /// <summary>Does this row show the versions chevron (<see cref="TableRules.HasVersionsOf"/>)? Subscribes the versions
     /// relation's own <c>Changed</c>, so a bound read re-resolves when a drawer's fetch lands an alternate; the video

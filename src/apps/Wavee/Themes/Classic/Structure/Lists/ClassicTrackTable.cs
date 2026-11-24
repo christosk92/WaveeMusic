@@ -301,29 +301,7 @@ internal static class ClassicTrackTable
     {
         const int decodePx = Track.RowArtDecodePx;
         Func<string?> url = () => Track.RowArtUrl(r.P.Track.ForDisplay);
-        return new BoxEl
-        {
-            ZStack = true, Width = art, Height = art, ClipToBounds = true,
-            Corners = CornerRadius4.All(Radii.Control),
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = art, Height = art, Corners = CornerRadius4.All(Radii.Control),
-                    Fill = Prop.Of(() =>
-                    {
-                        string? u = url();
-                        if (u is { Length: > 0 }) _ = Wavee.Palette.Watch(u).Value;
-                        return Design.PlaceholderFor(u);
-                    }),
-                },
-                new ImageEl
-                {
-                    Source = Prop.Of(() => url() ?? ""), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = decodePx,
-                    Corners = CornerRadius4.All(Radii.Control), Placeholder = ColorF.Transparent,
-                },
-            ],
-        };
+        return Controls.BoundArtwork(url, art, CornerRadius4.All(Radii.Control), decodePx);
     }
 
     // ── title · metadata ─────────────────────────────────────────────────────────────────────────────────────────────

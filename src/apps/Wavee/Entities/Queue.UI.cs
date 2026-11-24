@@ -108,7 +108,7 @@ public static partial class Queue
         Track d = t.ForDisplay;
         bool thin = !d.Knows(TrackFields.Title);
         string album = !thin && d.Album is { IsValid: true } al && al.Knows(AlbumFields.Title) ? al.Title : "";
-        return new QueueRowText(t.Uri.Text, thin ? "" : d.Title, Entities.Strings.Resolve(d.ArtistLineId), Controls.ArtUrl(d.ImageId),
+        return new QueueRowText(t.Uri.Text, thin ? "" : d.Title, d.CreditLine, Controls.ArtUrl(d.ImageId),
                            d.DurationMs, thin, d.IsExplicit, Album: album);
     }
 

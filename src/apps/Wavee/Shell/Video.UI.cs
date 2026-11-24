@@ -588,7 +588,7 @@ public static partial class Video
     {
         if (CurrentTrack() is not { } t || Entities.Current is not { } scope) return "";
         _ = scope.Tracks.Changed.Value;
-        return t.IsValid && t.Knows(TrackFields.Row) ? Entities.Strings.Resolve(t.ArtistLineId) : "";
+        return t.IsValid && t.Knows(TrackFields.Row) ? t.CreditLine : "";
     }
 
     /// <summary>The current track's cover url, or null. Subscribes.</summary>

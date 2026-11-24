@@ -185,8 +185,7 @@ public static partial class Tray
             if (!cur.IsNone && cur.Kind == EntityKind.Track && new Track(cur.Slot) is { IsValid: true } t)
             {
                 title = t.Title;
-                ReadOnlySpan<int> artists = t.ArtistSlots;
-                artist = artists.Length == 0 ? "" : new Artist(artists[0]).Name;   // the FIRST artist, like the SMTC card
+                artist = t.FirstCreditName;   // the FIRST artist (a local row's credit), like the SMTC card
             }
             else if (!cur.IsNone && cur.Kind == EntityKind.Episode && new Episode(cur.Slot) is { IsValid: true } e)
             {
