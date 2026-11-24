@@ -15,6 +15,8 @@
 //
 // THE TIERS, ONE DEFINITION (0.2.9's `CompositeVideoResolver` + `SpotifyVideoManifestResolver`, flattened):
 //   1. the user's attached local file — it ALWAYS wins, including over the source's own official video;
+//   1b. a local video FILE (#240): the row's own file when the row is one (`TrackFlags.LocalVideoFile`), or the local version a
+//      track was linked to (`LocalVideos.Link`) — the one path every local video plays through (`Playback.Video.Local.cs`);
 //   2. the resolver installed BEFORE these tiers, for every playable they do not own — the modules owner's tier
 //      (`Modules.InstallVideoTier`, a module `form: video` answer → `VideoSource.Clear`) is chained, never replaced;
 //   3. a Spotify track's manifest id from the catalogue (`Track.VideoGid`, TrackV4 field 38) → one manifest GET;
@@ -51,20 +53,22 @@ public static partial class Playback
         // ── 1. the tiers (G-056, G-148) ─────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Which tier of the walk answered (the `tier=` of `[video] resolve`).</summary>
-        public enum SourceTier : byte { None, Override, Chained, Manifest, Wire }
+        public enum SourceTier : byte { None, Override, Chained, Manifest, Wire, Local }
 
         /// <summary>The pure half of the walk: the tier that answers FIRST for what is known before any I/O.</summary>
         public static class SourceTiers
         {
             /// <param name="overrideTier">The tier-1 decision for the playable (<c>Video.Overrides.Decide</c>).</param>
+            /// <param name="localFile">A local video file plays for the playable (<see cref="LocalVideos.PathOf"/>): its own, or its linked version.</param>
             /// <param name="spotifyTrack">The playable is a Spotify catalogue track (the only kind a manifest exists for).</param>
             /// <param name="manifestId">The catalogue's manifest id for the row, or empty.</param>
             /// <param name="chained">A resolver was installed before the tiers (the module tier) and answers for the rest.</param>
-            public static SourceTier First(global::Wavee.Video.OverrideTier overrideTier, bool spotifyTrack, string? manifestId,
+            public static SourceTier First(global::Wavee.Video.OverrideTier overrideTier, bool localFile, bool spotifyTrack, string? manifestId,
                                            bool chained)
             {
                 // A Broken or Quarantined attachment FALLS THROUGH: the link is kept for repair, the music never blocks.
                 if (overrideTier == global::Wavee.Video.OverrideTier.UseOverride) return SourceTier.Override;
+                if (localFile) return SourceTier.Local;
                 if (!spotifyTrack) return chained ? SourceTier.Chained : SourceTier.None;
                 return IsManifestId(manifestId) ? SourceTier.Manifest : SourceTier.Wire;
             }
@@ -110,7 +114,8 @@ public static partial class Playback
             var decision = global::Wavee.Video.Overrides.Decide(uri);
             bool spotifyTrack = id.Kind is EntityKind.Track or EntityKind.Episode && id.Provider == EntityProvider.Spotify;
             Func<EntityId, string, CancellationToken, VideoSource?>? chained = s_chained;
-            SourceTier tier = SourceTiers.First(decision.Tier, spotifyTrack, manifestId, chained is not null);
+            string? localFile = decision.Tier == global::Wavee.Video.OverrideTier.UseOverride ? null : LocalVideos.PathOf(id);
+            SourceTier tier = SourceTiers.First(decision.Tier, localFile is not null, spotifyTrack, manifestId, chained is not null);
 
             VideoSource? source;
             bool cached = false;
@@ -118,6 +123,9 @@ public static partial class Playback
             {
                 case SourceTier.Override:
                     source = VideoSource.LocalFile(decision.Override.Path) with { PlayableUri = uri, OverrideSourceKey = decision.Override.SourceKey };
+                    break;
+                case SourceTier.Local:
+                    source = LocalVideos.Source(localFile!) with { PlayableUri = uri };
                     break;
                 case SourceTier.Chained:
                     source = chained!(id, manifestId, ct) is { } answered ? answered with { PlayableUri = uri } : null;
@@ -150,12 +158,13 @@ public static partial class Playback
             if (Phase.Peek() == SwitchPhase.Resolving) Phase.SetIfChanged(SwitchPhase.Idle);
         }
 
-        /// <summary>F257/F259: the source's tier as the `[video.mount]` line names it — <c>override</c> (the user's attached
-        /// local file, a clear MF MP4), <c>playready</c> (the protected path) or <c>clear</c> (a url a module row answered).
+        /// <summary>F257/F259: the source's tier as the `[video.mount]` line names it — <c>local</c> (a local video file, #240),
+        /// <c>override</c> (the user's attached local file, a clear MF MP4), <c>playready</c> (the protected path) or <c>clear</c> (a url a module row answered).
         /// The ghost A/B reads it next to the natural / content / device sizes (docs/guide/video-ghost-ab.md).</summary>
         public static string MountTier(VideoSource? source) => source switch
         {
             null => "none",
+            { FilePath: not null, OverrideSourceKey: null } => "local",
             { FilePath: not null } => "override",
             { IsDrm: true } => "playready",
             { IsSegmented: true } => "segmented",
@@ -165,7 +174,7 @@ public static partial class Playback
         static string TierName(SourceTier t) => t switch
         {
             SourceTier.Override => "override", SourceTier.Chained => "chained", SourceTier.Manifest => "manifest",
-            SourceTier.Wire => "wire", _ => "none",
+            SourceTier.Wire => "wire", SourceTier.Local => "local", _ => "none",
         };
 
         /// <summary>The uri → manifest id answers the wire tier found, so a re-toggle of a linked track costs no POST. A

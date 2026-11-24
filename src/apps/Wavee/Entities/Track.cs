@@ -137,6 +137,10 @@ public enum TrackFlags : uint
     /// <summary>The USER attached a local mp4 (ch 01 GAP 7, ch 04's "user-attached local video override", ch 05 D11).
     /// Its own bit, so <c>Track.HasVideo</c> stays ONE ordinal probe over the OR of both planes.</summary>
     VideoOverride = 1 << 17,
+    /// <summary>The row IS a local video file (an MP4/M4V with a picture track, a Matroska/WebM file): its own file is the video, so it
+    /// plays on the video host with its picture (#240 local video, `Playback.IsLocalVideoRow`). Written with the row at
+    /// <see cref="Authority.Local"/> (<c>Playlist.LocalRowVideo</c>) and stated in the Video group, with the picture's size.</summary>
+    LocalVideoFile = 1 << 18,
 
     // Files group (FLAC plan §5.2). The ladder itself is `Edges.TrackFormats`; these two are the cheap read every
     // surface that only wants a BADGE takes — one load and one mask, no edge walk, for a versions row or a list lane.
@@ -147,7 +151,7 @@ public enum TrackFlags : uint
 
     IdentityMask = Explicit | Local | Podcast,
     AvailabilityMask = Unavailable,
-    VideoMask = HasVideo | VideoOverride,
+    VideoMask = HasVideo | VideoOverride | LocalVideoFile,
     FilesMask = Lossless | Lossless24,
 }
 
@@ -348,6 +352,8 @@ public readonly partial struct Track(int slot) : IEquatable<Track>
     /// form probe — is owner L's <c>Platform/Modules.cs</c> dictionary and folds in at the same call site when
     /// <c>VideoOverrideUx.HasVideo</c> is ported (ch 01 GAP 8).</summary>
     public bool HasVideo => (T.Flags[Slot] & (uint)TrackFlags.VideoMask) != 0;
+    /// <summary>The row is a local video file (<see cref="TrackFlags.LocalVideoFile"/>): its cover is a frame of it and it plays as a video.</summary>
+    public bool IsLocalVideo => (T.Flags[Slot] & (uint)TrackFlags.LocalVideoFile) != 0;
     /// <summary>The catalogue offered this account a FLAC of this track (16- or 24-bit). Only meaningful once
     /// <see cref="TrackFields.Files"/> is known — an unasked row reads as false, which is the honest default: a badge
     /// nobody has earned is not painted (FLAC plan §5.2, "one load and one mask for any surface that wants a badge,

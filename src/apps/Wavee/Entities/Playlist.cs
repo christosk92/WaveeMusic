@@ -1459,7 +1459,11 @@ public readonly partial struct Playlist
         => path is { Length: > 0 } && (path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
             || path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".flac", StringComparison.OrdinalIgnoreCase)
             || path.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".aac", StringComparison.OrdinalIgnoreCase));
-    public static bool IsLocalVideoFile(string? path) => path is { Length: > 0 } && path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
+    /// <summary>A video container a drop or the picker takes (#240 local video): MP4, M4V and Matroska/WebM. The file's own tags decide whether
+    /// it IS a video (an MP4 with no picture track is a song): <see cref="StateLocalVideo"/>.</summary>
+    public static bool IsLocalVideoFile(string? path)
+        => path is { Length: > 0 } && (path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".m4v", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".webm", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The artist and album a local track's TAGS name (a file has no artist or album row: they are names), keyed by the track's
     /// uri. Written where a local track is staged (<see cref="ImportLocalFile(string, in LocalTagSet)"/>, the fake seed); read by the row's
