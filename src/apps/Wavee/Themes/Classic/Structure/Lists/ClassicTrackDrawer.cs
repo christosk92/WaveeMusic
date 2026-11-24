@@ -332,6 +332,8 @@ internal static class ClassicTrackDrawer
     static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks, string? label = null)
     {
         Track parent = a.Track;
+        // #240 version cards: the card's menu (right-click, Shift+F10, the menu key, its "⋯"), F2, and an inline title for a version of mine.
+        TrackDrawerCardWiring? wire = a.VersionCard?.Invoke(version, parent, kind);
         var meta = new List<Element>(6) { Caption(label ?? KindLabel(kind)).Tertiary() };
         if (version.Knows(TrackFields.Audio) && version.Tempo > 0)
         {
@@ -353,6 +355,7 @@ internal static class ClassicTrackDrawer
 
         return new BoxEl
         {
+            Focusable = wire is not null, OnContextRequested = wire?.Context, OnKeyDown = wire?.Keys,
             Key = "ver:" + rowKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Grow = 1f,
             Height = DrawerRules.RowH, Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Corners = CornerRadius4.All(Radii.Control),
             Fill = kind == DrawerRules.SelfRow ? Tok.FillSubtleSecondary : ColorF.Transparent,   // rows, not cards: only self is plated
@@ -365,20 +368,42 @@ internal static class ClassicTrackDrawer
                     Children =
                     [
                         // 13.5 / 540 is 0.2.9's own version-title cut (TrackVersionsPanel.cs:311-316), ported as pixels.
-                        R.Type.DenseTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
+                        TitleOf(wire, version, R.Type.DenseTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
                         {
                             Weight = 540, Color = isNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
                             MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                        },
+                        }),
                         new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = meta.ToArray() },
                     ],
                 },
                 peaks is null ? new BoxEl() : Waveform.Create(new WaveformModel(peaks, DrawerRules.WaveBars), key: "waveform"),
+                MoreButton(wire),
                 a.FormatButton(version, parent, kind),
             ],
         }.Interactive(Interaction.Subtle);
     }
 
+
+    /// <summary>The version's title, through the card's wiring: an inline rename for a version of mine, the title as it is otherwise.</summary>
+    static Element TitleOf(TrackDrawerCardWiring? wire, Track version, TextEl look)
+        => wire is null ? look : wire.Title(look, version.Knows(TrackFields.Title) ? version.Title : "");
+
+    /// <summary>The card's "⋯" (#240 version cards), shown on the card's hover (a non-interactive wrapper rides it): a context-invoker, so it opens
+    /// the card's own menu, the one right-click and Shift+F10 open.</summary>
+    static Element MoreButton(TrackDrawerCardWiring? wire) => wire is null ? new BoxEl() : new BoxEl
+    {
+        Shrink = 0f, Opacity = 0f, HoverOpacity = 1f,
+        Children =
+        [
+            ToolTip.Wrap(new BoxEl
+            {
+                Key = "ver-more", Width = ClassicTrackDrawerLayout.MoreBox, Height = ClassicTrackDrawerLayout.MoreBox, Shrink = 0f, Corners = CornerRadius4.All(Radii.Control),
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand, ClickRequestsContext = true,
+                Children = [Icon(Icons.More, ClassicTrackDrawerLayout.MoreGlyph, Tok.TextSecondary)],
+            }, wire.MoreLabel),
+        ],
+    };
     // 16:9 with a play badge for the video, the bare square otherwise — and the now-playing overlay on the version that IS
     // the deck's item (ch 01 W14, item 73).
     static Element Thumb(Track version, Track parent, byte kind, bool isNow, Action<Track, Track, byte> playVersion)

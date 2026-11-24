@@ -166,10 +166,13 @@ public readonly partial struct Track
                 if (!reserved && LocalLinkWords.PlaysByDefault(t, kind, version) is { } plays) label = (label ?? KindWord(kind)) + " · " + plays;
                 drawn[i] = new TrackDrawerEntry(kind, version, rowKey, isNow, reserved, i == 0 ? peaks : null, label);
             }
+            // #240 version cards: each card's menu, keys and title (Track.Drawer.VersionCard.cs); plain cards with no overlay host.
+            var overlay = DrawerOverlay;
             return style.Body(new TrackDrawerBodyArgs
             {
                 Track = t, Facts = facts, Arriving = arriving, Entries = drawn,
                 FormatButton = _formatButton, PlayVersion = PlayVersion, Link = LinkSection(t),
+                VersionCard = overlay is null || Controls.IsNullOverlay(overlay) ? null : (version, parent, kind) => CardWiring(version, parent, kind, overlay),
             });
         }
 

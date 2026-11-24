@@ -310,6 +310,8 @@ internal static class ZuneTrackDrawer
     static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks, string? label = null)
     {
         Track parent = a.Track;
+        // #240 version cards: the card's menu (right-click, Shift+F10, the menu key, its "⋯"), F2, and an inline title for a version of mine.
+        TrackDrawerCardWiring? wire = a.VersionCard?.Invoke(version, parent, kind);
         var meta = new List<Element>(6) { Meta(label ?? KindLabel(kind), Tok.TextTertiary) with { Case = R.Case.For(LabelKind.Label) } };
         if (version.Knows(TrackFields.Audio) && version.Tempo > 0)
         {
@@ -330,6 +332,7 @@ internal static class ZuneTrackDrawer
 
         return new BoxEl
         {
+            Focusable = wire is not null, OnContextRequested = wire?.Context, OnKeyDown = wire?.Keys,
             Key = "ver:" + rowKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Grow = 1f,
             Height = DrawerRules.RowH, Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
             Fill = kind == DrawerRules.SelfRow ? Prop.Of(static () => R.Layer.RowHover) : (Prop<ColorF>)ColorF.Transparent,
@@ -342,20 +345,42 @@ internal static class ZuneTrackDrawer
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ZuneListRules.DrawerTextGap,
                     Children =
                     [
-                        R.Type.TrackTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
+                        TitleOf(wire, version, R.Type.TrackTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
                         {
                             Color = ZuneListRules.RowInk(isNow, R.Ink.AccentDecor, Tok.TextPrimary),
                             MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                        },
+                        }),
                         new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = meta.ToArray() },
                     ],
                 },
                 Embed.Comp(new WaveProps(peaks), static () => new WaveHost()) with { Key = "waveform-slot" },
+                MoreButton(wire),
                 a.FormatButton(version, parent, kind),
             ],
         };
     }
 
+
+    /// <summary>The version's title, through the card's wiring: an inline rename for a version of mine, the title as it is otherwise.</summary>
+    static Element TitleOf(TrackDrawerCardWiring? wire, Track version, TextEl look)
+        => wire is null ? look : wire.Title(look, version.Knows(TrackFields.Title) ? version.Title : "");
+
+    /// <summary>The card's "⋯" (#240 version cards), shown on the card's hover (a non-interactive wrapper rides it): a context-invoker, so it opens
+    /// the card's own menu, the one right-click and Shift+F10 open.</summary>
+    static Element MoreButton(TrackDrawerCardWiring? wire) => wire is null ? new BoxEl() : new BoxEl
+    {
+        Shrink = 0f, Opacity = 0f, HoverOpacity = 1f,
+        Children =
+        [
+            ToolTip.Wrap(new BoxEl
+            {
+                Key = "ver-more", Width = ZuneListRules.DrawerMoreBox, Height = ZuneListRules.DrawerMoreBox, Shrink = 0f, Corners = CornerRadius4.All(Radii.Control),
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand, ClickRequestsContext = true,
+                Children = [Icon(Icons.More, ZuneListRules.DrawerMoreGlyph, Tok.TextSecondary)],
+            }, wire.MoreLabel),
+        ],
+    };
     sealed record WaveProps(float[]? Peaks);
 
     /// <summary>The waveform slot: the strip where the peaks are known and the content tier has the room, else nothing. The strip enters and leaves

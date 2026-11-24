@@ -48,7 +48,8 @@ public readonly partial struct Track
         Action? TrackDetails = null, Action? MoveUp = null, Action? MoveDown = null, long QueueItemId = 0,
         bool CompactRows = false /* a 240-DIP pane: the transport verbs as rows instead of the strip */,
         IOverlayService? PickerOverlay = null,
-        bool ShowPinHome = false /* the now-playing menu: Pin this album / artist to Home (pinned Home, design 1.6) */);
+        bool ShowPinHome = false /* the now-playing menu: Pin this album / artist to Home (pinned Home, design 1.6) */,
+        bool VersionCard = false /* a version card in Track details: its "Play by default" is the card's own check (Track.Drawer.VersionCard.cs) */);
 
     static readonly MenuOptions s_defaultMenuOptions = new(ShowGoToAlbum: true);
 
@@ -223,7 +224,7 @@ public readonly partial struct Track
                     if (LocalLink.LinkOf(localId) is { } song)
                     {
                         // Phase 2: which of the song's versions plays when the song is played anywhere (this file, its other files, Spotify's).
-                        if (LocalLinkPage.DefaultMenu(song.Uri, song.Title) is { } plays) rows.Add(plays);
+                        if (!o.VersionCard && LocalLinkPage.DefaultMenu(song.Uri, song.Title) is { } plays) rows.Add(plays);
                         rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.RemoveLink), Icons.Cancel, true, () => LocalLink.Unlink(localId)));
                     }
                 }
@@ -236,7 +237,7 @@ public readonly partial struct Track
                     rows.Add(radio);
                 if (VideoItem(one, in ctx) is { } video) rows.Add(video);
                 // Phase 2: a Spotify song your files are versions of: which version plays when it is played.
-                if (LocalLinkPage.DefaultMenu(one.Uri.Text, one.Title) is { } plays) rows.Add(plays);
+                if (!o.VersionCard && LocalLinkPage.DefaultMenu(one.Uri.Text, one.Title) is { } plays) rows.Add(plays);
             }
         }
 

@@ -26,6 +26,29 @@ public static partial class LocalLinkPage
 {
     // ── rename ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The inline rename of a version's title (a version card in Track details: InlineTitle): the title only, the artist and album
+    /// renames kept; the same toast and Undo as the dialog. UI thread.</summary>
+    public static void RenameTitle(long localId, string title)
+    {
+        if (!LocalLibrary.Index.TryGet(localId, out LocalEntry? e)) return;
+        LinkTrack? shown = LocalLink.Shown.TryGetValue(localId, out LinkTrack? s) ? s : null;
+        LocalRename? before = LocalLink.RenameOf(localId);
+        var own = LocalNames.Face(e, shown, null);
+        var now = LocalNames.Face(e, shown, before);
+        Save(localId, before, own, title, now.Artists, now.Album);
+    }
+
+    /// <summary>THE rename (the dialog's Save, the inline title): only the fields that differ from the file's own are kept; toast with Undo.</summary>
+    static void Save(long id, LocalRename? before, LocalFace own, string title, string artist, string album)
+    {
+        static string Keep(string value, string ownValue) => value.Trim() is var v && (v.Length == 0 || v == ownValue) ? "" : v;
+        var rename = new LocalRename(Keep(title, own.Title), Keep(artist, own.Artists), Keep(album, own.Album));
+        if (rename == (before ?? new LocalRename("", "", ""))) return;
+        LocalLink.Rename(id, rename);
+        string shownTitle = rename.Title.Length > 0 ? rename.Title : own.Title;
+        Notify.Say(W.Renamed(shownTitle), actionLabel: Loc.Get(W.Undo), onAction: () => LocalLink.Rename(id, before), dedupeKey: "local.rename");
+    }
+
     /// <summary>"Rename…" on a file in the music folders: the dialog over the page (see the file header).</summary>
     public static void OpenRename(long localId, IOverlayService? overlay)
     {
@@ -52,15 +75,6 @@ public static partial class LocalLinkPage
             OverlayFit.Dialog(d, Controls.DialogWidthCompact);
         });
 
-        static void Save(long id, LocalRename? before, LocalFace own, string title, string artist, string album)
-        {
-            static string Keep(string value, string ownValue) => value.Trim() is var v && (v.Length == 0 || v == ownValue) ? "" : v;
-            var rename = new LocalRename(Keep(title, own.Title), Keep(artist, own.Artists), Keep(album, own.Album));
-            if (rename == (before ?? new LocalRename("", "", ""))) return;
-            LocalLink.Rename(id, rename);
-            string shownTitle = rename.Title.Length > 0 ? rename.Title : own.Title;
-            Notify.Say(W.Renamed(shownTitle), actionLabel: Loc.Get(W.Undo), onAction: () => LocalLink.Rename(id, before), dedupeKey: "local.rename");
-        }
     }
 
     // ── play by default ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -96,7 +110,8 @@ public static partial class LocalLinkPage
         return LocalNames.Face(e, LocalLink.Shown.TryGetValue(localId, out LinkTrack? s) ? s : null, LocalLink.RenameOf(localId)).Title;
     }
 
-    static void Choose(string spotifyUri, string songTitle, long file)
+    /// <summary>Which version of <paramref name="spotifyUri"/> plays by default (0: Spotify's), with its toast and Undo.</summary>
+    internal static void Choose(string spotifyUri, string songTitle, long file)
     {
         long before = LocalLink.PlayAsFile(spotifyUri);
         bool hadChoice = LocalLink.HasChosenDefault(spotifyUri);
