@@ -180,8 +180,16 @@ public static partial class Playback
     public sealed record WireOrigin(string Feature, string Version, string View, string ExternalReferrer,
         string Referrer, string Device, string CommandId, KeyValuePair<string, string>[] Metadata);
 
+    /// <summary>#48 Mix on the PUT (plan §3.7): the context is a mixed playlist read through its lens (the context url gains
+    /// <c>?spotify-apply-lenses=mix</c> and the context metadata the list's Mix attributes), and the playing pair's fade metadata
+    /// (<see cref="Out"/> on the playing row, <see cref="In"/> on <see cref="Incoming"/>'s row), built once per timing.</summary>
+    public sealed record MixWire(bool Lens, PlaylistMixFlags ListFlags, EntityId Incoming,
+        KeyValuePair<string, string>[] Out, KeyValuePair<string, string>[] In);
+
     public readonly struct WireExtras
     {
+        /// <summary>#48: the Mix half of the PUT; null outside a mixed playlist.</summary>
+        public readonly MixWire? Mix;
         /// <summary>Null while we are not the active device, or have nothing on the deck.</summary>
         public readonly WireWindow? Window;
         /// <summary><c>queue_revision</c>: moves whenever the queue, the deck row or the options did. 0 = not stated.</summary>
@@ -217,8 +225,9 @@ public static partial class Playback
 
         public WireExtras(WireWindow? window, ulong queueRevision, in WireIds ids, bool privateSession, string? outputDevice,
             string? commandSender, float playbackRate = 1f, WireOrigin? origin = null, byte outputType = 0, bool audiobook = false,
-            string? likedPlaylist = null, string? likedOwner = null)
+            string? likedPlaylist = null, string? likedOwner = null, MixWire? mix = null)
         {
+            Mix = mix;
             Window = window; QueueRevision = queueRevision; Ids = ids; PrivateSession = privateSession;
             _outputDevice = outputDevice; _commandSender = commandSender; _playbackRate = playbackRate; Origin = origin; OutputType = outputType;
             Audiobook = audiobook;

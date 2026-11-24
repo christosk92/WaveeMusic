@@ -124,10 +124,11 @@ public static partial class Playback
         bool privateSession = Platform.Settings.Get(Platform.Keys.PrivateSession);
         string output = OutputDeviceName();
         if (!Ownership.IsActiveOnWire(in s_state.Own) || !s_state.HasCurrent || Entities.Current is null)
-            return new WireExtras(null, 0, default, privateSession, output, sender);
+            return new WireExtras(null, 0, default, privateSession, output, sender,
+                mix: s_state.HasCurrent && Entities.Current is not null ? Mix.WireNow(in s_state) : null);   // #48: the context and the playing row
         string likedPlaylist = LikedOnWire(out string likedOwner);
         return new WireExtras(WindowNow(), RevisionNow(), in s_wireIds, privateSession, output, sender, s_state.ContentRate, s_wireOrigin,
-            OutputDeviceKind(), ContextIsAudiobook(), likedPlaylist, likedOwner);
+            OutputDeviceKind(), ContextIsAudiobook(), likedPlaylist, likedOwner, Mix.WireNow(in s_state));
     }
 
     /// <summary>Our own Liked Songs playback as the PUT names it (remote-play plan 5.4): the account's Liked Songs PLAYLIST and

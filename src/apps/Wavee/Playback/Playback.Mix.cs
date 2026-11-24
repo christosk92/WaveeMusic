@@ -143,6 +143,48 @@ public static partial class Playback
             return text is not null && positionMs >= t.OutStartMs && positionMs < t.AudibleEndMs ? text : null;
         }
 
+        static MixWire? s_wire;
+        static (int Version, EntityId Context, uint Flags, bool Without) s_wireKey;
+
+        /// <summary>The PUT's Mix half for the deck's context (plan §3.7), rebuilt only when the plan, the context or its flags change.</summary>
+        internal static MixWire? WireNow(in State s)
+        {
+            if (s.Context.Kind != EntityKind.Playlist || !Entities.Current.Playlists.TryGetSlot(s.Context, out int slot)) return null;
+            var p = new global::Wavee.Playlist(slot);
+            bool without = MixListenWithout.Is(p);
+            var key = (Changed.Peek(), s.Context, (uint)p.MixFlags, without);
+            if (key == s_wireKey) return s_wire;
+            s_wireKey = key;
+            if (!p.MixOn || without) return s_wire = null;
+            var t = Current;
+            var outMeta = new List<KeyValuePair<string, string>>(8);
+            var inMeta = new List<KeyValuePair<string, string>>(8);
+            if (t.Mix)
+            {
+                string Num(long v) => v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                outMeta.Add(new("audio.fade_out_start_time", Num(t.OutStartMs)));
+                outMeta.Add(new("audio.fade_out_duration", Num(t.OutDurationMs)));
+                inMeta.Add(new("audio.fade_in_start_time", Num(t.InStartMs)));
+                inMeta.Add(new("audio.fade_in_duration", Num(t.InDurationMs)));
+                inMeta.Add(new("audio.fade_overlap", Num(t.OutDurationMs)));
+                byte preset = t.Preset == (byte)MixPreset.Rise ? (byte)MixPreset.Rise : (byte)MixPreset.Fade;
+                int units = MixCurves.UnitsFor(t.OutDurationMs);
+                Span<CurveSegment> seg = stackalloc CurveSegment[4];
+                byte[] buf = new byte[1024];
+                foreach (var (lane, laneKey) in new[] { (MixLane.Volume, "curves"), (MixLane.LowEq, "eq_low_gain_curves"),
+                                                        (MixLane.FilterCutoff, "filter_cutoff_curves"), (MixLane.FilterResonance, "filter_resonance_curves") })
+                {
+                    int n = MixCurves.Segments(preset, lane, false, units, seg);
+                    if (n > 0) outMeta.Add(new("audio.fade_out_" + laneKey, System.Text.Encoding.UTF8.GetString(buf, 0, MixCurves.WriteJson(seg[..n], buf))));
+                    n = MixCurves.Segments(preset, lane, true, units, seg);
+                    if (n > 0) inMeta.Add(new("audio.fade_in_" + laneKey, System.Text.Encoding.UTF8.GetString(buf, 0, MixCurves.WriteJson(seg[..n], buf))));
+                }
+                outMeta.Add(new("automix.fade_out_cuepoint.position", Num(t.AudibleEndMs)));
+                outMeta.Add(new("automix.mode", "auto"));
+            }
+            return s_wire = new MixWire(true, p.MixFlags, CurrentNext, outMeta.ToArray(), inMeta.ToArray());
+        }
+
         static void EnsureAnalysis(EntityRef row)
         {
             if (row.Kind != EntityKind.Track || row.IsNone) return;

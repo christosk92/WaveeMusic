@@ -171,7 +171,8 @@ public static partial class Spotify
             var wire = new Playback.WireExtras(window, window is null ? 0 : s.Wire.QueueRevision, window is null ? default : s.Wire.Ids,
                 s.Wire.PrivateSession, s.Wire.OutputDevice, s.Wire.CommandSender, s.Wire.PlaybackRate,
                 contextOk && window is not null ? s.Wire.Origin : null, s.Wire.OutputType, contextOk && s.Wire.Audiobook,
-                contextOk ? s.Wire.LikedPlaylist : null, contextOk ? s.Wire.LikedOwner : null);
+                contextOk ? s.Wire.LikedPlaylist : null, contextOk ? s.Wire.LikedOwner : null,
+                contextOk ? s.Wire.Mix : null);   // #48: numbers and curves only, about an admitted context
             if (!trackOk && !local)
                 return new Playback.Snapshot(in s.Device, s.IsActive, s.Reason, s.MessageId, s.Volume, s.ClientTimestampMs,
                     s.StartedPlayingAtMs, s.HasBeenPlayingForMs, false, default, default, "", 0, s.TimestampMs, 0,

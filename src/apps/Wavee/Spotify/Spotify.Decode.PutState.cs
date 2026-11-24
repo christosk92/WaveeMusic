@@ -343,7 +343,17 @@ public static partial class Spotify
             int contextIndex = window?.ContextIndex ?? 0;
 
             w.Utf8(2, context);                                // context_uri
-            if (!context.IsEmpty) w.Concat(3, "context://"u8, context);
+            if (!context.IsEmpty && snap.Wire.Mix is { Lens: true })
+            {
+                // #48: a mixed playlist plays through its lens, and its context url says so (capture report §3.3).
+                Span<byte> url = stackalloc byte[context.Length + 48];
+                int n = 0;
+                "context://"u8.CopyTo(url); n += 10;
+                context.CopyTo(url[n..]); n += context.Length;
+                "?spotify-apply-lenses=mix"u8.CopyTo(url[n..]); n += 25;
+                w.Utf8(3, url[..n]);
+            }
+            else if (!context.IsEmpty) w.Concat(3, "context://"u8, context);
             w.Empty(4);                                        // context_restrictions {}
             int origin = w.Open(5);                            // play_origin
             ReadOnlySpan<byte> feature = liked ? "your_library"u8 : FeatureOf(context, snap.Wire.Audiobook);
@@ -412,12 +422,16 @@ public static partial class Spotify
             if (window is not null)
             {
                 foreach (ref readonly Playback.WireRow row in window.Prev) QueueRow(ref w, 19, in row, context, -1, in ids, scratch, window);
-                int view = Math.Max(0, contextIndex + 1), autoplayView = 0;   // the autoplay tail numbers itself from 0, as the official tail does
+                int view = Math.Max(0, contextIndex + 1), autoplayView = 0;
+                bool mixInDone = false;   // the autoplay tail numbers itself from 0, as the official tail does
                 foreach (ref readonly Playback.WireRow row in window.Next)
                 {
                     bool autoplay = row.Provider == QueueProvider.Autoplay;
                     bool numbered = autoplay || (contextIndex >= 0 && row.Provider != QueueProvider.Queue);   // context and autoplay rows number their run
-                    QueueRow(ref w, 20, in row, context, numbered ? (autoplay ? autoplayView : view) : -1, in ids, scratch, window);
+                    // #48: the first upcoming row that is the planned incoming track carries the fade-in half.
+                    Playback.MixWire? mixIn = snap.Wire.Mix is { In.Length: > 0 } m && !mixInDone && row.Id == m.Incoming ? m : null;
+                    if (mixIn is not null) mixInDone = true;
+                    QueueRow(ref w, 20, in row, context, numbered ? (autoplay ? autoplayView : view) : -1, in ids, scratch, window, mixIn);
                     if (autoplay) autoplayView++;
                     else if (numbered) view++;
                 }
@@ -428,6 +442,7 @@ public static partial class Spotify
                     if (!Queue.OwnsContextMetadataKey(entry.Key)) w.Entry(21, entry.Key, entry.Value);   // ours wins, below
             if (liked && !Carries(snap.Wire.Origin, "format_list_type")) LikedMetadata(ref w, snap.Wire.LikedOwner);
             w.Entry(21, "player.arch"u8, "2"u8);               // context_metadata
+            if (snap.Wire.Mix is { Lens: true } mix) MixContextMetadata(ref w, mix.ListFlags);
             if (ids.SessionId != UInt128.Zero) { Base62.Encode(ids.SessionId, scratch); w.Utf8(23, scratch[..Base62.GidChars]); }            // session_id
             if (snap.Wire.QueueRevision != 0 && Utf8Formatter.TryFormat(snap.Wire.QueueRevision, scratch, out int digits))
                 w.Utf8(24, scratch[..digits]);                 // queue_revision, as its digits
@@ -507,6 +522,19 @@ public static partial class Spotify
         }
 
         /// <summary>The row on the deck: the snapshot's uri and uid, the window's display picks, the live media kind.</summary>
+        /// <summary>#48: the mixed list's attributes as context metadata, as the official client mirrors them (capture report §3.3).</summary>
+        static void MixContextMetadata(ref ProtoWriter w, PlaylistMixFlags f)
+        {
+            w.Entry(21, "mix"u8, "true"u8);
+            if ((f & PlaylistMixFlags.AllowCustom) != 0) w.Entry(21, "mix-type"u8, "allow-custom"u8);
+            w.Entry(21, "automix.mode"u8, "auto"u8);
+            w.Entry(21, "automix.queue"u8, (f & PlaylistMixFlags.AutomixQueue) != 0 ? "true"u8 : "false"u8);
+            w.Entry(21, "automix.autoplay"u8, (f & PlaylistMixFlags.AutomixAutoplay) != 0 ? "true"u8 : "false"u8);
+            w.Entry(21, "automix.ignore_setting"u8, (f & PlaylistMixFlags.IgnoreSetting) != 0 ? "true"u8 : "false"u8);
+            w.Entry(21, "has-custom-transitions"u8, (f & PlaylistMixFlags.HasCustom) != 0 ? "true"u8 : "false"u8);
+            w.Entry(21, "can-view-transition"u8, (f & PlaylistMixFlags.CanViewTransition) != 0 ? "true"u8 : "false"u8);
+        }
+
         static void CurrentTrack(ref ProtoWriter w, in Playback.Snapshot snap, scoped ReadOnlySpan<byte> context, int contextIndex,
             scoped Span<byte> scratch)
         {
@@ -522,6 +550,7 @@ public static partial class Spotify
             // The video offer: the current row carries its 32-hex video gid whether we host audio or video (0.2.9).
             if (snap.VideoGid.Length > 0) w.Entry(3, "associated_video_id", snap.VideoGid);
             w.Entry(3, "track_player"u8, video ? "video"u8 : "audio"u8);
+            if (snap.Wire.Mix is { } mixOut) foreach (var e in mixOut.Out) w.Entry(3, e.Key, e.Value);   // #48: the playing row's fade-out
             if (HostsVideo(in snap))
             {
                 w.Entry(3, "media.type"u8, "video"u8);
@@ -536,7 +565,7 @@ public static partial class Spotify
 
         /// <summary>A prev/next row. Never the current media, so its player is audio and it carries no video keys.</summary>
         static void QueueRow(ref ProtoWriter w, int field, in Playback.WireRow row, scoped ReadOnlySpan<byte> context, int viewIndex,
-            in Playback.WireIds ids, scoped Span<byte> scratch, Playback.WireWindow? window)
+            in Playback.WireIds ids, scoped Span<byte> scratch, Playback.WireWindow? window, Playback.MixWire? mixIn = null)
         {
             int m = w.Open(field);
             w.Id(1, row.Id);
@@ -544,6 +573,7 @@ public static partial class Spotify
             else if (row.ItemId != 0) w.Utf8(2, scratch[..Hex16(row.ItemId, scratch)]);
             Head(ref w, in row, row.Provider, context, isVideo: false, window);
             w.Entry(3, "track_player"u8, "audio"u8);
+            if (mixIn is not null) foreach (var e in mixIn.In) w.Entry(3, e.Key, e.Value);
             Tail(ref w, row.Provider, isVideo: false, viewIndex, in ids, scratch);
             w.Utf8(6, ProviderWord(row.Provider));
             w.Close(m);
