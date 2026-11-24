@@ -126,6 +126,9 @@ public static partial class Diagnostics
             s_b = Playlist.ImportLocalFile(Path.GetFullPath(s_o.B));
             if (!s_a.IsValid || !s_b.IsValid) { Exit(1, "import failed"); return; }
             bool fade = s_o.Scenario == "crossfade";
+            // Through the settings registry (the overlay store): the pump re-reads it when its session opens.
+            Platform.Settings.Set(Platform.Keys.CrossfadeEnabled, fade);
+            Platform.Settings.Set(Platform.Keys.CrossfadeMs, fade ? s_o.CrossfadeMs : 0);
             Playback.Audio.SetCrossfade(fade, fade ? s_o.CrossfadeMs : 0);
             if (s_o.Scenario == "mix") ArmMix();
             Span<EntityRef> refs = [new EntityRef(EntityKind.Track, s_a.Slot), new EntityRef(EntityKind.Track, s_b.Slot)];
