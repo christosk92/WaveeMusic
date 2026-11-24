@@ -469,7 +469,7 @@ internal static class ZuneHomeDaylist
             }
             case HomeDaylistClockFace.Late:
                 return Clock(StaticLine(p.Line, bleed), current,
-                    K.Link("zune-daylist-check-again", Loc.Get(Strings.Home.Daylist.CheckAgain), p.CheckAgain ?? (static () => { })), barW, inline);
+                    K.Link("zune-daylist-check-again", Loc.Get(Strings.Home.Daylist.CheckAgain), p.CheckAgain ?? (static () => { }), strong: bleed), barW, inline);
             default:
                 return Clock(StaticLine(p.Line, bleed), current, null, barW, inline);
         }

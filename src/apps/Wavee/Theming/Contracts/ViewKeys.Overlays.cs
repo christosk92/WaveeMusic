@@ -65,6 +65,10 @@ public static partial class ViewKeys
     /// Props: <see cref="PlayLinkProps"/>.</summary>
     public static readonly ViewKey<PlayLinkProps> DialogPlayLink = new("Dialog.PlayLink");
 
+    /// <summary>The custom colours editor (#184): a bare modal card. Mounted by the core card host, which keeps the draft, the edited well, the
+    /// solved ladder and the verbs; the body draws the wells, the colour picker, the preview and the buttons. Props: <see cref="ColourEditorProps"/>.</summary>
+    public static readonly ViewKey<ColourEditorProps> DialogColourEditor = new("Dialog.ColourEditor");
+
     /// <summary>The digital-signature sheet's body (the verdict summary, a divider and the label and value rows); the sheet's shell is the
     /// engine's ContentDialog. Props: <see cref="SignatureSheetProps"/>.</summary>
     public static readonly ViewKey<SignatureSheetProps> DialogSignature = new("Dialog.Signature");

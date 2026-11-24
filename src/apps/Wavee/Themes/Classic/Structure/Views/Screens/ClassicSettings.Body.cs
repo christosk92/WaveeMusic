@@ -129,6 +129,10 @@ internal static partial class ClassicSettings
     /// <summary>The app mode row (System · Light · Dark), as Settings draws it and as the setup wizard's Theme step shows it: one row, one writer.</summary>
     internal static Element AppModeRow() => OutsideRow("appearance.appMode", static row => GenericCard(row));
 
+    /// <summary>A colour set row (<c>appearance.colours.light</c> / <c>.dark</c>, #184), as Settings draws it and as the setup wizard's Theme step shows it:
+    /// one row, one writer; its combo is the collapsed form (the pick's name, the list on demand).</summary>
+    internal static Element ColoursRow(string dialId) => OutsideRow(dialId, static row => GenericCard(row));
+
     /// <summary>The language row, as Settings draws it and as the setup wizard's Theme step shows it (one row, one writer), its combo on
     /// <paramref name="selected"/> (the wizard's own signal, seeded from the dial: <see cref="LanguageIndex"/>).</summary>
     internal static Element LanguageRow(Signal<int> selected) => OutsideRow("system.language", row => LanguageRow(row, selected));

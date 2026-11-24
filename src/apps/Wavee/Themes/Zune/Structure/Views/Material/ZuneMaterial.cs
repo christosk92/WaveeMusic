@@ -269,7 +269,7 @@ internal sealed class ZuneCoverTint : Component
     public override Element Render()
     {
         var p = UseProps<CoverTintProps>();
-        bool wash = ZuneOptions.Background() == ZuneBackground.ArtworkWash;
+        bool wash = ZuneOptions.Background() == ZuneBackground.ArtworkWash && ShellPolicy.Tracked.Artwork.Washes;
         if (wash && p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
         if (wash && p.FallbackUrl is { Length: > 0 } fb && !string.Equals(fb, p.Url, StringComparison.Ordinal)) _ = Palette.Watch(fb).Value;
 
@@ -309,7 +309,7 @@ internal sealed record ZunePageWash(ColorF Tint, bool Tall, float Height, Gradie
     /// <summary>The wash under the artwork-wash background with a published tint; null otherwise (the ground alone).</summary>
     public static ZunePageWash? Of(ShellMaterialState state, PageBackdrop backdrop, WidthTier tier)
     {
-        if (ZuneOptions.Background() != ZuneBackground.ArtworkWash || state.Tint is not { } tint) return null;
+        if (ZuneOptions.Background() != ZuneBackground.ArtworkWash || !ShellPolicy.Tracked.Artwork.Washes || state.Tint is not { } tint) return null;
         var top = tint with { A = MathF.Min(1f, tint.A * ZuneBandRules.WashTopScale) };
         // A cover page (album, playlist, liked) asks for the boards' tall wash: ONE window-fixed gradient, three stops, per-tier height.
         // Anything else (Home, the artist) keeps the band-height one.

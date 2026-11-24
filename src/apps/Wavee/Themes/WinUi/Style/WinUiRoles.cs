@@ -59,16 +59,6 @@ public static class WinUiTokens
 
     /// <summary>The content layer as a white wash over the base: (40 - 32) / (255 - 32) on dark, (249 - 243) / (255 - 243) on light.</summary>
     public const float ContentLayerDarkA = 8f / 223f, ContentLayerLightA = 0.5f;
-
-    /// <summary>The base of <paramref name="kind"/>.</summary>
-    public static ColorF BaseOf(ThemeKind kind) => kind == ThemeKind.Light ? LightBase : DarkBase;
-
-    /// <summary>The composited content layer of <paramref name="kind"/>.</summary>
-    public static ColorF ContentOf(ThemeKind kind) => kind == ThemeKind.Light ? LightContent : DarkContent;
-
-    /// <summary>The ink a state wash is made of: white on dark, black on light.</summary>
-    public static ColorF WashInk(ThemeKind kind, float alpha)
-        => kind == ThemeKind.Light ? ColorF.FromRgba(0, 0, 0) with { A = alpha } : ColorF.FromRgba(0xFF, 0xFF, 0xFF) with { A = alpha };
 }
 
 /// <summary>The roles of the WinUI style.</summary>
@@ -80,8 +70,23 @@ public static class WinUiRoles
     /// <summary>The text face chain: everything under Subtitle, and the definition's body family (the font registry walks it).</summary>
     public const string TextFaceChain = "Segoe UI Variable Text, Segoe UI";
 
-    /// <summary>The WinUI table. One immutable instance: the definition carries it for every option set.</summary>
-    public static WaveeStyleRoles Table { get; } = new(Type(), Ink(), Layer(), Shape(), Space(), OnMedia(), StageArm(), Wash(), Lyrics(), Motion(), Case());
+    // The ground-independent families, built once. Declared BEFORE `Table`: static initialisers run in textual order.
+    private static readonly TypeRoles s_type = Type();
+    private static readonly InkRoles s_ink = Ink();
+    private static readonly ShapeRoles s_shape = Shape();
+    private static readonly SpaceRoles s_space = Space();
+    private static readonly OnMediaLadder s_onMedia = OnMedia();
+    private static readonly StageArmTable s_stageArm = StageArm();
+    private static readonly LyricsInkRoles s_lyrics = Lyrics();
+    private static readonly MotionRoles s_motion = Motion();
+    private static readonly CaseRoles s_case = Case();
+
+    /// <summary>The WinUI table on the board's grounds: the instance the definition carries for every option set without a colour set.</summary>
+    public static WaveeStyleRoles Table { get; } = For(WinUiGrounds.DefaultLight, WinUiGrounds.DefaultDark);
+
+    /// <summary>The table on the grounds of each mode (the board's, or a user's colour set, #184). Only the layer and wash families read them.</summary>
+    public static WaveeStyleRoles For(WinUiGrounds light, WinUiGrounds dark)
+        => new(s_type, s_ink, Layer(light, dark), s_shape, s_space, s_onMedia, s_stageArm, Wash(light, dark), s_lyrics, s_motion, s_case);
 
     // ═════════════════════════════════════════════ TYPE ═════════════════════════════════════════════════════════════════════
     //
@@ -195,45 +200,43 @@ public static class WinUiRoles
         PremiumText: ColorRole.By(static _ => Tok.SystemFillSuccess),
         DataDot: ColorScience.DataDotInk);
 
-    private static ColorRole Wash(float darkA, float lightA)
-        => ColorRole.Pair(light: WinUiTokens.WashInk(ThemeKind.Light, lightA), dark: WinUiTokens.WashInk(ThemeKind.Dark, darkA));
+    private static ColorRole InkWash(WinUiGrounds light, WinUiGrounds dark, float darkA, float lightA)
+        => ColorRole.Pair(light: light.Wash(lightA), dark: dark.Wash(darkA));
 
-    private static ColorRole Base => ColorRole.Pair(light: WinUiTokens.LightBase, dark: WinUiTokens.DarkBase);
-
-    private static ColorRole ContentStep => ColorRole.Pair(light: WinUiTokens.LightContent, dark: WinUiTokens.DarkContent);
+    private static ColorRole PairOf(WinUiGrounds light, WinUiGrounds dark, Func<WinUiGrounds, ColorF> rung) => ColorRole.Pair(light: rung(light), dark: rung(dark));
 
     // The frame: the title bar, the pane and the player are the bare Mica base (nothing painted: Transparent), the content is ONE layer
     // (LayerFillColorDefault: #4C3A3A3A on dark, #80FFFFFF on light) with the 8-px top-left corner. The opaque stand-ins (a floating pane, the
     // ground under a flattened gate) are the base and the composited layer. Rows have no zebra; the selection is the hover fill plus the pill.
-    private static LayerRoles Layer()
+    private static LayerRoles Layer(WinUiGrounds light, WinUiGrounds dark)
     {
-        var hover = Wash(WinUiTokens.HoverDarkA, WinUiTokens.HoverLightA);
-        var pressed = Wash(WinUiTokens.PressedDarkA, WinUiTokens.PressedLightA);
+        var hover = InkWash(light, dark, WinUiTokens.HoverDarkA, WinUiTokens.HoverLightA);
+        var pressed = InkWash(light, dark, WinUiTokens.PressedDarkA, WinUiTokens.PressedLightA);
         var unpainted = ColorRole.Fixed(ColorF.Transparent);
-        var layer = ColorRole.Pair(light: ColorF.FromRgba(0xFF, 0xFF, 0xFF, 0x80), dark: ColorF.FromRgba(0x3A, 0x3A, 0x3A, 0x4C));
+        var layer = PairOf(light, dark, static g => g.Layer);
+        var baseRole = PairOf(light, dark, static g => g.Base);
+        var contentStep = PairOf(light, dark, static g => g.Content);
         return new LayerRoles(
             Toolbar: unpainted, Sidebar: unpainted, PlayerBar: unpainted,
             FileArea: layer, Content: layer,
-            ContentAlt: ColorRole.Pair(light: ColorF.FromRgba(0xF6, 0xF6, 0xF6, 0x80), dark: ColorF.FromRgba(0xFF, 0xFF, 0xFF, 0x08)),
-            ShellGround: Base,
-            ContentSurface: ContentStep,
-            ContentLayer: ColorRole.Pair(
-                light: ColorF.FromRgba(0xFF, 0xFF, 0xFF) with { A = WinUiTokens.ContentLayerLightA },
-                dark: ColorF.FromRgba(0xFF, 0xFF, 0xFF) with { A = WinUiTokens.ContentLayerDarkA }),
-            FloatingChrome: Base,
-            FloatingPane: ContentStep,
+            ContentAlt: PairOf(light, dark, static g => g.ContentAlt),
+            ShellGround: baseRole,
+            ContentSurface: contentStep,
+            ContentLayer: PairOf(light, dark, static g => g.ContentLayer),
+            FloatingChrome: baseRole,
+            FloatingPane: contentStep,
             RowZebra: unpainted,
             RowHover: hover, RowPressed: pressed, RowHoverZebra: hover, RowPressedZebra: pressed,
             SelectedRest: hover,
-            SelectedHover: Wash(WinUiTokens.SelectedHoverDarkA, WinUiTokens.SelectedHoverLightA),
-            SelectedPressed: Wash(WinUiTokens.SelectedPressedDarkA, WinUiTokens.SelectedPressedLightA),
+            SelectedHover: InkWash(light, dark, WinUiTokens.SelectedHoverDarkA, WinUiTokens.SelectedHoverLightA),
+            SelectedPressed: InkWash(light, dark, WinUiTokens.SelectedPressedDarkA, WinUiTokens.SelectedPressedLightA),
             ChromeHover: ColorRole.By(static _ => Tok.FillSubtleSecondary),
             ChromePressed: ColorRole.By(static _ => Tok.FillSubtleTertiary),
             Badge: ColorRole.By(static _ => Tok.AccentDefault),
             // A concert tile is a card: the card fill flattened on the content layer (white 5 % on dark, #fbfbfb on light).
-            EventPlate: ColorRole.Pair(light: ColorF.FromRgba(0xFB, 0xFB, 0xFB), dark: ColorF.FromRgba(0x33, 0x33, 0x33)),
-            EventHeroPlate: ColorRole.Pair(light: ColorF.FromRgba(0xF6, 0xF6, 0xF6), dark: ColorF.FromRgba(0x2E, 0x2E, 0x2E)),
-            ArtPlaceholder: ColorRole.Pair(light: ColorF.FromRgba(0xF2, 0xF2, 0xF2), dark: ColorF.FromRgba(0x2A, 0x2A, 0x2A)));
+            EventPlate: PairOf(light, dark, static g => g.EventPlate),
+            EventHeroPlate: PairOf(light, dark, static g => g.EventHeroPlate),
+            ArtPlaceholder: PairOf(light, dark, static g => g.ArtPlaceholder));
     }
 
     // ═════════════════════════════════════════════ ON MEDIA, STAGE, WASH, LYRICS ════════════════════════════════════════════
@@ -334,8 +337,8 @@ public static class WinUiRoles
                 new AccentLadder.Input(pageScheme is { } dp ? ColorScience.BackgroundDark(dp) : null, payloadAccent, definite),
                 null, ColorScience.BackgroundDark(ColorScience.Neutral), ColorScience.DarkFromPayload);
 
-    private static WashRoles Wash() => new(
-        NeutralGround: ColorRole.Pair(light: WinUiTokens.LightBase with { A = 0.03f }, dark: WinUiTokens.DarkBase with { A = 0.03f }),
+    private static WashRoles Wash(WinUiGrounds light, WinUiGrounds dark) => new(
+        NeutralGround: ColorRole.Pair(light: light.Base with { A = 0.03f }, dark: dark.Base with { A = 0.03f }),
         HeroAlpha: new ModePair<float>(0.055f, 0.10f),
         ShelfAlpha: new ModePair<float>(0.05f, 0.085f),
         HeroVeilPull: new ModePair<float>(0.16f, 0.24f),

@@ -12,6 +12,7 @@
 
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 
 namespace Wavee.Themes.Zune;
 
@@ -31,6 +32,7 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.OverlayContextSheet, ZuneContextSheet.Template, "zune.overlay.context-sheet");
         views.Add(ViewKeys.DialogLogoutConfirm, ZuneLogoutConfirm.Template, "zune.dialog.logout-confirm");
         views.Add(ViewKeys.DialogPlayLink, ZunePlayLink.Template, "zune.dialog.play-link");
+        CommonColourEditor.Register(views, "zune.dialog.colour-editor");   // the shared body in Zune's roles (square, its type, lowercase; #184)
         views.Add(ViewKeys.DialogSignature, ZuneSignature.Template, "zune.dialog.signature");
         views.Add(ViewKeys.DialogFolderPicker, ZuneFolderPicker.Template, "zune.dialog.folder-picker");
         views.Add(ViewKeys.DialogSheet, ZuneCreditsSheet.Template, "zune.dialog.sheet");

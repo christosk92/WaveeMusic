@@ -268,6 +268,7 @@ public static partial class Shell
         // `wavee://open?route=…&arg=…` goes through the same drain a cold protocol launch does (the shell's first effect).
         else if (capture.DeepLink.Length > 0) s_pendingActivation = capture.DeepLink;
 
+        Wavee.Theming.Colours.ColourChoice.Seed(Platform.Settings);   // the colour sets first: the mode's seed installs the definition they shape (#184)
         Appearance.Seed(Appearance.ModeOf(Platform.Settings.Get(Platform.Keys.ThemeMode)));   // the persisted preference, else the live OS theme (a fresh install)
         LoadDocuments();
 

@@ -382,7 +382,7 @@ internal static class ZuneAlbumTrailing
                 new BoxEl
                 {
                     HitTestVisible = false, MinWidth = 0f,
-                    Gradient = Ui.GradientDown(new GradientStop(0f, Tok.FillSolidBase with { A = 0f }), new GradientStop(1f, Tok.FillSolidBase with { A = Z.AboutScrimTail })),
+                    Gradient = Ui.GradientDown(new GradientStop(0f, Tok.FillSolidBase with { A = 0f }), new GradientStop(1f, Tok.FillSolidBase with { A = ColorScience.ScrimAlphaFor(Tok.TextPrimary, Tok.FillSolidBase, Z.AboutNameFloor, Z.AboutScrimTail) })),
                 },
                 new BoxEl
                 {

@@ -170,6 +170,10 @@ internal static partial class ZuneSettings
     /// <summary>The app mode row (system · light · dark), as Settings draws it and as the setup wizard's theme step shows it: one row, one writer.</summary>
     internal static Element AppModeRow(ZuneKit k) => OutsideRow(k, "appearance.appMode");
 
+    /// <summary>A colour set row (<c>appearance.colours.light</c> / <c>.dark</c>, #184), as Settings draws it and as the setup wizard's theme step shows it:
+    /// one row, one writer.</summary>
+    internal static Element ColoursRow(ZuneKit k, string dialId) => OutsideRow(k, dialId);
+
     /// <summary>The language row, as Settings draws it and as the setup wizard's theme step shows it: one row, one writer.</summary>
     internal static Element LanguageRow(ZuneKit k) => OutsideRow(k, "system.language");
 
