@@ -73,6 +73,11 @@ public static partial class Diagnostics
                 case DiagCommand.Xm: QueryExtensions(v.Uris ?? [], v.Kinds ?? [], v.Tag); break;
                 case DiagCommand.HomeCap: CaptureHome(v.Tag); break;
                 case DiagCommand.Drive: Drive.Apply(v); break;
+                case DiagCommand.Connect:
+                    if (!Platform.Args.Fake) { Reply("connect", "refused", "--fake only"); break; }
+                    Playback.UseFakeConnect(v.Mode == "nearby" ? Entities.FakeConnect() : []);
+                    Reply("connect", "ok", v.Mode);
+                    break;
                 case DiagCommand.Timecode:
                     Reply("timecode", Playback.TimecodeOutput.Set(v.Mode, v.Face) ? "ok" : "refused", v.Mode + "=" + v.Face);
                     break;
