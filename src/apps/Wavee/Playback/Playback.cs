@@ -1583,6 +1583,8 @@ public static partial class Playback
         public bool PrepareNext;
         public EntityRef NextRow;
         public EntityId NextId;
+        /// <summary>The kind <see cref="NextRow"/> will play as (Spotify audio or a local file): the pump's splice gate reads it.</summary>
+        public PlayableKind NextKind;
         /// <summary>WARM the next row only — head, mirrors, key; no ring, no decoder. What a load asks for.</summary>
         public bool Prefetch;
         public EntityRef PrefetchRow;

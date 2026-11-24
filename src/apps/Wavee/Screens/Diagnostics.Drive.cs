@@ -25,6 +25,9 @@
 //          near) is sought with vp=: the scroller glides on 0.7 of a viewport at a time until it shows. prefix= takes the first key
 //          under it (steps.tsv names the one found: how a take discovers a live key).
 //   #live wait ms=<n>                                                rest.
+//   #live drop path=<file>                                           drag a local file in and drop it where the pointer is, as
+//          Explorer's drag does (through the engine's external-drop seam: the target under the pointer takes it, the window's
+//          catch-all plays it; #240 §3.15). The path has no spaces.
 // Inspector-only verbs that observe (mount, perf, film, render, lint, status, find, dump, tiers, trace, said, views, crossing,
 // crossings, help) are skipped; any other verb the live driver does not play fails the drive at load, before anything moves.
 //
@@ -142,7 +145,7 @@ public static partial class Diagnostics
             error = "";
             string[] words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             verb = words.Length > 0 ? words[0].ToLowerInvariant() : "";
-            if (verb is not ("ready" or "reveal" or "wait")) { error = "#live " + verb + " is not a live verb (ready, reveal, wait)"; return false; }
+            if (verb is not ("ready" or "reveal" or "wait" or "drop")) { error = "#live " + verb + " is not a live verb (ready, reveal, wait, drop)"; return false; }
             for (int i = 1; i < words.Length; i++)
             {
                 int eq = words[i].IndexOf('=');
@@ -152,12 +155,14 @@ public static partial class Diagnostics
                 {
                     "ready" => ["key", "images", "video", "quiet", "max", "nth"],
                     "reveal" => ["key", "prefix", "top", "vp", "ms", "nth"],
+                    "drop" => ["path"],
                     _ => ["ms"],
                 };
                 if (Array.IndexOf(known, name) < 0) { error = "#live " + verb + ": unknown arg '" + name + "' (" + string.Join(", ", known) + ")"; return false; }
                 args.Set(name, Inspect.Value.FromWord(words[i][(eq + 1)..]));
             }
             if (verb == "ready" && !args.Has("key")) { error = "#live ready wants key="; return false; }
+            if (verb == "drop" && !args.Has("path")) { error = "#live drop wants path="; return false; }
             if (verb == "reveal" && args.Has("key") == args.Has("prefix")) { error = "#live reveal wants key= or prefix= (one of them)"; return false; }
             return true;
         }
@@ -166,7 +171,7 @@ public static partial class Diagnostics
 
         /// <summary>One primitive the lines expand into, played in order. <see cref="Target"/> is resolved when the op starts
         /// (a key's visible centre where it stands THEN, as a hand aims).</summary>
-        enum OpKind : byte { Glide, Rest, Down, Up, Key, Wheel, Resize, Ready, Reveal, Settle }
+        enum OpKind : byte { Glide, Rest, Down, Up, Key, Wheel, Resize, Ready, Reveal, Settle, Drop }
 
         sealed class Op
         {
@@ -276,6 +281,9 @@ public static partial class Diagnostics
                         break;
                     case "wait":
                         ops.Add(new Op { Kind = OpKind.Rest, Line = l, Ms = Math.Clamp(a.Int("ms", 0), 0, 600_000) });
+                        break;
+                    case "drop":
+                        ops.Add(new Op { Kind = OpKind.Drop, Line = l, Target = a.Str("path") });
                         break;
                     case "ready":
                         ops.Add(new Op
@@ -394,6 +402,16 @@ public static partial class Diagnostics
                 }
                 case OpKind.Rest:
                     return t >= op.Ms;
+                case OpKind.Drop:
+                {
+                    RectF win = WindowRect(host);
+                    Point2 p = run.Pointer ?? new Point2(win.W / 2f, win.H / 2f);
+                    string[] paths = [op.Target];
+                    if (!DropAnywhere.Play("enter", p, paths, null, null, out _) || !DropAnywhere.Play("drop", p, paths, null, null, out string took))
+                    { failure = "nothing takes a file drop in this window"; return true; }
+                    op.Note = "dropped=" + Path.GetFileName(op.Target) + " " + took;
+                    return true;
+                }
                 case OpKind.Resize:
                 {
                     double f = op.Ms <= 0 ? 1 : Math.Clamp(t / op.Ms, 0, 1);

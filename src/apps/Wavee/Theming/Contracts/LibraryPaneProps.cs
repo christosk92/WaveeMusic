@@ -12,7 +12,12 @@ using FluentGpu.Signals;
 namespace Wavee.Theming.Contracts;
 
 /// <summary>The "Also by ... in your library" strip's model: the artist's name and one tile per other saved album (capped by the host).</summary>
-public sealed record LibraryAlsoByModel(string ArtistName, IReadOnlyList<LibraryAlsoByTile> Tiles);
+public sealed record LibraryAlsoByModel(string ArtistName, IReadOnlyList<LibraryAlsoByTile> Tiles)
+{
+    /// <summary>The strip's heading in place of "Also by {artist} in your library" (null: that one). "On this PC"'s artist pane heads the artist's own
+    /// albums "Albums" (contract addition, #240).</summary>
+    public string? Heading { get; init; }
+}
 
 /// <summary>One "Also by" tile: the album's slot (its key) and the shared media surface's data without the plate height (the structure states it).</summary>
 public sealed record LibraryAlsoByTile(int Slot, Controls.CardData Card);
@@ -49,6 +54,14 @@ public sealed record LibraryAlbumPaneProps
 
     /// <summary>The save button's key.</summary>
     public string SaveKey { get; init; } = "";
+
+    /// <summary>The subject can be saved to the library (the save heart shows). False for "On this PC"'s albums and artists: names from the files' tags,
+    /// nothing a library can hold (contract addition, #240).</summary>
+    public bool Saveable { get; init; } = true;
+
+    /// <summary>The subject has a page to open (the header opens it, the "Open album" link stands). False for "On this PC"'s artists, which have none
+    /// (contract addition, #240).</summary>
+    public bool Openable { get; init; } = true;
 
     /// <summary>Open the album's page.</summary>
     public required Action Open { get; init; }

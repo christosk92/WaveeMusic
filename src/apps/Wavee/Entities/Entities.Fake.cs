@@ -151,6 +151,7 @@ public static partial class Entities
         SeedHomeSurfaces(now0);       // owner P: Entities.Fake.Home.cs (home, search, browse, recents)
         SeedProfileSurfaces(now0);    // profile pages: Entities.Fake.Profile.cs (the four users' social facts + shelves)
         SeedCanvasSurfaces(now0);     // Spotify Canvas: Entities.Fake.Canvas.cs (which tracks loop a canvas, which have none)
+        SeedLocalLinkSurfaces(now0);  // "Your files and Spotify": Entities.Fake.LocalLink.cs (the Spotify songs a local "Savin' Me" matches)
 
         // ONE publication (ch 31 §7.5 step 5 / §1.2): every table this seed touched bumps its Changed signal exactly
         // once, here — never per row and never per relation.
@@ -194,6 +195,7 @@ public static partial class Entities
     static partial void SeedHomeSurfaces(long now0);
     static partial void SeedProfileSurfaces(long now0);
     static partial void SeedCanvasSurfaces(long now0);
+    static partial void SeedLocalLinkSurfaces(long now0);
 
     static string UserUri(int i) => i switch
     {

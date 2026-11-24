@@ -441,6 +441,9 @@ internal static partial class ClassicDetailFrame
                     shown is { } count
                         ? Embed.Comp(new RailMetaProps(id, metaW, metaMax, metaLines), () => new RailMetaLine(count))
                         : MetaLine(id, metaW, metaMax, metaLines),
+                    // The page's status under the meta while it has one (Local Files' first scan, #240 S4): inside the meta's row, so the column's gap
+                    // never comes and goes with it (a gap cannot ease).
+                    .. !head && slots.Status is { } status ? new[] { StatusRow("hero-status", status(railForm ? railCover : contentW, false)) } : [],
                 ],
             }, swapIn));
         }
@@ -608,6 +611,14 @@ internal static partial class ClassicDetailFrame
     static readonly Action s_noop = static () => { };
 
     /// <summary>A keyed identity row present in both forms: the row shove, its height eased where the form re-measures it.</summary>
+    /// <summary>The page's status row (Local Files' first scan, #240 S4), the last part of the meta's row (its air above is a padding inside it: the column's
+    /// gap never comes and goes with it). It fades up and leaves on the swap fade; the meta's row eases its height and the rows under it glide (GrowShove).</summary>
+    static BoxEl StatusRow(string key, Element child) => new()
+    {
+        Key = key, Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, RailLayout.Gap, 0f, 0f),
+        Enter = ClassicDetailKit.FadeUp, Exit = ClassicTierMotion.SwapFade, Children = [child],
+    };
+
     static BoxEl Block(string key, Element child) => new()
     {
         Key = key, Direction = 1, MinWidth = 0f, Layout = ClassicDetailKit.GrowShove, Children = [child],

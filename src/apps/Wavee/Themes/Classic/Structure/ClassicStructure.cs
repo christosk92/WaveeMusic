@@ -70,7 +70,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ShellNarrowDrawer, ClassicDrawer.Template, "classic.shell.narrow-drawer");
         views.Add(ViewKeys.ShellCommandPalette, ClassicPalette.Template, "classic.shell.command-palette");
         views.Add(ViewKeys.ShellHistoryMenu, ClassicFrameBits.HistoryMenu, "classic.shell.history-menu");
-        views.Add(ViewKeys.ShellFileDrop, ClassicFrameBits.FileDrop, "classic.shell.file-drop");
+        views.Add(ViewKeys.ShellFileDrop, CommonDropPanel.Template, "classic.shell.file-drop");   // #240 drop panel: the WinUI layout (Common)
         views.Add(ViewKeys.ShellDragChip, ClassicFrameBits.DragChip, "classic.shell.drag-chip");
         views.Add(ViewKeys.ShellCoverScrim, ClassicFrameBits.CoverScrim, "classic.shell.cover-scrim");
         // T5a: the navigation pane (the rows: planner, diff, extents, freeze and the row slot; the rest of the pane is T5b-f's).
@@ -109,6 +109,9 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.PanelFriends, ClassicFriends.Template, "classic.panel.friends");
         views.Add(ViewKeys.NowPlayingHero, ClassicNowPlayingHero.Template, "classic.player.now-playing-hero");
         CommonDevicePicker.Register(views, "classic.player.device-picker");   // WinUI's picker, shared (Themes/Common): the owner's choice, 2026-11-19
+        CommonLocalCollection.Register(views, "classic.collection.local", static f => ClassicTiers.PageOf(in f).Gutter, "classic.page.title");   // #240 P2: Classic uses the WinUI layout (Themes/Common)
+        views.Add(ViewKeys.LocalLinkOffer, CommonLocalLink.Offer, "classic.local-link.offer");     // "Your files and Spotify": Classic follows the WinUI design
+        views.Add(ViewKeys.LocalLinkReview, CommonLocalLink.Review, "classic.local-link.review");
         views.Add(ViewKeys.OnMediaTransport, ClassicOnMedia.Template, "classic.player.on-media-transport");
         // P3: the panel's lyrics header (with the AI sparkle and the developer inspector), the "Next up" rows and the lyrics peek; their facts,
         // verbs, the rows' data and the peek's clock stay core (`RailWiring`, `AiLyrics.HeaderFacts`, `Rail.NextUpRows`, `Lyrics.PeekReel`).

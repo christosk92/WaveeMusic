@@ -39,6 +39,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.WinUi;
@@ -309,29 +310,7 @@ internal static class WinUiTrackTable
     {
         const int decodePx = Track.RowArtDecodePx;
         Func<string?> url = () => Track.RowArtUrl(r.P.Track.ForDisplay);
-        var corners = CornerRadius4.All(R.Shape.Control);
-        return new BoxEl
-        {
-            ZStack = true, Width = art, Height = art, ClipToBounds = true, Corners = corners,
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = art, Height = art, Corners = corners,
-                    Fill = Prop.Of(() =>
-                    {
-                        string? u = url();
-                        if (u is { Length: > 0 }) _ = Wavee.Palette.Watch(u).Value;
-                        return Design.PlaceholderFor(u);
-                    }),
-                },
-                new ImageEl
-                {
-                    Source = Prop.Of(() => url() ?? ""), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = decodePx,
-                    Corners = corners, Placeholder = ColorF.Transparent,
-                },
-            ],
-        };
+        return Controls.BoundArtwork(url, art, CornerRadius4.All(R.Shape.Control), decodePx);
     }
 
     // ── title · subline ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -358,10 +337,14 @@ internal static class WinUiTrackTable
             [
                 new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] },
                 WinUiRowCells.ExplicitMark() with { Visible = Prop.Of(() => r.P.Track.ForDisplay.IsExplicit) },
+                // Local Files' session mark ("New", "Moved", #240 S5): mounted only on a marked row.
+                CommonLocalFiles.RowTag(r),
                 // A song with a music video wears the film glyph after its title, as the eager rows, the queue panel and every other theme's table do
                 // (the boards drew none; the owner asked for one mark everywhere, 2026-11-07). A bound flip after the title: the video group landing
                 // late (the row's TrackVersion) shows it without moving the title's start.
                 Glyph(Icons.Movie, WinUiListRules.FilmGlyph, RowInk(r, static () => Tok.TextTertiary), Prop.Of(() => r.P.Track.HasVideo)) with { Shrink = 0f },
+                // A Spotify song a file in the music folders is linked to wears the file mark after its title ("Your files and Spotify").
+                CommonLocalFiles.LinkedFileMark(r, WinUiListRules.FilmGlyph, RowInk(r, static () => Tok.TextTertiary)),
                 // A row with no subline of its own (an album's one-line rows) wears the "on this PC" ring after its title.
                 .. oneLineMark ? new Element[] { WinUiRowCells.OnThisPcMark(RowInk(r, static () => Tok.TextSecondary)) with { Visible = Prop.Of(() => r.P.State.OnThisPc) } } : []
             ],
@@ -398,7 +381,7 @@ internal static class WinUiTrackTable
             {
                 var p = r.P;
                 return (p.State.OnThisPc && !oneLineMark) || compact || Track.ArtistInTitle(in p, setArtist) || Track.ShowAlbumInMeta(in p, false, setAlbum)
-                    || p.Track.ForDisplay.IsPodcast;
+                    || p.Track.ForDisplay.IsPodcast || Track.Withheld(in p, Track.NowUnix);   // a withheld row's line states why
             }),
             Children =
             [
@@ -426,13 +409,13 @@ internal static class WinUiTrackTable
                     Visible = Prop.Of(() =>
                     {
                         var p = r.P;
-                        return RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay)) > 0 || PlaysTail(in p).Length > 0;
+                        return Track.CreditSpeaks(p.Track.ForDisplay, ArtistCount(in p), HasContainer(in p, p.Track.ForDisplay)) || PlaysTail(in p).Length > 0;
                     }),
                     OnSpanClick = index =>
                     {
                         var p = r.Presentation.Peek();
                         var d = p.Track.ForDisplay;
-                        int target = RowCellRules.LinkTarget(index, ArtistCount(in p), HasContainer(in p, d));
+                        int target = RowCellRules.LinkTarget(index - Track.CreditLeadSpans(d, ArtistCount(in p), HasContainer(in p, d)), ArtistCount(in p), HasContainer(in p, d));
                         if (target >= 0) Track.GoToArtistAt(d, target);
                         else if (target == RowCellRules.Container) Track.GoToContainer(d);
                     },
@@ -452,7 +435,7 @@ internal static class WinUiTrackTable
             buffer.Clear();
             var p = r.P;
             var d = p.Track.ForDisplay;
-            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, "", WinUiListRules.RowInk(p.State.IsNow, Tok.AccentTextPrimary, Tok.TextSecondary));
+            FillLinkSpans(buffer, d, d.DisplayArtistCount, default, "", WinUiListRules.RowInk(p.State.IsNow, Tok.AccentTextPrimary, Tok.TextSecondary), withNote: false);
             return buffer.Current;
         }))
         {
@@ -575,23 +558,13 @@ internal static class WinUiTrackTable
         }, () => r.P.Track.HasVersions()), CellKey.Expand);
 
     /// <summary>The artists, the container and a plain tail as one span run (separators and the tail are not links).</summary>
-    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, string tail, ColorF ink)
+    static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, string tail, ColorF ink, bool withNote = true)
     {
-        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
-        for (int i = 0; i < artistCount; i++)
-        {
-            if (i > 0) b.Add(new TextSpan(", ", Color: ink));
-            var (name, link) = Track.ArtistAt(t, i);
-            b.Add(new TextSpan(name, Color: ink, IsLink: link));
-        }
-        if (container.Name is { Length: > 0 })
-        {
-            if (artistCount > 0) b.Add(new TextSpan(WinUiListRules.InlineLead, Color: ink));
-            b.Add(new TextSpan(container.Name, Color: ink, IsLink: container.Uri.IsValid));
-        }
+        int before = b.Current.Count;
+        Track.FillCreditSpans(b, t, artistCount, container, WinUiListRules.InlineLead, ink, withNote);
         if (tail.Length > 0)
         {
-            if (artistCount > 0 || container.Name is { Length: > 0 }) b.Add(new TextSpan(WinUiListRules.InlineLead, Color: ink));
+            if (b.Current.Count > before) b.Add(new TextSpan(WinUiListRules.InlineLead, Color: ink));
             b.Add(new TextSpan(tail, Color: ink));
         }
     }

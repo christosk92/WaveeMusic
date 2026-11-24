@@ -183,6 +183,23 @@ public static partial class Platform
         /// <summary>The playlists whose "Video" toggle is on (play their music videos): ONE capped blob, most recent first, the playlist uris
         /// joined by a space. Read and written ONLY through <see cref="PlaylistVideo"/>, which owns the format.</summary>
         public static readonly SettingKey<string> PlaylistVideoFirst = new("playlist.videoFirst", "");
+        /// <summary>The music folders on this PC (#240): their full paths joined by '|' (a character no Windows path holds). Read and
+        /// written ONLY through <see cref="LocalLibrary"/>, which owns the format.</summary>
+        public static readonly SettingKey<string> MusicFolders = new("local.musicFolders", "");
+        /// <summary>Settings › Storage › Music on this PC › "Watch folders for changes" (#240 S3): live updates on; off, folders
+        /// are scanned at start, on "Rescan now" and when a drive comes back.</summary>
+        public static readonly SettingKey<bool> MusicWatch = new("local.watch", true);
+        /// <summary>The subfolders the user left out of their music folders ("Can't read this folder" › Remove on a subfolder, #240 S11): full
+        /// paths joined by '|'. Read and written ONLY through <see cref="LocalLibrary"/>.</summary>
+        public static readonly SettingKey<string> MusicSkip = new("local.skip", "");
+        /// <summary>Settings › Storage › Music on this PC › "Pause scanning on battery saver" (#240 S3): on, a scan holds while Windows battery
+        /// saver is on and picks up where it was when it turns off.</summary>
+        public static readonly SettingKey<bool> MusicPauseOnSaver = new("local.pauseOnSaver", true);
+        /// <summary>Settings › Storage › Music on this PC › "Read tags of cloud-only files (downloads them)" (#240 S3): off, a OneDrive placeholder
+        /// is listed by its file name and never opened.</summary>
+        public static readonly SettingKey<bool> MusicReadCloud = new("local.readCloud", false);
+        /// <summary>Settings › Storage › Music on this PC › "Keep missing songs for" (#240 S3): 30, 60 or 90 days.</summary>
+        public static readonly SettingKey<int> MusicMissingDays = new("local.missingDays", 60);
 
         // ── podcasts ──
         /// <summary>The podcast show page's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most
@@ -898,6 +915,10 @@ public static class SegoeGlyphs
     /// (<c>Icons.FullScreen</c>), is the APP's (the stage: the title bar's button, the player bar's rows), so the two never share
     /// a glyph (the owner, 2026-11-10).</summary>
     public static readonly string VideoFullScreen = Of(0xE9A6);
+    /// <summary>A drive over a network bar (Segoe "MapDrive"): a music folder on a NAS or a share (#240 S13).</summary>
+    public static readonly string NetworkFolder = Of(0xE8CE);
+    /// <summary>A gauge at half (Segoe "SpeedMedium"): a share that answers, but slowly (#240 S13).</summary>
+    public static readonly string SlowConnection = Of(0xEC49);
 }
 
 /// <summary>The app's font FILES, resolved next to the exe (assets/fonts/*, shipped by the csproj's assets Content

@@ -37,6 +37,8 @@ internal static partial class ZuneSettings
             "notifications.quiet.from" => QuietRange(d, row),
             "system.language" => LanguageRow(d, row),
             "system.gpu" => Embed.Comp(new GpuArgs(row, d.Focus), static () => new GpuRow()) with { Key = "zs:gpu" },
+            "storage.music.folders" => Embed.Comp(new MusicArgs(row, d.Focus), static () => new MusicFoldersBlock()) with { Key = "zs:music" },
+            "storage.music.options" => MusicOptions(d, row),
             "storage.cache.budget" => Embed.Comp(new BudgetArgs(row, d.Props.Storage.Snapshot, d.Props.Storage.Audio, d.Focus), static () => new BudgetRow()) with { Key = "zs:budget" },
             "storage.cache.location" => CacheLocationRow(d, row),
             "storage.metadata.clear" => DialRow(d, row, ConfirmCmd(d.K, row, Words(row.Confirm?.TitleKey) ?? row.Label), MetadataSub(d.Props.Storage.Meta)),
