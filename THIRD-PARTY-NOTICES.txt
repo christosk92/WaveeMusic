@@ -43,7 +43,7 @@ Microsoft.UI.Reactor (Element/Component/hooks model + the pure-C# Yoga flexbox p
   url:     https://github.com/microsoft/microsoft-ui-reactor
   note:    FluentGpu's programming model (immutable Element records, Component, hooks) and its layout engine derive from Microsoft.UI.Reactor -- the original programming model (Element/Component/hooks) and the pure-C# Yoga flexbox port. Copyright (c) Microsoft Corporation.
 
-NLayer  1.15.0
+NLayer  3.0.1 + local fixes (vendored source: src/apps/vendor/NLayer, see its README.md)
   license: MIT
   authors: Mark Heath, Andrew Ward
   url:     https://github.com/naudio/NLayer

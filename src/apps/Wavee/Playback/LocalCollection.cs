@@ -157,7 +157,7 @@ public static class LocalCollection
 
     sealed class FolderAcc
     {
-        public string Key = "", Name = "";
+        public string Key = "", Name = "", Path = "";
         public string? Parent;
         public int Root;
         public string Rel = "";
@@ -376,7 +376,7 @@ public static class LocalCollection
             var mosaic = new List<string>(4);
             CollectCovers(n, nodes, coverOf, mosaic);
             string quality = n.Files.Count > 0 && !n.Mixed ? (IsLossless(n.Format) ? QualityOf(n.Format, 0, n.MinRate, n.MinBits) : "") : "";
-            outNodes[n.Key] = new LocalFolderNode(n.Key, n.Name, n.Parent, n.Songs, n.Duration, quality, n.Image, mosaic, n.Children.ToArray(), files, n.DurationHere);
+            outNodes[n.Key] = new LocalFolderNode(n.Key, n.Name, n.Parent, n.Songs, n.Duration, quality, n.Image, mosaic, n.Children.ToArray(), files, n.DurationHere, n.Path);
         }
         var rootKeys = new List<string>(folders.Count);
         var chips = new List<LocalFolderChip>(folders.Count);
@@ -455,14 +455,28 @@ public static class LocalCollection
         return disc && dir.Contains('\\') ? DirOf(dir) : dir;
     }
 
+    /// <summary>A path's last part ("Music" of "C:\Users\me\Music"); a drive root ("D:\") keeps itself; "?" for none.</summary>
+    static string LeafOf(string path)
+    {
+        if (path.Length == 0) return "?";
+        string trimmed = path.TrimEnd('\\', '/');
+        int i = trimmed.LastIndexOfAny(s_separators);
+        return i < 0 || i == trimmed.Length - 1 ? path : trimmed[(i + 1)..];
+    }
+
+    /// <summary>A path's separators: a folder added as typed may use either.</summary>
+    static readonly char[] s_separators = ['\\', '/'];
+
     static string KeyOf(int root, string rel) => root.ToString(CultureInfo.InvariantCulture) + "|" + rel;
 
     static FolderAcc NodeOf(Dictionary<string, FolderAcc> nodes, Dictionary<int, string> rootKeyOf, Dictionary<int, string> rootPath, int root, string rel)
     {
         string key = KeyOf(root, rel);
         if (nodes.TryGetValue(key, out var n)) return n;
-        string name = rel.Length == 0 ? (rootPath.TryGetValue(root, out string? p) ? p : "?") : rel[(rel.LastIndexOf('\\') + 1)..];
-        n = new FolderAcc { Key = key, Name = name, Root = root, Rel = rel };
+        // A music folder is named by its own leaf ("Music"), as every folder under it is; its full path rides beside the name (a tooltip).
+        string full = rootPath.TryGetValue(root, out string? p) ? (rel.Length == 0 ? p : p.TrimEnd('\\') + "\\" + rel) : "";
+        string name = rel.Length == 0 ? LeafOf(full) : rel[(rel.LastIndexOf('\\') + 1)..];
+        n = new FolderAcc { Key = key, Name = name, Path = full, Root = root, Rel = rel };
         nodes[key] = n;
         if (rel.Length == 0) rootKeyOf[root] = key;
         else

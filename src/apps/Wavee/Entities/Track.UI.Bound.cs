@@ -211,8 +211,9 @@ public readonly partial struct Track
     internal static string DurationLabel(Track t, long now)
         // A playlist's local file is withheld for a reason of its own, not a verdict: its length is known (its uri's), so the lane states it.
         => t.IsLocalItem ? Format.DurationCell(t.ForDisplay.DurationMs)
-         // An indexed local file that cannot be played says why in place of its length ("Missing", "Drive offline", #240 S6/S7).
-         : t.IsLocal && LocalFilesList.ShortReason(t) is { } local ? local
+         // An indexed local file that cannot be played keeps its LENGTH here and says why on its second line ("Can't play: a WAV file",
+         // LocalFilesList.Note): a reason word never fits the lane (it clipped to "Unavailab"). The tooltip still carries the long reason.
+         : t.IsLocal && t.Unplayable() ? (t.ForDisplay.DurationMs > 0 ? Format.DurationCell(t.ForDisplay.DurationMs) : Format.Dash)
          : RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
         {
             RowCellRules.DurationKind.Unavailable => Loc.Get(Strings.Detail.TrackFacts.UnavailableShort),

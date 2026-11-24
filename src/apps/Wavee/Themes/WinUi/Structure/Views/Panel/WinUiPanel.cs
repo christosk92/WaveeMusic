@@ -660,7 +660,7 @@ internal sealed class WinUiPanelVideoArm : Component
                 Size = B.HeroTitleSize, LineHeight = B.HeroTitleLine, Weight = B.HeroTitleWeight, Color = Tok.TextPrimary,
                 MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
             });
-            string artists = now.ResolveString(track.ArtistLineId), album = track.Album.IsValid ? track.Album.Title : "";
+            string artists = track.CreditLine, album = track.Album.IsValid ? track.Album.Title : "";
             string meta = artists.Length == 0 ? album : album.Length == 0 ? artists : artists + " · " + album;
             if (meta.Length > 0)
                 content.Add(new TextEl(meta) { Size = B.HeroArtistSize, LineHeight = B.HeroArtistLine, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });

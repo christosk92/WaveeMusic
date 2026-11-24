@@ -3535,10 +3535,11 @@
     "behind": "−{time}"
   },
   "track": {
-    "$comment": "Facts about one track row that are not playback state. `onThisPc` is the row indicator for a track whose audio is fully cached on this computer at the current quality with its key saved (Playback.OnThisPc). It is NOT offline playback and not a download, and it is a different key from settings.storage.onThisPc (the Storage section header).",
+    "$comment": "Facts about one track row that are not playback state. `onThisPc` is the row indicator for a track whose audio is fully cached on this computer at the current quality with its key saved (Playback.OnThisPc). It is NOT offline playback and not a download, and it is a different key from settings.storage.onThisPc (the Storage section header). `unknownArtist` is the credit a local file with no artist tag (or a spotify:local: item naming none) SHOWS in every artist line; display only, never stored or sent, and not a link.",
     "onThisPc": "On this PC",
     "notOnThisPc": "Not on PC",
-    "notOnThisPcReason": "You're offline, and this song isn't saved on this PC."
+    "notOnThisPcReason": "You're offline, and this song isn't saved on this PC.",
+    "unknownArtist": "Unknown artist"
   },
   "modulePage": {
     "$comment": "A page a playback module DESCRIBES and the app renders (Part 9). `title` is the destination's fallback label — used by the tab strip, the breadcrumb and a pinned row when the navigating surface carried no name of its own. `openOn` takes the module's display name ({name}), so the row reads 'Open on YouTube'. There is deliberately no `loading` and no `retry` here: the loading state is a shimmer DERIVED from the page itself and carries no copy at all, and the retry label is the app's one `common.retry` (ErrorState owns it) — a second spelling of either would be a dead key that drifts. `playing` is the WATCH layout's inert state capsule — it replaces the play capsule while this page's entity is the item in the bar, so it is a state badge and never a control.",
@@ -5544,7 +5545,7 @@
       "settings": "Settings"
     },
     "list": {
-      "$comment": "#240 UX S4-S6: the Local Files list (the playlist page's local arm): the empty state, the first-scan line, the 'what changed' pill and row tags, the duration lane of a file that cannot be played, and the unavailable bar's local reasons. {path} and {folder} are paths as typed; {n}, {done}, {total} are formatted numbers; {date} a short date ('12 Nov').",
+      "$comment": "#240 UX S4-S6: the Local Files list (the playlist page's local arm): the empty state, the first-scan line, the 'what changed' pill and row tags, the reason a file cannot be played (`cantPlay`, on the row's second line; {why} is the index's own phrase, 'a WAV file'), a local row's menu verbs and their toasts ({title} a song title), and the unavailable bar's local reasons. {path} and {folder} are paths as typed; {n}, {done}, {total} are formatted numbers; {date} a short date ('12 Nov').",
       "emptyTitle": "Your music on this PC",
       "emptyBody": "Add a folder and Wavee plays everything in it, offline too. Songs your playlists list from this PC light up as well.",
       "addMusicFolder": "Add my Music folder",
@@ -5576,7 +5577,14 @@
       "reasonOffline": "{count, plural, one {one is on a drive that’s offline} other {# are on a drive that’s offline}}",
       "allFormat": "{count, plural, one {it’s in a format Wavee can’t play yet} other {they’re in a format Wavee can’t play yet}}",
       "allOffline": "{count, plural, one {its drive is offline} other {their drive is offline}}",
-      "review": "Review"
+      "review": "Review",
+      "cantPlay": "Can’t play: {why}",
+      "showInFolder": "Show in folder",
+      "hide": "Hide from Local Files",
+      "removeDropped": "Remove from Local Files",
+      "hidden": "Hidden from Local Files · {title}",
+      "removed": "Removed from Local Files · {title}",
+      "undo": "Undo"
     },
     "link": {
       "$comment": "#240 \"Your files and Spotify\" phase 1 (show-only matching): the offer on On this PC, the opt-in dialog, the activity chip and toast, the Review matches page, the row menu's \"Spotify match…\", the drawer's Spotify version, and the Settings switch. {n} is a formatted number; {name} a folder name; {delta} a signed time (\"+19 s\"). ISRC is not translated.",
@@ -5679,7 +5687,10 @@
       "locateTitle": "Find where this song is now",
       "locateNote": "Point Locate at the file: Wavee pairs it with this song and keeps it in your playlists. A file outside your music folders adds its folder.",
       "footer": "{count, plural, one {Missing songs are removed after # day unless a playlist uses them} other {Missing songs are removed after # days unless a playlist uses them}}",
-      "noneLeft": "Nothing is missing any more."
+      "noneLeft": "Nothing is missing any more.",
+      "attentionTitle": "{count, plural, one {# file needs attention} other {# files need attention}}",
+      "attentionBody": "Wavee can’t find some of these files, and can’t play the others. Hide a file to leave it out of Local Files: nothing is deleted from your PC.",
+      "hide": "Hide"
     }
   },
   "drop": {

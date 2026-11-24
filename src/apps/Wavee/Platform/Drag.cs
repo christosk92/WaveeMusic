@@ -101,7 +101,7 @@ public readonly record struct DragChipModel(string? Title, string? Subtitle, str
         var artists = first.ArtistSlots;
         string? subtitle = artists.Length > 0
             ? Nz(new Artist(artists[0]).Name)
-            : Nz(Entities.Strings.Resolve(first.ArtistLineId));
+            : Nz(first.CreditLine);
         return new(
             Nz(first.Title) ?? Nz(name),
             subtitle,
@@ -597,7 +597,7 @@ public static partial class Drag
                               int hidden, bool showArtwork)
     {
         string title = track is { } t0 && t0.Title is { Length: > 0 } name ? name : fallback;
-        string subtitle = track is { } t1 ? Entities.Strings.Resolve(t1.ArtistLineId) : "";
+        string subtitle = track is { } t1 ? t1.CreditLine : "";
         Element art = track is { } t
             ? Controls.Artwork(Controls.ArtUrl(t.ImageId), artEdge, artEdge, Radii.Control)
             : new BoxEl

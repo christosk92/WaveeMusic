@@ -277,7 +277,9 @@ public static partial class LocalLibrary
                 (uint)(TrackFields.Identity | TrackFields.Availability));
             row.Title = staging.AddText(Encoding.UTF8.GetBytes(f.Title));
             if (f.Artists.Length > 0) row.ArtistLine = staging.AddText(Encoding.UTF8.GetBytes(f.Artists));
-            if (f.Image is { Length: > 0 } image) row.Image = staging.AddText(Encoding.UTF8.GetBytes(image));
+            // The cover: an accepted Spotify match's ("Your files and Spotify", show-only), else the one LocalArt already found (a peek: staging
+            // never queues an extraction; a row asks on first display, `LocalArt.Want`). StageCovers re-stages through here, so both arrive one way.
+            if ((f.Image ?? LocalArt.Known(f.LocalId)) is { Length: > 0 } cover) row.Image = staging.AddText(Encoding.UTF8.GetBytes(cover));
             row.DurationMs = Math.Max(0, f.DurationMs);
             row.Flags = (uint)(TrackFlags.Local | (f.Unavailable ? TrackFlags.Unavailable : 0));
             Playlist.NoteLocalNames(uri, f.Artists, f.Album);
@@ -285,6 +287,24 @@ public static partial class LocalLibrary
         }
         Entities.Commit(staging);
         Staging.Return(staging);
+    }
+
+    /// <summary>LocalArt found covers for <paramref name="localIds"/>: re-state those rows with them (UI thread), so every surface that draws a
+    /// track's cover (the rows, the player bar, Now playing, the OS media card) shows it through the row's own Image column; the cover fades in
+    /// over the no-art tile in the same slot. A row not staged (yet) takes its cover at its staging instead.</summary>
+    internal static void StageCovers(IReadOnlyList<long> localIds)
+    {
+        var faces = new List<Face>(localIds.Count);
+        foreach (long id in localIds) if (s_staged.TryGetValue(id, out Face? f)) faces.Add(f);
+        if (faces.Count == 0) return;
+        StageChunk(faces, 0, faces.Count);
+        Entities.Publish();
+    }
+
+    /// <summary>The indexed file behind a track id: an indexed row's, or a matched playlist item's; 0 for any other row. ANY THREAD.</summary>
+    public static long LocalIdOf(EntityId id)
+    {
+        lock (s_pathGate) return s_pathMap.TryGetValue(id, out long localId) || s_itemMap.TryGetValue(id, out localId) ? localId : 0;
     }
 
     /// <summary>Replace the Local Files membership (indexed files in album order, then session-dropped ones) and the path map.</summary>

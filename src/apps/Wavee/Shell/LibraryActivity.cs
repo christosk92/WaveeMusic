@@ -189,7 +189,7 @@ public static class LibraryActivity
     public static string AttentionHead => Loc.Get(Strings.LocalFiles.Activity.AttentionHead);
 
     /// <summary>What needs the user, one line and one verb each: a folder away (Retry rescans it), missing songs (Review) and files that cannot be
-    /// played (See which), both opening Local Files.</summary>
+    /// played (See which), both opening the Review over the page (Local Files when no overlay is at hand).</summary>
     public static AttentionLine[] Attention()
     {
         var items = LocalLibrary.Attention();
@@ -208,8 +208,9 @@ public static class LibraryActivity
                     Loc.Get(Strings.LocalFiles.Activity.FixPermissions), () => LocalLibrary.FixPermissions(folder)),
                 LocalLibrary.AttentionKind.Missing => new("missing", AttentionMark.Files, Strings.LocalFiles.Activity.MissingSongs(a.Count), "",
                     Loc.Get(Strings.LocalFiles.Activity.Review), OpenLocalFiles, LocalFilesList.OpenReview),
+                // "See which" opens the Review over the page: each file Wavee cannot play with Show in folder and Hide, so the line can always be resolved.
                 _ => new("unplayable", AttentionMark.Files, Strings.LocalFiles.Activity.Unplayable(a.Count), "",
-                    Loc.Get(Strings.LocalFiles.Activity.SeeWhich), OpenLocalFiles),
+                    Loc.Get(Strings.LocalFiles.Activity.SeeWhich), OpenLocalFiles, LocalFilesList.OpenReview),
             };
         }
         return lines;

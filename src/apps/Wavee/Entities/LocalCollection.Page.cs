@@ -43,7 +43,7 @@ public static class LocalCollectionPage
 
     /// <summary>The playlist page's Local Files profile, unchanged: no heart, no recommendations, the drawer, and P2-data's empty body (S4) and the "N new
     /// songs" pill (S5).</summary>
-    static readonly Track.TableProfile s_songsProfile = Track.TableProfile.From(Detail.Config.Playlist with { Heart = HeartMode.None, Recommendations = false })
+    static readonly Track.TableProfile s_songsProfile = Track.TableProfile.From(Detail.Config.Playlist with { Heart = HeartMode.None, Recommendations = false, LocalRows = true })
         with { Drawer = Track.DrawerSeam, EmptyBody = LocalFilesList.EmptyBody, ListOverlay = LocalFilesList.PillOverlay };
 
     /// <summary>The Local Files onboarding body while there is no music folder (its `EmptyBody` answers it then), else null. Tracked.</summary>

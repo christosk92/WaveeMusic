@@ -301,29 +301,7 @@ internal static class ClassicTrackTable
     {
         const int decodePx = Track.RowArtDecodePx;
         Func<string?> url = () => Track.RowArtUrl(r.P.Track.ForDisplay);
-        return new BoxEl
-        {
-            ZStack = true, Width = art, Height = art, ClipToBounds = true,
-            Corners = CornerRadius4.All(Radii.Control),
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = art, Height = art, Corners = CornerRadius4.All(Radii.Control),
-                    Fill = Prop.Of(() =>
-                    {
-                        string? u = url();
-                        if (u is { Length: > 0 }) _ = Wavee.Palette.Watch(u).Value;
-                        return Design.PlaceholderFor(u);
-                    }),
-                },
-                new ImageEl
-                {
-                    Source = Prop.Of(() => url() ?? ""), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = decodePx,
-                    Corners = CornerRadius4.All(Radii.Control), Placeholder = ColorF.Transparent,
-                },
-            ],
-        };
+        return Controls.BoundArtwork(url, art, CornerRadius4.All(Radii.Control), decodePx);
     }
 
     // ── title · metadata ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -739,20 +717,7 @@ internal static class ClassicTrackTable
     // ── span fills (the SpanBuffer twins of BuildLinkSpans / BuildClassicSpans) ──────────────────────────────────────
 
     static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink = default)
-    {
-        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
-        for (int i = 0; i < artistCount; i++)
-        {
-            if (i > 0) b.Add(new TextSpan(", ", Color: ink));
-            var (name, link) = Track.ArtistAt(t, i);
-            b.Add(new TextSpan(name, Color: ink, IsLink: link));
-        }
-        if (container.Name is { Length: > 0 })
-        {
-            if (artistCount > 0) b.Add(new TextSpan(" · ", Color: ink));
-            b.Add(new TextSpan(container.Name, Color: ink, IsLink: container.Uri.IsValid));
-        }
-    }
+        => Track.FillCreditSpans(b, t, artistCount, container, " · ", ink);
 
     static void FillClassicSpans(SpanBuffer b, Track t, int artistCount, bool showVideo, ushort weight, ColorF primary, ColorF secondary,
                                  ColorF tertiary)

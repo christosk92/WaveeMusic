@@ -953,11 +953,8 @@ public static partial class Playback
 
         // ── 7. small shared helpers ──────────────────────────────────────────────────────────────────────────────────
 
-        static string FirstArtist(Track t)
-        {
-            ReadOnlySpan<int> artists = t.ArtistSlots;
-            return artists.Length == 0 ? "" : new Artist(artists[0]).Name;
-        }
+        /// <summary>The card's one artist: the first credited name, else a local row's credit ("Unknown artist" when it names none).</summary>
+        static string FirstArtist(Track t) => t.FirstCreditName;
 
         /// <summary>The artwork the OS fetches for ITSELF: SMTC is handed a URL and decodes it asynchronously, so
         /// there is no app-side decode and no app-side size (ch 14 DATA GAP 2). An id that is already a url or a file

@@ -7,10 +7,15 @@
 //   Pages.LocalCollection
 //   └─ Host "lc-page" (re-renders on a fold, a pivot or a sort; the props never change)
 //      ├─ SkelRegionEl  pending until the first fold lands; the shimmer is this page over a seed view (one real UI)
-//      │   Home:   ScrollView "lc-scroll:home" [ hero (mosaic or calm gradient, title, stats, folder chips + activity, actions)
-//      │                                         · pivot · Recently added (Today / This week / Earlier this month) · Lossless
-//      │                                         · Shuffle by decade ]
-//      │   others: compact head (thumb, title, stats, actions) · pivot · the pivot's body:
+//      │   ONE column for every pivot, so the pivot bar never remounts and a switch animates in place (the owner, 2026-11-24: "the layout
+//      │   should animate in place"):
+//      │     "lc-head"   the head: Home's hero (mosaic or calm gradient, title, stats, folder chips + activity, actions), else the compact
+//      │                 head (thumb, title, stats, actions); the two cross-fade and the slot's height eases (the bar under it glides)
+//      │     the pivot   one node across every switch
+//      │     "lc-body"   the pivot's body, keyed per pivot: the structure's library pivot recipe (WinUI's: the new body slides in from the
+//      │                 side of its tab and decelerates, the old one fades fast; PageMotionPolicy.LibraryPivot), else the core's quick fade
+//      │   Home:   ScrollView "lc-scroll:home" [ Recently added (Today / This week / Earlier this month) · Lossless · Shuffle by decade ]
+//      │   others: the pivot's body:
 //      │           Albums  sort chips + count · virtual cover wall          Artists  virtual grid of artist cards
 //      │           Songs   the core's track table over Local Files            Folders  breadcrumb · folder tiles · the folder's songs
 //      │           Insights formats, quality, covers, tag health, can't play, folders, the private line
@@ -59,16 +64,30 @@ internal static class CommonLocalCollection
         static readonly Func<bool> s_never = static () => false;
         Func<Element>? _content, _shimmer;
         HostProps? _hp;
+        // The pivot on screen and the body switch that brought it (null: the first pivot, which the page's own entrance presents).
+        LocalPivot _shown;
+        bool _hasShown;
+        LayoutTransition? _swap;
+        IReadSignal<ThemeFacts>? _facts;
 
         public override Element Render()
         {
             var hp = UseProps<HostProps>();
             _hp = hp;
             var p = hp.Page;
+            _facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));
             _pending ??= () => p.View.Value.Version == 0;
-            _content ??= () => Page(_hp!, _hp!.Page.View.Value);
-            _shimmer ??= () => Page(_hp!, X.Seed);
-            _ = p.Pivot.Value;
+            _content ??= () => Page(_hp!, _hp!.Page.View.Value, _swap);
+            _shimmer ??= () => Page(_hp!, X.Seed, null);
+            var pivot = p.Pivot.Value;
+            if (!_hasShown || pivot != _shown)
+            {
+                // The structure's library pivot recipe by the pivot's order (a tab to the right comes in from the right), as the library family's
+                // body switch reads it; none for the first pivot.
+                _swap = _hasShown ? SwapOf(pivot > _shown, _facts.Peek()) : null;
+                _shown = pivot;
+                _hasShown = true;
+            }
             _ = p.Sort.Value;
             _ = p.Folder.Value;
             _ = p.Shelves.Value;
@@ -81,7 +100,20 @@ internal static class CommonLocalCollection
         }
     }
 
-    static Element Page(HostProps hp, LocalCollectionView view)
+    /// <summary>The body switch for a pivot change: the structure's library pivot recipe (<see cref="PageMotionPolicy.LibraryPivot"/>; WinUI's slides the
+    /// new body in from the side of its tab and decelerates, the old one fades fast, and answers its quick fade under reduced motion), else the
+    /// core's quick same-kind fade.</summary>
+    static LayoutTransition? SwapOf(bool fromRight, ThemeFacts facts)
+        => facts.Policies.PageMotion.LibraryPivot is { } pivot ? pivot(fromRight, facts.Tiers) : Design.Nav.SameKindSwap;
+
+    /// <summary>The head's two forms cross-fade; the body's switch moves on the same clock: WinUI's incoming 300 ms on an ease-out (its
+    /// (0, 0, 0, 1) decelerate carried most of a short Compact slide in one frame: the trace's "instant"), which also takes the outgoing node
+    /// most of its way out early. A node carries one clock for both legs, so the recipe's enter leg (<see cref="SwapOf"/>: the side, the travel)
+    /// rides it as the node's Enter.</summary>
+    static FluentGpu.Animation.MotionTokenDef SwapClock => FluentGpu.Animation.MotionTokenDef.Eased(L.HeadInMs, Easing.EaseOut);
+    static readonly EnterExit s_fade = new(Opacity: 0f, Active: true);
+
+    static Element Page(HostProps hp, LocalCollectionView view, LayoutTransition? swap)
     {
         var p = hp.Page;
         var pivot = p.Pivot.Peek();
@@ -90,32 +122,56 @@ internal static class CommonLocalCollection
         float g = hp.Gutter;
         // "Your files and Spotify": the review takes the page's place while it is open (board 29: On this PC › Review matches).
         if (p.Link is { } link && link.Reviewing.Peek() is not null) return X.LinkReview(link, g, p.RouteKey);
+        bool home = pivot == LocalPivot.Home;
         Element bar = Pivot(p, pivot, g);
-        if (pivot == LocalPivot.Home)
-        {
-            Element column = new BoxEl
-            {
-                Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, L.PageBottom),
-                Children = [Hero(p, view, hp.Lay, g, hp.TitleKey), bar, X.LinkOffer(p.Link, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, hp.Lay, g, p.Shelves.Peek())],
-            };
-            return ScrollView(column) with { Key = L.ScrollKey + ":home", Grow = 1f, MinWidth = 0f, ScrollKey = p.RouteKey + ":home" };
-        }
+        Element head = home ? Hero(p, view, hp.Lay, g, hp.TitleKey) : CompactHead(p, view, hp.Lay, g, hp.TitleKey);
         Element body = pivot switch
         {
+            LocalPivot.Home => ScrollView(new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, L.PageBottom),
+                Children = [X.LinkOffer(p.Link, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, hp.Lay, g, p.Shelves.Peek())],
+            }) with { Key = L.ScrollKey + ":home", Grow = 1f, MinWidth = 0f, ScrollKey = p.RouteKey + ":home" },
             LocalPivot.Albums => X.AlbumWall(view, p.Sort.Peek(), p.SetSort, p.Verbs, hp.Lay, g, p.RouteKey),
             LocalPivot.Artists => X.ArtistGrid(view, p.Verbs, hp.Lay, g, p.RouteKey),
             LocalPivot.Songs => X.Gut("lc-songs", g, p.Songs(), grow: true),
             LocalPivot.Folders => X.FolderBrowser(view, p.Folder.Peek(), p.OpenFolder, p.Verbs, hp.Lay, g, p.Title, p.RouteKey),
             _ => X.Insights(view, hp.Lay, g, p.RouteKey),
         };
+        bool motion = swap is not null;
         return new BoxEl
         {
             Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
             Children =
             [
-                CompactHead(p, view, hp.Lay, g, hp.TitleKey),
+                // The head's slot eases its height between the hero and the compact head, so the pivot under it glides, never jumps.
+                new BoxEl
+                {
+                    Key = L.HeadKey, Direction = 1, MinWidth = 0f, Shrink = 0f, ClipToBounds = true, Layout = motion ? MotionRecipes.CardResizeHeight : null,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Key = home ? L.HeadKey + ":hero" : L.HeadKey + ":compact", Direction = 1, MinWidth = 0f, Children = [head],
+                            Enter = motion ? s_fade : null, Exit = s_fade, Transition = SwapClock,
+                        },
+                    ],
+                },
                 bar,
-                new BoxEl { Key = L.BodyKey + ":" + pivot.ToString(), Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Children = [body] },
+                new BoxEl
+                {
+                    Key = L.BodyKey, Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Key = L.BodyKey + ":" + pivot.ToString(), Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Children = [body],
+                            // The new body comes in from its tab's side (the recipe's enter leg); the old one fades where it stands: a node's exit is the
+                            // one it last rendered with, which cannot know the side of the NEXT switch.
+                            Enter = swap?.Enter, Exit = s_fade, Transition = SwapClock,
+                        },
+                    ],
+                },
             ],
         };
     }
@@ -201,7 +257,7 @@ internal static class CommonLocalCollection
         for (int i = 0; i < labels.Length; i++) labels[i] = PivotWord((LocalPivot)i);
         var style = new SelectorBarStyle
         {
-            RestColor = Tok.TextSecondary, SelectedColor = Tok.TextPrimary, ItemHeight = L.PivotItemH, ItemPadding = L.PivotItemPad, ItemGap = L.PivotGap,
+            RestColor = Tok.TextSecondary, SelectedColor = Tok.TextPrimary, ItemHeight = L.PivotItemH, ItemGap = L.PivotGap,
         };
         var set = p.SetPivot;
         Element bar = SelectorBar.Create(labels, new Signal<int>((int)current), onChange: i => set((LocalPivot)i), parts: s_pivotParts, style: style, itemKeys: s_pivotKeys);

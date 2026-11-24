@@ -53,9 +53,11 @@ public sealed record LocalSongItem(long Id, int Number, string Title, string Alb
 /// <param name="Key">"root id|relative path"; a music folder's relative path is "".</param>
 /// <param name="ParentKey">Null for a music folder.</param>
 /// <param name="Songs">Every playable-or-not audio file under it (recursive).</param>
+/// <param name="Name">The folder's own name ("Music"), a music folder's too (its full path is <paramref name="Path"/>).</param>
 /// <param name="Mosaic">Up to four album covers from inside it (recursive), when it has no cover of its own.</param>
+/// <param name="Path">Its full path, for a tooltip or a secondary line; "" when unknown. Appended (#240).</param>
 public sealed record LocalFolderNode(string Key, string Name, string? ParentKey, int Songs, long DurationMs, string Quality, string? Cover,
-    IReadOnlyList<string> Mosaic, IReadOnlyList<string> Children, IReadOnlyList<LocalSongItem> Files, long DurationHereMs);
+    IReadOnlyList<string> Mosaic, IReadOnlyList<string> Children, IReadOnlyList<LocalSongItem> Files, long DurationHereMs, string Path = "");
 
 /// <summary>One group of the Recently added shelf.</summary>
 public sealed record LocalShelfGroup(LocalAddedWhen When, IReadOnlyList<LocalAlbumCard> Albums);

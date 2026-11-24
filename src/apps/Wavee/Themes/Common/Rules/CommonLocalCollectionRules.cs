@@ -15,7 +15,10 @@ namespace Wavee.Themes.Common;
 /// <summary>Node keys and fixed geometry of the shared collection page.</summary>
 internal static class CommonLocalCollectionRules
 {
-    public const string PageKey = "lc-page", HeroKey = "lc-hero", PivotKey = "lc-pivot", BodyKey = "lc-body", ScrollKey = "lc-scroll";
+    public const string PageKey = "lc-page", HeroKey = "lc-hero", PivotKey = "lc-pivot", BodyKey = "lc-body", ScrollKey = "lc-scroll", HeadKey = "lc-head";
+
+    /// <summary>The pivot switch's clock (ms): WinUI's incoming 300 on its decelerate, the head's cross-fade and the body's slide.</summary>
+    public const float HeadInMs = 300f;
     public const string ShelfKey = "lc-shelf", WallKey = "lc-wall", ArtistsKey = "lc-artists", FoldersKey = "lc-folders", InsightsKey = "lc-insights";
 
     /// <summary>The hero's mosaic: rows and columns of covers, its strength over the page ground, the fade into the ground.</summary>
@@ -37,9 +40,10 @@ internal static class CommonLocalCollectionRules
     /// <summary>A folder chip: height, side padding, glyph, the gap between chips and between glyph and words; the status dot.</summary>
     public const float ChipH = 28f, ChipPadX = 10f, ChipGlyph = 12f, ChipGap = 8f, ChipInner = 6f, ChipBorder = 1f, Dot = 8f, StatusGap = 12f;
 
-    /// <summary>The pivot (a SelectorBar): item height, padding and gap, the hairline under it.</summary>
+    /// <summary>The pivot (a SelectorBar): item height and gap, the hairline under it. The item keeps the stock SelectorBar padding (12,10,12,7):
+    /// 10 + the 20 label + 7 + the 3 pill = the 40 item, so the pill sits 7 under the label as WinUI's does (a zero vertical padding stacked
+    /// the pill flush under the text, "too tight").</summary>
     public const float PivotItemH = 40f, PivotGap = 4f, PivotHairline = 1f;
-    public static readonly Edges4 PivotItemPad = new(12f, 0f, 12f, 0f);
 
     /// <summary>A Home section: the gap above it, the head row's height and its gap to the cards, a group label's gap.</summary>
     /// <summary>"Your files and Spotify"'s offer under the pivot (board 28: 20 under the pivot's hairline).</summary>

@@ -155,7 +155,7 @@ public static partial class Stage
             if (name.Length == 0) continue;
             joined = joined.Length == 0 ? name : joined + ", " + name;
         }
-        return joined.Length > 0 ? joined : Entities.Strings.Resolve(track.ArtistLineId);
+        return joined.Length > 0 ? joined : track.CreditLine;
     }
 
     /// <summary>The playing track's artist page: leave the stage BEFORE navigating (V-U29).</summary>

@@ -300,29 +300,7 @@ internal static class ZuneTrackTable
     {
         const int decodePx = Track.RowArtDecodePx;
         Func<string?> url = () => Track.RowArtUrl(r.P.Track.ForDisplay);
-        var corners = R.Shape.All(Wavee.Theming.Roles.ShapeRole.Cover);
-        return new BoxEl
-        {
-            ZStack = true, Width = art, Height = art, ClipToBounds = true, Corners = corners,
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = art, Height = art, Corners = corners,
-                    Fill = Prop.Of(() =>
-                    {
-                        string? u = url();
-                        if (u is { Length: > 0 }) _ = Wavee.Palette.Watch(u).Value;
-                        return Design.PlaceholderFor(u);
-                    }),
-                },
-                new ImageEl
-                {
-                    Source = Prop.Of(() => url() ?? ""), Fit = ImageFit.Cover, AspectRatio = 1f, DecodePx = decodePx,
-                    Corners = corners, Placeholder = ColorF.Transparent,
-                },
-            ],
-        };
+        return Controls.BoundArtwork(url, art, R.Shape.All(Wavee.Theming.Roles.ShapeRole.Cover), decodePx);
     }
 
     // ── title · subline ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -635,20 +613,7 @@ internal static class ZuneTrackTable
 
     /// <summary>The artists and the container as one link run (separators are not links).</summary>
     static void FillLinkSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, ColorF ink)
-    {
-        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
-        for (int i = 0; i < artistCount; i++)
-        {
-            if (i > 0) b.Add(new TextSpan(", ", Color: ink));
-            var (name, link) = Track.ArtistAt(t, i);
-            b.Add(new TextSpan(name, Color: ink, IsLink: link));
-        }
-        if (container.Name is { Length: > 0 })
-        {
-            if (artistCount > 0) b.Add(new TextSpan(" · ", Color: ink));
-            b.Add(new TextSpan(container.Name, Color: ink, IsLink: container.Uri.IsValid));
-        }
-    }
+        => Track.FillCreditSpans(b, t, artistCount, container, " · ", ink);
 
     // ══ THE SKIN ═════════════════════════════════════════════════════════════════════════════════════════════════════════
 
