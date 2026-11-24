@@ -68,6 +68,14 @@ public static class LocalScanProbe
     {
         var c = CultureInfo.InvariantCulture;
         folder = LocalLibrary.Normalize(folder);
+        // A network folder is probed first (the scanner's own probe, F4): a dead share answers in ~3 s instead of blocking a minute.
+        if (NtDirectory.IsNetworkPath(folder))
+        {
+            var reachWatch = Stopwatch.StartNew();
+            LocalRootState reach = LocalScan.ProbeReach(folder);
+            line($"reach state={reach} ms={reachWatch.ElapsedMilliseconds}");
+            if (reach is not (LocalRootState.Online or LocalRootState.Waking or LocalRootState.Slow)) { line("error: the folder cannot be reached (" + reach + ")"); return; }
+        }
         if (!Directory.Exists(folder)) { line("error: not a folder"); return; }
         NtDirectory.ExposePlaceholders();
         using (var probeRoot = NtDirectory.OpenDirectory(null, folder, out _))
