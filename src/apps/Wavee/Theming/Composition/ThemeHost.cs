@@ -279,7 +279,7 @@ public static class ThemeHost
     {
         ThemeDefinition definition = ActiveDefinition ?? Tok.Definition;
         if (kind == Tok.Theme) return s_nothingToDo;
-        return Transact(new ThemeTransactionRequest(definition, kind, static () => { })
+        return Transact(new ThemeTransactionRequest(definition, kind, static () => RepublishFacts())
         {
             OnFailed = ex => Log.Warn("theme", "switching the theme kind failed and was rolled back", ex),
             Label = "kind:" + kind,
@@ -428,6 +428,13 @@ public static class ThemeHost
         ThemePickerFacts.Publish(new PickerState(ThemeCatalog.Installed, theme.Manifest.Id));
     }
 
+    /// <summary>Publishes the active composition's facts again: what changes a fact from outside the composition calls it (a colour set or the
+    /// light/dark kind moving the artwork veto, #184). A no-op before <see cref="Install"/>.</summary>
+    public static void RepublishFacts()
+    {
+        if (s_installed) PublishFacts(s_current.Peek());
+    }
+
     private static void PublishFacts(ThemeComposition theme)
     {
         // The tiers are the window's fact (T3b), not the composition's: keep what is published.
@@ -441,6 +448,10 @@ public static class ThemeHost
             Log.Warn("theme", "theme '" + theme.Manifest.Id + "' published policies the shell cannot run on; using the baseline: " + string.Join("; ", problems));
             facts = facts with { Policies = ThemePolicies.Default };
         }
+        // A user's colour set on screen with "Artwork colours" off (#184, plan D4): no washes and no artwork accent, so the window keeps the set's
+        // exact colours. Applied after the validation (it only turns things off). The now-playing colours stay the theme's: media surfaces.
+        if (Wavee.Theming.Colours.ColourChoice.VetoesArtwork && facts.Policies.Artwork is { } artwork && (artwork.Washes || artwork.AccentFromArtwork))
+            facts = facts with { Policies = facts.Policies with { Artwork = artwork with { AccentFromArtwork = false, Washes = false } } };
         s_facts.Value = facts;
         s_policies.Value = facts.Policies;
         s_metrics.Value = facts.Metrics;

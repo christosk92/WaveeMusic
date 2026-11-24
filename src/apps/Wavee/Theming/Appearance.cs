@@ -240,7 +240,11 @@ sealed class LiveAppearancePorts : IAppearancePorts
     public bool SystemUsesLightTheme() => FluentApp.SystemUsesLightTheme();
 
     // Wavee's own ramp (G-196), not the engine's default one.
-    public void ApplyKind(ThemeKind kind) => Design.SeedPalette(kind);
+    public void ApplyKind(ThemeKind kind)
+    {
+        Design.SeedPalette(kind);
+        Wavee.Theming.ThemeHost.RepublishFacts();   // the artwork veto follows the mode on screen (#184, plan D4)
+    }
 
     public bool KindChangeIsStructural(ThemeKind kind)
     {

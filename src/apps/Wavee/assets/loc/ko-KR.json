@@ -534,6 +534,8 @@
       "coloursAccentPalette": "내 색상",
       "coloursAccentPick": "강조 색",
       "coloursSetBy": "내 색상에서 설정됨",
+      "coloursArtwork": "아트워크 색상",
+      "coloursArtworkSub": "앨범 아트가 내 색상 위에 페이지와 창을 물들이게 합니다",
       "rowDensity": "행 밀도",
       "rowDensitySub": "트랙 목록의 행 높이",
       "npvStyle": "플레이어 스타일",

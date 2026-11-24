@@ -27,4 +27,8 @@ public static class ColourKeys
 
     /// <summary>My own accent, packed 0xAARRGGBB (the encoding a colour option stores); 0 = none picked (the palette's default stands).</summary>
     public static readonly SettingKey<int> AccentOwn = new("theme.palette.accentOwn", 0);
+
+    /// <summary>Artwork colours while a set is active (plan D4): false (the default) keeps the set's exact colours, true lets the artwork tint the
+    /// shell and the pages and lead the page accent as the theme's own options say.</summary>
+    public static readonly SettingKey<bool> Artwork = new("theme.palette.artwork", false);
 }

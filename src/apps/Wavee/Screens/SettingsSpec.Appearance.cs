@@ -74,7 +74,13 @@ public static partial class SettingsSpec
             Make("appearance.colours.accentPick", K.Choice, Strings.Settings.Appearance.ColoursAccentPick,
                 SettingsWriter.OfChoice("colours.accentPick", SettingsVerbs.PickNamedAccent), glyph: "Design",
                 value: _ => SettingsVerbs.NamedAccentIndex(), visible: static _ => SettingsVerbs.NamedAccentsShown(),
-                liveChoices: SettingsVerbs.NamedAccentChoices)),
+                liveChoices: SettingsVerbs.NamedAccentChoices),
+            // Plan D4: off (the default) the window keeps the set's exact colours; on, the artwork tints it as the theme's own options say.
+            // Shown while the mode on screen has a set. The stage, its lyrics and the deck keep the cover's colours either way.
+            Make("appearance.colours.artwork", K.Toggle, Strings.Settings.Appearance.ColoursArtwork,
+                SettingsWriter.OfToggle("colours.artwork", SettingsVerbs.SetColourArtwork), glyph: "Picture",
+                captionKey: Strings.Settings.Appearance.ColoursArtworkSub, value: _ => ColourChoice.ArtworkOn,
+                visible: static _ => ColourChoice.SpecOf(Tok.Theme) is not null)),
 
         Group("sizeAndText", Strings.Settings.Groups.Appearance.SizeAndText, null,
             // A combo, not segments: thirteen items (Auto + twelve rungs). Index 0 is "Auto (N%)" for both Auto and Dense.
@@ -197,6 +203,13 @@ public static partial class SettingsVerbs
     {
         if (index is < 0 or > 1) return false;
         ColourChoice.SetAccentSource((AccentSource)index);
+        return true;
+    }
+
+    /// <summary>"Artwork colours" while a set is active (plan D4).</summary>
+    public static bool SetColourArtwork(bool on)
+    {
+        ColourChoice.SetArtwork(on);
         return true;
     }
 

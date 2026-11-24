@@ -368,7 +368,10 @@ public sealed class ClassicStructure : IStructureLayer
             new SelectChoice<SurfaceWash>(SurfaceWash.Subtle, Strings.Settings.ThemeOptions.SurfacesSubtle),
             new SelectChoice<SurfaceWash>(SurfaceWash.Rich, Strings.Settings.ThemeOptions.SurfacesRich),
         ],
-        Picker: PickerStyle.Cards);
+        Picker: PickerStyle.Cards)
+    {
+        SetByColours = ColourOverride.Artwork,
+    };
 
     /// <summary>The layer-qualified id of <see cref="Surfaces"/> (the Settings view draws its preview cards).</summary>
     public const string SurfacesQualifiedId = "structure.surfaces";
@@ -379,7 +382,10 @@ public sealed class ClassicStructure : IStructureLayer
     /// accent reads (the search's top result) read the option.</summary>
     public static ToggleOption AccentFromArtwork { get; } = new(
         Id: "accentFromArtwork", TitleKey: Strings.Settings.ThemeOptions.AccentFromArtwork, DescriptionKey: Strings.Settings.ThemeOptions.AccentFromArtworkSub,
-        Group: Strings.Settings.ThemeOptions.Group.Surfaces, Default: true);
+        Group: Strings.Settings.ThemeOptions.Group.Surfaces, Default: true)
+    {
+        SetByColours = ColourOverride.Artwork,
+    };
 
     /// <summary>Now playing colours (CT9, U3): the fullscreen stage, its lyrics, the deck faces, the queue's now-playing chip and the now-playing
     /// cover placeholders take the playing cover's colour; off, a neutral stage and the system accent. Stored as
@@ -395,8 +401,9 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc cref="AccentFromArtworkQualifiedId"/>
     public const string NowPlayingColorsQualifiedId = "structure.nowPlayingColors";
 
-    /// <summary>Colour washes are drawn (anything but Off): what the material views and cover leaves read.</summary>
-    public static bool WashesOn(SurfaceWash surfaces) => surfaces != SurfaceWash.Off;
+    /// <summary>Colour washes are drawn (anything but Off, and the shell allows washes: a user's colour set vetoes them, #184 plan D4): what the
+    /// material views and cover leaves read. A tracked read, so a veto turning on or off re-renders the readers.</summary>
+    public static bool WashesOn(SurfaceWash surfaces) => surfaces != SurfaceWash.Off && ShellPolicy.Tracked.Artwork.Washes;
 
     /// <summary>The washes take the style's Rich strengths (Home's washes, the chrome tint).</summary>
     public static bool RichWashes(SurfaceWash surfaces) => surfaces == SurfaceWash.Rich;

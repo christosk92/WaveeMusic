@@ -35,11 +35,25 @@ public static class ColourChoice
     {
         ColourOverride.Accent => s_current.OwnsAccent && s_current.For(Tok.Theme) is not null,
         ColourOverride.Material => s_current.For(Tok.Theme) is not null,
+        ColourOverride.Artwork => VetoesArtwork,
         _ => false,
     };
 
     /// <summary>The stored named accent of <paramref name="kind"/> (empty: the set's default).</summary>
     public static string NamedAccentOf(ThemeKind kind) => Platform.Settings.Get(kind == ThemeKind.Light ? ColourKeys.AccentNameLight : ColourKeys.AccentNameDark);
+
+    /// <summary>Artwork colours while a set is active (plan D4).</summary>
+    public static bool ArtworkOn => Platform.Settings.Get(ColourKeys.Artwork);
+
+    /// <summary>True when the mode on screen has a set and "Artwork colours" is off: the theme host then publishes no washes and no artwork accent.</summary>
+    public static bool VetoesArtwork => s_current.For(Tok.Theme) is not null && !ArtworkOn;
+
+    /// <summary>"Artwork colours" (plan D4).</summary>
+    public static void SetArtwork(bool on)
+    {
+        Platform.Settings.Set(ColourKeys.Artwork, on);
+        Changed();
+    }
 
     /// <summary>The stored accent source.</summary>
     public static AccentSource AccentSource => SourceOf(Platform.Settings.Get(ColourKeys.Accent));
@@ -92,6 +106,7 @@ public static class ColourChoice
         ThemeHost.Colours = next;
         s_epoch.Value = s_epoch.Peek() + 1;
         if (moved) Apply();
+        ThemeHost.RepublishFacts();   // the artwork veto follows the pick (plan D4)
     }
 
     /// <summary>Installs the active definition for the new pair: live when only colours differ, else on the theme transaction.</summary>

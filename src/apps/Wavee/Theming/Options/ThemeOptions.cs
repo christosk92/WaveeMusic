@@ -63,6 +63,8 @@ public enum ColourOverride : byte
     Accent,
     /// <summary>The window material, while the current mode has a set (a set's mode is opaque, plan D5).</summary>
     Material,
+    /// <summary>The artwork's tint and page accent, while the current mode has a set and "Artwork colours" is off (plan D4).</summary>
+    Artwork,
 }
 
 /// <summary>One option a layer or a composition declares. Subclasses are the kinds below; the members the store needs are
