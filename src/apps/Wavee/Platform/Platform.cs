@@ -252,6 +252,8 @@ public static partial class Platform
         public static readonly SettingKey<int> TimecodeLtcLevelDb = new("timecode.ltc.levelDb", -12);
         /// <summary>The timecode offset, ms (-500..+500): added to where the music is heard, for a device whose latency is reported wrong.</summary>
         public static readonly SettingKey<int> TimecodeOffsetMs = new("timecode.offsetMs", 0);
+        /// <summary>#154: run the bundled CLX module (wavee.clx), which sends the playback timeline as CLX on this network.</summary>
+        public static readonly SettingKey<bool> TimecodeClxEnabled = new("timecode.clx.enabled", false);
         public static readonly SettingKey<bool> EqualizerEnabled = new("playback.eq.enabled", false);
         public static readonly SettingKey<string> EqualizerPreset = new("playback.eq.preset", "flat");
         public static readonly SettingKey<string> EqualizerGains = new("playback.eq.gains", "0,0,0,0,0,0,0,0,0,0");

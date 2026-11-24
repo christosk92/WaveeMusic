@@ -44,7 +44,8 @@ if (-not $NoAot) {
 $modules = @(
   @{ Id = 'wavee.youtube'; Project = 'src\apps\modules\Wavee.Module.YouTube\Wavee.Module.YouTube.csproj' },
   @{ Id = 'wavee.twitch';  Project = 'src\apps\modules\Wavee.Module.Twitch\Wavee.Module.Twitch.csproj' },
-  @{ Id = 'wavee.radio';   Project = 'src\apps\modules\Wavee.Module.Radio\Wavee.Module.Radio.csproj' }
+  @{ Id = 'wavee.radio';   Project = 'src\apps\modules\Wavee.Module.Radio\Wavee.Module.Radio.csproj' },
+  @{ Id = 'wavee.clx';     Project = 'src\apps\modules\Wavee.Module.Clx\Wavee.Module.Clx.csproj' }
 )
 
 function Step($m) { Write-Host "==> $m" -ForegroundColor Cyan }

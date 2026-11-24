@@ -641,7 +641,7 @@ public static partial class Diagnostics
                 Args = [Arg("do", ArgType.Enum, "status, or set (key=, value=: the Settings rows' own verbs)", "status", "status|set"),
                         IntArg("samples", "readings to take, every= ms apart (one reply, a `series` array when more than one)", "1", 1, 2000),
                         IntArg("every", "ms between readings", "200", 0, 60_000),
-                        Arg("key", ArgType.Enum, "with do=set: the timecode dial", null, "enabled|device|rate|start|level|offset"),
+                        Arg("key", ArgType.Enum, "with do=set: the timecode dial", null, "enabled|device|rate|start|level|offset|clx"),
                         Arg("value", ArgType.String, "with do=set: true|false, an endpoint id (headless: any), 24|25|29.97|30, 0|1, dB, ms")],
             },
             new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, customize, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); drive a Spine Shelf (shelf) or a Release Spotlight card (spotlight); acting ones settle", "home do=pin uri=spotify:album:al2")

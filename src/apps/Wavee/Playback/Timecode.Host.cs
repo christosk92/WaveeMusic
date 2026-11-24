@@ -136,6 +136,7 @@ public static partial class Playback
                         "24" => 0, "25" => 1, "29.97" or "2997" or "29.97df" or "df" => 2, "30" => 3, _ => -1,
                     });
                 case "start": return SettingsVerbs.SetTimecodeStartHour(value is "1" or "01" or "01:00:00:00" ? 1 : 0);
+                case "clx": return SettingsVerbs.SetTimecodeClx(value is "1" or "true" or "on");
                 case "level":
                     return float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float db)
                            && SettingsVerbs.SetTimecodeLevel(db);

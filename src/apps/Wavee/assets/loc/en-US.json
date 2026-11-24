@@ -2140,7 +2140,9 @@
         "statusWaiting": "Waiting for playback",
         "statusSending": "Timecode at {rate}",
         "statusOpening": "Opening the output",
-        "statusNotResponding": "Not responding"
+        "statusNotResponding": "Not responding",
+        "clx": "Send CLX on the network",
+        "clxSub": "For Clockworks-compatible software on this network (Timecode Toolbox and others): the position, the title and the artist of what plays, sent to the CLX multicast group."
       },
       "presets": {
         "flat": "Flat",

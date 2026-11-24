@@ -38,8 +38,13 @@ public static partial class Modules
     /// <summary>The fan-out's counters for the diagnostics page: notifications sent, and the observers enabled now.</summary>
     public static (long Sent, int Observers) TimelineFanOutStats => s_timeline is { } f ? (f.Sent, f.ObserverCount) : (0, 0);
 
+    /// <summary>The bundled CLX module's id: the one observer 0.4 enables, by the timecode settings' CLX switch.</summary>
+    public const string ClxModuleId = "wavee.clx";
+
     static void StartTimelineFanOut(ModuleHost host)
     {
+        TimelineObserverEnabled ??= static id => string.Equals(id, ClxModuleId, StringComparison.OrdinalIgnoreCase)
+                                                 && Platform.Settings.Get(Platform.Keys.TimecodeClxEnabled);
         for (int i = 0; i < host.Installed.Count; i++)
             if (ModuleCapabilities.Declares(host.Installed[i].Manifest, ModuleCapabilities.Timeline))
             {

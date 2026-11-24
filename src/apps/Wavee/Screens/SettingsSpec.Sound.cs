@@ -119,7 +119,12 @@ public static partial class SettingsSpec
                 captionKey: Strings.Settings.Sound.Timecode.OffsetSub,
                 value: static s => (float)Math.Clamp(s.Get(Platform.Keys.TimecodeOffsetMs), -500, 500), enabled: TimecodeOn, silent: true),
             Make("sound.timecode.status", K.Fact, Strings.Settings.Sound.Timecode.Status, SettingsWriter.ReadOnly, parent: "sound.timecode",
-                value: static _ => Playback.TimecodeOutput.StatusLine(), enabled: TimecodeOn)),
+                value: static _ => Playback.TimecodeOutput.StatusLine(), enabled: TimecodeOn),
+            // CLX (Clockworks) through the bundled observer module: independent of the LTC switch. Its caption says what leaves the PC.
+            Make("sound.timecode.clx", K.Toggle, Strings.Settings.Sound.Timecode.Clx,
+                SettingsWriter.OfToggle("timecode.clx.enabled", SettingsVerbs.SetTimecodeClx), glyph: "RadioTower",
+                captionKey: Strings.Settings.Sound.Timecode.ClxSub, value: BoolOf(Platform.Keys.TimecodeClxEnabled),
+                aliases: ["clx", "clockworks", "timecode toolbox", "showkontrol"])),
     ]);
 
     /// <summary>The streaming ladder's rungs (the metered cap offers the same ones); Lossless is offered only with a key deriver, but it is
@@ -252,6 +257,14 @@ public static partial class SettingsVerbs
 
     /// <summary>The output device's index in the roster (0 the system default, and an endpoint no longer in the roster).</summary>
     // ── Timecode (#154) ──────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>CLX on the network: starts (or stops) the bundled CLX module as a timeline observer.</summary>
+    public static bool SetTimecodeClx(bool on)
+    {
+        Platform.Settings.Set(Platform.Keys.TimecodeClxEnabled, on);
+        Modules.RefreshTimelineObservers();
+        return true;
+    }
 
     /// <summary>The switch: on only with an output chosen.</summary>
     public static bool SetTimecodeEnabled(bool on)

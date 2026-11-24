@@ -143,6 +143,12 @@ public static partial class Diagnostics
             w.WriteNumber("errorMs", Math.Round(g.ErrorFrames * 1000.0 / global::Wavee.Timecode.FramesPerSecond(g.Rate), 3));
             w.WriteNumber("relocations", g.Relocations);
             w.WriteEndObject();
+            var (sent, observers) = Modules.TimelineFanOutStats;
+            w.WriteStartObject("clx");
+            w.WriteBoolean("enabled", Platform.Settings.Get(Platform.Keys.TimecodeClxEnabled));
+            w.WriteNumber("observers", observers);
+            w.WriteNumber("notificationsSent", sent);
+            w.WriteEndObject();
         }
 
         static void WriteTap(Utf8JsonWriter w, bool live, in Playback.Timeline.Snapshot tap, long now)
