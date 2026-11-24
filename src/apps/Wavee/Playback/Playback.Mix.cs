@@ -307,10 +307,11 @@ public static partial class Playback
             long inDur = overlap;
             if (gridA && gridB)
             {
-                float pa = PeriodNear(beatsA, outStart + overlap / 2);
-                int n = (int)Math.Round(overlap / Math.Max(1f, pa));
-                n = n <= 6 ? 4 : n <= 12 ? 8 : 16;
-                inDur = (long)(n * PeriodNear(beatsB, inStart) + 0.5f);
+                // B runs over the same 4, 8 or 16 beats when the saved overlap IS that many of A's beats; otherwise (the capture's one
+                // saved pair: 2890 ms at 117 BPM, 5.6 beats) B's curves run over the overlap itself, as the official client published.
+                float beats = overlap / Math.Max(1f, PeriodNear(beatsA, outStart + overlap / 2));
+                int n = beats < 6f ? 4 : beats < 12f ? 8 : 16;
+                if (MathF.Abs(beats - n) <= 0.5f) inDur = (long)(n * PeriodNear(beatsB, inStart) + 0.5f);
             }
             if (inStart + inDur > durB) inDur = Math.Max(1, durB - inStart);
             return new MixTiming(MixSource.Saved, MixWhyNot.None, r.Preset == 0 ? (byte)MixPreset.Fade : r.Preset,
