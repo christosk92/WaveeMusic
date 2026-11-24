@@ -268,8 +268,8 @@ public readonly partial struct Playlist
             => (editable ? 1 : 0) | (recs ? 2 : 0) | (tune ? 4 : 0) | (local ? 8 : 0) | ((int)lensExtent << 4);
 
         /// <summary>The <c>FrameSlots</c> cache key: which optional slots are present.</summary>
-        public static int SlotsMask(bool editableMeta, bool daylist, bool facts, bool recs = false)
-            => (editableMeta ? 1 : 0) | (daylist ? 2 : 0) | (facts ? 4 : 0) | (recs ? 8 : 0);
+        public static int SlotsMask(bool editableMeta, bool daylist, bool facts, bool recs = false, bool status = false)
+            => (editableMeta ? 1 : 0) | (daylist ? 2 : 0) | (facts ? 4 : 0) | (recs ? 8 : 0) | (status ? 16 : 0);
     }
 
     sealed class PlaylistPage : Component
@@ -326,6 +326,10 @@ public readonly partial struct Playlist
         readonly Func<float, Element> _cover, _compactCover, _attribution, _description, _facts;
         readonly Func<float, float, Element> _title;
         readonly Func<Element> _pulse;
+        /// <summary>Local Files: a first scan is running (the head carries its line, #240 S4), and whether this page saw one run (its end is toasted once).</summary>
+        readonly Signal<bool> _firstScan = new(false);
+        bool _sawFirstScan;
+        readonly Action _watchScan;
 
         // ── row 2 (P5 Z6b1): what the band draws for this page (see the file header) ──
         Contracts.PageChromeSink _sink = Contracts.PageChromeSink.None;
@@ -365,6 +369,7 @@ public readonly partial struct Playlist
             _facts = w => User.FactsPanel(_source!, DetailKind.Playlist, _lens, w, false);
             _title = (size, lineHeight) => TitleSlot(_playlist, size, lineHeight);
             _pulse = () => DaylistStrip(_playlist, compact: true, _accent);
+            _watchScan = WatchScan;
             _syncChrome = () => _chromeIn.SetIfChanged(_chromeNext);
             _publishChrome = PublishChrome;
             _playChrome = () => { var pl = _playlist; if (pl.IsValid) DetailVerbs.PlayContext(pl.Uri)(); };
@@ -457,6 +462,9 @@ public readonly partial struct Playlist
             UseEffect(_publishChrome);
             // Another playlist on this page starts with Tune shut and nothing applying.
             UseEffect(_bindTune, DepKey.From(pl.Slot));
+            // Local Files: the first scan's line in the head while it runs, and its one summary toast when it ends (#240 S4).
+            UseEffect(_watchScan);
+            bool firstScan = _local && _firstScan.Value;
 
             if (!pl.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
@@ -487,12 +495,15 @@ public readonly partial struct Playlist
                     LensHeader = _lensHeader,
                     LensExtent = lensExtent,
                     Drawer = Track.DrawerSeam,
+                    // Local Files (#240 S4, S5): the onboarding body of an empty list, and the "4 new songs" pill over the rows.
+                    EmptyBody = _local ? LocalFilesList.EmptyBody : null,
+                    ListOverlay = _local ? LocalFilesList.PillOverlay : null,
                 };
             }
 
             bool editableMeta = pl.EditableMetadata && !_local;
             bool daylist = pl.DaylistExpiresAt > 0;
-            int slotsMask = PageRules.SlotsMask(editableMeta, daylist, facts, recs);
+            int slotsMask = PageRules.SlotsMask(editableMeta, daylist, facts, recs, firstScan);
             if (_slots is null || _slotsMask != slotsMask)
             {
                 _slotsMask = slotsMask;
@@ -507,6 +518,7 @@ public readonly partial struct Playlist
                     LikedFacts = facts ? _facts : null,
                     // The Huge aside's body (C-Playlist-Huge): the recommended songs move there from the list's tail while it is docked.
                     Aside = recs ? _recsAside : null,
+                    Status = firstScan ? LocalFilesList.ScanSlot : null,
                 };
             }
 
@@ -739,6 +751,21 @@ public readonly partial struct Playlist
                 EditableMetadata = editableMeta,
                 Empty = pl.RowsState(0) == PlaylistRowsState.Empty,
             };
+        }
+
+        /// <summary>Local Files' first scan (#240 S4): while one runs the head carries its line (a signal the render reads, so the page re-renders only on
+        /// its edges); when it ends, one toast sums it up. An auto-tracked effect: it follows the scan's progress.</summary>
+        void WatchScan()
+        {
+            if (!_local) return;
+            bool now = LocalFilesList.FirstScanNow();
+            if (now) _sawFirstScan = true;
+            else if (_sawFirstScan)
+            {
+                _sawFirstScan = false;
+                LocalFilesList.SayScanned();
+            }
+            _firstScan.Value = now;
         }
 
         void Demand()

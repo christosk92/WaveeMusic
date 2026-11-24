@@ -83,7 +83,8 @@ internal static class CommonLocalCollection
     {
         var p = hp.Page;
         var pivot = p.Pivot.Peek();
-        if (view.Version > 0 && view.Phase == LocalLibraryPhase.None && view.Songs == 0) return X.Empty(p.Verbs, hp.Gutter);
+        // No music folder: the Local Files onboarding (S4), shared with the list.
+        if (p.Onboarding() is { } onboarding) return X.Gut("lc-empty", hp.Gutter, onboarding, grow: true);
         float g = hp.Gutter;
         Element bar = Pivot(p, pivot, g);
         if (pivot == LocalPivot.Home)
@@ -126,7 +127,7 @@ internal static class CommonLocalCollection
             [
                 R.Type.PageHero(p.Title) with { Key = titleKey, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
                 X.HeroStats(view) with { Margin = new Edges4(0f, L.TitleGap, 0f, 0f) },
-                new BoxEl { Margin = new Edges4(0f, L.ChipsGap, 0f, 0f), Children = [X.Chips(view, p.Verbs, lay.ChipH)] },
+                new BoxEl { Margin = new Edges4(0f, L.ChipsGap, 0f, 0f), Children = [X.Chips(view, p.Verbs, lay.ChipH, p.FirstScan() ? p.ScanLine(float.NaN, true) : null)] },
                 Actions(p.Verbs, view, wrap: true) with { Margin = new Edges4(0f, L.ActionsGap, 0f, 0f) },
             ],
         }, top: L.HeroTop, bottom: L.HeroBottom);

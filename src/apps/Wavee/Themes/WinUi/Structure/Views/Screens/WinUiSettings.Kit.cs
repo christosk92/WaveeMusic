@@ -90,6 +90,9 @@ internal static partial class WinUiSettings
         public bool InlineFooter;
         /// <summary>A live description (a bound line: a download's progress) in place of <see cref="Description"/>: one text run relays out, nothing re-renders.</summary>
         public Prop<string>? LiveDescription;
+        /// <summary>The header row wraps: a wide control (a pair of buttons) sits beside the words while they keep <see cref="WinUiSettingsRules.WrapLabelBasis"/>,
+        /// and drops under them where they would not. ONE tree at every width (a form switch would re-parent the control and remount it).</summary>
+        public bool WrapControl;
     }
 
     /// <summary>A plain card of words and a control (a composite's own line: the census rows, the update status), the arguments of the engine's SettingsCard.</summary>
@@ -112,7 +115,7 @@ internal static partial class WinUiSettings
         var layout = s_layout;
         bool clickable = c.OnClick is not null && c.Enabled;
         bool stack = c.Form == CardForm.Vertical
-            || (c.Form == CardForm.Right && c.Control is { } ctl && layout.StacksControls && !IsToggle(ctl));
+            || (c.Form == CardForm.Right && c.Control is { } ctl && layout.StacksControls && !IsToggle(ctl) && !c.WrapControl);
 
         // The label line: the label, then the badge where the dial has one.
         var labelText = new TextEl(c.Label)
@@ -157,9 +160,17 @@ internal static partial class WinUiSettings
         head.Add(new BoxEl
         {
             Direction = 1, Gap = 1f, Grow = 1f, Basis = 0f, MinWidth = 0f,
-            Margin = new Edges4(0f, 0f, c.Control is null && !clickable ? 0f : s.HeaderMarginRight, 0f),
+            // A wrapping header's gap (between its lines) also stands between the words and the control: the margin gives it back.
+            Margin = new Edges4(0f, 0f, c.Control is null && !clickable ? 0f : s.HeaderMarginRight - (c.WrapControl ? WinUiSettingsRules.WrapLineGap : 0f), 0f),
             Children = text.ToArray(),
         });
+        if (c.WrapControl)
+        {
+            // The glyph and the words wrap as one cell, so the control is what drops to the next line.
+            var lead = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Basis = WinUiSettingsRules.WrapLabelBasis, MinWidth = 0f, Children = head.ToArray() };
+            head.Clear();
+            head.Add(lead);
+        }
 
         Element? control = c.Control is { } content
             ? new BoxEl
@@ -191,7 +202,11 @@ internal static partial class WinUiSettings
                 Children = [new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = head.ToArray() }, control.Value],
             };
         else
-            body = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = head.ToArray() };
+            body = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Wrap = c.WrapControl, Gap = c.WrapControl ? WinUiSettingsRules.WrapLineGap : 0f,
+                Children = head.ToArray(),
+            };
 
         var inner = new BoxEl
         {

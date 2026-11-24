@@ -1,0 +1,308 @@
+// ── Playback/LocalLibrary.Restate.cs ────────────────────────────────────────────────────────────────────────────────
+// the index -> the Local Files list: every indexed audio file as a stable row (D13), the membership in album order, the
+// path map the audio pump reads, and what changed this session
+//
+// Role: SHELL (UI thread for the staging; one background thread builds the faces; any thread for PathOf)
+// Spec: C:\WAVEE\fgpu\handoff\request-plans\240-local-playlist-files-implementation.md §3.7 step 1 and step 3, §3.10, D13;
+//       240-local-files-ux.md S4-S6
+//
+// IDENTITY (D13). A file in a music folder is `wavee:local:file:~<LocalId>`: the id the index keeps across moves and renames,
+// so a moved file keeps its row, its place in the queue and anything attached to it. `~` is outside the base64url alphabet, so
+// it never collides with a dropped file's path form (`wavee:local:file:<base64url(path)>`, unchanged); both are Track rows.
+//
+// THE PASS. When the index's Version moves (at most once a second while a scan commits, at once otherwise): a background thread
+// takes the snapshot and builds one face per audio entry (title, artists, album, length, unavailable, a hash of all of it);
+// the UI thread then stages only the faces whose hash changed, 2,000 rows per frame (a 50,000-file first pass is 25 commits
+// over 25 frames, never one long frame), replaces the Local Files membership (indexed files by album artist, album, disc,
+// track, title; then any session-dropped file), and rebuilds the path map. Missing files stay listed and unavailable (S6);
+// files of an offline folder stay listed and unavailable (S7); video entries never enter the list (D19).
+//
+// WHAT CHANGED (S5). After the first pass (the baseline) every later pass counts added, moved, missing, back and changed
+// files for the session; new ids keep a "New" mark and moved ids remember where they were, for the session.
+//
+// PATH MAP. `PathOf(EntityId)` is what `Playback.Audio.LocalPath` calls on the pump: one probe of an EntityId -> LocalId map
+// under a lock (filled here on the UI thread from the committed rows, so the pump never reads id text), then the index's
+// full path; a dropped file falls back to its path form.
+
+using System.Globalization;
+using System.Text;
+
+namespace Wavee;
+
+public static partial class LocalLibrary
+{
+    /// <summary>The id prefix of an indexed file (D13).</summary>
+    public const string IdPrefix = Playlist.LocalFilePrefix + "~";
+
+    /// <summary>The uri of an indexed file's row. PURE.</summary>
+    public static string UriOf(long localId) => IdPrefix + localId.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>The LocalId inside an indexed file's uri. PURE.</summary>
+    public static bool TryLocalIdOf(ReadOnlySpan<char> uri, out long localId)
+    {
+        localId = 0;
+        return uri.StartsWith(IdPrefix, StringComparison.Ordinal)
+               && long.TryParse(uri[IdPrefix.Length..], NumberStyles.None, CultureInfo.InvariantCulture, out localId) && localId > 0;
+    }
+
+    /// <summary>What changed since the app opened (S5): counted after the first pass.</summary>
+    public readonly record struct SessionChanges(int Added, int Moved, int Missing, int Back, int Changed)
+    {
+        public int Total => Added + Moved + Missing + Back + Changed;
+    }
+
+    /// <summary>The session's changes (UI thread).</summary>
+    public static SessionChanges Changes { get; private set; }
+
+    /// <summary>The last pass's changes alone (UI thread): what the "Updated · +4" chip and the "4 new songs" pill announce.</summary>
+    public static SessionChanges LastChanges { get; private set; }
+
+    /// <summary>Moves (UI thread) after every pass that changed a row; the page's pill and the chip read <see cref="LastChanges"/>.</summary>
+    public static readonly FluentGpu.Signals.Signal<int> Restated = new(0);
+
+    static readonly HashSet<long> s_new = new();
+    static readonly Dictionary<long, string> s_movedFrom = new();
+
+    /// <summary>Was this file added while the app was open (the "New" tag, S5)? UI thread.</summary>
+    public static bool IsNew(long localId) => s_new.Contains(localId);
+
+    /// <summary>Where a file moved from this session ("Moved from …" in File info, S5), or null. UI thread.</summary>
+    public static string? MovedFrom(long localId) => s_movedFrom.TryGetValue(localId, out string? from) ? from : null;
+
+    /// <summary>One row as the list shows it.</summary>
+    sealed record Face(long LocalId, string Title, string Artists, string Album, string SortArtist, int Disc, int Track, int DurationMs,
+                       bool Unavailable, LocalState State, string FullPath, ulong Hash);
+
+    sealed record Pass(int Version, List<Face> Faces, Dictionary<int, Counts> Counts, int Albums);
+
+    // UI thread
+    static readonly Dictionary<long, Face> s_staged = new();
+    static int s_restatedVersion = -1, s_wantedVersion = -1;
+    static bool s_restating, s_baselined;
+    static long s_lastRestateStart;
+
+    // any thread
+    static readonly Lock s_pathGate = new();
+    static Dictionary<EntityId, long> s_pathMap = new();
+
+    /// <summary>The file a track id plays from, or null: an indexed file through the path map (one probe under a lock, no id
+    /// text read), a dropped file through its path form. ANY THREAD (the audio pump).</summary>
+    public static string? PathOf(EntityId id)
+    {
+        long localId;
+        lock (s_pathGate) { if (!s_pathMap.TryGetValue(id, out localId)) localId = 0; }
+        return localId != 0 ? PathOf(localId) : Playlist.LocalPathOf(id);
+    }
+
+    /// <summary>The indexed length of a local track, or 0. Any thread.</summary>
+    public static int DurationMsOf(EntityId id)
+    {
+        long localId;
+        lock (s_pathGate) { if (!s_pathMap.TryGetValue(id, out localId)) return 0; }
+        return s_index.TryGet(localId, out LocalEntry? e) ? Math.Max(0, e.Tags.DurationMs) : 0;
+    }
+
+    /// <summary>UI thread, from the progress post: start a pass when the index moved (at most once a second while a scan runs).</summary>
+    static void MaybeRestate()
+    {
+        if (!s_attached && !s_fixture) return;
+        int version = s_index.Version;
+        if (version == s_restatedVersion || s_restating) { s_wantedVersion = version; return; }
+        long now = Environment.TickCount64;
+        if (Scanning && now - s_lastRestateStart < 1000) { s_wantedVersion = version; return; }   // the next progress post retries
+        s_restating = true;
+        s_lastRestateStart = now;
+        new Thread(() =>
+        {
+            Pass pass = BuildPass();
+            Playback.ToUi(() => BeginStaging(pass));
+        })
+        { IsBackground = true, Name = "Wavee.LocalLibrary.Restate", Priority = ThreadPriority.BelowNormal }.Start();
+    }
+
+    /// <summary>Synchronous pass (the inspector's fixtures: no thread, the list is right on the next frame). UI thread.</summary>
+    static void RestateNow()
+    {
+        Pass pass = BuildPass();
+        s_restating = true;
+        BeginStaging(pass, chunked: false);
+    }
+
+    /// <summary>Background: one face per audio entry, in list order.</summary>
+    static Pass BuildPass()
+    {
+        int version = s_index.Version;
+        LocalEntry[] entries = s_index.Snapshot();
+        (Dictionary<int, Counts> counts, int albums) = CountPass(entries);
+        var offlineRoots = new HashSet<int>();
+        foreach (LocalRoot r in s_index.Roots())
+            if (StateOf(r.Path) is LocalRootState.Offline or LocalRootState.SignInNeeded) offlineRoots.Add(r.RootId);
+        var faces = new List<Face>(entries.Length);
+        foreach (LocalEntry e in entries)
+        {
+            if (e.Tags.Kind != LocalKind.Audio) continue;   // videos are indexed for later (D19), never listed
+            LocalTagSet t = e.Tags;
+            string artists = Playlist.LocalArtistLine(in t);
+            string sortArtist = t.AlbumArtist.Length > 0 ? t.AlbumArtist : t.FirstArtist;
+            bool unavailable = !e.Playable || e.State == LocalState.Missing || offlineRoots.Contains(e.RootId);
+            string full = s_index.FullPathOf(e) ?? e.RelativePath;
+            ulong hash = HashFace(e.MatchTitle, artists, t.Album, t.DurationMs, unavailable, e.State);
+            faces.Add(new Face(e.LocalId, e.MatchTitle, artists, t.Album, sortArtist, t.DiscNumber, t.TrackNumber, t.DurationMs, unavailable, e.State, full, hash));
+        }
+        faces.Sort(static (a, b) =>
+        {
+            int c = string.Compare(a.SortArtist, b.SortArtist, StringComparison.OrdinalIgnoreCase);
+            if (c == 0) c = string.Compare(a.Album, b.Album, StringComparison.OrdinalIgnoreCase);
+            if (c == 0) c = a.Disc.CompareTo(b.Disc);
+            if (c == 0) c = a.Track.CompareTo(b.Track);
+            if (c == 0) c = string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase);
+            return c != 0 ? c : a.LocalId.CompareTo(b.LocalId);
+        });
+        return new Pass(version, faces, counts, albums);
+    }
+
+    static ulong HashFace(string title, string artists, string album, int durationMs, bool unavailable, LocalState state)
+    {
+        var h = new System.IO.Hashing.XxHash3();
+        h.Append(System.Runtime.InteropServices.MemoryMarshal.AsBytes(title.AsSpan()));
+        h.Append([0]);
+        h.Append(System.Runtime.InteropServices.MemoryMarshal.AsBytes(artists.AsSpan()));
+        h.Append([0]);
+        h.Append(System.Runtime.InteropServices.MemoryMarshal.AsBytes(album.AsSpan()));
+        Span<int> tail = [durationMs, unavailable ? 1 : 0, (int)state];
+        h.Append(System.Runtime.InteropServices.MemoryMarshal.AsBytes(tail));
+        return h.GetCurrentHashAsUInt64();
+    }
+
+    /// <summary>UI thread: diff against what is staged, count the session's changes, then stage the changed rows in chunks.</summary>
+    static void BeginStaging(Pass pass, bool chunked = true)
+    {
+        var changed = new List<Face>();
+        int added = 0, moved = 0, missing = 0, back = 0, edited = 0;
+        var seen = new HashSet<long>();
+        foreach (Face f in pass.Faces)
+        {
+            seen.Add(f.LocalId);
+            if (!s_staged.TryGetValue(f.LocalId, out Face? old))
+            {
+                changed.Add(f);
+                if (s_baselined) { added++; s_new.Add(f.LocalId); }
+                continue;
+            }
+            if (s_baselined && !string.Equals(old.FullPath, f.FullPath, StringComparison.OrdinalIgnoreCase))
+            {
+                moved++;
+                s_movedFrom.TryAdd(f.LocalId, old.FullPath);
+            }
+            if (old.Hash == f.Hash) { if (!ReferenceEquals(old, f)) s_staged[f.LocalId] = f; continue; }
+            changed.Add(f);
+            if (!s_baselined) continue;
+            if (f.State == LocalState.Missing && old.State != LocalState.Missing) missing++;
+            else if (f.State != LocalState.Missing && old.State == LocalState.Missing) back++;
+            else edited++;
+        }
+        var gone = new List<long>();
+        foreach (long id in s_staged.Keys) if (!seen.Contains(id)) gone.Add(id);
+        foreach (long id in gone) s_staged.Remove(id);
+        if (s_baselined && added + moved + missing + back + edited > 0)
+        {
+            LastChanges = new SessionChanges(added, moved, missing, back, edited);
+            SessionChanges c = Changes;
+            Changes = new SessionChanges(c.Added + added, c.Moved + moved, c.Missing + missing, c.Back + back, c.Changed + edited);
+        }
+        else if (s_baselined) LastChanges = default;
+        s_baselined = true;
+        if (!chunked) { StageChunk(changed, 0, changed.Count); FinishPass(pass, changed.Count > 0 || gone.Count > 0); return; }
+        StageNext(pass, changed, 0, changed.Count > 0 || gone.Count > 0);
+    }
+
+    static void StageNext(Pass pass, List<Face> changed, int from, bool any)
+    {
+        const int chunk = 2000;
+        int to = Math.Min(changed.Count, from + chunk);
+        StageChunk(changed, from, to);
+        if (to < changed.Count) { Playback.ToUi(() => StageNext(pass, changed, to, any)); return; }
+        FinishPass(pass, any);
+    }
+
+    /// <summary>Stage rows [from, to) in one commit, the way <c>ImportLocalFile</c> stages a dropped file.</summary>
+    static void StageChunk(List<Face> faces, int from, int to)
+    {
+        if (to <= from) return;
+        var scope = Entities.Current;
+        var staging = Staging.Rent();
+        staging.Epoch = scope.Epoch;
+        for (int i = from; i < to; i++)
+        {
+            Face f = faces[i];
+            string uri = UriOf(f.LocalId);
+            ref var row = ref staging.Tracks.RowFor(new StagedId(staging.AddText(Encoding.UTF8.GetBytes(uri))), Authority.Local,
+                (uint)(TrackFields.Identity | TrackFields.Availability));
+            row.Title = staging.AddText(Encoding.UTF8.GetBytes(f.Title));
+            if (f.Artists.Length > 0) row.ArtistLine = staging.AddText(Encoding.UTF8.GetBytes(f.Artists));
+            row.DurationMs = Math.Max(0, f.DurationMs);
+            row.Flags = (uint)(TrackFlags.Local | (f.Unavailable ? TrackFlags.Unavailable : 0));
+            Playlist.NoteLocalNames(uri, f.Artists, f.Album);
+            s_staged[f.LocalId] = f;
+        }
+        Entities.Commit(staging);
+        Staging.Return(staging);
+    }
+
+    /// <summary>Replace the Local Files membership (indexed files in album order, then session-dropped ones) and the path map.</summary>
+    static void FinishPass(Pass pass, bool any)
+    {
+        s_counts = pass.Counts;
+        Volatile.Write(ref s_albums, pass.Albums);
+        try
+        {
+            var scope = Entities.Current;
+            var slots = new List<int>(pass.Faces.Count + 16);
+            var map = new Dictionary<EntityId, long>(pass.Faces.Count);
+            foreach (Face f in pass.Faces)
+            {
+                if (!scope.Tracks.TryGetSlot(UriOf(f.LocalId).AsSpan(), out int slot)) continue;
+                slots.Add(slot);
+                map[new Track(slot).Id] = f.LocalId;
+            }
+            lock (s_pathGate) s_pathMap = map;
+            Playlist.EnsureLocalFilesHeader();
+            var local = Playlist.LocalFiles;
+            var e = scope.Edges.PlaylistTracks;
+            // A session-dropped file (its path form) stays after the indexed files; an old indexed row that left the index goes.
+            foreach (int member in e.Targets(local.Slot))
+            {
+                string text = new Track(member).Uri.Text;
+                if (text.StartsWith(Playlist.LocalFilePrefix, StringComparison.Ordinal) && !text.StartsWith(IdPrefix, StringComparison.Ordinal)) slots.Add(member);
+            }
+            if (any || e.State(local.Slot) != EdgeState.Complete || !SameMembers(e.Targets(local.Slot), slots))
+            {
+                int addedAt = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var payload = new PlaylistTrackEdge[slots.Count];
+                ReadOnlySpan<PlaylistTrackEdge> old = e.Payload(local.Slot);
+                ReadOnlySpan<int> oldTargets = e.Targets(local.Slot);
+                var oldAt = new Dictionary<int, PlaylistTrackEdge>(oldTargets.Length);
+                for (int i = 0; i < oldTargets.Length && i < old.Length; i++) oldAt[oldTargets[i]] = old[i];
+                for (int i = 0; i < slots.Count; i++)
+                    payload[i] = oldAt.TryGetValue(slots[i], out PlaylistTrackEdge kept) ? kept : new PlaylistTrackEdge(default, addedAt, 0, 0, 0, 0, 0);
+                e.Replace(local.Slot, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(slots), payload, EdgeState.Complete, slots.Count);
+                local.Refold();
+            }
+            Entities.Publish();
+        }
+        finally
+        {
+            s_restatedVersion = pass.Version;
+            s_restating = false;
+            if (any) Restated.Value++;
+        }
+        if (s_wantedVersion != s_restatedVersion && s_wantedVersion >= 0) MaybeRestate();
+    }
+
+    static bool SameMembers(ReadOnlySpan<int> current, List<int> wanted)
+    {
+        if (current.Length != wanted.Count) return false;
+        for (int i = 0; i < current.Length; i++) if (current[i] != wanted[i]) return false;
+        return true;
+    }
+}

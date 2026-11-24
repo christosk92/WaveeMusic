@@ -1,5 +1,5 @@
 // ── Screens/Diagnostics.Inspect.LocalScan.cs ────────────────────────────────────────────────────────────────────────
-// the local library in the inspector (#240): `state kind=music-folders value=none|scanning|ready|offline` seeds the music
+// the local library in the inspector (#240): `state kind=music-folders value=none|scanning|ready|offline|changed` seeds the music
 // folders and the index in memory; `localscan path=<folder>` runs the real scanner on a folder against a private index
 //
 // Role: SHELL (UI thread; the verb blocks the server while it scans, like `perf`)
@@ -15,11 +15,11 @@ public static partial class Diagnostics
 {
     public sealed partial class InspectSession
     {
-        /// <summary>`state kind=music-folders value=none|scanning|ready|offline`.</summary>
+        /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing`.</summary>
         string MusicFoldersState(int id, string name, Inspect.Args a)
         {
             string v = a.Has("value") ? a.Str("value").ToLowerInvariant() : "ready";
-            if (v is not ("none" or "scanning" or "ready" or "offline")) return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline, not '" + v + "'");
+            if (v is not ("none" or "scanning" or "ready" or "offline" or "changed" or "missing" or "listing")) return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline|changed|missing|listing, not '" + v + "'");
             LocalLibrary.InspectFixture(v);
             LocalCollectionFixture.Fill(v);   // #240 P2-page: the "On this PC" collection on top (albums, years, formats)
             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
@@ -35,6 +35,8 @@ public static partial class Diagnostics
                 w.WriteNumber("cloud", LocalLibrary.Index.CloudOnlyCount);
                 LocalMatchResult m = LocalLibrary.Index.Match("Says", "Nils Frahm", "Spaces", 211);
                 w.WriteString("matchSays", m.Entry is { } e ? "tier" + m.Tier + " id=" + e.LocalId : "none");
+                w.WriteBoolean("firstScan", LocalLibrary.FirstScanRunning);
+                w.WriteNumber("songs", LocalLibrary.SongCount);
             });
         }
 

@@ -38,6 +38,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Zune;
@@ -351,7 +352,8 @@ internal static class ZuneTrackTable
         var line = new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
-            Children = [new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] }, film, lone],
+            // Local Files' session mark ("new", "moved", #240 S5) after the title: mounted only on a marked row.
+            Children = [new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title, marquee] }, CommonLocalFiles.RowTag(r), film, lone],
         };
         var column = new BoxEl
         {

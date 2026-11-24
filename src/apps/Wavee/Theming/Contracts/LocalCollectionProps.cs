@@ -140,6 +140,12 @@ public sealed record LocalCollectionPageProps
     /// <summary>The Songs pivot: the existing track table over the Local Files list, unchanged.</summary>
     public required Func<Element> Songs { get; init; }
     public required LocalCollectionVerbs Verbs { get; init; }
+    /// <summary>The body with no music folder (the shared Local Files onboarding, S4), or null while the library has folders. Tracked.</summary>
+    public required Func<Element?> Onboarding { get; init; }
+    /// <summary>A first scan is running (the hero carries <see cref="ScanLine"/> instead of the activity line). Tracked.</summary>
+    public required Func<bool> FirstScan { get; init; }
+    /// <summary>The first scan's line and bar (the shared `LocalFiles.Scan` view), at a width (NaN: its own) and on one line or two.</summary>
+    public required Func<float, bool, Element> ScanLine { get; init; }
     /// <summary>"On this PC".</summary>
     public required string Title { get; init; }
     public required string RouteKey { get; init; }

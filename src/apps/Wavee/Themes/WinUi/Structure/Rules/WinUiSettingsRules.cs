@@ -258,6 +258,29 @@ internal static class WinUiSettingsRules
     /// <summary>W17's budget meter and the gap between its lines.</summary>
     public const float BudgetMeterWidth = 300f, BudgetGap = 6f;
 
+    // ── Music on this PC (#240 S3; board boards240/Main "1 · Settings › Storage › Music on this PC") ──
+
+    /// <summary>A card whose header wraps its control (<c>Card.WrapControl</c>): the glyph and the words keep this much beside it before it drops under them, and the gap
+    /// between the two lines.</summary>
+    public const float WrapLabelBasis = 240f, WrapLineGap = 8f;
+
+    /// <summary>A folder row: 52 tall (the empty sentence reserves the same), its state mark's 20-DIP cell and 16-DIP mark, the path column, the
+    /// row's 13-DIP type and the stacked (Compact) form's line gap.</summary>
+    public const float MusicRowHeight = 52f, MusicMarkCell = 20f, MusicMarkSize = 16f, MusicPathWidth = 300f, MusicTextSize = 13f, MusicStackGap = 2f;
+
+    /// <summary>The row's "⋯" and "✕" buttons (32 square; the Compact target lifts them to 40) and their glyphs.</summary>
+    public const float MusicIconButton = 32f, MusicMoreGlyph = 16f, MusicRemoveGlyph = 12f;
+
+    /// <summary>The status row under the folders: 64 tall, the time-left aside's 12-DIP type, the bar's width (Compact a narrower one) and its gap under
+    /// the line.</summary>
+    public const float MusicStatusHeight = 64f, MusicAsideSize = 12f, MusicBarWidth = 320f, MusicBarWidthCompact = 200f, MusicBarGap = 8f;
+
+    /// <summary>"Scanned 2 minutes ago" re-reads its age this often.</summary>
+    public const float MusicAgoTickMs = 30_000f;
+
+    /// <summary>The folder path's face (the board's monospace path).</summary>
+    public const string MusicPathFont = "Cascadia Mono";
+
     // ── Privacy & diagnostics ──
 
     /// <summary>A saved report's row: its height, the kind dot, the stacked stamp and id, and the fixed columns.</summary>

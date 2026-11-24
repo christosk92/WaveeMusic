@@ -71,8 +71,9 @@ public static class LocalCollectionFixture
     /// <summary>Add the collection to the seeded fixture index (after <see cref="LocalLibrary.InspectFixture"/>).</summary>
     public static void Fill(string value)
     {
-        Volatile.Write(ref s_seeded, value != "none");
-        if (value == "none") return;
+        // "listing" is a first scan before anything is indexed: nothing to add.
+        Volatile.Write(ref s_seeded, value is not ("none" or "listing"));
+        if (value is "none" or "listing") return;
         var index = LocalLibrary.Index;
         long now = DateTime.UtcNow.Ticks;
         long id = 1000;

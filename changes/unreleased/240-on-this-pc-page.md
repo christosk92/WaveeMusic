@@ -2,7 +2,7 @@
 kind: changed
 issues: []
 contract: additive
-contract-note: "ViewKeys.LocalCollectionPage (Pages.LocalCollection) and LocalCollectionPageProps with its view records (LocalCollectionView, LocalAlbumCard, LocalArtistCard, LocalFolderNode, LocalSongItem, LocalShelfGroup, LocalDecade, LocalFolderChip, LocalShare, LocalInsights, LocalCollectionVerbs) and enums (LocalPivot, LocalAlbumSort, LocalLibraryPhase, LocalChipState, LocalAddedWhen)"
+contract-note: "ViewKeys.LocalCollectionPage (Pages.LocalCollection) and LocalCollectionPageProps with its view records (LocalCollectionView, LocalAlbumCard, LocalArtistCard, LocalFolderNode, LocalSongItem, LocalShelfGroup, LocalDecade, LocalFolderChip, LocalShare, LocalInsights, LocalCollectionVerbs) and enums (LocalPivot, LocalAlbumSort, LocalLibraryPhase, LocalChipState, LocalAddedWhen); the props carry the Local Files onboarding, first-scan flag and scan line as delegates"
 ---
 **Local Files is now "On this PC", a page for your own collection.** The sidebar's Local Files opens a page built from
 your music folders: a hero with a mosaic of your album covers, the collection's numbers (songs, albums, artists, hours,

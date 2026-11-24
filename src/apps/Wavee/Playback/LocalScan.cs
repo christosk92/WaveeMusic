@@ -52,6 +52,8 @@ public sealed class LocalScanStats
     public bool Offline, Complete, Cancelled, ExtdFallback;
     public string Reach = "", Journal = "";
     public int FoldersListed, FoldersSkipped, FoldersFailed, FoldersGone, DirtyFolders;
+    public int ToRead;
+    public long StartedTicks, FinishedTicks;
     public int FilesSeen, FilesRead, FilesUnchanged, MovesPaired, MovesById, MovedOutside, PairedAfterRead, MissingMarked, Reappeared,
         CloudOnly, Errors, Purged, JournalRecords, ListWorkers, ReadWorkers;
     public long BytesRead;
@@ -82,6 +84,14 @@ public sealed partial class LocalScan
     readonly HashSet<string> _removed = new(StringComparer.OrdinalIgnoreCase);
     readonly AutoResetEvent _wake = new(false);
     Thread? _thread;
+    LocalScanStats? _current;
+    string? _currentRoot;
+
+    /// <summary>The running scan's live numbers (null when idle) and its folder. Read on any thread; the numbers move.</summary>
+    public (LocalScanStats? Stats, string? Root) Current
+    {
+        get { lock (_gate) return (_current, _currentRoot); }
+    }
     string? _running;
     int _foldersDone, _filesRead, _busy;
 
@@ -94,6 +104,9 @@ public sealed partial class LocalScan
     public ConcurrentDictionary<string, LocalScanStats> Last { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public LocalScan(LocalIndex index) => _index = index;
+
+    /// <summary>How long a missing file is kept after a complete walk (the "Keep missing songs for" setting).</summary>
+    public Func<TimeSpan> MissingGrace { get; set; } = static () => LocalIndex.MissingGrace;
 
     public LocalIndex Index => _index;
     /// <summary>Folders committed since the façade started (progress counter).</summary>
@@ -201,7 +214,18 @@ public sealed partial class LocalScan
     public LocalScanStats ScanRoot(string rootPath, bool startup, IReadOnlyCollection<string>? dirty)
     {
         var total = Stopwatch.StartNew();
-        var stats = new LocalScanStats { Mode = dirty is not null ? "dirty" : startup ? "startup" : "full" };
+        var stats = new LocalScanStats { Mode = dirty is not null ? "dirty" : startup ? "startup" : "full", StartedTicks = DateTime.UtcNow.Ticks };
+        lock (_gate) { _current = stats; _currentRoot = rootPath; }
+        try { return ScanRootCore(rootPath, startup, dirty, stats, total); }
+        finally
+        {
+            stats.FinishedTicks = DateTime.UtcNow.Ticks;
+            lock (_gate) { if (ReferenceEquals(_current, stats)) { _current = null; _currentRoot = null; } }
+        }
+    }
+
+    LocalScanStats ScanRootCore(string rootPath, bool startup, IReadOnlyCollection<string>? dirty, LocalScanStats stats, Stopwatch total)
+    {
         long ioStart = ProcessReadBytes();
         LocalRoot root = RootFor(rootPath);
         stats.RootId = root.RootId;
@@ -262,7 +286,7 @@ public sealed partial class LocalScan
                     _index.SetRoot(root with { VolumeSerial = volume.Serial, JournalId = journalId, NextUsn = journalNext, LastWalkTicks = DateTime.UtcNow.Ticks });
                 else if (stats.FoldersFailed == 0)
                     _index.SetRoot(root with { VolumeSerial = volume.Serial, JournalId = 0, NextUsn = 0, LastWalkTicks = DateTime.UtcNow.Ticks });
-                if (stats.Complete) stats.Purged = _index.PurgeMissing(root.RootId, DateTime.UtcNow.Ticks - LocalIndex.MissingGrace.Ticks);
+                if (stats.Complete) stats.Purged = _index.PurgeMissing(root.RootId, DateTime.UtcNow.Ticks - MissingGrace().Ticks);
             }
             RootState?.Invoke(rootPath, reach == LocalRootState.Online ? LocalRootState.Online : reach);
         }
@@ -613,6 +637,7 @@ public sealed partial class LocalScan
                 }
                 var work = new FolderWork(batch, dir.AddRef(), toRead.Count);
                 Interlocked.Increment(ref _outstanding);   // the folder stays open until its last read commits it
+                Interlocked.Add(ref stats.ToRead, toRead.Count);
                 foreach (var r in toRead) _reads.Enqueue(new ReadJob(work, r.File, r.Rel, r.Id, r.Previous));
                 _readSignal.Release(Math.Min(toRead.Count, _readWorkers));
             }

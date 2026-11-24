@@ -11,8 +11,9 @@
 //   · hands the theme the Songs pivot as the existing track table over the Local Files list (`wavee:local:playlist:all`), embedded,
 //     exactly the profile the playlist page's local arm used (no heart, no recommendations), settled locally like that arm did;
 //   · publishes row 2 (the pivots as views; Play, Shuffle and "Add music" as actions) for a band that draws it (Zune).
-// Play and Shuffle play the Local Files list; an album, an artist, a decade or a folder plays its own files, by their
-// `wavee:local:file:` rows (a file the restate has not staged yet is staged the way a dropped file is: `Playlist.ImportLocalFile`).
+// Play and Shuffle play the Local Files list; an album, an artist, a decade or a folder plays its own files, by the rows P2-data's
+// restate stages for them (`wavee:local:file:~<LocalId>`, `LocalLibrary.UriOf`). The empty list's onboarding (S4), the first scan's
+// line and its toast, and the "N new songs" pill (S5) are the Local Files list's own (`LocalFilesList`), hosted here unchanged.
 
 using System.Runtime.InteropServices;
 using FluentGpu.Dsl;
@@ -40,8 +41,13 @@ public static class LocalCollectionPage
 
     sealed record PageProps(string RouteKey);
 
+    /// <summary>The playlist page's Local Files profile, unchanged: no heart, no recommendations, the drawer, and P2-data's empty body (S4) and the "N new
+    /// songs" pill (S5).</summary>
     static readonly Track.TableProfile s_songsProfile = Track.TableProfile.From(Detail.Config.Playlist with { Heart = HeartMode.None, Recommendations = false })
-        with { Drawer = Track.DrawerSeam };
+        with { Drawer = Track.DrawerSeam, EmptyBody = LocalFilesList.EmptyBody, ListOverlay = LocalFilesList.PillOverlay };
+
+    /// <summary>The Local Files onboarding body while there is no music folder (its `EmptyBody` answers it then), else null. Tracked.</summary>
+    static readonly Func<Element?> s_onboarding = static () => { _ = LocalLibrary.Epoch.Value; return LocalFilesList.Onboarding ? LocalFilesList.EmptyBody() : null; };
 
     static LocalPivot PivotOf(string name) => Enum.TryParse(name, ignoreCase: true, out LocalPivot p) ? p : LocalPivot.Home;
 
@@ -56,7 +62,8 @@ public static class LocalCollectionPage
         readonly Action<string> _openFolder;
         readonly Func<Element> _songs;
         readonly LocalCollectionVerbs _verbs;
-        readonly Action _refold, _settle, _publishChrome, _withdrawChrome;
+        readonly Action _refold, _settle, _publishChrome, _withdrawChrome, _watchScan;
+        bool _sawFirstScan;
         PageChromeSink _sink = PageChromeSink.None;
         PageChromeRow? _chromeRow;
         LocalCollectionPageProps? _props;
@@ -78,8 +85,18 @@ public static class LocalCollectionPage
             _refold = static () =>
             {
                 _ = LocalLibrary.Epoch.Value;
+                _ = LocalLibrary.Restated.Value;
                 _ = LocalArt.Epoch.Value;
                 LocalCollection.Request();
+            };
+            // The end of a first scan is toasted once (S4), as the Local Files list did.
+            _watchScan = () =>
+            {
+                bool now = LocalFilesList.FirstScanNow();
+                if (now) { _sawFirstScan = true; return; }
+                if (!_sawFirstScan) return;
+                _sawFirstScan = false;
+                LocalFilesList.SayScanned();
             };
             _settle = SettleLocalFiles;
             _publishChrome = () => _sink.Publish(_chromeRow);
@@ -88,7 +105,7 @@ public static class LocalCollectionPage
             {
                 PlayAll = static () => PlayList(shuffle: false),
                 Shuffle = static () => PlayList(shuffle: true),
-                AddMusic = static () => InContextDoors.OpenSettings("storage"),
+                AddMusic = static () => InContextDoors.OpenSettings("storage.music.folders"),
                 PlayAlbum = static key => PlayFiles(LocalCollection.AlbumFiles(key), shuffle: false),
                 OpenAlbum = key => { foreach (var a in LocalCollection.View.Peek().Albums) if (a.Key == key) { _openFolder(a.FolderKey); return; } },
                 ShuffleArtist = static key => PlayFiles(LocalCollection.FilesWhere(e => LocalCollection.IsArtist(e, key)), shuffle: true),
@@ -105,6 +122,7 @@ public static class LocalCollectionPage
             _routeKey = p.RouteKey;
             UseEffect(_refold);
             UseEffect(_settle, DepKey.Empty);
+            UseEffect(_watchScan);
 
             // Row 2 (a band draws it; Classic and WinUI draw their own head): the pivots as views, Play, Shuffle and Add music as actions.
             _sink = UseContext(PageChromeSink.Context);
@@ -124,6 +142,9 @@ public static class LocalCollectionPage
                 OpenFolder = _openFolder,
                 Songs = _songs,
                 Verbs = _verbs,
+                Onboarding = s_onboarding,
+                FirstScan = LocalFilesList.FirstScanNow,
+                ScanLine = LocalFilesList.ScanSlot,
                 Title = Loc.Get(P.Title),
                 RouteKey = _routeKey,
             };
@@ -197,10 +218,8 @@ public static class LocalCollectionPage
         var rows = new List<EntityRef>(ids.Count);
         foreach (long id in ids)
         {
-            if (!LocalLibrary.Index.TryGet(id, out LocalEntry? entry) || LocalLibrary.Index.FullPathOf(entry) is not { } path) continue;
-            string uri = Playlist.LocalFileUri(path);
-            int slot = scope.Tracks.TryGetSlot(uri.AsSpan(), out int s) && new Track(s).IsValid ? s : Playlist.ImportLocalFile(path, entry.Tags).Slot;
-            if (slot > 0) rows.Add(new EntityRef(EntityKind.Track, slot));
+            // The restate stages every indexed file as `wavee:local:file:~<LocalId>`; a file it has not staged yet is left out.
+            if (scope.Tracks.TryGetSlot(LocalLibrary.UriOf(id).AsSpan(), out int slot) && new Track(slot).IsValid) rows.Add(new EntityRef(EntityKind.Track, slot));
         }
         if (rows.Count == 0) return;
         Playback.SetShuffle(false);

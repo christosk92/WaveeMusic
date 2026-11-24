@@ -177,7 +177,8 @@ internal static class CommonLocalCollectionParts
 
     // ── folder chips and the activity (S1 in the hero) ─────────────────────────────────────────────────────────────
 
-    public static Element Chips(LocalCollectionView v, LocalCollectionVerbs verbs, float chipH)
+    /// <param name="scanLine">A first scan's line and bar (the shared `LocalFiles.Scan` view) in place of the activity line, or null.</param>
+    public static Element Chips(LocalCollectionView v, LocalCollectionVerbs verbs, float chipH, Element? scanLine)
     {
         var kids = new List<Element>(v.Chips.Count + 3);
         foreach (var c in v.Chips) kids.Add(Chip(c, verbs.AddMusic, chipH));
@@ -191,13 +192,15 @@ internal static class CommonLocalCollectionParts
         {
             Key = "lc-activity", Direction = 0, Gap = L.ChipInner, AlignItems = FlexAlign.Center, Height = chipH, Layout = L.SizeReflow, MinWidth = 0f, Shrink = 1f,
             Margin = new Edges4(L.StatusGap - L.ChipGap, 0f, 0f, 0f),
-            Children =
-            [
-                v.Phase == LocalLibraryPhase.Scanning
-                    ? ProgressRing.Create(isActive: true, size: L.ChipGlyph)
-                    : Icon(v.Phase == LocalLibraryPhase.Offline ? Icons.Warning : Icons.Accept, L.ChipGlyph, v.Phase == LocalLibraryPhase.Offline ? Tok.SystemFillAttention : Tok.AccentTextPrimary),
-                Ell(R.Type.DenseMeta(ActivityText(v)) with { Color = Tok.TextSecondary }),
-            ],
+            Children = scanLine is not null
+                ? [scanLine]
+                :
+                [
+                    v.Phase == LocalLibraryPhase.Scanning
+                        ? ProgressRing.Create(isActive: true, size: L.ChipGlyph)
+                        : Icon(v.Phase == LocalLibraryPhase.Offline ? Icons.Warning : Icons.Accept, L.ChipGlyph, v.Phase == LocalLibraryPhase.Offline ? Tok.SystemFillAttention : Tok.AccentTextPrimary),
+                    Ell(R.Type.DenseMeta(ActivityText(v)) with { Color = Tok.TextSecondary }),
+                ],
         });
         return new BoxEl { Direction = 0, Wrap = true, Gap = L.ChipGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
@@ -823,12 +826,4 @@ internal static class CommonLocalCollectionParts
 
     static string Bytes(long b) => b >= 1L << 30 ? (b / (double)(1L << 30)).ToString("0.0", CultureInfo.CurrentCulture) + " GB"
         : (b / (double)(1L << 20)).ToString("0", CultureInfo.CurrentCulture) + " MB";
-
-    // ── the empty state (S4) ────────────────────────────────────────────────────────────────────────────────────────
-
-    public static Element Empty(LocalCollectionVerbs v, float g) => Gut("lc-empty", g, new BoxEl
-    {
-        Key = "lc-empty", Direction = 1, Grow = 1f, MinWidth = 0f,
-        Children = [Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Page, Loc.Get(P.EmptyTitle), Loc.Get(P.EmptyBody), Loc.Get(P.EmptyAction), v.AddMusic)],
-    }, grow: true);
 }

@@ -13,6 +13,8 @@
 //   Hint.Explainer         a dial's explanation badge (stand-in, phase 3)  CommonHint
 //   Settings.Dials         a feature panel's dials (stand-in, phase 3)     CommonHint
 //   Shell.RateNudge        the rate & star card over the page              RateNudgeCard
+//   LocalFiles.*           Local Files' empty state, first-scan line,      CommonLocalFiles (#240 UX S4-S6; Classic uses the WinUI layout,
+//                          "what changed" pill and missing-songs review     a structure may pass its own empty state)
 //
 // TIERS (themes plan 3.2, TC10): every block is tiered once for every theme, from the content tier and the height tier alone (`Rules\Tiers.cs`, `CommonTouch.cs`,
 // `CommonTierComponent.cs`); no theme has a board for them (owner Q18), so a block never names an edge of the ladder its theme draws.
@@ -36,7 +38,8 @@ public static class CommonBlocks
     public static void Register(ViewRegistryBuilder views, ViewTemplate<ModulePageProps>? module = null, string moduleTemplateId = "common.module.page",
         ViewTemplate<HistoryPageProps>? history = null, string historyTemplateId = "common.history",
         ViewTemplate<ExplainerProps>? explainer = null, string explainerTemplateId = "common.hint.explainer",
-        ViewTemplate<HintProps>? hint = null, string hintTemplateId = "common.hint")
+        ViewTemplate<HintProps>? hint = null, string hintTemplateId = "common.hint",
+        ViewTemplate<LocalFilesEmptyProps>? localFilesEmpty = null, string localFilesEmptyTemplateId = "common.local-files.empty")
     {
         views.Add(ViewKeys.HistoryPage, history ?? CommonHistory.Template, historyTemplateId);
         views.Add(ViewKeys.ShellFps, CommonFps.Template, "common.fps");
@@ -50,5 +53,11 @@ public static class CommonBlocks
         // The rate & star card (rate-nudge-implementation.md §5.3): one picture for Classic, WinUI and Zune, each of which reaches it through
         // its own call to this method (so no structure file names the key).
         views.Add(ViewKeys.ShellRateNudge, RateNudgeCard.Template, "common.shell.rate-nudge");
+        // Local Files' own views (#240): one picture for Classic and WinUI (Classic uses the WinUI layout); Zune passes its own empty state and shares
+        // the rest, which reads the style's roles and case.
+        views.Add(ViewKeys.LocalFilesEmpty, localFilesEmpty ?? CommonLocalFiles.Empty, localFilesEmptyTemplateId);
+        views.Add(ViewKeys.LocalFilesScan, CommonLocalFiles.Scan, "common.local-files.scan");
+        views.Add(ViewKeys.LocalFilesPill, CommonLocalFiles.Pill, "common.local-files.pill");
+        views.Add(ViewKeys.LocalFilesReview, CommonLocalFiles.Review, "common.local-files.review");
     }
 }

@@ -423,6 +423,19 @@ public static class ZuneSettingsRules
     public const float BudgetBoxWidth = 150f, BudgetMeterWidth = 300f;
     public const double BudgetPercentMax = 90, BudgetGibMin = 0.0625, BudgetGibMax = 1 << 20;
 
+    // ── Music on this PC (#240 S3) ──
+
+    /// <summary>A folder line's least height (the empty sentence holds the same), the words' column beside the path, the block's gaps (between its parts;
+    /// the status line over its bar), the bar's width.</summary>
+    public const float MusicRowH = 44f, MusicStatusW = 260f, MusicBlockGap = 12f, MusicStatusGap = 6f, MusicBarWidth = 300f;
+
+    /// <summary>A folder's options card: its width and padding.</summary>
+    public const float MusicOptionsW = 240f;
+    public static readonly Edges4 MusicOptionsPad = new(12f, 8f, 12f, 8f);
+
+    /// <summary>"scanned 2 minutes ago" re-reads its age this often.</summary>
+    public const float MusicAgoTickMs = 30_000f;
+
     // ── About, Privacy ────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The update progress line's width, the log line's tick and the receipts' tick (ms), and a minute in ms.</summary>

@@ -1,5 +1,9 @@
 // ── Themes/Zune/Structure/Views/Screens/ZuneSettings.Storage.cs — Storage's sections (themes plan 6.3, Z8b; settings rework phase 4) ─────────────────
 //
+// Music on this PC (#240 S3, the plan's §3.8 Zune wireframe): "music folders" and its sentence, a line per folder (the path as typed, wrapping; its words
+// lowercase; "options" opens the folder's card), the status line with the scan's bar, then the command words; "more options" is its two settings' rows.
+// The words are the core's (`SettingsMusic`).
+//
 // Board Z-Settings-Sections ("downloads & storage"), without its downloads (owner Q29 / NQ4: no offline playback, so no downloaded songs, no "remove all downloads"):
 // the census (the usage line and bar, the nine fixed hues) over On this PC, each census category's row (its hue, its size once the census lands, "open folder",
 // and its clear or remove where it has one), the three-mode budget editor, the cache location and the metadata cache. The census itself (the phase, the snapshot,
@@ -7,6 +11,7 @@
 // `SettingsPageProps.Storage`; the clears, the budget writes, the folder doors and the factory reset are the dials' writers.
 
 using System.Globalization;
+using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -31,6 +36,202 @@ internal static partial class ZuneSettings
         Strings.Settings.Storage.LocalStore, Strings.Settings.Storage.AudioBodies, Strings.Settings.Storage.LicenseKeys,
         Strings.Settings.Storage.ImageCache, Strings.Settings.Storage.AiModels, Strings.Settings.Storage.OtherData,
     ];
+
+    // ── Music on this PC (#240 S3; plan §3.8's Zune wireframe) ───────────────────────────────────────────────────────────────
+
+    sealed record MusicArgs(SettingsBodyRow Row, SettingsArrival Focus);
+
+    const string MusicAddDial = "storage.music.add", MusicAddDefaultDial = "storage.music.addDefault", MusicRescanDial = "storage.music.rescan";
+
+    /// <summary>"More options": its two settings as Zune's own rows (Zune draws no expanders), keyed as the options dial's row.</summary>
+    static Element MusicOptions(Paint d, SettingsBodyRow row)
+    {
+        var rows = new List<Element>(row.Children.Length);
+        foreach (var child in row.Children) DrawRow(d, child, rows);
+        return new BoxEl
+        {
+            Key = SettingsKeys.ZuneRow(row.Id), Direction = 1, Gap = Z.RowGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, OnRealized = NoteRow(row.Id),
+            Children = rows.ToArray(),
+        };
+    }
+
+    /// <summary>The music folders in Zune's voice: "music folders" and its sentence, one line per folder (the path as typed, never lowered nor shrunk:
+    /// it wraps; its words lowercase; "options" opens the folder's card: show in explorer, rescan this folder, remove), the status line with the scan's
+    /// bar, and the command words (add a folder, add my music folder, rescan now). A folder line that appears or leaves rides the drawer reveal; with no
+    /// folder the empty sentence holds one line's height.</summary>
+    sealed class MusicFoldersBlock : ZuneScreenComponent
+    {
+        readonly Dictionary<string, NodeHandle> _anchors = new(StringComparer.OrdinalIgnoreCase);
+        OverlayHandle? _handle;
+
+        public override Element Render()
+        {
+            var lay = UseLayout();
+            var k = new ZuneKit(lay);
+            var args = UseProps<MusicArgs>();
+            var row = args.Row;
+            UseEffect(() => (Action?)(() => { if (_handle is { IsOpen: true } open) open.Close(); _handle = null; }), DepKey.Empty);
+            UseActivation(onDeactivated: () => { if (_handle is { IsOpen: true } open) open.Close(); _handle = null; });
+            SettingsMusic.Track();
+            var tick = UseSignal(0);
+            UseInterval(() => tick.Value = tick.Peek() + 1, Z.MusicAgoTickMs);
+            _ = tick.Value;
+
+            var folders = SettingsMusic.Folders;
+            SettingsBodyRow? rescan = null, add = null, offer = null;
+            foreach (var child in row.Children)
+                switch (child.Id)
+                {
+                    case MusicRescanDial: rescan = child; break;
+                    case MusicAddDial: add = child; break;
+                    case MusicAddDefaultDial: offer = child; break;
+                }
+            bool composedWith = rescan is { Enabled: true };
+            bool composedOffered = offer is not null;
+            UseEffect(() => { if (SettingsMusic.Stale(composedWith, composedOffered)) Settings.Bump(); },
+                DepKey.From(folders.Count * 4 + (composedWith ? 2 : 0) + (composedOffered ? 1 : 0)));
+
+            var kids = new List<Element>(folders.Count + 4)
+            {
+                new BoxEl
+                {
+                    Key = "zs:music:head", Direction = 1, Gap = Z.LabelGap, MinWidth = 0f,
+                    Children = [LabelOf(args.Focus, row.Id, ZuneText.Label(row.Label)), ZuneText.Hint(row.Description ?? "")],
+                },
+            };
+            var list = new List<Element>(folders.Count + 1);
+            if (folders.Count == 0)
+                list.Add(Drawer("zs:music:empty", new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, MinHeight = Z.MusicRowH, MinWidth = 0f,
+                    Children = [ZuneText.Prose(Loc.Get(Strings.Settings.Music.Empty)) with { Grow = 1f }],
+                }));
+            foreach (string folder in folders) list.Add(Drawer("zs:music:folder:" + folder, FolderLine(k, SettingsMusic.Line(folder))));
+            if (_anchors.Count > folders.Count) PruneAnchors(folders);
+            kids.Add(new BoxEl { Key = "zs:music:list", Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = list.ToArray() });
+
+            var status = SettingsMusic.Status();
+            Element bar = status.Scanning && status.Fraction < 0f
+                ? ProgressBar.Indeterminate(Z.MusicBarWidth) with { Key = "zs:music:bar:busy" }
+                : ProgressBar.Determinate(Math.Max(0f, status.Fraction), Z.MusicBarWidth) with { Key = "zs:music:bar", Opacity = status.Scanning ? 1f : 0f };
+            kids.Add(new BoxEl
+            {
+                Key = "zs:music:status", Direction = 1, Gap = Z.MusicStatusGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinWidth = 0f,
+                        Children =
+                        [
+                            ZuneText.Meta(status.Text) with { Key = "zs:music:status:text", Color = status.Scanning ? Tok.TextPrimary : Tok.TextSecondary, Shrink = 1f },
+                            ZuneText.Meta(status.Aside) with { Color = Tok.TextTertiary, Shrink = 0f },
+                        ],
+                    },
+                    bar,
+                ],
+            });
+
+            var cmds = new List<Element>(3);
+            if (add is { } a) cmds.Add(k.Cmd(a.Label, RunOf(a), a.Enabled, accent: true) with { IsEnabled = a.Enabled, Key = SettingsKeys.ZuneRow(a.Id), OnRealized = NoteRow(a.Id) });
+            if (offer is { } o) cmds.Add(k.Cmd(o.Label, RunOf(o), o.Enabled) with { IsEnabled = o.Enabled, Key = SettingsKeys.ZuneRow(o.Id), OnRealized = NoteRow(o.Id) });
+            if (rescan is { } r)
+                cmds.Add(k.Cmd(r.Label, RunOf(r), r.Enabled && !status.Scanning) with { IsEnabled = r.Enabled && !status.Scanning, Key = SettingsKeys.ZuneRow(r.Id), OnRealized = NoteRow(r.Id) });
+            kids.Add(new BoxEl
+            {
+                Key = "zs:music:commands", Direction = 0, Wrap = true, Gap = Z.LinkGap, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                // The commands' padding stands their words in from the column; the row stands back so the first word sits on the column's edge.
+                Margin = new Edges4(-Z.CmdPadding.Left, 0f, 0f, 0f),
+                Children = cmds.ToArray(),
+            });
+            return new BoxEl
+            {
+                Key = SettingsKeys.ZuneRow(row.Id), Direction = 1, Gap = Z.MusicBlockGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, OnRealized = NoteRow(row.Id),
+                Children = kids.ToArray(),
+            };
+        }
+
+        /// <summary>A line in its drawer: the clip box whose presented height springs as it mounts and leaves, the lines below riding it.</summary>
+        static Element Drawer(string key, Element line) => new BoxEl
+        {
+            Key = key, Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, ClipToBounds = true, Animate = Design.Reveal.Drawer, Children = [line],
+        };
+
+        /// <summary>One folder: the path as the user typed it (the 15/20 voice, wrapping, never lowered), its words (lowercase; a state in the caution ink) and
+        /// "options". Compact stacks the words under the path.</summary>
+        Element FolderLine(ZuneKit k, SettingsMusic.FolderLine line)
+        {
+            string folder = line.Path;
+            var path = R.Type.TrackTitle(folder) with
+            {
+                Color = line.Lead is null ? Tok.TextPrimary : Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f, Grow = 1f, Shrink = 1f, Basis = 0f,
+            };
+            var words = new List<Element>(2);
+            if (line.Lead is { } lead)
+                words.Add(ZuneText.Meta(line.Rest.Length > 0 ? lead + " · " : lead) with { Color = Tok.SystemFillCaution, Shrink = 0f });
+            if (line.Rest.Length > 0) words.Add(ZuneText.Meta(line.Rest) with { Shrink = 1f });
+            bool stack = k.Lay.StacksRows;
+            var status = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = stack ? 1f : 0f, Width = stack ? float.NaN : Z.MusicStatusW,
+                Children = words.ToArray(),
+            };
+            var options = k.Cmd(Loc.Get(Strings.Settings.Music.FolderOptions), () => Open(folder, k)) with
+            {
+                Key = "zs:music:options:" + folder, OnRealized = h => _anchors[folder] = h,
+            };
+            Element text = stack
+                ? new BoxEl { Direction = 1, Gap = Z.LabelGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [path with { Grow = 0f, Basis = float.NaN }, status] }
+                : new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.RowColumnGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [path, status] };
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Z.ControlGap, MinHeight = Z.MusicRowH, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Children = [text, options],
+            };
+        }
+
+        /// <summary>The folder's options card under its "options" word (light dismiss); a second press closes it.</summary>
+        void Open(string folder, ZuneKit k)
+        {
+            if (_handle is { IsOpen: true } open) { open.Close(); return; }
+            if (SettingsContext.Overlay is not { } overlay) return;
+            var opened = overlay.Open(() => _anchors.TryGetValue(folder, out var a) ? a : NodeHandle.Null,
+                () => new BoxEl
+                {
+                    Key = "zs:music:card", Width = Z.MusicOptionsW, Direction = 1, Padding = Z.MusicOptionsPad,
+                    Children =
+                    [
+                        k.Cmd(Loc.Get(Strings.Settings.Music.ShowInExplorer), () => { Close(); SettingsVerbs.RevealMusicFolder(folder); }) with { Key = "zs:music:card:reveal" },
+                        k.Cmd(Loc.Get(Strings.Settings.Music.RescanFolder), () => { Close(); SettingsVerbs.RescanMusicFolder(folder); }) with { Key = "zs:music:card:rescan" },
+                        k.Cmd(Loc.Get(Strings.Settings.Music.Remove), () => { Close(); SettingsVerbs.RemoveMusicFolder(folder); }) with { Key = "zs:music:card:remove" },
+                    ],
+                },
+                FlyoutPlacement.BottomEdgeAlignedRight,
+                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = true });
+            _handle = opened;
+            opened.ClosedAction = () => { if (ReferenceEquals(_handle, opened)) _handle = null; };
+        }
+
+        void Close()
+        {
+            if (_handle is { IsOpen: true } open) open.Close();
+            _handle = null;
+        }
+
+        /// <summary>A removed folder's "options" handle goes; the others keep theirs (a realization callback fires once per node).</summary>
+        void PruneAnchors(IReadOnlyList<string> folders)
+        {
+            List<string>? stale = null;
+            foreach (string key in _anchors.Keys)
+            {
+                bool live = false;
+                for (int i = 0; i < folders.Count && !live; i++) live = string.Equals(folders[i], key, StringComparison.OrdinalIgnoreCase);
+                if (!live) (stale ??= []).Add(key);
+            }
+            if (stale is null) return;
+            foreach (string key in stale) _anchors.Remove(key);
+        }
+    }
 
     /// <summary>The census over On this PC: the usage line and bar once it lands, a spinner while it reads, the failure with a retry.</summary>
     static Element Census(Paint d)

@@ -77,7 +77,8 @@ internal static class ZuneLocalCollection
         var p = hp.Page;
         float g = hp.Gutter;
         var lay = hp.Lay;
-        if (view.Version > 0 && view.Phase == LocalLibraryPhase.None && view.Songs == 0) return X.Empty(p.Verbs, g);
+        // No music folder: the Local Files onboarding (S4), shared with the list.
+        if (p.Onboarding() is { } onboarding) return X.Gut("lc-empty", g, onboarding, grow: true);
         var pivot = p.Pivot.Peek();
         Element body = pivot switch
         {
@@ -132,7 +133,8 @@ internal static class ZuneLocalCollection
                 new BoxEl
                 {
                     Key = "lc-activity", Direction = 0, Gap = Z.StatusGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Margin = new Edges4(0f, Z.StatusGap, 0f, 0f),
-                    Children =
+                    // A first scan shows the shared scan line and bar (S4) where the state word stands.
+                    Children = p.FirstScan() ? [p.ScanLine(float.NaN, false)] :
                     [
                         view.Phase == LocalLibraryPhase.Scanning
                             ? ProgressRing.Create(isActive: true, size: Z.StatusDot * 2f)
