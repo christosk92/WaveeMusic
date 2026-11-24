@@ -98,7 +98,8 @@ public static partial class LocalLibrary
     public static string? PathOf(EntityId id)
     {
         // A playlist's matched spotify:local: item (D1 a): its own id, the file the index matched (LocalLibrary.Items.cs).
-        if (id.Provider == EntityProvider.Spotify) return PathOfItem(id);
+        if (id.Provider == EntityProvider.Spotify)
+            return PathOfItem(id) ?? (PlayAsOf(id) is var file and not 0 ? PathOf(file) : null);   // phase 2: a song's default file
         long localId;
         lock (s_pathGate) { if (!s_pathMap.TryGetValue(id, out localId)) localId = 0; }
         return localId != 0 ? PathOf(localId) : Playlist.LocalPathOf(id);
@@ -178,6 +179,7 @@ public static partial class LocalLibrary
         // "Your files and Spotify": what an accepted match shows in place of the file's own info (an immutable map, any thread).
         int linksVersion = LocalLink.ShownVersion;
         var shown = LocalLink.Shown;
+        var renames = LocalLink.Renames;
         LocalEntry[] entries = s_index.Snapshot();
         (Dictionary<int, Counts> counts, int albums) = CountPass(entries);
         var offlineRoots = new HashSet<int>();
@@ -192,14 +194,11 @@ public static partial class LocalLibrary
             string sortArtist = t.AlbumArtist.Length > 0 ? t.AlbumArtist : t.FirstArtist;
             bool unavailable = !e.Playable || e.State == LocalState.Missing || offlineRoots.Contains(e.RootId);
             string full = s_index.FullPathOf(e) ?? e.RelativePath;
-            // What the row shows (display only; the matching title stays the file's): an accepted match's Spotify info, else an untagged file's
-            // name split as "Artist - Title", else the tags.
-            string title = e.MatchTitle, album = t.Album;
-            string? image = null;
-            if (shown.TryGetValue(e.LocalId, out LinkTrack? link))
-                (title, artists, album, image) = (link.Title, link.Artists, link.Album, link.Cover);
-            else if (artists.Length == 0)
-                (title, artists) = LocalNames.Display(in t, e.MatchTitle);
+            // What the row shows (display only; the matching title stays the file's): the one rule, LocalNames.Face (a rename, an accepted match's
+            // Spotify info, the tags, the file name's split).
+            var face = LocalNames.Face(e, shown.TryGetValue(e.LocalId, out LinkTrack? link) ? link : null, renames.TryGetValue(e.LocalId, out LocalRename? named) ? named : null);
+            (string title, string album, string? image) = (face.Title, face.Album, face.Image);
+            artists = face.Artists;
             ulong hash = HashFace(title, artists + "\0" + (image ?? ""), album, t.DurationMs, unavailable, e.State);
             // The file's own face: what "What changed" counts (a match accepted or undone changes what a row shows, never the file).
             ulong own = HashFace(e.MatchTitle, Playlist.LocalArtistLine(in t), t.Album, t.DurationMs, unavailable, e.State);

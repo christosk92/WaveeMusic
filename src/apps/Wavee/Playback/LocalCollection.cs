@@ -101,7 +101,9 @@ public static class LocalCollection
     /// row shows (<see cref="LocalNames.Display"/>: the first artist tag, else an untagged "Artist - Title" file name's artist), else "". The rows'
     /// own rule, so a song the Songs list shows "by Nickelback" is Nickelback's here too. "Unknown artist" is a row's display fallback only
     /// (<c>Track.LocalCredit</c>): an unnamed song files under no artist and is never counted as one. Display only: matching reads the tags.</summary>
-    public static string ArtistOf(LocalEntry e) => e.Tags.AlbumArtist.Length > 0 ? e.Tags.AlbumArtist : LocalNames.Display(e.Tags, e.MatchTitle).Artist;
+    public static string ArtistOf(LocalEntry e)
+        => LocalLink.RenameOf(e.LocalId) is { Artist.Length: > 0 } named ? named.Artist
+           : e.Tags.AlbumArtist.Length > 0 ? e.Tags.AlbumArtist : LocalNames.Display(e.Tags, e.MatchTitle).Artist;
 
     /// <summary>The ids of the playable files in an album, in disc/track order (UI thread or any). <paramref name="unplayable"/>: every file of it, the
     /// ones Wavee cannot play (or that are missing) too, as the Local Files list keeps them, listed and unavailable (a pane's rows).</summary>

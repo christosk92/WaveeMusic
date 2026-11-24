@@ -29,7 +29,10 @@ public static partial class LocalLink
     static string? FixtureCoverOf(string artist, string album) => s_fixtureCovers.TryGetValue(LocalCollection.AlbumKey(artist, album), out string? c) ? c : null;
 
     /// <summary>The words the inspector accepts.</summary>
-    public const string FixtureValues = "off|offer|matching|review|focus|accepted";
+    public const string FixtureValues = "off|offer|matching|review|focus|accepted|versions|versions-spotify|link";
+
+    /// <summary>The versions fixture's renamed copy (the inspector's `dialog kind=rename` opens on it); 0 outside it.</summary>
+    internal static long FixtureCopy { get; private set; }
 
     /// <summary>Seed the fixture (see the file header). Returns "" or why it could not.</summary>
     internal static string InspectFixture(string value)
@@ -38,13 +41,18 @@ public static partial class LocalLink
         s_memoryOnly = true;
         s_loaded = true;
         s_path = null;
-        s_rank.Clear(); s_decided.Clear(); s_links.Clear(); s_linkGroup.Clear(); s_albumFaces.Clear(); s_groups.Clear(); s_searches.Clear(); s_now.Clear(); s_fixtureCovers.Clear();
+        s_rank.Clear(); s_decided.Clear(); s_links.Clear(); s_renames.Clear(); s_defaults.Clear(); s_linkGroup.Clear(); s_albumFaces.Clear(); s_groups.Clear(); s_searches.Clear(); s_now.Clear(); s_fixtureCovers.Clear();
         s_review.Value = null;
         s_requests.Clear();
         s_enabled.Value = false;
         s_offerShown.Value = true;
         s_quiet = true;
+        FixtureCopy = 0;
+        // `link`: the index as it is (the real start-up's, `music-folders value=startup`): every file linked to the fake catalogue's song of its
+        // title (the one closest in length), the first whose name says "remix" set to play by default. Nothing is reset.
+        if (value == "link") return LinkIndexed();
         LocalLibrary.InspectFixture("ready");
+        if (value is "versions" or "versions-spotify") return SeedVersions(value == "versions");
         if (value is "off" or "offer")
         {
             LocalCollectionFixture.Fill("ready");
@@ -73,6 +81,71 @@ public static partial class LocalLink
     }
 
     static bool s_quiet;
+
+    static string LinkIndexed()
+    {
+        var tracks = Entities.Current.Tracks;
+        int linked = 0;
+        foreach (LocalEntry e in LocalLibrary.Index.Snapshot())
+        {
+            if (e.Tags.Kind != LocalKind.Audio) continue;
+            FileFacts f = FactsOf(e);
+            Track best = default;
+            for (int slot = Table.None + 1; slot < tracks.Count; slot++)
+            {
+                var t = new Track(slot);
+                if (!t.IsValid || t.IsLocal || !t.Uri.Text.StartsWith("spotify:track:", StringComparison.Ordinal) || !SameTitle(f.Title.Replace(" (hardstyle remix)", ""), t.Title)) continue;
+                if (!best.IsValid || Math.Abs(t.DurationMs - f.DurationMs) < Math.Abs(best.DurationMs - f.DurationMs)) best = t;
+            }
+            if (!best.IsValid) continue;
+            var track = TrackOf(best, default);
+            string key = SongKey(e.LocalId);
+            s_decided[key] = new Decided(LinkDecision.Accepted, track.Uri, true, new HashSet<string>(StringComparer.Ordinal));
+            s_links[e.LocalId] = track;
+            s_linkGroup[e.LocalId] = key;
+            if (e.MatchTitle.Contains("remix", StringComparison.OrdinalIgnoreCase)) { s_defaults[track.Uri] = e.LocalId; FixtureCopy = e.LocalId; }
+            linked++;
+        }
+        if (linked == 0) return "no indexed file has a song of its title in the fake catalogue (run music-folders value=startup under --fake first)";
+        s_enabled.Value = true;
+        s_offerShown.Value = false;
+        Publish();
+        return "";
+    }
+
+    /// <summary>Phase 2: the owner's file and a copy of it, both linked to the fake "Savin' Me" (3:39, All the Right Reasons), the copy renamed
+    /// "Savin' Me (hardstyle remix)" and, with <paramref name="withDefault"/>, set to play by default.</summary>
+    static string SeedVersions(bool withDefault)
+    {
+        var song = Entities.Track(EntityUri.Parse("spotify:track:nb0n3"));
+        if (!song.IsValid) return "the fake catalogue has no Savin' Me (run under --fake)";
+        long now = DateTime.UtcNow.Ticks;
+        var batch = new LocalScanBatch(1, "Downloads") { Folder = new LocalFolder(1, "Downloads", 6998, 0x6667, [], true) };
+        long original = 6100, copy = 6101;
+        batch.Upserts.Add(Untagged(original, @"Downloads\Nickelback - Savin' Me.mp3", "Nickelback - Savin' Me", 252_000, now));
+        batch.Upserts.Add(Untagged(copy, @"Downloads\Nickelback - Savin' Me (copy).mp3", "Nickelback - Savin' Me (copy)", 252_400, now));
+        LocalLibrary.Index.Apply(batch);
+        LocalLibrary.InspectRestate();
+        var track = TrackOf(song, new AlbumTrackEdge(1, 4));
+        foreach (long id in new[] { original, copy })
+        {
+            string key = SongKey(id);
+            s_decided[key] = new Decided(LinkDecision.Accepted, track.Uri, true, new HashSet<string>(StringComparer.Ordinal));
+            s_links[id] = track;
+            s_linkGroup[id] = key;
+        }
+        s_renames[copy] = new LocalRename("Savin' Me (hardstyle remix)", "", "");
+        if (withDefault) s_defaults[track.Uri] = copy;
+        FixtureCopy = copy;
+        s_enabled.Value = true;
+        s_offerShown.Value = false;
+        Publish();
+        return "";
+
+        static LocalEntry Untagged(long id, string rel, string name, int ms, long now)
+            => new(id, 1, rel, 0, (UInt128)(9000 + id), 7_000_000, now, now, 0x20, Spotify.Audio.Format.Mp3,
+                new LocalTagSet(LocalKind.Audio, "", [], "", "", 0, 0, 0, ms, false, 320, LocalCover.None, 0, 0, true, 44_100, 0, 2), name, LocalState.Present, now, true, "", now);
+    }
 
     /// <summary>Add the linkable albums and songs to the fixture index; the untagged song's group key, or null without a fake catalogue.</summary>
     static string? SeedLinkable()

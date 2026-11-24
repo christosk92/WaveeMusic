@@ -80,6 +80,46 @@ internal static class CommonLocalLink
 
     // ══ THE OPT-IN'S BODY (board 28 ②), every theme ═══════════════════════════════════════════════════════════════════════
 
+    // ══ THE RENAME DIALOG'S BODY (phase 2), every theme ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.LocalRename"/> (every theme): the sentence, then a labelled box per field (title,
+    /// artist, album) starting at what the song shows, the file's own value as its hint, and "Use the file's names" under them.</summary>
+    public static Element Rename(LocalRenameProps p, in ViewContext ctx)
+        => Embed.Comp(p, static () => new RenameBody()) with { Key = K.RenameKey };
+
+    sealed class RenameBody : Component
+    {
+        Signal<string>[]? _text;
+        LocalRenameProps? _latest;
+        Action? _reset;
+
+        public override Element Render()
+        {
+            var p = UseProps<LocalRenameProps>();
+            _latest = p;
+            if (_text is null || _text.Length != p.Fields.Count)
+            {
+                _text = new Signal<string>[p.Fields.Count];
+                for (int i = 0; i < _text.Length; i++) _text[i] = new Signal<string>(p.Fields[i].Initial);
+            }
+            // "Use the file's names": every box back to the file's own value (the rename is then cleared on save).
+            _reset ??= () =>
+            {
+                if (_latest is not { } l || _text is null) return;
+                for (int i = 0; i < _text.Length && i < l.Fields.Count; i++) { _text[i].Value = l.Fields[i].Own; l.Fields[i].Set(l.Fields[i].Own); }
+            };
+            var rows = new List<Element>(p.Fields.Count + 2) { Wrapping(R.Type.DenseMeta(p.Body) with { Color = Tok.TextSecondary }) };
+            for (int i = 0; i < p.Fields.Count; i++)
+            {
+                var f = p.Fields[i];
+                rows.Add(TextBox.Create(_text[i], f.Set, new TextBox.TextBoxOptions { Header = f.Label, Placeholder = f.Own })
+                    with { Key = K.RenameKey + ":" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+            rows.Add(HyperlinkButton.Create(p.ResetLabel, _reset) with { Key = K.RenameKey + ":reset", AlignSelf = FlexAlign.Start, Margin = new Edges4(-K.RenameLinkPadX, 0f, -K.RenameLinkPadX, 0f) });
+            return new BoxEl { Direction = 1, Gap = K.RenameGap, MinWidth = 0f, Children = rows.ToArray() };
+        }
+    }
+
     /// <summary>The registered template of <see cref="ViewKeys.LocalLinkOptIn"/> (every theme).</summary>
     public static Element OptIn(LocalLinkOptInProps p, in ViewContext ctx)
     {

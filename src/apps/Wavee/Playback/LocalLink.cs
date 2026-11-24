@@ -106,6 +106,7 @@ public static partial class LocalLink
         s_loaded = true;
         s_enabled.Value = Platform.Settings.Get(s_on);
         s_offerShown.Value = Platform.Settings.Get(s_offer);
+        s_preferFilesOn.Value = Platform.Settings.Get(s_preferFiles);
         if (cacheDir is null) { s_memoryOnly = true; return; }
         s_path = Path.Combine(cacheDir, "locallinks.tsv");
         try { if (File.Exists(s_path)) Read(File.ReadAllLines(s_path, Encoding.UTF8)); }
@@ -404,9 +405,11 @@ public static partial class LocalLink
         var albums = new Dictionary<string, LinkAlbum>(StringComparer.Ordinal);
         foreach (var (key, a) in s_albumFaces)
             if (s_decided.TryGetValue(key, out Decided? d) && d.Decision == LinkDecision.Accepted && d.SpotifyWins) albums[key] = a;
-        if (Same(tracks, s_shown) && Same(albums, s_shownAlbums)) return;
+        bool versions = RebuildVersions();   // phase 2: the renames and which version plays
+        if (Same(tracks, s_shown) && Same(albums, s_shownAlbums) && !versions) return;
         s_shown = tracks;
         s_shownAlbums = albums;
+        LocalLibrary.NotePlayAs(s_playAs);
         Interlocked.Increment(ref s_shownVersion);
         LocalLibrary.RestateForLinks();
         LocalCollection.Request();
@@ -431,6 +434,7 @@ public static partial class LocalLink
     //   G  key  decision  chosen-uri  spotify-wins(1|0)  rejected-uri rejected-uri …
     //   L  local-id  group-key  track-uri  title  artists  album  album-uri  duration-ms  isrc  disc  number  cover  year
     //   A  group-key  album-uri  title  artist  year  cover
+    //   R, D  a rename and a song's default version (LocalLink.Versions.cs)
     // An unknown line is skipped, so a later version can add records an older one ignores.
 
     static void Read(string[] lines)
@@ -438,6 +442,7 @@ public static partial class LocalLink
         foreach (string line in lines)
         {
             string[] f = line.Split('\t');
+            if (ReadVersions(f)) continue;
             switch (f[0])
             {
                 case "G" when f.Length >= 5 && byte.TryParse(f[2], out byte decision) && decision <= (byte)LinkDecision.NotOnSpotify:
@@ -484,6 +489,7 @@ public static partial class LocalLink
         foreach (var (key, a) in s_albumFaces)
             sb.Append('A').Append('\t').Append(Clean(key)).Append('\t').Append(Clean(a.Uri)).Append('\t').Append(Clean(a.Title)).Append('\t').Append(Clean(a.Artist)).Append('\t')
               .Append(a.Year.ToString(CultureInfo.InvariantCulture)).Append('\t').Append(Clean(a.Cover ?? "")).Append('\n');
+        WriteVersions(sb, Clean);
         string text = sb.ToString();
         int generation = Interlocked.Increment(ref s_saving);
         ThreadPool.UnsafeQueueUserWorkItem(_ =>

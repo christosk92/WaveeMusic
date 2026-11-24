@@ -22,6 +22,10 @@ public static partial class SettingsSpec
                 SettingsWriter.OfToggle("audio.autoplay", WriteBool(Platform.Keys.AutoplayEnabled)), legacy: ["autoplay"], glyph: "Play",
                 captionKey: Strings.Settings.Playback.AutoplaySub, value: BoolOf(Platform.Keys.AutoplayEnabled),
                 contexts: [SettingsSurfaces.QueuePanel, SettingsSurfaces.StageUpNext]),
+            // "Your files and Spotify" phase 2 (D2): a Spotify song linked to one of your files plays the file, unless the song has its own choice.
+            Make("playback.preferFiles", K.Toggle, Strings.LocalFiles.Link.PreferFiles,
+                SettingsWriter.OfToggle("local.link.preferFiles", SettingsVerbs.SetPreferFiles), glyph: "Document",
+                captionKey: Strings.LocalFiles.Link.PreferFilesSub, value: BoolOf(LocalLink.PreferFilesKey), aliases: ["local files", "my files", "versions", "flac"]),
             Make("playback.crossfade", K.Toggle, Strings.Settings.Sound.Crossfade,
                 SettingsWriter.OfToggle("crossfade.enabled", SettingsVerbs.SetCrossfadeEnabled), legacy: ["crossfade"], glyph: "Audio",
                 captionKey: Strings.Settings.Sound.CrossfadeSub, value: BoolOf(Platform.Keys.CrossfadeEnabled), aliases: ["crossfade", "x-fade"],
@@ -120,6 +124,13 @@ public static partial class SettingsVerbs
 
     public static void PushCrossfade()
         => Playback.Audio.SetCrossfade(Platform.Settings.Get(Platform.Keys.CrossfadeEnabled), Platform.Settings.Get(Platform.Keys.CrossfadeMs));
+
+    /// <summary>"Prefer my files when I have them" ("Your files and Spotify" phase 2).</summary>
+    public static bool SetPreferFiles(bool on)
+    {
+        LocalLink.SetPreferFiles(on);
+        return true;
+    }
 
     public static bool SetCrossfadeEnabled(bool on)
     {

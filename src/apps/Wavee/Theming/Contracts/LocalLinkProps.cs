@@ -65,3 +65,12 @@ public sealed record LocalLinkPageProps
     public required IReadSignal<string?> Reviewing { get; init; }
     public required LocalLinkReviewProps Review { get; init; }
 }
+
+/// <summary>One field of the rename dialog: its label, what the song shows now (the box starts with it), and the file's own value (the box's placeholder, and
+/// what "Use the file's names" puts back).</summary>
+/// <param name="Set">The box's change.</param>
+public sealed record LocalRenameField(string Label, string Initial, string Own, Action<string> Set);
+
+/// <summary>The rename dialog's body ("Your files and Spotify" phase 2; contract addition, declared): its sentence, the title, artist and album
+/// fields, and the "Use the file's names" link. The dialog's title and its two buttons are the dialog's own.</summary>
+public sealed record LocalRenameProps(string Body, IReadOnlyList<LocalRenameField> Fields, string ResetLabel);

@@ -78,6 +78,14 @@ public static class LocalTrackUri
     static void Stage(Staging s, in StagedId id, string artist, string title, int seconds, in LocalLibrary.ItemMatch m)
     {
         ref var row = ref s.Tracks.RowFor(id, Authority.Full, (uint)(TrackFields.Face | TrackFields.Availability));
+        // An item that plays one of your files wears what that file shows on this PC when you renamed it or accepted its match ("Your files
+        // and Spotify": the one rule, LocalNames.Face). The uri keeps the file's own names: other devices match the item by them.
+        if (m.Plays && m.LocalId != 0 && LocalLibrary.Index.TryGet(m.LocalId, out LocalEntry? file)
+            && (LocalLink.RenameOf(m.LocalId) is { } || LocalLink.Shown.ContainsKey(m.LocalId)))
+        {
+            var face = LocalNames.Face(file, LocalLink.Shown.TryGetValue(m.LocalId, out LinkTrack? link) ? link : null, LocalLink.RenameOf(m.LocalId));
+            (title, artist) = (face.Title, face.Artists);
+        }
         row.Title = s.AddText(Encoding.UTF8.GetBytes(title));
         if (artist.Length > 0) row.ArtistLine = s.AddText(Encoding.UTF8.GetBytes(artist));
         // The uri's seconds (as pathfinder reports them); a uri that names none (0) takes the file's own length when it matched.

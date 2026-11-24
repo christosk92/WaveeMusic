@@ -206,9 +206,15 @@ public readonly partial struct Track
                 if (LocalLibrary.TryLocalIdOf(one.Uri.Text, out long localId))
                 {
                     var overlay = o.PickerOverlay ?? DrawerOverlay;
+                    // Phase 2: "Rename…" (a Wavee-side name, show-only; Undo on its toast).
+                    rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.Rename), Icons.Edit, true, () => LocalLinkPage.OpenRename(localId, overlay)));
                     rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.FindOnSpotify), Icons.Link, true, () => LocalLinkPage.FindOnSpotify(localId, overlay)));
-                    if (LocalLink.LinkOf(localId) is not null)
+                    if (LocalLink.LinkOf(localId) is { } song)
+                    {
+                        // Phase 2: which of the song's versions plays when the song is played anywhere (this file, its other files, Spotify's).
+                        if (LocalLinkPage.DefaultMenu(song.Uri, song.Title) is { } plays) rows.Add(plays);
                         rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.RemoveLink), Icons.Cancel, true, () => LocalLink.Unlink(localId)));
+                    }
                 }
             }
             else
@@ -218,6 +224,8 @@ public readonly partial struct Track
                 if (ActionRules.CanStartTrackRadio(ctx.Target) && Actions.Menu.Row(ActionId.GoToSongRadio, in ctx) is { } radio)
                     rows.Add(radio);
                 if (VideoItem(one, in ctx) is { } video) rows.Add(video);
+                // Phase 2: a Spotify song your files are versions of: which version plays when it is played.
+                if (LocalLinkPage.DefaultMenu(one.Uri.Text, one.Title) is { } plays) rows.Add(plays);
             }
         }
 

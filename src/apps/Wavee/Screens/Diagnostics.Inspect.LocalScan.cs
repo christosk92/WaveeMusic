@@ -86,6 +86,13 @@ public static partial class Diagnostics
                 w.WriteNumber("check", view.Check);
                 w.WriteNumber("accepted", view.Accepted);
                 w.WriteString("reviewing", LocalLink.Reviewing.Peek() ?? "");
+                // Phase 2: where the fake "Savin' Me" plays from (--fake plays never open a source, so the route is answered here).
+                var savin = EntityUri.Parse(LocalLink.FixtureCopy != 0 && LocalLink.LinkOf(LocalLink.FixtureCopy) is { } fl ? fl.Uri : "spotify:track:nb0n3").Id;   // the fixture copy's song, else the fake Savin' Me
+                long playsAs = LocalLibrary.PlayAsOf(savin);
+                w.WriteString("savinRoute", Playback.Audio.RouteOf(savin).ToString());
+                w.WriteNumber("savinPlaysAs", playsAs);
+                w.WriteString("savinPath", LocalLibrary.PathOf(savin) ?? "");
+                w.WriteString("savinReportAs", playsAs != 0 && LocalLibrary.LocalUriOfFile(playsAs) is { } own ? own.Uri : "");
                 w.WriteStartArray("evidence");
                 foreach (var g in view.Groups)
                     w.WriteStringValue(g.Key + " | " + g.Confidence + " | " + (g.Best is { } b ? LocalLinkWords.Evidence(b, g.IsAlbum) + " | " + b.Uri : "none"));

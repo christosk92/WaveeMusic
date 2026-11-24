@@ -142,7 +142,13 @@ public static partial class LocalLink
 
     static FileFacts FactsOf(LocalEntry e)
     {
+        // The user's names when the file was renamed ("Savin' Me (hardstyle remix)" searches for the remix), else the display split.
         (string title, string artist) = LocalNames.Display(e.Tags, e.MatchTitle);
+        if (RenameOf(e.LocalId) is { } named)
+        {
+            if (named.Title.Length > 0) title = named.Title;
+            if (named.Artist.Length > 0) artist = named.Artist;
+        }
         return new FileFacts(e.LocalId, title, artist, e.Tags.Album, e.Tags.DurationMs, e.Tags.Isrc, e.Tags.DiscNumber, e.Tags.TrackNumber, e.Tags.Year);
     }
 
