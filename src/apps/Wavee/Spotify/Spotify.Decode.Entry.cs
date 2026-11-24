@@ -260,6 +260,8 @@ public static partial class Spotify
                 if (kindFilter is { } kind && EntityUri.KindOf(uri) != kind) continue;
                 var target = Identity(s, uri);
                 if (target.IsEmpty) continue;
+                // A liked local file (report 3.2: `local_track`, its spotify:local: uri): its face is its uri's, ruled by the local index.
+                if (LocalTrackUri.Is(uri)) LocalTrackUri.StageFace(s, in target, uri);
                 run.Add(in target).At = at;
             }
         }
@@ -283,6 +285,8 @@ public static partial class Spotify
                 if (kindFilter is { } kind && EntityUri.KindOf(uri) != kind) continue;
                 var target = Identity(s, uri);
                 if (target.IsEmpty) continue;
+                // A liked local file (report 3.2: `local_track`, its spotify:local: uri): its face is its uri's, ruled by the local index.
+                if (LocalTrackUri.Is(uri)) LocalTrackUri.StageFace(s, in target, uri);
                 into.Add((target, at));
             }
         }

@@ -77,6 +77,8 @@ internal static partial class ClassicSettings
             "lyrics.stage.heroDim" => Item(row.Label, row.Description, Badged(row, Embed.Comp(static () => new StageDimSlider())),
                 isEnabled: row.Enabled, icon: GlyphOf(row.Dial)),
             "notifications.quiet.from" or "notifications.quiet.to" => QuietHourItem(row),
+            "sound.timecode.level" => TimecodeSliderItem(row, s_timecodeLevelOptions),
+            "sound.timecode.offset" => TimecodeSliderItem(row, s_timecodeOffsetOptions),
             _ => null,
         };
         return item is not null;

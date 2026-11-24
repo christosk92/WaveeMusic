@@ -646,7 +646,7 @@ internal static partial class ClassicPlayerBar
                         {
                             // NO fill, NO shadow, NO Elevation.DockTop: the dock is a paint-site omission over live Mica.
                             Direction = 1, Grow = 1f, MinHeight = 0f,
-                            Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
+                            Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS), DropTarget = verbs.OsDrop,
                             OnRealized = node => barNode.Value = node,
                             // A press on the bar's own ground takes its key map: the press handler makes that ground a press target, and the
                             // engine's pointer focus focuses the bar without its ring (Tab still shows it). NOT OnClick: that made the bar a button,

@@ -19,6 +19,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Themes.Common;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -258,7 +259,8 @@ internal sealed class WinUiNavRow : Component
             ? _o.ResourceDropSpec(row.SectionId, PinSlot(row.SectionId, index),
                 playlistRow && snapshot.CanEdit ? snapshot.Uri : null, snapshot.Name, resource, index,
                 isPlaylistRow: playlistRow, rootFacts: TreeRowFacts(index, in snapshot))
-            : PinSpec(section, row.SectionId, index);
+            // A route row that takes an OS drag of its own (Local Files: #240 §3.15), else the pinned band's slot.
+            : PinSpec(section, row.SectionId, index) ?? _o.RouteDropSpec(route);
 
         var spec = new WinUiRowSpec
         {
@@ -479,11 +481,24 @@ internal sealed class WinUiNavRow : Component
             MenuOverlay = _o.MenuOverlay,
             Menu = menu,
             Drag = drag,
-            DropTarget = PinSpec(section, section.Id, index),
+            DropTarget = PinSpec(section, section.Id, index) ?? _o.RouteDropSpec(key),   // Local Files takes an OS drag (#240 §3.15)
         };
         spec.LabelTooltip = LabelOverflows(title, 0, 0f, WinUiNavGeometry.LabelX(OneLine, glyph: true));
-        return Indicator(Tipped(WinUiEntityRow.Create(in spec), spec.LabelTooltip, title));
+        Element row = Indicator(Tipped(WinUiEntityRow.Create(in spec), spec.LabelTooltip, title));
+        return string.Equals(key, LibraryActivity.RouteKey, StringComparison.Ordinal) ? WithActivity(row, WinUiNavGeometry.LabelX(OneLine, glyph: true)) : row;
     }
+
+    /// <summary>"Local files" carries the library activity chip's lane under it (#240 UX S1; Common's chip, one picture with
+    /// Classic): reserved in every state, so nothing below it moves; the rail draws none.</summary>
+    Element WithActivity(Element row, float labelX) => new BoxEl
+    {
+        Direction = 1, MinWidth = 0f,
+        Children =
+        [
+            row,
+            Embed.Comp(new CommonActivityChip.Props(labelX, _o.CompactPlan, _o.InDrawer), static () => new CommonActivityChip()) with { Key = "nav-activity-host" },
+        ],
+    };
 
     /// <summary>The empty Pinned band while a pinnable drag is live (design V.3): 36 tall in the 4,2 margin, a dashed
     /// 1-px AccentDefault ring, r4, "Drop here to pin"; the drop pins at position 0.</summary>

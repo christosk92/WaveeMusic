@@ -55,6 +55,7 @@ internal static class WinUiTrackChrome
         UnavailableBar = UnavailableBar,
         HidesChromeOnEmptyLead = true,   // Z-State-Empty-Playlist: the lead and its finder are the page, no sort, filter or header over nothing
         UnavailableBarExtent = static tiers => WinUiListRules.UnavailableExtent(tiers.Policy is null ? WidthTier.Standard : tiers.Window),
+        UnavailableBarExtentWithSecondary = static tiers => WinUiListRules.UnavailableExtent(tiers.Policy is null ? WidthTier.Standard : tiers.Window, secondary: true),
     };
 
     static WidthTier TierOf(in TierFacts tiers) => tiers.Policy is null ? WidthTier.Standard : tiers.Window;
@@ -82,39 +83,72 @@ internal static class WinUiTrackChrome
     {
         var tier = TierOf(a.Tiers);
         bool compact = tier == WidthTier.Compact;
+        // A Compact bar that carries a second verb (Review, #240 S6) takes its verbs on a line of their own under the sentence: three 40-DIP verbs and a
+        // sentence do not share a 368-DIP line. ONE tree in both forms (a row that wraps in that form alone: a wrapping row breaks its lines at its
+        // children's content widths), so a crossing glides the parts instead of rebuilding them.
+        bool twoLines = compact && a.Secondary is not null;
         var meta = R.Type.DenseTitle("");
         // The core's inset is the Modern plates' 8; WinUI's plates are flush with the list, so the bar is too (the hero arm's gutter keeps what it adds).
         float inset = MathF.Max(0f, a.InsetX - RowMetrics.RowInset);
+        // Compact's targets are 40 (the bar is 56 there to hold them).
+        var size = compact ? ControlSize.Large : ControlSize.Medium;
         Element bar = new BoxEl
         {
-            Key = "unavailable:bar", Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiListRules.UnavailableGap, MinWidth = 0f,
-            Height = compact ? WinUiListRules.UnavailableCompactHeight : WinUiListRules.UnavailableHeight, Shrink = 0f,
-            // The Compact bar's taller target eases through real layout (audit B9), the rows under it riding it.
-            Animate = Design.Reduced ? null : WinUiDiscoveryMotion.HeightReflow,
-            Padding = WinUiListRules.UnavailablePadding, Margin = new Edges4(0f, 0f, 0f, WinUiListRules.UnavailableBelow),
+            Key = "unavailable:bar", Direction = 0, Wrap = twoLines, AlignItems = FlexAlign.Center, Gap = WinUiListRules.UnavailableGap, MinWidth = 0f,
+            Height = twoLines ? WinUiListRules.UnavailableTwoLineHeight : compact ? WinUiListRules.UnavailableCompactHeight : WinUiListRules.UnavailableHeight,
+            Shrink = 0f,
+            // The Compact bar's taller target eases through real layout (audit B9), the rows under it riding it; it keeps easing through the window's resize,
+            // so a tier crossing never lands the step at once (the slot around it follows this height, it states none of its own).
+            Animate = Design.Reduced ? null : WinUiDiscoveryMotion.HeadReflow,
+            Padding = twoLines ? WinUiListRules.UnavailableTwoLinePadding : WinUiListRules.UnavailablePadding,
+            Margin = new Edges4(0f, 0f, 0f, WinUiListRules.UnavailableBelow),
             Corners = CornerRadius4.All(WinUiListRules.CommandRadius), BorderWidth = 1f,
             Fill = Prop.Of(static () => Tok.FillCardDefault), BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
             Children =
             [
-                Icon(Icons.Info, WinUiListRules.UnavailableGlyph, R.Ink.AccentAction) with { Shrink = 0f },
-                new TextEl(WinUiListRules.UnavailableExplains(tier) ? a.Explained : a.Summary)
+                new BoxEl
                 {
-                    Size = meta.Size, LineHeight = meta.LineHeight, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    Key = "unavailable:line", Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiListRules.UnavailableGap, MinWidth = 0f,
+                    Grow = 1f, Shrink = 1f, Basis = twoLines ? WinUiListRules.UnavailableLineBasis : 0f,
+                    Layout = Design.Reduced ? null : WinUiDiscoveryMotion.Shove,
+                    Children =
+                    [
+                        Icon(Icons.Info, WinUiListRules.UnavailableGlyph, R.Ink.AccentAction) with { Shrink = 0f },
+                        new TextEl(WinUiListRules.UnavailableExplains(tier) ? a.Explained : a.Summary)
+                        {
+                            Size = meta.Size, LineHeight = meta.LineHeight, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                            MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                        },
+                    ],
                 },
-                Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
-                // The ✕: closes the bar on this list until the app restarts. Mounted (with its tooltip) only while the bar shows: every list mounts this
-                // bar, and a tooltip host on each hidden one cost a one-time 4.6 MB on a Liked Songs scroll.
-                a.Dismiss is { } dismiss && a.Shown
-                    ? ToolTip.Wrap(Button.Create("", dismiss, ButtonAppearance.Subtle, glyph: Icons.ChromeClose)
-                        with { Key = "unavailable:dismiss", Shrink = 0f }, a.DismissLabel)
-                    : new BoxEl { Shrink = 0f },
+                new BoxEl
+                {
+                    Key = "unavailable:verbs", Direction = 0, AlignItems = FlexAlign.Center, Gap = WinUiListRules.UnavailableGap, Shrink = 0f,
+                    Grow = twoLines ? 1f : 0f, Justify = FlexJustify.End,
+                    Layout = Design.Reduced ? null : WinUiDiscoveryMotion.Shove,
+                    Children =
+                    [
+                        // A second verb (Review, while the list holds missing local files: the bar is their banner too) stands before Hide them.
+                        a.Secondary is { } secondary
+                            ? Button.Create(a.SecondaryLabel, secondary, ButtonAppearance.Standard, size, isEnabled: a.Shown) with { Key = "unavailable:secondary", Shrink = 0f, Layout = Design.Reduced ? null : WinUiDiscoveryMotion.Shove }
+                            : new BoxEl { Shrink = 0f },
+                        Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, size, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f, Layout = Design.Reduced ? null : WinUiDiscoveryMotion.Shove },
+                        // The close: closes the bar on this list until the app restarts. Mounted (with its tooltip) only while the bar shows: every list mounts
+                        // this bar, and a tooltip host on each hidden one cost a one-time 4.6 MB on a Liked Songs scroll.
+                        a.Dismiss is { } dismiss && a.Shown
+                            ? ToolTip.Wrap(Button.Create("", dismiss, ButtonAppearance.Subtle, size, glyph: Icons.ChromeClose)
+                                with { Key = "unavailable:dismiss", Shrink = 0f }, a.DismissLabel)
+                            : new BoxEl { Shrink = 0f },
+                    ],
+                },
             ],
         };
+        // The slot is the disclosure (0 while off, the bar's own height while on): it never states the tier's height itself, so a crossing that steps the bar
+        // (48 to 56) moves only the bar, which eases through the resize (a revealed height lands at once while the window is being sized).
         return new BoxEl
         {
             Key = "unavailable", Direction = 1, MinWidth = 0f, ClipToBounds = true, Shrink = 0f,
-            Height = a.Shown ? WinUiListRules.UnavailableExtent(tier) : 0f,
+            Height = a.Shown ? float.NaN : 0f,
             Padding = new Edges4(inset, 0f, inset, 0f),
             Animate = Design.Reduced ? null : Design.Reveal.Resize,
             Children = [bar],

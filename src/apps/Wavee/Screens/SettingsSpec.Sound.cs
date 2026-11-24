@@ -87,6 +87,46 @@ public static partial class SettingsSpec
                 contexts: [SettingsSurfaces.DevicePicker], liveChoices: OutputDeviceNames),
             Make("sound.connectName", K.Fact, Strings.Settings.Devices.ThisPc, SettingsWriter.ReadOnly, legacy: ["thisPc"],
                 captionKey: Strings.Settings.Devices.ThisPcSub, value: _ => Playback.DeviceName)),
+
+        // #154: timecode for lighting and video software. The switch comes on once an output is chosen; the output is chosen while it is
+        // off (so the switch can come on), and the other dials grey with the switch. Every write reaches the LTC output at once
+        // (Playback.TimecodeOutput.Apply: a dial is heard on the next 10 ms block).
+        Group("timecode", Strings.Settings.Groups.Sound.Timecode, null,
+            Make("sound.timecode", K.Toggle, Strings.Settings.Sound.Timecode.Send,
+                SettingsWriter.OfToggle("timecode.ltc.enabled", SettingsVerbs.SetTimecodeEnabled), glyph: "Clock",
+                // Never disabled: the output is chosen INSIDE this switch's expander, and a disabled expander does not open. Until an output is
+                // chosen the caption says so and the writer refuses "on".
+                caption: static f => f.TimecodeDeviceChosen ? Strings.Settings.Sound.Timecode.SendSub : Strings.Settings.Sound.Timecode.ChooseFirst,
+                value: BoolOf(Platform.Keys.TimecodeLtcEnabled),
+                aliases: ["ltc", "smpte", "timecode", "clx", "resolume", "vj"]),
+            Make("sound.timecode.device", K.Choice, Strings.Settings.Sound.Timecode.Device,
+                SettingsWriter.OfChoice("timecode.ltc.device", SettingsVerbs.SetTimecodeDevice), parent: "sound.timecode",
+                caption: static _ => SettingsVerbs.TimecodeDeviceIsMusic() ? Strings.Settings.Sound.Timecode.IsMusic : Strings.Settings.Sound.Timecode.DeviceSub,
+                value: static s => SettingsVerbs.TimecodeDeviceIndex(s.Get(Platform.Keys.TimecodeLtcDeviceId)), liveChoices: TimecodeDeviceNames),
+            Make("sound.timecode.rate", K.Choice, Strings.Settings.Sound.Timecode.Rate,
+                SettingsWriter.OfChoice("timecode.ltc.rate", SettingsVerbs.SetTimecodeRate), parent: "sound.timecode",
+                value: static s => Math.Clamp(s.Get(Platform.Keys.TimecodeLtcRate), 0, 3), enabled: TimecodeOn,
+                choices: [Strings.Settings.Sound.Timecode.Fps24, Strings.Settings.Sound.Timecode.Fps25, Strings.Settings.Sound.Timecode.Fps2997,
+                    Strings.Settings.Sound.Timecode.Fps30]),
+            Make("sound.timecode.start", K.Choice, Strings.Settings.Sound.Timecode.Start,
+                SettingsWriter.OfChoice("timecode.startHour", SettingsVerbs.SetTimecodeStartHour), parent: "sound.timecode",
+                value: static s => Math.Clamp(s.Get(Platform.Keys.TimecodeStartHour), 0, 1), enabled: TimecodeOn,
+                liveChoices: static () => ["00:00:00:00", "01:00:00:00"]),
+            Make("sound.timecode.level", K.Slider, Strings.Settings.Sound.Timecode.Level,
+                SettingsWriter.OfSlider("timecode.ltc.level", SettingsVerbs.SetTimecodeLevel), parent: "sound.timecode",
+                captionKey: Strings.Settings.Sound.Timecode.LevelSub,
+                value: static s => (float)Math.Clamp(s.Get(Platform.Keys.TimecodeLtcLevelDb), -24, 0), enabled: TimecodeOn, silent: true),
+            Make("sound.timecode.offset", K.Slider, Strings.Settings.Sound.Timecode.Offset,
+                SettingsWriter.OfSlider("timecode.offset", SettingsVerbs.SetTimecodeOffset), parent: "sound.timecode",
+                captionKey: Strings.Settings.Sound.Timecode.OffsetSub,
+                value: static s => (float)Math.Clamp(s.Get(Platform.Keys.TimecodeOffsetMs), -500, 500), enabled: TimecodeOn, silent: true),
+            Make("sound.timecode.status", K.Fact, Strings.Settings.Sound.Timecode.Status, SettingsWriter.ReadOnly, parent: "sound.timecode",
+                value: static _ => Playback.TimecodeOutput.StatusLine(), enabled: TimecodeOn),
+            // CLX (Clockworks) through the bundled observer module: independent of the LTC switch. Its caption says what leaves the PC.
+            Make("sound.timecode.clx", K.Toggle, Strings.Settings.Sound.Timecode.Clx,
+                SettingsWriter.OfToggle("timecode.clx.enabled", SettingsVerbs.SetTimecodeClx), glyph: "RadioTower",
+                captionKey: Strings.Settings.Sound.Timecode.ClxSub, value: BoolOf(Platform.Keys.TimecodeClxEnabled),
+                aliases: ["clx", "clockworks", "timecode toolbox", "showkontrol"])),
     ]);
 
     /// <summary>The streaming ladder's rungs (the metered cap offers the same ones); Lossless is offered only with a key deriver, but it is
@@ -107,6 +147,20 @@ public static partial class SettingsSpec
         for (int i = 0; i < devices.Length; i++) names[i + 1] = devices[i].Name;
         return names;
     }
+
+    /// <summary>The timecode output's words: "Choose an output", then this PC's outputs in roster order (the indexes the dial's value and
+    /// writer use). The music's own output is listed (the caption says to choose another) so a saved choice never vanishes from the list.</summary>
+    static IReadOnlyList<string> TimecodeDeviceNames()
+    {
+        var devices = Playback.Audio.Devices.Value;
+        var names = new string[devices.Length + 1];
+        names[0] = Loc.Get(Strings.Settings.Sound.Timecode.ChooseOutput);
+        for (int i = 0; i < devices.Length; i++) names[i + 1] = devices[i].Name;
+        return names;
+    }
+
+    /// <summary>The timecode dials follow the switch (greyed, no reason of their own); the output itself is always choosable.</summary>
+    static SettingsEnablement TimecodeOn(ISettingsFacts f) => f.TimecodeEnabled ? SettingsEnablement.On : SettingsEnablement.Off(null);
 
     /// <summary>The curve, the preset and the reset follow the equalizer's switch (greyed, no reason of their own).</summary>
     static SettingsEnablement EqOn(ISettingsFacts f) => f.EqualizerEnabled ? SettingsEnablement.On : SettingsEnablement.Off(null);
@@ -204,6 +258,79 @@ public static partial class SettingsVerbs
     }
 
     /// <summary>The output device's index in the roster (0 the system default, and an endpoint no longer in the roster).</summary>
+    // ── Timecode (#154) ──────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>CLX on the network: starts (or stops) the bundled CLX module as a timeline observer.</summary>
+    public static bool SetTimecodeClx(bool on)
+    {
+        Platform.Settings.Set(Platform.Keys.TimecodeClxEnabled, on);
+        Modules.RefreshTimelineObservers();
+        return true;
+    }
+
+    /// <summary>The switch: on only with an output chosen.</summary>
+    public static bool SetTimecodeEnabled(bool on)
+    {
+        if (on && Platform.Settings.Get(Platform.Keys.TimecodeLtcDeviceId).Length == 0) return false;
+        Platform.Settings.Set(Platform.Keys.TimecodeLtcEnabled, on);
+        Playback.TimecodeOutput.Apply();
+        return true;
+    }
+
+    /// <summary>The output: index 0 is "Choose an output" (none, which also turns the switch off), then the roster.</summary>
+    public static bool SetTimecodeDevice(int index)
+    {
+        var devices = Playback.Audio.Devices.Peek();
+        if ((uint)index > (uint)devices.Length) return false;
+        string id = index == 0 ? "" : devices[index - 1].Id;
+        Platform.Settings.Set(Platform.Keys.TimecodeLtcDeviceId, id);
+        if (id.Length == 0) Platform.Settings.Set(Platform.Keys.TimecodeLtcEnabled, false);
+        Playback.TimecodeOutput.Apply();
+        return true;
+    }
+
+    /// <summary>The chosen timecode output's index in the dial's words (0 = none, or a saved id not in the roster now).</summary>
+    public static int TimecodeDeviceIndex(string? deviceId) => OutputDeviceIndex(deviceId);
+
+    /// <summary>The chosen timecode output is the one the music plays on (it is then not opened).</summary>
+    public static bool TimecodeDeviceIsMusic()
+    {
+        string id = Platform.Settings.Get(Platform.Keys.TimecodeLtcDeviceId);
+        return id.Length > 0 && string.Equals(id, Playback.Audio.MusicEndpointId(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool SetTimecodeRate(int index)
+    {
+        if ((uint)index > 3) return false;
+        Platform.Settings.Set(Platform.Keys.TimecodeLtcRate, index);
+        Playback.TimecodeOutput.Apply();
+        return true;
+    }
+
+    public static bool SetTimecodeStartHour(int index)
+    {
+        if ((uint)index > 1) return false;
+        Platform.Settings.Set(Platform.Keys.TimecodeStartHour, index);
+        Playback.TimecodeOutput.Apply();
+        return true;
+    }
+
+    /// <summary>The level, dB (-24..0, whole dB).</summary>
+    public static bool SetTimecodeLevel(float db)
+    {
+        Platform.Settings.Set(Platform.Keys.TimecodeLtcLevelDb, (int)MathF.Round(Math.Clamp(db, -24f, 0f)));
+        Playback.TimecodeOutput.Apply();
+        return true;
+    }
+
+    /// <summary>The offset, ms (-500..+500, whole ms).</summary>
+    public static bool SetTimecodeOffset(float ms)
+    {
+        Platform.Settings.Set(Platform.Keys.TimecodeOffsetMs, (int)MathF.Round(Math.Clamp(ms, -500f, 500f)));
+        Playback.TimecodeOutput.Apply();
+        return true;
+    }
+
     public static int OutputDeviceIndex(string? deviceId)
     {
         if (string.IsNullOrEmpty(deviceId)) return 0;

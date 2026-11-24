@@ -164,6 +164,7 @@ internal static partial class ClassicSettings
         ("sound", "loudness") => Icons.Volume,
         ("sound", "equalizer") => Icons.Equalizer,
         ("sound", "output") => Icons.Speakers,
+        ("sound", "timecode") => Icons.Clock,
         ("playback", "betweenSongs") => Icons.Play,
         ("playback", "playerBar") => Icons.Pin,
         ("playback", "podcasts") => Icons.Microphone,
@@ -228,7 +229,7 @@ internal static partial class ClassicSettings
     static float ComboWidthOf(string id) => id switch
     {
         "system.tray.icon" or "system.language" => ClassicSettingsRules.GeneralComboWidth,
-        "sound.outputDevice" or "sound.quality" or "sound.meteredQuality" => ClassicSettingsRules.WideComboWidth,
+        "sound.outputDevice" or "sound.quality" or "sound.meteredQuality" or "sound.timecode.device" => ClassicSettingsRules.WideComboWidth,
         "sound.normalization.mode" or "sound.equalizer.preset" => ClassicSettingsRules.NarrowComboWidth,
         "lyrics.playerStyle" or "lyrics.playerStyle.finish" => ClassicSettingsRules.NpvComboWidth,
         "help.logs.viewerLevel" or "help.logs.fileLevel" => ClassicSettingsRules.LevelComboWidth,

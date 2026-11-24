@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "wavee.clx",
+  "version": "1.0.0",
+  "displayName": "CLX timecode",
+  "publisher": "wavee",
+  "protocolVersion": 1,
+  "entry": "Wavee.Module.Clx.dll",
+  "capabilities": [
+    "timeline"
+  ],
+  "urlPatterns": []
+}

@@ -69,7 +69,9 @@ public static partial class Diagnostics
         public static string ProfileArg(string[] args)
         {
             int i = Array.IndexOf(args, "--profile");
-            return i >= 0 && i + 1 < args.Length ? args[i + 1] : "";
+            if (i >= 0 && i + 1 < args.Length) return args[i + 1];
+            // `--local-scan` is a probe: without --profile it logs into a scratch profile, never the user's own (F4's minor finding).
+            return Array.IndexOf(args, "--local-scan") >= 0 ? Path.Combine(Path.GetTempPath(), "wavee-localscan-profile") : "";
         }
 
         /// <summary>`--stress-audio ...` (playback-smoothness plan §4.18): the on-box load test. Windowless like `--headless`; the
@@ -314,6 +316,11 @@ public static partial class Diagnostics
             // (there is no Shell here - see ResolveLyricsRequest below).
             Spotify.Library.Install();
             Lyrics.Boot(ResolveLyricsRequest, Spotify.Api.GetTextAsync, Spotify.SpclientBaseUrl);
+            // #240: the profile's music folders, loaded, scanned and restated as the app does at boot (App.cs), and the local seam
+            // (Modules.InstallUi's, which this host does not run): a playlist's spotify:local: item plays from them, and `play`/`queue` of a
+            // local file from its imported row (LocalLibrary.PathOf falls back to Playlist.LocalPathOf).
+            Playback.Audio.LocalPath = LocalLibrary.PathOf;
+            LocalLibrary.Use(Platform.LocalFolder);
             if (o.Silent) Playback.Audio.UseSilentEndpoint();
             s_connect = o.Connect;
             Spotify.Connect.AnnounceOnOnline = o.Connect;             // the session's own hello on Online, once per connection; off unless --connect
@@ -653,9 +660,16 @@ public static partial class Diagnostics
                     return false;
                 case Headless.Verb.Queue:
                     {
+                        if (Headless.IsLocalFileArg(c.Arg0))
+                        {
+                            if (!LocalRow(c.Arg0, out EntityRef local, out error)) return false;
+                            Queue.Enqueue(local);
+                            return true;
+                        }
                         if (!EntityId.TryParse(c.Arg0.AsSpan(), out EntityId id) || !id.IsPlayable) { error = "not a track or episode uri"; return false; }
                         EntityRef row = Entities.Ref(id);
                         if (row.IsNone) { error = "no row for " + c.Arg0; return false; }
+                        LocalLibrary.RuleItem(id);
                         Queue.Enqueue(row);
                         return true;
                     }
@@ -703,11 +717,27 @@ public static partial class Diagnostics
         {
             error = "";
             code = Headless.ExitCode.Assertion;
-            if (!Spotify.Current.IsOnline) { error = "the session is not online"; code = Headless.ExitCode.Fault; return false; }
+            if (Headless.IsLocalFileArg(c.Arg0))
+            {
+                // A local file needs no session: imported as a Local Files row and played as a one-row context, the drop path's shape.
+                if (!LocalRow(c.Arg0, out EntityRef local, out error)) return false;
+                s_playPostedAt = nowMs;
+                s_pending = default;
+                Span<EntityRef> one = [local];
+                Span<QueueEdge> edges = stackalloc QueueEdge[1];
+                int count = Headless.BuildContextQueue(one, 0, one, edges);
+                Queue.Replace(one[..count], edges[..count]);
+                Playback.PlayNow(local, Playlist.LocalFiles.Id, Queue.CursorOf(0), Playback.PlayableKind.Audio, c.Int0);
+                return true;
+            }
             if (!EntityId.TryParse(c.Arg0.AsSpan(), out EntityId id)) { error = "not a spotify uri: " + c.Arg0; return false; }
+            // A playlist's spotify:local: item plays from the music folders: no session needed (#240 P4's real-decode runs).
+            bool localItem = LocalTrackUri.Is(c.Arg0);
+            if (!Spotify.Current.IsOnline && !localItem) { error = "the session is not online"; code = Headless.ExitCode.Fault; return false; }
             if (c.Int1 >= 0) Platform.Settings.Set(Platform.Keys.PlaybackQuality, c.Int1);
             EntityRef row = Entities.Ref(id);
             if (row.IsNone) { error = "no table for kind " + id.Kind; return false; }
+            LocalLibrary.RuleItem(id);
             s_playPostedAt = nowMs;
             s_pending = default;
 
@@ -725,6 +755,22 @@ public static partial class Diagnostics
             s_pending = new PendingContext { Active = true, Id = id, FromMs = c.Int0, StartedMs = nowMs, ScopeEpoch = Entities.Current.Epoch };
             RequestMembers(id, row);
             TryStartContext(nowMs);
+            return true;
+        }
+
+        /// <summary>`play`/`queue` of a local file: its path (or <c>wavee:local:file:</c> uri) imported as a Local Files row, as a
+        /// drop does. Loop thread.</summary>
+        internal static bool LocalRow(string arg, out EntityRef row, out string error)
+        {
+            row = default;
+            string? path = arg.StartsWith(Playlist.LocalFilePrefix, StringComparison.Ordinal)
+                ? Playlist.LocalPathOf(EntityId.TryParse(arg.AsSpan(), out EntityId id) ? id : default)
+                : arg;
+            if (path is not { Length: > 0 } || !File.Exists(path)) { error = "no such local file: " + arg; return false; }
+            Track track = Playlist.ImportLocalFile(Path.GetFullPath(path));
+            if (!track.IsValid) { error = "the file could not be imported as a local track: " + path; return false; }
+            row = new EntityRef(EntityKind.Track, track.Slot);
+            error = "";
             return true;
         }
 
@@ -1532,7 +1578,7 @@ public static partial class Diagnostics
             Spotify.Boot();
             Playback.Boot();
             Spotify.Api.Boot();
-            Playback.Audio.LocalPath = Playlist.LocalPathOf;          // a local file's id → its path (Modules.InstallUi's seam, which this host does not run)
+            Playback.Audio.LocalPath = LocalLibrary.PathOf;          // a local file's id → its path (Modules.InstallUi's seam, which this host does not run)
             if (o.NeedsLogin) Spotify.Login();
 
             s_tick = new Timer(static _ =>

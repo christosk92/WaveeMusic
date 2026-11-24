@@ -675,7 +675,7 @@ public static partial class Deck
     /// <summary>The joined artist line (a show's title for an episode).</summary>
     static string ArtistsOf(EntityRef r) => r.Kind switch
     {
-        EntityKind.Track when new Track(r.Slot).IsValid => Entities.Strings.Resolve(new Track(r.Slot).ArtistLineId),
+        EntityKind.Track when new Track(r.Slot).IsValid => new Track(r.Slot).CreditLine,
         EntityKind.Episode when new Episode(r.Slot) is { IsValid: true } e && e.ShowSlot > 0 => e.Show.Title,
         _ => "",
     };
@@ -684,8 +684,7 @@ public static partial class Deck
     static string FirstArtistOf(EntityRef r)
     {
         if (r.Kind != EntityKind.Track || !new Track(r.Slot).IsValid) return ArtistsOf(r);
-        var slots = new Track(r.Slot).ArtistSlots;
-        return slots.Length > 0 ? new Artist(slots[0]).Name : "";
+        return new Track(r.Slot).FirstCreditName;
     }
 
     static string AlbumNameOf(EntityRef r) => r.Kind switch
