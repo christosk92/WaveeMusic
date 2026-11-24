@@ -60,6 +60,9 @@ public static partial class Diagnostics
                 w.WriteNumber("durationMs", tags.DurationMs);
                 w.WriteBoolean("estimated", tags.DurationEstimated);
                 w.WriteNumber("kbps", tags.BitrateKbps);
+                w.WriteNumber("rate", tags.SampleRate);
+                w.WriteNumber("bits", tags.BitsPerSample);
+                w.WriteNumber("channels", tags.Channels);
                 if (tags.Kind == LocalKind.Video)
                 {
                     w.WriteNumber("videoW", tags.VideoWidth);
