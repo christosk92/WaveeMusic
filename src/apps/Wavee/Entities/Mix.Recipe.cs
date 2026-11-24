@@ -131,7 +131,7 @@ public struct MixRecipe
         w.U(5, recipe.OverlapMs);
         w.F32(6, recipe.RateA == 0 ? 1f : recipe.RateA);
         w.F32(7, recipe.RateB == 0 ? 1f : recipe.RateB);
-        w.B(8, recipe.Beatmatch);
+        w.UAlways(8, recipe.Beatmatch ? 1u : 0u);         // written even when 0, as the official client does
         w.Str(10, recipe.TrackA);
         w.Str(11, recipe.TrackB);
         w.Str(12, recipe.TrackA);

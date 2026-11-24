@@ -749,7 +749,8 @@ public readonly partial struct Playlist
             if (_local) { SettleLocalFiles(); return; }
             // Membership owns the playlist-v2 header and revision. Asking its groups here races
             // an unconditional full read against the list-open disk/diff path.
-            Entities.Ensure(pl, PlaylistFields.Visibility | PlaylistFields.Saves | PlaylistFields.Accent);
+            // #48 Mix: the three Mix kinds ride the same batched extended-metadata POST (Entities/Mix.cs).
+            Entities.Ensure(pl, PlaylistFields.Visibility | PlaylistFields.Saves | PlaylistFields.Accent | PlaylistFields.MixKinds);
             // The list goes through THE open rule (§6): an Unknown one is asked once — the disk leg, then the /diff the edge
             // door chains itself — a fresh one paints, a stale one paints and is revalidated behind it (a rolling one holds the
             // reveal on the answer: ListOpenPolicy.HoldsReveal).

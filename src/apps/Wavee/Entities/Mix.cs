@@ -170,6 +170,8 @@ public static partial class Entities
     /// then keep the lens set in step with every playlist row this batch touched: a list Spotify has mixed is read
     /// through the mix lens, and the first time Mix is seen on a list whose rows came without it, its membership is
     /// asked again once (plan §3.2: "the first open of a mixed playlist may cost one extra read").</summary>
+    static readonly HashSet<int> s_lensReread = new();
+
     static void CommitMix(Staging s)
     {
         var playlists = Current.Playlists;
@@ -217,7 +219,9 @@ public static partial class Entities
             var flags = (PlaylistMixFlags)playlists.MixFlags[slot];
             bool lens = PlaylistMixRules.On(flags) && !MixListenWithout.Is(id);
             MixData.SetLens(id, lens);
-            if (lens && PlaylistMixRules.OwesLensRead(flags) && playlists.Knows(slot, (uint)PlaylistFields.Mix | (uint)PlaylistFields.MixState))
+            // Once per playlist per session: a lens read that still names no mix lens must not loop.
+            if (lens && PlaylistMixRules.OwesLensRead(flags)
+                && Current.Edges.PlaylistTracks.State(slot) != EdgeState.Unknown && s_lensReread.Add(slot))
             {
                 Log.Info("mix", "lens read owed for a mixed playlist; asking its rows again");
                 RefreshEdge(FetchEdge.PlaylistTracks, slot);
