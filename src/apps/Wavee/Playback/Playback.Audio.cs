@@ -2926,8 +2926,10 @@ public static partial class Playback
             public void Close() => Cancel();
         }
 
-        /// <summary>MP3, over NLayer. The LAME/Xing gapless numbers are read from the tag before the codec takes the
-        /// stream — never a hardcoded constant, because the delay and padding are the encoder's own facts.</summary>
+        /// <summary>MP3, over NLayer (vendored, <c>src/apps/vendor/NLayer</c>). NLayer trims the gapless delay and padding itself
+        /// from the LAME tag (the encoder's own facts, never a constant: delay + 529 at the start, padding − 529 at the end), so its
+        /// output is already the real audio, sample for sample what ffmpeg decodes; this decoder reports that length as exact and
+        /// never trims a second time.</summary>
         public sealed class Mp3AudioDecoder : IAudioDecoder, IGainFolding
         {
             readonly float _gain;
@@ -2966,14 +2968,17 @@ public static partial class Playback
                         Log.Warn("audio", "mp3 open: the stream carries no MPEG audio frames — refusing it");
                         return false;
                     }
-                    Mp3Tag tag = default;
-                    bool hasTag = stream.CanSeek && Mp3Tag.TryProbe(stream, out tag);
                     _file = new NLayer.MpegFile(stream);
                     _srcChannels = Math.Max(1, _file.Channels);
                     int rate = _file.SampleRate > 0 ? _file.SampleRate : target.SampleRate;
                     _resampler = rate != target.SampleRate ? new PolyphaseResampler(rate, target.SampleRate, target.Channels) : null;
                     _src = new float[4096 * Math.Max(_srcChannels, target.Channels)];
-                    Gapless = hasTag ? tag.ToGapless(rate, target.SampleRate) : GaplessInfo.None;
+                    // NLayer's Length is what ReadSamples delivers, trimmed already (a counted frame total: the Xing frame count,
+                    // or a header scan of a seekable file); a forward-only stream has none (-1).
+                    long trimmed = _file.Length / (sizeof(float) * (long)_srcChannels);
+                    Gapless = _file.Length >= 0
+                        ? new GaplessInfo(0, 0, rate == target.SampleRate ? trimmed : (long)Math.Round(trimmed * (double)target.SampleRate / rate), TailKnown: true)
+                        : GaplessInfo.None;
                     info = new DecodedInfo(new MediaContentType(Container.Mp3, CodecId.None, CodecId.Mp3),
                         new MixFormat(rate, _srcChannels), _file.Duration, default);
                     return true;
@@ -3026,112 +3031,17 @@ public static partial class Playback
                     long srcFrame = _target.SampleRate == _file.SampleRate
                         ? frame
                         : (long)Math.Round((double)frame * _file.SampleRate / _target.SampleRate);
-                    // NLayer's Position is in BYTES of decoded float samples, not samples (its Length is samples × 4): the
-                    // old `srcFrame × channels` landed a quarter of the way to the target.
+                    // NLayer's Position is in BYTES of decoded float samples, not samples (its Length is samples × 4), counted
+                    // in the trimmed timeline; it lands on exactly that sample (pre-rolling enough frames for the bit reservoir).
                     _file.Position = srcFrame * _srcChannels * sizeof(float);
                     _hold = 0;
                     _resampler?.Reset();
-                    // NLayer lands on an MPEG frame boundary (up to ~1 152 samples off): report where it actually is, so
-                    // the clock rebases on the audio that plays rather than on the ask.
                     long landedSrc = _file.Position / (sizeof(float) * (long)_srcChannels);
                     return _target.SampleRate == _file.SampleRate
                         ? landedSrc
                         : (long)Math.Round((double)landedSrc * _target.SampleRate / _file.SampleRate);
                 }
                 catch { return -1; }
-            }
-        }
-
-        /// <summary>The LAME/Xing gapless block. Header bytes only, no audio decode, seekable streams only, and the
-        /// position is restored — a probe failure is never a playback failure.</summary>
-        public readonly record struct Mp3Tag(int DelaySamples, int PaddingSamples, long TotalSamples)
-        {
-            /// <summary>The MDCT/filterbank delay a conforming decoder adds ON TOP of the encoder delay. The gapless
-            /// convention is "skip delay + 529, trim padding − 529".</summary>
-            public const int DecoderDelaySamples = 529;
-
-            public GaplessInfo ToGapless(int srcRate, int mixRate)
-            {
-                int leadSrc = DelaySamples + DecoderDelaySamples;
-                int padSrc = Math.Max(0, PaddingSamples - DecoderDelaySamples);
-                long exact = TotalSamples;
-                return new GaplessInfo(
-                    (int)ToMix(leadSrc, srcRate, mixRate),
-                    (int)ToMix(padSrc, srcRate, mixRate),
-                    exact > 0 ? ToMix(exact, srcRate, mixRate) : -1,
-                    TailKnown: exact > 0);
-            }
-
-            static long ToMix(long n, int srcRate, int mixRate)
-                => srcRate <= 0 || srcRate == mixRate ? n : (long)Math.Round(n * (double)mixRate / srcRate);
-
-            public static bool TryProbe(Stream stream, out Mp3Tag tag)
-            {
-                tag = default;
-                if (!stream.CanSeek) return false;
-                long restore = stream.Position;
-                try
-                {
-                    stream.Position = 0;
-                    Span<byte> head = stackalloc byte[10];
-                    if (stream.Read(head) < 10) return false;
-                    long frameStart = 0;
-                    if (head[0] == (byte)'I' && head[1] == (byte)'D' && head[2] == (byte)'3')
-                    {
-                        int size = ((head[6] & 0x7F) << 21) | ((head[7] & 0x7F) << 14)
-                                 | ((head[8] & 0x7F) << 7) | (head[9] & 0x7F);
-                        frameStart = 10 + size + ((head[5] & 0x10) != 0 ? 10 : 0);   // the footer flag adds 10
-                    }
-                    stream.Position = frameStart;
-                    Span<byte> buf = stackalloc byte[512];
-                    int n = stream.Read(buf);
-                    if (n < 160) return false;
-                    buf = buf[..n];
-
-                    int sync = -1;
-                    for (int i = 0; i + 1 < Math.Min(buf.Length, 192); i++)
-                    {
-                        if (buf[i] == 0xFF && (buf[i + 1] & 0xE0) == 0xE0) { sync = i; break; }
-                    }
-                    if (sync < 0) return false;
-                    ReadOnlySpan<byte> h = buf[sync..];
-                    if (h.Length < 160) return false;
-
-                    int versionBits = (h[1] >> 3) & 0x3;
-                    int layerBits = (h[1] >> 1) & 0x3;
-                    if (layerBits != 1 || versionBits == 1) return false;          // Layer III, and a real MPEG version
-                    bool mpeg1 = versionBits == 3;
-                    bool mono = ((h[3] >> 6) & 0x3) == 3;
-                    int samplesPerFrame = mpeg1 ? 1152 : 576;
-                    int xing = 4 + (mpeg1 ? (mono ? 17 : 32) : (mono ? 9 : 17));   // past the side info
-                    if (h.Length < xing + 8) return false;
-                    if (!h.Slice(xing, 4).SequenceEqual("Xing"u8) && !h.Slice(xing, 4).SequenceEqual("Info"u8)) return false;
-
-                    int flags = (h[xing + 4] << 24) | (h[xing + 5] << 16) | (h[xing + 6] << 8) | h[xing + 7];
-                    int cursor = xing + 8;
-                    long frames = 0;
-                    if ((flags & 0x1) != 0)
-                    {
-                        if (h.Length < cursor + 4) return false;
-                        frames = ((long)h[cursor] << 24) | ((long)h[cursor + 1] << 16) | ((long)h[cursor + 2] << 8) | h[cursor + 3];
-                        cursor += 4;
-                    }
-                    if ((flags & 0x2) != 0) cursor += 4;
-                    if ((flags & 0x4) != 0) cursor += 100;
-                    if ((flags & 0x8) != 0) cursor += 4;
-
-                    // The LAME extension: a 9-byte encoder string, then delay and padding packed 12 + 12 bits at 21.
-                    if (h.Length < cursor + 24) return false;
-                    int delay = (h[cursor + 21] << 4) | (h[cursor + 22] >> 4);
-                    int padding = ((h[cursor + 22] & 0x0F) << 8) | h[cursor + 23];
-                    if (delay <= 0 && padding <= 0) return false;                  // no gapless data was written
-                    if (delay > 4096 || padding > 4608) return false;              // outside any real encoder's range
-                    long total = frames > 0 ? frames * samplesPerFrame - delay - padding : -1;
-                    tag = new Mp3Tag(delay, padding, total);
-                    return true;
-                }
-                catch { return false; }
-                finally { try { stream.Position = restore; } catch { } }
             }
         }
 
