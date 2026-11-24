@@ -80,7 +80,7 @@ public static class LocalCollectionPage
             _openFolder = key => { _folder.Value = key; _setPivot(LocalPivot.Folders); };
             _songs = static () => Track.Table(new Track.TableArgs
             {
-                Source = Track.TableSource.ForPlaylist(Playlist.LocalFiles), Profile = s_songsProfile, Embedded = true, ScrollKey = "local-collection:songs",
+                Source = Track.TableSource.ForPlaylist(Playlist.LocalFiles), Profile = s_songsProfile, Embedded = true, PageWide = true, ScrollKey = "local-collection:songs",
             });
             _refold = static () =>
             {
