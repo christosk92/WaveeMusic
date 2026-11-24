@@ -212,6 +212,10 @@ internal interface INavRowHost
     /// <summary>The Playlists header "+" as a drop destination.</summary>
     DropTargetSpec HeaderCreateDropSpec();
 
+    /// <summary>An app-route row's own drop destination, or null: the Local Files row takes files and folders dragged from the OS
+    /// (#240 §3.15: files play and stay in Local Files, a folder becomes a music folder). Contract addition, declared.</summary>
+    DropTargetSpec? RouteDropSpec(string? routeKey);
+
     /// <summary>Is the header "+" the armed drop destination?</summary>
     Signal<bool> HeaderCreateDropActive { get; }
 

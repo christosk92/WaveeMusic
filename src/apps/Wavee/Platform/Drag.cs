@@ -545,7 +545,10 @@ public static partial class Drag
     public static Element? LikedChipArt { get; set; }
 
     /// <summary>The ONE preview mounted at the shell root (`DragPreviewLayer.Of`).</summary>
-    public static readonly Func<DragState, Element?> Preview = DragChip.Resolve(Chip);
+    static readonly Func<DragState, Element?> s_standardPreview = DragChip.Resolve(Chip);
+
+    /// <summary>The ONE preview: the refusal card over a row that refuses local files (it wraps the whole reason), else the standard chip.</summary>
+    public static readonly Func<DragState, Element?> Preview = static state => DropAnywhere.RefusalChip(in state) ?? s_standardPreview(state);
 
     /// <summary>The art-less fallback tile: the same kind glyphs the sidebar uses, so a cover-less drag still reads as
     /// "a playlist" / "an album" rather than as a generic note.</summary>

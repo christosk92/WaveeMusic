@@ -92,6 +92,8 @@ public static partial class Sidebar
             DragPayload? rootTarget, int rootPlanIndex, Action? onSpringLoad, string? railCueUri, bool isPlaylistRow, SidebarRowFacts rootFacts)
             => ResourceDropSpec(sectionId, slot, playlistUri, playlistName, rootTarget, rootPlanIndex, onSpringLoad, railCueUri, isPlaylistRow, rootFacts);
         DropTargetSpec INavRowHost.HeaderCreateDropSpec() => HeaderCreateDropSpec();
+        DropTargetSpec? INavRowHost.RouteDropSpec(string? routeKey)
+            => string.Equals(routeKey, LibraryActivity.RouteKey, StringComparison.Ordinal) ? DropAnywhere.LocalFiles : null;
         Signal<bool> INavRowHost.HeaderCreateDropActive => HeaderCreateDropActive;
         DropTargetSpec INavRowHost.FolderCreateDropSpec(string folderId, string folderName, Signal<bool> active) => FolderCreateDropSpec(folderId, folderName, active);
         SidebarDropSlot INavRowHost.DropSlotFor(int planIndex) => DropSlotFor(planIndex);

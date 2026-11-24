@@ -74,7 +74,7 @@ internal static class CommonLocalCollection
             _ = p.Shelves.Value;
             return new BoxEl
             {
-                Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
+                Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, DropTarget = p.Drop,
                 Children = [new SkelRegionEl(_pending, s_never, _content, _shimmer, null, SkelReveal.Soft, Design.Skeleton, null, SmoothResize: false)],
             };
         }

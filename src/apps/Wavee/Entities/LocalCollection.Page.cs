@@ -148,6 +148,7 @@ public static class LocalCollectionPage
                 Shelves = LocalHome.Shelves,
                 ShowShelf = LocalHome.Show,
                 MoveShelf = LocalHome.Move,
+                Drop = DropAnywhere.LocalFiles,
                 Title = Loc.Get(P.Title),
                 RouteKey = _routeKey,
             };

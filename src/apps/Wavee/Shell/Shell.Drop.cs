@@ -15,6 +15,7 @@
 // Allocation: the plan is built on the first ask of a drag (cold); OnOver, CanAccept and the captions read cached fields only.
 
 using FluentGpu.Controls;
+using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
@@ -263,6 +264,40 @@ public static partial class DropAnywhere
 
     static string? s_playNowCaption;
 
+    /// <summary>Local Files (its sidebar row and the "On this PC" page, §3.15): dropped songs play and stay in Local Files for the session
+    /// (D4); a folder becomes a music folder (the library's own verb; Play stays on the panel, the queue and the player bar); a playlist file
+    /// plays as a queue. Lit while a local payload is dragged; transparent to links (they are the panel's).</summary>
+    public static readonly DropTargetSpec LocalFiles = new(OsKinds,
+        OnEnter: static s => s.Caption = LocalFilesCaption(PlanOf(s)),
+        OnOver: static s => s.Caption = LocalFilesCaption(PlanOf(s)),
+        OnDrop: static s =>
+        {
+            var plan = PlanOf(s);
+            End();
+            Run(plan, plan.Kind switch
+            {
+                DropPayloadKind.Folders => DropVerb.AddMusicFolder,
+                DropPayloadKind.PlaylistFile => DropVerb.PlayAsQueue,
+                _ => DropVerb.PlayNow,
+            });
+            Forget();
+        })
+    {
+        CanAccept = static s => PlanOf(s).IsLocal,
+        Transparent = static s => !PlanOf(s).IsLocal,
+        VisualPolicy = DropTargetVisualPolicy.Spotlight,
+    };
+
+    static string? s_keepCaption, s_folderCaption, s_queueCaption;
+
+    static string? LocalFilesCaption(DropPlan plan) => plan.Kind switch
+    {
+        DropPayloadKind.Folders => s_folderCaption ??= Loc.Get(Strings.Drop.AddMusicFolder),
+        DropPayloadKind.PlaylistFile => s_queueCaption ??= Loc.Get(Strings.Drop.PlayAsQueue),
+        DropPayloadKind.Songs => s_keepCaption ??= Loc.Get(Strings.Drop.PlayAndKeep),
+        _ => null,
+    };
+
     /// <summary>The queue's foreign gate for an OS payload (its <c>Reorderable</c> takes <see cref="OsKinds"/> too).</summary>
     public static bool QueueAccepts(object? payload) => IsOsPayload(payload) && PlanOfPayload(payload).QueueTakes;
 
@@ -319,6 +354,44 @@ public static partial class DropAnywhere
                                      : inner.Transparent?.Invoke(s) ?? false,
             SpotlightWhen = s => Os(s) ? Takes(PlanOf(s)) : inner.SpotlightWhen?.Invoke(s) ?? true,
         };
+    }
+
+    /// <summary>The chip over a playlist row that refuses local files (board 24 ③): the not-allowed glyph and the whole reason, which wraps to a
+    /// second line rather than clip. The framework's standard chip keeps its caption to one ellipsized line under a 280 DIP card, which cut the
+    /// D12 sentence in half and repeated it as the title. Null when no row refuses: the standard chip draws.</summary>
+    public static Element? RefusalChip(in DragState state)
+    {
+        if (!s_refusingRow || !state.Active || state.Caption is not { Length: > 0 } reason) return null;
+        return new BoxEl
+        {
+            Key = DragChip.ChipRootKey, HitTestVisible = false,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, Gap = RefusalChipLook.Gap, AlignItems = FlexAlign.Center, MaxWidth = RefusalChipLook.MaxWidth,
+                    Padding = RefusalChipLook.Padding, Fill = Tok.FillSolidTertiary, BorderColor = Tok.StrokeSurfaceDefault, BorderWidth = 1f,
+                    Corners = Radii.OverlayAll, Shadow = Elevation.Flyout, HitTestVisible = false,
+                    Children =
+                    [
+                        new TextEl(DragChip.NotAllowedGlyph) { Size = RefusalChipLook.Glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.SystemFillCritical, Shrink = 0f },
+                        new TextEl(reason)
+                        {
+                            Size = RefusalChipLook.Text, LineHeight = RefusalChipLook.Line, Weight = RefusalChipLook.Weight, Color = Tok.TextPrimary,
+                            Wrap = TextWrap.WrapWholeWords, MaxLines = 2, Trim = TextTrim.WordEllipsis, Shrink = 1f, MinWidth = 0f,
+                        },
+                    ],
+                },
+            ],
+        };
+    }
+
+    /// <summary>The refusal chip's numbers: the framework chip's card (padding, glyph, caption type) with room for the D12 sentence on one line.</summary>
+    static class RefusalChipLook
+    {
+        public const float MaxWidth = 380f, Gap = 10f, Glyph = 14f, Text = 12f, Line = 16f;
+        public const ushort Weight = 600;
+        public static readonly Edges4 Padding = new(12f, 8f, 14f, 8f);
     }
 
     /// <summary>The pointer is over a playlist row that refuses the live local-files drag (the chip says why).</summary>

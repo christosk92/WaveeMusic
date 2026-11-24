@@ -259,7 +259,8 @@ internal sealed class WinUiNavRow : Component
             ? _o.ResourceDropSpec(row.SectionId, PinSlot(row.SectionId, index),
                 playlistRow && snapshot.CanEdit ? snapshot.Uri : null, snapshot.Name, resource, index,
                 isPlaylistRow: playlistRow, rootFacts: TreeRowFacts(index, in snapshot))
-            : PinSpec(section, row.SectionId, index);
+            // A route row that takes an OS drag of its own (Local Files: #240 §3.15), else the pinned band's slot.
+            : PinSpec(section, row.SectionId, index) ?? _o.RouteDropSpec(route);
 
         var spec = new WinUiRowSpec
         {

@@ -5611,6 +5611,7 @@
     "nothingUsable": "Nothing here Wavee can play",
     "onlySpotifyLinks": "Wavee opens Spotify links",
     "localToSpotifyLater": "Adding local files to a Spotify playlist comes later",
+    "playAndKeep": "Play now · kept in Local Files",
     "queueOnThisPc": "Another device is playing: files on this PC can’t join its queue",
     "addingSongs": "Adding songs…",
     "adding": "Adding {songs}…",
