@@ -74,7 +74,8 @@ public static partial class Diagnostics
                 case DiagCommand.HomeCap: CaptureHome(v.Tag); break;
                 case DiagCommand.Drive: Drive.Apply(v); break;
                 case DiagCommand.Connect:
-                    if (!Platform.Args.Fake) { Reply("connect", "refused", "--fake only"); break; }
+                    // --fake, or a profile with no account (the "fake" catalog scope): never a signed-in session's real Connect roster.
+                    if (!Platform.Args.Fake && Platform.Scope.Provider != "fake") { Reply("connect", "refused", "--fake or a signed-out profile only"); break; }
                     Playback.UseFakeConnect(v.Mode == "nearby" ? Entities.FakeConnect() : []);
                     Reply("connect", "ok", v.Mode);
                     break;
