@@ -188,7 +188,8 @@
        namespace. Used ONLY by the Spotify subsystem (src/apps/Wavee/Spotify, the live-network layer). -->
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.35.0" />
-    <PackageReference Include="NLayer" Version="1.15.0" />
+    <!-- MP3: NLayer, vendored with the gapless/reservoir/seek fixes ahead of an upstream release (src/apps/vendor/NLayer/README.md). -->
+    <ProjectReference Include="..\vendor\NLayer\NLayer.csproj" />
     <!-- DPAPI (Windows) — the OPTIONAL at-rest protector swapped behind the portable ICredentialProtector seam. -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
     <!-- §2.7 — pure-managed (AOT-safe) zstd decode for the Content-Encoding: zstd /changes + /diff playlist-v2 responses. -->
