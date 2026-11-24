@@ -43,7 +43,9 @@ public readonly record struct CurveSegment(float Start, float End, bool Cubic,
     float X0, float Y0, float X1, float Y1, float X2, float Y2, float X3, float Y3)
 {
     public static CurveSegment Flat(float start, float end, float y) => new(start, end, false, 0, y, 0, 0, 0, 0, 1, y);
-    public static CurveSegment Line(float start, float end, float y0, float y1) => new(start, end, false, 0, y0, 0, 0, 0, 0, 1, y1);
+    /// <summary>A ramp, spelled as the official client spells it (capture: the filter sweeps): a cubic <c>(0,y0)(0,y0)(1,y1)(1,y1)</c>,
+    /// whose y is linear in x.</summary>
+    public static CurveSegment Ramp(float start, float end, float y0, float y1) => new(start, end, true, 0, y0, 0, y0, 1, y1, 1, y1);
     /// <summary>The S the capture draws everywhere: <c>(0,y0)(.5,y0)(.5,y1)(1,y1)</c>.</summary>
     public static CurveSegment S(float start, float end, float y0, float y1) => new(start, end, true, 0, y0, .5f, y0, .5f, y1, 1, y1);
 }
@@ -94,8 +96,8 @@ public static class MixCurves
                 else { into[0] = CurveSegment.Flat(0, 1 - swap, .5f); into[1] = CurveSegment.S(1 - swap, 1, .5f, 0); }
                 return 2;
             case MixLane.FilterCutoff when rise:             // C15 out (high-pass sweep) / C9 in (low-pass opening)
-                if (incoming) { into[0] = CurveSegment.Line(0, .5f, 0, .5f); into[1] = CurveSegment.Flat(.5f, 1, .5f); }
-                else { into[0] = CurveSegment.Flat(0, .5f, .5f); into[1] = CurveSegment.Line(.5f, 1, .5f, 1); }
+                if (incoming) { into[0] = CurveSegment.Ramp(0, .5f, 0, .5f); into[1] = CurveSegment.Flat(.5f, 1, .5f); }
+                else { into[0] = CurveSegment.Flat(0, .5f, .5f); into[1] = CurveSegment.Ramp(.5f, 1, .5f, 1); }
                 return 2;
             case MixLane.FilterResonance when rise:          // C7: flat default
                 into[0] = CurveSegment.Flat(0, 1, .5f);
@@ -152,17 +154,25 @@ public static class MixCurves
         {
             ref readonly var c = ref curve[i];
             if (i > 0) sb.Append(',');
-            sb.Append("{\"start_point\":").Append(F(c.Start)).Append(",\"end_point\":").Append(F(c.End)).Append(",\"fade_curve\":[");
+            // The keys in the official client's order (alphabetical: end_point, fade_curve, start_point), so the strings match its own.
+            sb.Append("{\"end_point\":").Append(F(c.End)).Append(",\"fade_curve\":[");
             Point(sb, c.X0, c.Y0); sb.Append(',');
             if (c.Cubic) { Point(sb, c.X1, c.Y1); sb.Append(','); Point(sb, c.X2, c.Y2); sb.Append(','); }
             Point(sb, c.X3, c.Y3);
-            sb.Append("]}");
+            sb.Append("],\"start_point\":").Append(F(c.Start)).Append('}');
         }
         sb.Append(']');
         return System.Text.Encoding.UTF8.GetBytes(sb.ToString(), utf8);
 
         static void Point(System.Text.StringBuilder sb, float x, float y) => sb.Append("{\"x\":").Append(F(x)).Append(",\"y\":").Append(F(y)).Append('}');
-        static string F(float v) => v.ToString("0.#########", CultureInfo.InvariantCulture);
+        // The official client's spelling: an exactly representable short binary fraction in full (1 − 2⁻⁹ is 0.998046875, 2⁻¹⁰ is
+        // 0.0009765625), anything else at the float's shortest round-trip form (0.6, not 0.6000000238).
+        static string F(float v)
+        {
+            double d = v;
+            string exact = d.ToString("0.############", CultureInfo.InvariantCulture);
+            return double.Parse(exact, CultureInfo.InvariantCulture) == d ? exact : v.ToString("R", CultureInfo.InvariantCulture);
+        }
     }
 
     // ── the curve → sound mapping (plan §3.4; tuned by ear later, one table) ──────────────────────────────────────────

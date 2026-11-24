@@ -17,6 +17,31 @@ public static partial class Diagnostics
         /// <summary>`mix {uri?, recipe?}`.</summary>
         string MixVerb(int id, string name, Inspect.Args a)
         {
+            if (a.Has("curves"))
+            {
+                // The Connect metadata curves Wavee writes for a preset and window: compared with the capture's accepted strings.
+                byte preset = (byte)a.Int("curves", 1);
+                uint window = (uint)a.Int("window", 2890);
+                int units = MixCurves.UnitsFor(window);
+                Span<CurveSegment> seg = stackalloc CurveSegment[4];
+                var entries = new List<(string Key, string Json)>();
+                byte[] buf = new byte[2048];
+                foreach (bool incoming in new[] { false, true })
+                    foreach (var (lane, laneKey) in new[] { (MixLane.Volume, "curves"), (MixLane.LowEq, "eq_low_gain_curves"), (MixLane.FilterCutoff, "filter_cutoff_curves"), (MixLane.FilterResonance, "filter_resonance_curves") })
+                    {
+                        int n = MixCurves.Segments(preset, lane, incoming, units, seg);
+                        if (n == 0) continue;
+                        int len = MixCurves.WriteJson(seg[..n], buf);
+                        entries.Add(("audio.fade_" + (incoming ? "in_" : "out_") + laneKey, System.Text.Encoding.UTF8.GetString(buf, 0, len)));
+                    }
+                return Inspect.Reply.Ok(id, name, w =>
+                {
+                    w.WriteNumber("units", units);
+                    w.WriteStartArray("curves");
+                    foreach (var (k, j) in entries) { w.WriteStartObject(); w.WriteString("key", k); w.WriteString("value", j); w.WriteEndObject(); }
+                    w.WriteEndArray();
+                });
+            }
             if (a.Has("mixstate"))
             {
                 // The `mix-state` (turn Mix on) body Wavee would POST for this revision (hex): compared byte-for-byte with the capture's #057.

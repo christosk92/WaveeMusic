@@ -596,7 +596,9 @@ public static partial class Diagnostics
                 Positional = ["uri"],
                 Args = [Arg("uri", ArgType.String, "the playlist (default: the fake mixed playlist)"),
                         Arg("recipe", ArgType.String, "decode this base64 TransitionRecipe instead"),
-                        Arg("mixstate", ArgType.String, "print the mix-state (turn Mix on) body for this revision (hex)")],
+                        Arg("mixstate", ArgType.String, "print the mix-state (turn Mix on) body for this revision (hex)"),
+                        Arg("curves", ArgType.Int, "print the Connect metadata curves for this preset id (1 Fade, 3 Rise)"),
+                        Arg("window", ArgType.Int, "the window those curves are for, ms (8 units under 8 s, else 16)")],
             },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {
