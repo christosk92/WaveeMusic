@@ -5374,6 +5374,27 @@
     "stateEdited": "Edited",
     "stateThisPc": "This PC",
     "queueLine": "Mixing · {style}",
-    "crossfadeNote": "Mix is on for this playlist"
+    "crossfadeNote": "Mix is on for this playlist",
+    "smooth": "Smooth",
+    "lift": "Lift",
+    "quick": "Quick",
+    "autoChose": "Auto chose {style}",
+    "sentenceSmooth": "Volume crossfades over {seconds} s; the bass hands over at the middle.",
+    "sentenceLift": "The next song comes in under a filter at full volume; the bass swaps at the end.",
+    "sentenceQuick": "A short fade on the beat, about 2.5 s.",
+    "sentenceNoMix": "This pair plays as a normal track change.",
+    "sentenceUnknown": "Edited in Spotify with a style Wavee doesn't know yet; it plays as a fade. Pick a style to replace it.",
+    "overlap": "Overlap",
+    "readout": "{seconds} s · {beats} beats",
+    "readoutPlain": "{seconds} s",
+    "compatTempo": "{from} → {to} BPM",
+    "compatGood": "these sit well together.",
+    "compatApart": "tempos far apart; a quick cut sounds best.",
+    "compatClash": "keys clash; a shorter overlap sounds best.",
+    "savedThisPc": "Saved on this PC only",
+    "resetToAuto": "Reset to auto",
+    "done": "Done",
+    "pairOf": "{n} of {count}",
+    "cardNoPair": "This pair can't be edited (a local file or an episode)."
   }
 }

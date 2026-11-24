@@ -4,8 +4,8 @@
 // head as two bars that overlap by the transition's share; apart for No mix), the style and length, and its state (Auto · Edited ·
 // This PC · No mix). It opens in the list bar's eased slot under the bar (the one Tune uses: a playlist the user can mix has no
 // Tune), from the Mix menu or a seam's click, and shuts the same way: the rows below slide, nothing jumps. Virtualized
-// (ItemsView.CreateBound over a fixed row extent), so a long playlist costs only the rows on screen. Rows are read-only in this
-// phase (the seam card that edits a pair is phase 7).
+// (ItemsView.CreateBound over a fixed row extent), so a long playlist costs only the rows on screen. Clicking a row (or opening
+// from a seam) shows that pair's seam card under the list (Entities/Mix.Card.cs, phase 7).
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -54,6 +54,8 @@ internal sealed class MixTransitionsPanel(Playlist playlist, int focus, Action c
     readonly int _focus = focus;
     readonly Action _close = close;
     Func<RowScope, Element>? _row;
+    Signal<int>? _selected;
+    Action<int>? _select;
 
     /// <summary>How many rows the panel shows before it scrolls.</summary>
     const int VisibleRows = 6;
@@ -66,7 +68,26 @@ internal sealed class MixTransitionsPanel(Playlist playlist, int focus, Action c
             return Math.Max(0, Entities.Current.Edges.PlaylistTracks.Targets(_p.Slot).Length - 1);
         }).Value;
         float rowH = Ui.Body("").LineHeight + Spacing.L;
-        _row ??= scope => Embed.Comp(() => new MixTransitionRow(_p, scope, _focus));
+        // The pair whose seam card is open (−1: none). A seam's click opens the panel on its pair, card included.
+        var selected = UseSignal(_focus);
+        _selected = selected;
+        _select ??= i => _selected!.Value = _selected.Peek() == i ? -1 : i;
+        _row ??= scope => Embed.Comp(() => new MixTransitionRow(_p, scope, _selected!, _select));
+        int open = selected.Value;
+        // The card is THE disclosure motion (Design.Reveal.Drawer): it mounts to open and unmounts to close, its layout lands once and the
+        // presented height springs, so the rows below ride it instead of taking one long first step. The host stays while the card moves
+        // between pairs (the inner card is keyed by its pair, so a new pair starts a fresh draft and the host only resizes).
+        Element? card = open >= 0 && open < count
+            ? new BoxEl
+            {
+                Key = "mix:card:host", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = Design.Reveal.Drawer,
+                Children =
+                [
+                    Embed.Comp(() => new MixSeamCard(_p.Slot, open, count, i => { if (i >= 0 && i < count) _selected!.Value = i; }, () => _selected!.Value = -1))
+                        with { Key = "mix:card:" + open.ToString(CultureInfo.InvariantCulture) },
+                ],
+            }
+            : null;
         var header = new BoxEl
         {
             Key = "mix:transitions:head", Direction = 0, AlignItems = FlexAlign.Center, Padding = new Edges4(0f, 0f, 0f, Spacing.XS),
@@ -85,17 +106,18 @@ internal sealed class MixTransitionsPanel(Playlist playlist, int focus, Action c
         {
             Key = "mix:transitions:panel", Direction = 1, MinWidth = 0f, Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S),
             Fill = Tok.FillCardDefault, Corners = Radii.ControlAll, BorderColor = Tok.StrokeDividerDefault, BorderWidth = 1f,
-            Children = [header, list],
+            Children = card is null ? [header, list] : [header, list, card],
         };
     }
 }
 
 /// <summary>One pair (playlist row i → i + 1). Re-renders when the slot is recycled onto another index or the mix data moves.</summary>
-internal sealed class MixTransitionRow(Playlist playlist, RowScope scope, int focus) : Component
+internal sealed class MixTransitionRow(Playlist playlist, RowScope scope, Signal<int> selected, Action<int> select) : Component
 {
     readonly Playlist _p = playlist;
     readonly RowScope _scope = scope;
-    readonly int _focus = focus;
+    readonly Signal<int> _selected = selected;
+    readonly Action<int> _select = select;
 
     readonly record struct Face(string From, string To, string Style, string State, float Overlap, bool NoMix);
 
@@ -140,12 +162,14 @@ internal sealed class MixTransitionRow(Playlist playlist, RowScope scope, int fo
                 },
             ],
         };
-        bool focused = _focus >= 0 && _scope.Index.Peek() == _focus;
+        int index = _scope.Index.Value;
+        bool focused = index >= 0 && _selected.Value == index;
         return new BoxEl
         {
             Key = "mix:t:row", Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
             Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.ControlAll,
-            Fill = focused ? Tok.FillSubtleSecondary : ColorF.Transparent,
+            Fill = focused ? Tok.FillSubtleSecondary : ColorF.Transparent, HoverFill = Tok.FillSubtleSecondary,
+            Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = () => _select(_scope.Index.Peek()),
             Children =
             [
                 Ui.Body(face.From) with { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap },
