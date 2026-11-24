@@ -239,7 +239,7 @@ internal static class CommonLocalFiles
 
     static TextEl Wrapping(TextEl text) => text with { Wrap = TextWrap.WrapWholeWords, MinWidth = 0f };
 
-    /// <summary>One missing file: the note tile, title · artist, the last-known path, the "Not found since" line, Locate…; a hairline above it from the
+    /// <summary>One missing file: the note tile, title · artist, the last-known path, the "Not found since" line, Locate… and Remove; a hairline above it from the
     /// second row on.</summary>
     static Element ReviewRow(LocalFilesReviewRow row, bool rule, float target)
     {
@@ -274,7 +274,16 @@ internal static class CommonLocalFiles
                         R.Type.DenseMeta(row.Line) with { Color = Tok.TextSecondary, MaxLines = 2, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
                     ],
                 },
-                CommonTouch.Button(row.LocateLabel, row.Locate, target) with { Key = Rules.LocateKey + row.Id, Shrink = 0f },
+                // Locate… and Remove side by side (board 12), the row's one pair of verbs.
+                new BoxEl
+                {
+                    Direction = 0, Gap = Rules.ReviewVerbGap, Shrink = 0f, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        CommonTouch.Button(row.LocateLabel, row.Locate, target) with { Key = Rules.LocateKey + row.Id, Shrink = 0f },
+                        CommonTouch.Button(row.RemoveLabel, row.Remove, target) with { Key = Rules.RemoveKey + row.Id, Shrink = 0f },
+                    ],
+                },
             ],
         };
         return new BoxEl

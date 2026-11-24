@@ -15,8 +15,8 @@
 //             offline", or the lane's "Unavailable" for a format Wavee cannot play yet; the unavailable bar counts them by cause (one home per
 //             message: the bar is the missing songs' banner too, with Review beside Hide them).
 //   REVIEW    the missing songs' dialog (`LocalFiles.Review` in the house ContentDialog): per file its title, artist, last-known path, "Not found since
-//             12 Nov · removed on 11 Jan" and Locate… (a folder picker: the pick is added as a music folder, or rescanned if it is one; Wavee cannot
-//             pair one file by hand yet, and the index has no verb that drops one entry, so there is no Remove); the keep-days footer.
+//             12 Nov · removed on 11 Jan", Locate… (a file picker: the pick is re-paired with the row, `LocalLibrary.Relocate`) and Remove
+//             (`LocalLibrary.RemoveMissing`); the keep-days footer.
 //
 // LIVE. The hosts read `LocalLibrary.Epoch` (scan progress, at most four times a second) and `LocalLibrary.Restated` (the list changed). A row's
 // tag and reason are read in its bound cells, on a presentation change or a restate, never per frame.
@@ -366,7 +366,7 @@ public static class LocalFilesList
             _ = LocalLibrary.Epoch.Value;
             var missing = LocalLibrary.MissingEntries();
             int keepDays = Math.Clamp(Platform.Settings.Get(Platform.Keys.MusicMissingDays), 7, 365);
-            string locate = Loc.Get(Strings.LocalFiles.Missing.Locate);
+            string locate = Loc.Get(Strings.LocalFiles.Missing.Locate), remove = Loc.Get(Strings.LocalFiles.Missing.Remove);
             var rows = new LocalFilesReviewRow[missing.Count];
             for (int i = 0; i < rows.Length; i++)
             {
@@ -376,7 +376,10 @@ public static class LocalFilesList
                     + Strings.LocalFiles.Missing.RemovedOn(DayOf(e.LastSeenTicks + TimeSpan.TicksPerDay * keepDays));
                 LocalTagSet tags = e.Tags;
                 string artist = Playlist.LocalArtistLine(in tags);
-                rows[i] = new LocalFilesReviewRow(e.LocalId.ToString(CultureInfo.InvariantCulture), e.MatchTitle, artist, path, line, locate, () => Locate(path));
+                long id = e.LocalId;
+                string title = e.MatchTitle;
+                rows[i] = new LocalFilesReviewRow(id.ToString(CultureInfo.InvariantCulture), title, artist, path, line, locate, () => Locate(id, title, path),
+                    remove, () => LocalLibrary.RemoveMissing(id));
             }
             return ViewSlots.View(ViewKeys.LocalFilesReview, new LocalFilesReviewProps
             {
@@ -389,24 +392,27 @@ public static class LocalFilesList
         }
     }
 
-    /// <summary>"Locate…": the house folder picker, starting from where the file was. The pick is added as a music folder, or rescanned when a music
-    /// folder already holds it (the scan pairs a moved file it finds again by its file id). One file cannot be paired by hand yet.</summary>
-    static void Locate(string lastPath)
+    /// <summary>"Locate…": the house file picker (audio files). The pick is re-paired with the row (same id, so playlists and the queue keep it); a
+    /// file outside every music folder adds its folder, and the pair completes once that folder is scanned (<see cref="LocalLibrary.Relocate"/>).</summary>
+    static void Locate(long id, string title, string lastPath)
     {
-        Pickers.Pick(PickerRequest.Folder(Loc.Get(Strings.LocalFiles.Missing.LocateTitle)),
+        Pickers.Pick(PickerRequest.Open(Loc.Get(Strings.LocalFiles.Missing.LocateTitle), (Loc.Get(Strings.LocalFiles.Missing.AudioFiles), AudioSpec)),
             done: picked =>
             {
                 if (string.IsNullOrWhiteSpace(picked)) return;
-                string folder;
-                try { folder = LocalLibrary.Normalize(picked); }
-                catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { return; }
-                string? home = LocalLibrary.ContainerOf(folder);
-                foreach (string f in LocalLibrary.Folders) if (string.Equals(f, folder, StringComparison.OrdinalIgnoreCase)) home = f;
-                if (home is not null) LocalLibrary.Rescan(home);
-                else SettingsVerbs.AddMusicFolderAt(folder);
+                switch (LocalLibrary.Relocate(id, picked))
+                {
+                    case LocalLibrary.RelocateResult.Paired: Notify.Say(Strings.LocalFiles.Missing.Paired(title), dedupeKey: "local.locate"); break;
+                    case LocalLibrary.RelocateResult.AddedFolder: Notify.Say(Strings.LocalFiles.Missing.PairAfterScan(title), dedupeKey: "local.locate"); break;
+                    case LocalLibrary.RelocateResult.NotAudio: Notify.Say(Loc.Get(Strings.LocalFiles.Missing.NotAudio), dedupeKey: "local.locate"); break;
+                    case LocalLibrary.RelocateResult.Refused: Notify.Say(Loc.Get(Strings.LocalFiles.Missing.Refused), dedupeKey: "local.locate"); break;
+                }
             },
             failed: ex => Log.Warn("localfile", "locate picker failed (" + Path.GetFileName(lastPath) + ")", ex));
     }
+
+    /// <summary>The picker's filter: the extensions the scan reads.</summary>
+    const string AudioSpec = "*.mp3;*.flac;*.ogg;*.oga;*.m4a;*.mp4;*.aac;*.wav;*.aif;*.aiff;*.opus;*.wma";
 
     static string Number(int n) => n.ToString("N0", CultureInfo.CurrentCulture);
 

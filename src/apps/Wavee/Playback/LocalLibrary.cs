@@ -274,7 +274,7 @@ public static partial class LocalLibrary
     {
         // At most four posts a second; the post bumps the signal on the UI thread.
         if (Interlocked.Exchange(ref s_postPending, 1) != 0) return;
-        s_post ??= new Timer(static _ => Playback.ToUi(static () => { Volatile.Write(ref s_postPending, 0); Epoch.Value++; MaybeRestate(); }), null, Timeout.Infinite, Timeout.Infinite);
+        s_post ??= new Timer(static _ => Playback.ToUi(static () => { Volatile.Write(ref s_postPending, 0); Epoch.Value++; MaybeRestate(); PairPending(); }), null, Timeout.Infinite, Timeout.Infinite);
         s_post.Change(250, Timeout.Infinite);
         if (!s_scan.Busy) s_idle?.Change(30_000, Timeout.Infinite);   // idle: compact the log in 30 s unless a scan starts
     }

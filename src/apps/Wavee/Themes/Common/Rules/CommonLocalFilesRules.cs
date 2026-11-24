@@ -20,7 +20,7 @@ internal static class CommonLocalFilesRules
     public const string ScanKey = "local-scan:line", ScanBarKey = "local-scan:bar";
     public const string PillKey = "local-pill";
     public const string TagKey = "local-tag";
-    public const string ReviewKey = "local-review", ReviewRowKey = "local-review:row:", LocateKey = "local-review:locate:";
+    public const string ReviewKey = "local-review", ReviewRowKey = "local-review:row:", LocateKey = "local-review:locate:", RemoveKey = "local-review:remove:";
 
     // ── the empty state (board 6: a 600 column centred in the list, the 440 line, 24 to the buttons, 8 to the caption, 40 to the 152 drop zone) ──
 
@@ -71,6 +71,9 @@ internal static class CommonLocalFilesRules
     public const ushort TagWeight = 600;
 
     // ── the review (board 12: the list's rows 76 tall, 12 across, the 40 tile, 12 between; the list's plate r6) ──
+
+    /// <summary>The gap between a review row's Locate… and Remove.</summary>
+    public const float ReviewVerbGap = 8f;
 
     /// <summary>The list's top air, a row's least height, its padding across, the tile, the gap between its parts, the plate's corner, the note's and
     /// the footer's top air.</summary>

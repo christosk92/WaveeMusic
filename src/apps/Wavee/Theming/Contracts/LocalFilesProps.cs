@@ -98,8 +98,11 @@ public sealed record LocalFilesPillProps
 /// <param name="Path">Where it was last seen.</param>
 /// <param name="Line">"Not found since 12 Nov · removed on 11 Jan".</param>
 /// <param name="LocateLabel">"Locate…".</param>
-/// <param name="Locate">Opens the folder picker for it.</param>
-public sealed record LocalFilesReviewRow(string Id, string Title, string Artist, string Path, string Line, string LocateLabel, Action Locate);
+/// <param name="Locate">Opens the file picker for it (the pick is re-paired with this row).</param>
+/// <param name="RemoveLabel">"Remove".</param>
+/// <param name="Remove">Drops it from the library (its row leaves the list).</param>
+public sealed record LocalFilesReviewRow(string Id, string Title, string Artist, string Path, string Line, string LocateLabel, Action Locate,
+    string RemoveLabel, Action Remove);
 
 /// <summary>The props of <see cref="ViewKeys.LocalFilesReview"/> (the dialog's title and its Close are the dialog's own).</summary>
 public sealed record LocalFilesReviewProps
@@ -110,7 +113,7 @@ public sealed record LocalFilesReviewProps
     /// <summary>The missing files, the longest gone first.</summary>
     public required IReadOnlyList<LocalFilesReviewRow> Rows { get; init; }
 
-    /// <summary>What Locate does ("Locate adds the folder you pick …").</summary>
+    /// <summary>What Locate does ("Point Locate at the file …").</summary>
     public required string Note { get; init; }
 
     /// <summary>"Missing songs are removed after 60 days unless a playlist uses them".</summary>

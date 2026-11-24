@@ -1370,8 +1370,14 @@
       "since": "Niet gevonden sinds {date}",
       "removedOn": "verwijderd op {date}",
       "locate": "Zoeken…",
-      "locateTitle": "Kies de map waarin dit nummer nu staat",
-      "locateNote": "Zoeken voegt de map die je kiest toe aan je muziekmappen, of scant hem opnieuw als hij er al bij hoort. Wavee kan nog niet één bestand met de hand koppelen.",
+      "remove": "Verwijderen",
+      "audioFiles": "Audiobestanden",
+      "paired": "{title} gevonden",
+      "pairAfterScan": "Map toegevoegd: {title} wordt gekoppeld zodra de map gescand is",
+      "notAudio": "Dat bestand kan Wavee niet lezen",
+      "refused": "Die map kan niet aan je muziekmappen worden toegevoegd",
+      "locateTitle": "Zoek waar dit nummer nu staat",
+      "locateNote": "Wijs met Zoeken het bestand aan: Wavee koppelt het aan dit nummer en houdt het in je afspeellijsten. Een bestand buiten je muziekmappen voegt zijn map toe.",
       "footer": "{count, plural, one {Ontbrekende nummers worden na # dag verwijderd, tenzij een afspeellijst ze gebruikt} other {Ontbrekende nummers worden na # dagen verwijderd, tenzij een afspeellijst ze gebruikt}}",
       "noneLeft": "Er ontbreekt niets meer."
     }

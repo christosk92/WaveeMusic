@@ -5555,8 +5555,14 @@
       "since": "Not found since {date}",
       "removedOn": "removed on {date}",
       "locate": "Locate…",
-      "locateTitle": "Choose the folder this song is in now",
-      "locateNote": "Locate adds the folder you pick to your music folders, or rescans it if it is one already. Wavee can’t pair a single file by hand yet.",
+      "remove": "Remove",
+      "audioFiles": "Audio files",
+      "paired": "Found {title}",
+      "pairAfterScan": "Added its folder: {title} pairs once the folder is scanned",
+      "notAudio": "That file isn’t one Wavee can read",
+      "refused": "That folder can’t be added to your music folders",
+      "locateTitle": "Find where this song is now",
+      "locateNote": "Point Locate at the file: Wavee pairs it with this song and keeps it in your playlists. A file outside your music folders adds its folder.",
       "footer": "{count, plural, one {Missing songs are removed after # day unless a playlist uses them} other {Missing songs are removed after # days unless a playlist uses them}}",
       "noneLeft": "Nothing is missing any more."
     }

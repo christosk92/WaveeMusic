@@ -1367,8 +1367,14 @@
       "since": "{date}부터 찾을 수 없음",
       "removedOn": "{date}에 제거 예정",
       "locate": "찾기…",
-      "locateTitle": "이 곡이 지금 있는 폴더 선택",
-      "locateNote": "찾기를 누르면 선택한 폴더를 음악 폴더에 추가하거나, 이미 음악 폴더이면 다시 검색합니다. 아직 파일 하나를 직접 연결할 수는 없습니다.",
+      "remove": "제거",
+      "audioFiles": "오디오 파일",
+      "paired": "{title}을(를) 찾았습니다",
+      "pairAfterScan": "폴더를 추가했습니다: 폴더를 스캔하면 {title}이(가) 연결됩니다",
+      "notAudio": "Wavee가 읽을 수 없는 파일입니다",
+      "refused": "이 폴더는 음악 폴더에 추가할 수 없습니다",
+      "locateTitle": "이 곡이 지금 있는 위치 찾기",
+      "locateNote": "찾기로 파일을 지정하면 Wavee가 이 곡과 연결하고 재생목록에 그대로 둡니다. 음악 폴더 밖의 파일은 해당 폴더를 추가합니다.",
       "footer": "{count, plural, other {재생목록에서 사용하지 않는 한, 찾을 수 없는 곡은 #일 후에 제거됩니다}}",
       "noneLeft": "이제 찾을 수 없는 곡이 없습니다."
     }
