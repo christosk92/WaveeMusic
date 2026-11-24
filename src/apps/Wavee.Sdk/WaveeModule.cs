@@ -88,6 +88,16 @@ public abstract partial class WaveeModule
     /// <param name="ct">Cancels the action.</param>
     public virtual ValueTask InvokeActionAsync(string actionId, CancellationToken ct) => default;
 
+    /// <summary>
+    /// The app's playback timeline changed, or one second passed while playing (capability <c>timeline</c>; an observer
+    /// module such as a timecode sender). Extrapolate between calls rather than waiting for the next one:
+    /// <c>position = PositionMicros + (now − AnchorTicks) / TicksPerSecond × 1e6 × Rate</c> while
+    /// <see cref="TimelineState.Playing"/>. The default ignores it.
+    /// </summary>
+    /// <param name="state">The new state.</param>
+    /// <param name="ct">Cancels the handler.</param>
+    public virtual ValueTask OnTimelineAsync(TimelineState state, CancellationToken ct) => default;
+
     /// <summary>Last chance to flush and release resources before the process exits.</summary>
     /// <param name="ct">Bounded by the host's shutdown grace period.</param>
     public virtual ValueTask ShutdownAsync(CancellationToken ct) => default;

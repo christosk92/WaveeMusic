@@ -150,6 +150,9 @@ public static class ModuleRunner
         connection.OnNotification(ModuleMethods.Warm, SdkJsonContext.Default.WarmParams,
             p => _ = WarmQuietlyAsync(module, p?.PlayableId));
 
+        connection.OnNotification(ModuleMethods.Timeline, SdkJsonContext.Default.TimelineState,
+            p => { if (p is not null) _ = TimelineQuietlyAsync(module, p); });
+
         connection.OnRequest(ModuleMethods.StreamOpen, SdkJsonContext.Default.StreamOpenParams,
             SdkJsonContext.Default.StreamOpenResult, async (StreamOpenParams p, CancellationToken ct) =>
             {
@@ -217,6 +220,19 @@ public static class ModuleRunner
         catch (Exception ex)
         {
             Console.Error.WriteLine($"WARN warm failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>A <c>playback/timeline</c> notification: a failing observer logs and carries on (the next one is a second away).</summary>
+    private static async Task TimelineQuietlyAsync(WaveeModule module, TimelineState state)
+    {
+        try
+        {
+            await module.OnTimelineAsync(state, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"WARN timeline handler failed: {ex.Message}");
         }
     }
 
