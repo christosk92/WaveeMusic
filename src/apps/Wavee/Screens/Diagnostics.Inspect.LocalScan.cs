@@ -28,8 +28,8 @@ public static partial class Diagnostics
                 scanned = LocalLibrary.InspectFolder(path);
             }
             else if (v is not ("none" or "scanning" or "ready" or "offline" or "changed" or "missing" or "listing"
-                or "network-online" or "network-waking" or "network-slow" or "network-signin" or "network-offline"))
-                return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline|changed|missing|listing|network-online|network-waking|network-slow|network-signin|network-offline, not '" + v + "'");
+                or "network-online" or "network-waking" or "network-slow" or "network-signin" or "network-offline" or "checking"))
+                return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline|changed|missing|listing|network-online|network-waking|network-slow|network-signin|network-offline|checking, not '" + v + "'");
             if (v != "folder") LocalLibrary.InspectFixture(v);
             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
             return Settled(id, name, a, w =>
