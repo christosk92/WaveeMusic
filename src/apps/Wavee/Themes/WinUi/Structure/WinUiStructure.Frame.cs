@@ -24,7 +24,7 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.PageHead, WinUiMasthead.PageHead, "winui.page.head");
         views.Add(ViewKeys.ShellCommandPalette, WinUiPalette.Template, "winui.shell.command-palette");
         views.Add(ViewKeys.ShellHistoryMenu, WinUiFrameBits.HistoryMenu, "winui.shell.history-menu");
-        views.Add(ViewKeys.ShellFileDrop, WinUiFrameBits.FileDrop, "winui.shell.file-drop");
+        views.Add(ViewKeys.ShellFileDrop, Wavee.Themes.Common.CommonDropPanel.Template, "winui.shell.file-drop");   // #240 drop panel (Common: Classic shares it)
         views.Add(ViewKeys.ShellDragChip, WinUiFrameBits.DragChip, "winui.shell.drag-chip");
         views.Add(ViewKeys.ShellCoverScrim, WinUiFrameBits.CoverScrim, "winui.shell.cover-scrim");
     }

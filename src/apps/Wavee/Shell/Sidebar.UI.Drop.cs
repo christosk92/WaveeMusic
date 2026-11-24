@@ -134,7 +134,7 @@ public static partial class Sidebar
             // REFUSED = you aimed here, and here is why.
             string? WhyRefused(DragPayload source) => NavDropRules.WhyRefused(in row, source, RootlistLoaded);
 
-            return Drop.Target<DragPayload>(Drag.Resource,
+            var spec = Drop.Target<DragPayload>(Drag.Resource,
                 accepts: Compatible, onDrop: CommitDrop, onEnter: Hover, onOver: Hover, onLeave: Leave,
                 transparent: Transparent,
                 visualPolicy: Kit.DropLook.TargetPolicy,
@@ -143,6 +143,12 @@ public static partial class Sidebar
                 // A COLLAPSED folder spring-loads open even when it refuses the payload: opening is navigation.
                 springLoadMs: onSpringLoad is null ? 0f : Drag.SpringLoadMs,
                 onSpringLoad: onSpringLoad is null ? null : (_, _) => onSpringLoad());
+            // An OS drag (#240 D15/D16): Spotify track links dropped on an editable playlist are added now; local files are refused
+            // with the D12 sentence until playlists can hold them.
+            return isPlaylistRow && playlistUri is { Length: > 0 } target
+                ? DropAnywhere.WithOsArm(spec, target, playlistName,
+                    uris => Model.Drop(DropAnywhere.LinkPayload(uris), NavDropTarget.Playlist(target, playlistName ?? "")))
+                : spec;
         }
 
         /// <summary>The compact folder flyout's FOLDER row: Into, and only Into — a flyout row files, it never reorders.</summary>

@@ -25,8 +25,9 @@
 //          near) is sought with vp=: the scroller glides on 0.7 of a viewport at a time until it shows. prefix= takes the first key
 //          under it (steps.tsv names the one found: how a take discovers a live key).
 //   #live wait ms=<n>                                                rest.
-//   #live drop path=<file>                                           drop a local file on the window, as Explorer's drag does
-//          (Shell.OnFilesDropped: the tags are read, the row is imported and played; #240). The path has no spaces.
+//   #live drop path=<file>                                           drag a local file in and drop it where the pointer is, as
+//          Explorer's drag does (through the engine's external-drop seam: the target under the pointer takes it, the window's
+//          catch-all plays it; #240 §3.15). The path has no spaces.
 // Inspector-only verbs that observe (mount, perf, film, render, lint, status, find, dump, tiers, trace, said, views, crossing,
 // crossings, help) are skipped; any other verb the live driver does not play fails the drive at load, before anything moves.
 //
@@ -402,10 +403,15 @@ public static partial class Diagnostics
                 case OpKind.Rest:
                     return t >= op.Ms;
                 case OpKind.Drop:
-                    if (Shell.OnFilesDropped is not { } dropped) { failure = "nothing takes a file drop in this window"; return true; }
-                    dropped([op.Target]);
-                    op.Note = "dropped=" + Path.GetFileName(op.Target);
+                {
+                    RectF win = WindowRect(host);
+                    Point2 p = run.Pointer ?? new Point2(win.W / 2f, win.H / 2f);
+                    string[] paths = [op.Target];
+                    if (!DropAnywhere.Play("enter", p, paths, null, null, out _) || !DropAnywhere.Play("drop", p, paths, null, null, out string took))
+                    { failure = "nothing takes a file drop in this window"; return true; }
+                    op.Note = "dropped=" + Path.GetFileName(op.Target) + " " + took;
                     return true;
+                }
                 case OpKind.Resize:
                 {
                     double f = op.Ms <= 0 ? 1 : Math.Clamp(t / op.Ms, 0, 1);

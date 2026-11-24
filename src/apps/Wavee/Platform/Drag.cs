@@ -499,7 +499,7 @@ public static partial class Drag
     public static DragChipSpec? Chip(DragState state)
     {
         if (!string.Equals(state.Kind, Resource, StringComparison.Ordinal))
-            return ExtraChip?.Invoke(state) ?? ReorderChip?.Invoke(state);
+            return DropAnywhere.Chip(state) ?? ExtraChip?.Invoke(state) ?? ReorderChip?.Invoke(state);
 
         if (Unwrap(state.Payload) is not { } payload) return null;
         var model = payload.ChipModel();
