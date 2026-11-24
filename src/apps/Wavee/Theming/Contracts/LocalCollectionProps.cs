@@ -87,6 +87,8 @@ public sealed record LocalCollectionView
     public LocalLibraryPhase Phase { get; init; }
     public int Songs { get; init; }
     public int AlbumCount { get; init; }
+    /// <summary>Playable songs with no album tag: each is its own group for "Your files and Spotify" (the offer counts them beside the albums).</summary>
+    public int LooseSongs { get; init; }
     public int ArtistCount { get; init; }
     public long DurationMs { get; init; }
     /// <summary>Lossless share of the playable songs, 0-100.</summary>

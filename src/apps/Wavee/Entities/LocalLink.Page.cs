@@ -5,7 +5,7 @@
 // Spec: 240-spotify-linking-concept.md §5 F-A, F-B; board frames 28-30
 //
 // THE OFFER shows on the page's Home while matching is off, "Not now" was never pressed, and the collection has albums no decision covers;
-// it counts albums, not songs (matching is album first). "Show me" opens the opt-in dialog: the house ContentDialog with the theme's body,
+// it counts albums and songs with no album tag (each its own group), so a library of loose songs is offered it too. "Show me" opens the opt-in dialog: the house ContentDialog with the theme's body,
 // "Turn on matching" (primary) and "Not now" (close: the offer stays, the user may come back to it). Turning matching on starts it at once in
 // the background; the library chip says how far it is and one toast says when it is done, with Review.
 
@@ -49,29 +49,40 @@ public static class LocalLinkPage
     };
 
     static LocalLinkOfferProps? s_offer;
-    static int s_offerAlbums = -1;
+    static (int Albums, int Songs) s_offerCount = (-1, -1);
 
-    /// <summary>The offer now (tracked), or null.</summary>
+    /// <summary>The offer now (tracked), or null. It counts albums and songs with no album tag (each its own group): a library of loose songs
+    /// sees it too ("…to 1 song").</summary>
     static LocalLinkOfferProps? OfferNow()
     {
         if (LocalLink.Enabled.Value || !LocalLink.OfferOpen.Value) return null;
         _ = LocalLink.Version.Value;
         var view = LocalCollection.View.Value;
-        int albums = LocalLink.OfferCount(view.AlbumCount);
-        if (albums <= 0 || view.Phase == LocalLibraryPhase.None) return null;
-        if (s_offer is not null && s_offerAlbums == albums) return s_offer;
-        s_offerAlbums = albums;
+        var count = LocalLink.OfferCount(view.AlbumCount, view.LooseSongs);
+        if (count.Albums + count.Songs <= 0 || view.Phase == LocalLibraryPhase.None) return null;
+        if (s_offer is not null && s_offerCount == count) return s_offer;
+        s_offerCount = count;
         string? before = view.Mosaic.Count > 0 ? view.Mosaic[0] : null;
-        return s_offer = new LocalLinkOfferProps(LocalLinkWords.Offer(albums), Loc.Get(W.OfferSub), before, Loc.Get(W.ShowMe), Loc.Get(W.NotNow),
-            OpenOptIn, LocalLink.DismissOffer);
+        return s_offer = new LocalLinkOfferProps(LocalLinkWords.Offer(count.Albums, count.Songs), Loc.Get(W.OfferSub), before, Loc.Get(W.ShowMe), Loc.Get(W.NotNow),
+            static overlay => OpenOptIn(overlay), LocalLink.DismissOffer);
     }
 
-    /// <summary>"Show me": the opt-in dialog over the page (board 28 ②).</summary>
-    public static void OpenOptIn(IOverlayService? overlay)
+    /// <summary>"Find on Spotify…" on a song (its row menu, its drawer), in every theme. With matching on, the song's group is matched now and the
+    /// review opens on its candidates. Off, the opt-in asks once, over the page the song is on: the same explainer (what is searched, what never
+    /// leaves this PC, the files untouched) with "Turn on and find" and "Cancel"; turning on starts matching and finds this song first.</summary>
+    public static void FindOnSpotify(long localId, IOverlayService? overlay)
+    {
+        if (LocalLink.Enabled.Peek()) { LocalLink.FindNow(localId); return; }
+        OpenOptIn(overlay, forSong: localId);
+    }
+
+    /// <summary>The opt-in dialog over the page: "Show me" on the offer (board 28 ②), or "Find on Spotify…" while matching is off
+    /// (<paramref name="forSong"/>: its title, body and buttons say so, and turning on finds that song at once).</summary>
+    public static void OpenOptIn(IOverlayService? overlay, long forSong = 0)
     {
         if (overlay is null || Controls.IsNullOverlay(overlay)) return;
         var autoExact = new Signal<bool>(false);
-        var body = new LocalLinkOptInProps(Loc.Get(W.OptInBody),
+        var body = new LocalLinkOptInProps(Loc.Get(forSong > 0 ? W.FindBody : W.OptInBody),
         [
             new LocalLinkOptInLine(Icons.Search, Loc.Get(W.SearchedTitle), Loc.Get(W.SearchedBody)),
             new LocalLinkOptInLine(Icons.Devices, Loc.Get(W.NeverTitle), Loc.Get(W.NeverBody)),
@@ -79,11 +90,15 @@ public static class LocalLinkPage
         ], Loc.Get(W.AutoExact), Loc.Get(W.AutoExactSub), on => autoExact.Value = on);
         ContentDialog.Show(overlay, d =>
         {
-            d.Title = Loc.Get(W.OptInTitle);
-            d.PrimaryText = Loc.Get(W.TurnOn);
-            d.CloseText = Loc.Get(W.NotNow);
+            d.Title = Loc.Get(forSong > 0 ? W.FindTitle : W.OptInTitle);
+            d.PrimaryText = Loc.Get(forSong > 0 ? W.TurnOnAndFind : W.TurnOn);
+            d.CloseText = Loc.Get(forSong > 0 ? Strings.Auth.Cancel : W.NotNow);
             d.DefaultButton = ContentDialog.DefaultBtn.Primary;
-            d.PrimaryClick = () => LocalLink.TurnOn(autoExact.Peek());
+            d.PrimaryClick = () =>
+            {
+                LocalLink.TurnOn(autoExact.Peek());
+                if (forSong > 0) LocalLink.FindNow(forSong);
+            };
             d.Content = ViewSlots.View(ViewKeys.LocalLinkOptIn, body);
             OverlayFit.Dialog(d, Controls.DialogWidthMax);
         });

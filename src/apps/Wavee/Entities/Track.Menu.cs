@@ -200,10 +200,16 @@ public readonly partial struct Track
             if (local)
             {
                 if (LocalFilesList.ShowInFolderItem(one) is { } reveal) rows.Add(reveal);
-                // "Your files and Spotify" (F-B): a song in the music folders opens the review on its group (its match, its evidence, the
-                // candidates, a search, Not on Spotify). Only while matching is on: off, there is nothing to review.
-                if (LocalLink.Enabled.Peek() && LocalLibrary.TryLocalIdOf(one.Uri.Text, out long localId))
-                    rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.SpotifyMatch), Icons.Link, true, () => LocalLink.OpenMatchFor(localId)));
+                // "Your files and Spotify" (F-B): a song in the music folders always offers "Find on Spotify…": matching on, the review opens on its
+                // group (its candidates with their evidence, a search, Not on Spotify); off, the opt-in asks first, then finds it. A linked song
+                // also offers "Remove link" (F-G).
+                if (LocalLibrary.TryLocalIdOf(one.Uri.Text, out long localId))
+                {
+                    var overlay = o.PickerOverlay ?? DrawerOverlay;
+                    rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.FindOnSpotify), Icons.Link, true, () => LocalLinkPage.FindOnSpotify(localId, overlay)));
+                    if (LocalLink.LinkOf(localId) is not null)
+                        rows.Add(new MenuFlyoutItem(Loc.Get(Strings.LocalFiles.Link.RemoveLink), Icons.Cancel, true, () => LocalLink.Unlink(localId)));
+                }
             }
             else
             {

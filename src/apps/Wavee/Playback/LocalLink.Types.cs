@@ -118,6 +118,8 @@ public sealed record LinkView
     public int Likely { get; init; }
     public int Check { get; init; }
     public int Accepted { get; init; }
+    /// <summary>Groups "Find on Spotify…" is matching now that have no answer yet (the review says "Looking for it on Spotify…").</summary>
+    public IReadOnlyList<string> Finding { get; init; } = [];
 
     /// <summary>Undecided groups.</summary>
     public int Pending => Exact + Strong + Likely + Check;

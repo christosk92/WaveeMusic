@@ -88,8 +88,31 @@ internal static class WinUiTrackDrawer
             Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks);
             body[2 + i] = ConnectedRow(e.RowKey, row, isLast: i == entries.Count - 1);
         }
+        if (a.Link is { } link) body = [.. body, LinkSection(link)];
         return new BoxEl { Direction = 1, MinWidth = 0f, Children = body };
     }
+
+    // "Your files and Spotify" (F-G): a file's Spotify section under its versions, headed as they are: the link glyph (lit once linked), the
+    // core's line ("Linked to Savin' Me · Nickelback · Title, artist and length", "Not linked to Spotify") and its one verb.
+    static Element LinkSection(TrackDrawerLink l) => new BoxEl
+    {
+        Key = "drawer-link", Direction = 1, MinWidth = 0f,
+        Children =
+        [
+            R.Type.Eyebrow(l.Head) with { Color = Tok.TextTertiary, Margin = new Edges4(0f, Spacing.M, 0f, WinUiTrackDrawerLayout.HeadBottom) },
+            new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, MinHeight = DrawerRules.RowH,
+                Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
+                Children =
+                [
+                    Icon(Icons.Link, WinUiTrackDrawerLayout.LinkGlyph, l.Linked ? Tok.AccentTextPrimary : Tok.TextTertiary) with { Shrink = 0f },
+                    OneLine(Caption(l.Line).Secondary()) with { Key = "drawer-link:line", Grow = 1f, Basis = 0f },
+                    Button.Create(l.ActionLabel, l.Act, ButtonAppearance.Standard, ControlSize.Medium) with { Key = "drawer-link:act", Shrink = 0f },
+                ],
+            },
+        ],
+    };
 
     // ══ THE FORMAT SPLIT BUTTON ══════════════════════════════════════════════════════════════════════════════════════
 

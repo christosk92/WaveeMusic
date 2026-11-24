@@ -138,13 +138,13 @@ internal static class ZuneLocalLink
             foreach (var g in v.Groups)
             {
                 if (focused ? g.Key != focus : !C.Shows(filter, g)) continue;
-                groups.Add(Embed.Comp(new GroupProps(g, p), static () => new Group()) with { Key = Z.GroupKey + C.Safe(g.Key) });
+                groups.Add(Embed.Comp(new GroupProps(g, p, focused), static () => new Group()) with { Key = Z.GroupKey + C.Safe(g.Key) });
             }
             if (groups.Count == 0)
                 groups.Add(new BoxEl
                 {
                     Key = Z.EmptyKey, Direction = 1, MinWidth = 0f,
-                    Children =
+                    Children = focused && C.Finding(v, focus!) ? [Wrapping(R.Type.TrackMeta(Loc.Get(W.Finding)) with { Color = Tok.TextSecondary })] :
                     [
                         Wrapping(R.Type.TrackTitle(Loc.Get(W.EmptyTitle)) with { Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Heading) }),
                         Wrapping(R.Type.TrackMeta(Loc.Get(W.EmptyBody)) with { Color = Tok.TextSecondary }),
@@ -234,7 +234,8 @@ internal static class ZuneLocalLink
 
     // ── one group ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    sealed record GroupProps(LinkGroup G, LocalLinkReviewProps P);
+    /// <param name="Focused">The review was opened on this group ("Find on Spotify…"): its candidates and the search box show at once.</param>
+    sealed record GroupProps(LinkGroup G, LocalLinkReviewProps P, bool Focused = false);
 
     sealed class Group : Component
     {
@@ -259,9 +260,10 @@ internal static class ZuneLocalLink
             _toSpotify ??= () => { if (_latest is { } l) l.P.SetSpotifyWins(l.G.Key, true); };
             _toFiles ??= () => { if (_latest is { } l) l.P.SetSpotifyWins(l.G.Key, false); };
             _submit ??= text => { if (_latest is { } l && text.Trim().Length > 0) l.P.Search(l.G.Key, text); };
-            bool open = _open.Value, searching = _searching.Value;
+            bool open = _open.Value;
             bool decided = g.Decision is LinkDecision.Accepted or LinkDecision.NotOnSpotify;
-            bool asks = !decided && (g.Decision == LinkDecision.NotThis || g.Confidence == LinkConfidence.Check);
+            bool asks = !decided && (g.Decision == LinkDecision.NotThis || g.Confidence == LinkConfidence.Check || gp.Focused);
+            bool searching = _searching.Value || gp.Focused && asks;
             string key = C.Safe(g.Key);
             var best = g.Decision == LinkDecision.NotThis ? null : g.Best;
 
@@ -311,7 +313,7 @@ internal static class ZuneLocalLink
             if (verbs.Count > 0) words.Add(new BoxEl { Direction = 0, Gap = Z.VerbGap, MinWidth = 0f, Children = verbs.ToArray() });
 
             var drawer = new List<Element>(8);
-            if (asks) Candidates(drawer, g, searching, key);
+            if (asks) Candidates(drawer, g, searching, key, gp.Focused);
             else if (!decided && open && best is not null) Details(drawer, g, key);
             if (drawer.Count > 0) words.Add(new BoxEl
             {
@@ -386,14 +388,13 @@ internal static class ZuneLocalLink
         }
 
         /// <summary>A check: the candidates with "pick", then "search" and "not on spotify".</summary>
-        void Candidates(List<Element> rows, LinkGroup g, bool searching, string key)
+        void Candidates(List<Element> rows, LinkGroup g, bool searching, string key, bool focused)
         {
             for (int i = 0; i < g.Candidates.Count && i < Z.CandidatesShown; i++)
             {
                 var c = g.Candidates[i];
                 int at = i;
                 var pick = _picks[i] ??= () => { if (_latest is { } l) l.P.Pick(l.G.Key, at); };
-                string delta = g.IsAlbum ? "" : LocalLinkWords.Delta(c.DeltaMs);
                 rows.Add(new BoxEl
                 {
                     Direction = 0, Gap = Z.CandidateGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Margin = new Edges4(0f, 0f, 0f, Z.CandidateBottom),
@@ -406,7 +407,9 @@ internal static class ZuneLocalLink
                             Children =
                             [
                                 Line(R.Type.TrackMeta(c.Title) with { Color = Tok.TextPrimary }),
-                                Line(R.Type.TrackMeta(g.IsAlbum ? c.Artist + " · " + c.Detail : c.Detail + (delta.Length > 0 ? " · " + delta : "")) with { Color = Tok.TextSecondary }),
+                                Line(R.Type.TrackMeta(g.IsAlbum ? c.Artist + " · " + c.Detail : c.Detail) with { Color = Tok.TextSecondary }),
+                                // Why it was proposed (concept §6.2: evidence, never a score).
+                                Line(R.Type.TrackMeta(LocalLinkWords.Evidence(c, g.IsAlbum)) with { Color = Tok.TextTertiary }),
                             ],
                         },
                         Verb(Z.PickKey + key + ":" + i, Loc.Get(W.Pick), pick),
@@ -416,12 +419,19 @@ internal static class ZuneLocalLink
             rows.Add(new BoxEl
             {
                 Direction = 0, Wrap = true, Gap = Z.VerbGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Children =
-                [
-                    Verb(Z.SearchKey + key, Loc.Get(W.SearchHint), _search!),
-                    Verb(Z.NotOnKey + key, Loc.Get(W.NotOnSpotify), _notOn!),
-                    Wrapping(R.Type.TrackMeta(Loc.Get(W.NotOnSpotifyHint)) with { Color = Tok.TextTertiary, Grow = 1f, Shrink = 1f, Basis = 0f }),
-                ],
+                // Opened on this group, the search box is already open under it: no verb for it.
+                Children = focused
+                    ?
+                    [
+                        Verb(Z.NotOnKey + key, Loc.Get(W.NotOnSpotify), _notOn!),
+                        Wrapping(R.Type.TrackMeta(Loc.Get(W.NotOnSpotifyHint)) with { Color = Tok.TextTertiary, Grow = 1f, Shrink = 1f, Basis = 0f }),
+                    ]
+                    :
+                    [
+                        Verb(Z.SearchKey + key, Loc.Get(W.SearchHint), _search!),
+                        Verb(Z.NotOnKey + key, Loc.Get(W.NotOnSpotify), _notOn!),
+                        Wrapping(R.Type.TrackMeta(Loc.Get(W.NotOnSpotifyHint)) with { Color = Tok.TextTertiary, Grow = 1f, Shrink = 1f, Basis = 0f }),
+                    ],
             });
             if (searching)
                 rows.Add(new BoxEl

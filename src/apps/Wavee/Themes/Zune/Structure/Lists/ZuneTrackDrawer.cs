@@ -82,8 +82,38 @@ internal static class ZuneTrackDrawer
             Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks);
             body[2 + i] = ConnectedRow(e.RowKey, row, isLast: i == entries.Count - 1);
         }
+        if (a.Link is { } link) body = [.. body, LinkSection(link)];
         return new BoxEl { Direction = 1, MinWidth = 0f, Children = body };
     }
+
+    // "Your files and Spotify" (F-G): a file's Spotify section under its versions, in Zune's voice: the heading as the versions', the core's line
+    // ("Linked to Savin' Me · Nickelback · Title, artist and length", "Not linked to Spotify") and its one verb as accent text, no plate.
+    static Element LinkSection(TrackDrawerLink l) => new BoxEl
+    {
+        Key = "drawer-link", Direction = 1, MinWidth = 0f,
+        Children =
+        [
+            R.Type.Eyebrow(l.Head) with
+            {
+                Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Heading), Margin = new Edges4(0f, Spacing.M, 0f, ZuneListRules.DrawerHeadBottom),
+            },
+            new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+                Children =
+                [
+                    Icon(Icons.Link, ZuneListRules.DrawerLinkGlyph, l.Linked ? R.Ink.AccentAction : Tok.TextTertiary) with { Shrink = 0f },
+                    Meta(l.Line, Tok.TextSecondary) with { Key = "drawer-link:line", MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f },
+                    new BoxEl
+                    {
+                        Key = "drawer-link:act", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = ZuneListRules.DrawerVerbH, Shrink = 0f,
+                        Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = l.Act,
+                        Children = [Meta(l.ActionLabel, Tok.AccentTextPrimary) with { Case = R.Case.For(LabelKind.Command), HoverColor = Tok.TextPrimary, MaxLines = 1 }],
+                    },
+                ],
+            },
+        ],
+    };
 
     // ══ THE FORMAT SPLIT BUTTON ══════════════════════════════════════════════════════════════════════════════════════════
 

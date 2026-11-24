@@ -165,6 +165,13 @@ internal static class CommonLocalLink
         return n;
     }
 
+    /// <summary>"Find on Spotify…" is matching this group now and has no answer yet.</summary>
+    internal static bool Finding(LinkView v, string key)
+    {
+        foreach (string k in v.Finding) if (k == key) return true;
+        return false;
+    }
+
     internal static string FilterWord(Filter f) => Loc.Get(f switch
     {
         Filter.All => W.All,
@@ -211,13 +218,15 @@ internal static class CommonLocalLink
             foreach (var g in v.Groups)
             {
                 if (focused ? g.Key != focus : !Shows(filter, g)) continue;
-                cards.Add(Embed.Comp(new CardProps(g, p, rp.Compact, rp.Target), static () => new Card()) with { Key = K.CardKey + Safe(g.Key) });
+                cards.Add(Embed.Comp(new CardProps(g, p, rp.Compact, rp.Target, focused), static () => new Card()) with { Key = K.CardKey + Safe(g.Key) });
             }
+            bool finding = focused && Finding(v, focus!);
             if (cards.Count == 0)
                 cards.Add(new BoxEl
                 {
                     Key = K.EmptyKey, Direction = 1, MinWidth = 0f,
-                    Children = v.Phase == LinkPhase.Matching
+                    Children = finding ? [Wrapping(R.Type.DenseMeta(Loc.Get(W.Finding)) with { Color = Tok.TextSecondary })]
+                        : v.Phase == LinkPhase.Matching
                         ? [Wrapping(R.Type.DenseMeta(LocalLinkWords.ReviewSub(v)) with { Color = Tok.TextSecondary })]
                         :
                         [
@@ -234,7 +243,7 @@ internal static class CommonLocalLink
             };
             Element title = R.Type.SurfaceDisplay(Loc.Get(W.ReviewTitle)) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
-            // The confidences as a SelectorBar ("Exact 2"); a focused review ("Spotify match…" on a song) offers "All" back instead.
+            // The confidences as a SelectorBar ("Exact 2"); a focused review ("Find on Spotify…" on a song) offers "All" back instead.
             Element bar;
             if (focused)
                 bar = CommonTouch.Button(Loc.Get(W.All), p.ShowAll, rp.Target, glyph: Icons.Back) with { Key = K.ShowAllKey };
@@ -292,7 +301,9 @@ internal static class CommonLocalLink
 
     // ── one card: a settings card and its items ──────────────────────────────────────────────────────────────────────
 
-    sealed record CardProps(LinkGroup G, LocalLinkReviewProps P, bool Compact, float Target);
+    /// <param name="Focused">The review was opened on this group ("Find on Spotify…"): its candidates show at once (F-B), each with its evidence,
+    /// with the search box open and Not on Spotify, whatever its confidence.</param>
+    sealed record CardProps(LinkGroup G, LocalLinkReviewProps P, bool Compact, float Target, bool Focused = false);
 
     sealed class Card : Component
     {
@@ -317,10 +328,11 @@ internal static class CommonLocalLink
             _toSpotify ??= () => { if (_latest is { } l) l.P.SetSpotifyWins(l.G.Key, true); };
             _toFiles ??= () => { if (_latest is { } l) l.P.SetSpotifyWins(l.G.Key, false); };
             _submit ??= text => { if (_latest is { } l && text.Trim().Length > 0) l.P.Search(l.G.Key, text); };
-            bool open = _open.Value, searching = _searching.Value;
+            bool open = _open.Value;
 
             bool decided = g.Decision is LinkDecision.Accepted or LinkDecision.NotOnSpotify;
-            bool asks = !decided && (g.Decision == LinkDecision.NotThis || g.Confidence == LinkConfidence.Check);
+            bool asks = !decided && (g.Decision == LinkDecision.NotThis || g.Confidence == LinkConfidence.Check || cp.Focused);
+            bool searching = _searching.Value || cp.Focused && asks;
             var items = new List<Element>(8);
             if (asks) Candidates(items, g, cp, searching);
             else if (!decided && open && g.Best is not null) Details(items, g, cp);
@@ -456,8 +468,8 @@ internal static class CommonLocalLink
                 var c = g.Candidates[i];
                 int at = i;
                 var pick = _picks[i] ??= () => { if (_latest is { } l) l.P.Pick(l.G.Key, at); };
-                string delta = g.IsAlbum ? "" : LocalLinkWords.Delta(c.DeltaMs);
-                string meta = g.IsAlbum ? c.Artist + " · " + c.Detail : c.Detail + (delta.Length > 0 ? " · " + delta : "");
+                // Each candidate says why it was proposed (concept §6.2: evidence, never a score), then where it is from.
+                string meta = LocalLinkWords.Evidence(c, g.IsAlbum) + " · " + (g.IsAlbum ? c.Artist + " · " + c.Detail : c.Detail);
                 items.Add(SettingsCard.Create(new SettingsCard.Options
                 {
                     Header = c.Title,
@@ -473,11 +485,14 @@ internal static class CommonLocalLink
                 Content = new BoxEl
                 {
                     Direction = 0, Gap = K.FootGap, AlignItems = FlexAlign.Center, Shrink = 0f,
-                    Children =
-                    [
-                        CommonTouch.Button(Loc.Get(W.Search), _search!, cp.Target, glyph: Icons.Search) with { Key = K.SearchKey + key },
-                        CommonTouch.Button(Loc.Get(W.NotOnSpotify), _notOn!, cp.Target, glyph: Icons.Cancel) with { Key = K.NotOnKey + key },
-                    ],
+                    // Opened on this group, the search box is already open under it: no toggle for it.
+                    Children = cp.Focused
+                        ? [CommonTouch.Button(Loc.Get(W.NotOnSpotify), _notOn!, cp.Target, glyph: Icons.Cancel) with { Key = K.NotOnKey + key }]
+                        :
+                        [
+                            CommonTouch.Button(Loc.Get(W.Search), _search!, cp.Target, glyph: Icons.Search) with { Key = K.SearchKey + key },
+                            CommonTouch.Button(Loc.Get(W.NotOnSpotify), _notOn!, cp.Target, glyph: Icons.Cancel) with { Key = K.NotOnKey + key },
+                        ],
                 },
                 Style = ItemStyle,
             }));

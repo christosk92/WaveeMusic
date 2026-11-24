@@ -160,7 +160,7 @@ public readonly partial struct Track
             return style.Body(new TrackDrawerBodyArgs
             {
                 Track = t, Facts = facts, Arriving = arriving, Entries = drawn,
-                FormatButton = _formatButton, PlayVersion = PlayVersion,
+                FormatButton = _formatButton, PlayVersion = PlayVersion, Link = LinkSection(t),
             });
         }
 
@@ -205,6 +205,17 @@ public readonly partial struct Track
             }
             return _peaks.Length == 0 ? null : _peaks;
         }
+    }
+
+    /// <summary>"Your files and Spotify" (F-G): an indexed file's Spotify section: linked (to what, the evidence, Remove link) or not (Find on
+    /// Spotify…, which asks for the opt-in first while matching is off). Null for any other track. Built on a render (a link moving re-renders).</summary>
+    static TrackDrawerLink? LinkSection(Track t)
+    {
+        if (!t.IsLocal || !LocalLibrary.TryLocalIdOf(t.Uri.Text, out long id)) return null;
+        bool linked = LocalLink.LinkOf(id) is not null;
+        return new TrackDrawerLink(Loc.Get(Strings.LocalFiles.Link.DrawerHead), LocalLinkWords.DrawerLine(id), linked,
+            Loc.Get(linked ? Strings.LocalFiles.Link.RemoveLink : Strings.LocalFiles.Link.FindOnSpotify),
+            linked ? () => LocalLink.Unlink(id) : () => LocalLinkPage.FindOnSpotify(id, DrawerOverlay));
     }
 
     /// <summary>The Spotify track an indexed file's accepted match links it to ("Your files and Spotify"), or none.</summary>

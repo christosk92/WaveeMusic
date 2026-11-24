@@ -75,8 +75,24 @@ public static class LocalLinkWords
         return W.ReviewSub(found, Number(found));
     }
 
-    /// <summary>The offer's sentence for <paramref name="albums"/> albums.</summary>
-    public static string Offer(int albums) => W.Offer(albums, Number(albums));
+    /// <summary>The offer's sentence: "…to 3 albums and 2 songs", "…to 1 song", "…to 42 albums". A song with no album tag is its own group.</summary>
+    public static string Offer(int albums, int songs)
+    {
+        string a = W.OfferAlbums(albums, Number(albums)), s = W.OfferSongs(songs, Number(songs));
+        return W.Offer(albums > 0 && songs > 0 ? W.OfferBoth(a, s) : songs > 0 ? s : a);
+    }
+
+    /// <summary>The file drawer's Spotify line: "Linked to Savin' Me · Nickelback" and, when the review still holds the group, the evidence; else
+    /// "Not linked to Spotify", or a "Not on Spotify" group's line.</summary>
+    public static string DrawerLine(long localId)
+    {
+        if (LocalLink.LinkOf(localId) is { } t)
+        {
+            string line = W.LinkedTo(t.Title, t.Artists);
+            return LocalLink.EvidenceOf(localId) is { Length: > 0 } why ? line + " · " + why : line;
+        }
+        return LocalLink.IsNotOnSpotify(localId) ? Loc.Get(W.MarkedNot) : Loc.Get(W.NotLinked);
+    }
 
     /// <summary>The activity chip while matching: "Matching · 12 of 48".</summary>
     public static string Chip(int done, int total) => W.ChipMatching(Number(done), Number(total));

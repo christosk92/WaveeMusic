@@ -38,7 +38,7 @@ public static partial class LocalLink
         s_memoryOnly = true;
         s_loaded = true;
         s_path = null;
-        s_rank.Clear(); s_decided.Clear(); s_links.Clear(); s_linkGroup.Clear(); s_albumFaces.Clear(); s_groups.Clear(); s_searches.Clear(); s_fixtureCovers.Clear();
+        s_rank.Clear(); s_decided.Clear(); s_links.Clear(); s_linkGroup.Clear(); s_albumFaces.Clear(); s_groups.Clear(); s_searches.Clear(); s_now.Clear(); s_fixtureCovers.Clear();
         s_review.Value = null;
         s_requests.Clear();
         s_enabled.Value = false;

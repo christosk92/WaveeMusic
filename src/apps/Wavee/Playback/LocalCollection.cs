@@ -194,7 +194,7 @@ public static class LocalCollection
         var rootPath = new Dictionary<int, string>();
         foreach (var r in roots) { rootPath[r.RootId] = r.Path; }
 
-        int songs = 0, lossless = 0, hiRes = 0, lossy = 0, untagged = 0, noAlbumArtist = 0, noTrack = 0, missing = 0, cloud = 0;
+        int songs = 0, lossless = 0, hiRes = 0, lossy = 0, untagged = 0, noAlbumArtist = 0, noTrack = 0, missing = 0, cloud = 0, loose = 0;
         long duration = 0, bytes = 0;
         var formats = new Dictionary<string, int>(StringComparer.Ordinal);
         var bitrates = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -222,6 +222,7 @@ public static class LocalCollection
                 if (!IsLossless(e.Format) && t.BitrateKbps > 0) { string b = Round(t.BitrateKbps); bitrates[b] = bitrates.GetValueOrDefault(b) + 1; }
             }
             if (t.Title.Length == 0 && t.Artists.Length == 0) untagged++;
+            if (t.Album.Length == 0 && e.Playable && e.State != LocalState.Missing) loose++;
             if (t.Album.Length > 0 && t.AlbumArtist.Length == 0) noAlbumArtist++;
             if (t.Album.Length > 0 && t.TrackNumber == 0) noTrack++;
             if (t.Title.Length > 0 && t.DurationMs > 0) { var dk = (t.Title.ToUpperInvariant(), t.FirstArtist.ToUpperInvariant(), t.DurationMs / 2000); dupes[dk] = dupes.GetValueOrDefault(dk) + 1; }
@@ -416,6 +417,7 @@ public static class LocalCollection
             Phase = phase,
             Songs = songs,
             AlbumCount = cards.Count,
+            LooseSongs = loose,
             ArtistCount = artistCards.Count,
             DurationMs = duration,
             LosslessPct = lossless + lossy > 0 ? (int)Math.Round(100.0 * lossless / (lossless + lossy)) : 0,

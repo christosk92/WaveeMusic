@@ -51,7 +51,7 @@ public static partial class LocalLink
     static Job? s_job;
     static Timer? s_pump;
     static bool s_running, s_stepQueued;
-    static int s_done, s_total;
+    static int s_done, s_total, s_skipped;
 
     /// <summary>Matching runs (the chip's "Matching · 12 of 48 albums").</summary>
     public static bool Matching => s_running;
@@ -63,9 +63,10 @@ public static partial class LocalLink
     static void StartMatching()
     {
         StopMatching();
+        s_now.Clear();
         foreach (Job j in GroupsToMatch()) s_queue.Enqueue(j);
         s_total = s_queue.Count;
-        s_done = 0;
+        s_done = s_skipped = 0;
         s_running = s_total > 0;
         Publish();
         if (!s_running) return;
@@ -154,6 +155,14 @@ public static partial class LocalLink
         if (s_job is null)
         {
             if (!s_queue.TryDequeue(out s_job)) { Finish(); return; }
+            // "Find on Spotify…" matched it ahead of the queue, or the user decided it meanwhile: it is not asked twice.
+            if (s_now.Contains(s_job.Key) || s_decided.TryGetValue(s_job.Key, out Decided? d) && d.Decision is LinkDecision.Accepted or LinkDecision.NotOnSpotify)
+            {
+                s_job = null;
+                s_done++;
+                s_skipped++;
+                return;
+            }
             s_job.Since = Environment.TickCount64;
         }
         if (!Advance(s_job, sync)) return;
@@ -320,8 +329,15 @@ public static partial class LocalLink
         Rank(list, song: !j.Album);
         var files = j.Files.ConvertAll(static f => f.Id);
         LinkField[] fields = list.Count > 0 ? FieldsOf(j.Files, j.Title, j.Artist, j.AlbumArtist, j.Year, j.Cover, list[0], j.Album) : [];
+        // A group the user decided keeps its decision ("Find on Spotify…" on a linked song scores it again): the chosen candidate leads.
+        if (d.Decision == LinkDecision.Accepted && list.FindIndex(c => c.Uri == d.Chosen) is > 0 and var at)
+        {
+            LinkCandidate chosen = list[at];
+            list.RemoveAt(at);
+            list.Insert(0, chosen);
+        }
         // An untagged song is called by its file name, which already names the artist its split found.
-        var group = new LinkGroup(j.Key, j.Album, j.Name, j.Name != j.Title && !j.Album ? "" : j.Artist, j.Detail, j.Cover, files, list, d.Decision == LinkDecision.NotThis ? LinkDecision.NotThis : LinkDecision.None,
+        var group = new LinkGroup(j.Key, j.Album, j.Name, j.Name != j.Title && !j.Album ? "" : j.Artist, j.Detail, j.Cover, files, list, d.Decision,
             d.SpotifyWins, fields);
         s_groups[j.Key] = group;
         s_rank.TryAdd(j.Key, group.Decision == LinkDecision.NotThis ? (int)LinkConfidence.Check : (int)group.Confidence);
@@ -346,6 +362,21 @@ public static partial class LocalLink
 
     static readonly Dictionary<string, Job> s_searches = new(StringComparer.Ordinal);
 
+    /// <summary>Groups "Find on Spotify…" matched ahead of the background queue this run (the queue skips them).</summary>
+    static readonly HashSet<string> s_now = new(StringComparer.Ordinal);
+
+    /// <summary>"Find on Spotify…": match one group now, on its own pump (as the review's search does), unless an answer is in or on its way.
+    /// The review shows "Looking for it on Spotify…" until it lands. UI thread.</summary>
+    static void MatchNow(string key)
+    {
+        if (s_groups.ContainsKey(key) || s_searches.ContainsKey(key) || JobFor(key) is not { } job) return;
+        job.Since = Environment.TickCount64;
+        s_searches[key] = job;
+        s_now.Add(key);
+        Publish();
+        PumpSearch(key, job, 0);
+    }
+
     /// <summary>A search's own pump: the group's steps, again every 100 ms until scored (or a newer search for the group replaced it).</summary>
     static void PumpSearch(string key, Job job, int tries)
     {
@@ -356,7 +387,7 @@ public static partial class LocalLink
             Publish();
             return;
         }
-        if (tries > 300) { s_searches.Remove(key); return; }
+        if (tries > 300) { s_searches.Remove(key); Publish(); return; }
         Task.Delay(100).ContinueWith(_ => Playback.ToUi(() => PumpSearch(key, job, tries + 1)), TaskScheduler.Default);
     }
 
@@ -374,7 +405,8 @@ public static partial class LocalLink
         bool had = s_running;
         s_running = false;
         Publish();
-        if (!had || s_total == 0 || s_quiet) return;
+        // Nothing left to say when "Find on Spotify…" already answered every group of the run (the user is on its candidates).
+        if (!had || s_total == 0 || s_quiet || s_skipped == s_total) return;
         var v = s_view.Peek();
         if (v.Pending == 0 && v.Accepted == 0) return;
         Notify.Say(Strings.LocalFiles.Link.Finished(Count(v.Exact + v.Accepted), Count(v.Strong), Count(v.Likely + v.Check)),

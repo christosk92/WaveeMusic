@@ -83,7 +83,7 @@ public static partial class LocalLink
     /// restate and the collection's fold read it.</summary>
     public static IReadSignal<int> Version => s_version;
 
-    /// <summary>The review page: null closed, "" every group, else the key of the one group it was opened for ("Spotify match…" on a song).</summary>
+    /// <summary>The review page: null closed, "" every group, else the key of the one group it was opened for ("Find on Spotify…" on a song).</summary>
     public static IReadSignal<string?> Reviewing => s_review;
 
     /// <summary>Matching is on (the user opted in).</summary>
@@ -131,10 +131,21 @@ public static partial class LocalLink
     public static string GroupKeyOf(LocalEntry e)
         => e.Tags.Album.Length > 0 ? LocalCollection.AlbumKey(LocalCollection.ArtistOf(e), e.Tags.Album) : SongKey(e.LocalId);
 
-    /// <summary>The offer's count: of <paramref name="albums"/> (the collection's), those no decision covers yet.</summary>
-    public static int OfferCount(int albums) => Math.Max(0, albums - s_decidedAlbums);
+    /// <summary>The offer's counts: of <paramref name="albums"/> and <paramref name="songs"/> (the collection's albums, and its songs with no album
+    /// tag, each its own group), those no decision covers yet.</summary>
+    public static (int Albums, int Songs) OfferCount(int albums, int songs) => (Math.Max(0, albums - s_decidedAlbums), Math.Max(0, songs - s_decidedSongs));
 
-    static int s_decidedAlbums;
+    static int s_decidedAlbums, s_decidedSongs;
+
+    /// <summary>The plain evidence of the match a file's link came from, while the review holds its group ("Title, artist and length"); else "".</summary>
+    public static string EvidenceOf(long localId)
+        => s_linkGroup.TryGetValue(localId, out string? key) && s_groups.TryGetValue(key, out LinkGroup? g) && g.Best is { } best
+           && s_decided.TryGetValue(key, out Decided? d) && d.Decision == LinkDecision.Accepted && best.Uri == d.Chosen
+            ? LocalLinkWords.Evidence(best, g.IsAlbum) : "";
+
+    /// <summary>The file's group was marked "Not on Spotify".</summary>
+    public static bool IsNotOnSpotify(long localId)
+        => LocalLibrary.Index.TryGet(localId, out LocalEntry? e) && s_decided.TryGetValue(GroupKeyOf(e), out Decided? d) && d.Decision == LinkDecision.NotOnSpotify;
 
     // ── the verbs (UI thread) ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -176,11 +187,15 @@ public static partial class LocalLink
     /// <summary>Back to the page from the review.</summary>
     public static void CloseReview() => s_review.Value = null;
 
-    /// <summary>"Spotify match…" on a song's row: the review, opened on the song's group.</summary>
-    public static void OpenMatchFor(long localId)
+    /// <summary>"Find on Spotify…" on a song (its row menu, its drawer) once matching is on: the song's group is matched now, ahead of the
+    /// background queue, and the review opens on it (its candidates, a search, Not on Spotify). Off, the caller asks first
+    /// (<c>LocalLinkPage.FindOnSpotify</c>).</summary>
+    public static void FindNow(long localId)
     {
         if (!LocalLibrary.Index.TryGet(localId, out LocalEntry? e)) return;
-        OpenReview(GroupKeyOf(e));
+        string key = GroupKeyOf(e);
+        MatchNow(key);
+        OpenReview(key);
     }
 
     /// <summary>Accept the group's best candidate.</summary>
@@ -320,13 +335,13 @@ public static partial class LocalLink
             int c = RankOf(a.Key).CompareTo(RankOf(b.Key));
             return c != 0 ? c : string.Compare(a.Title, b.Title, StringComparison.CurrentCultureIgnoreCase);
         });
-        int exact = 0, strong = 0, likely = 0, check = 0, accepted = 0, albums = 0;
+        int exact = 0, strong = 0, likely = 0, check = 0, accepted = 0, albums = 0, songs = 0;
         foreach (LinkGroup g in all)
         {
             if (g.Decision is LinkDecision.Accepted or LinkDecision.NotOnSpotify)
             {
                 if (g.Decision == LinkDecision.Accepted) accepted++;
-                if (g.IsAlbum) albums++;
+                if (g.IsAlbum) albums++; else songs++;
                 continue;
             }
             switch (g.Confidence)
@@ -338,13 +353,19 @@ public static partial class LocalLink
             }
         }
         foreach (var (key, d) in s_decided)
-            if (!s_groups.ContainsKey(key) && !key.StartsWith("song:", StringComparison.Ordinal) && d.Decision is LinkDecision.Accepted or LinkDecision.NotOnSpotify) albums++;
+            if (!s_groups.ContainsKey(key) && d.Decision is LinkDecision.Accepted or LinkDecision.NotOnSpotify)
+            {
+                if (key.StartsWith("song:", StringComparison.Ordinal)) songs++; else albums++;
+            }
         s_decidedAlbums = albums;
+        s_decidedSongs = songs;
+        var finding = new List<string>(s_searches.Count);
+        foreach (string key in s_searches.Keys) if (!s_groups.ContainsKey(key)) finding.Add(key);
         var old = s_view.Peek();
         s_view.Value = new LinkView
         {
             Version = old.Version + 1, Phase = s_enabled.Peek() ? (s_running ? LinkPhase.Matching : LinkPhase.Ready) : LinkPhase.Off,
-            Done = s_done, Total = s_total, Groups = all, Exact = exact, Strong = strong, Likely = likely, Check = check, Accepted = accepted,
+            Done = s_done, Total = s_total, Groups = all, Exact = exact, Strong = strong, Likely = likely, Check = check, Accepted = accepted, Finding = finding,
         };
         RebuildShown();
         s_version.Value++;
