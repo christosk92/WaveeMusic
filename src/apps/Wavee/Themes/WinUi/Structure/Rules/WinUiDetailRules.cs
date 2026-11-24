@@ -172,13 +172,6 @@ public static class WinUiDetailRules
     /// <summary>The description's line count (one, ellipsized: the hero's heights never depend on its length).</summary>
     public const int DescriptionLines = 1;
 
-    /// <summary>The inline editor (W-Playlist's title and description): the read arm's hover plate bleeds 8 x 4 past the words; the edit field is 40 tall for the
-    /// description, the title's size plus 12 (at least 40) for the title.</summary>
-    public const float EditBleedX = 8f, EditBleedY = 4f, DescriptionFieldH = 40f, TitleFieldMinH = 40f, TitleFieldExtra = 12f;
-
-    /// <summary>The read arm's vertical bleed at Compact: the 20 description line's plate grows to the 40 target ((40 - 20) / 2).</summary>
-    public const float EditBleedYCompact = (CompactTarget - DescriptionLine) / 2f;
-
     /// <summary>The Liked chip line's end fade where it rides the page bar.</summary>
     public const float ChipRailFade = 24f;
 

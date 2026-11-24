@@ -6,7 +6,7 @@
 //     It is the version's own row menu (Play, Play next, Play after, its kind's verbs: Rename…, Show in folder, Find on Spotify, Remove link
 //     for a version of mine; Go to album, Share, Save for Spotify's), headed by "Play by default" checked on the version the song plays, and,
 //     for a video of mine, Watch and Play as audio.
-//   · Its title: a version of mine (a file, renamable since phase 2) is editable in place (Platform/InlineTitle.cs): a pencil and
+//   · Its title: a version of mine (a file, renamable since phase 2) is editable in place (FluentGpu `.Editable()`): a pencil and
 //     the text cursor on hover, a click (or F2 on the card) edits it, Enter or a click elsewhere renames (with the rename's Undo toast).
 //     Spotify's versions show their title as it is.
 //
@@ -41,12 +41,12 @@ public readonly partial struct Track
         Action<KeyEventArgs> keys = e =>
         {
             if (e.KeyCode != Keys.F2 || mine == 0 || e.Handled) return;
-            InlineTitle.Begin(key);
+            EditableLabel.Begin(key);
             e.Handled = true;
         };
         Func<TextEl, string, Element> title = mine == 0
             ? static (look, _) => look
-            : (look, text) => InlineTitle.Of(key, text, look, renamed => LocalLinkPage.RenameTitle(mine, renamed));
+            : (look, text) => look.Editable(text, look, renamed => LocalLinkPage.RenameTitle(mine, renamed), new EditableOptions { Key = key, Required = true });
         string name = version.IsValid && version.Knows(TrackFields.Title) ? version.Title : "";
         return new TrackDrawerCardWiring(context, keys, title, Strings.Detail.Versions.MoreFor(name));
     }

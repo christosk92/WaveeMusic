@@ -251,6 +251,7 @@
     "edit": {
       "namePlaceholder": "Playlist name",
       "descriptionPlaceholder": "Add an optional description",
+      "nameRequired": "A playlist needs a name.",
       "changeCover": "Change cover",
       "dropCover": "Drop image to change cover",
       "pickCover": "Choose playlist cover image",

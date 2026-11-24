@@ -26,7 +26,7 @@ public static partial class LocalLinkPage
 {
     // ── rename ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The inline rename of a version's title (a version card in Track details: InlineTitle): the title only, the artist and album
+    /// <summary>The inline rename of a version's title (a version card in Track details: `.Editable()`): the title only, the artist and album
     /// renames kept; the same toast and Undo as the dialog. UI thread.</summary>
     public static void RenameTitle(long localId, string title)
     {
