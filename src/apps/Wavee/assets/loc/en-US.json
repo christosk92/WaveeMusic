@@ -5353,6 +5353,9 @@
     "onHover": "On hover",
     "always": "Always",
     "whenShuffling": "Mix when shuffling",
-    "menu": "Mix options"
+    "menu": "Mix options",
+    "close": "Close",
+    "stateEdited": "Edited",
+    "stateThisPc": "This PC"
   }
 }

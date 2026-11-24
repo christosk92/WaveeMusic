@@ -80,9 +80,10 @@ public static class MixMenu
 
     /// <summary>The list bar's Mix menu (UX direction rev 2): listen without Mix on this PC, turn Mix off for everyone (not captured:
     /// shown disabled, O1), the transitions view option (on hover · always) and "Mix when shuffling".</summary>
-    public static IReadOnlyList<FluentGpu.Controls.MenuFlyoutItem> Items(Playlist p)
+    public static IReadOnlyList<FluentGpu.Controls.MenuFlyoutItem> Items(Playlist p, Action toggleTransitions, bool transitionsOpen)
     {
-        var items = new List<FluentGpu.Controls.MenuFlyoutItem>(7);
+        var items = new List<FluentGpu.Controls.MenuFlyoutItem>(8);
+        if (p.MixOn) items.Add(FluentGpu.Controls.MenuFlyoutItem.Toggle(Loc.Get(Strings.Mix.Transitions), transitionsOpen, toggleTransitions));
         if (p.MixOn)
         {
             bool without = MixListenWithout.Is(p);

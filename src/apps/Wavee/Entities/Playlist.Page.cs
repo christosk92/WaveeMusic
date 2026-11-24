@@ -310,6 +310,9 @@ public readonly partial struct Playlist
         readonly Action _mixToggle;
         readonly Func<bool> _mixLit;
         readonly Func<IReadOnlyList<MenuFlyoutItem>> _mixMenu;
+        /// <summary>#48 Mix: the Transitions list on this page (Entities/Mix.Transitions.cs).</summary>
+        readonly MixTransitionsSession _mixTransitions = new();
+        readonly Action _bindMix;
         /// <summary>Tune's strip and its state on this page (the strip opens inline under the list bar).</summary>
         readonly TuneSession _tuneSession = new();
         string _routeKey = "";
@@ -354,7 +357,8 @@ public readonly partial struct Playlist
             _tune = _tuneSession.Toggle;
             _bindTune = () => _tuneSession.Bind(_playlist);
             _mixToggle = () => MixMenu.Toggle(_playlist);
-            _mixMenu = () => MixMenu.Items(_playlist);
+            _mixMenu = () => MixMenu.Items(_playlist, _mixTransitions.Toggle, _mixTransitions.IsOpen);
+            _bindMix = () => _mixTransitions.Bind(_playlist);
             _mixLit = () => { _ = Entities.Current.Playlists.Changed.Value; return MixMenu.Lit(_playlist); };
             _editable = () => _playlist.Editable;
             _deposit = Deposit;
@@ -464,6 +468,7 @@ public readonly partial struct Playlist
             UseEffect(_publishChrome);
             // Another playlist on this page starts with Tune shut and nothing applying.
             UseEffect(_bindTune, DepKey.From(pl.Slot));
+            UseEffect(_bindMix, DepKey.From(pl.Slot));
 
             if (!pl.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
@@ -491,11 +496,12 @@ public readonly partial struct Playlist
                     RemoveRows = editable ? _removeRows : null,
                     Recommendations = recs ? _recs : null,
                     Tune = tune ? _tune : null,
-                    TuneStrip = tune ? _tuneSession.Strip : null,
+                    TuneStrip = tune ? _tuneSession.Strip : mixable ? _mixTransitions.Strip : null,
                     TuneLit = tune ? _tuneSession.Lit : null,
                     MixToggle = mixable ? _mixToggle : null,
                     MixLit = mixable ? _mixLit : null,
                     MixMenu = mixable ? _mixMenu : null,
+                    OpenTransitions = mixable ? _mixTransitions.Open : null,
                     LensHeader = _lensHeader,
                     LensExtent = lensExtent,
                     Drawer = Track.DrawerSeam,
