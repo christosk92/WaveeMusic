@@ -234,6 +234,11 @@ started by the first state it is sent and holds a lease (`ModuleProcess.AcquireL
 leaves it running; turning it off releases the lease and stops the process. An observer sees what the user plays: the
 capability is declared in the manifest so an install prompt can name it.
 
+The first observer is bundled: **** (`src/apps/modules/Wavee.Module.Clx`), switched by Settings › Sound › Timecode ›
+Send CLX on the network. It sends the timeline as CLX (github.com/ClockworksTech/CLX-Spec) to `239.0.0.1:3650`, TTL 1: Deck
+`0x01` at 60 Hz with the position extrapolated from the anchor, Meta `0x02` on a change and every 5 s, Control `0x00` once a
+second; its `module/diagnostics` rows count the packets.
+
 There is deliberately **no `host/http/proxy`**: modules own their own network.
 
 ### Binary frames (the audio path)
