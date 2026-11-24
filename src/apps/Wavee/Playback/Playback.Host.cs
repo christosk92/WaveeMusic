@@ -582,6 +582,7 @@ public static partial class Playback
                 FollowQueue(now);
                 ObserveVideoFacts(now);                    // the deck row's video facts, before the PUT this drain sends
                 Execute();
+                Mix.Follow(in s_state);                    // #48: the playing pair's mix timing → the pump (Playback.Mix.cs)
                 s_forward.Clear();                         // every staged forward was folded in this drain (G-248)
                 Publish();
             }
