@@ -155,6 +155,32 @@ public static partial class Diagnostics
             });
         }
 
+        /// <summary>`localindex prefix=<relative path start>`: the app's index as it is now (#240 folder management checks: a rename keeps every
+        /// LocalId, a recycled folder's files turn Missing, a hidden folder's leave). Read-only.</summary>
+        string LocalIndexVerb(int id, string name, Inspect.Args a)
+        {
+            string prefix = a.Str("prefix");
+            var index = LocalLibrary.Index;
+            return Inspect.Reply.Ok(id, name, w =>
+            {
+                w.WriteNumber("entries", index.Count);
+                w.WriteNumber("missing", index.MissingCount);
+                w.WriteStartArray("roots");
+                foreach (var r in index.Roots()) w.WriteStringValue(r.RootId + " | " + r.Path);
+                w.WriteEndArray();
+                w.WriteStartArray("files");
+                foreach (var e in index.Snapshot())
+                    if (e.RelativePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                        w.WriteStringValue(e.LocalId + " | " + e.RootId + " | " + e.RelativePath + " | " + e.State + (e.Why.Length > 0 ? " | " + e.Why : ""));
+                w.WriteEndArray();
+                w.WriteStartArray("folders");
+                foreach (var f in index.Folders())
+                    if (f.RelativePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) w.WriteStringValue(f.RootId + " | " + f.RelativePath);
+                w.WriteEndArray();
+                w.WriteString("skip", Platform.Settings.Get(Platform.Keys.MusicSkip));
+            });
+        }
+
         /// <summary>`localscan path=<folder> runs=N`.</summary>
         string LocalScanVerb(int id, string name, Inspect.Args a)
         {

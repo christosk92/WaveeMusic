@@ -85,7 +85,8 @@ public static class LocalCollection
 
     static bool IsLossless(Spotify.Audio.Format f) => f is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24;
 
-    static string FormatName(Spotify.Audio.Format f) => f switch
+    /// <summary>A format's short name ("FLAC", "MP3", "AAC", "Ogg", "Other"), never localised.</summary>
+    public static string FormatName(Spotify.Audio.Format f) => f switch
     {
         Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => "FLAC",
         Spotify.Audio.Format.Mp3 => "MP3",
@@ -321,8 +322,20 @@ public static class LocalCollection
             }
         }
 
+        // Every folder the scan listed is a node too, songs in it or not (a new folder, a folder of scans): the browser is the disk's layout.
+        // A node the disk no longer lists (no folder record) with no file present under it (a folder deleted or recycled: its songs are Missing)
+        // leaves the browser; its songs stay Missing in the Songs list and the review (S6) until they come back or are removed.
+        LocalFolder[] listed = index.Folders();
+        var onDisk = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var f in listed)
+        {
+            if (!rootPath.ContainsKey(f.RootId)) continue;
+            onDisk.Add(NodeOf(nodes, rootKeyOf, rootPath, f.RootId, f.RelativePath).Key);
+        }
+        Prune(nodes, onDisk);
+
         // Folder images from the listing (no bytes read): a fixed cover name, the file must still exist.
-        foreach (var f in index.Folders())
+        foreach (var f in listed)
         {
             if (f.Images.Length == 0) continue;
             string key = KeyOf(f.RootId, f.RelativePath);
@@ -572,7 +585,36 @@ public static class LocalCollection
         return n;
     }
 
-    static void CollectCovers(FolderAcc n, Dictionary<string, FolderAcc> nodes, Dictionary<string, string?> coverOf, List<string> into)
+    /// <summary>Drop the folder nodes that are gone from the disk: no folder record (<paramref name="onDisk"/>) and no file present under them. Their
+    /// songs and length leave their ancestors' counts with them; a music folder's own node always stays (its chip and state are the root's).</summary>
+    static void Prune(Dictionary<string, FolderAcc> nodes, HashSet<string> onDisk)
+    {
+        var alive = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var n in nodes.Values)
+        {
+            bool here = n.Parent is null || onDisk.Contains(n.Key);
+            if (!here) foreach (var e in n.Files) if (e.State != LocalState.Missing) { here = true; break; }
+            if (!here) continue;
+            for (FolderAcc? at = n; at is not null && alive.Add(at.Key); at = at.Parent is null ? null : nodes[at.Parent]) { }
+        }
+        if (alive.Count == nodes.Count) return;
+        var dead = new List<FolderAcc>();
+        foreach (var n in nodes.Values) if (!alive.Contains(n.Key)) dead.Add(n);
+        foreach (var n in dead)
+        {
+            nodes.Remove(n.Key);
+            if (n.Parent is null || !alive.Contains(n.Parent)) continue;
+            // The topmost dead node of a subtree takes the subtree's counts out of every live ancestor.
+            nodes[n.Parent].Children.Remove(n.Key);
+            for (FolderAcc? at = nodes[n.Parent]; at is not null; at = at.Parent is null ? null : nodes[at.Parent])
+            {
+                at.Songs -= n.Songs;
+                at.Duration -= n.Duration;
+            }
+        }
+    }
+
+    static void CollectCovers(FolderAcc n,Dictionary<string, FolderAcc> nodes, Dictionary<string, string?> coverOf, List<string> into)
     {
         foreach (string a in n.AlbumKeys)
         {

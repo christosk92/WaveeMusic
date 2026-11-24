@@ -99,7 +99,7 @@ internal static class ZuneLocalCollection
         // A detail open over the pivot: the shared folder view, its breadcrumb starting at "collection" (Folders) or at the pivot it was opened from.
         Element body = reviewing ? X.LinkReview(p.Link!, g, p.RouteKey)
             : opened?.IsOpenOver(pivot) == true
-            ? X.FolderBrowser(view, opened, p.OpenFolder, p.Verbs, lay, g, pivot == LocalPivot.Folders ? Loc.Get(P.Collection) : CommonLocalCollection.PivotWord(pivot), p.RouteKey)
+            ? X.FolderBrowser(view, opened, p, lay, g, pivot == LocalPivot.Folders ? Loc.Get(P.Collection) : CommonLocalCollection.PivotWord(pivot))
             : pivot switch
         {
             LocalPivot.Home => ScrollView(new BoxEl
@@ -110,7 +110,7 @@ internal static class ZuneLocalCollection
             LocalPivot.Albums => X.AlbumWall(view, p.Sort.Peek(), p.SetSort, p.Verbs, lay, g, p.RouteKey),
             LocalPivot.Artists => X.ArtistGrid(view, p.Verbs, lay, g, p.RouteKey),
             LocalPivot.Songs => X.Gut("lc-songs", g, p.Songs(), grow: true),
-            LocalPivot.Folders => X.FolderBrowser(view, null, p.OpenFolder, p.Verbs, lay, g, Loc.Get(P.Collection), p.RouteKey),
+            LocalPivot.Folders => X.FolderBrowser(view, null, p, lay, g, Loc.Get(P.Collection)),
             _ => X.Insights(view, lay, g, p.RouteKey),
         };
         body = X.DetailSlot(step.Key ?? "zlc-body:" + pivot.ToString() + ":list", body, step.Enter, X.DetailMotion.Exit(pivot, opened, facts));

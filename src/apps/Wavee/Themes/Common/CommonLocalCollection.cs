@@ -141,7 +141,7 @@ internal static class CommonLocalCollection
         if (p.Link is { } link && link.Reviewing.Peek() is not null) return X.LinkReview(link, g, p.RouteKey);
         Element bar = Pivot(p, pivot, g);
         Element head = Head(p, view, hp.Lay, g, hp.TitleKey);
-        Element body = detail ? X.FolderBrowser(view, opened, p.OpenFolder, p.Verbs, hp.Lay, g, CrumbRoot(p, pivot), p.RouteKey) : pivot switch
+        Element body = detail ? X.FolderBrowser(view, opened, p, hp.Lay, g, CrumbRoot(p, pivot), views: true) : pivot switch
         {
             LocalPivot.Home => ScrollView(new BoxEl
             {
@@ -151,7 +151,7 @@ internal static class CommonLocalCollection
             LocalPivot.Albums => X.LibraryAlbums(view, p, hp.Lay, g, hp.Controls),
             LocalPivot.Artists => X.LibraryArtists(view, p, hp.Lay, g, hp.Controls),
             LocalPivot.Songs => X.Gut("lc-songs", g, p.Songs(), grow: true),
-            LocalPivot.Folders => X.FolderBrowser(view, null, p.OpenFolder, p.Verbs, hp.Lay, g, p.Title, p.RouteKey),
+            LocalPivot.Folders => X.FolderBrowser(view, null, p, hp.Lay, g, p.Title, views: true),
             _ => X.Insights(view, hp.Lay, g, p.RouteKey),
         };
         // The shimmer has no step (its key is the list's).
