@@ -96,7 +96,7 @@ public sealed class ZuneStyle : IStyleLayer
 
     private static readonly DefinitionMemo<DefinitionKey> s_definitions = new();
 
-    private readonly record struct DefinitionKey(int Accent, bool FollowsWindows, bool BigNumerals, AccentRamp Os);
+    private readonly record struct DefinitionKey(int Accent, bool FollowsWindows, bool BigNumerals, AccentRamp Os, ColourPair Colours);
 
     /// <inheritdoc />
     public string Id => LayerId;
@@ -111,16 +111,40 @@ public sealed class ZuneStyle : IStyleLayer
         var pair = ZuneAccent.PairOf(style.Get(AccentOption.Key));
         bool followsWindows = style.Get(UseWindowsAccentOption.Key);
         bool bigNumerals = style.Get(BigNumeralsOption.Key);
-        var key = new DefinitionKey(Pack(pair.Dark), followsWindows, bigNumerals, followsWindows ? inputs.OsAccent : default);
-        return s_definitions.Get(key, k =>
-        {
-            return s_base with
-            {
-                Accent = k.FollowsWindows ? k.Os : ZuneAccent.RampOf(pair),
-                AppRoles = ZuneRoles.For(pair, k.FollowsWindows, k.BigNumerals),
-            };
-        });
+        // No colour set in either mode is the board's look: the key and the build are exactly today's.
+        ColourPair colours = inputs.Colours.Any ? inputs.Colours : ColourPair.None;
+        var key = new DefinitionKey(Pack(pair.Dark), followsWindows, bigNumerals, followsWindows ? inputs.OsAccent : default, colours);
+        return s_definitions.Get(key, k => Build(pair, k));
     }
+
+    // A mode with a colour set takes its ladder rung for rung (`ZuneGrounds.From`): the engine's whole token set from the ladder
+    // (`ColourTokens.Apply`), then Zune's own washes and hairlines over it, the shell's bands and the role table's grounds. When the set owns
+    // the accent, the ramp carries each mode's ladder accent (the theme's swatch or the OS ramp on a mode without a set) and the roles read
+    // it through the accent tokens, the path "use the windows accent" already takes.
+    private static ThemeDefinition Build(ZuneAccentPair pair, DefinitionKey k)
+    {
+        AccentRamp themeRamp = k.FollowsWindows ? k.Os : ZuneAccent.RampOf(pair);
+        ColourPair c = k.Colours;
+        if (!c.Any)
+            return s_base with { Accent = themeRamp, AppRoles = ZuneRoles.For(pair, k.FollowsWindows, k.BigNumerals) };
+
+        bool owns = c.OwnsAccent;
+        ZuneGrounds dark = ZuneGrounds.Of(c.Dark, dark: true), light = ZuneGrounds.Of(c.Light, dark: false);
+        var wavee = Design.Definition;
+        return s_base with
+        {
+            Dark = c.Dark is { } ld ? OnAccent(DarkTokens(ColourTokens.Apply(wavee.Dark, ld, owns), dark), ld, owns) : s_base.Dark,
+            Light = c.Light is { } ll ? OnAccent(LightTokens(ColourTokens.Apply(wavee.Light, ll, owns), light), ll, owns) : s_base.Light,
+            DarkShell = ShellOf(dark.Ground, dark.Well, dark.Ink),
+            LightShell = ShellOf(light.Ground, light.Well, light.Ink),
+            Accent = ColourTokens.Ramp(c, themeRamp),
+            AppRoles = ZuneRoles.For(pair, k.FollowsWindows || owns, k.BigNumerals, light, dark),
+        };
+    }
+
+    // Zune's board puts black on the dark accent and white on the light one; a palette's accent carries its own (`ColourLadder.OnAccent`).
+    private static TokenSet OnAccent(TokenSet t, ColourLadder l, bool owns)
+        => owns ? t with { TextOnAccentPrimary = l.OnAccent, TextOnAccentSecondary = l.OnAccent with { A = 0.70f } } : t;
 
     /// <summary>The definition at the style's defaults (pink, big numerals, the swatch rather than the OS accent).</summary>
     public static ThemeDefinition DefaultDefinition { get; } = new ZuneStyle().Definition(OptionValues.Empty, StyleInputs.Default);
@@ -136,10 +160,10 @@ public sealed class ZuneStyle : IStyleLayer
         var wavee = Design.Definition;
         return wavee with
         {
-            Dark = DarkTokens(wavee.Dark),
-            Light = LightTokens(wavee.Light),
-            DarkShell = ShellOf(ZuneTokens.DarkGround, ZuneTokens.DarkWell, ZuneTokens.DarkInk),
-            LightShell = ShellOf(ZuneTokens.LightGround, ZuneTokens.LightWell, ZuneTokens.LightInk),
+            Dark = DarkTokens(wavee.Dark, ZuneGrounds.DefaultDark),
+            Light = LightTokens(wavee.Light, ZuneGrounds.DefaultLight),
+            DarkShell = ShellOf(ZuneGrounds.DefaultDark.Ground, ZuneGrounds.DefaultDark.Well, ZuneGrounds.DefaultDark.Ink),
+            LightShell = ShellOf(ZuneGrounds.DefaultLight.Ground, ZuneGrounds.DefaultLight.Well, ZuneGrounds.DefaultLight.Ink),
             // 0 for every rectangle, the 16 pill (the search field), full for the round metro buttons (Z-Tokens).
             Radii = new RadiiScale { None = 0f, Control = 0f, Card = 0f, Overlay = 0f, Pill = 16f, Full = ZuneControls.Round },
             // The page gutter 48 (the band inset and every title share this x), 16 in a narrow window, cards 16 apart (Z-Tokens, Z-Sizes-Breakpoints).
@@ -158,49 +182,49 @@ public sealed class ZuneStyle : IStyleLayer
     private static ColorF Black(float a) => ColorF.FromRgba(0x00, 0x00, 0x00) with { A = a };
 
     // The dark token set: the ground ladder, the ink, the 5 % hover and 8 % press, the 8 % hairline, no flyout ring, black on the accent.
-    private static TokenSet DarkTokens(TokenSet t) => t with
+    private static TokenSet DarkTokens(TokenSet t, ZuneGrounds g) => t with
     {
-        WindowBackground = ZuneTokens.DarkGround,
-        FillSolidBase = ZuneTokens.DarkGround,
-        FillSolidBaseAlt = ZuneTokens.DarkWell,
-        FillSolidSecondary = ZuneTokens.DarkPanel,
-        FillSolidTertiary = ZuneTokens.DarkRaised,
-        FillLayerDefault = ZuneTokens.DarkPanel,
-        FillLayerAlt = ZuneTokens.DarkDialog,
-        LayerOnMicaBaseAlt = ZuneTokens.DarkGround,
-        FillSubtleSecondary = White(ZuneTokens.HoverA),
-        FillSubtleTertiary = White(ZuneTokens.PressedA),
-        StrokeDividerDefault = White(ZuneTokens.HairlineDarkA),
-        StrokeCardDefault = White(ZuneTokens.HairlineDarkA),
-        StrokeSurfaceDefault = White(ZuneTokens.HairlineDarkA),
+        WindowBackground = g.Ground,
+        FillSolidBase = g.Ground,
+        FillSolidBaseAlt = g.Well,
+        FillSolidSecondary = g.Panel,
+        FillSolidTertiary = g.Raised,
+        FillLayerDefault = g.Panel,
+        FillLayerAlt = g.Dialog,
+        LayerOnMicaBaseAlt = g.Ground,
+        FillSubtleSecondary = g.TokenWash with { A = ZuneTokens.HoverA },
+        FillSubtleTertiary = g.TokenWash with { A = ZuneTokens.PressedA },
+        StrokeDividerDefault = g.TokenWash with { A = ZuneTokens.HairlineDarkA },
+        StrokeCardDefault = g.TokenWash with { A = ZuneTokens.HairlineDarkA },
+        StrokeSurfaceDefault = g.TokenWash with { A = ZuneTokens.HairlineDarkA },
         StrokeFlyoutDefault = ColorF.Transparent,
-        TextPrimary = ZuneTokens.DarkInk,
-        TextSecondary = ZuneTokens.DarkInkSecondary,
-        TextTertiary = ZuneTokens.DarkInkTertiary,
+        TextPrimary = g.Ink,
+        TextSecondary = g.InkSecondary,
+        TextTertiary = g.InkTertiary,
         TextOnAccentPrimary = Black(1f),
         TextOnAccentSecondary = Black(0.70f),
     };
 
     // The light token set: the same ladder on #f5f5f5, black washes, a 10 % hairline, the 6 % flyout ring Z-Light-PlayBar draws, white on the accent.
-    private static TokenSet LightTokens(TokenSet t) => t with
+    private static TokenSet LightTokens(TokenSet t, ZuneGrounds g) => t with
     {
-        WindowBackground = ZuneTokens.LightGround,
-        FillSolidBase = ZuneTokens.LightGround,
-        FillSolidBaseAlt = ZuneTokens.LightWell,
-        FillSolidSecondary = ZuneTokens.LightPanel,
-        FillSolidTertiary = ZuneTokens.LightRaised,
-        FillLayerDefault = ZuneTokens.LightPanel,
-        FillLayerAlt = ZuneTokens.LightRaised,
-        LayerOnMicaBaseAlt = ZuneTokens.LightGround,
-        FillSubtleSecondary = Black(ZuneTokens.HoverA),
-        FillSubtleTertiary = Black(ZuneTokens.PressedA),
-        StrokeDividerDefault = Black(ZuneTokens.HairlineLightA),
-        StrokeCardDefault = Black(ZuneTokens.HairlineLightA),
-        StrokeSurfaceDefault = Black(ZuneTokens.HairlineLightA),
-        StrokeFlyoutDefault = Black(0.06f),
-        TextPrimary = ZuneTokens.LightInk,
-        TextSecondary = ZuneTokens.LightInkSecondary,
-        TextTertiary = ZuneTokens.LightInkTertiary,
+        WindowBackground = g.Ground,
+        FillSolidBase = g.Ground,
+        FillSolidBaseAlt = g.Well,
+        FillSolidSecondary = g.Panel,
+        FillSolidTertiary = g.Raised,
+        FillLayerDefault = g.Panel,
+        FillLayerAlt = g.Dialog,
+        LayerOnMicaBaseAlt = g.Ground,
+        FillSubtleSecondary = g.TokenWash with { A = ZuneTokens.HoverA },
+        FillSubtleTertiary = g.TokenWash with { A = ZuneTokens.PressedA },
+        StrokeDividerDefault = g.TokenWash with { A = ZuneTokens.HairlineLightA },
+        StrokeCardDefault = g.TokenWash with { A = ZuneTokens.HairlineLightA },
+        StrokeSurfaceDefault = g.TokenWash with { A = ZuneTokens.HairlineLightA },
+        StrokeFlyoutDefault = g.TokenWash with { A = 0.06f },
+        TextPrimary = g.Ink,
+        TextSecondary = g.InkSecondary,
+        TextTertiary = g.InkTertiary,
         TextOnAccentPrimary = White(1f),
         TextOnAccentSecondary = White(0.70f),
     };

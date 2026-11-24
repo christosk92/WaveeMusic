@@ -86,7 +86,7 @@ public enum AccentSource : byte
 /// <param name="Ink">Primary text: 7 : 1 on the ground, 4.5 : 1 on the raised plate.</param>
 /// <param name="InkSecondary">Secondary text: 4.5 : 1 on the ground, the well and the raised plate.</param>
 /// <param name="InkTertiary">Tertiary text: 4.5 : 1 on the same three, a clear step from the secondary.</param>
-/// <param name="InkDisabled">Disabled text (WCAG exempts it: not floored).</param>
+/// <param name="InkDisabled">Disabled text (WCAG exempts it; held to 3 : 1 on the ground).</param>
 /// <param name="WashInk">The opaque colour state washes are made of (a hover, a press, a hairline take it at their own alpha).</param>
 /// <param name="AccentFill">The accent as a fill: 3 : 1 on the ground (a non-text UI component).</param>
 /// <param name="AccentInk">The accent as text: 4.5 : 1 on the ground, the well, the raised plate and its own selection wash.</param>

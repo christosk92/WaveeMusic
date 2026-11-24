@@ -30,6 +30,8 @@ public static class ColourSolver
     public const float TextFloor = 4.5f;
     /// <summary>A non-text UI component (WCAG 1.4.11): the accent as a fill.</summary>
     public const float FillFloor = 3.0f;
+    /// <summary>Disabled text (WCAG-exempt; held to the non-text floor so a disabled row still reads).</summary>
+    public const float DisabledFloor = 3.0f;
     /// <summary>A dark set's ground is darker than this (relative luminance).</summary>
     public const float DarkGroundMax = 0.18f;
     /// <summary>A light set's ground is lighter than this (relative luminance).</summary>
@@ -82,7 +84,8 @@ public static class ColourSolver
         ColorF faintSeed = s.InkFaint is { } f ? Opaque(f) : ColorF.Lerp(secondary, ground, 0.35f);
         ColorF tertiary = Floor(faintSeed, lighter, (ground, TextFloor), (well, TextFloor), (raised, TextFloor));
         secondary = Apart(secondary, tertiary, ink, lighter);
-        ColorF disabled = ColorF.Lerp(ground, ink, 0.40f);
+        // Disabled text is exempt from WCAG's floors; it still reads 3 : 1, a touch more than the themes' own disabled ink (white or black at 36 %).
+        ColorF disabled = Floor(ColorF.Lerp(ground, ink, 0.40f), lighter, (ground, DisabledFloor));
 
         // 4. accent
         ColorF accentFill = Floor(Opaque(accent), lighter, (ground, FillFloor));
