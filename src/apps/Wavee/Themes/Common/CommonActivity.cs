@@ -191,9 +191,10 @@ internal sealed class CommonActivityFlyout : CommonTierComponent
         Children =
         [
             Ui.BodyStrong(LibraryActivity.Title) with { Shrink = 0f, MaxLines = 1, Case = R.Case.For(LabelKind.Heading) },
+            // The state may take a second line beside the Pause verb on a narrow flyout ("Paused on battery saver"), never an ellipsis.
             Ui.Body(" · " + LibraryActivity.StateWord()) with
             {
-                Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+                Color = Tok.TextSecondary, Wrap = TextWrap.WrapWholeWords, MaxLines = 2, Trim = TextTrim.WordEllipsis, Shrink = 1f, MinWidth = 0f,
                 Case = R.Case.For(LabelKind.Label),
             },
             Ui.Spacer(),

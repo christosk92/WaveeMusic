@@ -434,7 +434,7 @@ internal static partial class WinUiSettings
         "Attention" => Icons.Attention, "Download" => Icons.Download, "ChromeClose" => Icons.ChromeClose,
         "ChromeMinimize" => Icons.ChromeMinimize, "RevealPassword" => Icons.RevealPassword, "Contact" => Icons.Contact,
         "Info" => Icons.Info, "StatusWarning" => Icons.StatusWarning, "Camera" => Icons.Camera, "Forward" => Icons.Forward,
-        "Shield" => Icons.Shield, "Warning" => Icons.Warning, "Repair" => Icons.Repair, "Bell" => Icons.Bell, "Moon" => Icons.Moon,
+        "Shield" => Icons.Shield, "Warning" => Icons.Warning, "Repair" => Icons.Repair, "Bell" => Icons.Bell, "Pause" => Icons.Pause, "Moon" => Icons.Moon,
         _ => UnmappedGlyph(name),
     };
 

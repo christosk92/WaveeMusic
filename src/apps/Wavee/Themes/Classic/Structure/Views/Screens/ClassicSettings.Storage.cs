@@ -247,11 +247,13 @@ internal static partial class ClassicSettings
                 buttonStyle with { GlyphSize = ClassicSettingsRules.MusicRemoveGlyph }) with { Key = "settings:music:remove:" + folder, Shrink = 0f },
                 Loc.Get(Strings.Settings.Music.Remove));
 
+            // A folder that refuses this user: Fix permissions (board 15) beside its verbs, or under its words at Compact (no room beside).
+            BoxEl? fixButton = line.Fix is { } fix ? StdButton(SettingsMusic.FixLabel, fix) with { Key = "settings:music:fix:" + folder, Shrink = 0f } : null;
             Element text = touch
                 ? new BoxEl
                 {
                     Direction = 1, Gap = ClassicSettingsRules.MusicStackGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                    Children = [path, status],
+                    Children = fixButton is null ? [path, status] : [path, status, fixButton with { AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, Spacing.XS, 0f, 0f) }],
                 }
                 : new BoxEl
                 {
@@ -259,8 +261,7 @@ internal static partial class ClassicSettings
                     Children = [path with { Width = ClassicSettingsRules.MusicPathWidth }, status with { Grow = 1f, Basis = 0f }],
                 };
             var kids = new List<Element>(5) { MarkCell(line.Mark), text };
-            // A folder that refuses this user: Fix permissions beside its verbs (board 15).
-            if (line.Fix is { } fix) kids.Add(StdButton(SettingsMusic.FixLabel, fix) with { Key = "settings:music:fix:" + folder, Shrink = 0f });
+            if (fixButton is not null && !touch) kids.Add(fixButton);
             kids.Add(more);
             kids.Add(remove);
             return new BoxEl

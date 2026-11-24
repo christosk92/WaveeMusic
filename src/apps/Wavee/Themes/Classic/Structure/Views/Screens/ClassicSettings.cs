@@ -529,7 +529,7 @@ internal static partial class ClassicSettings
         "Attention" => Icons.Attention, "Download" => Icons.Download, "ChromeClose" => Icons.ChromeClose,
         "ChromeMinimize" => Icons.ChromeMinimize, "RevealPassword" => Icons.RevealPassword, "Contact" => Icons.Contact,
         "Info" => Icons.Info, "StatusWarning" => Icons.StatusWarning, "Camera" => Icons.Camera, "Forward" => Icons.Forward,
-        "Shield" => Icons.Shield, "Warning" => Icons.Warning, "Repair" => Icons.Repair, "Bell" => Icons.Bell,
+        "Shield" => Icons.Shield, "Warning" => Icons.Warning, "Repair" => Icons.Repair, "Bell" => Icons.Bell, "Pause" => Icons.Pause,
         _ => UnmappedGlyph(name),
     };
 
