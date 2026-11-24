@@ -106,9 +106,25 @@ internal interface ITrackCommandKit
     /// is tuned or its strip is open. Appended (contract 1.120); a structure without one draws the labelled command.</summary>
     Element TuneCommand(string label, bool lit, Action onClick) => Labeled(Icons.RefineSparkle, label, lit, onClick, null);
 
-    /// <summary>#48: the list bar's Mix toggle: "Mix", lit (the accent plate, as Tune's) while the playlist plays mixed on this PC. It takes Tune's slot (a
-    /// playlist the user can mix has no Tune). Appended (contract: additive); a structure without one draws the labelled command.</summary>
-    Element MixCommand(string label, bool on, Action onClick) => Labeled(Icons.Equalizer, label, on, onClick, null);
+    /// <summary>#48: the list bar's Mix toggle: <paramref name="label"/> ("Mix"), or lit <paramref name="onLabel"/> ("Mix on") while the playlist plays
+    /// mixed on this PC. It takes Tune's slot (a playlist the user can mix has no Tune). The slot holds the WIDER of the two words at rest (an
+    /// invisible, inert copy), so flipping it never moves the bar. Appended (contract: additive); a structure without one draws this.</summary>
+    Element MixCommand(string label, string onLabel, bool on, Action onClick)
+    {
+        string widest = onLabel.Length >= label.Length ? onLabel : label;
+        return new BoxEl
+        {
+            ZStack = true, Shrink = 0f,
+            Children =
+            [
+                new BoxEl { Opacity = 0f, HitTestVisible = false, Focusable = false, Children = [Labeled(Icons.Equalizer, widest, false, static () => { }, null)] },
+                new BoxEl { JustifySelf = FlexAlign.Start, Children = [Labeled(Icons.Equalizer, on ? onLabel : label, on, onClick, null)] },
+            ],
+        };
+    }
+
+    /// <summary>#48: the Mix split's chevron (the Mix menu). Default: the bar's glyph button with the disclosure chevron.</summary>
+    Element MixMenuButton(Action onClick, Action<NodeHandle> onRealized) => IconButton(Icons.ChevronDown, false, onClick, onRealized);
 
     /// <summary>The disclosure chevron after a command that opens a flyout (the Sort button's one chevron, tuned Classic D6).</summary>
     Element Chevron();

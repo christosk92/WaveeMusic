@@ -338,6 +338,10 @@ public readonly partial struct Track
         public Action? MixToggle { get; init; }
         /// <summary>Is Mix on for this playlist on this PC? A tracked read: the toggle follows it.</summary>
         public Func<bool>? MixLit { get; init; }
+        /// <summary>#48 Mix: open the Transitions list (on this playlist index, or −1); null = none.</summary>
+        public Action<int>? OpenTransitions { get; init; }
+        /// <summary>#48 Mix: the Mix menu's items (the split's chevron); null = no menu.</summary>
+        public Func<IReadOnlyList<MenuFlyoutItem>>? MixMenu { get; init; }
         /// <summary>Expanded-row BODY (Track.Drawer.cs, M Wave 5), handed the row's track and DISPLAY index; the host pads it
         /// by <see cref="RowMetrics.DrawerIndent"/>. Null = no chevron lane.</summary>
         public Func<Track, int, Element?>? Drawer { get; init; }
@@ -1138,6 +1142,21 @@ public readonly partial struct Track
             int orig = OriginalOf(display);
             return orig >= 0 ? _latest.Source.At(orig) : default;
         }
+
+        /// <summary>#48 Mix: the playlist index a DISPLAY row shows (−1 past the end), for the seams (Entities/Mix.Seams.cs).</summary>
+        internal int OriginalAt(int display) => display < 0 ? -1 : OriginalOf(display);
+
+        /// <summary>#48 Mix: the playlist slot this table lists, or 0 (an album, Liked Songs, a queue). Read by the seam layer.</summary>
+        internal int MixPlaylistSlot()
+        {
+            var ctx = _latest.Source.Context;
+            if (ctx.Id.Kind != EntityKind.Playlist) return 0;
+            var p = Entities.Playlist(ctx);
+            return p.IsValid && p.MixOn ? p.Slot : 0;
+        }
+
+        /// <summary>#48 Mix: a seam was clicked: the profile's Transitions list opens on it.</summary>
+        internal void OpenSeam(int index) => _latest.Profile.OpenTransitions?.Invoke(index);
 
         internal StringId ItemIdAt(int display)
         {
@@ -3225,6 +3244,8 @@ public readonly partial struct Track
         bool _entranceTaken;
         LayoutTransition? _entrance;
         Track.BoundRow? _row;
+        Element? _seam;
+        Func<int>? _seamDisplay;
 
         static readonly LayoutTransition s_rampReveal = new(TransitionChannels.Opacity,
             TransitionDynamics.Tween(280f, Easing.FluentDecelerate), Enter: new EnterExit(Opacity: 0f, Active: true));
@@ -3304,6 +3325,16 @@ public readonly partial struct Track
             // mounts real in a cold reveal's band takes the band's staggered crossfade (Design.RevealRamp.RowEnter).
             // Decided once, at the slot's first real render, and kept (the node's transition stays the one its entrance started on).
             if (!_entranceTaken) { _entranceTaken = true; _entrance = _latch == 1 ? s_rampReveal : host.RevealEntrance(display); }
+            // #48 Mix: the seam under this row rides the row's own bounds (Entities/Mix.Seams.cs), so the list's layout never moves for it.
+            if (host.MixPlaylistSlot() > 0)
+            {
+                _seam ??= Embed.Comp(() => new MixSeamLayer(_seamDisplay ??= () => _scope.Index.Value - _start, host.OriginalAt, host.MixPlaylistSlot,
+                    host.AccentRead, interactive: set.Tier <= 5, host.OpenSeam)) with { Key = "mix:seam:host" };
+                return new BoxEl
+                {
+                    Key = "row:real", Direction = 0, Grow = 1f, ZStack = true, Animate = _entrance, Children = [body, _seam],
+                };
+            }
             return new BoxEl
             {
                 Key = "row:real", Direction = 0, Grow = 1f, Animate = _entrance, Children = [body],

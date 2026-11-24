@@ -86,9 +86,6 @@ public readonly partial struct Track
         // the unavailable-songs bar (contract 1.22): its verb, whether it is on (the hero arm's clip inset follows it), and its cached tally
         Action _hideUnavailable = null!;
         Action? _dismissUnavailable;
-        /// <summary>#48: the list bar's Mix verb, built once (the profile's own verb, read at click time).</summary>
-        Action? _mixToggle;
-
         /// <summary>The list bar's Tune verb, built once (the profile's own verb, read at click time).</summary>
         Action? _tuneToggle;
         readonly Signal<bool> _unavailableShown = new(false);
@@ -309,12 +306,7 @@ public readonly partial struct Track
                     Kit.TuneCommand(Loc.Get(Strings.Detail.Tuning.Tune), P.TuneLit?.Invoke() ?? false, _tuneToggle ??= () => _latest.Profile.Tune?.Invoke()),
                     Loc.Get(Strings.Detail.Tuning.Tooltip)), live));
             else if (hasMix)
-            {
-                bool on = P.MixLit?.Invoke() ?? false;
-                // One word in both states (Tune's precedent): the lit plate is the state, so flipping it never resizes the bar.
-                left.Add(MeasuredCommand(1, "cmd:mix", Kit.MixCommand(Loc.Get(Strings.Mix.Label), on,
-                    _mixToggle ??= () => _latest.Profile.MixToggle?.Invoke()), live));
-            }
+                left.Add(MeasuredCommand(1, "cmd:mix", BarPart(Embed.Comp(() => new MixSplitButton(this))), live));
 
             var view = new List<Element>(2);
             if (fit.Has(InlineCommand.Filter))
@@ -798,6 +790,28 @@ public readonly partial struct Track
             var opened = overlay.Open(() => anchor.Value, content, FlyoutPlacement.BottomEdgeAlignedRight, options);
             handle.Value = opened;
             opened.ClosedAction = () => { handle.Value = null; closed?.Invoke(); };
+        }
+
+        /// <summary>#48: the list bar's Mix split: the toggle (it reserves "Mix on"'s width) and the chevron that opens the Mix menu.</summary>
+        sealed class MixSplitButton(TableHost host) : Component
+        {
+            public override Element Render()
+            {
+                var h = host;
+                var overlay = UseContext(Overlay.Service);
+                var anchor = UseRef<NodeHandle>(default);
+                var handle = UseRef<OverlayHandle?>(null);
+                bool on = h.P.MixLit?.Invoke() ?? false;
+                void Toggle() => h._latest.Profile.MixToggle?.Invoke();
+                void Menu() => ToggleOverlay(overlay, anchor, handle,
+                    () => MenuFlyout.Create(h._latest.Profile.MixMenu?.Invoke() ?? [], () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
+                var kids = new List<Element>(2)
+                {
+                    ToolTip.Wrap(h.Kit.MixCommand(Loc.Get(Strings.Mix.Label), Loc.Get(Strings.Mix.LabelOn), on, Toggle), Loc.Get(Strings.Mix.Label)),
+                };
+                if (h.P.MixMenu is not null) kids.Add(ToolTip.Wrap(h.Kit.MixMenuButton(Menu, n => anchor.Value = n), Loc.Get(Strings.Mix.Menu)));
+                return new BoxEl { Key = "cmd:mix:split", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray() };
+            }
         }
 
         sealed class TableSortButton(TableHost host) : Component

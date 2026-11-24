@@ -78,6 +78,27 @@ public static class MixMenu
         if (p.IsOwner) Spotify.Mixes.TurnOn(p, null);
     }
 
+    /// <summary>The list bar's Mix menu (UX direction rev 2): listen without Mix on this PC, turn Mix off for everyone (not captured:
+    /// shown disabled, O1), the transitions view option (on hover · always) and "Mix when shuffling".</summary>
+    public static IReadOnlyList<FluentGpu.Controls.MenuFlyoutItem> Items(Playlist p)
+    {
+        var items = new List<FluentGpu.Controls.MenuFlyoutItem>(7);
+        if (p.MixOn)
+        {
+            bool without = MixListenWithout.Is(p);
+            items.Add(FluentGpu.Controls.MenuFlyoutItem.Toggle(Loc.Get(Strings.Mix.ListenWithout), without,
+                () => Spotify.Mixes.SetListenWithoutMix(p, !without)));
+            items.Add(new FluentGpu.Controls.MenuFlyoutItem(Loc.Get(Strings.Mix.TurnOffForEveryone), default, false));
+        }
+        items.Add(FluentGpu.Controls.MenuFlyoutItem.Header(Loc.Get(Strings.Mix.ShowTransitions)));
+        bool always = MixPrefs.ShowAlways;
+        items.Add(FluentGpu.Controls.MenuFlyoutItem.RadioItem(Loc.Get(Strings.Mix.OnHover), !always, () => MixPrefs.SetShowAlways(false)));
+        items.Add(FluentGpu.Controls.MenuFlyoutItem.RadioItem(Loc.Get(Strings.Mix.Always), always, () => MixPrefs.SetShowAlways(true)));
+        bool shuffling = MixPrefs.WhenShuffling;
+        items.Add(FluentGpu.Controls.MenuFlyoutItem.Toggle(Loc.Get(Strings.Mix.WhenShuffling), shuffling, () => MixPrefs.SetWhenShuffling(!shuffling)));
+        return items;
+    }
+
     /// <summary>Is this row's pair opted out on this PC?</summary>
     public static bool IsOptedOut(in ActionContext c)
         => TryPair(in c, out var uri, out var from, out var to)

@@ -160,6 +160,7 @@ public static partial class Playback
             var p = new global::Wavee.Playlist(pl);
             if (!p.MixOn) return MixTiming.Refused(MixWhyNot.NotMixed);
             if (MixListenWithout.Is(p)) return MixTiming.Refused(MixWhyNot.ListenWithoutMix);
+            if (s.Shuffle && !MixPrefs.WhenShuffling) return MixTiming.Refused(MixWhyNot.NotMixed);   // the Mix menu's "Mix when shuffling" off
             if (cur.IsNone || next.IsNone) return MixTiming.Refused(MixWhyNot.NotMixed);
             if (provider != QueueProvider.Context) return MixTiming.Refused(MixWhyNot.UserQueued);
             if (cur.Kind != EntityKind.Track || next.Kind != EntityKind.Track || s.Kind != PlayableKind.Audio)

@@ -309,6 +309,7 @@ public readonly partial struct Playlist
         /// <summary>#48 Mix: the list bar's toggle and its lit read (built once; they read the page's playlist at call time).</summary>
         readonly Action _mixToggle;
         readonly Func<bool> _mixLit;
+        readonly Func<IReadOnlyList<MenuFlyoutItem>> _mixMenu;
         /// <summary>Tune's strip and its state on this page (the strip opens inline under the list bar).</summary>
         readonly TuneSession _tuneSession = new();
         string _routeKey = "";
@@ -353,6 +354,7 @@ public readonly partial struct Playlist
             _tune = _tuneSession.Toggle;
             _bindTune = () => _tuneSession.Bind(_playlist);
             _mixToggle = () => MixMenu.Toggle(_playlist);
+            _mixMenu = () => MixMenu.Items(_playlist);
             _mixLit = () => { _ = Entities.Current.Playlists.Changed.Value; return MixMenu.Lit(_playlist); };
             _editable = () => _playlist.Editable;
             _deposit = Deposit;
@@ -493,6 +495,7 @@ public readonly partial struct Playlist
                     TuneLit = tune ? _tuneSession.Lit : null,
                     MixToggle = mixable ? _mixToggle : null,
                     MixLit = mixable ? _mixLit : null,
+                    MixMenu = mixable ? _mixMenu : null,
                     LensHeader = _lensHeader,
                     LensExtent = lensExtent,
                     Drawer = Track.DrawerSeam,

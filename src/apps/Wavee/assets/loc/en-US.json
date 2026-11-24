@@ -5338,6 +5338,21 @@
     "mixingInto": "Mixing into {title}",
     "mixedLine": "Mixed",
     "mixedLineEdited": "Mixed · {edited} of {count} transitions edited",
-    "label": "Mix"
+    "label": "Mix",
+    "labelOn": "Mix on",
+    "noMix": "No mix",
+    "auto": "Auto",
+    "fadeChip": "Fade · {seconds} s",
+    "riseChip": "Rise · {seconds} s",
+    "editedInSpotify": "Edited in Spotify",
+    "transition": "Transition",
+    "transitions": "Transitions",
+    "listenWithout": "Listen without Mix",
+    "turnOffForEveryone": "Turn off Mix for everyone",
+    "showTransitions": "Show transitions",
+    "onHover": "On hover",
+    "always": "Always",
+    "whenShuffling": "Mix when shuffling",
+    "menu": "Mix options"
   }
 }
