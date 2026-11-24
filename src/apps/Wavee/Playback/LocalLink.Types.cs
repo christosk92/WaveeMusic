@@ -51,9 +51,10 @@ public enum LinkDecision : byte
     NotOnSpotify,
 }
 
-/// <summary>One Spotify track as the catalogue answered it. <paramref name="Artists"/> is the credit line ("A, B").</summary>
+/// <summary>One Spotify track as the catalogue answered it. <paramref name="Artists"/> is the credit line ("A, B"); <paramref name="AlbumArtist"/>
+/// its album's (first) artist, "" for a link saved before it was kept (the credit line's first name stands in).</summary>
 public sealed record LinkTrack(string Uri, string Title, string Artists, string Album, string AlbumUri, int DurationMs, string Isrc,
-    int Disc, int Number, string? Cover, int Year);
+    int Disc, int Number, string? Cover, int Year, string AlbumArtist = "");
 
 /// <summary>One Spotify album with its track list (empty until its tracks were read).</summary>
 public sealed record LinkAlbum(string Uri, string Title, string Artist, int Year, string? Cover, IReadOnlyList<LinkTrack> Tracks);

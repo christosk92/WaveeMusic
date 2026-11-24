@@ -441,7 +441,7 @@ public static partial class LocalLink
         Album a = album.IsValid ? album : t.Album;
         string? cover = albumCover is { Length: > 0 } ? albumCover : Controls.ArtUrl(t.ImageId) ?? (a.IsValid ? Controls.ArtUrl(a.ImageId) : null);
         return new LinkTrack(t.Uri.Text, t.Title, Entities.Strings.Resolve(t.ArtistLineId), a.IsValid ? a.Title : "", a.IsValid ? a.Uri.Text : "", t.DurationMs,
-            Entities.Strings.Resolve(t.IsrcId), e.Disc, e.Number, cover, t.Year > 0 ? t.Year : a.IsValid ? a.Year : 0);
+            Entities.Strings.Resolve(t.IsrcId), e.Disc, e.Number, cover, t.Year > 0 ? t.Year : a.IsValid ? a.Year : 0, a.IsValid ? ArtistOf(a) : "");
     }
 
     static string ArtistOf(Album a)
