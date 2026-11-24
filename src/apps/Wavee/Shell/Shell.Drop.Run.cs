@@ -104,10 +104,12 @@ public static partial class DropAnywhere
     static void AddMusicFolders(DropPlan plan)
     {
         int added = 0;
+        string addedName = "";
         foreach (string folder in plan.Folders)
         {
-            string name = Path.GetFileName(folder.TrimEnd('\\')) is { Length: > 0 } n ? n : folder;
-            if (LocalLibrary.AddFolder(folder, out string reason)) { added++; continue; }
+            // The folder's own name: a share root (\\nas\music) has no file name, and the toast read " is now a music folder".
+            string name = LocalCollection.LeafOf(folder);
+            if (LocalLibrary.AddFolder(folder, out string reason)) { added++; addedName = name; continue; }
             string why = reason switch
             {
                 "duplicate" => Strings.Drop.AlreadyMusicFolder(name),
@@ -118,7 +120,7 @@ public static partial class DropAnywhere
             Notify.Say(why, InfoBarSeverity.Warning);
         }
         if (added == 0) return;
-        Notify.Say(added == 1 ? Strings.Drop.MusicFolderAdded(Path.GetFileName(plan.Folders[0].TrimEnd('\\')))
+        Notify.Say(added == 1 ? Strings.Drop.MusicFolderAdded(addedName)
                               : Strings.Drop.MusicFoldersAdded(added), InfoBarSeverity.Success);
         // The folder's first scan shows on Local Files (board 23 b).
         Shell.GoTo(Shell.Parse("local"));
