@@ -284,22 +284,26 @@ public static partial class SettingsVerbs
         return false;
     }
 
-    /// <summary>Add <paramref name="path"/>; a refusal says why in a toast (S11), and so does a folder that replaced the ones inside it.</summary>
+    /// <summary>Add <paramref name="path"/>: the row shows at once as "Checking…" while the library asks off the UI thread whether it is
+    /// there (F4). A refusal says why in a toast (S11), at once or when the check answers, and so does a folder that replaced the ones
+    /// inside it; a network folder that is away is kept and its row says so.</summary>
     internal static void AddMusicFolderAt(string path)
     {
         string? parent = LocalLibrary.ContainerOf(path);
-        if (LocalLibrary.AddFolder(path, out string reason))
-        {
-            if (reason == "combined") Notify.Say(Strings.Settings.Music.Combined(LocalLibrary.Normalize(path)));
-        }
-        else
-            Notify.Say(reason switch
-            {
-                "inside" => Strings.Settings.Music.Inside(parent ?? ""),
-                "duplicate" => Loc.Get(Strings.Settings.Music.Duplicate),
-                _ => Loc.Get(Strings.Settings.Music.NotFound),
-            }, InfoBarSeverity.Warning);
+        if (!LocalLibrary.AddFolder(path, out string reason, landed: verdict => { Say(verdict, path, parent); Settings.Bump(); }))
+            Say(reason, path, parent);
         Settings.Bump();
+
+        static void Say(string reason, string path, string? parent)
+        {
+            switch (reason)
+            {
+                case "combined": Notify.Say(Strings.Settings.Music.Combined(LocalLibrary.Normalize(path))); break;
+                case "inside": Notify.Say(Strings.Settings.Music.Inside(parent ?? ""), InfoBarSeverity.Warning); break;
+                case "duplicate": Notify.Say(Loc.Get(Strings.Settings.Music.Duplicate), InfoBarSeverity.Warning); break;
+                case "missing": Notify.Say(Loc.Get(Strings.Settings.Music.NotFound), InfoBarSeverity.Warning); break;
+            }
+        }
     }
 
     /// <summary>"Rescan now": a warm walk of every folder.</summary>

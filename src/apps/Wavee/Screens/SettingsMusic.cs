@@ -93,6 +93,8 @@ public static class SettingsMusic
                 return new(folder, Loc.Get(Strings.Settings.Music.SignIn), f.Songs > 0 ? Kept(f.Songs) : "", Mark.Caution);
             case LocalRootState.Waking:
                 return new(folder, null, Loc.Get(Strings.Settings.Music.Waking), Mark.Busy);
+            case LocalRootState.Checking:   // just added: its existence or reachability is being asked off the UI thread (F4)
+                return new(folder, null, Loc.Get(Strings.Settings.Music.Checking), Mark.Busy);
             case LocalRootState.Slow:
                 return new(folder, null, Loc.Get(Strings.Settings.Music.Slow), Mark.Caution);
             case LocalRootState.NoAccess:
