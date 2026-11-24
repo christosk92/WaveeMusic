@@ -395,6 +395,38 @@ internal static class CommonLocalCollectionParts
         };
     }
 
+    /// <summary>A song with no album tag as a card (Home's shelves): its cover (quality pill, "New" tag, a play button on hover), the title, the
+    /// artist. A click plays it.</summary>
+    public static Element SongCard(LocalSongCard s, float w, LocalCollectionVerbs v, bool pill)
+    {
+        var hover = new Signal<bool>(false);
+        long id = s.Id;
+        string seed = "song:" + id.ToString(CultureInfo.InvariantCulture);
+        var cover = new List<Element>(4) { Art(s.Cover, w, seed, s.Title) };
+        if (s.IsNew) cover.Add(NewTag());
+        if (pill && s.Quality.Length > 0) cover.Add(Pill(s.Quality));
+        cover.Add(new BoxEl
+        {
+            Width = L.PlayButton, Height = L.PlayButton, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End, Margin = Edges4.All(L.PlayInset), Shrink = 0f,
+            Corners = CornerRadius4.All(L.PlayButton / 2f), Fill = Tok.AccentDefault, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+            Opacity = Prop.Of(() => hover.Value ? 1f : 0f), HitTestVisible = false, Children = [Icon(Icons.Play, L.PlayGlyph, Tok.TextOnAccentPrimary)],
+        });
+        return new BoxEl
+        {
+            Key = "lc-song:" + id.ToString(CultureInfo.InvariantCulture), Direction = 1, Width = w, Shrink = 0f, Gap = L.CardTextGap, Cursor = CursorId.Hand,
+            Layout = L.SizeReflow, OnClick = () => v.PlayFile(id), OnHoverMove = _ => hover.Value = true, OnPointerExit = () => hover.Value = false,
+            Children =
+            [
+                new BoxEl { ZStack = true, Width = w, Height = w, Layout = L.SizeReflow, Children = cover.ToArray() },
+                new BoxEl
+                {
+                    Direction = 1, Height = L.CardTextH, MinWidth = 0f,
+                    Children = [Ell(R.Type.CardTitle(s.Title) with { Color = Tok.TextPrimary }), Ell(Meta(s.Artist))],
+                },
+            ],
+        };
+    }
+
     static Element ArtistCard(LocalArtistCard a, float w, LocalCollectionVerbs v)
     {
         string key = a.Key;
@@ -425,8 +457,11 @@ internal static class CommonLocalCollectionParts
     {
         LayoutTransition shelfReveal = reveal ? L.ShelfReveal : L.ShelfReveal with { Enter = default };
         var kids = new List<Element>(3);
-        Action seeAll = () => setPivot(LocalPivot.Albums);
+        // "See all" goes to the albums; a library of loose songs has none, so to its songs.
+        Action seeAll = v.AlbumCount > 0 ? () => setPivot(LocalPivot.Albums) : () => setPivot(LocalPivot.Songs);
         int shown = 0;
+        bool anyOn = false;
+        foreach (var slot in shelves) anyOn |= slot.Shown;
         foreach (var slot in shelves)
         {
             // Each shelf in two boxes. The outer one stays in the user's order whether the shelf shows or not, and glides to a new place when
@@ -441,7 +476,9 @@ internal static class CommonLocalCollectionParts
                 Children = shelf is null ? [] : [new BoxEl { Key = "lc-home-reveal:" + id, Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = shelfReveal, Children = [shelf] }],
             });
         }
-        if (shown == 0 && v.Songs > 0)
+        // "Hidden" only when the user hid every shelf in Edit home: a shelf that is on but has nothing to show (no lossless songs, no year tags) is
+        // simply absent, never called hidden.
+        if (shown == 0 && !anyOn && v.Songs > 0)
             kids.Add(Gut("lc-home-none", g, Meta(Loc.Get(P.HomeAllHidden)) with { Wrap = TextWrap.Wrap }, top: L.SectionTop));
         return kids.ToArray();
 
@@ -458,8 +495,11 @@ internal static class CommonLocalCollectionParts
             var groups = new List<Element>(v.Recent.Count);
             foreach (var grp in v.Recent)
             {
-                var cards = new Element[grp.Albums.Count];
-                for (int i = 0; i < cards.Length; i++) cards[i] = AlbumCard(grp.Albums[i], lay.Card, verbs, pill: false, year: false);
+                // The group's albums, then its songs with no album tag.
+                var songs = grp.SongCards;
+                var cards = new Element[grp.Albums.Count + songs.Count];
+                for (int i = 0; i < grp.Albums.Count; i++) cards[i] = AlbumCard(grp.Albums[i], lay.Card, verbs, pill: false, year: false);
+                for (int i = 0; i < songs.Count; i++) cards[grp.Albums.Count + i] = SongCard(songs[i], lay.Card, verbs, pill: false);
                 groups.Add(new BoxEl
                 {
                     Key = "lc-recent:" + grp.When, Direction = 1, Shrink = 0f, Gap = L.GroupLabelGap,
@@ -470,15 +510,19 @@ internal static class CommonLocalCollectionParts
                     ],
                 });
             }
-            return Section("recent", Loc.Get(P.RecentlyAdded), v.RecentThisMonth > 0 ? P.ThisMonth(v.RecentThisMonth) : null, seeAll,
-                ShelfRow("recent", groups.ToArray(), L.GroupGap, g), g, lay.ChipH);
+            string? sub = v.RecentThisMonth > 0 && v.RecentSongsThisMonth > 0 ? P.ThisMonthBoth(P.Albums(v.RecentThisMonth), P.Songs(v.RecentSongsThisMonth))
+                : v.RecentThisMonth > 0 ? P.ThisMonth(v.RecentThisMonth)
+                : v.RecentSongsThisMonth > 0 ? P.ThisMonthSongs(v.RecentSongsThisMonth) : null;
+            return Section("recent", Loc.Get(P.RecentlyAdded), sub, seeAll, ShelfRow("recent", groups.ToArray(), L.GroupGap, g), g, lay.ChipH);
         }
 
         Element? LosslessShelf()
         {
-            if (v.Lossless.Count == 0) return null;
-            var cards = new Element[v.Lossless.Count];
-            for (int i = 0; i < cards.Length; i++) cards[i] = AlbumCard(v.Lossless[i], lay.Card, verbs, pill: true, year: false);
+            if (v.Lossless.Count + v.LosslessLoose.Count == 0) return null;
+            // The lossless albums, then the lossless songs with no album tag.
+            var cards = new Element[v.Lossless.Count + v.LosslessLoose.Count];
+            for (int i = 0; i < v.Lossless.Count; i++) cards[i] = AlbumCard(v.Lossless[i], lay.Card, verbs, pill: true, year: false);
+            for (int i = 0; i < v.LosslessLoose.Count; i++) cards[v.Lossless.Count + i] = SongCard(v.LosslessLoose[i], lay.Card, verbs, pill: true);
             string sub = v.HiResSongs > 0 ? P.LosslessSongs(v.LosslessSongs) + " · " + P.HiResSongs(v.HiResSongs) : P.LosslessSongs(v.LosslessSongs);
             return Section("lossless", Loc.Get(P.LosslessShelf), sub, seeAll, ShelfRow("lossless", cards, lay.CardGap, g), g, lay.ChipH);
         }
@@ -558,7 +602,11 @@ internal static class CommonLocalCollectionParts
                 new BoxEl
                 {
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                    Children = [Ell(R.Type.CardTitle(P.Decade(decade.ToString(CultureInfo.InvariantCulture))) with { Color = Tok.TextPrimary }), Ell(Meta(P.Albums(d.Albums)))],
+                    Children =
+                    [
+                        Ell(R.Type.CardTitle(P.Decade(decade.ToString(CultureInfo.InvariantCulture))) with { Color = Tok.TextPrimary }),
+                        Ell(Meta(d.Albums > 0 && d.Songs > 0 ? P.Albums(d.Albums) + " · " + P.Songs(d.Songs) : d.Albums > 0 ? P.Albums(d.Albums) : P.Songs(d.Songs))),
+                    ],
                 },
                 Icon(Icons.Shuffle, L.SeeAllGlyph, Tok.TextSecondary),
             ],

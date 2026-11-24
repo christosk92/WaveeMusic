@@ -50,7 +50,15 @@ public static class LocalCollectionPage
         with { Drawer = Track.DrawerSeam, EmptyBody = LocalFilesList.EmptyBody, ListOverlay = LocalFilesList.PillOverlay };
 
     /// <summary>The Local Files onboarding body while there is no music folder (its `EmptyBody` answers it then), else null. Tracked.</summary>
-    static readonly Func<Element?> s_onboarding = static () => { _ = LocalLibrary.Epoch.Value; return LocalFilesList.Onboarding ? LocalFilesList.EmptyBody() : null; };
+    // No music folder: the onboarding (S4, board frame 6). Folders whose scan found no song Wavee can play: the same picture, saying so, with Add music
+    // (never a Home of empty shelves).
+    static readonly Func<Element?> s_onboarding = static () =>
+    {
+        _ = LocalLibrary.Epoch.Value;
+        if (LocalFilesList.Onboarding) return LocalFilesList.EmptyBody();
+        var v = LocalCollection.View.Value;
+        return v.Version > 0 && v.AlbumCount == 0 && v.LooseSongs == 0 && v.Phase == LocalLibraryPhase.Ready && !LocalLibrary.FirstScanRunning ? LocalFilesList.NoSongsBody() : null;
+    };
 
     static LocalPivot PivotOf(string name) => Enum.TryParse(name, ignoreCase: true, out LocalPivot p) ? p : LocalPivot.Home;
 

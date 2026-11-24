@@ -199,9 +199,14 @@ public static class LocalFilesList
     }
 
     /// <summary>The empty state's host: it finds the user's Music folder in an effect (a disk probe never runs in a render) and re-asks when the folders change.</summary>
+    /// <summary>On this PC with music folders whose scan found no song Wavee can play: the onboarding's picture, saying so ("No songs here yet"), with
+    /// Add music (the folder picker) and, while it is not a music folder yet, the user's Music folder.</summary>
+    public static Element NoSongsBody() => Embed.Comp(static () => new EmptyHost { NoSongs = true }) with { Key = "local-empty:no-songs" };
+
     sealed class EmptyHost : Component
     {
         readonly Signal<string?> _music = new(null);
+        public bool NoSongs;
 
         public override Element Render()
         {
@@ -213,13 +218,13 @@ public static class LocalFilesList
             string? music = _music.Value;
             return ViewSlots.View(ViewKeys.LocalFilesEmpty, new LocalFilesEmptyProps
             {
-                Title = Loc.Get(Strings.LocalFiles.List.EmptyTitle),
-                Body = Loc.Get(Strings.LocalFiles.List.EmptyBody),
+                Title = Loc.Get(NoSongs ? Strings.LocalFiles.Page.HomeEmptyTitle : Strings.LocalFiles.List.EmptyTitle),
+                Body = Loc.Get(NoSongs ? Strings.LocalFiles.Page.HomeEmptyBody : Strings.LocalFiles.List.EmptyBody),
                 AddMusicLabel = music is null ? "" : Loc.Get(Strings.LocalFiles.List.AddMusicFolder),
                 AddMusic = music is null ? null : s_addMusic,
                 MusicFolderCaption = music is null ? "" : Strings.LocalFiles.List.MusicFolderIs(music),
                 MusicFolderPath = music ?? "",
-                ChooseLabel = Loc.Get(Strings.LocalFiles.List.ChooseFolder),
+                ChooseLabel = Loc.Get(NoSongs ? Strings.LocalFiles.Page.AddMusic : Strings.LocalFiles.List.ChooseFolder),
                 Choose = s_choose,
                 DropTitle = Loc.Get(Strings.LocalFiles.List.DropTitle),
                 DropSub = Loc.Get(Strings.LocalFiles.List.DropSub),

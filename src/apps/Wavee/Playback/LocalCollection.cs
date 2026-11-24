@@ -15,7 +15,8 @@
 // (`LocalEntry.FirstSeenTicks`), never the file's own write time: a folder copied in from a backup is new to the library however old
 // its files are. Quality is the format and, for lossy files, the bitrate ("FLAC", "MP3 320"); lossless audio above CD quality (more
 // than 16 bits or more than 48 kHz, from the readers' stream format) is "Hi-Res 24/96". Untagged files (no album) count as songs and
-// live in the Folders browser, not on the album wall.
+// live in the Folders browser, not on the album wall; Home's shelves show them as song cards (Recently added by arrival, Lossless, the
+// decades from their year tag), so a library of loose songs has a Home too.
 
 using System.Globalization;
 using FluentGpu.Signals;
@@ -200,6 +201,7 @@ public static class LocalCollection
         var bitrates = new Dictionary<string, int>(StringComparer.Ordinal);
         var unplayable = new Dictionary<string, int>(StringComparer.Ordinal);
         var dupes = new Dictionary<(string, string, int), int>();
+        var looseEntries = new List<LocalEntry>();
         var perRootSongs = new Dictionary<int, int>();
 
         foreach (var e in entries)
@@ -222,7 +224,7 @@ public static class LocalCollection
                 if (!IsLossless(e.Format) && t.BitrateKbps > 0) { string b = Round(t.BitrateKbps); bitrates[b] = bitrates.GetValueOrDefault(b) + 1; }
             }
             if (t.Title.Length == 0 && t.Artists.Length == 0) untagged++;
-            if (t.Album.Length == 0 && e.Playable && e.State != LocalState.Missing) loose++;
+            if (t.Album.Length == 0 && e.Playable && e.State != LocalState.Missing) { loose++; looseEntries.Add(e); }
             if (t.Album.Length > 0 && t.AlbumArtist.Length == 0) noAlbumArtist++;
             if (t.Album.Length > 0 && t.TrackNumber == 0) noTrack++;
             if (t.Title.Length > 0 && t.DurationMs > 0) { var dk = (t.Title.ToUpperInvariant(), t.FirstArtist.ToUpperInvariant(), t.DurationMs / 2000); dupes[dk] = dupes.GetValueOrDefault(dk) + 1; }
@@ -327,30 +329,70 @@ public static class LocalCollection
         var byYear = new List<LocalAlbumCard>(cards);
         byYear.Sort(static (x, y) => x.Year != y.Year ? y.Year.CompareTo(x.Year) : string.Compare(x.Artist, y.Artist, StringComparison.OrdinalIgnoreCase));
 
-        // Shelves.
+        // Songs with no album tag: each its own card on Home (a library of loose songs has shelves too). What a row shows, a card shows: an
+        // accepted Spotify match's title, artist and cover, else the tags, else the file name's split.
+        var songCards = new List<LocalSongCard>(looseEntries.Count);
+        var shownLinks = LocalLink.Shown;
+        foreach (var e in looseEntries)
+        {
+            long added = e.FirstSeenTicks > 0 ? e.FirstSeenTicks : e.LastSeenTicks;
+            var when = added >= today ? LocalAddedWhen.Today : added >= week ? LocalAddedWhen.ThisWeek : added >= month ? LocalAddedWhen.ThisMonth : LocalAddedWhen.Earlier;
+            (string title, string artist) = LocalNames.Display(e.Tags, e.MatchTitle);
+            string? cover = LocalArt.CoverUri(e.LocalId);
+            int year = e.Tags.Year;
+            if (shownLinks.TryGetValue(e.LocalId, out LinkTrack? link))
+                (title, artist, cover, year) = (link.Title, link.Artists, link.Cover ?? cover, link.Year > 0 ? link.Year : year);
+            songCards.Add(new LocalSongCard(e.LocalId, title, artist, cover, QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample),
+                IsLossless(e.Format), year, added, when, when == LocalAddedWhen.Today));
+        }
+        songCards.Sort(static (x, y) => y.AddedTicks != x.AddedTicks ? y.AddedTicks.CompareTo(x.AddedTicks) : string.Compare(x.Title, y.Title, StringComparison.OrdinalIgnoreCase));
+
+        // Shelves. Recently added: per arrival group its albums, then its loose songs, newest first, ShelfMax cards in all.
         var recent = new List<LocalShelfGroup>(3);
-        int recentMonth = 0;
+        int recentMonth = 0, recentSongsMonth = 0;
         foreach (var when in (ReadOnlySpan<LocalAddedWhen>)[LocalAddedWhen.Today, LocalAddedWhen.ThisWeek, LocalAddedWhen.ThisMonth])
         {
             var g = cards.FindAll(c => c.When == when);
+            var s = songCards.FindAll(c => c.When == when);
             recentMonth += g.Count;
-            if (g.Count > 0) recent.Add(new LocalShelfGroup(when, g.Count > ShelfMax ? g.GetRange(0, ShelfMax) : g));
+            recentSongsMonth += s.Count;
+            if (g.Count + s.Count > 0) recent.Add(Group(when, g, s));
         }
         // A library nothing arrived in this month still shows what came in last, as one "Earlier" group.
-        if (recent.Count == 0 && cards.Count > 0) recent.Add(new LocalShelfGroup(LocalAddedWhen.Earlier, cards.Count > ShelfMax ? cards.GetRange(0, ShelfMax) : cards));
+        if (recent.Count == 0 && cards.Count + songCards.Count > 0) recent.Add(Group(LocalAddedWhen.Earlier, cards, songCards));
+
+        static LocalShelfGroup Group(LocalAddedWhen when, List<LocalAlbumCard> albums, List<LocalSongCard> songs)
+        {
+            int a = Math.Min(albums.Count, ShelfMax), s = Math.Min(songs.Count, ShelfMax - a);
+            return new LocalShelfGroup(when, a < albums.Count ? albums.GetRange(0, a) : albums, s < songs.Count ? songs.GetRange(0, s) : songs);
+        }
+        var losslessLoose = songCards.FindAll(static c => c.Lossless);
         var losslessCards = cards.FindAll(static c => c.Lossless);
         int losslessCount = losslessCards.Count;
         if (losslessCards.Count > ShelfMax) losslessCards = losslessCards.GetRange(0, ShelfMax);
-        var decades = new SortedDictionary<int, List<LocalAlbumCard>>();
+        // Decades from the year tags: albums, and the loose songs that carry a year (their covers fill in where the albums have none).
+        var decades = new SortedDictionary<int, (List<LocalAlbumCard> Albums, List<LocalSongCard> Songs)>();
         foreach (var c in cards)
         {
             if (c.Year <= 0) continue;
             int d = c.Year / 10 * 10;
-            if (!decades.TryGetValue(d, out var l)) decades[d] = l = new List<LocalAlbumCard>();
-            l.Add(c);
+            if (!decades.TryGetValue(d, out var l)) decades[d] = l = (new List<LocalAlbumCard>(), new List<LocalSongCard>());
+            l.Albums.Add(c);
+        }
+        foreach (var c in songCards)
+        {
+            if (c.Year <= 0) continue;
+            int d = c.Year / 10 * 10;
+            if (!decades.TryGetValue(d, out var l)) decades[d] = l = (new List<LocalAlbumCard>(), new List<LocalSongCard>());
+            l.Songs.Add(c);
         }
         var decadeList = new List<LocalDecade>(decades.Count);
-        foreach (var (d, l) in decades) decadeList.Add(new LocalDecade(d, l.Count, CoversOf(l, 3)));
+        foreach (var (d, l) in decades)
+        {
+            var covers = new List<string>(CoversOf(l.Albums, 3));
+            foreach (var s in l.Songs) { if (covers.Count >= 3) break; if (s.Cover is { } u) covers.Add(u); }
+            decadeList.Add(new LocalDecade(d, l.Albums.Count, covers, l.Songs.Count));
+        }
 
         // Artists.
         var artistCards = new List<LocalArtistCard>(artists.Count);
@@ -426,7 +468,9 @@ public static class LocalCollection
             Mosaic = mosaicCovers,
             Recent = recent,
             RecentThisMonth = recentMonth,
+            RecentSongsThisMonth = recentSongsMonth,
             Lossless = losslessCards,
+            LosslessLoose = losslessLoose.Count > ShelfMax ? losslessLoose.GetRange(0, ShelfMax) : losslessLoose,
             LosslessSongs = lossless,
             HiResSongs = hiRes,
             LastScanTicks = LocalLibrary.LastScan.UtcTicks,

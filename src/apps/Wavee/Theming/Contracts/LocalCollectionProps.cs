@@ -61,11 +61,21 @@ public sealed record LocalSongItem(long Id, int Number, string Title, string Alb
 public sealed record LocalFolderNode(string Key, string Name, string? ParentKey, int Songs, long DurationMs, string Quality, string? Cover,
     IReadOnlyList<string> Mosaic, IReadOnlyList<string> Children, IReadOnlyList<LocalSongItem> Files, long DurationHereMs, string Path = "");
 
-/// <summary>One group of the Recently added shelf.</summary>
-public sealed record LocalShelfGroup(LocalAddedWhen When, IReadOnlyList<LocalAlbumCard> Albums);
+/// <summary>One song with no album tag, as a card on Home's shelves (a loose song is its own group: it never reaches the album wall).</summary>
+/// <param name="Id">The file's LocalId (<see cref="LocalCollectionVerbs.PlayFile"/>).</param>
+/// <param name="Title">What its row shows: an accepted Spotify match's title, else the tags, else the file name's split.</param>
+public sealed record LocalSongCard(long Id, string Title, string Artist, string? Cover, string Quality, bool Lossless, int Year, long AddedTicks,
+    LocalAddedWhen When, bool IsNew);
 
-/// <summary>One decade of "Shuffle by decade" (from the year tags).</summary>
-public sealed record LocalDecade(int Decade, int Albums, IReadOnlyList<string> Covers);
+/// <summary>One group of the Recently added shelf: its albums, then its songs with no album tag (newest first in each).</summary>
+public sealed record LocalShelfGroup(LocalAddedWhen When, IReadOnlyList<LocalAlbumCard> Albums, IReadOnlyList<LocalSongCard>? Songs = null)
+{
+    /// <summary>The group's songs with no album tag (empty for an albums-only group).</summary>
+    public IReadOnlyList<LocalSongCard> SongCards => Songs ?? [];
+}
+
+/// <summary>One decade of "Shuffle by decade" (from the year tags): its albums and its songs with no album tag.</summary>
+public sealed record LocalDecade(int Decade, int Albums, IReadOnlyList<string> Covers, int Songs = 0);
 
 /// <summary>One music folder's chip under the hero.</summary>
 public sealed record LocalFolderChip(string Path, string Label, LocalChipState State, int Songs);
@@ -99,7 +109,11 @@ public sealed record LocalCollectionView
     public IReadOnlyList<string> Mosaic { get; init; } = [];
     public IReadOnlyList<LocalShelfGroup> Recent { get; init; } = [];
     public int RecentThisMonth { get; init; }
+    /// <summary>Songs with no album tag that arrived this month (the Recently added shelf's line counts them beside the albums).</summary>
+    public int RecentSongsThisMonth { get; init; }
     public IReadOnlyList<LocalAlbumCard> Lossless { get; init; } = [];
+    /// <summary>Lossless songs with no album tag, after the lossless albums on their shelf.</summary>
+    public IReadOnlyList<LocalSongCard> LosslessLoose { get; init; } = [];
     public int LosslessSongs { get; init; }
     /// <summary>Lossless songs above CD quality (more than 16 bits or 48 kHz).</summary>
     public int HiResSongs { get; init; }
