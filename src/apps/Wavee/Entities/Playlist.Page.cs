@@ -63,7 +63,7 @@ public readonly partial struct Playlist
     public static void InstallPages()
     {
         Shell.SetPage(Shell.RouteKind.Playlist, PageFor);
-        Shell.SetPage(Shell.RouteKind.Local, PageFor);
+        Shell.SetPage(Shell.RouteKind.Local, LocalCollectionPage.PageFor);   // #240 P2: "On this PC", the collection page (Songs = this list's table)
         Shell.SetPage(Shell.RouteKind.Liked, User.LikedPageFor);
         Shell.SetPage(Shell.RouteKind.LibraryAlbums, User.LibraryPageFor);
         Shell.SetPage(Shell.RouteKind.LibraryArtists, User.LibraryPageFor);

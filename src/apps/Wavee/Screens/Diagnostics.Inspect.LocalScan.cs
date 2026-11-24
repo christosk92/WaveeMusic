@@ -21,6 +21,7 @@ public static partial class Diagnostics
             string v = a.Has("value") ? a.Str("value").ToLowerInvariant() : "ready";
             if (v is not ("none" or "scanning" or "ready" or "offline")) return Inspect.Reply.Fail(id, name, "state kind=music-folders wants value=none|scanning|ready|offline, not '" + v + "'");
             LocalLibrary.InspectFixture(v);
+            LocalCollectionFixture.Fill(v);   // #240 P2-page: the "On this PC" collection on top (albums, years, formats)
             if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
             return Settled(id, name, a, w =>
             {

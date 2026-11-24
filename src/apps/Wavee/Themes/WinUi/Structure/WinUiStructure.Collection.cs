@@ -14,5 +14,8 @@ public sealed partial class WinUiStructure
     static partial void RegisterCollection(ViewRegistryBuilder views)
     {
         views.AddStyle(StyleKeys.LibraryControls, WinUiLibraryControls.Style);
+
+        // #240 P2: "On this PC", the collection page WinUI and Classic share (Themes/Common), on WinUI's page inset.
+        Common.CommonLocalCollection.Register(views, "winui.collection.local", static f => WinUiTiers.InsetOf(in f), WinUiFrameLayout.PageTitleKey);
     }
 }

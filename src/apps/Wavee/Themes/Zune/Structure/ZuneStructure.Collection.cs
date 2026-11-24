@@ -31,6 +31,9 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.LibraryArtistReader, ZuneLibraryArtistReader.Template, "zune.library.artist-reader");
         views.Add(ViewKeys.LibrarySavedEpisodes, ZuneLibrarySavedEpisodes.Template, "zune.library.saved-episodes");
 
+        // #240 P2: "On this PC", the collection page (board 21; the band draws its pivots and verbs).
+        views.Add(ViewKeys.LocalCollectionPage, ZuneLocalCollection.Template, "zune.collection.local");
+
         // Recents.
         views.Add(ViewKeys.RecentsPage, ZuneRecents.Template, "zune.recents.page");
 
