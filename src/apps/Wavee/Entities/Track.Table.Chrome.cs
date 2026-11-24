@@ -258,6 +258,9 @@ public readonly partial struct Track
             bool pageBar = PageBar;
             // A structure that draws Tune in its hero at this tier (DetailTableTier.TuneInHero, WinUI) leaves it off the bar: one home per verb.
             bool hasTune = P.Tune is not null && !(vertical && ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table.TuneInHero);
+            // #48 Mix: the Mix toggle rides Tune's slot (and its measured width) on a playlist that has no Tune.
+            bool hasMix = !hasTune && P.MixToggle is not null;
+            bool hasTuneSlot = hasTune || hasMix;
             var insights = BarInsights;
             bool explicitSearch = _searchExpanded.Value;
             var w = _toolbarWidths;
@@ -275,7 +278,7 @@ public readonly partial struct Track
             _inlineSelect = select is not null;
             if (findWord) fitPane = MathF.Max(0f, fitPane - MathF.Max(0f, _findWordW - CommandBarLayout.SearchIconWidth));
             if (select is not null) fitPane = MathF.Max(0f, fitPane - CommandBarLayout.Gap - _selectW);
-            var fit = CommandBarLayout.Resolve(fitPane, in widths, vertical, hasTune, insights is not null, explicitSearch, _toolbarFit);
+            var fit = CommandBarLayout.Resolve(fitPane, in widths, vertical, hasTuneSlot, insights is not null, explicitSearch, _toolbarFit);
             if (pageBar) fit = fit with { Inline = fit.Inline | InlineCommand.Shuffle };
             if (!explicitSearch) _searchOpenFit = null;
             else if (_searchOpenFit is { } latched && MathF.Abs(latched.Available - pane) <= 0.5f) fit = latched.Fit;
@@ -304,6 +307,8 @@ public readonly partial struct Track
                 left.Add(MeasuredCommand(1, "cmd:tune", ToolTip.Wrap(
                     Kit.TuneCommand(Loc.Get(Strings.Detail.Tuning.Tune), P.TuneLit?.Invoke() ?? false, _tuneToggle ??= () => _latest.Profile.Tune?.Invoke()),
                     Loc.Get(Strings.Detail.Tuning.Tooltip)), live));
+            else if (hasMix)
+                left.Add(MeasuredCommand(1, "cmd:mix", BarPart(Embed.Comp(() => new MixSplitButton(this))), live));
 
             var view = new List<Element>(2);
             if (fit.Has(InlineCommand.Filter))
@@ -787,6 +792,28 @@ public readonly partial struct Track
             var opened = overlay.Open(() => anchor.Value, content, FlyoutPlacement.BottomEdgeAlignedRight, options);
             handle.Value = opened;
             opened.ClosedAction = () => { handle.Value = null; closed?.Invoke(); };
+        }
+
+        /// <summary>#48: the list bar's Mix split: the toggle (it reserves "Mix on"'s width) and the chevron that opens the Mix menu.</summary>
+        sealed class MixSplitButton(TableHost host) : Component
+        {
+            public override Element Render()
+            {
+                var h = host;
+                var overlay = UseContext(Overlay.Service);
+                var anchor = UseRef<NodeHandle>(default);
+                var handle = UseRef<OverlayHandle?>(null);
+                bool on = h.P.MixLit?.Invoke() ?? false;
+                void Toggle() => h._latest.Profile.MixToggle?.Invoke();
+                void Menu() => ToggleOverlay(overlay, anchor, handle,
+                    () => MenuFlyout.Create(h._latest.Profile.MixMenu?.Invoke() ?? [], () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
+                var kids = new List<Element>(2)
+                {
+                    ToolTip.Wrap(h.Kit.MixCommand(Loc.Get(Strings.Mix.Label), Loc.Get(Strings.Mix.LabelOn), on, Toggle), Loc.Get(Strings.Mix.Label)),
+                };
+                if (h.P.MixMenu is not null) kids.Add(ToolTip.Wrap(h.Kit.MixMenuButton(Menu, n => anchor.Value = n), Loc.Get(Strings.Mix.Menu)));
+                return new BoxEl { Key = "cmd:mix:split", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray() };
+            }
         }
 
         sealed class TableSortButton(TableHost host) : Component

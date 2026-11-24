@@ -276,6 +276,14 @@ public static partial class Platform
         public static readonly SettingKey<string> EqualizerGains = new("playback.eq.gains", "0,0,0,0,0,0,0,0,0,0");
         public static readonly SettingKey<bool> CrossfadeEnabled = new("playback.crossfade.enabled", false);
         public static readonly SettingKey<int> CrossfadeMs = new("playback.crossfade.ms", 5000);
+        /// <summary>#48 Mix: the playlists (bare ids, comma list) this PC plays without Mix (decision D3, Entities/Mix.cs).</summary>
+        public static readonly SettingKey<string> MixListenWithout = new("playback.mix.listenWithout", "");
+        /// <summary>#48 Mix: the per-pair local overrides (No mix, Auto over a Spotify recipe, a local edit), Entities/Mix.Overrides.cs.</summary>
+        public static readonly SettingKey<string> MixOverrides = new("playback.mix.overrides", "");
+        /// <summary>#48 Mix menu: "Show transitions: Always" (chips in every seam); false = on hover.</summary>
+        public static readonly SettingKey<bool> MixShowTransitions = new("playback.mix.showTransitions", false);
+        /// <summary>#48 Mix menu: "Mix when shuffling" (Wavee's Auto on shuffled pairs); false = Spotify's behaviour (no mix while shuffled).</summary>
+        public static readonly SettingKey<bool> MixWhenShuffling = new("playback.mix.whenShuffling", true);
         public static readonly SettingKey<bool> AutoplayEnabled = new("playback.autoplay", true);
         /// <summary>A music video that ends in full screen counts down ("Up next in 5") before the next one plays (Playback.EndHold.cs).</summary>
         public static readonly SettingKey<bool> VideoEndCountdown = new("playback.video.endCountdown", true);

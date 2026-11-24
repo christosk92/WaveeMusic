@@ -231,6 +231,14 @@ public readonly partial struct Track
                 rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.TrackFacts.ShowDetails), Icons.List, true, o.TrackDetails));
         }
 
+        // #48 Mix: the pair after this row, in a mixed playlist only (the verb is enabled exactly there)
+        if (AppActions.Find(ActionId.DontMixIntoNext) is { } mixVerb && mixVerb.EnabledFor(in ctx)
+            && Actions.Menu.Row(ActionId.DontMixIntoNext, in ctx) is { } dontMix)
+        {
+            Actions.Menu.OpenGroup(rows);
+            rows.Add(dontMix);
+        }
+
         // destructive, last, behind its own separator — present exactly when the REGISTERED verb says it can run (the
         // queue owner registers its own RemoveFromQueue first; whichever verb holds the id decides)
         bool removeRow = AppActions.Find(ActionId.RemoveFromThisPlaylist) is { } removeVerb && removeVerb.EnabledFor(in ctx);
@@ -482,6 +490,7 @@ public readonly partial struct Track
     /// a one-shot snapshot at menu open (a menu closes on invoke).</summary>
     public static void InstallActions()
     {
+        MixMenu.Register();                                  // #48: Don't mix into the next song (Entities/Mix.Menu.cs)
         if (s_actionsInstalled) return;
         s_actionsInstalled = true;
 

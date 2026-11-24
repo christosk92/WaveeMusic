@@ -51,7 +51,8 @@ public static partial class Diagnostics
             // `FluentApp.DiagnosticRun` from `Diagnostics.Install` instead.
             if (TryRunCliArm(args, out code)) return true;
             code = 0;
-            if (Array.IndexOf(args, "--stress-audio") >= 0) { code = StressAudio(args); return true; }   // the load-test runner (§ --stress-audio, below)
+            if (Array.IndexOf(args, "--stress-audio") >= 0) { code = StressAudio(args); return true; }
+            if (MixBenchHost.TryRun(args, out code)) return true;     // #48: one boundary through the real pump (Diagnostics.MixBench.cs)   // the load-test runner (§ --stress-audio, below)
             if (Array.IndexOf(args, "--headless") < 0) return false;
             AttachParentConsole();
             if (!HeadlessOptions.TryParse(args, out HeadlessOptions options, out string usage))

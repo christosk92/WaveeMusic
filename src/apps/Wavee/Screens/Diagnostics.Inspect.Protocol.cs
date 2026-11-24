@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Timecode, Drop, LocalScan, Quit,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Timecode, Drop, LocalScan, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -593,6 +593,15 @@ public static partial class Diagnostics
                 Args = [Arg("fixture", ArgType.Enum, "the fixture", "book-titled", "show-episodic|show-serial|book-titled|book-tracks|book-inprogress|book-finished"),
                         Arg("path", ArgType.Path, "also write the dump's JSON to this file")],
             },
+            new(Verb.Mix, "mix", "#48 Mix: one playlist's Mix data (list and XM flags, lens etag, each row's mixable bits, beat grid, cue points and stored recipe), or a raw recipe decoded", "mix uri=spotify:playlist:plmix")
+            {
+                Positional = ["uri"],
+                Args = [Arg("uri", ArgType.String, "the playlist (default: the fake mixed playlist)"),
+                        Arg("recipe", ArgType.String, "decode this base64 TransitionRecipe instead"),
+                        Arg("mixstate", ArgType.String, "print the mix-state (turn Mix on) body for this revision (hex)"),
+                        Arg("curves", ArgType.Int, "print the Connect metadata curves for this preset id (1 Fade, 3 Rise)"),
+                        Arg("window", ArgType.Int, "the window those curves are for, ms (8 units under 8 s, else 16)")],
+            },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {
                 Positional = ["id", "value"],
@@ -817,7 +826,7 @@ public static partial class Diagnostics
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "transport" => Verb.Transport, "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
-            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
+            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "mix" => Verb.Mix, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
             "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge, "timecode" => Verb.Timecode, "drop" => Verb.Drop, "localscan" => Verb.LocalScan,
             "quit" or "exit" => Verb.Quit,

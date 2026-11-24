@@ -1840,6 +1840,9 @@ public static partial class Spotify
         /// <summary>The bare word <c>Accept: protobuf</c> — what the official client puts on the connect-state transfer POST
         /// (capture 2026-10-01, 3 of 3); not the <c>application/protobuf</c> of <see cref="AcceptProtobuf"/>.</summary>
         AcceptBareProtobuf = 1 << 23,
+        /// <summary>#48 Mix: <c>spotify-apply-lenses: mix,auto</c> (instead of <see cref="ApplyLenses"/>'s <c>auto</c>) and
+        /// <c>spotify-list-player-enabled: true</c>, as the official client sends on a mixed list (capture report §3.6).</summary>
+        MixLens = 1 << 24,
     }
 
     /// <summary>Which request. One per FAMILY, not one per caller: <c>Spotify.Api.cs</c>'s function per request picks
@@ -2023,8 +2026,10 @@ public static partial class Spotify
                 w.Append("/playlist/v2/playlist/");
                 w.AppendEscaped(args.Id);
                 w.Append("/signals");
+                // #48 Mix: the `mix-state` signal (args.Flag) carries the mix lens and its own sync-reason {1:16,2:1} (capture report §3.1);
+                // every other signal keeps the captured {1:15,2:1}.
                 return new Request(Verb.Post, ApiHost.Spclient, w.Written,
-                    Mutation | HeaderSet.AcceptProtobuf, args.Body, "CA8QAQ==");
+                    Mutation | HeaderSet.AcceptProtobuf | (args.Flag ? HeaderSet.MixLens : HeaderSet.None), args.Body, args.Flag ? "CBAQAQ==" : "CA8QAQ==");
 
             case RequestKind.RootlistRead:
                 w.Append("/playlist/v2/user/");

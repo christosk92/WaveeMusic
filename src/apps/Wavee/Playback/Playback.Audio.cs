@@ -578,7 +578,11 @@ public static partial class Playback
         static readonly GlitchLedger s_ledger = new();
         static PlaybackState s_lastState = PlaybackState.Idle;
         static long s_lastPositionPostMs, s_lastWorkLogMs;
-        static long s_nextVoiceId;
+        // The app's hand-off voice ids. Seeded past the engine's primary voice id (PcmAudioSession's PrimaryVoiceId = 1): from 0 the
+        // first hand-off of a process got id 1 too, so a command addressed to the incoming voice by id reached the primary instead
+        // (the mixer answers the first voice with that id). Measured with #48's --mix-bench: the incoming voice's automation armed
+        // the outgoing voice. Engine-issued ids start at 2^32 and VoiceScheduler's at 1_000_000, both far above this range.
+        static long s_nextVoiceId = 100;
         static int s_endedHold;
         // The endgame's per-track state (EndgamePlan, G-112): `s_armLogged` gates the once-per-track `[gapless] arm`
         // diagnostic; `s_lastEndgameAskMs`/`s_endgameAskCount` drive the re-asking nudge (a sentinel of -1 means "never
@@ -3253,7 +3257,12 @@ public static partial class Playback
                 MediaSource source = MediaSource.FromPull(bytes).WithKind(MediaKind.PcmAudio);
                 // `PrepareContext.For` stamps the mix rate B is resampled FOR, which is what every splice site checks.
                 PrepareContext ctx = PrepareContext.For(session.Format, session.NormalizationMode, session.ReferenceLufsValue);
+                // #48 Mix: a planned B opens at its in-point (engine E3); the achieved start is what the join anchors on.
+                long mixStart = MixStartFramesFor(id, session.Format.SampleRate);
+                if (mixStart > 0) ctx = ctx with { StartSourceFrame = mixStart };
                 item = await backend.PrepareAsync(source, ctx, token).ConfigureAwait(false);
+                long achievedStartMs = item.StartPositionFrames * 1000 / Math.Max(1, session.Format.SampleRate);
+                if (mixStart > 0) Log.Info("audio", $"[mix] prepared at {achievedStartMs} ms (asked {mixStart * 1000 / Math.Max(1, session.Format.SampleRate)} ms)");
                 s_decoderForOpen.Value = null;
                 if (!opened.DurationExact)
                 {
@@ -3276,6 +3285,7 @@ public static partial class Playback
                     // the OUTGOING track's length is an estimate: a fade or a join is scheduled against that length, and a
                     // short guess would cut the song's tail, so that boundary stays a reload at the real end (§3.13).
                     s_prepOverlap = MediaSwitch.AllowCrossfade(activeKind, kind) && activeExact;
+                    s_prepStartMs = achievedStartMs;
                     item = null;                                    // adopted: the finally below leaves them alone
                     bytes = null;
                 }
@@ -3389,6 +3399,7 @@ public static partial class Playback
             long totalFrames;
             uint outgoing;
             EntityId joined;
+            long joinedAtMs;
             long fadeStart, fadeFrames;
             lock (s_gate)
             {
@@ -3416,9 +3427,15 @@ public static partial class Playback
                 s_activeDurMs = s_joinDurMs;
                 s_id = s_joinId;
                 s_activeKind = s_joinKind;
-                s_activeJoinFrame = s_joinFrame + GaplessJoinClock.MsToFrames(s_joinDurMs, sess.Format.SampleRate);
+                // #48 Mix: a mix join announces when A is over, with B already InStart + OutDuration in (0 for gapless and a fade).
+                joinedAtMs = AnnouncedMixLocked();
+                // The playhead (raw − s_activeStartMs) starts where B already is: InStart + OutDuration, plus how late this
+                // tick runs past the join frame. A gapless join keeps its start at the announce, as before.
+                if (joinedAtMs > 0)
+                    s_activeStartMs = rawPos - joinedAtMs - Math.Max(0, (sess.SampleClock - s_joinFrame) * 1000 / Math.Max(1, sess.Format.SampleRate));
+                s_activeJoinFrame = s_joinFrame + GaplessJoinClock.MsToFrames(Math.Max(0, s_joinDurMs - joinedAtMs), sess.Format.SampleRate);
                 s_anchorClock = s_joinFrame;
-                s_anchorPlayheadMs = 0;
+                s_anchorPlayheadMs = joinedAtMs;
                 s_joinPending = false;
                 s_armLogged = false;
                 s_lastEndgameAskMs = -1;
@@ -3435,7 +3452,7 @@ public static partial class Playback
             PublishTimelineIdentity();
             if (fadeFrames > 0) Timeline.SetTransition(joined, fadeStart, fadeStart + fadeFrames, Timeline.Master.Incoming);
             PromoteLiveBody();
-            PostHandedOff(outgoing, joined, 0);
+            PostHandedOff(outgoing, joined, (int)joinedAtMs);
         }
 
         /// <summary>The joined voice's body is the PLAYING body now: it is what `Stream.Stats` describes, and its ring grows
@@ -3454,12 +3471,14 @@ public static partial class Playback
         /// <c>PrepareLost</c> — see <see cref="AfterSeekLanded"/>).</summary>
         static bool AbandonPendingJoin(PcmAudioSession? sess, string reason)
         {
+            bool mixCancelled = false;
             long voiceId, outgoingFaded;
             IMediaByteSource? bytes;
             lock (s_gate)
             {
                 if (!s_joinPending) return false;
                 s_joinPending = false;
+                mixCancelled = CancelMixLocked(sess);      // #48: a mix join also puts A back (Playback.Audio.Mix.cs)
                 voiceId = s_joinVoiceId;
                 outgoingFaded = s_joinFadeMs > 0 ? s_joinOutgoingVoiceId : 0;
                 s_joinFadeMs = 0;
@@ -3471,6 +3490,7 @@ public static partial class Playback
                 s_joinId = default;
             }
             Interlocked.Increment(ref s_mGaplessAbandoned);
+            if (mixCancelled) Timeline.ClearTransition();   // #48: the tap's transition ends with the cancelled join
             Log.Info("audio", "join abandoned reason=" + reason);
             try { sess?.SetVoiceEnvelope(voiceId, GainEnvelope.Fade(FadeKind.Out, 0, 1, CrossCurve.Linear)); } catch { }
             // A scheduled crossfade also set A's fade-out: A keeps playing at full level (before the fade's start frame it was
@@ -3494,6 +3514,7 @@ public static partial class Playback
                 s_prepId = default;
                 s_prepDurMs = 0;
                 s_prepOverlap = false;
+                s_prepStartMs = 0;
             }
             if (item is not null) _ = item.DisposeAsync();
             if (bytes is not null) { try { bytes.Close(); } catch { } }
@@ -3971,7 +3992,11 @@ public static partial class Playback
             long activePos = pos;
             bool prepared = s_prepItem is { IsReady: true };
             bool handOffInFlight = s_crossfadeInFlight || s_joinPending;
-            EndgamePlan plan = EndgamePlan.Decide(activePos, s_activeDurMs, fadeMs, prepared, s_prepOverlap,
+            // #48 Mix: while a mix is armed the endgame runs against the mix-out with no fade (Playback.Audio.Mix.cs).
+            long endgameBoundaryMs = s_activeDurMs;
+            int endgameFadeMs = fadeMs;
+            MixEndgame(ref endgameBoundaryMs, ref endgameFadeMs);
+            EndgamePlan plan = EndgamePlan.Decide(activePos, endgameBoundaryMs, endgameFadeMs, prepared, s_prepOverlap,
                 handOffInFlight, s_armLogged, s_lastEndgameAskMs, FrameNowMs());
 
             if (state == PlaybackState.Playing && plan.LogArm)
@@ -3998,7 +4023,7 @@ public static partial class Playback
             // (c) the commit. `EffectiveFadeMs` is the ONLY selector (rule 3). The boundary is the voice's EXACT end once it
             // is known (G-113), not the catalogue duration — a track 1.6 s shorter than its `duration_ms` never commits
             // against the catalogue figure.
-            if (state == PlaybackState.Playing && s_prepItem is { IsReady: true } item)
+            if (state == PlaybackState.Playing && s_prepItem is { IsReady: true } item && !TickMix(sess, item))
             {
                 long boundaryMs = s_activeDurMs;
                 long exactFrames = ActiveExactFrames(sess);
@@ -4017,6 +4042,7 @@ public static partial class Playback
             }
 
             // (d) the join going live, and the hand-off closing.
+            TickMixSounding(sess);
             if (s_joinPending)
             {
                 if (state == PlaybackState.Ended) AbandonPendingJoin(sess, "ended-before-join");

@@ -262,6 +262,8 @@ public static class WinUiQueueRules
 
     /// <summary>"Playing from …": 32 tall (Caption 12/16), 4 between the words.</summary>
     public const float PlayingFromH = 32f, FromGap = 4f, SmallSize = 12f, SmallLine = 16f;
+    /// <summary>The queue's Mix line (#48): its accent stroke's thickness.</summary>
+    public const float MixStrokeH = 2f;
 
     /// <summary>The now-playing card: 64 tall in an 8 inset, the 48 cover (r4), 12 apart; the title Body Strong 14/20 in the accent; the level
     /// glyph (16) at its end; 8 under the card.</summary>

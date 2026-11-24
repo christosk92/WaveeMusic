@@ -99,7 +99,7 @@ public static partial class Entities
     /// <summary>Owner O's seed, namespaced so its helpers cannot collide with the other owners' seed partials. Inside it
     /// <c>Track</c>, <c>Playlist</c>, <c>User</c> … are Entities' FACTORY METHODS, so the handle types are spelled
     /// <c>global::Wavee.*</c>.</summary>
-    internal static class LibrarySeed
+    internal static partial class LibrarySeed
     {
         // ── fixture constants (the WP-5.O contract §5) ─────────────────────────────────────────────────────────────
 
@@ -190,6 +190,7 @@ public static partial class Entities
                 StageCorePlaylists(s, now0);
                 StageExtras(s);
                 StageLocal(s);
+                StageMix(s);
                 StageTrackKnowns(s);
                 StageQAlbums(s);
                 Commit(s);
@@ -203,6 +204,7 @@ public static partial class Entities
             LandTuning();
             LandExtras(now0);
             LandLocal();
+            LandMix(now0);
             LandTags();
             LandCredits();
             LandContentFilters();

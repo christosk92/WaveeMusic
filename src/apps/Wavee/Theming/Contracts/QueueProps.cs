@@ -247,6 +247,14 @@ public sealed record QueuePanelProps
     /// <summary>Opens Settings at the crossfade's duration (the duration stays a Settings dial: the panel draws no slider); null for no link.
     /// Appended (contract 1.117).</summary>
     public Action? OpenCrossfadeLength { get; init; }
+
+    /// <summary>The Mix line between the playing row and the next one, "Mixing · Rise · 2.9 s", while the playing pair will mix (#48); "" for
+    /// none. Appended (Mix, #48).</summary>
+    public string MixLine { get; init; } = "";
+
+    /// <summary>The Crossfade row's note while a mixed playlist plays, "Mix is on for this playlist" (#48): drawn in place of the length link at
+    /// rest (Mix decides the playlist's own pairs; Crossfade still covers a queued song). "" for none. Appended (Mix, #48).</summary>
+    public string CrossfadeNote { get; init; } = "";
 }
 
 /// <summary>The props of <see cref="ViewKeys.QueueStagePane"/>: the fullscreen stage's Up next column (the stage's accent, scale and width
@@ -285,6 +293,14 @@ public sealed record QueueStagePaneProps
 
     /// <summary>Opens Settings at the crossfade's duration (it leaves the full screen first); null for no link. Appended (contract 1.117).</summary>
     public Action? OpenCrossfadeLength { get; init; }
+
+    /// <summary>The Mix line between the playing row and the next one, "Mixing · Rise · 2.9 s", while the playing pair will mix (#48); "" for
+    /// none. Appended (Mix, #48).</summary>
+    public string MixLine { get; init; } = "";
+
+    /// <summary>The Crossfade row's note while a mixed playlist plays, "Mix is on for this playlist" (#48): drawn in place of the length link at
+    /// rest (Mix decides the playlist's own pairs; Crossfade still covers a queued song). "" for none. Appended (Mix, #48).</summary>
+    public string CrossfadeNote { get; init; } = "";
 }
 
 /// <summary>The props of <see cref="ViewKeys.QueueStageShelf"/>: the stage's Up next SHELF over the music video (Video mode, Cinema): the next

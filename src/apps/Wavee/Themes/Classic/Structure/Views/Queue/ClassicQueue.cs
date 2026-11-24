@@ -94,7 +94,7 @@ internal sealed class ClassicQueuePanel : Component
     readonly FluentGpu.Scene.ExtentTableVirtualLayout _layout = new();
     float[] _extents = new float[64];
     int[] _kinds = new int[64];   // per item: a lane slot position (>= 0), or one of the Item* kinds
-    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3;
+    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3, ItemMix = -4;
     /// <summary>The lead's and the vacancy's estimates until their first measure.</summary>
     const float PlayingFromEstimate = 28f, NowEstimate = 72f, VacancyEstimate = 120f;
     /// <summary>The room under the last item.</summary>
@@ -165,6 +165,8 @@ internal sealed class ClassicQueuePanel : Component
         int n = 0;
         if (queue.PlayingFrom is not null) { _kinds[n] = ItemPlayingFrom; _extents[n++] = -PlayingFromEstimate; }
         if (!queue.NowPlaying.IsNone) { _kinds[n] = ItemNow; _extents[n++] = -NowEstimate; }
+        // #48 Mix: "Mixing · Rise · 2.9 s" between the playing card and the next row, while the playing pair will mix.
+        if (!queue.NowPlaying.IsNone && props.MixLine.Length > 0) { _kinds[n] = ItemMix; _extents[n++] = -PlayingFromEstimate; }
         int leadItems = n;
         for (int i = 0; i < lane.SlotCount; i++) { _kinds[n] = i; _extents[n++] = ExtentOf(lane.SlotAt(lane.ItemAt(i))); }
         if (queue.NothingPlaying) { _kinds[n] = ItemVacancy; _extents[n++] = -VacancyEstimate; }
@@ -196,7 +198,11 @@ internal sealed class ClassicQueuePanel : Component
                         new BoxEl
                         {
                             Key = "qp:crossfade", Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f, OnRealized = _onCrossfade,
-                            Children = props.CrossfadeLength.Length == 0 || props.OpenCrossfadeLength is null
+                            // While a mixed playlist plays the note "Mix is on for this playlist" stands where the length rests (#48).
+                            Children = props.CrossfadeNote.Length > 0
+                                ? [Pill(Icons.Audio, Loc.Get(Strings.Player.Crossfade), props.Crossfade, _toggleCrossfade),
+                                   new TextEl(props.CrossfadeNote) { Key = "qp:crossfade:note", Size = ClassicQueueRules.SmallSize, LineHeight = ClassicQueueRules.SmallLine, Color = Tok.TextSecondary, MaxLines = 1 }]
+                                : props.CrossfadeLength.Length == 0 || props.OpenCrossfadeLength is null
                                 ? [Pill(Icons.Audio, Loc.Get(Strings.Player.Crossfade), props.Crossfade, _toggleCrossfade)]
                                 : [Pill(Icons.Audio, Loc.Get(Strings.Player.Crossfade), props.Crossfade, _toggleCrossfade),
                                    LengthLink(props.CrossfadeLength, props.OpenCrossfadeLength, props.Crossfade)],
@@ -218,6 +224,7 @@ internal sealed class ClassicQueuePanel : Component
         {
             case ItemPlayingFrom: return PlayingFrom(props.Queue.PlayingFrom.GetValueOrDefault().Name, props.OpenPlayingFrom, _tier);
             case ItemNow: return NowPlayingCard(props, hairline);
+            case ItemMix: return MixLine(props.MixLine);
             case ItemVacancy:
                 return new BoxEl
                 {
@@ -494,6 +501,17 @@ internal sealed class ClassicQueuePanel : Component
                 : [eyebrowRow],
         };
     }
+
+    /// <summary>The Mix line (#48): a short accent stroke and "Mixing · Rise · 2.9 s" in the small ramp, between the playing card and the next row.</summary>
+    static Element MixLine(string text) => new BoxEl
+    {
+        Key = "qp:mix", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Padding = new Edges4(Spacing.M, Spacing.XS, 0f, Spacing.XS),
+        Children =
+        [
+            new BoxEl { Width = Spacing.M, Height = ClassicQueueRules.MixStrokeH, Shrink = 0f, Corners = Radii.ControlAll, Fill = Tok.AccentTextPrimary },
+            new TextEl(text) { Size = ClassicQueueRules.SmallSize, LineHeight = ClassicQueueRules.SmallLine, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+        ],
+    };
 
     /// <summary>The crossfade's length ("6 s") in the "Clear" text button's grammar: a link to the duration in Settings, dimmer while crossfade is off.</summary>
     Element LengthLink(string length, Action open, bool on) => ToolTip.Wrap(new BoxEl
