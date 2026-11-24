@@ -10,8 +10,8 @@
 // only what the ID3v2 tag left empty, and size the bitrate estimate.
 //
 // The length: our own Xing/Info frame count (at 4 + side info) or VBRI (at +36) × samples per frame ÷ rate. Without
-// either, the audio bytes × 8 ÷ the first frame's bitrate, flagged `DurationEstimated` (a VBR file without a header is
-// then off, and §3.4 gives it a wider tolerance).
+// either, the audio bytes × 8 ÷ the average bitrate of the frames in the head window, flagged `DurationEstimated` (a VBR
+// file without a header is still off by up to about 10 %, and §3.4 gives it a wider tolerance).
 
 using System.Buffers;
 using System.Buffers.Binary;
@@ -561,9 +561,30 @@ public static partial class LocalTags
         {
             // The bitrate estimate wins over a TLEN frame (often wrong) but never over an exact length.
             long audio = io.Length - frameAt - tagBytes;
-            long ms = audio * 8 / h.BitrateKbps;
+            AverageRate(io, frameAt, h, out long frameBytes, out long frameSamples);
+            long ms = (long)(audio * (frameSamples * 1000.0 / h.SampleRate) / frameBytes);
             if (ms > 0 && (b.DurationMs == 0 || b.DurationEstimated)) { b.DurationMs = (int)Math.Min(ms, int.MaxValue); b.DurationEstimated = true; }
-            b.BitrateKbps = h.BitrateKbps;
+            b.BitrateKbps = (int)Math.Min(frameBytes * 8L * h.SampleRate / frameSamples / 1000, 10_000);
         }
+    }
+
+    /// <summary>Bytes and samples of the consecutive frames from <paramref name="frameAt"/> that the head window already
+    /// holds (no extra read when it does), for the bitrate estimate. A VBR encoder's first frames are often its lowest rate
+    /// over the opening silence (LAME writes 32 kbps there), so the first frame alone made a 91 s VBR song read as 7:48;
+    /// the average over the window lands within about 10 %. For CBR it equals the first frame's rate.</summary>
+    static void AverageRate(FileBytes io, long frameAt, MpegHeader first, out long bytes, out long samples)
+    {
+        int max = frameAt < WindowBytes ? (int)(WindowBytes - frameAt) : 16 * 1024;
+        ReadOnlySpan<byte> s = io.UpTo(frameAt, max);
+        bytes = samples = 0;
+        int pos = 0;
+        while (pos + 4 <= s.Length && TryMpegHeader(s[pos..], out MpegHeader f)
+               && f.Version == first.Version && f.Layer == first.Layer && f.SampleRate == first.SampleRate && pos + f.FrameLength <= s.Length)
+        {
+            bytes += f.FrameLength;
+            samples += f.SamplesPerFrame;
+            pos += f.FrameLength;
+        }
+        if (bytes == 0 || samples == 0) { bytes = first.FrameLength; samples = first.SamplesPerFrame; }
     }
 }

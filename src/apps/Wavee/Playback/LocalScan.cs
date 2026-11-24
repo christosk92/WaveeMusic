@@ -694,7 +694,9 @@ public sealed partial class LocalScan
                 Interlocked.Increment(ref _outstanding);   // the folder stays open until its last read commits it
                 Interlocked.Add(ref stats.ToRead, toRead.Count);
                 foreach (var r in toRead) _reads.Enqueue(new ReadJob(work, r.File, r.Rel, r.Id, r.Previous));
-                _readSignal.Release(Math.Min(toRead.Count, _readWorkers));
+                // One permit per queued read: a reader takes one job per permit, so fewer permits than jobs (a folder with
+                // more files than there are read workers) would leave the rest queued and the walk waiting for them forever.
+                _readSignal.Release(toRead.Count);
             }
             finally
             {
