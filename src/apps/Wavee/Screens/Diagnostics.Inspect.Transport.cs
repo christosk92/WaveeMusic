@@ -98,8 +98,45 @@ public static partial class Diagnostics
                             WriteTransport(w);
                         });
                     }
+                case "inbound":
+                    {
+                        // A controller's Connect `play` / `transfer` REQUEST body (the JSON a dealer message carries, e.g. one from the #240
+                        // capture), decoded by the app's own decoders and handed to the host exactly as the dealer glue does
+                        // (Spotify.Connect.Commands.HandOffLoad). No dealer, no ack: the inspector has no Connect session.
+                        string file = a.Str("file");
+                        if (file.Length == 0 || !File.Exists(file)) return Inspect.Reply.Fail(id, name, "inbound wants file=<a play/transfer command body (JSON)>");
+                        byte[] body = File.ReadAllBytes(file);
+                        Spotify.Decode.RemoteCommand command = Spotify.Decode.ConnectCommand(body);
+                        if (command.Kind is not (Spotify.Decode.RemoteCmd.Play or Spotify.Decode.RemoteCmd.Transfer))
+                            return Inspect.Reply.Fail(id, name, "inbound: the body is not a play or transfer command (" + command.Kind + ")");
+                        Spotify.Decode.ClusterBuffer buffer = Spotify.Decode.ClusterBuffer.Rent();
+                        Spotify.Decode.RemoteLoad load = Spotify.Decode.ConnectLoad(body, buffer);
+                        Playback.RemoteLoadArrived(in command, in load, buffer, Spotify.Current.Epoch);
+                        break;
+                    }
+                case "telemetry":
+                    {
+                        // The RawCoreStream and the closing RawCoreStreamSegment the playing row's registration would be reported as
+                        // (Spotify.Telemetry's own builders over the host's live registration), as base64 for an offline decode. Nothing is
+                        // sent: `--fake` sends no telemetry (Spotify.Telemetry.Enqueue).
+                        Spotify.Telemetry.Registration r = Playback.RegistrationForInspect;
+                        byte[] stream = r.Open ? Google.Protobuf.MessageExtensions.ToByteArray(Spotify.Telemetry.BuildRawCoreStream(in r, "trackdone", isAssumedPremium: true)) : [];
+                        byte[] segment = r.Open ? Google.Protobuf.MessageExtensions.ToByteArray(Spotify.Telemetry.BuildSegment(in r, 1000, isPause: false, isLast: true, "trackdone", 1000, 0)) : [];
+                        return Settled(id, name, a, w =>
+                        {
+                            w.WriteString("do", verb);
+                            w.WriteBoolean("open", r.Open);
+                            w.WriteString("contentUri", r.ContentUri ?? "");
+                            w.WriteString("localContentUri", r.LocalContentUri ?? "");
+                            w.WriteString("playContext", r.PlayContext ?? "");
+                            w.WriteString("audioFormat", r.AudioFormatName ?? "");
+                            w.WriteString("rawCoreStream", Convert.ToBase64String(stream));
+                            w.WriteString("segment", Convert.ToBase64String(segment));
+                            WriteTransport(w);
+                        });
+                    }
                 default:
-                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate, not '" + verb + "'");
+                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate|telemetry|inbound, not '" + verb + "'");
             }
             // traced (`trace=N`): the trace's first frames are the change's own (the frame the queue and the deck land in), so nothing runs before it
             bool traced = a.Has("trace");
@@ -118,6 +155,8 @@ public static partial class Diagnostics
         {
             Playback.State s = Playback.Snap();
             w.WriteString("deck", Short(s.CurrentId));
+            // A playlist's matched spotify:local: item (#240): the file it plays from, by name only (never the folder).
+            if (LocalLibrary.PathOfItem(s.CurrentId) is { } file) w.WriteString("deckFile", Path.GetFileName(file));
             w.WriteNumber("cursor", s.Cursor.Index);
             w.WriteString("repeat", s.Repeat switch
             {

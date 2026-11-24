@@ -470,6 +470,8 @@ internal static class ZuneDetailHero
             if (id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) status.Add(K.LateRow("rail:daylist", pulse()) with { Exit = ZuneMotion.SwapFade });
             if (id.ChartNewEntries > 0 && slots.Chart is { } chart) status.Add(K.LateRow("rail:chart", chart()) with { Exit = ZuneMotion.SwapFade });
         }
+        // The page's status while it has one (Local Files' first scan, #240 S4), in both forms: a late row leaving on the swap fade.
+        if (!head && slots.Status is { } line) status.Add(K.LateRow("rail:status", line(columns ? lay.RailW : infoW, false)) with { Exit = ZuneMotion.SwapFade });
         if (!shortWindow) kids.AddRange(status);
 
         // ── the ring row: one row in both forms (its rings keyed: the play and saved rings the columns form leaves to the band cross-fade) ──

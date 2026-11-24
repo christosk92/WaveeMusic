@@ -429,6 +429,8 @@ public static partial class Diagnostics
                     return Setting(id, name, a);   // the store needs no mount; a mounted one settles after the write
                 case Inspect.Verb.Settings:
                     return SettingsSearchVerb(id, name, a);   // a query needs no mount; focus= navigates (it says so when nothing is mounted)
+                case Inspect.Verb.Drop:
+                    return Drop(id, name, a);      // the read needs no mount; the import settles on a mounted one
                 case Inspect.Verb.Hint:
                     return Hint(id, name, a);      // the table and the blob need no mount; `show` settles on a mounted one
                 case Inspect.Verb.Recent:
@@ -439,6 +441,8 @@ public static partial class Diagnostics
                     return Crossings(id, name, a);   // mounts a row at a time
                 case Inspect.Verb.Perf:
                     return Perf(id, name, a);   // on needs a mount; report and off read what was recorded
+                case Inspect.Verb.LocalScan:
+                    return LocalScanVerb(id, name, a);   // a private index; needs no mount
                 case Inspect.Verb.Nudge:
                     return Nudge(id, name, a);   // fixtures need no mount; fire, tick, refresh and expectCard say so when unmounted
             }
@@ -669,6 +673,10 @@ public static partial class Diagnostics
                         if (kind == "runtime") return RuntimeState(id, name, a);
                         // The video's screen cannot (or again can) carry HDCP: the guard's verdict without a real screen (Diagnostics.Inspect.Hdcp.cs).
                         if (kind == "hdcp") return HdcpState(id, name, a);
+                        // The local library's music folders seeded in memory (#240 §5; Diagnostics.Inspect.LocalScan.cs).
+                        if (kind == "music-folders") return MusicFoldersState(id, name, a);
+                        // "Your files and Spotify" (#240 phase 1): the index, the fake catalogue's albums as files, and the matcher run over them.
+                        if (kind == "spotify-match") return SpotifyMatchState(id, name, a);
                         // A detail page's header unknown in place (an artist's: its chart rows still in flight), then its landing (Entities.Fake.Cold.cs, audit B7 r2).
                         if (kind == "head")
                         {

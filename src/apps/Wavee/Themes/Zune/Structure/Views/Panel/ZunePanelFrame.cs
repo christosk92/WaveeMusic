@@ -523,7 +523,7 @@ internal sealed class ZuneBleed : Component
         ColorF ground = Tok.FillSolidBase, shade = Deck.BleedShade(ground);
         var ink = new CanvasInk(true);
         var track = np.NowTrack();
-        string artist = track.IsValid && track.ArtistSlots.Length > 0 ? new Artist(track.ArtistSlots[0]).Name : "";
+        string artist = track.IsValid ? track.FirstCreditName : "";
         return Flow.Show(np.Bleeds, new BoxEl
         {
             // Shrink, no minimum and a clip: a canvas taller than the panel must not grow the panel's stack (it is cut at the panel's foot).
@@ -591,7 +591,7 @@ internal sealed class ZunePanelVideoArm : Component
         if (track.IsValid)
         {
             content.Add(R.Type.NowPlayingTitle(track.Title) with { MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis });
-            string artists = now.ResolveString(track.ArtistLineId), album = track.Album.IsValid ? track.Album.Title : "";
+            string artists = track.CreditLine, album = track.Album.IsValid ? track.Album.Title : "";
             string meta = artists.Length == 0 ? album : album.Length == 0 ? artists : artists + " · " + album;
             if (meta.Length > 0) content.Add(R.Type.TrackMeta(meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
         }

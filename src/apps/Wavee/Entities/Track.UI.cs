@@ -82,8 +82,14 @@ public readonly partial struct Track
         bool isNow = IsNowPlaying(t);
         bool playing = isNow && Playback.IsPlaying.Value;
         bool buffering = extraBuffering || (isNow && (Playback.Buffering.Value || Playback.Pending.Load.Value));
-        return new RowState(isNow, playing, buffering, isTop, LikedNow(t), t.Slot > 0 && Playback.OnThisPc.Of(t.Id));
+        return new RowState(isNow, playing, buffering, isTop, LikedNow(t), OnThisPcOf(t));
     }
+
+    /// <summary>The row's "on this PC" fact (<see cref="Playback.OnThisPc"/>): a SPOTIFY track whose audio is cached here. A local file, or a
+    /// playlist's <c>spotify:local:</c> item, has no Spotify audio to cache: it never carries the mark (the fake spread hashed its
+    /// <c>wavee:local:file:~&lt;id&gt;</c> uri, whose id the scan hands out in a different order every run, so the mark sat on some local rows
+    /// and moved from run to run). A tracked read.</summary>
+    internal static bool OnThisPcOf(Track t) => t.Slot > 0 && !t.IsLocalRow && Playback.OnThisPc.Of(t.Id);
 
     /// <summary>Is this the playable the deck is on? A subscribing read of <c>Playback.CurrentId</c> — compared by
     /// IDENTITY, not slot, so a podcast row (a Track-table row whose playable is an episode) and a remote device's freshly
@@ -212,7 +218,14 @@ public readonly partial struct Track
     /// <para>Public, not internal: this assembly has no <c>InternalsVisibleTo</c> (see <c>Playlist.UI.cs</c>), and the
     /// fallback is a rule worth a fact rather than a rule worth re-deriving per surface.</para></summary>
     public static string? RowArtUrl(Track d)
-        => Controls.ArtUrl(d.ImageId) ?? (d.Album.IsValid ? Controls.ArtUrl(d.Album.ImageId) : null);
+    {
+        if (Controls.ArtUrl(d.ImageId) is { } own) return own;
+        if (d.Album.IsValid) return Controls.ArtUrl(d.Album.ImageId);
+        // A local file shown with no cover asks for its own (the embedded picture or a folder image, extracted off the UI thread); until it
+        // lands, and for good when there is none, the slot draws the house no-art tile (`Controls.NoArtMark`).
+        LocalArt.Want(d);
+        return null;
+    }
 
     internal static readonly Marquee.Style s_rowMarqueeStyle = new()
     {
@@ -343,8 +356,49 @@ public readonly partial struct Track
         return spans;
     }
 
-    /// <summary>Artist <paramref name="i"/> of a row's credit run: a billed artist (a link when it has a page), or the artist a playlist's local
-    /// file names in its uri (plain text: no page behind it). Every artist run reads its names here, the themes' table fills included.</summary>
+    /// <summary>The credit run into a bound row's span buffer, every theme's table (each passes its own separator and ink): the artists ", " joined
+    /// (<see cref="ArtistAt"/>: a local row's credit included) and the container after <paramref name="separator"/>. An unplayable local file's
+    /// reason (<see cref="LocalFilesList.Note"/>: "Can't play: a WAV file") LEADS the run, so a narrow row keeps the reason when it trims the
+    /// artist, and the time lane never has to hold a word. A local row has no links (its credit and album are names), so leading spans shift
+    /// no link index. Separators and the note are not links.</summary>
+    /// <param name="withNote">False for an artist LANE (its own column): the reason is the row's credit line's, never stated twice.</param>
+    internal static void FillCreditSpans(SpanBuffer b, Track t, int artistCount, (EntityUri Uri, string Name) container, string separator, ColorF ink,
+                                         bool withNote = true)
+    {
+        if (artistCount > t.DisplayArtistCount) artistCount = t.DisplayArtistCount;
+        string note = withNote ? WithheldNote(t, NowUnix) : "";
+        if (note.Length > 0)
+        {
+            b.Add(new TextSpan(note, Color: ink));
+            if (artistCount > 0 || container.Name is { Length: > 0 }) b.Add(new TextSpan(separator, Color: ink));
+        }
+        for (int i = 0; i < artistCount; i++)
+        {
+            if (i > 0) b.Add(new TextSpan(", ", Color: ink));
+            var (name, link) = ArtistAt(t, i);
+            b.Add(new TextSpan(name, Color: ink, IsLink: link));
+        }
+        if (container.Name is { Length: > 0 })
+        {
+            if (artistCount > 0) b.Add(new TextSpan(separator, Color: ink));
+            b.Add(new TextSpan(container.Name, Color: ink, IsLink: container.Uri.IsValid));
+        }
+    }
+
+    /// <summary>The spans a withheld row's reason puts before the links of its credit run (<see cref="FillCreditSpans"/>: the note, and its separator
+    /// when anything follows), which a span click's index steps past: 0 for a playable row.</summary>
+    internal static int CreditLeadSpans(Track t, int artistCount, bool container)
+    {
+        if (WithheldNote(t, NowUnix).Length == 0) return 0;
+        return Math.Min(artistCount, t.DisplayArtistCount) > 0 || container ? 2 : 1;
+    }
+
+    /// <summary>Does a row's credit line have anything to say: a link (<see cref="RowCellRules.LinkSpanCount"/>) or a withheld row's reason?</summary>
+    internal static bool CreditSpeaks(Track t, int artistCount, bool container)
+        => RowCellRules.LinkSpanCount(artistCount, container) > 0 || WithheldNote(t, NowUnix).Length > 0;
+
+    /// <summary>Artist <paramref name="i"/> of a row's credit run: a billed artist (a link when it has a page), or a local row's credit
+    /// (<see cref="Track.LocalCredit"/>: its tag or uri name, else "Unknown artist"; plain text, no page behind it). Every artist run reads its names here, the themes' table fills included.</summary>
     internal static (string Name, bool IsLink) ArtistAt(Track t, int i)
     {
         var slots = t.ArtistSlots;
@@ -353,7 +407,31 @@ public readonly partial struct Track
             var a = new Artist(slots[i]);
             return (a.Name, a.Uri.IsValid);
         }
-        return i == 0 && slots.Length == 0 ? (t.LocalArtist, false) : ("", false);
+        return i == 0 && slots.Length == 0 ? (t.LocalCredit, false) : ("", false);
+    }
+
+    /// <summary>The credit run as spans whose clicks go through a surface's own verb (the Now playing heroes' <c>GoTo</c>): ", " joined, a
+    /// billed artist with a page opens it, a name with none (a local row's credit, "Unknown artist" included) is plain text. Null with no
+    /// credit. The names come from <see cref="ArtistAt"/>, so the hero and the rows say the same thing. <paramref name="plainInk"/> (when set)
+    /// colours a name that opens nothing, so a run drawn in a link colour never dresses "Unknown artist" as a link.</summary>
+    public static TextSpan[]? CreditSpans(Track t, Action<EntityUri, string> open, ColorF plainInk = default)
+    {
+        int count = t.DisplayArtistCount;
+        if (count == 0) return null;
+        var slots = t.ArtistSlots;
+        var spans = new TextSpan[count * 2 - 1];
+        for (int i = 0, n = 0; i < count; i++)
+        {
+            if (i > 0) spans[n++] = new TextSpan(", ");
+            var (name, link) = ArtistAt(t, i);
+            if (link && (uint)i < (uint)slots.Length)
+            {
+                var uri = new Artist(slots[i]).Uri;
+                spans[n++] = new TextSpan(name, OnClick: () => open(uri, name));
+            }
+            else spans[n++] = new TextSpan(name, Color: plainInk);
+        }
+        return spans;
     }
 
     /// <summary>ONE click closure per run: span 2i → artist i; the trailing span → the container.</summary>
@@ -373,8 +451,10 @@ public readonly partial struct Track
     internal static (EntityUri Uri, string Name) ContainerOf(Track t)
     {
         int slot = t.AlbumSlot;
-        // A playlist's local file names its album in its uri: plain text, no page behind it (Track.LocalUri.cs).
-        if (slot <= 0) return t.IsLocalItem ? (default, LocalTrackUri.NamesOf(t.Uri.Text).Album) : (default, "");
+        // A playlist's local file names its album in its uri, a local file in its tags: plain text, no page behind it (Track.LocalUri.cs).
+        if (slot <= 0)
+            return t.IsLocalItem ? (default, LocalTrackUri.NamesOf(t.Uri.Text).Album)
+                 : t.IsLocal ? (default, Playlist.LocalNamesOf(t.Uri.Text).Album) : (default, "");
         if (t.IsPodcast)
         {
             var show = new Show(slot);
@@ -685,7 +765,7 @@ public readonly partial struct Track
         Func<ContextMenuModel?>? menu = can.Menu ? () => Menu(new[] { track }, in args) : null;
 
         var parts = TrackRowRules.SubtitleOf(o.ShowExplicit, can.Play && t.IsExplicit, o.ShowVideo, can.Play && t.HasVideo,
-                                             can.Play && t.ArtistSlots.Length > 0);
+                                             can.Play && t.DisplayArtistCount > 0);   // a local row's credit included ("Unknown artist")
         string? cover = o.ShowArtwork && can.Play ? RowArtUrl(t) : null;
         return new Controls.CardData(uri, title, RowSubtitle(track, in parts), cover, o.OnClick, play,
                                      Drag: drag, ShowMenu: o.ShowMenu, CoverOverride: o.ShowArtwork ? null : NoArtworkTile())

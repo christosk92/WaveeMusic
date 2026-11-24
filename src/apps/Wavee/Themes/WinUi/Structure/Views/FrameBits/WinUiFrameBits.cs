@@ -4,8 +4,7 @@
 //
 //   History menu   WinUI's MenuFlyout (W-Flyouts: acrylic r8, 36 rows, the icon 16 at 12) over the rows the core listed (newest first, a
 //                  "View all history" tail); the title bar's ⋯ and the tab menus reuse it.
-//   File drop      the centred drop pill (a TeachingTip-like card: the solid base, the accent stroke, the dialog shadow); its opacity is BOUND
-//                  to the drag-over signal, so a drag hover never re-renders the shell.
+//   File drop      not here: the drop panel is Common's (`Themes/Common/CommonDropPanel.cs`), one layout for WinUI and Classic (#240 §3.15).
 //   Drag chip      the layer that draws the chip following the pointer (the engine's drag preview).
 //   Cover scrim    the setup wizard's dim over the shell (smoke, 167 ms linear, 0 under reduced motion; hit-test transparent unless dimming).
 
@@ -26,28 +25,6 @@ internal static class WinUiFrameBits
 {
     /// <summary>The registered template of <see cref="ViewKeys.ShellHistoryMenu"/>.</summary>
     public static Element HistoryMenu(HistoryMenuProps props, in ViewContext ctx) => MenuFlyout.Create(props.Items, props.Close, size: OverlayFit.MenuSize);
-
-    /// <summary>The registered template of <see cref="ViewKeys.ShellFileDrop"/>: the centred drop pill, its opacity bound to the drag-over.</summary>
-    public static Element FileDrop(FileDropProps props, in ViewContext ctx)
-    {
-        var over = props.Over;
-        return new BoxEl
-        {
-            Grow = 1f, HitTestPassThrough = true, Direction = 1, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-            Opacity = Prop.Of(() => over.Value ? 1f : 0f),
-            Children =
-            [
-                new BoxEl
-                {
-                    HitTestVisible = false,
-                    Padding = WinUiFrameRules.FileDropPadding, Corners = CornerRadius4.All(Radii.Card),
-                    Fill = Prop.Of(static () => Tok.FillSolidBase), BorderColor = Prop.Of(static () => Tok.AccentDefault),
-                    BorderWidth = 1f, Shadow = Elevation.Flyout,
-                    Children = [new TextEl(Loc.Get(Strings.LocalFile.DropHint)) { Size = WinUiFrameRules.FileDropTextSize, Color = Tok.TextPrimary }],
-                },
-            ],
-        };
-    }
 
     /// <summary>The registered template of <see cref="ViewKeys.ShellDragChip"/>.</summary>
     public static Element DragChip(DragChipProps props, in ViewContext ctx) => DragPreviewLayer.Of(props.Preview);

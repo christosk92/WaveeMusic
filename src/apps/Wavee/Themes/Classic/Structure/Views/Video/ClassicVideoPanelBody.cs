@@ -45,7 +45,7 @@ internal sealed class ClassicVideoPanelBody : Component
         {
             // the title and meta column (the body's own gap between them), with the Huge row's heart and "..." beside it
             var titleColumn = new List<Element>(2) { R.Type.NowPlayingTitle(track.Title) with { MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis } };
-            string artists = now.ResolveString(track.ArtistLineId), album = track.Album.IsValid ? track.Album.Title : "";
+            string artists = track.CreditLine, album = track.Album.IsValid ? track.Album.Title : "";
             string meta = artists.Length == 0 ? album : album.Length == 0 ? artists : artists + " · " + album;
             if (meta.Length > 0) titleColumn.Add(R.Type.TrackMeta(meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
             var row = new List<Element>(3) { new BoxEl { Direction = 1, Gap = Spacing.S, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = titleColumn.ToArray() } };

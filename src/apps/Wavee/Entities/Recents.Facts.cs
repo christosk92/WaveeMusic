@@ -56,7 +56,7 @@ public readonly partial struct Recents
             case EntityKind.Track when slot > 0 && s.Tracks.Knows(slot, (uint)TrackFields.Title):
             {
                 var tr = new Track(slot);
-                return new RecentsFacts(true, tr.Title, NonEmpty(Text(tr.ArtistLineId)), Controls.ArtUrl(tr.ImageId));
+                return new RecentsFacts(true, tr.Title, NonEmpty(tr.CreditLine), Controls.ArtUrl(tr.ImageId));
             }
         }
         return RecentsFacts.Unknown;
