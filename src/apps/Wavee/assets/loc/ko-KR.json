@@ -600,7 +600,7 @@
       "folderMenu": "이 폴더 더 보기",
       "folderOptions": "옵션",
       "options": "추가 옵션",
-      "optionsSub": "폴더 감시 및 없어진 곡",
+      "optionsSub": "폴더 감시, 배터리 절약 모드, 클라우드 전용 파일, 찾을 수 없는 곡",
       "watch": "폴더 변경 감시",
       "watchSub": "새로 추가되거나 이동하거나 삭제된 곡이 자동으로 반영됩니다",
       "pauseOnSaver": "배터리 절약 모드에서 스캔 일시 중지",

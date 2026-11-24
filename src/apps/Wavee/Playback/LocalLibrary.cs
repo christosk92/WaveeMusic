@@ -318,7 +318,7 @@ public static partial class LocalLibrary
 
     // ── the inspector's fixtures (§5) ───────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing`: a fixed in-memory folder list and index (no disk, no
+    /// <summary>`state kind=music-folders value=none|scanning|ready|offline|changed|missing|listing|paused|noaccess`: a fixed in-memory folder list and index (no disk, no
     /// thread, no setting). `changed` is ready plus a background change just restated (+4 added · 1 moved: the chip's "Updated · +4", four new rows
     /// tagged "New", "Ambre" tagged "Moved"); `missing` is ready with three missing songs and no other unplayable file (S6); `listing` is the first
     /// scan's first second (nothing read, no total); `paused` is scanning held by battery saver; `noaccess` is ready with a music folder that

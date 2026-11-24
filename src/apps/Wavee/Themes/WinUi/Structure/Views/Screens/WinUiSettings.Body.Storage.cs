@@ -255,7 +255,9 @@ internal static partial class WinUiSettings
                     new TextEl(line.Path)
                     {
                         Size = WinUiSettingsRules.MusicTextSize, FontFamily = WinUiSettingsRules.MusicPathFont, Color = Tok.TextPrimary,
-                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f, Width = touch ? float.NaN : WinUiSettingsRules.MusicPathWidth,
+                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+                        // One mark cell further in than its folder's path, so its words stand on the folder rows' status column.
+                        Width = touch ? float.NaN : WinUiSettingsRules.MusicPathWidth - WinUiSettingsRules.MusicMarkCell - Spacing.L,
                     },
                     new TextEl(line.Lead) { Size = WinUiSettingsRules.MusicTextSize, Color = Tok.SystemFillCaution, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 ],

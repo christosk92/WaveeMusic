@@ -284,7 +284,9 @@ internal static partial class ClassicSettings
                     new TextEl(line.Path)
                     {
                         Size = ClassicSettingsRules.MusicTextSize, FontFamily = ClassicSettingsRules.MusicPathFont, Color = Tok.TextPrimary,
-                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f, Width = touch ? float.NaN : ClassicSettingsRules.MusicPathWidth,
+                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+                        // One mark cell further in than its folder's path, so its words stand on the folder rows' status column.
+                        Width = touch ? float.NaN : ClassicSettingsRules.MusicPathWidth - ClassicSettingsRules.MusicMarkCell - Spacing.L,
                     },
                     new TextEl(line.Lead) { Size = ClassicSettingsRules.MusicTextSize, Color = Tok.SystemFillCaution, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 ],
