@@ -618,7 +618,7 @@ transport do=repeat value=all
 transport do=end                                                       # deck=tr5, then tr6, then tr1 (the wrap)
 ```
 
-### `timecode {do?, samples?, every?}`
+### `timecode {do?, samples?, every?, key?, value?}`
 
 Reads the playback timeline tap (#154): what `Playback.Timeline.TryRead` composes from the engine's anchor
 (`PcmAudioSession.TryReadTimeline`) and the pump's identity. `tap` is `{live, uri, positionMs, durationMs, rate, playing, flags,
@@ -631,6 +631,22 @@ inspector the gap is run as frames held to real time (the fake deck's endpoint i
 runs frames back to back, faster than the session's feed, so the paced endpoint starves and loses that time). Steady play reads
 `positionMs` rising by exactly the gap with one epoch; a seek, a pause (after the endpoint's queue, 2 s headless, has played out),
 a resume and a track change each start one. Fake loads never prepare a join, so `Transition` is not reachable headless.
+
+`ltc` is the LTC output (phase 3): `status` (the Settings row's words), `device`, the aux output's `state`, `auxRate`, `blocks`,
+`underruns`, `auxLatencyMs`, and the generator's `rate`, `locked`, `sent` (the label written now, for the instant that block will
+be heard: 2 s ahead of the tap headless, where the paced endpoint queues 2 s), `read` and `readCount` (its self-check reader
+decoding the generator's own output), `matches` / `mismatches` (each decoded word against the frame the encoder finished),
+`errorMs` (the chase error) and `relocations`. `do=set key=enabled|device|rate|start|level|offset value=` writes a dial through
+the Settings rows' own verbs (`Playback.TimecodeOutput.Set`; headless any device id stands for the silent endpoint). A live
+window takes the same through `wavee://diag?cmd=timecode&key=&value=`.
+
+```text
+timecode do=set key=device value=headless-ltc
+timecode do=set key=rate value=29.97
+timecode do=set key=enabled value=true
+play spotify:track:tr3 fromMs=57000
+timecode samples=8 every=500          # ltc.matches rises with readCount, mismatches 0, relocations 1
+```
 
 ```text
 play spotify:track:tr3 next=2
