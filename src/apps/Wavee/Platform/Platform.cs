@@ -999,7 +999,7 @@ public static partial class Platform
         public static bool FakeLiveClock { get; private set; }
 
         /// <summary>`--fake --fake-video &lt;path&gt;`: a local clip every fake-catalog track plays as its attached video
-        /// (<see cref="Video.Overrides.FakeClip"/>), exactly as a user's attached local video would. Null unless `--fake`
+        /// (<see cref="Video.LinkedVideos.FakeClip"/>), exactly as a user's attached local video would. Null unless `--fake`
         /// is on AND the file exists; in memory only, never written to the roster's persisted line store.</summary>
         public static string? FakeVideo { get; private set; }
 

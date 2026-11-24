@@ -346,6 +346,10 @@ public static partial class Playback
     /// title (it is then left out, as before) or its name would not fit. UI thread (reads the row's uri and the interner).</summary>
     internal static (string Uri, string? Artist, string? Album)? LocalUriOf(Track track)
     {
+        // An indexed file is named by its OWN names (LocalLibrary.LocalUriOfFile): what its row shows (a rename, the file name's split, an
+        // accepted match's Spotify info) is Wavee's, never the name other devices and reports match the file by.
+        if (LocalLibrary.TryLocalIdOf(track.Uri.Text, out long localId))
+            return LocalLibrary.LocalUriOfFile(localId) is { } own ? (own.Uri, own.Artist.Length > 0 ? own.Artist : null, own.Album.Length > 0 ? own.Album : null) : null;
         string? title = Interned(track.TitleId);
         if (string.IsNullOrEmpty(title)) return null;
         (string artist, string album) = Playlist.LocalNamesOf(track.Uri.Text);

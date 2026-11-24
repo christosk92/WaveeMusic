@@ -1459,7 +1459,11 @@ public readonly partial struct Playlist
         => path is { Length: > 0 } && (path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
             || path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".flac", StringComparison.OrdinalIgnoreCase)
             || path.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".aac", StringComparison.OrdinalIgnoreCase));
-    public static bool IsLocalVideoFile(string? path) => path is { Length: > 0 } && path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
+    /// <summary>A video container a drop or the picker takes (#240 local video): MP4, M4V and Matroska/WebM. The file's own tags decide whether
+    /// it IS a video (an MP4 with no picture track is a song): <see cref="StateLocalVideo"/>.</summary>
+    public static bool IsLocalVideoFile(string? path)
+        => path is { Length: > 0 } && (path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".m4v", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".webm", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The artist and album a local track's TAGS name (a file has no artist or album row: they are names), keyed by the track's
     /// uri. Written where a local track is staged (<see cref="ImportLocalFile(string, in LocalTagSet)"/>, the fake seed); read by the row's
@@ -1476,6 +1480,17 @@ public readonly partial struct Playlist
     }
 
     static readonly Dictionary<string, (string Artist, string Album)> s_localNames = new(StringComparer.Ordinal);
+
+    /// <summary>The uri a row is added to a Spotify playlist as: a Spotify track's own uri, or a local file's <c>spotify:local:</c> name, minted
+    /// with the official encoder from the file's OWN names (#240 D12, E1: the item other devices match the file by; Wavee shows the file's rename
+    /// where the item resolves to it here). Null for anything that never enters a playlist. UI thread.</summary>
+    public static string? PlaylistItemUriOf(Track t)
+    {
+        if (!t.IsValid) return null;
+        if (Spotify.Egress.Admits(t.Id)) return t.Id.Text is { Length: > 0 } uri ? uri : null;
+        if (t.Id.Provider == EntityProvider.Spotify && LocalTrackUri.Is(t.Uri.Text)) return t.Uri.Text;   // already a playlist's local item
+        return t.IsLocal && Playback.LocalUriOf(t) is { } local ? local.Uri : null;
+    }
 
     /// <summary>A tag set's artists as one credit: the values joined with ", " (the form §3.4 also keys).</summary>
     public static string LocalArtistLine(in LocalTagSet tags) => tags.Artists is not { Length: > 0 } artists ? ""

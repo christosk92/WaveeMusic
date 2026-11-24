@@ -4509,6 +4509,8 @@ public static partial class Playback
         /// ladder. A catalogue track is gid-form and pays one failed form test, per open, never per buffer.</remarks>
         public static SourceRoute RouteOf(EntityId id) => id.Provider switch
         {
+            // "Your files and Spotify" phase 2: a Spotify song whose default version is one of your files plays that file (LocalLibrary.PlayAs.cs).
+            EntityProvider.Spotify when id.Kind == EntityKind.Track && LocalLibrary.PlayAsOf(id) != 0 => SourceRoute.Local,
             EntityProvider.Spotify when id.Form == EntityForm.Text && id.Kind == EntityKind.Track
                 => LocalLibrary.PlaysLocally(id) ? SourceRoute.Local : SourceRoute.None,
             EntityProvider.Spotify => SourceRoute.Spotify,
@@ -4535,7 +4537,16 @@ public static partial class Playback
                 case SourceRoute.Podcast:
                     return PodcastSource(id, ct, prepared, out opened, out fault);
                 case SourceRoute.Local:
-                    return LocalSource(id, out opened, out fault);
+                {
+                    var local = LocalSource(id, out opened, out fault);
+                    // A Spotify song's default file that cannot be opened (gone, an offline share): the song plays from Spotify, no dead end.
+                    if (local is null && id.Provider == EntityProvider.Spotify && id.Form != EntityForm.Text)
+                    {
+                        fault = Fault.None;
+                        return SpotifySource(id, ct, prepared, out opened, out fault);
+                    }
+                    return local;
+                }
                 case SourceRoute.Module:
                     return ModuleSource(id, ct, out opened, out fault);
                 case SourceRoute.Silent:

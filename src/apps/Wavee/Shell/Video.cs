@@ -17,7 +17,7 @@
 // A13 (2026-09-12): `Playback/Playback.Video.cs` (owner H, Wave 3) is the DECODE half — it resolves a playable into a
 // `VideoSource`, opens one long-lived `MediaPlayer` and publishes `Playback.Video.Player` / `.Source`. It holds no
 // placement state and not one `Element`. This file holds no player and touches no MF handle. `Video.UI.cs` (stage 2)
-// mounts the surfaces; `Video.Host.cs` owns the pop-out's HWND and the attachment roster.
+// mounts the surfaces; `Video.Host.cs` owns the pop-out's HWND and the linked video linked-video list.
 //
 // THE ONE IDEA. There is ONE movable video surface and ONE `PlacementState` value describing it. Everything else —
 // which surface mounts, who draws the transport, whether the pop-out is borderless-fullscreen, whether the rail
@@ -26,11 +26,11 @@
 // that no longer exists; two transports stacked in one band; a closed video re-opening on the next song; a pop-out
 // that came back fullscreen because a clearing edge was forgotten) UNREPRESENTABLE rather than merely fixed.
 //
-// Rules: no allocation after warm-up on any path a frame can reach (P8) — the roster builders here are load-time and
+// Rules: no allocation after warm-up on any path a frame can reach (P8) — the linked videos builders here are load-time and
 // allocate freely, by design, and are the only ones that do; no LINQ, no closures on a hot path, no async, no boxing
 // (P9). Ported VERBATIM from 0.2.9 (`App/PlacementCore.cs`, `DockedVideoHosting.cs`, `VideoUpgradeGate.cs`,
 // `VideoStageInput.cs`, `DetachedFullscreenRule.cs`, `VideoSurfaceMount.cs`, `VideoAspectPersistence.cs`,
-// `VideoOverrideUx.cs`, `VideoOverrideMutationCore.cs`); the decisions are not re-derived, only their input types
+// `LinkedVideoUx.cs`, `LinkedVideoMutationCore.cs`); the decisions are not re-derived, only their input types
 // change from records to plain values.
 
 using System.Globalization;
@@ -890,43 +890,43 @@ public static partial class Video
             => mode == AspectPreference.Custom && Math.Abs(current - r) < 0.01;
     }
 
-    // ── local video attachments ─────────────────────────────────────────────────────────────────────────────────────
+    // ── local video linked videos ─────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>One persisted attachment: a playable uri → a local <c>.mp4</c>. Device-wide and account-independent,
-    /// which is why it is NOT entity state (it survives scope switches, and a scope does not). The roster that holds
+    /// <summary>One persisted linked video: a playable uri → a local <c>.mp4</c>. Device-wide and account-independent,
+    /// which is why it is NOT entity state (it survives scope switches, and a scope does not). The linked videos that holds
     /// these is `Video.Host.cs`'s; every DECISION about them is here.</summary>
     /// <param name="Uri">The playable uri — the primary key, so a duplicate attach IS the replace.</param>
     /// <param name="Path">The absolute path of the attached file.</param>
-    /// <param name="AddedAtUnix">When it was attached (seconds). The roster's sort key.</param>
+    /// <param name="AddedAtUnix">When it was attached (seconds). The linked videos's sort key.</param>
     /// <param name="SourceKey">The resolved source identity the player would open, for the quarantine pair.</param>
-    public readonly record struct OverrideRecord(string Uri, string Path, long AddedAtUnix, string SourceKey);
+    public readonly record struct LinkedVideoRecord(string Uri, string Path, long AddedAtUnix, string SourceKey);
 
-    /// <summary>Which tier-1 branch a playable takes before the source's own video resolver is consulted.</summary>
-    public enum OverrideTier : byte
+    /// <summary>Which linked-video branch a playable takes before the source's own video resolver is consulted.</summary>
+    public enum LinkedVideoTier : byte
     {
-        /// <summary>No attachment for this playable — fall through to the source tier.</summary>
+        /// <summary>No linked video for this playable — fall through to the source tier.</summary>
         None,
-        /// <summary>An attachment exists and its file is present: play it (it always wins over the source's own
+        /// <summary>An linked video exists and its file is present: play it (it always wins over the source's own
         /// video).</summary>
-        UseOverride,
-        /// <summary>An attachment exists but its file is gone (moved / drive offline). Fall through, KEEP the link for
+        Use,
+        /// <summary>An linked video exists but its file is gone (moved / drive offline). Fall through, KEEP the link for
         /// repair, and surface it once per session — never delete the user's curation behind their back.</summary>
         Broken,
-        /// <summary>An attachment exists but this exact (uri, source key) already failed to open this session. Skip
-        /// tier 1 silently — the one-shot fallback latch that makes a bad file impossible to loop on.</summary>
+        /// <summary>An linked video exists but this exact (uri, source key) already failed to open this session. Skip
+        /// the linked video silently — the one-shot fallback latch that makes a bad file impossible to loop on.</summary>
         Quarantined,
     }
 
-    /// <summary>The pure tier-1 outcome: the branch plus (for the two "we have a record" branches) the record.</summary>
-    public readonly record struct OverrideDecision(OverrideTier Tier, OverrideRecord Override)
+    /// <summary>The pure linked-video outcome: the branch plus (for the two "we have a record" branches) the record.</summary>
+    public readonly record struct LinkedVideoDecision(LinkedVideoTier Tier, LinkedVideoRecord Video)
     {
-        public static OverrideDecision None => new(OverrideTier.None, default);
+        public static LinkedVideoDecision None => new(LinkedVideoTier.None, default);
     }
 
-    /// <summary>The status chip a curated attachment shows in Settings (and the badge language the toasts reuse).</summary>
-    public enum OverrideStatus : byte
+    /// <summary>The status chip a curated linked video shows in Settings (and the badge language the toasts reuse).</summary>
+    public enum LinkedVideoStatus : byte
     {
-        /// <summary>The file is where the user left it — this attachment plays.</summary>
+        /// <summary>The file is where the user left it — this linked video plays.</summary>
         Ok,
         /// <summary>The file is gone but its volume is still mounted: a move/rename. "Locate…" repairs it.</summary>
         Missing,
@@ -970,29 +970,29 @@ public static partial class Video
         ShowInExplorer = 16,
     }
 
-    /// <summary>One Settings roster row: the persisted attachment plus everything the row renders, resolved once at
+    /// <summary>One Settings linked-video list row: the persisted linked video plus everything the row renders, resolved once at
     /// load time (never per frame). <see cref="Title"/>/<see cref="Subtitle"/> fall back to the uri when the catalog
-    /// has never seen the playable — a device-wide roster outlives any one account's catalog.</summary>
-    public readonly record struct OverrideRow(
-        OverrideRecord Override, OverrideStatus Status, string Title, string? Subtitle, string FileName)
+    /// has never seen the playable — a device-wide linked-video list outlives any one account's catalog.</summary>
+    public readonly record struct LinkedVideoRow(
+        LinkedVideoRecord Video, LinkedVideoStatus Status, string Title, string? Subtitle, string FileName)
     {
-        public string Uri => Override.Uri;
-        public string Path => Override.Path;
+        public string Uri => Video.Uri;
+        public string Path => Video.Path;
         /// <summary>The link is broken in a way "Locate video file…" can repair (a move/rename, not an absent
         /// volume).</summary>
-        public bool CanLocate => Status == OverrideStatus.Missing;
+        public bool CanLocate => Status == LinkedVideoStatus.Missing;
         /// <summary>Revealing the file in Explorer only makes sense while it is actually there.</summary>
-        public bool CanReveal => Status is OverrideStatus.Ok or OverrideStatus.Unplayable;
+        public bool CanReveal => Status is LinkedVideoStatus.Ok or LinkedVideoStatus.Unplayable;
     }
 
-    /// <summary>What the attachment manager's ROOT view is showing right now. A pure function of "how many attachments
+    /// <summary>What the linked video manager's ROOT view is showing right now. A pure function of "how many linked videos
     /// exist" × "is the user searching" × "did the search hit anything" — so the flyout never re-decides it inline.</summary>
     public enum ManagerSection : byte
     {
         /// <summary>Nothing is attached at all: teach the context-menu attach path instead of showing an empty
         /// list.</summary>
         Empty,
-        /// <summary>The resting root: the newest few attachments plus the "Browse all…" drill-in.</summary>
+        /// <summary>The resting root: the newest few linked videos plus the "Browse all…" drill-in.</summary>
         Recent,
         /// <summary>A live query with hits — the results take the place of the recent section (no drill required).</summary>
         Results,
@@ -1000,12 +1000,12 @@ public static partial class Video
         NoMatches,
     }
 
-    /// <summary>The pure decisions behind every video-override UX surface: the context submenu, the Settings roster,
+    /// <summary>The pure decisions behind every video-override UX surface: the context submenu, the Settings linked-video list,
     /// the manager flyout and the row indicator. Every engine-bound file is a thin adapter that renders what this
     /// decides and never re-decides it.</summary>
-    public static class OverrideUx
+    public static class LinkedVideoUx
     {
-        /// <summary>How many attachments the manager's "Recently added" section shows before the user has to Browse
+        /// <summary>How many linked videos the manager's "Recently added" section shows before the user has to Browse
         /// all. Small on purpose: the section answers "did the thing I just attached land?", not "what do I own".</summary>
         public const int RecentCount = 4;
 
@@ -1013,11 +1013,11 @@ public static partial class Video
         /// filter the user cannot get wrong beats an error they have to read.</summary>
         public const string Extension = ".mp4";
 
-        /// <summary>The one roster ordering: newest attachment first, ties broken by uri so the list can never shuffle
+        /// <summary>The one linked-video list ordering: newest linked video first, ties broken by uri so the list can never shuffle
         /// between two rows attached in the same second.</summary>
-        public static readonly Comparison<OverrideRow> RecencyOrder = static (a, b) =>
+        public static readonly Comparison<LinkedVideoRow> RecencyOrder = static (a, b) =>
         {
-            int c = b.Override.AddedAtUnix.CompareTo(a.Override.AddedAtUnix);
+            int c = b.Video.AddedAtUnix.CompareTo(a.Video.AddedAtUnix);
             return c != 0 ? c : string.CompareOrdinal(a.Uri, b.Uri);
         };
 
@@ -1029,13 +1029,13 @@ public static partial class Video
         /// mp4 is playable because a dropped/picked video attaches as its own override and plays with its embedded
         /// audio).</summary>
         public static (string Name, string Spec) PlayableFilter(string label)
-            => (label, "*.mp3;*.ogg;*.flac;*.m4a;*.aac;*" + Extension);
+            => (label, "*.mp3;*.ogg;*.flac;*.m4a;*.aac;*" + Extension + ";*.m4v;*.mkv;*.webm");   // the local video containers too (#240: they play as videos)
 
         /// <summary>Extension test (case-insensitive, culture-invariant — a path is not prose).</summary>
         public static bool IsMp4(string? path)
             => path is { Length: > 0 } && path.EndsWith(Extension, StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>Validate a picked/dropped path before it becomes an attachment: the right container, and actually
+        /// <summary>Validate a picked/dropped path before it becomes an linked video: the right container, and actually
         /// there. <paramref name="fileExists"/> is injected so the rule is testable without a disk.</summary>
         public static AttachRejection Validate(string? path, Func<string, bool> fileExists)
         {
@@ -1057,38 +1057,38 @@ public static partial class Video
             return null;
         }
 
-        /// <summary>The pure tier-1 walk: play the attachment, fall through because its file is gone, skip it because
-        /// it already failed this session, or no attachment at all. Every input is a plain value, so the whole of the
+        /// <summary>The pure linked-video walk: play the linked video, fall through because its file is gone, skip it because
+        /// it already failed this session, or no linked video at all. Every input is a plain value, so the whole of the
         /// resolver's first tier is testable without a disk or a store. Quarantine is checked BEFORE existence: a
         /// quarantined pair is skipped silently whether or not the file is still there.</summary>
         /// <param name="has">Is a record attached to this playable?</param>
         /// <param name="record">That record (ignored when <paramref name="has"/> is false).</param>
         /// <param name="quarantined">Has this exact (uri, source key) pair already failed to open this session?</param>
-        /// <param name="fileExists">Existence probe for <see cref="OverrideRecord.Path"/>.</param>
-        public static OverrideDecision Decide(bool has, in OverrideRecord record, bool quarantined,
+        /// <param name="fileExists">Existence probe for <see cref="LinkedVideoRecord.Path"/>.</param>
+        public static LinkedVideoDecision Decide(bool has, in LinkedVideoRecord record, bool quarantined,
                                               Func<string, bool> fileExists)
         {
-            if (!has) return OverrideDecision.None;
-            if (quarantined) return new OverrideDecision(OverrideTier.Quarantined, record);
+            if (!has) return LinkedVideoDecision.None;
+            if (quarantined) return new LinkedVideoDecision(LinkedVideoTier.Quarantined, record);
             bool exists;
             try { exists = fileExists(record.Path); }
             catch { exists = false; }
-            return exists ? new OverrideDecision(OverrideTier.UseOverride, record)
-                          : new OverrideDecision(OverrideTier.Broken, record);
+            return exists ? new LinkedVideoDecision(LinkedVideoTier.Use, record)
+                          : new LinkedVideoDecision(LinkedVideoTier.Broken, record);
         }
 
-        /// <summary>Map a tier-1 decision onto the roster's status chip. The Broken tier splits here — and ONLY here —
+        /// <summary>Map a linked-video decision onto the linked videos's status chip. The Broken tier splits here — and ONLY here —
         /// into "Missing" (the volume is mounted, the file moved: repairable) and "Drive offline" (the volume itself is
         /// gone: it heals by itself when the drive returns, so never prompt to remove it).</summary>
-        public static OverrideStatus StatusOf(in OverrideDecision d, Func<string, bool> directoryExists)
+        public static LinkedVideoStatus StatusOf(in LinkedVideoDecision d, Func<string, bool> directoryExists)
             => d.Tier switch
             {
-                OverrideTier.UseOverride => OverrideStatus.Ok,
-                OverrideTier.Quarantined => OverrideStatus.Unplayable,
-                OverrideTier.Broken => RootExists(d.Override.Path, directoryExists)
-                    ? OverrideStatus.Missing
-                    : OverrideStatus.DriveOffline,
-                _ => OverrideStatus.Ok,
+                LinkedVideoTier.Use => LinkedVideoStatus.Ok,
+                LinkedVideoTier.Quarantined => LinkedVideoStatus.Unplayable,
+                LinkedVideoTier.Broken => RootExists(d.Video.Path, directoryExists)
+                    ? LinkedVideoStatus.Missing
+                    : LinkedVideoStatus.DriveOffline,
+                _ => LinkedVideoStatus.Ok,
             };
 
         static bool RootExists(string path, Func<string, bool> directoryExists)
@@ -1129,11 +1129,11 @@ public static partial class Video
 
         /// <summary>Which rows the <c>Video ▸</c> submenu shows for one playable. The submenu exists only for a SINGLE
         /// selection (attaching one file to N tracks is not a thing the model expresses) and only on a build that has
-        /// the curation roster — with no roster the whole feature is unreachable, which is its kill switch.
+        /// the curation linked-video list — with no linked-video list the whole feature is unreachable, which is its kill switch.
         /// <paramref name="tier"/> is <see cref="Decide"/>'s answer, the same tier walk playback takes, so the menu can
         /// never disagree with what will actually play.</summary>
         public static MenuItems MenuFor(bool singleSelection, string? playableUri, bool rosterPresent,
-                                        bool hasOverride, OverrideTier tier)
+                                        bool hasOverride, LinkedVideoTier tier)
         {
             if (!singleSelection || playableUri is not { Length: > 0 } || !rosterPresent) return MenuItems.None;
             if (!hasOverride) return MenuItems.Attach;
@@ -1141,34 +1141,34 @@ public static partial class Video
             var items = MenuItems.Replace | MenuItems.Remove;
             switch (tier)
             {
-                case OverrideTier.Broken:
+                case LinkedVideoTier.Broken:
                     items |= MenuItems.Locate;
                     break;
-                case OverrideTier.UseOverride:
-                case OverrideTier.Quarantined:
+                case LinkedVideoTier.Use:
+                case LinkedVideoTier.Quarantined:
                     items |= MenuItems.ShowInExplorer;
                     break;
             }
             return items;
         }
 
-        /// <summary>Build the Settings roster: newest attachment first (the roster answers "what have I attached?",
+        /// <summary>Build the Settings linked-video list: newest linked video first (the linked videos answers "what have I attached?",
         /// and the thing you just attached is the thing you are looking for), each row carrying its resolved status
         /// and display copy. Allocates freely — it runs once per load, never per frame.</summary>
-        /// <param name="all">The whole persisted roster.</param>
-        /// <param name="decide">The tier-1 walk for one record (the host binds its quarantine set into this).</param>
+        /// <param name="all">The whole persisted linked-video list.</param>
+        /// <param name="decide">The linked-video walk for one record (the host binds its quarantine set into this).</param>
         /// <param name="directoryExists">Volume probe for the Missing / DriveOffline split.</param>
         /// <param name="title">Playable uri → its known title, or null. Never an entity read from CORE.</param>
         /// <param name="artistLine">Playable uri → its precomputed credit line, or null.</param>
-        public static List<OverrideRow> BuildRoster(
-            IReadOnlyList<OverrideRecord>? all,
-            Func<OverrideRecord, OverrideDecision> decide,
+        public static List<LinkedVideoRow> BuildRoster(
+            IReadOnlyList<LinkedVideoRecord>? all,
+            Func<LinkedVideoRecord, LinkedVideoDecision> decide,
             Func<string, bool> directoryExists,
             Func<string, string?>? title = null,
             Func<string, string?>? artistLine = null)
         {
             if (all is null || all.Count == 0) return [];
-            var rows = new List<OverrideRow>(all.Count);
+            var rows = new List<LinkedVideoRow>(all.Count);
             for (int i = 0; i < all.Count; i++)
             {
                 var o = all[i];
@@ -1176,19 +1176,19 @@ public static partial class Video
                 string? t = null, a = null;
                 if (title is not null) { try { t = title(o.Uri); } catch { t = null; } }
                 if (artistLine is not null) { try { a = artistLine(o.Uri); } catch { a = null; } }
-                rows.Add(new OverrideRow(o, status, TitleFor(o.Uri, t), SubtitleFor(a), FileNameOf(o.Path)));
+                rows.Add(new LinkedVideoRow(o, status, TitleFor(o.Uri, t), SubtitleFor(a), FileNameOf(o.Path)));
             }
             rows.Sort(RecencyOrder);
             return rows;
         }
 
-        /// <summary>The newest <paramref name="count"/> attachments, newest first — the manager's "Recently added"
-        /// section. Re-sorts defensively rather than trusting the caller's order, so a roster built by some other path
+        /// <summary>The newest <paramref name="count"/> linked videos, newest first — the manager's "Recently added"
+        /// section. Re-sorts defensively rather than trusting the caller's order, so a linked-video list built by some other path
         /// still yields a truthful "recent". Never mutates the input.</summary>
-        public static List<OverrideRow> RecentlyAdded(IReadOnlyList<OverrideRow>? rows, int count = RecentCount)
+        public static List<LinkedVideoRow> RecentlyAdded(IReadOnlyList<LinkedVideoRow>? rows, int count = RecentCount)
         {
             if (rows is null || rows.Count == 0 || count <= 0) return [];
-            var copy = new List<OverrideRow>(rows);
+            var copy = new List<LinkedVideoRow>(rows);
             copy.Sort(RecencyOrder);
             if (copy.Count > count) copy.RemoveRange(count, copy.Count - count);
             return copy;
@@ -1202,7 +1202,7 @@ public static partial class Video
         /// <summary>Does this row match the query? Case-insensitive substring over the three things the user could
         /// plausibly remember — the track title, the artist line, and the file name. NOT the full path: a path match
         /// would make every row under one folder a hit, which is noise, and the folder is visible anyway.</summary>
-        public static bool Matches(in OverrideRow row, string? query)
+        public static bool Matches(in LinkedVideoRow row, string? query)
         {
             if (!IsSearching(query)) return true;
             string q = query!.Trim();
@@ -1212,13 +1212,13 @@ public static partial class Video
         static bool Contains(string? haystack, string needle)
             => haystack is { Length: > 0 } && haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>Filter the roster by the manager's search box, preserving newest-first order. An empty/whitespace
+        /// <summary>Filter the linked videos by the manager's search box, preserving newest-first order. An empty/whitespace
         /// query returns the input untouched (the caller then shows the resting root, not "all results").</summary>
-        public static IReadOnlyList<OverrideRow> Search(IReadOnlyList<OverrideRow>? rows, string? query)
+        public static IReadOnlyList<LinkedVideoRow> Search(IReadOnlyList<LinkedVideoRow>? rows, string? query)
         {
             if (rows is null || rows.Count == 0) return [];
             if (!IsSearching(query)) return rows;
-            var hits = new List<OverrideRow>(rows.Count);
+            var hits = new List<LinkedVideoRow>(rows.Count);
             for (int i = 0; i < rows.Count; i++)
                 if (Matches(rows[i], query)) hits.Add(rows[i]);
             return hits;
@@ -1239,7 +1239,7 @@ public static partial class Video
         public static bool ShowsBrowseAll(int total, string? query)
             => total > 0 && !IsSearching(query);
 
-        /// <summary>Row title: the playable's title when the catalog knows it, else the raw uri (a device-wide roster
+        /// <summary>Row title: the playable's title when the catalog knows it, else the raw uri (a device-wide linked-video list
         /// survives accounts and catalogs — showing the uri is honest, showing nothing is not).</summary>
         public static string TitleFor(string uri, string? knownTitle)
             => knownTitle is { Length: > 0 } ? knownTitle : uri;
@@ -1258,8 +1258,8 @@ public static partial class Video
         }
     }
 
-    /// <summary>What the warm override roster just did to one playable.</summary>
-    public enum OverrideMutationKind : byte { Attach = 0, Replace = 1, Remove = 2 }
+    /// <summary>What the warm override linked-video list just did to one playable.</summary>
+    public enum LinkedVideoChange : byte { Attach = 0, Replace = 1, Remove = 2 }
 
     // ── the aspect policy's two vocabularies (C6, X16) ──────────────────────────────────────────────────────────────
 

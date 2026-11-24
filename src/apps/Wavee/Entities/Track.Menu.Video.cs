@@ -9,20 +9,16 @@
 // Budget: 200 lines
 // Spec: ch 01 §menus row 8 (the Video ▸ submenu); ch 19 items 28–34 (its seven toasts)
 //
-// ── WHY THESE FIVE ARE THEIR OWN FILE, AND WHAT THEY ARE ALLOWED TO DO ───────────────────────────────────────────────
+// ── WHAT THEY DO ─────────────────────────────────────────────────────────────────────────────────────────────────────
 //
-// Every DECISION is `Video.OverrideUx`'s (pure, engine-free, unit-tested) and every MUTATION is
-// `Video.Overrides.Attach/Remove` — which already normalizes, persists, clears the quarantine, bumps the epoch, logs
-// and fires the ONE `Changed` flow the host turns into a surface reveal. These verbs therefore do only the three
-// things the roster cannot: run the modal picker, raise the toast (with its Undo) and reveal a file in Explorer.
+// A track's video of mine is a video file LINKED to it as one of its versions ("Your files and Spotify", one concept: Shell/Video.LinkedVideos.cs).
+// Attach and Replace add the picked file to the library and link it (`Video.LinkedVideos.Attach`: LocalLibrary.AddFile + LocalLink.LinkVersion);
+// Remove unlinks it (the file stays in the library). Every DECISION is `Video.LinkedVideoUx`'s (pure); these verbs do only what the links
+// cannot: run the modal picker, raise the toast (with its Undo) and reveal a file in Explorer.
 //
-// WHICH ROWS EXIST is NOT re-decided here. `VideoItem` (Track.Menu.cs) asks `Video.OverrideUx.MenuFor` and each verb's
+// WHICH ROWS EXIST is NOT re-decided here. `VideoItem` (Track.Menu.cs) asks `Video.LinkedVideoUx.MenuFor` and each verb's
 // `IsEnabled` asks the SAME function through <see cref="Track.OffersVideoVerb"/>, so a row that is present is always a
-// row that runs, and a state nobody offers can never be invoked from a shortcut or the palette either.
-//
-// ONE THING 0.2.10 DID THAT THIS DOES NOT: pass `replace: true` to choose the toast wording. `Video.Overrides.Attach`
-// RETURNS what the roster did (the uri is the primary key, so a duplicate attach IS the replace), so "attached" vs
-// "replaced" is read off the mutation instead of guessed by the caller.
+// row that runs. "Linked" vs "replaced" is read off what `Attach` returns.
 
 using FluentGpu;
 using FluentGpu.Controls;
@@ -32,14 +28,13 @@ namespace Wavee;
 
 public readonly partial struct Track
 {
-    /// <summary>The category these human-rate UI events log on (the roster's own events ride "video.local", play-time
-    /// ones "playback").</summary>
+    /// <summary>The category these human-rate UI events log on (play-time ones ride "playback").</summary>
     const string VideoLogCategory = "ui";
 
     // ══ 1. THE SHARED GATE ═══════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Does the Video ▸ submenu offer <paramref name="verb"/> for this playable right now? The ONE gate all
-    /// five verbs' <c>IsEnabled</c> predicates share, and it is `Video.OverrideUx.MenuFor` — the same flags
+    /// five verbs' <c>IsEnabled</c> predicates share, and it is `Video.LinkedVideoUx.MenuFor` — the same flags
     /// <c>VideoItem</c> builds its rows from, walking the same tier decision playback takes. A row and its verb can
     /// therefore never disagree.
     /// <para>Multi-select has no meaning here (one file, one playable), which is why <see cref="ActionTarget.Single"/>
@@ -47,8 +42,8 @@ public readonly partial struct Track
     public static bool OffersVideoVerb(Video.MenuItems verb, string? playableUri)
     {
         if (playableUri is not { Length: > 0 }) return false;
-        var which = Video.OverrideUx.MenuFor(true, playableUri, Video.Overrides.Present,
-                                             Video.Overrides.Has(playableUri), Video.Overrides.Decide(playableUri).Tier);
+        var which = Video.LinkedVideoUx.MenuFor(true, playableUri, Video.LinkedVideos.Present,
+                                             Video.LinkedVideos.Has(playableUri), Video.LinkedVideos.Decide(playableUri).Tier);
         return (which & verb) != 0;
     }
 
@@ -67,39 +62,39 @@ public readonly partial struct Track
         AppActions.Register(new AppAction
         {
             Id = ActionId.AttachVideo, IconKey = ActionIcons.Video,
-            Label = static _ => Loc.Get(Strings.VideoOverride.Attach),
+            Label = static _ => Loc.Get(Strings.LinkedVideo.Attach),
             IsEnabled = static c => OffersVideoVerb(Video.MenuItems.Attach, VideoUriOf(c.Target)),
-            Execute = static c => PickAndAttach(VideoUriOf(c.Target), Loc.Get(Strings.VideoOverride.PickTitle), locate: false),
+            Execute = static c => PickAndAttach(VideoUriOf(c.Target), Loc.Get(Strings.LinkedVideo.PickTitle), locate: false),
         });
 
         AppActions.Register(new AppAction
         {
             Id = ActionId.ReplaceVideo, IconKey = ActionIcons.Replace,
-            Label = static _ => Loc.Get(Strings.VideoOverride.Replace),
+            Label = static _ => Loc.Get(Strings.LinkedVideo.Replace),
             IsEnabled = static c => OffersVideoVerb(Video.MenuItems.Replace, VideoUriOf(c.Target)),
-            Execute = static c => PickAndAttach(VideoUriOf(c.Target), Loc.Get(Strings.VideoOverride.PickTitle), locate: false),
+            Execute = static c => PickAndAttach(VideoUriOf(c.Target), Loc.Get(Strings.LinkedVideo.PickTitle), locate: false),
         });
 
         // Repair a moved file. The same mutation as Replace; only the dialog caption and the offered state differ — the
         // picker cannot be told to open AT a folder, so the previous path's deepest surviving ancestor is surfaced in
-        // the caption instead of being silently lost (`OverrideUx.NearestExistingAncestor`).
+        // the caption instead of being silently lost (`LinkedVideoUx.NearestExistingAncestor`).
         AppActions.Register(new AppAction
         {
             Id = ActionId.LocateVideo, IconKey = ActionIcons.Locate,
-            Label = static _ => Loc.Get(Strings.VideoOverride.Locate),
+            Label = static _ => Loc.Get(Strings.LinkedVideo.Locate),
             IsEnabled = static c => OffersVideoVerb(Video.MenuItems.Locate, VideoUriOf(c.Target)),
-            Execute = static c => PickAndAttach(VideoUriOf(c.Target), Loc.Get(Strings.VideoOverride.LocateTitle), locate: true),
+            Execute = static c => PickAndAttach(VideoUriOf(c.Target), Loc.Get(Strings.LinkedVideo.LocateTitle), locate: true),
         });
 
         AppActions.Register(new AppAction
         {
             Id = ActionId.ShowVideoInExplorer, IconKey = ActionIcons.RevealFolder,
-            Label = static _ => Loc.Get(Strings.VideoOverride.ShowInExplorer),
+            Label = static _ => Loc.Get(Strings.LinkedVideo.ShowInExplorer),
             IsEnabled = static c => OffersVideoVerb(Video.MenuItems.ShowInExplorer, VideoUriOf(c.Target)),
             Execute = static c =>
             {
                 if (VideoUriOf(c.Target) is not { Length: > 0 } uri) return;
-                if (Video.Overrides.TryGet(uri, out var o)) RevealInExplorer(o.Path);
+                if (Video.LinkedVideos.TryGet(uri, out var o)) RevealInExplorer(o.Path);
             },
         });
 
@@ -108,18 +103,18 @@ public readonly partial struct Track
         AppActions.Register(new AppAction
         {
             Id = ActionId.RemoveVideo, IconKey = ActionIcons.Remove, Destructive = true,
-            Label = static _ => Loc.Get(Strings.VideoOverride.Remove),
+            Label = static _ => Loc.Get(Strings.LinkedVideo.Remove),
             IsEnabled = static c => OffersVideoVerb(Video.MenuItems.Remove, VideoUriOf(c.Target)),
             Execute = static c =>
             {
                 if (VideoUriOf(c.Target) is not { Length: > 0 } uri) return;
                 // Snapshot BEFORE the mutation — the record is what an Undo restores.
-                if (!Video.Overrides.TryGet(uri, out var previous) || !Video.Overrides.Remove(uri)) return;
-                Log.Event(WaveeLogLevel.Info, VideoLogCategory, "override.menu.remove", "detached the attached video",
+                if (!Video.LinkedVideos.TryGet(uri, out var previous) || !Video.LinkedVideos.Remove(uri)) return;
+                Log.Event(WaveeLogLevel.Info, VideoLogCategory, "linkedvideo.menu.remove", "detached the attached video",
                     fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", previous.Path)]);
                 string path = previous.Path, key = previous.SourceKey;
-                Notify.Say(Loc.Get(Strings.VideoOverride.Removed), InfoBarSeverity.Success,
-                    Loc.Get(Strings.VideoOverride.Undo), () => RestoreVideo(uri, path, key));
+                Notify.Say(Loc.Get(Strings.LinkedVideo.Removed), InfoBarSeverity.Success,
+                    Loc.Get(Strings.LinkedVideo.Undo), () => RestoreVideo(uri, path, key));
             },
         });
     }
@@ -132,49 +127,49 @@ public readonly partial struct Track
     static void PickAndAttach(string? playableUri, string title, bool locate)
     {
         if (playableUri is not { Length: > 0 } uri) return;
-        bool had = Video.Overrides.TryGet(uri, out var previous);
+        bool had = Video.LinkedVideos.TryGet(uri, out var previous);
         string? start = locate && had
-            ? Video.OverrideUx.NearestExistingAncestor(previous.Path, Video.Overrides.DirectoryExists)
+            ? Video.LinkedVideoUx.NearestExistingAncestor(previous.Path, Video.LinkedVideos.DirectoryExists)
             : null;
 
         Pickers.Pick(
             PickerRequest.Open(start is null ? title : title + " — " + start,
-                               Video.OverrideUx.PickerFilter(Loc.Get(Strings.VideoOverride.Filter))),
+                               Video.LinkedVideoUx.PickerFilter(Loc.Get(Strings.LinkedVideo.Filter))),
             done: picked => { if (picked is not null) Attached(picked); },                      // null = cancelled: nothing happened
             failed: ex => Notify.Say(ex.Message, InfoBarSeverity.Error));                       // ch 19 item 29
 
         // The dialog answers later, on the UI thread (Pickers: its own thread, modal to the window).
         void Attached(string picked)
         {
-            var rejection = Video.OverrideUx.Validate(picked, Video.Overrides.FileExists);
+            var rejection = Video.LinkedVideoUx.Validate(picked, Video.LinkedVideos.FileExists);
             if (rejection != Video.AttachRejection.None)
             {
                 bool notMp4 = rejection == Video.AttachRejection.NotMp4;
-                Notify.Say(Loc.Get(notMp4 ? Strings.VideoOverride.RejectedNotMp4 : Strings.VideoOverride.RejectedNotFound),
+                Notify.Say(Loc.Get(notMp4 ? Strings.LinkedVideo.RejectedNotMp4 : Strings.LinkedVideo.RejectedNotFound),
                            InfoBarSeverity.Error);                                                 // ch 19 item 30
-                Log.Event(WaveeLogLevel.Warning, VideoLogCategory, "override.attach.rejected", "the picked file was refused",
+                Log.Event(WaveeLogLevel.Warning, VideoLogCategory, "linkedvideo.attach.rejected", "the picked file was refused",
                     fields: [WaveeLogField.Of("path", picked), WaveeLogField.Of("reason", notMp4 ? "not-mp4" : "not-found")]);
                 return;
             }
 
-            if (Video.Overrides.Attach(uri, picked, SourceKeyFor(picked), NowUnix) is not { } kind)
+            if (Video.LinkedVideos.Attach(uri, picked, SourceKeyFor(picked), NowUnix) is not { } kind)
             {
-                // The roster refused what validation had just accepted — the file went away between the two probes. 0.2.10
-                // surfaced this as a thrown message (ch 19 item 31); the 0.3 roster returns null instead of throwing, so the
+                // The linked videos refused what validation had just accepted — the file went away between the two probes. 0.2.10
+                // surfaced this as a thrown message (ch 19 item 31); the 0.3 linked-video list returns null instead of throwing, so the
                 // honest sentence is the same "couldn't be found" the validator would have said.
-                Notify.Say(Loc.Get(Strings.VideoOverride.RejectedNotFound), InfoBarSeverity.Error);  // ch 19 item 31
+                Notify.Say(Loc.Get(Strings.LinkedVideo.RejectedNotFound), InfoBarSeverity.Error);  // ch 19 item 31
                 return;
             }
 
-            bool replaced = kind == Video.OverrideMutationKind.Replace;
-            Log.Event(WaveeLogLevel.Info, VideoLogCategory, replaced ? "override.menu.replace" : "override.menu.attach",
+            bool replaced = kind == Video.LinkedVideoChange.Replace;
+            Log.Event(WaveeLogLevel.Info, VideoLogCategory, replaced ? "linkedvideo.menu.replace" : "linkedvideo.menu.attach",
                 replaced ? "replaced the attached video" : "attached a local video",
                 fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", picked)]);
 
-            // Undo restores the PREVIOUS state exactly: the prior attachment on a replace, no attachment on a first attach.
+            // Undo restores the PREVIOUS state exactly: the prior linked video on a replace, no linked video on a first attach.
             string previousPath = had ? previous.Path : "", previousKey = had ? previous.SourceKey : "";
-            Notify.Say(Loc.Get(replaced ? Strings.VideoOverride.Replaced : Strings.VideoOverride.Attached),
-                       InfoBarSeverity.Success, Loc.Get(Strings.VideoOverride.Undo),
+            Notify.Say(Loc.Get(replaced ? Strings.LinkedVideo.Replaced : Strings.LinkedVideo.Attached),
+                       InfoBarSeverity.Success, Loc.Get(Strings.LinkedVideo.Undo),
                        () => RestoreVideo(uri, previousPath, previousKey));                        // ch 19 item 32
             // The REVEAL is the host's (`Video`'s `Changed` handler, after the has-video commit); showing the surface here
             // would race that posted mutation.
@@ -182,27 +177,27 @@ public readonly partial struct Track
     }
 
     /// <summary>Undo: re-attach the previous file, or detach when there was none. Both directions go through the same
-    /// roster mutations, so the host's latch/cache/reload flow fires for the undo exactly as it did for the change.</summary>
+    /// linked-video list mutations, so the host's latch/cache/reload flow fires for the undo exactly as it did for the change.</summary>
     static void RestoreVideo(string uri, string previousPath, string previousSourceKey)
     {
         if (previousPath.Length == 0)
         {
-            // Undoing a FIRST attach: detach. Remove is idempotent, so an attachment the user has meanwhile removed
+            // Undoing a FIRST attach: detach. Remove is idempotent, so an linked video the user has meanwhile removed
             // themselves still leaves the undo's goal — nothing attached — true.
-            Video.Overrides.Remove(uri);
+            Video.LinkedVideos.Remove(uri);
         }
-        else if (Video.Overrides.Attach(uri, previousPath, previousSourceKey, NowUnix) is null)
+        else if (Video.LinkedVideos.Attach(uri, previousPath, previousSourceKey, NowUnix) is null)
         {
-            Notify.Say(Loc.Get(Strings.VideoOverride.RejectedNotFound), InfoBarSeverity.Error);  // ch 19 item 33
+            Notify.Say(Loc.Get(Strings.LinkedVideo.RejectedNotFound), InfoBarSeverity.Error);  // ch 19 item 33
             return;
         }
-        Notify.Say(Loc.Get(Strings.VideoOverride.Restored), InfoBarSeverity.Informational);      // ch 19 item 34
+        Notify.Say(Loc.Get(Strings.LinkedVideo.Restored), InfoBarSeverity.Informational);      // ch 19 item 34
     }
 
-    /// <summary>The recorded source identity of a local attachment: the PATH. It is one half of the quarantine pair —
-    /// the play path writes <c>Video.Overrides.Quarantined(uri, recordedKey)</c> and <c>Video.Overrides.Decide</c> reads
-    /// the SAME recorded key back — so it only has to be stable per attachment and to CHANGE when the file does, which
-    /// is exactly what makes re-picking a repaired file re-arm it. The roster's other two fresh-attach sites (the row
+    /// <summary>The recorded source identity of a local linked video: the PATH. It is one half of the quarantine pair —
+    /// the play path writes <c>Video.LinkedVideos.Quarantined(uri, recordedKey)</c> and <c>Video.LinkedVideos.Decide</c> reads
+    /// the SAME recorded key back — so it only has to be stable per linked video and to CHANGE when the file does, which
+    /// is exactly what makes re-picking a repaired file re-arm it. The linked videos's other two fresh-attach sites (the row
     /// drop in <c>Track.Table.cs</c>, the "play this file" drop in <c>Playlist.Page.cs</c>) already record the path;
     /// this names that convention once so the three cannot drift.</summary>
     static string SourceKeyFor(string path) => path;

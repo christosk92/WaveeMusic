@@ -85,10 +85,38 @@ public static class LocalLinkWords
     }
 
     /// <summary>A linked file's label in its Spotify song's "Versions and formats": "Your file · MP3 320" ("Your file" when the format is unknown).</summary>
+    /// <summary>"Plays by default" for the drawer row of <paramref name="drawerTrack"/>'s versions that plays when the song is played (phase 2):
+    /// a file the song plays by default, or Spotify's own version when the user chose it; else null.</summary>
+    public static string? PlaysByDefault(Track drawerTrack, byte kind, Track version)
+    {
+        // The song: the drawer's own track when it is Spotify's, else the Spotify song a file's drawer offers.
+        string song = !drawerTrack.IsLocal ? drawerTrack.Uri.Text
+            : LocalLibrary.TryLocalIdOf(drawerTrack.Uri.Text, out long own) && LocalLink.LinkOf(own) is { } link ? link.Uri : "";
+        if (song.Length == 0 || LocalLink.FilesFor(song).Count == 0) return null;
+        long file = LocalLink.DefaultOf(song);
+        bool isFile = version.IsLocal && LocalLibrary.TryLocalIdOf(version.Uri.Text, out long id) && id == file && file != 0;
+        bool isSpotify = !version.IsLocal && version.Uri.Text == song && file == 0 && LocalLink.HasChosenDefault(song);
+        return isFile || isSpotify ? Loc.Get(W.PlaysByDefault) : null;
+    }
+
+    /// <summary>The file mark's tooltip on a Spotify row: "Plays your file “…” on this PC" when one of its files plays by default, else "You have
+    /// this song as a file". Tracked (reads the links' version).</summary>
+    public static string FileMarkTip(Track song)
+    {
+        long file = song.IsValid && !song.IsLocal ? LocalLink.DefaultOf(song.Uri.Text) : 0;
+        return file != 0 ? W.FileMarkPlays(LocalLinkPage.FileName(file)) : Loc.Get(W.FileMark);
+    }
+
+    /// <summary>A version row's label: "Your file · MP3 320", or for a video "Your video · 1280×720" (a linked video version).</summary>
     public static string FileLabel(long localId)
-        => LocalLibrary.Index.TryGet(localId, out LocalEntry? e)
-           && LocalCollection.QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample) is { Length: > 0 } q
-            ? W.YourFileAs(q) : Loc.Get(W.YourFile);
+    {
+        if (!LocalLibrary.Index.TryGet(localId, out LocalEntry? e)) return Loc.Get(W.YourFile);
+        if (e.Tags.Kind == LocalKind.Video)
+            return e.Tags.VideoWidth > 0 && e.Tags.VideoHeight > 0
+                ? W.YourVideoAs(e.Tags.VideoWidth.ToString(System.Globalization.CultureInfo.CurrentCulture) + "×" + e.Tags.VideoHeight.ToString(System.Globalization.CultureInfo.CurrentCulture))
+                : Loc.Get(W.YourVideo);
+        return LocalCollection.QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample) is { Length: > 0 } q ? W.YourFileAs(q) : Loc.Get(W.YourFile);
+    }
 
     /// <summary>The file drawer's Spotify line: "Linked to Savin' Me · Nickelback" and, when the review still holds the group, the evidence; else
     /// "Not linked to Spotify", or a "Not on Spotify" group's line.</summary>

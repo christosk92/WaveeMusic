@@ -885,7 +885,7 @@ public readonly partial struct Album
     [CoreHost]
     sealed class SectionsHost : Component
     {
-        static readonly Func<Track, bool> s_hasOverride = static t => (t.FlagBits & (uint)TrackFlags.VideoOverride) != 0;
+        static readonly Func<Track, bool> s_hasOverride = static t => (t.FlagBits & (uint)TrackFlags.LinkedVideo) != 0;
 
         int _slot;
         readonly Func<SectionsStamp> _stamp;

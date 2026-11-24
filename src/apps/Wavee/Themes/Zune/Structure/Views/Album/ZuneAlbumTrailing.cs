@@ -163,7 +163,7 @@ internal static class ZuneAlbumTrailing
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Z.HeroIdentityGap,
                     Children =
                     [
-                        R.Type.Eyebrow(Loc.Get(customVideo ? Strings.VideoOverride.CustomLabel : Strings.Detail.WatchOfficialVideo)) with
+                        R.Type.Eyebrow(Loc.Get(customVideo ? Strings.LinkedVideo.CustomLabel : Strings.Detail.WatchOfficialVideo)) with
                         {
                             Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                         },

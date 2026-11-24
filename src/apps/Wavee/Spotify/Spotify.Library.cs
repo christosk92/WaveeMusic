@@ -1157,9 +1157,8 @@ public static partial class Spotify
             var members = new List<PlaylistMember>(tracks.Length);
             for (int i = 0; i < tracks.Length; i++)
             {
-                if (!tracks[i].IsValid || !Egress.Admits(tracks[i].Id)) continue;   // a local file never enters a Spotify playlist
-                string uri = tracks[i].Id.Text;
-                if (uri.Length > 0) members.Add(new PlaylistMember(uri, Api.NewItemId(), now));
+                // A Spotify track by its uri; a local file by its spotify:local: name (#240 D12, "Your files and Spotify" phase 2: a version as its own row).
+                if (global::Wavee.Playlist.PlaylistItemUriOf(tracks[i]) is { } uri) members.Add(new PlaylistMember(uri, Api.NewItemId(), now));
             }
             foreach (string uri in episodes) members.Add(new PlaylistMember(uri, Api.NewItemId(), now));
             if (members.Count == 0)

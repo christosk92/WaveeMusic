@@ -2,8 +2,8 @@
 //
 // Crossfade is ONE expander (its switch in the header; the duration as a slider and a number box in lock-step through one commit, re-keyed on the switch so
 // both follow it on the same frame). The episode speed is the speed menus' range on a slider. The two video combos word their heights. The attached videos
-// row is the summary of the warm roster with its "Manage" flyout (the manager, ch 24 W20-W22: a ROOT of the newest few and a search, a LEAF of the whole roster
-// with the repair verbs; presentational over `Video.OverrideUx` and `Video.Overrides`). The runtime card has three shapes over `Setup.Runtime.Status`: the
+// row is the summary of the warm linked-video list with its "Manage" flyout (the manager, ch 24 W20-W22: a ROOT of the newest few and a search, a LEAF of the whole linked-video list
+// with the repair verbs; presentational over `Video.LinkedVideoUx` and `Video.Overrides`). The runtime card has three shapes over `Setup.Runtime.Status`: the
 // ready expander with its facts, the Informational "not set up" bar, the Error bar with the diagnostics doors; never a skeleton, never blank.
 
 using System.Globalization;
@@ -145,36 +145,36 @@ internal static partial class WinUiSettings
 
     // The flyout's handle and its anchor (a wrapper around the button — Button owns its own root props). ROOT-LIFETIME: they belong to the mounted root's tree
     // and overlay host.
-    static readonly RootState<OverlayHandle?> s_voHandleState = new("WinUi.Settings.VideoOverrides.Handle");
-    static readonly RootState<NodeHandle> s_voAnchorState = new("WinUi.Settings.VideoOverrides.Anchor");
+    static readonly RootState<OverlayHandle?> s_voHandleState = new("WinUi.Settings.LinkedVideos.Handle");
+    static readonly RootState<NodeHandle> s_voAnchorState = new("WinUi.Settings.LinkedVideos.Anchor");
     static OverlayHandle? s_voHandle { get => s_voHandleState.Value; set => s_voHandleState.Value = value; }
     static NodeHandle s_voAnchor { get => s_voAnchorState.Value; set => s_voAnchorState.Value = value; }
 
     /// <summary>Leaving Playback (another category, the results page, another page) closes the manager and drops its (about-to-be-destroyed) anchor.</summary>
-    static void CloseVideoOverrideManager()
+    static void CloseLinkedVideoManager()
     {
         s_voAnchor = NodeHandle.Null;
         if (s_voHandle is { IsOpen: true } open) open.Close();
         s_voHandle = null;
     }
 
-    /// <summary>The attached-videos SUMMARY (ch 27 W11's states): no roster store → the whole row greyed with NO control; 0 rows → "No videos attached yet" +
-    /// Manage and no "Remove all"; N rows → the count + Manage + Remove all. The roster is warm and synchronous, so there is no cold-load spinner — and the
+    /// <summary>The attached-videos SUMMARY (ch 27 W11's states): no linked-video list store → the whole row greyed with NO control; 0 rows → "No videos attached yet" +
+    /// Manage and no "Remove all"; N rows → the count + Manage + Remove all. The linked videos is warm and synchronous, so there is no cold-load spinner — and the
     /// Manage wrapper node never swaps out under an open flyout.</summary>
-    static Element VideoOverridesCard(RowCtx x)
+    static Element LinkedVideosCard(RowCtx x)
     {
-        _ = Video.Overrides.Epoch.Value;   // an attach/remove anywhere (the track menu, an undo toast, the flyout) re-reads
+        _ = Video.LinkedVideos.Epoch.Value;   // an attach/remove anywhere (the track menu, an undo toast, the flyout) re-reads
         var dial = x.Row.Dial;
-        var card = BaseCard(x, null) with { Label = Loc.Get(Strings.VideoOverride.SettingsHeader), Description = Loc.Get(Strings.VideoOverride.SettingsSub) };
-        if (!Video.Overrides.Present)
+        var card = BaseCard(x, null) with { Label = Loc.Get(Strings.LinkedVideo.SettingsHeader), Description = Loc.Get(Strings.LinkedVideo.SettingsSub) };
+        if (!Video.LinkedVideos.Present)
         {
             s_voAnchor = NodeHandle.Null;
             return DialCard(card with { Enabled = false });
         }
 
-        int count = Video.Overrides.Count;
+        int count = Video.LinkedVideos.Count;
         var kids = new Element[count > 0 ? 3 : 2];
-        kids[0] = new TextEl(count > 0 ? Strings.VideoOverride.SettingsCount(count) : Loc.Get(Strings.VideoOverride.SettingsEmpty))
+        kids[0] = new TextEl(count > 0 ? Strings.LinkedVideo.SettingsCount(count) : Loc.Get(Strings.LinkedVideo.SettingsEmpty))
         {
             Size = WinUiSettingsRules.CaptionSize, Color = Tok.TextSecondary,
         };
@@ -182,25 +182,25 @@ internal static partial class WinUiSettings
         {
             Direction = 0, Shrink = 0f,
             OnRealized = static h => s_voAnchor = h,   // the realized wrapper is the anchor
-            Children = [StdButton(Loc.Get(Strings.VideoOverride.Manage), static () => ToggleVideoOverrideManager())],
+            Children = [StdButton(Loc.Get(Strings.LinkedVideo.Manage), static () => ToggleLinkedVideoManager())],
         };
         if (count > 0 && dial.Confirm is { } confirm)
             // Bulk detach is the ONE place a confirm earns its keep here: N links at once, no per-row undo (N11).
-            kids[2] = StdButton(Loc.Get(Strings.VideoOverride.ClearAll), () =>
+            kids[2] = StdButton(Loc.Get(Strings.LinkedVideo.ClearAll), () =>
                 ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey), () => Press(dial)));
         else if (count > 0)
-            kids[2] = StdButton(Loc.Get(Strings.VideoOverride.ClearAll), () => Press(dial));
+            kids[2] = StdButton(Loc.Get(Strings.LinkedVideo.ClearAll), () => Press(dial));
         return DialCard(card with { Control = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Children = kids } });
     }
 
     /// <summary>"Manage" is a TOGGLE (35d): a second press closes the flyout.</summary>
-    static void ToggleVideoOverrideManager()
+    static void ToggleLinkedVideoManager()
     {
-        if (SettingsContext.Overlay is not { } overlay || !Video.Overrides.Present) return;
+        if (SettingsContext.Overlay is not { } overlay || !Video.LinkedVideos.Present) return;
         if (s_voHandle is { IsOpen: true } open) { open.Close(); return; }
         var handle = overlay.Open(
             static () => s_voAnchor,
-            static () => VideoOverridesBody(),
+            static () => LinkedVideosBody(),
             FlyoutPlacement.BottomEdgeAlignedLeft,
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
             {
@@ -284,10 +284,10 @@ internal static partial class WinUiSettings
 
     // MOUNT POINT (stage B contract)
     /// <summary>The video-override manager flyout body (420 wide).</summary>
-    static Element VideoOverridesBody() => Embed.Comp(static () => new VideoOverrideManager());
+    static Element LinkedVideosBody() => Embed.Comp(static () => new LinkedVideoManager());
 
     /// <summary>The manager component. Every helper is nested here so the other tabs' helpers cannot collide with a name.</summary>
-    sealed class VideoOverrideManager : Component
+    sealed class LinkedVideoManager : Component
     {
         const float ManagerW = WinUiSettingsRules.ManagerWidth;
         readonly Signal<int> _view = new(0);                               // 0 root · 1 the browse-all leaf
@@ -295,16 +295,16 @@ internal static partial class WinUiSettings
         readonly Signal<string?> _focus = new(null);                       // the row a recent-row tap drilled into
         bool _forward = true;
         int _rosterEpoch = -1;
-        IReadOnlyList<Video.OverrideRow> _rows = [];
+        IReadOnlyList<Video.LinkedVideoRow> _rows = [];
 
         public override Element Render()
         {
-            int epoch = Video.Overrides.Epoch.Value;
+            int epoch = Video.LinkedVideos.Epoch.Value;
             if (epoch != _rosterEpoch)
             {
                 _rosterEpoch = epoch;
-                _rows = Video.OverrideUx.BuildRoster(Video.Overrides.All(), Video.Overrides.DecideRecord, Video.Overrides.DirectoryExists,
-                    SettingsFacts.VideoOverrideTitle, SettingsFacts.VideoOverrideArtistLine);
+                _rows = Video.LinkedVideoUx.BuildRoster(Video.LinkedVideos.All(), Video.LinkedVideos.DecideRecord, Video.LinkedVideos.DirectoryExists,
+                    SettingsFacts.LinkedVideoTitle, SettingsFacts.LinkedVideoArtistLine);
             }
             int view = _view.Value;
             string query = _query.Value;
@@ -326,13 +326,13 @@ internal static partial class WinUiSettings
 
         Element Root(string query)
         {
-            var hits = Video.OverrideUx.Search(_rows, query);
-            var section = Video.OverrideUx.RootSection(_rows.Count, query, hits.Count);
+            var hits = Video.LinkedVideoUx.Search(_rows, query);
+            var section = Video.LinkedVideoUx.RootSection(_rows.Count, query, hits.Count);
             var kids = new List<Element>(6);
             if (section != Video.ManagerSection.Empty)
                 kids.Add(Embed.Comp(() => new EditableText
                 {
-                    Placeholder = Loc.Get(Strings.VideoOverride.SearchPlaceholder),
+                    Placeholder = Loc.Get(Strings.LinkedVideo.SearchPlaceholder),
                     Width = ManagerW - 2f * Spacing.M, Height = Design.Size.ControlH, Text = _query,
                 }) with { Key = "vo-search" });
             switch (section)
@@ -343,24 +343,24 @@ internal static partial class WinUiSettings
                         Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Padding = Edges4.All(Spacing.S),
                         Children =
                         [
-                            BodyStrong(Loc.Get(Strings.VideoOverride.SettingsEmpty)) with { Color = Tok.TextPrimary },
-                            Caption(Loc.Get(Strings.VideoOverride.SettingsEmptySub)) with { Color = Tok.TextSecondary, MinWidth = 0f, Wrap = TextWrap.Wrap, MaxLines = 4 },
+                            BodyStrong(Loc.Get(Strings.LinkedVideo.SettingsEmpty)) with { Color = Tok.TextPrimary },
+                            Caption(Loc.Get(Strings.LinkedVideo.SettingsEmptySub)) with { Color = Tok.TextSecondary, MinWidth = 0f, Wrap = TextWrap.Wrap, MaxLines = 4 },
                         ],
                     });
                     break;
                 case Video.ManagerSection.NoMatches:
-                    kids.Add(Hint(Loc.Get(Strings.VideoOverride.NoMatches)));
+                    kids.Add(Hint(Loc.Get(Strings.LinkedVideo.NoMatches)));
                     break;
                 case Video.ManagerSection.Results:
-                    kids.Add(SectionLabel(Strings.VideoOverride.MatchCount(hits.Count)));
+                    kids.Add(SectionLabel(Strings.LinkedVideo.MatchCount(hits.Count)));
                     kids.Add(RowList(hits, compact: false, WinUiSettingsRules.ManagerResultsMaxHeight));
                     break;
                 default:
-                    kids.Add(SectionLabel(Loc.Get(Strings.VideoOverride.RecentlyAdded)));
-                    kids.Add(RowList(Video.OverrideUx.RecentlyAdded(_rows), compact: true, WinUiSettingsRules.ManagerRecentMaxHeight));
+                    kids.Add(SectionLabel(Loc.Get(Strings.LinkedVideo.RecentlyAdded)));
+                    kids.Add(RowList(Video.LinkedVideoUx.RecentlyAdded(_rows), compact: true, WinUiSettingsRules.ManagerRecentMaxHeight));
                     break;
             }
-            if (Video.OverrideUx.ShowsBrowseAll(_rows.Count, query))
+            if (Video.LinkedVideoUx.ShowsBrowseAll(_rows.Count, query))
             {
                 kids.Add(new BoxEl { Height = 1f, AlignSelf = FlexAlign.Stretch, Fill = Tok.StrokeSurfaceDefault });
                 kids.Add(new BoxEl
@@ -371,8 +371,8 @@ internal static partial class WinUiSettings
                     Children =
                     [
                         Icon(Icons.Folder, 16f, Tok.TextSecondary) with { Shrink = 0f },
-                        Body(Loc.Get(Strings.VideoOverride.BrowseAll)) with { Color = Tok.TextPrimary, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                        Caption(Strings.VideoOverride.SettingsCount(_rows.Count)) with { Color = Tok.TextSecondary, Shrink = 0f },
+                        Body(Loc.Get(Strings.LinkedVideo.BrowseAll)) with { Color = Tok.TextPrimary, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                        Caption(Strings.LinkedVideo.SettingsCount(_rows.Count)) with { Color = Tok.TextSecondary, Shrink = 0f },
                         Icon(Icons.ChevronRight, 14f, Tok.TextSecondary) with { Shrink = 0f },
                     ],
                 }.Interactive(Interaction.Subtle));
@@ -397,8 +397,8 @@ internal static partial class WinUiSettings
                             OnClick = () => { _forward = false; _focus.Value = null; _view.Value = 0; },
                             Children = [Icon(Icons.ChevronLeft, 14f, Tok.TextSecondary)],
                         }.Interactive(Interaction.Subtle),
-                        BodyStrong(Loc.Get(Strings.VideoOverride.SettingsHeader)) with { Color = Tok.TextPrimary, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1 },
-                        Caption(Strings.VideoOverride.SettingsCount(_rows.Count)) with { Color = Tok.TextSecondary, Shrink = 0f },
+                        BodyStrong(Loc.Get(Strings.LinkedVideo.SettingsHeader)) with { Color = Tok.TextPrimary, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1 },
+                        Caption(Strings.LinkedVideo.SettingsCount(_rows.Count)) with { Color = Tok.TextSecondary, Shrink = 0f },
                     ],
                 },
                 RowList(_rows, compact: false, WinUiSettingsRules.ManagerLeafMaxHeight),
@@ -412,9 +412,9 @@ internal static partial class WinUiSettings
             _view.Value = 1;
         }
 
-        Element RowList(IReadOnlyList<Video.OverrideRow> rows, bool compact, float maxHeight)
+        Element RowList(IReadOnlyList<Video.LinkedVideoRow> rows, bool compact, float maxHeight)
         {
-            if (rows.Count == 0) return Hint(Loc.Get(Strings.VideoOverride.SettingsEmpty));
+            if (rows.Count == 0) return Hint(Loc.Get(Strings.LinkedVideo.SettingsEmpty));
             string? focus = _focus.Value;
             var kids = new Element[rows.Count];
             for (int i = 0; i < rows.Count; i++) kids[i] = compact ? CompactRow(rows[i]) : FullRow(rows[i], focus);
@@ -422,7 +422,7 @@ internal static partial class WinUiSettings
         }
 
         /// <summary>A glance row (title · file · status); a tap drills into the leaf with this row highlighted.</summary>
-        Element CompactRow(Video.OverrideRow row) => new BoxEl
+        Element CompactRow(Video.LinkedVideoRow row) => new BoxEl
         {
             Key = "vo-recent:" + row.Uri, Direction = 0, MinHeight = WinUiSettingsRules.ManagerCompactRowHeight, AlignItems = FlexAlign.Center, Gap = Spacing.S,
             Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS), Corners = Radii.ControlAll,
@@ -445,25 +445,25 @@ internal static partial class WinUiSettings
 
         /// <summary>The full row: title + status, the FULL path (it answers "is this the file I meant?") and the full-sentence
         /// repair verbs, wrapping rather than ellipsising.</summary>
-        static Element FullRow(Video.OverrideRow row, string? focus)
+        static Element FullRow(Video.LinkedVideoRow row, string? focus)
         {
             bool highlighted = focus is { Length: > 0 } f && string.Equals(f, row.Uri, StringComparison.Ordinal);
             string sub = row.Subtitle is { Length: > 0 } artists ? artists + "  ·  " + row.Path : row.Path;
-            string uri = row.Uri, path = row.Path, sourceKey = row.Override.SourceKey;
+            string uri = row.Uri, path = row.Path, sourceKey = row.Video.SourceKey;
             var actions = new List<Element>(4)
             {
-                LinkButton(Loc.Get(Strings.VideoOverride.Replace), () => Pick(uri, sourceKey, Loc.Get(Strings.VideoOverride.PickTitle), null)),
+                LinkButton(Loc.Get(Strings.LinkedVideo.Replace), () => Pick(uri, sourceKey, Loc.Get(Strings.LinkedVideo.PickTitle), null)),
             };
             if (row.CanLocate)
-                actions.Add(LinkButton(Loc.Get(Strings.VideoOverride.Locate), () =>
+                actions.Add(LinkButton(Loc.Get(Strings.LinkedVideo.Locate), () =>
                 {
-                    string? start = Video.OverrideUx.NearestExistingAncestor(path, Video.Overrides.DirectoryExists);
-                    Pick(uri, sourceKey, Loc.Get(Strings.VideoOverride.LocateTitle), start);
+                    string? start = Video.LinkedVideoUx.NearestExistingAncestor(path, Video.LinkedVideos.DirectoryExists);
+                    Pick(uri, sourceKey, Loc.Get(Strings.LinkedVideo.LocateTitle), start);
                 }));
             if (row.CanReveal)
-                actions.Add(LinkButton(Loc.Get(Strings.VideoOverride.ShowInExplorer), () => Reveal(path)));
+                actions.Add(LinkButton(Loc.Get(Strings.LinkedVideo.ShowInExplorer), () => Reveal(path)));
             // Applies immediately with a toast-undo, never a dialog (the verb).
-            actions.Add(StdButton(Loc.Get(Strings.VideoOverride.Remove), () => SettingsVerbs.RemoveVideoOverride(uri, path, sourceKey)));
+            actions.Add(StdButton(Loc.Get(Strings.LinkedVideo.Remove), () => SettingsVerbs.RemoveLinkedVideo(uri, path, sourceKey)));
 
             return new BoxEl
             {
@@ -489,19 +489,19 @@ internal static partial class WinUiSettings
         /// <summary>Replace / Locate: pick, validate (a refusal is an ERROR toast + an always-on line), attach, success toast.
         /// Locate spells the deepest surviving folder into the dialog caption.</summary>
         static void Pick(string uri, string sourceKey, string title, string? start)
-            => SettingsVerbs.PickVideoOverride(uri, sourceKey, title, start);
+            => SettingsVerbs.PickLinkedVideo(uri, sourceKey, title, start);
 
         static void Reveal(string path) => SettingsVerbs.RevealInExplorer(path);
 
         /// <summary>Ok is deliberately QUIET; the two repairable states are caution; only a file that failed to play is critical.</summary>
-        static Element StatusChip(Video.OverrideStatus status)
+        static Element StatusChip(Video.LinkedVideoStatus status)
         {
             (string text, ColorF fg, ColorF bg) = status switch
             {
-                Video.OverrideStatus.Missing => (Loc.Get(Strings.VideoOverride.StatusMissing), Tok.SystemFillCaution, Tok.SystemFillCautionBackground),
-                Video.OverrideStatus.DriveOffline => (Loc.Get(Strings.VideoOverride.StatusDriveOffline), Tok.SystemFillCaution, Tok.SystemFillCautionBackground),
-                Video.OverrideStatus.Unplayable => (Loc.Get(Strings.VideoOverride.StatusUnplayable), Tok.SystemFillCritical, Tok.SystemFillCriticalBackground),
-                _ => (Loc.Get(Strings.VideoOverride.StatusOk), Tok.TextSecondary, Tok.FillSubtleSecondary),
+                Video.LinkedVideoStatus.Missing => (Loc.Get(Strings.LinkedVideo.StatusMissing), Tok.SystemFillCaution, Tok.SystemFillCautionBackground),
+                Video.LinkedVideoStatus.DriveOffline => (Loc.Get(Strings.LinkedVideo.StatusDriveOffline), Tok.SystemFillCaution, Tok.SystemFillCautionBackground),
+                Video.LinkedVideoStatus.Unplayable => (Loc.Get(Strings.LinkedVideo.StatusUnplayable), Tok.SystemFillCritical, Tok.SystemFillCriticalBackground),
+                _ => (Loc.Get(Strings.LinkedVideo.StatusOk), Tok.TextSecondary, Tok.FillSubtleSecondary),
             };
             return new BoxEl
             {

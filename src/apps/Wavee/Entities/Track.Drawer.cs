@@ -133,7 +133,9 @@ public readonly partial struct Track
             Span<int> order = stackalloc int[Math.Min(kinds.Length, MaxVersionRows)];
             int ordered = DrawerRules.VersionOrder(kinds, order);
             bool edgeVideo = ordered > 0 && kinds[order[0]].Kind == TrackVersionKind.Video;
-            switch (DrawerRules.VideoRowFor(t.HasVideo, edges.TrackVersions.Readiness(t.Slot), edgeVideo,
+            // The catalogue's own video (not a linked video version of mine: that one is listed below with the other files).
+            bool catalogueVideo = (t.FlagBits & (uint)TrackFlags.HasVideo) != 0;
+            switch (DrawerRules.VideoRowFor(catalogueVideo, edges.TrackVersions.Readiness(t.Slot), edgeVideo,
                                             t.VideoCounterpart.IsValid))
             {
                 case DrawerRules.VideoRow.Edge: entries.Add((DrawerRules.VideoKind, new Track(targets[order[0]]))); break;
@@ -160,6 +162,8 @@ public readonly partial struct Track
                 string rowKey = kind == DrawerRules.VideoKind ? DrawerRules.VideoRowKey : version.Uri.Text;
                 bool isNow = !reserved && !playing.IsEmpty && playing == version.Id;
                 string? label = kind == DrawerRules.FileKind && LocalLibrary.TryLocalIdOf(version.Uri.Text, out long fileId) ? LocalLinkWords.FileLabel(fileId) : null;
+                // Phase 2: the version that plays when the song is played says so ("Your file · MP3 320 · Plays by default").
+                if (!reserved && LocalLinkWords.PlaysByDefault(t, kind, version) is { } plays) label = (label ?? KindWord(kind)) + " · " + plays;
                 drawn[i] = new TrackDrawerEntry(kind, version, rowKey, isNow, reserved, i == 0 ? peaks : null, label);
             }
             return style.Body(new TrackDrawerBodyArgs
@@ -222,6 +226,15 @@ public readonly partial struct Track
             Loc.Get(linked ? Strings.LocalFiles.Link.RemoveLink : Strings.LocalFiles.Link.FindOnSpotify),
             linked ? () => LocalLink.Unlink(id) : () => LocalLinkPage.FindOnSpotify(id, DrawerOverlay));
     }
+
+    /// <summary>The words a version row's meta line leads with when the core extends it (the themes' own kind labels, from the same keys).</summary>
+    static string KindWord(byte kind) => Loc.Get(kind switch
+    {
+        DrawerRules.VideoKind => Strings.Detail.Versions.MusicVideo,
+        DrawerRules.AudioKind => Strings.Detail.Versions.AlternateAudio,
+        DrawerRules.SpotifyKind => Strings.LocalFiles.Link.OnSpotify,
+        _ => Strings.Detail.Versions.ThisTrack,
+    });
 
     /// <summary>The Spotify track an indexed file's accepted match links it to ("Your files and Spotify"), or none.</summary>
     static Track LinkedSpotify(Track t)
@@ -318,9 +331,11 @@ public readonly partial struct Track
                 return;
             }
             var ladder = p.Version.Formats;
-            if (ladder.IsEmpty) return;
+            // Phase 2: a Spotify version of a song your files are versions of also offers which version plays by default, after its formats.
+            var files = p.Version.IsLocal ? [] : LocalLink.FilesFor(p.Version.Uri.Text);
+            if (ladder.IsEmpty && files.Count == 0) return;
             Span<int> order = stackalloc int[Math.Min(ladder.Length, 32)];
-            int n = DrawerRules.LadderOrder(ladder, order);
+            int n = ladder.IsEmpty ? 0 : DrawerRules.LadderOrder(ladder, order);
             var id = p.Version.Id;
             byte? current = Playback.FormatOverrideFor(id);
             var items = new MenuFlyoutItem[n + 2];
@@ -335,6 +350,10 @@ public readonly partial struct Track
             // The way BACK out of an override — without it the choice is a one-way door.
             items[n + 1] = MenuFlyoutItem.RadioItem(Loc.Get(Strings.Detail.Versions.UseDefaultQuality), current is null,
                 () => Playback.SetFormatOverride(id, null));
+            if (n == 0) items = [];   // no formats to choose: only the versions below
+            if (files.Count > 0)
+                items = [.. items, .. (items.Length > 0 ? new[] { MenuFlyoutItem.Separator } : []), MenuFlyoutItem.Header(Loc.Get(Strings.LocalFiles.Link.PlayDefault)),
+                    .. LocalLinkPage.DefaultItems(p.Version.Uri.Text, p.Version.Title, files)];
             var handle = overlay.Open(_anchorOf, () => MenuFlyout.Create(items, _close, size: OverlayFit.MenuSize), FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
             handle.ClosedAction = () => { if (ReferenceEquals(cell.Value, handle)) cell.Value = null; };

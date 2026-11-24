@@ -21,6 +21,13 @@ internal static class CommonLocalLinkRules
     /// <summary>The sub line sits under the box's label (the CheckBox glyph and its gap).</summary>
     public const float OptInCheckInset = 28f;
 
+    // ── the rename dialog's body (phase 2), every theme ──
+    public const string RenameKey = "ll-rename";
+    /// <summary>The air between the sentence, the three boxes and the link.</summary>
+    public const float RenameGap = 12f;
+    /// <summary>HyperlinkButton's side padding (WinUI HyperlinkButtonPadding 11,5): the reset link bleeds it so its text sits on the boxes' line.</summary>
+    public const float RenameLinkPadX = 11f;
+
     // ── the review (board 29), as the discography page's head and Settings' card stack ──
     /// <summary>The trail's slot (WinUI's 28) and its gap to the title; the top of the page; the bar row and the InfoBar under the title.</summary>
     public const float TrailH = 28f, HeadGap = 8f, ReviewTop = 12f, ToolbarTop = 12f, ToolbarGap = 8f, NoteTop = 12f, CardsTop = 16f, ReviewBottom = 48f;

@@ -1388,7 +1388,7 @@ public static partial class Playback
                     // A self-contained music video carries its OWN manifest id (TrackV4 field 38) and may have no association
                     // flag; "no video" is a verdict only once both answers are in: the Video group (kinds 99/182) AND this
                     // session's TrackV4 (Artists is the bit only a live answer sets — the gid is not persisted).
-                    hasVideo = t.HasVideo || !t.VideoGidId.IsEmpty;
+                    hasVideo = t.HasVideo || !t.VideoGidId.IsEmpty || Video.LocalVideos.IsLinked(id);   // a linked local video file too
                     known = hasVideo || (t.Knows(TrackFields.Video) && t.Knows(TrackFields.Artists))
                         || t.IsLocal || id.Provider != EntityProvider.Spotify;
                     manifest = hasVideo ? t.ManifestGidId : StringId.Empty;

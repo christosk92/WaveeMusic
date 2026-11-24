@@ -12,9 +12,32 @@
 
 namespace Wavee;
 
-/// <summary>The display split of an untagged file's name (see the file header).</summary>
+/// <summary>What a file's row shows: its title, its credit line, its album, and a cover that is not the file's own (an accepted match's).</summary>
+public readonly record struct LocalFace(string Title, string Artists, string Album, string? Image);
+
+/// <summary>The display split of an untagged file's name, and the one rule of what a file shows (see the file header).</summary>
 public static class LocalNames
 {
+    /// <summary>THE rule of what a file in the music folders shows, used by its row, its drawer, the collection and the Spotify search for it
+    /// ("Your files and Spotify" phase 2): the user's rename (each field it sets) &gt; an accepted match's Spotify info (when Spotify's info
+    /// wins, <paramref name="shown"/>) &gt; the tags &gt; the file name's "Artist - Title" split. "Unknown artist" is the row's own fallback after
+    /// it (<c>Track.LocalCredit</c>). Display only: the file's matching names (<see cref="LocalEntry.MatchTitle"/>, the tags) never change.</summary>
+    public static LocalFace Face(LocalEntry e, LinkTrack? shown, LocalRename? rename)
+    {
+        LocalTagSet t = e.Tags;
+        string title = e.MatchTitle, artists = Playlist.LocalArtistLine(in t), album = t.Album;
+        string? image = null;
+        if (shown is not null) (title, artists, album, image) = (shown.Title, shown.Artists, shown.Album, shown.Cover);
+        else if (artists.Length == 0) (title, artists) = Display(in t, e.MatchTitle);
+        if (rename is not null)
+        {
+            if (rename.Title.Length > 0) title = rename.Title;
+            if (rename.Artist.Length > 0) artists = rename.Artist;
+            if (rename.Album.Length > 0) album = rename.Album;
+        }
+        return new LocalFace(title, artists, album, image);
+    }
+
     static readonly string[] s_dashes = [" - ", " – ", " — "];
 
     /// <summary>What a file shows: its tags when it has a title tag or an artist, else its file name split as "Artist - Title".

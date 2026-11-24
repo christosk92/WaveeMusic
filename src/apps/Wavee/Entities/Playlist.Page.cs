@@ -1361,12 +1361,16 @@ public readonly partial struct Playlist
         var staging = Staging.Rent();
         staging.Epoch = scope.Epoch;
         ref var row = ref staging.Tracks.RowFor(new StagedId(staging.AddText(Encoding.UTF8.GetBytes(uri))), Authority.Local,
-            (uint)(TrackFields.Identity | TrackFields.Availability));
+            (uint)(TrackFields.Identity | TrackFields.Availability) | LocalVideoFields(in tags));
         string title = string.IsNullOrWhiteSpace(tags.Title) ? LocalTitleOf(path) : tags.Title;
         row.Title = staging.AddText(Encoding.UTF8.GetBytes(title));
         if (artists.Length > 0) row.ArtistLine = staging.AddText(Encoding.UTF8.GetBytes(artists));
         row.DurationMs = Math.Max(0, tags.DurationMs);
         row.Flags = (uint)TrackFlags.Local;
+        StateLocalVideo(ref row, in tags);
+        // A video's cover is a still of it (LocalArt): the one a session already has, else it is asked for here and the row is re-stated
+        // with it when it lands (StageLocalImages).
+        if (tags.Kind == LocalKind.Video && LocalArt.FileCoverUri(path) is { } still) row.Image = staging.AddText(Encoding.UTF8.GetBytes(still));
         NoteLocalNames(uri, artists, tags.Album ?? "");
         Entities.Commit(staging);
         Staging.Return(staging);
@@ -1381,6 +1385,48 @@ public readonly partial struct Playlist
         local.Refold();
         Entities.Publish();
         return new Track(slot);
+    }
+
+    /// <summary>The track groups a local file's row states beyond its identity: a video file's row also speaks for the Video group
+    /// (<see cref="StateLocalVideo"/>). Every place that stages a local file's row asks for these with it.</summary>
+    public static uint LocalVideoFields(in LocalTagSet tags) => tags.Kind == LocalKind.Video ? (uint)TrackFields.Video : 0u;
+
+    /// <summary>A local VIDEO file's row (#240 local video): <see cref="TrackFlags.LocalVideoFile"/> (it plays on the video host with its
+    /// picture, its cover is a still of it, it wears the film glyph) and the picture's size (the surface opens at the video's own aspect
+    /// before its first frame: <c>Video.NaturalSeed</c>'s catalogue size). Nothing for an audio file. The row must be staged with
+    /// <see cref="LocalVideoFields"/>.</summary>
+    public static void StateLocalVideo(ref StagedTrack row, in LocalTagSet tags)
+    {
+        if (tags.Kind != LocalKind.Video) return;
+        row.Flags |= (uint)TrackFlags.LocalVideoFile;
+        row.VideoW = (ushort)Math.Clamp(tags.VideoWidth, 0, ushort.MaxValue);
+        row.VideoH = (ushort)Math.Clamp(tags.VideoHeight, 0, ushort.MaxValue);
+    }
+
+    /// <summary>Dropped files' covers landed (<see cref="LocalArt.FileCoverUri"/>): re-state each file's row with its cover, so every surface
+    /// that draws a track's cover (the rows, the player bar, Now playing, the OS media card) shows it through the row's own Image column.
+    /// Only the cover changes: the title, the credit and the flags are the row's own. UI thread.</summary>
+    public static void StageLocalImages(IReadOnlyList<(string Path, string Uri)> covers)
+    {
+        var scope = Entities.Current;
+        var staging = Staging.Rent();
+        staging.Epoch = scope.Epoch;
+        int n = 0;
+        foreach (var (path, cover) in covers)
+        {
+            string uri = LocalFileUri(path);
+            if (!scope.Tracks.TryGetSlot(uri.AsSpan(), out int slot)) { LocalLibrary.StageStill(path); continue; }   // an indexed file's row (~id)
+            var t = new Track(slot);
+            if (!t.IsValid || !t.ImageId.IsEmpty) continue;
+            ref var row = ref staging.Tracks.RowFor(new StagedId(staging.AddText(Encoding.UTF8.GetBytes(uri))), Authority.Local, (uint)TrackFields.Identity);
+            row.Image = staging.AddText(Encoding.UTF8.GetBytes(cover));
+            row.DurationMs = t.DurationMs;
+            row.Flags = t.FlagBits & (uint)TrackFlags.IdentityMask;
+            n++;
+        }
+        if (n > 0) Entities.Commit(staging);
+        Staging.Return(staging);
+        if (n > 0) Entities.Publish();
     }
 
     /// <summary>"Remove from Local Files" on a dropped file's row: its membership leaves the list (the file stays on disk). Returns where it was (for
@@ -1414,7 +1460,7 @@ public readonly partial struct Playlist
     static PlaylistTrackEdge s_removedEdge;
 
     /// <summary>The file picker's play (0.2.9 <c>LocalFileActions.PlayDropped</c>): audio wins over video; nothing
-    /// playable is an Error toast; no local playback wired is Informational; an .mp4 attaches to its OWN row first.</summary>
+    /// playable is an Error toast; no local playback wired is Informational; a video file plays as a video.</summary>
     static void PlayFiles(IReadOnlyList<string> paths)
     {
         var action = ClassifyDrop(paths, out string path);
@@ -1424,21 +1470,18 @@ public readonly partial struct Playlist
         // is staged and played back on it.
         _ = Task.Run(() =>
         {
-            LocalTags.TryRead(path, out _, out LocalTagSet tags, out _);
-            Spotify.Post(() => PlayImported(path, action, tags));
+            bool read = LocalTags.TryRead(path, out Spotify.Audio.Format format, out LocalTagSet tags, out string why);
+            Spotify.Post(() => PlayImported(path, format, tags, read, why));
         });
     }
 
-    /// <summary>UI thread: the dropped file's row, staged with its tags, then played (an .mp4 attached to its own row first).</summary>
-    static void PlayImported(string path, LocalDropAction action, LocalTagSet tags)
+    /// <summary>UI thread: the picked file's row (a library entry, "Added files": LocalLibrary.Added.cs), then played (a video file as a
+    /// video: its row says so).</summary>
+    static void PlayImported(string path, Spotify.Audio.Format format, LocalTagSet tags, bool read, string why)
     {
-        var track = ImportLocalFile(path, in tags);
+        var track = LocalLibrary.AddFile(path, format, in tags, read, why);
         if (!track.IsValid) { Notify.Say(Loc.Get(Strings.LocalFile.Rejected), InfoBarSeverity.Error); return; }
-        if (action == LocalDropAction.PlayVideo && Video.Overrides.Attach(track.Uri.Text, path, path, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null)
-        {
-            Notify.Say(Loc.Get(Strings.LocalFile.Rejected), InfoBarSeverity.Error);
-            return;
-        }
+        // A video file is its own row's video (TrackFlags.LocalVideoFile, from its tags): it plays on the video host with no attachment.
         ReadOnlySpan<EntityRef> rows = [new EntityRef(EntityKind.Track, track.Slot)];
         Playback.PlayRows(rows, 0, LocalFiles.Id);
     }
@@ -1448,7 +1491,7 @@ public readonly partial struct Playlist
     static void PickAndPlay()
     {
         Pickers.Pick(
-            PickerRequest.Open(Loc.Get(Strings.LocalFile.PickTitle), Video.OverrideUx.PlayableFilter(Loc.Get(Strings.LocalFile.Filter))),
+            PickerRequest.Open(Loc.Get(Strings.LocalFile.PickTitle), Video.LinkedVideoUx.PlayableFilter(Loc.Get(Strings.LocalFile.Filter))),
             done: picked => { if (picked is { Length: > 0 }) PlayFiles([picked]); },
             failed: ex => Log.Warn("localfile", "file picker failed", ex));
     }

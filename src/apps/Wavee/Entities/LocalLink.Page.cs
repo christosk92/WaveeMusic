@@ -20,7 +20,7 @@ using W = Wavee.Strings.LocalFiles.Link;
 namespace Wavee;
 
 /// <summary>The On this PC page's "Your files and Spotify" props and the opt-in dialog (see the file header).</summary>
-public static class LocalLinkPage
+public static partial class LocalLinkPage
 {
     static LocalLinkPageProps? s_props;
 
