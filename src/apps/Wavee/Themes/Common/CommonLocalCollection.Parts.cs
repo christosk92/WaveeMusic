@@ -369,12 +369,31 @@ internal static class CommonLocalCollectionParts
 
     // ── Home (board 18) ─────────────────────────────────────────────────────────────────────────────────────────────
 
-    public static Element[] HomeBody(LocalCollectionView v, LocalCollectionVerbs verbs, Action<LocalPivot> setPivot, CommonLocalCollectionLayout lay, float g)
+    /// <summary>Home's shelves, in the user's order (<paramref name="shelves"/>; "Edit home"), the hidden ones left out.</summary>
+    public static Element[] HomeBody(LocalCollectionView v, LocalCollectionVerbs verbs, Action<LocalPivot> setPivot, CommonLocalCollectionLayout lay, float g,
+                                     IReadOnlyList<LocalShelfSlot> shelves)
     {
         var kids = new List<Element>(3);
         Action seeAll = () => setPivot(LocalPivot.Albums);
-        if (v.Recent.Count > 0)
+        foreach (var slot in shelves)
         {
+            if (!slot.Shown) continue;
+            if (Shelf(slot.Shelf) is { } shelf) kids.Add(shelf);
+        }
+        if (kids.Count == 0 && v.Songs > 0)
+            kids.Add(Gut("lc-home-none", g, Meta(Loc.Get(P.HomeAllHidden)) with { Wrap = TextWrap.Wrap }, top: L.SectionTop));
+        return kids.ToArray();
+
+        Element? Shelf(LocalShelf which) => which switch
+        {
+            LocalShelf.Recent => Recent(),
+            LocalShelf.Lossless => LosslessShelf(),
+            _ => Decades(),
+        };
+
+        Element? Recent()
+        {
+            if (v.Recent.Count == 0) return null;
             var groups = new List<Element>(v.Recent.Count);
             foreach (var grp in v.Recent)
             {
@@ -390,25 +409,36 @@ internal static class CommonLocalCollectionParts
                     ],
                 });
             }
-            kids.Add(Section("recent", Loc.Get(P.RecentlyAdded), v.RecentThisMonth > 0 ? P.ThisMonth(v.RecentThisMonth) : null, seeAll,
-                Shelf("recent", groups.ToArray(), L.GroupGap, g), g, lay.ChipH));
+            return Section("recent", Loc.Get(P.RecentlyAdded), v.RecentThisMonth > 0 ? P.ThisMonth(v.RecentThisMonth) : null, seeAll,
+                ShelfRow("recent", groups.ToArray(), L.GroupGap, g), g, lay.ChipH);
         }
-        if (v.Lossless.Count > 0)
+
+        Element? LosslessShelf()
         {
+            if (v.Lossless.Count == 0) return null;
             var cards = new Element[v.Lossless.Count];
             for (int i = 0; i < cards.Length; i++) cards[i] = AlbumCard(v.Lossless[i], lay.Card, verbs, pill: true, year: false);
             string sub = v.HiResSongs > 0 ? P.LosslessSongs(v.LosslessSongs) + " · " + P.HiResSongs(v.HiResSongs) : P.LosslessSongs(v.LosslessSongs);
-            kids.Add(Section("lossless", Loc.Get(P.LosslessShelf), sub, seeAll, Shelf("lossless", cards, lay.CardGap, g), g, lay.ChipH));
+            return Section("lossless", Loc.Get(P.LosslessShelf), sub, seeAll, ShelfRow("lossless", cards, lay.CardGap, g), g, lay.ChipH);
         }
-        if (v.Decades.Count > 0)
+
+        Element? Decades()
         {
+            if (v.Decades.Count == 0) return null;
             var tiles = new Element[v.Decades.Count];
             for (int i = 0; i < tiles.Length; i++) tiles[i] = DecadeTile(v.Decades[i], verbs, lay);
             Element grid = Gut("lc-decades", g, new GridEl { MinColWidth = lay.DecadeMin, ColGap = lay.CardGap, RowGap = lay.CardGap, Children = tiles }) with { Layout = L.HeightReflow };   // another column count eases to its new height
-            kids.Add(Section("decades", Loc.Get(P.Decades), Loc.Get(P.DecadesSub), null, grid, g, lay.ChipH));
+            return Section("decades", Loc.Get(P.Decades), Loc.Get(P.DecadesSub), null, grid, g, lay.ChipH);
         }
-        return kids.ToArray();
     }
+
+    /// <summary>A shelf's name, as "Edit home" lists it.</summary>
+    public static string ShelfName(LocalShelf s) => s switch
+    {
+        LocalShelf.Recent => Loc.Get(P.RecentlyAdded),
+        LocalShelf.Lossless => Loc.Get(P.LosslessShelf),
+        _ => Loc.Get(P.Decades),
+    };
 
     static string WhenWord(LocalAddedWhen w) => w switch
     {
@@ -440,7 +470,7 @@ internal static class CommonLocalCollectionParts
         };
     }
 
-    static Element Shelf(string id, Element[] items, float gap, float g) => new ScrollEl
+    static Element ShelfRow(string id, Element[] items, float gap, float g) => new ScrollEl
     {
         Key = "lc-shelf-scroll:" + id, Horizontal = true, ContentSized = true, MinWidth = 0f, SuppressScrollBar = true, AutoEdgeFade = true,
         Content = new BoxEl

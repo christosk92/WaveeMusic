@@ -7,7 +7,8 @@
 // Covers are `file:///` uris from `LocalArt` (null: not extracted yet, or none). Quality is a short label ("FLAC", "Hi-Res 24/96",
 // "MP3 320") or "".
 //
-// Contract additions (declared, not numbered): `ViewKeys.LocalCollectionPage` and every type in this file.
+// Contract additions (declared, not numbered): `ViewKeys.LocalCollectionPage` and every type in this file; later (#240 P2 gaps):
+// `LocalShelf`, `LocalShelfSlot`, `LocalCollectionPageProps.Shelves/ShowShelf/MoveShelf`, `LocalCollectionView.HiResSongs/LastScanTicks`.
 
 using FluentGpu.Dsl;
 using FluentGpu.Signals;
@@ -25,6 +26,12 @@ public enum LocalLibraryPhase : byte { None, Scanning, Ready, Offline }
 
 /// <summary>One music folder's state, for its chip.</summary>
 public enum LocalChipState : byte { Ok, Scanning, Offline, NoAccess, Waiting }
+
+/// <summary>A shelf of Home that "Edit home" shows, hides and reorders.</summary>
+public enum LocalShelf : byte { Recent, Lossless, Decades }
+
+/// <summary>One Home shelf in the user's order, and whether it shows.</summary>
+public readonly record struct LocalShelfSlot(LocalShelf Shelf, bool Shown);
 
 /// <summary>When an album arrived, for the Recently added shelf's groups.</summary>
 public enum LocalAddedWhen : byte { Today, ThisWeek, ThisMonth, Earlier }
@@ -151,6 +158,11 @@ public sealed record LocalCollectionPageProps
     public required Func<bool> FirstScan { get; init; }
     /// <summary>The first scan's line and bar (the shared `LocalFiles.Scan` view), at a width (NaN: its own) and on one line or two.</summary>
     public required Func<float, bool, Element> ScanLine { get; init; }
+    /// <summary>Home's shelves in the user's order, each shown or hidden ("Edit home"; persisted by the core).</summary>
+    public required IReadSignal<IReadOnlyList<LocalShelfSlot>> Shelves { get; init; }
+    public required Action<LocalShelf, bool> ShowShelf { get; init; }
+    /// <summary>Move a shelf up (-1) or down (+1).</summary>
+    public required Action<LocalShelf, int> MoveShelf { get; init; }
     /// <summary>"On this PC".</summary>
     public required string Title { get; init; }
     public required string RouteKey { get; init; }

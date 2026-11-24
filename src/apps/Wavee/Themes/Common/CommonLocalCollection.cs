@@ -71,6 +71,7 @@ internal static class CommonLocalCollection
             _ = p.Pivot.Value;
             _ = p.Sort.Value;
             _ = p.Folder.Value;
+            _ = p.Shelves.Value;
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
@@ -92,7 +93,7 @@ internal static class CommonLocalCollection
             Element column = new BoxEl
             {
                 Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, L.PageBottom),
-                Children = [Hero(p, view, hp.Lay, g, hp.TitleKey), bar, .. X.HomeBody(view, p.Verbs, p.SetPivot, hp.Lay, g)],
+                Children = [Hero(p, view, hp.Lay, g, hp.TitleKey), bar, .. X.HomeBody(view, p.Verbs, p.SetPivot, hp.Lay, g, p.Shelves.Peek())],
             };
             return ScrollView(column) with { Key = L.ScrollKey + ":home", Grow = 1f, MinWidth = 0f, ScrollKey = p.RouteKey + ":home" };
         }
@@ -201,20 +202,36 @@ internal static class CommonLocalCollection
         };
         var set = p.SetPivot;
         Element bar = SelectorBar.Create(labels, new Signal<int>((int)current), onChange: i => set((LocalPivot)i), parts: s_pivotParts, style: style, itemKeys: s_pivotKeys);
+        // "Edit home" at the row's end (board 18). Its slot stays on every pivot (faded out and inert off Home), so the pivot never reflows.
+        bool home = current == LocalPivot.Home;
+        Element edit = Embed.Comp(new CommonLocalEditHome.Props(p, s_editTrigger, FlyoutPlacement.BottomEdgeAlignedRight), static () => new CommonLocalEditHome())
+            with { Key = CommonLocalEditHome.TriggerKey + ":host" };
         return X.Gut("lc-pivot-gut", g, new BoxEl
         {
             Key = L.PivotKey, Direction = 1, MinWidth = 0f,
             Children =
             [
-                new ScrollEl
+                new BoxEl
                 {
-                    Horizontal = true, ContentSized = true, MinWidth = 0f, SuppressScrollBar = true, AutoEdgeFade = true,
-                    Content = new BoxEl { Direction = 0, Shrink = 0f, Children = [bar] },
+                    Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Gap = L.ChipGap,
+                    Children =
+                    [
+                        new ScrollEl
+                        {
+                            Horizontal = true, ContentSized = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, SuppressScrollBar = true, AutoEdgeFade = true,
+                            Content = new BoxEl { Direction = 0, Shrink = 0f, Children = [bar] },
+                        },
+                        new BoxEl { Shrink = 0f, Opacity = home ? 1f : 0f, HitTestVisible = home, Children = [edit] },
+                    ],
                 },
                 new BoxEl { Height = L.PivotHairline, Fill = Tok.StrokeDividerDefault },
             ],
         });
     }
+
+    /// <summary>WinUI/Classic's "Edit home": a subtle button with the sliders glyph, the board's.</summary>
+    static readonly Func<Action, Action<NodeHandle>, Element> s_editTrigger = static (toggle, realize)
+        => Button.Create(Loc.Get(P.EditHome), toggle, ButtonAppearance.Subtle, glyph: Icons.Equalizer) with { Key = CommonLocalEditHome.TriggerKey, OnRealized = realize };
 
     /// <summary>A pivot's word (the core's words; the theme's case role applies).</summary>
     public static string PivotWord(LocalPivot p) => p switch

@@ -145,6 +145,9 @@ public static class LocalCollectionPage
                 Onboarding = s_onboarding,
                 FirstScan = LocalFilesList.FirstScanNow,
                 ScanLine = LocalFilesList.ScanSlot,
+                Shelves = LocalHome.Shelves,
+                ShowShelf = LocalHome.Show,
+                MoveShelf = LocalHome.Move,
                 Title = Loc.Get(P.Title),
                 RouteKey = _routeKey,
             };

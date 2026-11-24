@@ -23,6 +23,8 @@ internal static class ZuneLocalCollectionRules
     public const float MosaicTile = 115f;
 
     public const float HeadTop = 4f, CountGap = 4f, StatsGap = 4f, StatusGap = 6f, HeadBottom = 8f, CountWordGap = 14f, StatusDot = 8f;
+    /// <summary>"edit home" at the state line's end: its hit height (the Compact target) and its gap from the state words.</summary>
+    public const float VerbH = 40f, VerbGap = 18f;
 }
 
 /// <summary>Zune's records of the shared body (`CommonLocalCollectionLayout`): bigger covers than WinUI's at every tier (board 21: 140 at Small).</summary>

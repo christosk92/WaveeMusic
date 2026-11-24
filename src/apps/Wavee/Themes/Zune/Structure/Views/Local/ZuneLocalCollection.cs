@@ -64,6 +64,7 @@ internal static class ZuneLocalCollection
             _ = p.Pivot.Value;
             _ = p.Sort.Value;
             _ = p.Folder.Value;
+            _ = p.Shelves.Value;
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
@@ -85,7 +86,7 @@ internal static class ZuneLocalCollection
             LocalPivot.Home => ScrollView(new BoxEl
             {
                 Key = Z.ColumnKey, Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, H.PageBottom),
-                Children = [Head(p, view, lay, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, lay, g)],
+                Children = [Head(p, view, lay, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, lay, g, p.Shelves.Peek())],
             }) with { Key = "zlc-scroll:home", Grow = 1f, MinWidth = 0f, ScrollKey = p.RouteKey + ":home" },
             LocalPivot.Albums => X.AlbumWall(view, p.Sort.Peek(), p.SetSort, p.Verbs, lay, g, p.RouteKey),
             LocalPivot.Artists => X.ArtistGrid(view, p.Verbs, lay, g, p.RouteKey),
@@ -99,6 +100,14 @@ internal static class ZuneLocalCollection
             Children = [body],
         };
     }
+
+    /// <summary>Zune's "edit home": a lowercase text verb in the accent, its hit rect the Compact target's height.</summary>
+    static readonly Func<Action, Action<NodeHandle>, Element> s_editTrigger = static (toggle, realize) => new BoxEl
+    {
+        Key = CommonLocalEditHome.TriggerKey, Direction = 0, AlignItems = FlexAlign.Center, Height = Z.VerbH, Shrink = 0f, Margin = new Edges4(Z.VerbGap, 0f, 0f, 0f),
+        Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = toggle, OnRealized = realize,
+        Children = [R.Type.DenseMeta(Loc.Get(P.EditHome)) with { Case = R.Case.For(LabelKind.Label), Color = Tok.AccentTextPrimary }],
+    };
 
     /// <summary>The head (board 21): the mosaic bleeding behind "collection", the count in display numbers, the stats and the library's state.</summary>
     static Element Head(LocalCollectionPageProps p, LocalCollectionView view, CommonLocalCollectionLayout lay, float g)
@@ -139,7 +148,10 @@ internal static class ZuneLocalCollection
                         view.Phase == LocalLibraryPhase.Scanning
                             ? ProgressRing.Create(isActive: true, size: Z.StatusDot * 2f)
                             : new BoxEl { Width = Z.StatusDot, Height = Z.StatusDot, Corners = CornerRadius4.All(Z.StatusDot / 2f), Fill = attention ? Tok.SystemFillAttention : Tok.AccentDefault },
-                        R.Type.DenseMeta(X.ActivityText(view)) with { Case = R.Case.For(LabelKind.Label), Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
+                        R.Type.DenseMeta("") with { Text = X.ActivityProp(view), Case = R.Case.For(LabelKind.Label), Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
+                        // "edit home": Zune's text verb at the state line's end (the shelves are under this head).
+                        Embed.Comp(new CommonLocalEditHome.Props(p, s_editTrigger, FlyoutPlacement.BottomEdgeAlignedLeft), static () => new CommonLocalEditHome())
+                            with { Key = CommonLocalEditHome.TriggerKey + ":host" },
                     ],
                 },
             ],

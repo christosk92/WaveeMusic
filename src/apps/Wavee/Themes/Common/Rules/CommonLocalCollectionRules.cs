@@ -83,6 +83,9 @@ internal static class CommonLocalCollectionRules
     public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(GutterMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
+    /// <summary>"Edit home": the popup card's width and padding, a shelf row's height (a 40 target), the gap between rows and words.</summary>
+    public const float EditW = 320f, EditPad = 16f, EditRowH = 40f, EditGap = 4f;
+
     /// <summary>The empty and loading states' widest column.</summary>
     public const float EmptyMaxW = 560f;
 
