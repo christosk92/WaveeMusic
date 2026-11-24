@@ -605,7 +605,7 @@ is on and what will play: `deck` (the track id), `cursor`, `phase`, `repeat` (of
 deck, `U` user queue, `N` next up; provider `c` context, `q` queued, `a` autoplay; a trailing `!` marks a row the deck may not land on)
 and `upNext` (the queue panel's rows in display order, `<section>:<id>`, section `q`, `n` or `a`). `do=` is `status`, `next`, `prev`,
 `end` (the track ran out with nothing prepared, the natural-end path), `seek ms=`, `shuffle value=on|off`, `repeat value=off|all|one`,
-`add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue), `dead uri=` (the catalog rules that track
+`pause`, `resume`, `add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue), `dead uri=` (the catalog rules that track
 unavailable, so the walk steps past it) or `duration ms=` (the decoder reports the playing row's real length: the same row's duration
 changes, as a music video's length replacing the song's does; the seek rail's rescale, `status log="seek.rescale"`). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
 end of a context behaves as it does online; `setting id=autoplay value=false` turns it off. A sequence of `transport do=end` (or
@@ -616,6 +616,28 @@ play uri=spotify:track:tr1 next=5 context=spotify:playlist:pl1 at=3   # tr1..tr6
 transport do=clear
 transport do=repeat value=all
 transport do=end                                                       # deck=tr5, then tr6, then tr1 (the wrap)
+```
+
+### `timecode {do?, samples?, every?}`
+
+Reads the playback timeline tap (#154): what `Playback.Timeline.TryRead` composes from the engine's anchor
+(`PcmAudioSession.TryReadTimeline`) and the pump's identity. `tap` is `{live, uri, positionMs, durationMs, rate, playing, flags,
+epoch, changes}` (position extrapolated to the reply's instant; `epoch` is `<identity generation>.<engine epoch>`; `flags` adds
+`Transition` while a crossfade or a #48 join is audible, with `incoming`, `master` and the window's edges from now); `engine` is the
+raw anchor (`contentFrame`, `sourceFrame`, `mixFrame`, `mixRate`, `voice`, `advancing`, `anchorAgeMs`), the publisher's counters
+(`publishes`, `epochs`, `driftEpochs`: epochs started only because the playhead left the extrapolated line by more than 2 ms,
+`lastDriftMs`), `outputDelayMs` and `sampleClock`. `samples=N every=ms` adds `series`, N readings `every` ms apart: on a mounted
+inspector the gap is run as frames held to real time (the fake deck's endpoint is paced by the 16 ms frame clock, and `frames`
+runs frames back to back, faster than the session's feed, so the paced endpoint starves and loses that time). Steady play reads
+`positionMs` rising by exactly the gap with one epoch; a seek, a pause (after the endpoint's queue, 2 s headless, has played out),
+a resume and a track change each start one. Fake loads never prepare a join, so `Transition` is not reachable headless.
+
+```text
+play spotify:track:tr3 next=2
+timecode samples=6 every=500          # positionMs +496 per reading, epoch unchanged
+transport do=seek ms=60000
+transport do=pause
+timecode samples=8 every=500          # runs on ~2 s (the headless queue), then playing:false and held
 ```
 
 ### `state {kind, page?, ai?, error?, lang?}` and `dialog {kind}`

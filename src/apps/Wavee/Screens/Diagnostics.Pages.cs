@@ -96,6 +96,7 @@ public static partial class Diagnostics
         body.Add(UpdatesSection(update, NotesReportSource?.Invoke()));
         body.Add(StageCard());
         body.Add(new DiagHealth(s_readHealth, HealthPollMs));
+        body.Add(new DiagHealth(s_readTimecode, HealthPollMs));
         body.Add(WireCheckNode());
         body.Add(new DiagButtons(
         [
@@ -303,6 +304,56 @@ public static partial class Diagnostics
             Fact(Loc.Get(Strings.Diagnostics.Playback.Decode), m.DecodeXRealtime > 0f ? Strings.Diagnostics.Playback.XRealtime(m.DecodeXRealtime.ToString("0.0", inv)) : null),
             Fact(Loc.Get(Strings.Diagnostics.Playback.LastSeek), m.LastSeekLatencyMs >= 0 ? Strings.Diagnostics.Playback.MsKind(m.LastSeekLatencyMs, SeekKindText(m.LastSeekKind)) : null),
         ]);
+    }
+
+    // ── the timecode card (#154): the playback timeline tap, read the way the LTC generator and the module fan-out read it ──
+    //
+    // One `Playback.Timeline.TryRead` per second: the master track, its audible position extrapolated to now, the flags, the epoch
+    // (identity generation . engine epoch), and the raw engine anchor it was composed from, with the publisher's counters (a drift
+    // epoch is a discontinuity no explicit trigger named). Later phases add the LTC output's rows here.
+
+    static readonly Func<DiagCard> s_readTimecode = ReadTimecode;
+
+    static DiagCard ReadTimecode()
+    {
+        var inv = CultureInfo.InvariantCulture;
+        bool live = Playback.Timeline.TryRead(out Playback.Timeline.Snapshot t, out FluentGpu.Media.AudioTimelineAnchor a);
+        PcmAudioSession? session = Playback.Timeline.Session;
+        string? state = null, position = null, anchor = null, delay = null, counters = null;
+        if (live)
+        {
+            state = Loc.Get(t.Playing ? Strings.Diagnostics.Playback.Timecode.Playing : Strings.Diagnostics.Playback.Timecode.Held);
+            if ((t.State & Playback.Timeline.Flags.Transition) != 0) state += " · " + Strings.Diagnostics.Playback.Timecode.Transition(t.Incoming.Text);
+            long micros = t.PositionMicrosAt(Playback.Timeline.NowQpc100ns());
+            position = Clock(micros) + (t.DurationMs > 0 ? " / " + Clock(t.DurationMs * 1000) : "");
+            anchor = "content " + a.ContentFrame.ToString("0", inv) + " · source " + a.SourceFrame.ToString("0", inv)
+                     + " · mix " + a.MixFrame.ToString("0", inv) + " @ " + a.MixRate.ToString(inv) + " Hz · voice " + a.VoiceId.ToString(inv);
+        }
+        if (session is not null)
+        {
+            var st = session.TimelineStats;
+            int rate = Math.Max(1, session.Format.SampleRate);
+            delay = Strings.Diagnostics.Playback.Ms(session.OutputDelayFrames * 1000 / rate);
+            counters = Strings.Diagnostics.Playback.Timecode.PublisherValue(st.Publishes, st.Epochs, st.DriftEpochs);
+        }
+        return new DiagCard(Loc.Get(Strings.Diagnostics.Playback.Timecode.Title),
+        [
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.Track), live ? t.Track.Text : Loc.Get(Strings.Diagnostics.Playback.Timecode.Nothing)),
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.Position), position),
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.State), state),
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.Rate), live ? t.Rate.ToString("0.###", inv) : null),
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.Epoch), live ? (t.Epoch >> 32).ToString(inv) + "." + (t.Epoch & 0xFFFF_FFFFL).ToString(inv) : null),
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.Anchor), anchor),
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.OutputDelay), delay),
+            Fact(Loc.Get(Strings.Diagnostics.Playback.Timecode.Publisher), counters),
+        ]);
+
+        static string Clock(long micros)
+        {
+            long ms = Math.Max(0, micros / 1000);
+            return (ms / 60_000).ToString(CultureInfo.InvariantCulture) + ":" + (ms / 1000 % 60).ToString("00", CultureInfo.InvariantCulture)
+                   + "." + (ms % 1000).ToString("000", CultureInfo.InvariantCulture);
+        }
     }
 
     /// <summary>The ledger's verdict key → its sentence. An empty key is "no verdict yet" (a dash); a key this card does

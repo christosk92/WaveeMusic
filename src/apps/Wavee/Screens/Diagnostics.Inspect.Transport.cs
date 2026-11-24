@@ -31,6 +31,8 @@ public static partial class Diagnostics
                 case "next": Playback.Next("inspect"); break;
                 case "prev": Playback.Previous("inspect"); break;
                 case "end": Playback.EndNow(); break;
+                case "pause": Playback.Pause("inspect"); break;
+                case "resume": Playback.Resume("inspect"); break;
                 case "seek": Playback.SeekTo(Math.Max(0, a.Int("ms", 0))); break;
                 case "shuffle": Playback.SetShuffle(value is "on" or "true" or "1"); break;
                 case "repeat":
@@ -99,7 +101,7 @@ public static partial class Diagnostics
                         });
                     }
                 default:
-                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate, not '" + verb + "'");
+                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|pause|resume|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate, not '" + verb + "'");
             }
             // traced (`trace=N`): the trace's first frames are the change's own (the frame the queue and the deck land in), so nothing runs before it
             bool traced = a.Has("trace");
