@@ -375,12 +375,22 @@ internal static class CommonLocalCollectionParts
     {
         var kids = new List<Element>(3);
         Action seeAll = () => setPivot(LocalPivot.Albums);
+        int shown = 0;
         foreach (var slot in shelves)
         {
-            if (!slot.Shown) continue;
-            if (Shelf(slot.Shelf) is { } shelf) kids.Add(shelf);
+            // Each shelf in two boxes. The outer one stays in the user's order whether the shelf shows or not, and glides to a new place when
+            // "Edit home" moves it (L.ShelfMove); the inner one mounts and unmounts with the shelf, revealing or folding its height, the shelves
+            // below riding it (L.ShelfReveal). Kept apart, the two motions never fight over one box.
+            string id = slot.Shelf.ToString().ToLowerInvariant();
+            Element? shelf = slot.Shown ? Shelf(slot.Shelf) : null;
+            if (shelf is not null) shown++;
+            kids.Add(new BoxEl
+            {
+                Key = "lc-home:" + id, Direction = 1, MinWidth = 0f, Layout = L.ShelfMove,
+                Children = shelf is null ? [] : [new BoxEl { Key = "lc-home-reveal:" + id, Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = L.ShelfReveal, Children = [shelf] }],
+            });
         }
-        if (kids.Count == 0 && v.Songs > 0)
+        if (shown == 0 && v.Songs > 0)
             kids.Add(Gut("lc-home-none", g, Meta(Loc.Get(P.HomeAllHidden)) with { Wrap = TextWrap.Wrap }, top: L.SectionTop));
         return kids.ToArray();
 

@@ -83,6 +83,11 @@ internal static class CommonLocalCollectionRules
     public static readonly LayoutTransition HeightReflow = new(TransitionChannels.Size, TransitionDynamics.Tween(GutterMs, Easing.SmoothOut),
         Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
 
+    /// <summary>A Home shelf under "Edit home": moved, its outer box glides to the new place over the gutter's time; shown or hidden, its inner box
+    /// reveals or folds its height (the drawer recipe) and the shelves below ride it.</summary>
+    public static readonly LayoutTransition ShelfReveal = Design.Reveal.Drawer;
+    public static readonly LayoutTransition ShelfMove = new(TransitionChannels.Position, TransitionDynamics.Tween(GutterMs, Easing.SmoothOut));
+
     /// <summary>"Edit home": the popup card's width and padding, a shelf row's height (a 40 target), the gap between rows and words.</summary>
     public const float EditW = 320f, EditPad = 16f, EditRowH = 40f, EditGap = 4f;
 
