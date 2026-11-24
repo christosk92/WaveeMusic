@@ -77,7 +77,7 @@ public sealed class LocalIndex
     public static readonly TimeSpan MissingGrace = TimeSpan.FromDays(60);
     const long CompactLogBytes = 2L * 1024 * 1024;
     const uint BinMagic = 0x494C_5657 /*"WVLI"*/, LogMagic = 0x4C4C_5657 /*"WVLL"*/;
-    const int FormatVersion = 1;
+    const int FormatVersion = 2;   // 2: the stream format (rate, bits, channels) and the first-seen time; an older file is rebuilt by a scan
     const byte RecBatch = 1, RecRoot = 2, RecRootRemoved = 3, RecPurge = 4;
     const byte FlagPlayable = 1, FlagEstimated = 2, FlagHasAudio = 4;
 
@@ -97,15 +97,15 @@ public sealed class LocalIndex
     /// <summary>One file, compact. <see cref="Name"/> null = a free slot.</summary>
     struct Row
     {
-        public long LocalId, Size, Write, Change, LastSeen, CoverOffset;
+        public long LocalId, Size, Write, Change, LastSeen, FirstSeen, CoverOffset;
         public ulong FileIdLo, FileIdHi;
         public string? Name;
         public string Title;
         public Shared Shared;        // album, album artist, artists, reason: one object per distinct set (an album's tracks share it)
-        public int Folder, DurationMs, CoverLength;
+        public int Folder, DurationMs, CoverLength, SampleRate;
         public uint Volume, Attributes;
         public ushort Track, Disc, Year, Bitrate, VideoWidth, VideoHeight;
-        public byte Format, State, Kind, Mime, Encoding, PictureType, Flags;
+        public byte Format, State, Kind, Mime, Encoding, PictureType, Flags, Bits, Channels;
     }
 
     /// <summary>What the tracks of one album (and one reason) have in common, interned: one reference per row instead of four.</summary>
@@ -672,7 +672,8 @@ public sealed class LocalIndex
         string rule = string.IsNullOrWhiteSpace(t.Title) ? Path.GetFileNameWithoutExtension(name) : t.Title;   // LocalTags.TitleOrFileName's rule
         s.Rows[slot] = new Row
         {
-            LocalId = e.LocalId, Size = e.Size, Write = e.WriteTicks, Change = e.ChangeTicks, LastSeen = e.LastSeenTicks, CoverOffset = t.Cover.Offset,
+            LocalId = e.LocalId, Size = e.Size, Write = e.WriteTicks, Change = e.ChangeTicks, LastSeen = e.LastSeenTicks, FirstSeen = e.FirstSeenTicks,
+            CoverOffset = t.Cover.Offset, SampleRate = t.SampleRate, Bits = (byte)Math.Clamp(t.BitsPerSample, 0, 255), Channels = (byte)Math.Clamp(t.Channels, 0, 255),
             FileIdLo = (ulong)e.FileId, FileIdHi = (ulong)(e.FileId >> 64),
             Name = name, Title = t.Title, Shared = InternShared(s, t, e.Why),
             Folder = folder, DurationMs = t.DurationMs, CoverLength = t.Cover.Length, Volume = e.VolumeSerial, Attributes = e.Attributes,
@@ -734,11 +735,11 @@ public sealed class LocalIndex
         var tags = new LocalTagSet((LocalKind)row.Kind, row.Title, shared.Artists, shared.Album, shared.AlbumArtist, row.Track, row.Disc, row.Year,
             row.DurationMs, (row.Flags & FlagEstimated) != 0, row.Bitrate,
             new LocalCover(row.CoverOffset, row.CoverLength, (LocalCoverMime)row.Mime, (LocalCoverEncoding)row.Encoding, row.PictureType),
-            row.VideoWidth, row.VideoHeight, (row.Flags & FlagHasAudio) != 0);
+            row.VideoWidth, row.VideoHeight, (row.Flags & FlagHasAudio) != 0, row.SampleRate, row.Bits, row.Channels);
         string matchTitle = MatchTitleOf(s, slot);
         return new LocalEntry(row.LocalId, folder.Root, folder.Rel.Length == 0 ? name : folder.Rel + "\\" + name, row.Volume,
             new UInt128(row.FileIdHi, row.FileIdLo), row.Size, row.Write, row.Change, row.Attributes, (Spotify.Audio.Format)row.Format, tags,
-            matchTitle, (LocalState)row.State, row.LastSeen, (row.Flags & FlagPlayable) != 0, shared.Why);
+            matchTitle, (LocalState)row.State, row.LastSeen, (row.Flags & FlagPlayable) != 0, shared.Why, row.FirstSeen);
     }
 
     /// <summary>A row's match title: the side table's when it is not the rule, else the title tag, else the file name without
@@ -1167,7 +1168,8 @@ public sealed class LocalIndex
         w.Write(t.TrackNumber); w.Write(t.DiscNumber); w.Write(t.Year); w.Write(t.DurationMs); w.Write(t.DurationEstimated); w.Write(t.BitrateKbps);
         w.Write(t.Cover.Offset); w.Write(t.Cover.Length); w.Write((byte)t.Cover.Mime); w.Write((byte)t.Cover.Encoding); w.Write(t.Cover.PictureType);
         w.Write(t.VideoWidth); w.Write(t.VideoHeight); w.Write(t.HasAudio);
-        Str(w, e.MatchTitle, index); w.Write((byte)e.State); w.Write(e.LastSeenTicks); w.Write(e.Playable); Str(w, e.Why, index);
+        w.Write(t.SampleRate); w.Write((byte)Math.Clamp(t.BitsPerSample, 0, 255)); w.Write((byte)Math.Clamp(t.Channels, 0, 255));
+        Str(w, e.MatchTitle, index); w.Write((byte)e.State); w.Write(e.LastSeenTicks); w.Write(e.FirstSeenTicks); w.Write(e.Playable); Str(w, e.Why, index);
     }
 
     static LocalEntry ReadEntry(BinaryReader r, Func<string> str)
@@ -1191,12 +1193,15 @@ public sealed class LocalIndex
         var cover = new LocalCover(r.ReadInt64(), r.ReadInt32(), (LocalCoverMime)r.ReadByte(), (LocalCoverEncoding)r.ReadByte(), r.ReadByte());
         int vw = r.ReadInt32(), vh = r.ReadInt32();
         bool hasAudio = r.ReadBoolean();
-        var tags = new LocalTagSet(kind, title, artists, album, albumArtist, track, disc, year, duration, estimated, bitrate, cover, vw, vh, hasAudio);
+        int sampleRate = r.ReadInt32(), bits = r.ReadByte(), channels = r.ReadByte();
+        var tags = new LocalTagSet(kind, title, artists, album, albumArtist, track, disc, year, duration, estimated, bitrate, cover, vw, vh, hasAudio,
+            sampleRate, bits, channels);
         string matchTitle = str();
         var state = (LocalState)r.ReadByte();
-        long lastSeen = r.ReadInt64();
+        long lastSeen = r.ReadInt64(), firstSeen = r.ReadInt64();
         bool playable = r.ReadBoolean();
         string why = str();
-        return new LocalEntry(localId, rootId, path, volume, new UInt128(hi, lo), size, write, change, attributes, format, tags, matchTitle, state, lastSeen, playable, why);
+        return new LocalEntry(localId, rootId, path, volume, new UInt128(hi, lo), size, write, change, attributes, format, tags, matchTitle, state, lastSeen, playable, why,
+            firstSeen);
     }
 }

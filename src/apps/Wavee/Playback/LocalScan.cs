@@ -334,7 +334,7 @@ public sealed partial class LocalScan
     }
 
     static LocalTagSet EmptyTags(ReadOnlySpan<char> name)
-        => new(IsVideoName(name) ? LocalKind.Video : LocalKind.Audio, "", [], "", "", 0, 0, 0, 0, false, 0, LocalCover.None, 0, 0, true);
+        => new(IsVideoName(name) ? LocalKind.Video : LocalKind.Audio, "", [], "", "", 0, 0, 0, 0, false, 0, LocalCover.None, 0, 0, true, 0, 0, 0);
 
     static string Rel(string folder, string name) => folder.Length == 0 ? name : folder + "\\" + name;
 
@@ -381,6 +381,10 @@ public sealed partial class LocalScan
         readonly Dictionary<string, List<string>> _children = new(StringComparer.OrdinalIgnoreCase);
         readonly Stopwatch _clock = Stopwatch.StartNew();
         readonly long _now = DateTime.UtcNow.Ticks;
+
+        /// <summary>A re-read or re-pointed file keeps the time its LocalId was first indexed ("Recently added" orders by it); a new
+        /// file is first seen now.</summary>
+        long FirstSeen(LocalEntry? previous) => previous is { FirstSeenTicks: > 0 } p ? p.FirstSeenTicks : _now;
         readonly DirHandle _root = new(rootHandle, owns: false);
         int _outstanding;
         volatile bool _done;
@@ -653,7 +657,7 @@ public sealed partial class LocalScan
             LocalTagSet tags = previous?.Tags ?? EmptyTags(f.Name);
             return new LocalEntry(id, root.RootId, rel, volume.Serial, f.FileId, f.Size, f.WriteTicks, f.ChangeTicks, f.Attributes,
                 previous?.Format ?? Spotify.Audio.Format.Unknown, tags, previous?.MatchTitle ?? LocalTags.TitleOrFileName(tags, f.Name),
-                LocalState.CloudOnly, _now, previous?.Playable ?? true, previous?.Why ?? "");
+                LocalState.CloudOnly, _now, previous?.Playable ?? true, previous?.Why ?? "", FirstSeen(previous));
         }
 
         /// <summary>Step 4: is the new path <paramref name="rel"/> an indexed file that moved? The same file id on the volume
@@ -753,7 +757,7 @@ public sealed partial class LocalScan
             long id = fresh ? _index.NewId() : job.LocalId;
             bool playable = ok && format != Spotify.Audio.Format.Unknown;
             var entry = new LocalEntry(id, root.RootId, job.RelPath, volume.Serial, f.FileId, f.Size, f.WriteTicks, f.ChangeTicks, f.Attributes,
-                format, tags, LocalTags.TitleOrFileName(tags, f.Name), LocalState.Present, _now, playable, playable ? "" : why);
+                format, tags, LocalTags.TitleOrFileName(tags, f.Name), LocalState.Present, _now, playable, playable ? "" : why, FirstSeen(job.Previous));
             lock (job.Folder.Read) job.Folder.Read.Add(entry);
             if (fresh && ok) _fresh.Add(entry);
         }

@@ -72,11 +72,41 @@ internal static class CommonLocalCollectionParts
 
     static TextEl Meta(string s) => R.Type.TrackMeta(s) with { Color = Tok.TextSecondary };
 
-    /// <summary>"6,016 songs · 512 albums · 287 artists · 312 hours · 57% lossless".</summary>
-    public static TextEl StatsLine(LocalCollectionView v) => Ell(R.Type.TrackMeta(StatsText(v, withSongs: true)) with { Color = Tok.TextSecondary });
+    /// <summary>"6,016 songs · 512 albums · 287 artists · 312 hours · 57% lossless", the numbers bold (board 18).</summary>
+    public static SpanTextEl StatsLine(LocalCollectionView v) => StatsSpans(v, withSongs: true, R.Type.TrackMeta(""), Tok.TextSecondary);
 
-    /// <summary>The hero's stats line, at body size (board 18: the collection's own numbers right under the title).</summary>
-    public static TextEl HeroStats(LocalCollectionView v) => Ell(R.Type.TrackTitle(StatsText(v, withSongs: true)) with { Color = Tok.TextPrimary, Wrap = TextWrap.NoWrap });
+    /// <summary>The hero's stats line, at body size (board 18: the collection's own numbers right under the title, in bold).</summary>
+    public static SpanTextEl HeroStats(LocalCollectionView v) => StatsSpans(v, withSongs: true, R.Type.TrackTitle(""), Tok.TextPrimary);
+
+    /// <summary>The stats as one span paragraph on one line in <paramref name="role"/>'s face, each count in the semibold weight: the
+    /// localised phrase is kept whole and its number (as the culture writes it) is found in it.</summary>
+    public static SpanTextEl StatsSpans(LocalCollectionView v, bool withSongs, TextEl role, ColorF color)
+    {
+        var spans = new List<TextSpan>(16);
+        if (withSongs) Part(spans, P.Songs(v.Songs), v.Songs);
+        Part(spans, P.Albums(v.AlbumCount), v.AlbumCount);
+        Part(spans, P.Artists(v.ArtistCount), v.ArtistCount);
+        long minutes = v.DurationMs / 60_000;
+        Part(spans, Length(v.DurationMs), (int)(minutes >= 60 ? minutes / 60 : minutes));
+        if (v.Songs > 0) Part(spans, P.Lossless(v.LosslessPct.ToString(CultureInfo.CurrentCulture)), v.LosslessPct);
+        return new SpanTextEl(spans.ToArray())
+        {
+            Size = role.Size, Weight = role.Weight, FontFamily = role.FontFamily, LineHeight = role.LineHeight, Color = color,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+        };
+
+        static void Part(List<TextSpan> spans, string text, int number)
+        {
+            if (spans.Count > 0) spans.Add(new TextSpan(" · "));
+            string n = number.ToString("N0", CultureInfo.CurrentCulture);
+            int at = text.IndexOf(n, StringComparison.Ordinal);
+            if (at < 0) { n = number.ToString(CultureInfo.InvariantCulture); at = text.IndexOf(n, StringComparison.Ordinal); }
+            if (at < 0) { spans.Add(new TextSpan(text)); return; }
+            if (at > 0) spans.Add(new TextSpan(text[..at]));
+            spans.Add(new TextSpan(n, Weight: L.StatsNumberWeight));
+            if (at + n.Length < text.Length) spans.Add(new TextSpan(text[(at + n.Length)..]));
+        }
+    }
 
     public static string StatsText(LocalCollectionView v, bool withSongs)
     {
@@ -101,13 +131,17 @@ internal static class CommonLocalCollectionParts
         return s >= 3600 ? $"{s / 3600}:{s / 60 % 60:00}:{s % 60:00}" : $"{s / 60}:{s % 60:00}";
     }
 
-    /// <summary>The library's activity in one line: reading (with the count) or up to date (S1 and the page agree).</summary>
+    /// <summary>The library's activity in one line: reading (with the count), or up to date with when the last scan ended ("Up to date ·
+    /// scanned 2 min ago"; S1 and the page agree). Bind it with <see cref="ActivityProp"/> so the "ago" stays true.</summary>
     public static string ActivityText(LocalCollectionView v) => v.Phase switch
     {
         LocalLibraryPhase.Scanning => P.Reading(v.Songs),
         LocalLibraryPhase.Offline => Loc.Get(P.AllOffline),
-        _ => Loc.Get(P.UpToDate),
+        _ => v.LastScanTicks > 0 ? P.UpToDateScanned(LibraryActivity.Ago(v.LastScanTicks)) : Loc.Get(P.UpToDate),
     };
+
+    /// <summary><see cref="ActivityText"/> as a bound text that re-reads every 30 s (<see cref="LibraryActivity.Minute"/>): only this text node relays out.</summary>
+    public static Prop<string> ActivityProp(LocalCollectionView v) => Prop.Of(() => { _ = LibraryActivity.Minute.Value; return ActivityText(v); });
 
     // ── the hero's backdrop: the cover mosaic, or a calm gradient ──────────────────────────────────────────────────
 
@@ -199,7 +233,7 @@ internal static class CommonLocalCollectionParts
                     v.Phase == LocalLibraryPhase.Scanning
                         ? ProgressRing.Create(isActive: true, size: L.ChipGlyph)
                         : Icon(v.Phase == LocalLibraryPhase.Offline ? Icons.Warning : Icons.Accept, L.ChipGlyph, v.Phase == LocalLibraryPhase.Offline ? Tok.SystemFillAttention : Tok.AccentTextPrimary),
-                    Ell(R.Type.DenseMeta(ActivityText(v)) with { Color = Tok.TextSecondary }),
+                    Ell(R.Type.DenseMeta("") with { Text = ActivityProp(v), Color = Tok.TextSecondary }),
                 ],
         });
         return new BoxEl { Direction = 0, Wrap = true, Gap = L.ChipGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
@@ -363,7 +397,8 @@ internal static class CommonLocalCollectionParts
         {
             var cards = new Element[v.Lossless.Count];
             for (int i = 0; i < cards.Length; i++) cards[i] = AlbumCard(v.Lossless[i], lay.Card, verbs, pill: true, year: false);
-            kids.Add(Section("lossless", Loc.Get(P.LosslessShelf), P.LosslessSongs(v.LosslessSongs), seeAll, Shelf("lossless", cards, lay.CardGap, g), g, lay.ChipH));
+            string sub = v.HiResSongs > 0 ? P.LosslessSongs(v.LosslessSongs) + " · " + P.HiResSongs(v.HiResSongs) : P.LosslessSongs(v.LosslessSongs);
+            kids.Add(Section("lossless", Loc.Get(P.LosslessShelf), sub, seeAll, Shelf("lossless", cards, lay.CardGap, g), g, lay.ChipH));
         }
         if (v.Decades.Count > 0)
         {

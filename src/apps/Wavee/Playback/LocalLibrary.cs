@@ -341,31 +341,31 @@ public static partial class LocalLibrary
             for (int i = 0; i < count; i++)
             {
                 var tags = new LocalTagSet(LocalKind.Audio, titles[i], ["Nils Frahm"], "Spaces", "Nils Frahm", i + 1, 1, 2013, 180_000 + i * 31_000, false, 920,
-                    i == 0 ? new LocalCover(4096, 210_000, LocalCoverMime.Jpeg, LocalCoverEncoding.Raw, 3) : LocalCover.None, 0, 0, true);
+                    i == 0 ? new LocalCover(4096, 210_000, LocalCoverMime.Jpeg, LocalCoverEncoding.Raw, 3) : LocalCover.None, 0, 0, true, 96_000, 24, 2);
                 album.Upserts.Add(new LocalEntry(i + 1, 1, $@"Nils Frahm\Spaces\{i + 1:00} {titles[i]}.flac", 0x1234_ABCD, (UInt128)(1000 + i), 30_000_000 + i, now, now, 0x20,
-                    Spotify.Audio.Format.Flac, tags, titles[i], LocalState.Present, now, true, ""));
+                    Spotify.Audio.Format.Flac, tags, titles[i], LocalState.Present, now, true, "", now));
             }
             s_index.Apply(album);
             var loose = new LocalScanBatch(1, "") { Folder = new LocalFolder(1, "", 100, 0xBEEF, [], true) };
-            var untagged = new LocalTagSet(LocalKind.Audio, "", [], "", "", 0, 0, 0, 214_000, true, 0, LocalCover.None, 0, 0, true);
+            var untagged = new LocalTagSet(LocalKind.Audio, "", [], "", "", 0, 0, 0, 214_000, true, 0, LocalCover.None, 0, 0, true, 44_100, 0, 2);
             if (value != "listing")
             {
-                loose.Upserts.Add(new LocalEntry(20, 1, "voice memo 03.mp3", 0x1234_ABCD, 2000, 3_400_000, now, now, 0x20, Spotify.Audio.Format.Mp3, untagged, "voice memo 03", LocalState.Present, now, true, ""));
+                loose.Upserts.Add(new LocalEntry(20, 1, "voice memo 03.mp3", 0x1234_ABCD, 2000, 3_400_000, now, now, 0x20, Spotify.Audio.Format.Mp3, untagged, "voice memo 03", LocalState.Present, now, true, "", now));
                 // `missing` is the review's case (S6): every song the bar counts is missing, so the unplayable demo is not there.
                 if (value != "missing")
                     loose.Upserts.Add(new LocalEntry(21, 1, "demo take.wav", 0x1234_ABCD, 2001, 41_000_000, now, now, 0x20, Spotify.Audio.Format.Unknown, untagged with { DurationMs = 0, DurationEstimated = false },
-                        "demo take", LocalState.Present, now, false, "No WAV decoder in this build"));
-                loose.Upserts.Add(new LocalEntry(22, 1, "old mix.mp3", 0x1234_ABCD, 2002, 7_000_000, now, now, 0x20, Spotify.Audio.Format.Mp3, untagged, "old mix", LocalState.Missing, now - TimeSpan.TicksPerDay * 3, true, ""));
+                        "demo take", LocalState.Present, now, false, "No WAV decoder in this build", now));
+                loose.Upserts.Add(new LocalEntry(22, 1, "old mix.mp3", 0x1234_ABCD, 2002, 7_000_000, now, now, 0x20, Spotify.Audio.Format.Mp3, untagged, "old mix", LocalState.Missing, now - TimeSpan.TicksPerDay * 3, true, "", now));
             }
             if (value == "missing")
             {
                 // Two more gone, the board's (boards240/Missing): a tagged pair last seen 12 and 6 days ago.
                 loose.Upserts.Add(new LocalEntry(23, 1, @"Live\Attic Tapes.flac", 0x1234_ABCD, 2003, 31_000_000, now, now, 0x20, Spotify.Audio.Format.Flac,
-                    new LocalTagSet(LocalKind.Audio, "Attic Tapes", ["Nova Kite"], "Satellite Heart", "Nova Kite", 3, 1, 2021, 251_000, false, 900, LocalCover.None, 0, 0, true),
-                    "Attic Tapes", LocalState.Missing, now - TimeSpan.TicksPerDay * 12, true, ""));
+                    new LocalTagSet(LocalKind.Audio, "Attic Tapes", ["Nova Kite"], "Satellite Heart", "Nova Kite", 3, 1, 2021, 251_000, false, 900, LocalCover.None, 0, 0, true, 44_100, 16, 2),
+                    "Attic Tapes", LocalState.Missing, now - TimeSpan.TicksPerDay * 12, true, "", now));
                 loose.Upserts.Add(new LocalEntry(24, 1, @"Coral Hours\Rewind.flac", 0x1234_ABCD, 2004, 29_000_000, now, now, 0x20, Spotify.Audio.Format.Flac,
-                    new LocalTagSet(LocalKind.Audio, "Rewind", ["Coral Hours"], "Wavee Sessions Vol. 2", "Coral Hours", 4, 1, 2022, 239_000, false, 900, LocalCover.None, 0, 0, true),
-                    "Rewind", LocalState.Missing, now - TimeSpan.TicksPerDay * 6, true, ""));
+                    new LocalTagSet(LocalKind.Audio, "Rewind", ["Coral Hours"], "Wavee Sessions Vol. 2", "Coral Hours", 4, 1, 2022, 239_000, false, 900, LocalCover.None, 0, 0, true, 44_100, 16, 2),
+                    "Rewind", LocalState.Missing, now - TimeSpan.TicksPerDay * 6, true, "", now));
             }
             if (value == "changed")
             {
@@ -374,16 +374,16 @@ public static partial class LocalLibrary
                 string[] by = ["Mia Solace", "Coral Hours", "Nova Kite", "Sable & Sun"];
                 for (int i = 0; i < fresh.Length; i++)
                     loose.Upserts.Add(new LocalEntry(40 + i, 1, $@"New\{fresh[i]}.flac", 0x1234_ABCD, (UInt128)(4000 + i), 28_000_000 + i, now, now, 0x20, Spotify.Audio.Format.Flac,
-                        new LocalTagSet(LocalKind.Audio, fresh[i], [by[i]], "", by[i], 0, 0, 2024, 201_000 + i * 17_000, false, 900, LocalCover.None, 0, 0, true),
-                        fresh[i], LocalState.Present, now, true, ""));
+                        new LocalTagSet(LocalKind.Audio, fresh[i], [by[i]], "", by[i], 0, 0, 2024, 201_000 + i * 17_000, false, 900, LocalCover.None, 0, 0, true, 44_100, 16, 2),
+                        fresh[i], LocalState.Present, now, true, "", now));
             }
             if (loose.Upserts.Count > 0) s_index.Apply(loose);
             var usbFolder = new LocalScanBatch(2, "Live") { Folder = new LocalFolder(2, "Live", 300, 0xCAFE, [], true) };
             usbFolder.Upserts.Add(new LocalEntry(30, 2, @"Live\Encore.m4a", 0x0BAD_F00D, 0, 9_000_000, now, 0, 0x20, Spotify.Audio.Format.Aac,
-                new LocalTagSet(LocalKind.Audio, "Encore", ["Ólafur Arnalds", "Nils Frahm"], "Live", "", 1, 1, 2015, 402_000, false, 256, LocalCover.None, 0, 0, true),
-                "Encore", LocalState.Present, now, true, ""));
+                new LocalTagSet(LocalKind.Audio, "Encore", ["Ólafur Arnalds", "Nils Frahm"], "Live", "", 1, 1, 2015, 402_000, false, 256, LocalCover.None, 0, 0, true, 44_100, 0, 2),
+                "Encore", LocalState.Present, now, true, "", now));
             usbFolder.Upserts.Add(new LocalEntry(31, 2, @"Live\Unreleased.flac", 0x0BAD_F00D, 0, 52_000_000, now, 0, 0x0040_0020, Spotify.Audio.Format.Unknown,
-                new LocalTagSet(LocalKind.Audio, "", [], "", "", 0, 0, 0, 0, false, 0, LocalCover.None, 0, 0, true), "Unreleased", LocalState.CloudOnly, now, true, ""));
+                new LocalTagSet(LocalKind.Audio, "", [], "", "", 0, 0, 0, 0, false, 0, LocalCover.None, 0, 0, true, 0, 0, 0), "Unreleased", LocalState.CloudOnly, now, true, "", now));
             if (value != "listing") s_index.Apply(usbFolder);
             // The last scan as the board draws it: 2 minutes ago, 1.8 s (ready and offline); none while the first scan runs.
             s_scan.Last.Clear();

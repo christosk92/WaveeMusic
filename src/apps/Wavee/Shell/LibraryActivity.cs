@@ -195,6 +195,34 @@ public static class LibraryActivity
         return lines;
     }
 
+    /// <summary>"2 min ago", "just now", "3 hours ago" for a UTC tick time (a scan's end).</summary>
+    public static string Ago(long utcTicks)
+    {
+        long ageMs = Math.Max(0, (DateTime.UtcNow.Ticks - utcTicks) / TimeSpan.TicksPerMillisecond);
+        var (unit, count) = Notify.RelativeAge(ageMs);
+        return unit switch
+        {
+            RelativeUnit.Now => Loc.Get(Strings.LocalFiles.Activity.AgoNow),
+            RelativeUnit.Minutes => Strings.LocalFiles.Activity.AgoMinutes(count),
+            RelativeUnit.Hours => Strings.LocalFiles.Activity.AgoHours(count),
+            _ => Strings.LocalFiles.Activity.AgoDays(count),
+        };
+    }
+
+    static readonly FluentGpu.Signals.Signal<int> s_minute = new(0);
+    static Timer? s_minuteTimer;
+
+    /// <summary>Moves every 30 s while something reads it, so an "ago" line bound to it (`Prop.Of`) stays true without a page re-render. The
+    /// timer starts at the first read and writes on the UI thread.</summary>
+    public static FluentGpu.Signals.IReadSignal<int> Minute
+    {
+        get
+        {
+            s_minuteTimer ??= new Timer(static _ => Playback.ToUi(static () => s_minute.Value++), null, 30_000, 30_000);
+            return s_minute;
+        }
+    }
+
     /// <summary>The footer's line: "Last full scan 2 min ago · 1.8 s", "First scan under way" while the first one runs, or "Not scanned yet".</summary>
     public static string LastScanLine()
     {
@@ -203,15 +231,7 @@ public static class LibraryActivity
             return LocalLibrary.Progress.Active || LocalLibrary.Scanning
                 ? Loc.Get(Strings.LocalFiles.Activity.FirstScan)
                 : Loc.Get(Strings.LocalFiles.Activity.NotScanned);
-        long ageMs = Math.Max(0, (DateTime.UtcNow.Ticks - ticks) / TimeSpan.TicksPerMillisecond);
-        var (unit, count) = Notify.RelativeAge(ageMs);
-        string when = unit switch
-        {
-            RelativeUnit.Now => Loc.Get(Strings.LocalFiles.Activity.AgoNow),
-            RelativeUnit.Minutes => Strings.LocalFiles.Activity.AgoMinutes(count),
-            RelativeUnit.Hours => Strings.LocalFiles.Activity.AgoHours(count),
-            _ => Strings.LocalFiles.Activity.AgoDays(count),
-        };
+        string when = Ago(ticks);
         string took = (ms / 1000.0).ToString(ms < 10_000 ? "0.0" : "0", CultureInfo.CurrentCulture);
         return Strings.LocalFiles.Activity.LastScan(when, took);
     }

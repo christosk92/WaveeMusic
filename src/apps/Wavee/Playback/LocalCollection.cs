@@ -11,10 +11,11 @@
 // and `Playback.ToUi` publishes the new `View` (a new instance per fold; `Version` counts them). Nothing here runs per frame.
 //
 // WHAT. Albums are (album artist, else first artist; album) pairs from the tags, artists are album artists (else first artists):
-// names, never Spotify entities (concept "What it changes"). An album's "added" time is its newest file's write time: the index keeps
-// no first-seen time (LocalEntry has LastSeenTicks only), so a file copied in keeps its own write time. Quality is the format and,
-// for lossy files, the bitrate ("FLAC", "MP3 320"); the tag set carries no sample rate or bit depth, so nothing is called hi-res
-// unless the reader says Flac24. Untagged files (no album) count as songs and live in the Folders browser, not on the album wall.
+// names, never Spotify entities (concept "What it changes"). An album's "added" time is when Wavee first indexed its newest file
+// (`LocalEntry.FirstSeenTicks`), never the file's own write time: a folder copied in from a backup is new to the library however old
+// its files are. Quality is the format and, for lossy files, the bitrate ("FLAC", "MP3 320"); lossless audio above CD quality (more
+// than 16 bits or more than 48 kHz, from the readers' stream format) is "Hi-Res 24/96". Untagged files (no album) count as songs and
+// live in the Folders browser, not on the album wall.
 
 using System.Globalization;
 using FluentGpu.Signals;
@@ -58,17 +59,26 @@ public static class LocalCollection
 
     // ── labels (format names, never localised) ───────────────────────────────────────────────────────────────────────
 
-    /// <summary>"FLAC", "MP3 320", "AAC 256", "Ogg 160", or "" when unknown.</summary>
-    public static string QualityOf(Spotify.Audio.Format format, int kbps) => format switch
+    /// <summary>"Hi-Res 24/96", "FLAC", "MP3 320", "AAC 256", "Ogg 160", or "" when unknown. <paramref name="rate"/> and <paramref name="bits"/>
+    /// are the stream's (0 = unknown); they only lift a lossless format to hi-res.</summary>
+    public static string QualityOf(Spotify.Audio.Format format, int kbps, int rate = 0, int bits = 0) => format switch
     {
-        Spotify.Audio.Format.Flac24 => "Hi-Res FLAC",
-        Spotify.Audio.Format.Flac => "FLAC",
+        Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 when IsHiRes(rate, bits) => "Hi-Res " + Math.Max(bits, 16).ToString(CultureInfo.InvariantCulture) + (rate > 0 ? "/" + Khz(rate) : ""),
+        Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => "FLAC",
         Spotify.Audio.Format.Mp3 => kbps > 0 ? "MP3 " + Round(kbps) : "MP3",
         Spotify.Audio.Format.Aac => kbps > 0 ? "AAC " + Round(kbps) : "AAC",
         Spotify.Audio.Format.OggVorbis96 or Spotify.Audio.Format.OggVorbis160 or Spotify.Audio.Format.OggVorbis320
             => kbps > 0 ? "Ogg " + Round(kbps) : "Ogg",
         _ => "",
     };
+
+    /// <summary>Above CD quality: more than 16 bits, or more than 48 kHz.</summary>
+    public static bool IsHiRes(int rate, int bits) => bits > 16 || rate > 48_000;
+
+    /// <summary>A rate in kHz as people write it: 96, 88.2, 44.1, 192.</summary>
+    static string Khz(int rate) => rate % 1000 == 0
+        ? (rate / 1000).ToString(CultureInfo.InvariantCulture)
+        : (rate / 1000.0).ToString("0.#", CultureInfo.InvariantCulture);
 
     static string Round(int kbps) => (kbps >= 310 ? 320 : kbps >= 250 ? 256 : kbps >= 180 ? 192 : kbps >= 150 ? 160 : kbps >= 120 ? 128 : kbps).ToString(CultureInfo.InvariantCulture);
 
@@ -137,7 +147,7 @@ public static class LocalCollection
     sealed class AlbumAcc
     {
         public string Key = "", Title = "", Artist = "";
-        public int Year, Tracks, Lossless, Lossy, MaxKbps;
+        public int Year, Tracks, Lossless, Lossy, MaxKbps, MinRate = int.MaxValue, MinBits = int.MaxValue;
         public long Duration, Added;
         public Spotify.Audio.Format Format;
         public bool MixedFormat;
@@ -159,7 +169,7 @@ public static class LocalCollection
         public string? Image;
         public Spotify.Audio.Format Format;
         public bool Mixed;
-        public int Kbps;
+        public int Kbps, MinRate = int.MaxValue, MinBits = int.MaxValue;
     }
 
     static readonly string[] s_coverNames = ["cover", "folder", "front", "album"];
@@ -180,7 +190,7 @@ public static class LocalCollection
         var rootPath = new Dictionary<int, string>();
         foreach (var r in roots) { rootPath[r.RootId] = r.Path; }
 
-        int songs = 0, lossless = 0, lossy = 0, untagged = 0, noAlbumArtist = 0, noTrack = 0, missing = 0, cloud = 0;
+        int songs = 0, lossless = 0, hiRes = 0, lossy = 0, untagged = 0, noAlbumArtist = 0, noTrack = 0, missing = 0, cloud = 0;
         long duration = 0, bytes = 0;
         var formats = new Dictionary<string, int>(StringComparer.Ordinal);
         var bitrates = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -201,7 +211,8 @@ public static class LocalCollection
             duration += t.DurationMs;
             if (e.Playable && e.State != LocalState.Missing)
             {
-                if (IsLossless(e.Format)) lossless++; else if (e.Format != Spotify.Audio.Format.Unknown) lossy++;
+                if (IsLossless(e.Format)) { lossless++; if (IsHiRes(t.SampleRate, t.BitsPerSample)) hiRes++; }
+                else if (e.Format != Spotify.Audio.Format.Unknown) lossy++;
                 string fn = FormatName(e.Format);
                 formats[fn] = formats.GetValueOrDefault(fn) + 1;
                 if (!IsLossless(e.Format) && t.BitrateKbps > 0) { string b = Round(t.BitrateKbps); bitrates[b] = bitrates.GetValueOrDefault(b) + 1; }
@@ -224,10 +235,16 @@ public static class LocalCollection
                 a.Tracks++;
                 a.Duration += t.DurationMs;
                 if (t.Year > 0 && (a.Year == 0 || t.Year < a.Year)) a.Year = t.Year;
-                long added = e.WriteTicks > 0 ? e.WriteTicks : e.LastSeenTicks;
+                long added = e.FirstSeenTicks > 0 ? e.FirstSeenTicks : e.LastSeenTicks;
                 if (added > a.Added) a.Added = added;
                 if (e.Format != a.Format) a.MixedFormat = true;
-                if (IsLossless(e.Format)) a.Lossless++; else a.Lossy++;
+                if (IsLossless(e.Format))
+                {
+                    a.Lossless++;
+                    a.MinRate = Math.Min(a.MinRate, t.SampleRate);
+                    a.MinBits = Math.Min(a.MinBits, t.BitsPerSample);
+                }
+                else a.Lossy++;
                 if (t.BitrateKbps > a.MaxKbps) a.MaxKbps = t.BitrateKbps;
             }
             if (artist.Length > 0)
@@ -244,6 +261,8 @@ public static class LocalCollection
             leaf.DurationHere += t.DurationMs;
             if (leaf.Files.Count == 1) { leaf.Format = e.Format; leaf.Kbps = t.BitrateKbps; }
             else if (leaf.Format != e.Format) leaf.Mixed = true;
+            leaf.MinRate = Math.Min(leaf.MinRate, t.SampleRate);
+            leaf.MinBits = Math.Min(leaf.MinBits, t.BitsPerSample);
             if (t.Album.Length > 0) { string k = AlbumKey(artist, t.Album); if (!leaf.AlbumKeys.Contains(k)) leaf.AlbumKeys.Add(k); }
             for (FolderAcc? n = leaf; n is not null; n = n.Parent is null ? null : nodes[n.Parent])
             {
@@ -279,7 +298,8 @@ public static class LocalCollection
             string? cover = LocalArt.AlbumCoverUri(a.Artist, a.Title) ?? LocalCollectionFixture.CoverOf(a.Artist, a.Title);
             coverOf[a.Key] = cover;
             var when = a.Added >= today ? LocalAddedWhen.Today : a.Added >= week ? LocalAddedWhen.ThisWeek : a.Added >= month ? LocalAddedWhen.ThisMonth : LocalAddedWhen.Earlier;
-            string quality = a.Lossless > 0 && a.Lossy == 0 ? QualityOf(a.Format, 0) : a.Lossy > 0 && !a.MixedFormat ? QualityOf(a.Format, a.MaxKbps) : "";
+            // An album is hi-res only when every lossless track is (its lowest rate and depth decide).
+            string quality = a.Lossless > 0 && a.Lossy == 0 ? QualityOf(a.Format, 0, a.MinRate, a.MinBits) : a.Lossy > 0 && !a.MixedFormat ? QualityOf(a.Format, a.MaxKbps) : "";
             cards.Add(new LocalAlbumCard(a.Key, a.Title, a.Artist, a.Year, a.Tracks, a.Duration, quality, a.Lossless > 0 && a.Lossy == 0,
                 when == LocalAddedWhen.Today, cover, a.Added, when, KeyOf(a.Root, a.Folder)));
         }
@@ -340,11 +360,11 @@ public static class LocalCollection
             var files = new List<LocalSongItem>(n.Files.Count);
             int num = 0;
             foreach (var e in n.Files)
-                files.Add(new LocalSongItem(e.LocalId, ++num, e.MatchTitle, e.Tags.Album, Path.GetFileName(e.RelativePath), QualityOf(e.Format, e.Tags.BitrateKbps), e.Tags.DurationMs,
+                files.Add(new LocalSongItem(e.LocalId, ++num, e.MatchTitle, e.Tags.Album, Path.GetFileName(e.RelativePath), QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample), e.Tags.DurationMs,
                     e.Playable && e.State == LocalState.Present));
             var mosaic = new List<string>(4);
             CollectCovers(n, nodes, coverOf, mosaic);
-            string quality = n.Files.Count > 0 && !n.Mixed ? (IsLossless(n.Format) ? QualityOf(n.Format, 0) : "") : "";
+            string quality = n.Files.Count > 0 && !n.Mixed ? (IsLossless(n.Format) ? QualityOf(n.Format, 0, n.MinRate, n.MinBits) : "") : "";
             outNodes[n.Key] = new LocalFolderNode(n.Key, n.Name, n.Parent, n.Songs, n.Duration, quality, n.Image, mosaic, n.Children.ToArray(), files, n.DurationHere);
         }
         var rootKeys = new List<string>(folders.Count);
@@ -391,6 +411,8 @@ public static class LocalCollection
             RecentThisMonth = recentMonth,
             Lossless = losslessCards,
             LosslessSongs = lossless,
+            HiResSongs = hiRes,
+            LastScanTicks = LocalLibrary.LastScan.UtcTicks,
             Decades = decadeList,
             Albums = cards,
             AlbumsByArtist = byArtist,

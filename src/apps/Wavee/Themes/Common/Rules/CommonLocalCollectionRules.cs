@@ -31,6 +31,9 @@ internal static class CommonLocalCollectionRules
     /// <summary>The compact head (boards 19 and 20): the mosaic thumb, its gap to the words, the padding above and below.</summary>
     public const float ThumbSize = 60f, ThumbGap = 16f, CompactTop = 16f, CompactBottom = 16f;
 
+    /// <summary>The stats line's counts (board 18: "**6,016** songs · **512** albums"): semibold over the line's own weight.</summary>
+    public const ushort StatsNumberWeight = 600;
+
     /// <summary>A folder chip: height, side padding, glyph, the gap between chips and between glyph and words; the status dot.</summary>
     public const float ChipH = 28f, ChipPadX = 10f, ChipGlyph = 12f, ChipGap = 8f, ChipInner = 6f, ChipBorder = 1f, Dot = 8f, StatusGap = 12f;
 

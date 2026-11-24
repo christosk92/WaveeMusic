@@ -134,7 +134,7 @@ public static partial class LocalTags
                               + " file=" + new string(Path.GetFileName(fileName)));
     }
 
-    static LocalTagSet Empty => new(LocalKind.Audio, "", [], "", "", 0, 0, 0, 0, false, 0, LocalCover.None, 0, 0, true);
+    static LocalTagSet Empty => new(LocalKind.Audio, "", [], "", "", 0, 0, 0, 0, false, 0, LocalCover.None, 0, 0, true, 0, 0, 0);
 
     // ── sniff and dispatch ───────────────────────────────────────────────────────────────────────────────────────────
 
@@ -342,7 +342,7 @@ public static partial class LocalTags
         public string Title = "", Album = "", AlbumArtist = "";
         public readonly List<string> Artists = [];
         int _artistSource = -1;
-        public int Track, Disc, Year, DurationMs, BitrateKbps, VideoWidth, VideoHeight;
+        public int Track, Disc, Year, DurationMs, BitrateKbps, VideoWidth, VideoHeight, SampleRate, Bits, Channels;
         public bool DurationEstimated, Win1252High, Sniffed, HasAudio = true;
         public LocalKind Kind = LocalKind.Audio;
         public LocalCover Cover;
@@ -397,6 +397,16 @@ public static partial class LocalTags
             DurationEstimated = true;
         }
 
+        /// <summary>The audio stream's format, from the header that describes it (STREAMINFO, fmt, COMM, a frame header, a sample
+        /// entry). The first reader to report a rate keeps it; <paramref name="bits"/> is 0 for a lossy codec.</summary>
+        public void SetStream(int rate, int bits, int channels)
+        {
+            if (SampleRate != 0 || rate <= 0 || rate > 1_536_000) return;
+            SampleRate = rate;
+            Bits = bits is > 0 and <= 64 ? bits : 0;
+            Channels = channels is > 0 and <= 255 ? channels : 0;
+        }
+
         /// <summary>A picture's location. The first one is kept; a front cover (type 3) replaces a picture of any other type.</summary>
         public void OfferCover(LocalCover cover)
         {
@@ -406,7 +416,7 @@ public static partial class LocalTags
 
         public LocalTagSet Build() => new(Kind, Title, [.. Artists], Album, AlbumArtist, Track, Disc, Year,
             DurationMs, DurationEstimated && DurationMs > 0, BitrateKbps, Cover, Kind == LocalKind.Video ? VideoWidth : 0,
-            Kind == LocalKind.Video ? VideoHeight : 0, Kind != LocalKind.Video || HasAudio);
+            Kind == LocalKind.Video ? VideoHeight : 0, Kind != LocalKind.Video || HasAudio, SampleRate, Bits, Channels);
 
         static string Clean(string v) => v.Trim().Trim('\0').Trim();
     }

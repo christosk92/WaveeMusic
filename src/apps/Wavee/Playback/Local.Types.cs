@@ -29,7 +29,8 @@ public readonly record struct LocalTagSet(
     int DurationMs, bool DurationEstimated,
     int BitrateKbps,
     LocalCover Cover,
-    int VideoWidth, int VideoHeight, bool HasAudio)  // Kind == Video only (D19); 0/0/true for audio
+    int VideoWidth, int VideoHeight, bool HasAudio,  // Kind == Video only (D19); 0/0/true for audio
+    int SampleRate, int BitsPerSample, int Channels)  // the audio stream's; 0 = unknown (BitsPerSample 0 for lossy formats)
 {
     public string FirstArtist => Artists.Length > 0 ? Artists[0] : "";
 }
@@ -45,7 +46,8 @@ public sealed record LocalEntry(
     LocalTagSet Tags,
     string MatchTitle,                              // Tags.Title, or the file name without its extension
     LocalState State, long LastSeenTicks,
-    bool Playable, string Why);                     // Playable false: no decoder in this build (D7); Why says so
+    bool Playable, string Why,                      // Playable false: no decoder in this build (D7); Why says so
+    long FirstSeenTicks);                           // when this LocalId was first indexed (UTC ticks); kept across moves and edits
 
 /// <summary>One listed folder (§3.3).</summary>
 public sealed record LocalFolder(

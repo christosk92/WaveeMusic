@@ -4,7 +4,8 @@
 // computed off the UI thread by `Playback/LocalCollection.cs` on every `LocalLibrary.Epoch` / `LocalArt.Epoch` move) and hands the
 // active theme this props record: the view as a live signal, the remembered pivot, the album sort and the open folder as live
 // signals, and every verb as a delegate built once. Albums and artists here are NAMES from the files' tags, never Spotify entities.
-// Covers are `file:///` uris from `LocalArt` (null: not extracted yet, or none). Quality is a short label ("FLAC", "MP3 320") or "".
+// Covers are `file:///` uris from `LocalArt` (null: not extracted yet, or none). Quality is a short label ("FLAC", "Hi-Res 24/96",
+// "MP3 320") or "".
 //
 // Contract additions (declared, not numbered): `ViewKeys.LocalCollectionPage` and every type in this file.
 
@@ -30,7 +31,7 @@ public enum LocalAddedWhen : byte { Today, ThisWeek, ThisMonth, Earlier }
 
 /// <summary>One album built from the tags: its (album artist or first artist, album) pair.</summary>
 /// <param name="Key">Stable per (artist, album): a node key and the verbs' argument.</param>
-/// <param name="AddedTicks">UTC ticks of the newest file's write time (the index has no first-seen time).</param>
+/// <param name="AddedTicks">UTC ticks of when Wavee first indexed the album's newest file (never the file's own write time).</param>
 /// <param name="FolderKey">The Folders browser node its first file sits in (opening the album opens it).</param>
 public sealed record LocalAlbumCard(string Key, string Title, string Artist, int Year, int Tracks, long DurationMs, string Quality,
     bool Lossless, bool IsNew, string? Cover, long AddedTicks, LocalAddedWhen When, string FolderKey);
@@ -87,6 +88,10 @@ public sealed record LocalCollectionView
     public int RecentThisMonth { get; init; }
     public IReadOnlyList<LocalAlbumCard> Lossless { get; init; } = [];
     public int LosslessSongs { get; init; }
+    /// <summary>Lossless songs above CD quality (more than 16 bits or 48 kHz).</summary>
+    public int HiResSongs { get; init; }
+    /// <summary>When the last full scan ended (UTC ticks; 0: none yet), for "scanned 2 min ago".</summary>
+    public long LastScanTicks { get; init; }
     public IReadOnlyList<LocalDecade> Decades { get; init; } = [];
     /// <summary>Every album, newest first; the other orders are <see cref="AlbumsBy"/>.</summary>
     public IReadOnlyList<LocalAlbumCard> Albums { get; init; } = [];

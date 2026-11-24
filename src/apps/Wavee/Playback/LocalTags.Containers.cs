@@ -104,9 +104,20 @@ public static partial class LocalTags
     static void ReadStreamInfo(Bytes io, long body, Builder b)
     {
         if (!io.TryGet(body, 18, out ReadOnlySpan<byte> si)) return;
-        int rate = (si[10] << 12) | (si[11] << 4) | (si[12] >> 4);
+        int rate = StreamInfoFormat(si, b);
         long total = ((long)(si[13] & 0x0F) << 32) | BinaryPrimitives.ReadUInt32BigEndian(si[14..]);
         if (rate > 0 && total > 0) b.SetLength(total * 1000 / rate);
+    }
+
+    /// <summary>A FLAC STREAMINFO body's packed rate (20 bits), channels (3 bits, minus one) and sample size (5 bits, minus one):
+    /// recorded on <paramref name="b"/>; the rate is returned for the length.</summary>
+    static int StreamInfoFormat(ReadOnlySpan<byte> si, Builder b)
+    {
+        int rate = (si[10] << 12) | (si[11] << 4) | (si[12] >> 4);
+        int channels = ((si[12] >> 1) & 0x07) + 1;
+        int bits = (((si[12] & 0x01) << 4) | (si[13] >> 4)) + 1;
+        b.SetStream(rate, bits, channels);
+        return rate;
     }
 
     static void ReadCommentBlock(Bytes io, long at, int length, Builder b)
@@ -153,6 +164,7 @@ public static partial class LocalTags
         if (id.Length >= 16 && id[0] == 1 && id[1..7].SequenceEqual("vorbis"u8))
         {
             rate = (int)BinaryPrimitives.ReadUInt32LittleEndian(id[12..]);
+            b.SetStream(rate, 0, id[11]);
             format = Spotify.Audio.Format.OggVorbis320;
             why = "";
             commentMagic = "\u0003vorbis"u8;
@@ -160,14 +172,14 @@ public static partial class LocalTags
         else if (id.Length >= 12 && id[..8].SequenceEqual("OpusHead"u8))
         {
             preSkip = BinaryPrimitives.ReadUInt16LittleEndian(id[10..]);
-            rate = 48000;
+            rate = 48000;                                                           // Opus always decodes at 48 kHz
+            b.SetStream(rate, 0, id[9]);
             why = "an Ogg file carrying Opus";
             commentMagic = "OpusTags"u8;
         }
         else if (id.Length >= 9 + 4 + 4 + 18 && id[0] == 0x7F && id[1..5].SequenceEqual("FLAC"u8))
         {
-            ReadOnlySpan<byte> si = id[17..];
-            rate = (si[10] << 12) | (si[11] << 4) | (si[12] >> 4);
+            rate = StreamInfoFormat(id[17..], b);
             why = "an Ogg file carrying FLAC";
             commentMagic = default;                                                 // a FLAC block header (type 4) instead
         }
@@ -328,7 +340,7 @@ public static partial class LocalTags
         public bool HasAudio, HasVideo, Fragmented;
         public long AudioMs, VideoMs, MovieMs;
         public uint Codec;
-        public int Oti, Width, Height;
+        public int Oti, Width, Height, Rate, Bits, Channels;
     }
 
     /// <summary>Top-level boxes to <c>moov</c> (a seek past <c>mdat</c> when it comes first), then only <c>trak/tkhd</c>,
@@ -354,6 +366,7 @@ public static partial class LocalTags
         b.HasAudio = t.HasAudio;
         b.VideoWidth = t.Width;
         b.VideoHeight = t.Height;
+        if (t.HasAudio) b.SetStream(t.Rate, t.Codec == Alac ? t.Bits : 0, t.Channels);   // only ALAC is lossless here: AAC's sample size is nominal
         long ms = t.HasAudio ? t.AudioMs : t.HasVideo ? t.VideoMs : 0;
         if (ms <= 0) ms = t.MovieMs;
         b.SetLength(ms);
@@ -425,6 +438,7 @@ public static partial class LocalTags
     {
         uint handler = 0, codec = 0;
         int oti = 0, width = 0, height = 0;
+        (int Rate, int Bits, int Channels) sound = default;
         long ms = 0;
         for (long pos = start; Box(io, pos, end, out long size, out uint type, out int hdr); pos += size)
         {
@@ -445,7 +459,7 @@ public static partial class LocalTags
                     long mb = m + mh;
                     if (mt == Hdlr && io.TryGet(mb, 12, out ReadOnlySpan<byte> hdlr)) handler = BinaryPrimitives.ReadUInt32BigEndian(hdlr[8..]);
                     else if (mt == Mdhd && io.TryGet(mb, 32, out ReadOnlySpan<byte> mdhd)) ms = HeaderMs(mdhd);
-                    else if (mt == Minf) ReadSampleEntry(io, mb, m + ms2, out codec, out oti, ref width, ref height);
+                    else if (mt == Minf) ReadSampleEntry(io, mb, m + ms2, out codec, out oti, out sound, ref width, ref height);
                 }
             }
         }
@@ -455,6 +469,7 @@ public static partial class LocalTags
             t.AudioMs = ms;
             t.Codec = codec;
             t.Oti = oti;
+            (t.Rate, t.Bits, t.Channels) = sound;
         }
         else if (handler == Vide && !t.HasVideo)
         {
@@ -466,10 +481,12 @@ public static partial class LocalTags
     }
 
     /// <summary>minf/stbl/stsd's first entry: its format, an <c>mp4a</c>'s object type, a visual entry's size when tkhd had none.</summary>
-    static void ReadSampleEntry(Bytes io, long start, long end, out uint codec, out int oti, ref int width, ref int height)
+    static void ReadSampleEntry(Bytes io, long start, long end, out uint codec, out int oti, out (int Rate, int Bits, int Channels) sound,
+                                ref int width, ref int height)
     {
         codec = 0;
         oti = 0;
+        sound = default;
         for (long pos = start; Box(io, pos, end, out long size, out uint type, out int hdr); pos += size)
         {
             if (type != Stbl) continue;
@@ -487,9 +504,45 @@ public static partial class LocalTags
                     height = BinaryPrimitives.ReadUInt16BigEndian(entry[26..]);
                 }
                 if (codec == Mp4a && entry.Length >= 28) oti = EsdsObjectType(entry);
+                if (entry.Length >= 28) sound = SoundFormat(codec, entry);                  // kept only for the sound track
                 return;
             }
         }
+    }
+
+    /// <summary>An AudioSampleEntry's channel count, sample size and 16.16 rate (QuickTime sound version 2 keeps a 64-bit float
+    /// rate further on). ALAC's own cookie (an <c>alac</c> child box) carries the real bit depth and a rate past 65,535 Hz.</summary>
+    static (int Rate, int Bits, int Channels) SoundFormat(uint codec, ReadOnlySpan<byte> entry)
+    {
+        int version = BinaryPrimitives.ReadUInt16BigEndian(entry[8..]);
+        int channels = BinaryPrimitives.ReadUInt16BigEndian(entry[16..]);
+        int bits = BinaryPrimitives.ReadUInt16BigEndian(entry[18..]);
+        int rate = (int)(BinaryPrimitives.ReadUInt32BigEndian(entry[24..]) >> 16);
+        if (version == 2 && entry.Length >= 64)
+        {
+            rate = (int)BinaryPrimitives.ReadDoubleBigEndian(entry[32..]);
+            channels = (int)BinaryPrimitives.ReadUInt32BigEndian(entry[40..]);
+            bits = (int)BinaryPrimitives.ReadUInt32BigEndian(entry[48..]);
+        }
+        if (codec == Alac)
+        {
+            int at = 28 + (version == 1 ? 16 : version == 2 ? 36 : 0);
+            while (at + 8 <= entry.Length)
+            {
+                int size = (int)BinaryPrimitives.ReadUInt32BigEndian(entry[at..]);
+                if (size < 8 || at + size > entry.Length) break;
+                if (BinaryPrimitives.ReadUInt32BigEndian(entry[(at + 4)..]) == Alac && size >= 12 + 24)
+                {
+                    ReadOnlySpan<byte> cookie = entry.Slice(at + 12, size - 12);          // after the full-box version and flags
+                    bits = cookie[5];
+                    channels = cookie[9];
+                    rate = (int)BinaryPrimitives.ReadUInt32BigEndian(cookie[20..]);
+                    break;
+                }
+                at += size;
+            }
+        }
+        return (rate, bits, channels);
     }
 
     /// <summary>An <c>mp4a</c> entry's <c>esds</c> (directly, or inside QuickTime's <c>wave</c>): the DecoderConfig object type.</summary>
@@ -600,7 +653,7 @@ public static partial class LocalTags
     static void ReadAdtsLength(Bytes io, long start, Builder b)
     {
         ReadOnlySpan<byte> s = io.UpTo(start, WindowBytes);
-        int pos = 0, frames = 0, rate = 0;
+        int pos = 0, frames = 0, rate = 0, channels = 0;
         long bytes = 0, blocks = 0;
         while (frames < 256 && pos + Modules.Adts.MinHeaderBytes <= s.Length && Modules.Adts.TryParseHeader(s[pos..], out Modules.AdtsHeader h))
         {
@@ -609,9 +662,11 @@ public static partial class LocalTags
             bytes += h.FrameLength;
             blocks += h.RawDataBlocks;
             rate = h.SampleRate;
+            channels = h.ChannelConfiguration;
             pos += h.FrameLength;
         }
         if (frames == 0 || rate == 0) return;
+        b.SetStream(rate, 0, channels == 7 ? 8 : channels);                       // channel configuration 7 is 7.1
         double avgBytes = (double)bytes / frames, avgSamples = 1024.0 * blocks / frames;
         double ms = (io.Length - start) / avgBytes * avgSamples * 1000 / rate;
         b.SetEstimate((long)ms);
@@ -635,7 +690,11 @@ public static partial class LocalTags
             switch (id)
             {
                 case 0x64733634 when io.TryGet(body, 16, out ReadOnlySpan<byte> d): ds64 = BinaryPrimitives.ReadInt64LittleEndian(d[8..]); break;   // ds64
-                case 0x666D7420 when io.TryGet(body, 12, out ReadOnlySpan<byte> f): byteRate = (int)BinaryPrimitives.ReadUInt32LittleEndian(f[8..]); break; // "fmt "
+                case 0x666D7420 when io.TryGet(body, 16, out ReadOnlySpan<byte> f):                                                     // "fmt "
+                    byteRate = (int)BinaryPrimitives.ReadUInt32LittleEndian(f[8..]);
+                    b.SetStream((int)BinaryPrimitives.ReadUInt32LittleEndian(f[4..]), BinaryPrimitives.ReadUInt16LittleEndian(f[14..]),
+                        BinaryPrimitives.ReadUInt16LittleEndian(f[2..]));
+                    break;
                 case 0x64617461:                                                                                                       // data
                     data = size == uint.MaxValue && ds64 > 0 ? ds64 : size;
                     size = Math.Min(data, io.Length - body);
@@ -704,7 +763,11 @@ public static partial class LocalTags
                     int exponent = ((c[8] & 0x7F) << 8) | c[9];
                     ulong mantissa = BinaryPrimitives.ReadUInt64BigEndian(c[10..]);
                     double rate = Math.ScaleB(mantissa, exponent - 16383 - 63);
-                    if (rate >= 1 && rate < 1e7) b.SetLength((long)(frames * 1000.0 / rate));
+                    if (rate >= 1 && rate < 1e7)
+                    {
+                        b.SetLength((long)(frames * 1000.0 / rate));
+                        b.SetStream((int)Math.Round(rate), BinaryPrimitives.ReadUInt16BigEndian(c[6..]), BinaryPrimitives.ReadUInt16BigEndian(c));
+                    }
                     break;
                 case 0x4E414D45: nameAt = body; nameLen = (int)Math.Min(size, MaxTextBytes); break;                    // NAME
                 case 0x41555448: authAt = body; authLen = (int)Math.Min(size, MaxTextBytes); break;                    // AUTH

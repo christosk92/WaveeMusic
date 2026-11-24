@@ -530,6 +530,7 @@ public static partial class LocalTags
     /// ID3v1/APE when a tag field is still empty or the estimate needs the tail's size.</summary>
     static void ReadMp3Length(FileBytes io, long frameAt, MpegHeader h, Builder b)
     {
+        b.SetStream(h.SampleRate, 0, h.Mono ? 1 : 2);
         long frames = 0, bytes = 0;
         ReadOnlySpan<byte> frame = io.UpTo(frameAt, Math.Min(h.FrameLength, 200) + 64);
         int side = h.Version == 1 ? (h.Mono ? 17 : 32) : (h.Mono ? 9 : 17);

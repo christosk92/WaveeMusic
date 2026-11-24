@@ -61,6 +61,9 @@ public static class LocalCollectionFixture
         new("Otto Vale", "Glass Weather", 2012, Spotify.Audio.Format.Aac, 256, 9, 160, 2),
     ];
 
+    /// <summary>The albums the board draws as "Hi-Res 24/96"; the fixture's other FLAC albums are CD quality (16/44.1).</summary>
+    static readonly string[] s_hiRes = ["Lumen", "Copper Coast", "Low Tide Letters", "Satellite Heart", "Saltwater Hymns", "Northern Static"];
+
     static readonly string[] s_words =
     [
         "Tidewater", "Lighthouse Keeper", "Afterglow", "Sunset Boulevard", "Rewind", "Paper Planes", "Undertow", "Northern Lights", "Slow Bloom",
@@ -84,7 +87,13 @@ public static class LocalCollectionFixture
             var al = s_albums[a];
             string folder = al.Artist + "\\" + al.Title + " (" + al.Year + ")";
             bool discs = al.Tracks >= 12;   // the long albums keep their discs in CD1 / CD2
-            long written = now - (long)(al.DaysAgo * TimeSpan.TicksPerDay);
+            long firstSeen = now - (long)(al.DaysAgo * TimeSpan.TicksPerDay);
+            // The files' own times are years older than when Wavee first saw them (copied in from a backup): "Recently added" must
+            // order by first-seen, never by the file time.
+            long written = new DateTime(Math.Min(al.Year + 1, 2025), 3, 1, 0, 0, 0, DateTimeKind.Utc).Ticks + a * TimeSpan.TicksPerHour;
+            bool hiRes = Array.IndexOf(s_hiRes, al.Title) >= 0;
+            int rate = hiRes ? 96_000 : 44_100;
+            int bits = al.Format == Spotify.Audio.Format.Flac ? (hiRes ? 24 : 16) : 0;
             var batches = new Dictionary<string, LocalScanBatch>(StringComparer.Ordinal);
             for (int t = 0; t < al.Tracks; t++)
             {
@@ -104,10 +113,10 @@ public static class LocalCollectionFixture
                 string name = (t + 1).ToString("00") + " " + title + ext;
                 int ms = 150_000 + (a * 37 + t * 53) % 180 * 1000;
                 var tags = new LocalTagSet(LocalKind.Audio, title, [al.Artist], al.Title, al.Artist, discs ? t % (al.Tracks / 2) + 1 : t + 1, disc, al.Year, ms, false,
-                    al.Kbps > 0 ? al.Kbps : 900 + t * 7, LocalCover.None, 0, 0, true);
+                    al.Kbps > 0 ? al.Kbps : (hiRes ? 2_900 : 900) + t * 7, LocalCover.None, 0, 0, true, rate, bits, 2);
                 long size = al.Kbps > 0 ? (long)al.Kbps * 125 * ms / 1000 : 30_000_000L + t * 1000;
                 batch.Upserts.Add(new LocalEntry(id, al.Root, sub + "\\" + name, volumes[al.Root], (UInt128)(9000 + id), size, written, written, 0x20, al.Format, tags, title,
-                    LocalState.Present, now, true, ""));
+                    LocalState.Present, now, true, "", firstSeen));
                 id++;
             }
             foreach (var b in batches.Values) index.Apply(b);
@@ -121,9 +130,10 @@ public static class LocalCollectionFixture
             {
                 var f = i % 3 == 0 ? Spotify.Audio.Format.Flac : i % 3 == 1 ? Spotify.Audio.Format.Mp3 : Spotify.Audio.Format.Aac;
                 var tags = new LocalTagSet(LocalKind.Audio, titles[i], ["Coral Hours"], titles[i] + " (single)", "Coral Hours", 1, 1, 2023 + i % 3, 180_000 + i * 21_000, false,
-                    f == Spotify.Audio.Format.Flac ? 950 : 320, LocalCover.None, 0, 0, true);
+                    f == Spotify.Audio.Format.Flac ? 950 : 320, LocalCover.None, 0, 0, true, 44_100, f == Spotify.Audio.Format.Flac ? 16 : 0, 2);
                 singles.Upserts.Add(new LocalEntry(id++, 1, "Singles\\" + titles[i] + (f == Spotify.Audio.Format.Flac ? ".flac" : f == Spotify.Audio.Format.Mp3 ? ".mp3" : ".m4a"),
-                    0x1234_ABCD, (UInt128)(9000 + id), 8_000_000, now - TimeSpan.TicksPerDay * 200, now, 0x20, f, tags, titles[i], LocalState.Present, now, true, ""));
+                    0x1234_ABCD, (UInt128)(9000 + id), 8_000_000, now - TimeSpan.TicksPerDay * 200, now, 0x20, f, tags, titles[i], LocalState.Present, now, true, "",
+                    now - TimeSpan.TicksPerDay * 200));
             }
             index.Apply(singles);
         }
