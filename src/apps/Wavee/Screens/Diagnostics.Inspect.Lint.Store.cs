@@ -28,8 +28,9 @@ public static partial class Diagnostics
     /// <summary>Lint snapshots to and from JSON, and baseline files. See the file header.</summary>
     public static partial class InspectLintStore
     {
-        /// <summary>The snapshot format's version (a reader refuses a newer one).</summary>
-        public const int Version = 1;
+        /// <summary>The snapshot format's version (a reader refuses a newer one). 2: a node's <c>lane</c> stops may be negative (a lane over the
+        /// box itself) and a side with no lane is <c>null</c>; version 1 wrote -1 there and walked only the slop.</summary>
+        public const int Version = 2;
 
         const string Kind = "lint-snapshot";
 
@@ -63,6 +64,16 @@ public static partial class Diagnostics
             w.WriteNumberValue(r.Y);
             w.WriteNumberValue(r.W);
             w.WriteNumberValue(r.H);
+            w.WriteEndArray();
+        }
+
+        /// <summary>A node's lane stops (<see cref="InspectLint.Node.Lane"/>): four numbers, <c>null</c> for a side with no lane.</summary>
+        static void LaneStops(Utf8JsonWriter w, in Edges4 e)
+        {
+            w.WriteStartArray("lane");
+            foreach (float v in (ReadOnlySpan<float>)[e.Left, e.Top, e.Right, e.Bottom])
+                if (float.IsFinite(v)) w.WriteNumberValue(v);
+                else w.WriteNullValue();
             w.WriteEndArray();
         }
 
@@ -220,7 +231,7 @@ public static partial class Diagnostics
             if (n.ClickId != 0) w.WriteNumber("click", n.ClickId);
             if (n.Drag) w.WriteBoolean("drag", true);
             if (n.Slop != default) Edges(w, "slop", n.Slop);
-            if (n.Lane != InspectLint.NoLane) Edges(w, "lane", n.Lane);
+            if (n.Lane != InspectLint.NoLane) LaneStops(w, n.Lane);
             if (!n.Pressable) w.WriteBoolean("pressable", false);
             if (n.Label.Length > 0) w.WriteString("label", n.Label);
             if (n.LabelGlyph.Length > 0) w.WriteString("labelGlyph", n.LabelGlyph);
@@ -370,7 +381,7 @@ public static partial class Diagnostics
                     int index = nodes.Count;
                     var at = new Strict("node " + index.ToString(CultureInfo.InvariantCulture));
                     if (n.ValueKind != JsonValueKind.Object) { error = "replay: '" + full + "': node " + index + " is not an object"; return false; }
-                    InspectLint.Node node = ReadNode(n, index, at);
+                    InspectLint.Node node = ReadNode(n, index, at, version);
                     if (at.Error.Length == 0 && n.TryGetProperty("i", out _) && at.Int(n, "i", index) != index) at.Fail("i", "says " + at.Int(n, "i", index) + " but the node is the " + index + "th (nodes are read in order)");
                     if (at.Error.Length == 0 && (node.Parent < -1 || node.Parent >= index))
                         at.Fail("p", "names parent " + node.Parent + " (a parent comes before its children: -1 or an earlier index)");
@@ -500,6 +511,26 @@ public static partial class Diagnostics
                 return fallback;
             }
 
+            /// <summary>A node's <c>lane</c> stops: four numbers or <c>null</c>s (no lane on that side). A version 1 snapshot wrote -1 for none.</summary>
+            public Edges4 LaneStops(JsonElement e, int version)
+            {
+                if (!Get(e, "lane", out JsonElement a)) return InspectLint.NoLane;
+                if (a.ValueKind == JsonValueKind.Array && a.GetArrayLength() == 4)
+                {
+                    Span<float> v = stackalloc float[4];
+                    bool ok = true;
+                    for (int k = 0; k < 4 && ok; k++)
+                    {
+                        if (a[k].ValueKind == JsonValueKind.Null) { v[k] = float.NegativeInfinity; continue; }
+                        ok = a[k].ValueKind == JsonValueKind.Number && a[k].TryGetSingle(out v[k]) && float.IsFinite(v[k]);
+                        if (ok && version < 2 && v[k] < 0f) v[k] = float.NegativeInfinity;
+                    }
+                    if (ok) return new Edges4(v[0], v[1], v[2], v[3]);
+                }
+                Fail("lane", "is four stops [left, top, right, bottom], each a finite number or null, not " + a.GetRawText());
+                return InspectLint.NoLane;
+            }
+
             public Edges4 Edges(JsonElement e, string name)
             {
                 if (!Get(e, name, out JsonElement a)) return default;
@@ -548,7 +579,7 @@ public static partial class Diagnostics
             }
         }
 
-        static InspectLint.Node ReadNode(JsonElement e, int index, Strict r)
+        static InspectLint.Node ReadNode(JsonElement e, int index, Strict r, int version)
         {
             if (!e.TryGetProperty("p", out _)) r.Fail("p", "is missing (the parent's index, -1 for a root)");
             int axis = 0;
@@ -600,7 +631,7 @@ public static partial class Diagnostics
                 ClickId = r.Int(e, "click", 0),
                 Drag = r.Bool(e, "drag"),
                 Slop = r.Edges(e, "slop"),
-                Lane = e.TryGetProperty("lane", out _) ? r.Edges(e, "lane") : InspectLint.NoLane,
+                Lane = e.TryGetProperty("lane", out _) ? r.LaneStops(e, version) : InspectLint.NoLane,
                 Pressable = !e.TryGetProperty("pressable", out _) || r.Bool(e, "pressable"),
                 Label = r.Str(e, "label", ""),
                 LabelGlyph = r.Str(e, "labelGlyph", ""),
