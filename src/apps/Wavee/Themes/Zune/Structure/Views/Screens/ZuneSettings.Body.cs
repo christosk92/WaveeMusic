@@ -301,7 +301,7 @@ internal static partial class ZuneSettings
     /// <summary>A combo's width: the wide field for the long words (qualities, faces, styles, devices, adapters), the short one for the sizes, else the stock.</summary>
     static float ComboWidthOf(string id) => id switch
     {
-        "sound.quality" or "sound.meteredQuality" or "sound.outputDevice" or "lyrics.playerStyle" or "lyrics.stage.visualizer"
+        "sound.quality" or "sound.meteredQuality" or "sound.outputDevice" or "sound.timecode.device" or "lyrics.playerStyle" or "lyrics.stage.visualizer"
             or "playback.video.quality" or "playback.video.meteredQuality" or "system.gpu" => Z.WideComboWidth,
         "storage.metadata.budget" => Z.BudgetComboWidth,
         _ => Z.ComboWidth,
@@ -323,6 +323,10 @@ internal static partial class ZuneSettings
             "lyrics.stage.heroDim" => new ZuneSlide(0f, Z.DimMax, Z.DimStep, () => Live(0f), commit, Percent, enabled),
             "lyrics.stage.sensitivity" => new ZuneSlide(Z.SensitivityMin, Z.SensitivityMax, Z.SensitivityStep, () => Live(1f), commit,
                 static v => ((int)MathF.Round(v * 100f)).ToString(CultureInfo.InvariantCulture) + "%", enabled),
+            "sound.timecode.level" => new ZuneSlide(Z.TimecodeLevelMin, Z.TimecodeLevelMax, Z.TimecodeLevelStep, () => Live(-12f), commit,
+                static v => ((int)MathF.Round(v)).ToString(CultureInfo.InvariantCulture) + " dB", enabled),
+            "sound.timecode.offset" => new ZuneSlide(Z.TimecodeOffsetMin, Z.TimecodeOffsetMax, Z.TimecodeOffsetStep, () => Live(0f), commit,
+                static v => ((int)MathF.Round(v)).ToString(CultureInfo.InvariantCulture) + " ms", enabled),
             "lyrics.stage.syncOffset" => new ZuneSlide(Z.SyncOffsetMin, Z.SyncOffsetMax, Z.SyncOffsetStep, () => Live(0f), commit,
                 static v => ((int)MathF.Round(v)).ToString(CultureInfo.InvariantCulture) + " ms", enabled),
             "playback.episodeSpeed" => new ZuneSlide(Z.SpeedMin, Z.SpeedMax, Z.SpeedStep, () => Live(1f), commit,

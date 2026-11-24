@@ -397,6 +397,9 @@ public static class ZuneSettingsRules
     /// <summary>The stage's sensitivity (30 % to 150 %) and sync offset (-500 to 500 ms) sliders.</summary>
     public const float SensitivityMin = 0.3f, SensitivityMax = 1.5f, SensitivityStep = 0.05f, SyncOffsetMin = -500f, SyncOffsetMax = 500f, SyncOffsetStep = 10f;
 
+    /// <summary>The timecode level (-24 to 0 dB) and offset (-500 to 500 ms) sliders (#154).</summary>
+    public const float TimecodeLevelMin = -24f, TimecodeLevelMax = 0f, TimecodeLevelStep = 1f, TimecodeOffsetMin = -500f, TimecodeOffsetMax = 500f, TimecodeOffsetStep = 5f;
+
     /// <summary>The radio line's caption inset (under the radio's label).</summary>
     public const float RadioCaptionInset = 28f;
 

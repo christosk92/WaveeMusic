@@ -98,7 +98,7 @@ public static partial class SettingsSpec
                 enabled: static f => f.TimecodeDeviceChosen ? SettingsEnablement.On : SettingsEnablement.Off(Strings.Settings.Sound.Timecode.ChooseFirst),
                 aliases: ["ltc", "smpte", "timecode", "clx", "resolume", "vj"]),
             Make("sound.timecode.device", K.Choice, Strings.Settings.Sound.Timecode.Device,
-                SettingsWriter.OfChoice("timecode.ltc.device", SettingsVerbs.SetTimecodeDevice), parent: "sound.timecode", glyph: "Speakers",
+                SettingsWriter.OfChoice("timecode.ltc.device", SettingsVerbs.SetTimecodeDevice), parent: "sound.timecode",
                 caption: static _ => SettingsVerbs.TimecodeDeviceIsMusic() ? Strings.Settings.Sound.Timecode.IsMusic : Strings.Settings.Sound.Timecode.DeviceSub,
                 value: static s => SettingsVerbs.TimecodeDeviceIndex(s.Get(Platform.Keys.TimecodeLtcDeviceId)), liveChoices: TimecodeDeviceNames),
             Make("sound.timecode.rate", K.Choice, Strings.Settings.Sound.Timecode.Rate,
