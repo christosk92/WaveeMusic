@@ -92,9 +92,9 @@ internal static class ClassicTrackChrome
 
                 // A second verb (Review, while the list holds missing local files: the bar is their banner too) stands before Hide them.
                 a.Secondary is { } secondary
-                    ? Button.Create(a.SecondaryLabel, secondary, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:secondary", Shrink = 0f }
+                    ? Button.Create(a.SecondaryLabel, secondary, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:secondary", Shrink = 0f, Layout = Design.Reduced ? null : ClassicTierMotion.Shove }
                     : new BoxEl { Shrink = 0f },
-                Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
+                Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f, Layout = Design.Reduced ? null : ClassicTierMotion.Shove },
                 // The ✕: closes the bar on this list until the app restarts. Mounted (with its tooltip) only while the bar shows: every list mounts this
                 // bar, and a tooltip host on each hidden one cost a one-time 4.6 MB on a Liked Songs scroll. Folded, a spacer of its size holds the row.
                 a.Dismiss is { } dismiss && a.Shown

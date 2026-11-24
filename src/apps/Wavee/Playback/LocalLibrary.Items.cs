@@ -56,9 +56,11 @@ public static partial class LocalLibrary
     {
         if (Entities.Current is not { } scope) return;
         bool mapMoved = false;
+        int lit = 0;
         for (int i = 0; i < staging.LocalItemCount; i++)
         {
             Staging.LocalItem item = staging.LocalItemAt(i);
+            if (item.Plays) lit++;
             int slot = staging.Slot(scope.Tracks, new StagedId(item.Uri));
             if (slot == Table.None) continue;
             EntityId id = new Track(slot).Id;
@@ -69,6 +71,9 @@ public static partial class LocalLibrary
             mapMoved = true;
         }
         if (mapMoved) RebuildItemMap();
+        // Always on (§3.4): one line per landing, so "why is this row grey" reads from the log next to each item's own local.match line.
+        Log.Info("local", "local.items landed n=" + staging.LocalItemCount + " lit=" + lit + " greyed=" + (staging.LocalItemCount - lit)
+                          + " folders=" + Folders.Count + " indexed=" + s_index.Count);
     }
 
     /// <summary>UI THREAD. Restate step 2 (§3.7): match every seen item again and re-stage the ones whose answer moved — matched and

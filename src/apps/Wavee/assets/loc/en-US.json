@@ -214,9 +214,10 @@
         "upcoming": "{count, plural, one {one isn’t out yet} other {# aren’t out yet}}",
         "allRegion": "{count, plural, one {it isn’t available in your country} other {they aren’t available in your country}}",
         "allUpcoming": "{count, plural, one {it isn’t out yet} other {they aren’t out yet}}",
-        "local": "{count, plural, one {one is a local file} other {# are local files}}",
-        "allLocal": "{count, plural, one {it’s a local file} other {they’re local files}}",
+        "local": "{count, plural, one {one is a local file that isn’t in your music folders} other {# are local files that aren’t in your music folders}}",
+        "allLocal": "{count, plural, one {it’s a local file that isn’t in your music folders} other {they’re local files that aren’t in your music folders}}",
         "hide": "{count, plural, one {Hide it} other {Hide them}}",
+        "addMusicFolder": "Add a music folder",
         "dismiss": "Close"
       }
     },
