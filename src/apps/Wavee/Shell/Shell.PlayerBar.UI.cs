@@ -652,9 +652,11 @@ public static partial class Shell
                     with { Key = "player-rail-tip:" + chapterEpoch + ":" + chapterId.Text + (chapterRail ? ":chapters" : "") + (preview is null ? "" : ":" + preview.Key)
                         + (lyricRail ? ":lyrics:" + lyricTrack : "") }
                 : null;
+            // #48 Mix: the planned overlap as the rail's brighter last stretch, a decoration in the same full-width slot (it takes no input).
+            Element decoration = Embed.Comp(new MixRailProps(chapters), static () => new MixRailSegment()) with { Key = "player-rail-mix" };
             return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps
             {
-                Host = this, Enabled = enabled, Pending = pending, Dvr = mode == SeekRailMode.Dvr, HoverTip = tip, Chapters = chapters,
+                Host = this, Enabled = enabled, Pending = pending, Dvr = mode == SeekRailMode.Dvr, HoverTip = tip, Chapters = decoration,
             });
         }
 

@@ -409,3 +409,45 @@ public static partial class Playback
         }
     }
 }
+
+/// <summary>#48 Mix: the seek rail's brighter end segment while a join is planned for the playing track (plan §3.10 "Player bar"): from
+/// the mix-out to the audible end (the rail's end, the effective duration), a hairline over the theme's track. Pure decoration in the
+/// rail's full-width slot; re-renders only when the plan or the duration changes.</summary>
+internal sealed record MixRailProps(FluentGpu.Dsl.Element? Tip);
+
+internal sealed class MixRailSegment : FluentGpu.Hooks.Component
+{
+    public override FluentGpu.Dsl.Element Render()
+    {
+        var tip = UseProps<MixRailProps>().Tip;
+        float from = UseComputed(static () =>
+        {
+            _ = Playback.Mix.Changed.Value;
+            long duration = Playback.DurationMs.Value;
+            var t = Playback.Mix.Current;
+            if (!t.Mix || duration <= 0 || t.OutStartMs >= duration) return -1f;
+            return Math.Clamp(t.OutStartMs / (float)duration, 0f, 1f);
+        }).Value;
+        // The rail's tip host (chapters, a seek preview, a lyric line) rides the same slot: stacked over the segment, unchanged.
+        FluentGpu.Dsl.Element segment = from < 0f ? new FluentGpu.Dsl.BoxEl { Key = "mix:rail:none", HitTestVisible = false } : Segment(from);
+        return tip is null ? segment
+            : new FluentGpu.Dsl.BoxEl { Key = "mix:rail:stack", ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false, Children = [segment, tip] };
+    }
+
+    static FluentGpu.Dsl.Element Segment(float from)
+    {
+        return new FluentGpu.Dsl.BoxEl
+        {
+            Key = "mix:rail", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FluentGpu.Foundation.FlexAlign.Center, HitTestVisible = false,
+            Children =
+            [
+                new FluentGpu.Dsl.BoxEl { Grow = from, Basis = 0f, HitTestVisible = false },
+                new FluentGpu.Dsl.BoxEl
+                {
+                    Key = "mix:rail:segment", Grow = 1f - from, Basis = 0f, Height = 2f, HitTestVisible = false,
+                    Fill = FluentGpu.Dsl.Tok.TextPrimary with { A = 0.55f },
+                },
+            ],
+        };
+    }
+}
