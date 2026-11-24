@@ -13,7 +13,10 @@
 // Later ("Your files and Spotify", phase 1): `LocalCollectionPageProps.Link` (LocalLinkProps.cs). Later (the library look, #240): `LocalArtistSort`,
 // `LocalCollectionPageProps.ArtistSort/SetArtistSort/ListView/ListSize/Filter` (the Albums and Artists pivots wear the library's toolbar).
 // Later (list-detail, #240): `LocalCollectionPageProps.Selected/Pick/Pane` (the Albums and Artists lists select a row and show its detail beside them).
+// Later (folder management, #240): `LocalFolderMenus`, `LocalCollectionPageProps.FolderMenus`, `LocalOpened.Keyed/ViewKey` (a renamed open folder
+// keeps its view).
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Signals;
 
@@ -170,6 +173,14 @@ public sealed record LocalOpened(LocalPivot From, string Folder, string Root, st
 
     /// <summary>The header cover's flight key: the album card's at the root an album opened, else the folder tile's.</summary>
     public string HeaderTile => Album.Length > 0 && Folder == Root ? AlbumTile(Album) : FolderTile(Folder);
+
+    /// <summary>The folder key the open view was first keyed by, kept when a rename moves <see cref="Folder"/> (it or a folder above it): null
+    /// until then. Every step in, out or back starts a view of its own (null again).</summary>
+    public string? Keyed { get; init; }
+
+    /// <summary>What keys the open view (its body, its list, its scroll): a rename keeps it, so the view follows the new name in place, with no
+    /// remount, no replayed drill and its scroll kept.</summary>
+    public string ViewKey => Keyed ?? Folder;
 }
 
 /// <summary>The verbs of the page, built once by the core host.</summary>
@@ -186,6 +197,22 @@ public sealed record LocalCollectionVerbs
     public required Action<string> PlayFolder { get; init; }
     public required Action<string> ShuffleFolder { get; init; }
     public required Action<long> PlayFile { get; init; }
+}
+
+/// <summary>The Folders browser's menus (#240 folders), built by the core at open time, so a theme only says where they open: a folder tile, a
+/// folder row, the "⋯" of an open folder's header, the browser's empty area and its breadcrumb. The structure's context machinery draws them
+/// (a sheet at Compact, Zune's lowercase words). Every verb that touches the disk asks first and runs off the UI thread.</summary>
+public sealed record LocalFolderMenus
+{
+    /// <summary>A folder's menu by its node key: Play, Shuffle, Play next, Add to queue · Open, Show in File Explorer · Rescan, Hide (a folder
+    /// inside a music folder) or Remove from music folders (a music folder) · New folder, Rename, Delete · Folder info. The second argument is
+    /// true on the open folder's own header, whose Play and Shuffle buttons stand beside it (one home per verb): its menu leaves them and Open out.</summary>
+    public required Func<string, bool, ContextMenuModel?> Folder { get; init; }
+
+    /// <summary>The browser's empty area and breadcrumb: Add a music folder, New folder (inside the open folder), Rescan, Show in File Explorer, and,
+    /// where the theme offers the list (<c>views</c> true), View as grid or list (the Albums and Artists view, <see cref="LocalCollectionPageProps.ListView"/>).
+    /// The first argument is the open folder's key, "" at the music folders.</summary>
+    public required Func<string, bool, ContextMenuModel?> Area { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.LocalCollectionPage"/>.</summary>
@@ -240,6 +267,8 @@ public sealed record LocalCollectionPageProps
     public required FluentGpu.Foundation.DropTargetSpec Drop { get; init; }
     /// <summary>"Your files and Spotify" (the offer and the review); null: the host offers none of it.</summary>
     public LocalLinkPageProps? Link { get; init; }
+    /// <summary>The Folders browser's menus (folder management); null: the browser offers none.</summary>
+    public LocalFolderMenus? FolderMenus { get; init; }
     /// <summary>"On this PC".</summary>
     public required string Title { get; init; }
     public required string RouteKey { get; init; }
