@@ -63,14 +63,24 @@ public static partial class SettingsSpec
             Make("appearance.colours.light", K.Choice, Strings.Settings.Appearance.ColoursLight,
                 SettingsWriter.OfChoice("colours.light", i => SettingsVerbs.PickColours(ThemeKind.Light, i)), glyph: "Sun",
                 value: _ => SettingsVerbs.ColoursIndex(ThemeKind.Light), liveChoices: () => SettingsVerbs.ColoursChoices(ThemeKind.Light)),
+            // My own set (the last choice, "Custom"): its editor opens from this row while it is the pick.
+            Make("appearance.colours.custom.light", K.Action, Strings.Settings.Appearance.ColoursCustomEdit,
+                SettingsWriter.OfAction("colours.custom.light", static () => SettingsVerbs.EditCustomColours(ThemeKind.Light)), glyph: "Edit",
+                captionKey: Strings.Settings.Appearance.ColoursCustomEditSub, visible: static _ => ColourChoice.IsCustom(ThemeKind.Light)),
             Make("appearance.colours.dark", K.Choice, Strings.Settings.Appearance.ColoursDark,
                 SettingsWriter.OfChoice("colours.dark", i => SettingsVerbs.PickColours(ThemeKind.Dark, i)), glyph: "Brush",
                 value: _ => SettingsVerbs.ColoursIndex(ThemeKind.Dark), liveChoices: () => SettingsVerbs.ColoursChoices(ThemeKind.Dark)),
+            Make("appearance.colours.custom.dark", K.Action, Strings.Settings.Appearance.ColoursCustomEdit,
+                SettingsWriter.OfAction("colours.custom.dark", static () => SettingsVerbs.EditCustomColours(ThemeKind.Dark)), glyph: "Edit",
+                captionKey: Strings.Settings.Appearance.ColoursCustomEditSub, visible: static _ => ColourChoice.IsCustom(ThemeKind.Dark)),
             Make("appearance.colours.accent", K.Segmented, Strings.Settings.Appearance.ColoursAccent,
                 SettingsWriter.OfChoice("colours.accent", SettingsVerbs.SetColourAccent), glyph: "Design",
                 captionKey: Strings.Settings.Appearance.ColoursAccentSub, value: _ => (int)ColourChoice.AccentSource,
                 visible: static _ => ColourChoice.Current.Any,
-                choices: [Strings.Settings.Appearance.ColoursAccentTheme, Strings.Settings.Appearance.ColoursAccentPalette]),
+                choices: [Strings.Settings.Appearance.ColoursAccentTheme, Strings.Settings.Appearance.ColoursAccentPalette, Strings.Settings.Appearance.ColoursAccentOwn]),
+            Make("appearance.colours.accentOwn", K.Action, Strings.Settings.Appearance.ColoursAccentOwnPick,
+                SettingsWriter.OfAction("colours.accentOwn", static () => SettingsVerbs.ChooseOwnAccent()), glyph: "Design",
+                visible: static _ => ColourChoice.Current.Any && ColourChoice.AccentSource == AccentSource.Own),
             Make("appearance.colours.accentPick", K.Choice, Strings.Settings.Appearance.ColoursAccentPick,
                 SettingsWriter.OfChoice("colours.accentPick", SettingsVerbs.PickNamedAccent), glyph: "Design",
                 value: _ => SettingsVerbs.NamedAccentIndex(), visible: static _ => SettingsVerbs.NamedAccentsShown(),
@@ -187,23 +197,40 @@ public static partial class SettingsVerbs
     public static bool PickColours(ThemeKind kind, int index)
     {
         var specs = ColourCatalog.For(kind);
-        if (index < 0 || index > specs.Length) return false;
-        return ColourChoice.SetSpec(kind, index == 0 ? null : specs[index - 1].Id);
+        if (index < 0 || index > specs.Length + 1) return false;
+        return ColourChoice.SetSpec(kind, index == 0 ? null : index == specs.Length + 1 ? CustomColours.IdOf(kind) : specs[index - 1].Id);
     }
 
     /// <summary>The index of <paramref name="kind"/>'s stored set in <see cref="PickColours"/>' order (0: the theme's own colours).</summary>
     public static int ColoursIndex(ThemeKind kind)
     {
+        if (ColourChoice.IsCustom(kind)) return ColourCatalog.For(kind).Length + 1;
         if (ColourChoice.SpecOf(kind) is not { } spec) return 0;
         return ColourCatalog.For(kind).IndexOf(spec) + 1;
     }
 
-    /// <summary>Where the accent comes from while a set is active: 0 the theme's, 1 the palette's (<see cref="AccentSource"/>).</summary>
+    /// <summary>Where the accent comes from while a set is active: 0 the theme's, 1 the palette's, 2 my own (<see cref="AccentSource"/>). My own,
+    /// picked before any was chosen, starts as the set's accent, so the pick changes nothing until it is chosen.</summary>
     public static bool SetColourAccent(int index)
     {
-        if (index is < 0 or > 1) return false;
+        if (index is < 0 or > 2) return false;
+        if (index == 2 && ColourChoice.OwnAccent is null && ColourChoice.SpecOf(Tok.Theme) is { } spec) ColourChoice.SetOwnAccent(spec.Seeds.Accent);
         ColourChoice.SetAccentSource((AccentSource)index);
         return true;
+    }
+
+    /// <summary>Opens the editor of <paramref name="kind"/>'s own set. The page re-reads after Apply through the colour epoch, not here.</summary>
+    public static bool EditCustomColours(ThemeKind kind)
+    {
+        ColourEditor.Open(SettingsContext.Overlay, kind);
+        return false;
+    }
+
+    /// <summary>Opens the editor of my own accent.</summary>
+    public static bool ChooseOwnAccent()
+    {
+        ColourEditor.OpenOwnAccent(SettingsContext.Overlay);
+        return false;
     }
 
     /// <summary>"Artwork colours" while a set is active (plan D4).</summary>
@@ -251,9 +278,10 @@ public static partial class SettingsVerbs
     public static IReadOnlyList<string> ColoursChoices(ThemeKind kind)
     {
         var specs = ColourCatalog.For(kind);
-        var words = new string[specs.Length + 1];
+        var words = new string[specs.Length + 2];
         words[0] = Loc.Get(Strings.Settings.Appearance.ColoursDefault);
         for (int i = 0; i < specs.Length; i++) words[i + 1] = specs[i].DisplayName;
+        words[^1] = Loc.Get(Strings.Settings.Appearance.ColoursCustom);
         return words;
     }
 

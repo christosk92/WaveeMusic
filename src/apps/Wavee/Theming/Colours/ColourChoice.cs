@@ -26,8 +26,31 @@ public static class ColourChoice
     /// <summary>Bumped by every change: a Settings row or a preview reads it.</summary>
     public static IReadSignal<int> Epoch => s_epoch;
 
-    /// <summary>The stored set of <paramref name="kind"/>, or null for the theme's own colours (an unknown id reads as null).</summary>
-    public static ColourSpec? SpecOf(ThemeKind kind) => ColourCatalog.Find(Platform.Settings.Get(KeyOf(kind)), kind);
+    /// <summary>The stored set of <paramref name="kind"/>, or null for the theme's own colours (an unknown id, or a custom set with no readable line,
+    /// reads as null).</summary>
+    public static ColourSpec? SpecOf(ThemeKind kind) => Find(Platform.Settings, kind);
+
+    /// <summary>True when <paramref name="kind"/>'s pick is my own set.</summary>
+    public static bool IsCustom(ThemeKind kind) => string.Equals(Platform.Settings.Get(KeyOf(kind)), CustomColours.IdOf(kind), StringComparison.Ordinal);
+
+    /// <summary>The seeds the custom editor opens with for <paramref name="kind"/>: the stored custom line, else the set picked now, else the
+    /// catalog's first set for that mode (Wavee Paper / Ink).</summary>
+    public static ColourSeeds EditorSeeds(ThemeKind kind)
+    {
+        if (CustomColours.Parse(Platform.Settings.Get(CustomKeyOf(kind)), kind) is { } stored) return stored;
+        if (SpecOf(kind) is { } picked) return CustomColours.From(picked);
+        return CustomColours.From(ColourCatalog.For(kind)[0]);
+    }
+
+    /// <summary>Stores my own set for <paramref name="kind"/> and picks it. Refused (false, nothing changes) when its ground does not fit the mode.</summary>
+    public static bool SetCustom(ThemeKind kind, in ColourSeeds seeds)
+    {
+        if (!ColourSolver.Fits(kind, seeds.Ground)) return false;
+        Platform.Settings.Set(CustomKeyOf(kind), CustomColours.Format(seeds));
+        Platform.Settings.Set(KeyOf(kind), CustomColours.IdOf(kind));
+        Changed();
+        return true;
+    }
 
     /// <summary>True when the colour set of the CURRENT mode takes over what <paramref name="what"/> names (a theme option's row then shows disabled
     /// with "Set by your colours").</summary>
@@ -71,7 +94,11 @@ public static class ColourChoice
     /// not offered for <paramref name="kind"/> is refused (false, nothing changes).</summary>
     public static bool SetSpec(ThemeKind kind, string? specId)
     {
-        if (!string.IsNullOrEmpty(specId) && ColourCatalog.Find(specId, kind) is null) return false;
+        bool custom = string.Equals(specId, CustomColours.IdOf(kind), StringComparison.Ordinal);
+        if (!string.IsNullOrEmpty(specId) && !custom && ColourCatalog.Find(specId, kind) is null) return false;
+        // My own set picked before it was ever made: it starts as the set on screen, so the pick changes nothing until it is edited.
+        if (custom && CustomColours.Parse(Platform.Settings.Get(CustomKeyOf(kind)), kind) is null)
+            Platform.Settings.Set(CustomKeyOf(kind), CustomColours.Format(EditorSeeds(kind)));
         Platform.Settings.Set(KeyOf(kind), specId ?? "");
         Changed();
         return true;
@@ -90,6 +117,9 @@ public static class ColourChoice
         Platform.Settings.Set(kind == ThemeKind.Light ? ColourKeys.AccentNameLight : ColourKeys.AccentNameDark, accentId ?? "");
         Changed();
     }
+
+    /// <summary>My own accent as stored, or null when none was picked.</summary>
+    public static ColorF? OwnAccent => Platform.Settings.Get(ColourKeys.AccentOwn) is int own and not 0 ? ColorOption.Unpack(own) with { A = 1f } : null;
 
     /// <summary>My own accent (floored per mode by the solver).</summary>
     public static void SetOwnAccent(ColorF colour)
@@ -134,7 +164,7 @@ public static class ColourChoice
 
     private static ColourLadder? Ladder(IAppSettings settings, ThemeKind kind, AccentSource source, int own)
     {
-        if (ColourCatalog.Find(settings.Get(KeyOf(kind)), kind) is not { } spec) return null;
+        if (Find(settings, kind) is not { } spec) return null;
         ColorF accent = source switch
         {
             AccentSource.Palette => spec.AccentNamed(settings.Get(kind == ThemeKind.Light ? ColourKeys.AccentNameLight : ColourKeys.AccentNameDark)),
@@ -145,6 +175,17 @@ public static class ColourChoice
     }
 
     private static SettingKey<string> KeyOf(ThemeKind kind) => kind == ThemeKind.Light ? ColourKeys.Light : ColourKeys.Dark;
+
+    private static SettingKey<string> CustomKeyOf(ThemeKind kind) => kind == ThemeKind.Light ? ColourKeys.CustomLight : ColourKeys.CustomDark;
+
+    // The stored pick of kind: a built-in, or my own set from its line (named "Custom" in the current language).
+    private static ColourSpec? Find(IAppSettings settings, ThemeKind kind)
+    {
+        string id = settings.Get(KeyOf(kind));
+        if (string.Equals(id, CustomColours.IdOf(kind), StringComparison.Ordinal))
+            return CustomColours.SpecOf(settings.Get(CustomKeyOf(kind)), kind, FluentGpu.Localization.Loc.Get(Strings.Settings.Appearance.ColoursCustom));
+        return ColourCatalog.Find(id, kind);
+    }
 
     private static AccentSource SourceOf(int stored) => stored switch
     {

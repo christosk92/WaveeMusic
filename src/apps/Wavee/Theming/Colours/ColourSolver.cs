@@ -106,6 +106,26 @@ public static class ColourSolver
             Critical: critical, Caution: caution, Success: success);
     }
 
+    /// <summary>Which of the editable seeds the floors moved for <paramref name="spec"/> with <paramref name="accent"/> (the editor's note: "Muted text
+    /// was adjusted to stay readable"). Empty for a set whose seeds already read. The grounds are never moved, so only inks and the accent appear.</summary>
+    public static IReadOnlyList<CustomSeed> Explain(ColourSpec spec, ColorF accent)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        ColourLadder l = Resolve(spec, accent);
+        var moved = new List<CustomSeed>(3);
+        if (!Same(l.Ink, spec.Seeds.Ink)) moved.Add(CustomSeed.Ink);
+        if (!Same(l.InkSecondary, spec.Seeds.InkMuted)) moved.Add(CustomSeed.Muted);
+        if (!Same(l.AccentInk, accent) || !Same(l.AccentFill, accent)) moved.Add(CustomSeed.Accent);
+        return moved;
+    }
+
+    // Byte-equal colours (what a user sees as "the same colour").
+    private static bool Same(ColorF a, ColorF b)
+    {
+        static int B(float v) => Math.Clamp((int)MathF.Round(v * 255f), 0, 255);
+        return B(a.R) == B(b.R) && B(a.G) == B(b.G) && B(a.B) == B(b.B);
+    }
+
     private static ColorF? Severity(ColorF? seed, bool lighter, ColorF ground, ColorF well, ColorF raised)
         => seed is { } c ? Floor(Opaque(c), lighter, (ground, TextFloor), (well, TextFloor), (raised, TextFloor)) : null;
 

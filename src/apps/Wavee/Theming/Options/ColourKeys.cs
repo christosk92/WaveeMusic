@@ -31,4 +31,11 @@ public static class ColourKeys
     /// <summary>Artwork colours while a set is active (plan D4): false (the default) keeps the set's exact colours, true lets the artwork tint the
     /// shell and the pages and lead the page accent as the theme's own options say.</summary>
     public static readonly SettingKey<bool> Artwork = new("theme.palette.artwork", false);
+
+    /// <summary>My own light colour set, as its stored line (<c>CustomColours</c>: <c>v1;ground=#…;surface=#…;ink=#…;muted=#…;accent=#…[;surface2=#…]</c>);
+    /// empty = none made yet. Picked by storing <c>custom.light</c> in <see cref="Light"/>.</summary>
+    public static readonly SettingKey<string> CustomLight = new("theme.palette.custom.light", "");
+
+    /// <summary>My own dark colour set; as <see cref="CustomLight"/>.</summary>
+    public static readonly SettingKey<string> CustomDark = new("theme.palette.custom.dark", "");
 }
