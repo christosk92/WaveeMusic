@@ -173,9 +173,10 @@ public static partial class Playback
                 if (!sess.TryAddCrossfadeVoice(item.AudioVoice!, GainEnvelope.FromCurve(FadeKind.In, startFrame, inFrames, inTable).WithTransition(gate),
                         startFrame, rg, sess.BuildVoiceChain(), id))
                     return false;
-                if (inAuto is not null) sess.SetVoiceAutomation(id, inAuto);
+                bool inArmed = inAuto is null || sess.SetVoiceAutomation(id, inAuto);
                 sess.SetVoiceEnvelope(s_activePrimaryId, GainEnvelope.FromCurve(FadeKind.Out, startFrame, outFrames, outTable).WithTransition(gate));
-                if (outAuto is not null) sess.SetVoiceAutomation(s_activePrimaryId, outAuto);
+                bool outArmed = outAuto is null || sess.SetVoiceAutomation(s_activePrimaryId, outAuto);
+                if (!inArmed || !outArmed) Log.Warn("audio", $"[mix] automation not admitted in={inArmed} out={outArmed}");
                 NoteBakedFactor(id, s_prepDecoder, in s_prepOpened);
                 s_joinExact = true;
                 s_joinPending = true;

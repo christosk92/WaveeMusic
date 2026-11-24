@@ -555,7 +555,11 @@ public static partial class Playback
         static readonly GlitchLedger s_ledger = new();
         static PlaybackState s_lastState = PlaybackState.Idle;
         static long s_lastPositionPostMs, s_lastWorkLogMs;
-        static long s_nextVoiceId;
+        // The app's hand-off voice ids. Seeded past the engine's primary voice id (PcmAudioSession's PrimaryVoiceId = 1): from 0 the
+        // first hand-off of a process got id 1 too, so a command addressed to the incoming voice by id reached the primary instead
+        // (the mixer answers the first voice with that id). Measured with #48's --mix-bench: the incoming voice's automation armed
+        // the outgoing voice. Engine-issued ids start at 2^32 and VoiceScheduler's at 1_000_000, both far above this range.
+        static long s_nextVoiceId = 100;
         static int s_endedHold;
         // The endgame's per-track state (EndgamePlan, G-112): `s_armLogged` gates the once-per-track `[gapless] arm`
         // diagnostic; `s_lastEndgameAskMs`/`s_endgameAskCount` drive the re-asking nudge (a sentinel of -1 means "never
