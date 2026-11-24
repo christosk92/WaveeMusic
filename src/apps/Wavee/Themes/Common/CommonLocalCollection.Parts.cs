@@ -236,7 +236,9 @@ internal static class CommonLocalCollectionParts
                     Ell(R.Type.DenseMeta("") with { Text = ActivityProp(v), Color = Tok.TextSecondary }),
                 ],
         });
-        return new BoxEl { Direction = 0, Wrap = true, Gap = L.ChipGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
+        // The row wraps onto a second line where the column is narrow (the activity line "Up to date · scanned 2 min ago" is the long one): a width
+        // that re-wraps it (a tier crossing, the nav pane docking) eases the row's height, so the pivot under the hero glides instead of jumping.
+        return new BoxEl { Direction = 0, Wrap = true, Gap = L.ChipGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Layout = L.HeightReflow, Children = kids.ToArray() };
     }
 
     static Element Chip(LocalFolderChip c, Action open, float chipH)
