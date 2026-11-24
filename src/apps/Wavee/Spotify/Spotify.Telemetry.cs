@@ -695,6 +695,7 @@ public static partial class Spotify
         public static string ContextKind(string contextUri)
         {
             if (contextUri.Length == 0) return "unknown";
+            if (contextUri == Egress.LocalFilesUri) return "local_files";   // the official client's source for a Local Files play (report 3.8)
             int first = contextUri.IndexOf(':');
             if (first < 0) return "unknown";
             int second = contextUri.IndexOf(':', first + 1);

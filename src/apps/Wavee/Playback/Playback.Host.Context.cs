@@ -1379,18 +1379,33 @@ public static partial class Playback
 
         EntityId id = r.StartedId;
         PlayStarted?.Invoke(id, r.Context, unix);
-        if (id.Provider != EntityProvider.Spotify || !id.IsPlayable) return;
-        string uri = id.Text;
-        // A playlist's local file (#240 E7, E8): reported under its own spotify:local: uri, blanked in content_uri, real in
-        // local_content_uri and in the play history, as the official client reports one (capture report 3.6, 3.8).
-        bool localFile = id.Form == EntityForm.Text && LocalTrackUri.Is(uri);
+        if (!id.IsPlayable) return;
+        // A local file (#240 E7, E8) is reported under its spotify:local: uri, blanked in content_uri, real in local_content_uri and in the
+        // play history, as the official client reports one (capture report 3.6, 3.8): a playlist's item by its own uri, a Wavee local file
+        // by the name its wire row was minted with (its tags, never its path; no title, no report). Nothing else that is not Spotify's.
+        string uri;
+        bool localFile;
+        if (id.Provider == EntityProvider.Local && id.Kind == EntityKind.Track)
+        {
+            if (Entities.Current is not { } scope || !scope.Tracks.TryGetSlot(id, out int slot) || LocalUriOf(new Track(slot)) is not { } minted) return;
+            uri = minted.Uri;
+            localFile = true;
+        }
+        else if (id.Provider == EntityProvider.Spotify)
+        {
+            uri = id.Text;
+            localFile = id.Form == EntityForm.Text && LocalTrackUri.Is(uri);
+        }
+        else return;
         // A row that plays as VIDEO never opens the audio pump: PlayingOpened is then default(Opened), whose Label is null, and
         // the registration's format name blew up at Ended (Telemetry.FormatName) - on every video track end and, through
         // RetireForSignOut, on every quit while a video played (the window never closed).
         Audio.Opened opened = Audio.PlayingOpened;
         string formatLabel = opened.Label ?? "";
         byte[] mediaGid = new byte[16];   // RawCoreStream.media_id: the track's own gid, the one thing the royalty row names it by
-        s_registration = Spotify.Telemetry.Started(NewPlaybackIds(), uri, r.Context.IsEmpty ? "" : r.Context.Text,
+        // Our Local Files list is named as the official client names its own (E4): spotify:local-files.
+        string contextUri = r.Context.IsEmpty ? "" : Spotify.Egress.IsLocalFiles(r.Context) ? Spotify.Egress.LocalFilesUri : r.Context.Text;
+        s_registration = Spotify.Telemetry.Started(NewPlaybackIds(), uri, contextUri,
             ProviderText(), ReasonText(r.StartReason), id.WriteGid(mediaGid) == mediaGid.Length ? mediaGid : null,
             opened.BitrateKbps, formatLabel,
             r.DurationMs > 0 ? r.DurationMs : opened.DurationMs, r.StartPosMs,

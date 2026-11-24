@@ -158,6 +158,15 @@ public static partial class Playback
     /// The buffer is this call's to return, or the resolve's.</summary>
     static void RunLoad(in Spotify.Decode.RemoteCommand command, in RemoteLoad load, ClusterBuffer buffer, long now)
     {
+        // D11 (#240 §3.14): a controller's play (or transfer) of ITS Local Files names the row only by a uid that client made up for its own
+        // list (report 3.5); Wavee cannot know which file was meant, and starting another song is worse than starting none. Refused whole:
+        // no claim, no load, no origin captured, the deck untouched.
+        if (load.Kind is RemoteCmd.Play or RemoteCmd.Transfer && !load.ContextUri.IsEmpty && Spotify.Egress.NamesLocalFiles(buffer.Utf8(load.ContextUri)))
+        {
+            Log.Info("playback", "remote " + (load.Kind == RemoteCmd.Play ? "play" : "transfer") + " of spotify:local-files refused (D11): its rows are another device's files");
+            ClusterBuffer.Return(buffer);
+            return;
+        }
         if (load.Kind == RemoteCmd.Transfer) Video.WarmForClaim();   // the owner's row comes here: start the runtime now
         StepOne(Input.Controller(in command, now));      // the claim and its is_active announce, in THIS drain
         if (load.Kind is not (RemoteCmd.Play or RemoteCmd.Transfer)) { ClusterBuffer.Return(buffer); return; }

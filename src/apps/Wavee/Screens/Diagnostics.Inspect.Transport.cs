@@ -98,6 +98,22 @@ public static partial class Diagnostics
                             WriteTransport(w);
                         });
                     }
+                case "inbound":
+                    {
+                        // A controller's Connect `play` / `transfer` REQUEST body (the JSON a dealer message carries, e.g. one from the #240
+                        // capture), decoded by the app's own decoders and handed to the host exactly as the dealer glue does
+                        // (Spotify.Connect.Commands.HandOffLoad). No dealer, no ack: the inspector has no Connect session.
+                        string file = a.Str("file");
+                        if (file.Length == 0 || !File.Exists(file)) return Inspect.Reply.Fail(id, name, "inbound wants file=<a play/transfer command body (JSON)>");
+                        byte[] body = File.ReadAllBytes(file);
+                        Spotify.Decode.RemoteCommand command = Spotify.Decode.ConnectCommand(body);
+                        if (command.Kind is not (Spotify.Decode.RemoteCmd.Play or Spotify.Decode.RemoteCmd.Transfer))
+                            return Inspect.Reply.Fail(id, name, "inbound: the body is not a play or transfer command (" + command.Kind + ")");
+                        Spotify.Decode.ClusterBuffer buffer = Spotify.Decode.ClusterBuffer.Rent();
+                        Spotify.Decode.RemoteLoad load = Spotify.Decode.ConnectLoad(body, buffer);
+                        Playback.RemoteLoadArrived(in command, in load, buffer, Spotify.Current.Epoch);
+                        break;
+                    }
                 case "telemetry":
                     {
                         // The RawCoreStream and the closing RawCoreStreamSegment the playing row's registration would be reported as
@@ -120,7 +136,7 @@ public static partial class Diagnostics
                         });
                     }
                 default:
-                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate|telemetry, not '" + verb + "'");
+                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate|telemetry|inbound, not '" + verb + "'");
             }
             // traced (`trace=N`): the trace's first frames are the change's own (the frame the queue and the deck land in), so nothing runs before it
             bool traced = a.Has("trace");
