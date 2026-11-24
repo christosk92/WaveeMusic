@@ -31,13 +31,13 @@ internal static class CommonActivityRules
     /// <summary>The verb's height, reserved in the head at rest so a scan starting never pushes the flyout down.</summary>
     public const float PauseHeight = 32f;
 
-    // ── the chip (board: 180 x 20 at the label's x, its top 5 above the row's foot; the cell grows 36 → 56) ──
+    // ── the chip: the row's second line (at the label's x, caption 12/16; the cell grows 36 → 56; the board's 180 x 20 pill is gone) ──
 
     /// <summary>The chip's reserved width: every state's words fit it, so a state change never resizes it.</summary>
     public const float ChipWidth = 180f;
 
-    /// <summary>The chip's height and its pill's corner (half the height).</summary>
-    public const float ChipHeight = 20f;
+    /// <summary>The line's height: the caption's 16-DIP line.</summary>
+    public const float ChipHeight = 16f;
 
     /// <summary>The lane the chip adds under the row, reserved in every state and at every tier (the board's 56-DIP cell less the 40 pitch).</summary>
     public const float Lane = 16f;
@@ -46,11 +46,12 @@ internal static class CommonActivityRules
     /// above and below the 20-DIP chip that makes it so.</summary>
     public const float DrawerLane = 40f, DrawerSlop = 10f;
 
-    /// <summary>How far the chip rises into the row above (the row's 2-DIP margin plus the board's 5 of overlap).</summary>
-    public const float Lift = 7f;
+    /// <summary>How far the line rises into the row above: the row's 2-DIP margin, so it starts at the row plate's foot (its words never straddle
+    /// the hover or selection plate's edge) and sits in the lane as the row's caption.</summary>
+    public const float Lift = 2f;
 
-    /// <summary>The chip's lead and end padding, and the gap between its mark and its words.</summary>
-    public const float ChipPadLead = 6f, ChipPadEnd = 8f, ChipGap = 6f;
+    /// <summary>The lane's end padding, and the gap between the mark and the words.</summary>
+    public const float ChipPadEnd = 8f, ChipGap = 6f;
 
     /// <summary>The marks: the ring and the tick in the chip, the amber dot.</summary>
     public const float ChipRing = 12f, ChipTick = 12f, Dot = 8f;

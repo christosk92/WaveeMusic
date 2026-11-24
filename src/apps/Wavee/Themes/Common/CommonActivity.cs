@@ -6,9 +6,11 @@
 //   LANE     under the "Local files" row (`nav-activity-lane`): 16 DIP in the docked pane, 40 in the overlay drawer (the Compact target), reserved
 //            in every state (no music folder included) and at every tier of its pane, so nothing in the pane ever moves for the chip (a row of
 //            the pane's virtualized list cannot ease its height: the rows below would snap). The rail draws none (its rows are re-planned).
-//   CHIP     (`nav-activity`) 180 x 20 at the label's x, risen 7 into the row's foot (the board's 56-DIP cell): a mark (a ring while a scan
-//            runs, a tick after a background change, the amber dot when something needs the user) and one line. Idle or no music folder: no
-//            chip (it fades out; its place stays). A click opens the flyout, a second closes it.
+//   CHIP     (`nav-activity`) the row's own SECOND LINE, not a capsule: at the label's x, in the pane's caption type (12/16, secondary ink),
+//            risen into the row's foot so it reads as "Local files" and its state (the board drew a bordered pill there; the owner, 2026-11-24:
+//            it "looks bolted on"): a mark (a ring while a scan runs, a tick after a background change, the amber dot when something needs the
+//            user) and one line, no fill, no border; the words brighten on hover. Idle or no music folder: no line (it fades out; its place
+//            stays). A click opens the flyout, a second closes it.
 //   FLYOUT   (`activity-flyout`) the popup's own chrome, 420 wide (narrower in a narrow window): the head, the phases, "What changed since you
 //            opened Wavee" (each count a link to Local Files), "Needs attention" (one line and one verb each), the footer (the last full scan,
 //            "Rescan now", "Settings"). The phases and the sections reveal when they change size while it is open.
@@ -115,13 +117,12 @@ internal sealed class CommonActivityChip : CommonActivityChipBase
             {
                 Key = Rules.ChipKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = Rules.ChipGap,
                 Width = Rules.ChipWidth, Height = Rules.ChipHeight, Shrink = 1f, MinWidth = 0f,
-                // Docked: it rises into the row's foot, as the board draws it. In the drawer it stands in the middle of its 40-DIP lane and
+                // Docked: it rises into the row's foot, the row's second line. In the drawer it stands in the middle of its 40-DIP lane and
                 // takes the whole lane as its hit rect (the Compact target), never reaching into the row above.
                 Margin = new Edges4(0f, drawer ? 0f : -Rules.Lift, 0f, 0f),
                 HitSlop = drawer ? new Edges4(0f, Rules.DrawerSlop, 0f, Rules.DrawerSlop) : default,
-                Padding = new Edges4(Rules.ChipPadLead, 0f, Rules.ChipPadEnd, 0f),
-                Corners = Radii.FullAll, Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
-                BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
+                // No plate: a clickable box auto-tints its fill, so both are set to the (transparent) fill.
+                Fill = ColorF.Transparent, HoverFill = ColorF.Transparent, PressedFill = ColorF.Transparent, Corners = Radii.ControlAll,
                 Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
                 OnClick = Toggle, OnRealized = Realize,
                 Enter = Rules.Fade, Exit = Rules.Fade, Transition = Rules.FadeMotion,
@@ -130,7 +131,8 @@ internal sealed class CommonActivityChip : CommonActivityChipBase
                     Mark(chip.Kind),
                     Ui.Caption(chip.Text) with
                     {
-                        Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                        Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary, PressedColor = Tok.TextTertiary,
+                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Grow = 1f, Shrink = 1f, MinWidth = 0f,
                     },
                 ],
             });
