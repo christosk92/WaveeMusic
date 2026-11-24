@@ -101,9 +101,6 @@ public static class ZuneTokens
     public const float TrackA = 0.12f;
     /// <summary>A field's rule and the search pill's ring at rest: 18 % of the ink (Z-Part-TitleBar, Z-Dialogs).</summary>
     public const float FieldRuleA = 0.18f;
-
-    /// <summary>The ink of <paramref name="kind"/>.</summary>
-    public static ColorF InkOf(ThemeKind kind) => kind == ThemeKind.Light ? LightInk : DarkInk;
 }
 
 /// <summary>The roles of the Zune style.</summary>
