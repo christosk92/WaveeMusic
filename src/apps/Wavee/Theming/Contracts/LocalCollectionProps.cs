@@ -12,6 +12,7 @@
 // (#240 detail motion): `LocalOpened`, `LocalCollectionPageProps.Opened` in place of the bare `Folder` signal.
 // Later ("Your files and Spotify", phase 1): `LocalCollectionPageProps.Link` (LocalLinkProps.cs). Later (the library look, #240): `LocalArtistSort`,
 // `LocalCollectionPageProps.ArtistSort/SetArtistSort/ListView/ListSize/Filter` (the Albums and Artists pivots wear the library's toolbar).
+// Later (list-detail, #240): `LocalCollectionPageProps.Selected/Pick/Pane` (the Albums and Artists lists select a row and show its detail beside them).
 
 using FluentGpu.Dsl;
 using FluentGpu.Signals;
@@ -206,6 +207,14 @@ public sealed record LocalCollectionPageProps
     public required Func<FluentGpu.Signals.Signal<int>> ListSize { get; init; }
     /// <summary>The Albums and Artists filter's text (the session's; "" shows every item).</summary>
     public required Func<FluentGpu.Signals.Signal<string>> Filter { get; init; }
+    /// <summary>The row picked in the Albums (<see cref="LocalPivot.Albums"/>) or Artists list, by its key ("" none), remembered as the library remembers
+    /// its selection. A list that splits (the library's list-detail) shows it beside the list; the theme writes it through <see cref="Pick"/>. Tracked.</summary>
+    public required Func<LocalPivot, string> Selected { get; init; }
+    /// <summary>Pick a row of the Albums or Artists list (the pivot switches to it when it is another: an album's artist line picks the artist).</summary>
+    public required Action<LocalPivot, string> Pick { get; init; }
+    /// <summary>The detail pane of a pick: an album's (<see cref="LocalPivot.Albums"/>) or an artist's, the structure's library album pane over the local
+    /// data. One mount per pivot: a new pick re-pushes the key and the pane crossfades in place.</summary>
+    public required Func<LocalPivot, string, Element> Pane { get; init; }
     /// <summary>The detail over a pivot (<see cref="LocalOpened"/>; open while its <c>Folder</c> is not ""), or null: every pivot shows its list (the Folders
     /// browser its music folders).</summary>
     public required IReadSignal<LocalOpened?> Opened { get; init; }

@@ -129,12 +129,18 @@ internal static partial class CommonLocalCollectionParts
     /// <summary>The toolbar over Albums and Artists: the sort, the Filter box and the view pair on one line (the sort and the pair over the filter at
     /// Compact), on the page gutter.</summary>
     static Element Toolbar(string id, Element sort, LocalCollectionPageProps p, CommonLocalCollectionLayout lay, float g, LibraryControlsStyle? controls)
+        // Its height eases where a tier crossing re-forms it (one line <-> stacked, the 40 Compact controls), so the list under it glides.
+        => Gut("lc-toolbar:" + id, g, ToolbarBody(sort, p, lay, controls, stacked: !lay.ActionsBeside), top: L.ToolbarTop, bottom: L.ToolbarBottom) with { Layout = L.HeightReflow };
+
+    /// <summary>The toolbar's rows: on one line, or <paramref name="stacked"/> (the sort and the pair over the filter: Compact, and the split's navigator, as
+    /// the library's navigator stacks its own).</summary>
+    static Element ToolbarBody(Element sort, LocalCollectionPageProps p, CommonLocalCollectionLayout lay, LibraryControlsStyle? controls, bool stacked)
     {
         float h = lay.ControlH;
         Element filter = AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: p.Filter(), queryIcon: Icons.Search, grow: 1f,
             maxFillWidth: L.FilterW, minHeight: h, cornerRadius: Radii.Control);
         Element view = controls is not null ? controls.View(new LibraryViewArgs(p.ListView(), p.ListSize(), h)) : Embed.Comp(new ViewPairProps(p.ListView(), h), static () => new ViewPair());
-        Element body = lay.ActionsBeside
+        return !stacked
             ? new BoxEl
             {
                 Direction = 0, Gap = L.ToolbarGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
@@ -149,7 +155,6 @@ internal static partial class CommonLocalCollectionParts
                     filter,
                 ],
             };
-        return Gut("lc-toolbar:" + id, g, body, top: L.ToolbarTop, bottom: L.ToolbarBottom);
     }
 
     sealed record ViewPairProps(Signal<int> View, float Height);
@@ -204,12 +209,8 @@ internal static partial class CommonLocalCollectionParts
             var to = s;
             items.Add(MenuFlyoutItem.RadioItem(SortWord(s), s == sort, () => set(to)));
         }
-        Element bar = Toolbar("albums", SortButton("lc-sort", sort.ToString(), SortWord(sort), items, lay.ControlH), p, lay, g, controls);
-        return new BoxEl
-        {
-            Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
-            Children = [bar, Embed.Comp(new ListProps(L.WallKey, v, false, sort, default, p, lay, g), static () => new ListHost()) with { Key = L.WallKey }],
-        };
+        Element button = SortButton("lc-sort", sort.ToString(), SortWord(sort), items, lay.ControlH);
+        return Split(LocalPivot.Albums, "albums", button, new ListProps(L.WallKey, v, false, sort, default, p, lay, g), controls);
     }
 
     /// <summary>Artists as the library lists them (WinUI/Classic): the toolbar (by name, or most songs first), then round house cards or rows.</summary>
@@ -223,12 +224,8 @@ internal static partial class CommonLocalCollectionParts
             var to = s;
             items.Add(MenuFlyoutItem.RadioItem(ArtistSortWord(s), s == sort, () => set(to)));
         }
-        Element bar = Toolbar("artists", SortButton("lc-artist-sort", sort.ToString(), ArtistSortWord(sort), items, lay.ControlH), p, lay, g, controls);
-        return new BoxEl
-        {
-            Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
-            Children = [bar, Embed.Comp(new ListProps(L.ArtistsKey, v, true, default, sort, p, lay, g), static () => new ListHost()) with { Key = L.ArtistsKey }],
-        };
+        Element button = SortButton("lc-artist-sort", sort.ToString(), ArtistSortWord(sort), items, lay.ControlH);
+        return Split(LocalPivot.Artists, "artists", button, new ListProps(L.ArtistsKey, v, true, default, sort, p, lay, g), controls);
     }
 
     sealed record ListProps(string Key, LocalCollectionView View, bool Artists, LocalAlbumSort Sort, LocalArtistSort ArtistSort, LocalCollectionPageProps Page,

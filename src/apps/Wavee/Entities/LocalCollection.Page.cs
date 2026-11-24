@@ -30,7 +30,7 @@ using P = Wavee.Strings.LocalFiles.Page;
 namespace Wavee;
 
 /// <summary>The "On this PC" page (see the file header).</summary>
-public static class LocalCollectionPage
+public static partial class LocalCollectionPage
 {
     /// <summary>The last pivot, by name (home, albums, artists, songs, folders, insights).</summary>
     static readonly SettingKey<string> s_pivotKey = new("local.page.pivot", "home");
@@ -38,6 +38,9 @@ public static class LocalCollectionPage
     /// <summary>Albums' and Artists' view and the grid's size (the library's codes: 0 compact list, 1 list, 2 compact grid, 3 grid; 0 small, 1 medium,
     /// 2 large), and the Artists order (name, songs).</summary>
     static readonly SettingKey<int> s_viewKey = new("local.page.view", 3), s_sizeKey = new("local.page.size", 1), s_artistSortKey = new("local.page.artist-sort", 0);
+
+    /// <summary>The Albums and Artists picks (a row's key), remembered as the library remembers its selection (`library.<kind>.selected`).</summary>
+    static readonly SettingKey<string> s_albumPick = new("local.page.selected.albums", ""), s_artistPick = new("local.page.selected.artists", "");
 
     /// <summary>The <see cref="Shell.RouteKind.Local"/> page.</summary>
     public static Element PageFor(in Shell.Route route)
@@ -74,6 +77,10 @@ public static class LocalCollectionPage
         readonly Signal<LocalArtistSort> _artistSort = new((LocalArtistSort)Math.Clamp(Platform.Settings.Get(s_artistSortKey), 0, 1));
         readonly Signal<int> _view = new(Math.Clamp(Platform.Settings.Get(s_viewKey), 0, 3)), _size = new(Math.Clamp(Platform.Settings.Get(s_sizeKey), 0, 2));
         readonly Signal<string> _filter = new("");
+        readonly Signal<string> _albumPick = new(Platform.Settings.Get(s_albumPick)), _artistPick = new(Platform.Settings.Get(s_artistPick));
+        readonly Func<LocalPivot, string> _selected;
+        readonly Action<LocalPivot, string> _pick;
+        readonly Func<LocalPivot, string, Element> _pane;
         readonly Action<LocalArtistSort> _setArtistSort;
         readonly Action _saveView;
         readonly Signal<LocalOpened?> _opened = new(null);
@@ -110,6 +117,15 @@ public static class LocalCollectionPage
                 Platform.Settings.Set(s_sizeKey, _size.Value);
             };
             _openFolder = key => OpenFolder(key);
+            _selected = p => p == LocalPivot.Artists ? _artistPick.Value : p == LocalPivot.Albums ? _albumPick.Value : "";
+            _pick = (p, key) =>
+            {
+                if (p == LocalPivot.Artists) { _artistPick.Value = key; Platform.Settings.Set(s_artistPick, key); }
+                else if (p == LocalPivot.Albums) { _albumPick.Value = key; Platform.Settings.Set(s_albumPick, key); }
+                else return;
+                if (_pivot.Peek() != p) _setPivot(p);
+            };
+            _pane = (p, key) => p == LocalPivot.Artists ? ArtistPane(key, _verbs!, _pick) : AlbumPane(key, _verbs!, _pick);
             _back = Back;
             _stepOpen = () => _opened.Value is { } o && o.From == _pivot.Value && o.Folder.Length > 0;
             _songs = static () => Track.Table(new Track.TableArgs
@@ -185,6 +201,9 @@ public static class LocalCollectionPage
                 ListView = () => _view,
                 ListSize = () => _size,
                 Filter = () => _filter,
+                Selected = _selected,
+                Pick = _pick,
+                Pane = _pane,
                 Opened = _opened,
                 OpenFolder = _openFolder,
                 Songs = _songs,

@@ -20,6 +20,7 @@
 //      │   Home:   ScrollView "lc-scroll:home" [ Recently added (Today / This week / Earlier this month) · Lossless · Shuffle by decade ]
 //      │   others: the pivot's body:
 //      │           Albums  the library's toolbar (sort, Filter, view) · house cards or rows      Artists  the same, round
+//      │                   (the list views split where the library splits: the list beside the pick's library pane, CommonLocalCollection.Split.cs)
 //      │           Songs   the core's track table over Local Files            Folders  breadcrumb · folder tiles · the folder's songs
 //      │           Insights formats, quality, covers, tag health, can't play, folders, the private line
 //      └─ the empty state (S4) when there is no music folder and nothing indexed

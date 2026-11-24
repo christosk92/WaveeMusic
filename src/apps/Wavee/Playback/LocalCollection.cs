@@ -103,13 +103,14 @@ public static class LocalCollection
     /// (<c>Track.LocalCredit</c>): an unnamed song files under no artist and is never counted as one. Display only: matching reads the tags.</summary>
     public static string ArtistOf(LocalEntry e) => e.Tags.AlbumArtist.Length > 0 ? e.Tags.AlbumArtist : LocalNames.Display(e.Tags, e.MatchTitle).Artist;
 
-    /// <summary>The ids of the playable files in an album, in disc/track order (UI thread or any).</summary>
-    public static List<long> AlbumFiles(string key)
+    /// <summary>The ids of the playable files in an album, in disc/track order (UI thread or any). <paramref name="unplayable"/>: every file of it, the
+    /// ones Wavee cannot play (or that are missing) too, as the Local Files list keeps them, listed and unavailable (a pane's rows).</summary>
+    public static List<long> AlbumFiles(string key, bool unplayable = false)
     {
         var list = new List<(int Disc, int Track, string Title, long Id)>();
         foreach (var e in LocalLibrary.Index.Snapshot())
         {
-            if (e.State == LocalState.Missing || !e.Playable || e.Tags.Album.Length == 0) continue;
+            if ((!unplayable && (e.State == LocalState.Missing || !e.Playable)) || e.Tags.Album.Length == 0) continue;
             if (AlbumKey(ArtistOf(e), e.Tags.Album) != key) continue;
             list.Add((e.Tags.DiscNumber, e.Tags.TrackNumber, e.MatchTitle, e.LocalId));
         }
@@ -117,12 +118,13 @@ public static class LocalCollection
         return list.ConvertAll(static x => x.Id);
     }
 
-    /// <summary>The ids of the playable files that match a filter (artist key, decade, folder), in album order.</summary>
-    public static List<long> FilesWhere(Func<LocalEntry, bool> keep)
+    /// <summary>The ids of the playable files that match a filter (artist key, decade, folder), in album order. <paramref name="unplayable"/>: the
+    /// unplayable and missing ones too (see <see cref="AlbumFiles"/>).</summary>
+    public static List<long> FilesWhere(Func<LocalEntry, bool> keep, bool unplayable = false)
     {
         var all = LocalLibrary.Index.Snapshot();
         var list = new List<LocalEntry>(all.Length);
-        foreach (var e in all) if (e.State != LocalState.Missing && e.Playable && keep(e)) list.Add(e);
+        foreach (var e in all) if ((unplayable || (e.State != LocalState.Missing && e.Playable)) && keep(e)) list.Add(e);
         list.Sort(static (a, b) =>
         {
             int c = string.Compare(ArtistOf(a), ArtistOf(b), StringComparison.OrdinalIgnoreCase);

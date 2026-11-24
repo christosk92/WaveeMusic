@@ -120,6 +120,29 @@ internal static class CommonLocalCollectionRules
     /// <summary>The empty and loading states' widest column.</summary>
     public const float EmptyMaxW = 560f;
 
+    // ── the list-detail (the library's split, #240) ─────────────────────────────────────────────────────────────────
+
+    /// <summary>The split's keys: the arm root (the list beside its detail, or the list alone), the navigator column, the seam and the pane column.</summary>
+    public const string SplitKey = "lc-split", WholeKey = "lc-whole", NavKey = "lc-nav", SeamKey = "lc-seam", PaneKey = "lc-pane";
+
+    /// <summary>The two arms (split, and the list alone) cross-fade when the page's layout tier crosses or the view switches between list and grid: the
+    /// declared tier swap of the page (opacity only, the control's fast clock), as the library's arms do.</summary>
+    public static readonly EnterExit SplitSwap = SwapFamilies.Declare("Common.LocalCollection.SplitSwap", new EnterExit(Opacity: 0f, Active: true));
+    public static MotionTokenDef SplitSwapMotion => MotionTok.ControlFast;
+
+    /// <summary>The seam between the navigator and the pane: the splitter strip's hairline, and the navigator's grip range (the library's).</summary>
+    public const float SeamHairline = 1f, NavMin = 240f, NavMax = 560f;
+    /// <summary>The navigator's list row: the library navigator's plate (56; 40 compact) and its 2 + 2 margin, the art, the gap between the art and the
+    /// words, the title's and the subtitle's size and line (the library row's 14/20 semibold over 12/16).</summary>
+    public const float NavRowPlate = 56f, NavRowCompactPlate = 40f, NavRowMarginY = 2f, NavArt = 40f, NavArtCorner = 4f, NavArtGap = 12f,
+        NavTitleSize = 14f, NavTitleLine = 20f, NavSubSize = 12f, NavSubLine = 16f, NavTextGap = 1f, NavContentPadRight = 8f;
+    public const int NavTitleWeight = 600;
+    /// <summary>Where the list's plates hang left of the column, and where a row's art stands in from its plate, for a structure that states no navigator
+    /// leads (Classic): WinUI's (the art on the page's line).</summary>
+    public const float NavItemLead = 16f, NavRowArtLead = 12f;
+    /// <summary>The navigator's toolbar: its air over the list.</summary>
+    public const float NavToolbarBottom = 8f;
+
     /// <summary>A no-art tile: its colour from the name (a stable FNV-1a hash picks the hue; the saturation and value keep it calm, the second stop
     /// a darker, shifted hue), the initial's ink, and the tile size from which the initial takes the page-hero voice.</summary>
     public static (ColorF Top, ColorF Bottom) TintOf(string seed)
