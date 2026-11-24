@@ -29,16 +29,19 @@ internal static class CommonLocalCollectionRules
     /// <summary>Each mosaic row's share of <see cref="MosaicOpacity"/>, top down: the art fades into the page ground before the pivot.</summary>
     public static ReadOnlySpan<float> MosaicRowFade => [1f, 0.5f, 0.16f];
 
-    /// <summary>The hero's vertical rhythm (board 18: title at 50, stats 8 under, chips 16 under, actions 20 under, the pivot 40 under).</summary>
-    public const float HeroTop = 48f, HeroBottom = 36f, TitleGap = 8f, ChipsGap = 16f, ActionsGap = 20f, ActionGap = 8f;
-    /// <summary>The compact head (boards 19 and 20): the mosaic thumb, its gap to the words, the padding above and below.</summary>
-    public const float ThumbSize = 60f, ThumbGap = 16f, CompactTop = 16f, CompactBottom = 16f;
-
-    /// <summary>The stats line's counts (board 18: "**6,016** songs · **512** albums"): semibold over the line's own weight.</summary>
-    public const ushort StatsNumberWeight = 600;
+    /// <summary>The head, one form on every pivot (the library page's head, W-Library): the title, the meta line <see cref="MetaGap"/> under it, the
+    /// folders and the state line <see cref="StatusTop"/> under that, the pivot <see cref="HeadBottom"/> under the head (the library's title-to-pivot
+    /// 16); the actions <see cref="ActionGap"/> apart, beside the title (under the words at Compact, <see cref="ActionsUnderGap"/> down). The air
+    /// above the title steps with the tier (<see cref="CommonLocalCollectionLayout.HeadTop"/>).</summary>
+    public const float MetaGap = 4f, StatusTop = 12f, HeadBottom = 16f, ActionGap = 8f, ActionsUnderGap = 16f;
+    /// <summary>The gap between a folder head's parts and the padding of the Folders browser's head (boards 19 and 20).</summary>
+    public const float ThumbGap = 16f, CompactTop = 16f;
 
     /// <summary>A folder chip: height, side padding, glyph, the gap between chips and between glyph and words; the status dot.</summary>
     public const float ChipH = 28f, ChipPadX = 10f, ChipGlyph = 12f, ChipGap = 8f, ChipInner = 6f, ChipBorder = 1f, Dot = 8f, StatusGap = 12f;
+
+    /// <summary>The pivot's first word stands on the page gutter, as the library's kinds do (the stock item pads its word 12 in).</summary>
+    public const float PivotLead = -12f;
 
     /// <summary>The pivot (a SelectorBar): item height and gap, the hairline under it. The item keeps the stock SelectorBar padding (12,10,12,7):
     /// 10 + the 20 label + 7 + the 3 pill = the 40 item, so the pill sits 7 under the label as WinUI's does (a zero vertical padding stacked
@@ -59,8 +62,21 @@ internal static class CommonLocalCollectionRules
     public const float DecadeH = 56f, DecadeCover = 36f, DecadeOverlap = 14f, DecadeGap = 10f, DecadePad = 10f;
     public const int DecadeCovers = 3;
 
-    /// <summary>The Albums wall's sort row: its height and the chips' gap.</summary>
+    /// <summary>The Albums wall's sort row: its height and the chips' gap (Zune's wall).</summary>
     public const float SortRowH = 52f, SortGap = 8f;
+
+    /// <summary>Albums' and Artists' toolbar (the library's: the sort, the filter, the view pair): the air above and below it, the gap between its
+    /// controls, the filter's width beside the sort (it takes its own line at Compact).</summary>
+    public const float ToolbarTop = 16f, ToolbarBottom = 12f, ToolbarGap = 8f, FilterW = 280f;
+
+    /// <summary>The grid | list pair where a structure registers no library controls (W-Library's: two 40-wide cells on one control plate).</summary>
+    public const float ViewCellW = 40f, ViewGlyph = 16f, ViewStroke = 1f;
+
+    /// <summary>A list row (the library's: the 40 art, the title over its meta, a 56 plate) and a compact one (the 32 art, the title alone).</summary>
+    public const float RowArt = 40f, RowH = 56f, CompactRowArt = 32f, CompactRowH = 48f;
+
+    /// <summary>The grid's least cell per size code (small, medium, large), as a share of the tier's wall cell.</summary>
+    public static ReadOnlySpan<float> GridScale => [0.75f, 1f, 1.35f];
 
     /// <summary>A song row in the Folders browser.</summary>
     public const float SongRowH = 40f, SongNumberW = 36f, SongQualityW = 96f, SongTimeW = 56f, SongColGap = 16f;
@@ -141,6 +157,10 @@ internal sealed record CommonLocalCollectionLayout
     public required bool ActionsBeside { get; init; }
     /// <summary>A clickable chip's (folder, sort, "See all") height: the board's 28, the 40 hit target at Compact.</summary>
     public required float ChipH { get; init; }
+    /// <summary>A control's height in the head and the toolbar (the buttons, the sort, the filter, the view pair): the stock 32, the 40 target at Compact.</summary>
+    public required float ControlH { get; init; }
+    /// <summary>The air above the title: the library head's (16 / 20 / 24 / 32 across the tiers).</summary>
+    public required float HeadTop { get; init; }
     /// <summary>The cover of an open folder's (or album's) header: the picture its tile's cover flies into. One size at every tier, as the hero's
     /// mosaic tile is: the header is a fixed row of the folder's list, whose extent a tier crossing would otherwise step (the rows under it jumped).</summary>
     public required float DetailCover { get; init; }
@@ -148,15 +168,15 @@ internal sealed record CommonLocalCollectionLayout
     static CommonLocalCollectionLayout Std(WidthTier t) => new()
     {
         Tier = t, Card = 164f, CardGap = 16f, WallMin = 168f, WallGap = 20f, ArtistMin = 140f, DecadeMin = 240f,
-        FileColumn = true, ActionsBeside = true, ChipH = L.ChipH, DetailCover = 144f,
+        FileColumn = true, ActionsBeside = true, ChipH = L.ChipH, DetailCover = 144f, ControlH = 32f, HeadTop = 24f,
     };
 
     static readonly CommonLocalCollectionLayout[] s_records =
     [
-        Std(WidthTier.Compact) with { Card = 136f, CardGap = 12f, WallMin = 140f, WallGap = 12f, ArtistMin = 104f, DecadeMin = 170f, FileColumn = false, ActionsBeside = false, ChipH = CommonTiers.CompactTarget },
-        Std(WidthTier.Small) with { Card = 148f, CardGap = 14f, WallMin = 150f, ArtistMin = 120f, WallGap = 16f, DecadeMin = 220f, FileColumn = false },
+        Std(WidthTier.Compact) with { Card = 136f, CardGap = 12f, WallMin = 140f, WallGap = 12f, ArtistMin = 104f, DecadeMin = 170f, FileColumn = false, ActionsBeside = false, ChipH = CommonTiers.CompactTarget, ControlH = CommonTiers.CompactTarget, HeadTop = 16f },
+        Std(WidthTier.Small) with { Card = 148f, CardGap = 14f, WallMin = 150f, ArtistMin = 120f, WallGap = 16f, DecadeMin = 220f, FileColumn = false, HeadTop = 20f },
         Std(WidthTier.Standard),                                                                     // boards 18-20
-        Std(WidthTier.Huge) with { Card = 196f, CardGap = 20f, WallMin = 200f, WallGap = 24f, ArtistMin = 180f, DecadeMin = 300f },
+        Std(WidthTier.Huge) with { Card = 196f, CardGap = 20f, WallMin = 200f, WallGap = 24f, ArtistMin = 180f, DecadeMin = 300f, HeadTop = 32f },
     ];
 
     public static CommonLocalCollectionLayout For(WidthTier content) => s_records[Math.Clamp((int)content, 0, s_records.Length - 1)];

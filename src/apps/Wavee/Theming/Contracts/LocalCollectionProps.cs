@@ -10,7 +10,8 @@
 // Contract additions (declared, not numbered): `ViewKeys.LocalCollectionPage` and every type in this file; later (#240 P2 gaps):
 // `LocalShelf`, `LocalShelfSlot`, `LocalCollectionPageProps.Shelves/ShowShelf/MoveShelf/Drop`, `LocalCollectionView.HiResSongs/LastScanTicks`; later still
 // (#240 detail motion): `LocalOpened`, `LocalCollectionPageProps.Opened` in place of the bare `Folder` signal.
-// Later ("Your files and Spotify", phase 1): `LocalCollectionPageProps.Link` (LocalLinkProps.cs).
+// Later ("Your files and Spotify", phase 1): `LocalCollectionPageProps.Link` (LocalLinkProps.cs). Later (the library look, #240): `LocalArtistSort`,
+// `LocalCollectionPageProps.ArtistSort/SetArtistSort/ListView/ListSize/Filter` (the Albums and Artists pivots wear the library's toolbar).
 
 using FluentGpu.Dsl;
 using FluentGpu.Signals;
@@ -22,6 +23,9 @@ public enum LocalPivot : byte { Home, Albums, Artists, Songs, Folders, Insights 
 
 /// <summary>The Albums wall's orders.</summary>
 public enum LocalAlbumSort : byte { Added, Artist, Title, Year }
+
+/// <summary>The Artists list's orders: by name, or by how many songs the collection holds of each.</summary>
+public enum LocalArtistSort : byte { Name, Songs }
 
 /// <summary>The library in one word (`LocalLibrary.StateWord`).</summary>
 public enum LocalLibraryPhase : byte { None, Scanning, Ready, Offline }
@@ -191,6 +195,17 @@ public sealed record LocalCollectionPageProps
     public required Action<LocalPivot> SetPivot { get; init; }
     public required IReadSignal<LocalAlbumSort> Sort { get; init; }
     public required Action<LocalAlbumSort> SetSort { get; init; }
+    /// <summary>The Artists list's order (remembered).</summary>
+    public required IReadSignal<LocalArtistSort> ArtistSort { get; init; }
+    public required Action<LocalArtistSort> SetArtistSort { get; init; }
+    // A writable cell travels as `Func<Signal<T>>` (WVTH006, as the library's props carry theirs).
+    /// <summary>How Albums and Artists list their items, the library's view code (remembered; the theme's view toggle writes it): 0 compact list,
+    /// 1 list, 2 compact grid, 3 grid (<see cref="LibraryViewArgs.View"/>).</summary>
+    public required Func<FluentGpu.Signals.Signal<int>> ListView { get; init; }
+    /// <summary>The grid's size, the library's code (remembered): 0 small, 1 medium, 2 large (<see cref="LibraryViewArgs.Size"/>).</summary>
+    public required Func<FluentGpu.Signals.Signal<int>> ListSize { get; init; }
+    /// <summary>The Albums and Artists filter's text (the session's; "" shows every item).</summary>
+    public required Func<FluentGpu.Signals.Signal<string>> Filter { get; init; }
     /// <summary>The detail over a pivot (<see cref="LocalOpened"/>; open while its <c>Folder</c> is not ""), or null: every pivot shows its list (the Folders
     /// browser its music folders).</summary>
     public required IReadSignal<LocalOpened?> Opened { get; init; }

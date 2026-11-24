@@ -9,8 +9,8 @@
 //      ├─ SkelRegionEl  pending until the first fold lands; the shimmer is this page over a seed view (one real UI)
 //      │   ONE column for every pivot, so the pivot bar never remounts and a switch animates in place (the owner, 2026-11-24: "the layout
 //      │   should animate in place"):
-//      │     "lc-head"   the head: Home's hero (mosaic or calm gradient, title, stats, folder chips + activity, actions), else the compact
-//      │                 head (thumb, title, stats, actions); the two cross-fade and the slot's height eases (the bar under it glides)
+//      │     "lc-head"   the head, ONE form on every pivot (the library page's head, W-Library): the title in the library's page-title
+//      │                 voice with the actions beside it, the meta line, the folders and the library's state; a pivot switch never moves it
 //      │     the pivot   one node across every switch
 //      │     "lc-body"   the pivot's body, keyed per pivot: the structure's library pivot recipe (WinUI's: the new body slides in from the
 //      │                 side of its tab and decelerates, the old one fades fast; PageMotionPolicy.LibraryPivot), else the core's quick fade
@@ -19,7 +19,7 @@
 //      │                    tile's cover flies into the detail's header and home again (Shell.FlyInPage; the swap then keeps only its fades)
 //      │   Home:   ScrollView "lc-scroll:home" [ Recently added (Today / This week / Earlier this month) · Lossless · Shuffle by decade ]
 //      │   others: the pivot's body:
-//      │           Albums  sort chips + count · virtual cover wall          Artists  virtual grid of artist cards
+//      │           Albums  the library's toolbar (sort, Filter, view) · house cards or rows      Artists  the same, round
 //      │           Songs   the core's track table over Local Files            Folders  breadcrumb · folder tiles · the folder's songs
 //      │           Insights formats, quality, covers, tag health, can't play, folders, the private line
 //      └─ the empty state (S4) when there is no music folder and nothing indexed
@@ -56,10 +56,13 @@ internal static class CommonLocalCollection
     {
         var tiers = ctx.Tier();
         var lay = CommonLocalCollectionLayout.For(tiers.Content);
-        return Embed.Comp(new HostProps(p, gutterOf(tiers), lay, titleKey), static () => new Host()) with { Key = L.PageKey };
+        // The structure's library controls (WinUI's view pair and its menu); Classic registers none and gets the page's own pair.
+        var registry = ctx.Hooks.UseContext(ViewRegistry.Context);
+        var controls = registry is not null && registry.TryGetStyle(StyleKeys.LibraryControls, out var c) ? c : null;
+        return Embed.Comp(new HostProps(p, gutterOf(tiers), lay, titleKey, controls), static () => new Host()) with { Key = L.PageKey };
     }
 
-    sealed record HostProps(LocalCollectionPageProps Page, float Gutter, CommonLocalCollectionLayout Lay, string TitleKey);
+    sealed record HostProps(LocalCollectionPageProps Page, float Gutter, CommonLocalCollectionLayout Lay, string TitleKey, LibraryControlsStyle? Controls);
 
     sealed class Host : Component
     {
@@ -117,7 +120,7 @@ internal static class CommonLocalCollection
     static LayoutTransition? SwapOf(bool fromRight, ThemeFacts facts)
         => facts.Policies.PageMotion.LibraryPivot is { } pivot ? pivot(fromRight, facts.Tiers) : Design.Nav.SameKindSwap;
 
-    /// <summary>The head's two forms cross-fade; the body's switch moves on the same clock: WinUI's incoming 300 ms on an ease-out (its
+    /// <summary>The body's switch clock: WinUI's incoming 300 ms on an ease-out (its
     /// (0, 0, 0, 1) decelerate carried most of a short Compact slide in one frame: the trace's "instant"), which also takes the outgoing node
     /// most of its way out early. A node carries one clock for both legs, so the recipe's enter leg (<see cref="SwapOf"/>: the side, the travel)
     /// rides it as the node's Enter.</summary>
@@ -135,18 +138,17 @@ internal static class CommonLocalCollection
         float g = hp.Gutter;
         // "Your files and Spotify": the review takes the page's place while it is open (board 29: On this PC › Review matches).
         if (p.Link is { } link && link.Reviewing.Peek() is not null) return X.LinkReview(link, g, p.RouteKey);
-        bool home = pivot == LocalPivot.Home;
         Element bar = Pivot(p, pivot, g);
-        Element head = home ? Hero(p, view, hp.Lay, g, hp.TitleKey) : CompactHead(p, view, hp.Lay, g, hp.TitleKey);
+        Element head = Head(p, view, hp.Lay, g, hp.TitleKey);
         Element body = detail ? X.FolderBrowser(view, opened, p.OpenFolder, p.Verbs, hp.Lay, g, CrumbRoot(p, pivot), p.RouteKey) : pivot switch
         {
             LocalPivot.Home => ScrollView(new BoxEl
             {
                 Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, L.PageBottom),
-                Children = [X.LinkOffer(p.Link, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, hp.Lay, g, p.Shelves.Peek(), reveal)],
+                Children = [X.LinkOffer(p.Link, g), .. X.HomeBody(view, p.Verbs, p.SetPivot, hp.Lay, g, p.Shelves.Peek(), reveal, house: true)],
             }) with { Key = L.ScrollKey + ":home", Grow = 1f, MinWidth = 0f, ScrollKey = p.RouteKey + ":home" },
-            LocalPivot.Albums => X.AlbumWall(view, p.Sort.Peek(), p.SetSort, p.Verbs, hp.Lay, g, p.RouteKey),
-            LocalPivot.Artists => X.ArtistGrid(view, p.Verbs, hp.Lay, g, p.RouteKey),
+            LocalPivot.Albums => X.LibraryAlbums(view, p, hp.Lay, g, hp.Controls),
+            LocalPivot.Artists => X.LibraryArtists(view, p, hp.Lay, g, hp.Controls),
             LocalPivot.Songs => X.Gut("lc-songs", g, p.Songs(), grow: true),
             LocalPivot.Folders => X.FolderBrowser(view, null, p.OpenFolder, p.Verbs, hp.Lay, g, p.Title, p.RouteKey),
             _ => X.Insights(view, hp.Lay, g, p.RouteKey),
@@ -154,25 +156,14 @@ internal static class CommonLocalCollection
         // The shimmer has no step (its key is the list's).
         string slot = step.Key ?? L.BodyKey + ":" + pivot.ToString() + ":list";
         body = X.DetailSlot(slot, body, step.Enter, X.DetailMotion.Exit(pivot, opened, facts));
-        bool motion = swap is not null;
         return new BoxEl
         {
             Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
             Children =
             [
-                // The head's slot eases its height between the hero and the compact head, so the pivot under it glides, never jumps.
-                new BoxEl
-                {
-                    Key = L.HeadKey, Direction = 1, MinWidth = 0f, Shrink = 0f, ClipToBounds = true, Layout = motion ? MotionRecipes.CardResizeHeight : null,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Key = home ? L.HeadKey + ":hero" : L.HeadKey + ":compact", Direction = 1, MinWidth = 0f, Children = [head],
-                            Enter = motion ? s_fade : null, Exit = s_fade, Transition = SwapClock,
-                        },
-                    ],
-                },
+                // One head on every pivot: a switch moves the body alone. Its height eases where its content re-wraps (a folder chip landing,
+                // the first scan's line), so the pivot under it glides.
+                new BoxEl { Key = L.HeadKey, Direction = 1, MinWidth = 0f, Shrink = 0f, ClipToBounds = true, Layout = L.HeightReflow, Children = [head] },
                 bar,
                 new BoxEl
                 {
@@ -192,74 +183,60 @@ internal static class CommonLocalCollection
         };
     }
 
-    // ── the hero (board 18) ──────────────────────────────────────────────────────────────────────────────────────────
+    // ── the head (the library page's head, W-Library) ──────────────────────────────────────────────────────────────
 
-    static Element Hero(LocalCollectionPageProps p, LocalCollectionView view, CommonLocalCollectionLayout lay, float g, string titleKey)
+    /// <summary>The page's head, one form on every pivot: "On this PC" in the library's page-title voice (Title Large, one line), the actions beside it
+    /// (under the words at Compact), the meta line under the title ("2 songs · 1 artist · 4 minutes"), and the music folders with the library's state
+    /// (or the first scan's line and bar) under that. The title row carries the page-title key: its left edge is the page's gutter.</summary>
+    static Element Head(LocalCollectionPageProps p, LocalCollectionView view, CommonLocalCollectionLayout lay, float g, string titleKey)
     {
-        Element words = X.Gut("lc-hero-words", g, new BoxEl
+        Element words = new BoxEl
         {
-            Direction = 1, MinWidth = 0f,
+            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
             Children =
             [
-                R.Type.PageHero(p.Title) with { Key = titleKey, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                X.HeroStats(view) with { Margin = new Edges4(0f, L.TitleGap, 0f, 0f) },
-                new BoxEl { Margin = new Edges4(0f, L.ChipsGap, 0f, 0f), Children = [X.Chips(view, p.Verbs, lay.ChipH, p.FirstScan() ? p.ScanLine(float.NaN, true) : null)] },
-                Actions(p.Verbs, view, wrap: true) with { Margin = new Edges4(0f, L.ActionsGap, 0f, 0f) },
+                R.Type.SurfaceDisplay(p.Title) with { Key = titleKey, Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                R.Type.TrackTitle(X.StatsText(view, withSongs: true)) with
+                {
+                    Key = "lc-meta", Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    Margin = new Edges4(0f, L.MetaGap, 0f, 0f),
+                },
+                new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, L.StatusTop, 0f, 0f),
+                    Children = [X.Chips(view, p.Verbs, lay.ControlH, p.FirstScan() ? p.ScanLine(float.NaN, true) : null)],
+                },
             ],
-        }, top: L.HeroTop, bottom: L.HeroBottom);
-        return new BoxEl
-        {
-            Key = L.HeroKey, ZStack = true, MinWidth = 0f, ClipToBounds = true,
-            Children = [X.Backdrop(view, L.MosaicTile, leftFade: true), words],
         };
+        Element actions = Actions(p.Verbs, view, lay, play: p.Pivot.Peek() != LocalPivot.Songs);
+        return X.Gut("lc-head", g, new BoxEl
+        {
+            Key = L.HeroKey, Direction = (byte)(lay.ActionsBeside ? 0 : 1), Gap = lay.ActionsBeside ? L.ThumbGap : L.ActionsUnderGap,
+            AlignItems = lay.ActionsBeside ? FlexAlign.Start : FlexAlign.Stretch, MinWidth = 0f,
+            Children = [words, actions],
+        }, top: lay.HeadTop, bottom: L.HeadBottom);
     }
 
-    /// <summary>Play all · Shuffle · Add music. <paramref name="play"/> false leaves Play and Shuffle to the Songs table's own bar (one home per verb).</summary>
-    static BoxEl Actions(LocalCollectionVerbs v, LocalCollectionView view, bool wrap, bool play = true)
+    /// <summary>Play all · Shuffle · Add music, the house buttons. <paramref name="play"/> false leaves Play and Shuffle to the Songs table's own bar (one
+    /// home per verb). Beside the title they stand on its line's middle.</summary>
+    static Element Actions(LocalCollectionVerbs v, LocalCollectionView view, CommonLocalCollectionLayout lay, bool play)
     {
         bool any = view.Songs > 0;
-        Element add = Button.Create(Loc.Get(P.AddMusic), v.AddMusic, ButtonAppearance.Standard, glyph: Icons.Add);
+        var size = lay.Tier == WidthTier.Compact ? ControlSize.Large : ControlSize.Medium;   // the 40 target at Compact
+        Element add = Button.Create(Loc.Get(P.AddMusic), v.AddMusic, ButtonAppearance.Standard, size, glyph: Icons.Add);
         return new BoxEl
         {
-            Direction = 0, Gap = L.ActionGap, AlignItems = FlexAlign.Center, Wrap = wrap, MinWidth = 0f,
+            Key = "lc-actions", Direction = 0, Gap = L.ActionGap, AlignItems = FlexAlign.Center, Wrap = !lay.ActionsBeside, Shrink = 0f, MinWidth = 0f,
+            MinHeight = lay.ActionsBeside ? R.Type.SurfaceDisplay("").LineHeight : 0f,
             Children = play
                 ?
                 [
-                    Button.Create(Loc.Get(P.PlayAll), v.PlayAll, ButtonAppearance.Accent, glyph: Icons.Play, isEnabled: any),
-                    Button.Create(Loc.Get(P.Shuffle), v.Shuffle, ButtonAppearance.Standard, glyph: Icons.Shuffle, isEnabled: any),
+                    Button.Create(Loc.Get(P.PlayAll), v.PlayAll, ButtonAppearance.Accent, size, glyph: Icons.Play, isEnabled: any),
+                    Button.Create(Loc.Get(P.Shuffle), v.Shuffle, ButtonAppearance.Standard, size, glyph: Icons.Shuffle, isEnabled: any),
                     add,
                 ]
                 : [add],
         };
-    }
-
-    /// <summary>The head of every pivot but Home (boards 19, 20): the mosaic thumb, the title over the stats, the actions beside (under at Compact).</summary>
-    static Element CompactHead(LocalCollectionPageProps p, LocalCollectionView view, CommonLocalCollectionLayout lay, float g, string titleKey)
-    {
-        // The head row carries the page-title key: its left edge (the thumb's) is the page's gutter.
-        Element ident = new BoxEl
-        {
-            Key = titleKey, Direction = 0, Gap = L.ThumbGap, AlignItems = FlexAlign.Center, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-            Children =
-            [
-                X.Thumb(view, L.ThumbSize),
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                    Children =
-                    [
-                        R.Type.HeroTitle(p.Title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                        X.StatsLine(view) with { MaxLines = 2, Wrap = TextWrap.WrapWholeWords },
-                    ],
-                },
-            ],
-        };
-        return X.Gut("lc-compact-head", g, new BoxEl
-        {
-            Key = L.HeroKey, Direction = (byte)(lay.ActionsBeside ? 0 : 1), Gap = L.ThumbGap, AlignItems = lay.ActionsBeside ? FlexAlign.Center : FlexAlign.Stretch,
-            MinWidth = 0f,
-            Children = [ident, Actions(p.Verbs, view, wrap: !lay.ActionsBeside, play: p.Pivot.Peek() != LocalPivot.Songs) with { Shrink = 0f }],
-        }, top: L.CompactTop, bottom: L.CompactBottom);
     }
 
     // ── the pivot ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -273,7 +250,7 @@ internal static class CommonLocalCollection
         for (int i = 0; i < labels.Length; i++) labels[i] = PivotWord((LocalPivot)i);
         var style = new SelectorBarStyle
         {
-            RestColor = Tok.TextSecondary, SelectedColor = Tok.TextPrimary, ItemHeight = L.PivotItemH, ItemGap = L.PivotGap,
+            RestColor = Tok.TextSecondary, SelectedColor = Tok.TextPrimary, ItemHeight = L.PivotItemH, ItemGap = L.PivotGap, LeadingInset = L.PivotLead,
         };
         var set = p.SetPivot;
         Element bar = SelectorBar.Create(labels, new Signal<int>((int)current), onChange: i => set((LocalPivot)i), parts: s_pivotParts, style: style, itemKeys: s_pivotKeys);

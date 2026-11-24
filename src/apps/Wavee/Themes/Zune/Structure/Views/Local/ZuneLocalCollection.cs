@@ -129,10 +129,18 @@ internal static class ZuneLocalCollection
         Children = [R.Type.DenseMeta(Loc.Get(P.EditHome)) with { Case = R.Case.For(LabelKind.Label), Color = Tok.AccentTextPrimary }],
     };
 
+    /// <summary>The state line's mark: a ring while reading, else the dot (the attention ink when every folder is away).</summary>
+    static readonly Func<LibraryActivity.LineKind, Element> s_mark = static kind => kind == LibraryActivity.LineKind.Scanning
+        ? ProgressRing.Create(isActive: true, size: Z.StatusDot * 2f)
+        : new BoxEl
+        {
+            Width = Z.StatusDot, Height = Z.StatusDot, Corners = CornerRadius4.All(Z.StatusDot / 2f),
+            Fill = kind == LibraryActivity.LineKind.Offline ? Tok.SystemFillAttention : Tok.AccentDefault,
+        };
+
     /// <summary>The head (board 21): the mosaic bleeding behind "collection", the count in display numbers, the stats and the library's state.</summary>
     static Element Head(LocalCollectionPageProps p, LocalCollectionView view, CommonLocalCollectionLayout lay, float g)
     {
-        bool attention = view.Phase == LocalLibraryPhase.Offline;
         Element words = X.Gut("zlc-head-words", g, new BoxEl
         {
             Direction = 1, MinWidth = 0f,
@@ -162,17 +170,28 @@ internal static class ZuneLocalCollection
                 new BoxEl
                 {
                     // One height in every state (the "edit home" verb's 40, which the first scan's line fits inside): a scan starting never moves the shelves.
-                    Key = "lc-activity", Direction = 0, Gap = Z.StatusGap, AlignItems = FlexAlign.Center, MinWidth = 0f, MinHeight = Z.VerbH, Margin = new Edges4(0f, Z.StatusGap, 0f, 0f),
-                    // A first scan shows the shared scan line and bar (S4) where the state word stands.
-                    Children = p.FirstScan() ? [p.ScanLine(float.NaN, false)] :
+                    Key = "lc-status", Direction = 0, Gap = Z.StatusGap, AlignItems = FlexAlign.Center, MinWidth = 0f, MinHeight = Z.VerbH, Margin = new Edges4(0f, Z.StatusGap, 0f, 0f),
+                    Children =
                     [
-                        view.Phase == LocalLibraryPhase.Scanning
-                            ? ProgressRing.Create(isActive: true, size: Z.StatusDot * 2f)
-                            : new BoxEl { Width = Z.StatusDot, Height = Z.StatusDot, Corners = CornerRadius4.All(Z.StatusDot / 2f), Fill = attention ? Tok.SystemFillAttention : Tok.AccentDefault },
-                        R.Type.DenseMeta("") with { Text = X.ActivityProp(view), Case = R.Case.For(LabelKind.Label), Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
-                        // "edit home": Zune's text verb at the state line's end (the shelves are under this head).
-                        Embed.Comp(new CommonLocalEditHome.Props(p, s_editTrigger, FlyoutPlacement.BottomEdgeAlignedLeft), static () => new CommonLocalEditHome())
-                            with { Key = CommonLocalEditHome.TriggerKey + ":host" },
+                        // A first scan shows the shared scan line and bar (S4) where the state word stands; else the state, from the facts the
+                        // band's activity reads (LibraryActivity), so the two flip together.
+                        new BoxEl
+                        {
+                            // Its width eases when the scan's line gives way to the state's (and back), so nothing beside it moves at once.
+                            Key = "lc-activity", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f, Layout = CommonLocalCollectionRules.SizeReflow,
+                            Children = [p.FirstScan() ? p.ScanLine(float.NaN, false) : X.Activity(s_mark, R.Type.DenseMeta("") with { Case = R.Case.For(LabelKind.Label), Color = Tok.TextSecondary })],
+                        },
+                        // "edit home": Zune's text verb at the state line's end (the shelves are under this head). It stays in every state and glides
+                        // to its place when the line before it changes width (the scan's words giving way to the state's), never a jump.
+                        new BoxEl
+                        {
+                            Key = "lc-edit-home:slot", Direction = 0, Shrink = 0f, Layout = CommonLocalCollectionRules.ShelfMove,
+                            Children =
+                            [
+                                Embed.Comp(new CommonLocalEditHome.Props(p, s_editTrigger, FlyoutPlacement.BottomEdgeAlignedLeft), static () => new CommonLocalEditHome())
+                                    with { Key = CommonLocalEditHome.TriggerKey + ":host" },
+                            ],
+                        },
                     ],
                 },
             ],

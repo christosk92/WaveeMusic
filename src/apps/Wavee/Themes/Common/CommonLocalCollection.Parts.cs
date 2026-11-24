@@ -24,7 +24,7 @@ using P = Wavee.Strings.LocalFiles.Page;
 namespace Wavee.Themes.Common;
 
 /// <summary>The body parts of the collection page (see the file header).</summary>
-internal static class CommonLocalCollectionParts
+internal static partial class CommonLocalCollectionParts
 {
     // ── the seed the shimmer draws (one real UI over a representative shape) ────────────────────────────────────────
 
@@ -110,52 +110,22 @@ internal static class CommonLocalCollectionParts
 
     static TextEl Meta(string s) => R.Type.TrackMeta(s) with { Color = Tok.TextSecondary };
 
-    /// <summary>"6,016 songs · 512 albums · 287 artists · 312 hours · 57% lossless", the numbers bold (board 18).</summary>
-    public static SpanTextEl StatsLine(LocalCollectionView v) => StatsSpans(v, withSongs: true, R.Type.TrackMeta(""), Tok.TextSecondary);
-
-    /// <summary>The hero's stats line, at body size (board 18: the collection's own numbers right under the title, in bold).</summary>
-    public static SpanTextEl HeroStats(LocalCollectionView v) => StatsSpans(v, withSongs: true, R.Type.TrackTitle(""), Tok.TextPrimary);
-
-    /// <summary>The stats as one span paragraph on one line in <paramref name="role"/>'s face, each count in the semibold weight: the
-    /// localised phrase is kept whole and its number (as the culture writes it) is found in it.</summary>
-    public static SpanTextEl StatsSpans(LocalCollectionView v, bool withSongs, TextEl role, ColorF color)
-    {
-        var spans = new List<TextSpan>(16);
-        if (withSongs) Part(spans, P.Songs(v.Songs), v.Songs);
-        Part(spans, P.Albums(v.AlbumCount), v.AlbumCount);
-        Part(spans, P.Artists(v.ArtistCount), v.ArtistCount);
-        long minutes = v.DurationMs / 60_000;
-        Part(spans, Length(v.DurationMs), (int)(minutes >= 60 ? minutes / 60 : minutes));
-        if (v.Songs > 0) Part(spans, P.Lossless(v.LosslessPct.ToString(CultureInfo.CurrentCulture)), v.LosslessPct);
-        return new SpanTextEl(spans.ToArray())
-        {
-            Size = role.Size, Weight = role.Weight, FontFamily = role.FontFamily, LineHeight = role.LineHeight, Color = color,
-            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
-        };
-
-        static void Part(List<TextSpan> spans, string text, int number)
-        {
-            if (spans.Count > 0) spans.Add(new TextSpan(" · "));
-            string n = number.ToString("N0", CultureInfo.CurrentCulture);
-            int at = text.IndexOf(n, StringComparison.Ordinal);
-            if (at < 0) { n = number.ToString(CultureInfo.InvariantCulture); at = text.IndexOf(n, StringComparison.Ordinal); }
-            if (at < 0) { spans.Add(new TextSpan(text)); return; }
-            if (at > 0) spans.Add(new TextSpan(text[..at]));
-            spans.Add(new TextSpan(n, Weight: L.StatsNumberWeight));
-            if (at + n.Length < text.Length) spans.Add(new TextSpan(text[(at + n.Length)..]));
-        }
-    }
-
+    /// <summary>The collection's meta line, as the library words a record's ("2 songs · 1 artist · 4 minutes · 57% lossless"): a count that is 0 is
+    /// left out (never "0 albums · 1 song"), and so is a lossless share of 0.</summary>
     public static string StatsText(LocalCollectionView v, bool withSongs)
     {
         var parts = new List<string>(5);
         if (withSongs) parts.Add(P.Songs(v.Songs));
-        parts.Add(P.Albums(v.AlbumCount));
-        parts.Add(P.Artists(v.ArtistCount));
-        parts.Add(Length(v.DurationMs));
-        if (v.Songs > 0) parts.Add(P.Lossless(v.LosslessPct.ToString(CultureInfo.CurrentCulture)));
+        if (v.AlbumCount > 0) parts.Add(P.Albums(v.AlbumCount));
+        if (v.ArtistCount > 0) parts.Add(P.Artists(v.ArtistCount));
+        if (v.DurationMs > 0) parts.Add(Length(v.DurationMs));
+        if (v.Songs > 0 && v.LosslessPct > 0) parts.Add(P.Lossless(v.LosslessPct.ToString(CultureInfo.CurrentCulture)));
         return string.Join(" · ", parts);
     }
+
+    /// <summary>"2 albums · 16 songs", "1 song": an artist's or a decade's counts, a 0 left out.</summary>
+    public static string CountsText(int albums, int songs)
+        => albums > 0 && songs > 0 ? P.Albums(albums) + " · " + P.Songs(songs) : albums > 0 ? P.Albums(albums) : P.Songs(songs);
 
     public static string Length(long ms)
     {
@@ -169,17 +139,28 @@ internal static class CommonLocalCollectionParts
         return s >= 3600 ? $"{s / 3600}:{s / 60 % 60:00}:{s % 60:00}" : $"{s / 60}:{s % 60:00}";
     }
 
-    /// <summary>The library's activity in one line: reading (with the count), or up to date with when the last scan ended ("Up to date ·
-    /// scanned 2 min ago"; S1 and the page agree). Bind it with <see cref="ActivityProp"/> so the "ago" stays true.</summary>
-    public static string ActivityText(LocalCollectionView v) => v.Phase switch
-    {
-        LocalLibraryPhase.Scanning => P.Reading(v.Songs),
-        LocalLibraryPhase.Offline => Loc.Get(P.AllOffline),
-        _ => v.LastScanTicks > 0 ? P.UpToDateScanned(LibraryActivity.Ago(v.LastScanTicks)) : Loc.Get(P.UpToDate),
-    };
+    /// <summary>The library's state line: its mark (<paramref name="mark"/> of the state) and its words, both from
+    /// <see cref="LibraryActivity.PageLine"/>, the facts the sidebar's chip reads, so the page and the chip flip on the same frame. Its own
+    /// component: the scan's moves re-render this line alone, and the "ago" stays true (<see cref="LibraryActivity.Minute"/>).</summary>
+    public static Element Activity(Func<LibraryActivity.LineKind, Element> mark, TextEl words) => Embed.Comp(new ActivityProps(mark, words), static () => new ActivityHost());
 
-    /// <summary><see cref="ActivityText"/> as a bound text that re-reads every 30 s (<see cref="LibraryActivity.Minute"/>): only this text node relays out.</summary>
-    public static Prop<string> ActivityProp(LocalCollectionView v) => Prop.Of(() => { _ = LibraryActivity.Minute.Value; return ActivityText(v); });
+    sealed record ActivityProps(Func<LibraryActivity.LineKind, Element> Mark, TextEl Words);
+
+    sealed class ActivityHost : Component
+    {
+        public override Element Render()
+        {
+            var a = UseProps<ActivityProps>();
+            LibraryActivity.Track();
+            _ = LibraryActivity.Minute.Value;
+            var (kind, text) = LibraryActivity.PageLine();
+            return new BoxEl
+            {
+                Direction = 0, Gap = CommonLocalCollectionRules.ChipInner, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f,
+                Children = [a.Mark(kind), Ell(a.Words with { Text = text })],
+            };
+        }
+    }
 
     // ── the hero's backdrop: the cover mosaic, or a calm gradient ──────────────────────────────────────────────────
 
@@ -232,52 +213,33 @@ internal static class CommonLocalCollectionParts
         };
     }
 
-    /// <summary>The small mosaic of the compact head: four covers, or the calm tile with the music glyph.</summary>
-    public static Element Thumb(LocalCollectionView v, float size)
-    {
-        if (v.Mosaic.Count == 0)
-            return new BoxEl
-            {
-                Width = size, Height = size, Shrink = 0f, Corners = R.Shape.All(ShapeRole.Cover), Fill = Tok.AccentSubtle,
-                Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Children = [Icon(Icons.MusicNote, L.MusicGlyph, Tok.AccentTextPrimary)],
-            };
-        float half = size / 2f;
-        var cells = new Element[4];
-        for (int i = 0; i < 4; i++) cells[i] = new BoxEl { Width = half, Height = half, Children = [Controls.CoverFill(v.Mosaic[i % v.Mosaic.Count], 0f, L.MosaicDecode)] };
-        return new BoxEl { Width = size, Height = size, Shrink = 0f, Wrap = true, ClipToBounds = true, Corners = R.Shape.All(ShapeRole.Cover), Children = cells };
-    }
-
     // ── folder chips and the activity (S1 in the hero) ─────────────────────────────────────────────────────────────
 
-    /// <param name="scanLine">A first scan's line and bar (the shared `LocalFiles.Scan` view) in place of the activity line, or null.</param>
+    /// <summary>The head's folders and the library's state (S1): a chip per music folder (a small control: its state, its name; a click opens the
+    /// music folders), then the state line, or a first scan's line and bar (<paramref name="scanLine"/>, the shared `LocalFiles.Scan` view) in its
+    /// place. Every part glides to its place when one before it comes or changes width (a folder chip landing with the first fold, a chip's
+    /// "· scanning" leaving it), and the row eases its height when it re-wraps: nothing in the head moves at once.</summary>
     public static Element Chips(LocalCollectionView v, LocalCollectionVerbs verbs, float chipH, Element? scanLine)
     {
-        var kids = new List<Element>(v.Chips.Count + 3);
+        var kids = new List<Element>(v.Chips.Count + 1);
         foreach (var c in v.Chips) kids.Add(Chip(c, verbs.AddMusic, chipH));
         kids.Add(new BoxEl
         {
-            Key = "lc-chip:add", Direction = 0, Height = chipH, Layout = L.SizeReflow, Gap = L.ChipInner, AlignItems = FlexAlign.Center, Padding = new Edges4(L.ChipPadX, 0f, L.ChipPadX, 0f),
-            Corners = CornerRadius4.All(chipH / 2f), BorderWidth = L.ChipBorder, BorderColor = Tok.StrokeControlDefault, OnClick = verbs.AddMusic, Cursor = CursorId.Hand,
-            Children = [Icon(Icons.Add, L.ChipGlyph, Tok.TextSecondary), R.Type.DenseMeta(Loc.Get(P.AddFolder)) with { Color = Tok.TextPrimary }],
+            Key = "lc-activity", Direction = 0, AlignItems = FlexAlign.Center, Height = chipH, Layout = L.CardReflow, MinWidth = 0f, Shrink = 1f,
+            Children = [scanLine ?? Activity(s_headMark, R.Type.DenseMeta("") with { Color = Tok.TextSecondary })],
         });
-        kids.Add(new BoxEl
-        {
-            Key = "lc-activity", Direction = 0, Gap = L.ChipInner, AlignItems = FlexAlign.Center, Height = chipH, Layout = L.SizeReflow, MinWidth = 0f, Shrink = 1f,
-            Margin = new Edges4(L.StatusGap - L.ChipGap, 0f, 0f, 0f),
-            Children = scanLine is not null
-                ? [scanLine]
-                :
-                [
-                    v.Phase == LocalLibraryPhase.Scanning
-                        ? ProgressRing.Create(isActive: true, size: L.ChipGlyph)
-                        : Icon(v.Phase == LocalLibraryPhase.Offline ? Icons.Warning : Icons.Accept, L.ChipGlyph, v.Phase == LocalLibraryPhase.Offline ? Tok.SystemFillAttention : Tok.AccentTextPrimary),
-                    Ell(R.Type.DenseMeta("") with { Text = ActivityProp(v), Color = Tok.TextSecondary }),
-                ],
-        });
-        // The row wraps onto a second line where the column is narrow (the activity line "Up to date · scanned 2 min ago" is the long one): a width
-        // that re-wraps it (a tier crossing, the nav pane docking) eases the row's height, so the pivot under the hero glides instead of jumping.
         return new BoxEl { Direction = 0, Wrap = true, Gap = L.ChipGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Layout = L.HeightReflow, Children = kids.ToArray() };
     }
+
+    /// <summary>The state line's mark in the WinUI/Classic head: a ring while reading, the caution mark when every folder is away, the pause mark
+    /// while held, else the tick.</summary>
+    static readonly Func<LibraryActivity.LineKind, Element> s_headMark = static kind => kind switch
+    {
+        LibraryActivity.LineKind.Scanning => ProgressRing.Create(isActive: true, size: L.ChipGlyph),
+        LibraryActivity.LineKind.Offline => Icon(Icons.Warning, L.ChipGlyph, Tok.SystemFillAttention),
+        LibraryActivity.LineKind.Paused => Icon(Icons.Pause, L.ChipGlyph, Tok.TextSecondary),
+        _ => Icon(Icons.Accept, L.ChipGlyph, Tok.AccentTextPrimary),
+    };
 
     static Element Chip(LocalFolderChip c, Action open, float chipH)
     {
@@ -290,13 +252,15 @@ internal static class CommonLocalCollectionParts
             LocalChipState.Waiting => Loc.Get(P.ChipWaiting),
             _ => null,
         };
-        Element mark = c.State == LocalChipState.Ok ? Icon(Icons.Check, L.ChipGlyph, Tok.AccentTextPrimary)
-            : new BoxEl { Width = L.Dot, Height = L.Dot, Corners = CornerRadius4.All(L.Dot / 2f), Fill = bad ? Tok.SystemFillAttention : Tok.AccentDefault };
+        // A folder is a folder: its glyph, in the attention ink while it is away or unreadable.
+        Element mark = Icon(Icons.Folder, L.ChipGlyph, bad ? Tok.SystemFillAttention : Tok.TextSecondary);
+        // The house control's plate (a button's fill, stroke and corners) at the tier's chip height; it glides to its place and width.
         return new BoxEl
         {
-            Key = "lc-chip:" + c.Path, Direction = 0, Height = chipH, Layout = L.SizeReflow, Gap = L.ChipInner, AlignItems = FlexAlign.Center, Padding = new Edges4(L.ChipPadX, 0f, L.ChipPadX, 0f),
-            Corners = CornerRadius4.All(chipH / 2f), BorderWidth = L.ChipBorder, BorderColor = bad ? Tok.SystemFillAttention : Tok.StrokeControlDefault,
-            Fill = Tok.FillControlDefault, OnClick = open, Cursor = CursorId.Hand, MinWidth = 0f, Shrink = 1f,
+            Key = "lc-chip:" + c.Path, Direction = 0, Height = chipH, Layout = L.CardReflow, Gap = L.ChipInner, AlignItems = FlexAlign.Center, Padding = new Edges4(L.ChipPadX, 0f, L.ChipPadX, 0f),
+            Corners = Radii.ControlAll, BorderWidth = L.ChipBorder, BorderColor = bad ? Tok.SystemFillAttention : Tok.StrokeControlDefault,
+            Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary, BrushTransitionMs = Design.Motion.Faster,
+            OnClick = open, Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, MinWidth = 0f, Shrink = 1f,
             Children =
             [
                 mark,
@@ -440,7 +404,7 @@ internal static class CommonLocalCollectionParts
                 new BoxEl
                 {
                     Direction = 1, Height = L.CardTextH, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, AlignItems = FlexAlign.Center,
-                    Children = [Ell(R.Type.CardTitle(a.Name) with { Color = Tok.TextPrimary }), Ell(Meta(P.Albums(a.Albums) + " · " + P.Songs(a.Tracks)))],
+                    Children = [Ell(R.Type.CardTitle(a.Name) with { Color = Tok.TextPrimary }), Ell(Meta(CountsText(a.Albums, a.Tracks)))],
                 },
             ],
         };
@@ -453,8 +417,11 @@ internal static class CommonLocalCollectionParts
     /// Home itself (a pivot switch, Back from a detail opened over Home) arrives at its height: replaying every shelf's reveal pushed the
     /// page open under the user, and kept the card Back flies home to under half visible.</param>
     public static Element[] HomeBody(LocalCollectionView v, LocalCollectionVerbs verbs, Action<LocalPivot> setPivot, CommonLocalCollectionLayout lay, float g,
-                                     IReadOnlyList<LocalShelfSlot> shelves, bool reveal)
+                                     IReadOnlyList<LocalShelfSlot> shelves, bool reveal, bool house = false)
     {
+        // WinUI/Classic (house): the house media card every Home and library shelf wears (Controls.Surface); Zune: its own cover cards.
+        Element Album(LocalAlbumCard a, bool pill) => house ? ShelfAlbum(a, lay.Card, verbs, pill) : AlbumCard(a, lay.Card, verbs, pill, year: false);
+        Element Song(LocalSongCard s, bool pill) => house ? ShelfSong(s, lay.Card, verbs, pill) : SongCard(s, lay.Card, verbs, pill);
         LayoutTransition shelfReveal = reveal ? L.ShelfReveal : L.ShelfReveal with { Enter = default };
         var kids = new List<Element>(3);
         // "See all" goes to the albums; a library of loose songs has none, so to its songs.
@@ -498,8 +465,8 @@ internal static class CommonLocalCollectionParts
                 // The group's albums, then its songs with no album tag.
                 var songs = grp.SongCards;
                 var cards = new Element[grp.Albums.Count + songs.Count];
-                for (int i = 0; i < grp.Albums.Count; i++) cards[i] = AlbumCard(grp.Albums[i], lay.Card, verbs, pill: false, year: false);
-                for (int i = 0; i < songs.Count; i++) cards[grp.Albums.Count + i] = SongCard(songs[i], lay.Card, verbs, pill: false);
+                for (int i = 0; i < grp.Albums.Count; i++) cards[i] = Album(grp.Albums[i], pill: false);
+                for (int i = 0; i < songs.Count; i++) cards[grp.Albums.Count + i] = Song(songs[i], pill: false);
                 groups.Add(new BoxEl
                 {
                     Key = "lc-recent:" + grp.When, Direction = 1, Shrink = 0f, Gap = L.GroupLabelGap,
@@ -521,8 +488,8 @@ internal static class CommonLocalCollectionParts
             if (v.Lossless.Count + v.LosslessLoose.Count == 0) return null;
             // The lossless albums, then the lossless songs with no album tag.
             var cards = new Element[v.Lossless.Count + v.LosslessLoose.Count];
-            for (int i = 0; i < v.Lossless.Count; i++) cards[i] = AlbumCard(v.Lossless[i], lay.Card, verbs, pill: true, year: false);
-            for (int i = 0; i < v.LosslessLoose.Count; i++) cards[v.Lossless.Count + i] = SongCard(v.LosslessLoose[i], lay.Card, verbs, pill: true);
+            for (int i = 0; i < v.Lossless.Count; i++) cards[i] = Album(v.Lossless[i], pill: true);
+            for (int i = 0; i < v.LosslessLoose.Count; i++) cards[v.Lossless.Count + i] = Song(v.LosslessLoose[i], pill: true);
             string sub = v.HiResSongs > 0 ? P.LosslessSongs(v.LosslessSongs) + " · " + P.HiResSongs(v.HiResSongs) : P.LosslessSongs(v.LosslessSongs);
             return Section("lossless", Loc.Get(P.LosslessShelf), sub, seeAll, ShelfRow("lossless", cards, lay.CardGap, g), g, lay.ChipH);
         }
@@ -605,7 +572,7 @@ internal static class CommonLocalCollectionParts
                     Children =
                     [
                         Ell(R.Type.CardTitle(P.Decade(decade.ToString(CultureInfo.InvariantCulture))) with { Color = Tok.TextPrimary }),
-                        Ell(Meta(d.Albums > 0 && d.Songs > 0 ? P.Albums(d.Albums) + " · " + P.Songs(d.Songs) : d.Albums > 0 ? P.Albums(d.Albums) : P.Songs(d.Songs))),
+                        Ell(Meta(CountsText(d.Albums, d.Songs))),
                     ],
                 },
                 Icon(Icons.Shuffle, L.SeeAllGlyph, Tok.TextSecondary),

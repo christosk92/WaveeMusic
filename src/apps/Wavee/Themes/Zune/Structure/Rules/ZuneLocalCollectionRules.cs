@@ -33,7 +33,7 @@ internal static class ZuneLocalCollectionTiers
     static CommonLocalCollectionLayout Std(WidthTier t) => new()
     {
         Tier = t, Card = 180f, CardGap = 16f, WallMin = 180f, WallGap = 16f, ArtistMin = 150f, DecadeMin = 240f,
-        FileColumn = true, ActionsBeside = true, ChipH = CommonLocalCollectionRules.ChipH, DetailCover = 152f,
+        FileColumn = true, ActionsBeside = true, ChipH = CommonLocalCollectionRules.ChipH, DetailCover = 152f, ControlH = 32f, HeadTop = 0f,   // (Zune draws its own head)
     };
 
     static readonly CommonLocalCollectionLayout[] s_records =

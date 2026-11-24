@@ -5472,6 +5472,8 @@
       "sortArtist": "Artist",
       "sortTitle": "Title",
       "sortYear": "Year",
+      "sortName": "Name",
+      "sortSongs": "Most songs",
       "playFolder": "Play folder",
       "songsHere": "Songs in this folder",
       "colTitle": "Title",

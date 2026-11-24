@@ -89,7 +89,7 @@ public static class LibraryActivity
             return new(ChipKind.Paused, LocalLibrary.PausedBy == LocalLibrary.PauseReason.BatterySaver
                 ? Loc.Get(Strings.LocalFiles.Activity.ChipPausedSaver)
                 : Loc.Get(Strings.LocalFiles.Activity.ChipPaused));
-        if (p.Active || LocalLibrary.Scanning)
+        if (Running)
             return new(ChipKind.Scanning, p.FilesSeen > 0
                 ? Strings.LocalFiles.Activity.ChipScanning(Number(p.FilesDone), Number(p.FilesSeen))
                 : Loc.Get(Strings.LocalFiles.Activity.ChipListing));
@@ -103,6 +103,26 @@ public static class LibraryActivity
         int attention = LocalLibrary.Attention().Count;
         if (attention > 0) return new(ChipKind.Attention, Strings.LocalFiles.Activity.ChipAttention(attention));
         return new(ChipKind.Idle, "");
+    }
+
+    /// <summary>A scan runs or waits to run: THE one test every surface reads (the chip, the flyout, the page's state line), so no two of them can
+    /// disagree about whether the library is scanning.</summary>
+    public static bool Running => LocalLibrary.Progress.Active || LocalLibrary.Scanning;
+
+    /// <summary>What the page's state line shows (its mark follows it).</summary>
+    public enum LineKind : byte { UpToDate, Scanning, Paused, Offline }
+
+    /// <summary>The page's state line now ("On this PC"'s head, Zune's collection head), from the facts the chip reads, so the two flip on the same
+    /// frame (call it under <see cref="Track"/>, and under <see cref="Minute"/> for the "ago"): held, reading with the files read so far, every folder
+    /// away, or up to date with when the last full scan ended. A page never words the state from its own fold: the fold lags the scan, and the chip
+    /// said "Scanning" while the page said "Up to date".</summary>
+    public static (LineKind Kind, string Text) PageLine()
+    {
+        if (PausedNow) return (LineKind.Paused, StateWord());
+        if (Running) return (LineKind.Scanning, Strings.LocalFiles.Page.Reading(LocalLibrary.Progress.FilesDone));
+        if (LocalLibrary.StateWord == "offline") return (LineKind.Offline, Loc.Get(Strings.LocalFiles.Page.AllOffline));
+        long ticks = LocalLibrary.LastScan.UtcTicks;
+        return (LineKind.UpToDate, ticks > 0 ? Strings.LocalFiles.Page.UpToDateScanned(Ago(ticks)) : Loc.Get(Strings.LocalFiles.Page.UpToDate));
     }
 
     /// <summary>The chip's accessible name and tooltip.</summary>
@@ -120,7 +140,7 @@ public static class LibraryActivity
             return LocalLibrary.PausedBy == LocalLibrary.PauseReason.BatterySaver
                 ? Loc.Get(Strings.LocalFiles.Activity.StatePausedSaver)
                 : Loc.Get(Strings.LocalFiles.Activity.StatePaused);
-        if (LocalLibrary.Progress.Active || LocalLibrary.Scanning) return Loc.Get(Strings.LocalFiles.Activity.StateScanning);
+        if (Running) return Loc.Get(Strings.LocalFiles.Activity.StateScanning);
         return LocalLibrary.StateWord == "offline"
             ? Loc.Get(Strings.LocalFiles.Activity.StateOffline)
             : Loc.Get(Strings.LocalFiles.Activity.StateUpToDate);
@@ -134,7 +154,7 @@ public static class LibraryActivity
     public static Phase[] Phases()
     {
         var p = LocalLibrary.Progress;
-        bool running = p.Active || LocalLibrary.Scanning;
+        bool running = Running;
         string listing = Loc.Get(Strings.LocalFiles.Activity.PhaseListing), reading = Loc.Get(Strings.LocalFiles.Activity.PhaseReading);
         string matching = Loc.Get(Strings.LocalFiles.Activity.PhaseMatching), covers = Loc.Get(Strings.LocalFiles.Activity.PhaseCovers);
         if (!running)
@@ -249,7 +269,7 @@ public static class LibraryActivity
     {
         var (ticks, ms) = LocalLibrary.LastScan;
         if (ticks <= 0)
-            return LocalLibrary.Progress.Active || LocalLibrary.Scanning
+            return Running
                 ? Loc.Get(Strings.LocalFiles.Activity.FirstScan)
                 : Loc.Get(Strings.LocalFiles.Activity.NotScanned);
         string when = Ago(ticks);
@@ -258,7 +278,7 @@ public static class LibraryActivity
     }
 
     /// <summary>A scan runs or waits to run: the flyout's head offers Pause (or Resume).</summary>
-    public static bool CanPause => LocalLibrary.Progress.Active || LocalLibrary.Scanning;
+    public static bool CanPause => Running;
 
     /// <summary>A scan that runs or waits is held (by the user or by battery saver).</summary>
     public static bool PausedNow => LocalLibrary.PausedBy != LocalLibrary.PauseReason.None && CanPause;
@@ -274,7 +294,7 @@ public static class LibraryActivity
     };
 
     /// <summary>"Rescan now" can run (no scan is running).</summary>
-    public static bool CanRescan => !(LocalLibrary.Progress.Active || LocalLibrary.Scanning);
+    public static bool CanRescan => !Running;
 
     public static string RescanLabel => Loc.Get(Strings.LocalFiles.Activity.Rescan);
     public static string SettingsLabel => Loc.Get(Strings.LocalFiles.Activity.Settings);

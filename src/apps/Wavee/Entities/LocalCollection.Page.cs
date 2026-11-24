@@ -35,6 +35,10 @@ public static class LocalCollectionPage
     /// <summary>The last pivot, by name (home, albums, artists, songs, folders, insights).</summary>
     static readonly SettingKey<string> s_pivotKey = new("local.page.pivot", "home");
 
+    /// <summary>Albums' and Artists' view and the grid's size (the library's codes: 0 compact list, 1 list, 2 compact grid, 3 grid; 0 small, 1 medium,
+    /// 2 large), and the Artists order (name, songs).</summary>
+    static readonly SettingKey<int> s_viewKey = new("local.page.view", 3), s_sizeKey = new("local.page.size", 1), s_artistSortKey = new("local.page.artist-sort", 0);
+
     /// <summary>The <see cref="Shell.RouteKind.Local"/> page.</summary>
     public static Element PageFor(in Shell.Route route)
     {
@@ -67,6 +71,11 @@ public static class LocalCollectionPage
     {
         readonly Signal<LocalPivot> _pivot = new(PivotOf(Platform.Settings.Get(s_pivotKey)));
         readonly Signal<LocalAlbumSort> _sort = new(LocalAlbumSort.Added);
+        readonly Signal<LocalArtistSort> _artistSort = new((LocalArtistSort)Math.Clamp(Platform.Settings.Get(s_artistSortKey), 0, 1));
+        readonly Signal<int> _view = new(Math.Clamp(Platform.Settings.Get(s_viewKey), 0, 3)), _size = new(Math.Clamp(Platform.Settings.Get(s_sizeKey), 0, 2));
+        readonly Signal<string> _filter = new("");
+        readonly Action<LocalArtistSort> _setArtistSort;
+        readonly Action _saveView;
         readonly Signal<LocalOpened?> _opened = new(null);
         readonly Action<LocalPivot> _setPivot;
         readonly Action<LocalAlbumSort> _setSort;
@@ -89,6 +98,17 @@ public static class LocalCollectionPage
                 Platform.Settings.Set(s_pivotKey, p.ToString().ToLowerInvariant());
             };
             _setSort = s => _sort.Value = s;
+            _setArtistSort = s =>
+            {
+                _artistSort.Value = s;
+                Platform.Settings.Set(s_artistSortKey, (int)s);
+            };
+            // The theme's view toggle writes the two signals; the choice is remembered as the library's own is.
+            _saveView = () =>
+            {
+                Platform.Settings.Set(s_viewKey, _view.Value);
+                Platform.Settings.Set(s_sizeKey, _size.Value);
+            };
             _openFolder = key => OpenFolder(key);
             _back = Back;
             _stepOpen = () => _opened.Value is { } o && o.From == _pivot.Value && o.Folder.Length > 0;
@@ -137,6 +157,7 @@ public static class LocalCollectionPage
             UseEffect(_refold);
             UseEffect(_settle, DepKey.Empty);
             UseEffect(_watchScan);
+            UseEffect(_saveView);
             // Back and Esc step out of an open detail first (Shell.PageBack.cs); withdrawn when the page unmounts.
             UseEffect(() =>
             {
@@ -159,6 +180,11 @@ public static class LocalCollectionPage
                 SetPivot = _setPivot,
                 Sort = _sort,
                 SetSort = _setSort,
+                ArtistSort = _artistSort,
+                SetArtistSort = _setArtistSort,
+                ListView = () => _view,
+                ListSize = () => _size,
+                Filter = () => _filter,
                 Opened = _opened,
                 OpenFolder = _openFolder,
                 Songs = _songs,
