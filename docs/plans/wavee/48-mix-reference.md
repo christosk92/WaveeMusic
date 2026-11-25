@@ -322,7 +322,7 @@ pair is not beatmatched. The inputs were recorded for the same tracks: kind 28 c
 
 | Side | Rule |
 |---|---|
-| A (outgoing) | `startAMs` = **A's last end candidate (kind 28 field 4, the largest `ms`) − 2500**. The overlap runs to A's end: `durationMs` = A's duration − `startAMs` |
+| A (outgoing) | `startAMs` = **A's last end candidate (kind 28 field 4, the largest `ms`) − 2500**. The overlap runs to **that candidate + 2500, or to A's end if that comes first**: `durationMs` = min(5000, A's duration − `startAMs`). Running it to A's end without the 5000 ms cap matches only 79 of the 156 pairs on kind 10 durations |
 | B (incoming) | starts at 0 (`startBMs` 0). Its published fade-in runs to **B's first start candidate (kind 28 field 3, the smallest `ms`) + 2500** (5 of 5 published seams, [`48-mix-protocol.md`](48-mix-protocol.md) §6.3) |
 | Preset | 1 (Fade), type FADE, `durationBars` 0, speeds 1 |
 
