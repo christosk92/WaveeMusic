@@ -198,6 +198,48 @@ public static partial class Playback
             return System.Net.WebUtility.HtmlDecode(text.ToString());
         }
 
+        // ── the lexicon answer's body ────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>A lexicon answer as the transport handed it → the context-resolve decode. The official client's answers came back
+        /// <c>Content-Encoding: zstd</c> (dj-protocol §1.2); the api handler's automatic decompression covers gzip, deflate and brotli,
+        /// and zstd only where the runtime offers it, so the body may still be a FRAME here: a zstd frame (its magic) is unwrapped, a
+        /// gzip member too (a body whose header was lost on the way), anything else decodes as it came. A frame that does not decode is
+        /// a refusal, never an empty session. Api thread.</summary>
+        internal static bool Decode(ReadOnlySpan<byte> body, ClusterBuffer buffer, int djPage, string what, out Spotify.Decode.ContextPage page)
+        {
+            page = default;
+            string form = BodyForm(body);
+            byte[]? unwrapped = form switch
+            {
+                "zstd" => Spotify.Api.Unzstd(body),
+                "gzip" => Gunzip(body),
+                _ => null,
+            };
+            if (form != "identity")
+            {
+                if (unwrapped is null || unwrapped.Length == 0) { Log.Warn("dj", what + " refused: a " + form + " body that does not decode"); return false; }
+                Log.Info("dj", what + ": a " + form + " body unwrapped (" + body.Length + " -> " + unwrapped.Length + " bytes)");
+            }
+            page = Spotify.Decode.ContextResolve(unwrapped ?? body, buffer, djPage);
+            return true;
+        }
+
+        /// <summary>What a body is by its first bytes: <c>zstd</c> (28 B5 2F FD), <c>gzip</c> (1F 8B) or <c>identity</c>. PURE.</summary>
+        public static string BodyForm(ReadOnlySpan<byte> body)
+            => Spotify.Api.IsZstd(body) ? "zstd" : body.Length > 2 && body[0] == 0x1F && body[1] == 0x8B ? "gzip" : "identity";
+
+        static byte[]? Gunzip(ReadOnlySpan<byte> body)
+        {
+            try
+            {
+                using var gz = new System.IO.Compression.GZipStream(new MemoryStream(body.ToArray()), System.IO.Compression.CompressionMode.Decompress);
+                using var plain = new MemoryStream();
+                gz.CopyTo(plain);
+                return plain.ToArray();
+            }
+            catch (Exception ex) when (ex is InvalidDataException or IOException) { return null; }
+        }
+
         /// <summary>The lexicon answers come without the network (<c>--fake</c>): a DJ restore need not wait for the session to be online.</summary>
         internal static bool AnswersOffline => s_fake is not null;
 

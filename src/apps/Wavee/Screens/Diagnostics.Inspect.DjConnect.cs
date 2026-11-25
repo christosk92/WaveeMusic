@@ -11,6 +11,9 @@
 //                           handed to the host as the dealer glue does; waits for the session, then the `dj` readout
 //   dj do=restore track= [ms=] [uri=]   the launch restore of a deck left on the DJ list (the queue forgotten first, as at boot; the
 //                           point's shuffle on and repeat all, to show the DJ holding them); waits for the seed, then the readout
+//   dj do=bodies            the --fake session answer and its first page sent through the lexicon decode (Playback.Dj.Decode) as an
+//                           identity body, a gzip body, a zstd frame with its content size, a streamed zstd frame without one, and a
+//                           broken zstd frame: what each decodes to (or that it is refused)
 //
 // Role: SHELL (UI thread)
 
@@ -23,7 +26,7 @@ public static partial class Diagnostics
     public sealed partial class InspectSession
     {
         /// <summary>The Connect sub-verbs' names, as the verb table lists them.</summary>
-        internal const string DjConnectVerbs = "envelope|cluster|transfer|restore";
+        internal const string DjConnectVerbs = "envelope|cluster|transfer|restore|bodies";
 
         /// <summary>The Connect sub-verbs of `dj`; null when <paramref name="verb"/> is not one of them.</summary>
         string? DjConnectVerb(int id, string name, string verb, string uri, Inspect.Args a)
@@ -111,9 +114,81 @@ public static partial class Diagnostics
                         RunFrames(2);
                         return Settled(id, name, a, w => { w.WriteString("do", verb); w.WriteString("track", track.Text); WriteDjSession(w); });
                     }
+                case "bodies":
+                    {
+                        string sessionPath = Playback.RemotePlan.PageRoute(Entities.LibrarySeed.DjLexiconUrl) + "&reason=interactive";
+                        byte[]? session = Entities.FakeLexicon(sessionPath);
+                        if (session is null) return Inspect.Reply.Fail(id, name, "dj do=bodies: the fake lexicon service did not answer");
+                        Spotify.Decode.ClusterBuffer probe = Spotify.Decode.ClusterBuffer.Rent();
+                        string pageUrl;
+                        try { pageUrl = System.Text.Encoding.UTF8.GetString(probe.Utf8(Spotify.Decode.ContextResolve(session, probe).NextPageUrl)); }
+                        finally { Spotify.Decode.ClusterBuffer.Return(probe); }
+                        byte[]? page = Entities.FakeLexicon(Playback.RemotePlan.PageRoute(pageUrl));
+                        if (page is null) return Inspect.Reply.Fail(id, name, "dj do=bodies: the fake lexicon service did not answer the page");
+                        return Inspect.Reply.Ok(id, name, w =>
+                        {
+                            w.WriteString("do", verb);
+                            w.WriteStartArray("bodies");
+                            foreach ((string answer, byte[] plain, int djPage) in new[] { ("session", session, 0), ("page 1", page, 1) })
+                                foreach ((string sent, byte[] body) in Encodings(plain))
+                                    WriteBodyDecode(w, answer, sent, body, djPage);
+                            w.WriteEndArray();
+                        });
+                    }
                 default:
                     return null;
             }
+        }
+
+        /// <summary>One answer as each body a server may send: as it is, gzip, a zstd frame with its content size (the one-shot form), a
+        /// streamed zstd frame without one, and a zstd frame cut short.</summary>
+        static IEnumerable<(string Sent, byte[] Body)> Encodings(byte[] plain)
+        {
+            yield return ("identity", plain);
+            using (var gz = new MemoryStream())
+            {
+                using (var z = new System.IO.Compression.GZipStream(gz, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true)) z.Write(plain);
+                yield return ("gzip", gz.ToArray());
+            }
+            byte[] sized;
+            using (var compressor = new ZstdSharp.Compressor()) sized = compressor.Wrap(plain).ToArray();
+            yield return ("zstd (content size)", sized);
+            using (var streamed = new MemoryStream())
+            {
+                using (var z = new ZstdSharp.CompressionStream(streamed, leaveOpen: true)) z.Write(plain);
+                yield return ("zstd (streamed, no content size)", streamed.ToArray());
+            }
+            yield return ("zstd (cut short)", sized[..Math.Max(5, sized.Length / 2)]);
+        }
+
+        /// <summary>One body through the lexicon decode: refused, or what it decoded to.</summary>
+        static void WriteBodyDecode(Utf8JsonWriter w, string answer, string sent, byte[] body, int djPage)
+        {
+            Spotify.Decode.ClusterBuffer buffer = Spotify.Decode.ClusterBuffer.Rent();
+            try
+            {
+                w.WriteStartObject();
+                w.WriteString("answer", answer);
+                w.WriteString("sent", sent);
+                w.WriteString("form", Playback.Dj.BodyForm(body));
+                w.WriteNumber("bytes", body.Length);
+                bool ok = Playback.Dj.Decode(body, buffer, djPage, "dj bodies " + answer, out Spotify.Decode.ContextPage page);
+                w.WriteBoolean("decoded", ok);
+                if (ok)
+                {
+                    w.WriteString("uri", System.Text.Encoding.UTF8.GetString(buffer.Utf8(page.Uri)));
+                    w.WriteBoolean("dj", page.Dj);
+                    w.WriteString("noShuffle", System.Text.Encoding.UTF8.GetString(buffer.Utf8(page.NoShuffle)));
+                    w.WriteNumber("tracks", page.TrackCount);
+                    int djKeys = 0;
+                    foreach (ref readonly Spotify.Decode.ClusterTrack t in buffer.Tracks(page.TrackStart, page.TrackCount)) djKeys += t.DjCount;
+                    w.WriteNumber("djKeys", djKeys);
+                    w.WriteString("segment", System.Text.Encoding.UTF8.GetString(buffer.Utf8(page.Segment)));
+                    w.WriteBoolean("nextPage", !page.NextPageUrl.IsEmpty);
+                }
+                w.WriteEndObject();
+            }
+            finally { Spotify.Decode.ClusterBuffer.Return(buffer); }
         }
 
         /// <summary>What Wavee shows of a foreign owner's DJ (the reducer's mirror and the signals the surfaces read).</summary>

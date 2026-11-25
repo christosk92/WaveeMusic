@@ -112,8 +112,7 @@ public static partial class Playback
             {
                 byte[]? body = fake(path);
                 if (body is null || body.Length == 0) { Log.Warn("dj", what + " refused (fake: no answer)"); return false; }
-                page = Spotify.Decode.ContextResolve(body, buffer, djPage);
-                return true;
+                return Decode(body, buffer, djPage, what, out page);
             }
             var args = new Spotify.RequestArgs
             {
@@ -121,12 +120,12 @@ public static partial class Playback
                 Host = Spotify.ApiHost.Spclient,
                 Verb = Spotify.Verb.Get,
                 Headers = Spotify.HeaderSet.Bearer | Spotify.HeaderSet.ClientToken | Spotify.HeaderSet.Identity
-                          | Spotify.HeaderSet.AcceptLanguage | Spotify.HeaderSet.AcceptJson | Spotify.HeaderSet.DeviceContext,
+                          | Spotify.HeaderSet.AcceptLanguage | Spotify.HeaderSet.AcceptJson | Spotify.HeaderSet.DeviceContext
+                          | Spotify.HeaderSet.TimeZone | Spotify.HeaderSet.ClientId,   // the official client's pair on these routes (§1.2)
             };
             Spotify.Api.Result result = Spotify.Api.Send(Spotify.RequestKind.Custom, args, CancellationToken.None);
             if (!result.Ok || result.Length == 0) { Log.Warn("dj", what + " refused (" + result.Status + ")"); return false; }
-            page = Spotify.Decode.ContextResolve(result.Bytes, buffer, djPage);
-            return true;
+            return Decode(result.Bytes, buffer, djPage, what, out page);
         }
 
         // ── the session record (UI thread) ──────────────────────────────────────────────────────────────────────────

@@ -607,6 +607,8 @@ public static partial class Spotify
             if ((headers & HeaderSet.AcceptGeoblock) != 0) h.TryAddWithoutValidation("spotify-accept-geoblock", "dummy");
             if ((headers & HeaderSet.DeviceContext) != 0 && DeviceContext is { Length: > 0 } deviceContext)
                 h.TryAddWithoutValidation("x-dynamic-device-context", deviceContext);
+            if ((headers & HeaderSet.TimeZone) != 0) h.TryAddWithoutValidation("Time-Zone", LocalTimeZone);
+            if ((headers & HeaderSet.ClientId) != 0) h.TryAddWithoutValidation("X-Client-Id", Identity.ClientId);
             if ((headers & HeaderSet.DsaMode) != 0) h.TryAddWithoutValidation("spotify-dsa-mode-enabled", "false");
             if ((headers & HeaderSet.Origin) != 0) h.TryAddWithoutValidation("Origin", SpclientBaseUrl().TrimEnd('/'));
             if ((headers & HeaderSet.XpuiOrigin) != 0) { h.TryAddWithoutValidation("Origin", XpuiOrigin); h.TryAddWithoutValidation("Referer", XpuiOrigin + "/"); }
