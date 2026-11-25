@@ -1007,6 +1007,27 @@ page 2's jump 4.9 s, page 2's outro the broken fixture (dropped) and page 3's th
 `status log="intent refused"` (`Narration`). Headless, the silent endpoint holds 2 s ahead of the played count, so a boundary
 announced on the render clock can read up to ~2 s off a clip's length on the frame clock; the lengths themselves are exact.
 
+Talk-over and radio automix (D3, D3b, `Playback/Playback.Dj.TalkOver.cs`): `narration.seams` plans every seam from the deck on
+(`kind` `TalkOver` a voice over its track, `Outro` a track ducked under the voice after it, `Sequential` a voice into a voice,
+`Radio` two DJ tracks; the timing, the cues it read, and its `events` on A's clock: `trackStarts` / `trackStartsAtPosition`,
+`duckStart` / `duckLands` / `voiceStarts`, `fadeOutStarts` / `bStarts` / `bFadeInEnds`, `bCurrentAt` and `bPositionWhenCurrent`;
+`refused` with the reason, `NoData` while a streamed voice has no length) and `narration.joins` lists what the pump scheduled (A's
+position from the mixer frames at the window, at B's start, at the announce and at the window's end; `heard`, `announced`,
+`cancelled`, `lateShifted`). `do=seams samples=250 n=12` adds each side's curve JSON and its gain sampled over its window.
+`current.narrating` is "the DJ talks" (the clip is current and its track has not started under it: the f17 `narration`
+restrictions), `clipCurrent` the clip is the deck (no seek, no progress), `targetUnder` the track sounds under the voice. Under
+`--fake` the tracks of the first six fake DJ pages carry kind 28 cues covering every rule and play as silent MP3 bytes while a DJ
+session plays (`Playback/Playback.Audio.FakeTracks.cs`), so the joins run through the real pump; reach a seam with
+`transport do=next` and `transport do=seek ms=` (a track's window starts about 5 s before its end cue), then `dj do=run until=change`.
+
+```text
+dj do=play
+dj do=run ms=6000 until=change     # welcome -> page 1's intro (24.5 s; its track has a human cue at 8932: starts 17.2 s in)
+dj do=run ms=18000                 # targetUnder: narrating false, the clip still current; transport do=putstate lifts 3/9/13
+transport do=next                  # one skip ends the voice and its started track
+dj do=seams samples=250 n=7        # the radio seams of page 1, its outro, the next intro over its track
+```
+
 `current.restorePoint` is what the session document would keep for the next launch (during a clip: the track it belongs to,
 from 0). `do=jump` presses "Let DJ pick" (D5): the rest of the segment goes to history, the user's queued rows wait behind the
 target, and the deck lands on the target's prefetched jump clip right before it (`first` = `jump:<segment>`, the target, ...);
