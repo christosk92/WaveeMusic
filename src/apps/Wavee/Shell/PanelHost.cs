@@ -140,16 +140,19 @@ public static partial class Shell
     {
         public const int Max = 5;
 
-        /// <summary>PURE: the queue indices of the window. Looks at the first <c>min(into.Length, length)</c> upcoming rows from
+        /// <summary>The queue indices of the window. Looks at the first <c>min(into.Length, length)</c> upcoming rows from
         /// <paramref name="start"/> and keeps the tracks, in order; the window never reaches past those rows to make up the
-        /// count. Returns how many were written.</summary>
+        /// count. An AI DJ narration row is no row here (plan-dj §1.5 <c>hidden_in_queue</c>, as the queue panel hides it): it is
+        /// skipped without taking a place. Returns how many were written.</summary>
         public static int Pick(bool hasUpNext, int start, int length, Span<int> into, Func<int, EntityRef> refAt)
         {
             if (!hasUpNext) return 0;
-            int n = Math.Min(into.Length, length), count = 0;
-            for (int i = start; i < start + n; i++)
+            int n = Math.Min(into.Length, length), count = 0, looked = 0;
+            for (int i = start; i < start + length && looked < n; i++)
             {
                 var r = refAt(i);
+                if (Playback.Dj.IsNarrationRow(r)) continue;
+                looked++;
                 if (r.Kind != EntityKind.Track || r.IsNone) continue;
                 into[count++] = i;
             }

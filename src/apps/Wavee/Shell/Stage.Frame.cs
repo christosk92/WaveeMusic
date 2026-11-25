@@ -128,7 +128,11 @@ public static partial class Stage
         _ = Entities.Current.Artists.Changed.Value;
         _ = Entities.Current.Edges.TrackArtists.Changed.Value;
         if (!Queue.UpNext(out int start, out int length) || length == 0) return default;
-        var r = Queue.RefAt(start);
+        // An AI DJ narration ahead is no "next" track (it is hidden in the queue, plan-dj §1.5): the track after it is.
+        int at = start;
+        while (at < start + length - 1 && Playback.Dj.IsNarrationRow(Queue.RefAt(at))) at++;
+        var r = Queue.RefAt(at);
+        if (Playback.Dj.IsNarrationRow(r)) return default;
         if (r.IsNone || r.Kind != EntityKind.Track) return default;
         var track = new Track(r.Slot);
         if (!track.IsValid || !Transport.UsesTitle(track.Title, track.Uri.Text)) return default;

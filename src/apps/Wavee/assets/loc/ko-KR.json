@@ -863,6 +863,7 @@
     "djSegmentEnding": "DJ 세그먼트가 곧 끝나요",
     "djPick": "DJ에게 맡기기",
     "djPickTip": "DJ에게 다른 곡 추천받기",
+    "djPickNotYet": "DJ가 아직 다음 곡을 고르고 있어요",
     "djName": "DJ",
     "djLine": "{0} · {1}",
     "djJumpsHere": "DJ에게 맡기면 여기서 시작해요",

@@ -34,9 +34,11 @@ internal static partial class CommonMiniPlayer
         bool remote = m.Bar.DeviceIsRemote();
         // Without a detail line (the strip, the square, a short wide card) "Playing on …" takes the artist's line, in the accent: the title stays.
         bool onLine = remote && !detail && m.P.DetailText() is { Length: > 0 };
+        // AI DJ: while the DJ talks, its words take the artist's line ("a caption line", plan-dj §2.8): same slot, nothing moves.
+        string spoken = m.P.SpokenText();
         TextEl a = onLine
             ? st.Artist(m.P.DetailText(), m.Accent, m.Media) with { Color = m.Media ? m.Ink : m.Accent }
-            : st.Artist(m.P.ArtistText(), m.Accent, m.Media);
+            : st.Artist(spoken.Length > 0 ? spoken : m.P.ArtistText(), m.Accent, m.Media);
         var lines = new List<Element>(3) { Title(m, title, reserve, hug), a };
         // AI DJ: the detail line is the segment ("DJ · Vibes", the host's DetailText) and "Let DJ pick" rides its end, the window's sparkle button
         // lit in its accent (the line's room after the words: nothing before it moves).

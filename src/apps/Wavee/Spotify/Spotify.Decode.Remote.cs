@@ -388,6 +388,10 @@ public static partial class Spotify
             // AI DJ: a narration item (dj-protocol §2.4) and the TTS request it names, whose SSML is the caption a controller shows
             else if (Is(key, "is_narration")) row.Narration = value.SequenceEqual("true"u8);
             else if (Is(key, "media.manifest")) row.Manifest = into.AddText(value);
+            // AI DJ: the row's segment, its label and whether "Let DJ pick" lands on it, for a controller's bar (dj-protocol §2.3)
+            else if (Is(key, "segment")) row.Segment = into.AddText(value);
+            else if (Is(key, "station_subtitle")) row.Subtitle = into.AddText(value);
+            else if (Is(key, "dj.jump_target")) row.JumpTarget = value.SequenceEqual("true"u8);
         }
 
         // ── context-resolve / autoplay ───────────────────────────────────────────────────────────────────────────────

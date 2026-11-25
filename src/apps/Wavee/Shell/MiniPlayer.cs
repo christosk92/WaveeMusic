@@ -652,6 +652,7 @@ public static partial class MiniPlayer
         ToggleRemaining = static () => PlayerVerbs.Default.ToggleRemaining(),
         ArtistText = ArtistText,
         DetailText = DetailText,
+        SpokenText = static () => Playback.Dj.CaptionNow(),   // AI DJ: the words while it talks (the title block's caption line)
         // The Options panel's three rows are the Settings dials themselves (one writer each), recorded as written from the mini player.
         SetFace = static i => SettingsSpec.Dial("lyrics.mini.face").WriteChoice(i, SettingsSurfaces.MiniPlayerOptions),
         BackToWavee = static () => Close("back"),

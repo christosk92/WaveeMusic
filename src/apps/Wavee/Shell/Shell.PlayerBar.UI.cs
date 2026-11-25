@@ -933,8 +933,9 @@ public static partial class Shell
             // Concealed: hold the last text. Returning before the position read drops this bind's subscription to it, so a
             // hidden label wakes nothing at 1 Hz; the reveal (read first, so it stays subscribed) re-runs the bind.
             if (_reveal is { } reveal && !reveal.Value) return _shown;
-            // An AI DJ narration's progress is suppressed (plan-dj §1.8): no digits while it is current; the slot keeps its width.
-            if (Playback.ClipCurrent.Value) return _shown = "";
+            // An AI DJ narration's progress is suppressed (plan-dj §1.8): no digits while its clip is current, here or on the owner's deck;
+            // the slot keeps its width.
+            if (Playback.Dj.VoiceCurrent()) return _shown = "";
             long position = Playback.PositionMs.Value;
             long duration = DurationNow();
             bool isLive = Playback.Live.Value.IsLive;

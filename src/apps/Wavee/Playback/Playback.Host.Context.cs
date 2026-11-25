@@ -1523,7 +1523,9 @@ public static partial class Playback
         if ((r.Events & PlayEvents.Started) == 0) return;
 
         EntityId id = r.StartedId;
-        if (id.Provider == EntityProvider.Tts) return;   // an AI DJ narration: no play log, no history, no report (plan-dj D2; telemetry is D5)
+        // An AI DJ narration: registered under its spotify:media: name (plan-dj §2.9, Playback.Dj.Telemetry.cs), never in the play log or the
+        // play history (it is no track; D2).
+        if (id.Provider == EntityProvider.Tts) { ReportNarration(in r, id); return; }
         PlayStarted?.Invoke(id, r.Context, unix);
         if (!id.IsPlayable) return;
         // A local file (#240 E7, E8) is reported under its spotify:local: uri, blanked in content_uri, real in local_content_uri and in the
@@ -1566,6 +1568,7 @@ public static partial class Playback
             PlayerSession.TelemetryText(s_wireIds.SessionId, s_state.Kind == PlayableKind.Video),   // WireStarted already ran for this row
             localContentUri: localFile ? uri : "");
         s_registeredId = id;
+        AttributeDjTrack(id);   // a DJ row: its decision id and attribution (plan-dj §2.9)
         if (s_state.ContentRate != 1f) Spotify.Telemetry.RateChanged(ref s_registration, r.StartPosMs, s_state.ContentRate);
         if (id.Kind == EntityKind.Episode)
         {

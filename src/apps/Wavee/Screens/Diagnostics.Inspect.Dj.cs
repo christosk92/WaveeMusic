@@ -110,6 +110,48 @@ public static partial class Diagnostics
                             WriteJoins(w);
                         });
                     }
+                case "telemetry":
+                    {
+                        // D5 (plan-dj §2.9): `on=true` arms the tap on what the play report hands Spotify.Telemetry.Enqueue (cleared), `on=false`
+                        // drops it; without `on`, the events the tap holds: the RawCoreStream and RawCoreStreamSegment decoded field by field (the
+                        // generated descriptor's names), the rest by name and size. Nothing is sent: `--fake` sends no telemetry.
+                        if (a.Has("on"))
+                        {
+                            bool on = a.Str("on") != "false";
+                            Spotify.Telemetry.Tap(on);
+                            return Inspect.Reply.Ok(id, name, w => { w.WriteString("do", verb); w.WriteBoolean("tapped", on); });
+                        }
+                        var tapped = Spotify.Telemetry.TapNow();
+                        bool all = a.Str("all") == "true";
+                        return Inspect.Reply.Ok(id, name, w =>
+                        {
+                            w.WriteString("do", verb);
+                            w.WriteNumber("events", tapped.Length);
+                            w.WriteStartArray("payloads");
+                            var json = new Google.Protobuf.JsonFormatter(Google.Protobuf.JsonFormatter.Settings.Default.WithFormatDefaultValues(false));
+                            foreach ((string evName, byte[] payload) in tapped)
+                            {
+                                Google.Protobuf.IMessage? decoded = evName switch
+                                {
+                                    "RawCoreStream" => Wavee.Protocol.EventSender.Events.RawCoreStream.Parser.ParseFrom(payload),
+                                    "RawCoreStreamSegment" => Wavee.Protocol.EventSender.Events.RawCoreStreamSegment.Parser.ParseFrom(payload),
+                                    _ => null,
+                                };
+                                if (decoded is null && !all) continue;
+                                w.WriteStartObject();
+                                w.WriteString("event", evName);
+                                w.WriteNumber("bytes", payload.Length);
+                                if (decoded is not null)
+                                {
+                                    w.WritePropertyName("fields");
+                                    using JsonDocument doc = JsonDocument.Parse(json.Format(decoded));
+                                    doc.RootElement.WriteTo(w);
+                                }
+                                w.WriteEndObject();
+                            }
+                            w.WriteEndArray();
+                        });
+                    }
                 case "starve":
                     {
                         Entities.FakeLexiconStarved = a.Str("on", "true") != "false";
@@ -165,7 +207,7 @@ public static partial class Diagnostics
                     }
                 default:
                     return DjConnectVerb(id, name, verb, uri, a)   // the Connect half: Diagnostics.Inspect.DjConnect.cs
-                        ?? Inspect.Reply.Fail(id, name, "dj wants do=status|answers|play|jump|seams|starve|expire|run|" + DjConnectVerbs + ", not '" + verb + "'");
+                        ?? Inspect.Reply.Fail(id, name, "dj wants do=status|answers|play|jump|seams|starve|expire|run|telemetry|" + DjConnectVerbs + ", not '" + verb + "'");
             }
         }
 

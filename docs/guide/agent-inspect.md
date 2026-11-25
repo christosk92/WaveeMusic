@@ -1039,6 +1039,16 @@ the session's first row), `do=restore track=` (the launch restore), `do=bodies`,
 `{"endpoint":"signal","signal_id":"jump"}` routed as the dealer glue routes it, plus the `outbound` body Wavee sends as a
 controller). `transport do=putstate` during a clip shows the narration item as the official player sends it (f7 `spotify:media:`,
 `narration/<slot>`, no f6, f17 3/9/13 `narration`, `suppress_progress`, `media.manifest`); f33 carries `jump` while DJ plays.
+`do=cluster`'s mirror also reads `surfaces` (D5b): the deck's row (an owner's `spotify:media:` narration item shows as a staged
+`wavee:tts:remote:<id>` row: "Up next", the DJ's name, no fetch), `caption` (the words every caption lane shows), the bar's DJ facts
+(`djSegment` from the playing row's `station_subtitle`, a narration's from its target row; `djCanJump` = the owner's signals offer `jump`,
+or with no signals stated a later segment's `dj.jump_target` is listed; `djPickTip` says why when it is off) and `progressShown`.
+
+`do=telemetry` (D5b, plan §2.9): `on=true` arms a tap on every event the play report hands `Spotify.Telemetry.Enqueue` (nothing is sent
+under `--fake`), then `dj do=telemetry` lists the tapped `RawCoreStream` and `RawCoreStreamSegment` payloads decoded field by field
+(`all=true` adds every other event by name and size). A narration reports under its wire name (`spotify:media:<id>`, provider
+`narration/<slot>`, format `MP3 160 kbps`, its `dj~` decision id and attribution); a DJ track carries its `ssp~` decision id and
+attribution; the overlap fields stay 0 until the talk-over (D3) writes them.
 
 ```text
 mount w=1440 h=960 theme=winui route=home
@@ -1049,6 +1059,7 @@ dj do=run ms=40000 until=change    # intro -> its track
 dj do=run ms=6000                  # the next segment's jump clip is prefetched 5 s into the item
 dj do=jump                         # the jump clip, then the target, then the user's queue
 dj do=signal                       # the same from a controller's `jump` signal
+dj do=telemetry                    # (after `dj do=telemetry on=true` before the play) the reports, decoded
 ```
 
 ### `djtts {do, fixture?, ssml?, manifest?, via?, key?, seconds?, n?, wait?, pace?, rate?, ms?, every?, disk?}`

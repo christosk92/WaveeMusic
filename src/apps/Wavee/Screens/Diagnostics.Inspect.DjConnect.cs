@@ -251,6 +251,22 @@ public static partial class Diagnostics
             w.WriteString("ssml", n.Ssml ?? "");
             w.WriteString("text", n.Text);
             w.WriteEndObject();
+            // D5: what the surfaces draw of it: the deck's row (a narration item's staged row), the caption, the bar's DJ chrome
+            EntityRef deck = Playback.Current.Peek();
+            w.WriteStartObject("surfaces");
+            w.WriteString("deckRow", deck.IsNone || deck.Kind != EntityKind.Track ? "" : new Track(deck.Slot).Uri.Text);
+            w.WriteString("deckTitle", deck.IsNone || deck.Kind != EntityKind.Track ? "" : new Track(deck.Slot).Title);
+            w.WriteBoolean("deckIsNarration", Playback.Dj.IsNarrationRow(deck));
+            w.WriteString("caption", Playback.Dj.CaptionPeek());
+            Playback.Dj.Facts f = Playback.DjNow.Peek();
+            w.WriteBoolean("djActive", f.Active);
+            w.WriteBoolean("djRemote", f.Remote);
+            w.WriteString("djSegment", f.Segment);
+            w.WriteBoolean("djCanJump", f.CanJump);
+            w.WriteString("djLine", PlayerVerbs.Dj(track: false)?.Line ?? "");
+            w.WriteString("djPickTip", PlayerVerbs.Dj(track: false)?.PickTip ?? "");
+            w.WriteBoolean("progressShown", Playback.DurationMs.Peek() > 0);
+            w.WriteEndObject();
             w.WriteEndObject();
         }
     }
