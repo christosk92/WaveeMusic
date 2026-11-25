@@ -3599,7 +3599,7 @@
     "playFile": "Play file…",
     "pickTitle": "Choose a file to play",
     "filter": "Audio and video",
-    "rejected": "That file can’t be played. Wavee plays .mp3, .flac, .ogg, .m4a, .aac and .mp4 files.",
+    "rejected": "That file can’t be played. Wavee plays .mp3, .flac, .ogg, .m4a, .aac, .wav, .aiff and .mp4 files.",
     "notReady": "Local playback isn’t ready yet.",
     "playlistTitle": "Local files",
     "playlistDescription": "Music imported from this computer."

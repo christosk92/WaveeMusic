@@ -176,6 +176,7 @@ public static partial class Diagnostics
             {
                 w.WriteNumber("entries", index.Count);
                 w.WriteNumber("missing", index.MissingCount);
+                w.WriteNumber("unplayable", index.UnplayableCount);
                 w.WriteNumber("next", index.NextId);
                 w.WriteNumber("idMark", Platform.Settings.Get(Platform.Keys.MusicIdMark));
                 w.WriteStartArray("roots");
@@ -192,6 +193,78 @@ public static partial class Diagnostics
                     if (f.RelativePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) w.WriteStringValue(f.RootId + " | " + f.RelativePath);
                 w.WriteEndArray();
                 w.WriteString("skip", Platform.Settings.Get(Platform.Keys.MusicSkip));
+            });
+        }
+
+        /// <summary>`decode path= out= rate= seekMs= ms=`: a local file through the decoder playback would open it with (its content's format,
+        /// `Playback.Audio.CreateDecoderFor`), into raw float32 stereo frames, so its output can be compared with another decoder's sample by
+        /// sample (#240 WAV/AIFF). No device, no session, no mount.</summary>
+        string DecodeVerb(int id, string name, Inspect.Args a)
+        {
+            string path = a.Str("path");
+            if (path.Length == 0 || !File.Exists(path)) return Inspect.Reply.Fail(id, name, "decode wants path=<a local file>, not '" + path + "'");
+            if (!LocalTags.TryRead(path, out Spotify.Audio.Format format, out LocalTagSet tags, out string why))
+                return Inspect.Reply.Fail(id, name, "the tag reader could not read it: " + why);
+            // The play path's content probe (LocalSource's first step): which decoder the bytes name.
+            byte[] head = new byte[8 * 1024];
+            int headLen;
+            using (var hf = File.OpenRead(path)) headLen = hf.Read(head, 0, head.Length);
+            Playback.Audio.LocalProbe probe = Playback.Audio.ClassifyLocal(head.AsSpan(0, headLen), head.AsSpan(0, headLen));
+            var opened = new Playback.Audio.Opened(format, tags.DurationMs, 0f, "", 0, IsLive: false);
+            FluentGpu.Media.IAudioDecoder decoder = Playback.Audio.CreateDecoderFor(in opened);
+            int rate = a.Int("rate", 0);
+            if (rate <= 0) rate = tags.SampleRate > 0 ? tags.SampleRate : 48_000;
+            var src = new FluentGpu.Media.FileByteSource(path);
+            bool open = decoder.TryOpen(src, new FluentGpu.Media.MixFormat(rate, 2), out FluentGpu.Media.DecodedInfo info);
+            long seekMs = a.Int("seekMs", -1), seekedTo = -1, frames = 0, limit = a.Int("ms", 0) * (long)rate / 1000;
+            float peak = 0f;
+            string outPath = a.Str("out");
+            if (open)
+            {
+                if (seekMs >= 0) seekedTo = decoder.Seek(seekMs * rate / 1000);
+                using FileStream? file = outPath.Length > 0 ? new FileStream(outPath, FileMode.Create, FileAccess.Write) : null;
+                var buffer = new float[4096 * 2];
+                var bytes = new byte[buffer.Length * 4];
+                while (limit <= 0 || frames < limit)
+                {
+                    int n = decoder.Read(buffer);
+                    if (n <= 0) break;
+                    if (limit > 0) n = (int)Math.Min(n, limit - frames);
+                    for (int i = 0; i < n * 2; i++) peak = Math.Max(peak, Math.Abs(buffer[i]));
+                    if (file is not null)
+                    {
+                        Buffer.BlockCopy(buffer, 0, bytes, 0, n * 8);
+                        file.Write(bytes, 0, n * 8);
+                    }
+                    frames += n;
+                }
+            }
+            src.Close();
+            return Inspect.Reply.Ok(id, name, w =>
+            {
+                w.WriteString("format", format.ToString());
+                w.WriteString("probe", probe.Kind + " " + probe.Format + (probe.Why.Length > 0 ? " " + probe.Why : ""));
+                w.WriteString("decoder", decoder.GetType().Name);
+                w.WriteBoolean("opened", open);
+                w.WriteString("why", decoder is Playback.Audio.PcmAudioDecoder p0 && p0.Why.Length > 0 ? p0.Why : why);
+                w.WriteNumber("tagDurationMs", tags.DurationMs);
+                w.WriteBoolean("estimated", tags.DurationEstimated);
+                w.WriteNumber("rate", rate);
+                w.WriteNumber("sourceRate", info.SourceFormat.SampleRate);
+                w.WriteNumber("sourceChannels", info.SourceFormat.Channels);
+                w.WriteNumber("exactFrames", decoder.Gapless.ExactFrames);
+                w.WriteBoolean("tailKnown", decoder.Gapless.TailKnown);
+                w.WriteNumber("leadIn", decoder.Gapless.LeadInFrames);
+                w.WriteNumber("seekedTo", seekedTo);
+                w.WriteNumber("frames", frames);
+                w.WriteNumber("peak", peak);
+                if (decoder is Playback.Audio.PcmAudioDecoder pcm)
+                {
+                    w.WriteString("label", pcm.Layout.Label);
+                    w.WriteNumber("gain", pcm.AppliedGainLinear);
+                    w.WriteNumber("layoutFrames", pcm.Layout.Frames);
+                    w.WriteString("sample", pcm.Layout.Sample + (pcm.Layout.BigEndian ? " be" : "") + " " + pcm.Layout.BytesPerSample * 8);
+                }
             });
         }
 

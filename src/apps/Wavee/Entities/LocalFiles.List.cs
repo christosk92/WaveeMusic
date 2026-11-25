@@ -501,7 +501,7 @@ public static class LocalFilesList
     }
 
     /// <summary>The picker's filter: the extensions the scan reads.</summary>
-    const string AudioSpec = "*.mp3;*.flac;*.ogg;*.oga;*.m4a;*.mp4;*.aac;*.wav;*.aif;*.aiff;*.opus;*.wma";
+    const string AudioSpec = "*.mp3;*.flac;*.ogg;*.oga;*.m4a;*.mp4;*.aac;*.wav;*.aif;*.aiff;*.aifc;*.opus;*.wma";
 
     static string Number(int n) => n.ToString("N0", CultureInfo.CurrentCulture);
 

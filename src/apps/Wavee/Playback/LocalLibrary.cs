@@ -118,6 +118,7 @@ public static partial class LocalLibrary
             int loaded = s_binPath is { } bin ? s_index.Load(bin) : 0;
             KeepIdMark(s_index.NextId);
             CheckAdded();   // the "Added files" are not walked: each is looked at once (LocalLibrary.Added.cs)
+            RereadIfDecodersRose();   // a build that plays more: the files indexed as unplayable are read once more (LocalLibrary.Reread.cs)
             Volatile.Write(ref s_loaded, 1);
             Log.Info("local", "local.index.load entries=" + loaded + " folders=" + Folders.Count + " log=" + s_index.LogBytes);
             foreach (string folder in Folders) StartFolder(folder, startup: true);

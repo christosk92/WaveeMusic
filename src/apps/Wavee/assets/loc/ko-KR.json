@@ -986,7 +986,7 @@
     "playFile": "파일 재생…",
     "pickTitle": "재생할 파일을 선택하세요",
     "filter": "오디오 및 비디오",
-    "rejected": "이 파일은 재생할 수 없습니다. Wavee는 .mp3, .flac, .ogg, .m4a, .aac, .mp4 파일을 재생합니다.",
+    "rejected": "이 파일은 재생할 수 없습니다. Wavee는 .mp3, .flac, .ogg, .m4a, .aac, .wav, .aiff, .mp4 파일을 재생합니다.",
     "notReady": "로컬 재생이 아직 준비되지 않았습니다 — 먼저 로그인하세요."
   },
   "theme": {

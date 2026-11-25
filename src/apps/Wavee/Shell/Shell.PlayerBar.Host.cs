@@ -105,7 +105,7 @@ public static partial class Shell
                 _ = Playback.Devices.Changed.Value;
                 bool remote = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows) >= 0;
                 if (!Stage.Transport.ShowsQualityBadge(true, remote)) return null;
-                return Playback.Audio.PlayingOpened.Format is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24
+                return Playback.Audio.PlayingOpened.Format is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 or Spotify.Audio.Format.Pcm
                     ? Entities.Strings.Resolve(fmt)
                     : null;
             }),

@@ -1568,7 +1568,11 @@ public static partial class Playback
             Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => new FlacAudioDecoder(opened.GainDb, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak),
             Spotify.Audio.Format.Mp3 => new Mp3AudioDecoder(opened.GainDb, opened.Peak),
             Spotify.Audio.Format.Aac => new Modules.AacAudioDecoder(opened.GainDb, opened.Peak),
-            _ => new VorbisAudioDecoder(opened.GainDb, opened.DurationMs, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak),
+            Spotify.Audio.Format.OggVorbis96 or Spotify.Audio.Format.OggVorbis160 or Spotify.Audio.Format.OggVorbis320
+                => new VorbisAudioDecoder(opened.GainDb, opened.DurationMs, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak),
+            Spotify.Audio.Format.Pcm => new PcmAudioDecoder(opened.GainDb, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak),
+            // A format no decoder reads is refused at open, never decoded as another codec's bytes (Unknown used to land on Vorbis).
+            _ => new NoDecoder(opened.Format),
         };
 
         // ── 8a. normalization (D5, D6): modes, album mode, the ONE factor, the live ramp ────────────────────────────────
@@ -4623,7 +4627,7 @@ public static partial class Playback
         };
 
         /// <summary>A file the user dropped or imported. The FORMAT comes from the bytes, never the extension — the
-        /// extension gate is the user-facing rule ("Wavee plays .mp3, .flac, .ogg, .m4a, .aac and .mp4 files"), the content is what the
+        /// extension gate is the user-facing rule ("Wavee plays .mp3, .flac, .ogg, .m4a, .aac, .wav, .aiff and .mp4 files"), the content is what the
         /// decoder is chosen by, and a file whose content names no decoder this build has is REFUSED here
         /// (<see cref="Fault.Unsupported"/>, one log line saying what it is) — never handed to a guessed one. The old
         /// fallback was "anything else is MP3", which sent every .mp4 to NLayer (2026-10-06).</summary>
@@ -4646,6 +4650,7 @@ public static partial class Playback
             LocalProbe probe;
             Mp4AacTrack? mp4 = null;
             string mp4Why = "";
+            PcmLayout pcm = default;
             try
             {
                 using FileStream file = new(path, FileMode.Open, FileAccess.Read,
@@ -4669,14 +4674,28 @@ public static partial class Playback
                     file.Position = 0;
                     if (!Mp4.TryReadAacTrack(file, out mp4, out mp4Why)) mp4 = null;
                 }
+                if (probe.Format == Spotify.Audio.Format.Pcm)
+                {
+                    pcm = PcmLayoutOf(file);
+                    if (!pcm.Ok) probe = new LocalProbe(LocalKind.Unsupported, default, pcm.Why);
+                }
             }
             catch (Exception ex) { Log.Warn("audio", "local probe failed", ex); fault = Fault.Unavailable; return null; }
 
             Spotify.Audio.Format format;
             IMediaByteSource bytes;
             long durationMs = 0;
+            string label = "";
             switch (probe.Kind)
             {
+                case LocalKind.Decodable when probe.Format == Spotify.Audio.Format.Pcm:
+                    // PCM's length is its layout's, exactly (data / block align frames): a join and a crossfade plan on it.
+                    format = Spotify.Audio.Format.Pcm;
+                    bytes = NtDirectory.IsNetworkPath(path) ? new NetworkByteSource(path) : new FileByteSource(path);
+                    durationMs = pcm.DurationMs;
+                    label = pcm.Label;
+                    Log.Info("audio", $"audio.local pcm {pcm.Label} ch={pcm.Channels} frames={pcm.Frames} durMs={durationMs}");
+                    break;
                 case LocalKind.Decodable:
                     format = probe.Format;
                     // A network share is read ahead on its own thread (a slow or sleeping NAS buffers instead of stalling the decoder).
@@ -4701,9 +4720,24 @@ public static partial class Playback
             fault = Fault.None;
             // An MP4's length is its sample table's (exact). FLAC, MP3, Ogg and ADTS carry theirs in headers the decoder
             // reads: 0 and not exact until `WithDecodedLength` fills it in once the decoder has opened.
-            opened = new Opened(format, durationMs, 0f, LabelFor(format, 0, 0), 0, IsLive: false, DurationExact: durationMs > 0);
+            opened = new Opened(format, durationMs, 0f, label.Length > 0 ? label : LabelFor(format, 0, 0), 0, IsLive: false, DurationExact: durationMs > 0);
             return bytes;
         }
+
+        /// <summary>A WAV or AIFF file's PCM layout, walked over the open file (any chunk, wherever it sits).</summary>
+        static PcmLayout PcmLayoutOf(FileStream file)
+            => Pcm.Parse((at, dst) =>
+            {
+                file.Position = at;
+                int got = 0;
+                while (got < dst.Length)
+                {
+                    int n = file.Read(dst[got..]);
+                    if (n <= 0) return false;
+                    got += n;
+                }
+                return true;
+            }, file.Length);
 
         /// <summary>A local file opened with no length (<see cref="LocalSource"/> reads no audio header), once its decoder has
         /// read the headers: EXACT when the decoder knows the stream's true end (FLAC STREAMINFO, an MP3's Xing/LAME block, an
@@ -4781,8 +4815,9 @@ public static partial class Playback
                     : "an unknown codec";
                 return new(LocalKind.Unsupported, default, "an Ogg file carrying " + codec);
             }
-            if (head.Length >= 12 && head[..4].SequenceEqual("RIFF"u8) && head[8..12].SequenceEqual("WAVE"u8))
-                return new(LocalKind.Unsupported, default, "a WAV file");
+            // WAV (RIFF, RF64, BW64) and AIFF/AIFC: PCM. Whether this file's encoding is one the decoder reads is the layout walk's
+            // (LocalSource runs it over the whole file: a format chunk may sit past the probe's bytes).
+            if (Pcm.IsWave(head) || Pcm.IsAiff(head)) return Decodable(Spotify.Audio.Format.Pcm);
             if (Modules.Adts.FindSync(audio) == 0 && Modules.Adts.TryParseHeader(audio, out Modules.AdtsHeader adts)
                 && adts.FrameLength + Modules.Adts.MinHeaderBytes <= audio.Length)
                 return Decodable(Spotify.Audio.Format.Aac);
@@ -5223,6 +5258,8 @@ public static partial class Playback
                 Spotify.Audio.Format.OggVorbis320 => "OGG 320",
                 Spotify.Audio.Format.Mp3 => "MP3",
                 Spotify.Audio.Format.Aac => "AAC",
+                // A local WAV or AIFF names its container, depth and rate from its layout (PcmLayout.Label: "WAV 24/96"); this is the bare fallback.
+                Spotify.Audio.Format.Pcm => bps > 0 && sampleRate > 0 ? $"PCM {bps}/{(sampleRate / 1000.0):0.#}" : "PCM",
                 _ => "",
             };
         }
@@ -5880,8 +5917,8 @@ public static partial class Playback
                 {
                     Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => flac,
                     Spotify.Audio.Format.Mp3 => mp3,
-                    Spotify.Audio.Format.Unknown => 0f,
-                    _ => vorbis,
+                    Spotify.Audio.Format.OggVorbis96 or Spotify.Audio.Format.OggVorbis160 or Spotify.Audio.Format.OggVorbis320 => vorbis,
+                    _ => 0f,                                       // PCM, AAC, Unknown: no decode-speed meter
                 };
                 GlitchLedger.Snapshot glitch = s_ledger.Read();
                 PcmAudioSession? sess = Volatile.Read(ref s_session);

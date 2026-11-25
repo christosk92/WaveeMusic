@@ -126,7 +126,7 @@ What it cannot answer is in section 6 ("still open"); those points keep the mark
 | D4 | What the Local Files list shows | (a) every indexed file plus anything dropped; (b) dropped files only | **(a).** That is the "general local files playback" half of the owner's comment. A dropped file outside the folders stays in the list for the session as today. |
 | D5 | Unmatched playlist rows | stay greyed with a new reason | **Greyed, reason "Not found in your music folders"**, and the unavailable-songs bar gains one door: "Add a music folder" (opens the Storage group). |
 | D6 | Play reports for a local play | (a) Connect put-state only; (b) the reports the official client sends | **(b), changed by the capture.** The official client writes play history (herodotus `item_uri` = the local uri) and `RawCoreStream` with `content_uri: "spotify:local::::"` and `local_content_uri` = the real uri (report 3.6, 3.8). Wavee already has both senders; without a local arm it would put the local uri in `content_uri`, which the official client never does. Private session suppresses them as for any track. The official client's **folder and source telemetry** (`LocalFilesSourceEvent` with an absolute folder path, report 3.8) is **never** mirrored. |
-| D7 | Formats in 0.4 | what decodes today; or add WAV, Opus, ALAC | **What decodes today** (MP3, FLAC, Ogg Vorbis, AAC in .aac/.m4a/.mp4). The scan lists other audio files as "can't be played" with the count in Settings, so nothing is silently missing. New decoders are "After 0.4". |
+| D7 | Formats in 0.4 | what decodes today; or add WAV, Opus, ALAC | **What decodes today, plus WAV and AIFF** (MP3, FLAC, Ogg Vorbis, AAC in .aac/.m4a/.mp4; PCM in WAV/RF64/BW64 and AIFF/AIFC, `Playback.Audio.Pcm.cs`, 0dm's "WAV first"). The scan lists other audio files as "can't be played" with the count in Settings, so nothing is silently missing; a build that adds a decoder re-reads them once (`LocalLibrary.DecoderSet`). Opus and ALAC are "After 0.4". |
 | D9 | Hand-off at a local boundary | (a) lift the gate: local boundaries get the user's crossfade or gapless join; (b) keep today's cut | **(a)**, section 3.13. A local library that hard-cuts between every song while Spotify songs crossfade is not "general local playback". |
 | D10 | The Local Files list on Connect | (a) publish it as the official context `spotify:local-files` with the `local_list` restriction; (b) keep today's "track only, no context" | **(a)**, in P3. It is what a controller expects for this context, and `local_list` stops a controller offering a transfer that cannot work. |
 | D11 | An inbound Connect `play` of `spotify:local-files` | (a) refuse it cleanly; (b) play Wavee's own Local Files list | **(a) for 0.4.** The command names the row only by a uid the *sending* client made up for its own list (report 3.5); Wavee cannot know which file was meant, and starting a different song is worse than not starting. Revisit when uid generation is understood (section 6). |
@@ -321,7 +321,7 @@ Per format, reusing what exists:
 | MP3 | same, past `Id3v2Length` (`:5058`) | **new** ID3v2 reader: v2.2 (`TT2`/`TP1`/`TAL`/`TRK`/`TYE`), v2.3 and v2.4 (`TIT2`/`TPE1`/`TALB`/`TPE2`/`TRCK`/`TYER`/`TDRC`), the four text encodings, unsynchronisation, v2.4 syncsafe frame sizes; `APIC` and every other frame skipped by seeking. Fallback: the 128-byte ID3v1 block at the end. our own Xing/Info frame count (at 4 + side info) or VBRI (at +36) × samples per frame ÷ rate; `Mp3Tag.TryProbe` (`:3069`) only for the gapless trim, because it returns false without the LAME fields (`:2862`), searches only 192 bytes for sync and ignores VBRI; else (file size − ID3v2 − tail tags) × 8 ÷ the first frame's bitrate, flagged `DurationEstimated` |
 | MP4 / M4A | `Mp4.LooksLikeMp4` | **new** `moov/udta/meta/ilst` reader: `©nam`, `©ART`, `©alb`, `aART`, `trkn`, `©day` | `Mp4.TryReadAacTrack` → `DurationMs` (already read at `Playback.Audio.cs:4669`) |
 | ADTS .aac | `Modules.Adts` | ID3v2 if present | size ÷ first frame's bitrate (an estimate) |
-| WAV, Opus, Ogg FLAC, anything else with an audio extension | `ClassifyLocal`'s refusal | none | none; the entry is kept with `Playable = false` and its `Why` |
+| Opus, Ogg FLAC, WAV/AIFF with a compressed encoding (ADPCM, µ-law, A-law, MP3), anything else with an audio extension | `ClassifyLocal`'s or the PCM layout walk's refusal | none | none; the entry is kept with `Playable = false` and its `Why` |
 
 **I/O shape (revision 2).** Every reader works on one `File.OpenHandle` (`FileOptions.None`, `FileShare.ReadWrite |
 Delete`) and `RandomAccess.Read` into a pooled 64 KB buffer: one head read at offset 0, at most one tail read (160
@@ -923,8 +923,8 @@ and adds its own change file.
 - "Keep a copy on this PC" for network folders (D18).
 - Saving a dropped `.m3u` as a Spotify playlist (D12's playlist ADD now exists).
 
-- New decoders: WAV/PCM, Ogg Opus, ALAC (D7). The index already records these files as unplayable, so the day a
-  decoder lands a rescan lights them up.
+- New decoders: Ogg Opus, ALAC (D7; WAV/AIFF PCM shipped in 0.4). The index already records these files as unplayable, and
+  raising `LocalLibrary.DecoderSet` with the decoder re-reads them once at start.
 - Local albums and artists as browsable entities (today a local file's album and artist are names, not rows).
 - Loudness analysis of local files without ReplayGain tags (3.13).
 - Fuzzy matching beyond the loose key (edit distance, acoustic fingerprint).

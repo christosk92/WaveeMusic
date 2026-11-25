@@ -968,6 +968,21 @@ drop path=C:/music/song.flac
 drop path=C:/music/song.mp3 import=false
 ```
 
+### `decode {path, out?, rate?, seekMs?, ms?}`
+
+Runs a local file through the decoder playback opens it with (its content's format through `Playback.Audio.CreateDecoderFor`: WAV and
+AIFF PCM since #240, FLAC, MP3, Ogg) into raw float32 little-endian stereo frames at `out=` (none: the count only), at the mix rate
+`rate=` (0, the default, is the file's own rate: no resampling, so the output can be compared with `ffmpeg -f f32le` sample by
+sample). `seekMs=` seeks with the decoder's own seek first; `ms=` stops early. The reply: `format`, `decoder`, `opened`, `why` (a
+refusal: "a WAV file with ADPCM audio"), `tagDurationMs`, `estimated`, `sourceRate`, `sourceChannels`, `exactFrames` and `tailKnown`
+(the gapless info a join plans on), `seekedTo`, `frames`, `peak`, and for PCM `label` ("WAV 24/96"), `gain`, `layoutFrames` and
+`sample`. No mount, no device. (`play` of a local row under `--fake` opens no source: this is the decoder check headless.)
+
+```text
+decode path=C:/music/a.wav out=C:/scratch/a.f32
+decode path=C:/music/a.aiff out=C:/scratch/a.seek.f32 seekMs=1234
+```
+
 ### `hint {do, id?, blob?}` and `recent {clear?}`
 
 The in-app hints (settings rework phase 3: `Shell/Hints.cs`, the table of design 6.3, and the budget of 6.2) and Recently changed.

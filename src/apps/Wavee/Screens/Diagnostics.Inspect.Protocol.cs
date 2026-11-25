@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Timecode, Drop, LocalScan, LocalIndex, Quit,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Timecode, Drop, LocalScan, LocalIndex, Decode, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -802,6 +802,15 @@ public static partial class Diagnostics
                 Args = [Arg("path", ArgType.String, "the folder of music to scan (read-only)"),
                         IntArg("runs", "warm rescans (best and median reported)", "3", 1, 20)],
             },
+            new(Verb.Decode, "decode", "Decode a local file with the decoder its content picks (#240: WAV and AIFF PCM included), as playback opens it, into a raw float32 stereo file (no device, no mount): the layout, the label, the exact length and gapless frames, the decoded frame count, the applied gain; seekMs= first seeks there", "decode path=C:/music/a.wav out=C:/scratch/a.f32 rate=44100")
+            {
+                Positional = ["path"],
+                Args = [Arg("path", ArgType.String, "the local file to decode"),
+                        Arg("out", ArgType.String, "where to write the decoded float32 little-endian stereo frames (none: count only)"),
+                        IntArg("rate", "the mix rate to decode into (0 = the file's own rate: no resampling)", "0", 0, 768000),
+                        IntArg("seekMs", "seek here first (the decoder's own seek), -1 = no seek", "-1", -1, 86400000),
+                        IntArg("ms", "decode at most this much (0 = to the end)", "0", 0, 86400000)],
+            },
             new(Verb.LocalIndex, "localindex", "List the app's local index (#240): every entry's LocalId, music folder id, relative path and state, every folder record and the hidden set, filtered by a relative path prefix; read-only", "localindex prefix=Artist")
             {
                 Positional = ["prefix"],
@@ -838,7 +847,7 @@ public static partial class Diagnostics
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
             "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "mix" => Verb.Mix, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
-            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge, "timecode" => Verb.Timecode, "drop" => Verb.Drop, "localscan" => Verb.LocalScan, "localindex" => Verb.LocalIndex,
+            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge, "timecode" => Verb.Timecode, "drop" => Verb.Drop, "localscan" => Verb.LocalScan, "localindex" => Verb.LocalIndex, "decode" => Verb.Decode,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };

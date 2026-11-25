@@ -447,6 +447,8 @@ public static partial class Diagnostics
                     return LocalScanVerb(id, name, a);   // a private index; needs no mount
                 case Inspect.Verb.LocalIndex:
                     return LocalIndexVerb(id, name, a);   // reads the app's index; needs no mount
+                case Inspect.Verb.Decode:
+                    return DecodeVerb(id, name, a);   // a file through its decoder; needs no mount
                 case Inspect.Verb.Nudge:
                     return Nudge(id, name, a);   // fixtures need no mount; fire, tick, refresh and expectCard say so when unmounted
                 case Inspect.Verb.Timecode:

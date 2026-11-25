@@ -1454,11 +1454,14 @@ public readonly partial struct Playlist
 
     public enum LocalDropAction : byte { None, PlayAudio, PlayVideo }
 
-    /// <summary>The audio a drop or the file picker plays: what <c>Playback.Audio.LocalSource</c> decodes (.m4a and .aac since #240).</summary>
+    /// <summary>The audio a drop or the file picker plays: what <c>Playback.Audio.LocalSource</c> decodes (.m4a and .aac since #240; .wav, .aif,
+    /// .aiff and .aifc PCM since 0dm's "WAV first").</summary>
     public static bool IsLocalAudioFile(string? path)
         => path is { Length: > 0 } && (path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
             || path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".flac", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".aac", StringComparison.OrdinalIgnoreCase));
+            || path.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".aac", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".aif", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".aiff", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".aifc", StringComparison.OrdinalIgnoreCase));
     /// <summary>A video container a drop or the picker takes (#240 local video): MP4, M4V and Matroska/WebM. The file's own tags decide whether
     /// it IS a video (an MP4 with no picture track is a song): <see cref="StateLocalVideo"/>.</summary>
     public static bool IsLocalVideoFile(string? path)

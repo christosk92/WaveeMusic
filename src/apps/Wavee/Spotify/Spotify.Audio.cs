@@ -93,8 +93,9 @@ public static partial class Spotify
         // ── 1. the values ────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>What the bytes are. The rung is implied by the name for Ogg; MP3 and FLAC are one each because the
-        /// decoder does not care about their bitrate and nothing else asks.</summary>
-        public enum Format : byte { Unknown = 0, OggVorbis96, OggVorbis160, OggVorbis320, Mp3, Flac, Flac24, Aac }
+        /// decoder does not care about their bitrate and nothing else asks. <c>Pcm</c> is a local WAV or AIFF file (#240). The values are kept
+        /// in the local index (append only).</summary>
+        public enum Format : byte { Unknown = 0, OggVorbis96, OggVorbis160, OggVorbis320, Mp3, Flac, Flac24, Aac, Pcm }
 
         /// <summary>What the user asked for. The persisted setting is an int (`Platform.Keys.PlaybackQuality`), so the
         /// VALUES are the wire and a rename here is a preference the user loses.</summary>

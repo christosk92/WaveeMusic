@@ -121,7 +121,7 @@ public static partial class LocalLink
             string artist = LocalCollection.ArtistOf(list[0]);
             int year = 0;
             foreach (LocalEntry e in list) year = Math.Max(year, e.Tags.Year);
-            string quality = LocalCollection.QualityOf(list[0].Format, list[0].Tags.BitrateKbps, list[0].Tags.SampleRate, list[0].Tags.BitsPerSample);
+            string quality = LocalCollection.QualityOf(list[0].Format, list[0].Tags.BitrateKbps, list[0].Tags.SampleRate, list[0].Tags.BitsPerSample, list[0].RelativePath);
             string detail = Strings.LocalFiles.Link.AlbumDetail(list.Count, list.Count.ToString("N0", System.Globalization.CultureInfo.CurrentCulture))
                             + (quality.Length > 0 ? " · " + quality : "");
             jobs.Add(new Job(key, true, t.Album, artist, t.AlbumArtist, year, LocalArt.AlbumCoverUri(artist, t.Album) ?? LocalCollectionFixture.CoverOf(artist, t.Album) ?? FixtureCoverOf(artist, t.Album), detail,
@@ -130,7 +130,7 @@ public static partial class LocalLink
         foreach (LocalEntry e in songs)
         {
             FileFacts f = FactsOf(e);
-            string quality = LocalCollection.QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample);
+            string quality = LocalCollection.QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample, e.RelativePath);
             string folder = Path.GetFileName(Path.GetDirectoryName(e.RelativePath) ?? "");
             string detail = Loc.Get(Strings.LocalFiles.Link.SingleSong) + " · " + Clock(e.Tags.DurationMs) + (quality.Length > 0 ? " · " + quality : "")
                             + (folder.Length > 0 ? " · " + Strings.LocalFiles.Link.InFolder(folder) : "");

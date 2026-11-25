@@ -989,7 +989,7 @@
     "playFile": "Bestand afspelen…",
     "pickTitle": "Kies een bestand om af te spelen",
     "filter": "Audio en video",
-    "rejected": "Dat bestand kan niet worden afgespeeld. Wavee speelt .mp3-, .flac-, .ogg-, .m4a-, .aac- en .mp4-bestanden af.",
+    "rejected": "Dat bestand kan niet worden afgespeeld. Wavee speelt .mp3-, .flac-, .ogg-, .m4a-, .aac-, .wav-, .aiff- en .mp4-bestanden af.",
     "notReady": "Lokaal afspelen is nog niet gereed — meld je eerst aan."
   },
   "theme": {
