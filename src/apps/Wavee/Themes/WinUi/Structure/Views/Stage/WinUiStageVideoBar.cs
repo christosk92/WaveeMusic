@@ -119,8 +119,8 @@ internal sealed class WinUiStageVideoBar : Component
             var right = new List<Element>(10) { K("heart", Heart(f.Saved, f.Like, set.Fill)) };
             if (fold < B.FoldSatellites)
             {
-                right.Add(Fold("shuffle", ToolTip.Wrap(WinUiStageTransport.Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill, B.Button, B.Glyph), Loc.Get(Strings.Player.Shuffle))));
-                right.Add(Fold("repeat", ToolTip.Wrap(WinUiStageTransport.Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill, B.Button, B.Glyph), Loc.Get(Strings.Player.Repeat))));
+                right.Add(Fold("shuffle", ToolTip.Wrap(WinUiStageTransport.Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport && f.ShuffleLock is null, f.Shuffle, set.Fill, B.Button, B.Glyph), f.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle))));
+                right.Add(Fold("repeat", ToolTip.Wrap(WinUiStageTransport.Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport && f.RepeatLock is null, f.RepeatOn, set.Fill, B.Button, B.Glyph), f.RepeatLock ?? Loc.Get(Strings.Player.Repeat))));
                 right.Add(Fold("device", Embed.Comp(new WinUiStageTransport.DeviceButton.Props(tp, t, Labelled: false, Box: B.Button, GlyphSize: B.Glyph), static () => new WinUiStageTransport.DeviceButton())));
             }
             right.Add(K("sep", Separator()));

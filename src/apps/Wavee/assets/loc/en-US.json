@@ -2854,6 +2854,8 @@
     "next": "Next",
     "shuffle": "Shuffle",
     "repeat": "Repeat",
+    "notWithDj": "Not available with DJ",
+    "notAvailableHere": "Not available for what’s playing",
     "like": "Like",
     "mute": "Mute",
     "unmute": "Unmute",

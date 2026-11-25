@@ -399,7 +399,8 @@ internal static class RailWiring
         bool primary = Stage.Transport.PrimaryEnabled(!Playback.Current.Value.IsNone, loading);
         var repeat = Playback.Repeat.Value;
         return new PanelTransportFacts(playing, primary, tf.CanTransport, tf.PrevEnabled, tf.NextEnabled, Playback.Shuffle.Value,
-            repeat != Wavee.Spotify.Decode.RepeatMode.Off, repeat == Wavee.Spotify.Decode.RepeatMode.Track);
+            repeat != Wavee.Spotify.Decode.RepeatMode.Off, repeat == Wavee.Spotify.Decode.RepeatMode.Track)
+        { ShuffleLock = PlayerVerbs.ShuffleLock(), RepeatLock = PlayerVerbs.RepeatLock() };
     }
 
     /// <summary>The video body's title-row actions (C-Video-Huge): the playing track's heart and its "..." menu (the stage's now-playing menu).

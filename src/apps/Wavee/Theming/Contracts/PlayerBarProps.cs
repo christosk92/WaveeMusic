@@ -112,6 +112,11 @@ public sealed record PlayerBarView
     public bool RepeatOn { get; init; }
     /// <summary>The repeat button's glyph (repeat-one for a track repeat).</summary>
     public string RepeatGlyph { get; init; } = "";
+    /// <summary>Shuffle may not be toggled now, and why (the playing context forbids it: the DJ's "Not available with DJ"): the
+    /// button draws disabled and wears this as its tooltip. Null while it may be pressed (as <see cref="CanTransport"/> says).</summary>
+    public string? ShuffleLock { get; init; }
+    /// <summary>The repeat button's twin of <see cref="ShuffleLock"/>.</summary>
+    public string? RepeatLock { get; init; }
     /// <summary>The bar owns the window's one transport (everything but full-bleed fullscreen video).</summary>
     public bool OwnsTransport { get; init; }
     /// <summary>The ±10 s step buttons may be pressed (episodes only; false otherwise).</summary>

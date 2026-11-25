@@ -10,6 +10,8 @@
 // The session readout carries what its answer stated (dj, infinite, the expiry, the three restrictions, the welcome narration's
 // presence), each page's segment and correlation id, the lookahead (pages loaded after the playing one) and the DJ book: per queue
 // row its page, segment, jump target, the narration slots present, the subtitle, the decision id and the attribution.
+// `locks`: the context's toggle restrictions as the reducer holds them, the user's shuffle and repeat they hold back, and the
+// tooltip the shuffle and repeat buttons wear.
 //
 // Role: SHELL (UI thread; reads the entity tables and the fake answers)
 
@@ -140,6 +142,17 @@ public static partial class Diagnostics
                 w.WriteEndObject();
                 w.WriteEndObject();
             }
+            // The context's toggle restrictions as the reducer holds them, the user's modes they hold back, and what the buttons say.
+            w.WriteStartObject("locks");
+            w.WriteString("bits", st.Locks.Bits.ToString());
+            w.WriteString("reason", st.Locks.Reason.ToString());
+            w.WriteString("context", st.Locks.Context.IsEmpty ? "" : st.Locks.Context.Text);
+            w.WriteBoolean("holding", st.Locks.Holding);
+            w.WriteBoolean("heldShuffle", st.Locks.HeldShuffle);
+            w.WriteString("heldRepeat", st.Locks.HeldRepeat.ToString());
+            w.WriteString("shuffleTip", PlayerVerbs.ShuffleLock(track: false) ?? "");
+            w.WriteString("repeatTip", PlayerVerbs.RepeatLock(track: false) ?? "");
+            w.WriteEndObject();
             w.WriteNumber("booked", Playback.Dj.Booked);
             w.WriteStartArray("book");
             ReadOnlySpan<QueueEdge> rows = global::Wavee.Queue.Rows;

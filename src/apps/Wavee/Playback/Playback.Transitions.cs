@@ -118,7 +118,8 @@ public static partial class Playback
         public static RestorePoint Of(in State s, long nowMs)
             => !s.HasCurrent || !s.CurrentId.IsPlayable || !Ownership.ShowsLocalNowPlaying(in s.Own, hasLocalSession: true)
                 ? default
-                : new(s.CurrentId, s.Context, s.Cursor.Index, s.Position(nowMs), s.DurationMs, s.Shuffle, s.Repeat);
+                : new(s.CurrentId, s.Context, s.Cursor.Index, s.Position(nowMs), s.DurationMs,
+                    s.Locks.Holding ? s.Locks.HeldShuffle : s.Shuffle, s.Locks.Holding ? s.Locks.HeldRepeat : s.Repeat);   // the user's own modes
     }
 
     // ── 3. the inbound load planner (G-071 host half, G-070) ───────────────────────────────────────────────────────
@@ -1130,6 +1131,46 @@ public static partial class Playback
         fx.AutoplayContext = s.Context;
     }
 
+    /// <summary>The context about to play states its own toggle restrictions (AI DJ, plan-dj §2.5; <see cref="State.Locks"/>). Locks
+    /// that forbid shuffle or a repeat HOLD the user's own shuffle and repeat (once: a second locked context keeps the first hold) and
+    /// turn them off; a context that forbids nothing gives them back (<see cref="ReleaseLocks"/>). The host lays the queue in the order
+    /// this leaves (<c>StartContext</c>), so no reorder follows.</summary>
+    static void DoContextLocks(ref State s, in Input i, ref Effects fx)
+    {
+        var locks = (ToggleLock)(i.IntArg & 0xFF);
+        if (locks == ToggleLock.None) { if (ReleaseLocks(ref s)) Announce(ref s, ref fx, PublishReason.PlayerStateChanged); return; }
+        if (!s.Locks.Holding)
+        {
+            s.Locks.Holding = true;
+            s.Locks.HeldShuffle = s.Shuffle;
+            s.Locks.HeldRepeat = s.Repeat;
+        }
+        s.Locks.Context = i.Context;
+        s.Locks.Bits = locks;
+        s.Locks.Reason = (LockReason)((i.IntArg >> 8) & 0xFF);
+        if ((locks & ToggleLock.Shuffle) != 0) s.Shuffle = false;
+        if ((s.Repeat == RepeatMode.Context && (locks & ToggleLock.RepeatContext) != 0)
+            || (s.Repeat == RepeatMode.Track && (locks & ToggleLock.RepeatTrack) != 0)) s.Repeat = RepeatMode.Off;
+        Bump(ref s);
+        fx.Snapshot = true;
+    }
+
+    /// <summary>The playing context's restrictions end (another context plays): the user's own shuffle and repeat, held while they
+    /// applied, come back. True when anything was held.</summary>
+    static bool ReleaseLocks(ref State s)
+    {
+        if (!s.Locks.Holding && s.Locks.Bits == ToggleLock.None) return false;
+        bool held = s.Locks.Holding;
+        if (held)
+        {
+            s.Shuffle = s.Locks.HeldShuffle;
+            s.Repeat = s.Locks.HeldRepeat;
+        }
+        s.Locks = default;
+        Bump(ref s);
+        return held;
+    }
+
     /// <summary>A new context on the deck: every "more rows" fact belongs to the old one.</summary>
     static void ResetRefill(ref State s)
     {
@@ -1176,6 +1217,7 @@ public static partial class Playback
         if (!i.Cursor.IsNone && Entities.Current is not null && Queue.RefAt(in i.Cursor) == s.Current) s.Cursor = i.Cursor;
         bool waiting = s.Autoplay == AutoplayPhase.Waiting;
         ResetRefill(ref s);
+        if (!i.Context.Equals(s.Locks.Context)) ReleaseLocks(ref s);
         s.Context = i.Context;
         if (waiting) Advance(ref s, in i, ref fx, forward: true, PlayReason.TrackDone);
         else ArmNext(ref s, ref fx);

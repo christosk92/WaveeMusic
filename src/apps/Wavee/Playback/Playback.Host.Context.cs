@@ -173,7 +173,7 @@ public static partial class Playback
             rows[k] = new EntityRef(EntityKind.Track, slots[k]);
             if (start < 0 && !startAt.IsEmpty && rows[k].Id.Equals(startAt)) start = k;
         }
-        if (start < 0) start = s_state.Shuffle && startAt.IsEmpty ? Random.Shared.Next(rows.Length) : 0;
+        if (start < 0) start = UserShuffle && startAt.IsEmpty ? Random.Shared.Next(rows.Length) : 0;
         PlayRows(rows, start, list, fromMs);
     }
 
@@ -342,7 +342,7 @@ public static partial class Playback
             s_orderRefs = null;
             s_orderRows = null;
             FillQueueIds(playlist, packed.AsSpan(0, n), rows.AsSpan(0, n));
-            if (s_state.Shuffle) Reorder(packed.AsSpan(0, n), rows.AsSpan(0, n), deck, shuffle: true);
+            if (UserShuffle) Reorder(packed.AsSpan(0, n), rows.AsSpan(0, n), deck, shuffle: true);
             Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n), contextStart: deck + 1);   // the old context stays history, outside the radio's wrap
             s_uids.Retain(Queue.Rows);
             Entities.Publish();                            // the rail answers the click in its own frame (PlayRows' rule)
@@ -406,7 +406,7 @@ public static partial class Playback
             s_orderRefs = null;
             s_orderRows = null;
             FillQueueIds(context, packed.AsSpan(0, n), laid.AsSpan(0, n));
-            if (s_state.Shuffle) deck = RelayContext(packed.AsSpan(0, n), laid.AsSpan(0, n), deck, contextStart: 0, shuffle: true);
+            if (UserShuffle) deck = RelayContext(packed.AsSpan(0, n), laid.AsSpan(0, n), deck, contextStart: 0, shuffle: true);
             Queue.Replace(packed.AsSpan(0, n), laid.AsSpan(0, n));
             Entities.Publish();
             EntityRef row = rows[start];
@@ -618,7 +618,10 @@ public static partial class Playback
                 AddRow(buffer, in context[k], QueueBucket.NextUp, refs, rows, ref n);
             if (sameContext) AddKeptAutoplay(refs, rows, ref n, cap);
 
-            bool shuffle = load.Shuffle >= 0 ? load.Shuffle == 1 : s_state.Shuffle;
+            // The context's own restrictions (the DJ: shuffle and repeat disallowed, plan-dj §2.5) win over the user's shuffle and a
+            // controller's override; another context plays in the user's own shuffle, held while a locked one played.
+            ToggleLock locks = dj is null ? ToggleLock.None : LocksOf(dj.Facts);
+            bool shuffle = (locks & ToggleLock.Shuffle) == 0 && (load.Shuffle >= 0 ? load.Shuffle == 1 : UserShuffle);
             int[] packed = ArrayPool<int>.Shared.Rent(n);
             try
             {
@@ -634,8 +637,9 @@ public static partial class Playback
 
             EntityRef row = Queue.RefAt(at);
             long from = RemotePlan.StartPositionMs(in load, UnixNowMs());
+            Apply(Input.ContextLocks(contextId, locks, dj is null ? LockReason.None : ReasonOf(dj.Facts), now));
             Apply(Input.ShuffleOrdered(shuffle));
-            if (load.Repeat >= 0) Apply(Input.Repeat((RepeatMode)load.Repeat));
+            if (load.Repeat >= 0 && !s_state.RepeatLocked((RepeatMode)load.Repeat)) Apply(Input.Repeat((RepeatMode)load.Repeat));
             s_wireOffered = load.SessionId;               // a controller's play names the session the owner publishes (WireStarted)
             // A controller's "song videos" play asks for the row's music video: it opens on the video host (all.saz 1831). So does
             // a play whose skip_to names the row's VIDEO rendition (SkipNamesVideo): a controller watching the context sends it.
@@ -666,6 +670,20 @@ public static partial class Playback
             ArrayPool<QueueEdge>.Shared.Return(rows);
         }
     }
+
+    /// <summary>The user's own shuffle: the deck's, or the one held while a context that forbids shuffle plays (the DJ). A new context
+    /// is laid out in it (<see cref="ContextLocks"/>).</summary>
+    static bool UserShuffle => s_state.Locks.Holding ? s_state.Locks.HeldShuffle : s_state.Shuffle;
+
+    /// <summary>The toggles a lexicon session's restrictions forbid (plan-dj §1.3).</summary>
+    static ToggleLock LocksOf(Dj.SessionFacts f)
+        => (f.NoShuffle.Length > 0 ? ToggleLock.Shuffle : ToggleLock.None)
+           | (f.NoRepeatContext.Length > 0 ? ToggleLock.RepeatContext : ToggleLock.None)
+           | (f.NoRepeatTrack.Length > 0 ? ToggleLock.RepeatTrack : ToggleLock.None);
+
+    /// <summary>Why they are forbidden: the first reason stated (<c>dj-disallow</c> for the DJ).</summary>
+    static LockReason ReasonOf(Dj.SessionFacts f)
+        => global::Wavee.Playback.ContextLocks.ReasonOf(f.NoShuffle.Length > 0 ? f.NoShuffle : f.NoRepeatContext.Length > 0 ? f.NoRepeatContext : f.NoRepeatTrack);
 
     /// <summary>Does a controller's <c>skip_to</c> uri name the matched row's MUSIC VIDEO rather than the row itself? A controller that
     /// watches a context (the web player in video mode, capture-20261107: <c>skip_to {uid row 0, uri 1EiJ…}</c> for "Today's Top

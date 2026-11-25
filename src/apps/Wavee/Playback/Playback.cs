@@ -1028,6 +1028,10 @@ public static partial class Playback
         public uint ScrubEpoch;
         public bool Shuffle;
         public RepeatMode Repeat;
+        /// <summary>The playing context's OWN toggle restrictions (AI DJ: shuffle and both repeats <c>dj-disallow</c>, plan-dj §2.5),
+        /// from its resolve, and the user's shuffle / repeat held while they apply (<see cref="ContextLocks"/>). A foreign owner's
+        /// restrictions are not these: they stay the cluster mirror's.</summary>
+        public ContextLocks Locks;
         /// <summary>Restrictions as the cluster stated them. The bar greys its buttons off
         /// <see cref="CanSkipNext"/> / <see cref="CanSkipPrev"/> / <see cref="CanSeek"/>, never off these directly.</summary>
         public bool NoNext, NoPrev, NoSeek;
@@ -1173,6 +1177,15 @@ public static partial class Playback
         public readonly bool PrevRestricted => NoPrev && Own.Kind == Owner.Foreign;
         /// <inheritdoc cref="NextRestricted"/>
         public readonly bool SeekRestricted => NoSeek && Own.Kind == Owner.Foreign;
+        /// <summary>The context forbids toggling shuffle here (<see cref="Locks"/>; never while another device owns playback, whose own
+        /// rules the verb is forwarded to).</summary>
+        public readonly bool ShuffleLocked => (Locks.Bits & ToggleLock.Shuffle) != 0 && Own.Kind != Owner.Foreign;
+        /// <summary>The context forbids repeat <paramref name="mode"/> here (Off is always allowed).</summary>
+        public readonly bool RepeatLocked(RepeatMode mode) => Own.Kind != Owner.Foreign
+            && (mode == RepeatMode.Context ? (Locks.Bits & ToggleLock.RepeatContext) != 0
+                : mode == RepeatMode.Track && (Locks.Bits & ToggleLock.RepeatTrack) != 0);
+        /// <summary>The locks a surface draws: the context's own while the deck is ours, none while another device owns playback.</summary>
+        public readonly ToggleLock LiveLocks => Own.Kind == Owner.Foreign ? ToggleLock.None : Locks.Bits;
         /// <summary>Does the CONTEXT allow Next / Previous, error or not? The player bar reads these for its own fold:
         /// a failed load parks the deck row with <see cref="Error"/> set and <see cref="CanTransport"/> false, and the
         /// one way out that does not re-play the dead row is to skip past it (<c>Advance</c> heals the error through
@@ -1304,6 +1317,9 @@ public static partial class Playback
         SessionOnline,
         /// <summary>The host holds (<c>IntArg</c> != 0) or no longer holds a next page for <see cref="Input.Context"/> (G-242).</summary>
         ContextPages,
+        /// <summary>The context about to play (<see cref="Input.Context"/>) states its own toggle restrictions (<c>IntArg</c> low byte =
+        /// <see cref="ToggleLock"/>, next byte = <see cref="LockReason"/>; 0 = none): AI DJ, plan-dj §2.5.</summary>
+        ContextLocks,
         /// <summary>A context page answered for <see cref="Input.Context"/> (<c>IntArg</c> = rows appended, <c>LongArg</c> != 0 =
         /// another page follows it).</summary>
         Paged,
@@ -1462,6 +1478,10 @@ public static partial class Playback
         public static Input Stop(StopReason why) => new(InputKind.Stop, intArg: (int)why);
         public static Input DeviceLost() => new(InputKind.DeviceLost);
         public static Input ShuffleOrdered(bool on) => new(InputKind.SetShuffle, intArg: (on ? 1 : 0) | ShuffleOrderedBit);
+        /// <summary>The context about to play forbids these toggles, for this reason (none: it forbids nothing). The host posts it
+        /// before the context's Play (<see cref="InputKind.ContextLocks"/>).</summary>
+        public static Input ContextLocks(EntityId context, ToggleLock locks, LockReason reason, long nowMs = 0)
+            => new(InputKind.ContextLocks, context: context, intArg: (int)locks | ((int)reason << 8), nowMs: nowMs);
         public static Input HandedOff(uint epoch, EntityId preparedId, int positionMs, long nowMs = 0)
             => new(InputKind.AudioSignal, id: preparedId, intArg: (int)AudioSignal.HandedOff, longArg: positionMs,
                 epoch: epoch, nowMs: nowMs);
@@ -1506,6 +1526,31 @@ public static partial class Playback
 
     // ── 8. the effects (C3) ─────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The toggles a context may forbid (its resolve's <c>restrictions</c>: <c>disallow_toggling_shuffle_reasons</c>,
+    /// <c>disallow_toggling_repeat_context_reasons</c>, <c>disallow_toggling_repeat_track_reasons</c>; plan-dj §1.3).</summary>
+    [Flags]
+    public enum ToggleLock : byte { None = 0, Shuffle = 1, RepeatContext = 2, RepeatTrack = 4 }
+
+    /// <summary>Why a context forbids its toggles (the restriction's reason word): <c>dj-disallow</c>, or another we do not name.</summary>
+    public enum LockReason : byte { None = 0, Dj, Other }
+
+    /// <summary>A context's own toggle restrictions (<see cref="State.Locks"/>) and the user's shuffle and repeat they hold back, given
+    /// back when another context plays (the DJ forbids shuffle and repeat; the user's preference must survive it).</summary>
+    public struct ContextLocks
+    {
+        /// <summary>The context the locks belong to.</summary>
+        public EntityId Context;
+        public ToggleLock Bits;
+        public LockReason Reason;
+        /// <summary>The user's own modes are held (they were in force when the first locked context began).</summary>
+        public bool Holding;
+        public bool HeldShuffle;
+        public RepeatMode HeldRepeat;
+
+        /// <summary>The reason word a resolve states → <see cref="LockReason"/>. PURE.</summary>
+        public static LockReason ReasonOf(string word) => word.Length == 0 ? LockReason.None : word == "dj-disallow" ? LockReason.Dj : LockReason.Other;
+    }
+
     /// <summary>A user-click intent the reducer declined (<see cref="Effects.Refused"/>): no behaviour changes, but a
     /// click that does nothing leaves one always-on log line so "nothing happened" is explainable from the log.</summary>
     public enum Refusal : byte
@@ -1526,6 +1571,8 @@ public static partial class Playback
         NoVideo,
         /// <summary>A volume change for a foreign owner whose volume a controller cannot set (<see cref="State.VolumeFixed"/>).</summary>
         VolumeFixed,
+        /// <summary>A shuffle or repeat toggle the playing context forbids (<see cref="State.Locks"/>: the DJ's <c>dj-disallow</c>).</summary>
+        ContextLocked,
     }
 
     /// <summary>Fixed effect SLOTS — one per effect KIND, never a list. The last write inside a drain wins and the
@@ -1791,6 +1838,7 @@ public static partial class Playback
             case InputKind.AutoplayPaged: DoAutoplayPaged(ref s, in i, ref fx); break;
             case InputKind.SessionOnline: DoSessionOnline(ref s, ref fx); break;
             case InputKind.ContextPages: DoContextPages(ref s, in i, ref fx); break;
+            case InputKind.ContextLocks: DoContextLocks(ref s, in i, ref fx); break;
             case InputKind.Paged: DoPaged(ref s, in i, ref fx); break;
             case InputKind.QueueToOwner: DoQueueToOwner(ref s, in i, ref fx); break;
             case InputKind.SwitchContext: DoSwitchContext(ref s, in i, ref fx); break;
@@ -1880,6 +1928,7 @@ public static partial class Playback
             ownerBefore, s.Own.Kind, reason: Capture.Enabled ? cause.ToString() : null);
         ReportEnd(ref s, ref fx, inbound ? PlayReason.Remote : PlayReason.ClickRow, s.Position(i.NowMs));
         if (!context.Equals(s.Context)) ResetRefill(ref s);
+        if (!context.Equals(s.Locks.Context)) ReleaseLocks(ref s);   // another context: the user's own shuffle and repeat come back
         s.Context = context;
         s.StartedPlayingAtMs = activeSince;
         s.HasBeenPlayingForMs = 0;
@@ -2317,6 +2366,9 @@ public static partial class Playback
     {
         bool on = (i.IntArg & 1) != 0;
         if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.SetShufflingContext, ref fx, 0, on); return; }
+        // The context forbids the toggle (the DJ): a click or a controller's set_shuffling_context changes nothing. The host's own
+        // statement of the order it built (ShuffleOrderedBit) is a fact, not a toggle.
+        if (s.ShuffleLocked && (i.IntArg & Input.ShuffleOrderedBit) == 0) { if (s.Shuffle != on) fx.Refused = Refusal.ContextLocked; return; }
         if (s.Shuffle == on) return;
         s.Shuffle = on;
         Bump(ref s);
@@ -2338,6 +2390,7 @@ public static partial class Playback
             return;
         }
         if (s.Repeat == mode) return;
+        if (s.RepeatLocked(mode)) { fx.Refused = Refusal.ContextLocked; return; }   // the context forbids it (the DJ)
         s.Repeat = mode;
         Bump(ref s);
         ArmNext(ref s, ref fx);                          // repeat changes what a natural end continues into
@@ -2694,6 +2747,7 @@ public static partial class Playback
         // is already on screen. A new context is a new refill story, as in DoPlay.
         EntityId context = Queue.MirrorContextFor(s.Own.Kind, r.HasTrack, r.Context, s.Context);
         if (!context.Equals(s.Context)) ResetRefill(ref s);
+        if (!context.Equals(s.Locks.Context)) s.Locks = default;   // the owner's modes are the mirror's below: nothing is held back
         s.Context = context;
         s.Shuffle = r.Shuffling;
         s.Repeat = r.Repeat;

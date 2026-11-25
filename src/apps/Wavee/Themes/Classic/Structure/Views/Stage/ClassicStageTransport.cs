@@ -105,11 +105,11 @@ internal static class ClassicStageTransport
                         OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
                         Children =
                         [
-                            Glide(ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill), Loc.Get(Strings.Player.Shuffle))),
+                            Glide(ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport && f.ShuffleLock is null, f.Shuffle, set.Fill), f.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle))),
                             Glide(ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous))),
                             Glide(Play(f.Playing, f.PrimaryEnabled, disc, set, verbs)),
                             Glide(ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next))),
-                            Glide(ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill), Loc.Get(Strings.Player.Repeat))),
+                            Glide(ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport && f.RepeatLock is null, f.RepeatOn, set.Fill), f.RepeatLock ?? Loc.Get(Strings.Player.Repeat))),
                         ],
                     },
                     // the right cluster's buttons hug their own row: the column's empty lead holds nothing

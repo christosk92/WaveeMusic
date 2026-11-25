@@ -631,7 +631,8 @@ internal sealed class WinUiSheetTransport : Component
                     Height = box + WinUiPlayerLayout.TransportGap, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = WinUiPlayerLayout.TransportGap,
                     Children =
                     [
-                        WinUiPlayerBar.Button(Icons.Shuffle, () => verbs.ToggleShuffle(), f.CanTransport, f.Shuffle, box, box, WinUiPlayerLayout.Glyph),
+                        ToolTip.Wrap(WinUiPlayerBar.Button(Icons.Shuffle, () => verbs.ToggleShuffle(), f.CanTransport && f.ShuffleLock is null, f.Shuffle, box, box, WinUiPlayerLayout.Glyph),
+                            (Prop<string?>)f.ShuffleLock),
                         WinUiPlayerBar.Button(Icons.Previous, () => verbs.Previous(), f.PrevEnabled, false, box, box, WinUiPlayerLayout.Glyph),
                         new BoxEl
                         {
@@ -643,7 +644,8 @@ internal sealed class WinUiSheetTransport : Component
                             Children = [new TextEl(f.Playing ? WinUiPlayerLayout.PauseSolid : WinUiPlayerLayout.PlaySolid) { Size = WinUiPlayerLayout.PlayGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextOnAccentPrimary }],
                         },
                         WinUiPlayerBar.Button(Icons.Next, () => verbs.Next(), f.NextEnabled, false, box, box, WinUiPlayerLayout.Glyph),
-                        WinUiPlayerBar.Button(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, () => verbs.CycleRepeat(), f.CanTransport, f.RepeatOn, box, box, WinUiPlayerLayout.Glyph),
+                        ToolTip.Wrap(WinUiPlayerBar.Button(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, () => verbs.CycleRepeat(), f.CanTransport && f.RepeatLock is null, f.RepeatOn, box, box, WinUiPlayerLayout.Glyph),
+                            (Prop<string?>)f.RepeatLock),
                     ],
                 },
             ],
