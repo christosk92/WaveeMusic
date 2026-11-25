@@ -215,8 +215,8 @@ public static partial class SettingsVerbs
         Notify.Say(Loc.Get(Strings.LinkedVideo.Removed), InfoBarSeverity.Success, Loc.Get(Strings.LinkedVideo.Undo),
             () =>
             {
-                if (Video.LinkedVideos.Attach(uri, path, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null)
-                    Notify.Say(Loc.Get(Strings.LinkedVideo.RejectedNotFound), InfoBarSeverity.Error);
+                if (Video.LinkedVideos.Attach(uri, path, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), out var refused) is null)
+                    Notify.Say(Video.LinkedVideos.RefusalText(refused), InfoBarSeverity.Error);
             });
     }
 
@@ -241,7 +241,14 @@ public static partial class SettingsVerbs
                 fields: [WaveeLogField.Of("path", picked), WaveeLogField.Of("reason", rejection == Video.AttachRejection.NotMp4 ? "not-mp4" : "not-found")]);
             return;
         }
-        if (Video.LinkedVideos.Attach(uri, picked, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null) return;
+        if (Video.LinkedVideos.Attach(uri, picked, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), out var refused) is null)
+        {
+            // The file was there a moment ago: say what refused it (it went away, or the library or the link store did not take it).
+            Notify.Say(Video.LinkedVideos.RefusalText(refused), InfoBarSeverity.Error);
+            Log.Event(WaveeLogLevel.Warning, "ui", "linkedvideo.attach.rejected", "the picked file was refused",
+                fields: [WaveeLogField.Of("path", picked), WaveeLogField.Of("reason", refused.ToString())]);
+            return;
+        }
         Log.Event(WaveeLogLevel.Info, "ui", "linkedvideo.settings.replace", "replaced the linked video",
             fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", picked)]);
         Notify.Say(Loc.Get(Strings.LinkedVideo.Replaced), InfoBarSeverity.Success);

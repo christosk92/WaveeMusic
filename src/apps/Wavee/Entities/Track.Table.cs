@@ -2751,7 +2751,9 @@ public readonly partial struct Track
 
         /// <summary>An OS file drag over a row links the .mp4 to the row's track as its video version (the file joins the library:
         /// Video.LinkedVideos.Attach). The target only ACCEPTS a drop carrying an .mp4, so any other file falls through to the shell's
-        /// play-this-file target instead of being swallowed (ch 04 §6).</summary>
+        /// play-this-file target instead of being swallowed (ch 04 §6). Only a row that can take a linked video accepts it (a Spotify track,
+        /// <see cref="Video.LinkedVideos.CanLink(EntityUri)"/>): a local file's row (Local files, On this PC) lets the .mp4 fall through to the
+        /// page's and the shell's targets, which add it to the library and play it as itself.</summary>
         DropTargetSpec VideoDrop(IReadSignal<int> index, int start) => new(
             [DropKinds.Files],
             OnEnter: _ => _videoDropRow.Value = index.Peek(),
@@ -2762,12 +2764,19 @@ public readonly partial struct Track
                 if (session.Payload is not FileDropData files || Video.LinkedVideoUx.FirstMp4(files.Paths) is not { } mp4) return;
                 var t = DisplayTrack(index.Peek() - start);
                 if (!t.IsValid) return;
-                var result = Video.LinkedVideos.Attach(t.Uri.Text, mp4, mp4, Store.ToUnix(Entities.Now));
-                Notify.Say(Loc.Get(result is null ? Strings.LinkedVideo.RejectedNotFound : Strings.LinkedVideo.Attached),
+                string uri = t.Uri.Text;
+                var result = Video.LinkedVideos.Attach(uri, mp4, mp4, Store.ToUnix(Entities.Now), out var refused);
+                // The file name only (paths hold the account name).
+                Log.Event(result is null ? WaveeLogLevel.Warning : WaveeLogLevel.Info, "ui",
+                    result is null ? "linkedvideo.drop.rejected" : "linkedvideo.drop.attach",
+                    result is null ? "the dropped video was refused" : "linked a dropped video",
+                    fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("file", Path.GetFileName(mp4)), WaveeLogField.Of("reason", refused.ToString())]);
+                Notify.Say(result is null ? Video.LinkedVideos.RefusalText(refused) : Loc.Get(Strings.LinkedVideo.Attached),
                     result is null ? InfoBarSeverity.Error : InfoBarSeverity.Success);
             })
         {
-            CanAccept = static session => session.Payload is FileDropData f && Video.LinkedVideoUx.FirstMp4(f.Paths) is not null,
+            CanAccept = session => session.Payload is FileDropData f && Video.LinkedVideoUx.FirstMp4(f.Paths) is not null
+                                   && Video.LinkedVideos.CanLink(DisplayTrack(index.Peek() - start).Uri),
         };
 
         // ══ 8. THE ROW SKIN, THE DRAWER, THE PRESENTATION ═══════════════════════════════════════════════════════════

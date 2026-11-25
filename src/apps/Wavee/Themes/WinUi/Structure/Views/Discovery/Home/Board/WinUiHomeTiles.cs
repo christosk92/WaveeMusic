@@ -554,7 +554,13 @@ internal static class WinUiHomeTiles
     public static Element Daylist(HomeDaylistTileProps p, in ViewContext ctx)
     {
         var f = p.Frame;
-        if (f.Form == HomeTileForm.Full) return Card(ctx, f, p.Card);
+        if (f.Form == HomeTileForm.Full)
+        {
+            // The card's host carries the card's own cold-load shape (WinUiHomeDaylist.Skeleton) as its skeleton proxy, as the page's daylist chapter
+            // does: the deriver cannot run the host's render, and a pending tile shimmered as one 10-high bar, then grew to the card when it landed.
+            var home = WinUiHomeTiers.Of(ctx.Tier());
+            return Card(ctx, f, p.Card.Is(out ComponentEl host) ? host with { SkeletonProxy = () => WinUiHomeDaylist.Skeleton(home) } : p.Card);
+        }
         var card = p.Zone.Items.Count > 0 ? p.Zone.Items[0] : default;
         bool wide = f.Form != HomeTileForm.M;
         float art = wide ? WinUiHomeBoardRules.WideArt : WinUiHomeBoardRules.CardArt;

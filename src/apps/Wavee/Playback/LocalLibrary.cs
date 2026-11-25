@@ -118,10 +118,12 @@ public static partial class LocalLibrary
             int loaded = s_binPath is { } bin ? s_index.Load(bin) : 0;
             KeepIdMark(s_index.NextId);
             CheckAdded();   // the "Added files" are not walked: each is looked at once (LocalLibrary.Added.cs)
-            RereadIfDecodersRose();   // a build that plays more: the files indexed as unplayable are read once more (LocalLibrary.Reread.cs)
+            // A build that plays more: the files indexed as unplayable are read once more, and every folder is walked (not caught up from
+            // the journal) so the file types it newly lists are found (LocalLibrary.Reread.cs).
+            bool decodersRose = RereadIfDecodersRose();
             Volatile.Write(ref s_loaded, 1);
-            Log.Info("local", "local.index.load entries=" + loaded + " folders=" + Folders.Count + " log=" + s_index.LogBytes);
-            foreach (string folder in Folders) StartFolder(folder, startup: true);
+            Log.Info("local", "local.index.load entries=" + loaded + " folders=" + Folders.Count + " log=" + s_index.LogBytes + (decodersRose ? " walk=decoders" : ""));
+            foreach (string folder in Folders) StartFolder(folder, startup: !decodersRose);
             NoteProgress();
             // "Your files and Spotify": the kept decisions load once the index is in (matching, when on, folds the index).
             Playback.ToUi(() => LocalLink.Use(cacheDir));
