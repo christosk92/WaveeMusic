@@ -194,13 +194,12 @@ public static partial class Playback
             return s_wire = new MixWire(true, p.MixFlags, CurrentNext, outMeta.ToArray(), inMeta.ToArray());
         }
 
-        /// <summary>The lanes the official player was seen publishing (protocol §6.3), the ones the publisher writes.</summary>
-        static readonly MixCurveLane[] s_wireLanes = [MixCurveLane.Volume, MixCurveLane.EqLow, MixCurveLane.FilterCutoff, MixCurveLane.FilterResonance];
-
         /// <summary>A plan's Connect track metadata (protocol §6.3): the playing track's fade-out keys into <paramref name="outMeta"/>,
-        /// the next track's fade-in keys into <paramref name="inMeta"/>, each lane's curve as the style table spells it at the plan's
-        /// bars (<see cref="MixCurves.WriteJson"/>). Nothing for a refused plan (a "none" seam carries no fade key). The publisher
-        /// and the inspector's <c>mix curves</c> call it alike.</summary>
+        /// the next track's fade-in keys into <paramref name="inMeta"/>: every lane the plan's styles move that has a known key
+        /// (<see cref="MixStyles.ConnectKey"/>: volume, EQ low / mid / high gain, filter cutoff and resonance; noise, effect and
+        /// looping keys are open), as the style table spells it at the plan's bars (<see cref="MixCurves.WriteJson"/>), whether
+        /// the engine renders the lane yet or not. <c>audio.fade_in_duration</c> is B's own length. Nothing for a refused plan (a
+        /// "none" seam carries no fade key). The publisher and the inspector's <c>mix curves</c> call it alike.</summary>
         public static void FadeMeta(in MixTiming t, List<KeyValuePair<string, string>> outMeta, List<KeyValuePair<string, string>> inMeta)
         {
             if (!t.Mix) return;
@@ -212,7 +211,7 @@ public static partial class Playback
             inMeta.Add(new("audio.fade_overlap", Num(t.OutDurationMs)));
             Span<CurveSegment> seg = stackalloc CurveSegment[MixStyles.MaxSegments];
             byte[] buf = new byte[160 * MixStyles.MaxSegments];
-            foreach (var lane in s_wireLanes)
+            foreach (MixCurveLane lane in Enum.GetValues<MixCurveLane>())
             {
                 string? key = MixStyles.ConnectKey(lane);
                 if (key is null) continue;
