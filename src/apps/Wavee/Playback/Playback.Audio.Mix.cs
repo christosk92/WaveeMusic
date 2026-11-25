@@ -8,8 +8,10 @@
 //             A gets its curve envelope and automation, one AudioTransitionGate shared by both (engines E1, E2)
 //   announce  when A is over (startFrame + outFrames, decision D14 (b)): the gapless join's identity swap, B already
 //             InStart + OutDuration in
-//   cancel    a seek, a next-row change, a device rebuild before the announce: the gate is cancelled, A is put back
-//             to unity with no automation, B is silenced and its bytes cut (the gapless abandon)
+//   cancel    a seek, a next-row change, a device rebuild before the announce: before the overlap the gate is
+//             cancelled, A is put back to unity and B (never heard) cut; inside it A ramps back to unity and B fades out
+//             over 30 ms (MixRender.Cancel). A's automation ramps to neutral, B's bytes are cut (the gapless abandon). A
+//             load drops the join with its session (DropMixJoinLocked)
 //   refuse    a cross-kind slot or a tick that came too late: the base hand-off runs, the duration goes back to the file's
 //
 // With no mix planned every existing path is unchanged: the hooks in Playback.Audio.cs test MixArmed first.
@@ -38,6 +40,8 @@ public static partial class Playback
         /// <summary>The scheduled join is a MIX (its gate, A's voice, B's anchor after the announce).</summary>
         static bool s_joinMix;
         static AudioTransitionGate? s_mixGate;
+        /// <summary>The two envelopes the scheduled join installed (A's out, B's in): a cancel inside the overlap ramps from them.</summary>
+        static GainEnvelope? s_mixOutEnv, s_mixInEnv;
         static long s_mixOutVoice, s_joinStartMs;
 
         static long s_mMixSaved, s_mMixAuto, s_mMixRefused, s_mMixCancelled;
@@ -183,15 +187,16 @@ public static partial class Playback
             MixRender.Build(in plan, rate, startFrame, outFrames, inFrames,
                 out var outTable, out var inTable, out var outAuto, out var inAuto);
             var gate = new AudioTransitionGate(startFrame);
+            var inEnv = GainEnvelope.FromCurve(FadeKind.In, startFrame, inFrames, inTable).WithTransition(gate);
+            var outEnv = GainEnvelope.FromCurve(FadeKind.Out, startFrame, outFrames, outTable).WithTransition(gate);
             long id = ++s_nextVoiceId;
             float rg = sess.ReplayGainScalarFor(item.Loudness);
             lock (s_gate)
             {
-                if (!sess.TryAddCrossfadeVoice(item.AudioVoice!, GainEnvelope.FromCurve(FadeKind.In, startFrame, inFrames, inTable).WithTransition(gate),
-                        startFrame, rg, sess.BuildVoiceChain(), id))
+                if (!sess.TryAddCrossfadeVoice(item.AudioVoice!, inEnv, startFrame, rg, sess.BuildVoiceChain(), id))
                     return false;
                 bool inArmed = inAuto is null || sess.SetVoiceAutomation(id, inAuto);
-                sess.SetVoiceEnvelope(s_activePrimaryId, GainEnvelope.FromCurve(FadeKind.Out, startFrame, outFrames, outTable).WithTransition(gate));
+                sess.SetVoiceEnvelope(s_activePrimaryId, outEnv);
                 bool outArmed = outAuto is null || sess.SetVoiceAutomation(s_activePrimaryId, outAuto);
                 if (!inArmed || !outArmed) Log.Warn("audio", $"[mix] automation not admitted in={inArmed} out={outArmed}");
                 NoteBakedFactor(id, s_prepDecoder, in s_prepOpened);
@@ -216,6 +221,8 @@ public static partial class Playback
                 s_joinFadeFrames = 0;
                 s_joinOutgoingVoiceId = s_activePrimaryId;
                 s_mixGate = gate;
+                s_mixOutEnv = outEnv;
+                s_mixInEnv = inEnv;
                 s_mixOutVoice = s_activePrimaryId;
                 s_mixStartFrameValue = startFrame;
                 s_prepItem = null;
@@ -250,26 +257,51 @@ public static partial class Playback
             if (Interlocked.Exchange(ref s_mixSounding, now) != now && sounding) Log.Info("audio", "[mix] overlap sounding");
         }
 
-        /// <summary>Under s_gate, from <see cref="AbandonPendingJoin"/>: undo a mix join's A side. True when the join was a mix.</summary>
-        static bool CancelMixLocked(PcmAudioSession? sess)
+        /// <summary>Under s_gate, from <see cref="AbandonPendingJoin"/>: undo a mix join's A side. True when the join was a mix.
+        /// <paramref name="incomingFade"/>: B's envelope when the cancel lands inside the overlap (a 30 ms fade-out from where B
+        /// is, <see cref="MixRender.Cancel"/>); null before it, where the abandon's one-frame cut of a B that never sounded stands.</summary>
+        static bool CancelMixLocked(PcmAudioSession? sess, out GainEnvelope? incomingFade)
         {
+            incomingFade = null;
             if (!s_joinMix) return false;
-            bool beforeStart = s_mixGate?.TryCancel() ?? true;
+            bool beforeStart = true;
             try
             {
-                // A is put back to unity and neutral either way: before the start the gate already reads its start value;
-                // inside the overlap (D14 (b): a seek is in the song on screen, which is A) A plays on at full level.
-                sess?.SetVoiceEnvelope(s_mixOutVoice, GainEnvelope.Constant);
-                sess?.SetVoiceAutomation(s_mixOutVoice, null);
+                // Before the start the gate already reads its start values (A unity, B silent): A gets the plain envelope back. Inside
+                // the overlap (D14 (b): a seek is in the song on screen, which is A) A ramps back to unity and B fades out over
+                // 30 ms from where each is; the ramps start a mixer block ahead, so the commands land before them.
+                beforeStart = MixRender.Cancel(s_mixGate, s_mixOutEnv, s_mixInEnv, sess?.SampleClock ?? 0, sess?.MixerRef.MaxBlock ?? 0,
+                    sess?.Format.SampleRate ?? 0, out var outgoing, out incomingFade);
+                sess?.SetVoiceEnvelope(s_mixOutVoice, outgoing);
+                sess?.SetVoiceAutomation(s_mixOutVoice, null);   // A's EQ and filter ramp back to neutral (the stage's declick)
             }
             catch { }
+            ForgetMixJoinLocked();
+            Interlocked.Increment(ref s_mMixCancelled);
+            Log.Info("audio", "[mix] cancelled " + (beforeStart ? "before the overlap" : "inside the overlap (A back to unity, B out, over "
+                + MixRender.CancelRampMs + " ms)"));
+            return true;
+        }
+
+        /// <summary>Under s_gate, from <see cref="DisposeSessionAsync"/>: the session goes with a mix join still pending (a load
+        /// during the overlap: a load supersedes the reducer's CancelPrepared, so <see cref="AbandonPendingJoin"/> never runs). Its
+        /// voices go with the session; the join's state must not outlive it, or the next plain gapless announce reads the dropped
+        /// mix's B anchor as its own playhead (<see cref="AnnouncedMixLocked"/>).</summary>
+        static void DropMixJoinLocked()
+        {
+            if (!s_joinMix) return;
+            ForgetMixJoinLocked();
+            Interlocked.Increment(ref s_mMixCancelled);
+            Log.Info("audio", "[mix] join dropped with its session");
+        }
+
+        static void ForgetMixJoinLocked()
+        {
             s_joinMix = false;
             s_mixGate = null;
+            s_mixOutEnv = s_mixInEnv = null;
             s_joinStartMs = 0;
             Volatile.Write(ref s_mixSounding, 0);
-            Interlocked.Increment(ref s_mMixCancelled);
-            Log.Info("audio", "[mix] cancelled " + (beforeStart ? "before the overlap" : "inside the overlap"));
-            return true;
         }
 
         /// <summary>Under s_gate, from the announce: the mix join went live. The anchor B starts at.</summary>
@@ -277,12 +309,9 @@ public static partial class Playback
         {
             if (!s_joinMix) return 0;
             long at = s_joinStartMs;
-            s_joinMix = false;
-            s_mixGate = null;
-            s_joinStartMs = 0;
+            ForgetMixJoinLocked();
             s_mixPlan = default;
             s_mixDurationPosted = 0;
-            Volatile.Write(ref s_mixSounding, 0);
             return at;
         }
     }
@@ -309,6 +338,32 @@ public static partial class Playback
 
         /// <summary>The shelf lane is sampled this many times denser than a gain table (see <see cref="Automation"/>).</summary>
         public const int ShelfDensity = 4;
+
+        /// <summary>A cancel inside the overlap ramps A back to unity and fades B out over this long (plan §2.3.3).</summary>
+        public const int CancelRampMs = 30;
+
+        /// <summary>A mix join's cancel (pure; the pump's <c>CancelMixLocked</c> and the inspector's offline pull call it alike): try to
+        /// cancel the <paramref name="gate"/>. Before the overlap started (true): A gets the constant envelope back and
+        /// <paramref name="incoming"/> is null (B never sounded). Inside it (false): from <paramref name="clock"/> + <paramref name="lead"/>
+        /// (one mixer block: a command lands at the next block, so the ramps never start in the past) A ramps from its gain there to
+        /// unity and B from its gain there to silence, linearly over <see cref="CancelRampMs"/>. B's is an Out envelope, so the mixer
+        /// retires B when it ends; A's holds unity after it.</summary>
+        public static bool Cancel(AudioTransitionGate? gate, GainEnvelope? outEnv, GainEnvelope? inEnv, long clock, int lead, int rate,
+            out GainEnvelope outgoing, out GainEnvelope? incoming)
+        {
+            bool beforeStart = gate?.TryCancel() ?? true;
+            if (beforeStart || outEnv is null || inEnv is null || rate <= 0)
+            {
+                outgoing = GainEnvelope.Constant;
+                incoming = null;
+                return beforeStart;
+            }
+            long at = clock + Math.Max(0, lead);
+            int frames = (int)GaplessJoinClock.MsToFrames(CancelRampMs, rate);
+            outgoing = GainEnvelope.FromCurve(FadeKind.In, at, frames, [outEnv.GainAt(at), 1f]);
+            incoming = GainEnvelope.FromCurve(FadeKind.Out, at, frames, [inEnv.GainAt(at), 0f]);
+            return false;
+        }
 
         static VoiceAutomation? Automation(byte preset, bool incoming, int units, int rate, long start, int frames, Span<CurveSegment> seg)
         {

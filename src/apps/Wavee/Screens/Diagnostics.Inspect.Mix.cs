@@ -2,7 +2,9 @@
 // the `mix` verb (#48 Mix, plan §3.12 "a Mix section"): what Wavee holds of one playlist's Mix — the list and XM flags,
 // the lens etag, each row's wire flags, the stored recipes decoded, each track's beat grid, analysis id and cue points —
 // or a raw recipe decoded (`mix recipe=<base64>`), to compare with the capture's recipe decoder on the same bytes;
-// `mix roundtrip` proves the recipe codec lossless (plan §2.1.1): decode → encode is byte-equal, a change moves one field.
+// `mix roundtrip` proves the recipe codec lossless (plan §2.1.1): decode → encode is byte-equal, a change moves one field;
+// `mix semantics` prints the curve value map; `mix decode` runs a made-up lens read through the real decoder; `mix cancel`
+// pulls a cancelled join's two voices through the engine's mixer offline (no device): the 30 ms ramps against the old cut.
 //
 // Role: SHELL (UI thread; reads the entity tables and MixData)
 
@@ -53,6 +55,7 @@ public static partial class Diagnostics
             }
             string show = a.Str("show", "dump");
             if (show == "semantics") return MixSemantics(id, name);
+            if (show == "cancel") return MixCancel(id, name, Math.Clamp(a.Float("at", 0.4f), 0.05f, 0.95f));
             if (a.Has("recipe") && show != "roundtrip")
             {
                 string b64 = a.Str("recipe");
@@ -284,6 +287,92 @@ public static partial class Diagnostics
                 }
                 w.WriteEndArray();
             });
+        }
+
+        /// <summary>`mix cancel`: a 2.89 s Fade join cancelled at <paramref name="at"/> of its overlap, each voice (a 1 kHz full-scale
+        /// sine) pulled ALONE through the engine's own CrossfadeMixer in 10 ms blocks, no device. The join installs the envelopes
+        /// ScheduleMix installs; at the cancel block the voice gets what the pump gives it now (MixRender.Cancel, the call
+        /// CancelMixLocked makes, B's fade as AbandonPendingJoin installs it) or what it got before (A the constant envelope, B a
+        /// one-frame cut). Prints the gain (the peak of each ms) from 4 ms before the cancel to 60 ms after, and when B retired.</summary>
+        static string MixCancel(int id, string name, float at)
+        {
+            const int rate = 48_000, channels = 2, maxBlock = 1024, pull = 480;
+            const uint windowMs = 2_890;
+            int frames = (int)(windowMs * (long)rate / 1000);
+            long start = rate / 10;                                              // the overlap starts 100 ms into the pull
+            var plan = new MixTiming(MixSource.Saved, MixWhyNot.None, (byte)MixPreset.Fade, 0, windowMs, 0, windowMs);
+            Playback.MixRender.Build(in plan, rate, start, frames, frames, out var outTable, out var inTable, out _, out _);
+            long decide = start + (long)(at * frames);
+            decide -= decide % pull;                                              // the cancel is decided between two blocks
+            long from = decide - 4 * rate / 1000, to = decide + 60 * rate / 1000;
+
+            var aNew = Pull(false, true, out _, out bool before);
+            var bNew = Pull(true, true, out long bNewRetired, out _);
+            var aOld = Pull(false, false, out _, out _);
+            var bOld = Pull(true, false, out long bOldRetired, out _);
+            return Inspect.Reply.Ok(id, name, w =>
+            {
+                w.WriteNumber("windowMs", windowMs);
+                w.WriteNumber("cancelAtMs", Math.Round((decide - start) * 1000.0 / rate, 1));
+                w.WriteBoolean("insideOverlap", !before);
+                w.WriteNumber("leadFrames", maxBlock);
+                w.WriteNumber("rampMs", Playback.MixRender.CancelRampMs);
+                w.WriteNumber("bRetiredMs", bNewRetired < 0 ? -1 : Math.Round((bNewRetired - decide) * 1000.0 / rate, 1));
+                w.WriteNumber("bRetiredMsBefore", bOldRetired < 0 ? -1 : Math.Round((bOldRetired - decide) * 1000.0 / rate, 1));
+                w.WriteStartArray("gain");
+                for (int ms = 0; ms < aNew.Length; ms += 2)
+                {
+                    w.WriteStartObject();
+                    w.WriteNumber("ms", ms - 4);
+                    w.WriteNumber("a", Math.Round(aNew[ms], 3));
+                    w.WriteNumber("b", Math.Round(bNew[ms], 3));
+                    w.WriteNumber("aBefore", Math.Round(aOld[ms], 3));
+                    w.WriteNumber("bBefore", Math.Round(bOld[ms], 3));
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
+            });
+
+            float[] Pull(bool incoming, bool ramp, out long retiredAt, out bool beforeStart)
+            {
+                var mixer = new FluentGpu.Media.CrossfadeMixer(channels, maxBlock);
+                var gate = new FluentGpu.Media.AudioTransitionGate(start);
+                var outEnv = FluentGpu.Media.GainEnvelope.FromCurve(FluentGpu.Media.FadeKind.Out, start, frames, outTable).WithTransition(gate);
+                var inEnv = FluentGpu.Media.GainEnvelope.FromCurve(FluentGpu.Media.FadeKind.In, start, frames, inTable).WithTransition(gate);
+                mixer.AddVoice(new FluentGpu.Media.MixVoice
+                {
+                    Id = 1, Src = new FluentGpu.Media.SignalGeneratorSource(channels, rate, 1000.0, 1f, to + rate),
+                    Env = incoming ? inEnv : outEnv, StartFrame = incoming ? start : 0, ReplayGainScalar = 1f,
+                });
+                var plane = new FluentGpu.Media.ParamPlane();
+                var buffer = new float[pull * channels];
+                var peaks = new float[(int)((to - from) * 1000 / rate)];
+                retiredAt = -1;
+                beforeStart = true;
+                while (mixer.ConsumeSeq < to)
+                {
+                    long block = mixer.ConsumeSeq;
+                    if (block == decide)
+                    {
+                        // The cancel, as the pump applies it now (ramp) or applied it before.
+                        beforeStart = Playback.MixRender.Cancel(gate, outEnv, inEnv, block, maxBlock, rate, out var outgoing, out var fade);
+                        var envelope = !ramp ? (incoming ? FluentGpu.Media.GainEnvelope.Fade(FluentGpu.Media.FadeKind.Out, 0, 1, FluentGpu.Media.CrossCurve.Linear) : FluentGpu.Media.GainEnvelope.Constant)
+                                     : incoming ? fade ?? FluentGpu.Media.GainEnvelope.Fade(FluentGpu.Media.FadeKind.Out, 0, 1, FluentGpu.Media.CrossCurve.Linear) : outgoing;
+                        mixer.TrySetVoiceEnvelope(1, envelope);
+                    }
+                    int n = (int)Math.Min(pull, to - block);
+                    mixer.Render(buffer, n, new FluentGpu.Media.BlockCtx(block, rate, channels, plane));
+                    for (int f = 0; f < n; f++)
+                    {
+                        long frame = block + f;
+                        if (frame < from) continue;
+                        int ms = (int)((frame - from) * 1000 / rate);
+                        if (ms < peaks.Length) peaks[ms] = Math.Max(peaks[ms], Math.Abs(buffer[f * channels]));
+                    }
+                    if (retiredAt < 0 && mixer.VoiceCount == 0) retiredAt = block + n;
+                }
+                return peaks;
+            }
         }
 
         /// <summary>A signal template <c>{1 name, 2 {1 lens, 2 uri, 3 item id}}</c> as one line: <c>set-transition {mix, uri,

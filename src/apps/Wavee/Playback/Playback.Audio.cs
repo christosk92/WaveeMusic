@@ -1470,6 +1470,7 @@ public static partial class Playback
                 s_prepId = default;
                 s_recovering = false;
                 s_joinPending = false;
+                DropMixJoinLocked();                        // #48: a mix join pending at a load goes with the session, its state too
                 s_crossfadeInFlight = false;
                 s_prepOverlap = false;
                 s_activePrimaryId = 0;
@@ -3474,18 +3475,20 @@ public static partial class Playback
 
         /// <summary>Abandon a pending join. The mixer has no voice REMOVAL, so B's envelope is pinned at zero with a
         /// 1-frame fade-out in the past and its byte source is cut: the ring decode faults to EOF and the voice
-        /// retires silently. True when a join was really dropped (S-5: only then does a seek owe the reducer a
-        /// <c>PrepareLost</c> — see <see cref="AfterSeekLanded"/>).</summary>
+        /// retires silently. A #48 mix join cancelled inside its overlap fades B out over 30 ms instead (an Out envelope
+        /// the mixer retires B at the end of). True when a join was really dropped (S-5: only then does a seek owe the
+        /// reducer a <c>PrepareLost</c> — see <see cref="AfterSeekLanded"/>).</summary>
         static bool AbandonPendingJoin(PcmAudioSession? sess, string reason)
         {
             bool mixCancelled = false;
+            GainEnvelope? incomingFade;
             long voiceId, outgoingFaded;
             IMediaByteSource? bytes;
             lock (s_gate)
             {
                 if (!s_joinPending) return false;
                 s_joinPending = false;
-                mixCancelled = CancelMixLocked(sess);      // #48: a mix join also puts A back (Playback.Audio.Mix.cs)
+                mixCancelled = CancelMixLocked(sess, out incomingFade);   // #48: a mix join also puts A back (Playback.Audio.Mix.cs)
                 voiceId = s_joinVoiceId;
                 outgoingFaded = s_joinFadeMs > 0 ? s_joinOutgoingVoiceId : 0;
                 s_joinFadeMs = 0;
@@ -3499,7 +3502,7 @@ public static partial class Playback
             Interlocked.Increment(ref s_mGaplessAbandoned);
             if (mixCancelled) Timeline.ClearTransition();   // #48: the tap's transition ends with the cancelled join
             Log.Info("audio", "join abandoned reason=" + reason);
-            try { sess?.SetVoiceEnvelope(voiceId, GainEnvelope.Fade(FadeKind.Out, 0, 1, CrossCurve.Linear)); } catch { }
+            try { sess?.SetVoiceEnvelope(voiceId, incomingFade ?? GainEnvelope.Fade(FadeKind.Out, 0, 1, CrossCurve.Linear)); } catch { }
             // A scheduled crossfade also set A's fade-out: A keeps playing at full level (before the fade's start frame it was
             // still at 1; past it, the step back is from at most one tick into an equal-power fade, under 1 %).
             if (outgoingFaded != 0) { try { sess?.SetVoiceEnvelope(outgoingFaded, GainEnvelope.Constant); } catch { } }
