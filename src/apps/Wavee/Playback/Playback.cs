@@ -1158,9 +1158,12 @@ public static partial class Playback
         public readonly bool RoutesLocal => Ownership.RoutesLocal(in Own);
         /// <summary>Is the transport armed at all? Ch 20 §7's <c>canTransport</c>.</summary>
         public readonly bool CanTransport => HasCurrent && Error == Fault.None;
+        /// <summary>An AI DJ narration clip is the current item (its playable identity is a <c>wavee:tts:</c> clip, plan-dj §2.2): no seek,
+        /// no repeat-track, no transfer (the official restriction reason <c>narration</c>), and the surfaces suppress its progress.</summary>
+        public readonly bool Narrating => CurrentId.Provider == EntityProvider.Tts;
         /// <summary>May the seek bar be dragged? While LIVE this is exactly <see cref="LiveWindow.HasWindow"/> — a
-        /// seekable span under 30 s is not a window, and the rail becomes the breathing line.</summary>
-        public readonly bool CanSeek => CanTransport && !SeekRestricted && Phase != Phase.Loading
+        /// seekable span under 30 s is not a window, and the rail becomes the breathing line. Never while a narration is current.</summary>
+        public readonly bool CanSeek => CanTransport && !SeekRestricted && !Narrating && Phase != Phase.Loading
             && (Live.IsLive ? Live.HasWindow : DurationMs > 0);
         /// <summary>May Next fire? The FOLDED answer; the raw restriction bits are not the UI's business.</summary>
         public readonly bool CanSkipNext => CanTransport && !NextRestricted;
@@ -1573,6 +1576,9 @@ public static partial class Playback
         VolumeFixed,
         /// <summary>A shuffle or repeat toggle the playing context forbids (<see cref="State.Locks"/>: the DJ's <c>dj-disallow</c>).</summary>
         ContextLocked,
+        /// <summary>A seek, a repeat-track or a transfer while an AI DJ narration is the current item (<see cref="State.Narrating"/>; the
+        /// official player's restriction reason <c>narration</c>, plan-dj §1.8).</summary>
+        Narration,
     }
 
     /// <summary>Fixed effect SLOTS — one per effect KIND, never a list. The last write inside a drain wins and the
@@ -1968,6 +1974,13 @@ public static partial class Playback
             if (forward && jumpTo < 0) why = PlayReason.TrackDone;
         }
         bool natural = why == PlayReason.TrackDone;
+        // An AI DJ narration current: Next goes to the track after it, Previous restarts the track it belongs to (plan-dj §1.8,
+        // `skipping_*_past_track=resume`). A natural end is the plain walk (the next row, a clip or a track).
+        if (!natural && jumpTo < 0 && s.Narrating && Dj.NarrationSkipTarget(Queue.Rows, s.Cursor.Index, forward) is var spoken and >= 0)
+        {
+            LandPastNarration(ref s, in i, ref fx, spoken, why);
+            return;
+        }
 
         // Repeat-one re-plays the same row on its NATURAL end: the one place the cursor stands still under a transport
         // verb. A MANUAL Next moves on and turns repeat-one off, leaving repeat-context on (#215; librespot "when we skip in
@@ -2201,6 +2214,7 @@ public static partial class Playback
     static void DoSeek(ref State s, in Input i, ref Effects fx)
     {
         if (!s.HasCurrent) return;
+        if (s.Narrating) { fx.Refused = Refusal.Narration; LogRestricted("seek", "narration", in s); return; }   // plan-dj §1.8
         if (s.SeekRestricted && !s.Parked && s.Error == Fault.None) { LogRestricted("seek", "noSeek", in s); return; }
         if (!s.RoutesLocal)
         {
@@ -2244,7 +2258,7 @@ public static partial class Playback
         s.ScrubPosMs = i.IntArg;
         s.ScrubEpoch = s.LoadEpoch;
         bool audible = e.Begin && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && s.Phase == Phase.Playing
-                       && !s.Parked && s.Error == Fault.None && !s.SeekRestricted;
+                       && !s.Parked && s.Error == Fault.None && !s.SeekRestricted && !s.Narrating;
         // ASSIGNED on every press, true or false: `ScrubModel.Up` leaves `Audible` set (the release arm reads it after Up) and `Down` does not
         // reset it, so a stale true would leak from the last gesture into this one. `fx.ScrubBegin` follows the same verdict, so a later
         // non-audible press in one drain also withdraws an earlier audible one's begin.
@@ -2390,6 +2404,7 @@ public static partial class Playback
             return;
         }
         if (s.Repeat == mode) return;
+        if (mode == RepeatMode.Track && s.Narrating) { fx.Refused = Refusal.Narration; return; }   // plan-dj §1.8: not while the DJ talks
         if (s.RepeatLocked(mode)) { fx.Refused = Refusal.ContextLocked; return; }   // the context forbids it (the DJ)
         s.Repeat = mode;
         Bump(ref s);
@@ -2937,6 +2952,7 @@ public static partial class Playback
         // refuses it, and pulling playback here is `TakeOver` (a local claim), never this.
         if (target == 0) { fx.Refused = Refusal.NoTransferTarget; return; }
         if (target == s.Us) { fx.Refused = Refusal.SelfTransfer; return; }
+        if (s.Narrating) { fx.Refused = Refusal.Narration; return; }   // plan-dj §1.8: "DJ segment will end soon"
         Owner transferOwnerBefore = s.Own.Kind;
         s.PosMs = s.Position(i.NowMs);                   // freeze the extrapolation: a refused transfer parks the deck HERE
         s.PosQpc = i.NowMs;

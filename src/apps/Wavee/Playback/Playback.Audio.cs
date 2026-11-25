@@ -632,6 +632,13 @@ public static partial class Playback
 
         static int EffectiveFadeMs => EffectiveFadeMsFor(s_crossfadeEnabled, s_crossfadeMs);
 
+        /// <summary>The boundary at hand touches an AI DJ narration clip (the playing voice or the prepared one is a <c>wavee:tts:</c> clip):
+        /// it is joined gapless, never crossfaded.</summary>
+        static bool NarrationBoundary()
+        {
+            lock (s_gate) return s_id.Provider == EntityProvider.Tts || s_prepId.Provider == EntityProvider.Tts || s_prepBuildingId.Provider == EntityProvider.Tts;
+        }
+
         /// <summary>The crossfade as the pump will actually apply it: 0 means gapless.</summary>
         public static int CrossfadeMs => EffectiveFadeMs;
 
@@ -1103,7 +1110,8 @@ public static partial class Playback
             // A real load that will play hands the outgoing stream over (DisposeSessionAsync): its next open adopts it. A fake one
             // renders into its own silent session, and a paused one (a paused restore or reload) would only stop the adopted stream
             // again, so both stop the outgoing stream as before.
-            bool fake = id.Provider == EntityProvider.Fake || Platform.Args.Fake;
+            // An AI DJ narration clip (SourceRoute.Tts) is real bytes even under --fake: the fake TTS service served them, so they decode.
+            bool fake = id.Provider == EntityProvider.Fake || (Platform.Args.Fake && id.Provider != EntityProvider.Tts);
             bool play;
             lock (s_gate) play = s_playIntent;
             await DisposeSessionAsync(forLoad: true, handOver: !fake && play).ConfigureAwait(false);
@@ -3249,6 +3257,8 @@ public static partial class Playback
                 bool silent, activeExact;
                 lock (s_gate) { session = s_session; backend = s_backend; activeKind = s_activeKind; silent = s_silent; activeExact = s_opened.DurationExact; }
                 if (session is null || backend is null || silent || token.IsCancellationRequested) return;   // nothing to hand off from
+                // Under --fake only a narration clip has bytes (a clip playing before a demo track): the track loads silently at the boundary.
+                if (id.Provider == EntityProvider.Fake || (Platform.Args.Fake && id.Provider != EntityProvider.Tts)) return;
 
                 // `prepared`: the next ring is sized for the hand-off out of the shared read-ahead budget (Vorbis plan §5.3).
                 bytes = Open(id, token, out Opened opened, out Fault fault, prepared: true);
@@ -3397,7 +3407,9 @@ public static partial class Playback
         {
             if (sess.VoiceLengthIsExact) return sess.ExactVoiceEndFrame;
             IAudioDecoder? decoder;
-            lock (s_gate) decoder = s_activeDecoder;
+            long ttsFrames;
+            lock (s_gate) { decoder = s_activeDecoder; ttsFrames = TtsLateFramesLocked(); }
+            if (ttsFrames > 0) return ttsFrames;   // a narration clip that opened while it downloaded (Playback.Audio.Tts.cs)
             return decoder is VorbisAudioDecoder vorbis ? vorbis.LateExactFrames(sess.Format.SampleRate) : -1;
         }
 
@@ -3985,9 +3997,12 @@ public static partial class Playback
                 : silent || p is null ? sess.PlayedFrames * 1000L / Math.Max(1, sess.Format.SampleRate)
                 : (long)p.Position.Peek().TotalMilliseconds;
             long pos = ActivePositionMs();
-            int fadeMs = EffectiveFadeMs;
+            // No crossfade into or out of an AI DJ narration clip, whatever the setting: its hand-offs are gapless (plan-dj D2; the
+            // talk-over that overlaps a clip and its track is D3's, through the Mix join).
+            int fadeMs = NarrationBoundary() ? 0 : EffectiveFadeMs;
 
             DrainXruns(sess, pos, state);
+            if (!silent) LearnTtsLength(sess);              // a streamed narration clip's length, once its body ended (Playback.Audio.Tts.cs)
 
             if (!s_errorReported && !silent && p?.Error.Peek() is { } err) { PostFault(MapError(err), epoch); return; }
 

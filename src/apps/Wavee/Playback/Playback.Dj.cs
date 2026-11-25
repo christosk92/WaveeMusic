@@ -38,7 +38,7 @@ public static partial class Playback
 {
     /// <summary>The lexicon session a DJ context plays from (plan-dj §2.1): its fetch, its url rules, the record of what was
     /// fetched and the DJ book of its rows. UI thread, except <see cref="Fetch"/> (an api thread).</summary>
-    public static class Dj
+    public static partial class Dj
     {
         /// <summary>A context url served by the lexicon session provider.</summary>
         public const string LexiconPrefix = "hm://lexicon-session-provider/";
@@ -274,7 +274,7 @@ public static partial class Playback
             if (Of(context) is not { } s) return -1;
             int playing = 0;
             for (int i = Math.Min(cursor, rows.Length - 1); i >= 0; i--)
-                if (s_book.TryGetValue(rows[i].ItemId, out Row? row)) { playing = row.Page; break; }
+                if (SegmentRowOf(rows[i].ItemId) is { } row) { playing = row.Page; break; }   // a narration row is its track's (D2)
             return Math.Max(0, s.LastPage - playing);
         }
 

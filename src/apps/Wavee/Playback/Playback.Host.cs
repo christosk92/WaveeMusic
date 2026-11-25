@@ -626,6 +626,7 @@ public static partial class Playback
                     s_fx.Lap = false;
                     if (FollowsQueue(in s_state, Queue.RefAt(s_state.Cursor.Index)) && Queue.Lap(in s_state.Cursor)) WatchQueue(now);
                 }
+                PlanNarration(now);                        // AI DJ: the narration rows around the deck (Playback.Dj.Narration.cs)
                 FollowQueue(now);
                 ObserveVideoFacts(now);                    // the deck row's video facts, before the PUT this drain sends
                 Execute();
@@ -1339,8 +1340,10 @@ public static partial class Playback
         Buffering.Value = s_state.Buffering;
         Error.Value = s_state.Error;
         Recovery.Value = s_state.Recovery;
-        PositionMs.Value = s_state.Position(now);
-        DurationMs.Value = s_state.DurationMs;
+        // An AI DJ narration's progress is suppressed (plan-dj §1.8, `suppress_progress`): the surfaces show no times and no fill.
+        Narrating.Value = s_state.Narrating;
+        PositionMs.Value = s_state.Narrating ? 0 : s_state.Position(now);
+        DurationMs.Value = s_state.Narrating ? 0 : s_state.DurationMs;
         Volume.Value = s_state.SliderVolume;
         Muted.Value = s_state.Own.Kind == Owner.Foreign ? s_state.SliderVolume <= MuteFloor : s_state.SinkMuted || s_state.Volume <= MuteFloor;
         HeardVolume.Value = Muted.Peek() ? 0f : s_state.SliderVolume;

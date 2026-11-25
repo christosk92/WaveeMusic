@@ -129,8 +129,11 @@ public static partial class Entities
             w.WriteString("narration.jump.background.color", "#FF1B3A6B");
             w.WriteString("narration.jump.border.color", "#FF1B3A6B");
             w.WriteString("narration.jump.icon.color", "#FF3FD8A0");
-            Narration(w, "welcome", "Welcome", "dj~fa4e0000000000000000000000000000we1c", "",
-                "<speak xml:lang=\"en-US\">Hey there, it's your DJ. Let's ease into it.</speak>");
+            // The narrations speak the fake TTS service's fixtures where one exists (Spotify.DjTts.Fake.cs), so the clips have their
+            // known lengths and deliveries: the welcome 3.4 s whole; page 1's intro the 24.5 s streamed MISS; page 2's jump 4.9 s;
+            // page 2's outro the broken one (its fulfil fails twice: dropped) and page 3's the flaky one (fails once, then plays).
+            Narration(w, "welcome", "Welcome", "dj~fa4e0000000000000000000000000000we1c", "", TtsFixture("welcome",
+                "<speak xml:lang=\"en-US\">Hey there, it's your DJ. Let's ease into it.</speak>"));
             w.WriteEndObject();
             w.WriteStartArray("pages");
             w.WriteStartObject();
@@ -190,19 +193,24 @@ public static partial class Entities
                 {
                     w.WriteString("dj.jump_target", "true");
                     w.WriteString("automix.talk_mode", "human_cuepoints_or_full_track");
-                    Narration(w, "intro", "Up next", "dj~fa4e" + Hex(page, 28) + "1a7e", segment + ":" + (page - 1).ToString(CultureInfo.InvariantCulture) + ":0:0",
-                        "<speak xml:lang=\"en-US\">Coming up, a run of " + subtitle.ToLowerInvariant()
+                    string introSsml = "<speak xml:lang=\"en-US\">Coming up, a run of " + subtitle.ToLowerInvariant()
                         + " songs, starting with <entity type=\"artist\" uri=\"ar" + (page % 7).ToString(CultureInfo.InvariantCulture)
-                        + "\">one of your favourites</entity>.</speak>");
+                        + "\">one of your favourites</entity>.</speak>";
+                    Narration(w, "intro", "Up next", "dj~fa4e" + Hex(page, 28) + "1a7e", segment + ":" + (page - 1).ToString(CultureInfo.InvariantCulture) + ":0:0",
+                        page == 1 ? TtsFixture("intro", introSsml) : introSsml);
                     if (page >= 2)
+                    {
+                        string jumpSsml = "<speak xml:lang=\"en-US\">OK, let's switch it up. Here's something " + subtitle.ToLowerInvariant() + ".</speak>";
                         Narration(w, "jump", "Up next", "dj~fa4e" + Hex(page, 28) + "0a1b", segment + ":" + (page - 1).ToString(CultureInfo.InvariantCulture) + ":0:0",
-                            "<speak xml:lang=\"en-US\">OK, let's switch it up. Here's something " + subtitle.ToLowerInvariant() + ".</speak>");
+                            page == 2 ? TtsFixture("jump", jumpSsml) : jumpSsml);
+                    }
                 }
                 if (slot == 5)
                 {
                     w.WriteString("automix.talk_mode", "human_cuepoints_or_full_track");
+                    string outroSsml = "<speak xml:lang=\"en-US\">That one closes out the set of " + subtitle.ToLowerInvariant() + ".</speak>";
                     Narration(w, "outro", "Up next", "dj~fa4e" + Hex(page, 28) + "0b70", segment + ":" + (page - 1).ToString(CultureInfo.InvariantCulture) + ":6:0",
-                        "<speak xml:lang=\"en-US\">That one closes out the set.</speak>");
+                        page == 2 ? TtsFixture("broken", outroSsml) : page == 3 ? TtsFixture("flaky", outroSsml) : outroSsml);
                 }
                 w.WriteEndObject();
                 w.WriteEndObject();
@@ -222,13 +230,16 @@ public static partial class Entities
         return stream.ToArray();
     }
 
+    /// <summary>The fake TTS service's fixture SSML of that name (Spotify.DjTts.Fake.cs), or <paramref name="fallback"/>.</summary>
+    static string TtsFixture(string name, string fallback) => Spotify.DjTts.Fake.FixtureNamed(name)?.Ssml ?? fallback;
+
     /// <summary>One narration slot's keys (<c>narration.&lt;slot&gt;.*</c>, plan-dj §1.3), every value invented.</summary>
     static void Narration(Utf8JsonWriter w, string slot, string title, string decision, string attribution, string ssml)
     {
         string p = "narration." + slot + ".";
         w.WriteString(p + "ssml", ssml);
         w.WriteString(p + "title", title);
-        w.WriteString(p + "artist", "DJ");
+        w.WriteString(p + "artist", "DJ X");
         w.WriteString(p + "album_title", "DJ");
         w.WriteString(p + "image", Cover(11));
         w.WriteString(p + "voice", "VOICE1");

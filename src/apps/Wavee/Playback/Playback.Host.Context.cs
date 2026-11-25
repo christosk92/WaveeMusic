@@ -617,6 +617,23 @@ public static partial class Playback
             for (int k = start + 1; k < context.Length && n < cap; k++)
                 AddRow(buffer, in context[k], QueueBucket.NextUp, refs, rows, ref n);
             if (sameContext) AddKeptAutoplay(refs, rows, ref n, cap);
+            // AI DJ (plan-dj §1.5): a session that starts on its first track starts with the welcome on the deck; the first track waits
+            // behind the user's kept queue, and the planner lays the first intro right before it (Playback.Dj.Narration.cs).
+            if (dj is not null && !transfer && start == 0 && n < cap
+                && Dj.AtStart(contextId, dj, rows[at].ItemId, refs[at].Id, now) is { Packed: not 0 } welcome)
+            {
+                int first = at + 1;
+                while (first < n && rows[first].Bucket == (byte)QueueBucket.UserQueue) first++;
+                EntityRef firstRef = refs[at];
+                QueueEdge firstRow = rows[at] with { Bucket = (byte)QueueBucket.NextUp };
+                Array.Copy(refs, first, refs, first + 1, n - first);
+                Array.Copy(rows, first, rows, first + 1, n - first);
+                refs[first] = firstRef;
+                rows[first] = firstRow;
+                refs[at] = Queue.Unpack(welcome.Packed);
+                rows[at] = new QueueEdge(welcome.ItemId, (byte)QueueProvider.Narration, (byte)QueueBucket.NowPlaying);
+                n++;
+            }
 
             // The context's own restrictions (the DJ: shuffle and repeat disallowed, plan-dj §2.5) win over the user's shuffle and a
             // controller's override; another context plays in the user's own shuffle, held while a locked one played.
@@ -1456,6 +1473,7 @@ public static partial class Playback
         if ((r.Events & PlayEvents.Started) == 0) return;
 
         EntityId id = r.StartedId;
+        if (id.Provider == EntityProvider.Tts) return;   // an AI DJ narration: no play log, no history, no report (plan-dj D2; telemetry is D5)
         PlayStarted?.Invoke(id, r.Context, unix);
         if (!id.IsPlayable) return;
         // A local file (#240 E7, E8) is reported under its spotify:local: uri, blanked in content_uri, real in local_content_uri and in the

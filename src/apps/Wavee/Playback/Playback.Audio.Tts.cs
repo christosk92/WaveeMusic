@@ -52,6 +52,43 @@ public static partial class Playback
             return new TtsClipSource(clip, complete ? whole : null, length);
         }
 
+        // ── a streamed clip's length, learned late ──────────────────────────────────────────────────────────────────
+        // A clip that opened while it downloaded has no length (the decoder cannot know it), so its end would be a reload: no endgame,
+        // no exact join into the next row. Its length is the clip's once the body ends (DjTts measured it); the pump's tick takes it
+        // then for the live voice (`LearnTtsLength`): the duration, the exactness the prepare reads (`s_opened.DurationExact`) and the
+        // exact frame count the join is scheduled on (`ActiveExactFrames`). A gapless join into a streamed clip learns it the same way
+        // once that clip is the live voice.
+
+        static EntityId s_ttsLateId;
+        static long s_ttsLateFrames;
+
+        /// <summary>The live voice's learned length in mix frames (−1: none, or another voice). Under <see cref="s_gate"/>.</summary>
+        static long TtsLateFramesLocked() => s_ttsLateFrames > 0 && s_ttsLateId.Equals(s_id) ? s_ttsLateFrames : -1;
+
+        /// <summary>The tick's look (not silent): the live voice is a narration clip with no length whose body has ended → learn it.</summary>
+        static void LearnTtsLength(PcmAudioSession sess)
+        {
+            EntityId id;
+            lock (s_gate)
+            {
+                if (s_id.Provider != EntityProvider.Tts || s_activeDurMs > 0) return;
+                id = s_id;
+            }
+            if (Spotify.DjTts.ClipOf(id) is not { } clip) return;
+            Spotify.DjTts.ClipInfo info = clip.Info();
+            if (info.State != Spotify.DjTts.ClipState.Ready || info.Frames <= 0 || info.SampleRate <= 0 || info.DurationMs <= 0) return;
+            long mixFrames = info.Frames * sess.Format.SampleRate / info.SampleRate;
+            lock (s_gate)
+            {
+                if (!s_id.Equals(id) || s_activeDurMs > 0) return;
+                s_activeDurMs = info.DurationMs;
+                s_opened = s_opened with { DurationMs = info.DurationMs, DurationExact = true };
+                s_ttsLateId = id;
+                s_ttsLateFrames = mixFrames;
+            }
+            Log.Info("audio", $"audio.tts length key={clip.Key} durMs={info.DurationMs} frames={info.Frames}@{info.SampleRate} mixFrames={mixFrames}: learned after its open");
+        }
+
         /// <summary>The byte source over one clip (banner: TWO SHAPES). Closing it releases the clip for the cache's spill.</summary>
         public sealed class TtsClipSource : IMediaByteSource
         {
