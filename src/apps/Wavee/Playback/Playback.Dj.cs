@@ -229,7 +229,8 @@ public static partial class Playback
         /// product's name (<c>context_description</c>, "DJ"), the playing row's segment label (<c>station_subtitle</c>), whether a later segment
         /// is loaded to jump to, and the button's colours (<c>narration.jump.{background,border,icon}.color</c>, ARGB, 0 = not stated).
         /// <see cref="Remote"/>: another device plays the DJ (its cluster's locks say <c>dj-disallow</c>); this device only controls it, so
-        /// "Let DJ pick" is the <c>jump</c> signal to it, and nothing of the session (labels, segments, rows) is known here.</summary>
+        /// "Let DJ pick" is the <c>jump</c> signal to it; its labels, the playing row's segment and whether a jump may be sent are what its
+        /// cluster states (<see cref="RemoteNow"/>).</summary>
         public readonly record struct Facts(bool Active, string Pick, string Name, string Segment, bool CanJump, uint PickFill, uint PickBorder, uint PickInk,
             bool Remote = false);
 
@@ -237,7 +238,11 @@ public static partial class Playback
         internal static Facts FactsOf(in State s)
         {
             if (s.Own.Kind == Owner.Foreign)
-                return s.HasCurrent && s.LiveLockReason == LockReason.Dj ? new Facts(true, "", "", "", true, 0, 0, 0, Remote: true) : default;
+            {
+                if (!s.HasCurrent || s.LiveLockReason != LockReason.Dj) return default;
+                RemoteDj r = RemoteNow;   // the owner's cluster, read by NoteRemoteDj (Playback.Dj.Surfaces.cs)
+                return new Facts(true, r.Pick, r.Name, r.Segment, r.CanJump, r.PickFill, r.PickBorder, r.PickInk, Remote: true);
+            }
             if (s_session is not { } x || !x.Context.Equals(s.Context) || !s.HasCurrent) return default;
             ReadOnlySpan<QueueEdge> rows = Queue.Rows;
             int cursor = s.Cursor.Index;

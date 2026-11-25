@@ -165,7 +165,9 @@ public sealed class PlayerVerbs : IPlayerVerbs
         string name = f.Name.Length > 0 ? f.Name : Loc.Get(Strings.Player.DjName);
         string line = f.Segment.Length > 0 ? Strings.Player.DjLine(name, f.Segment) : name;
         s_djFor = f;
-        return s_dj = new DjChrome(f.Pick.Length > 0 ? f.Pick : Loc.Get(Strings.Player.DjPick), Loc.Get(Strings.Player.DjPickTip), f.CanJump,
+        // Disabled, the tip says why: no later segment is loaded here, or the device that plays the DJ does not offer a jump yet.
+        return s_dj = new DjChrome(f.Pick.Length > 0 ? f.Pick : Loc.Get(Strings.Player.DjPick),
+            Loc.Get(f.CanJump ? Strings.Player.DjPickTip : Strings.Player.DjPickNotYet), f.CanJump,
             f.PickFill, f.PickBorder, f.PickInk, line, s_jump);
     }
 

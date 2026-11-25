@@ -866,6 +866,7 @@
     "djSegmentEnding": "Het DJ-segment is zo afgelopen",
     "djPick": "Laat DJ kiezen",
     "djPickTip": "Krijg andere keuzes van de DJ",
+    "djPickNotYet": "Je DJ zet de volgende keuzes nog klaar",
     "djName": "DJ",
     "djLine": "{0} · {1}",
     "djJumpsHere": "Laat DJ kiezen begint hier",

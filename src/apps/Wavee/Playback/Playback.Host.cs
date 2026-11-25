@@ -759,6 +759,7 @@ public static partial class Playback
     {
         ulong active = DeviceHash(buffer.Utf8(d.ActiveDeviceId));
         Devices.Update(buffer, in d, active);
+        Dj.NoteRemoteFace(buffer, in d);                    // AI DJ: an owner's narration item, staged as a row when the fold asks for it
         Spotify.Connect.NoteLikedCluster(buffer, in d);     // a cluster playing the account's Liked Songs playlist names it (1.2b)
 
         var frame = new ClusterFrame(d.Origin, d.PutMsgId, active, d.ServerTimestampMs, d.UpdateReason,
@@ -787,11 +788,13 @@ public static partial class Playback
             CaptureForeignOrigin(buffer, in d, remote.Context);   // what a takeover publishes on as the owner
             NoteRemoteListCluster(remote.Context, buffer.Utf8(d.SessionId));   // a list it plays in Wavee's order (5.3)
             Dj.NoteRemoteNarration(buffer, in d);                // AI DJ: its narration's caption, for the caption surfaces
+            Dj.NoteRemoteDj(buffer, in d);                       // AI DJ: its segment and whether "Let DJ pick" may be sent, for the bar
         }
         else if (s_state.Own.Kind != Owner.Foreign)
         {
             s_foreign.Clear();
             Dj.NoteRemoteNarration(null, default);
+            Dj.NoteRemoteDj(null, default);
             ForgetRemoteList();
             if (s_state.Own.Kind == Owner.Us) s_contextWire = default;   // Nobody keeps the departed owner's snapshot, label included
         }
@@ -1114,7 +1117,12 @@ public static partial class Playback
     {
         if (id.IsEmpty || Entities.Current is null) return;
         Table? table = Entities.TableFor(id.Kind);
-        if (table is null) return;
+        if (table is null)
+        {
+            // An owner's AI DJ narration item (spotify:media:<id>) has no kind a table answers: its staged row (Playback.Dj.Surfaces.cs).
+            if (id.Equals(s_state.CurrentId) && Dj.RemoteNarrationRow(id) is { IsNone: false } narration) s_state.Current = narration;
+            return;
+        }
         int slot = table.Slot(id);
         if (slot <= Table.None) return;
         // Re-point the deck slot whenever it does not yet name the identity that is on it — not only from IsNone: a
@@ -1360,9 +1368,11 @@ public static partial class Playback
         Error.Value = s_state.Error;
         Recovery.Value = s_state.Recovery;
         // An AI DJ narration's progress is suppressed (plan-dj §1.8, `suppress_progress`): the surfaces show no times and no fill.
+        // So is the owner's narration while another device's DJ talks (`suppress_progress` on its item; Dj.Talking is the surfaces' read).
         Narrating.Value = s_state.Narrating;
-        PositionMs.Value = s_state.Narrating ? 0 : s_state.Position(now);
-        DurationMs.Value = s_state.Narrating ? 0 : s_state.DurationMs;
+        bool suppressed = s_state.Narrating || s_state.RemoteNarrating;
+        PositionMs.Value = suppressed ? 0 : s_state.Position(now);
+        DurationMs.Value = suppressed ? 0 : s_state.DurationMs;
         Volume.Value = s_state.SliderVolume;
         Muted.Value = s_state.Own.Kind == Owner.Foreign ? s_state.SliderVolume <= MuteFloor : s_state.SinkMuted || s_state.Volume <= MuteFloor;
         HeardVolume.Value = Muted.Peek() ? 0f : s_state.SliderVolume;

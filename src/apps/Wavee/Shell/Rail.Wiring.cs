@@ -303,11 +303,14 @@ internal static class RailWiring
         _ = Platform.SettingsChanged.Value;                                   // the footer states the equalizer and normalization at rest
         var sound = Shell.DevicePickerFacts.Sound;
 
+        // AI DJ: no move while the DJ talks, here (the reducer's `narration` refusal) or on the owner's deck (its restriction 13, D4's
+        // Playback.CanTransfer): the rows say why instead of offering it (plan-dj §1.8).
+        bool moveLocked = Playback.Narrating.Value || !Playback.CanTransfer.Value;
         int stamp = HashCode.Combine(roster, (byte)owner, activeSlot, local, selected, supported, unresponsive,
-            HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked, sound));
+            HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked, sound, moveLocked));
         string selectedName = Platform.Settings.Get(Platform.Keys.OutputDeviceName);   // a chosen output that left the roster keeps its row by this name
         return Shell.DevicePicker.Compose(owner, activeSlot, Playback.Devices.Rows, local, selected, selectedName, supported, unresponsive, observed,
-            asked, sound, stamp);
+            asked, sound, stamp, moveLocked);
     }
 
     // ══ THE ON-MEDIA TRANSPORT ═══════════════════════════════════════════════════════════════════════════════════════

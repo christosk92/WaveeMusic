@@ -84,6 +84,11 @@ public static partial class Spotify
             /// <c>media.manifest</c> (base64 of the TTS fulfil request, the SSML at 1.1.4.2) when it carries one.</summary>
             public bool Narration;
             public TextRef Manifest;
+            /// <summary>AI DJ, as a DJ player publishes its rows (dj-protocol §2.3, §4): the row's segment id (<c>segment</c>), the segment's
+            /// label (<c>station_subtitle</c>, "Vibes") and whether "Let DJ pick" lands on it (<c>dj.jump_target</c>). What a controller draws
+            /// of another device's DJ (<c>Playback.Dj.NoteRemoteDj</c>).</summary>
+            public TextRef Segment, Subtitle;
+            public bool JumpTarget;
             /// <summary>The whole <c>ProvidedTrack</c> as the owner sent it — set for a cluster's <c>prev_tracks</c> /
             /// <c>next_tracks</c> rows only: what a forwarded <c>set_queue</c> echoes back whole, its metadata map, provider,
             /// removed/blocked lists and album/artist uris (remote-play plan 5.2, moreptions.saz 794). Empty elsewhere.</summary>
@@ -207,6 +212,9 @@ public static partial class Spotify
             /// <summary>The video switches the owner OFFERS (<c>signals</c>, field 33) and lists in <c>disallow_signals</c> with a
             /// reason (restrictions field 29), as <c>Playback.VideoSignals</c> bits: 1 = switch-to-video, 2 = switch-to-audio.</summary>
             public byte VideoOffered, VideoDisallowed;
+            /// <summary>The owner states its <c>signals</c> (field 33) at all, and offers the AI DJ's <c>jump</c> among them ("Let DJ pick":
+            /// a DJ player lists it once its session is loaded, dj-protocol §4).</summary>
+            public bool SignalsStated, JumpOffered, JumpDisallowed;
             public bool Shuffling;
             public RepeatMode Repeat;
             public long PositionAsOfMs, TimestampMs, ServerTimestampMs, DurationMs, ActiveStartedPlayingAt;
@@ -487,7 +495,9 @@ public static partial class Spotify
                                     case 29:                       // disallow_signals: map<string, Reasons{ repeated string reasons = 1 }>
                                         {
                                             x.Message().Fields(1, 2, out var signal, out var reasons);
-                                            if (!new ProtoReader(reasons).Bytes(1).IsEmpty) delta.VideoDisallowed |= SignalBit(signal);
+                                            if (new ProtoReader(reasons).Bytes(1).IsEmpty) break;
+                                            delta.VideoDisallowed |= SignalBit(signal);
+                                            delta.JumpDisallowed |= signal.SequenceEqual("jump"u8);   // AI DJ: "Let DJ pick" refused, with a reason
                                             break;
                                         }
                                     default: x.Skip(); break;
@@ -530,7 +540,14 @@ public static partial class Spotify
                     case 23: delta.SessionId = into.AddText(r.Bytes()); break;
                     case 24: delta.QueueRevision = into.AddText(r.Bytes()); break;
                     case 32: delta.Quality = ReadQuality(r.Bytes()); break;      // playback_quality (Spotify.Decode.Quality.cs)
-                    case 33: delta.VideoOffered |= SignalBit(r.Bytes()); break;   // signals: what the owner offers a controller
+                    case 33:                                       // signals: what the owner offers a controller
+                        {
+                            ReadOnlySpan<byte> signal = r.Bytes();
+                            delta.VideoOffered |= SignalBit(signal);
+                            delta.SignalsStated = true;
+                            delta.JumpOffered |= signal.SequenceEqual("jump"u8);   // AI DJ: "Let DJ pick" is accepted now
+                            break;
+                        }
                     default: r.Skip(); break;
                 }
             }

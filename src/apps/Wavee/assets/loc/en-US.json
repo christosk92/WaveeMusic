@@ -2859,6 +2859,7 @@
     "djSegmentEnding": "DJ segment will end soon",
     "djPick": "Let DJ pick",
     "djPickTip": "Get some different DJ picks",
+    "djPickNotYet": "Your DJ is still lining up the next picks",
     "djName": "DJ",
     "djLine": "{0} · {1}",
     "djJumpsHere": "Let DJ pick starts here",
