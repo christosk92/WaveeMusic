@@ -986,7 +986,7 @@ decode path=C:/music/a.wav out=C:/scratch/a.f32
 decode path=C:/music/a.aiff out=C:/scratch/a.seek.f32 seekMs=1234
 ```
 
-### `dj {do?, uri?, pages?, ms?, until?}`
+### `dj {do?, uri?, pages?, ms?, until?, file?, track?, on?, try?}`
 
 AI DJ (plan `docs/plans/wavee/dj-implementation.md`). Plain `dj` (`do=status`) reads the fake DJ list (`spotify:playlist:pldj`),
 the lexicon session playing it (pages, segments, the lookahead), the DJ book per queue row, the context's toggle locks, and
@@ -1007,12 +1007,27 @@ page 2's jump 4.9 s, page 2's outro the broken fixture (dropped) and page 3's th
 `status log="intent refused"` (`Narration`). Headless, the silent endpoint holds 2 s ahead of the played count, so a boundary
 announced on the render clock can read up to ~2 s off a clip's length on the frame clock; the lengths themselves are exact.
 
+`current.restorePoint` is what the session document would keep for the next launch (during a clip: the track it belongs to,
+from 0). `do=jump` presses "Let DJ pick" (D5): the rest of the segment goes to history, the user's queued rows wait behind the
+target, and the deck lands on the target's prefetched jump clip right before it (`first` = `jump:<segment>`, the target, ...);
+`do=starve on=true|false` makes the fake service answer no more pages. The Connect half (D4,
+`Screens/Diagnostics.Inspect.DjConnect.cs`): `do=envelope uri=` (the play body a start sends another device), `do=cluster file=`
+(ClusterUpdates as dealer pushes, then the mirror; a foreign DJ shows "Let DJ pick", which sends the `jump` signal),
+`do=transfer file=` (a controller's transfer body; a current item `spotify:media:<id>` lands on that track from 0, the welcome's on
+the session's first row), `do=restore track=` (the launch restore), `do=bodies`, and `do=signal` (a made-up inbound
+`{"endpoint":"signal","signal_id":"jump"}` routed as the dealer glue routes it, plus the `outbound` body Wavee sends as a
+controller). `transport do=putstate` during a clip shows the narration item as the official player sends it (f7 `spotify:media:`,
+`narration/<slot>`, no f6, f17 3/9/13 `narration`, `suppress_progress`, `media.manifest`); f33 carries `jump` while DJ plays.
+
 ```text
 mount w=1440 h=960 theme=winui route=home
 transport do=clear                 # the fake boot's queued rows would play between the welcome and the intro
 dj do=play                         # welcome on the deck, the first intro and the first track after it
 dj do=run ms=6000 until=change     # welcome -> intro
 dj do=run ms=40000 until=change    # intro -> its track
+dj do=run ms=6000                  # the next segment's jump clip is prefetched 5 s into the item
+dj do=jump                         # the jump clip, then the target, then the user's queue
+dj do=signal                       # the same from a controller's `jump` signal
 ```
 
 ### `djtts {do, fixture?, ssml?, manifest?, via?, key?, seconds?, n?, wait?, pace?, rate?, ms?, every?, disk?}`

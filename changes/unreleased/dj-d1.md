@@ -8,4 +8,4 @@ contract-note: "PlayerBarView, StageTransportFacts and PanelTransportFacts gain 
 desktop was accepted and then ignored, so Wavee kept playing what it played before. Wavee now asks Spotify for the DJ's
 session and plays its songs in the DJ's order, fetching more as it goes, and the same happens when you start the DJ list
 on Wavee itself. While DJ plays, shuffle and repeat are off and their buttons say "Not available with DJ"; your own
-shuffle and repeat come back when you play something else. The DJ's voice between songs is not there yet. (All three themes.)
+shuffle and repeat come back when you play something else. (All three themes.)
