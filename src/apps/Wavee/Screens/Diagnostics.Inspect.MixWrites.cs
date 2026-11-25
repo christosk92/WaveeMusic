@@ -49,11 +49,20 @@ public static partial class Diagnostics
             Run("mix on", settled => Spotify.Mixes.TurnOn(p, settled));
             Note("mix on", outcome, "on=" + p.MixOn + " storedTransitions=" + MixData.Count(slot) + " etag=" + Entities.Strings.Resolve(p.MixLensEtagId));
 
-            // 3-6. The seam card's writes, through MixEdit exactly as its Done and Reset buttons call them: a save over an Auto pair
-            // (f3 = the Auto baseline), a save over a stored pair (f4 = its stored bytes, f5 = its uri), "No transition", Reset.
-            Save("save over an Auto pair", AutoPair(), (int)MixStyle.Lift, 8);
-            Save("save over a stored pair", StoredPair(), (int)MixStyle.Lift, 0);
-            Save("no transition", AutoPair(), (int)MixStyle.NoMix, 0);
+            // 3-6. The editor's writes, through MixEdit exactly as its Save and Reset buttons call them, each a draft edited from what the
+            // pair plays: a save over an Auto pair (f3 = the Auto baseline), a save over a stored pair (f4 = its stored bytes, f5 = its
+            // uri), "No transition", Reset.
+            Save("save over an Auto pair", AutoPair(), (pr, d) => MixEdit.WithOverlap(in pr, MixEdit.WithPreset(in d, (int)MixPresetId.Rise), d.OverlapMs + 1_000, 0, keepEnd: true));
+            Save("save over a stored pair", StoredPair(), (pr, d) => MixEdit.WithPreset(in d, (int)MixPresetId.Rise));
+            // The editor's Customize and timeline on a stored pair carrying fields Wavee does not model: an EQ style, a hand-drawn incoming volume
+            // curve (recipe 2.7) and the in-point a beat later. Only those fields may change.
+            Save("editor: customize + curve + in-point", StoredPair(), (pr, d) =>
+            {
+                var e = MixEdit.WithStyle(in d, MixIngredient.Eq, (int)MixEqStyle.EqSwap);
+                e = MixEdit.WithVolumeBend(in e, incoming: true, 0.45f);
+                return MixEdit.WithIn(in e, e.InStartMs + (uint)MixEdit.BarMs(in pr) / 4);
+            });
+            Save("no transition", AutoPair(), (pr, d) => d with { Mode = MixDraftMode.None });
             Reset("reset to auto", 0);
 
             // 7-8. "Listen without Mix", synced to the account: the opt-out and its removal (the mirror, and the reply's shape logged).
@@ -132,23 +141,26 @@ public static partial class Diagnostics
                 return any;
             }
 
-            // A seam card save of `style` on pair `index` (beats 0: the pair's current overlap + 2 beats), then what went out against
-            // what the card built: the template echoed, the recipe sent = the edit, every untouched field byte-identical, the previous.
-            void Save(string label, int index, int style, int beats)
+            // An editor save of the draft `edit` makes from what pair `index` plays, then what went out against what the editor built: the
+            // template echoed, the recipe sent = the edit, every untouched field byte-identical, the previous.
+            void Save(string label, int index, Func<MixEdit.Pair, MixDraft, MixDraft> change)
             {
                 if (index < 0) { Note(label, Spotify.Mixes.Outcome.Refused, "no such pair in this list"); return; }
                 var pair = MixEdit.Read(slot, index);
-                if (beats == 0 && style != (int)MixStyle.NoMix) beats = MixEdit.BeatsOf(in pair, (pair.Now.Mix ? pair.Now : pair.Auto).OutDurationMs) + 2;
+                var from = MixEdit.DraftOf(in pair, slot);
+                var to = change(pair, from);
                 MixTransition? stored = MixData.TryGet(slot, pair.ItemA, out var t) ? t : null;
                 byte[] template = MixData.Signals(slot) is { } sg ? sg.TransitionTemplate(pair.ItemA).ToArray() : [];
-                MixEdit.Build(in pair, slot, style, beats, out var edit, out byte[] replaced);
+                MixEdit.Build(in pair, slot, in from, in to, out var edit, out byte[] replaced);
                 var baseline = MixEdit.AutoBaseline(in pair);
                 int sent = Entities.FakeMixServer.Log().Length;
                 var state = MixSaveState.Failed;
-                Pump(label, fin => MixEdit.Save(in pair, slot, style, beats, s => { state = s; fin(); }));
+                Pump(label, fin => MixEdit.Save(in pair, slot, in from, in to, s => { state = s; fin(); }));
                 var request = LastPost(sent);
                 MixData.TryGet(slot, pair.ItemA, out var after);
                 string etag = Entities.Strings.Resolve(p.MixLensEtagId);
+                // The editor opened again on the pair: the draft it reads back from what was stored.
+                var reopened = MixEdit.DraftOf(MixEdit.Read(slot, index), slot);
                 steps.Add(w =>
                 {
                     w.WriteStartObject();
@@ -157,6 +169,9 @@ public static partial class Diagnostics
                     w.WriteNumber("to", index + 1);
                     w.WriteString("state", state.ToString());
                     w.WriteString("edit", edit.ToString());
+                    w.WriteString("draft", DraftText(in to));
+                    w.WriteString("reopened", DraftText(in reopened));
+                    w.WriteBoolean("reopenedEqualsDraft", DraftText(in reopened) == DraftText(in to));
                     if (request is not null) WriteSaveCheck(w, request.Body, template, edit, replaced, stored, baseline);
                     w.WriteString("after", "stored=" + (after is not null) + " storedEqualsSent=" + (after is not null && request is not null
                         && SentRecipe(request.Body) is { } sentB64 && sentB64 == after.Base64) + " transitionUri=" + (after?.TransitionUri ?? "")
@@ -203,6 +218,14 @@ public static partial class Diagnostics
                 return null;
             }
         }
+
+        /// <summary>An editor draft as one line (its curve overrides by lane and the volume bends), to compare a saved draft with the one read back.</summary>
+        static string DraftText(in MixDraft d)
+            => d.Mode + " preset=" + d.Preset + " out=" + d.OutStartMs + " in=" + d.InStartMs + " overlap=" + d.OverlapMs + " bars=" + d.Bars
+             + " beatmatched=" + d.Beatmatched + " pref=" + d.BeatmatchPreference + " styles=" + (d.Volume?.ToString() ?? "-") + "/" + (d.Eq?.ToString() ?? "-")
+             + "/" + (d.Filter?.ToString() ?? "-") + "/" + (d.Fx?.ToString() ?? "-") + "/" + (d.Looping?.ToString() ?? "-")
+             + " curves=" + (d.Curves is { IsEmpty: false } c ? c.ToString() : "-")
+             + " bend=" + MixEdit.BendOf(in d, false).ToString("0.00", CultureInfo.InvariantCulture) + "/" + MixEdit.BendOf(in d, true).ToString("0.00", CultureInfo.InvariantCulture);
 
         /// <summary>A signals body's signal (f2) and its payload (f2.3), when it has one.</summary>
         static (byte[] Signal, byte[] Payload, bool HasPayload) SignalOf(ReadOnlySpan<byte> body)

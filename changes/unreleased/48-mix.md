@@ -17,3 +17,13 @@ after the transition, and the speed is shown to your other devices as it changes
 file, a song you queued, an episode or a video still gets your normal Crossfade or gapless join. Not yet: Spotify's own
 beatmatched Auto (Auto treats every pair as unmatched). The curves are Spotify's, the sound is Wavee's own mixer, so a
 transition sounds close to, not identical with, the official app.
+
+**Edit a transition the way Spotify does.** Open a pair from its seam, the Transitions list or the Mix menu and the
+transition editor opens under the list, in each theme's own look: every preset by Spotify's name (Auto, Fade, Rise,
+Blend, Wave, Melt, Slam, Dissolve, Surge, Afterglow, No transition, and under More the thirteen Spotify uses for Auto),
+both songs' waveforms around the join with their beats and the volume curves, where you drag the outgoing song to move
+the mix-out point, the incoming song to move where it comes in, the end of the overlap to lengthen it, and a curve's
+handle to bend it, every point snapping to the beat. The length steps by beats, or by bars when the pair is
+beatmatched. Customize picks the volume, EQ, filter, effects and looping style, and turns Beatmatching on or off.
+Undo, Redo, Cancel and Reset to Auto are there; Save writes the transition to Spotify on a playlist you can edit (on
+this PC otherwise), and a curve you drew in Wavee or in Spotify now plays as drawn.

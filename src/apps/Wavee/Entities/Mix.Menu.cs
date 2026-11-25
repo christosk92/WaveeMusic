@@ -1,7 +1,7 @@
 // ── Entities/Mix.Menu.cs — #48 Mix, the row menu's "Don't mix into the next song" (plan §4: the smallest complete cut) ────
 //
 // One toggle in a track row's menu, inside a playlist Spotify has mixed: the pair (this row → the row after it in the
-// playlist's order) plays as a plain track change. Where it is saved is the seam card's rule (Mix.Card.cs): on a list the user
+// playlist's order) plays as a plain track change. Where it is saved is the transition editor's rule (Mix.Editor.cs): on a list the user
 // may write, Spotify's "No transition" (`set-transition` with the "none" recipe; running it again resets the pair to Auto);
 // elsewhere the local NoMix record on this PC (running it again removes the record, so Spotify's version plays again). The
 // planner honours both (Playback.Mix.cs), and the Transitions view and the seams draw the pair as a break. Checked while the
@@ -151,9 +151,9 @@ public static class MixMenu
     public static bool IsOptedOut(in ActionContext c)
         => TryPair(in c, out var uri, out var from, out var to)
            && (MixOverrides.TryGet(uri, from, to, out var o) && o.Kind == MixOverrideKind.NoMix
-               || PairOf(in c) is { Valid: true } pair && MixEdit.StyleOf(in pair) == (int)MixStyle.NoMix);
+               || PairOf(in c) is { Valid: true } pair && MixEdit.IsNoTransition(in pair));
 
-    /// <summary>The seam card's model of this row's pair.</summary>
+    /// <summary>The editor's model of this row's pair.</summary>
     static MixEdit.Pair PairOf(in ActionContext c)
     {
         var host = c.Target.Host;
@@ -183,10 +183,11 @@ public static class MixMenu
                 var pair = PairOf(in c);
                 if (pair is { Valid: true, Writes: true })
                 {
-                    // A list the user may write: Spotify's "No transition", or back to Auto (the seam card's writes).
+                    // A list the user may write: Spotify's "No transition", or back to Auto (the editor's writes).
                     int slot = Entities.Playlist(c.Target.Host.Playlist).Slot;
-                    if (MixEdit.StyleOf(in pair) == (int)MixStyle.NoMix) MixEdit.Reset(in pair, slot);
-                    else MixEdit.Save(in pair, slot, (int)MixStyle.NoMix, 0);
+                    if (MixEdit.IsNoTransition(in pair)) { MixEdit.Reset(in pair, slot); return; }
+                    var opened = MixEdit.DraftOf(in pair, slot);
+                    MixEdit.Save(in pair, slot, in opened, opened with { Mode = MixDraftMode.None });
                     return;
                 }
                 if (MixOverrides.TryGet(uri, from, to, out var o) && o.Kind == MixOverrideKind.NoMix)

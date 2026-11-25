@@ -5,7 +5,7 @@
 // This PC · No mix). It opens in the list bar's eased slot under the bar (the one Tune uses: a playlist the user can mix has no
 // Tune), from the Mix menu or a seam's click, and shuts the same way: the rows below slide, nothing jumps. Virtualized
 // (ItemsView.CreateBound over a fixed row extent), so a long playlist costs only the rows on screen. Clicking a row (or opening
-// from a seam) shows that pair's seam card under the list (Entities/Mix.Card.cs, phase 7).
+// from a seam) opens that pair's transition editor under the list (Entities/Mix.Editor.Host.cs, M6).
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -21,8 +21,9 @@ namespace Wavee;
 internal sealed class MixTransitionsSession
 {
     readonly Signal<bool> _open = new(false);
+    /// <summary>The pair whose editor is open (−1: none). The session owns it, so a seam's click on an open list opens that pair's editor too.</summary>
+    readonly Signal<int> _selected = new(-1);
     Playlist _p;
-    int _focus = -1;
 
     /// <summary>The list while open, else null. A tracked read (the slot follows it).</summary>
     public readonly Func<Element?> Strip;
@@ -33,9 +34,9 @@ internal sealed class MixTransitionsSession
 
     public MixTransitionsSession()
     {
-        Strip = () => _open.Value && _p.IsValid ? Embed.Comp(() => new MixTransitionsPanel(_p, _focus, () => _open.Value = false)) with { Key = "mix:transitions" } : null;
-        Open = i => { _focus = i; _open.Value = true; };
-        Toggle = () => _open.Value = !_open.Peek();
+        Strip = () => _open.Value && _p.IsValid ? Embed.Comp(() => new MixTransitionsPanel(_p, _selected, () => _open.Value = false)) with { Key = "mix:transitions" } : null;
+        Open = i => { _selected.Value = i; _open.Value = true; };
+        Toggle = () => { if (!_open.Peek()) _selected.Value = -1; _open.Value = !_open.Peek(); };
     }
 
     /// <summary>The page shows <paramref name="p"/> now: another playlist starts shut. Called from an effect, never a render.</summary>
@@ -43,18 +44,17 @@ internal sealed class MixTransitionsSession
     {
         if (p.Slot == _p.Slot) return;
         _p = p;
-        _focus = -1;
+        _selected.Value = -1;
         _open.Value = false;
     }
 }
 
-internal sealed class MixTransitionsPanel(Playlist playlist, int focus, Action close) : Component
+internal sealed class MixTransitionsPanel(Playlist playlist, Signal<int> selected, Action close) : Component
 {
     readonly Playlist _p = playlist;
-    readonly int _focus = focus;
+    readonly Signal<int> _selected = selected;
     readonly Action _close = close;
     Func<RowScope, Element>? _row;
-    Signal<int>? _selected;
     Action<int>? _select;
 
     /// <summary>How many rows the panel shows before it scrolls.</summary>
@@ -67,24 +67,24 @@ internal sealed class MixTransitionsPanel(Playlist playlist, int focus, Action c
             _ = Entities.Current.Edges.PlaylistTracks.Changed.Value;
             return Math.Max(0, Entities.Current.Edges.PlaylistTracks.Targets(_p.Slot).Length - 1);
         }).Value;
-        float rowH = Ui.Body("").LineHeight + Spacing.L;
-        // The pair whose seam card is open (−1: none). A seam's click opens the panel on its pair, card included.
-        var selected = UseSignal(_focus);
-        _selected = selected;
-        _select ??= i => _selected!.Value = _selected.Peek() == i ? -1 : i;
-        _row ??= scope => Embed.Comp(() => new MixTransitionRow(_p, scope, _selected!, _select));
-        int open = selected.Value;
-        // The card is THE disclosure motion (Design.Reveal.Drawer): it mounts to open and unmounts to close, its layout lands once and the
-        // presented height springs, so the rows below ride it instead of taking one long first step. The host stays while the card moves
-        // between pairs (the inner card is keyed by its pair, so a new pair starts a fresh draft and the host only resizes).
-        Element? card = open >= 0 && open < count
+        // A row is the touch target at Compact (40), its line plus air elsewhere.
+        var facts = global::Wavee.Theming.TierContext.DrawnIn(UseContext(global::Wavee.Theming.ThemeFactsContext.Signal));
+        float rowH = MathF.Max(Ui.Body("").LineHeight + Spacing.L, global::Wavee.Theming.TouchTargetPolicy.FloorFor(facts.Value.Tiers.Window));
+        // The pair whose editor is open (−1: none). A seam's click opens the panel on its pair, editor included.
+        _select ??= i => _selected.Value = _selected.Peek() == i ? -1 : i;
+        _row ??= scope => Embed.Comp(() => new MixTransitionRow(_p, scope, _selected, _select));
+        int open = _selected.Value;
+        // The editor is THE disclosure motion (Design.Reveal.Drawer): it mounts to open and unmounts to close, its layout lands once and the
+        // presented height springs, so the rows below ride it instead of taking one long first step. The host stays while the editor moves
+        // between pairs (the editor is keyed by its pair, so a new pair starts a fresh draft and the host only resizes).
+        Element? editor = open >= 0 && open < count
             ? new BoxEl
             {
-                Key = "mix:card:host", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = Design.Reveal.Drawer,
+                Key = "mix:editor:host", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = Design.Reveal.Drawer,
                 Children =
                 [
-                    Embed.Comp(() => new MixSeamCard(_p.Slot, open, count, i => { if (i >= 0 && i < count) _selected!.Value = i; }, () => _selected!.Value = -1))
-                        with { Key = "mix:card:" + open.ToString(CultureInfo.InvariantCulture) },
+                    Embed.Comp(() => new MixEditorHost(_p.Slot, open, count, i => { if (i >= 0 && i < count) _selected.Value = i; }, () => _selected.Value = -1))
+                        with { Key = "mix:editor:" + open.ToString(CultureInfo.InvariantCulture) },
                 ],
             }
             : null;
@@ -106,7 +106,7 @@ internal sealed class MixTransitionsPanel(Playlist playlist, int focus, Action c
         {
             Key = "mix:transitions:panel", Direction = 1, MinWidth = 0f, Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S),
             Fill = Tok.FillCardDefault, Corners = Radii.ControlAll, BorderColor = Tok.StrokeDividerDefault, BorderWidth = 1f,
-            Children = card is null ? [header, list] : [header, list, card],
+            Children = editor is null ? [header, list] : [header, list, editor],
         };
     }
 }

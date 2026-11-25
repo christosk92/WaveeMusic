@@ -143,6 +143,8 @@ public static partial class Diagnostics
                         else w.WriteString("lastEndCandidateMs", "none");
                     }
                     else w.WriteString("cues", Entities.Current.Edges.TrackCues.State(targets[i]).ToString());
+                    // The waveform the editor's lanes draw (kind 237 samples; 0 = none yet).
+                    w.WriteNumber("waveSamples", Entities.Current.Edges.TrackWaveform.Payload(targets[i]).Length);
                     if (MixData.TryGet(slot, MixRecipe.Hex64(item), out var tr)) { var rec = tr.Recipe; WriteRecipe(w, "recipe", in rec, tr.TransitionUri); }
                     w.WriteEndObject();
                 }

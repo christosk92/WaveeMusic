@@ -2,7 +2,7 @@
 //
 // What this PC holds for one pair that Spotify does not: an edit on a playlist the user cannot write ("No mix" (D16), a
 // style or an overlap, "Reset to auto" over a Spotify recipe), and — since M2 — an owner's edit Spotify has not taken yet
-// (offline, or the save was refused): a PENDING record, which plays here until the user's Retry saves it (the seam card
+// (offline, or the save was refused): a PENDING record, which plays here until the user's Retry saves it (the editor
 // says so and offers Retry). One record per (playlist, from item, to item). The planner consults it FIRST
 // (Playback.MixPlanner). A record that is not pending says "Saved on this PC only" wherever it shows.
 //

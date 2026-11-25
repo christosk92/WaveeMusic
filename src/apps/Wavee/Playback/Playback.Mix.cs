@@ -352,8 +352,6 @@ public static partial class Playback
         /// 2510 ms of A, B's fade-in 2510 ms. The pair re-plans when the analysis lands (the follow key holds the cue versions).</summary>
         public const uint FallbackWindowMs = 2_510;
         public const uint MinTrackMs = 30_000;
-        /// <summary>The local card's longest overlap and its Quick length (Mix.Card.cs, until the editor phase replaces the card).</summary>
-        public const uint MaxOverlapMs = 16_000, ShortTargetMs = 2_500;
 
         /// <summary>The plan of the join from A to B. A saved recipe wins; otherwise Spotify's Auto. Spans are the tracks' kind-217
         /// grids in <see cref="BeatGrid"/> packing (may be empty), for <see cref="AutoBeatmatched"/>.</summary>

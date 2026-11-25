@@ -1522,5 +1522,121 @@
     "insideMusicFolder": "{name} staat al in een muziekmap",
     "holdsMusicFolder": "{name} bevat een muziekmap: verwijder die eerst",
     "notAFolder": "{name} is geen map die Wavee kan openen"
+  },
+  "mix": {
+    "auto": "Automatisch",
+    "overlap": "Overlap",
+    "resetToAuto": "Terugzetten naar automatisch",
+    "autoChose": "Automatisch koos {style}",
+    "editor": {
+      "noTransition": "Geen overgang",
+      "custom": "Aangepast",
+      "more": "Meer",
+      "mixOut": "Uitmixen {time}",
+      "in": "In {time}",
+      "lengthBars": "{seconds} s · {bars} maten",
+      "customize": "Aanpassen",
+      "volume": "Volume",
+      "eq": "EQ",
+      "filter": "Filter",
+      "effects": "Effecten",
+      "looping": "Loops",
+      "beatmatching": "Beatmatching",
+      "beatmatchUnavailable": "Beatmatching niet beschikbaar",
+      "clearCustom": "De eigen stijlen van de preset gebruiken",
+      "undo": "Ongedaan maken",
+      "redo": "Opnieuw",
+      "hearIt": "Beluisteren",
+      "stop": "Stoppen",
+      "save": "Opslaan",
+      "cancel": "Annuleren",
+      "previous": "Vorige overgang",
+      "next": "Volgende overgang"
+    },
+    "sentence": {
+      "fade": "Een vloeiende crossfade; de bas wisselt halverwege.",
+      "rise": "Het volgende nummer komt op onder een filter op vol volume; de bas wisselt aan het eind.",
+      "blend": "Een fade over drie banden: de bas wisselt halverwege terwijl midden en hoog in elkaar overlopen.",
+      "wave": "Beide nummers overlappen onder een low-pass-sweep; de bas wisselt halverwege.",
+      "melt": "Het ene nummer fadet uit terwijl het andere infadet, onder een high-pass-sweep; de bas wisselt halverwege.",
+      "slam": "Een harde overgang halverwege.",
+      "dissolve": "Het nummer dunt uit in een echo terwijl het volgende infadet.",
+      "surge": "Het nummer vervaagt in galm terwijl het volgende infadet.",
+      "afterglow": "Een vloeiende crossfade met een galmstaart.",
+      "internal": "Een overgang die Spotify voor Auto gebruikt: {name}.",
+      "none": "Dit paar speelt als een gewone nummerwissel."
+    },
+    "internal": {
+      "bassSwapFilterOut": "Baswissel, filter uit",
+      "bassSwapEcho": "Baswissel met echo",
+      "bassAndMidSwap": "Bas- en middenwissel",
+      "filterFadeOut": "Filter-uitfade",
+      "filterFadeIn": "Filter-infade",
+      "filterFadeInOut": "Filter-in- en uitfade",
+      "reverbCut": "Galm-overgang",
+      "riserCut": "Riser-overgang",
+      "reverbRiserCut": "Galm-riser-overgang",
+      "echoCut": "Echo-overgang",
+      "bassSwapAtEnd": "Baswissel aan het eind",
+      "bassSwapLowPassFilterOut": "Baswissel, low-pass uit",
+      "lowPassFilterFadeInOut": "Low-pass-in- en uitfade"
+    },
+    "style": {
+      "none": "Geen",
+      "id": "Stijl {id}"
+    },
+    "volume": {
+      "crossShape": "Vloeiende crossfade",
+      "fullOverlap": "Overlap",
+      "slowInSlowOut": "Infaden, uitfaden",
+      "fastInAtStartSlowOut": "Inknippen, uitfaden",
+      "slowInFastOutAtEnd": "Infaden, uitknippen",
+      "cut": "Knip in het midden",
+      "crossfade": "Crossfade",
+      "slowInSemiFastOutAtEnd": "Infaden, snel uit"
+    },
+    "eq": {
+      "bassSwap": "Baswissel in het midden",
+      "bassSwapAtEnd": "Baswissel aan het eind",
+      "bassSwapAtStart": "Baswissel aan het begin",
+      "eqSwap": "Fade over 3 banden",
+      "bassCuts": "Snelle bascut",
+      "noBass": "Lange bascut",
+      "startFadeOut": "Uitfade aan het begin",
+      "bassFadeOut": "Bas uitfaden"
+    },
+    "filter": {
+      "lowPassOut": "Low-pass uit",
+      "lowPassIn": "Low-pass in",
+      "lowPassInOut": "Low-pass in en uit",
+      "lowPassInHighPassOut": "Low-pass in, high-pass uit",
+      "highPassOut": "High-pass uit",
+      "highPassIn": "High-pass in",
+      "highPassInOut": "High-pass in en uit",
+      "highPassInLowPassOut": "High-pass in, low-pass uit",
+      "highPassHalfOut": "Halve high-pass uit",
+      "noiseOutEnd": "Ruis aan het eind"
+    },
+    "fx": {
+      "reverbOutCentre": "Galm uit vanaf het midden",
+      "reverbCutEnd": "Galm, afgekapt aan het eind",
+      "reverbOutEnd": "Galm uit aan het eind",
+      "echoHalfCutEnd": "Echo van ½ tel, afgekapt aan het eind",
+      "echoHalfOutEnd": "Echo van ½ tel uit aan het eind",
+      "echo3QCutEnd": "Echo van ¾ tel, afgekapt aan het eind",
+      "echo3QOutEnd": "Echo van ¾ tel uit aan het eind",
+      "echo1CutEnd": "Echo van 1 tel, afgekapt aan het eind",
+      "echo1OutEnd": "Echo van 1 tel uit aan het eind",
+      "delayHalfCutEnd": "Delay van ½ tel, afgekapt aan het eind",
+      "delay3QCutEnd": "Delay van ¾ tel, afgekapt aan het eind"
+    },
+    "loop": {
+      "oneBeat": "Loop van 1 tel",
+      "twoBeat": "Loop van 2 tellen",
+      "fourBeat": "Loop van 4 tellen",
+      "eightBeat": "Loop van 8 tellen",
+      "sixteenBeat": "Loop van 16 tellen",
+      "halvingEnd": "Halverende loop"
+    }
   }
 }

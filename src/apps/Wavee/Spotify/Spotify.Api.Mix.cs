@@ -17,7 +17,7 @@
 //   Reset to Auto     set-transition (*)   none                             mix,auto, CA8QAQ== [client]
 //
 //   (*) signal f1-f2 = the from-item's attribute 14, verbatim. Which previous a save sends is the one open switch
-//       (Mixes.PreviousFor); the new recipe is the patching encoder's output over the recipe it replaces (Mix.Card.cs).
+//       (Mixes.PreviousFor); the new recipe is the patching encoder's output over the recipe it replaces (Mix.Editor.cs).
 //
 // Which route each write takes is ONE table (Mixes.RouteOf). Signals neither move the revision nor cause a push (protocol
 // §3.4): the reply is the whole list read through the requested lenses, folded as a list read (the Tune path), and it is

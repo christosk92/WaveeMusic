@@ -118,6 +118,14 @@ public sealed class MixCurveOverrides
             }
     }
 
+    /// <summary>The Preset fields this set holds an override in (bit n = field n), as <see cref="MixRecipe.CurveOverrides"/> spells them.</summary>
+    public uint FieldBits()
+    {
+        uint bits = 0;
+        foreach (int f in (int[])[6, 7, 8, 9, 10, 11, 13, 14]) if (HasField(f)) bits |= 1u << f;
+        return bits;
+    }
+
     /// <summary>Does this set hold any override in Preset field <paramref name="field"/>?</summary>
     public bool HasField(int field)
     {

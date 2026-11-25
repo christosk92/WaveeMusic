@@ -401,6 +401,23 @@ public static partial class Entities
             var edges = Current.Edges;
             edges.TrackBeats.Replace(trackSlot, new int[count], beats, EdgeState.Complete, count);
             MixData.SetBeatsId(trackSlot, FakeBeatsId(k));
+            // A kind-237 envelope when the row has none (the editor's waveform lanes): made up, a ramp in, sections that swell on the bar and
+            // a fade out, so the lanes and their beat ticks read as a song.
+            if (edges.TrackWaveform.Payload(trackSlot).IsEmpty && dur > 0)
+            {
+                int samples = (int)Math.Clamp(dur / WaveformBands.NominalHopMs, 64, WaveformBands.MaxSamples);
+                var wave = new WaveSample[samples];
+                for (int i = 0; i < samples; i++)
+                {
+                    double ms = (double)i * dur / samples;
+                    double edge = Math.Min(1.0, Math.Min(ms / 12_000.0, (dur - ms) / 9_000.0));
+                    double section = 0.55 + 0.35 * Math.Abs(Math.Sin((ms / 30_000.0 + k * 0.37) * Math.PI));
+                    double pulse = 0.82 + 0.18 * Math.Cos((ms - 180) / period * 2 * Math.PI);
+                    byte low = (byte)Math.Clamp(255 * edge * section * pulse, 8, 255);
+                    wave[i] = new WaveSample(low, (byte)(low * 0.7), (byte)(low * 0.45));
+                }
+                edges.TrackWaveform.Replace(trackSlot, new int[samples], wave, EdgeState.Complete, samples);
+            }
             uint start = k % 3 == 1 ? (uint)(180 + 4 * period + 0.5) : 0u;
             uint end = (uint)Math.Max(0, dur - 16_000);
             var (firstStart, endGap) = s_mixCandidates[k % s_mixCandidates.Length];
