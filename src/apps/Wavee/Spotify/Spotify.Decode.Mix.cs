@@ -9,9 +9,11 @@
 //   170 auto lens    {1 "mix"} or empty
 //   235 mixability   {1 1}
 //   v2 read          list format attributes (mix, mix-type, automix.*, …), f22 applied lenses {1 name, 2 etag},
-//                    item attribute 11 automix.auto_transition_recipe / automix.transition_uri on the OUTGOING item
+//                    item attribute 11 automix.auto_transition_recipe / automix.transition_uri on the OUTGOING item,
+//                    item attribute 11 not-mixable.reason, item attribute 14 the set-transition signal template,
+//                    contents.5[] {1 "mix-state", 2 {1 "mix"}} the list's mix-state signal template (lens reads only)
 //
-// The item flags (attribute 14 = editable transition, not-mixable) are read where the item edge is staged
+// The item flags (attribute 14 present = editable transition, not-mixable) are read where the item edge is staged
 // (Spotify.Decode.cs, ItemAttributes). Never throws, never allocates beyond the staging arena.
 
 namespace Wavee;
@@ -130,8 +132,9 @@ public static partial class Spotify
         }
 
         /// <summary>The list half of a v2 read (beside <see cref="PlaylistFormatAttributes"/>): the Mix format attributes,
-        /// f22's mix lens etag, and — when the answer was read THROUGH the mix lens — the stored recipes of its items,
-        /// as one staged run (a first page replaces the playlist's set; a later page of a truncated list adds to it).
+        /// f22's mix lens etag, and — when the answer was read THROUGH the mix lens — the stored recipes, signal templates and
+        /// not-mixable reasons of its items and the list's mix-state template, as one staged run (a first page replaces the
+        /// playlist's set; a later page of a truncated list adds to it).
         /// A diff answer with no attributes says nothing about the list attributes and stages none of them.</summary>
         static void MixList(ReadOnlySpan<byte> attributes, ReadOnlySpan<byte> lenses22Owner, ReadOnlySpan<byte> contents,
                             bool sawContents, in StagedId id, Staging s)
@@ -179,16 +182,26 @@ public static partial class Spotify
             row.MixFlags |= flags;
             if (lensApplied) row.MixLensEtag = s.AddText(mixEtag);
 
-            // The recipes: only a lens read carries them, and only an answer with contents speaks for the items.
+            // The recipes and the signal templates: only a lens read carries them, and only an answer with contents speaks for
+            // the items. Per item (contents.3[].2 attributes): 11 {key, value} pairs (the recipe, its transition uri,
+            // not-mixable.reason), 12 the item id, 14 the set-transition template; on the list, contents.5[] its signals, of
+            // which the lens adds {1 "mix-state", 2 {1 "mix"}}.
             if (!lensApplied || !sawContents) return;
             var recipes = s.MixRecipes;
             int first = recipes.Count;
             int pos = 0;
+            ReadOnlySpan<byte> mixState = default;
             for (var c = new ProtoReader(contents); c.Next();)
             {
                 if (c.Field == 1 && c.Wire == 0) { pos = c.Int32(); continue; }
+                if (c.Field == 5 && c.Wire == 2)
+                {
+                    var signal = c.Bytes();
+                    if (Is(new ProtoReader(signal).Bytes(1), "mix-state")) mixState = signal;
+                    continue;
+                }
                 if (c.Field != 3 || c.Wire != 2) { c.Skip(); continue; }
-                ReadOnlySpan<byte> itemId = default, recipe = default, uri = default;
+                ReadOnlySpan<byte> itemId = default, recipe = default, uri = default, template = default, reason = default;
                 for (var item = c.Message(); item.Next();)
                 {
                     if (item.Field != 2 || item.Wire != 2) { item.Skip(); continue; }
@@ -200,25 +213,36 @@ public static partial class Spotify
                             a.Message().Fields(1, 2, out var key, out var value);
                             if (Is(key, "automix.auto_transition_recipe")) recipe = value;
                             else if (Is(key, "automix.transition_uri")) uri = value;
+                            else if (Is(key, "not-mixable.reason")) reason = value;
+                        }
+                        else if (a.Field == 14 && a.Wire == 2)
+                        {
+                            var signal = a.Bytes();
+                            if (Is(new ProtoReader(signal).Bytes(1), "set-transition")) template = signal;
                         }
                         else a.Skip();
                     }
                 }
-                if (recipe.IsEmpty || itemId.IsEmpty) continue;
+                if (itemId.IsEmpty || (recipe.IsEmpty && template.IsEmpty && reason.IsEmpty)) continue;
                 ref var staged = ref recipes.Add();
                 staged.Playlist = id;
                 staged.ItemId = Hex(s, itemId);
                 staged.Recipe = s.AddText(recipe);
                 staged.TransitionUri = s.AddText(uri);
+                staged.Template = s.AddText(template);
+                staged.NotMixableReason = s.AddText(reason);
             }
             if (recipes.Count > first)
             {
-                if (pos > 0) recipes.Span[first].Merge = true;
+                ref var head = ref recipes.Span[first];
+                head.ListTemplate = s.AddText(mixState);
+                if (pos > 0) head.Merge = true;
                 return;
             }
-            if (pos > 0) return;                                     // a later page with no recipes changes nothing
+            if (pos > 0) return;                                     // a later page with no item of the mix changes nothing
             ref var none = ref recipes.Add();                        // a first page with none: "this list has no edits"
             none.Playlist = id;
+            none.ListTemplate = s.AddText(mixState);
 
             static bool LensEntry(ReadOnlySpan<byte> entry, out ReadOnlySpan<byte> name, out ReadOnlySpan<byte> etag)
             {

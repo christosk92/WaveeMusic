@@ -93,6 +93,128 @@ public static partial class Entities
             none.IsPresetIdOverride = true;
             Store(stored, in none, MixRecipe.EncodeToArray(in none, default), 5);
             MixData.Replace(p.Slot, stored);
+
+            // The signal templates a lens read carries: attribute 14 on every mixable row, the list's mix-state entry, and the
+            // local file's not-mixable reason.
+            var signals = new MixSignals();
+            Span<byte> template = stackalloc byte[256];
+            for (int k = 0; k < n; k++)
+                signals.SetTransitionTemplate(FakeItemId(k), template[..SetTransitionTemplate(TrackUri(s_mixPool[k]), FakeItemId(k), template)]);
+            signals.SetNotMixableReason(FakeItemId(n), "entity-kind");
+            var w = new Spotify.Decode.ProtoWriter(template);
+            w.Utf8Always(1, "mix-state"u8);
+            int args = w.Open(2);
+            w.Utf8Always(1, "mix"u8);
+            w.Close(args);
+            signals.MixState = template[..w.Length].ToArray();
+            MixData.ReplaceSignals(p.Slot, signals);
+        }
+
+        public const string MixWireUri = "spotify:playlist:plmixwire";
+
+        /// <summary>`mix decode` (--fake): a made-up playlist read through the mix lens, run through the REAL decoder and commit
+        /// (Api.PlaylistAnswer → Decode.MixList → CommitMix), so the dump of <see cref="MixWireUri"/> shows what the wire path keeps:
+        /// three rows (an edited pair 0 → 1 with its recipe, a mixable row, a local file with not-mixable + not-mixable.reason),
+        /// attribute 14 on the two mixable rows, and contents.5 holding a made-up signal and the mix-state template.</summary>
+        internal static void LandMixWire()
+        {
+            if (Current is null) return;
+            var body = MixWireBody();
+            var s = Staging.Rent();
+            try
+            {
+                Spotify.Api.PlaylistAnswer(body, MixWireUri, s);
+                Commit(s);
+            }
+            finally { Staging.Return(s); }
+        }
+
+        static byte[] MixWireBody()
+        {
+            ReadOnlySpan<ulong> ids = [0x0BAD_C0DE_0000_0001UL, 0x0BAD_C0DE_0000_0002UL, 0x0BAD_C0DE_0000_0003UL];
+            string[] uris = [TrackUri(s_mixPool[0]), TrackUri(s_mixPool[1]), LocalTrackUri(0)];
+            var recipe = new MixRecipe
+            {
+                FromItemId = ids[0], ToItemId = ids[1], OutStartMs = 200_000, OverlapMs = 2_890, Preset = (byte)MixPreset.Rise,
+                PresetType = MixPresetType.Fade, TrackA = uris[0], TrackB = uris[1], PlayableA = uris[0], PlayableB = uris[1],
+                SpeedA = 1f, SpeedB = 1f, ItemSpeedA = 1.0, ItemSpeedB = 1.0, IsOverlapOverride = true, IsPresetIdOverride = true,
+            };
+            string b64 = Convert.ToBase64String(MixRecipe.EncodeToArray(in recipe, default));
+            var buffer = new byte[4096];
+            var w = new Spotify.Decode.ProtoWriter(buffer);
+            Span<byte> revision = stackalloc byte[24];
+            revision[3] = 7;                                    // revision 7, an all-zero hash
+            w.Utf8Always(1, revision);
+            w.UAlways(2, 3);                                    // length
+            int attributes = w.Open(3);
+            w.Str(1, "Wire Mix");
+            w.Entry(12, "mix", "true");
+            w.Entry(12, "mix-type", "allow-custom");
+            w.Entry(12, "can-view-transition", "true");
+            w.Close(attributes);
+            int contents = w.Open(5);
+            Span<byte> id = stackalloc byte[8];
+            Span<byte> template = stackalloc byte[256];
+            for (int i = 0; i < 3; i++)
+            {
+                int item = w.Open(3);
+                w.StrAlways(1, uris[i]);
+                int attrs = w.Open(2);
+                if (i < 2) w.Raw(template[..AttributeTemplate(uris[i], ids[i], template)]);
+                if (i == 0)
+                {
+                    w.Entry(11, "automix.auto_transition_recipe", b64);
+                    w.Entry(11, "automix.transition_uri", "spotify:transition:fakeWireTransition0000:1795386355891");
+                }
+                if (i == 2)
+                {
+                    w.Entry(11, "not-mixable", "true");
+                    w.Entry(11, "not-mixable.reason", "entity-kind");
+                }
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(id, ids[i]);
+                w.Utf8Always(12, id);
+                w.Close(attrs);
+                w.Close(item);
+            }
+            int other = w.Open(5);                              // a list signal that is not Mix's
+            w.Utf8Always(1, "made-up-signal"u8);
+            int otherArgs = w.Open(2); w.Utf8Always(1, "made-up-lens"u8); w.Close(otherArgs);
+            w.Close(other);
+            int mixState = w.Open(5);
+            w.Utf8Always(1, "mix-state"u8);
+            int mixArgs = w.Open(2); w.Utf8Always(1, "mix"u8); w.Close(mixArgs);
+            w.Close(mixState);
+            w.Close(contents);
+            int lens = w.Open(22);                              // the applied mix lens and its etag
+            w.Utf8Always(1, "mix"u8);
+            w.Utf8Always(2, "0badc0de"u8);
+            w.Close(lens);
+            return buffer.AsSpan(0, w.Length).ToArray();
+
+            // Item attribute 14 as a whole field (tag included), the way the item's attribute message carries it.
+            static int AttributeTemplate(string uri, ulong itemId, Span<byte> into)
+            {
+                Span<byte> value = stackalloc byte[200];
+                int n = SetTransitionTemplate(uri, itemId, value);
+                var w = new Spotify.Decode.ProtoWriter(into);
+                w.Utf8Always(14, value[..n]);
+                return w.Length;
+            }
+        }
+
+        /// <summary>Item attribute 14 as a lens read carries it: <c>{1 "set-transition", 2 {1 "mix", 2 uri, 3 item id (8 bytes)}}</c>.</summary>
+        static int SetTransitionTemplate(string uri, ulong itemId, Span<byte> into)
+        {
+            var w = new Spotify.Decode.ProtoWriter(into);
+            w.Utf8Always(1, "set-transition"u8);
+            int args = w.Open(2);
+            w.Utf8Always(1, "mix"u8);
+            w.StrAlways(2, uri);
+            Span<byte> id = stackalloc byte[8];
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(id, itemId);
+            w.Utf8Always(3, id);
+            w.Close(args);
+            return w.Length;
         }
 
         static void Store(Dictionary<ulong, MixTransition> into, in MixRecipe recipe, byte[] raw, int k)

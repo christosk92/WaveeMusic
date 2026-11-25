@@ -70,7 +70,9 @@ public static partial class Diagnostics
                     if (!same) w.WriteString("reencoded", Convert.ToBase64String(again));
                 });
             }
-            string uri = a.Str("uri", Entities.LibrarySeed.MixUri);
+            // A made-up lens read through the real decoder and commit (the inspector's world is --fake's), then dumped below.
+            if (show == "decode") Entities.LibrarySeed.LandMixWire();
+            string uri = a.Str("uri", show == "decode" ? Entities.LibrarySeed.MixWireUri : Entities.LibrarySeed.MixUri);
             var eid = EntityId.Parse(uri.AsSpan());
             if (eid.Kind != EntityKind.Playlist || !Entities.Current.Playlists.TryGetSlot(eid, out int slot))
                 return Inspect.Reply.Fail(id, name, "no playlist row for '" + uri + "'");
@@ -87,6 +89,11 @@ public static partial class Diagnostics
                 w.WriteBoolean("readsWithLens", bare.Length > 0 && MixData.ReadsWithLens(bare));
                 w.WriteBoolean("listenWithout", MixListenWithout.Is(bare));
                 w.WriteNumber("storedTransitions", MixData.Count(slot));
+                // The signal templates the lens read carried (plan §2.1.2): what a mix-state or set-transition write echoes.
+                var signals = MixData.Signals(slot);
+                w.WriteString("mixStateSignal", signals?.MixState is { } ms ? DescribeSignal(ms) : "");
+                w.WriteNumber("signalTemplates", signals?.Count ?? 0);
+                w.WriteNumber("signalTemplateBytes", signals?.Bytes ?? 0);
                 var rows = Entities.Current.Edges.PlaylistTracks;
                 var targets = rows.Targets(slot);
                 var payload = rows.Payload(slot);
@@ -105,6 +112,13 @@ public static partial class Diagnostics
                     w.WriteNumber("camelot", t.IsValid ? t.Camelot : 0);
                     w.WriteBoolean("mixable", (e.Flags & PlaylistItemFlags.Mixable) != 0);
                     w.WriteBoolean("notMixable", (e.Flags & PlaylistItemFlags.NotMixable) != 0);
+                    ulong itemId = MixRecipe.Hex64(item);
+                    if (signals?.NotMixableReason(itemId) is { } why) w.WriteString("notMixableReason", why);
+                    if (signals is not null && signals.TransitionTemplate(itemId) is { IsEmpty: false } template)
+                    {
+                        w.WriteString("signal", DescribeSignal(template));
+                        w.WriteString("signalHex", Convert.ToHexString(template).ToLowerInvariant());
+                    }
                     var beats = Entities.Current.Edges.TrackBeats.Payload(targets[i]);
                     int downs = 0;
                     foreach (uint b in beats) if (BeatGrid.IsDownbeat(b)) downs++;
@@ -270,6 +284,32 @@ public static partial class Diagnostics
                 }
                 w.WriteEndArray();
             });
+        }
+
+        /// <summary>A signal template <c>{1 name, 2 {1 lens, 2 uri, 3 item id}}</c> as one line: <c>set-transition {mix, uri,
+        /// 5eed00000c800000}</c>; the args' text fields as text, a binary one in hex.</summary>
+        static string DescribeSignal(ReadOnlySpan<byte> signal)
+        {
+            var sb = new System.Text.StringBuilder();
+            for (var r = new Spotify.Decode.ProtoReader(signal); r.Next();)
+            {
+                if (r.Field == 1 && r.Wire == 2) { sb.Append(System.Text.Encoding.UTF8.GetString(r.Bytes())); continue; }
+                if (r.Field != 2 || r.Wire != 2) { r.Skip(); continue; }
+                sb.Append(" {");
+                bool firstArg = true;
+                for (var args = r.Message(); args.Next();)
+                {
+                    if (!firstArg) sb.Append(", ");
+                    firstArg = false;
+                    if (args.Wire != 2) { sb.Append(args.Field).Append(":?"); args.Skip(); continue; }
+                    var value = args.Bytes();
+                    bool text = true;
+                    foreach (byte b in value) if (b is < 0x20 or > 0x7E) { text = false; break; }
+                    sb.Append(text ? System.Text.Encoding.ASCII.GetString(value) : Convert.ToHexString(value).ToLowerInvariant());
+                }
+                sb.Append('}');
+            }
+            return sb.ToString();
         }
 
         /// <summary>Where two byte runs differ: the shared head and tail lengths and the differing middle of each, in hex.</summary>

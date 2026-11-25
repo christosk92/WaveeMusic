@@ -8,6 +8,7 @@
 //   SelectedListContent f22 (applied lenses, the mix lens etag)       ─▶ PlaylistTable.MixLensEtag + LensApplied
 //   extended metadata 225 / 170 / 235 (mix state, auto lens, trait)   ─▶ PlaylistTable.MixFlags (XM half)
 //   item attributes (f14 set-transition, not-mixable, the recipe)     ─▶ PlaylistTrackEdge.Flags + MixData.Transitions
+//   item f14 / f11 not-mixable.reason, contents.5 mix-state (lens)    ─▶ MixData.Signals (the templates a write echoes)
 //
 // The per-track analysis the planner reads (kind 217 beats, kind 28 cue points) lands in Edges.TrackBeats and
 // Edges.TrackCues (Edges.cs); kind 217's analysis id, which a recipe pins, in MixData.BeatsIds.
@@ -69,8 +70,9 @@ public static class PlaylistMixRules
 /// <summary>The playlist membership edge's WIRE flags (<see cref="PlaylistTrackEdge.Flags"/>) for Mix.</summary>
 public static class PlaylistItemFlags
 {
-    /// <summary>Item attribute 14 <c>{1 "set-transition", 2 {"mix", uri, item id}}</c>: this item's OUTGOING transition
-    /// is editable. Its args are all things Wavee already holds, so only the presence is kept.</summary>
+    /// <summary>Item attribute 14 <c>{1 "set-transition", 2 {"mix", uri, item id}}</c> is present: this item's OUTGOING transition
+    /// is editable. The attribute itself is the signal template a save echoes; a list read through the mix lens keeps its bytes
+    /// (<see cref="MixSignals"/>).</summary>
     public const byte Mixable = 1 << 0;
     /// <summary>Item attribute 11 <c>not-mixable=true</c> (reason <c>entity-kind</c> for a local file).</summary>
     public const byte NotMixable = 1 << 1;
@@ -84,15 +86,66 @@ public readonly record struct TrackCues(uint StartCueMs, uint EndCueMs, ushort T
 /// and the server-minted <c>spotify:transition:…</c> uri.</summary>
 public sealed record MixTransition(MixRecipe Recipe, byte[] Raw, string Base64, string TransitionUri);
 
-/// <summary>One staged recipe from a list read (<c>automix.auto_transition_recipe</c> on the item
-/// <see cref="ItemId"/>). A run per playlist; a row with an empty <see cref="ItemId"/> alone in its run = "this lens read
-/// carries no recipes".</summary>
+/// <summary>One item's Mix half of a list read through the mix lens: its stored recipe (<c>automix.auto_transition_recipe</c>,
+/// <c>automix.transition_uri</c>), its signal template (item attribute 14), its not-mixable reason (attribute 11
+/// <c>not-mixable.reason</c>); any may be empty. A run per playlist; a row with an empty <see cref="ItemId"/> alone in its run =
+/// "this lens read carries no item of the mix".</summary>
 public struct StagedMixRecipe
 {
     public StagedId Playlist;
-    public TextRef ItemId, Recipe, TransitionUri;
+    public TextRef ItemId, Recipe, TransitionUri, Template, NotMixableReason;
+    /// <summary>On the run's first row: the list's <c>contents.5</c> mix-state signal template.</summary>
+    public TextRef ListTemplate;
     /// <summary>Set on the first row of a run from a later page of a truncated list: ADD to the playlist's set.</summary>
     public bool Merge;
+}
+
+/// <summary>A mixed playlist's Spotify signal templates, as a list read through the mix lens gave them (plan §2.1.2), for the
+/// writes to echo VERBATIM, never rebuild: per mixable item its attribute 14 <c>{1 "set-transition", 2 {1 "mix", 2 uri, 3 item
+/// id}}</c> (a transition save sends its field 2 as the signal's args), the list's <c>contents.5</c> entry
+/// <c>{1 "mix-state", 2 {1 "mix"}}</c> (the mix-state signal, and the sign that Mix may be switched), and each not-mixable
+/// item's reason (<c>entity-kind</c> for a local file).
+/// <para>Memory: the item templates sit back to back in one arena, no array per item: a catalogue track's template is 71 bytes
+/// (an 8-byte item id, a 36-byte uri), plus its dictionary entry (24) and bucket (4), about 100 bytes per mixable item (a
+/// 10,000-row mixed list ≈ 1 MB). Kept only for lists read through the lens. UI thread.</para></summary>
+public sealed class MixSignals
+{
+    byte[] _arena = [];
+    int _used;
+    readonly Dictionary<ulong, (int Offset, int Length)> _items = new();
+    Dictionary<ulong, string>? _reasons;
+
+    /// <summary>The list's mix-state signal template (<c>contents.5</c>); null when the read carried none.</summary>
+    public byte[]? MixState { get; internal set; }
+    /// <summary>How many items hold a transition template.</summary>
+    public int Count => _items.Count;
+    /// <summary>The template bytes held (the arena's used part).</summary>
+    public int Bytes => _used;
+    public bool IsEmpty => _items.Count == 0 && MixState is null && _reasons is null;
+
+    /// <summary>The item's attribute 14 bytes (the <c>set-transition</c> template); empty when it has none.</summary>
+    public ReadOnlySpan<byte> TransitionTemplate(ulong itemId)
+        => _items.TryGetValue(itemId, out var at) ? _arena.AsSpan(at.Offset, at.Length) : default;
+
+    /// <summary>The item's <c>not-mixable.reason</c>; null when it has none.</summary>
+    public string? NotMixableReason(ulong itemId) => _reasons?.GetValueOrDefault(itemId);
+
+    /// <summary>Room for <paramref name="bytes"/> more template bytes: a new set is sized exactly, a later page doubles.</summary>
+    internal void Reserve(int bytes)
+    {
+        if (_used + bytes <= _arena.Length) return;
+        Array.Resize(ref _arena, Math.Max(_used + bytes, _arena.Length * 2));
+    }
+
+    internal void SetTransitionTemplate(ulong itemId, ReadOnlySpan<byte> template)
+    {
+        Reserve(template.Length);
+        template.CopyTo(_arena.AsSpan(_used));
+        _items[itemId] = (_used, template.Length);
+        _used += template.Length;
+    }
+
+    internal void SetNotMixableReason(ulong itemId, string reason) => (_reasons ??= new())[itemId] = reason;
 }
 
 public sealed partial class Staging
@@ -108,6 +161,7 @@ public sealed partial class Staging
 public static class MixData
 {
     static readonly Dictionary<int, Dictionary<ulong, MixTransition>> s_transitions = new();
+    static readonly Dictionary<int, MixSignals> s_signals = new();
     static readonly Dictionary<int, string> s_beatsIds = new();
     static readonly ConcurrentDictionary<string, byte> s_lens = new(StringComparer.Ordinal);
 
@@ -136,6 +190,17 @@ public static class MixData
         if (transitions is null || transitions.Count == 0) s_transitions.Remove(playlistSlot);
         else s_transitions[playlistSlot] = transitions;
         Version++;
+    }
+
+    /// <summary>The playlist's signal templates and not-mixable reasons from its last lens read; null when it held none.</summary>
+    public static MixSignals? Signals(int playlistSlot) => s_signals.GetValueOrDefault(playlistSlot);
+
+    /// <summary>Replace a playlist's signal set (a first page), or keep the one a later page added to. Does not bump
+    /// <see cref="Version"/>: nothing the planner reads changes.</summary>
+    public static void ReplaceSignals(int playlistSlot, MixSignals? signals)
+    {
+        if (signals is null || signals.IsEmpty) s_signals.Remove(playlistSlot);
+        else s_signals[playlistSlot] = signals;
     }
 
     /// <summary>Kind 217's analysis id (32 hex) for a track: the grid a recipe's times refer to.</summary>
@@ -186,13 +251,26 @@ public static partial class Entities
                 int slot = s.Slot(playlists, in rows[start].Playlist);
                 if (slot != Table.None)
                 {
+                    bool merge = rows[start].Merge;
                     Dictionary<ulong, MixTransition>? set = null;
-                    if (rows[start].Merge && MixData.Count(slot) > 0) set = new Dictionary<ulong, MixTransition>(MixData.Map(slot)!);
+                    if (merge && MixData.Count(slot) > 0) set = new Dictionary<ulong, MixTransition>(MixData.Map(slot)!);
+                    // The signal templates: a first page starts a new set sized to its templates, a later page adds to the playlist's own.
+                    var signals = (merge ? MixData.Signals(slot) : null) ?? new MixSignals();
+                    int templateBytes = 0;
+                    for (int i = start; i < end; i++) templateBytes += rows[i].Template.Length;
+                    signals.Reserve(templateBytes);
+                    var listTemplate = s.Utf8(rows[start].ListTemplate);
+                    if (!listTemplate.IsEmpty) signals.MixState = listTemplate.ToArray();
                     for (int i = start; i < end; i++)
                     {
                         ulong from = MixRecipe.Hex64(s.Utf8(rows[i].ItemId));
                         if (from == 0) continue;
+                        var template = s.Utf8(rows[i].Template);
+                        if (!template.IsEmpty) signals.SetTransitionTemplate(from, template);
+                        var reason = s.Utf8(rows[i].NotMixableReason);
+                        if (!reason.IsEmpty) signals.SetNotMixableReason(from, System.Text.Encoding.UTF8.GetString(reason));
                         var b64 = s.Utf8(rows[i].Recipe);
+                        if (b64.IsEmpty) continue;
                         if (!MixRecipe.TryDecodeBase64(b64, out var recipe, out var raw))
                         {
                             Log.Warn("mix", "recipe undecodable on item " + from.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
@@ -202,6 +280,7 @@ public static partial class Entities
                             System.Text.Encoding.ASCII.GetString(b64), System.Text.Encoding.UTF8.GetString(s.Utf8(rows[i].TransitionUri)));
                     }
                     MixData.Replace(slot, set);
+                    MixData.ReplaceSignals(slot, signals);
                     playlists.Bump(slot);
                 }
                 start = end;
