@@ -6,6 +6,8 @@
 //   Wavee.exe --mix-bench --file A.flac --file2 B.flac --scenario mix --from 150000 --seconds 30 --preset 3 [--bars 4]
 //             [--out <ms> --overlap <ms> --in <ms> --in-dur <ms>] [--crossfade-ms 12000] [--seek-at <ms> --seek-to <ms>]
 //             [--profile <dir>]
+//   Wavee.exe --mix-bench --scenario render [--wav-out <dir>] [--presets 1-22] [--bars 2,8]   (offline, no device and no files:
+//             Diagnostics.MixBench.Render.cs)
 //
 // The two files are imported as local tracks and queued [A, B]; A plays from `--from`. Both are handed to the pump as AUDIO
 // (the reducer's local-file hard cut is #240's to lift, and the planner never mixes a local file, which is Spotify's own
@@ -41,6 +43,9 @@ public static partial class Diagnostics
             var utf8 = new System.Text.UTF8Encoding(false);
             Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), utf8) { AutoFlush = true });
             Console.SetError(new StreamWriter(Console.OpenStandardError(), utf8) { AutoFlush = true });
+            // #48 M4: every preset, ingredient and beatmatched speed armed as the pump arms it, offline (Diagnostics.MixBench.Render.cs).
+            int scenario = Array.IndexOf(args, "--scenario");
+            if (scenario >= 0 && scenario + 1 < args.Length && args[scenario + 1] == "render") { code = MixRenderBench.Run(args); return true; }
             if (!TryParse(args, out s_o, out string why)) { Console.Error.WriteLine("mix-bench: " + why); code = 64; return true; }
             code = Run();
             return true;

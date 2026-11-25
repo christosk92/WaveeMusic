@@ -25,8 +25,7 @@ public enum MixPlanNotes : byte
     /// <summary>B's first start candidate (kind 28 field 3) is missing: B's fade-in is the rule's answer for a candidate at
     /// 10 ms, 2510 ms.</summary>
     InFallback = 1 << 1,
-    /// <summary>A saved beatmatched recipe plays unstretched: B at speed 1 (the engine has no per-voice rate yet, M4).</summary>
-    BeatmatchNotApplied = 1 << 2,
+    // 1 << 2 was BeatmatchNotApplied (a saved beatmatched recipe played B unstretched until the engine had a per-voice rate, M4).
     /// <summary>A window was cut to the longest transition the client allows (35 s).</summary>
     Capped = 1 << 3,
     /// <summary>B's window was cut at B's end.</summary>
@@ -47,17 +46,20 @@ public enum MixWhyNot : byte
 /// Transitions view's row, the prepare's start offset, the Connect metadata, the seek bar's end and the pump all read this
 /// value. A's and B's curves start at the same instant and run over their own lengths (<see cref="OutDurationMs"/>,
 /// <see cref="InDurationMs"/>). Every lane the styles move is resolved here, including the ones the engine cannot render yet
-/// (EQ mid and high, noise, the effects, looping: <see cref="Playback.MixRender"/> says which).</summary>
+/// (<see cref="Playback.MixRender"/> renders every lane the engine has; only a looping or jog-wheel style the table does not know is
+/// skipped).</summary>
 public readonly record struct MixTiming(
     MixSource Source, MixWhyNot WhyNot,
     byte Preset,          // recipe 2.1 as saved (1 for Auto); an id the table does not know plays as Fade (Styles says what plays)
     uint OutStartMs,      // A: where the transition starts (audio.fade_out_start_time)
     uint OutDurationMs,   // A's curves run over this (audio.fade_out_duration = audio.fade_overlap)
     uint InStartMs,       // B: the source position it enters at (audio.fade_in_start_time)
-    uint InDurationMs,    // B's curves run over this (audio.fade_in_duration); may differ from OutDurationMs
+    uint InDurationMs,    // B's curves run over this, in B's MEDIA time (audio.fade_in_duration); may differ from OutDurationMs. Beatmatched:
+                          // OutDurationMs × SpeedB (B covers that much of itself in the overlap); the pump maps it to mixer frames by B's rate plan
     MixStyleSet Styles,   // the preset's styles with the recipe's overrides in place (MixStyles.Resolve)
     byte Bars,            // recipe 1.8 durationBars, the curves' layout (0 = not beatmatched: the 2-bar layout, MixStyles.UnitBars)
-    float SpeedB,         // recipe 1.7, B's beatmatch speed as saved; the engine plays B at 1.0 until per-voice rate lands (M4)
+    float SpeedB,         // recipe 1.7, B's beatmatch speed (1 for a pair that is not beatmatched): B plays at it from its first frame and
+                          // glides back to 1 after its fade-in (protocol §6.2; MixRender.RatePlan)
     float BpmA,           // A's tempo (recipe 1.16, else kind 222): the effects' echo and delay time (MixStyles.FxBeats)
     MixPlanNotes Notes)
 {
@@ -164,22 +166,17 @@ public static class MixCurves
     // +0.638943 → +6 dB. Filter cutoff: below 0.5 a low-pass 120 → 16000 Hz, 0.5 bypass, above it a high-pass 20 → 9000 Hz.
     // Resonance has no published semantics, so its Q map is Wavee's. The engine's automation lanes take dB, Hz and Q.
 
-    /// <summary>The corner of the low shelf Wavee's one EQ lane drives (the client's low band; the mid and high bands are E5).</summary>
-    public const float LowShelfHz = 200f;
-
-    /// <summary>The shelf gain for the client's "Kill" (raw 0, which it shows as −∞). The automation stage takes any gain
-    /// (VoiceAutomation.Build and BiquadCoeffs.Design clamp none; the design and the recursion run in double), so this floor is a
-    /// choice: −48 dB, the deepest value the client's own map reaches (raw → 0⁺), so the kill is continuous with the curve. A deeper
-    /// floor would cut the mids, not the bass: a 2nd-order shelf falls 12 dB per octave, so one octave above its corner it still
-    /// takes a quarter of its gain (−48 dB: −12 dB at 400 Hz; −96 dB: −36 dB at 400 Hz and −24 dB at 800 Hz).</summary>
-    public const float EqKillDb = -48f;
+    /// <summary>The client's "Kill" (raw 0, which it shows as −∞ dB): the band is removed. The engine's 3-band EQ (E5, a
+    /// Linkwitz-Riley split, not a shelf) takes −∞ as a kill (EqLaneSpec.KillDb or below), so the curve's 0 is a real band cut; what
+    /// remains at the band's frequencies is the neighbouring bands' crossover skirt.</summary>
+    public const float EqKillDb = float.NegativeInfinity;
 
     const float EqCutFromDb = -48f, EqCutToDb = -1.5f, EqBoostFromDb = 0.638943076133728f, EqBoostToDb = 6f;
     const float LowPassFromHz = 120f, LowPassToHz = 16_000f, HighPassFromHz = 20f, HighPassToHz = 9_000f;
     /// <summary>The client's special case is raw == 0.5 exactly; this absorbs only the float rounding of the Bézier solver.</summary>
     const float Centre = 1e-6f;
 
-    /// <summary>An EQ curve value (0..1) → shelf gain in dB, as the official client evaluates it: 0 kills (<see cref="EqKillDb"/>),
+    /// <summary>An EQ curve value (0..1) → band gain in dB, as the official client evaluates it: 0 kills (<see cref="EqKillDb"/>),
     /// 0.5 is 0 dB, below it −48 × (1.5/48)^(raw/0.5) (0.25 → −8.49 dB), above it 0.638943 × (6/0.638943)^((raw−0.5)/0.5)
     /// (1 → +6 dB).</summary>
     public static float EqGainDb(float raw)
@@ -202,4 +199,53 @@ public static class MixCurves
         if (y < 0.5f) return (1, LowPassFromHz * MathF.Pow(LowPassToHz / LowPassFromHz, y / 0.5f), q);
         return (2, HighPassFromHz * MathF.Pow(HighPassToHz / HighPassFromHz, (y - 0.5f) / 0.5f), q);
     }
+
+    // ── noise (filter style NoiseOutEnd; the client's kind 5 entry) and the effects' dry/wet (kind 4) ──────────────────────
+
+    const double NoiseLowFromHz = 100.48416305247163, NoiseLowToHz = 29436.773229308717;
+    const double NoiseHighFromHz = 37.33756354910836, NoiseHighToHz = 15214.43784823654;
+    const double NoiseEase = 1.7799999713897705;
+    const float NoiseOffBelow = 0.4950000001117587f, NoiseOffAbove = 0.5049999998882413f;
+
+    /// <summary>The noise level while the colour curve is outside its "off" band. The client's value table has no level entry
+    /// (kind 5 is the colour only; its one special case, 0.495 &lt; raw &lt; 0.505, is "Off"), so the level is Wavee's choice:
+    /// −20 dBFS RMS of the white noise before the colour filter, about 6 to 10 dB under a mastered track, the level the engine
+    /// bench measures the lane at. The voice's own volume curve fades it with the voice (the lane runs before the envelope).</summary>
+    public const float NoiseLevelDb = -20f;
+
+    /// <summary>True when a noise colour value is the client's "Off" (strictly inside 0.495..0.505): no noise.</summary>
+    public static bool NoiseOff(float raw)
+    {
+        raw = Math.Clamp(raw, 0f, 1f);
+        return raw > NoiseOffBelow && raw < NoiseOffAbove;
+    }
+
+    /// <summary>A noise colour value (0..1) → the colour filter over the white noise (mode 1 low-pass, 2 high-pass), by the client's
+    /// kind 5 entry: below 0.5 <c>100.48 × (29436.8/100.48)^((raw/0.5)^1.78)</c> Hz (powerIn), from 0.5 up
+    /// <c>37.34 × (15214.4/37.34)^(1 − (1 − (raw−0.5)/0.5)^1.78)</c> Hz (powerOut). The entry's segments carry outputMode 0 (no
+    /// filter kind), so the kind is Wavee's reading, the cutoff lane's halves: low-pass below the centre, high-pass above (0.62, where
+    /// NoiseOutEnd's first ramp ends: a high-pass at 380 Hz; 0.83: 6.3 kHz). Q 0.707. Call <see cref="NoiseOff"/> first.</summary>
+    public static (byte Mode, float Hz) NoiseColour(float raw)
+    {
+        raw = Math.Clamp(raw, 0f, 1f);
+        if (raw < 0.5f)
+        {
+            double t = Math.Pow(raw / 0.5, NoiseEase);
+            return (1, (float)(NoiseLowFromHz * Math.Pow(NoiseLowToHz / NoiseLowFromHz, t)));
+        }
+        double u = 1 - Math.Pow(1 - (raw - 0.5) / 0.5, NoiseEase);
+        return (2, (float)(NoiseHighFromHz * Math.Pow(NoiseHighToHz / NoiseHighFromHz, u)));
+    }
+
+    /// <summary>An effect's dry/wet curve value → the engine's 0..1 wet: the client's kind 4 entry is <c>100 × raw</c> %, 0 = off,
+    /// so the wet is <c>% / 100</c> = raw.</summary>
+    public static float FxWet(float raw) => Math.Clamp(raw, 0f, 1f);
+
+    /// <summary>The tempo an echo or delay is timed by when the plan knows none (no recipe 1.16, no kind 222).</summary>
+    public const float FallbackBpm = 120f;
+
+    /// <summary>An echo or delay of <paramref name="beats"/> beats at <paramref name="bpm"/> (recipe 1.16, A's tempo), in frames at
+    /// <paramref name="sampleRate"/>: <c>beats × 60 × rate / bpm</c>.</summary>
+    public static int FxDelayFrames(float beats, float bpm, int sampleRate)
+        => (int)Math.Round(beats * 60.0 * sampleRate / (bpm > 0 ? bpm : FallbackBpm));
 }

@@ -114,12 +114,13 @@ public static partial class Playback
                 Log.Info("audio", $"[mix] plan source={timing.Source} preset={timing.Preset} bars={timing.Bars} out={timing.OutStartMs} outDur={timing.OutDurationMs} "
                     + $"in={timing.InStartMs} inDur={timing.InDurationMs} styles={timing.Styles.Volume}/{timing.Styles.Eq}/{timing.Styles.Filter}/{timing.Styles.Fx}"
                     + (timing.Notes != MixPlanNotes.None ? " notes=" + timing.Notes : ""));
-                // Once per planned join: what the styles move that the pinned engine cannot render yet (M4's lanes).
+                // Once per planned join: what the styles name that the engine has no lane for (a looping or jog-wheel style the table
+                // does not know).
                 string skipped = MixRender.Lanes(in timing, rendered: false);
                 if (skipped.Length > 0) Log.Info("audio", "[mix] lanes not rendered: " + skipped);
-                if ((timing.Notes & MixPlanNotes.BeatmatchNotApplied) != 0)
-                    Log.Info("audio", "[mix] beatmatch not applied (speedB=" + timing.SpeedB.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)
-                        + "): B plays at speed 1 over the overlap");
+                if (timing.SpeedB != 1f)
+                    Log.Info("audio", "[mix] beatmatched: B at speed " + timing.SpeedB.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)
+                        + " over the overlap, then back to 1 in 0.005 steps a second");
             }
             else if (timing.WhyNot is not (MixWhyNot.None or MixWhyNot.NotMixed))
                 Log.Info("audio", "[mix] base hand-off why=" + timing.WhyNot);
@@ -368,8 +369,8 @@ public static partial class Playback
         }
 
         /// <summary>THE SEAM for Spotify's beatmatched Auto (reference §7.2: which pairs it matches, 2 or 4 bars, the preset by
-        /// score, B's speed). Not fitted yet, and the engine has no per-voice rate (M4), so it says no and the pair takes
-        /// <see cref="Auto"/>. When the fit lands it returns true with a plan of <c>durationBars</c> 2 or 4, its preset and
+        /// score, B's speed). Not fitted yet (the engine plays a speed since M4; the fit is its own open item), so it says no and the
+        /// pair takes <see cref="Auto"/>. When the fit lands it returns true with a plan of <c>durationBars</c> 2 or 4, its preset and
         /// <see cref="MixTiming.SpeedB"/>.</summary>
         public static bool AutoBeatmatched(in PairFacts a, ReadOnlySpan<uint> beatsA, in PairFacts b, ReadOnlySpan<uint> beatsB, out MixTiming timing)
         {
@@ -406,8 +407,9 @@ public static partial class Playback
         /// <summary>A saved recipe: A over its own <c>startAMs</c> and <c>durationMs</c> (at most 35 s, inside A), B from
         /// <c>startBMs</c>, the preset with its style overrides at its <c>durationBars</c>. B's window: not beatmatched, the rule's
         /// (B's first start candidate + 2500; the official player published exactly that for its saved unmatched seams, protocol
-        /// §6.3); beatmatched, the overlap, B unstretched until the engine has a per-voice rate (B's media time would then be
-        /// <c>durationMs × speedB</c>; <see cref="MixPlanNotes.BeatmatchNotApplied"/>).</summary>
+        /// §6.3); beatmatched, B's media time over the overlap, <c>durationMs × speedB</c> (the official player's
+        /// <c>audio.fade_in_duration</c>: 6233 × 1.00008 = 6234, 4364 × 0.901696 = 3935), B at <c>speedB</c> (recipe 1.7) from its
+        /// first frame. A pair that is not beatmatched plays B at 1, whatever 1.7 holds.</summary>
         static MixTiming Saved(in MixRecipe r, in PairFacts a, in PairFacts b)
         {
             var notes = r.CurveOverrides != 0 ? MixPlanNotes.CurveOverridesNotApplied : MixPlanNotes.None;
@@ -418,11 +420,12 @@ public static partial class Playback
             long outStart = Math.Min(r.OutStartMs, durA - overlap);
             long inStart = r.InStartMs < durB ? r.InStartMs : 0;
             long inDur;
-            if (r.IsBeatmatched) { inDur = overlap; notes |= MixPlanNotes.BeatmatchNotApplied; }
+            float speedB = r.IsBeatmatched && r.SpeedB > 0 && float.IsFinite(r.SpeedB) ? r.SpeedB : 1f;
+            if (r.IsBeatmatched) inDur = Math.Max(1L, (long)Math.Round(overlap * (double)speedB));
             else inDur = InLength(in b, ref notes);
             if (inStart + inDur > durB) { inDur = Math.Max(1, durB - inStart); notes |= MixPlanNotes.InClipped; }
             return MixTiming.Of(MixSource.Saved, r.Preset, r.StyleOverrides(), r.DurationBars, (uint)outStart, (uint)overlap, (uint)inStart, (uint)inDur,
-                r.SpeedB > 0 ? r.SpeedB : 1f, r.BpmA > 0 ? r.BpmA : a.TempoX10 / 10f, notes);
+                speedB, r.BpmA > 0 ? r.BpmA : a.TempoX10 / 10f, notes);
         }
 
         /// <summary>B's fade-in length when not beatmatched: its first start candidate + <see cref="CueReachMs"/>, else

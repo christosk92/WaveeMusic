@@ -130,7 +130,7 @@ public static partial class Playback
         // Our own Local Files list (#240 E4): its size rides the PUT's context metadata (playlist_number_of_tracks).
         int localFiles = Spotify.Egress.IsLocalFiles(s_state.Context) ? Entities.Current.Edges.PlaylistTracks.Targets(Playlist.LocalFiles.Slot).Length : 0;
         s_wireQuality = QualityNow();
-        return new WireExtras(WindowNow(), RevisionNow(), in s_wireIds, privateSession, output, sender, s_state.ContentRate, s_wireOrigin,
+        return new WireExtras(WindowNow(), RevisionNow(), in s_wireIds, privateSession, output, sender, s_state.PlayRate, s_wireOrigin,
             OutputDeviceKind(), ContextIsAudiobook(), likedPlaylist, likedOwner, Mix.WireNow(in s_state), localFiles, s_wireQuality);
     }
 

@@ -3336,7 +3336,7 @@ public static partial class Playback
             long exactFrames = ActiveExactFrames(sess);
             bool exact = exactFrames >= 0;
             long activeEnd, remaining = s_activeDurMs - ActivePositionMs();
-            lock (s_gate) activeEnd = exact ? JoinFrameExact(s_anchorClock, s_anchorPlayheadMs, exactFrames, rate) : s_activeJoinFrame;
+            lock (s_gate) activeEnd = exact ? ActiveEndFrameLocked(sess, exactFrames, rate) : s_activeJoinFrame;
             if (exact) remaining = Math.Max(remaining, (activeEnd - clock) * 1000 / Math.Max(1, rate));
             long join = GaplessJoinClock.ScheduleJoin(activeEnd, clock, remaining, rate);
             int fadeFrames = 0;
@@ -3437,11 +3437,17 @@ public static partial class Playback
                 s_activeKind = s_joinKind;
                 // #48 Mix: a mix join announces when A is over, with B already InStart + OutDuration in (0 for gapless and a fade).
                 joinedAtMs = AnnouncedMixLocked();
-                // The playhead (raw − s_activeStartMs) starts where B already is: InStart + OutDuration, plus how late this
-                // tick runs past the join frame. A gapless join keeps its start at the announce, as before.
+                // The playhead (raw − s_activeStartMs) starts where B already is: InStart + what B covered over A's window, plus how
+                // late this tick runs past the join frame. A gapless join keeps its start at the announce, as before. A beatmatched B
+                // (#48 E4) covers its own media at its rate plan's pace, so the lateness and B's end are taken along that plan.
+                int mixRate = Math.Max(1, sess.Format.SampleRate);
+                var bRate = sess.VoiceRatePlanOf(s_joinVoiceId);
+                long lateFrames = Math.Max(0, sess.SampleClock - s_joinFrame);
                 if (joinedAtMs > 0)
-                    s_activeStartMs = rawPos - joinedAtMs - Math.Max(0, (sess.SampleClock - s_joinFrame) * 1000 / Math.Max(1, sess.Format.SampleRate));
-                s_activeJoinFrame = s_joinFrame + GaplessJoinClock.MsToFrames(Math.Max(0, s_joinDurMs - joinedAtMs), sess.Format.SampleRate);
+                    s_activeStartMs = rawPos - joinedAtMs - (bRate is null ? lateFrames * 1000 / mixRate
+                        : (long)(bRate.SourceFramesBetween(s_joinFrame, s_joinFrame + lateFrames) * 1000 / mixRate));
+                long leftFrames = GaplessJoinClock.MsToFrames(Math.Max(0, s_joinDurMs - joinedAtMs), mixRate);
+                s_activeJoinFrame = s_joinFrame + (bRate is null ? leftFrames : (long)Math.Round(bRate.MixerFramesFor(leftFrames, s_joinFrame)));
                 s_anchorClock = s_joinFrame;
                 s_anchorPlayheadMs = joinedAtMs;
                 s_joinPending = false;
@@ -4054,6 +4060,7 @@ public static partial class Playback
 
             // (d) the join going live, and the hand-off closing.
             TickMixSounding(sess);
+            TickMixSpeed(sess);                                // #48 E4: a beatmatched B's speed steps, published (Playback.Audio.Mix.cs)
             if (s_joinPending)
             {
                 if (state == PlaybackState.Ended) AbandonPendingJoin(sess, "ended-before-join");

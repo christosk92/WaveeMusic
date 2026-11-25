@@ -224,8 +224,9 @@ public static partial class Playback
                 }
 
                 // rate (U-10) — the flyout extrapolates the thumb between our timeline pushes at THIS rate, so an episode at 1.5x
-                // drifts at 1x if it is pinned. ContentRate is > 0 by construction (1 unless an episode speed applies).
-                double rate = s.ContentRate;
+                // drifts at 1x if it is pinned. PlayRate is > 0 by construction (1 unless an episode speed or, #48, a beatmatched
+                // track's own speed applies).
+                double rate = s.PlayRate;
                 if (rate != s_lastRate)
                 {
                     s_lastRate = rate;

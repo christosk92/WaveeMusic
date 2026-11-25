@@ -582,7 +582,13 @@ public static partial class Spotify
             // The video offer: the current row carries its 32-hex video gid whether we host audio or video (0.2.9).
             if (snap.VideoGid.Length > 0) w.Entry(3, "associated_video_id", snap.VideoGid);
             w.Entry(3, "track_player"u8, video ? "video"u8 : "audio"u8);
-            if (snap.Wire.Mix is { } mixOut) foreach (var e in mixOut.Out) w.Entry(3, e.Key, e.Value);   // #48: the playing row's fade-out
+            if (snap.Wire.Mix is { } mixOut)
+            {
+                foreach (var e in mixOut.Out) w.Entry(3, e.Key, e.Value);   // #48: the playing row's fade-out
+                // #48: the speed the row plays at, "%.6f" (protocol §6.1: a beatmatched B's speedB and each step of its glide back to 1).
+                if (Utf8Formatter.TryFormat((double)snap.Wire.PlaybackRate, scratch, out int speedLength, new System.Buffers.StandardFormat('F', 6)))
+                    w.Entry(3, "playback_speed"u8, scratch[..speedLength]);
+            }
             if (HostsVideo(in snap))
             {
                 w.Entry(3, "media.type"u8, "video"u8);

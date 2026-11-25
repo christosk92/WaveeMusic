@@ -57,6 +57,7 @@ public static partial class Diagnostics
             if (show is "writes" or "fake" or "requests" or "migrate" or "coldstart") return MixWritesVerb(id, name, show, a);   // M2: Diagnostics.Inspect.MixWrites.cs
             if (show == "semantics") return MixSemantics(id, name);
             if (show == "render") return MixRenderCheck(id, name, a.Str("uri", Entities.LibrarySeed.MixUri));
+            if (show == "speed") return MixSpeedVerb(id, name, a);   // #48 M4: a beatmatched join's glide, published (Diagnostics.Inspect.MixSpeed.cs)
             if (show == "cancel") return MixCancel(id, name, Math.Clamp(a.Float("at", 0.4f), 0.05f, 0.95f));
             if (a.Has("recipe") && show != "roundtrip")
             {
@@ -247,18 +248,21 @@ public static partial class Diagnostics
         }
 
         /// <summary>`mix semantics`: the curve value → sound map the renderer uses (the official client's evaluator), at fixed raw
-        /// values, and what it yields in the engine: the automation MixRender.Build makes for each preset and side (its coefficient
-        /// steps per lane, at most VoiceAutomation.MaxSteps) and the EQ table's dB range.</summary>
+        /// values, and what it yields in the engine: the automation MixRender.Build makes for each preset and side (the 3-band EQ, the
+        /// sweep's coefficient steps, at most VoiceAutomation.MaxSteps, noise and effects) and the EQ low band's dB range.</summary>
         static string MixSemantics(int id, string name)
         {
             ReadOnlySpan<float> raws = [0f, 0.1f, 0.25f, 0.4f, 0.5f, 0.75f, 1f];
-            var rows = new List<(float Raw, float Db, byte Mode, float Hz)>();
+            var rows = new List<(float Raw, float Db, byte Mode, float Hz, string Noise)>();
             foreach (float raw in raws)
             {
                 var (mode, hz, _) = MixCurves.Sweep(raw, 0.5f);
-                rows.Add((raw, MixCurves.EqGainDb(raw), mode, hz));
+                var (noiseMode, noiseHz) = MixCurves.NoiseColour(raw);
+                string noise = MixCurves.NoiseOff(raw) ? "off"
+                    : (noiseMode == 1 ? "LP " : "HP ") + Math.Round(noiseHz, 1).ToString(CultureInfo.InvariantCulture) + " Hz";
+                rows.Add((raw, MixCurves.EqGainDb(raw), mode, hz, noise));
             }
-            var lanes = new List<(string Preset, uint Window, string Side, int Shelf, int Sweep, float MinDb, float MaxDb, double BuildMs)>();
+            var lanes = new List<(string Preset, uint Window, string Side, bool Eq, int Sweep, float MinDb, float MaxDb, double BuildMs)>();
             const int rate = 48_000, points = FluentGpu.Media.GainEnvelope.TablePoints;
             var eq = new float[points];
             foreach (var (preset, bars, window) in new[] { (MixPresetId.Fade, 0, 3_000u), (MixPresetId.Rise, 0, 3_000u), (MixPresetId.Wave, 4, 7_400u),
@@ -280,18 +284,20 @@ public static partial class Diagnostics
                             max = Math.Max(max, db);
                         }
                     var auto = incoming ? inAuto : outAuto;
-                    lanes.Add((preset + " bars=" + bars, window, incoming ? "in" : "out", auto?.ShelfSteps ?? 0, auto?.SweepSteps ?? 0, min, max, buildMs));
+                    lanes.Add((preset + " bars=" + bars, window, incoming ? "in" : "out", auto?.HasEq ?? false, auto?.SweepSteps ?? 0, min, max, buildMs));
                 }
             }
             return Inspect.Reply.Ok(id, name, w =>
             {
-                w.WriteNumber("eqKillDb", MixCurves.EqKillDb);
+                w.WriteString("eqKillDb", Db(MixCurves.EqKillDb));
+                w.WriteNumber("noiseLevelDb", MixCurves.NoiseLevelDb);
                 w.WriteStartArray("map");
-                foreach (var (raw, db, mode, hz) in rows)
+                foreach (var (raw, db, mode, hz, noise) in rows)
                 {
                     w.WriteStartObject();
                     w.WriteNumber("raw", raw);
-                    w.WriteNumber("eqDb", Math.Round(db, 2));
+                    w.WriteString("eqDb", Db(db));
+                    w.WriteString("noise", noise);
                     w.WriteString("cutoff", mode switch { 1 => "LP", 2 => "HP", _ => "bypass" });
                     if (mode != 0) w.WriteNumber("cutoffHz", Math.Round(hz, 1));
                     w.WriteEndObject();
@@ -299,21 +305,23 @@ public static partial class Diagnostics
                 w.WriteEndArray();
                 w.WriteNumber("maxSteps", FluentGpu.Media.VoiceAutomation.MaxSteps);
                 w.WriteStartArray("automation");
-                foreach (var (preset, window, side, shelf, sweep, min, max, buildMs) in lanes)
+                foreach (var (preset, window, side, hasEq, sweep, min, max, buildMs) in lanes)
                 {
                     w.WriteStartObject();
                     w.WriteString("preset", preset);
                     w.WriteNumber("windowMs", window);
                     w.WriteString("side", side);
-                    w.WriteNumber("shelfSteps", shelf);
+                    w.WriteBoolean("eq", hasEq);
                     w.WriteNumber("sweepSteps", sweep);
-                    w.WriteNumber("eqMinDb", Math.Round(min, 2));
-                    w.WriteNumber("eqMaxDb", Math.Round(max, 2));
+                    w.WriteString("eqMinDb", Db(min));
+                    w.WriteString("eqMaxDb", Db(max));
                     w.WriteNumber("buildMs", Math.Round(buildMs, 2));   // MixRender.Build, both sides (the pump thread's cost per join)
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();
             });
+
+            static string Db(float db) => float.IsNegativeInfinity(db) ? "-inf (kill)" : Math.Round(db, 2).ToString("0.##", CultureInfo.InvariantCulture);
         }
 
         /// <summary>`mix cancel`: a 3 s Fade join cancelled at <paramref name="at"/> of its overlap, each voice (a 1 kHz full-scale
@@ -462,7 +470,6 @@ public static partial class Diagnostics
                 double max = 0;
                 foreach (MixCurveLane lane in Enum.GetValues<MixCurveLane>())
                 {
-                    if (!Playback.MixRender.Renders(lane)) continue;
                     foreach (bool incoming in new[] { false, true })
                     {
                         string side = incoming ? "in" : "out";
