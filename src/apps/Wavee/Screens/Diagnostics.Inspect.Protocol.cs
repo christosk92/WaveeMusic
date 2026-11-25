@@ -182,6 +182,7 @@ public static partial class Diagnostics
             Arg("census", ArgType.Bool, "a slow frame's row names the components that made it slow", "false"),
             Arg("flights", ArgType.Bool, "each row carries the connected navigation flights (a card's cover flying into its page), the summary their take-off, landing and hand-off", "false"),
             Arg("curves", ArgType.Bool, "each watched key's motion curve (x, y, w, h, opacity per frame, a sparkline) and its steps, reversals, stalls and snaps (motionFindings)", "false"),
+            Arg("realtime", ArgType.Bool, "pace the frames to the wall clock (16 ms each), so the audio pump's announces and downloads keep their proportions to the frames (a DJ voice ending into its track)", "false"),
             Arg("baseline", ArgType.Bool, "judge the first traced frame against the watched nodes as they stood before it (on for state)", "state"),
             Arg("jump", ArgType.Float, "a presented move over this many DIP in one frame under a track is a jump", "2"),
             Arg("snap", ArgType.Float, "a change over this many DIP in one frame with no track is a snap", "0.5"),
