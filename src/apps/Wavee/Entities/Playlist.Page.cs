@@ -507,6 +507,7 @@ public readonly partial struct Playlist
                     LensExtent = lensExtent,
                     Drawer = Track.DrawerSeam,
                     EmptyBody = dj ? _djBody : null,
+                    EmptyBodyIsPage = dj,   // Classic too: no list commands (Shuffle among them) or column header over the DJ's own rows
                     PlayFrom = dj ? _djPlay : null,
                 };
             }
