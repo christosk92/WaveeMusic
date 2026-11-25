@@ -24,8 +24,9 @@ namespace Wavee;
 /// never plans it (a dropped <c>.mp4</c> plays through the existing video path as a song does).</summary>
 public enum DropPayloadKind : byte { None, Songs, Folders, PlaylistFile, Links, Watch, Refused }
 
-/// <summary>One drop-panel zone's verb.</summary>
-public enum DropVerb : byte { PlayNow, PlayNext, AddToQueue, Play, AddMusicFolder, PlayAsQueue, Open }
+/// <summary>One drop-panel zone's verb. <see cref="AddToLibrary"/> keeps dropped songs in Local files ("Added files") and nothing plays or
+/// queues.</summary>
+public enum DropVerb : byte { PlayNow, PlayNext, AddToQueue, Play, AddMusicFolder, PlayAsQueue, Open, AddToLibrary }
 
 /// <summary>One drag's plan (built once, on the first ask; UI thread). The arrays are the drop's own order.</summary>
 public sealed class DropPlan
@@ -131,6 +132,10 @@ public static partial class DropAnywhere
         return plan;
     }
 
+    /// <summary>Dropped song files: Play now · Play next · Add to queue · Add to library (kept in Local files, nothing plays). Shared: a
+    /// plan never writes its verbs.</summary>
+    static readonly DropVerb[] s_songVerbs = [DropVerb.PlayNow, DropVerb.PlayNext, DropVerb.AddToQueue, DropVerb.AddToLibrary];
+
     static void PlanFiles(DropPlan plan, string[] paths)
     {
         if (paths.Length == 0)
@@ -138,7 +143,7 @@ public static partial class DropAnywhere
             // The engine has not handed the list yet: the song zones, refined at drop.
             plan.PathsKnown = false;
             plan.Kind = DropPayloadKind.Songs;
-            plan.Verbs = [DropVerb.PlayNow, DropVerb.PlayNext, DropVerb.AddToQueue];
+            plan.Verbs = s_songVerbs;
             plan.Songs.Value = 0;
             return;
         }
@@ -165,7 +170,7 @@ public static partial class DropAnywhere
         else if (playable.Count > 0)
         {
             plan.Kind = DropPayloadKind.Songs;
-            plan.Verbs = [DropVerb.PlayNow, DropVerb.PlayNext, DropVerb.AddToQueue];
+            plan.Verbs = s_songVerbs;
             plan.Songs.Value = playable.Count;
         }
         else if (playlist is not null)

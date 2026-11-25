@@ -28,7 +28,7 @@ public static partial class DropAnywhere
     /// <summary>Every OS kind a drop target here takes, in the order a multi-format drag should be read: files, then links, then text.</summary>
     public static readonly string[] OsKinds = [DropKinds.Files, DropKinds.Uri, DropKinds.Text];
 
-    /// <summary>The most zones a plan offers (folders: Play · Add as a music folder · Add to queue; the fourth is spare).</summary>
+    /// <summary>The most zones a plan offers (songs: Play now · Play next · Add to queue · Add to library).</summary>
     public const int MaxZones = 4;
 
     // ── the panel's state ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -189,6 +189,7 @@ public static partial class DropAnywhere
         DropVerb.Play => Strings.Drop.Play,
         DropVerb.AddMusicFolder => Strings.Drop.AddMusicFolder,
         DropVerb.PlayAsQueue => Strings.Drop.PlayAsQueue,
+        DropVerb.AddToLibrary => Strings.Drop.AddToLibrary,
         _ => Strings.Drop.Open,
     });
 
@@ -198,12 +199,15 @@ public static partial class DropAnywhere
         DropVerb.AddToQueue => WaveeIcons.PlayAfter,
         DropVerb.AddMusicFolder => Icons.FolderOpen,
         DropVerb.Open => Icons.OpenInNewWindow,
+        DropVerb.AddToLibrary => Icons.Add,
         _ => Icons.Play,
     };
 
     /// <summary>The zone's one-line consequence; a count reads the plan's count signal, so it lands when the listing does.</summary>
     static Func<string> DetailOf(DropPlan plan, DropVerb verb)
     {
+        // "Keeps it in Local files" / "Keeps them in Local files": the count is the dropped files' (known at plan, or 1 before the list).
+        if (verb == DropVerb.AddToLibrary) { string line = Strings.Drop.AddToLibraryDetail(Math.Max(1, plan.Songs.Peek())); return () => line; }
         string fixedLine = verb switch
         {
             DropVerb.PlayNow => Loc.Get(Strings.Drop.PlayNowDetail),

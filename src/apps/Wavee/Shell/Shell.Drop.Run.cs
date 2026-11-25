@@ -19,8 +19,9 @@ using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
-/// <summary>Where a drop's songs go (<see cref="Playlist"/>: added to one of the user's playlists, #240 D12).</summary>
-public enum DropDeposit : byte { PlayNow, PlayNext, Append, At, Playlist }
+/// <summary>Where a drop's songs go (<see cref="Playlist"/>: added to one of the user's playlists, #240 D12; <see cref="Library"/>: only kept
+/// in Local files, nothing plays or queues).</summary>
+public enum DropDeposit : byte { PlayNow, PlayNext, Append, At, Playlist, Library }
 
 public static partial class DropAnywhere
 {
@@ -45,6 +46,7 @@ public static partial class DropAnywhere
             case DropVerb.PlayNow or DropVerb.Play or DropVerb.PlayAsQueue: Deposit(plan, DropDeposit.PlayNow); return;
             case DropVerb.PlayNext: Deposit(plan, DropDeposit.PlayNext); return;
             case DropVerb.AddToQueue: Deposit(plan, DropDeposit.Append); return;
+            case DropVerb.AddToLibrary: Deposit(plan, DropDeposit.Library); return;
         }
     }
 
@@ -58,7 +60,9 @@ public static partial class DropAnywhere
     {
         if (plan.Kind == DropPayloadKind.Links) { DepositLinks(plan, how); return; }
         if (!plan.IsLocal) return;
-        string? unplaced = Playback.Audio.LocalPath is null ? Loc.Get(Strings.LocalFile.NotReady)
+        // Add to library asks nothing of playback: the songs are only kept.
+        string? unplaced = how == DropDeposit.Library ? null
+            : Playback.Audio.LocalPath is null ? Loc.Get(Strings.LocalFile.NotReady)
             // Another device plays: a file on this PC cannot join its queue.
             : how != DropDeposit.PlayNow && Shell.QueueModel.IsViewer() ? Loc.Get(Strings.Drop.QueueOnThisPc)
             : null;
@@ -245,7 +249,7 @@ public static partial class DropAnywhere
         /// <summary>UI thread: put a landed batch where the drop said (the first batch of a Play plays at once).</summary>
         void Place(ReadOnlySpan<EntityRef> span)
         {
-            if (how == DropDeposit.Playlist) return;   // the rows go into the playlist in one deposit at the end
+            if (how is DropDeposit.Playlist or DropDeposit.Library) return;   // the playlist takes the rows in one deposit at the end; the library has them
             if (how == DropDeposit.PlayNow && !_played)
             {
                 // The first batch plays at once (the first song is the first row); the walk goes on behind it.
@@ -293,6 +297,12 @@ public static partial class DropAnywhere
                 foreach (QueueEdge row in Queue.Rows)
                     if (row.ItemId != 0 && !_before.Contains(row.ItemId)) _queued.Add(row.ItemId);
             string songs = _capped ? Strings.Drop.SongsCapped(_landed) : Strings.Detail.SongCount(_landed);
+            if (how == DropDeposit.Library)
+            {
+                // Kept only: the rows are in Local files ("Added files"), nothing played or queued, so there is nothing to undo here.
+                Notify.Say(_skipped > 0 ? Strings.Drop.AddedToLibrarySkipped(songs, _skipped) : Strings.Drop.AddedToLibrary(songs), InfoBarSeverity.Success);
+                return;
+            }
             if (unplaced is not null)
             {
                 Notify.Say(unplaced, InfoBarSeverity.Warning, title: Strings.Drop.Kept(songs));

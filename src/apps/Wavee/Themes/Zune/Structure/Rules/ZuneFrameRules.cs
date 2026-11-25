@@ -323,6 +323,11 @@ public static class ZuneFrameRules
     public static readonly Edges4 DropBandPadding = new(24f, 24f, 24f, 20f), DropLayerPadding = new(16f, 16f, 16f, 16f);
     public const float DropBandMaxW = 1040f, DropZoneGap = 24f, DropZoneMinW = 200f;
 
+    /// <summary>A zone's widest: its share of the widest band's row, so a verb that wraps onto a row of its own keeps the width the others
+    /// have (four song verbs at 1040: 230 each) instead of stretching across the band.</summary>
+    public static float DropZoneMaxW(int zones)
+        => (DropBandMaxW - DropBandPadding.Left - DropBandPadding.Right - Math.Max(0, zones - 1) * DropZoneGap) / Math.Max(1, zones);
+
     /// <summary>A zone: 8 around; the lit bar (3 tall) 12 under the consequence; the consequence two lines at most.</summary>
     public static readonly Edges4 DropZonePadding = new(8f, 8f, 8f, 8f), DropLitBarMargin = new(0f, 12f, 0f, 0f);
     public const float DropLitBarH = 3f;
