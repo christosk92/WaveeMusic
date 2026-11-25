@@ -78,9 +78,21 @@ public static class PlaylistItemFlags
     public const byte NotMixable = 1 << 1;
 }
 
-/// <summary>Kind 28: the chosen start and end cue, ms; 0 = none. The candidate lists are not kept. 12 bytes, unmanaged:
-/// the payload of <see cref="Edges.TrackCues"/> (the <see cref="WaveSample"/> payload-only precedent).</summary>
-public readonly record struct TrackCues(uint StartCueMs, uint EndCueMs, ushort TempoX10, ushort Reserved = 0);
+/// <summary>Kind 28: the chosen start and end cue (fields 1, 2), ms, 0 = none; and of the candidate lists (fields 3, 4) the
+/// smallest start candidate and the largest end candidate, which Spotify's Auto for a pair it does not beatmatch reads (A's
+/// last end candidate, B's first start candidate; full-support reference §7.1). A candidate may sit at 0 ms, so
+/// <see cref="Candidates"/> says which one the answer had. 20 bytes, unmanaged: the payload of <see cref="Edges.TrackCues"/>
+/// (the <see cref="WaveSample"/> payload-only precedent; not persisted).</summary>
+public readonly record struct TrackCues(uint StartCueMs, uint EndCueMs, ushort TempoX10, CueCandidates Candidates = CueCandidates.None,
+    uint FirstStartCandidateMs = 0, uint LastEndCandidateMs = 0)
+{
+    public bool HasFirstStartCandidate => (Candidates & CueCandidates.Start) != 0;
+    public bool HasLastEndCandidate => (Candidates & CueCandidates.End) != 0;
+}
+
+/// <summary>Which of kind 28's candidate lists an answer carried (<see cref="TrackCues.Candidates"/>).</summary>
+[Flags]
+public enum CueCandidates : ushort { None = 0, Start = 1 << 0, End = 1 << 1 }
 
 /// <summary>One stored (edited) transition: the decoded recipe, its raw bytes for a verbatim carry on a later write,
 /// and the server-minted <c>spotify:transition:…</c> uri.</summary>

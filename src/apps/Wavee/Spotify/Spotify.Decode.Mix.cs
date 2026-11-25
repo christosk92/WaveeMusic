@@ -4,7 +4,8 @@
 // mix lens of a playlist v2 read:
 //
 //   217 beats        {1 beats/bar, 2[] {1 float s, 3 pos-in-bar 1..4, 4 conf, 5 1.0 = downbeat}, 3 "32-hex id"}
-//   28  cue points   {1 start cue, 2 end cue, 3[] candidates, 4[] candidates}, cue = {1 ms, 2 float bpm, 3 1, 4 double}
+//   28  cue points   {1 start cue, 2 end cue, 3[] start candidates, 4[] end candidates}, cue = {1 ms, 2 float bpm, 3 1, 4 double}
+//                    (kept: the two cues, the smallest start candidate and the largest end candidate)
 //   225 mix state    {1 1} when mixed, empty when not
 //   170 auto lens    {1 "mix"} or empty
 //   235 mixability   {1 1}
@@ -76,18 +77,20 @@ public static partial class Spotify
         }
 
         /// <summary>Kind 28 → one <see cref="TrackCues"/> on <see cref="Edges.TrackCues"/>: the chosen start cue (f1) and
-        /// end cue (f2), and the tempo the start cue states. The candidate lists are not kept.</summary>
+        /// end cue (f2), the tempo the start cue states, and of the candidate lists the smallest start candidate (f3, min ms)
+        /// and the largest end candidate (f4, max ms), the two Spotify's Auto reads. A cue's ms is absent when 0.</summary>
         public static void Cuepoints(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
         {
             var track = Identity(s, entityUri);
             if (track.IsEmpty) return;
-            uint start = 0, end = 0;
+            uint start = 0, end = 0, firstStart = uint.MaxValue, lastEnd = 0;
+            var candidates = CueCandidates.None;
             float bpm = 0f;
             for (var r = new ProtoReader(proto); r.Next();)
             {
-                if ((r.Field == 1 || r.Field == 2) && r.Wire == 2)
+                if (r.Field is >= 1 and <= 4 && r.Wire == 2)
                 {
-                    bool isStart = r.Field == 1;
+                    int field = r.Field;
                     uint ms = 0;
                     float cueBpm = 0f;
                     for (var c = r.Message(); c.Next();)
@@ -96,8 +99,13 @@ public static partial class Spotify
                         else if (c.Field == 2 && c.Wire == 5) cueBpm = BitConverter.UInt32BitsToSingle(c.Fixed32());
                         else c.Skip();
                     }
-                    if (isStart) { start = ms; if (cueBpm > 0) bpm = cueBpm; }
-                    else { end = ms; if (bpm <= 0 && cueBpm > 0) bpm = cueBpm; }
+                    switch (field)
+                    {
+                        case 1: start = ms; if (cueBpm > 0) bpm = cueBpm; break;
+                        case 2: end = ms; if (bpm <= 0 && cueBpm > 0) bpm = cueBpm; break;
+                        case 3: candidates |= CueCandidates.Start; firstStart = Math.Min(firstStart, ms); break;
+                        default: candidates |= CueCandidates.End; lastEnd = Math.Max(lastEnd, ms); break;
+                    }
                 }
                 else r.Skip();
             }
@@ -106,8 +114,9 @@ public static partial class Spotify
             run.Relation = TraitRelation.TrackCues;
             run.Start = s.Traits.Count;
             run.Length = 0;
-            if (start == 0 && end == 0) return;                      // answered, but no cue: the empty run says so
-            var cue = new TrackCues(start, end, bpm is > 0 and < 6553 ? (ushort)(bpm * 10 + 0.5f) : (ushort)0);
+            if (start == 0 && end == 0 && candidates == CueCandidates.None) return;   // answered, but no cue: the empty run says so
+            var cue = new TrackCues(start, end, bpm is > 0 and < 6553 ? (ushort)(bpm * 10 + 0.5f) : (ushort)0, candidates,
+                (candidates & CueCandidates.Start) != 0 ? firstStart : 0, lastEnd);
             run.Bytes = s.AddText(System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<TrackCues>(in cue)));
         }
 

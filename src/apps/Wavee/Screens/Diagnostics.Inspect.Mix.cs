@@ -127,7 +127,17 @@ public static partial class Diagnostics
                     w.WriteNumber("downbeats", downs);
                     w.WriteString("beatsId", MixData.BeatsId(targets[i]) ?? "");
                     var cues = Entities.Current.Edges.TrackCues.Payload(targets[i]);
-                    if (cues.Length > 0) { w.WriteNumber("startCueMs", cues[0].StartCueMs); w.WriteNumber("endCueMs", cues[0].EndCueMs); }
+                    if (cues.Length > 0)
+                    {
+                        w.WriteNumber("startCueMs", cues[0].StartCueMs);
+                        w.WriteNumber("endCueMs", cues[0].EndCueMs);
+                        // Kind 28's candidate lists as Auto reads them: the smallest start candidate, the largest end candidate.
+                        if (cues[0].HasFirstStartCandidate) w.WriteNumber("firstStartCandidateMs", cues[0].FirstStartCandidateMs);
+                        else w.WriteString("firstStartCandidateMs", "none");
+                        if (cues[0].HasLastEndCandidate) w.WriteNumber("lastEndCandidateMs", cues[0].LastEndCandidateMs);
+                        else w.WriteString("lastEndCandidateMs", "none");
+                    }
+                    else w.WriteString("cues", Entities.Current.Edges.TrackCues.State(targets[i]).ToString());
                     if (MixData.TryGet(slot, MixRecipe.Hex64(item), out var tr)) { var rec = tr.Recipe; WriteRecipe(w, "recipe", in rec, tr.TransitionUri); }
                     w.WriteEndObject();
                 }

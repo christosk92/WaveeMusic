@@ -29,8 +29,8 @@ public static partial class Entities
         public const string MixUri = "spotify:playlist:plmix";
         public const string MixLensEtag = "0000beef";
 
-        /// <summary>The pool tracks of the mixed playlist, in order: matched tempos, one far-apart pair (row 3 → 4 runs
-        /// 117 → 77 BPM, the capture's warning pair), then a local file as the last row.</summary>
+        /// <summary>The pool tracks of the mixed playlist, in order: matched tempos, two far-apart pairs (row 2 → 3 runs
+        /// 120 → 77 BPM, row 4 → 5 78 → 122), then a local file as the last row.</summary>
         static readonly int[] s_mixPool = [47, 48, 50, 7, 8, 52, 54, 55, 58, 60];
 
         static void StageMix(Staging s)
@@ -72,31 +72,31 @@ public static partial class Entities
 
             for (int k = 0; k < n; k++) SeedAnalysis(targets[k], k);
 
-            // Seven edited pairs, every byte made up here (no captured recipe); 3 → 4 and 8 → 9 stay Auto, 9 → 10 runs into the
-            // local file:
+            // Seven edited pairs, every byte made up here (no captured recipe); 2 → 3 (the far-apart pair) and 8 → 9 stay Auto,
+            // 9 → 10 runs into the local file:
             //   0 → 1  Rise (preset 3), as Wavee writes a recipe of its own: a 3000 ms window ending 1 ms before row 0's file does.
             //   1 → 2  Slam (11), beatmatched over 2 bars with an EQ override to style 15, written field by field as another client
             //          would: a curve override and a field this build does not know at every level, which a decode → encode must keep.
-            //   2 → 3  preset 19 (internal), beatmatched over 2 bars.
-            //   4 → 5  Wave (17), beatmatched over 4 bars.
+            //   3 → 4  preset 19 (internal), beatmatched over 2 bars.
+            //   4 → 5  Fade (1), not beatmatched, a 4.2 s overlap.
             //   5 → 6  "no transition": no preset id, a 1 ms overlap, no out-point (A plays to its end, B from its start).
-            //   6 → 7  Fade (1), not beatmatched, a 4.2 s overlap.
-            //   7 → 8  Dissolve (20), not beatmatched: an echo the engine cannot render yet.
+            //   6 → 7  Wave (17), beatmatched over 4 bars.
+            //   7 → 8  Dissolve (20), not beatmatched: an echo the engine cannot render yet, into a row with no cue candidates.
             var stored = new Dictionary<ulong, MixTransition>();
             var rise = Unmatched(0, targets, MixPresetId.Rise, 1, 3_000);
             Store(stored, in rise, MixRecipe.EncodeToArray(in rise, default), 0);
             Store(stored, BeatmatchedRaw(targets), 1);
-            var preset19 = Matched(2, targets, MixPresetId.LowPassFilterFadeInOut, 2);
-            Store(stored, in preset19, MixRecipe.EncodeToArray(in preset19, default), 2);
-            var wave = Matched(4, targets, MixPresetId.Wave, 4);
-            Store(stored, in wave, MixRecipe.EncodeToArray(in wave, default), 4);
+            var preset19 = Matched(3, targets, MixPresetId.LowPassFilterFadeInOut, 2);
+            Store(stored, in preset19, MixRecipe.EncodeToArray(in preset19, default), 3);
+            var fade = Unmatched(4, targets, MixPresetId.Fade, 1_300, 4_200);
+            Store(stored, in fade, MixRecipe.EncodeToArray(in fade, default), 4);
             var none = PairRecipe(5, targets);
             none.OverlapMs = 1;
             none.PresetType = MixPresetType.Fade;
             none.IsPresetIdOverride = true;
             Store(stored, in none, MixRecipe.EncodeToArray(in none, default), 5);
-            var fade = Unmatched(6, targets, MixPresetId.Fade, 1_300, 4_200);
-            Store(stored, in fade, MixRecipe.EncodeToArray(in fade, default), 6);
+            var wave = Matched(6, targets, MixPresetId.Wave, 4);
+            Store(stored, in wave, MixRecipe.EncodeToArray(in wave, default), 6);
             var dissolve = Unmatched(7, targets, MixPresetId.Dissolve, 2_400, 6_000);
             Store(stored, in dissolve, MixRecipe.EncodeToArray(in dissolve, default), 7);
             MixData.Replace(p.Slot, stored);
@@ -131,9 +131,46 @@ public static partial class Entities
             try
             {
                 Spotify.Api.PlaylistAnswer(body, MixWireUri, s);
+                // Kind 28 answers for the two mixable rows (the same tracks as plmix's rows 0 and 1) through the real decoder:
+                // candidate lists in confidence order, as the wire sorts them, whose smallest start and largest end candidate are the
+                // ones s_mixCandidates seeds, so the decode lands what the seed holds.
+                for (int k = 0; k < 2; k++)
+                {
+                    var t = new global::Wavee.Track(SlotOf(EntityKind.Track, TrackUri(s_mixPool[k])));
+                    var (firstStart, endGap) = s_mixCandidates[k];
+                    uint lastEnd = (uint)Math.Max(0, t.DurationMs - endGap);
+                    Spotify.Decode.Cuepoints(CuepointsBody((uint)firstStart, lastEnd, t.Tempo / 10f, (uint)t.DurationMs),
+                        System.Text.Encoding.UTF8.GetBytes(TrackUri(s_mixPool[k])), s);
+                }
                 Commit(s);
             }
             finally { Staging.Return(s); }
+        }
+
+        /// <summary>A made-up kind 28 <c>Cuepoints</c> answer: start and end cue, three start and three end candidates.</summary>
+        static byte[] CuepointsBody(uint firstStart, uint lastEnd, float bpm, uint durationMs)
+        {
+            var buffer = new byte[512];
+            var w = new Spotify.Decode.ProtoWriter(buffer);
+            Cue(ref w, 1, firstStart + 8_000, bpm, 0.61);
+            Cue(ref w, 2, lastEnd - 12_000, bpm, 0.55);
+            Cue(ref w, 3, firstStart + 8_000, bpm, 0.61);
+            Cue(ref w, 3, Math.Min(durationMs / 2, firstStart + 40_000), bpm, 0.18);
+            Cue(ref w, 3, firstStart, bpm, 0.12);
+            Cue(ref w, 4, lastEnd - 12_000, bpm, 0.55);
+            Cue(ref w, 4, lastEnd, bpm, 0.21);
+            Cue(ref w, 4, lastEnd - 30_000, bpm, 0.07);
+            return buffer.AsSpan(0, w.Length).ToArray();
+
+            static void Cue(ref Spotify.Decode.ProtoWriter w, int field, uint ms, float bpm, double confidence)
+            {
+                int m = w.Open(field);
+                if (ms != 0) w.UAlways(1, ms);
+                w.F32(2, bpm);
+                w.UAlways(3, 1);
+                w.F64(4, confidence);
+                w.Close(m);
+            }
         }
 
         static byte[] MixWireBody()
@@ -349,9 +386,16 @@ public static partial class Entities
 
         static string FakeBeatsId(int k) => (0xBEEF_0000_0000_0000UL + (ulong)k).ToString("x16", CultureInfo.InvariantCulture) + "0000000000000000";
 
+        /// <summary>Kind 28's candidates per pool row, made up: the smallest start candidate (ms) and how far before the row's end
+        /// its largest end candidate sits (ms); -1 = the answer carried no such list (row 8: Auto's fallback for 7 → 8 and 8 → 9).</summary>
+        static readonly (int FirstStart, int EndGap)[] s_mixCandidates =
+        [
+            (20, 1_100), (260, 4_700), (480, 30), (40, 2_200), (10, 3_300), (590, 20), (1_170, 6_100), (90, 2_600), (-1, -1), (370, 900),
+        ];
+
         /// <summary>A constant grid at the track's seeded tempo (4/4, the first downbeat 180 ms in), its analysis id, and
         /// cue points: the start cue on the second bar for every third row (so some pairs enter mid-file), the end cue
-        /// 16 s before the end.</summary>
+        /// 16 s before the end, and the candidates of <see cref="s_mixCandidates"/>.</summary>
         static void SeedAnalysis(int trackSlot, int k)
         {
             var t = new global::Wavee.Track(trackSlot);
@@ -367,7 +411,9 @@ public static partial class Entities
             MixData.SetBeatsId(trackSlot, FakeBeatsId(k));
             uint start = k % 3 == 1 ? (uint)(180 + 4 * period + 0.5) : 0u;
             uint end = (uint)Math.Max(0, dur - 16_000);
-            var cue = new[] { new TrackCues(start, end, t.Tempo) };
+            var (firstStart, endGap) = s_mixCandidates[k % s_mixCandidates.Length];
+            var has = (firstStart >= 0 ? CueCandidates.Start : 0) | (endGap >= 0 ? CueCandidates.End : 0);
+            var cue = new[] { new TrackCues(start, end, t.Tempo, has, (uint)Math.Max(0, firstStart), (uint)Math.Max(0, dur - Math.Max(0, endGap))) };
             edges.TrackCues.Replace(trackSlot, new int[1], cue, EdgeState.Complete, 1);
         }
     }

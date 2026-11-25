@@ -857,8 +857,9 @@ public sealed partial class Edges
     /// <see cref="BeatGrid"/>), Count = Total = beat count. Parent = track slot; payload-only. An EMPTY Complete run means
     /// "the service has no grid for this track" and Pulse falls back to the tempo grid.</summary>
     public readonly EdgeTable<uint> TrackBeats = new();
-    /// <summary>#48 Mix: extension kind 28's chosen start and end cue (<see cref="Wavee.TrackCues"/>), at most one per
-    /// track. Parent = track slot; payload-only. An EMPTY Complete run = "no cue points for this track".</summary>
+    /// <summary>#48 Mix: extension kind 28's chosen start and end cue and its smallest start and largest end candidate
+    /// (<see cref="Wavee.TrackCues"/>), at most one per track. Parent = track slot; payload-only; not persisted. An EMPTY
+    /// Complete run = "no cue points for this track".</summary>
     public readonly EdgeTable<TrackCues> TrackCues = new();
     /// <summary>Extension kind 151: "playlists featuring this album", at most twelve (0.2.9's Take(12)). Parent = album
     /// slot, targets = playlist slots.</summary>
