@@ -13,6 +13,11 @@
 //   write             signal               payload                          route (lens header, sync-reason)
 //   Mix off           mix-state            none                             auto,     CA8QAQ== [wire]
 //   Mix on            mix-state            {1: 1}                           mix,auto, CBAQAQ== [wire]
+//   save a transition set-transition (*)   {1 new, 3 Auto | 4 old + 5 uri}  mix,auto, CA8QAQ== [wire]
+//   Reset to Auto     set-transition (*)   none                             mix,auto, CA8QAQ== [client]
+//
+//   (*) signal f1-f2 = the from-item's attribute 14, verbatim. Which previous a save sends is the one open switch
+//       (Mixes.PreviousFor); the new recipe is the patching encoder's output over the recipe it replaces (Mix.Card.cs).
 //
 // Which route each write takes is ONE table (Mixes.RouteOf). Signals neither move the revision nor cause a push (protocol
 // §3.4): the reply is the whole list read through the requested lenses, folded as a list read (the Tune path), and it is
@@ -61,26 +66,133 @@ public static partial class Spotify
         /// <summary>The `mix-state` body that turns Mix on, with the built template (protocol §3.1, 50 bytes). PURE.</summary>
         public static byte[] MixStateOnBody(ReadOnlySpan<byte> revision)
             => SignalBody(revision, SignalTemplate("mix-state"), MixOnPayload, hasPayload: true);
+
+        /// <summary>The `set-transition` payload (reference §6, the client's names): f1 <c>transition</c> = the new recipe, base64
+        /// (the server stores exactly this); the transition it replaces as f3 <c>auto</c> (base64) or as f4 <c>userDefined</c>
+        /// (base64) with f5 <c>userDefinedUri</c>. f2 <c>completed</c> never appeared on the wire and is not sent. PURE.</summary>
+        public static byte[] SetTransitionPayload(string transition, string? auto, string? userDefined, string? userDefinedUri)
+        {
+            var buffer = new byte[transition.Length + (auto?.Length ?? 0) + (userDefined?.Length ?? 0) + (userDefinedUri?.Length ?? 0) * 3 + 32];
+            var w = new Decode.ProtoWriter(buffer);
+            w.StrAlways(1, transition);
+            w.Str(3, auto);
+            w.Str(4, userDefined);
+            w.Str(5, userDefinedUri);
+            return buffer.AsSpan(0, w.Length).ToArray();
+        }
     }
 
     public static class Mixes
     {
         /// <summary>The writes this file sends (protocol §3).</summary>
-        public enum Write : byte { Off, On }
+        public enum Write : byte { Off, On, SaveTransition, ResetToAuto }
 
         /// <summary>How a write settled. <see cref="Offline"/>: nothing was sent (no session that can send).</summary>
         public enum Outcome : byte { Landed, Failed, Offline, Refused }
 
         /// <summary>The signal identifier a write sends.</summary>
-        public static string SignalOf(Write w) => "mix-state";
+        public static string SignalOf(Write w) => w switch
+        {
+            Write.SaveTransition or Write.ResetToAuto => "set-transition",
+            _ => "mix-state",
+        };
 
         /// <summary>THE ROUTE TABLE: the lens header and the sync-reason each write travels with (protocol §1.1, §3.1). One
         /// place, so a route the owner's live check corrects is one line.</summary>
         public static SignalRoute RouteOf(Write w) => w switch
         {
             Write.On => SignalRoute.MixOn,          // mix,auto + CBAQAQ== [wire]
+            Write.SaveTransition => SignalRoute.MixLens,   // mix,auto + CA8QAQ== [wire: both saves, sent after Mix on]
+            Write.ResetToAuto => SignalRoute.MixLens,      // the save's route [client: the same signal with no payload]
             _ => SignalRoute.Edit,                  // Mix off: auto + CA8QAQ== [wire]
         };
+
+        /// <summary>What a save sends as the transition it replaces (reference §6).</summary>
+        public enum Previous : byte { None, Auto, UserDefined }
+
+        /// <summary>THE OPEN QUESTION (protocol §3.2, reference §6), in one switch: the client's logic sends a stored user-defined
+        /// recipe as f4 (with its uri as f5) and an Auto transition as f3 — but the one captured save over a stored recipe sent f3
+        /// with the Auto baseline. True follows the client's logic; false sends the Auto baseline always, as captured. Flip it after
+        /// the owner's live check if Spotify refuses f4 or shows the save wrong.</summary>
+        const bool StoredRecipeGoesInField4 = true;
+
+        /// <summary>Which previous transition a save sends: the pair's stored recipe (f4 + f5), else the Auto baseline the planner
+        /// computes (f3), else none (the planner could not place an Auto transition for the pair). Logged with every save.</summary>
+        public static Previous PreviousFor(bool hadStoredRecipe, bool autoBaselineKnown)
+            => hadStoredRecipe && StoredRecipeGoesInField4 ? Previous.UserDefined
+             : autoBaselineKnown ? Previous.Auto : Previous.None;
+
+        /// <summary>One transition save: the pair (its from and to item), the new recipe and its bytes (patched over the recipe it
+        /// replaces when there was one, Mix.Card.cs), and the pair's Auto transition as the baseline a save over an Auto pair sends
+        /// (no item ids; reference §5.2), null when the planner has none.</summary>
+        public sealed record TransitionSave(ulong FromItem, ulong ToItem, MixRecipe Recipe, byte[] Encoded, MixRecipe? AutoBaseline);
+
+        /// <summary>Save a transition to Spotify: `set-transition` with signal f2 = the from-item's attribute 14 template VERBATIM and
+        /// the payload {1 new recipe, 3 Auto | 4 stored + 5 its uri} (<see cref="PreviousFor"/>). Optimistic: the new recipe is the
+        /// pair's stored transition at once; the reply (the list through the mix lens: the recipe as stored, the new
+        /// <c>transition_uri</c>, the new lens etag) is folded; a refusal puts the previous one back. Refused (nothing sent) without
+        /// the template: the server did not offer this item's transition for editing.</summary>
+        public static void SaveTransition(Playlist p, TransitionSave save, Action<Outcome> settled)
+        {
+            if (!CanWrite(p) || MixData.Signals(p.Slot) is not { } signals || signals.TransitionTemplate(save.FromItem).IsEmpty)
+            {
+                Log.Info("mix", "set-transition refused: no template for the from-item (or not the owner)");
+                settled(Outcome.Refused);
+                return;
+            }
+            int slot = p.Slot;
+            byte[] template = signals.TransitionTemplate(save.FromItem).ToArray();
+            MixTransition? stored = MixData.TryGet(slot, save.FromItem, out var t) ? t : null;
+            var previous = PreviousFor(stored is not null, save.AutoBaseline is not null);
+            string fresh = Convert.ToBase64String(save.Encoded);
+            string? auto = null;
+            if (previous == Previous.Auto)
+            {
+                var baseline = save.AutoBaseline!.Value;
+                auto = Convert.ToBase64String(MixRecipe.EncodeToArray(in baseline, default));
+            }
+            byte[] payload = Api.SetTransitionPayload(fresh, auto, previous == Previous.UserDefined ? stored!.Base64 : null,
+                                                      previous == Previous.UserDefined ? stored!.TransitionUri : null);
+            MixData.SetTransition(slot, save.FromItem, new MixTransition(save.Recipe, save.Encoded, fresh, stored?.TransitionUri ?? ""));
+            Entities.Current.Playlists.Bump(slot);
+            string detail = "from=" + save.FromItem.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + " previous="
+                          + (previous switch { Previous.UserDefined => "user-defined (f4+f5)", Previous.Auto => "auto (f3)", _ => "none" })
+                          + (save.Recipe.IsNoTransition ? " recipe=none" : " preset=" + save.Recipe.Preset);
+            Send(p, Write.SaveTransition, revision => Api.SignalBody(revision, template, payload, hasPayload: true), fold: true, detail, outcome =>
+            {
+                if (outcome != Outcome.Landed) PutBack(slot, save.FromItem, stored);
+                settled(outcome);
+            });
+        }
+
+        /// <summary>Reset a pair to Auto on Spotify: `set-transition` with NO payload ([client]; never seen on the wire). Optimistic:
+        /// the pair's stored transition goes at once; the reply is folded; a refusal puts it back.</summary>
+        public static void ResetToAuto(Playlist p, ulong fromItem, Action<Outcome> settled)
+        {
+            if (!CanWrite(p) || MixData.Signals(p.Slot) is not { } signals || signals.TransitionTemplate(fromItem).IsEmpty)
+            {
+                Log.Info("mix", "set-transition (reset) refused: no template for the from-item (or not the owner)");
+                settled(Outcome.Refused);
+                return;
+            }
+            int slot = p.Slot;
+            byte[] template = signals.TransitionTemplate(fromItem).ToArray();
+            MixTransition? stored = MixData.TryGet(slot, fromItem, out var t) ? t : null;
+            MixData.SetTransition(slot, fromItem, null);
+            Entities.Current.Playlists.Bump(slot);
+            string detail = "from=" + fromItem.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + " reset to auto (no payload)";
+            Send(p, Write.ResetToAuto, revision => Api.SignalBody(revision, template, default, hasPayload: false), fold: true, detail, outcome =>
+            {
+                if (outcome != Outcome.Landed) PutBack(slot, fromItem, stored);
+                settled(outcome);
+            });
+        }
+
+        static void PutBack(int slot, ulong fromItem, MixTransition? stored)
+        {
+            MixData.SetTransition(slot, fromItem, stored);
+            Entities.Current.Playlists.Bump(slot);
+        }
 
         /// <summary>"auto CA8QAQ==" — a route as its two header values, for the log lines and the inspector.</summary>
         public static string RouteText(SignalRoute route)

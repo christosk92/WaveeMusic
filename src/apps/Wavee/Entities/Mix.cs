@@ -192,6 +192,24 @@ public static class MixData
         Version++;
     }
 
+    /// <summary>One pair's stored transition as a write from this PC moves it (Spotify.Mixes: the optimistic save or reset, and
+    /// the put-back after a refusal); null removes it. The reply's fold replaces the whole set after.</summary>
+    public static void SetTransition(int playlistSlot, ulong fromItemId, MixTransition? transition)
+    {
+        var map = s_transitions.GetValueOrDefault(playlistSlot);
+        if (transition is null)
+        {
+            if (map is null || !map.Remove(fromItemId)) return;
+            if (map.Count == 0) s_transitions.Remove(playlistSlot);
+        }
+        else
+        {
+            if (map is null) s_transitions[playlistSlot] = map = new Dictionary<ulong, MixTransition>();
+            map[fromItemId] = transition;
+        }
+        Version++;
+    }
+
     /// <summary>The playlist's signal templates and not-mixable reasons from its last lens read; null when it held none.</summary>
     public static MixSignals? Signals(int playlistSlot) => s_signals.GetValueOrDefault(playlistSlot);
 

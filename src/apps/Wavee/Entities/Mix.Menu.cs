@@ -1,10 +1,14 @@
 // ── Entities/Mix.Menu.cs — #48 Mix, the row menu's "Don't mix into the next song" (plan §4: the smallest complete cut) ────
 //
-// One toggle in a track row's menu, inside a playlist Spotify has mixed: it writes the local NoMix override for the pair
-// (this row → the row after it in the playlist's order), which the planner honours (Playback.Mix.cs: the pair gets the base
-// hand-off, the user's Crossfade or gapless) and which the Transitions view and the seams draw as a break. Spotify has no
-// per-pair opt-out (decision D16), so the record lives on this PC only and says so ("Saved on this PC only" in the label's
-// tooltip line of the Transitions view). Checked while the pair is opted out; running it again removes the record.
+// One toggle in a track row's menu, inside a playlist Spotify has mixed: the pair (this row → the row after it in the
+// playlist's order) plays as a plain track change. Where it is saved is the seam card's rule (Mix.Card.cs): on a list the user
+// may write, Spotify's "No transition" (`set-transition` with the "none" recipe; running it again resets the pair to Auto);
+// elsewhere the local NoMix record on this PC (running it again removes the record, so Spotify's version plays again). The
+// planner honours both (Playback.Mix.cs), and the Transitions view and the seams draw the pair as a break. Checked while the
+// pair plays without a transition.
+//
+// The Mix menu (Items): the transitions view, listen without Mix, "Turn off Mix for everyone" (M2: the mix-state write) and
+// the view options.
 
 using FluentGpu.Controls;
 using FluentGpu.Localization;
@@ -134,10 +138,19 @@ public static class MixMenu
         return items;
     }
 
-    /// <summary>Is this row's pair opted out on this PC?</summary>
+    /// <summary>Does this row's pair play without a transition (a local "No mix", or Spotify's "No transition")?</summary>
     public static bool IsOptedOut(in ActionContext c)
         => TryPair(in c, out var uri, out var from, out var to)
-           && MixOverrides.TryGet(uri, from, to, out var o) && o.Kind == MixOverrideKind.NoMix;
+           && (MixOverrides.TryGet(uri, from, to, out var o) && o.Kind == MixOverrideKind.NoMix
+               || PairOf(in c) is { Valid: true } pair && MixEdit.StyleOf(in pair) == (int)MixStyle.NoMix);
+
+    /// <summary>The seam card's model of this row's pair.</summary>
+    static MixEdit.Pair PairOf(in ActionContext c)
+    {
+        var host = c.Target.Host;
+        var p = Entities.Playlist(host.Playlist);
+        return p.IsValid && host.Rows is { Count: 1 } rows ? MixEdit.Read(p.Slot, rows[0]) : default;
+    }
 
     /// <summary>The playlist row's version moves, so its page (the meta line, the marks) re-reads the overrides.</summary>
     static void Bump(in ActionContext c)
@@ -158,6 +171,15 @@ public static class MixMenu
             Execute = static c =>
             {
                 if (!TryPair(in c, out var uri, out var from, out var to)) return;
+                var pair = PairOf(in c);
+                if (pair is { Valid: true, Writes: true })
+                {
+                    // A list the user may write: Spotify's "No transition", or back to Auto (the seam card's writes).
+                    int slot = Entities.Playlist(c.Target.Host.Playlist).Slot;
+                    if (MixEdit.StyleOf(in pair) == (int)MixStyle.NoMix) MixEdit.Reset(in pair, slot);
+                    else MixEdit.Save(in pair, slot, (int)MixStyle.NoMix, 0);
+                    return;
+                }
                 if (MixOverrides.TryGet(uri, from, to, out var o) && o.Kind == MixOverrideKind.NoMix)
                 {
                     MixOverrides.Clear(uri, from, to);

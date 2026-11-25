@@ -36,16 +36,23 @@ public static partial class Diagnostics
             if (_shell is null) return Inspect.Reply.Fail(id, name, "mount first: a write's reply lands on the UI thread's frames");
 
             Entities.FakeMixServer.Clear();
-            var steps = new List<(string Label, Spotify.Mixes.Outcome Outcome, int From, int To, string Note)>();
+            var steps = new List<Action<Utf8JsonWriter>>();
             var outcome = Spotify.Mixes.Outcome.Refused;
             bool done;
 
             // 1. Mix off for everyone, 2. Mix on again (the recipes come back).
             int before = MixData.Count(slot);
             Run("mix off", settled => Spotify.Mixes.TurnOff(p, settled));
-            steps.Add(("mix off", outcome, -1, -1, "on=" + p.MixOn + " storedTransitionsKept=" + MixData.Count(slot) + "/" + before));
+            Note("mix off", outcome, "on=" + p.MixOn + " storedTransitionsKept=" + MixData.Count(slot) + "/" + before);
             Run("mix on", settled => Spotify.Mixes.TurnOn(p, settled));
-            steps.Add(("mix on", outcome, -1, -1, "on=" + p.MixOn + " storedTransitions=" + MixData.Count(slot) + " etag=" + Entities.Strings.Resolve(p.MixLensEtagId)));
+            Note("mix on", outcome, "on=" + p.MixOn + " storedTransitions=" + MixData.Count(slot) + " etag=" + Entities.Strings.Resolve(p.MixLensEtagId));
+
+            // 3-6. The seam card's writes, through MixEdit exactly as its Done and Reset buttons call them: a save over an Auto pair
+            // (f3 = the Auto baseline), a save over a stored pair (f4 = its stored bytes, f5 = its uri), "No transition", Reset.
+            Save("save over an Auto pair", AutoPair(), (int)MixStyle.Lift, 8);
+            Save("save over a stored pair", StoredPair(), (int)MixStyle.Lift, 0);
+            Save("no transition", AutoPair(), (int)MixStyle.NoMix, 0);
+            Reset("reset to auto", 0);
 
             var recorded = Entities.FakeMixServer.Log();
             var server = Entities.FakeMixServer.StateOf(wireId);
@@ -53,15 +60,7 @@ public static partial class Diagnostics
             {
                 w.WriteString("uri", uri);
                 w.WriteStartArray("steps");
-                foreach (var (label, settled, from, to, note) in steps)
-                {
-                    w.WriteStartObject();
-                    w.WriteString("write", label);
-                    w.WriteString("outcome", settled.ToString());
-                    if (from >= 0) { w.WriteNumber("from", from); w.WriteNumber("to", to); }
-                    w.WriteString("after", note);
-                    w.WriteEndObject();
-                }
+                foreach (var step in steps) step(w);
                 w.WriteEndArray();
                 WriteRequests(w, recorded);
                 w.WriteStartObject("server");
@@ -72,16 +71,257 @@ public static partial class Diagnostics
                 w.WriteEndObject();
             });
 
-            // One write, its reply pumped through the frames until it settles (5 s of wall clock at most).
+            // One Spotify.Mixes write, its reply pumped through the frames until it settles.
             void Run(string label, Action<Action<Spotify.Mixes.Outcome>> write)
             {
-                done = false;
                 outcome = Spotify.Mixes.Outcome.Refused;
-                write(o => { outcome = o; done = true; });
+                Pump(label, fin => write(o => { outcome = o; fin(); }));
+            }
+
+            // Frames until the write calls back (5 s of wall clock at most): its reply crosses an api thread and lands on a frame.
+            void Pump(string label, Action<Action> write)
+            {
+                done = false;
+                write(() => done = true);
                 long until = Environment.TickCount64 + 5_000;
                 while (!done && Environment.TickCount64 < until) { RunFrames(1); if (!done) Thread.Sleep(2); }
                 RunFrames(2);
                 if (!done) Log.Warn("mix", "inspector: " + label + " did not settle");
+            }
+
+            void Note(string label, Spotify.Mixes.Outcome settled, string after) => steps.Add(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("write", label);
+                w.WriteString("outcome", settled.ToString());
+                w.WriteString("after", after);
+                w.WriteEndObject();
+            });
+
+            // The first pair with no stored recipe that the planner places an Auto transition for, and which the user may save.
+            int AutoPair()
+            {
+                int rows = Entities.Current.Edges.PlaylistTracks.Targets(slot).Length;
+                for (int i = 0; i + 1 < rows; i++)
+                {
+                    var pr = MixEdit.Read(slot, i);
+                    if (pr.Valid && pr.Writes && pr.Auto.Mix && !pr.Local && !MixData.TryGet(slot, pr.ItemA, out _)) return i;
+                }
+                return -1;
+            }
+
+            // The first stored pair whose recipe carries fields Wavee does not model (curve overrides, unknown fields), else any stored pair.
+            int StoredPair()
+            {
+                int rows = Entities.Current.Edges.PlaylistTracks.Targets(slot).Length, any = -1;
+                for (int i = 0; i + 1 < rows; i++)
+                {
+                    var pr = MixEdit.Read(slot, i);
+                    if (!pr.Valid || !pr.Writes || !MixData.TryGet(slot, pr.ItemA, out var t) || t.Recipe.IsNoTransition
+                        || (t.Recipe.ToItemId != 0 && t.Recipe.ToItemId != pr.ItemB)) continue;
+                    if (t.Recipe.CurveOverrides != 0) return i;
+                    if (any < 0) any = i;
+                }
+                return any;
+            }
+
+            // A seam card save of `style` on pair `index` (beats 0: the pair's current overlap + 2 beats), then what went out against
+            // what the card built: the template echoed, the recipe sent = the edit, every untouched field byte-identical, the previous.
+            void Save(string label, int index, int style, int beats)
+            {
+                if (index < 0) { Note(label, Spotify.Mixes.Outcome.Refused, "no such pair in this list"); return; }
+                var pair = MixEdit.Read(slot, index);
+                if (beats == 0 && style != (int)MixStyle.NoMix) beats = MixEdit.BeatsOf(in pair, (pair.Now.Mix ? pair.Now : pair.Auto).OutDurationMs) + 2;
+                MixTransition? stored = MixData.TryGet(slot, pair.ItemA, out var t) ? t : null;
+                byte[] template = MixData.Signals(slot) is { } sg ? sg.TransitionTemplate(pair.ItemA).ToArray() : [];
+                MixEdit.Build(in pair, slot, style, beats, out var edit, out byte[] replaced);
+                var baseline = MixEdit.AutoBaseline(in pair);
+                int sent = Entities.FakeMixServer.Log().Length;
+                var state = MixSaveState.Failed;
+                Pump(label, fin => MixEdit.Save(in pair, slot, style, beats, s => { state = s; fin(); }));
+                var request = LastPost(sent);
+                MixData.TryGet(slot, pair.ItemA, out var after);
+                string etag = Entities.Strings.Resolve(p.MixLensEtagId);
+                steps.Add(w =>
+                {
+                    w.WriteStartObject();
+                    w.WriteString("write", label);
+                    w.WriteNumber("from", index);
+                    w.WriteNumber("to", index + 1);
+                    w.WriteString("state", state.ToString());
+                    w.WriteString("edit", edit.ToString());
+                    if (request is not null) WriteSaveCheck(w, request.Body, template, edit, replaced, stored, baseline);
+                    w.WriteString("after", "stored=" + (after is not null) + " storedEqualsSent=" + (after is not null && request is not null
+                        && SentRecipe(request.Body) is { } sentB64 && sentB64 == after.Base64) + " transitionUri=" + (after?.TransitionUri ?? "")
+                        + " etag=" + etag + " local=" + MixOverrides.TryGet(uri, pair.ItemA, pair.ItemB, out _));
+                    w.WriteEndObject();
+                });
+            }
+
+            // Reset to Auto on pair `index`: set-transition with no payload.
+            void Reset(string label, int index)
+            {
+                var pair = MixEdit.Read(slot, index);
+                bool had = MixData.TryGet(slot, pair.ItemA, out _);
+                byte[] template = MixData.Signals(slot) is { } sg ? sg.TransitionTemplate(pair.ItemA).ToArray() : [];
+                int sent = Entities.FakeMixServer.Log().Length;
+                var state = MixSaveState.Failed;
+                Pump(label, fin => MixEdit.Reset(in pair, slot, s => { state = s; fin(); }));
+                var request = LastPost(sent);
+                bool still = MixData.TryGet(slot, pair.ItemA, out _);
+                string etag = Entities.Strings.Resolve(p.MixLensEtagId);
+                steps.Add(w =>
+                {
+                    w.WriteStartObject();
+                    w.WriteString("write", label);
+                    w.WriteNumber("from", index);
+                    w.WriteNumber("to", index + 1);
+                    w.WriteString("state", state.ToString());
+                    if (request is not null)
+                    {
+                        var (signal, payload, hasPayload) = SignalOf(request.Body);
+                        w.WriteBoolean("templateVerbatim", template.Length > 0 && signal.AsSpan().StartsWith(template) && signal.Length == template.Length);
+                        w.WriteBoolean("payload", hasPayload);
+                        _ = payload;
+                    }
+                    w.WriteString("after", "hadStored=" + had + " storedNow=" + still + " etag=" + etag);
+                    w.WriteEndObject();
+                });
+            }
+
+            Entities.FakeMixServer.Request? LastPost(int from)
+            {
+                var all = Entities.FakeMixServer.Log();
+                for (int i = all.Length - 1; i >= from; i--) if (all[i].Verb == "POST") return all[i];
+                return null;
+            }
+        }
+
+        /// <summary>A signals body's signal (f2) and its payload (f2.3), when it has one.</summary>
+        static (byte[] Signal, byte[] Payload, bool HasPayload) SignalOf(ReadOnlySpan<byte> body)
+        {
+            byte[] signal = [], payload = [];
+            bool has = false;
+            for (var r = new Spotify.Decode.ProtoReader(body); r.Next();)
+            {
+                if (r.Field == 2 && r.Wire == 2) signal = r.Bytes().ToArray();
+                else r.Skip();
+            }
+            // The signal minus its f3: the template the client echoed.
+            var head = new List<byte>(signal.Length);
+            for (var r = new Spotify.Decode.ProtoReader(signal); ;)
+            {
+                int start = r.Position;
+                if (!r.Next()) break;
+                if (r.Field == 3 && r.Wire == 2) { payload = r.Bytes().ToArray(); has = true; continue; }
+                r.Skip();
+                head.AddRange(signal.AsSpan(start, r.Position - start).ToArray());
+            }
+            return (head.ToArray(), payload, has);
+        }
+
+        /// <summary>The base64 recipe a save sent (payload f1), or null.</summary>
+        static string? SentRecipe(ReadOnlySpan<byte> body)
+        {
+            var (_, payload, has) = SignalOf(body);
+            if (!has) return null;
+            var b64 = new Spotify.Decode.ProtoReader(payload).Bytes(1);
+            return b64.IsEmpty ? null : System.Text.Encoding.ASCII.GetString(b64);
+        }
+
+        /// <summary>A save's request against what the card built: the template echoed verbatim, the sent recipe (payload f1) decoded back
+        /// to the edit and equal to the patching encoder's bytes, the field-by-field diff against the replaced recipe (only what the edit
+        /// changed may differ), and the previous transition (f3 the Auto baseline, or f4 the stored bytes + f5 its uri).</summary>
+        static void WriteSaveCheck(Utf8JsonWriter w, byte[] body, byte[] template, in MixRecipe edit, byte[] replaced, MixTransition? stored,
+            MixRecipe? baseline)
+        {
+            var (signal, payload, has) = SignalOf(body);
+            w.WriteBoolean("templateVerbatim", template.Length > 0 && signal.AsSpan().SequenceEqual(template));
+            w.WriteBoolean("payload", has);
+            if (!has) return;
+            var fields = new Spotify.Decode.ProtoReader(payload);
+            string? f1 = null, f3 = null, f4 = null, f5 = null;
+            var present = new List<int>();
+            for (; fields.Next();)
+            {
+                present.Add(fields.Field);
+                if (fields.Wire != 2) { fields.Skip(); continue; }
+                string text = System.Text.Encoding.ASCII.GetString(fields.Bytes());
+                switch (fields.Field) { case 1: f1 = text; break; case 3: f3 = text; break; case 4: f4 = text; break; case 5: f5 = text; break; }
+            }
+            w.WriteString("payloadFields", string.Join(",", present));
+            byte[] sent = f1 is null ? [] : Convert.FromBase64String(f1);
+            bool decodes = MixRecipe.TryDecode(sent, out var back);
+            w.WriteBoolean("decodesToEdit", decodes && back.ToString() == edit.ToString());
+            w.WriteBoolean("equalsPatchedEncode", sent.AsSpan().SequenceEqual(MixRecipe.EncodeToArray(in edit, replaced)));
+            w.WriteNumber("sentBytes", sent.Length);
+            if (replaced.Length > 0)
+            {
+                var changed = new List<string>();
+                int same = FieldDiff(replaced, sent, "", 0, changed);
+                w.WriteNumber("replacedBytes", replaced.Length);
+                w.WriteString("changedFields", string.Join(",", changed));
+                w.WriteNumber("identicalFields", same);
+                w.WriteString("replacedHex", Convert.ToHexString(replaced).ToLowerInvariant());
+                w.WriteString("sentHex", Convert.ToHexString(sent).ToLowerInvariant());
+            }
+            else w.WriteString("sentHex", Convert.ToHexString(sent).ToLowerInvariant());
+            if (f3 is not null)
+            {
+                bool baselineDecodes = MixRecipe.TryDecodeBase64(System.Text.Encoding.ASCII.GetBytes(f3), out var auto, out _);
+                w.WriteString("previous", "f3 auto");
+                w.WriteString("f3", baselineDecodes ? auto.ToString() : "undecodable");
+                w.WriteBoolean("f3EqualsPlannerBaseline", baseline is { } b && baselineDecodes && auto.ToString() == b.ToString());
+            }
+            if (f4 is not null)
+            {
+                w.WriteString("previous", "f4 user-defined + f5 uri");
+                w.WriteBoolean("f4EqualsStoredBytes", stored is not null && f4 == stored.Base64);
+                w.WriteBoolean("f5EqualsStoredUri", stored is not null && f5 == stored.TransitionUri);
+                w.WriteString("f5", f5 ?? "");
+            }
+        }
+
+        /// <summary>Field by field, two TransitionRecipe byte strings (into the Overlap, f1, and the Preset, f2): the paths whose bytes
+        /// differ, gained or lost go to <paramref name="changed"/>; returns how many fields are byte-identical.</summary>
+        static int FieldDiff(ReadOnlySpan<byte> before, ReadOnlySpan<byte> after, string prefix, int depth, List<string> changed)
+        {
+            var a = Entries(before);
+            var b = Entries(after);
+            var keys = new SortedSet<(int Field, int Occurrence)>();
+            foreach (var e in a) keys.Add((e.Field, e.Occurrence));
+            foreach (var e in b) keys.Add((e.Field, e.Occurrence));
+            int same = 0;
+            foreach (var key in keys)
+            {
+                var ea = a.Find(e => e.Field == key.Field && e.Occurrence == key.Occurrence);
+                var eb = b.Find(e => e.Field == key.Field && e.Occurrence == key.Occurrence);
+                string path = prefix + key.Field.ToString(CultureInfo.InvariantCulture) + (key.Occurrence > 0 ? "#" + key.Occurrence : "");
+                if (ea.Entry is null) { changed.Add("+" + path); continue; }
+                if (eb.Entry is null) { changed.Add("-" + path); continue; }
+                if (ea.Entry.AsSpan().SequenceEqual(eb.Entry)) { same++; continue; }
+                if (depth == 0 && key.Field is 1 or 2 && ea.Wire == 2 && eb.Wire == 2) same += FieldDiff(ea.Payload, eb.Payload, path + ".", 1, changed);
+                else changed.Add(path);
+            }
+            return same;
+
+            static List<(int Field, int Occurrence, int Wire, byte[] Entry, byte[] Payload)> Entries(ReadOnlySpan<byte> proto)
+            {
+                var list = new List<(int, int, int, byte[], byte[])>();
+                var seen = new Dictionary<int, int>();
+                var r = new Spotify.Decode.ProtoReader(proto);
+                while (true)
+                {
+                    int start = r.Position;
+                    if (!r.Next()) break;
+                    int field = r.Field, wire = r.Wire;
+                    byte[] payload = [];
+                    if (wire == 2) payload = r.Bytes().ToArray(); else r.Skip();
+                    int occurrence = seen.GetValueOrDefault(field);
+                    seen[field] = occurrence + 1;
+                    list.Add((field, occurrence, wire, proto[start..r.Position].ToArray(), payload));
+                }
+                return list;
             }
         }
 
