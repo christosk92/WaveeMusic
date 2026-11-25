@@ -176,14 +176,15 @@ and the one observed outro.
 
 | Case | Track starts at position | Track starts (from the narration's start) | Fade window, overlap | Music gain curve |
 |---|---|---|---|---|
-| **human** cue | `max(0, cue − d − 1600)` | with the narration (0 ms) | `[start position, cue]`; `fade_overlap = d` | 0 → 0.25 linear over the first 1000 ms; 0.25 plateau; up to 1.0 at `cue − 1000` |
+| **human** cue | `max(0, cue − d − 1600)` | `max(0, d − (cue − 1600))` ms (0 when the voice fits before the cue) | `[start position, cue]`; `fade_overlap = min(d, cue − 1600)` | 0 → 0.25 linear over the first 1000 ms; 0.25 plateau; up to 1.0 at `cue − 1000` |
 | **ml** cue, or no human cue | 0 | `max(0, d − 3400)` ms | 5000 ms; `fade_overlap = min(d, 3400)` | 0.25 flat for 0 to 3000 ms; up to 1.0 at 4000 ms |
 | **outro** (one sample) | — | the outro starts 4000 ms into the last track's fade-out window, which runs to the track's end | the window was 5507 ms; where its start comes from is open | the **outgoing** track ducks 1 → 0.25 over 4000 ms, then stays at 0.25 to its end (it never fades to 0) |
-| the page-1 intro (one sample: 24.5 s, streamed on a cache MISS) | 0 | after the narration ends | none | the intro played in full, then the track. Why is open: the voice was longer than the cue window, or its duration was not known while it streamed |
+| the page-1 intro (one sample: 24.5 s, streamed on a cache MISS) | 0 | after the narration ends | none played | the intro played in full, then the track from 0 |
 
-- The human rule was only seen with a voice that fits before the cue (`d + 1600 ≤ cue`). For a longer voice the
-  expected form is a late start, `d − (cue − 1600)` ms after the narration starts, with `fade_overlap = cue − 1600`:
-  an inference, not observed.
+- The human rule fits the published fade keys of both human-cue narrations (2 of 2). Only the short one (5.3 s, fitting
+  before the cue) was **played** that way. For the 24.5 s page-1 intro the keys said a late start (17 223 ms in, overlap
+  7332 = cue − 1600), but the player played the intro in full and then the track. The likely cause is that the
+  streamed clip's duration was not known in time (an inference): §2.2 falls back the same way.
 - In both cue cases the music returns to full volume 600 ms after the voice ends.
 - The voice itself is never faded: the narration's `audio.fade_out_curves` is flat at 1.
 - After an outro, the next segment's intro starts when the outro ends, and its target follows the ml or human rule.
@@ -337,8 +338,7 @@ curve, and one transition gate covers both (`ScheduleMix` `:159-243`, `MixRender
 - **`MixTiming` from a DJ pair:** when the playing row is a narration and the next row is its target track, `Mix.Follow`
   (`Playback/Playback.Mix.cs:78-118`) asks a **TalkOverPlanner** instead of the playlist planner. It returns a
   `MixTiming` with:
-  - out start = `max(0, d − 3400)` (ml) or 0 (human; the inferred late start of §1.6 when the voice is longer than
-    the cue window);
+  - out start = `max(0, d − 3400)` (ml) or `max(0, d − (cue − 1600))` (human);
   - in start = the track position (§1.6);
   - A's curve = flat 1;
   - B's curve = the duck of §1.6 (a 1025-point table from the exact break points);
