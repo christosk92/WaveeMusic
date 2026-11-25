@@ -142,7 +142,12 @@ public static partial class Diagnostics
                     w.WriteStartObject();
                     w.WriteNumber("from", i);
                     w.WriteString("source", t.Source.ToString());
-                    if (!t.Mix) w.WriteString("whyNot", t.WhyNot.ToString());
+                    if (!t.Mix)
+                    {
+                        w.WriteString("whyNot", t.WhyNot.ToString());
+                        // The base hand-off's fade for this pair with the user's Crossfade as it is now (0 = gapless).
+                        w.WriteNumber("baseFadeMs", Playback.Audio.BaseFadeMs(in t, Playback.Audio.CrossfadeMs));
+                    }
                     else
                     {
                         w.WriteNumber("preset", t.Preset);
@@ -157,6 +162,9 @@ public static partial class Diagnostics
                 w.WriteEndArray();
                 var cur = Playback.Mix.Current;
                 w.WriteString("playingPair", cur.Mix ? cur.Source + " out=" + cur.OutStartMs + " dur=" + cur.OutDurationMs + " in=" + cur.InStartMs : "none (" + cur.WhyNot + ")");
+                // The user's Crossfade, and the fade the pump's tick selects for the deck's pair now (Audio.MixBaseFadeMs).
+                w.WriteNumber("userFadeMs", Playback.Audio.CrossfadeMs);
+                w.WriteNumber("pumpFadeMs", Playback.Audio.HandOffFadeMsNow);
             });
         }
 

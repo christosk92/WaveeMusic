@@ -3984,7 +3984,7 @@ public static partial class Playback
                 : silent || p is null ? sess.PlayedFrames * 1000L / Math.Max(1, sess.Format.SampleRate)
                 : (long)p.Position.Peek().TotalMilliseconds;
             long pos = ActivePositionMs();
-            int fadeMs = EffectiveFadeMs;
+            int fadeMs = MixBaseFadeMs(EffectiveFadeMs);       // #48: 0 for a Spotify "no transition" pair (Playback.Audio.Mix.cs)
 
             DrainXruns(sess, pos, state);
 
@@ -4030,7 +4030,8 @@ public static partial class Playback
                 PostEndingSoon(epoch);
             }
 
-            // (c) the commit. `EffectiveFadeMs` is the ONLY selector (rule 3). The boundary is the voice's EXACT end once it
+            // (c) the commit. `EffectiveFadeMs` is the ONLY selector (rule 3; #48 zeroes it for a Spotify "no transition" pair of a
+            // mixed playlist, `fadeMs` above). The boundary is the voice's EXACT end once it
             // is known (G-113), not the catalogue duration — a track 1.6 s shorter than its `duration_ms` never commits
             // against the catalogue figure.
             if (state == PlaybackState.Playing && s_prepItem is { IsReady: true } item && !TickMix(sess, item))

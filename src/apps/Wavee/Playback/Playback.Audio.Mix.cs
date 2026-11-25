@@ -13,6 +13,8 @@
 //             over 30 ms (MixRender.Cancel). A's automation ramps to neutral, B's bytes are cut (the gapless abandon). A
 //             load drops the join with its session (DropMixJoinLocked)
 //   refuse    a cross-kind slot or a tick that came too late: the base hand-off runs, the duration goes back to the file's
+//   none      a pair Spotify saved as "no transition": the base hand-off with no fade (gapless), whatever the user's
+//             Crossfade says (a mixed list ignores the setting); a local "No mix" keeps the user's Crossfade
 //
 // With no mix planned every existing path is unchanged: the hooks in Playback.Audio.cs test MixArmed first.
 
@@ -92,6 +94,27 @@ public static partial class Playback
             if (postDuration > 0) PostSignal(AudioSignal.Duration, epoch, postDuration);
             if (reprepare) { Log.Info("audio", "[mix] in-point changed; preparing the next row again"); Prepare(nextRow, next); }
         }
+
+        /// <summary>The fade the BASE hand-off uses for a pair the planner did not mix: the user's Crossfade, except a pair Spotify
+        /// saved as "no transition" (<see cref="MixWhyNot.NoTransition"/>, planned only inside a mixed playlist with Mix on), which
+        /// is a hard, gapless change: a mixed list carries <c>automix.ignore_setting=true</c>, the user's crossfade does not apply
+        /// inside it. A local "No mix" (<see cref="MixWhyNot.PairOptOut"/>) keeps the user's Crossfade ("a normal track change"). Pure.</summary>
+        public static int BaseFadeMs(in MixTiming plan, int userFadeMs) => plan.WhyNot == MixWhyNot.NoTransition ? 0 : userFadeMs;
+
+        /// <summary>The tick's fade selector: <see cref="BaseFadeMs"/> for the deck's planned pair, the user's fade when the plan is
+        /// another pair's or the prepared slot holds a row the plan is not about.</summary>
+        static int MixBaseFadeMs(int userFadeMs)
+        {
+            lock (s_gate)
+            {
+                if (s_id.IsEmpty || s_mixActive != s_id) return userFadeMs;
+                if (!s_prepId.IsEmpty && s_prepId != s_mixNext) return userFadeMs;
+                return BaseFadeMs(in s_mixPlan, userFadeMs);
+            }
+        }
+
+        /// <summary>Diagnostics (the `mix` verb): the fade the base hand-off would use now, as the tick selects it.</summary>
+        public static int HandOffFadeMsNow => MixBaseFadeMs(EffectiveFadeMs);
 
         /// <summary>Under s_gate: a mix is planned for the deck's row and not refused.</summary>
         static bool MixArmedLocked => s_mixPlan.Mix && !s_mixRefused && s_mixActive == s_id && !s_id.IsEmpty;
