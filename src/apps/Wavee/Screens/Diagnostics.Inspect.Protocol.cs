@@ -614,7 +614,8 @@ public static partial class Diagnostics
                              Arg("pages", ArgType.Int, "do=answers: how many pages to decode after the session (default 3)"),
                              Arg("file", ArgType.String, "do=cluster / do=transfer: the file to feed"),
                              Arg("track", ArgType.String, "do=restore: the deck's track uri"),
-                             Arg("ms", ArgType.Int, "do=restore: the deck's position (default 30000)")], s_settleArgs),
+                             Arg("ms", ArgType.Int, "do=restore: the deck's position (default 30000)"),
+                             Arg("try", ArgType.Bool, "do=cluster: then ask for shuffle, repeat and play-here, and read back that nothing changed")], s_settleArgs),
             },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {

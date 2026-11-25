@@ -385,6 +385,9 @@ public static partial class Spotify
             else if (Is(key, "queued_by")) row.QueuedBy = into.AddText(value);
             else if (Is(key, "associated_video_id")) row.AssociatedVideoId = into.AddText(value);
             else if (Is(key, "track_player") || Is(key, "media.type")) row.IsVideo |= value.SequenceEqual("video"u8);
+            // AI DJ: a narration item (dj-protocol §2.4) and the TTS request it names, whose SSML is the caption a controller shows
+            else if (Is(key, "is_narration")) row.Narration = value.SequenceEqual("true"u8);
+            else if (Is(key, "media.manifest")) row.Manifest = into.AddText(value);
         }
 
         // ── context-resolve / autoplay ───────────────────────────────────────────────────────────────────────────────

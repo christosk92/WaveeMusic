@@ -192,6 +192,9 @@ public static partial class Playback
     }
     /// <summary>The FOLDED enablement — restrictions, phase, error and (while live) the DVR window, decided once.</summary>
     public static readonly Signal<bool> CanSeek = new(false);
+    /// <summary>May playback move to another device (or here) right now? False while a foreign owner refuses a transfer (a DJ while it
+    /// talks, <see cref="State.TransferRestricted"/>): the device picker reads it and says why instead of offering the move.</summary>
+    public static readonly Signal<bool> CanTransfer = new(true) { DebugName = "playback.canTransfer" };
     public static readonly Signal<bool> CanSkipNext = new(false);
     public static readonly Signal<bool> CanSkipPrev = new(false);
     /// <summary>The context's own Next / Previous permission, NOT folded with the error state — what the player bar
@@ -742,8 +745,13 @@ public static partial class Playback
     {
         Spotify.Decode.ClusterBuffer? buffer = item.Buffer;
         if (buffer is null) return;
-        ref readonly Spotify.Decode.ClusterDelta d = ref item.Delta;
+        FoldCluster(buffer, in item.Delta, now);
+    }
 
+    /// <summary><see cref="FoldCluster(in Spotify.Connect.Item, long)"/>'s body over a decoded cluster: the dealer's push, or the
+    /// inspector's (`dj do=cluster`, folded at the top of a drain as a push is). The caller returns the buffer.</summary>
+    static void FoldCluster(Spotify.Decode.ClusterBuffer buffer, in Spotify.Decode.ClusterDelta d, long now)
+    {
         ulong active = DeviceHash(buffer.Utf8(d.ActiveDeviceId));
         Devices.Update(buffer, in d, active);
         Spotify.Connect.NoteLikedCluster(buffer, in d);     // a cluster playing the account's Liked Songs playlist names it (1.2b)
@@ -760,7 +768,9 @@ public static partial class Playback
             ContextOf(buffer.Utf8(d.ContextUri)),   // the owner's context: what a takeover adopts (A4); Liked folded (5.1)
             d.HasTrack && d.Track.IsVideo, (VideoSignals)d.VideoOffered, (VideoSignals)d.VideoDisallowed,
             d.HasTrack ? RemoteManifest(buffer.Utf8(d.Track.AssociatedVideoId), buffer.Utf8(d.Track.Uri)) : StringId.Empty,
-            d.ActiveVolumeFixed);
+            d.ActiveVolumeFixed,
+            // AI DJ (plan-dj §2.7): the owner's toggle locks and their reason, a transfer it refuses, a narration on its deck
+            Dj.LocksOf(buffer, in d, out LockReason lockReason), lockReason, d.NoTransfer, d.HasTrack && d.Track.Narration);
 
         StepOne(Input.Cluster(in frame, in remote, now));
         s_state.ActiveDeviceSlot = Devices.SlotOf(s_state.ActiveDevice);
@@ -771,10 +781,12 @@ public static partial class Playback
             s_contextWire = WireOf(buffer, in d, remote.Context);
             CaptureForeignOrigin(buffer, in d, remote.Context);   // what a takeover publishes on as the owner
             NoteRemoteListCluster(remote.Context, buffer.Utf8(d.SessionId));   // a list it plays in Wavee's order (5.3)
+            Dj.NoteRemoteNarration(buffer, in d);                // AI DJ: its narration's caption, for the caption surfaces
         }
         else if (s_state.Own.Kind != Owner.Foreign)
         {
             s_foreign.Clear();
+            Dj.NoteRemoteNarration(null, default);
             ForgetRemoteList();
             if (s_state.Own.Kind == Owner.Us) s_contextWire = default;   // Nobody keeps the departed owner's snapshot, label included
         }
@@ -1350,7 +1362,8 @@ public static partial class Playback
         ScrubPositionMs.Value = s_state.Scrub.Current != ScrubModel.State.Idle ? s_state.ScrubPosMs : -1;
         Shuffle.Value = s_state.Shuffle;
         Repeat.Value = s_state.Repeat;
-        LockedToggles.Value = new LockFacts(s_state.LiveLocks, s_state.LiveLocks == ToggleLock.None ? LockReason.None : s_state.Locks.Reason);
+        LockedToggles.Value = new LockFacts(s_state.LiveLocks, s_state.LiveLocks == ToggleLock.None ? LockReason.None : s_state.LiveLockReason);
+        CanTransfer.Value = !s_state.TransferRestricted;
         CanSeek.Value = s_state.CanSeek;
         CanSkipNext.Value = s_state.CanSkipNext;
         CanSkipPrev.Value = s_state.CanSkipPrev;
