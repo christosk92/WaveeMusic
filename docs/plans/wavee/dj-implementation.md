@@ -526,3 +526,23 @@ Commands arriving at the official desktop are not visible in the captures so far
 | When to fetch a natural boundary's outro and intro (the official client fetched them late in the one sample) | D2 | §1.4 |
 | Which keys an official controller needs to draw DJ UI from Wavee's state | D4 (echo everything until known) | [`dj-protocol.md`](dj-protocol.md) §4 |
 | C4, C5 (rest), C6, C8 (rest), C9, C11 | D6 | §4 |
+
+## What the implementation settled (2026-11-25)
+
+D0–D2, D4 and D5 are built, integrated and proven headless under `--fake`; D3/D3b are in progress; nothing has run
+against the live service. Where the build differs from or answers this plan:
+
+- **Narration rows (§2.2):** the playable id is `wavee:tts:<key>` (the hash of the fulfil body), not an
+  `EntityKind.Media` identity; the wire uri is `spotify:media:<track id>` (all-zero for the welcome) with provider
+  `narration/<slot>`. Both items of the nearest boundary are laid as soon as it becomes the nearest, not "once the
+  5th track is 2 ahead". The welcome plays only on a Play start at the first track; transfer and restore get none.
+- **Queue (§2.8):** the DJ's next row (the context row after a narration on the deck) is kept ahead of the user's
+  queue; the queue panel shows it at the head of its segment, not removable. A song added during a clip plays after
+  the target.
+- **Captions (§2.8):** the whole text shows for the length of the clip; per-sentence timing is not possible (progress
+  is hidden while the DJ talks and a streaming clip's length is unknown at its start). Entity names are plain text.
+- **Connect (§2.7):** a controller's "Let DJ pick" keys on the remote's f33 `jump` signal.
+- **Telemetry (§2.9):** field 67 is not in the event descriptor; Wavee sends it as `ms_overlapping_secondary` (name
+  chosen; only the number is known). The "dj" product-type field has no known number and is not sent. The feature
+  `context-player` is `orchestration_stack` (field 71). The welcome reports `playbtn`, which needs its own rule (a list
+  play otherwise reports `clickrow`).

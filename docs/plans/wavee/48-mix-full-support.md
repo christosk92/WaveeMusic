@@ -311,3 +311,37 @@ The scenarios planned before the afternoon session, with what answered them.
 | Which analysis kinds the player loads before a seam of a mixed playlist | M3 (prefetch) | protocol §6.3 |
 | A phone as the controller; the official desktop as a receiver | M7 | protocol §7 |
 | A non-owned list's read shape; what happens to a recipe when its from-item is removed | M8 | protocol §13 |
+
+## What the implementation settled (2026-11-25)
+
+Phases M1–M8 are built and proven headless under `--fake`; nothing has run against the live service and nothing has
+been listened to. The by-ear gates and the live gates of every phase are still open. Where the build differs from or
+answers this plan:
+
+- **Auto, not beatmatched (§7.1 of the reference):** the overlap is capped at 5000 ms (156 of 156). Auto for
+  beatmatched pairs is still open (`MixPlanner.AutoBeatmatched`).
+- **Curve overrides (§2.1.1):** modelled and played. Only an edited curve field is rewritten from the model, so an
+  unknown field inside an edited curve message is dropped; untouched fields stay byte-identical.
+- **Beatmatching toggle (§1.3 open question):** the editor writes top-level 5 together with 1.9, 1.7 (bpmA/bpmB), 1.8
+  and 2.2. "Beatmatch unavailable" when a tempo or beat grid is missing or the tempos are more than 20 % apart (Wavee's
+  threshold).
+- **Editor (§2.5, M6):** Classic has its own template, not the WinUI layout. Offline edits are allowed and kept as
+  pending (M2), superseding "offline: read-only". The jog wheel is not offered (no style list known).
+- **Preview (§2.3.4, §2.4.1, §2.4.2):** one pass with an optional loop (the editor's Hear it loops). An inbound `play`
+  abandons a preview without restoring. When the receiving device does not offer `stop-automix-preview`, Wavee sends
+  `resume`, not the client's skip-next, which would move the user's own track.
+- **Overlap on the wire (§2.4.4, D14):** the wire follows the official player (B current from the overlap's start,
+  f11 = `fade_out_start_time`, speedB published from the overlap's start). Wavee's own bar is still D14 (b); the
+  owner's decision is open.
+- **Track metadata keys (protocol §6.3):** upcoming rows carry cuepoint position 0 and `automix.mode=auto` even with
+  only a fade-in; the current row carries the fade-in of the seam it came in by as well as its own fade-out.
+- **Smart reorder (M8):** in the desktop client it is the Auto-mix button ("Turn on mixing"): `mix-auto-toggle-on/off`
+  (signal data `{1 "mix"}`, lens `mix` forced), then the `harmonize` lens requested. This answers the Auto mix toggle
+  question. Wavee reads the `harmonize` order once and writes it as keyed moves, because whether the lens alone
+  reorders the list on other devices is unknown. Also open: harmonize's sync-reason and its place in the lens header.
+- **Duplicate Mix (M8):** not the playlist service's `copy`, but `POST {spclient}/mix-list-lens/api/v0/duplicate` with
+  JSON `{playlist_uri, transition_overrides:[{item_id (base64 of the 8 id bytes), transition (base64 recipe)}]}`,
+  answered by `{playlist_uri}`; the client then files the copy at the top of the rootlist, turns its Mix on and opens
+  it. Which item ids and recipes the copy keeps is open.
+- **Noise and loops (reference §3.2, §4.1):** see the reference for Wavee's readings (noise LP/HP and level; loop
+  placement).
