@@ -42,11 +42,13 @@ public enum QueueSection : byte { Queue, NextUp, Autoplay }
 /// because the reorder geometry counts every child of the wrapped column.</summary>
 public enum QueueSlotKind : byte { Row, Header, More }
 
-/// <summary>One slot as the reorder sees it. <see cref="Pos"/> is the SECTION-relative row index for a row, −1
-/// otherwise.</summary>
+/// <summary>One slot as the reorder sees it. <see cref="Pos"/> is the SECTION-relative row index for a row, the segment's index for an AI DJ
+/// segment header (<see cref="IsSegmentHeader"/>), −1 otherwise.</summary>
 public readonly record struct QueueSlot(QueueSlotKind Kind, QueueSection Section, int Pos)
 {
     public static QueueSlot Header(QueueSection section) => new(QueueSlotKind.Header, section, -1);
+    /// <summary>An AI DJ segment's header (<see cref="QueueProps.Segments"/>[<see cref="Pos"/>]) in place of its section's one header.</summary>
+    public bool IsSegmentHeader => Kind == QueueSlotKind.Header && Pos >= 0;
     public static QueueSlot More(QueueSection section) => new(QueueSlotKind.More, section, -1);
     public static QueueSlot Row(QueueSection section, int pos) => new(QueueSlotKind.Row, section, pos);
     public bool IsRow => Kind == QueueSlotKind.Row;
@@ -78,21 +80,35 @@ public static class QueueSlots
     /// header included; autoplay rows are listed only while the toggle is on; <paramref name="headers"/> is false for the
     /// stage's continuous list. Returns the slots written.</summary>
     public static int Build(int queue, int shownQueue, int nextUp, int shownNextUp, int autoplay, int shownAutoplay,
-                            bool autoplayOn, bool headers, Span<QueueSlot> dst)
+                            bool autoplayOn, bool headers, Span<QueueSlot> dst, ReadOnlySpan<int> segmentStarts = default)
     {
         int n = 0;
         Append(dst, ref n, QueueSection.Queue, queue, shownQueue, headers);
-        Append(dst, ref n, QueueSection.NextUp, nextUp, shownNextUp, headers);
+        Append(dst, ref n, QueueSection.NextUp, nextUp, shownNextUp, headers, segmentStarts);
         if (autoplayOn) Append(dst, ref n, QueueSection.Autoplay, autoplay, shownAutoplay, headers);
         return n;
     }
 
-    static void Append(Span<QueueSlot> dst, ref int n, QueueSection section, int count, int shown, bool header)
+    /// <summary>The most slots <see cref="Build"/> writes with <paramref name="segments"/> segment headers in place of Next up's one.</summary>
+    public static int Capacity(int queue, int nextUp, int autoplay, int segments) => Capacity(queue, nextUp, autoplay) + Math.Max(0, segments - 1);
+
+    /// <summary>A section's slots. <paramref name="segmentStarts"/> (AI DJ, ascending positions in the section) puts one header before each
+    /// segment's first row in place of the section's one header: a header slot whose <see cref="QueueSlot.Pos"/> is the segment's index.</summary>
+    static void Append(Span<QueueSlot> dst, ref int n, QueueSection section, int count, int shown, bool header, ReadOnlySpan<int> segmentStarts = default)
     {
         if (count <= 0) return;
         int rows = Math.Clamp(shown, 0, count);
-        if (header && n < dst.Length) dst[n++] = QueueSlot.Header(section);
-        for (int i = 0; i < rows && n < dst.Length; i++) dst[n++] = QueueSlot.Row(section, i);
+        bool grouped = header && !segmentStarts.IsEmpty;
+        if (header && !grouped && n < dst.Length) dst[n++] = QueueSlot.Header(section);
+        for (int i = 0, segment = 0; i < rows && n < dst.Length; i++)
+        {
+            while (grouped && segment < segmentStarts.Length && segmentStarts[segment] <= i)
+            {
+                if (segmentStarts[segment] == i && n < dst.Length) dst[n++] = new QueueSlot(QueueSlotKind.Header, section, segment);
+                segment++;
+            }
+            if (n < dst.Length) dst[n++] = QueueSlot.Row(section, i);
+        }
         if (count > rows && n < dst.Length) dst[n++] = QueueSlot.More(section);
     }
 }

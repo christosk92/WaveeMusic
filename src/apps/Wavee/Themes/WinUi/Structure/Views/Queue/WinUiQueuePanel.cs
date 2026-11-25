@@ -155,7 +155,7 @@ internal sealed class WinUiQueuePanelView : Component
         }
         int item = lane.ItemAt(kind);
         var slot = lane.SlotAt(item);
-        if (slot.Kind == QueueSlotKind.Header) return Inset(Header(props, slot.Section));
+        if (slot.Kind == QueueSlotKind.Header) return Inset(Header(props, slot.Section, props.Queue.SegmentOf(slot)));
         if (slot.Kind == QueueSlotKind.More) return Inset(ShowMore(props, slot.Section));
         return props.Queue.TryRow(slot.Section, slot.Pos, out var row)
             ? Inset(lane.Lane(item, Row(props, row), lane.RowKey("", row.ItemId, row.Index)))
@@ -312,10 +312,29 @@ internal sealed class WinUiQueuePanelView : Component
     }
 
     /// <summary>A section's header: the name (Body Strong), and at its end "Clear" (the queue) or "<n> more" (next up).</summary>
-    Element Header(QueuePanelProps props, QueueSection section)
+    /// <para>AI DJ: a segment's header (<paramref name="segment"/>) names the segment ("Vibes") and marks where "Let DJ pick" lands, in the accent
+    /// at the header's end, in the same row and height (the queue by segment, plan-dj §2.8).</para>
+    Element Header(QueuePanelProps props, QueueSection section, QueueSegment? segment = null)
     {
         var queue = props.Queue;
         float h = Q.Header(_window);
+        if (segment is { } seg)
+        {
+            string mark = QueueProps.SegmentMark(seg);
+            var segTitle = new TextEl(QueueProps.SegmentTitle(seg))
+            {
+                Size = Q.HeaderSize, LineHeight = Q.HeaderLine, Weight = Q.TitleWeight, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                MinWidth = 0f, Shrink = 1f, Grow = 1f,
+            };
+            return new BoxEl
+            {
+                Key = "hdr:" + seg.Key, Height = h, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+                Layout = LayoutTransition.Slide, BlocksDragArm = true,
+                Children = mark.Length > 0
+                    ? [segTitle, new TextEl(mark) { Size = Q.SmallSize, LineHeight = Q.SmallLine, Color = Tok.AccentTextPrimary, MaxLines = 1, Shrink = 0f }]
+                    : [segTitle],
+            };
+        }
         string title = Loc.Get(section switch
         {
             QueueSection.Queue => Strings.Player.NextInQueue,

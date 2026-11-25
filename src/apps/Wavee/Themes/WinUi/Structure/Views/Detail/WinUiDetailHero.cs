@@ -376,7 +376,8 @@ internal static partial class WinUiDetailFrame
             // once, it sat under the still-shrinking cover on the 720 crossing.
             Key = "hero-toolbar", Direction = 1, Margin = new Edges4(0f, form.ListGap, 0f, 0f), Animate = HeroReflowMotion,
             Padding = new Edges4(MathF.Max(0f, tier.InsetX - WinUiDetailRules.BarInset), 0f, MathF.Max(0f, tier.InsetX - WinUiDetailRules.BarInset), 0f),
-            Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
+            // A list with no list bar at all (its body is the page: the DJ) reserves no row; the list gap above stays the head's air.
+            Children = parts.NoListBar ? [] : [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
         };
 
     /// <summary>The words' loading boundary: the words once the header has answered, else their shimmer (<see cref="SkeletonWords"/>), one cross-dissolve

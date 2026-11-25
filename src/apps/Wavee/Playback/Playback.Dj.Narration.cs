@@ -16,12 +16,13 @@
 //
 //   welcome  belongs to the first segment's first track  (wire: spotify:media:0000000000000000000000, narration/welcome, uid list_intro_item)
 //   intro    belongs to its segment's first track        (spotify:media:<that track's id>, narration/intro)
-//   jump     belongs to its segment's first track        (narration/jump: prefetched, never queued here; "Let DJ pick" is the next lane's)
+//   jump     belongs to its segment's first track        (narration/jump: prefetched; queued only by "Let DJ pick", `LayJumpClip`)
 //   outro    belongs to its segment's last track         (spotify:media:<that track's id>, narration/outro)
 //
 // THE PLANNER (`PlanNarration`, once per drain, before the queue follow; a no-op while neither the deck nor the queue moved). Only
 // the NEAREST boundary carries items: from the deck's segment (a narration's is its track's), the outro right after the segment's
-// last track and the next segment's INTRO right before its first track (the jump clip is only for "Let DJ pick"). A start puts the
+// last track and the next segment's INTRO right before its first track (the jump clip is only for "Let DJ pick": `Playback.DjJump`
+// lays it right before its target and the reducer lands on it; the planner keeps it while it is the deck and drops it after). A start puts the
 // welcome on the deck before the first track (`StartContext` → `AtStart`, by `Session.Start`: Play only), and the planner then lays the first intro
 // between them. A narration the deck has passed is REMOVED, never history; a clip that failed is dropped from the plan. The deck's
 // row never moves: rows before it shift only when a passed narration leaves, and the cursor follows (`Input.Recursor`).
@@ -75,7 +76,7 @@ public static partial class Playback
         public sealed class Spoken
         {
             public Slot Slot;
-            /// <summary>Its queue row's item id (a jump clip is prefetched, never queued here: still minted, never in the queue).</summary>
+            /// <summary>Its queue row's item id (a jump clip's is minted with it and queued only by "Let DJ pick").</summary>
             public ulong ItemId;
             /// <summary>The track row it belongs to (the welcome: the first segment's first track).</summary>
             public ulong BelongsTo;
@@ -162,7 +163,6 @@ public static partial class Playback
             s_rowSpoken.Clear();
             s_narrContext = default;
             s_deckItem = 0;
-            s_nextJump = 0;
             s_prefetchLog.Clear();
             s_timeline.Clear();
             Caption.Value = "";
@@ -215,7 +215,18 @@ public static partial class Playback
             if (Make(slot, belongsTo, keys, row) is not { } sp) return null;
             sp.Track = track;
             s_spoken[(slot, belongsTo)] = sp;
-            if (slot != Slot.Jump) s_rowSpoken[sp.ItemId] = sp;
+            if (slot != Slot.Jump) s_rowSpoken[sp.ItemId] = sp;   // a jump clip is a row only once "Let DJ pick" lays it (JumpClip)
+            return sp;
+        }
+
+        /// <summary>"Let DJ pick" is about to land on the row at <paramref name="target"/> (a segment's first track): its jump clip
+        /// (<c>narration.jump.*</c>, prefetched since the item before started, §1.4), now a queue row, or null when the target states none
+        /// or its clip failed (the jump is then a plain track change).</summary>
+        internal static Spoken? JumpClip(ReadOnlySpan<QueueEdge> rows, int target)
+        {
+            if ((uint)target >= (uint)rows.Length || RowOf(rows[target].ItemId) is not { Jump: { } jump } row) return null;
+            if (For(Slot.Jump, rows[target].ItemId, Queue.RefAt(target).Id, jump.Keys, row) is not { Dropped: false, Packed: not 0 } sp) return null;
+            s_rowSpoken[sp.ItemId] = sp;
             return sp;
         }
 
@@ -274,10 +285,9 @@ public static partial class Playback
         /// <summary>The narrations the NEAREST boundary carries for a deck at <paramref name="deck"/> (§1.5): the deck's segment's outro
         /// right after its last track, the next segment's intro right before its first track, and (the deck is the welcome) the deck's
         /// own segment's intro before its first track. A dropped clip is never wanted. Writes the next segment's first row to
-        /// <paramref name="nextFirst"/> (0: not loaded yet) for the jump prefetch.</summary>
-        internal static int Wanted(ReadOnlySpan<QueueEdge> rows, int deck, Span<Want> into, out ulong nextFirst)
+        /// (A deck on a jump clip lays from its target, as a deck on any narration does: no intro before it, the jump clip is that.)</summary>
+        internal static int Wanted(ReadOnlySpan<QueueEdge> rows, int deck, Span<Want> into)
         {
-            nextFirst = 0;
             if ((uint)deck >= (uint)rows.Length) return 0;
             ulong deckItem = rows[deck].ItemId;
             int scanFrom = deck, segmentFirst = -1;
@@ -313,7 +323,6 @@ public static partial class Playback
             }
             if (next >= 0 && RowOf(rows[next].ItemId) is { } nextRow)
             {
-                nextFirst = rows[next].ItemId;
                 if (nextRow.Intro is { } nextIntro
                     && For(Slot.Intro, rows[next].ItemId, Queue.RefAt(next).Id, nextIntro.Keys, nextRow) is { Dropped: false } i1)
                     into[n++] = new Want(i1, next);
@@ -341,12 +350,9 @@ public static partial class Playback
         public static IReadOnlyList<PrefetchEntry> PrefetchLog => s_prefetchLog;
         public static IReadOnlyList<TimelineEntry> Timeline => s_timeline;
 
-        static ulong s_deckItem, s_nextJump;
+        static ulong s_deckItem;
         static long s_itemStartMs = -1;
         static bool s_itemPrefetched;
-
-        /// <summary>The next segment's first track (whose jump clip is prefetched), or 0.</summary>
-        public static ulong NextJumpTarget => s_nextJump;
 
         static void Ask(Spoken sp, string why, long now)
         {
@@ -386,15 +392,10 @@ public static partial class Playback
             s_itemPrefetched = true;
             for (int i = deck + 1; i < rows.Length; i++)
                 if (NarrationOf(rows[i].ItemId) is { } ahead) Ask(ahead, "item+5s", now);
-            if (s_nextJump != 0 && RowOf(s_nextJump) is { Jump: { } jump } target
-                && For(Slot.Jump, s_nextJump, TrackOfItem(rows, s_nextJump), jump.Keys, target) is { } jumpClip)
+            // The clip "Let DJ pick" would play: the jump target's (NextJumpTarget, the one rule the button, the queue and this share).
+            if (NextJumpTarget(rows, deck) is int t and >= 0 && RowOf(rows[t].ItemId) is { Jump: { } jump } target
+                && For(Slot.Jump, rows[t].ItemId, Queue.RefAt(t).Id, jump.Keys, target) is { } jumpClip)
                 Ask(jumpClip, "item+5s", now);
-        }
-
-        static EntityId TrackOfItem(ReadOnlySpan<QueueEdge> rows, ulong itemId)
-        {
-            int at = Queue.IndexOfItem(rows, itemId);
-            return at < 0 ? default : Queue.RefAt(at).Id;
         }
 
         /// <summary>A row as the timeline names it: <c>welcome</c>, <c>intro:&lt;segment&gt;</c>, <c>outro:&lt;segment&gt;</c>, or the track's id.</summary>
@@ -404,9 +405,6 @@ public static partial class Playback
             string id = row.Id.IsEmpty ? "?" : EntityUri.IdOf(row.Id.Text).ToString();
             return RowOf(itemId) is { } r ? id + "@" + r.Segment : id;
         }
-
-        /// <summary>The planner's last next-segment first row (written by <see cref="PlanNarration"/>).</summary>
-        internal static void NoteNextJump(ulong item) => s_nextJump = item;
 
         /// <summary>A clip settled (UI thread): Ready → its length is the row's and, on the deck, the reducer's (a streamed clip opened with no
         /// length); Failed → the row leaves the plan, and a clip on the deck is skipped (the music goes on). The drop itself is the TTS
@@ -503,8 +501,7 @@ public static partial class Playback
         ReadOnlySpan<int> packed = Queue.PackedRefs;
         int n = rows.Length;
         Dj.Want[] wanted = s_wanted;
-        int w = Dj.Wanted(rows, deck, wanted, out ulong nextFirst);
-        Dj.NoteNextJump(nextFirst);
+        int w = Dj.Wanted(rows, deck, wanted);
         ulong deckItem = rows[deck].ItemId;
         int cap = n + w;
         int[] outPacked = System.Buffers.ArrayPool<int>.Shared.Rent(Math.Max(1, cap));
@@ -543,6 +540,36 @@ public static partial class Playback
             s_narrPlanVersion = Queue.Version;
             s_narrPlanDeck = newDeck;
             return newDeck;
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<int>.Shared.Return(outPacked);
+            System.Buffers.ArrayPool<QueueEdge>.Shared.Return(outRows);
+        }
+    }
+
+    /// <summary>"Let DJ pick" (<see cref="DjJump(string)"/>, after <see cref="Queue.SkipTo"/> laid the queue): the target's jump clip
+    /// (<see cref="Dj.JumpClip"/>) goes right before the target, so the reducer lands on it (<see cref="DoDjJump"/>) and the target follows it
+    /// (§1.8: the jump plays the next <c>narration/jump</c>, then its target; the talk-over into the target is D3's). The boundary's other
+    /// narration rows are left to the planner, which drops every narration that is not the deck or wanted from the new deck. UI thread.</summary>
+    static void LayJumpClip(int target)
+    {
+        ReadOnlySpan<QueueEdge> rows = Queue.Rows;
+        if (Dj.JumpClip(rows, target) is not { } clip || Queue.IndexOfItem(rows, clip.ItemId) >= 0) return;
+        ReadOnlySpan<int> packed = Queue.PackedRefs;
+        int n = rows.Length, contextStart = Queue.ContextStart;
+        int[] outPacked = System.Buffers.ArrayPool<int>.Shared.Rent(n + 1);
+        QueueEdge[] outRows = System.Buffers.ArrayPool<QueueEdge>.Shared.Rent(n + 1);
+        try
+        {
+            packed[..target].CopyTo(outPacked);
+            rows[..target].CopyTo(outRows);
+            outPacked[target] = clip.Packed;
+            outRows[target] = new QueueEdge(clip.ItemId, (byte)QueueProvider.Narration, rows[target].Bucket);
+            packed[target..].CopyTo(outPacked.AsSpan(target + 1));
+            rows[target..].CopyTo(outRows.AsSpan(target + 1));
+            Queue.Replace(outPacked.AsSpan(0, n + 1), outRows.AsSpan(0, n + 1), target < contextStart ? contextStart + 1 : contextStart);
+            Log.Info("dj", "jump: the jump clip of segment " + clip.Segment + " goes before its target (key=" + clip.Key + ")");
         }
         finally
         {

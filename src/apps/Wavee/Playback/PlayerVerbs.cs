@@ -17,6 +17,7 @@
 using FluentGpu.Controls;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
+using Wavee.Theming.Contracts;
 
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
@@ -152,6 +153,25 @@ public sealed class PlayerVerbs : IPlayerVerbs
     /// <summary>Why a context forbids a toggle, in words: the restriction's reason (<c>dj-disallow</c>), else the general sentence.</summary>
     static string LockText(Playback.LockReason reason)
         => Loc.Get(reason == Playback.LockReason.Dj ? Strings.Player.NotWithDj : Strings.Player.NotAvailableHere);
+
+    /// <summary>What the now-playing surfaces draw of the DJ playing here ("Let DJ pick", its tint, the segment line), or null while no DJ plays
+    /// on this device (<see cref="Playback.DjNow"/>). One instance per state, so a surface's props compare equal while nothing changed;
+    /// <paramref name="track"/> false peeks.</summary>
+    public static DjChrome? Dj(bool track = true)
+    {
+        Playback.Dj.Facts f = track ? Playback.DjNow.Value : Playback.DjNow.Peek();
+        if (!f.Active) return null;
+        if (s_dj is { } held && s_djFor == f) return held;
+        string name = f.Name.Length > 0 ? f.Name : Loc.Get(Strings.Player.DjName);
+        string line = f.Segment.Length > 0 ? Strings.Player.DjLine(name, f.Segment) : name;
+        s_djFor = f;
+        return s_dj = new DjChrome(f.Pick.Length > 0 ? f.Pick : Loc.Get(Strings.Player.DjPick), Loc.Get(Strings.Player.DjPickTip), f.CanJump,
+            f.PickFill, f.PickBorder, f.PickInk, line, s_jump);
+    }
+
+    static DjChrome? s_dj;
+    static Playback.Dj.Facts s_djFor;
+    static readonly Action s_jump = static () => Playback.DjJump("player.button");
 
     public void TogglePlay(string cause) => Playback.TogglePlay(cause);
 

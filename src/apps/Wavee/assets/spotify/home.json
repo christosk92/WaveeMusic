@@ -1119,7 +1119,7 @@
                                                     },
                                                     {
                                                         "key": "lexicon_context_url",
-                                                        "value": "hm://lexicon-session-provider/context-resolve/v2/session?contextUri=spotify:playlist:37i9dQZF1EYkqdzj48dyYq"
+                                                        "value": "hm://lexicon-session-provider/context-resolve/v2/session?contextUri=spotify:playlist:pldj"
                                                     },
                                                     {
                                                         "key": "home.card.background_color",
@@ -1167,11 +1167,11 @@
                                                         "uri": "spotify:user:spotify"
                                                     }
                                                 },
-                                                "uri": "spotify:playlist:37i9dQZF1EYkqdzj48dyYq"
+                                                "uri": "spotify:playlist:pldj"
                                             }
                                         },
                                         "data": null,
-                                        "uri": "spotify:playlist:37i9dQZF1EYkqdzj48dyYq"
+                                        "uri": "spotify:playlist:pldj"
                                     },
                                     {
                                         "content": {

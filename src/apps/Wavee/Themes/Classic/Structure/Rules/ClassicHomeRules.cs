@@ -121,6 +121,11 @@ public static class ClassicHomeRules
     /// <summary>The lead art's decode target.</summary>
     public const int LeadArtDecodePx = 960;
 
+    /// <summary>The DJ lead (AI DJ): its art is the DJ's colour field, washed left to right through its jellyfish colours (0, Classic's
+    /// spotlight and mood-plate direction), its words inset by the copy band's own 16 and kept to three lines.</summary>
+    public const float DjWashAngle = 0f, DjWordsPad = LeadCopyPadX;
+    public const int DjWordsLines = 3;
+
     /// <summary>A capped card's title lines (two title lines over one caption line).</summary>
     public const int CappedTitleLines = 2;
 

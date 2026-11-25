@@ -220,6 +220,27 @@ public static partial class Playback
             public bool RefusesAutoplay => Facts.Infinite
                 || (Facts.Metadata.TryGetValue("autoplay_candidate", out string? candidate) && candidate == "false")
                 || (Facts.Metadata.TryGetValue("end_of_context_action", out string? end) && end == "stop");
+            /// <summary>The session's metadata value under <paramref name="key"/>, or "".</summary>
+            public string Meta(string key) => Facts.Metadata.TryGetValue(key, out string? value) ? value : "";
+        }
+
+        /// <summary>What the surfaces draw of the DJ playing here (plan-dj §2.8): <see cref="Active"/> while a lexicon session is the deck's
+        /// context on this device; the "Let DJ pick" label the session states (<c>dj.interactivity.localized_jump_button</c>, "" = none), the
+        /// product's name (<c>context_description</c>, "DJ"), the playing row's segment label (<c>station_subtitle</c>), whether a later segment
+        /// is loaded to jump to, and the button's colours (<c>narration.jump.{background,border,icon}.color</c>, ARGB, 0 = not stated).</summary>
+        public readonly record struct Facts(bool Active, string Pick, string Name, string Segment, bool CanJump, uint PickFill, uint PickBorder, uint PickInk);
+
+        /// <summary>The DJ facts of the deck <paramref name="s"/> (<see cref="Playback.DjNow"/>, published once per drain). Allocation-free.</summary>
+        internal static Facts FactsOf(in State s)
+        {
+            if (s_session is not { } x || !x.Context.Equals(s.Context) || s.Own.Kind == Owner.Foreign || !s.HasCurrent) return default;
+            ReadOnlySpan<QueueEdge> rows = Queue.Rows;
+            int cursor = s.Cursor.Index;
+            // A narration on the deck shows its segment's DJ line (SegmentRowOf: the track the clip belongs to).
+            Row? playing = cursor >= 0 && cursor < rows.Length ? SegmentRowOf(rows[cursor].ItemId) : null;
+            return new Facts(true, x.Meta("dj.interactivity.localized_jump_button"), x.Meta("context_description"), playing?.Subtitle ?? "",
+                NextJumpTarget(rows, cursor) >= 0, DjCardColors.Argb(x.Meta("narration.jump.background.color")),
+                DjCardColors.Argb(x.Meta("narration.jump.border.color")), DjCardColors.Argb(x.Meta("narration.jump.icon.color")));
         }
 
         static Session? s_session;
@@ -365,6 +386,19 @@ public static partial class Playback
             s_book[itemId] = row;
         }
 
+        /// <summary>Where "Let DJ pick" lands from the deck at <paramref name="cursor"/>: the first row after it that is a jump target
+        /// (<see cref="Row.JumpTarget"/>, a segment's first track) of a LATER segment than the playing row's, or -1 when no later
+        /// segment is loaded. A narration on the deck plays in its track's segment (<see cref="SegmentRowOf"/>), and narration rows are never
+        /// targets (the book holds tracks only). Allocation-free; the reducer reads it.</summary>
+        public static int NextJumpTarget(ReadOnlySpan<QueueEdge> rows, int cursor)
+        {
+            if (cursor < 0 || cursor >= rows.Length) return -1;
+            string playing = SegmentRowOf(rows[cursor].ItemId)?.Segment ?? "";
+            for (int i = cursor + 1; i < rows.Length; i++)
+                if (s_book.TryGetValue(rows[i].ItemId, out Row? row) && row.JumpTarget && row.Segment != playing) return i;
+            return -1;
+        }
+
         /// <summary>Forget every booked row no live queue row carries any more.</summary>
         internal static void Retain(ReadOnlySpan<QueueEdge> live)
         {
@@ -375,6 +409,22 @@ public static partial class Playback
                 for (int i = 0; i < live.Length && !present; i++) present = live[i].ItemId == entry.Key;
                 if (!present) s_book.Remove(entry.Key);
             }
+        }
+
+        /// <summary>How many times "Let DJ pick" moved the deck in this process (the inspector's evidence).</summary>
+        public static int Jumps { get; private set; }
+
+        /// <summary>"Let DJ pick" moved the deck toward the row <paramref name="itemId"/> (<c>Effects.DjJump</c>): onto the target's jump clip
+        /// when it has one (laid before it by <c>Playback.LayJumpClip</c>; the target follows it), else onto the target. THE SEAM FOR THE
+        /// TALK-OVER (plan-dj §1.6, D3): today the clip plays alone and the target starts when it ends. UI thread.</summary>
+        internal static void Jumped(ulong itemId)
+        {
+            Jumps++;
+            Row? row = RowOf(itemId);
+            Spoken? clip = row is null ? null : s_spoken.GetValueOrDefault((Slot.Jump, itemId));
+            Log.Info("dj", "jump: segment " + (row?.Segment ?? "?") + " page " + (row?.Page ?? 0)
+                + " narration.jump=" + (clip is { Dropped: false } ? "queued key=" + clip.Key : row?.Jump is not null ? "dropped" : "none")
+                + " (no talk-over yet: the clip plays, then the target)");
         }
 
         /// <summary>The inspector's `dj do=expire`: the session's validity ends now, so the next page fetch resolves it again.</summary>

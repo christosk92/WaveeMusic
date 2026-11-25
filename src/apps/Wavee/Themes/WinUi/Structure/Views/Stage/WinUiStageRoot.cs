@@ -333,7 +333,7 @@ internal sealed class WinUiStageTransportLead : Component
                     }, Loc.Get(Strings.Theme.Winui.Stage.Romanization));
                 }
                 else
-                    word = new TextEl(sc.HasTimedLyrics.Value ? Loc.Get(Strings.Stage.SyncedLyrics) : f.PlayingFrom)
+                    word = new TextEl(sc.HasTimedLyrics.Value ? Loc.Get(Strings.Stage.SyncedLyrics) : f.Dj?.Line ?? f.PlayingFrom)
                     { Size = G.LeadMeta, LineHeight = G.LeadMetaLine, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f };
                 return Row(G.BarButtonGap, WinUiStageTransport.Heart(f.Saved, f.Like, set.Fill, t), word);
             }
@@ -381,8 +381,10 @@ internal sealed class WinUiStageTransportLead : Component
     /// <summary>"Playing from" and the source's name in the accent text (W-Stage: `Playing from <a>The Stereo Love Show</a>`).</summary>
     static Element Source(StageTransportFacts f, float size, float line, AccentSet set)
     {
-        if (f.PlayingFrom.Length == 0) return new BoxEl { Height = 0f, HitTestVisible = false };
-        return new TextEl(f.PlayingFrom) { Size = size, LineHeight = line, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        // AI DJ: the context line is the DJ's segment ("DJ · Vibes") while DJ plays here.
+        string from = f.Dj?.Line ?? f.PlayingFrom;
+        if (from.Length == 0) return new BoxEl { Height = 0f, HitTestVisible = false };
+        return new TextEl(from) { Size = size, LineHeight = line, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
     }
 
     /// <summary>The chips (the format, "Synced lyrics", BPM) on the subtle plate, 20 / 24 tall.</summary>

@@ -166,6 +166,8 @@ public sealed record PlayerBarView
     public bool LikeEnabled { get; init; }
     /// <summary>The "Playing on ..." line is in the text block.</summary>
     public bool RemoteLine { get; init; }
+    /// <summary>AI DJ plays here (<see cref="DjChrome"/>: "Let DJ pick" and the segment line); null otherwise. Appended (contract additive).</summary>
+    public DjChrome? Dj { get; init; }
 
     // ── the right cluster ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -193,6 +195,18 @@ public sealed record PlayerBarView
     /// <summary>The rows behind the view split's chevron, in menu order (built with <see cref="PlayerBarProps.OverflowRow"/>).</summary>
     public OverflowCommand[] ViewMenu { get; init; } = [];
 }
+
+/// <summary>AI DJ on the now-playing surfaces (the player bar, the stage transport, the mini player; plan-dj §2.8), while a DJ session plays on
+/// this device. Appended (contract additive): a theme that ignores it shows the DJ as any list.</summary>
+/// <param name="Pick">"Let DJ pick": the label the session states (<c>dj.interactivity.localized_jump_button</c>), else the app's words.</param>
+/// <param name="PickTip">The button's tooltip ("Get some different DJ picks").</param>
+/// <param name="CanPick">A later segment is loaded to jump to (false for the moment a page is still on its way: the press waits for it).</param>
+/// <param name="PickFill">The button's tint (<c>narration.jump.background.color</c>), ARGB; 0 = none stated (the theme's own accent).</param>
+/// <param name="PickBorder">Its border (<c>narration.jump.border.color</c>), ARGB; 0 = none.</param>
+/// <param name="PickInk">Its glyph's colour (<c>narration.jump.icon.color</c>), ARGB; 0 = none.</param>
+/// <param name="Line">The context line while DJ plays: "DJ · Vibes" (the product's name and the playing segment's <c>station_subtitle</c>).</param>
+/// <param name="Jump">The verb: skip the rest of this segment and play the next one's first song.</param>
+public sealed record DjChrome(string Pick, string PickTip, bool CanPick, uint PickFill, uint PickBorder, uint PickInk, string Line, Action Jump);
 
 /// <summary>The props of <see cref="ViewKeys.PlayerBar"/>.</summary>
 public sealed record PlayerBarProps

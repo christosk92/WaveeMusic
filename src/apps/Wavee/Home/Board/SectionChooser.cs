@@ -186,6 +186,10 @@ public static class SectionChooser
     {
         var cards = new List<HomeCard>(s.Cards.Count);
         for (int i = 0; i < s.Cards.Count; i++) if (SectionRoles.IsUsable(s.Cards[i])) cards.Add(s.Cards[i]);
+        // The DJ leads its section (AI DJ, owner 2026-11-25: it shows like any list): first, it is the lead a LeadGrid draws in the DJ's own
+        // colours, and the first card of any other template.
+        for (int i = 1; i < cards.Count; i++)
+            if (cards[i].IsDj) { var dj = cards[i]; cards.RemoveAt(i); cards.Insert(0, dj); break; }
         string key = "home:section:" + s.Uri;
         string? title = s.Title ?? (choice.Template is SectionTemplate.ShortcutFill or SectionTemplate.RecentsData or SectionTemplate.DaylistHero ? null : titles.MoreForYou);
         int total = Math.Max(s.TotalCount, cards.Count);

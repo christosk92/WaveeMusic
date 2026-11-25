@@ -74,7 +74,9 @@ internal static class WinUiStageTransport
 
         bool gallery = st.Mode.Value == Stage.Mode.Visualizer && st.GalleryShown.Value;
         var (center, side, volume) = Columns(in L, t, gallery);
-        var right = new List<Element>(6);
+        var right = new List<Element>(7);
+        // AI DJ: "Let DJ pick" leads the right cluster (it hugs the column's end: what follows it never moves as it comes and goes).
+        if (DjPick(f, t.ButtonBox, t.Glyph) is { } pick) right.Add(pick);
         if (t.Form == WinUiTransportForm.HeartLead)
         {
             right.Add(Embed.Comp(new MuteGlyph.Props(props, t), static () => new MuteGlyph()));
@@ -171,10 +173,11 @@ internal static class WinUiStageTransport
                     Children =
                     [
                         Embed.Comp(new DeviceButton.Props(props, t, Labelled: true), static () => new DeviceButton()),
+                        .. (DjPick(f, t.ButtonBox, t.Glyph) is { } stackPick ? [stackPick] : Array.Empty<Element>()),
                         new BoxEl
                         {
                             Grow = 1f, MinWidth = 0f, Direction = 0, Justify = FlexJustify.End,
-                            Children = [new TextEl(f.PlayingFrom) { Size = G.LeadMeta, LineHeight = G.LeadMetaLine, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
+                            Children = [new TextEl(f.Dj?.Line ?? f.PlayingFrom) { Size = G.LeadMeta, LineHeight = G.LeadMetaLine, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
                         },
                         more,
                     ],
@@ -182,6 +185,19 @@ internal static class WinUiStageTransport
             ],
         };
     }
+
+    /// <summary>"Let DJ pick" (AI DJ) while DJ plays here, else null: the stage's plateless glyph button, its sparkle in the DJ's icon colour
+    /// (<c>narration.jump.icon.color</c>; the ink when none), its words ("Let DJ pick") in the tooltip; it fades in and out in place.</summary>
+    static Element? DjPick(StageTransportFacts f, float box, float glyph)
+    {
+        if (f.Dj is not { } dj) return null;
+        ColorF ink = !dj.CanPick ? Ink.InkTertiary : dj.PickInk != 0 ? ColorScience.ToColor(dj.PickInk) : Ink.Ink;
+        var button = Glyph(Icons.RefineSparkle, dj.Jump, box, glyph, dj.CanPick);
+        button = button with { Key = "transport:dj-pick", Enter = s_djFade, Exit = s_djFade, Children = [new TextEl(Icons.RefineSparkle) { Size = glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = ink }] };
+        return ToolTip.Wrap(button, dj.Pick);
+    }
+
+    static readonly EnterExit s_djFade = new(Opacity: 0f, Active: true);
 
     /// <summary>"...": the now-playing menu (asked at open time); it holds the chrome while open (V-U22).</summary>
     static Element More(Stage.StageCtx st, IOverlayService overlay, float box)

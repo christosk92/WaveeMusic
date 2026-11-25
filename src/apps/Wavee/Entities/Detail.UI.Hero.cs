@@ -97,7 +97,10 @@ public static partial class Detail
         //    side columns, which hang below the hero beside the rows, fill) ──
         Contracts.DetailForm Form = Contracts.DetailForm.Hero,
         Contracts.DetailColumnsProps? Columns = null,
-        IReadSignal<double>? ViewportHeight = null);
+        IReadSignal<double>? ViewportHeight = null,
+        // ── the list draws no list bar at all (its empty body IS the page: the AI DJ list, TableProfile.EmptyBodyIsPage): no row is reserved for
+        //    one (a null Toolbar otherwise reserves its row) ──
+        bool NoListBar = false);
 
     // ══ 2. THE PRESENCE FLAGS — one set for the hero, its skeleton and its reserved height ═══════════════════════════
 

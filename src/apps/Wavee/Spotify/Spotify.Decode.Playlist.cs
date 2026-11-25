@@ -170,6 +170,13 @@ public static partial class Spotify
                 if (key.IsEmpty || value.IsEmpty) continue;
                 if (Is(key, "lexicon_set_type")) { if (Is(value, "your_dj")) row.Flags |= (uint)PlaylistFlags.YourDj; }
                 else if (Is(key, "lexicon_context_url")) row.LexiconUrl = s.AddText(value);
+                // The DJ card's words and colours (home.card.*), as the Home feed's DJ card carries them.
+                else if (Is(key, "home.card.dj.transcript_text")) row.DjTranscript = s.AddText(value);
+                else if (Is(key, "home.card.background_color")) row.DjColors = row.DjColors with { Background = DjCardColors.Argb(value) };
+                else if (Is(key, "home.card.jellyfish_top_color")) row.DjColors = row.DjColors with { Top = DjCardColors.Argb(value) };
+                else if (Is(key, "home.card.jellyfish_mid_color")) row.DjColors = row.DjColors with { Mid = DjCardColors.Argb(value) };
+                else if (Is(key, "home.card.jellyfish_bottom_color")) row.DjColors = row.DjColors with { Bottom = DjCardColors.Argb(value) };
+                else if (Is(key, "home.card.text_color")) row.DjColors = row.DjColors with { Text = DjCardColors.Argb(value) };
                 else if (daylist && Is(key, "expires")) row.DaylistExpiresAt = InstantSeconds(value);
                 else if (daylist && Is(key, "created")) row.DaylistCreatedAt = InstantSeconds(value);
                 // The edition's words (the Home card's tags and "Based on" line), as the feed's daylist card carries them.

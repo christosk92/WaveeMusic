@@ -366,6 +366,10 @@ public static partial class Queue
             Model = Shell.QueueModel.Project(Queue.Rows, static i => Queue.RefAt(i), viewer ? -1 : cursor, viewer,
                                              Autoplay, shuffle, repeat, Current, playingFrom);
             if (!rail && ReadsHistory) Model = Model with { History = ReadHistory() };
+            // The surfaces' own shuffle and repeat toggles wear the bar's locks (the DJ forbids them); an AI DJ continuation groups by segment.
+            Model = Model with { ShuffleLock = PlayerVerbs.ShuffleLock(), RepeatLock = PlayerVerbs.RepeatLock() };
+            if (!viewer && Playback.DjNow.Value.Active)
+                Model = Shell.QueueModel.WithSegments(Model, Playback.Dj.NextJumpTarget(Queue.Rows, cursor));
         }
 
         /// <summary>The surface lists "played before this" (the stage's Up next column); the rail and the shelf do not.</summary>
@@ -484,9 +488,12 @@ public static partial class Queue
         protected void BuildSlots(int shownQueue, int shownNextUp, int shownAutoplay)
         {
             var counts = Model.Counts;
-            int cap = QueueSlots.Capacity(counts.Queue, counts.NextUp, counts.Autoplay);
+            var segments = Model.Segments;
+            int cap = QueueSlots.Capacity(counts.Queue, counts.NextUp, counts.Autoplay, segments.Length);
             if (_slots.Length < cap) _slots = new QueueSlot[Math.Max(cap, _slots.Length * 2)];
-            _slotCount = QueueSlots.Build(counts.Queue, shownQueue, counts.NextUp, shownNextUp, counts.Autoplay, shownAutoplay, Autoplay, headers: true, _slots);
+            Span<int> starts = segments.Length <= 32 ? stackalloc int[segments.Length] : new int[segments.Length];
+            for (int i = 0; i < segments.Length; i++) starts[i] = segments[i].Start;
+            _slotCount = QueueSlots.Build(counts.Queue, shownQueue, counts.NextUp, shownNextUp, counts.Autoplay, shownAutoplay, Autoplay, headers: true, _slots, starts);
         }
 
         /// <summary>Point the lane at THIS render's slots. A pointer lift whose gesture ended without telling the list (a

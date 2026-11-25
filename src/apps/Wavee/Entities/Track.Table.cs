@@ -349,6 +349,10 @@ public readonly partial struct Track
         /// table's own words. A tracked read: the body follows what it reads. While it answers an element the list is the page (the theme draws no
         /// table chrome over it, as over an empty playlist's lead). Null member = the table's own words.</summary>
         public Func<Element?>? EmptyBody { get; init; }
+        /// <summary>The <see cref="EmptyBody"/> IS the page's content, never an empty list's stand-in (the AI DJ list, whose rows are the session's):
+        /// while it shows, no theme draws table chrome over it (no toolbar of list commands, no column header), whatever the theme's own
+        /// <c>HidesChromeOnEmptyLead</c> says.</summary>
+        public bool EmptyBodyIsPage { get; init; }
         /// <summary>A layer over the rows (Local Files' "4 new songs" pill, #240 S5), handed the list's scroll handle and the band the list pins at its
         /// top. It floats: nothing in the list moves for it. Null = none.</summary>
         public Func<FluentGpu.Scroll.Runtime.ScrollHandle, float, Element>? ListOverlay { get; init; }
@@ -596,7 +600,7 @@ public readonly partial struct Track
         readonly Signal<bool> _recsCapable = new(false);
         /// <summary>The list is empty and shows its recommendations lead (an owned, empty playlist): a theme that sets <c>HidesChromeOnEmptyLead</c> draws no table chrome over it.</summary>
         readonly Signal<bool> _emptyLead = new(false);
-        bool EmptyLeadHides => _listStyle?.Chrome.HidesChromeOnEmptyLead == true && _emptyLead.Value;
+        bool EmptyLeadHides => (_listStyle?.Chrome.HidesChromeOnEmptyLead == true || P.EmptyBodyIsPage) && _emptyLead.Value;
 
         // ── selection · list controller · counts ───────────────────────────────────────────────────────────────────
         readonly SelectionModel _selection = new();
@@ -1994,7 +1998,8 @@ public readonly partial struct Track
                 OnHeroMeasured: _onHeroMeasured,
                 Form: _latest.Form,
                 Columns: _latest.Columns,
-                ViewportHeight: Cfg.HasTrailing ? _trailScroll.ViewportSignal : _listScroll.ViewportSignal);
+                ViewportHeight: Cfg.HasTrailing ? _trailScroll.ViewportSignal : _listScroll.ViewportSignal,
+                NoListBar: P.EmptyBodyIsPage && EmptyLeadHides);
         }
 
         // ── THE RULE, STATED ONCE ───────────────────────────────────────────────────────────────────────────────────
@@ -2034,6 +2039,9 @@ public readonly partial struct Track
                 float band = BandNow(), shortH = _heroShort.Value;
                 return shortH > 1f ? MathF.Min(band, shortH) : band;
             }
+            // A theme that draws no chrome over an empty lead (EmptyLeadHides) has no stuck stratum: the last measured header's height would clip the
+            // lead's top (the DJ page's first segment heading under Zune's two-column page).
+            if (EmptyLeadHides) return 0f;
             float h = _headH.Value;
             return h > 1f ? h : 0f;
         }

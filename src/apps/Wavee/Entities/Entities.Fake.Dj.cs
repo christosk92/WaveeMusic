@@ -34,6 +34,10 @@ public static partial class Entities
             row.FlagsMask = (uint)PlaylistFlags.YourDj;
             row.LexiconUrl = Text(s, DjLexiconUrl);
             row.DjAttributes = Text(s, DjAttributesJson);
+            // The card's words and colours (home.card.*), as the rootlist and the Home feed carry them (the bundled Home capture's DJ card is
+            // this list too: home.json names spotify:playlist:pldj, so its card plays the fake session).
+            row.DjTranscript = Text(s, "Hey, it's your DJ. Got a run of your favourites ready to go.");
+            row.DjColors = new DjCardColors(Background: 0xFF1B3A6Bu, Top: 0xFF3FD8A0u, Mid: 0xCB3FC8D0u, Bottom: 0x7F3F90D8u, Text: 0xFFFFFFFFu);
         }
 
         /// <summary>The list's format attributes as the rootlist states them (plan-dj §1.1), every value invented: what a DJ play names as
@@ -61,6 +65,10 @@ public static partial class Entities
     const int DjSegmentBase = 4100;
     static readonly string[] s_djSubtitles = ["Vibes", "From the past", "Based on recent listening", "Late-night picks"];
 
+    /// <summary>The inspector's `dj do=starve`: the fake service answers no more pages (a session answer still lands), so the deck runs out of
+    /// later segments.</summary>
+    public static bool FakeLexiconStarved { get; set; }
+
     /// <summary>How many lexicon answers the fake has served (the inspector's evidence that a fetch happened).</summary>
     public static int FakeLexiconServed { get; private set; }
 
@@ -76,6 +84,7 @@ public static partial class Entities
     {
         if (!path.StartsWith(LexiconSessionPath, StringComparison.Ordinal)) return null;
         if (path.IndexOf("contextUri=" + LibrarySeed.DjUri, StringComparison.Ordinal) < 0) return null;
+        if (FakeLexiconStarved && path.StartsWith(DjPagePath, StringComparison.Ordinal)) return null;
         byte[]? body = path.StartsWith(DjPagePath, StringComparison.Ordinal) ? DjPage(PageOf(path))
             : path.StartsWith(LexiconSessionPath + "?", StringComparison.Ordinal) ? DjSession(path) : null;
         if (body is not null) FakeLexiconServed++;
