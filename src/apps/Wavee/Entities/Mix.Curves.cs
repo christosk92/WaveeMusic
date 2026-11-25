@@ -16,11 +16,12 @@ public enum MixPreset : byte { None = 0, Fade = 1, Rise = 3 }
 /// <summary>Where a join's timing came from.</summary>
 public enum MixSource : byte { None, Auto, Saved }
 
-/// <summary>Why a pair gets the base hand-off instead of a mix (logged, and shown by diagnostics).</summary>
+/// <summary>Why a pair gets the base hand-off instead of a mix (logged, and shown by diagnostics). <see cref="NoTransition"/>: the
+/// pair's Spotify recipe is "no transition" (no preset id): A plays to its end and B from its start.</summary>
 public enum MixWhyNot : byte
 {
     None, NotMixed, ListenWithoutMix, NotInMixedList, PairOptOut, NotMixable, LocalFile, CrossKind, NoData, TooShort, Late,
-    UserQueued,
+    UserQueued, NoTransition,
 }
 
 /// <summary>One join, in milliseconds: the recipe's timing when the pair was edited, else Wavee's Auto. The Transitions

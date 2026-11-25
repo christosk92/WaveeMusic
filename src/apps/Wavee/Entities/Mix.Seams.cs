@@ -56,7 +56,7 @@ public static class MixSeams
         var t = Playback.Mix.PlanListPair(playlistSlot, index, index + 1);
         bool always = MixPrefs.ShowAlways;
         if (!t.Mix)
-            return t.WhyNot is MixWhyNot.PairOptOut or MixWhyNot.LocalFile or MixWhyNot.NotMixable
+            return t.WhyNot is MixWhyNot.PairOptOut or MixWhyNot.NoTransition or MixWhyNot.LocalFile or MixWhyNot.NotMixable
                 ? new Seam(3, always ? Loc.Get(Strings.Mix.NoMix) : "") : default;
         ulong from = MixRecipe.Hex64(Entities.Strings.Resolve(payload[index].ItemId));
         ulong to = MixRecipe.Hex64(Entities.Strings.Resolve(payload[index + 1].ItemId));

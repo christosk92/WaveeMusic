@@ -1,9 +1,10 @@
 // ── Entities/Entities.Fake.Mix.cs — FAKE (#48 Mix, plan §3.3 "--fake") ─────────────────────────────────────────────────
 //
-// One mixed playlist for --fake and the inspector, shaped like the capture's HAAAAMOOO (report §3.1, §3.3): owned by
+// One mixed playlist for --fake and the inspector, shaped like a captured mixed list (report §3.1, §3.3): owned by
 // the account, the mix lens applied, ten mixable rows whose last pair runs into a LOCAL file (not-mixable, reason
-// entity-kind), one stored Rise recipe on the first pair, synthetic kind-217 grids from each track's seeded tempo and
-// kind-28 cue points. Route: pl:spotify:playlist:plmix.
+// entity-kind), three stored recipes (a Rise, a beatmatched Fade carrying fields this build does not know, a "no
+// transition"), synthetic kind-217 grids from each track's seeded tempo and kind-28 cue points. Every value is made up
+// here. Route: pl:spotify:playlist:plmix.
 
 using System.Globalization;
 
@@ -71,32 +72,114 @@ public static partial class Entities
 
             for (int k = 0; k < n; k++) SeedAnalysis(targets[k], k);
 
-            // The one edited pair: row 0 → row 1 saved as Rise (preset 3), the capture's saved transition in shape: a
-            // 2890 ms window ending 1 ms before row 0's file does.
+            // Three edited pairs, every byte made up here (no captured recipe):
+            //   0 → 1  Rise (preset 3), as Wavee writes a recipe of its own: a 2890 ms window ending 1 ms before row 0's file does.
+            //   1 → 2  a beatmatched Fade over 2 bars with an EQ override, written field by field as another client would: a
+            //          curve override and a field this build does not know at every level, which a decode → encode must keep.
+            //   5 → 6  "no transition": no preset id, a 1 ms overlap, no out-point (A plays to its end, B from its start).
+            var stored = new Dictionary<ulong, MixTransition>();
             var a = new global::Wavee.Track(targets[0]);
-            var b = new global::Wavee.Track(targets[1]);
-            long durA = a.DurationMs;
-            var recipe = new MixRecipe
-            {
-                FromItemId = MixRecipe.Hex64(Entities.Strings.Resolve(ItemIdFor(200, 0))),
-                ToItemId = MixRecipe.Hex64(Entities.Strings.Resolve(ItemIdFor(200, 1))),
-                OutStartMs = (uint)Math.Max(0, durA - 2891),
-                OverlapMs = 2890,
-                RateA = 1f, RateB = 1f,
-                TrackA = TrackUri(s_mixPool[0]), TrackB = TrackUri(s_mixPool[1]),
-                BeatsIdA = FakeBeatsId(0), BeatsIdB = FakeBeatsId(1),
-                BpmA = a.Tempo / 10f, BpmB = b.Tempo / 10f,
-                Preset = 3, StyleVersion = 1,
-            };
-            Span<byte> raw = stackalloc byte[512];
-            int len = MixRecipe.Encode(in recipe, default, raw);
-            var bytes = raw[..len].ToArray();
-            var stored = new Dictionary<ulong, MixTransition>
-            {
-                [recipe.FromItemId] = new MixTransition(recipe, bytes, Convert.ToBase64String(bytes),
-                    "spotify:transition:fakeTransition00000000:1795386355891"),
-            };
+            var rise = PairRecipe(0, targets);
+            rise.OutStartMs = (uint)Math.Max(0, a.DurationMs - 2891);
+            rise.OverlapMs = 2890;
+            rise.Preset = (byte)MixPreset.Rise;
+            rise.PresetType = MixPresetType.Fade;
+            rise.IsOverlapOverride = rise.IsPresetIdOverride = true;
+            Store(stored, in rise, MixRecipe.EncodeToArray(in rise, default), 0);
+            Store(stored, BeatmatchedRaw(targets), 1);
+            var none = PairRecipe(5, targets);
+            none.OverlapMs = 1;
+            none.PresetType = MixPresetType.Fade;
+            none.IsPresetIdOverride = true;
+            Store(stored, in none, MixRecipe.EncodeToArray(in none, default), 5);
             MixData.Replace(p.Slot, stored);
+        }
+
+        static void Store(Dictionary<ulong, MixTransition> into, in MixRecipe recipe, byte[] raw, int k)
+            => into[recipe.FromItemId] = new MixTransition(recipe, raw, Convert.ToBase64String(raw),
+                "spotify:transition:fakeTransition0000000" + k.ToString(CultureInfo.InvariantCulture) + ":1795386355891");
+
+        static void Store(Dictionary<ulong, MixTransition> into, byte[] raw, int k)
+        {
+            if (MixRecipe.TryDecode(raw, out var recipe)) Store(into, in recipe, raw, k);
+        }
+
+        /// <summary>The pair (row k → row k + 1)'s identity half of a recipe, in the official shape: item ids, uris (playable =
+        /// catalogue here), analysis ids, the seeded tempos, speeds 1.0.</summary>
+        static MixRecipe PairRecipe(int k, ReadOnlySpan<int> targets)
+        {
+            var a = new global::Wavee.Track(targets[k]);
+            var b = new global::Wavee.Track(targets[k + 1]);
+            return new MixRecipe
+            {
+                FromItemId = FakeItemId(k), ToItemId = FakeItemId(k + 1),
+                TrackA = TrackUri(s_mixPool[k]), TrackB = TrackUri(s_mixPool[k + 1]),
+                PlayableA = TrackUri(s_mixPool[k]), PlayableB = TrackUri(s_mixPool[k + 1]),
+                BeatsIdA = FakeBeatsId(k), BeatsIdB = FakeBeatsId(k + 1),
+                BpmA = a.Tempo / 10f, BpmB = b.Tempo / 10f,
+                SpeedA = 1f, SpeedB = 1f, ItemSpeedA = 1.0, ItemSpeedB = 1.0,
+            };
+        }
+
+        static ulong FakeItemId(int k) => MixRecipe.Hex64(Entities.Strings.Resolve(ItemIdFor(200, k)));
+
+        /// <summary>Row 1 → row 2 as a foreign client would store a beatmatched Fade (type 3) over 2 bars: B stretched to A's tempo,
+        /// an EQ override to style 15, a volume-out curve override, and an unknown field in the top message, the Overlap, the Preset
+        /// and the EQ override. Written by hand, so nothing of Wavee's encoder shapes it.</summary>
+        static byte[] BeatmatchedRaw(ReadOnlySpan<int> targets)
+        {
+            var id = PairRecipe(1, targets);
+            float bpm = id.BpmA > 0 ? id.BpmA : 120f;
+            uint overlap = (uint)Math.Round(2 * 4 * 60_000.0 / bpm);
+            var a = new global::Wavee.Track(targets[1]);
+            var buffer = new byte[1024];
+            var w = new Spotify.Decode.ProtoWriter(buffer);
+            Span<byte> hex = stackalloc byte[16];
+            int overlapMsg = w.Open(1);
+            Hex(FakeItemId(1), hex); w.Utf8Always(1, hex);
+            Hex(FakeItemId(2), hex); w.Utf8Always(2, hex);
+            w.UAlways(3, (ulong)Math.Max(0, a.DurationMs - 24_000));
+            w.UAlways(4, (ulong)(180 + 16 * 60_000.0 / (id.BpmB > 0 ? id.BpmB : bpm)));   // B's fifth bar on its seeded grid
+            w.UAlways(5, overlap);
+            w.F32(6, 1f);
+            w.F32(7, id.BpmB > 0 ? bpm / id.BpmB : 1f);
+            w.UAlways(8, 2);
+            w.UAlways(9, 1);
+            w.StrAlways(10, id.TrackA); w.StrAlways(11, id.TrackB);
+            w.StrAlways(12, id.PlayableA); w.StrAlways(13, id.PlayableB);
+            w.StrAlways(14, id.BeatsIdA); w.StrAlways(15, id.BeatsIdB);
+            w.F32(16, bpm); w.F32(17, bpm);
+            w.F64(18, 1.0); w.F64(19, 1.0);
+            w.UAlways(25, 7);                                   // unknown to this build
+            w.Close(overlapMsg);
+            int preset = w.Open(2);
+            w.UAlways(1, (ulong)MixPreset.Fade);
+            w.UAlways(2, (ulong)MixPresetType.BeatmatchedFade);
+            int eq = w.Open(4);
+            w.UAlways(1, 15);                                   // BassFadeOut
+            w.UAlways(2, 1);                                    // unknown to this build
+            w.Close(eq);
+            int curves = w.Open(6);                             // volumeOutCurveOverride: Curves { 1[] Curve, 3 min, 4 max }
+            int curve = w.Open(1);                              // Curve { 1[] Point, 2 start, 3 end }
+            int point = w.Open(1); w.F64(2, 1.0); w.Close(point);                 // (0, 1)
+            point = w.Open(1); w.F64(1, 0.6); w.F64(2, 1.0); w.Close(point);     // (0.6, 1)
+            point = w.Open(1); w.F64(1, 1.0); w.Close(point);                     // (1, 0)
+            w.F64(3, 1.0);
+            w.Close(curve);
+            w.F64(4, 1.0);
+            w.Close(curves);
+            w.F32(30, 0.25f);                                   // unknown to this build
+            w.Close(preset);
+            w.UAlways(3, 1);
+            w.UAlways(4, 1);
+            w.UAlways(5, (ulong)MixBeatmatchPreference.On);
+            w.Utf8Always(9, "made-up"u8);                       // unknown to this build
+            return buffer.AsSpan(0, w.Length).ToArray();
+
+            static void Hex(ulong v, Span<byte> into)
+            {
+                for (int i = 15; i >= 0; i--) { int d = (int)(v & 0xF); into[i] = (byte)(d < 10 ? '0' + d : 'a' + d - 10); v >>= 4; }
+            }
         }
 
         static string FakeBeatsId(int k) => (0xE2FD_6349_0000_0000UL + (ulong)k).ToString("x16", CultureInfo.InvariantCulture) + "00000000000000aa";

@@ -99,6 +99,10 @@ public static partial class Spotify
 
             public ProtoReader(ReadOnlySpan<byte> bytes) { _b = bytes; _p = 0; Field = 0; Wire = 0; }
 
+            /// <summary>The byte offset of the cursor: before <see cref="Next"/> it is where the next field's tag starts, after
+            /// the field's value is read or skipped it is where that field ends (a byte-exact patcher copies the span between).</summary>
+            public readonly int Position => _p;
+
             /// <summary>Advance to the next tag. False at the end of the frame, and false — permanently — on anything
             /// malformed, so a caller's <c>while (r.Next())</c> is also its error handling.</summary>
             public bool Next()

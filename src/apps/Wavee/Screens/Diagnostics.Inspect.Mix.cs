@@ -1,7 +1,8 @@
 // ── Screens/Diagnostics.Inspect.Mix.cs ────────────────────────────────────────────────────────────────────────────────
 // the `mix` verb (#48 Mix, plan §3.12 "a Mix section"): what Wavee holds of one playlist's Mix — the list and XM flags,
 // the lens etag, each row's wire flags, the stored recipes decoded, each track's beat grid, analysis id and cue points —
-// or a raw recipe decoded (`mix recipe=<base64>`), to compare with the capture's recipe decoder on the same bytes.
+// or a raw recipe decoded (`mix recipe=<base64>`), to compare with the capture's recipe decoder on the same bytes;
+// `mix roundtrip` proves the recipe codec lossless (plan §2.1.1): decode → encode is byte-equal, a change moves one field.
 //
 // Role: SHELL (UI thread; reads the entity tables and MixData)
 
@@ -50,28 +51,29 @@ public static partial class Diagnostics
                 var body = Spotify.Api.MixStateOnBody(rev);
                 return Inspect.Reply.Ok(id, name, w => { w.WriteString("body", Convert.ToHexString(body).ToLowerInvariant()); w.WriteNumber("bytes", body.Length); });
             }
-            if (a.Has("recipe"))
+            string show = a.Str("show", "dump");
+            if (a.Has("recipe") && show != "roundtrip")
             {
                 string b64 = a.Str("recipe");
                 var utf8 = System.Text.Encoding.ASCII.GetBytes(b64);
                 if (!MixRecipe.TryDecodeBase64(utf8, out var recipe, out var raw))
                     return Inspect.Reply.Fail(id, name, "not a decodable recipe (bad base64 or no timing)");
                 // The encoder's check: re-encode the decoded value carrying the raw bytes; a faithful codec writes them back.
-                var again = new byte[raw.Length + 64];
-                int n = MixRecipe.Encode(in recipe, raw, again);
-                bool same = again.AsSpan(0, n).SequenceEqual(raw);
+                var again = MixRecipe.EncodeToArray(in recipe, raw);
+                bool same = again.AsSpan().SequenceEqual(raw);
                 return Inspect.Reply.Ok(id, name, w =>
                 {
                     WriteRecipe(w, "recipe", in recipe);
                     w.WriteNumber("bytes", raw.Length);
                     w.WriteBoolean("reencodesIdentical", same);
-                    if (!same) w.WriteString("reencoded", Convert.ToBase64String(again, 0, n));
+                    if (!same) w.WriteString("reencoded", Convert.ToBase64String(again));
                 });
             }
             string uri = a.Str("uri", Entities.LibrarySeed.MixUri);
             var eid = EntityId.Parse(uri.AsSpan());
             if (eid.Kind != EntityKind.Playlist || !Entities.Current.Playlists.TryGetSlot(eid, out int slot))
                 return Inspect.Reply.Fail(id, name, "no playlist row for '" + uri + "'");
+            if (show == "roundtrip") return MixRoundTrip(id, name, slot, uri, a);
             var p = new Playlist(slot);
             return Inspect.Reply.Ok(id, name, w =>
             {
@@ -140,6 +142,81 @@ public static partial class Diagnostics
             });
         }
 
+        /// <summary>`mix roundtrip`: every stored recipe of the playlist (and `recipe=`), decoded and encoded again over its own
+        /// bytes (must be byte-equal), then encoded with ONE field changed (`change=`), with the bytes that differ: only that field's
+        /// value (and, when its size changes, the length prefixes around it) may move.</summary>
+        string MixRoundTrip(int id, string name, int slot, string uri, Inspect.Args a)
+        {
+            var items = new List<(string Label, byte[] Raw)>();
+            foreach (var t in MixData.All(slot)) items.Add((t.Recipe.FromItemId.ToString("x16", CultureInfo.InvariantCulture), t.Raw));
+            if (a.Has("recipe"))
+            {
+                var utf8 = System.Text.Encoding.ASCII.GetBytes(a.Str("recipe"));
+                if (!MixRecipe.TryDecodeBase64(utf8, out _, out var raw)) return Inspect.Reply.Fail(id, name, "not a decodable recipe (bad base64 or no timing)");
+                items.Add(("recipe=", raw));
+            }
+            string change = a.Str("change", "overlap");
+            int equal = 0;
+            return Inspect.Reply.Ok(id, name, w =>
+            {
+                w.WriteString("uri", uri);
+                w.WriteString("change", change);
+                w.WriteStartArray("recipes");
+                foreach (var (label, raw) in items)
+                {
+                    w.WriteStartObject();
+                    w.WriteString("from", label);
+                    w.WriteNumber("bytes", raw.Length);
+                    if (!MixRecipe.TryDecode(raw, out var recipe)) { w.WriteString("error", "undecodable"); w.WriteEndObject(); continue; }
+                    w.WriteString("decoded", recipe.ToString());
+                    var again = MixRecipe.EncodeToArray(in recipe, raw);
+                    bool same = again.AsSpan().SequenceEqual(raw);
+                    if (same) equal++;
+                    w.WriteBoolean("byteEqual", same);
+                    if (!same) w.WriteString("reencoded", Convert.ToHexString(again).ToLowerInvariant());
+
+                    var edited = recipe;
+                    string what = change switch
+                    {
+                        "bars" => "durationBars " + edited.DurationBars + " -> " + ++edited.DurationBars,
+                        "eq" => "eqStyle " + (edited.EqStyle?.ToString(CultureInfo.InvariantCulture) ?? "none") + " -> "
+                                + (edited.EqStyle = edited.EqStyle == 15 ? 7 : 15),
+                        _ => "overlapMs " + edited.OverlapMs + " -> " + ++edited.OverlapMs,
+                    };
+                    var changed = MixRecipe.EncodeToArray(in edited, raw);
+                    w.WriteStartObject("changed");
+                    w.WriteString("field", what);
+                    w.WriteNumber("bytes", changed.Length);
+                    w.WriteBoolean("byteEqual", changed.AsSpan().SequenceEqual(raw));
+                    // The change landed and nothing else moved: the changed bytes decode to the edited model.
+                    bool decodes = MixRecipe.TryDecode(changed, out var back);
+                    w.WriteBoolean("decodesToEdit", decodes && back.ToString() == edited.ToString());
+                    WriteDiff(w, raw, changed);
+                    w.WriteEndObject();
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
+                w.WriteNumber("byteEqualCount", equal);
+                w.WriteNumber("count", items.Count);
+            });
+        }
+
+        /// <summary>Where two byte runs differ: the shared head and tail lengths and the differing middle of each, in hex.</summary>
+        static void WriteDiff(Utf8JsonWriter w, ReadOnlySpan<byte> before, ReadOnlySpan<byte> after)
+        {
+            int head = 0;
+            while (head < before.Length && head < after.Length && before[head] == after[head]) head++;
+            int tail = 0;
+            while (tail < before.Length - head && tail < after.Length - head && before[^(tail + 1)] == after[^(tail + 1)]) tail++;
+            w.WriteStartObject("diff");
+            w.WriteNumber("at", head);
+            w.WriteString("before", Convert.ToHexString(before[head..^tail]).ToLowerInvariant());
+            w.WriteString("after", Convert.ToHexString(after[head..^tail]).ToLowerInvariant());
+            w.WriteNumber("sameHead", head);
+            w.WriteNumber("sameTail", tail);
+            w.WriteEndObject();
+        }
+
         static void WriteRecipe(Utf8JsonWriter w, string key, in MixRecipe r, string? transitionUri = null)
         {
             w.WriteStartObject(key);
@@ -148,15 +225,26 @@ public static partial class Diagnostics
             w.WriteNumber("outStartMs", r.OutStartMs);
             w.WriteNumber("inStartMs", r.InStartMs);
             w.WriteNumber("overlapMs", r.OverlapMs);
-            w.WriteNumber("rateA", r.RateA);
-            w.WriteNumber("rateB", r.RateB);
-            w.WriteBoolean("beatmatch", r.Beatmatch);
+            w.WriteNumber("speedA", r.SpeedA);
+            w.WriteNumber("speedB", r.SpeedB);
+            w.WriteNumber("durationBars", r.DurationBars);
+            w.WriteBoolean("isBeatmatched", r.IsBeatmatched);
             w.WriteNumber("bpmA", r.BpmA);
             w.WriteNumber("bpmB", r.BpmB);
+            w.WriteNumber("itemSpeedA", r.ItemSpeedA);
+            w.WriteNumber("itemSpeedB", r.ItemSpeedB);
             w.WriteNumber("preset", r.Preset);
-            w.WriteNumber("styleVersion", r.StyleVersion);
+            w.WriteString("presetType", r.PresetType.ToString());
+            w.WriteBoolean("noTransition", r.IsNoTransition);
+            w.WriteString("styles", r.Styles());
+            w.WriteString("curveOverrides", "0x" + r.CurveOverrides.ToString("x", CultureInfo.InvariantCulture));
+            w.WriteBoolean("isOverlapOverride", r.IsOverlapOverride);
+            w.WriteBoolean("isPresetIdOverride", r.IsPresetIdOverride);
+            w.WriteString("beatmatchPreference", r.BeatmatchPreference.ToString());
             w.WriteString("trackA", r.TrackA ?? "");
             w.WriteString("trackB", r.TrackB ?? "");
+            w.WriteString("playableA", r.PlayableA ?? "");
+            w.WriteString("playableB", r.PlayableB ?? "");
             w.WriteString("beatsIdA", r.BeatsIdA ?? "");
             w.WriteString("beatsIdB", r.BeatsIdB ?? "");
             if (transitionUri is not null) w.WriteString("transitionUri", transitionUri);

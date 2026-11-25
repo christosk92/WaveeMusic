@@ -329,6 +329,8 @@ public static partial class Playback
             bool hasRecipe, in MixRecipe recipe)
         {
             if (a.IsLocal || b.IsLocal) return MixTiming.Refused(MixWhyNot.LocalFile);
+            // Spotify's "no transition" (no preset id, a 1 ms overlap, no out-point): no join at all, never a 1 ms Fade at 0 ms.
+            if (hasRecipe && recipe.IsNoTransition) return MixTiming.Refused(MixWhyNot.NoTransition);
             long durA = a.DurationMs, durB = b.DurationMs;
             if (durA < MinTrackMs || durB <= 0) return MixTiming.Refused(MixWhyNot.TooShort);
             bool gridA = beatsA.Length >= MinGridBeats, gridB = beatsB.Length >= MinGridBeats;
@@ -409,8 +411,7 @@ public static partial class Playback
                 if (MathF.Abs(beats - n) <= 0.5f) inDur = (long)(n * PeriodNear(beatsB, inStart) + 0.5f);
             }
             if (inStart + inDur > durB) inDur = Math.Max(1, durB - inStart);
-            return new MixTiming(MixSource.Saved, MixWhyNot.None, r.Preset == 0 ? (byte)MixPreset.Fade : r.Preset,
-                (uint)outStart, (uint)overlap, (uint)inStart, (uint)inDur);
+            return new MixTiming(MixSource.Saved, MixWhyNot.None, r.Preset, (uint)outStart, (uint)overlap, (uint)inStart, (uint)inDur);
         }
 
         /// <summary>The mean beat period over up to 8 beats around <paramref name="ms"/>.</summary>

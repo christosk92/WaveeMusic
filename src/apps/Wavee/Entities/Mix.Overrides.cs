@@ -14,7 +14,9 @@ namespace Wavee;
 
 public enum MixOverrideKind : byte { NoMix, Auto, Recipe }
 
-public readonly record struct MixOverride(MixOverrideKind Kind, MixRecipe Recipe);
+/// <summary>One local record. <see cref="Raw"/> is the recipe bytes the record's recipe was decoded from (or patched over: the
+/// Spotify recipe it replaced), so a save writes back every field Wavee does not model; empty for a recipe Wavee built.</summary>
+public readonly record struct MixOverride(MixOverrideKind Kind, MixRecipe Recipe, byte[] Raw);
 
 public static class MixOverrides
 {
@@ -36,10 +38,13 @@ public static class MixOverrides
         return n;
     }
 
-    public static void Set(string playlistUri, ulong fromItemId, ulong toItemId, MixOverrideKind kind, in MixRecipe recipe = default)
+    /// <summary>Set a pair's record. <paramref name="raw"/>: the bytes of the recipe <paramref name="recipe"/> was edited from (the
+    /// pair's Spotify recipe or its earlier local one), carried verbatim where the edit left them alone; empty for a new recipe.</summary>
+    public static void Set(string playlistUri, ulong fromItemId, ulong toItemId, MixOverrideKind kind, in MixRecipe recipe = default,
+        byte[]? raw = null)
     {
         if (playlistUri.Length == 0 || fromItemId == 0) return;
-        Map[(playlistUri, fromItemId, toItemId)] = new MixOverride(kind, recipe);
+        Map[(playlistUri, fromItemId, toItemId)] = new MixOverride(kind, recipe, raw ?? []);
         Save();
     }
 
@@ -71,9 +76,10 @@ public static class MixOverrides
             ulong from = MixRecipe.Hex64(f[1]), to = MixRecipe.Hex64(f[2]);
             if (from == 0) continue;
             MixRecipe recipe = default;
+            byte[] recipeRaw = [];
             if (kind == (byte)MixOverrideKind.Recipe
-                && !(f.Length > 4 && MixRecipe.TryDecodeBase64(System.Text.Encoding.ASCII.GetBytes(f[4]), out recipe, out _))) continue;
-            map[(f[0], from, to)] = new MixOverride((MixOverrideKind)kind, recipe);
+                && !(f.Length > 4 && MixRecipe.TryDecodeBase64(System.Text.Encoding.ASCII.GetBytes(f[4]), out recipe, out recipeRaw))) continue;
+            map[(f[0], from, to)] = new MixOverride((MixOverrideKind)kind, recipe, recipeRaw);
         }
         return map;
     }
@@ -81,16 +87,15 @@ public static class MixOverrides
     static void Save()
     {
         var sb = new System.Text.StringBuilder();
-        Span<byte> buffer = stackalloc byte[1024];
         foreach (var (key, value) in Map)
         {
             sb.Append(key.Item1).Append('|').Append(key.Item2.ToString("x16")).Append('|').Append(key.Item3.ToString("x16"))
               .Append('|').Append((byte)value.Kind).Append('|');
             if (value.Kind == MixOverrideKind.Recipe)
             {
+                // Patched over the bytes it came from: a recipe loaded and saved again unchanged keeps them exactly.
                 var r = value.Recipe;
-                int n = MixRecipe.Encode(in r, default, buffer);
-                sb.Append(Convert.ToBase64String(buffer[..n]));
+                sb.Append(Convert.ToBase64String(MixRecipe.EncodeToArray(in r, value.Raw)));
             }
             sb.Append('\n');
         }

@@ -74,6 +74,7 @@ public static class MixEdit
     public static int StyleOf(in Pair pair)
     {
         if (pair.Local && pair.LocalKind == MixOverrideKind.NoMix) return (int)MixStyle.NoMix;
+        if (pair.Now.WhyNot == MixWhyNot.NoTransition) return (int)MixStyle.NoMix;   // saved in Spotify as "no transition"
         return StyleOfTiming(pair.Now.Mix ? pair.Now : pair.Auto);
     }
 
@@ -89,7 +90,8 @@ public static class MixEdit
     }
 
     /// <summary>The pair is edited (a Spotify recipe, or a record on this PC that is not "Auto").</summary>
-    public static bool Edited(in Pair pair) => pair.Local ? pair.LocalKind != MixOverrideKind.Auto : pair.Now.Source == MixSource.Saved;
+    public static bool Edited(in Pair pair)
+        => pair.Local ? pair.LocalKind != MixOverrideKind.Auto : pair.Now.Source == MixSource.Saved || pair.Now.WhyNot == MixWhyNot.NoTransition;
 
     /// <summary>The overlap in whole beats of the outgoing track (its grid), else the nearest fixed length's index.</summary>
     public static int BeatsOf(in Pair pair, uint overlapMs)
@@ -177,21 +179,47 @@ public static class MixEdit
         if (style == (int)MixStyle.Quick) beats = pair.Grid ? QuickBeats(in pair) : 0;
         uint overlap = OverlapMsOf(in pair, beats);
         long end = (long)basis.OutStartMs + basis.OutDurationMs;
-        var recipe = new MixRecipe
+        // The edit starts from the recipe it replaces (this PC's, else Spotify's) and keeps that recipe's bytes, so every field the
+        // card does not edit (beatmatch, speeds, playable uris, style and curve overrides, unknown fields) is written back as it was.
+        var recipe = ReplacedRecipe(in pair, playlistSlot, out byte[] raw);
+        if (raw.Length == 0)
         {
-            FromItemId = pair.ItemA,
-            ToItemId = pair.ItemB,
-            OutStartMs = (uint)Math.Max(0, end - overlap),
-            InStartMs = basis.InStartMs,
-            OverlapMs = overlap,
-            Preset = style == (int)MixStyle.Lift ? (byte)MixPreset.Rise : (byte)MixPreset.Fade,
-            TrackA = pair.A.Id.Text,
-            TrackB = pair.B.Id.Text,
-            BpmA = pair.A.Tempo / 10f,
-            BpmB = pair.B.Tempo / 10f,
-        };
-        MixOverrides.Set(pair.PlaylistUri, pair.ItemA, pair.ItemB, MixOverrideKind.Recipe, in recipe);
+            // A new recipe, in the shape the official client saves one.
+            recipe.TrackA = recipe.PlayableA = pair.A.Id.Text;
+            recipe.TrackB = recipe.PlayableB = pair.B.Id.Text;
+            recipe.BpmA = pair.A.Tempo / 10f;
+            recipe.BpmB = pair.B.Tempo / 10f;
+            recipe.SpeedA = recipe.SpeedB = 1f;
+            recipe.ItemSpeedA = recipe.ItemSpeedB = 1.0;
+            recipe.PresetType = MixPresetType.Fade;
+        }
+        recipe.FromItemId = pair.ItemA;
+        recipe.ToItemId = pair.ItemB;
+        recipe.OutStartMs = (uint)Math.Max(0, end - overlap);
+        recipe.InStartMs = basis.InStartMs;
+        recipe.OverlapMs = overlap;
+        recipe.Preset = style == (int)MixStyle.Lift ? (byte)MixPreset.Rise : (byte)MixPreset.Fade;
+        recipe.IsOverlapOverride = recipe.IsPresetIdOverride = true;   // both picked by hand
+        MixOverrides.Set(pair.PlaylistUri, pair.ItemA, pair.ItemB, MixOverrideKind.Recipe, in recipe, raw);
         Repaint(playlistSlot);
+    }
+
+    /// <summary>The recipe a save replaces, with its raw bytes: this PC's record for the pair, else the pair's Spotify recipe, else
+    /// a new one (no bytes).</summary>
+    static MixRecipe ReplacedRecipe(in Pair pair, int playlistSlot, out byte[] raw)
+    {
+        if (MixOverrides.TryGet(pair.PlaylistUri, pair.ItemA, pair.ItemB, out var local) && local.Kind == MixOverrideKind.Recipe)
+        {
+            raw = local.Raw;
+            return local.Recipe;
+        }
+        if (MixData.TryGet(playlistSlot, pair.ItemA, out var stored) && (stored.Recipe.ToItemId == 0 || stored.Recipe.ToItemId == pair.ItemB))
+        {
+            raw = stored.Raw;
+            return stored.Recipe;
+        }
+        raw = [];
+        return default;
     }
 
     /// <summary>A local record changed: bump the playlist's row, which the seams, the Transitions rows, the meta line and this card read (the

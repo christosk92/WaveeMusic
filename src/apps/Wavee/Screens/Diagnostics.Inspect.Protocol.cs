@@ -593,11 +593,13 @@ public static partial class Diagnostics
                 Args = [Arg("fixture", ArgType.Enum, "the fixture", "book-titled", "show-episodic|show-serial|book-titled|book-tracks|book-inprogress|book-finished"),
                         Arg("path", ArgType.Path, "also write the dump's JSON to this file")],
             },
-            new(Verb.Mix, "mix", "#48 Mix: one playlist's Mix data (list and XM flags, lens etag, each row's mixable bits, beat grid, cue points and stored recipe), or a raw recipe decoded", "mix uri=spotify:playlist:plmix")
+            new(Verb.Mix, "mix", "#48 Mix: one playlist's Mix data (list and XM flags, lens etag, each row's mixable bits, beat grid, cue points and stored recipe), a raw recipe decoded, or (show=roundtrip) every stored recipe decoded and encoded again, byte-compared, unchanged and with one field changed", "mix roundtrip uri=spotify:playlist:plmix")
             {
-                Positional = ["uri"],
-                Args = [Arg("uri", ArgType.String, "the playlist (default: the fake mixed playlist)"),
-                        Arg("recipe", ArgType.String, "decode this base64 TransitionRecipe instead"),
+                Positional = ["show", "uri"],
+                Args = [Arg("show", ArgType.Enum, "what to print: the playlist's Mix data, or the recipe round trip", "dump", "dump|roundtrip"),
+                        Arg("uri", ArgType.String, "the playlist (default: the fake mixed playlist)"),
+                        Arg("recipe", ArgType.String, "decode this base64 TransitionRecipe instead (with show=roundtrip: round-trip it too)"),
+                        Arg("change", ArgType.Enum, "show=roundtrip: the one field changed in the second encode (overlap +1 ms, durationBars +1, the EQ override set to 15 or 7)", "overlap", "overlap|bars|eq"),
                         Arg("mixstate", ArgType.String, "print the mix-state (turn Mix on) body for this revision (hex)"),
                         Arg("curves", ArgType.Int, "print the Connect metadata curves for this preset id (1 Fade, 3 Rise)"),
                         Arg("window", ArgType.Int, "the window those curves are for, ms (8 units under 8 s, else 16)")],

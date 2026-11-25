@@ -141,6 +141,14 @@ public static partial class Spotify
                 if (n > 0) Utf8(field, uri[..n]);
             }
 
+            /// <summary>Bytes that are already protobuf (whole fields, tags included), copied verbatim: a patcher carrying the
+            /// fields it does not model.</summary>
+            public void Raw(scoped ReadOnlySpan<byte> bytes)
+            {
+                bytes.CopyTo(_b[Length..]);
+                Length += bytes.Length;
+            }
+
             /// <summary>An empty-but-present message (<c>tag 00</c>) — the submessages desktop always sends with no content.</summary>
             public void Empty(int field) { Tag(field, 2); Var(0); }
 
