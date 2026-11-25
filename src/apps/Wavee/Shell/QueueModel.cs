@@ -123,6 +123,36 @@ public static partial class Shell
                 new QueueAutoplay(autoplayEnabled, auto, preview), shuffle, repeat, rows);
         }
 
+        /// <summary>AI DJ (plan-dj §2.8, owner decision: the queue by segment, not "The DJ doesn't have a queue"): the continuation's rows of
+        /// <paramref name="model"/> grouped by their DJ segment (<see cref="Playback.Dj.RowOf"/>), each under its <c>station_subtitle</c>, the
+        /// segment "Let DJ pick" lands on marked; a row the DJ book does not know joins the group before it. The rows stay in place but no longer
+        /// drag (a DJ's order is its own; a header inside the run would also split the reorder's window). Unchanged for any other context.
+        /// Narration rows (D2) are hidden here when they exist: they are not queue rows of the book.</summary>
+        public static QueueProps WithSegments(QueueProps model, int jumpTarget)
+        {
+            int start = model.Counts.Queue, count = model.Counts.NextUp;
+            if (count == 0 || model.Viewer) return model;
+            var rows = model.Rows;
+            List<QueueSegment>? segments = null;
+            string current = "";
+            for (int k = 0; k < count && start + k < rows.Length; k++)
+            {
+                if (Playback.Dj.RowOf(rows[start + k].ItemId) is not { } dj) continue;
+                if (segments is not null && dj.Segment == current) continue;
+                segments ??= new List<QueueSegment>(4);
+                current = dj.Segment;
+                segments.Add(new QueueSegment("seg:" + dj.Segment, dj.Subtitle, k, 0, rows[start + k].Index == jumpTarget));
+            }
+            if (segments is null) return model;
+            if (segments[0].Start > 0) segments[0] = segments[0] with { Start = 0 };   // rows before the first booked one stay under it
+            var shown = segments.ToArray();
+            for (int i = 0; i < shown.Length; i++)
+                shown[i] = shown[i] with { Count = (i + 1 < shown.Length ? shown[i + 1].Start : count) - shown[i].Start };
+            var still = (QueueRowProps[])rows.Clone();
+            for (int k = 0; k < count && start + k < still.Length; k++) still[start + k] = still[start + k] with { Draggable = false };
+            return model with { Rows = still, Segments = shown };
+        }
+
         /// <summary>How many "played before this" rows the props carry.</summary>
         public const int HistoryCap = 50;
 
