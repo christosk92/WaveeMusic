@@ -948,6 +948,10 @@ public static partial class Video
         NotMp4,
         /// <summary>The path does not point at an existing file.</summary>
         NotFound,
+        /// <summary>The row is not a Spotify track: a local file's row is its own file and plays its own video, it takes no linked one.</summary>
+        NotLinkable,
+        /// <summary>The file is there, but the library did not take it or the link store refused the link.</summary>
+        NotAdded,
     }
 
     /// <summary>Which rows the <c>Video ▸</c> submenu builds for a playable, decided at open time from the curation

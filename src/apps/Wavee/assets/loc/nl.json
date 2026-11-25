@@ -962,6 +962,8 @@
     "restored": "Koppeling hersteld",
     "rejectedNotMp4": "Alleen .mp4-bestanden kunnen worden gekoppeld.",
     "rejectedNotFound": "Dat bestand is niet gevonden.",
+    "rejectedNotLinkable": "Een video kan alleen aan een Spotify-nummer worden gekoppeld: een bestand op deze pc speelt zijn eigen video.",
+    "rejectedNotAdded": "Wavee kon die video niet aan je bibliotheek toevoegen.",
     "missingToast": "De video die aan dit nummer is gekoppeld ontbreekt — het origineel wordt afgespeeld.",
     "unplayableToast": "De gekoppelde video kan niet worden afgespeeld — het origineel wordt afgespeeld.",
     "dropHint": "Zet een .mp4 neer om die aan dit nummer te koppelen",
