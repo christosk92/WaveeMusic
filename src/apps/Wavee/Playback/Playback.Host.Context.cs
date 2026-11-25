@@ -471,7 +471,7 @@ public static partial class Playback
     static void ResolveContext(long seq, string uri, RemoteLoad load, ClusterBuffer buffer, ClaimCause cause)
     {
         // A lexicon session url (the DJ, plan-dj §2.1.2) is resolved through the lexicon session provider, never as the bare uri: a
-        // local DJ start and a controller's DJ play alike (the controller's play was acked and ignored before this, L2312074).
+        // local DJ start and a controller's DJ play alike (a controller's DJ play was acked and ignored before this).
         if (!load.ContextUrl.IsEmpty && Dj.IsLexicon(buffer.Utf8(load.ContextUrl)))
         {
             ResolveLexicon(seq, System.Text.Encoding.UTF8.GetString(buffer.Utf8(load.ContextUrl)), load, buffer, cause);
