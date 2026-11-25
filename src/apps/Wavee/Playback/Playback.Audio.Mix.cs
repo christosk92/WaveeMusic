@@ -75,11 +75,59 @@ public static partial class Playback
             public long APosAtWindow, APosAtIn, APosAtAnnounce, APosAtOutEnd;
             /// <summary>The mixer clock when the pump saw B sounding and when it announced (−1: not yet).</summary>
             public long SoundingClock = -1, AnnouncedClock = -1;
+            /// <summary>The mixer clock the overlap was cut at (a cancel, a skip's teardown, a load), −1 while it runs or when it ran to
+            /// <see cref="OutEndFrame"/>.</summary>
+            public long EndClock = -1;
             public bool Cancelled, LateShifted;
+            /// <summary>The play report took this join's overlap for A's registration, for B's (<see cref="TakeDjOverlap"/>).</summary>
+            public bool ReportedA, ReportedB;
+
+            /// <summary>The ms both sides sounded together: from B's first frame to A's window end, or to the clock that cut it
+            /// (<paramref name="now"/> while the join is still pending: a skip cuts it now). 0 when B never started.</summary>
+            public int OverlapMs(long now = -1)
+            {
+                long end = EndClock >= 0 ? Math.Min(EndClock, OutEndFrame) : now >= 0 ? Math.Min(now, OutEndFrame) : OutEndFrame;
+                return (int)Math.Max(0, (end - InFrame) * 1000 / Math.Max(1, Rate));
+            }
         }
 
         static readonly List<DjJoin> s_djJoins = new();
         static DjJoin? s_djJoin;
+        /// <summary>A join announced when B started whose A still plays on under B (until its window's end): a teardown cuts its overlap.</summary>
+        static DjJoin? s_djTail;
+
+        /// <summary>AI DJ telemetry (plan-dj §2.9; Playback.Dj.Telemetry.cs): the overlap of the latest join <paramref name="id"/> was side A of
+        /// (<paramref name="outgoing"/>) or side B of, for that side's closing registration, once per side; <paramref name="partner"/> is the
+        /// other side. 0 when no join qualifies. UI thread (the play report). Which ms:
+        /// <list type="bullet">
+        /// <item>a join that still sounds in this session (pending, or announced with A's tail still under B): up to the mixer clock now, as
+        /// the skip or end that closes the registration cuts it there;</item>
+        /// <item>side A of a join announced when B started (a jump clip, the outro's track, a radio A): A's registration closes at that
+        /// announce, before its tail under B has played, so it takes the tail the pump scheduled;</item>
+        /// <item>otherwise what the join sounded: to A's window end, or to the clock a cancel or a teardown cut it at.</item>
+        /// </list>
+        /// A side B counts only when the join announced it (B became the current item through it).</summary>
+        public static int TakeDjOverlap(EntityId id, bool outgoing, out EntityId partner)
+        {
+            partner = default;
+            lock (s_gate)
+            {
+                for (int i = s_djJoins.Count - 1; i >= 0; i--)
+                {
+                    DjJoin j = s_djJoins[i];
+                    if (!(outgoing ? j.A : j.B).Equals(id)) continue;
+                    if (outgoing ? j.ReportedA : j.ReportedB) return 0;
+                    if (!outgoing && j.AnnouncedClock < 0) return 0;
+                    if (j.Cancelled && j.EndClock < 0) return 0;
+                    if (outgoing) j.ReportedA = true; else j.ReportedB = true;
+                    partner = outgoing ? j.B : j.A;
+                    bool announcedAway = outgoing && j.AnnouncedClock >= 0 && j.Plan.AnnounceAt == MixAnnounceAt.InStart;
+                    bool live = !announcedAway && j.EndClock < 0 && (ReferenceEquals(j, s_djJoin) || ReferenceEquals(j, s_djTail));
+                    return j.OverlapMs(live ? s_session?.SampleClock ?? -1 : -1);
+                }
+            }
+            return 0;
+        }
 
         /// <summary>The last AI DJ joins (oldest first), a copy. Any thread.</summary>
         public static DjJoin[] DjJoins() { lock (s_gate) return s_djJoins.ToArray(); }
@@ -363,7 +411,7 @@ public static partial class Playback
             s_joinStartMs = 0;
             s_joinOutEndFrame = 0;
             s_joinPlan = default;
-            if (s_djJoin is { } join) { join.Cancelled = true; s_djJoin = null; }
+            if (s_djJoin is { } join) { join.Cancelled = true; join.EndClock = sess?.SampleClock ?? join.InFrame; s_djJoin = null; }
             Volatile.Write(ref s_mixSounding, 0);
             Interlocked.Increment(ref s_mMixCancelled);
             Log.Info("audio", "[mix] cancelled " + (beforeStart ? "before the overlap" : "inside the overlap"));
@@ -372,9 +420,12 @@ public static partial class Playback
 
         /// <summary>Under s_gate, from a load or a session teardown: a mix join still pending dies with the voices it joined (no gate to
         /// cancel, nothing to put back: the session goes), so its state must not reach the next join's announce.</summary>
-        static void DropMixJoinLocked()
+        static void DropMixJoinLocked(long clock = -1)
         {
-            if (s_djJoin is { } join) { join.Cancelled = true; s_djJoin = null; }
+            // The session's clock where it went (−1: already gone): a pending join's overlap, or an announced one's A tail, ends there.
+            if (s_djJoin is { } join) { join.Cancelled = true; join.EndClock = clock >= 0 ? clock : join.InFrame; s_djJoin = null; }
+            if (s_djTail is { } tail && clock >= 0 && clock < tail.OutEndFrame) tail.EndClock = clock;
+            s_djTail = null;
             s_joinMix = false;
             s_mixGate = null;
             s_joinStartMs = 0;
@@ -391,7 +442,7 @@ public static partial class Playback
             if (!s_joinMix) return -1;
             long at = s_joinStartMs;
             s_retireAtFrame = s_joinOutEndFrame;
-            if (s_djJoin is { } join) { join.AnnouncedClock = clock; s_djJoin = null; }
+            if (s_djJoin is { } join) { join.AnnouncedClock = clock; s_djTail = s_joinOutEndFrame > 0 ? join : null; s_djJoin = null; }
             s_joinMix = false;
             s_mixGate = null;
             s_joinStartMs = 0;

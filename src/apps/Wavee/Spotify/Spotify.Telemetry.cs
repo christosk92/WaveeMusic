@@ -471,9 +471,10 @@ public static partial class Spotify
             /// <c>custom_reporting_attribution</c> (<c>&lt;segment&gt;:&lt;page&gt;:&lt;slot&gt;:0</c>), "" for any other play
             /// (<see cref="Attribute"/>).</summary>
             public string? DecisionId, Attribution;
-            /// <summary>AI DJ talk-over (plan-dj §1.6, §2.9): the ms this narration played over its target (<c>ms_played_overlapping</c>, 16, and
-            /// the official client's 67), and the ms of a narration this track played under (<c>ms_narration_overlapping</c>, 46). 0 until the
-            /// talk-over (D3) plays one under the other: it writes them through <see cref="Overlapped"/>.</summary>
+            /// <summary>AI DJ joins (plan-dj §1.6, §1.7, §2.9): the ms this play sounded together with another (<c>ms_played_overlapping</c>, 16,
+            /// and the official client's 67: a narration over its track, a radio track and its neighbour), and the ms of a narration this track
+            /// played under (<c>ms_narration_overlapping</c>, 46). Written through <see cref="Overlapped"/> from the pump's joins
+            /// (Playback.Dj.Telemetry.cs, NoteDjOverlap); 0 for a play no DJ join touched.</summary>
             public int OverlapMs, NarrationOverlapMs;
         }
 
@@ -485,8 +486,9 @@ public static partial class Spotify
             r.Attribution = attribution;
         }
 
-        /// <summary>AI DJ talk-over (D3's seam, plan-dj §1.6): this narration played <paramref name="overMs"/> over its target, or this
-        /// track played <paramref name="underNarrationMs"/> under a narration. Summed, so a clip that ducks twice reports both.</summary>
+        /// <summary>AI DJ joins (plan-dj §1.6, §1.7): this play sounded <paramref name="overMs"/> together with another (a narration over a
+        /// track, a radio track with its neighbour), or this track played <paramref name="underNarrationMs"/> under a narration. Summed, so a
+        /// play joined at both ends reports both.</summary>
         public static void Overlapped(ref Registration r, int overMs = 0, int underNarrationMs = 0)
         {
             r.OverlapMs += Math.Max(0, overMs);

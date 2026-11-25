@@ -1481,7 +1481,7 @@ public static partial class Playback
                 s_prepId = default;
                 s_recovering = false;
                 s_joinPending = false;
-                DropMixJoinLocked();
+                DropMixJoinLocked(session?.SampleClock ?? -1);
                 s_crossfadeInFlight = false;
                 s_retireAtFrame = 0;
                 s_prepOverlap = false;
@@ -4086,7 +4086,7 @@ public static partial class Playback
             {
                 // (An AI DJ join announced when B started: A plays on under B to its window's end, so its bytes close only then.)
                 IMediaByteSource? retiring;
-                lock (s_gate) { s_crossfadeInFlight = false; retiring = s_retiringBytes; s_retiringBytes = null; }
+                lock (s_gate) { s_crossfadeInFlight = false; retiring = s_retiringBytes; s_retiringBytes = null; s_djTail = null; }
                 if (retiring is not null) { try { retiring.Close(); } catch { } }
             }
 

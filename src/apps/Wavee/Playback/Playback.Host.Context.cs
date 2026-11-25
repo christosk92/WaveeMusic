@@ -1515,7 +1515,11 @@ public static partial class Playback
         if ((r.Events & PlayEvents.Ended) != 0)
         {
             ArmProgressMirror(false);
-            if (open) Spotify.Telemetry.Ended(ref s_registration, r.EndPosMs, ReasonText(r.EndReason));
+            if (open)
+            {
+                NoteDjOverlap(s_registeredId);   // an AI DJ join this play was a side of: the ms it overlapped (plan-dj §2.9)
+                Spotify.Telemetry.Ended(ref s_registration, r.EndPosMs, ReasonText(r.EndReason));
+            }
             if (IsSpotifyEpisode(r.EndedId)) LeaveEpisode(r.EndedId, r.EndPosMs, unix, "end", r.EndReason);
             s_registration = default;
             s_registeredId = default;

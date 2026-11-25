@@ -556,6 +556,11 @@ public static partial class Diagnostics
                 w.WriteBoolean("announced", j.AnnouncedClock >= 0);
                 w.WriteBoolean("cancelled", j.Cancelled);
                 w.WriteBoolean("lateShifted", j.LateShifted);
+                // What the play report takes for the telemetry overlap fields (plan-dj §2.9): the ms both sides sounded, from the frames.
+                w.WriteNumber("overlapMs", j.OverlapMs());
+                if (j.EndClock >= 0) w.WriteNumber("cutAtFrame", j.EndClock);
+                w.WriteBoolean("reportedA", j.ReportedA);
+                w.WriteBoolean("reportedB", j.ReportedB);
                 w.WriteEndObject();
             }
             w.WriteEndArray();
