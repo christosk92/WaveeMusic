@@ -250,8 +250,11 @@ public readonly partial struct Playlist
             float scale = UseContext(Viewport.Scale);
             int decodePx = HeaderCoverDecodePx(size, scale);
             return ViewSlots.View(ViewKeys.PlaylistCoverEditor,
-                new PlaylistCoverEditorProps(HeadFace(new Playlist(props.Slot), size, decodePx), _busy, _pick, _apply));
+                new PlaylistCoverEditorProps(HeadFace(new Playlist(props.Slot), size, decodePx), _busy, _pick, _apply, s_coverTakes));
         }
+
+        /// <summary>The cover takes a drop of image files only (<see cref="PlaylistCoverRules.TakesDrop"/>).</summary>
+        static readonly Func<DragSession, bool> s_coverTakes = static s => s.Payload is FileDropData f && PlaylistCoverRules.TakesDrop(f.Paths);
 
         void Pick() => PlaylistCover.Pick(new Playlist(_slot));
     }

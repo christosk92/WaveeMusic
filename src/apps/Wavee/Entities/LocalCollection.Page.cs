@@ -224,7 +224,7 @@ public static partial class LocalCollectionPage
                 Shelves = LocalHome.Shelves,
                 ShowShelf = LocalHome.Show,
                 MoveShelf = LocalHome.Move,
-                Drop = DropAnywhere.LocalFiles,
+                Drop = DropAnywhere.LocalFilesPage,
                 Link = LocalLinkPage.Props,
                 FolderMenus = _folders.Menus,
                 Title = Loc.Get(P.Title),

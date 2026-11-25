@@ -522,16 +522,17 @@ public static partial class Queue
         DropTargetSpec? _osSpec;
 
         /// <summary>The lane's drop target taking OS drags as well (#240 D15, board 24): the same handlers, the same line and gate,
-        /// the kinds widened, and the spotlight lit for an OS payload only (an in-app drag keeps its look). Built once.</summary>
+        /// the kinds widened, and the spotlight lit for an OS payload only (an in-app drag keeps its look); the drop panel stays up over
+        /// it (<see cref="DropAnywhere.KeepsPanel"/>). Built once.</summary>
         DropTargetSpec? OsWidened(DropTargetSpec? spec)
         {
             if (spec is null || Viewer) return spec;
-            return _osSpec ??= spec with
+            return _osSpec ??= DropAnywhere.KeepsPanel(spec with
             {
                 AcceptKinds = [.. spec.AcceptKinds, .. DropAnywhere.OsKinds],
                 VisualPolicy = DropTargetVisualPolicy.Spotlight,
                 SpotlightWhen = static s => DropAnywhere.IsOsPayload(s.Payload) && DropAnywhere.PlanOf(s).QueueTakes,
-            };
+            });
         }
 
         public DragSource? OwnDrag(ulong itemId, int index, EntityRef row)

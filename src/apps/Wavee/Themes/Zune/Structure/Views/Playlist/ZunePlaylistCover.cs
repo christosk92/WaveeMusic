@@ -94,7 +94,7 @@ internal static partial class ZunePlaylist
                 {
                     dropOver.Value = false;
                     if (session.Payload is FileDropData files && files.Count > 0) apply(files.Paths[0]);
-                }),
+                }) { CanAccept = p.TakesDrop },
             Children = kids.ToArray(),
         };
         return Controls.Named(cover, Loc.Get(Strings.Detail.Edit.PickCover));

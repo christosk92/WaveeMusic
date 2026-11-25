@@ -3587,6 +3587,7 @@
     "missingToast": "The video linked to this track is missing — playing the original.",
     "unplayableToast": "Couldn’t play the linked video — playing the original.",
     "dropHint": "Drop an .mp4 to link it to this track as its video",
+    "dropOnRow": "Link as this track’s video",
     "customLabel": "Watch your video",
     "settingsHeader": "Linked videos",
     "settingsSub": "Your own videos, linked to Spotify tracks as their video versions. Each file is in your library on this PC; unlinking never deletes it.",
