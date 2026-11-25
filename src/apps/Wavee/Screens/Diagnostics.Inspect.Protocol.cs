@@ -100,7 +100,8 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Timecode, Drop, LocalScan, LocalIndex, Decode, Quit,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Timecode, Drop, LocalScan, LocalIndex, Decode,
+            MixStyles, Quit,   // Quit stays last: the spec table is sized by it
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -669,6 +670,21 @@ public static partial class Diagnostics
                         Arg("key", ArgType.Enum, "with do=set: the timecode dial", null, "enabled|device|rate|start|level|offset|clx"),
                         Arg("value", ArgType.String, "with do=set: true|false, an endpoint id (headless: any), 24|25|29.97|30, 0|1, dB, ms")],
             },
+            new(Verb.MixStyles, "mixstyles", "#48 Mix style table: a preset's resolved style ids and every lane's out and in curve at a bar count, in the Connect metadata spelling; or check= the generators against the official client's own tables in a folder outside the repo (max deviation per lane, style and bar count over the 1025-point engine table, and a total)", "mixstyles preset=17 bars=4")
+            {
+                Positional = ["preset"],
+                Args = [IntArg("preset", "the preset id (1 Fade, 2 Blend, 3 Rise, 4 Melt, 11 Slam, 17 Wave, 20 Dissolve, 21 Surge, 22 Afterglow; 5-19 internal; 0 No transition; another id renders as Fade)", "1", -1, 1000),
+                        IntArg("bars", "the transition's length in bars (0 = not beatmatched: the 2-bar layout)", "0", 0, 1000),
+                        Arg("bpm", ArgType.Float, "A's tempo, for the echo and delay time", "120") with { Min = 1, Max = 400 },
+                        IntArg("volume", "a volume style override (recipe 2.3)", null, -1, 127),
+                        IntArg("eq", "an EQ style override (recipe 2.4)", null, -1, 127),
+                        IntArg("filter", "a filter style override (recipe 2.5)", null, -1, 127),
+                        IntArg("fx", "an effect style override (recipe 2.12)", null, -1, 127),
+                        IntArg("looping", "a looping style override (recipe 2.16)", null, -1, 127),
+                        Arg("check", ArgType.Path, "a folder with the client's tables (volume.json, eq.json, filterfx.json, fx.json, presets.json, looping.json, limits.json): compare every generator with them"),
+                        Arg("tol", ArgType.Float, "with check: the deviation that counts as an exception", "0.000001", requires: "check"),
+                        Arg("rows", ArgType.Bool, "with check: list every curve's deviation", "true", requires: "check")],
+            },
             new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, customize, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); drive a Spine Shelf (shelf) or a Release Spotlight card (spotlight); acting ones settle", "home do=pin uri=spotify:album:al2")
             {
                 Positional = ["do"], NeedsMount = true, Acts = true,
@@ -849,6 +865,7 @@ public static partial class Diagnostics
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
             "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge, "timecode" => Verb.Timecode, "drop" => Verb.Drop, "localscan" => Verb.LocalScan, "localindex" => Verb.LocalIndex, "decode" => Verb.Decode,
             "quit" or "exit" => Verb.Quit,
+            "mixstyles" => Verb.MixStyles,
             _ => Verb.None,
         };
 
