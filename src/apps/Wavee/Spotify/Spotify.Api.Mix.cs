@@ -129,7 +129,7 @@ public static partial class Spotify
              : autoBaselineKnown ? Previous.Auto : Previous.None;
 
         /// <summary>One transition save: the pair (its from and to item), the new recipe and its bytes (patched over the recipe it
-        /// replaces when there was one, Mix.Card.cs), and the pair's Auto transition as the baseline a save over an Auto pair sends
+        /// replaces when there was one, Mix.Editor.cs), and the pair's Auto transition as the baseline a save over an Auto pair sends
         /// (no item ids; reference §5.2), null when the planner has none.</summary>
         public sealed record TransitionSave(ulong FromItem, ulong ToItem, MixRecipe Recipe, byte[] Encoded, MixRecipe? AutoBaseline);
 

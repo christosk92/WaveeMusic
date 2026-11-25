@@ -119,7 +119,7 @@ public sealed record MixEditorProps
     public required Action Undo { get; init; }
     public required Action Redo { get; init; }
 
-    /// <summary>"Hear it" / "Stop": the preview seam (`MixPreview`); unavailable until a preview engine installs itself.</summary>
+    /// <summary>"Hear it" / "Stop": the preview seam (`MixHearIt`); unavailable until a preview engine installs itself.</summary>
     public required string PreviewLabel { get; init; }
     public required bool PreviewAvailable { get; init; }
     public required bool Previewing { get; init; }
