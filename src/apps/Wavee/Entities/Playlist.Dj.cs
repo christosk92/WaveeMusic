@@ -81,7 +81,8 @@ public static class DjPage
             }
             return new BoxEl
             {
-                Key = "dj-page:upcoming", Direction = 1, MinWidth = 0f, Gap = Spacing.L, Padding = new Edges4(0f, Spacing.M, 0f, Spacing.L),
+                // No top air of its own: the head's list gap (or the list bar's top air) above it is the theme's section gap.
+                Key = "dj-page:upcoming", Direction = 1, MinWidth = 0f, Gap = Spacing.L, Padding = new Edges4(0f, 0f, 0f, Spacing.L),
                 Enter = s_fade, Exit = s_fade, Children = groups.ToArray(),
             };
         }

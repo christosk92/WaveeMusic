@@ -1998,7 +1998,8 @@ public readonly partial struct Track
                 OnHeroMeasured: _onHeroMeasured,
                 Form: _latest.Form,
                 Columns: _latest.Columns,
-                ViewportHeight: Cfg.HasTrailing ? _trailScroll.ViewportSignal : _listScroll.ViewportSignal);
+                ViewportHeight: Cfg.HasTrailing ? _trailScroll.ViewportSignal : _listScroll.ViewportSignal,
+                NoListBar: P.EmptyBodyIsPage && EmptyLeadHides);
         }
 
         // ── THE RULE, STATED ONCE ───────────────────────────────────────────────────────────────────────────────────
