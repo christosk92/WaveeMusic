@@ -2979,6 +2979,9 @@ public static partial class Playback
             float[] _src = [];
             float[] _pull = [];        // NLayer speaks float[] only; ONE buffer, never one per block (P8)
             int _hold, _srcChannels;
+            // The source rate, read once at open: on a forward-only stream NLayer drops each frame it has decoded, so at the stream's
+            // end it holds none and its own SampleRate throws (a narration clip read while it downloads reaches that end).
+            int _srcRate;
 
             readonly PullSamples _pullFn;
 
@@ -3011,6 +3014,7 @@ public static partial class Playback
                     _file = new NLayer.MpegFile(stream);
                     _srcChannels = Math.Max(1, _file.Channels);
                     int rate = _file.SampleRate > 0 ? _file.SampleRate : target.SampleRate;
+                    _srcRate = rate;
                     _resampler = rate != target.SampleRate ? new PolyphaseResampler(rate, target.SampleRate, target.Channels) : null;
                     _src = new float[4096 * Math.Max(_srcChannels, target.Channels)];
                     // NLayer's Length is what ReadSamples delivers, trimmed already (a counted frame total: the Xing frame count,
@@ -3057,7 +3061,7 @@ public static partial class Playback
                 try { n = _file.ReadSamples(_pull, 0, into.Length); } catch { return 0; }
                 // NLayer reads its Stream inside this call, so the MP3 figure includes the byte seam's waits — an honest
                 // floor for the decoder, not a pure CPU number like the Vorbis and FLAC ones.
-                RecordDecode(DecodeMp3, n > 0 ? n / _srcChannels : 0, _file.SampleRate,
+                RecordDecode(DecodeMp3, n > 0 ? n / _srcChannels : 0, _srcRate,
                     System.Diagnostics.Stopwatch.GetTimestamp() - t0);
                 if (n > 0) _pull.AsSpan(0, n).CopyTo(into);
                 return n;
