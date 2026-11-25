@@ -615,7 +615,10 @@ the host as the dealer glue does (no dealer, no ack). `play uri=<row> context=sp
 double-tap on the row does. `state kind=music-folders value=folder path=<dir>` runs the real scanner over a real folder into the
 in-memory index (#240's real-file matching; the app's index file is never touched). `value=startup path=<dir>` instead runs the app's own start-up (`LocalLibrary.Use`) with that folder over
 the scratch profile's `Wavee\Cache\localindex.bin` (copy an older build's index there first to replay its rebuild): the load, the
-start-up scan and the restate run on their threads and land over the next frames; `state kind=rescope` after it is the login's scope switch. `localindex prefix=<path start>`
+start-up scan and the restate run on their threads and land over the next frames; `state kind=rescope` after it is the login's scope switch. `state kind=local-peek value=counting|landed|empty|capped|none`
+(after `music-folders value=none`) stages what "Find music on this PC" counted (#240, 0dm; no disk; the real peek, which counts this PC's Music and
+Downloads folders by extension, runs when the card mounts on a mount with no music folder and logs `local.peek <folder> songs= cloud= videos= entries=
+capped= ms=`); `trace=90 prefix=local-` on `landed` proves the card keeps still. `localindex prefix=<path start>`
 lists the index (each file's LocalId, folder id, path, state and Wavee rename; `next`; `idMark`, the id high-water mark kept
 outside the bin); `rename=<LocalId> title=<t>` renames a file first, `compact=true` writes the bin now, and `mark=<n>` sets the
 high-water mark a previous run would have left (an inspector's settings live in memory), before a `value=startup`. The #240 LocalId

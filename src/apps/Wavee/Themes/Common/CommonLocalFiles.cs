@@ -8,6 +8,11 @@
 //            [Add my Music folder] (accent, while the Music folder is on offer) [Choose a folder…], the caption naming the Music folder, then the
 //            drop zone (152, dashed, r8): its glyph, "Or drop files here", "Folders or single songs". The drop itself is the page's (any drop on
 //            the window plays or adds); the zone names it. At Compact the column fills the list and the buttons take the 40 target.
+//   FIND     (`local-find`) "Find music on this PC" (#240, 0dm), in the empty column where the buttons and the caption stood (and, unframed, in
+//            Settings' empty Music folders group): a card plate (r8, 16 padding): its title, the line, one row per folder (the checkbox with the
+//            folder's name, its count at the row's end, the path under the name), then [Add selected] (accent) [Choose another folder…]. A folder
+//            with no song is greyed. The count holds one line from "Counting…" to its number, so nothing moves when it lands; at Compact the
+//            count goes under the name.
 //   SCAN     (`local-scan:line`) under the head's facts: the line with the time left after it (under it where the head is narrow: a rail), the bar 6
 //            under them (determinate; indeterminate while the first listing has no total). It takes the head's measure up to 560.
 //   PILL     (`local-pill`) a 32 accent pill centred over the rows, 16 under the band the list pins: the up arrow and "4 new songs · 1 moved". It
@@ -52,13 +57,16 @@ internal static class CommonLocalFiles
         {
             Centered(R.Type.FoldTitle(p.Title) with { Key = Rules.EmptyTitleKey, Color = Tok.TextPrimary, Case = R.Case.For(LabelKind.Heading) }),
             Centered(R.Type.DenseTitle(p.Body) with { Color = Tok.TextSecondary, MaxWidth = Rules.EmptyMeasure }) with { Margin = new Edges4(0f, Rules.EmptyLineGap, 0f, 0f) },
-            new BoxEl
-            {
-                Direction = 0, Wrap = true, Gap = Rules.EmptyButtonGap, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Margin = new Edges4(0f, Rules.EmptyButtonsGap, 0f, 0f), Children = buttons.ToArray(),
-            },
+            // No music folder: "Find music on this PC" stands where the buttons and the caption were.
+            p.Find is { } find
+                ? new BoxEl { Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, Rules.EmptyButtonsGap, 0f, 0f), Children = [find] }
+                : new BoxEl
+                {
+                    Direction = 0, Wrap = true, Gap = Rules.EmptyButtonGap, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Margin = new Edges4(0f, Rules.EmptyButtonsGap, 0f, 0f), Children = buttons.ToArray(),
+                },
         };
-        if (p.MusicFolderCaption.Length > 0)
+        if (p.Find is null && p.MusicFolderCaption.Length > 0)
             kids.Add(Centered(R.Type.DenseMeta(p.MusicFolderCaption) with { Key = Rules.CaptionKey, Color = Tok.TextSecondary }) with
             {
                 Margin = new Edges4(0f, Rules.EmptyCaptionGap, 0f, 0f),
@@ -102,6 +110,79 @@ internal static class CommonLocalFiles
             R.Type.DenseMeta(p.DropSub) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label), TextAlign = TextAlign.Center },
         ],
     };
+
+    // ══ FIND ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.LocalFilesFind"/> (WinUI, Classic).</summary>
+    public static Element Find(LocalFindProps p, in ViewContext ctx)
+    {
+        var tier = TierContext.WindowOf(ctx.Tier());
+        float target = CommonTiers.Target(tier);
+        bool compact = CommonTiers.Stacks(tier);
+        var kids = new List<Element>(p.Rows.Count + 3)
+        {
+            R.Type.TrackTitle(p.Title) with { Key = Rules.FindTitleKey, Color = Tok.TextPrimary, Weight = Rules.FindTitleWeight, Case = R.Case.For(LabelKind.Heading), MinWidth = 0f },
+            R.Type.DenseMeta(p.Line) with { Color = Tok.TextSecondary, Wrap = TextWrap.WrapWholeWords, MinWidth = 0f, Margin = new Edges4(0f, Rules.FindLineGap, 0f, 0f) },
+        };
+        var rows = new Element[p.Rows.Count];
+        for (int i = 0; i < rows.Length; i++) rows[i] = FindRow(p.Rows[i], target, compact);
+        kids.Add(new BoxEl { Key = Rules.FindRowsKey, Direction = 1, Gap = Rules.FindRowGap, MinWidth = 0f, Margin = new Edges4(0f, Rules.FindRowsGap, 0f, 0f), Children = rows });
+        var buttons = new List<Element>(2)
+        {
+            CommonTouch.Button(p.AddLabel, p.Add, target, accent: true, enabled: p.CanAdd) with { Key = Rules.FindAddKey, Shrink = 0f },
+        };
+        if (p.Choose is { } choose && p.ChooseLabel.Length > 0)
+            buttons.Add(CommonTouch.Button(p.ChooseLabel, choose, target) with { Key = Rules.FindChooseKey, Shrink = 0f });
+        kids.Add(new BoxEl
+        {
+            Direction = 0, Wrap = true, Gap = Rules.EmptyButtonGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Margin = new Edges4(0f, Rules.FindButtonsGap, 0f, 0f), Children = buttons.ToArray(),
+        });
+        return new BoxEl
+        {
+            Key = Rules.FindKey, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Padding = p.Framed ? new Edges4(Spacing.L, Spacing.L, Spacing.L, Spacing.L) : default,
+            Fill = p.Framed ? Tok.FillCardDefault : default, BorderWidth = p.Framed ? Rules.FindBorder : 0f, BorderColor = Tok.StrokeCardDefault,
+            Corners = p.Framed ? CornerRadius4.All(Radii.Card) : default,
+            Children = kids.ToArray(),
+        };
+    }
+
+    /// <summary>One folder: the checkbox with its name, the count at the row's end (under the name at Compact), the path under the name. Greyed with
+    /// "No songs here" when it holds no song. The count is one line in every state, so the row keeps its height when the count lands.</summary>
+    static Element FindRow(LocalFindRow r, float target, bool compact)
+    {
+        var box = CheckBox.Create(r.Name, r.Ticked, isEnabled: !r.Empty, style: CheckBox.DefaultStyle with { MinHeight = target });
+        TextEl count = R.Type.DenseMeta(r.Count) with
+        {
+            Key = Rules.FindCountKey + r.Key, Color = r.Empty || r.Counting ? Tok.TextTertiary : Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+            Trim = TextTrim.CharacterEllipsis, Grow = 1f, Shrink = 1f, MinWidth = 0f, TextAlign = compact ? TextAlign.Start : TextAlign.End,
+        };
+        TextEl path = R.Type.DenseMeta(r.Path) with
+        {
+            Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+        };
+        Element head = compact
+            ? box
+            : new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.L, MinWidth = 0f,
+                // The count fills the lane to the row's end (its text right-aligned in it): a new count re-words a box that keeps its place.
+                Children = [new BoxEl { Direction = 0, Shrink = 0f, Children = [box] }, count],
+            };
+        var lines = new List<Element>(2);
+        if (compact) lines.Add(count);
+        lines.Add(path);
+        return new BoxEl
+        {
+            Key = Rules.FindRowKey + r.Key, Direction = 1, MinWidth = 0f,
+            Children =
+            [
+                head,
+                new BoxEl { Direction = 1, Gap = Rules.FindSubGap, MinWidth = 0f, Margin = new Edges4(Rules.FindPathInset, 0f, 0f, 0f), Children = lines.ToArray() },
+            ],
+        };
+    }
 
     // ══ SCAN ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 

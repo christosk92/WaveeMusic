@@ -64,6 +64,25 @@ public static partial class Diagnostics
             });
         }
 
+        /// <summary>`state kind=local-peek value=counting|landed|empty|capped|none`: what "Find music on this PC" counted (#240, 0dm), no disk: with
+        /// `state kind=music-folders value=none` first (the card shows while no folder is set). `trace=` on `landed` proves the card keeps still.</summary>
+        string LocalPeekState(int id, string name, Inspect.Args a)
+        {
+            string v = a.Has("value") ? a.Str("value").ToLowerInvariant() : "landed";
+            if (v is not ("counting" or "landed" or "empty" or "capped" or "none"))
+                return Inspect.Reply.Fail(id, name, "state kind=local-peek wants value=counting|landed|empty|capped|none, not '" + v + "'");
+            LocalLibrary.InspectPeek(v);
+            if (!a.Has("trace") && a.Bool("settle", true)) RunFrames(30);
+            return Settled(id, name, a, w =>
+            {
+                w.WriteString("kind", "local-peek");
+                w.WriteString("value", v);
+                w.WriteStartArray("rows");
+                foreach (var r in LocalLibrary.Peek.Peek()) w.WriteStringValue(r.Key + " songs=" + r.Songs + " cloud=" + r.Cloud + " videos=" + r.Videos + " done=" + r.Done);
+                w.WriteEndArray();
+            });
+        }
+
         /// <summary>`state kind=linked-video value=attach|seed-legacy|migrate|unlink|list uri= path=`: a Spotify track's video version (one concept:
         /// an attached video is a library file linked to the track; Shell/Video.LinkedVideos.cs). The reply lists every linked video, the track's
         /// row bit, the video host's file for it and whether the old store still holds anything.</summary>

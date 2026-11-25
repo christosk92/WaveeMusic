@@ -21,4 +21,16 @@ internal static class ZuneLocalFilesRules
 
     /// <summary>The drop band: its height, the glyph and the gap between its lines.</summary>
     public const float DropHeight = 120f, DropGlyph = 24f, DropLineGap = 4f, DropPadX = 16f;
+
+    // ── "find music on this pc" (#240, 0dm) ──
+
+    public const string FindKey = "local-find:card", FindTitleKey = "local-find:title", FindRowsKey = "local-find:rows", FindRowKey = "local-find:row:",
+        FindCountKey = "local-find:count:", FindAddKey = "local-find:add", FindChooseKey = "local-find:choose";
+
+    /// <summary>The line to the card, the card's words to its rows, between rows, the tick to its count, where a row's lines start (under the tick's
+    /// label: its 20 box and 8 gap).</summary>
+    public const float FindGap = 14f, FindRowsGap = 10f, FindRowGap = 6f, FindCountGap = 16f, FindPathInset = 28f;
+
+    /// <summary>A tier whose target is taller than this (Compact's touch target) stacks a row's count under its name.</summary>
+    public const float FindStackTarget = 36f;
 }

@@ -616,7 +616,6 @@
       "addDefault": "Mijn map Muziek toevoegen",
       "rescan": "Nu opnieuw scannen",
       "pickTitle": "Kies een muziekmap",
-      "empty": "Nog geen muziekmappen. Voeg er een toe en Wavee speelt af wat erin staat.",
       "songs": "{count, plural, one {{n} nummer} other {{n} nummers}}",
       "kept": "{count, plural, one {{n} nummer bewaard} other {{n} nummers bewaard}}",
       "unplayable": "{n} niet af te spelen",

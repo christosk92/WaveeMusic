@@ -253,7 +253,8 @@ public static class SettingsMusic
     /// a folder added elsewhere): the view bumps the page so the buttons follow. Touches the disk once (the Music folder's existence): call it
     /// from an effect, never a render.</summary>
     public static bool Stale(bool composedWithFolders, bool composedOffered)
-        => composedWithFolders != (LocalLibrary.Folders.Count > 0) || composedOffered != (LocalLibrary.DefaultMusicFolder is not null);
+        => composedWithFolders != (LocalLibrary.Folders.Count > 0)
+           || composedOffered != (LocalLibrary.Folders.Count > 0 && LocalLibrary.DefaultMusicFolder is not null);   // SettingsFacts.DefaultMusicFolderOffered
 
     /// <summary>"4,812 songs".</summary>
     static string Songs(int n) => Strings.Settings.Music.Songs(n, Number(n));

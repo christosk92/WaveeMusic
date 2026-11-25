@@ -613,7 +613,6 @@
       "addDefault": "내 음악 폴더 추가",
       "rescan": "지금 다시 검색",
       "pickTitle": "음악 폴더 선택",
-      "empty": "아직 음악 폴더가 없습니다. 폴더를 추가하면 Wavee가 그 안의 음악을 재생합니다.",
       "songs": "{count, plural, other {{n}곡}}",
       "kept": "{count, plural, other {{n}곡 보관됨}}",
       "unplayable": "{n}곡 재생 불가",

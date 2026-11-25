@@ -39,7 +39,7 @@ using ViewSlots = FluentGpu.Theming.Slots;
 namespace Wavee;
 
 /// <summary>The Local Files list's words, facts, hosts and verbs (see the file header).</summary>
-public static class LocalFilesList
+public static partial class LocalFilesList
 {
     // ══ 1. A ROW ══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -215,9 +215,11 @@ public static class LocalFilesList
                 _ = LocalLibrary.Epoch.Value;   // a folder added or removed elsewhere
                 _music.Value = LocalLibrary.DefaultMusicFolder;
             });
-            string? music = _music.Value;
+            // No music folder: "Find music on this PC" (LocalFiles.Find.cs) stands where the buttons were; folders with no song keep the buttons.
+            string? music = NoSongs ? _music.Value : null;
             return ViewSlots.View(ViewKeys.LocalFilesEmpty, new LocalFilesEmptyProps
             {
+                Find = NoSongs ? null : FindCard(),
                 Title = Loc.Get(NoSongs ? Strings.LocalFiles.Page.HomeEmptyTitle : Strings.LocalFiles.List.EmptyTitle),
                 Body = Loc.Get(NoSongs ? Strings.LocalFiles.Page.HomeEmptyBody : Strings.LocalFiles.List.EmptyBody),
                 AddMusicLabel = music is null ? "" : Loc.Get(Strings.LocalFiles.List.AddMusicFolder),
