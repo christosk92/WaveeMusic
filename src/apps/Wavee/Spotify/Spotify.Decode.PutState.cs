@@ -475,7 +475,7 @@ public static partial class Spotify
             }
             if (offer) w.Utf8(33, video ? "switch-to-audio"u8 : "switch-to-video"u8);   // the offer goes FIRST (7/7 captures)
             w.Utf8(33, "interact"u8);
-            w.Utf8(33, "automix-preview"u8);
+            // #48: `automix-preview` is not advertised until Wavee receives it (plan M5); an editor sent its previews here and they were dropped.
             w.Utf8(33, "speed-preview"u8);
             w.Utf8(33, "stop-speed-preview"u8);
             if (snap.Wire.Origin is { CommandId.Length: > 0 } commandOrigin) w.Str(35, commandOrigin.CommandId);

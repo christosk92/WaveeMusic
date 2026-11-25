@@ -12,3 +12,6 @@ Wavee used to read it as a 1 ms fade at the start of the song.
 **Mix's bass swap and filter sweeps sound like Spotify's.** The EQ and filter curves now use the official client's own value
 map: the bass drops all the way out (−48 dB, was −26 dB) and can lift up to +6 dB, the low-pass opens from 120 Hz to 16 kHz
 and the high-pass sweeps from 20 Hz to 9 kHz, and the bass swap moves in finer steps.
+
+**Wavee no longer claims transition previews it cannot play.** Over Spotify Connect, Wavee stopped saying it can play a Mix
+editor's transition previews; the previews another Spotify app sent it while Wavee was playing were dropped.
