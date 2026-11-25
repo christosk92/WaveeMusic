@@ -605,9 +605,16 @@ public static partial class Diagnostics
             new(Verb.Dj, "dj", "AI DJ: the DJ list's attributes; the lexicon session playing it (uri, url, expiry, dj/infinite, the three restrictions, pages fetched with their segments, the next page's url, the lookahead) and the DJ book per queue row (page, segment, jump target, narration slots, subtitle, decision id), the context's toggle locks and the user's held shuffle/repeat, beside the deck and queue; do=answers decodes the --fake lexicon service's session and pages; do=play starts the list as a click does; do=expire ends the session's validity", "dj do=play")
             {
                 Positional = ["do"],
-                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|answers|play|expire"),
+                Args = Join([Arg("do", ArgType.Enum, "what to do; the Connect half (D4): envelope = the play body a start of uri= sends another device, "
+                                 + "cluster = fold the ClusterUpdates of file= (base64 per line) as a dealer push and read the mirror, transfer = a "
+                                 + "transfer of the DJ in uri= into Wavee from file= (a transfer command body), restore = the launch restore of a DJ "
+                                 + "deck on track=, bodies = the lexicon decode of the fake session as identity, gzip and zstd bodies", "status",
+                                 "status|answers|play|expire|" + InspectSession.DjConnectVerbs),
                              Arg("uri", ArgType.String, "the DJ list (default: the fake one)"),
-                             Arg("pages", ArgType.Int, "do=answers: how many pages to decode after the session (default 3)")], s_settleArgs),
+                             Arg("pages", ArgType.Int, "do=answers: how many pages to decode after the session (default 3)"),
+                             Arg("file", ArgType.String, "do=cluster / do=transfer: the file to feed"),
+                             Arg("track", ArgType.String, "do=restore: the deck's track uri"),
+                             Arg("ms", ArgType.Int, "do=restore: the deck's position (default 30000)")], s_settleArgs),
             },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {

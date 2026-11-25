@@ -104,6 +104,28 @@ public static partial class Playback
             return json.IsEmpty ? "" : Entities.Strings.Resolve(json);
         }
 
+        /// <summary>A DJ start to another device (plan-dj §2.7, dj-protocol §1.2's S − 9.32): the list's lexicon url, its format attributes
+        /// with <c>context_description</c> (the list's name) in key order, a fresh session id. Null for a list that plays no lexicon session.
+        /// UI thread.</summary>
+        internal static Spotify.Connect.DjPlay? PlayOf(EntityId list)
+        {
+            string url = ListUrl(list);
+            if (!IsLexicon(url) || Entities.Current is not { } scope || !scope.Playlists.TryGetSlot(list, out int slot)) return null;
+            var p = new Playlist(slot);
+            var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, string> entry in Entries(ListMetadataJson(list))) metadata[entry.Key] = entry.Value;
+            // A list whose attributes were not kept whole (an older read) still says what it is and where it plays from.
+            if (p.IsDj) metadata.TryAdd("lexicon_set_type", "your_dj");
+            metadata.TryAdd("lexicon_context_url", url);
+            string name = p.TitleId.IsEmpty ? "" : Entities.Strings.Resolve(p.TitleId);
+            metadata["context_description"] = name.Length > 0 ? name : "DJ";
+            var entries = new KeyValuePair<string, string>[metadata.Count];
+            int n = 0;
+            foreach (KeyValuePair<string, string> entry in metadata) entries[n++] = entry;
+            Array.Sort(entries, static (a, b) => string.CompareOrdinal(a.Key, b.Key));
+            return new Spotify.Connect.DjPlay(url, entries, Spotify.Connect.NewSessionId());
+        }
+
         /// <summary>A JSON object of strings (<see cref="ListMetadataJson"/>) → its entries, in order; a value that is not a string is
         /// skipped, a body that is not an object answers none. PURE.</summary>
         public static KeyValuePair<string, string>[] Entries(string json)

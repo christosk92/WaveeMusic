@@ -70,7 +70,8 @@ public static partial class Diagnostics
                         return Inspect.Reply.Ok(id, name, w => { w.WriteString("do", verb); WriteDjSession(w); });
                     }
                 default:
-                    return Inspect.Reply.Fail(id, name, "dj wants do=status|answers|play|expire, not '" + verb + "'");
+                    return DjConnectVerb(id, name, verb, uri, a)   // the Connect half: Diagnostics.Inspect.DjConnect.cs
+                        ?? Inspect.Reply.Fail(id, name, "dj wants do=status|answers|play|expire|" + DjConnectVerbs + ", not '" + verb + "'");
             }
         }
 

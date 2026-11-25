@@ -28,6 +28,10 @@
 //             logging_params { … } },
 //   connection_type, intent_id
 //
+// A DJ START (plan-dj §2.7, dj-protocol §1.2): the same envelope with `context.url` the list's lexicon url, the metadata the list's
+// format attributes and `context_description`, one empty page, modes `context_enhancement: NONE`, a fresh session id, no shuffle and
+// logging without a received time; the receiver resolves the session itself (`DjPlay`).
+//
 // Where Wavee has no data for a field the official client fills (its xpui feature_version, the page it was navigated from as
 // referrer, page-instance and interaction ids, a playlist's volatile context id and player_filter_info) the field keeps
 // Wavee's value or stays empty, as the web player's far thinner play is accepted too (bbbb.saz 319).
@@ -71,12 +75,20 @@ public static partial class Spotify
             public string SessionId { get; } = sessionId;
         }
 
+        /// <summary>A DJ start as the official desktop sends it to another device (dj-protocol §1.2, plan-dj §2.7): the context's
+        /// <c>url</c> is the list's lexicon url (the receiver resolves the session itself), its metadata the list's format attributes and
+        /// <c>context_description</c> (<paramref name="Metadata"/>, in key order), one empty page, a fresh 22-character
+        /// <paramref name="SessionId"/>. Immutable once built (UI thread); the api thread only reads it.</summary>
+        public sealed record DjPlay(string Url, KeyValuePair<string, string>[] Metadata, string SessionId);
+
         /// <summary>"Play this context from this row" on the device that owns playback (the envelope in this file's header).
         /// <paramref name="feature"/> overrides the play_origin feature <see cref="PlayFeatureOf"/> derives from the uri (a Liked
         /// Songs play names its playlist but the feature <see cref="LikedFeature"/>; the artist's Popular list names
-        /// <c>artist</c>). <paramref name="page"/> names a playlist's rows inline (4.2). Blocks; api threads only.</summary>
+        /// <c>artist</c>). <paramref name="page"/> names a playlist's rows inline (4.2); <paramref name="dj"/> makes it a DJ start
+        /// (<see cref="DjPlay"/>). Blocks; api threads only.</summary>
         public static bool PlayContext(string targetDeviceId, string contextUri, string? trackUri, bool shuffle, CancellationToken ct,
-            int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false, string? feature = null, PlayPage? page = null)
+            int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false, string? feature = null, PlayPage? page = null,
+            DjPlay? dj = null)
         {
             if (!Egress.Admits(contextUri.AsSpan()) || (!string.IsNullOrEmpty(trackUri) && !Egress.Admits(trackUri.AsSpan())))
             {
@@ -85,7 +97,7 @@ public static partial class Spotify
             }
             var buffer = new ArrayBufferWriter<byte>(page is null ? 2560 : 1024 + 128 * page.Uris.Length);
             PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs, skipUid, skipIndex, video,
-                feature, page);
+                feature, page, dj);
             return PostCommand("play", targetDeviceId, buffer.WrittenSpan, ct);
         }
 
@@ -109,10 +121,11 @@ public static partial class Spotify
         /// <c>is_single_track_video_content</c> in the context metadata (all.saz 1831). <paramref name="feature"/> null derives
         /// the play_origin feature from the uri. <paramref name="page"/> (4.2) adds the rows inline with their sort and filter, a
         /// session id, modes <c>context_enhancement: NONE</c> and logging without a received time, as every official page play
-        /// carries. PURE.</summary>
+        /// carries. <paramref name="dj"/> (plan-dj §2.7) names the lexicon url and the list's attributes instead, one empty page, the
+        /// same session id / modes / logging as a page play, and never a shuffle (the DJ forbids it). PURE.</summary>
         public static void PlayBody(IBufferWriter<byte> into, string contextUri, string? trackUri, bool shuffle, string deviceId,
             string commandId, string intentId, long nowMs, int fromMs = -1, string? skipUid = null, int skipIndex = -1, bool video = false,
-            string? feature = null, PlayPage? page = null)
+            string? feature = null, PlayPage? page = null, DjPlay? dj = null)
         {
             using var w = new Utf8JsonWriter(into);
             w.WriteStartObject();
@@ -122,14 +135,20 @@ public static partial class Spotify
             w.WriteStartObject("context");
             w.WriteString("entity_uri", contextUri);
             w.WriteString("uri", contextUri);
-            w.WriteString("url", "context://" + contextUri);
+            w.WriteString("url", dj is not null ? dj.Url : "context://" + contextUri);
             w.WriteStartObject("metadata");                    // the keys in the captures' (alphabetical) order
-            if (page is { Filter.Length: > 0 }) w.WriteString("filtering.predicate", page.Filter);
-            if (video) w.WriteString("is_single_track_video_content", "true");
-            if (page is { Sorting.Length: > 0 }) w.WriteString("sorting.criteria", page.Sorting);
+            if (dj is not null)
+                foreach (KeyValuePair<string, string> entry in dj.Metadata) w.WriteString(entry.Key, entry.Value);
+            else
+            {
+                if (page is { Filter.Length: > 0 }) w.WriteString("filtering.predicate", page.Filter);
+                if (video) w.WriteString("is_single_track_video_content", "true");
+                if (page is { Sorting.Length: > 0 }) w.WriteString("sorting.criteria", page.Sorting);
+            }
             w.WriteEndObject();
             EmptyRestrictions(w);
-            if (page is not null) Pages(w, page);
+            if (dj is not null) EmptyPage(w);                  // the receiver resolves the url itself (dj-protocol §1.2, §4)
+            else if (page is not null) Pages(w, page);
             w.WriteEndObject();
 
             w.WriteStartObject("play_origin");                 // bigone.saz 891, key for key
@@ -157,12 +176,13 @@ public static partial class Spotify
             w.WriteBoolean("initially_paused", false);
             w.WriteBoolean("system_initiated", false);
             w.WriteStartObject("player_options_override");
-            w.WriteBoolean("shuffling_context", shuffle);
+            w.WriteBoolean("shuffling_context", dj is null && shuffle);
             w.WriteStartObject("modes");
-            if (page is not null) w.WriteString("context_enhancement", "NONE");   // a page play (bigone.saz 578); {} otherwise (891)
+            // a page play (bigone.saz 578) and a DJ start (dj-protocol §1.2); {} otherwise (891)
+            if (page is not null || dj is not null) w.WriteString("context_enhancement", "NONE");
             w.WriteEndObject();
             w.WriteEndObject();
-            w.WriteString("session_id", page?.SessionId ?? "");
+            w.WriteString("session_id", dj?.SessionId ?? page?.SessionId ?? "");
             w.WriteString("license", "premium");
             w.WriteStartObject("suppressions");
             w.WriteStartArray("providers"); w.WriteEndArray();
@@ -180,11 +200,23 @@ public static partial class Spotify
             w.WriteBoolean("only_for_local_device", false);
             w.WriteBoolean("system_initiated", false);
             w.WriteEndObject();
-            LoggingParams(w, deviceId, commandId, "", nowMs, receivedTime: page is null);
+            LoggingParams(w, deviceId, commandId, "", nowMs, receivedTime: page is null && dj is null);
             w.WriteEndObject();
             w.WriteString("connection_type", "wlan");
             w.WriteString("intent_id", intentId);
             w.WriteEndObject();
+
+            static void EmptyPage(Utf8JsonWriter w)
+            {
+                w.WriteStartArray("pages");
+                w.WriteStartObject();
+                w.WriteString("page_url", "");
+                w.WriteString("next_page_url", "");
+                w.WriteStartArray("tracks"); w.WriteEndArray();
+                w.WriteStartObject("metadata"); w.WriteEndObject();
+                w.WriteEndObject();
+                w.WriteEndArray();
+            }
 
             static void Pages(Utf8JsonWriter w, PlayPage page)
             {
