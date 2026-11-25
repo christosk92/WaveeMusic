@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Timecode, Drop, LocalScan, LocalIndex, Decode, Quit,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Timecode, Drop, LocalScan, LocalIndex, Decode, DjTts, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -820,6 +820,24 @@ public static partial class Diagnostics
                         Arg("compact", ArgType.Bool, "write the index's bin now (compact the log into it)", "false"),
                         Arg("mark", ArgType.Int, "set the LocalId high-water mark kept outside the bin, as a previous run left it (before state kind=music-folders value=startup)")],
             },
+            new(Verb.DjTts, "djtts", "The AI DJ's text-to-speech client (Spotify.DjTts; --fake answers in process): fulfil prints the request body (hex and fields), what the transport received, the 303 and its Location and that it was not followed; ensure starts a clip (fixture=, ssml=, manifest= or seconds= with n=) and waits for it; cache lists the clips and counters; play opens a clip through SourceRoute.Tts and decodes it with the MP3 decoder paced at 1x (format, exact length, the gain folded against the formula, the position series, the first audio against the download's end); gain tabulates every normalization mode; reset forgets the session", "djtts play fixture=intro")
+            {
+                Positional = ["do"],
+                Args = [Arg("do", ArgType.Enum, "fulfil, ensure, cache, play, gain or reset", "cache", "fulfil|fulfill|ensure|cache|play|gain|reset"),
+                        Arg("fixture", ArgType.Enum, "a fake clip: welcome (3.4 s), jump (4.9 s), intro (24.5 s, streamed with no length), flaky (the fulfil fails once), broken (fails twice)", null, "welcome|jump|intro|flaky|broken"),
+                        Arg("ssml", ArgType.String, "the narration's SSML (instead of a fixture)"),
+                        Arg("manifest", ArgType.String, "a narration item's media.manifest, base64: its body (field 1.1.4) is sent verbatim"),
+                        Arg("via", ArgType.Enum, "with do=fulfil: build the body from the narration keys, or wrap a reordered body in a manifest and send that", "keys", "keys|manifest"),
+                        Arg("key", ArgType.String, "with do=play: the clip's key (32 hex)"),
+                        Arg("seconds", ArgType.Float, "with do=ensure: distinct clips of this length (a break in the SSML), n= of them"),
+                        IntArg("n", "with seconds=: how many clips", "1", 1, 200),
+                        IntArg("wait", "with do=ensure: wait up to this many ms for the clips (and the spill) to settle", "0", 0, 600_000),
+                        Arg("pace", ArgType.Bool, "with do=play: decode at 1x (false: as fast as the bytes allow)", "true"),
+                        IntArg("rate", "with do=play: the mix rate to decode into", "44100", 8_000, 768_000),
+                        IntArg("ms", "with do=play: decode at most this much (0 = to the end)", "0", 0, 86_400_000),
+                        IntArg("every", "with do=play: ms of position between series samples", "1000", 50, 60_000),
+                        Arg("disk", ArgType.Bool, "with do=reset: also delete the spill folder", "false")],
+            },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
 
@@ -848,6 +866,7 @@ public static partial class Diagnostics
             "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "mix" => Verb.Mix, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
             "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge, "timecode" => Verb.Timecode, "drop" => Verb.Drop, "localscan" => Verb.LocalScan, "localindex" => Verb.LocalIndex, "decode" => Verb.Decode,
+            "djtts" => Verb.DjTts,
             "quit" or "exit" => Verb.Quit,
             _ => Verb.None,
         };

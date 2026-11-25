@@ -986,6 +986,37 @@ decode path=C:/music/a.wav out=C:/scratch/a.f32
 decode path=C:/music/a.aiff out=C:/scratch/a.seek.f32 seekMs=1234
 ```
 
+### `djtts {do, fixture?, ssml?, manifest?, via?, key?, seconds?, n?, wait?, pace?, rate?, ms?, every?, disk?}`
+
+The AI DJ's text-to-speech client (`Spotify/Spotify.DjTts.cs`). The inspector is `--fake`, so the fulfil and the CDN are the in-process
+transports of `Spotify.DjTts.Fake.cs` (silent MPEG-1 Layer III clips of exact length); everything above the wire is the real code. No
+mount. Fixtures: `welcome` (3.4 s), `jump` (4.9 s), `intro` (24.5 s, a cache MISS streamed with no Content-Length over 5.3 s), `flaky`
+(the fulfil fails once), `broken` (fails twice: dropped).
+
+- `djtts fulfil fixture=welcome`: the body built from the narration keys (`body` hex, `fields`, `tail` against the spec's
+  `18 05 28 01 30 06 38 c4 d8 02`), what the transport received (`request`: verb, url, headers, `receivedEqualsSent`), the `status` and
+  `location`, `clientFollowsRedirects` (the live handler's setting) and `cdnRequestsDuringFulfil` / `followed`. `via=manifest` (or
+  `manifest=<base64>`) sends a `media.manifest`'s field 1.1.4 verbatim (built here in reverse field order, so it differs from `keysBody`).
+- `djtts ensure fixture=intro wait=8000`: `Ensure`, then up to `wait=` ms for the clip (and a spill pass) to settle: its state, `why`,
+  attempts, bytes, `contentLength` (−1 streamed), frames, `durationMs`, memory and disk, the CDN's `X-Cache`, first byte and done times;
+  `wasCached` says whether it was a hit. `seconds=200 n=9` makes distinct clips of that length (the 64 MB cap's proof). The twice-failing
+  `broken` logs `narration dropped why=` (`status log="narration dropped"`).
+- `djtts cache`: the counters (hits, misses, fulfils, retries, dropped, spills, reloads, evictions, disk adopts), memory against the cap,
+  the spill folder and its files, the fake wire's request counts (`cdnRequestsWithCredentials` must stay 0), every clip (least recently
+  used first).
+- `djtts play fixture=intro` (or `key=`): opens the clip through `SourceRoute.Tts` (a fixture is ensured first, so a MISS plays while it
+  downloads) and decodes it with the pump's `CreateDecoderFor`, paced at 1x (`pace=false`: as fast as the bytes land; `ms=` stops early):
+  `route`, `format`, `openedComplete` (seekable), `length` (`decodedFrames` against `expectedFrames` and the decoder's `exactFrames`),
+  `gain` (the decoder's folded factor against `NormalizationFactor` for the current setting), `timing` (`firstAudioMs`,
+  `bytesLandedAtFirstAudio`, `startedBeforeDownloadDone`, the position when the download ended) and the position `series`.
+- `djtts gain`: the narration's gain (−16 LUFS, −3 dBTP) under off, Quiet, Normal and Loud. `djtts reset disk=true` forgets the session.
+
+```text
+djtts fulfil fixture=welcome
+djtts ensure fixture=broken wait=5000
+djtts play fixture=intro every=2000
+```
+
 ### `hint {do, id?, blob?}` and `recent {clear?}`
 
 The in-app hints (settings rework phase 3: `Shell/Hints.cs`, the table of design 6.3, and the budget of 6.2) and Recently changed.

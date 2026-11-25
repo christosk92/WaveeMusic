@@ -453,6 +453,8 @@ public static partial class Diagnostics
                     return Nudge(id, name, a);   // fixtures need no mount; fire, tick, refresh and expectCard say so when unmounted
                 case Inspect.Verb.Timecode:
                     return Timecode(id, name, a);   // the tap is read off the playback statics: no mount
+                case Inspect.Verb.DjTts:
+                    return DjTtsVerb(id, name, a);  // the TTS client's statics: no mount
             }
 
             // Everything below needs a mount (the verb table says so: NeedsMount).
