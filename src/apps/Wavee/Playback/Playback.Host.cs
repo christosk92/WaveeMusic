@@ -491,8 +491,9 @@ public static partial class Playback
         StringId manifest = s_state.Video.ManifestId;
         long now = FrameNowMs();
         WireExtras wire = CaptureWire(now);                // the parity half (G-240), Playback.Host.Wire.cs
-        return Snapshot.Of(in s_state, in s_identity, reason, 0, UnixNowMs(), now, CurrentUid(), hasVideo,
+        Snapshot snap = Snapshot.Of(in s_state, in s_identity, reason, 0, UnixNowMs(), now, CurrentUid(), hasVideo,
             hasVideo && !manifest.IsEmpty ? Entities.Strings.Resolve(manifest) : "", in wire);
+        return Mix.OnWire(in snap, in s_state, now);     // #48 M7: a mixed list as the official player states it (Playback.Mix.Wire.cs)
     }
 
     /// <summary>Which reason a hello carries: the first announce of this boot is <see cref="PublishReason.NewDevice"/>,
@@ -698,6 +699,7 @@ public static partial class Playback
                     FoldCluster(in item, now);
                     break;
                 case Spotify.Connect.ItemKind.RemoteCommand:
+                    MixPreview.OnRemoteCommand(item.Command.Kind);   // #48 M5: the editor's pause / resume around its previews
                     StepOne(Input.Controller(in item.Command, now, SkipTargetOf(in item.Command)));
                     break;
                 case Spotify.Connect.ItemKind.Volume:
@@ -759,9 +761,11 @@ public static partial class Playback
             s_contextWire = WireOf(buffer, in d, remote.Context);
             CaptureForeignOrigin(buffer, in d, remote.Context);   // what a takeover publishes on as the owner
             NoteRemoteListCluster(remote.Context, buffer.Utf8(d.SessionId));   // a list it plays in Wavee's order (5.3)
+            Mix.NoteRemote(buffer, in d, remote.Track);    // #48 M7: the owner's published transition and preview signals
         }
         else if (s_state.Own.Kind != Owner.Foreign)
         {
+            Mix.ForgetRemote();
             s_foreign.Clear();
             ForgetRemoteList();
             if (s_state.Own.Kind == Owner.Us) s_contextWire = default;   // Nobody keeps the departed owner's snapshot, label included

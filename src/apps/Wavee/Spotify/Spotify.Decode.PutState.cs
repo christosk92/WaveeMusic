@@ -439,16 +439,14 @@ public static partial class Spotify
             if (window is not null)
             {
                 foreach (ref readonly Playback.WireRow row in window.Prev) QueueRow(ref w, 19, in row, context, -1, in ids, scratch, window);
-                int view = Math.Max(0, contextIndex + 1), autoplayView = 0;
-                bool mixInDone = false;   // the autoplay tail numbers itself from 0, as the official tail does
+                int view = Math.Max(0, contextIndex + 1), autoplayView = 0;   // the autoplay tail numbers itself from 0, as the official tail does
                 foreach (ref readonly Playback.WireRow row in window.Next)
                 {
                     bool autoplay = row.Provider == QueueProvider.Autoplay;
                     bool numbered = autoplay || (contextIndex >= 0 && row.Provider != QueueProvider.Queue);   // context and autoplay rows number their run
-                    // #48: the first upcoming row that is the planned incoming track carries the fade-in half.
-                    Playback.MixWire? mixIn = snap.Wire.Mix is { In.Length: > 0 } m && !mixInDone && row.Id == m.Incoming ? m : null;
-                    if (mixIn is not null) mixInDone = true;
-                    QueueRow(ref w, 20, in row, context, numbered ? (autoplay ? autoplayView : view) : -1, in ids, scratch, window, mixIn);
+                    // #48 M7: every upcoming row of a mixed list carries its two seams (protocol §6.3).
+                    Playback.MixRowWire? mixRow = snap.Wire.Mix?.RowOf(row.ItemId, row.Id);
+                    QueueRow(ref w, 20, in row, context, numbered ? (autoplay ? autoplayView : view) : -1, in ids, scratch, window, mixRow);
                     if (autoplay) autoplayView++;
                     else if (numbered) view++;
                 }
@@ -475,8 +473,10 @@ public static partial class Spotify
             }
             if (offer) w.Utf8(33, video ? "switch-to-audio"u8 : "switch-to-video"u8);   // the offer goes FIRST (7/7 captures)
             w.Utf8(33, "interact"u8);
-            // #48: `automix-preview` is not advertised until Wavee receives it (plan M5); an editor sent its previews here and they were dropped.
             w.Utf8(33, "speed-preview"u8);
+            // #48 M5: Wavee plays an editor's Mix previews (Playback.MixPreview), so it offers them, in the official player's order (protocol §6.1).
+            w.Utf8(33, "automix-preview"u8);
+            w.Utf8(33, "stop-automix-preview"u8);
             w.Utf8(33, "stop-speed-preview"u8);
             if (snap.Wire.Origin is { CommandId.Length: > 0 } commandOrigin) w.Str(35, commandOrigin.CommandId);
             else Hex(ref w, 35, ids.SessionCommandId, scratch);     // session_command_id
@@ -584,6 +584,7 @@ public static partial class Spotify
             w.Entry(3, "track_player"u8, video ? "video"u8 : "audio"u8);
             if (snap.Wire.Mix is { } mixOut)
             {
+                foreach (var e in mixOut.CurrentIn) w.Entry(3, e.Key, e.Value);   // #48 M7: the seam the playing row came in by
                 foreach (var e in mixOut.Out) w.Entry(3, e.Key, e.Value);   // #48: the playing row's fade-out
                 // #48: the speed the row plays at, "%.6f" (protocol §6.1: a beatmatched B's speedB and each step of its glide back to 1).
                 if (Utf8Formatter.TryFormat((double)snap.Wire.PlaybackRate, scratch, out int speedLength, new System.Buffers.StandardFormat('F', 6)))
@@ -603,7 +604,7 @@ public static partial class Spotify
 
         /// <summary>A prev/next row. Never the current media, so its player is audio and it carries no video keys.</summary>
         static void QueueRow(ref ProtoWriter w, int field, in Playback.WireRow row, scoped ReadOnlySpan<byte> context, int viewIndex,
-            in Playback.WireIds ids, scoped Span<byte> scratch, Playback.WireWindow? window, Playback.MixWire? mixIn = null)
+            in Playback.WireIds ids, scoped Span<byte> scratch, Playback.WireWindow? window, Playback.MixRowWire? mixRow = null)
         {
             int m = w.Open(field);
             if (row.LocalUri.Length > 0) w.Str(1, row.LocalUri);   // a Wavee local file by its minted spotify:local: name (E3); its own id never leaves
@@ -612,7 +613,11 @@ public static partial class Spotify
             else if (row.ItemId != 0) w.Utf8(2, scratch[..Hex16(row.ItemId, scratch)]);
             Head(ref w, in row, row.Provider, context, isVideo: false, window);
             w.Entry(3, "track_player"u8, "audio"u8);
-            if (mixIn is not null) foreach (var e in mixIn.In) w.Entry(3, e.Key, e.Value);
+            if (mixRow is not null)
+            {
+                foreach (var e in mixRow.In) w.Entry(3, e.Key, e.Value);
+                foreach (var e in mixRow.Out) w.Entry(3, e.Key, e.Value);
+            }
             Tail(ref w, row.Provider, isVideo: false, viewIndex, in ids, scratch);
             w.Utf8(6, ProviderWord(row.Provider));
             w.Close(m);
