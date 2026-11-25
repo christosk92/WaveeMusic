@@ -176,20 +176,49 @@ public static class MixCurves
         }
     }
 
-    // ── the curve → sound mapping (plan §3.4; tuned by ear later, one table) ──────────────────────────────────────────
+    // ── the curve → sound mapping: the official client's own evaluator (its value-semantics table, plan UPDATE 11-25) ──────
+    //
+    // A curve value is clamped to 0..1; an exact special case wins; otherwise the piecewise "signed geometric" segment:
+    // out = start × (end / start)^t over the segment's t. EQ gain: 0 = Kill, (0, 0.5) −48 → −1.5 dB, 0.5 = 0 dB, (0.5, 1]
+    // +0.638943 → +6 dB. Filter cutoff: below 0.5 a low-pass 120 → 16000 Hz, 0.5 bypass, above it a high-pass 20 → 9000 Hz.
+    // Resonance has no published semantics, so its Q map is Wavee's. The engine's automation lanes take dB, Hz and Q.
 
-    public const float LowShelfHz = 200f, LowShelfFloorDb = -26f;
+    /// <summary>The corner of the low shelf Wavee's one EQ lane drives (the client's low band; the mid and high bands are E5).</summary>
+    public const float LowShelfHz = 200f;
 
-    /// <summary>Low EQ y (0.5 flat, 0 killed) → low-shelf gain in dB, clamped to [−26, 0].</summary>
-    public static float LowShelfDb(float y) => Math.Clamp((y - 0.5f) * 2f * 26f, LowShelfFloorDb, 0f);
+    /// <summary>The shelf gain for the client's "Kill" (raw 0, which it shows as −∞). The automation stage takes any gain
+    /// (VoiceAutomation.Build and BiquadCoeffs.Design clamp none; the design and the recursion run in double), so this floor is a
+    /// choice: −48 dB, the deepest value the client's own map reaches (raw → 0⁺), so the kill is continuous with the curve. A deeper
+    /// floor would cut the mids, not the bass: a 2nd-order shelf falls 12 dB per octave, so one octave above its corner it still
+    /// takes a quarter of its gain (−48 dB: −12 dB at 400 Hz; −96 dB: −36 dB at 400 Hz and −24 dB at 800 Hz).</summary>
+    public const float EqKillDb = -48f;
 
-    /// <summary>Cutoff y (0 full low-pass, 0.5 bypass, 1 full high-pass) and resonance r → mode (0 bypass, 1 LP, 2 HP),
-    /// frequency and Q.</summary>
+    const float EqCutFromDb = -48f, EqCutToDb = -1.5f, EqBoostFromDb = 0.638943076133728f, EqBoostToDb = 6f;
+    const float LowPassFromHz = 120f, LowPassToHz = 16_000f, HighPassFromHz = 20f, HighPassToHz = 9_000f;
+    /// <summary>The client's special case is raw == 0.5 exactly; this absorbs only the float rounding of the Bézier solver.</summary>
+    const float Centre = 1e-6f;
+
+    /// <summary>An EQ curve value (0..1) → shelf gain in dB, as the official client evaluates it: 0 kills (<see cref="EqKillDb"/>),
+    /// 0.5 is 0 dB, below it −48 × (1.5/48)^(raw/0.5) (0.25 → −8.49 dB), above it 0.638943 × (6/0.638943)^((raw−0.5)/0.5)
+    /// (1 → +6 dB).</summary>
+    public static float EqGainDb(float raw)
+    {
+        raw = Math.Clamp(raw, 0f, 1f);
+        if (raw <= 0f) return EqKillDb;
+        if (MathF.Abs(raw - 0.5f) < Centre) return 0f;
+        return raw < 0.5f ? EqCutFromDb * MathF.Pow(EqCutToDb / EqCutFromDb, raw / 0.5f)
+                          : EqBoostFromDb * MathF.Pow(EqBoostToDb / EqBoostFromDb, (raw - 0.5f) / 0.5f);
+    }
+
+    /// <summary>A cutoff curve value y (0..1) and a resonance value r → mode (0 bypass, 1 LP, 2 HP), frequency and Q. The cutoff as
+    /// the official client evaluates it: below 0.5 a low-pass at 120 × (16000/120)^(y/0.5) Hz (0.25 → 1386 Hz), 0.5 bypass, above
+    /// it a high-pass at 20 × (9000/20)^((y−0.5)/0.5) Hz (0.75 → 424 Hz). Q = 0.707 × 4^(r−0.5) (Wavee's; the client publishes none).</summary>
     public static (byte Mode, float Hz, float Q) Sweep(float y, float resonance)
     {
         float q = 0.707f * MathF.Pow(4f, resonance - 0.5f);
-        if (MathF.Abs(y - 0.5f) < 1e-4f) return (0, 1000f, q);
-        if (y < 0.5f) return (1, 120f * MathF.Pow(20000f / 120f, Math.Clamp(y / 0.5f, 0f, 1f)), q);
-        return (2, 20f * MathF.Pow(6000f / 20f, Math.Clamp((y - 0.5f) / 0.5f, 0f, 1f)), q);
+        y = Math.Clamp(y, 0f, 1f);
+        if (MathF.Abs(y - 0.5f) < Centre) return (0, 1000f, q);
+        if (y < 0.5f) return (1, LowPassFromHz * MathF.Pow(LowPassToHz / LowPassFromHz, y / 0.5f), q);
+        return (2, HighPassFromHz * MathF.Pow(HighPassToHz / HighPassFromHz, (y - 0.5f) / 0.5f), q);
     }
 }

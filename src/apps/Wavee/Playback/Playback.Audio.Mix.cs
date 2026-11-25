@@ -288,7 +288,8 @@ public static partial class Playback
     }
 
     /// <summary>MixTiming → the engine's inputs: two gain tables and two automations, sampled from the preset's curves
-    /// (MixCurves) and mapped to dB, Hz and Q (plan §3.4). Pump thread, once per join (allocates its tables).</summary>
+    /// (MixCurves) and mapped to dB, Hz and Q by the official client's value map (MixCurves.EqGainDb / Sweep). Pump thread, once
+    /// per join (allocates its tables).</summary>
     public static class MixRender
     {
         public static void Build(in MixTiming t, int sampleRate, long startFrame, int outFrames, int inFrames,
@@ -306,6 +307,9 @@ public static partial class Playback
             inAuto = Automation(preset, true, inUnits, sampleRate, startFrame, inFrames, seg);
         }
 
+        /// <summary>The shelf lane is sampled this many times denser than a gain table (see <see cref="Automation"/>).</summary>
+        public const int ShelfDensity = 4;
+
         static VoiceAutomation? Automation(byte preset, bool incoming, int units, int rate, long start, int frames, Span<CurveSegment> seg)
         {
             int n = GainEnvelope.TablePoints;
@@ -313,9 +317,13 @@ public static partial class Playback
             float[]? shelf = null;
             if (eq > 0)
             {
-                shelf = new float[n];
+                // The client's EQ map: −48 dB (kill) up to +6 dB. The lane places its steps (at most VoiceAutomation.MaxSteps) by
+                // equal dB change, but only ON the points it is given, and the bass swap is 1/32 or 1/64 of the window: at the gain
+                // table's 1,025 points that is 32 or 16 points for a 48 dB swing (3 dB a step). Four times as many points give
+                // the placer 64-128 inside the swap.
+                shelf = new float[(n - 1) * ShelfDensity + 1];
                 MixCurves.Sample(seg[..eq], shelf);
-                for (int i = 0; i < n; i++) shelf[i] = MixCurves.LowShelfDb(shelf[i]);
+                for (int i = 0; i < shelf.Length; i++) shelf[i] = MixCurves.EqGainDb(shelf[i]);
             }
             Span<CurveSegment> res = stackalloc CurveSegment[4];
             int rc = MixCurves.Segments(preset, MixLane.FilterResonance, incoming, units, res);

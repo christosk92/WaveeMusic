@@ -596,7 +596,7 @@ public static partial class Diagnostics
             new(Verb.Mix, "mix", "#48 Mix: one playlist's Mix data (list and XM flags, lens etag, each row's mixable bits, beat grid, cue points and stored recipe), a raw recipe decoded, or (show=roundtrip) every stored recipe decoded and encoded again, byte-compared, unchanged and with one field changed", "mix roundtrip uri=spotify:playlist:plmix")
             {
                 Positional = ["show", "uri"],
-                Args = [Arg("show", ArgType.Enum, "what to print: the playlist's Mix data, or the recipe round trip", "dump", "dump|roundtrip"),
+                Args = [Arg("show", ArgType.Enum, "what to print: the playlist's Mix data, the recipe round trip, or the curve value map (EQ dB, cutoff Hz) and the automation steps it yields", "dump", "dump|roundtrip|semantics"),
                         Arg("uri", ArgType.String, "the playlist (default: the fake mixed playlist)"),
                         Arg("recipe", ArgType.String, "decode this base64 TransitionRecipe instead (with show=roundtrip: round-trip it too)"),
                         Arg("change", ArgType.Enum, "show=roundtrip: the one field changed in the second encode (overlap +1 ms, durationBars +1, the EQ override set to 15 or 7)", "overlap", "overlap|bars|eq"),

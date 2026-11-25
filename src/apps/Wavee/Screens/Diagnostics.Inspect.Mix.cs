@@ -52,6 +52,7 @@ public static partial class Diagnostics
                 return Inspect.Reply.Ok(id, name, w => { w.WriteString("body", Convert.ToHexString(body).ToLowerInvariant()); w.WriteNumber("bytes", body.Length); });
             }
             string show = a.Str("show", "dump");
+            if (show == "semantics") return MixSemantics(id, name);
             if (a.Has("recipe") && show != "roundtrip")
             {
                 string b64 = a.Str("recipe");
@@ -198,6 +199,76 @@ public static partial class Diagnostics
                 w.WriteEndArray();
                 w.WriteNumber("byteEqualCount", equal);
                 w.WriteNumber("count", items.Count);
+            });
+        }
+
+        /// <summary>`mix semantics`: the curve value → sound map the renderer uses (the official client's evaluator), at fixed raw
+        /// values, and what it yields in the engine: the automation MixRender.Build makes for each preset and side (its coefficient
+        /// steps per lane, at most VoiceAutomation.MaxSteps) and the EQ table's dB range.</summary>
+        static string MixSemantics(int id, string name)
+        {
+            ReadOnlySpan<float> raws = [0f, 0.1f, 0.25f, 0.4f, 0.5f, 0.75f, 1f];
+            var rows = new List<(float Raw, float Db, byte Mode, float Hz)>();
+            foreach (float raw in raws)
+            {
+                var (mode, hz, _) = MixCurves.Sweep(raw, 0.5f);
+                rows.Add((raw, MixCurves.EqGainDb(raw), mode, hz));
+            }
+            var lanes = new List<(string Preset, uint Window, string Side, int Shelf, int Sweep, float MinDb, float MaxDb, double BuildMs)>();
+            const int rate = 48_000, points = FluentGpu.Media.GainEnvelope.TablePoints;
+            Span<CurveSegment> seg = stackalloc CurveSegment[4];
+            foreach (byte preset in new[] { (byte)MixPreset.Fade, (byte)MixPreset.Rise })
+                foreach (uint window in new uint[] { 2_890, 12_000 })
+                {
+                    var t = new MixTiming(MixSource.Saved, MixWhyNot.None, preset, 0, window, 0, window);
+                    int frames = (int)(window * (long)rate / 1000);
+                    long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                    Playback.MixRender.Build(in t, rate, 0, frames, frames, out _, out _, out var outAuto, out var inAuto);
+                    double buildMs = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+                    foreach (bool incoming in new[] { false, true })
+                    {
+                        float min = 0f, max = 0f;
+                        int n = MixCurves.Segments(preset, MixLane.LowEq, incoming, MixCurves.UnitsFor(window), seg);
+                        for (int i = 0; i < points && n > 0; i++)
+                        {
+                            float db = MixCurves.EqGainDb(MixCurves.Evaluate(seg[..n], i / (float)(points - 1)));
+                            min = Math.Min(min, db);
+                            max = Math.Max(max, db);
+                        }
+                        var auto = incoming ? inAuto : outAuto;
+                        lanes.Add((((MixPreset)preset).ToString(), window, incoming ? "in" : "out", auto?.ShelfSteps ?? 0, auto?.SweepSteps ?? 0, min, max, buildMs));
+                    }
+                }
+            return Inspect.Reply.Ok(id, name, w =>
+            {
+                w.WriteNumber("eqKillDb", MixCurves.EqKillDb);
+                w.WriteStartArray("map");
+                foreach (var (raw, db, mode, hz) in rows)
+                {
+                    w.WriteStartObject();
+                    w.WriteNumber("raw", raw);
+                    w.WriteNumber("eqDb", Math.Round(db, 2));
+                    w.WriteString("cutoff", mode switch { 1 => "LP", 2 => "HP", _ => "bypass" });
+                    if (mode != 0) w.WriteNumber("cutoffHz", Math.Round(hz, 1));
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
+                w.WriteNumber("maxSteps", FluentGpu.Media.VoiceAutomation.MaxSteps);
+                w.WriteStartArray("automation");
+                foreach (var (preset, window, side, shelf, sweep, min, max, buildMs) in lanes)
+                {
+                    w.WriteStartObject();
+                    w.WriteString("preset", preset);
+                    w.WriteNumber("windowMs", window);
+                    w.WriteString("side", side);
+                    w.WriteNumber("shelfSteps", shelf);
+                    w.WriteNumber("sweepSteps", sweep);
+                    w.WriteNumber("eqMinDb", Math.Round(min, 2));
+                    w.WriteNumber("eqMaxDb", Math.Round(max, 2));
+                    w.WriteNumber("buildMs", Math.Round(buildMs, 2));   // MixRender.Build, both sides (the pump thread's cost per join)
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
             });
         }
 
