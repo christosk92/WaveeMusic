@@ -104,6 +104,7 @@ public static partial class Shell
             Queue.Split(edges, divider, index, out int user, out int next, out int auto);
             // AI DJ narration rows are hidden in the queue (plan-dj §1.5 `hidden_in_queue`): out of every section and every count.
             HideNarration(edges, index, ref user, ref next, ref auto);
+            int djNext = DjNextRow(edges, divider, index, ref user, ref next);
             // The panel lists what will really play (#215): the autoplay rows only while the end of the context continues into
             // them (the setting on AND repeat off, `Playback.AutoplayAllowed`). Under repeat the context wraps instead, and the
             // tail is neither listed nor counted; the switch itself still shows the setting.
@@ -118,11 +119,29 @@ public static partial class Shell
                 int start = section == QueueSection.Queue ? 0 : section == QueueSection.NextUp ? user : user + next;
                 ulong itemId = edges[i].ItemId;
                 rows[k] = new QueueRowProps(itemId, i, refAt(i), section, k - start,
-                    QueueRowRules.Removable(viewer, itemId), QueueRowRules.RowDrags(viewer));
+                    QueueRowRules.Removable(viewer, itemId) && i != djNext, QueueRowRules.RowDrags(viewer));
             }
             EntityRef preview = auto > 0 ? refAt(index[user + next]) : default;
             return new QueueProps(viewer, nowPlaying, playingFrom, new QueueCounts(user, next, auto),
                 new QueueAutoplay(autoplayEnabled, auto, preview), shuffle, repeat, rows);
+        }
+
+        /// <summary>AI DJ: while a narration is the deck, the track it leads into is the row right after it, bucketed with the user's queue so
+        /// it stays ahead of anything queued during the clip (<c>QueueOrder.Follow</c>: a song added during a clip plays after the target). It
+        /// is the DJ's next row, not one the user queued: it moves from the queue section to the head of the continuation (under its segment,
+        /// <see cref="WithSegments"/>) and cannot be removed. Answers its flat index, or −1. PURE over the split.
+        /// <para>A song queued during the clip then lists above it in the "Next in queue" section while it plays after it, until the clip ends
+        /// (then the target is the deck and the list reads in play order again).</para></summary>
+        static int DjNextRow(ReadOnlySpan<QueueEdge> edges, int divider, int[] index, ref int user, ref int next)
+        {
+            if (user == 0 || (uint)divider >= (uint)edges.Length || edges[divider].Provider != (byte)QueueProvider.Narration) return -1;
+            int head = index[0];
+            if (head != divider + 1 || edges[head].Provider != (byte)QueueProvider.Context) return -1;
+            Array.Copy(index, 1, index, 0, user - 1);
+            index[user - 1] = head;
+            user--;
+            next++;
+            return head;
         }
 
         /// <summary>Drop the narration rows (<see cref="QueueProvider.Narration"/>) from a split's indices, section by section, in place.</summary>

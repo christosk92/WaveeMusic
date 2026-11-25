@@ -101,6 +101,9 @@ public static partial class Queue
             return new QueueRowText(e.Uri.Text, e.Title, e.Show.IsValid ? e.Show.Title : "", Controls.ArtUrl(e.ImageId), e.DurationMs,
                                !e.Knows(EpisodeFields.Title), false);
         if (r.Kind != EntityKind.Track || new Track(r.Slot) is not { IsValid: true } t) return new QueueRowText("", "", "", null, 0, true, false);
+        // An AI DJ narration (the now card while the DJ talks, here or on the owner's deck): its words and the DJ's name, and NO uri, so nothing
+        // offers to save, share or open it (the bar's rule: Rail.Wiring and the stage frame name no uri for one either).
+        if (Playback.Dj.IsNarrationRow(r)) return new QueueRowText("", t.Title, t.CreditLine, Controls.ArtUrl(t.ImageId), 0, false, false);
         // A ruled-unavailable track is NOT a thin row: it says so (the contract's Unavailable row: the statement, no artists, no cover),
         // naming the catalog's reason when it gave one ("Not available in your country", "Premium only"), else "Audio unavailable".
         if (t.Unplayable())
