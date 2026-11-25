@@ -451,7 +451,8 @@ internal static partial class ZunePlayerBar
             kids.Add(new BoxEl
             {
                 Key = "times-sep", Animate = L.ItemMotion,
-                Children = [new TextEl(" · ") { Size = T.TimeSize, LineHeight = T.TimeLine, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap }],
+                // A narration's progress is suppressed: the labels read empty and the dot keeps its width unseen (no jump either way).
+                Children = [new TextEl(" · ") { Size = T.TimeSize, LineHeight = T.TimeLine, Color = v.ProgressSuppressed ? ColorF.Transparent : Tok.TextSecondary, Wrap = TextWrap.NoWrap }],
             });
         if (v.ShowTimesRemaining) kids.Add(new BoxEl { Key = "remaining", Animate = L.ItemMotion, Children = [props.TimeText(true)] });
         return new BoxEl

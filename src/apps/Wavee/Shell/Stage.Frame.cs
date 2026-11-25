@@ -95,7 +95,8 @@ public static partial class Stage
         var tf = PlayerVerbs.TransportFacts();
         bool primary = Transport.PrimaryEnabled(track.IsValid, loading);
         var lib = Controls.Library;
-        string uri = track.IsValid ? track.Uri.Text : "";
+        // An AI DJ narration clip is nothing to save: no uri, so the heart draws unpressable in its place.
+        string uri = track.IsValid && !Playback.Dj.IsNarrationRow(Playback.Current.Value) ? track.Uri.Text : "";
         string title = track.IsValid ? track.Title : "";
         bool saved = lib is not null && uri.Length > 0 && lib.IsSaved(uri);
         Action? like = lib is { } seam && uri.Length > 0 ? () => seam.ToggleSaved(uri, title) : null;

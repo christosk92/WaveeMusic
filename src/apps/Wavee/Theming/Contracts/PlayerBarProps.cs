@@ -123,6 +123,9 @@ public sealed record PlayerBarView
     public bool SeekStepEnabled { get; init; }
     /// <summary>The indeterminate sweep runs along the bar's top edge.</summary>
     public bool TopEdgeSweeps { get; init; }
+    /// <summary>The playing item's progress is not shown (an AI DJ narration, `suppress_progress`): the time labels read empty and the seek
+    /// rail cannot seek. A theme hides what it draws BETWEEN the labels (a separator) and keeps every slot's width. Appended (D2, additive).</summary>
+    public bool ProgressSuppressed { get; init; }
 
     // ── what the level carries ────────────────────────────────────────────────────────────────────────────────────────
 

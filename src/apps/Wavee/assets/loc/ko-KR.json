@@ -860,6 +860,7 @@
     "repeat": "반복",
     "notWithDj": "DJ에서는 사용할 수 없어요",
     "notAvailableHere": "지금 재생 중인 항목에서는 사용할 수 없어요",
+    "djSegmentEnding": "DJ 세그먼트가 곧 끝나요",
     "mute": "음소거",
     "unmute": "음소거 해제",
     "resyncLyrics": "가사 다시 맞추기",

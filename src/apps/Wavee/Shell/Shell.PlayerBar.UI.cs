@@ -287,6 +287,9 @@ public static partial class Shell
 
         var t = new Track(r.Slot);
         if (!t.IsValid) return PlayerCredits.None;
+        // An AI DJ narration credits the DJ's NAME (its `narration.<slot>.artist`, the row's credit line): one inert entry, no artist row.
+        if (Playback.Dj.IsNarrationRow(r))
+            return t.CreditLine is { Length: > 0 } dj ? new PlayerCredits { Artists = [CreditLink(dj, Route.None, "dj:" + r.Slot)] } : PlayerCredits.None;
         // A local row credits a NAME (its tag, its uri's, else "Unknown artist"): one inert entry, no artist page behind it. It has no
         // artist edge to wait for (a spotify:local: item never knows Artists), so it is answered before the partial-list gate.
         if (t.IsLocalRow && t.ArtistSlots.Length == 0)
@@ -930,6 +933,8 @@ public static partial class Shell
             // Concealed: hold the last text. Returning before the position read drops this bind's subscription to it, so a
             // hidden label wakes nothing at 1 Hz; the reveal (read first, so it stays subscribed) re-runs the bind.
             if (_reveal is { } reveal && !reveal.Value) return _shown;
+            // An AI DJ narration's progress is suppressed (plan-dj §1.8): no digits while it is current; the slot keeps its width.
+            if (Playback.Narrating.Value) return _shown = "";
             long position = Playback.PositionMs.Value;
             long duration = DurationNow();
             bool isLive = Playback.Live.Value.IsLive;

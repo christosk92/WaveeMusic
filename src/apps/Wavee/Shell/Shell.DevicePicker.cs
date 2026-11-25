@@ -143,15 +143,17 @@ public static partial class Shell
             // ── Other devices: Spotify Connect, this device filtered out ──
             var others = new List<DevicePickerEntry>(connect.Length);
             string connectWord = Loc.Get(Strings.Player.SpotifyConnect);
+            // An AI DJ narration current: no transfer until it ends (plan-dj §1.8, the reducer's `narration` refusal), and the rows say why.
+            bool narrating = Playback.Narrating.Value;
             for (int i = 0; i < connect.Length; i++)
             {
                 ref readonly var d = ref connect[i];
                 if (d.Kind == Spotify.Decode.DeviceKind.ThisDevice) continue;
                 var transfer = new DeviceIntent(DeviceIntentKind.TransferTo, ConnectId: d.Id ?? "");
-                others.Add(new DevicePickerEntry(DevicePickerEntryKind.Radio, CapLabel(d.Name ?? ""), DeviceRoster.ConnectGlyph(d.Kind), true,
+                others.Add(new DevicePickerEntry(DevicePickerEntryKind.Radio, CapLabel(d.Name ?? ""), DeviceRoster.ConnectGlyph(d.Kind), !narrating,
                     i == remoteSlot, null, () => DeviceVerbs.Run(transfer))
                 {
-                    Detail = connectWord, Id = d.Id ?? "",
+                    Detail = narrating ? Loc.Get(Strings.Player.DjSegmentEnding) : connectWord, Id = d.Id ?? "",
                 });
             }
 

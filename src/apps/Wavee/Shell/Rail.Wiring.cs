@@ -417,7 +417,7 @@ internal static class RailWiring
     {
         var track = Rail.NowTrack();
         var lib = Controls.Library;
-        string uri = track.IsValid ? track.Uri.Text : "";
+        string uri = track.IsValid && !Playback.Dj.IsNarrationRow(Playback.Current.Value) ? track.Uri.Text : "";   // a DJ narration: nothing to save
         string title = track.IsValid ? track.Title : "";
         bool saved = lib is not null && uri.Length > 0 && lib.IsSaved(uri);
         Action? like = lib is { } seam && uri.Length > 0 ? () => seam.ToggleSaved(uri, title) : null;

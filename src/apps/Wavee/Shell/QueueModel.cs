@@ -102,6 +102,8 @@ public static partial class Shell
             int divider = Queue.Divider(edges, viewer ? -1 : cursorIndex);
             var index = new int[edges.Length];
             Queue.Split(edges, divider, index, out int user, out int next, out int auto);
+            // AI DJ narration rows are hidden in the queue (plan-dj §1.5 `hidden_in_queue`): out of every section and every count.
+            HideNarration(edges, index, ref user, ref next, ref auto);
             // The panel lists what will really play (#215): the autoplay rows only while the end of the context continues into
             // them (the setting on AND repeat off, `Playback.AutoplayAllowed`). Under repeat the context wraps instead, and the
             // tail is neither listed nor counted; the switch itself still shows the setting.
@@ -121,6 +123,20 @@ public static partial class Shell
             EntityRef preview = auto > 0 ? refAt(index[user + next]) : default;
             return new QueueProps(viewer, nowPlaying, playingFrom, new QueueCounts(user, next, auto),
                 new QueueAutoplay(autoplayEnabled, auto, preview), shuffle, repeat, rows);
+        }
+
+        /// <summary>Drop the narration rows (<see cref="QueueProvider.Narration"/>) from a split's indices, section by section, in place.</summary>
+        static void HideNarration(ReadOnlySpan<QueueEdge> edges, int[] index, ref int user, ref int next, ref int auto)
+        {
+            int w = 0, k = 0;
+            int keptUser = 0, keptNext = 0, keptAuto = 0;
+            for (; k < user + next + auto; k++)
+            {
+                if (edges[index[k]].Provider == (byte)QueueProvider.Narration) continue;
+                if (k < user) keptUser++; else if (k < user + next) keptNext++; else keptAuto++;
+                index[w++] = index[k];
+            }
+            (user, next, auto) = (keptUser, keptNext, keptAuto);
         }
 
         /// <summary>How many "played before this" rows the props carry.</summary>
