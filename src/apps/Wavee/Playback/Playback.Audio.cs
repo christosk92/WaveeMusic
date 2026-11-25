@@ -4511,6 +4511,8 @@ public static partial class Playback
             Silent,
             /// <summary>Not playable.</summary>
             None,
+            /// <summary>An AI DJ narration clip, cached or still downloading (<c>Spotify.DjTts</c>, Playback.Audio.Tts.cs).</summary>
+            Tts,
         }
 
         /// <inheritdoc cref="SourceRoute"/>
@@ -4529,6 +4531,7 @@ public static partial class Playback
             EntityProvider.Local => SourceRoute.Local,
             EntityProvider.Module => SourceRoute.Module,
             EntityProvider.Fake => SourceRoute.Silent,
+            EntityProvider.Tts => SourceRoute.Tts,
             _ => SourceRoute.None,
         };
 
@@ -4560,6 +4563,8 @@ public static partial class Playback
                 }
                 case SourceRoute.Module:
                     return ModuleSource(id, ct, out opened, out fault);
+                case SourceRoute.Tts:
+                    return TtsSource(id, out opened, out fault);
                 case SourceRoute.Silent:
                     // ch 31 GAP 6: the demo catalog has no bytes at all. The pump substitutes the silent sink and the
                     // ticker advances position off the frame clock — ten surfaces light up with no network.
