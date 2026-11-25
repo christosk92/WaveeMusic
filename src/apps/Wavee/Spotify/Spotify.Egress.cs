@@ -198,7 +198,8 @@ public static partial class Spotify
                 contextOk ? s.Wire.LikedPlaylist : null, contextOk ? s.Wire.LikedOwner : null,
                 contextOk ? s.Wire.Mix : null,   // #48: numbers and curves only, about an admitted context
                 contextOk ? s.Wire.LocalFilesTracks : 0,
-                s.Wire.Quality);   // levels and enums only: what the pump opened
+                s.Wire.Quality,    // levels and enums only: what the pump opened
+                contextOk && window is not null ? s.Wire.Dj : null);   // AI DJ: the lexicon session's own words about an admitted context
             if (!trackOk && !local)
                 return new Playback.Snapshot(in s.Device, s.IsActive, s.Reason, s.MessageId, s.Volume, s.ClientTimestampMs,
                     s.StartedPlayingAtMs, s.HasBeenPlayingForMs, false, default, default, "", 0, s.TimestampMs, 0,
@@ -246,8 +247,9 @@ public static partial class Spotify
         }
 
         static Playback.WireRow Scrub(in Playback.WireRow row, bool dropCover)
-            => new(Filter(row.Id), row.ItemId, row.UidText, row.Provider, row.Title, row.ArtistName, row.AlbumTitle,
+            => new Playback.WireRow(Filter(row.Id), row.ItemId, row.UidText, row.Provider, row.Title, row.ArtistName, row.AlbumTitle,
                 dropCover || !AdmitsImage(row.Image) ? null : row.Image, Filter(row.AlbumId), Filter(row.ArtistId),
-                row.DecisionId, row.QueuedBy, Admits(row.Id) ? null : row.LocalUri);
+                row.DecisionId, row.QueuedBy, Admits(row.Id) ? null : row.LocalUri)
+                .WithDj(Admits(row.Id) ? row.DjKeyArray : null);   // AI DJ: what Spotify's own lexicon page said about Spotify's row
     }
 }

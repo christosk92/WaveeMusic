@@ -68,6 +68,18 @@ public static partial class Playback
         public readonly QueueProvider Provider;
         public readonly EntityId AlbumId, ArtistId;
         readonly string? _uidText, _title, _artistName, _albumTitle, _image, _decisionId, _queuedBy, _localUri;
+        readonly KeyValuePair<string, string>[]? _dj;
+
+        /// <summary>AI DJ: the keys the row's lexicon page stated for it (<c>Dj.Row.Keys</c>: segment, decision id, attribution, station
+        /// title and subtitle, images, the narration slots…), published on the row as the official DJ player does (plan-dj §1.9). Empty for
+        /// every other row.</summary>
+        public ReadOnlySpan<KeyValuePair<string, string>> DjKeys => _dj;
+
+        /// <summary>Is this a DJ row (<see cref="DjKeys"/> set)?</summary>
+        public bool IsDj => _dj is not null;
+
+        /// <summary><see cref="DjKeys"/> as the array it is (null: none), for a copy of the row (<c>Spotify.Egress</c>).</summary>
+        internal KeyValuePair<string, string>[]? DjKeyArray => _dj;
 
         /// <summary>A Wavee local file's name on the wire (#240 E3, E4): <c>spotify:local:&lt;artist&gt;:&lt;album&gt;:&lt;title&gt;:&lt;seconds&gt;</c>
         /// minted from its tags and indexed length when the window was built (<see cref="Spotify.Egress.LocalTrackUri"/>), so the row keeps
@@ -97,7 +109,17 @@ public static partial class Playback
             Id = id; ItemId = itemId; _uidText = uidText; Provider = provider;
             _title = title; _artistName = artistName; _albumTitle = albumTitle; _image = image;
             AlbumId = albumId; ArtistId = artistId; _decisionId = decisionId; _queuedBy = queuedBy; _localUri = localUri;
+            _dj = null;
         }
+
+        WireRow(in WireRow row, KeyValuePair<string, string>[]? dj)
+        {
+            this = row;
+            _dj = dj;
+        }
+
+        /// <summary>This row again with its DJ keys (<see cref="DjKeys"/>).</summary>
+        public WireRow WithDj(KeyValuePair<string, string>[]? keys) => new(in this, keys);
 
         /// <summary>This row again with the autoplay answer's <paramref name="decisionId"/>.</summary>
         public WireRow WithDecision(string? decisionId)
@@ -192,10 +214,30 @@ public static partial class Playback
     public sealed record MixWire(bool Lens, PlaylistMixFlags ListFlags, EntityId Incoming,
         KeyValuePair<string, string>[] Out, KeyValuePair<string, string>[] In);
 
+    /// <summary>AI DJ on the PUT (plan-dj §1.9): the deck plays a lexicon session, so the player state names it as the official DJ player
+    /// does. Built on the UI thread (<c>Dj.WireNow</c>), immutable after.
+    /// <list type="bullet">
+    /// <item><see cref="ContextUrl"/>: f3, the lexicon url without <c>reason</c>.</item>
+    /// <item><see cref="NoRepeatContext"/> / <see cref="NoRepeatTrack"/> / <see cref="NoShuffle"/>: the session's own restriction reasons
+    /// ("" = allowed), written as f4 context_restrictions 8 / 9 / 10 and again beside the transport's in f17.</item>
+    /// <item><see cref="Page"/> / <see cref="Track"/>: f6 index of the deck row (page 1 = the first real page); 0 = the deck row is no
+    /// page's (a transferred or restored track), and no index is written.</item>
+    /// <item><see cref="PageMetadata"/>: f22, the deck row's page metadata whole.</item>
+    /// <item><see cref="Narrating"/>: THE NARRATION SEAM (plan-dj D2, D3). False until a narration item can be the deck row. The phase that
+    /// makes one current sets it while the narration is current and its target track has not started: the encoder then writes no index,
+    /// adds 3 / 9 / 13 = <c>narration</c> to f17 and <c>suppress_progress=true</c> on the current item. The item's own uri
+    /// (<c>spotify:media:…</c>) and f11 (the clip's length, unset while it streams) come from the snapshot as for any row; the
+    /// talk-over's fade keys ride <see cref="MixWire"/> (its Out on the narration, its In on the target), as Mix's already do.</item>
+    /// </list></summary>
+    public sealed record DjWire(string ContextUrl, string NoRepeatContext, string NoRepeatTrack, string NoShuffle,
+        int Page, int Track, KeyValuePair<string, string>[] PageMetadata, bool Narrating = false);
+
     public readonly struct WireExtras
     {
         /// <summary>#48: the Mix half of the PUT; null outside a mixed playlist.</summary>
         public readonly MixWire? Mix;
+        /// <summary>AI DJ: the DJ half of the PUT (<see cref="DjWire"/>); null unless the deck plays a lexicon session and we own it.</summary>
+        public readonly DjWire? Dj;
         /// <summary>Null while we are not the active device, or have nothing on the deck.</summary>
         public readonly WireWindow? Window;
         /// <summary><c>queue_revision</c>: moves whenever the queue, the deck row or the options did. 0 = not stated.</summary>
@@ -240,10 +282,11 @@ public static partial class Playback
         public WireExtras(WireWindow? window, ulong queueRevision, in WireIds ids, bool privateSession, string? outputDevice,
             string? commandSender, float playbackRate = 1f, WireOrigin? origin = null, byte outputType = 0, bool audiobook = false,
             string? likedPlaylist = null, string? likedOwner = null, MixWire? mix = null, int localFilesTracks = 0,
-            Spotify.Decode.PlaybackQuality quality = default)
+            Spotify.Decode.PlaybackQuality quality = default, DjWire? dj = null)
         {
             Quality = quality;
             Mix = mix;
+            Dj = dj;
             LocalFilesTracks = localFilesTracks;
             Window = window; QueueRevision = queueRevision; Ids = ids; PrivateSession = privateSession;
             _outputDevice = outputDevice; _commandSender = commandSender; _playbackRate = playbackRate; Origin = origin; OutputType = outputType;

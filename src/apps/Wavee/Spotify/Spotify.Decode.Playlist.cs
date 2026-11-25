@@ -181,6 +181,8 @@ public static partial class Spotify
                 else if (chart && Is(key, "last_updated")) row.ChartUpdatedAt = InstantSeconds(value);
                 else if (chart && Is(key, "rank_type")) row.ChartRankType = s.AddText(value);
             }
+            // DJ: the whole attribute map, for the context metadata a DJ play names (plan-dj §1.9, §2.7); a DJ list only.
+            if ((row.Flags & (uint)PlaylistFlags.YourDj) != 0) row.DjAttributes = DjAttributesJson(attributes, s);
 
             // Tuning: a 24-byte revision and at least one signal, or the playlist is not tunable (0.2.9 TuningOf).
             var tunings = s.PlaylistTuningOptions;

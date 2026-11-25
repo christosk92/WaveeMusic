@@ -77,6 +77,9 @@ public static partial class Spotify
             /// its metadata carried (<c>narration.*</c>, <c>dj.*</c>, <c>segment</c>, …) as a <see cref="ClusterBuffer.Meta"/> range. Set
             /// only by a lexicon decode (<see cref="ContextResolve"/> with a page), so an ordinary row keeps none of them.</summary>
             public int DjPage, DjStart, DjCount;
+            /// <summary>AI DJ: the row's slot in its lexicon page's <c>tracks</c> (0-based, counted as the page lists them, so a row the
+            /// decode drops never moves the next one): the <c>track</c> of the Connect index a DJ player publishes (plan-dj §1.9).</summary>
+            public int DjSlot;
             /// <summary>The whole <c>ProvidedTrack</c> as the owner sent it — set for a cluster's <c>prev_tracks</c> /
             /// <c>next_tracks</c> rows only: what a forwarded <c>set_queue</c> echoes back whole, its metadata map, provider,
             /// removed/blocked lists and album/artist uris (remote-play plan 5.2, moreptions.saz 794). Empty elsewhere.</summary>

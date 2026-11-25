@@ -38,7 +38,7 @@ public static partial class Playback
 {
     /// <summary>The lexicon session a DJ context plays from (plan-dj §2.1): its fetch, its url rules, the record of what was
     /// fetched and the DJ book of its rows. UI thread, except <see cref="Fetch"/> (an api thread).</summary>
-    public static class Dj
+    public static partial class Dj
     {
         /// <summary>A context url served by the lexicon session provider.</summary>
         public const string LexiconPrefix = "hm://lexicon-session-provider/";
@@ -292,11 +292,20 @@ public static partial class Playback
         /// <summary>What a DJ row's page said about it (plan-dj §1.3).</summary>
         public sealed class Row
         {
+            /// <summary>The page the row came from: Wavee's own count of the pages fetched for the session the play started (1 = its
+            /// first real page; the session answer is page 0). A renewal past <c>lexicon_expiration_time</c> goes on counting
+            /// (<see cref="RequestDjPage"/>: the last page + 1), so the Connect index this numbers (plan-dj §1.9 f6) never goes back
+            /// while one DJ play lasts; a new DJ start numbers from 1 again.</summary>
             public int Page;
+            /// <summary>The row's slot in its page's <c>tracks</c> (0-based): the index's <c>track</c>.</summary>
+            public int Track;
             public string Segment = "", DecisionId = "", Attribution = "", Subtitle = "", TalkMode = "", ImageSmall = "", ImageLarge = "";
             /// <summary>Where "Let DJ pick" lands: the segment's first track.</summary>
             public bool JumpTarget;
             public Narration? Intro, Jump, Outro;
+            /// <summary>Every DJ key the page stated for the row, in its order (the narration slots' too): what a DJ player publishes on
+            /// the row's <c>ProvidedTrack</c> (plan-dj §1.9; the protocol's advice is to echo them all).</summary>
+            public KeyValuePair<string, string>[] Keys = [];
         }
 
         static readonly Dictionary<ulong, Row> s_book = new();
@@ -312,11 +321,15 @@ public static partial class Playback
         internal static void Note(ulong itemId, ClusterBuffer buffer, in ClusterTrack track)
         {
             if (itemId == 0 || track.DjPage <= 0) return;
-            var row = new Row { Page = track.DjPage };
-            foreach (ref readonly Spotify.Decode.ClusterMeta m in buffer.Meta(track.DjStart, track.DjCount))
+            var row = new Row { Page = track.DjPage, Track = track.DjSlot };
+            ReadOnlySpan<Spotify.Decode.ClusterMeta> meta = buffer.Meta(track.DjStart, track.DjCount);
+            var keys = new KeyValuePair<string, string>[meta.Length];
+            int k = 0;
+            foreach (ref readonly Spotify.Decode.ClusterMeta m in meta)
             {
                 string key = Encoding.UTF8.GetString(buffer.Utf8(m.Key));
                 string value = Encoding.UTF8.GetString(buffer.Utf8(m.Value));
+                keys[k++] = new(key, value);
                 switch (key)
                 {
                     case "segment": row.Segment = value; break;
@@ -345,6 +358,7 @@ public static partial class Playback
                         break;
                 }
             }
+            row.Keys = keys;
             s_book[itemId] = row;
         }
 

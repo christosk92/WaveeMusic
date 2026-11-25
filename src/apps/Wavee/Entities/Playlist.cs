@@ -250,6 +250,11 @@ public sealed class PlaylistTable : Table
     /// of it resolves instead of its uri (plan-dj §2.1.1). Empty for an ordinary list. Written with <see cref="PlaylistFlags.YourDj"/>'s
     /// mask by the answer that carried the attributes.</summary>
     public Column<StringId> LexiconUrl;
+    /// <summary>A DJ list's whole format attributes as one JSON object (<c>lexicon_set_type</c>, <c>lexicon_context_url</c>, <c>home.card.*</c>,
+    /// <c>automix.mode</c>, …): what a DJ play names as its context metadata, here and to another device (plan-dj §1.9, §2.7). Kept for a DJ
+    /// list only (an ordinary list's attributes are not held), written with <see cref="PlaylistFlags.YourDj"/>'s mask like
+    /// <see cref="LexiconUrl"/>.</summary>
+    public Column<StringId> DjAttributes;
 
     /// <summary><see cref="PlaylistFlags"/>.</summary>
     public Column<uint> Flags;
@@ -315,6 +320,7 @@ public sealed class PlaylistTable : Table
         MixFlags.EnsureCapacity(capacity);
         MixLensEtag.EnsureCapacity(capacity);
         LexiconUrl.EnsureCapacity(capacity);
+        DjAttributes.EnsureCapacity(capacity);
         Flags.EnsureCapacity(capacity);
         Notice.EnsureCapacity(capacity);
         EpisodeCount.EnsureCapacity(capacity);
@@ -344,6 +350,7 @@ public sealed class PlaylistTable : Table
         ClearText(ref Revision, slot);
         ClearText(ref MixLensEtag, slot);
         ClearText(ref LexiconUrl, slot);
+        ClearText(ref DjAttributes, slot);
     }
 }
 
@@ -532,6 +539,8 @@ public readonly partial struct Playlist(int slot) : IEquatable<Playlist>
     public bool IsDj => (Bits & (uint)PlaylistFlags.YourDj) != 0;
     /// <summary>The list's <c>lexicon_context_url</c> (<see cref="PlaylistTable.LexiconUrl"/>); empty for an ordinary list.</summary>
     public StringId LexiconUrlId => T.LexiconUrl[Slot];
+    /// <summary>A DJ list's format attributes as a JSON object (<see cref="PlaylistTable.DjAttributes"/>); empty otherwise.</summary>
+    public StringId DjAttributesId => T.DjAttributes[Slot];
 
     // ── membership ──────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -670,6 +679,8 @@ public struct StagedPlaylist : IStagedRow
     /// <summary>DJ: the list's <c>lexicon_context_url</c> (<see cref="PlaylistTable.LexiconUrl"/>), written when <see cref="FlagsMask"/>
     /// speaks for <see cref="PlaylistFlags.YourDj"/> (empty then clears it).</summary>
     public TextRef LexiconUrl;
+    /// <summary>DJ: the list's format attributes as one JSON object (<see cref="PlaylistTable.DjAttributes"/>), under the same mask.</summary>
+    public TextRef DjAttributes;
     /// <summary>#48: <see cref="PlaylistMixFlags"/> this answer asserts, and the bits it speaks for (a list read the low
     /// byte, an extended-metadata kind its own bit).</summary>
     public uint MixFlags, MixFlagsMask;
@@ -878,6 +889,8 @@ public static partial class Entities
             {
                 StringId lexicon = s.Intern(row.LexiconUrl);
                 if (lexicon != t.LexiconUrl[slot]) { t.SetText(ref t.LexiconUrl, slot, lexicon); t.Bump(slot); }
+                StringId attributes = s.Intern(row.DjAttributes);
+                if (attributes != t.DjAttributes[slot]) { t.SetText(ref t.DjAttributes, slot, attributes); t.Bump(slot); }
             }
 
             // Wave 5 (owner O): the two facts derived from what just landed.

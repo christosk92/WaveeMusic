@@ -126,7 +126,13 @@ public static partial class Playback
         // builds {uri, url} for it (plan-dj §2.1.1, §3a); ResolveContext branches on it.
         if (context.Kind == EntityKind.Playlist && Entities.Current.Playlists.TryGetSlot(context, out int list)
             && new Playlist(list).LexiconUrlId is { IsEmpty: false } lexicon)
+        {
             load.ContextUrl = buffer.AddText(System.Text.Encoding.UTF8.GetBytes(Entities.Strings.Resolve(lexicon)));
+            // Its format attributes are the play's context metadata, as the official client's local start carries them into what its
+            // player publishes beside the session's (plan-dj §1.9 f21; CaptureOrigin merges both).
+            if (Dj.ListMetadataJson(context) is { Length: > 0 } attributes)
+                load.ContextMetadata = buffer.AddText(System.Text.Encoding.UTF8.GetBytes(attributes));
+        }
         ResolveContext(++s_contextSeq, context.Text, load, buffer, ClaimCause.UserPlay);
     }
 

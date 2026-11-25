@@ -1,0 +1,129 @@
+// ── Playback/Playback.Dj.Connect.cs ──────────────────────────────────────────────────────────────────────────────────
+// AI DJ over Connect (plan-dj D4, the parts that need no voice): what Wavee publishes while it plays a lexicon session, and the
+// DJ list's own facts a DJ play names, here and to another device.
+//
+// Role: SHELL (UI thread: reads the session record, the DJ book and the playlist table)
+// Spec: the AI DJ plan (plan-dj) §1.9, §2.7; the protocol (dj-protocol) §2.1, §4
+//
+// A NAMED PARTIAL OF `Playback.Dj` (`Playback.Dj.cs`):
+//
+//   CaptureWire (Playback.Host.Wire.cs) ─▶ WireNow(context, deck item) ─▶ DjWire: f3 url · f4 / f17 restrictions · f6 (page, track) ·
+//                                                                          f22 page metadata · the narration seam
+//   WindowNow's rows ─▶ the DJ book's keys per row (DjKeysOn) ─▶ next_tracks / prev_tracks / the current item's metadata
+//   a local DJ start (PlayContext) ─▶ ListMetadataJson: the list's format attributes, the context metadata of the play (f21)
+//
+// THE INDEX'S NUMBERING. f6 is (page, track): `Dj.Row.Page` is Wavee's own count of the pages fetched for the DJ play that is going
+// on (1 = the first real page; a renewal past the session's expiry keeps counting, so the index never goes back mid-play), and
+// `Dj.Row.Track` is the row's slot in its page as the page listed it. A deck row no page of this session holds (a transferred or a
+// restored track) has no index, as a narration has none.
+
+using System.Text.Json;
+
+using FluentGpu.Foundation;
+
+namespace Wavee;
+
+public static partial class Playback
+{
+    public static partial class Dj
+    {
+        // ── the PUT's DJ half ────────────────────────────────────────────────────────────────────────────────────────
+
+        static DjWire? s_wire;
+        static Session? s_wireSession;
+        static ulong s_wireItem;
+        static int s_wirePages = -1, s_wireRenewals = -1;
+
+        /// <summary>The DJ half of the PUT for a deck on <paramref name="context"/> whose row is <paramref name="deckItemId"/>, or null when
+        /// no lexicon session plays it. Rebuilt only when the session, the deck row or the pages moved, so a pause or a seek reuses the
+        /// one built. UI thread (the capture).</summary>
+        internal static DjWire? WireNow(EntityId context, ulong deckItemId)
+        {
+            if (Of(context) is not { } s) return null;
+            if (s_wire is { } kept && ReferenceEquals(s, s_wireSession) && deckItemId == s_wireItem && s.Pages.Count == s_wirePages
+                && s.Renewals == s_wireRenewals)
+                return kept;
+            Row? row = RowOf(deckItemId);
+            int page = row?.Page ?? 0, track = row?.Track ?? 0;
+            KeyValuePair<string, string>[] metadata = [];
+            if (page > 0)
+                foreach (Page p in s.Pages)
+                    if (p.Ordinal == page) { metadata = SoundEntries(p.Metadata); break; }
+            // THE NARRATION SEAM (plan-dj D2/D3): `Narrating` stays false until a narration item can be the deck row; see DjWire.
+            s_wire = new DjWire(WireUrl(s.ContextUrl), s.Facts.NoRepeatContext, s.Facts.NoRepeatTrack, s.Facts.NoShuffle, page, track, metadata);
+            s_wireSession = s;
+            s_wireItem = deckItemId;
+            s_wirePages = s.Pages.Count;
+            s_wireRenewals = s.Renewals;
+            return s_wire;
+        }
+
+        /// <summary>A map's entries a PUT may carry as they came (<see cref="Queue.ContextMetadataValueSound"/>: no binary decoded as
+        /// text), in a stable order (by key).</summary>
+        static KeyValuePair<string, string>[] SoundEntries(IReadOnlyDictionary<string, string> map)
+        {
+            var kept = new List<KeyValuePair<string, string>>(map.Count);
+            foreach (KeyValuePair<string, string> entry in map)
+                if (Queue.ContextMetadataValueSound(entry.Value)) kept.Add(entry);
+            kept.Sort(static (a, b) => string.CompareOrdinal(a.Key, b.Key));
+            return kept.ToArray();
+        }
+
+        /// <summary>The context url as a DJ player publishes it (f3): the lexicon url WITHOUT its <c>reason</c> (dj-protocol §2.1: "PutState
+        /// keeps the URL without reason"), whether the play named it bare (a local start, the official controller) or with one. PURE.</summary>
+        public static string WireUrl(string url)
+        {
+            int query = url.IndexOf('?');
+            if (query < 0) return url;
+            int at = url.IndexOf("reason=", query + 1, StringComparison.Ordinal);
+            while (at > 0 && url[at - 1] is not ('?' or '&')) at = url.IndexOf("reason=", at + 1, StringComparison.Ordinal);
+            if (at < 0) return url;
+            int end = url.IndexOf('&', at);
+            // "?reason=x&a" → "?a", "&reason=x&a" → "&a", "…&reason=x" → "…", "?reason=x" → ""
+            string head = url[..(url[at - 1] == '&' ? at - 1 : at)];
+            return end < 0 ? (head.EndsWith('?') ? head[..^1] : head) : head + (url[at - 1] == '&' ? url[end..] : url[(end + 1)..]);
+        }
+
+        // ── the DJ list's own facts ──────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The lexicon url <paramref name="list"/> plays from (its <c>lexicon_context_url</c> attribute), or "" for a list that is
+        /// not a DJ (or not known). UI thread.</summary>
+        public static string ListUrl(EntityId list)
+        {
+            if (list.Kind != EntityKind.Playlist || Entities.Current is not { } scope || !scope.Playlists.TryGetSlot(list, out int slot)) return "";
+            StringId url = new Playlist(slot).LexiconUrlId;
+            return url.IsEmpty ? "" : Entities.Strings.Resolve(url);
+        }
+
+        /// <summary>A DJ list's format attributes as the JSON object the decoder kept (<see cref="PlaylistTable.DjAttributes"/>), or "".
+        /// UI thread.</summary>
+        public static string ListMetadataJson(EntityId list)
+        {
+            if (list.Kind != EntityKind.Playlist || Entities.Current is not { } scope || !scope.Playlists.TryGetSlot(list, out int slot)) return "";
+            StringId json = new Playlist(slot).DjAttributesId;
+            return json.IsEmpty ? "" : Entities.Strings.Resolve(json);
+        }
+
+        /// <summary>A JSON object of strings (<see cref="ListMetadataJson"/>) → its entries, in order; a value that is not a string is
+        /// skipped, a body that is not an object answers none. PURE.</summary>
+        public static KeyValuePair<string, string>[] Entries(string json)
+        {
+            if (json.Length == 0) return [];
+            var entries = new List<KeyValuePair<string, string>>();
+            try
+            {
+                var r = new Utf8JsonReader(System.Text.Encoding.UTF8.GetBytes(json));
+                if (!r.Read() || r.TokenType != JsonTokenType.StartObject) return [];
+                while (r.Read() && r.TokenType == JsonTokenType.PropertyName)
+                {
+                    string key = r.GetString() ?? "";
+                    r.Read();
+                    if (r.TokenType == JsonTokenType.String) entries.Add(new(key, r.GetString() ?? ""));
+                    else r.Skip();
+                }
+            }
+            catch (JsonException) { /* what was read stands */ }
+            return entries.ToArray();
+        }
+    }
+}
