@@ -2034,6 +2034,9 @@ public readonly partial struct Track
                 float band = BandNow(), shortH = _heroShort.Value;
                 return shortH > 1f ? MathF.Min(band, shortH) : band;
             }
+            // A theme that draws no chrome over an empty lead (EmptyLeadHides) has no stuck stratum: the last measured header's height would clip the
+            // lead's top (the DJ page's first segment heading under Zune's two-column page).
+            if (EmptyLeadHides) return 0f;
             float h = _headH.Value;
             return h > 1f ? h : 0f;
         }
