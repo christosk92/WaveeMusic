@@ -243,7 +243,7 @@ public static partial class Diagnostics
             const int rate = 48_000, points = FluentGpu.Media.GainEnvelope.TablePoints;
             Span<CurveSegment> seg = stackalloc CurveSegment[4];
             foreach (byte preset in new[] { (byte)MixPreset.Fade, (byte)MixPreset.Rise })
-                foreach (uint window in new uint[] { 2_890, 12_000 })
+                foreach (uint window in new uint[] { 3_000, 12_000 })
                 {
                     var t = new MixTiming(MixSource.Saved, MixWhyNot.None, preset, 0, window, 0, window);
                     int frames = (int)(window * (long)rate / 1000);
@@ -297,7 +297,7 @@ public static partial class Diagnostics
             });
         }
 
-        /// <summary>`mix cancel`: a 2.89 s Fade join cancelled at <paramref name="at"/> of its overlap, each voice (a 1 kHz full-scale
+        /// <summary>`mix cancel`: a 3 s Fade join cancelled at <paramref name="at"/> of its overlap, each voice (a 1 kHz full-scale
         /// sine) pulled ALONE through the engine's own CrossfadeMixer in 10 ms blocks, no device. The join installs the envelopes
         /// ScheduleMix installs; at the cancel block the voice gets what the pump gives it now (MixRender.Cancel, the call
         /// CancelMixLocked makes, B's fade as AbandonPendingJoin installs it) or what it got before (A the constant envelope, B a
@@ -305,7 +305,7 @@ public static partial class Diagnostics
         static string MixCancel(int id, string name, float at)
         {
             const int rate = 48_000, channels = 2, maxBlock = 1024, pull = 480;
-            const uint windowMs = 2_890;
+            const uint windowMs = 3_000;
             int frames = (int)(windowMs * (long)rate / 1000);
             long start = rate / 10;                                              // the overlap starts 100 ms into the pull
             var plan = new MixTiming(MixSource.Saved, MixWhyNot.None, (byte)MixPreset.Fade, 0, windowMs, 0, windowMs);

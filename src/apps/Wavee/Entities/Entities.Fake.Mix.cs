@@ -27,7 +27,7 @@ public static partial class Entities
     internal static partial class LibrarySeed
     {
         public const string MixUri = "spotify:playlist:plmix";
-        public const string MixLensEtag = "1f3d4c55";
+        public const string MixLensEtag = "0000beef";
 
         /// <summary>The pool tracks of the mixed playlist, in order: matched tempos, one far-apart pair (row 3 → 4 runs
         /// 117 → 77 BPM, the capture's warning pair), then a local file as the last row.</summary>
@@ -73,15 +73,15 @@ public static partial class Entities
             for (int k = 0; k < n; k++) SeedAnalysis(targets[k], k);
 
             // Three edited pairs, every byte made up here (no captured recipe):
-            //   0 → 1  Rise (preset 3), as Wavee writes a recipe of its own: a 2890 ms window ending 1 ms before row 0's file does.
+            //   0 → 1  Rise (preset 3), as Wavee writes a recipe of its own: a 3000 ms window ending 1 ms before row 0's file does.
             //   1 → 2  a beatmatched Fade over 2 bars with an EQ override, written field by field as another client would: a
             //          curve override and a field this build does not know at every level, which a decode → encode must keep.
             //   5 → 6  "no transition": no preset id, a 1 ms overlap, no out-point (A plays to its end, B from its start).
             var stored = new Dictionary<ulong, MixTransition>();
             var a = new global::Wavee.Track(targets[0]);
             var rise = PairRecipe(0, targets);
-            rise.OutStartMs = (uint)Math.Max(0, a.DurationMs - 2891);
-            rise.OverlapMs = 2890;
+            rise.OutStartMs = (uint)Math.Max(0, a.DurationMs - 3_001);
+            rise.OverlapMs = 3_000;
             rise.Preset = (byte)MixPreset.Rise;
             rise.PresetType = MixPresetType.Fade;
             rise.IsOverlapOverride = rise.IsPresetIdOverride = true;
@@ -135,7 +135,7 @@ public static partial class Entities
             string[] uris = [TrackUri(s_mixPool[0]), TrackUri(s_mixPool[1]), LocalTrackUri(0)];
             var recipe = new MixRecipe
             {
-                FromItemId = ids[0], ToItemId = ids[1], OutStartMs = 200_000, OverlapMs = 2_890, Preset = (byte)MixPreset.Rise,
+                FromItemId = ids[0], ToItemId = ids[1], OutStartMs = 200_000, OverlapMs = 3_000, Preset = (byte)MixPreset.Rise,
                 PresetType = MixPresetType.Fade, TrackA = uris[0], TrackB = uris[1], PlayableA = uris[0], PlayableB = uris[1],
                 SpeedA = 1f, SpeedB = 1f, ItemSpeedA = 1.0, ItemSpeedB = 1.0, IsOverlapOverride = true, IsPresetIdOverride = true,
             };
@@ -164,7 +164,7 @@ public static partial class Entities
                 if (i == 0)
                 {
                     w.Entry(11, "automix.auto_transition_recipe", b64);
-                    w.Entry(11, "automix.transition_uri", "spotify:transition:fakeWireTransition0000:1795386355891");
+                    w.Entry(11, "automix.transition_uri", "spotify:transition:fakeWireTransition0000:1700000000000");
                 }
                 if (i == 2)
                 {
@@ -219,7 +219,7 @@ public static partial class Entities
 
         static void Store(Dictionary<ulong, MixTransition> into, in MixRecipe recipe, byte[] raw, int k)
             => into[recipe.FromItemId] = new MixTransition(recipe, raw, Convert.ToBase64String(raw),
-                "spotify:transition:fakeTransition0000000" + k.ToString(CultureInfo.InvariantCulture) + ":1795386355891");
+                "spotify:transition:fakeTransition0000000" + k.ToString(CultureInfo.InvariantCulture) + ":1700000000000");
 
         static void Store(Dictionary<ulong, MixTransition> into, byte[] raw, int k)
         {
@@ -304,7 +304,7 @@ public static partial class Entities
             }
         }
 
-        static string FakeBeatsId(int k) => (0xE2FD_6349_0000_0000UL + (ulong)k).ToString("x16", CultureInfo.InvariantCulture) + "00000000000000aa";
+        static string FakeBeatsId(int k) => (0xBEEF_0000_0000_0000UL + (ulong)k).ToString("x16", CultureInfo.InvariantCulture) + "0000000000000000";
 
         /// <summary>A constant grid at the track's seeded tempo (4/4, the first downbeat 180 ms in), its analysis id, and
         /// cue points: the start cue on the second bar for every third row (so some pairs enter mid-file), the end cue
