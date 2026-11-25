@@ -75,6 +75,52 @@ public static partial class Diagnostics
                         Entities.RuleUnplayable(track);
                         break;
                     }
+                case "metadata":
+                    {
+                        // A CAPTURED extended-metadata response (the raw protobuf body, decompressed), committed through the real decoder
+                        // as the wire's answer would land, then every TRACK_V4 entity's verdict read back two ways: the row's (what the
+                        // list greys and states) and the ladder's (what a play attempt does, Spotify.Audio.WithheldIn). `market=` stands in
+                        // for the session's market while it decodes (the fake session has none).
+                        string file = a.Str("file");
+                        if (file.Length == 0 || !File.Exists(file)) return Inspect.Reply.Fail(id, name, "metadata wants file=<an extended-metadata response body (protobuf)>");
+                        byte[] body = File.ReadAllBytes(file);
+                        string market = a.Str("market").ToUpperInvariant(), was = Spotify.Api.Market;
+                        Spotify.Api.Market = market;
+                        try { Entities.CommitMetadata(body); }
+                        finally { Spotify.Api.Market = was; }
+                        RunFrames(2);
+                        long now = Track.NowUnix;
+                        return Settled(id, name, a, w =>
+                        {
+                            w.WriteString("do", verb);
+                            w.WriteString("market", market);
+                            w.WriteStartArray("tracks");
+                            if (body.Length > 0 && body[0] == (byte)'{')
+                            {
+                                // a Pathfinder answer: every track node that carries a `playability`, in document order (no ladder: no TRACK_V4)
+                                var seen = new HashSet<string>(StringComparer.Ordinal);
+                                using var doc = JsonDocument.Parse(body);
+                                foreach (string uri in PlayabilityUris(doc.RootElement))
+                                    if (seen.Add(uri)) WriteVerdict(w, uri, null, now);
+                            }
+                            else
+                            {
+                                var parsed = Wavee.Protocol.ExtendedMetadata.BatchedExtensionResponse.Parser.ParseFrom(body);
+                                foreach (var array in parsed.ExtendedMetadata)
+                                {
+                                    if (array.ExtensionKind != Wavee.Protocol.ExtendedMetadata.ExtensionKind.TrackV4) continue;
+                                    foreach (var entity in array.ExtensionData)
+                                    {
+                                        Spotify.Audio.Withheld ladder = entity.ExtensionData is { } any
+                                            ? Spotify.Audio.WithheldIn(Wavee.Protocol.Metadata.Track.Parser.ParseFrom(any.Value), market)
+                                            : Spotify.Audio.Withheld.None;
+                                        WriteVerdict(w, entity.EntityUri, ladder.ToString(), now);
+                                    }
+                                }
+                            }
+                            w.WriteEndArray();
+                        });
+                    }
                 case "audiobook":
                     {
                         // The catalogue classifies a show as a book (its list header's is_audiobook), as no fake show is.
@@ -138,7 +184,7 @@ public static partial class Diagnostics
                         });
                     }
                 default:
-                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|pause|resume|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate|telemetry|inbound, not '" + verb + "'");
+                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|pause|resume|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate|telemetry|inbound|metadata, not '" + verb + "'");
             }
             // traced (`trace=N`): the trace's first frames are the change's own (the frame the queue and the deck land in), so nothing runs before it
             bool traced = a.Has("trace");
@@ -150,6 +196,42 @@ public static partial class Diagnostics
                 w.WriteString("phase", phase);
                 WriteTransport(w);
             });
+        }
+
+        /// <summary>One committed track's availability verdict (`transport do=metadata`): the row's (what the list greys and states), the
+        /// ladder's when the answer carried a TRACK_V4 (<paramref name="ladder"/>), and whether the deck may land on it.</summary>
+        static void WriteVerdict(Utf8JsonWriter w, string uri, string? ladder, long now)
+        {
+            if (!EntityId.TryParse(uri.AsSpan(), out EntityId tid) || tid.Kind != EntityKind.Track) return;
+            EntityRef r = Entities.Ref(tid);
+            var t = new Track(r.Slot);
+            w.WriteStartObject();
+            w.WriteString("uri", uri);
+            w.WriteString("title", t.IsValid ? t.ForDisplay.Title : "");
+            w.WriteBoolean("unplayable", t.IsValid && t.Unplayable());
+            w.WriteBoolean("notYetOut", t.IsValid && t.NotYetOut(now));
+            w.WriteString("reason", t.IsValid ? t.UnplayableReason().ToString() : "-");
+            w.WriteString("note", t.IsValid ? Track.WithheldNote(t, now) : "");
+            if (ladder is not null) w.WriteString("ladder", ladder);
+            w.WriteBoolean("rowPlayable", Playback.RowPlayable(r));
+            w.WriteEndObject();
+        }
+
+        /// <summary>The <c>uri</c> of every JSON object that carries a <c>playability</c>, depth first (a Pathfinder answer's track nodes).</summary>
+        static IEnumerable<string> PlayabilityUris(JsonElement e)
+        {
+            if (e.ValueKind == JsonValueKind.Object)
+            {
+                if (e.TryGetProperty("playability", out _) && e.TryGetProperty("uri", out JsonElement u) && u.ValueKind == JsonValueKind.String)
+                    yield return u.GetString() ?? "";
+                foreach (JsonProperty p in e.EnumerateObject())
+                    foreach (string inner in PlayabilityUris(p.Value)) yield return inner;
+            }
+            else if (e.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement item in e.EnumerateArray())
+                    foreach (string inner in PlayabilityUris(item)) yield return inner;
+            }
         }
 
         /// <summary>The deck, the modes and the queue, as the reducer and the queue panel see them.</summary>

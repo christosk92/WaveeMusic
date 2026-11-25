@@ -130,6 +130,16 @@ public enum TrackFlags : uint
     /// <summary>A CONFIRMED unavailable. Only meaningful once <see cref="TrackFields.Availability"/> is known — an
     /// unruled row must read as playable, not as blocked (ch 04 DATA GAPS).</summary>
     Unavailable = 1 << 8,
+    /// <summary>WHY it is unavailable, when the catalogue said: a country gate rules the session's market out and no
+    /// alternative plays here (TRACK_V4: a restriction, no file, no alternative; Pathfinder: <c>COUNTRY_RESTRICTED</c>).
+    /// Set only beside <see cref="Unavailable"/> on a row that is OUT (its release instant passed): a reason bit makes the
+    /// row <c>Track.Unplayable</c> although it carries a release date. Rows say "Not available in your country".</summary>
+    RegionLocked = 1 << 9,
+    /// <summary>WHY, the paid-catalogue form: a catalogue gate names only Premium (or Pathfinder said a payment is
+    /// required). Same rules as <see cref="RegionLocked"/>. Rows say "Premium only".</summary>
+    PremiumOnly = 1 << 10,
+    /// <summary>WHY, the unnamed form: the catalogue restricted it and spelled no gate the client can state.</summary>
+    Withdrawn = 1 << 11,
 
     // Video group
     /// <summary>The catalogue says there is a music video (extension kind 99).</summary>
@@ -150,7 +160,9 @@ public enum TrackFlags : uint
     Lossless24 = 1 << 25,
 
     IdentityMask = Explicit | Local | Podcast,
-    AvailabilityMask = Unavailable,
+    /// <summary>The three reason bits: any one of them is a terminal verdict (<c>Track.Unplayable</c>).</summary>
+    WithheldMask = RegionLocked | PremiumOnly | Withdrawn,
+    AvailabilityMask = Unavailable | WithheldMask,
     VideoMask = HasVideo | LinkedVideo | LocalVideoFile,
     FilesMask = Lossless | Lossless24,
 }

@@ -199,11 +199,16 @@ public static partial class Shell
             NowPlayingText.Title => title,
             NowPlayingText.NothingPlaying => Loc.Get(Strings.Player.NothingPlaying),
             NowPlayingText.Reconnecting => Loc.Get(Strings.Player.Reconnecting),
-            // G-212: the reason on the model, not one fixed sentence for every fault.
-            NowPlayingText.CannotPlay => Loc.Get(PlayerBarRules.FaultTitleKey(Playback.Error.Value)),
+            // G-212: the reason on the model, not one fixed sentence for every fault — and for an Unavailable fault on a row the
+            // catalog ruled with a NAMED reason, that reason ("This song isn’t available in your country"), the row's own words.
+            NowPlayingText.CannotPlay => Loc.Get(PlayerBarRules.FaultTitleKey(Playback.Error.Value, NamedWithheld(r))),
             _ => Loc.Get(Strings.Player.Loading),
         };
     }
+
+    /// <summary>The deck row's named catalog verdict (region-locked, Premium only), or <see cref="Track.UnavailableWhy.None"/>.</summary>
+    static Track.UnavailableWhy NamedWithheld(EntityRef r)
+        => r.Kind == EntityKind.Track && new Track(r.Slot) is { IsValid: true } t ? t.UnplayableReason() : Track.UnavailableWhy.None;
 
     static string? BarArtUrl(EntityRef r)
     {

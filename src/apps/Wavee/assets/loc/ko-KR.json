@@ -14,6 +14,10 @@
         "explained": "{count, plural, other {여기 있는 곡 #곡을 재생할 수 없습니다}}: {reasons}.",
         "region": "{count, plural, other {#곡은 사용 중인 국가에서 제공되지 않습니다}}",
         "upcoming": "{count, plural, other {#곡은 아직 공개되지 않았습니다}}",
+        "premium": "{count, plural, other {#곡은 Premium이 필요합니다}}",
+        "allPremium": "{count, plural, other {Premium이 필요합니다}}",
+        "gone": "{count, plural, other {#곡은 사용할 수 없습니다}}",
+        "allGone": "{count, plural, other {사용할 수 없습니다}}",
         "allRegion": "{count, plural, other {사용 중인 국가에서 제공되지 않습니다}}",
         "allUpcoming": "{count, plural, other {아직 공개되지 않았습니다}}",
         "hide": "{count, plural, other {숨기기}}"
@@ -26,6 +30,10 @@
     "trackFacts": {
       "unavailableShort": "사용 불가",
       "unavailableReason": "이 곡은 재생할 수 없습니다",
+      "region": "사용 중인 국가에서 제공되지 않음",
+      "regionReason": "이 곡은 사용 중인 국가에서 제공되지 않습니다",
+      "premium": "Premium 전용",
+      "premiumReason": "이 곡은 Spotify Premium이 필요합니다",
       "localReason": "로컬 파일: 음악 폴더에서 찾을 수 없습니다"
     },
     "artist": "아티스트",

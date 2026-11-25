@@ -272,11 +272,12 @@ public readonly partial struct Track
     internal static void OpenEntity(EntityUri uri, string name) => Shell.GoTo(Shell.For(uri, name));
 
     // Play the FORM the user clicked: a music video plays through the PARENT song (kind 99 keys the video on the song —
-    // DetailTracks.cs:3329-3342); an alternate recording plays itself. The deck's own item toggles.
+    // DetailTracks.cs:3329-3342); an alternate recording plays itself. The deck's own item toggles. An AUDIO form the catalog
+    // withholds (region-locked, Premium only, not out yet) says why instead (Track.RefuseWithheld); the video is its own verdict.
     static void PlayVersion(Track version, Track parent, byte kind)
     {
         var target = kind == DrawerRules.VideoKind ? parent : version;
-        if (target.IsValid) Invoke(target, () => Playback.PlayContext(target.Id));
+        if (target.IsValid) Invoke(target, () => Playback.PlayContext(target.Id), refuseWithheld: kind != DrawerRules.VideoKind);
     }
 
     // ── the format split button: [30 × 28 play | 20 × 28 caret] keyed "fmt:" + uri ──

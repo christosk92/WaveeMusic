@@ -479,10 +479,19 @@ public readonly partial struct Track
     /// "play from here" is its profile's <c>PlayFrom</c>; this is the menu's and the track surface's (<c>Track.RowData</c>'s default play).</summary>
     static void PlayTracks(IReadOnlyList<Track> tracks)
     {
-        int first = -1;
-        for (int i = 0; i < tracks.Count; i++)
-            if (tracks[i].Slot > 0) { first = i; break; }
-        if (first < 0) return;
+        // The deck starts on the first row the catalog does not WITHHOLD; a set of withheld rows only says why (Track.RefuseWithheld).
+        int first = -1, withheld = -1;
+        for (int i = 0; i < tracks.Count && first < 0; i++)
+        {
+            if (tracks[i].Slot <= 0) continue;
+            if (Track.WithheldTrack(tracks[i])) { if (withheld < 0) withheld = i; continue; }
+            first = i;
+        }
+        if (first < 0)
+        {
+            if (withheld >= 0) Track.RefuseWithheld(tracks[withheld]);
+            return;
+        }
         Playback.PlayContext(tracks[first].Id);
         if (Actions.Services.AddToQueue is not { } enqueue) return;
         for (int i = first + 1; i < tracks.Count; i++)

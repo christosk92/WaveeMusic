@@ -234,6 +234,23 @@ public static partial class Entities
         finally { Staging.Return(s); }
     }
 
+    /// <summary>The inspector's <c>transport do=metadata</c>: a CAPTURED catalog answer (the official client's, or Wavee's own) committed
+    /// through the real decoder, exactly as the wire's answer would land: an extended-metadata response body
+    /// (<see cref="Spotify.Decode.ExtendedMetadata"/>), or a Pathfinder JSON answer (<see cref="Spotify.Decode.Export"/>, e.g. a
+    /// <c>fetchPlaylist</c>). The fake catalog then holds the payload's tracks with their real verdicts.</summary>
+    internal static void CommitMetadata(ReadOnlySpan<byte> response)
+    {
+        if (Current is null) return;
+        var s = Staging.Rent();
+        try
+        {
+            if (response.Length > 0 && response[0] == (byte)'{') Spotify.Decode.Export(response, s);
+            else Spotify.Decode.ExtendedMetadata(response, s);
+            Commit(s);
+        }
+        finally { Staging.Return(s); }
+    }
+
     /// <summary>The catalogue classifies <paramref name="show"/> as an AUDIOBOOK, as the show's own list header does
     /// (<c>is_audiobook=true</c>, <see cref="StagedShow.HeaderFacts"/>): the bit is ORed on and nothing else the show knows moves. The
     /// fake library holds no book; the inspector's <c>transport do=audiobook</c> stages one for the Connect state's book branch.</summary>

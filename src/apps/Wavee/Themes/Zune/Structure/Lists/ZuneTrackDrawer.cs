@@ -248,7 +248,7 @@ internal static class ZuneTrackDrawer
         var label = Meta(Loc.Get(Facts.LabelKey(kind)), Tok.TextTertiary);
         string? glyph = kind switch
         {
-            FactKind.Video => Icons.Movie, FactKind.LocalFile => Icons.Folder, FactKind.Unavailable => Icons.Info, _ => null,
+            FactKind.Video => Icons.Movie, FactKind.LocalFile => Icons.Folder, FactKind.Unavailable or FactKind.RegionLocked or FactKind.PremiumOnly => Icons.Info, _ => null,
         };
         if (glyph is null) return label;
         return new BoxEl
