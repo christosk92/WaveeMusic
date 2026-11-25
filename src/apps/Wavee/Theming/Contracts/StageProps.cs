@@ -370,6 +370,9 @@ public readonly record struct StageTransportFacts(bool Playing, bool PrimaryEnab
     public string? ShuffleLock { get; init; }
     /// <summary>The repeat button's twin of <see cref="ShuffleLock"/>. Appended.</summary>
     public string? RepeatLock { get; init; }
+    /// <summary>AI DJ plays here: "Let DJ pick" for the transport, and <see cref="Source"/> is its segment line ("DJ · Vibes"). Null otherwise.
+    /// Appended.</summary>
+    public DjChrome? Dj { get; init; }
 }
 
 /// <summary>The output device button's face.</summary>

@@ -6,6 +6,9 @@
 //   dj do=answers         the --fake lexicon service's session and first pages, decoded by the real context-resolve decoder
 //   dj do=play            start the DJ list as a click does (Playback.PlayContext): waits for the resolve and the load
 //   dj do=expire          the session's lexicon_expiration_time passes now: the next page fetch resolves the session again
+//   dj do=jump            "Let DJ pick" as the button presses it (Playback.DjJump): the cursor before and after, the rows it skipped
+//                         (now behind the cursor: history), the lexicon answers it caused, and the reducer's refusal when there was none
+//   dj do=starve on=true  --fake: the lexicon service answers no more pages (on=false: it answers again), so a jump finds no later segment
 //
 // The session readout carries what its answer stated (dj, infinite, the expiry, the three restrictions, the welcome narration's
 // presence), each page's segment and correlation id, the lookahead (pages loaded after the playing one) and the DJ book: per queue
@@ -64,13 +67,49 @@ public static partial class Diagnostics
                             WriteFakeAnswers(w, pages);
                         });
                     }
+                case "jump":
+                    {
+                        if (_shell is null) return Inspect.Reply.Fail(id, name, "dj do=jump needs a mount");
+                        Playback.State before = Playback.Snap();
+                        int served = Entities.FakeLexiconServed, jumps = Playback.Dj.Jumps, pages = Playback.Dj.Current?.Pages.Count ?? 0;
+                        int target = Playback.Dj.NextJumpTarget(global::Wavee.Queue.Rows, before.Cursor.Index);
+                        Playback.DjJump("inspect");
+                        if (!a.Has("trace"))
+                        {
+                            long until = Environment.TickCount64 + PlayLoadBudgetMs;
+                            RunFrames(2);
+                            while (Entities.FakeLexiconServed == served && Environment.TickCount64 < until && Playback.Dj.Jumps > jumps) { RunFrames(1); Thread.Sleep(2); }
+                            AwaitPlaybackLoad(PlayLoadBudgetMs);
+                            RunFrames(4);
+                        }
+                        Playback.State after = Playback.Snap();
+                        return Settled(id, name, a, w =>
+                        {
+                            w.WriteString("do", verb);
+                            w.WriteBoolean("jumped", Playback.Dj.Jumps > jumps);
+                            w.WriteNumber("cursorBefore", before.Cursor.Index);
+                            w.WriteNumber("targetBefore", target);
+                            w.WriteNumber("cursorAfter", after.Cursor.Index);
+                            w.WriteNumber("skippedToHistory", Math.Max(0, after.Cursor.Index - before.Cursor.Index - 1));
+                            w.WriteNumber("lexiconAnswers", Entities.FakeLexiconServed - served);
+                            w.WriteNumber("pagesBefore", pages);
+                            w.WriteNumber("pagesAfter", Playback.Dj.Current?.Pages.Count ?? 0);
+                            w.WriteNumber("nextJumpTarget", Playback.Dj.NextJumpTarget(global::Wavee.Queue.Rows, after.Cursor.Index));
+                            WriteDjSession(w);
+                        });
+                    }
+                case "starve":
+                    {
+                        Entities.FakeLexiconStarved = a.Str("on", "true") != "false";
+                        return Inspect.Reply.Ok(id, name, w => { w.WriteString("do", verb); w.WriteBoolean("starved", Entities.FakeLexiconStarved); });
+                    }
                 case "expire":
                     {
                         if (!Playback.Dj.ExpireForInspect()) return Inspect.Reply.Fail(id, name, "dj do=expire: no lexicon session plays");
                         return Inspect.Reply.Ok(id, name, w => { w.WriteString("do", verb); WriteDjSession(w); });
                     }
                 default:
-                    return Inspect.Reply.Fail(id, name, "dj wants do=status|answers|play|expire, not '" + verb + "'");
+                    return Inspect.Reply.Fail(id, name, "dj wants do=status|answers|play|jump|starve|expire, not '" + verb + "'");
             }
         }
 
@@ -173,6 +212,15 @@ public static partial class Diagnostics
                 w.WriteEndObject();
             }
             w.WriteEndArray();
+            w.WriteNumber("cursor", st.Cursor.Index);
+            w.WriteNumber("jumps", Playback.Dj.Jumps);
+            Playback.Dj.Facts df = Playback.DjNow.Peek();
+            w.WriteStartObject("surfaces");
+            w.WriteBoolean("active", df.Active);
+            w.WriteString("pick", PlayerVerbs.Dj(track: false)?.Pick ?? "");
+            w.WriteString("line", PlayerVerbs.Dj(track: false)?.Line ?? "");
+            w.WriteBoolean("canJump", df.CanJump);
+            w.WriteEndObject();
             w.WriteString("deviceContext", Spotify.Api.DeviceContext);
             WriteTransport(w);
 

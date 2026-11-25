@@ -106,9 +106,12 @@ public static partial class Stage
         bool hasSource = source is { Length: > 0 };
         // a formatted key: the generated method formats; Loc.Get would render "[…]" (V-D15). No source ⇒ no label (never "Playing from search" for nothing).
         string playingFrom = hasSource ? Strings.Stage.PlayingFrom(Queue.ContextKindLabel(contextId)) : "";
+        // While AI DJ plays here the source is its segment line ("DJ · Vibes"), where every theme draws the source.
+        DjChrome? dj = PlayerVerbs.Dj();
+        if (dj is not null) source = dj.Line;
         return new StageTransportFacts(playing, primary, tf.CanTransport, tf.PrevEnabled, tf.NextEnabled, Playback.Shuffle.Value,
             repeat != RepeatMode.Off, repeat == RepeatMode.Track, saved, like, playingFrom, source ?? "")
-        { ShuffleLock = PlayerVerbs.ShuffleLock(), RepeatLock = PlayerVerbs.RepeatLock() };
+        { ShuffleLock = PlayerVerbs.ShuffleLock(), RepeatLock = PlayerVerbs.RepeatLock(), Dj = dj };
     }
 
     static readonly Func<StageNextFacts> s_nextFacts = NextFacts;

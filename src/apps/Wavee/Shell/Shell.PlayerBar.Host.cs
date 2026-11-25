@@ -350,6 +350,7 @@ public static partial class Shell
                 RepeatGlyph = PlayerBarRules.RepeatGlyph(repeat),
                 ShuffleLock = PlayerVerbs.ShuffleLock(),
                 RepeatLock = PlayerVerbs.RepeatLock(),
+                Dj = PlayerVerbs.Dj(),
                 OwnsTransport = ownsTransport,
                 SeekStepEnabled = seekStepEnabled,
                 TopEdgeSweeps = sweeps,

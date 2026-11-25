@@ -80,7 +80,11 @@ internal static class ClassicStageTransport
         {
             // A TIER CROSSING (Huge's wider padding and gaps) moves every control of the row: each glides to its new place on the tier's shove
             // (a position FLIP; padding and gaps cannot ease themselves), so the saved heart and its neighbours never step
-            var right = new List<Element>(5) { Glide(Heart(f.Saved, f.Like, set.Fill)), Glide(Embed.Comp(new MuteGlyph.Props(props), static () => new MuteGlyph())) };
+            var right = new List<Element>(6);
+            // AI DJ: "Let DJ pick" leads the right cluster, a satellite filled with the DJ's own colour (the cluster hugs the card's end: the
+            // controls after it never move as it comes and goes).
+            if (f.Dj is { } dj) right.Add(DjPick(dj));
+            right.AddRange([Glide(Heart(f.Saved, f.Like, set.Fill)), Glide(Embed.Comp(new MuteGlyph.Props(props), static () => new MuteGlyph()))]);
             if (L.VolumeFits) right.Add(Glide(Embed.Comp(new VolumeRow.Props(set, tier.VolumeW, props), static () => new VolumeRow())));   // only where the cluster still fits the card
             right.Add(Glide(Embed.Comp(new DeviceButton.Props(props), static () => new DeviceButton())));
             right.Add(Glide(more));
@@ -169,6 +173,26 @@ internal static class ClassicStageTransport
         Cursor = enabled ? CursorId.Hand : (CursorId?)null, OnRealized = onRealized,
         Children = [new TextEl(glyph) { Size = glyphSize, FontFamily = Tok.Definition.Fonts.Icon, Color = enabled ? Ink.InkSecondary : Ink.InkTertiary, HoverColor = enabled ? Ink.Ink : Ink.InkTertiary }],
     };
+
+    /// <summary>"Let DJ pick" (AI DJ): Classic's satellite filled with the DJ's button colour (<c>narration.jump.background.color</c>), its sparkle
+    /// in the DJ's icon colour, the words ("Let DJ pick") in its tooltip; it fades in and out in place and glides with the cluster on a tier crossing.</summary>
+    static Element DjPick(DjChrome dj)
+    {
+        ColorF fill = dj.PickFill != 0 ? ColorScience.ToColor(dj.PickFill) : Ink.GlassRest;
+        ColorF ink = !dj.CanPick ? Ink.InkTertiary : dj.PickInk != 0 ? ColorScience.ToColor(dj.PickInk) : ColorContrast.PickContrast(fill);
+        return ToolTip.Wrap(new BoxEl
+        {
+            Key = "transport:dj-pick", Width = ClassicStageGeometry.GlyphBox, Height = ClassicStageGeometry.GlyphBox, Shrink = 0f,
+            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+            Fill = dj.CanPick ? fill : Ink.GlassRest, HoverFill = dj.CanPick ? fill with { A = ClassicStageGeometry.LatchedHoverAlpha } : Ink.GlassRest,
+            PressedFill = dj.CanPick ? Ink.GlassPressed : Ink.GlassRest, BrushTransitionMs = Design.Motion.Faster,
+            HoverScale = R.Motion.ScaleEmphatic.HoverIf(dj.CanPick), PressScale = R.Motion.ScaleEmphatic.PressIf(dj.CanPick),
+            Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Layout = ClassicTierMotion.Shove,
+            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = dj.CanPick, OnClick = dj.CanPick ? dj.Jump : null,
+            Cursor = dj.CanPick ? CursorId.Hand : (CursorId?)null,
+            Children = [new TextEl(Icons.RefineSparkle) { Size = ClassicStageGeometry.SatelliteGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = ink }],
+        }, dj.Pick);
+    }
 
     /// <summary>Shuffle / repeat: accent-filled while latched (the prototype's <c>.ab.chk</c>).</summary>
     static BoxEl Satellite(string glyph, Action onClick, bool enabled, bool latched, ColorF accent) => new()

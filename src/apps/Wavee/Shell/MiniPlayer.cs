@@ -621,6 +621,8 @@ public static partial class MiniPlayer
     static string DetailText()
     {
         if (Shell.PlayerBarHost.Props.RemoteDeviceName() is { Length: > 0 } device) return Strings.Player.PlayingOn(device);
+        // While AI DJ plays here the detail line is its segment ("DJ · Vibes"): the mini player's context line.
+        if (PlayerVerbs.Dj() is { } dj) return dj.Line;
         var current = Playback.Current.Value;
         if (current.Kind != EntityKind.Track || current.IsNone || Entities.Current is not { } scope) return "";
         _ = scope.Albums.Changed.Value;

@@ -55,6 +55,10 @@ public static partial class Entities
     const int DjSegmentBase = 4100;
     static readonly string[] s_djSubtitles = ["Vibes", "From the past", "Based on recent listening", "Late-night picks"];
 
+    /// <summary>The inspector's `dj do=starve`: the fake service answers no more pages (a session answer still lands), so the deck runs out of
+    /// later segments.</summary>
+    public static bool FakeLexiconStarved { get; set; }
+
     /// <summary>How many lexicon answers the fake has served (the inspector's evidence that a fetch happened).</summary>
     public static int FakeLexiconServed { get; private set; }
 
@@ -70,6 +74,7 @@ public static partial class Entities
     {
         if (!path.StartsWith(LexiconSessionPath, StringComparison.Ordinal)) return null;
         if (path.IndexOf("contextUri=" + LibrarySeed.DjUri, StringComparison.Ordinal) < 0) return null;
+        if (FakeLexiconStarved && path.StartsWith(DjPagePath, StringComparison.Ordinal)) return null;
         byte[]? body = path.StartsWith(DjPagePath, StringComparison.Ordinal) ? DjPage(PageOf(path))
             : path.StartsWith(LexiconSessionPath + "?", StringComparison.Ordinal) ? DjSession(path) : null;
         if (body is not null) FakeLexiconServed++;

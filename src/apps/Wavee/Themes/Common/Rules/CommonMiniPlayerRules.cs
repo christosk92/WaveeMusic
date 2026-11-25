@@ -14,7 +14,7 @@ internal static class CommonMiniPlayerRules
 {
     public const string RootKey = "mini.root", FaceKey = "mini.face", ChromeKey = "mini.chrome", TransportKey = "mini.transport",
         SeekKey = "mini.seek", HoverKey = "mini.hover", RestKey = "mini.rest", MetaKey = "mini.meta", PlayKey = "mini.play",
-        SaveKey = "mini.save", DeviceKey = "mini.device", OptionsKey = "mini.options", BackKey = "mini.back",
+        SaveKey = "mini.save", DeviceKey = "mini.device", DjLineKey = "mini.dj-line", DjPickKey = "mini.dj-pick", OptionsKey = "mini.options", BackKey = "mini.back",
         EdgeKey = "mini.edge", HudKey = "mini.hud", LyricsKey = "mini.lyrics", TickerKey = "mini.ticker", BleedKey = "mini.bleed",
         VolumeKey = "mini.volume", ShapeKey = "mini.shape", TitleKey = "mini.title", ScrimKey = "mini.scrim", TimeKey = "mini.time";
 

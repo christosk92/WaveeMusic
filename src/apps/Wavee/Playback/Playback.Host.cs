@@ -182,6 +182,10 @@ public static partial class Playback
     /// plan-dj §2.5): every shuffle and repeat button reads it and draws disabled, its tooltip saying why.</summary>
     public static readonly Signal<LockFacts> LockedToggles = new(default) { DebugName = "playback.lockedToggles" };
 
+    /// <summary>The DJ playing here, as the surfaces draw it (<see cref="Dj.Facts"/>: "Let DJ pick", the segment line); default while no DJ
+    /// session is the deck's context on this device.</summary>
+    public static readonly Signal<Dj.Facts> DjNow = new(default) { DebugName = "playback.djNow" };
+
     /// <summary>What <see cref="LockedToggles"/> states.</summary>
     public readonly record struct LockFacts(ToggleLock Bits, LockReason Reason)
     {
@@ -926,6 +930,7 @@ public static partial class Playback
         if (s_fx.Autoplay) RequestAutoplay(s_fx.AutoplayContext);
         if (s_fx.AutoplayPage) RequestAutoplayPage(s_fx.AutoplayPageContext);
         if (s_fx.Page) RequestPage(s_fx.PageContext);
+        if (s_fx.DjJump) Dj.Jumped(s_fx.DjJumpTarget);
         if (s_fx.VideoIntent) OnVideoIntent?.Invoke(s_fx.VideoIntentOn, s_fx.VideoIntentWhy);
         if (s_fx.SkippedUnavailable)
         {
@@ -1351,6 +1356,7 @@ public static partial class Playback
         Shuffle.Value = s_state.Shuffle;
         Repeat.Value = s_state.Repeat;
         LockedToggles.Value = new LockFacts(s_state.LiveLocks, s_state.LiveLocks == ToggleLock.None ? LockReason.None : s_state.Locks.Reason);
+        DjNow.Value = Dj.FactsOf(in s_state);
         CanSeek.Value = s_state.CanSeek;
         CanSkipNext.Value = s_state.CanSkipNext;
         CanSkipPrev.Value = s_state.CanSkipPrev;
@@ -1622,6 +1628,18 @@ public static partial class Playback
     /// fault: on 2026-11-17 two audiobook chapter changes right after a seek read as "a seek advanced the chapter", and only the
     /// reducer's end position (the playhead, where a natural end reports the duration) said a skip had run.</summary>
     public static void Next(string cause) { LogSkip(cause, "next"); Post(Input.Next(FrameNowMs())); }
+    /// <summary>"Let DJ pick" (<see cref="InputKind.DjJump"/>): the next DJ segment, from <paramref name="cause"/> (the UI entry).</summary>
+    /// <para>The user's queued songs are kept: the queue is laid out first as a click on the target row lays it (<see cref="Queue.SkipTo"/>: the
+    /// segment's rows skipped over become history, the queued run moves behind the target), then the reducer moves the deck there.</para>
+    public static void DjJump(string cause)
+    {
+        LogSkip(cause, "dj-jump");
+        if (s_state.RoutesLocal && Dj.Of(s_state.Context) is not null && Entities.Current is not null
+            && Dj.NextJumpTarget(Queue.Rows, s_state.Cursor.Index) is int target and >= 0
+            && Queue.SkipTo(target, s_state.Cursor, out _))
+            Entities.Publish();
+        Post(Input.DjJump(FrameNowMs()));
+    }
     public static void Previous(string cause)
     {
         LogSkip(cause, "previous");

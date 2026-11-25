@@ -1352,6 +1352,9 @@ public static partial class Playback
         /// <summary>The screen the video is on can (<c>IntArg</c> 0) or cannot (1) carry the HDCP protected video needs (<c>Video.Hdcp</c>).
         /// While it cannot, a row whose video is protected plays its song instead; when it can again, the row goes back to its video.</summary>
         VideoScreen,
+        /// <summary>"Let DJ pick" (AI DJ, plan-dj §1.8, §2.6): the rest of the playing segment is skipped and the next segment's first row
+        /// (its <c>dj.jump_target</c>) plays. Refused while no later segment is loaded (<see cref="Refusal.NoJumpTarget"/>).</summary>
+        DjJump,
     }
 
     /// <summary>One input — a VALUE (C2). A plain <c>readonly struct</c> and NOT a <c>record struct</c> on purpose:
@@ -1421,6 +1424,8 @@ public static partial class Playback
         public const int ShuffleOrderedBit = 2;
 
         public static Input Next(long nowMs = 0) => new(InputKind.Next, nowMs: nowMs);
+        /// <summary>"Let DJ pick" (<see cref="InputKind.DjJump"/>).</summary>
+        public static Input DjJump(long nowMs = 0) => new(InputKind.DjJump, nowMs: nowMs);
         public static Input Prev(long nowMs = 0) => new(InputKind.Prev, nowMs: nowMs);
         public static Input Pause(long nowMs = 0) => new(InputKind.Pause, nowMs: nowMs);
         public static Input Resume(long nowMs = 0) => new(InputKind.Resume, nowMs: nowMs);
@@ -1573,6 +1578,8 @@ public static partial class Playback
         VolumeFixed,
         /// <summary>A shuffle or repeat toggle the playing context forbids (<see cref="State.Locks"/>: the DJ's <c>dj-disallow</c>).</summary>
         ContextLocked,
+        /// <summary>"Let DJ pick" with no DJ session on the deck, or with no later segment loaded yet (the page it needs is asked for).</summary>
+        NoJumpTarget,
     }
 
     /// <summary>Fixed effect SLOTS — one per effect KIND, never a list. The last write inside a drain wins and the
@@ -1679,6 +1686,10 @@ public static partial class Playback
         /// <see cref="AutoplayPageContext"/> and answer with <see cref="Input.AutoplayPaged"/>.</summary>
         public bool AutoplayPage;
         public EntityId AutoplayPageContext;
+        /// <summary>"Let DJ pick" moved the deck to the next segment's first row (<see cref="DjJumpTarget"/>, the row's item id). The
+        /// host's seam for the jump narration (plan-dj §2.6: D3 plays <c>narration.jump</c> with its talk-over here); today a log line.</summary>
+        public bool DjJump;
+        public ulong DjJumpTarget;
 
         // ── video (G-142) ──
         /// <summary>The reducer decided the video mode for the shell's surface: on (a controller's switch-to-video, a play that
@@ -1775,7 +1786,7 @@ public static partial class Playback
         public readonly bool Any => Load || Start || Stop || PauseHost || ResumeHost || Seek || Volume || PersistVolume
             || ScrubBegin || ScrubMove || ScrubEnd || ScrubCancel
             || PrepareNext || PublishState || SendRemote || Transfer || Fetch || Smtc || SmtcTimeline || Snapshot
-            || Prefetch || Prefetch2 || CancelPrepared || Adopt || QueueAdd || Reorder || Autoplay || Page || AutoplayPage
+            || Prefetch || Prefetch2 || CancelPrepared || Adopt || QueueAdd || Reorder || Autoplay || Page || AutoplayPage || DjJump
             || VideoIntent || SkippedUnavailable || TakeoverSeed || ClaimRejected || TransferFailed || Mute || Refused != Refusal.None;
     }
 
@@ -1849,6 +1860,7 @@ public static partial class Playback
             case InputKind.ScrubEnd: DoScrubEnd(ref s, in i, ref fx); break;
             case InputKind.ScrubCancel: DoScrubCancel(ref s, ref fx); break;
             case InputKind.EndHold: DoEndHold(ref s, in i, ref fx); break;
+            case InputKind.DjJump: DoDjJump(ref s, in i, ref fx); break;
             default: break;
         }
         if (s.Hold != EndHold.None) HoldInvariant(ref s);

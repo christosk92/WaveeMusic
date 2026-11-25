@@ -1131,6 +1131,31 @@ public static partial class Playback
         fx.AutoplayContext = s.Context;
     }
 
+    /// <summary>"Let DJ pick" (AI DJ, plan-dj §1.8, §2.6): the rest of the playing segment is skipped (its rows stay behind the cursor:
+    /// history, as a controller's named skip leaves them) and the next segment's first row, its <c>dj.jump_target</c>
+    /// (<see cref="Dj.NextJumpTarget"/>), plays. Then one page is fetched, as the official client fetches one after every jump (unless
+    /// the advance's own refill already asked for it). Refused, and the page asked for, while no later segment is loaded: the press
+    /// that follows the page lands. Only a deck this device plays (a remote DJ player's jump is a Connect signal, D4).
+    /// <para>The seam for the voice (D3): <see cref="Effects.DjJump"/> names the target; the host will play its
+    /// <c>narration.jump</c> clip there with the talk-over into it. Today the jump is a plain track change.</para></summary>
+    static void DoDjJump(ref State s, in Input i, ref Effects fx)
+    {
+        if (!s.RoutesLocal || !s.HasCurrent || Dj.Of(s.Context) is null) { fx.Refused = Refusal.NoJumpTarget; return; }
+        int target = Dj.NextJumpTarget(Queue.Rows, s.Cursor.Index);
+        if (target < 0)
+        {
+            fx.Refused = Refusal.NoJumpTarget;
+            if (s.MorePages && s.Autoplay == AutoplayPhase.None) { s.Autoplay = AutoplayPhase.Requested; fx.Page = true; fx.PageContext = s.Context; }
+            return;
+        }
+        ulong targetItem = Queue.Rows[target].ItemId;
+        Advance(ref s, in i, ref fx, forward: true, PlayReason.ForwardButton, jumpTo: target);
+        if (s.Cursor.Index != target) return;              // the walk refused it (a restriction) or stepped past a dead target
+        if (s.MorePages && s.Autoplay == AutoplayPhase.None) { s.Autoplay = AutoplayPhase.Requested; fx.Page = true; fx.PageContext = s.Context; }
+        fx.DjJump = true;
+        fx.DjJumpTarget = targetItem;
+    }
+
     /// <summary>The context about to play states its own toggle restrictions (AI DJ, plan-dj §2.5; <see cref="State.Locks"/>). Locks
     /// that forbid shuffle or a repeat HOLD the user's own shuffle and repeat (once: a second locked context keeps the first hold) and
     /// turn them off; a context that forbids nothing gives them back (<see cref="ReleaseLocks"/>). The host lays the queue in the order

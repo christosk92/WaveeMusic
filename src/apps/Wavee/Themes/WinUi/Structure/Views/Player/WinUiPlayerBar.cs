@@ -171,8 +171,10 @@ internal static partial class WinUiPlayerBar
             Animate = PL.MoveMotion,
             Children = identityKids.ToArray(),
         };
-        var leftKids = new List<Element>(2) { identity };
+        var leftKids = new List<Element>(3) { identity };
         if (v.ShowLikeSlot) leftKids.Add(heart);
+        // AI DJ: "Let DJ pick" at the identity's end (the column's free room, after the heart: it comes and goes without moving what is before it).
+        if (!mini && v.Dj is { } dj) leftKids.Add(Item(PL.DjPickKey, DjPick(dj)));
         BoxEl left = new BoxEl
         {
             Key = PL.LeftKey, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center,
@@ -493,6 +495,8 @@ internal static partial class WinUiPlayerBar
                 Key = "remote-device-line", Direction = 1, Animate = PL.ItemMotion, MinWidth = 0f,
                 Children = [Embed.Comp(new RemoteProps(props, Accent: false), static () => new WinUiRemoteLine())],
             });
+        // AI DJ: the segment line ("DJ · Vibes") in the "playing on" line's place and look.
+        else if (!mini && v.Dj is { } dj) kids.Add(DjLine(dj));
 
         // The full bar's lines are one slot of the level's width (`WinUiBarLook.MetaW`, narrower only where the window leaves less), never
         // the text's: a short title and a long one put the heart in the same place, so a skip moves nothing. The Mini bar's door takes the row.
