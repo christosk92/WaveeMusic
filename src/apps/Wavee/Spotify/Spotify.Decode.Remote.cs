@@ -68,6 +68,9 @@ public static partial class Spotify
             /// or the text is not a 128-bit base62 id. The owner adopts it and publishes it as its own.</summary>
             public UInt128 SessionId;
             public TextRef FeatureIdentifier, ViewUri, FeatureVersion, ReferrerIdentifier, DeviceIdentifier, ExternalReferrer, CommandId, ContextMetadata, ResolvedMetadata;
+            /// <summary><c>play_options.reason</c> (<c>interactive</c>, …): why the controller played. A lexicon session url is resolved
+            /// with it (plan-dj §2.6); empty when the play stated none.</summary>
+            public TextRef Reason;
             /// <summary>The rows the body carried: a play's embedded pages (play them as sent, no resolve), or a transfer's
             /// queue.</summary>
             public int TrackStart, TrackCount;
@@ -132,6 +135,14 @@ public static partial class Spotify
                                 else if (r.ValueTextEquals("device_identifier"u8)) { r.Read(); load.DeviceIdentifier = Text(ref r, into); }
                                 else if (r.ValueTextEquals("external_referrer"u8)) { r.Read(); load.ExternalReferrer = Text(ref r, into); }
                                 else if (r.ValueTextEquals("view_uri"u8)) { r.Read(); load.ViewUri = Text(ref r, into); }
+                                else SkipValue(ref r);
+                            }
+                        }
+                        else if (r.ValueTextEquals("play_options"u8))
+                        {
+                            for (int o = Fields(ref r); Next(ref r, o);)
+                            {
+                                if (r.ValueTextEquals("reason"u8)) { r.Read(); load.Reason = Text(ref r, into); }
                                 else SkipValue(ref r);
                             }
                         }
@@ -385,6 +396,8 @@ public static partial class Spotify
         public struct ContextPage
         {
             public TextRef Uri, NextPageUrl, SortingCriteria, Metadata;
+            /// <summary>The answer's own root <c>url</c> (a lexicon session states the url it answered, plan-dj §1.2); empty for most.</summary>
+            public TextRef Url;
             public int TrackStart, TrackCount;
             public bool Infinite;
         }
@@ -404,6 +417,7 @@ public static partial class Spotify
             for (int root = r.CurrentDepth; Next(ref r, root);)
             {
                 if (r.ValueTextEquals("uri"u8)) { r.Read(); page.Uri = Text(ref r, into); }
+                else if (r.ValueTextEquals("url"u8)) { r.Read(); page.Url = Text(ref r, into); }
                 else if (r.ValueTextEquals("next_page_url"u8)) { r.Read(); if (page.NextPageUrl.IsEmpty) page.NextPageUrl = Text(ref r, into); }
                 else if (r.ValueTextEquals("tracks"u8)) JsonTracks(ref r, into);
                 else if (r.ValueTextEquals("metadata"u8))

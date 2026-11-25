@@ -122,6 +122,11 @@ public static partial class Playback
         Span<byte> text = stackalloc byte[512];
         load.ContextUri = buffer.AddText(text[..context.Format(text)]);
         if (!startAt.IsEmpty) load.SkipToUri = buffer.AddText(text[..startAt.Format(text)]);
+        // A list served by a lexicon session (the DJ: its lexicon_context_url attribute) plays from that url, as the official client
+        // builds {uri, url} for it (plan-dj §2.1.1, §3a); ResolveContext branches on it.
+        if (context.Kind == EntityKind.Playlist && Entities.Current.Playlists.TryGetSlot(context, out int list)
+            && new Playlist(list).LexiconUrlId is { IsEmpty: false } lexicon)
+            load.ContextUrl = buffer.AddText(System.Text.Encoding.UTF8.GetBytes(Entities.Strings.Resolve(lexicon)));
         ResolveContext(++s_contextSeq, context.Text, load, buffer, ClaimCause.UserPlay);
     }
 
@@ -412,6 +417,7 @@ public static partial class Playback
                 ClaimCause.UserPlay, paused: false, explicitPosition: fromMs >= 0, here: here));
             s_pageUrl = "";                                // the caller's rows ARE the context: nothing to page (G-242)
             if (!sameContext) ForgetAutoplayPage();
+            Dj.Leave(context);
             Post(Input.ContextPages(context, morePages: false, now));
         }
         finally
@@ -464,6 +470,13 @@ public static partial class Playback
     /// exactly once, whichever way it ends.</summary>
     static void ResolveContext(long seq, string uri, RemoteLoad load, ClusterBuffer buffer, ClaimCause cause)
     {
+        // A lexicon session url (the DJ, plan-dj §2.1.2) is resolved through the lexicon session provider, never as the bare uri: a
+        // local DJ start and a controller's DJ play alike (the controller's play was acked and ignored before this, L2312074).
+        if (!load.ContextUrl.IsEmpty && Dj.IsLexicon(buffer.Utf8(load.ContextUrl)))
+        {
+            ResolveLexicon(seq, System.Text.Encoding.UTF8.GetString(buffer.Utf8(load.ContextUrl)), load, buffer, cause);
+            return;
+        }
         bool queued = Spotify.Api.Run(() =>
         {
             int start = buffer.TrackCount, count = 0;
@@ -497,12 +510,14 @@ public static partial class Playback
     static int s_resolvedStart, s_resolvedCount;
     static ClaimCause s_resolvedCause;
     static string s_resolvedPageUrl = "";
+    static Dj.Resolve? s_resolvedDj;
 
     /// <summary>UI thread: a resolve answered. Its start is folded at the TOP of the next drain (<see cref="StartResolved"/>),
     /// never from this callback — a Connect verb held back behind an inbound load (`Playback.Host.Remote.cs`) must land
     /// after the load's Play, and inputs posted from here would reach the reducer after the mailbox. One slot: the newer
     /// load wins, and the buffer it displaces goes back.</summary>
-    static void Resolved(long seq, in RemoteLoad load, ClusterBuffer buffer, int start, int count, ClaimCause cause, string pageUrl)
+    static void Resolved(long seq, in RemoteLoad load, ClusterBuffer buffer, int start, int count, ClaimCause cause, string pageUrl,
+        Dj.Resolve? dj = null)
     {
         if (s_resolvedBuffer is { } waiting)
         {
@@ -516,6 +531,7 @@ public static partial class Playback
         s_resolvedCount = count;
         s_resolvedCause = cause;
         s_resolvedPageUrl = pageUrl;
+        s_resolvedDj = dj;
         RequestDrain();
     }
 
@@ -531,7 +547,9 @@ public static partial class Playback
         ReleaseHold(seq);
         string pageUrl = s_resolvedPageUrl;
         s_resolvedPageUrl = "";
-        try { StartContext(seq, in load, buffer, s_resolvedStart, s_resolvedCount, s_resolvedCause, now, pageUrl); }
+        Dj.Resolve? dj = s_resolvedDj;
+        s_resolvedDj = null;
+        try { StartContext(seq, in load, buffer, s_resolvedStart, s_resolvedCount, s_resolvedCause, now, pageUrl, dj); }
         finally { ClusterBuffer.Return(buffer); }
     }
 
@@ -539,7 +557,7 @@ public static partial class Playback
     /// context load superseded this one, or another device took playback meanwhile. <paramref name="pageUrl"/> is the
     /// context's next page, kept for its run-out (G-242).</summary>
     static void StartContext(long seq, in RemoteLoad load, ClusterBuffer buffer, int contextStart, int contextCount,
-        ClaimCause cause, long now, string pageUrl = "")
+        ClaimCause cause, long now, string pageUrl = "", Dj.Resolve? dj = null)
     {
         if (seq != s_contextSeq || Entities.Current is null) return;
         if (s_state.Owner == Owner.Foreign) return;
@@ -636,6 +654,8 @@ public static partial class Playback
             s_pageContext = contextId;
             s_pageUrl = pageUrl;
             if (!sameContext) ForgetAutoplayPage();
+            if (dj is not null) Dj.Begin(contextId, dj, pageUrl);   // before ContextPages: its refill reads the session
+            else Dj.Leave(contextId);
             Apply(Input.ContextPages(contextId, pageUrl.Length > 0, now));   // after the Play: it names the new context
             Log.Info("playback", "context load rows=" + n + " start=" + at + " shuffle=" + (shuffle ? 1 : 0)
                 + " cause=" + cause + " pages=" + (pageUrl.Length > 0 ? "more" : "one"));

@@ -284,6 +284,13 @@ public static partial class Spotify
         /// <inheritdoc cref="Market"/>
         public static string Catalogue { get; set; } = "premium";
 
+        static volatile string s_deviceContext = "";
+
+        /// <summary>The <c>x-dynamic-device-context</c> value a <see cref="HeaderSet.DeviceContext"/> request carries (base64; the
+        /// playback host writes it before a lexicon GET, from this device's model and output, <c>Playback.Dj.DeviceContext</c>).
+        /// Empty: the header is left out.</summary>
+        public static string DeviceContext { get => s_deviceContext; set => s_deviceContext = value ?? ""; }
+
         /// <summary>Start the workers and register the <see cref="Fetch"/> provider. Idempotent and public: the GUI's
         /// composition and the headless host both call it once, after <c>Spotify.Boot</c>, and <see cref="Run"/> performs
         /// the same boot lazily for a caller that did not.</summary>
@@ -598,6 +605,8 @@ public static partial class Spotify
             if ((headers & HeaderSet.AcceptListItems) != 0)
                 h.TryAddWithoutValidation("x-accept-list-items", "audio-track, audio-episode, video-episode, audiobook");
             if ((headers & HeaderSet.AcceptGeoblock) != 0) h.TryAddWithoutValidation("spotify-accept-geoblock", "dummy");
+            if ((headers & HeaderSet.DeviceContext) != 0 && DeviceContext is { Length: > 0 } deviceContext)
+                h.TryAddWithoutValidation("x-dynamic-device-context", deviceContext);
             if ((headers & HeaderSet.DsaMode) != 0) h.TryAddWithoutValidation("spotify-dsa-mode-enabled", "false");
             if ((headers & HeaderSet.Origin) != 0) h.TryAddWithoutValidation("Origin", SpclientBaseUrl().TrimEnd('/'));
             if ((headers & HeaderSet.XpuiOrigin) != 0) { h.TryAddWithoutValidation("Origin", XpuiOrigin); h.TryAddWithoutValidation("Referer", XpuiOrigin + "/"); }

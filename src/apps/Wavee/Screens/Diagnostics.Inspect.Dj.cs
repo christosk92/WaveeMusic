@@ -1,8 +1,10 @@
 // ── Screens/Diagnostics.Inspect.Dj.cs ─────────────────────────────────────────────────────────────────────────────────
 // the `dj` verb (AI DJ, plan-dj §2.9): what Wavee holds of a DJ list and of the lexicon session playing it.
 //
-//   dj                    the DJ list (its attributes as the playlist row holds them)
+//   dj                    the DJ list (its attributes as the playlist row holds them), the lexicon session playing (its uri,
+//                         url, the pages fetched, the next page's url), and the deck and queue as `transport` reads them
 //   dj do=answers         the --fake lexicon service's session and first pages, decoded by the real context-resolve decoder
+//   dj do=play            start the DJ list as a click does (Playback.PlayContext): waits for the resolve and the load
 //
 // Role: SHELL (UI thread; reads the entity tables and the fake answers)
 
@@ -23,7 +25,29 @@ public static partial class Diagnostics
             {
                 case "":
                 case "status":
-                    return Inspect.Reply.Ok(id, name, w => WriteDjList(w, uri));
+                    return Inspect.Reply.Ok(id, name, w => { WriteDjList(w, uri); WriteDjSession(w); });
+                case "play":
+                    {
+                        if (_shell is null) return Inspect.Reply.Fail(id, name, "dj do=play needs a mount");
+                        if (!EntityId.TryParse(uri.AsSpan(), out EntityId list)) return Inspect.Reply.Fail(id, name, "not a uri: " + uri);
+                        int served = Entities.FakeLexiconServed;
+                        Playback.PlayContext(list);
+                        string phase = "traced";
+                        if (!a.Has("trace"))
+                        {
+                            // The resolve runs on an api thread: frames until the deck names the list (or the budget runs out), then its load.
+                            long until = Environment.TickCount64 + PlayLoadBudgetMs;
+                            while (!Playback.Snap().Context.Equals(list) && Environment.TickCount64 < until) { RunFrames(1); Thread.Sleep(2); }
+                            phase = AwaitPlaybackLoad(PlayLoadBudgetMs);
+                        }
+                        return Settled(id, name, a, w =>
+                        {
+                            w.WriteString("do", verb);
+                            w.WriteString("phase", phase);
+                            w.WriteNumber("lexiconAnswers", Entities.FakeLexiconServed - served);
+                            WriteDjSession(w);
+                        });
+                    }
                 case "answers":
                     {
                         int pages = Math.Clamp(a.Int("pages", 3), 0, 12);
@@ -34,7 +58,7 @@ public static partial class Diagnostics
                         });
                     }
                 default:
-                    return Inspect.Reply.Fail(id, name, "dj wants do=status|answers, not '" + verb + "'");
+                    return Inspect.Reply.Fail(id, name, "dj wants do=status|answers|play, not '" + verb + "'");
             }
         }
 
@@ -53,6 +77,35 @@ public static partial class Diagnostics
             }
             else w.WriteBoolean("known", false);
             w.WriteEndObject();
+        }
+
+        /// <summary>The lexicon session playing now (none: <c>session: null</c>), then the deck and the queue as <c>transport</c> reads them.</summary>
+        static void WriteDjSession(Utf8JsonWriter w)
+        {
+            if (Playback.Dj.Current is not { } s) w.WriteNull("session");
+            else
+            {
+                w.WriteStartObject("session");
+                w.WriteString("context", s.Context.Text);
+                w.WriteString("contextUrl", s.ContextUrl);
+                w.WriteString("uri", s.Uri);
+                w.WriteString("url", s.Url);
+                w.WriteNumber("pagesFetched", s.Pages.Count);
+                w.WriteStartArray("pages");
+                foreach (Playback.Dj.Page p in s.Pages)
+                {
+                    w.WriteStartObject();
+                    w.WriteNumber("page", p.Ordinal);
+                    w.WriteNumber("rows", p.Rows);
+                    w.WriteString("url", p.Url);
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
+                w.WriteString("pendingUrl", s.PendingUrl);
+                w.WriteEndObject();
+            }
+            w.WriteString("deviceContext", Spotify.Api.DeviceContext);
+            WriteTransport(w);
         }
 
         /// <summary>The fake service's session and its first <paramref name="pages"/> pages, each through
