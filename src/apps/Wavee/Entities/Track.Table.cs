@@ -2065,14 +2065,15 @@ public readonly partial struct Track
             Element chrome = InsetList(Chrome(in shape, chips, lens, tuneInline: false)).Sticky(StickLine(), TableScope, engaged: _compactInteractive);
             if (P.TuneStrip is null || EmptyLeadHides) return chrome;
             // #48: the slot under the list bar (Tune, Mix's Transitions, its editor, Smart reorder) is PAGE CONTENT here: it scrolls with the rows and
-            // passes under the pinned header cut and feathered at the rows' own line, so a strip taller than the window (the editor) is reached by
-            // scrolling and no row ever draws over it. Only the header pins.
+            // is cut and feathered at the line the header pins at, so a strip taller than the window (the editor) is reached by scrolling and no row
+            // ever draws over it. Only the header pins, and it pins once the slot has gone past that line (the slot stands above it in the flow), so
+            // the slot never shows through it; at rest the slot's top is that line (the columns form's head foot), never cut.
             Element slot = new BoxEl
             {
                 Direction = 1, MinWidth = 0f, HitTestPassThrough = true,
                 EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
                 Children = [InsetList(TuneSlot(RowMetrics.PadXFor(shape.Set.Tier)))],
-            }.StickyClip(_itemBandSig?.Value ?? 0f);
+            }.StickyClip(StickLine());
             return new BoxEl { Direction = 1, MinWidth = 0f, HitTestPassThrough = true, Children = [slot, chrome] };
         }
 

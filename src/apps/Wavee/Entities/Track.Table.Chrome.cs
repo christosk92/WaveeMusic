@@ -1140,8 +1140,8 @@ public readonly partial struct Track
             return MathF.Max(3f * shape.RowH, _colH.Value - rest);
         }
 
-        /// <summary>Show <paramref name="node"/> (a part of the slot's strip) when its top is out of sight: under the hero list's pinned band (the page
-        /// scrolled past it), or low in or below the viewport. A glide that lands its top just under the band; nothing when it already shows. The hero arm's slot
+        /// <summary>Show <paramref name="node"/> (a part of the slot's strip) when its top is out of sight: above the hero list's pin line (the page
+        /// scrolled past it), or low in or below the viewport. A glide that lands its top on that line; nothing when it already shows. The hero arm's slot
         /// scrolls with the page; the two-column arm's scrolls in its own viewport (the nearest scroller either way).</summary>
         internal void RevealInSlot(NodeHandle node)
         {
@@ -1152,7 +1152,7 @@ public readonly partial struct Track
             ref var sc = ref scene.ScrollRef(vp);
             if (sc.ContentNode.IsNull || !scene.IsLive(sc.ContentNode)) return;
             double top = sc.WindowOrigin + scene.AbsoluteLayoutRect(node).Y - scene.AbsoluteLayoutRect(sc.ContentNode).Y;
-            double band = VerticalArm ? (_itemBandSig?.Peek() ?? 0f) : 0f;
+            double band = VerticalArm ? Reactive.Untrack<float>(StickLine) : 0f;
             double offset = handle.Offset.Peek();
             // In sight: under the band and in the upper two thirds of the viewport (a top at the window's foot shows nothing of the part).
             if (top >= offset + band && top < offset + handle.Viewport * 2.0 / 3.0) return;
