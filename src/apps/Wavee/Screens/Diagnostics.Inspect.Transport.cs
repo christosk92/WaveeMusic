@@ -392,7 +392,7 @@ public static partial class Diagnostics
                     QueueBucket.NowPlaying => '*',
                     _ => 'N',
                 };
-                char provider = (QueueProvider)rows[i].Provider switch { QueueProvider.Queue => 'q', QueueProvider.Autoplay => 'a', _ => 'c' };
+                char provider = (QueueProvider)rows[i].Provider switch { QueueProvider.Queue => 'q', QueueProvider.Autoplay => 'a', QueueProvider.Narration => 'n', _ => 'c' };
                 EntityRef row = global::Wavee.Queue.RefAt(i);
                 w.WriteStringValue(string.Concat(bucket.ToString(), provider.ToString(), ":", Short(row.Id), Playback.RowPlayable(row) ? "" : "!"));
             }

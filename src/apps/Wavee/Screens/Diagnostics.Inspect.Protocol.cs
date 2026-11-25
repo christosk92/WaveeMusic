@@ -602,12 +602,14 @@ public static partial class Diagnostics
                         Arg("curves", ArgType.Int, "print the Connect metadata curves for this preset id (1 Fade, 3 Rise)"),
                         Arg("window", ArgType.Int, "the window those curves are for, ms (8 units under 8 s, else 16)")],
             },
-            new(Verb.Dj, "dj", "AI DJ: the DJ list's attributes; the lexicon session playing it (uri, url, expiry, dj/infinite, the three restrictions, pages fetched with their segments, the next page's url, the lookahead) and the DJ book per queue row (page, segment, jump target, narration slots, subtitle, decision id), the context's toggle locks and the user's held shuffle/repeat, beside the deck and queue; do=answers decodes the --fake lexicon service's session and pages; do=play starts the list as a click does; do=expire ends the session's validity", "dj do=play")
+            new(Verb.Dj, "dj", "AI DJ: the DJ list's attributes; the lexicon session playing it (uri, url, expiry, dj/infinite, the three restrictions, pages fetched with their segments, the next page's url, the lookahead) and the DJ book per queue row (page, segment, jump target, narration slots, subtitle, decision id), the context's toggle locks and the user's held shuffle/repeat, beside the deck and queue; `narration` (D2): the planned narration rows (slot, the track each belongs to, the clip key, the clip's state and length), the prefetch log, the deck's timeline (item, start, end, length), the caption and what is current; do=answers decodes the --fake lexicon service's session and pages; do=play starts the list as a click does; do=expire ends the session's validity; do=run plays on in real time (16 ms frames) for ms= of the frame clock, or until=change the deck moves; do=transfer asks a transfer to the first other Connect device", "dj do=play")
             {
                 Positional = ["do"],
-                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|answers|play|expire"),
+                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|answers|play|expire|run|transfer"),
                              Arg("uri", ArgType.String, "the DJ list (default: the fake one)"),
-                             Arg("pages", ArgType.Int, "do=answers: how many pages to decode after the session (default 3)")], s_settleArgs),
+                             Arg("pages", ArgType.Int, "do=answers: how many pages to decode after the session (default 3)"),
+                             Arg("ms", ArgType.Int, "do=run: how much of the frame clock to play (default 1000, at most 600000)"),
+                             Arg("until", ArgType.Enum, "do=run: stop early when the deck moves", "ms", "ms|change")], s_settleArgs),
             },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {

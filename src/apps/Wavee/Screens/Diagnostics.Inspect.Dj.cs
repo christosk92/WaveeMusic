@@ -69,8 +69,51 @@ public static partial class Diagnostics
                         if (!Playback.Dj.ExpireForInspect()) return Inspect.Reply.Fail(id, name, "dj do=expire: no lexicon session plays");
                         return Inspect.Reply.Ok(id, name, w => { w.WriteString("do", verb); WriteDjSession(w); });
                     }
+                case "run":
+                    {
+                        if (_shell is null) return Inspect.Reply.Fail(id, name, "dj do=run needs a mount");
+                        // Real time: 16 ms frames paced to the wall clock, so a clip's download (wall time) and its playback (the frame
+                        // clock the silent endpoint is paced on) keep the proportions they have live.
+                        int ms = Math.Clamp(a.Int("ms", 1000), 16, 600_000);
+                        bool untilChange = a.Str("until", "ms") == "change";
+                        ulong from = DeckItem();
+                        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+                        int frames = 0;
+                        for (; frames * 16 < ms; frames++)
+                        {
+                            RunFrames(1);
+                            double due = (frames + 1) * 16.0, spent = System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+                            if (due > spent) Thread.Sleep(TimeSpan.FromMilliseconds(due - spent));
+                            if (untilChange && DeckItem() != from) { frames++; break; }
+                        }
+                        return Inspect.Reply.Ok(id, name, w =>
+                        {
+                            w.WriteString("do", verb);
+                            w.WriteNumber("framesRun", frames);
+                            w.WriteNumber("ranMs", frames * 16);
+                            w.WriteBoolean("moved", DeckItem() != from);
+                            WriteNarration(w);
+                        });
+                    }
+                case "transfer":
+                    {
+                        int slot = -1;
+                        var devices = Playback.Devices.Rows;
+                        ulong us = Playback.Snap().Us;
+                        for (int k = 0; k < devices.Length && slot < 0; k++) if (devices[k].Hash != us) slot = k;
+                        if (slot < 0) return Inspect.Reply.Fail(id, name, "dj do=transfer: no other Connect device (mount connect=nearby)");
+                        Playback.TransferTo(slot);
+                        RunFrames(2);
+                        return Inspect.Reply.Ok(id, name, w =>
+                        {
+                            w.WriteString("do", verb);
+                            w.WriteNumber("slot", slot);
+                            w.WriteString("owner", Playback.OwnerSignal.Peek().ToString());
+                            WriteNarration(w);
+                        });
+                    }
                 default:
-                    return Inspect.Reply.Fail(id, name, "dj wants do=status|answers|play|expire, not '" + verb + "'");
+                    return Inspect.Reply.Fail(id, name, "dj wants do=status|answers|play|expire|run|transfer, not '" + verb + "'");
             }
         }
 
@@ -174,6 +217,7 @@ public static partial class Diagnostics
             }
             w.WriteEndArray();
             w.WriteString("deviceContext", Spotify.Api.DeviceContext);
+            WriteNarration(w);
             WriteTransport(w);
 
             static IEnumerable<string> Slots(Playback.Dj.Row row)
@@ -182,6 +226,122 @@ public static partial class Diagnostics
                 if (row.Jump is not null) yield return "jump";
                 if (row.Outro is not null) yield return "outro";
             }
+        }
+
+        /// <summary>The deck row's queue item id (0: none).</summary>
+        static ulong DeckItem()
+        {
+            int at = Playback.Snap().Cursor.Index;
+            ReadOnlySpan<QueueEdge> rows = global::Wavee.Queue.Rows;
+            return (uint)at < (uint)rows.Length ? rows[at].ItemId : 0;
+        }
+
+        /// <summary>The narration (plan-dj D2): what is current (the item, its position and length as the reducer holds them, whether it
+        /// narrates, the caption), the narration rows the planner laid (slot, the track each belongs to, the key, the clip's state and
+        /// length), every narration made this session, the prefetch log and the deck's timeline.</summary>
+        static void WriteNarration(Utf8JsonWriter w)
+        {
+            Playback.State st = Playback.Snap();
+            long now = Playback.FrameNowMs();
+            ReadOnlySpan<QueueEdge> rows = global::Wavee.Queue.Rows;
+            w.WriteStartObject("narration");
+            w.WriteNumber("frameMs", now);
+            w.WriteStartObject("current");
+            int deck = st.Cursor.Index;
+            ulong deckItem = (uint)deck < (uint)rows.Length ? rows[deck].ItemId : 0;
+            w.WriteString("item", deckItem == 0 ? "" : Playback.Dj.Label(deckItem, global::Wavee.Queue.RefAt(deck)));
+            w.WriteString("id", st.CurrentId.IsEmpty ? "" : st.CurrentId.Text);
+            w.WriteString("phase", st.Phase.ToString());
+            w.WriteNumber("positionMs", st.Position(now));
+            w.WriteNumber("durationMs", st.DurationMs);
+            w.WriteBoolean("narrating", st.Narrating);
+            w.WriteBoolean("canSeek", st.CanSeek);
+            w.WriteNumber("publishedPositionMs", Playback.PositionMs.Peek());
+            w.WriteNumber("publishedDurationMs", Playback.DurationMs.Peek());
+            w.WriteString("caption", Playback.Dj.Caption.Peek());
+            w.WriteEndObject();
+            w.WriteStartArray("rows");
+            for (int i = 0; i < rows.Length; i++)
+            {
+                if (Playback.Dj.NarrationOf(rows[i].ItemId) is not { } sp) continue;
+                w.WriteStartObject();
+                w.WriteNumber("i", i);
+                w.WriteBoolean("deck", i == deck);
+                WriteSpoken(w, sp, rows);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            w.WriteStartArray("first");                    // the deck and the next two rows, as the queue lays them
+            for (int i = Math.Max(0, deck); i < rows.Length && i < Math.Max(0, deck) + 3; i++)
+                w.WriteStringValue(Playback.Dj.Label(rows[i].ItemId, global::Wavee.Queue.RefAt(i)));
+            w.WriteEndArray();
+            ulong jump = Playback.Dj.NextJumpTarget;
+            int jumpAt = global::Wavee.Queue.IndexOfItem(rows, jump);
+            w.WriteString("nextJumpTarget", jumpAt < 0 ? "" : Playback.Dj.Label(jump, global::Wavee.Queue.RefAt(jumpAt)));
+            w.WriteStartArray("made");
+            foreach (Playback.Dj.Spoken sp in Playback.Dj.AllSpoken)
+            {
+                w.WriteStartObject();
+                WriteSpoken(w, sp, rows);
+                w.WriteBoolean("queued", global::Wavee.Queue.IndexOfItem(rows, sp.ItemId) >= 0);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            w.WriteStartArray("prefetch");
+            foreach (Playback.Dj.PrefetchEntry e in Playback.Dj.PrefetchLog)
+            {
+                w.WriteStartObject();
+                w.WriteNumber("atMs", e.AtMs);
+                w.WriteString("why", e.Why);
+                w.WriteString("slot", Playback.Dj.SlotName(e.Slot));
+                w.WriteString("segment", e.Segment);
+                w.WriteString("key", e.Key);
+                w.WriteString("clipBefore", e.ClipBefore);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            // The play log (what the queue panels' history and Recently played read): the newest entries, and any narration in it (must be 0).
+            IReadOnlyList<Shell.PlayEntry> log = Shell.PlayLog.Entries;
+            int spokenInLog = 0;
+            foreach (Shell.PlayEntry e in log) if (e.Track.Text.StartsWith(Spotify.DjTts.UriPrefix, StringComparison.Ordinal)) spokenInLog++;
+            w.WriteNumber("playLogNarrations", spokenInLog);
+            w.WriteStartArray("playLog");
+            for (int i = Math.Max(0, log.Count - 8); i < log.Count; i++) w.WriteStringValue(log[i].Track.Text);
+            w.WriteEndArray();
+            w.WriteStartArray("timeline");
+            foreach (Playback.Dj.TimelineEntry e in Playback.Dj.Timeline)
+            {
+                w.WriteStartObject();
+                w.WriteString("item", e.Item);
+                w.WriteNumber("startMs", e.StartMs);
+                w.WriteNumber("endMs", e.EndMs);
+                w.WriteNumber("durationMs", e.DurationMs);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            w.WriteEndObject();
+        }
+
+        static void WriteSpoken(Utf8JsonWriter w, Playback.Dj.Spoken sp, ReadOnlySpan<QueueEdge> rows)
+        {
+            w.WriteString("slot", Playback.Dj.SlotName(sp.Slot));
+            w.WriteString("belongsTo", sp.Track.IsEmpty ? "" : EntityUri.IdOf(sp.Track.Text).ToString());
+            w.WriteNumber("belongsToIndex", global::Wavee.Queue.IndexOfItem(rows, sp.BelongsTo));
+            w.WriteString("segment", sp.Segment);
+            w.WriteString("mediaUri", sp.MediaUri);
+            w.WriteString("provider", sp.Provider);
+            w.WriteString("title", sp.Title);
+            w.WriteString("artist", sp.Artist);
+            w.WriteString("key", sp.Key);
+            bool known = Spotify.DjTts.TryGet(sp.Key, out Spotify.DjTts.ClipInfo clip);
+            w.WriteString("clip", known ? clip.State.ToString() : "none");
+            w.WriteNumber("clipDurationMs", known ? clip.DurationMs : -1);
+            w.WriteNumber("clipBytes", known ? clip.Bytes : 0);
+            w.WriteBoolean("ensured", sp.Ensured);
+            w.WriteNumber("ensuredAtMs", sp.EnsuredAtMs);
+            w.WriteString("ensuredWhy", sp.EnsuredWhy);
+            w.WriteBoolean("dropped", sp.Dropped);
+            w.WriteString("caption", sp.Caption);
         }
 
         /// <summary>The fake service's session and its first <paramref name="pages"/> pages, each through

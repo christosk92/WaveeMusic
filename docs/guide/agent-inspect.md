@@ -986,6 +986,35 @@ decode path=C:/music/a.wav out=C:/scratch/a.f32
 decode path=C:/music/a.aiff out=C:/scratch/a.seek.f32 seekMs=1234
 ```
 
+### `dj {do?, uri?, pages?, ms?, until?}`
+
+AI DJ (plan `docs/plans/wavee/dj-implementation.md`). Plain `dj` (`do=status`) reads the fake DJ list (`spotify:playlist:pldj`),
+the lexicon session playing it (pages, segments, the lookahead), the DJ book per queue row, the context's toggle locks, and
+`narration` (D2): `current` (the deck's item, its position and length as the reducer holds them, `narrating`, `canSeek`, the
+`published` position and duration the surfaces see: 0 while a narration plays, and the plain-text `caption`), `rows` (each
+narration row the planner laid: `slot` welcome / intro / outro, the track it `belongsTo`, its `mediaUri` and `provider` as the
+wire names them, the clip `key`, the clip's state, length and bytes, when and why it was asked for, `dropped`), `first` (the deck
+and the next two rows), `nextJumpTarget`, `made` (every narration this session, the prefetched jump clips included), `prefetch`
+(each ask: frame ms, `why` = `resolve` / `item+5s` / `reached`, slot, segment, key, the clip before the ask), `playLog`
+and `playLogNarrations` (must stay 0), and `timeline` (each deck item: start and end on the frame clock, its length).
+`do=play` starts the list as a click does; `do=answers` decodes the fake lexicon answers; `do=expire` ends the session's
+validity. `do=run ms=<n>` plays on in REAL time (16 ms frames paced to the wall clock, so a clip's download and its playback
+keep their live proportions) for `n` ms of the frame clock, `until=change` stopping when the deck moves. `do=transfer` asks a
+transfer to the first other Connect device (`mount connect=nearby`); during a narration it is refused. In the fake service the
+welcome is 3.4 s (whole), page 1's intro the 24.5 s streamed clip (its length is learned when its body ends and pushed),
+page 2's jump 4.9 s, page 2's outro the broken fixture (dropped) and page 3's the flaky one. A track's end is
+`transport do=end`; the controls during a clip are `transport do=next|prev|seek|repeat` and `dj do=transfer`, each answered in
+`status log="intent refused"` (`Narration`). Headless, the silent endpoint holds 2 s ahead of the played count, so a boundary
+announced on the render clock can read up to ~2 s off a clip's length on the frame clock; the lengths themselves are exact.
+
+```text
+mount w=1440 h=960 theme=winui route=home
+transport do=clear                 # the fake boot's queued rows would play between the welcome and the intro
+dj do=play                         # welcome on the deck, the first intro and the first track after it
+dj do=run ms=6000 until=change     # welcome -> intro
+dj do=run ms=40000 until=change    # intro -> its track
+```
+
 ### `djtts {do, fixture?, ssml?, manifest?, via?, key?, seconds?, n?, wait?, pace?, rate?, ms?, every?, disk?}`
 
 The AI DJ's text-to-speech client (`Spotify/Spotify.DjTts.cs`). The inspector is `--fake`, so the fulfil and the CDN are the in-process
