@@ -141,12 +141,23 @@ internal static class WinUiHomeDaylistClock
         ],
     };
 
-    /// <summary>The lines column's children: the first line alone, or under it the action (the Late face's link) or the caption.</summary>
+    /// <summary>The lines column's children: the first line alone, or under it the action (the Late face's link) or the caption, in one slot height.</summary>
     static Element[] Lines(SpanTextEl line, string caption, Element? action)
     {
-        if (action is not null) return [line, action.Value];
-        return caption.Length > 0 ? [line, CaptionLine(caption)] : [line];
+        if (action is not null) return [line, SecondLine(action.Value)];
+        return caption.Length > 0 ? [line, SecondLine(CaptionLine(caption))] : [line];
     }
+
+    /// <summary>The second line's height, the same for every face and the skeleton: the Late face's Small link (its padding around the caption rung),
+    /// the taller of the two seconds. A caption line was 5 short of it, so the block grew when the daylist ran late and when the skeleton handed over
+    /// to a late card (the card's <c>Extent</c> counts this too).</summary>
+    internal static float SecondLineH => Ui.Caption("").LineHeight + ControlMetrics.For(ControlSize.Small).Padding.Vertical;
+
+    /// <summary><paramref name="content"/> (the caption or the link) in the second line's slot, at least <see cref="SecondLineH"/> high.</summary>
+    static BoxEl SecondLine(Element content) => new()
+    {
+        Direction = 1, MinWidth = 0f, MinHeight = SecondLineH, AlignItems = FlexAlign.Stretch, Children = [content],
+    };
 
     /// <summary>The second line: "{weekday} {next daypart} arrives at HH:mm" at the caption rung (12/16), secondary, one line with an ellipsis.</summary>
     static TextEl CaptionLine(string caption)
