@@ -1,4 +1,4 @@
 # The fluent-gpu commit this branch builds and releases with (the engine keeps its own flow; Wavee pins it here).
 # Bump it in the Wavee PR that needs newer engine code, after the engine PR merged into fluent-gpu main.
 # The release runner checks the engine out at exactly this commit and tags it wavee-v<version> in fluent-gpu.
-e3330d9f598968ce325c62e240d82f5ec31ce2f9
+4ec2bbf544e8cdfef08e411549fba9aeb20b4dfd

@@ -251,7 +251,7 @@ public static class MixEdit
         recipe.OutStartMs = recipe.InStartMs = 0;
         recipe.OverlapMs = 1;
         recipe.BpmA = recipe.BpmB = 0f;
-        recipe.Preset = (byte)MixPreset.None;
+        recipe.Preset = (byte)MixPresetId.None;
         recipe.VolumeStyle = recipe.EqStyle = recipe.FilterFxStyle = recipe.FxStyle = recipe.JogwheelStyle = recipe.LoopingStyle = null;
         recipe.IsOverlapOverride = false;
         recipe.IsPresetIdOverride = true;
@@ -279,7 +279,7 @@ public static class MixEdit
         r.OutStartMs = t.OutStartMs;
         r.InStartMs = t.InStartMs;
         r.OverlapMs = t.OutDurationMs;
-        r.Preset = (byte)MixPreset.Fade;
+        r.Preset = (byte)MixPresetId.Fade;
         r.IsOverlapOverride = r.IsPresetIdOverride = true;
         return r;
     }
