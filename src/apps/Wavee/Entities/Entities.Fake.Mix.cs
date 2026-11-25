@@ -12,18 +12,6 @@ namespace Wavee;
 
 public static partial class Entities
 {
-    /// <summary>--fake's answer to Spotify.Mixes.TurnOn: the row reads as a list the server just mixed (the lens applied, the list
-    /// and XM bits set). There is no account to write with.</summary>
-    public static void FakeMixOn(Playlist p)
-    {
-        if (!p.IsValid) return;
-        var t = Current.Playlists;
-        t.MixFlags[p.Slot] |= (uint)(PlaylistMixFlags.ListMix | PlaylistMixFlags.AllowCustom | PlaylistMixFlags.CanViewTransition
-                                     | PlaylistMixFlags.LensApplied | PlaylistMixFlags.XmMixState | PlaylistMixFlags.XmAutoLens);
-        t.Bump(p.Slot);
-        Log.Info("mix", "fake: mix on");
-    }
-
     internal static partial class LibrarySeed
     {
         public const string MixUri = "spotify:playlist:plmix";
@@ -115,6 +103,10 @@ public static partial class Entities
             w.Close(args);
             signals.MixState = template[..w.Length].ToArray();
             MixData.ReplaceSignals(p.Slot, signals);
+
+            // The recording server Mix's writes go to under --fake (Entities.Fake.MixServer.cs): it holds the list as Spotify would.
+            FakeMixServer.Install();
+            FakeMixServer.Adopt(p, MixLensEtag);
         }
 
         public const string MixWireUri = "spotify:playlist:plmixwire";

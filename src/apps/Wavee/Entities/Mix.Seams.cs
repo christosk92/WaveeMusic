@@ -48,7 +48,7 @@ public static class MixSeams
     public static Seam For(int playlistSlot, int index)
     {
         var p = new Playlist(playlistSlot);
-        if (!p.IsValid || !p.MixOn || MixListenWithout.Is(p)) return default;
+        if (!p.IsValid || !p.MixOn || MixOptOut.Is(p)) return default;
         var edges = Entities.Current.Edges.PlaylistTracks;
         var targets = edges.Targets(playlistSlot);
         var payload = edges.Payload(playlistSlot);

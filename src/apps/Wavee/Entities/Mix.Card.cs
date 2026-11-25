@@ -1,4 +1,4 @@
-// ── Entities/Mix.Card.cs — #48 Mix phase 7, the seam card (plan §3.11, cut: saved on this PC) ─────────────────────────
+// ── Entities/Mix.Card.cs — #48 Mix phase 7, the seam card (plan §3.11; M2: saved to Spotify) ─────────────────────────────
 //
 // One pair, edited in place: opened from a Transitions row or a seam's click, it stands under the Transitions list (the list bar's
 // eased slot, so the rows below slide and nothing jumps). Top to bottom:
@@ -8,13 +8,27 @@
 //   ┌ Smooth ┬ Lift ┬ Quick ┬ No mix ┐   Auto chose Smooth
 //   Volume crossfades over 6.2 s; the bass hands over at the middle.
 //   Overlap   −   6.2 s · 8 beats   +
-//   Saved on this PC only                             Reset to auto   Done
+//   <the save line>                                          [Retry]   Reset to auto   Done
 //
-// THE CUT. Plan §3.11 saves an owner's edit to Spotify (`set-transition`); that write waits for capture round 2 item 5 (the
-// plan's own precondition) and its live check needs the owner, so every save here is the local override (MixOverrides, D11 (b)'s
-// "Otherwise" column) and the card says "Saved on this PC only". No waveform strip yet: the overlap is a beat stepper (2 to 32 beats
-// of the outgoing track, at most 16 s; three fixed lengths for a pair without a grid). No "Hear it" (the mid-session restore is
-// unverified, plan §3.6). Auto is a state, not a fifth choice: picking any style, the lit one too, makes the pair edited.
+// WHERE AN EDIT IS SAVED (M2; plan D11 as the full-support plan revises it: No mix and Reset have Spotify writes now):
+//
+//   the user may write the list (owner, collaborator) and Spotify offered     everyone else (a followed list, an item with no
+//   this item's transition for editing (its attribute 14 template)            template): this PC (MixOverrides), as before
+//   ─────────────────────────────────────────────────────────────────         ─────────────────────────────────────────────
+//   Done:  Smooth/Lift/Quick/overlap → set-transition with the new recipe     the local record; the line says
+//          No mix → set-transition with the "none" recipe                     "Saved on this PC only"; Done closes at once
+//          the card stays open while it saves ("Saving to Spotify…") and
+//          closes when the reply lands
+//   Reset: set-transition with no payload (a pair Spotify holds no recipe     the local record goes (or an "Auto" record over
+//          for needs no write: its pending local edit is dropped)             a Spotify recipe)
+//   Offline or refused: the edit is kept as a PENDING local record — it
+//          plays this way here — and the line says so, with Retry
+//          ("Not saved to Spotify yet…", "You're offline…"); Retry resends
+//          it. Nothing else shows (no dialog, no toast).
+//
+// No waveform strip yet: the overlap is a beat stepper (2 to 32 beats of the outgoing track, at most 16 s; three fixed lengths for a
+// pair without a grid). No "Hear it" (the mid-session restore is unverified, plan §3.6). Auto is a state, not a fifth choice: picking
+// any style, the lit one too, makes the pair edited.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -38,9 +52,11 @@ public static class MixEdit
     public const int MinBeats = 2, MaxBeats = 32;
     static readonly uint[] s_fixedLengthsMs = [2_500, 6_000, 12_000];
 
-    /// <summary>One pair's facts for the card. <see cref="Valid"/> false: the pair cannot be edited (a local file, an episode, the last row).</summary>
+    /// <summary>One pair's facts for the card. <see cref="Valid"/> false: the pair cannot be edited (a local file, an episode, the last row).
+    /// <see cref="Writes"/>: an edit is saved to Spotify (the user may write the list and its from-item carries the set-transition
+    /// template); else it is saved on this PC. <see cref="LocalPending"/>: the pair's local record is an edit waiting for Spotify.</summary>
     public readonly record struct Pair(bool Valid, string PlaylistUri, ulong ItemA, ulong ItemB, Track A, Track B, MixTiming Now, MixTiming Auto,
-        bool Local, MixOverrideKind LocalKind, float PeriodMs, bool Grid);
+        bool Local, MixOverrideKind LocalKind, float PeriodMs, bool Grid, bool Writes = false, bool LocalPending = false);
 
     public static Pair Read(int playlistSlot, int index)
     {
@@ -67,7 +83,8 @@ public static class MixEdit
         bool grid = beatsA.Length >= 16;
         var anchor = now.Mix ? now : auto;
         float period = grid ? Playback.MixPlanner.PeriodNear(beatsA, anchor.OutStartMs + anchor.OutDurationMs / 2) : 0f;
-        return new Pair(true, p.Id.Text, itemA, itemB, a, b, now, auto, local, local ? rec.Kind : default, period, grid);
+        bool writes = Spotify.Mixes.CanWrite(p) && MixData.Signals(playlistSlot) is { } signals && !signals.TransitionTemplate(itemA).IsEmpty;
+        return new Pair(true, p.Id.Text, itemA, itemB, a, b, now, auto, local, local ? rec.Kind : default, period, grid, writes, local && rec.Pending);
     }
 
     /// <summary>The style the pair plays now; −1 for a Spotify preset Wavee does not know (or an Auto refusal).</summary>
@@ -166,33 +183,52 @@ public static class MixEdit
         _ => Loc.Get(Strings.Mix.SentenceUnknown),
     };
 
-    /// <summary>Done: the pair plays <paramref name="style"/> over <paramref name="beats"/> from now on, as a record on this PC. The mix-out
-    /// END stays where the planner or the recipe put it (plan §3.11: no second handle); the in-point stays too.</summary>
-    public static void Save(in Pair pair, int playlistSlot, int style, int beats)
+    /// <summary>Done: the pair plays <paramref name="style"/> over <paramref name="beats"/> from now on — saved to Spotify when the pair
+    /// <see cref="Pair.Writes"/>, else as a record on this PC. The mix-out END stays where the planner or the recipe put it (plan §3.11:
+    /// no second handle); the in-point stays too. <paramref name="settled"/> hears how a Spotify save ended (a local save: at once,
+    /// <see cref="MixSaveState.None"/>).</summary>
+    public static void Save(in Pair pair, int playlistSlot, int style, int beats, Action<MixSaveState>? settled = null)
     {
-        if (!pair.Valid) return;
-        if (style == (int)MixStyle.NoMix) { MixOverrides.Set(pair.PlaylistUri, pair.ItemA, pair.ItemB, MixOverrideKind.NoMix); Repaint(playlistSlot); return; }
-        if (style < 0) return;
+        if (!pair.Valid || style < 0) return;
+        if (!pair.Writes)
+        {
+            if (style == (int)MixStyle.NoMix) MixOverrides.Set(pair.PlaylistUri, pair.ItemA, pair.ItemB, MixOverrideKind.NoMix);
+            else if (Edited(in pair, playlistSlot, style, beats, out var local, out byte[] localRaw))
+                MixOverrides.Set(pair.PlaylistUri, pair.ItemA, pair.ItemB, MixOverrideKind.Recipe, in local, localRaw);
+            else return;
+            Repaint(playlistSlot);
+            settled?.Invoke(MixSaveState.None);
+            return;
+        }
+        if (!Build(in pair, playlistSlot, style, beats, out var recipe, out byte[] raw)) return;
+        SaveToSpotify(pair, playlistSlot, recipe, raw, settled);
+    }
+
+    /// <summary>The recipe a Spotify save of <paramref name="style"/> sends, and the bytes it is patched over (the replaced recipe's;
+    /// empty for a new one). PURE over the pair (the inspector's `mix writes` compares the sent bytes with it).</summary>
+    public static bool Build(in Pair pair, int playlistSlot, int style, int beats, out MixRecipe recipe, out byte[] raw)
+    {
+        if (style == (int)MixStyle.NoMix) { recipe = NoTransition(in pair, playlistSlot, out raw); return true; }
+        bool ok = Edited(in pair, playlistSlot, style, beats, out recipe, out raw);
+        recipe.FromItemId = pair.ItemA;
+        recipe.ToItemId = pair.ItemB;
+        return ok;
+    }
+
+    /// <summary>The edited recipe: the recipe the save replaces (its bytes kept, so every field the card does not edit — beatmatch,
+    /// speeds, playable uris, beats hashes, style and curve overrides, unknown fields — is written back as it was), or a new one in
+    /// the official shape, with the card's timing and preset. False when no timing can be placed for the pair.</summary>
+    static bool Edited(in Pair pair, int playlistSlot, int style, int beats, out MixRecipe recipe, out byte[] raw)
+    {
+        recipe = default;
+        raw = [];
         var basis = pair.Now.Mix ? pair.Now : pair.Auto;
-        if (!basis.Mix && !pair.Auto.Mix) return;
-        if (!basis.Mix) basis = pair.Auto;
+        if (!basis.Mix) return false;
         if (style == (int)MixStyle.Quick) beats = pair.Grid ? QuickBeats(in pair) : 0;
         uint overlap = OverlapMsOf(in pair, beats);
         long end = (long)basis.OutStartMs + basis.OutDurationMs;
-        // The edit starts from the recipe it replaces (this PC's, else Spotify's) and keeps that recipe's bytes, so every field the
-        // card does not edit (beatmatch, speeds, playable uris, style and curve overrides, unknown fields) is written back as it was.
-        var recipe = ReplacedRecipe(in pair, playlistSlot, out byte[] raw);
-        if (raw.Length == 0)
-        {
-            // A new recipe, in the shape the official client saves one.
-            recipe.TrackA = recipe.PlayableA = pair.A.Id.Text;
-            recipe.TrackB = recipe.PlayableB = pair.B.Id.Text;
-            recipe.BpmA = pair.A.Tempo / 10f;
-            recipe.BpmB = pair.B.Tempo / 10f;
-            recipe.SpeedA = recipe.SpeedB = 1f;
-            recipe.ItemSpeedA = recipe.ItemSpeedB = 1.0;
-            recipe.PresetType = MixPresetType.Fade;
-        }
+        recipe = ReplacedRecipe(in pair, playlistSlot, out raw);
+        if (raw.Length == 0) recipe = Fresh(in pair);
         recipe.FromItemId = pair.ItemA;
         recipe.ToItemId = pair.ItemB;
         recipe.OutStartMs = (uint)Math.Max(0, end - overlap);
@@ -200,13 +236,57 @@ public static class MixEdit
         recipe.OverlapMs = overlap;
         recipe.Preset = style == (int)MixStyle.Lift ? (byte)MixPresetId.Rise : (byte)MixPresetId.Fade;
         recipe.IsOverlapOverride = recipe.IsPresetIdOverride = true;   // both picked by hand
-        MixOverrides.Set(pair.PlaylistUri, pair.ItemA, pair.ItemB, MixOverrideKind.Recipe, in recipe, raw);
-        Repaint(playlistSlot);
+        return true;
+    }
+
+    /// <summary>"No transition" (reference §5.3, the captured R2): the replaced recipe (or a new one) with no out-point and no in-point,
+    /// a 1 ms overlap, no tempos, no preset id and no style override, no timing override flag, the preset flag set. The pair's
+    /// identity, its preset type and every field the official shape does not name stay as they were.</summary>
+    static MixRecipe NoTransition(in Pair pair, int playlistSlot, out byte[] raw)
+    {
+        var recipe = ReplacedRecipe(in pair, playlistSlot, out raw);
+        if (raw.Length == 0) recipe = Fresh(in pair);
+        recipe.FromItemId = pair.ItemA;
+        recipe.ToItemId = pair.ItemB;
+        recipe.OutStartMs = recipe.InStartMs = 0;
+        recipe.OverlapMs = 1;
+        recipe.BpmA = recipe.BpmB = 0f;
+        recipe.Preset = (byte)MixPreset.None;
+        recipe.VolumeStyle = recipe.EqStyle = recipe.FilterFxStyle = recipe.FxStyle = recipe.JogwheelStyle = recipe.LoopingStyle = null;
+        recipe.IsOverlapOverride = false;
+        recipe.IsPresetIdOverride = true;
+        return recipe;
+    }
+
+    /// <summary>A new recipe's identity in the shape the official client saves one (reference §5.2): the uris (playable = catalogue),
+    /// the beats hashes (kind 217's analysis ids), the tempos (kind 222, to Wavee's 0.1 BPM), speeds 1.0, preset type Fade. No item ids:
+    /// a save sets them, an Auto baseline leaves them out.</summary>
+    static MixRecipe Fresh(in Pair pair) => new()
+    {
+        TrackA = pair.A.Id.Text, PlayableA = pair.A.Id.Text, TrackB = pair.B.Id.Text, PlayableB = pair.B.Id.Text,
+        BeatsIdA = MixData.BeatsId(pair.A.Slot), BeatsIdB = MixData.BeatsId(pair.B.Slot),
+        BpmA = pair.A.Tempo / 10f, BpmB = pair.B.Tempo / 10f,
+        SpeedA = 1f, SpeedB = 1f, ItemSpeedA = 1.0, ItemSpeedB = 1.0, PresetType = MixPresetType.Fade,
+    };
+
+    /// <summary>The pair's Auto transition as a save's f3 baseline (protocol §3.2, R3/R5): the planner's Auto timing, preset 1, the
+    /// tempos, no item ids, both override flags. Null when the planner places no Auto transition for the pair.</summary>
+    public static MixRecipe? AutoBaseline(in Pair pair)
+    {
+        var t = pair.Auto;
+        if (!t.Mix) return null;
+        var r = Fresh(in pair);
+        r.OutStartMs = t.OutStartMs;
+        r.InStartMs = t.InStartMs;
+        r.OverlapMs = t.OutDurationMs;
+        r.Preset = (byte)MixPreset.Fade;
+        r.IsOverlapOverride = r.IsPresetIdOverride = true;
+        return r;
     }
 
     /// <summary>The recipe a save replaces, with its raw bytes: this PC's record for the pair, else the pair's Spotify recipe, else
     /// a new one (no bytes).</summary>
-    static MixRecipe ReplacedRecipe(in Pair pair, int playlistSlot, out byte[] raw)
+    public static MixRecipe ReplacedRecipe(in Pair pair, int playlistSlot, out byte[] raw)
     {
         if (MixOverrides.TryGet(pair.PlaylistUri, pair.ItemA, pair.ItemB, out var local) && local.Kind == MixOverrideKind.Recipe)
         {
@@ -222,19 +302,90 @@ public static class MixEdit
         return default;
     }
 
+    /// <summary>The new recipe to Spotify (the patching encoder over <paramref name="raw"/>), with the pair's Auto baseline. Landed: any
+    /// local record of the pair goes (Spotify holds it now). Offline or refused: the edit stays as a PENDING local record — it plays
+    /// here — until a Retry lands.</summary>
+    static void SaveToSpotify(Pair pair, int playlistSlot, MixRecipe recipe, byte[] raw, Action<MixSaveState>? settled)
+    {
+        recipe.FromItemId = pair.ItemA;
+        recipe.ToItemId = pair.ItemB;
+        byte[] encoded = MixRecipe.EncodeToArray(in recipe, raw);
+        MixSaves.Set(pair.PlaylistUri, pair.ItemA, MixSaveState.Saving);
+        var save = new Spotify.Mixes.TransitionSave(pair.ItemA, pair.ItemB, recipe, encoded, AutoBaseline(in pair));
+        Spotify.Mixes.SaveTransition(new Playlist(playlistSlot), save, outcome => Settle(pair, playlistSlot, outcome,
+            () => MixOverrides.Set(pair.PlaylistUri, pair.ItemA, pair.ItemB, MixOverrideKind.Recipe, in recipe, raw, pending: true), settled));
+    }
+
+    static void Settle(Pair pair, int playlistSlot, Spotify.Mixes.Outcome outcome, Action keepLocally, Action<MixSaveState>? settled)
+    {
+        var state = outcome switch
+        {
+            Spotify.Mixes.Outcome.Landed => MixSaveState.None,
+            Spotify.Mixes.Outcome.Offline => MixSaveState.Offline,
+            _ => MixSaveState.Failed,
+        };
+        if (state == MixSaveState.None) MixOverrides.Clear(pair.PlaylistUri, pair.ItemA, pair.ItemB);
+        else keepLocally();
+        MixSaves.Set(pair.PlaylistUri, pair.ItemA, state);
+        Repaint(playlistSlot);
+        settled?.Invoke(state);
+    }
+
     /// <summary>A local record changed: bump the playlist's row, which the seams, the Transitions rows, the meta line and this card read (the
     /// row menu's "Don't mix into the next song" does the same).</summary>
     static void Repaint(int playlistSlot) => Entities.Current.Playlists.Bump(playlistSlot);
 
-    /// <summary>Reset to auto: no record left when Spotify holds no recipe for the pair; over a Spotify recipe, the "Auto" record (the reset
-    /// request is not captured, O6).</summary>
-    public static void Reset(in Pair pair, int playlistSlot)
+    /// <summary>Reset to auto. A pair that <see cref="Pair.Writes"/>: `set-transition` with no payload when Spotify holds a recipe for it
+    /// (kept as a pending "Auto" record when offline or refused), else its pending local edit is simply dropped. Any other pair: no
+    /// record left when Spotify holds no recipe for it; over a Spotify recipe, the "Auto" record on this PC.</summary>
+    public static void Reset(in Pair pair, int playlistSlot, Action<MixSaveState>? settled = null)
     {
         if (!pair.Valid) return;
         bool spotify = MixData.TryGet(playlistSlot, pair.ItemA, out var stored) && (stored.Recipe.ToItemId == 0 || stored.Recipe.ToItemId == pair.ItemB);
-        if (spotify) MixOverrides.Set(pair.PlaylistUri, pair.ItemA, pair.ItemB, MixOverrideKind.Auto);
+        if (pair.Writes && spotify)
+        {
+            var p = pair;
+            MixSaves.Set(pair.PlaylistUri, pair.ItemA, MixSaveState.Saving);
+            Spotify.Mixes.ResetToAuto(new Playlist(playlistSlot), pair.ItemA, outcome => Settle(p, playlistSlot, outcome,
+                () => MixOverrides.Set(p.PlaylistUri, p.ItemA, p.ItemB, MixOverrideKind.Auto, pending: true), settled));
+            return;
+        }
+        if (spotify && !pair.Writes) MixOverrides.Set(pair.PlaylistUri, pair.ItemA, pair.ItemB, MixOverrideKind.Auto);
         else MixOverrides.Clear(pair.PlaylistUri, pair.ItemA, pair.ItemB);
+        MixSaves.Set(pair.PlaylistUri, pair.ItemA, MixSaveState.None);
         Repaint(playlistSlot);
+        settled?.Invoke(MixSaveState.None);
+    }
+
+    /// <summary>Retry: send the pair's pending local edit to Spotify again (a recipe, the "none" recipe, or the reset).</summary>
+    public static void Retry(in Pair pair, int playlistSlot, Action<MixSaveState>? settled = null)
+    {
+        if (!pair.Valid || !pair.Writes || !MixOverrides.TryGet(pair.PlaylistUri, pair.ItemA, pair.ItemB, out var record) || !record.Pending) return;
+        if (record.Kind == MixOverrideKind.Recipe) SaveToSpotify(pair, playlistSlot, record.Recipe, record.Raw, settled);
+        else Reset(in pair, playlistSlot, settled);
+    }
+}
+
+/// <summary>Where a pair's Spotify save stands on this PC (the seam card's save line).</summary>
+public enum MixSaveState : byte { None, Saving, Failed, Offline }
+
+/// <summary>The saves in flight and how the last one ended, per (playlist, from item). In memory: after a restart a pending local
+/// record reads as <see cref="MixSaveState.Failed"/> ("Not saved to Spotify yet"). UI thread.</summary>
+public static class MixSaves
+{
+    static readonly Dictionary<(string Playlist, ulong From), MixSaveState> s_state = new();
+
+    /// <summary>Bumped on every change: the seam card reads it.</summary>
+    public static readonly Signal<int> Changed = new(0);
+
+    public static MixSaveState StateOf(string playlistUri, ulong fromItem) => s_state.GetValueOrDefault((playlistUri, fromItem));
+
+    internal static void Set(string playlistUri, ulong fromItem, MixSaveState state)
+    {
+        if (StateOf(playlistUri, fromItem) == state) return;
+        if (state == MixSaveState.None) s_state.Remove((playlistUri, fromItem));
+        else s_state[(playlistUri, fromItem)] = state;
+        Changed.Value++;
     }
 }
 
@@ -272,7 +423,15 @@ internal sealed class MixSeamCard(int playlistSlot, int index, int pairs, Action
         int shownBeats = s == (int)MixStyle.Quick && pair.Grid ? MixEdit.QuickBeats(in pair) : b;
         bool overlapOn = s is (int)MixStyle.Smooth or (int)MixStyle.Lift;
         string autoLine = edited ? "" : Strings.Mix.AutoChose(MixEdit.StyleName(MixEdit.StyleOf(in pair)));
-        bool savedHere = pair.Local && pair.LocalKind != MixOverrideKind.Auto;
+        // The save line (file header, "WHERE AN EDIT IS SAVED"): saving, not saved yet (with Retry), or saved on this PC only.
+        _ = MixSaves.Changed.Value;
+        var save = MixSaves.StateOf(pair.PlaylistUri, pair.ItemA);
+        bool saving = save == MixSaveState.Saving;
+        bool unsaved = pair.LocalPending && !saving;
+        string saveLine = saving ? Loc.Get(Strings.Mix.SavingSpotify)
+                        : unsaved ? Loc.Get(save == MixSaveState.Offline ? Strings.Mix.NotSavedOffline : Strings.Mix.NotSaved)
+                        : pair.Local && !pair.LocalPending && pair.LocalKind != MixOverrideKind.Auto ? Loc.Get(Strings.Mix.SavedThisPc)
+                        : "";
         var p = pair;
 
         var header = new BoxEl
@@ -323,26 +482,38 @@ internal sealed class MixSeamCard(int playlistSlot, int index, int pairs, Action
                     isEnabled: overlapOn && b < MixEdit.MaxBeatsFor(in pair)) with { Key = "mix:card:more" },
             ],
         };
+        // The save line grows into the row's free space, so Retry appearing beside it never moves Reset or Done.
+        var actionItems = new List<Element>(4)
+        {
+            Ui.Caption(saveLine) with { Key = "mix:card:saved", Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Grow = 1f, Shrink = 1f, MinWidth = 0f },
+        };
+        if (unsaved)
+            actionItems.Add(Button.Subtle(Loc.Get(Strings.Mix.Retry), () => MixEdit.Retry(in p, _playlist, state => { if (state == MixSaveState.None) touched.Value = false; }))
+                with { Key = "mix:card:retry" });
+        actionItems.Add(Button.Subtle(Loc.Get(Strings.Mix.ResetToAuto), () =>
+        {
+            MixEdit.Reset(in p, _playlist);
+            var fresh = MixEdit.Read(_playlist, _index);
+            style.Value = MixEdit.StyleOf(in fresh);
+            beats.Value = MixEdit.BeatsOf(in fresh, (fresh.Now.Mix ? fresh.Now : fresh.Auto).OutDurationMs);
+            touched.Value = false;
+        }, isEnabled: !saving && (MixEdit.Edited(in pair) || touched.Value)) with { Key = "mix:card:reset" });
+        actionItems.Add(Button.Accent(Loc.Get(Strings.Mix.Done), () =>
+        {
+            if (!touched.Peek()) { _close(); return; }
+            // A save to Spotify keeps the card open until the reply lands (its line says "Saving to Spotify…"), then closes it; a
+            // refusal or no connection leaves it open on the "not saved" line with Retry, the edit already playing here. A save on
+            // this PC closes it at once.
+            MixEdit.Save(in p, _playlist, style.Peek(), beats.Peek(), state =>
+            {
+                touched.Value = false;
+                if (state == MixSaveState.None) _close();
+            });
+        }, isEnabled: !saving) with { Key = "mix:card:done" });
         var actions = new BoxEl
         {
             Key = "mix:card:actions", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-            Children =
-            [
-                Ui.Caption(savedHere ? Loc.Get(Strings.Mix.SavedThisPc) : "") with { Key = "mix:card:saved", Color = Tok.TextSecondary, MaxLines = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f },
-                Button.Subtle(Loc.Get(Strings.Mix.ResetToAuto), () =>
-                {
-                    MixEdit.Reset(in p, _playlist);
-                    var fresh = MixEdit.Read(_playlist, _index);
-                    style.Value = MixEdit.StyleOf(in fresh);
-                    beats.Value = MixEdit.BeatsOf(in fresh, (fresh.Now.Mix ? fresh.Now : fresh.Auto).OutDurationMs);
-                    touched.Value = false;
-                }, isEnabled: MixEdit.Edited(in pair) || touched.Value) with { Key = "mix:card:reset" },
-                Button.Accent(Loc.Get(Strings.Mix.Done), () =>
-                {
-                    if (touched.Peek()) MixEdit.Save(in p, _playlist, style.Peek(), beats.Peek());
-                    _close();
-                }) with { Key = "mix:card:done" },
-            ],
+            Children = actionItems.ToArray(),
         };
         return new BoxEl
         {

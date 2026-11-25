@@ -134,11 +134,13 @@ internal sealed class MixTransitionRow(Playlist playlist, RowScope scope, Signal
             if (i < 0 || i + 1 >= targets.Length) return default(Face);
             string from = TitleAt(targets[i]), to = TitleAt(targets[i + 1]);
             var t = Playback.Mix.PlanListPair(_p.Slot, i, i + 1);
-            if (!t.Mix) return new Face(from, to, Loc.Get(Strings.Mix.NoMix), t.WhyNot == MixWhyNot.PairOptOut ? Loc.Get(Strings.Mix.StateThisPc) : "", 0f, true);
             var payload = edges.Payload(_p.Slot);
             ulong a = MixRecipe.Hex64(Entities.Strings.Resolve(payload[i].ItemId)), b = MixRecipe.Hex64(Entities.Strings.Resolve(payload[i + 1].ItemId));
-            string state = MixOverrides.TryGet(_p.Id.Text, a, b, out _) ? Loc.Get(Strings.Mix.StateThisPc)
-                         : t.Source == MixSource.Saved ? Loc.Get(Strings.Mix.StateEdited) : Loc.Get(Strings.Mix.Auto);
+            // A record on this PC: an owner's edit waiting for Spotify ("Not saved"), or one this PC keeps for itself ("This PC").
+            bool local = MixOverrides.TryGet(_p.Id.Text, a, b, out var record);
+            string localState = !local ? "" : Loc.Get(record.Pending ? Strings.Mix.StateNotSaved : Strings.Mix.StateThisPc);
+            if (!t.Mix) return new Face(from, to, Loc.Get(Strings.Mix.NoMix), localState, 0f, true);
+            string state = local ? localState : t.Source == MixSource.Saved ? Loc.Get(Strings.Mix.StateEdited) : Loc.Get(Strings.Mix.Auto);
             string style = MixSeams.StyleText(in t);
             // The picture's overlap share: the window against a 16 s scale (the longest a transition may be).
             return new Face(from, to, style, state, Math.Clamp(t.OutDurationMs / 16_000f, 0.05f, 1f), false);
