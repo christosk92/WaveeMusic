@@ -340,18 +340,34 @@ pair is not beatmatched. The inputs were recorded for the same tracks: kind 28 c
 - Wavee needs the kind 28 **candidate lists** for this. `Spotify/Spotify.Decode.Mix.cs:78-110` keeps only fields 1 and
   2 today; M3 keeps the smallest start candidate and the largest end candidate per track.
 
-### 7.2 Beatmatched (73 pairs): partly known
+### 7.2 Beatmatched: the exact rule (`mix autocheck`: which pairs 228 of 228, window 72 of 72, speedB bit-exact 72 of 72, preset 72 of 72)
 
-| Fact | Detail |
+| Step | Rule |
 |---|---|
-| Type, length | type 3 (BEATMATCHED_FADE), **2 or 4 bars** (2 bars in 46 pairs, 4 bars in 27; both across the whole tempo range, 71 to 163 bpm); `durationMs` = bars × 4 × 60000 / bpmA |
-| Preset | chosen by score from the candidates: 19 most often, then 1, 10, 18, 5, 2, 9, 8, 4, 3, 17 |
-| Which pairs are beatmatched | **open. It is not a tempo threshold.** By the recipe's own `bpmA`/`bpmB`, unmatched pairs start at 5.5 % apart and matched pairs reach 18.5 % (one at 37.6 %): the ranges overlap. Something else decides (cue confidence, mixability or a score; to fit) |
-| Speed | `speedB = bpmA / bpmB` in 38 of the 73; the other 35 use another speed (a capped or partial stretch; **open**, to fit). The morning capture's beatmatched pair is one of these: its recipe has `bpmA` = `bpmB` yet `speedB` = 1.0001602 |
-| Placement (one pair) | the overlap was centred on A's end cue (kind 28 field 2) and on a B start candidate that sits on a downbeat; B's top candidate (bar position 3) was skipped. Config `auto_transition_downbeat_confidence_threshold = 40` fits a "the cue must sit on a downbeat" rule [inferred]. Evidence: [`48-mix-protocol.md`](48-mix-protocol.md) §4.4 |
+| Downbeats | From the kind 217 grid (ms = round(float(seconds) × 1000f)): each downbeat whose next downbeat is exactly 4 beats on, plus the last one. A downbeat's confidence (beat × downbeat confidence) must be > 0.40 (`auto_transition_downbeat_confidence_threshold`) |
+| Windows | 2, 4, 8 or 16 bars (`max_auto_transition_length_bars` 16) from one downbeat to another; shorter than 35 s; bar-duration variance < 0.0005 s². Both tracks get the same list |
+| Pairs | A window of A and one of B with the same bar count, lengths within ±10 % (`max_auto_transition_speed_difference_pct` 10) |
+| r0 (place) | Let d = the track's duration in s and k = min(0.15, 90 s / d). A: clamp((start/d − 0.5 − 15/d) / (0.5 − k − 15/d)), so 1 when A's window starts within its last k. B: with m = max(0.5 − 15/d, k + 0.01), clamp((end/d − m) / (k − m)), so 1 when B's window ends within its first k. r0 = A × B. A window longer than 30 % of its track (`max_auto_transition_length_fraction_permil` 300) or 35 s scores 0. Pairs with r0 < 0.40 (`auto_transition_base_score_threshold`) are dropped |
+| r1 (cue) | ½ (A's fade-out cue score + B's fade-in cue score). Take the best cue (kind 28 field 2 / 1); failing that, the first candidate in answer order (field 4 / 3) that lands. A cue lands within 0.5 s of the window's middle (score 1.0), else its end (0.8), else its start (0.8). A candidate scores 0.95 × that |
+| r2 (vocals) | 1 − (number of the window's 32 equal bins where both tracks' mean kind 218 activity (byte/255) is ≥ 0.2) / 32 |
+| r3 (key) | Camelot: same, ±1 on the same ring, the relative key, or ±1 across rings: 1. Otherwise 0.9 / 0.8 / 0.6 for ≤ 4 / ≤ 8 / more bars. The client's ±1 is (n + 1) mod 12, so 11→12 does not count |
+| r4 (genre) | Kind 6 concepts. Pop, rock, hip hop, indie / alternative / modern rock (7 concepts) on either track: 1 / 0.8 / 0.6 for ≤ 4 / ≤ 8 / more bars. Techno, house, EDM (4 concepts) on both tracks: 1 / 0.8 / 0.6 for ≥ 16 / ≥ 8 / fewer bars. Otherwise 1 |
+| Total | r0 × (r1 + r2 + r3 + r4) (all weights 1) |
+| Choice | Stable sort by bars (desc), then total (desc). Keep the first 5 per bar count. Rank by Pareto layer over (r0…r4), then total, then bars. No pair left: not beatmatched, so §7.1 applies (`auto_transition_fallback_transition_length_milliseconds` 5000) |
+| Recipe | startAMs / startBMs = the windows' first downbeats; durationMs = A's window; durationBars = the bar count. speedB = (B end s − B start s) / (A end s − A start s), with s = float(ms) × 0.001f in float32. B covers its own window (`audio.fade_in_duration`). bpmA / bpmB = kind 222 |
+| Preset | SHA-1 over uriA ‖ uriB ‖ int32 bars ‖ int32 startA ms ‖ int32 startB ms (little-endian ints); the digest's first 8 bytes as a little-endian u64, modulo the table. 2 bars: {1, 10, 19}; 4+ bars: {1, 2, 3, 4, 5, 17, 18, 8, 9, 10, 19} |
 
-A plays at speed 1 in every sample; only B is stretched, and it glides back to 1.0 after the fade-in
-([`48-mix-protocol.md`](48-mix-protocol.md) §6.2).
+Client defaults (`core-automix`): cue start / end 800, middle 1000, margin 500 ms, non-best 950, confidence-based cue
+scoring off. Vocal threshold 200, exponent 1000. Key tiers 3. Diminish knee 150 permil / 90000 ms. Speed glide 5 permil
+per 1000 ms after 500 ms. Octave bpm correction off, 2/4 bars allowed, avoid-cutting-vocals off. Of these, only the
+length fraction (300) is set by the server.
+
+Not modelled: the 2/4-bar downbeat paths (no 2/4 grid in the dataset) and the `beatmatchedCandidate` answer.
+
+Wavee live (`BeatmatchFacts.Live`) has no kind 218 or kind 6 and keeps two kind 28 candidates. The decision stays exact;
+the window matches 19 of 72 (without vocals 32/72, without full cue lists 25/72). Kind 6 genres cost nothing here:
+defaulting to the short-window group, which holds 70 of 73 pairs, gives the same choices. The kind 217 decoder also
+drops a beat at 0.0 s (field 1 absent on the wire) and rounds in double where the client rounds the float product.
 
 ### 7.3 Bounds and limits
 
