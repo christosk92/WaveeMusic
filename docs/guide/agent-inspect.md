@@ -1013,9 +1013,10 @@ Talk-over and radio automix (D3, D3b, `Playback/Playback.Dj.TalkOver.cs`): `narr
 `duckStart` / `duckLands` / `voiceStarts`, `fadeOutStarts` / `bStarts` / `bFadeInEnds`, `bCurrentAt` and `bPositionWhenCurrent`;
 `refused` with the reason, `NoData` while a streamed voice has no length) and `narration.joins` lists what the pump scheduled (A's
 position from the mixer frames at the window, at B's start, at the announce and at the window's end; `heard`, `announced`,
-`cancelled`, `lateShifted`). `do=seams samples=250 n=12` adds each side's curve JSON and its gain sampled over its window.
+`cancelled`, `lateShifted`, `overlapMs` and `cutAtFrame`, and `reportedA` / `reportedB` once the play report took the overlap). `do=seams samples=250 n=12` adds each side's curve JSON and its gain sampled over its window.
 `current.narrating` is "the DJ talks" (the clip is current and its track has not started under it: the f17 `narration`
-restrictions), `clipCurrent` the clip is the deck (no seek, no progress), `targetUnder` the track sounds under the voice. Under
+restrictions, the device picker's and a transfer's lock), `clipCurrent` the clip is the deck (no seek, no progress, no heart, the
+caption shows), `targetUnder` the track sounds under the voice. Under
 `--fake` the tracks of the first six fake DJ pages carry kind 28 cues covering every rule and play as silent MP3 bytes while a DJ
 session plays (`Playback/Playback.Audio.FakeTracks.cs`), so the joins run through the real pump; reach a seam with
 `transport do=next` and `transport do=seek ms=` (a track's window starts about 5 s before its end cue), then `dj do=run until=change`.
@@ -1048,7 +1049,11 @@ or with no signals stated a later segment's `dj.jump_target` is listed; `djPickT
 under `--fake`), then `dj do=telemetry` lists the tapped `RawCoreStream` and `RawCoreStreamSegment` payloads decoded field by field
 (`all=true` adds every other event by name and size). A narration reports under its wire name (`spotify:media:<id>`, provider
 `narration/<slot>`, format `MP3 160 kbps`, its `dj~` decision id and attribution); a DJ track carries its `ssp~` decision id and
-attribution; the overlap fields stay 0 until the talk-over (D3) writes them.
+attribution. The overlap fields come from the pump's joins (`narration.joins[].overlapMs`, the ms both sides sounded from the mixer
+frames): `msPlayedOverlapping` (16) and `msOverlappingSecondary` (67) on a narration (over its track, and over the ducked track of
+the outro join it is the B of: summed) and on both tracks of a radio seam, `msNarrationOverlapping` (46) on a track a voice talked
+over or ducked. A registration that closes while its join still sounds (a skip) counts up to the skip (`cutAtFrame`); side A of a join
+announced when B starts (a jump clip, an outro's track, a radio A) closes at that announce and reports the tail the pump scheduled.
 
 ```text
 mount w=1440 h=960 theme=winui route=home
