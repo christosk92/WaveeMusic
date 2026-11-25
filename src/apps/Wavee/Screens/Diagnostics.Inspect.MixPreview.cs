@@ -3,6 +3,8 @@
 //   do=run      start the preview (`from=`, `to=`, `preset=` an unsaved edit: the pair's stored recipe with that preset), then step frames
 //               (`every=`, `max=`) until it restored; replies the deck samples, the preview's timeline and the deck before and after
 //   do=start | stop (`resume=`) | status | wait (`max=` wall-clock frames, then status)
+//   do=mark     the deck and queue now, for a preview started elsewhere (the editor's Hear it, clicked); do=verify then replies
+//               `restoredExactly` / `queueRestored` against the mark once the preview has stopped and restored
 //   do=envelope the `signal` body this editor would send the owner (another device playing) for the pair, and its parameters decoded back
 // `mix show=remote`: the deck's own PutState player half, read back as a foreign owner's cluster (Decode.Cluster): the fades a controller
 // reads and the queue line and bar label it then shows (Playback.Mix.NoteRemote), forgotten afterwards.
@@ -17,6 +19,9 @@ public static partial class Diagnostics
 {
     public sealed partial class InspectSession
     {
+        /// <summary>`do=mark`'s deck and queue (null: none taken).</summary>
+        (Playback.State Deck, int[] Packed, QueueEdge[] Rows)? _previewMark;
+
         string MixPreviewVerb(int id, string name, Inspect.Args a)
         {
             string uri = a.Str("uri", Entities.LibrarySeed.MixUri);
@@ -45,6 +50,23 @@ public static partial class Diagnostics
                 : "-";
             switch (verb)
             {
+                case "mark":
+                    {
+                        _previewMark = (before, packedBefore, rowsBefore);
+                        return Inspect.Reply.Ok(id, name, w => { w.WriteString("deck", Deck(in before)); w.WriteNumber("queueRows", rowsBefore.Length); WritePreview(w); });
+                    }
+                case "verify":
+                    {
+                        if (_previewMark is not { } mark) return Inspect.Reply.Fail(id, name, "do=mark first");
+                        _previewMark = null;
+                        return Inspect.Reply.Ok(id, name, w =>
+                        {
+                            w.WriteString("before", Deck(in mark.Deck));
+                            w.WriteString("after", Deck(in before));
+                            WriteRestored(w, in mark.Deck, in before, mark.Packed, mark.Rows);
+                            WritePreview(w);
+                        });
+                    }
                 case "start":
                     {
                         bool ok = Playback.MixPreview.Start(slot, from, to, edit, raw, a.Bool("loop", false));
@@ -122,16 +144,7 @@ public static partial class Diagnostics
                         {
                             w.WriteString("before", Deck(in before));
                             w.WriteString("after", Deck(in after));
-                            // Exact: the same row, context, queue index and play state, and the row landed where the preview found it (the
-                            // timeline's "restore" names the kept position, "restored" the deck's when the row was back).
-                            var tl = Playback.MixPreview.Timeline;
-                            var kept = tl.LastOrDefault(e => e.What.StartsWith("restore (", StringComparison.Ordinal));
-                            var landed = tl.LastOrDefault(e => e.What.StartsWith("restored", StringComparison.Ordinal));
-                            w.WriteBoolean("restoredExactly", landed.What is not null && kept.What is not null && after.CurrentId == before.CurrentId
-                                && after.Context == before.Context && after.Cursor.Index == before.Cursor.Index && after.Phase == before.Phase
-                                && Math.Abs(landed.PositionMs - kept.PositionMs) < 250);
-                            w.WriteBoolean("queueRestored", global::Wavee.Queue.PackedRefs.SequenceEqual(packedBefore) && global::Wavee.Queue.Rows.SequenceEqual(rowsBefore));
-                            w.WriteNumber("queueRows", rowsBefore.Length);
+                            WriteRestored(w, in before, in after, packedBefore, rowsBefore);
                             w.WriteNumber("frames", ran);
                             w.WriteStartArray("samples");
                             foreach (var l in samples) w.WriteStringValue(l);
@@ -142,6 +155,20 @@ public static partial class Diagnostics
                 default:
                     return Inspect.Reply.Ok(id, name, w => { w.WriteString("deck", Deck(Playback.Snap())); WritePreview(w); });
             }
+        }
+
+        /// <summary>Exact: the same row, context, queue index and play state, and the row landed where the preview found it (the timeline's
+        /// "restore" names the kept position, "restored" the deck's when the row was back); the queue as it was.</summary>
+        static void WriteRestored(System.Text.Json.Utf8JsonWriter w, in Playback.State before, in Playback.State after, int[] packedBefore, QueueEdge[] rowsBefore)
+        {
+            var tl = Playback.MixPreview.Timeline;
+            var kept = tl.LastOrDefault(e => e.What.StartsWith("restore (", StringComparison.Ordinal));
+            var landed = tl.LastOrDefault(e => e.What.StartsWith("restored", StringComparison.Ordinal));
+            w.WriteBoolean("restoredExactly", landed.What is not null && kept.What is not null && after.CurrentId == before.CurrentId
+                && after.Context == before.Context && after.Cursor.Index == before.Cursor.Index && after.Phase == before.Phase
+                && Math.Abs(landed.PositionMs - kept.PositionMs) < 250);
+            w.WriteBoolean("queueRestored", global::Wavee.Queue.PackedRefs.SequenceEqual(packedBefore) && global::Wavee.Queue.Rows.SequenceEqual(rowsBefore));
+            w.WriteNumber("queueRows", rowsBefore.Length);
         }
 
         static void WritePreview(System.Text.Json.Utf8JsonWriter w)

@@ -444,7 +444,7 @@ public static partial class Playback
             return len;
         }
 
-        /// <summary>The mean beat period over up to 8 beats around <paramref name="ms"/> (the local card's beat readout).</summary>
+        /// <summary>The mean beat period over up to 8 beats around <paramref name="ms"/> (the editor's length stepper).</summary>
         public static float PeriodNear(ReadOnlySpan<uint> beats, long ms)
         {
             if (beats.Length < 2) return 500f;
