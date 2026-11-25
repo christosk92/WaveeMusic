@@ -19,8 +19,8 @@ using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
-/// <summary>Where a drop's songs go.</summary>
-public enum DropDeposit : byte { PlayNow, PlayNext, Append, At }
+/// <summary>Where a drop's songs go (<see cref="Playlist"/>: added to one of the user's playlists, #240 D12).</summary>
+public enum DropDeposit : byte { PlayNow, PlayNext, Append, At, Playlist }
 
 public static partial class DropAnywhere
 {
@@ -64,6 +64,24 @@ public static partial class DropAnywhere
             : null;
         new Expansion(plan, how, at, unplaced).Start();
     }
+
+    /// <summary>Local files dropped on one of the user's playlists (its sidebar row, #240 D12): each file becomes its library entry as any
+    /// drop's does (one the index already holds is found; a new one is added to "Added files"), then every row goes into the playlist as its own
+    /// <c>spotify:local:</c> item through the same deposit as the row menu's "Add to playlist" (its toast says "Added to {name}"). A file whose
+    /// length is only an estimate is added too (other devices may not find it: logged). UI thread.</summary>
+    public static void DepositToPlaylist(DropPlan plan, string playlistUri, string playlistName)
+    {
+        if (!plan.IsLocal) return;
+        new Expansion(plan, DropDeposit.Playlist, 0, null) { PlaylistUri = playlistUri, PlaylistName = playlistName }.Start();
+    }
+
+    /// <summary>The last local drop deposited into a playlist (the inspector reports what the deposit was handed).</summary>
+    public static (string PlaylistUri, Track[] Tracks)? LastPlaylistDeposit { get; set; }
+
+    /// <summary>A drop's files are still being read and landed (UI thread; the inspector waits for it).</summary>
+    public static bool Expanding => s_expanding > 0;
+
+    static int s_expanding;
 
     // ── links (D16) ───────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -135,6 +153,10 @@ public static partial class DropAnywhere
     {
         readonly FloatSignal _progress = new(0f);
         readonly List<ulong> _queued = [];
+        readonly List<Track> _forPlaylist = [];
+        public string PlaylistUri { get; init; } = "";
+        public string PlaylistName { get; init; } = "";
+        int _estimated;
         HashSet<ulong>? _before;
         ToastHandle? _toast;
         int _landed, _skipped, _inserted;
@@ -144,6 +166,7 @@ public static partial class DropAnywhere
         public void Start()
         {
             _started = Environment.TickCount64;
+            s_expanding++;
             int expected = plan.Songs.Peek();
             if (expected >= ToastFrom) ShowProgress(expected);
             _ = Task.Run(Walk);
@@ -203,6 +226,13 @@ public static partial class DropAnywhere
                 var track = LocalLibrary.AddFile(path, format, in tags, read, why);
                 if (!track.IsValid) { _skipped++; continue; }
                 refs[n++] = new EntityRef(EntityKind.Track, track.Slot);
+                if (how == DropDeposit.Playlist)
+                {
+                    _forPlaylist.Add(track);
+                    // Added anyway: the playlist item names the file by its whole seconds, and another device reading the length exactly may not
+                    // find it. The file name only (paths hold the account name).
+                    if (tags.DurationEstimated) { _estimated++; Log.Info("drop", "drop.playlist estimated-length file=" + Path.GetFileName(path)); }
+                }
             }
             if (n == 0) return;
             _landed += n;
@@ -215,6 +245,7 @@ public static partial class DropAnywhere
         /// <summary>UI thread: put a landed batch where the drop said (the first batch of a Play plays at once).</summary>
         void Place(ReadOnlySpan<EntityRef> span)
         {
+            if (how == DropDeposit.Playlist) return;   // the rows go into the playlist in one deposit at the end
             if (how == DropDeposit.PlayNow && !_played)
             {
                 // The first batch plays at once (the first song is the first row); the walk goes on behind it.
@@ -243,10 +274,21 @@ public static partial class DropAnywhere
         /// <summary>UI thread: the summary, with Undo for a queue change.</summary>
         void Finish()
         {
+            s_expanding--;
             _toast?.Close();
 
             Log.Info("drop", $"done how={how} landed={_landed} skipped={_skipped} capped={_capped}");
             if (_landed == 0) { Notify.Say(Loc.Get(Strings.Drop.NoneFound), InfoBarSeverity.Warning); return; }
+            if (how == DropDeposit.Playlist)
+            {
+                // The row menu's deposit: one ADD of every row as its spotify:local: item, then "Added to {name}" (Spotify.Library).
+                Track[] tracks = [.. _forPlaylist];
+                LastPlaylistDeposit = (PlaylistUri, tracks);
+                Log.Info("drop", $"drop.playlist add rows={tracks.Length} estimated={_estimated} skipped={_skipped}");
+                if (Sidebar.LibraryWrites?.DepositTracks is { } deposit) deposit(PlaylistUri, PlaylistName, PayloadOf(tracks));
+                else NavModel.RefuseDrop(SidebarDropRefusal.WritesUnavailable, "no deposit seam");
+                return;
+            }
             if (_before is not null)
                 foreach (QueueEdge row in Queue.Rows)
                     if (row.ItemId != 0 && !_before.Contains(row.ItemId)) _queued.Add(row.ItemId);
@@ -267,6 +309,12 @@ public static partial class DropAnywhere
             ulong[] undo = [.. _queued];
             Notify.Say(message, InfoBarSeverity.Success, actionLabel: undo.Length > 0 ? Loc.Get(Strings.Drop.Undo) : null,
                 onAction: undo.Length > 0 ? () => Undo(undo) : null);
+        }
+
+        static DragPayload PayloadOf(Track[] tracks)
+        {
+            string uri = tracks[0].Uri.Text;
+            return new DragPayload(DragKind.Track, uri, uri, tracks[0].Title, new EntityRef(EntityKind.Track, tracks[0].Slot), Tracks: tracks);
         }
 
         static HashSet<ulong> ItemIds()

@@ -130,10 +130,10 @@ What it cannot answer is in section 6 ("still open"); those points keep the mark
 | D9 | Hand-off at a local boundary | (a) lift the gate: local boundaries get the user's crossfade or gapless join; (b) keep today's cut | **(a)**, section 3.13. A local library that hard-cuts between every song while Spotify songs crossfade is not "general local playback". |
 | D10 | The Local Files list on Connect | (a) publish it as the official context `spotify:local-files` with the `local_list` restriction; (b) keep today's "track only, no context" | **(a)**, in P3. It is what a controller expects for this context, and `local_list` stops a controller offering a transfer that cannot work. |
 | D11 | An inbound Connect `play` of `spotify:local-files` | (a) refuse it cleanly; (b) play Wavee's own Local Files list | **(a) for 0.4.** The command names the row only by a uid the *sending* client made up for its own list (report 3.5); Wavee cannot know which file was meant, and starting a different song is worse than not starting. Revisit when uid generation is understood (section 6). |
-| D12 | Liked Songs and playlist writes | (a) read side only; (b) also like a local file and add one to a playlist from Wavee | **(a) for 0.4:** a local item already in Liked Songs or a playlist is matched and played like any other row. Writing (`collection/v2/write`, a playlist ADD with a fresh 8-byte `item_id`) is "After 0.4"; the server accepts both (report 3.1, 3.2). |
+| D12 | Liked Songs and playlist writes | (a) read side only; (b) also like a local file and add one to a playlist from Wavee | **Playlist writes in 0.4, Like after 0.4:** a local item already in Liked Songs or a playlist is matched and played like any other row. Adding a local file to a playlist ships in 0.4: the row menu's "Add to playlist" (phase 2) and an OS drop of files on a sidebar playlist both write a playlist ADD of the file's `spotify:local:` name with a fresh 8-byte `item_id` (report 3.1). A file whose length is only an estimate is added anyway (logged). Liking a local file (`collection/v2/write`, report 3.2) is "After 0.4", after aliases. |
 | D8 | Embedded cover art | in 0.4 or after | **In 0.4 (owner, revision 2).** The image pipeline loads plain paths and `file:///` (`DefaultImageFetcher.cs:192-196`), as do the Windows media controls and toasts, so a cover extracted once into a content-addressed cache file works for every consumer with no engine change. §3.6a. |
 | D13 | The identity of a Local Files row | (a) `wavee:local:file:<base64(path)>` as today; (b) `wavee:local:file:<LocalId>`, a stable 64-bit id the index assigns at first sight | **(b) for files in music folders**: a move or rename keeps the row, its queue position and anything later attached to it. `LocalPathOf` resolves the id through the index. A dropped file outside every folder keeps the path form. Playlist rows keep their `spotify:local:` identity (D1). |
-| D15 | What a drop does | (a) today: anywhere in the window plays the first playable file; (b) **drop zones**: a drop panel with the actions that fit what is dragged, plus precise targets (queue, sidebar playlists, Local Files, the player bar) | **(b).** Files: Play now · Play next · Add to queue; a folder: Play it · Add as a music folder · Add to queue; a playlist file (`.m3u`, `.m3u8`, `.pls`): Play as a queue; a Spotify link or `spotify:` uri: Open · Play. Dropping on the queue inserts at the drop line; on a sidebar playlist adds Spotify songs now and local files once D12's writes land. §3.15. |
+| D15 | What a drop does | (a) today: anywhere in the window plays the first playable file; (b) **drop zones**: a drop panel with the actions that fit what is dragged, plus precise targets (queue, sidebar playlists, Local Files, the player bar) | **(b).** Files: Play now · Play next · Add to queue; a folder: Play it · Add as a music folder · Add to queue; a playlist file (`.m3u`, `.m3u8`, `.pls`): Play as a queue; a Spotify link or `spotify:` uri: Open · Play. Dropping on the queue inserts at the drop line; on a sidebar playlist adds Spotify songs and local files (D12). §3.15. |
 | D16 | Links and text drops | (a) files only (the engine's one OS kind today); (b) **add `DropKinds.Text` and `DropKinds.Uri` to the engine** | **(b)**: dragging a song from Spotify's own app or a browser hands over `spotify:` uris or `open.spotify.com` links as text. The OLE host already receives the data object; it needs `CF_UNICODETEXT` and `UniformResourceLocatorW` read into two new payload types. An engine change in fluent-gpu (standing rule: fix the engine). |
 | D17 | Network folders in 0.4 | (a) SMB shares and mapped drives through Windows paths; (b) also music servers (OpenSubsonic: Navidrome, gonic, Airsonic; Jellyfin; DLNA/UPnP) | **(a) in 0.4**, done well (§3.16): UNC paths stored even when the user picks a mapped letter, Windows handles sign-in, a buffered reader so a slow or sleeping NAS never stutters, honest states (waking up, slow, offline). **(b) after 0.4** as "Music servers", a source of its own: many NAS users already run Navidrome or Jellyfin, and its API gives tags and covers without reading files. |
 | D18 | Offline copies of network music | (a) none in 0.4; (b) "Keep a copy on this PC" per network folder | **(a) for 0.4**, with the setting designed and the cache folder reserved; **(b) after 0.4.** The buffered reader already holds the playing and next song in memory. |
@@ -816,7 +816,7 @@ the pointer):
 | Target (nearest wins) | Accepts | What the drop does |
 |---|---|---|
 | A queue row gap (Queue panel) | files, folders, links | insert at the line; folders expand in file-name order |
-| A sidebar playlist | links now; local files after D12 | add to that playlist; a refusal caption says "Adding local files to a Spotify playlist comes later" |
+| A sidebar playlist | links and local files (D12) | add to that playlist; a file goes in as its `spotify:local:` item (a file not yet in Local Files joins "Added files" first); "Added to {name}" |
 | The Local Files page | files, folders | files outside any music folder: played and kept for the session (D4); a folder: "Add as a music folder" or "Play it" |
 | The player bar | files, links | Play now |
 | A track row (existing, `Track.Table.cs:2704`) | one `.mp4` | attach the video, as today |
@@ -921,15 +921,15 @@ and adds its own change file.
 
 - Music servers (D17 b): OpenSubsonic (Navidrome, gonic, Airsonic, Jellyfin) and DLNA/UPnP as a source of their own.
 - "Keep a copy on this PC" for network folders (D18).
-- Saving a dropped `.m3u` as a Spotify playlist, and dropping local files onto a Spotify playlist (both need D12's writes).
+- Saving a dropped `.m3u` as a Spotify playlist (D12's playlist ADD now exists).
 
 - New decoders: WAV/PCM, Ogg Opus, ALAC (D7). The index already records these files as unplayable, so the day a
   decoder lands a rescan lights them up.
 - Local albums and artists as browsable entities (today a local file's album and artist are names, not rows).
 - Loudness analysis of local files without ReplayGain tags (3.13).
 - Fuzzy matching beyond the loose key (edit distance, acoustic fingerprint).
-- Liking a local file and adding one to a Spotify playlist from Wavee (D12): `collection/v2/write` with the uri, and
-  a playlist ADD with the uri and a fresh 8-byte `item_id`. Both use the official encoder (E1).
+- Liking a local file from Wavee (D12): `collection/v2/write` with the uri, minted by the official encoder (E1). Adding one
+  to a playlist shipped in 0.4.
 - Honouring a remote `play` of `spotify:local-files` (D11), once the uid question in section 6 is answered.
 - The playlist's resume point in herodotus after a local play (the official client writes one; Wavee writes none
   for any playlist).

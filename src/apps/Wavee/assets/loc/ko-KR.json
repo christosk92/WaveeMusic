@@ -1496,7 +1496,6 @@
     "cantPlayType": "Wavee는 아직 {ext} 파일을 재생할 수 없습니다",
     "nothingUsable": "Wavee가 재생할 수 있는 항목이 없습니다",
     "onlySpotifyLinks": "Wavee는 Spotify 링크를 엽니다",
-    "localToSpotifyLater": "Spotify 재생목록에 로컬 파일 추가는 나중에 지원됩니다",
     "playAndKeep": "지금 재생 · 로컬 파일에 보관",
     "queueOnThisPc": "다른 기기에서 재생 중입니다: 이 PC의 파일은 그 대기열에 넣을 수 없습니다",
     "addingSongs": "곡 추가 중…",

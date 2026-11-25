@@ -143,8 +143,8 @@ public static partial class Sidebar
                 // A COLLAPSED folder spring-loads open even when it refuses the payload: opening is navigation.
                 springLoadMs: onSpringLoad is null ? 0f : Drag.SpringLoadMs,
                 onSpringLoad: onSpringLoad is null ? null : (_, _) => onSpringLoad());
-            // An OS drag (#240 D15/D16): Spotify track links dropped on an editable playlist are added now; local files are refused
-            // with the D12 sentence until playlists can hold them.
+            // An OS drag (#240 D12/D15/D16): Spotify track links and local files dropped on an editable playlist are added to it (a file as
+            // its own spotify:local: item, as the row menu's "Add to playlist" adds it).
             return isPlaylistRow && playlistUri is { Length: > 0 } target
                 ? DropAnywhere.WithOsArm(spec, target, playlistName,
                     uris => Model.Drop(DropAnywhere.LinkPayload(uris), NavDropTarget.Playlist(target, playlistName ?? "")))

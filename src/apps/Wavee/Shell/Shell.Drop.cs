@@ -93,7 +93,6 @@ public static partial class DropAnywhere
     /// <summary>The drag is over (dropped, cancelled, or it left the window): hide the panel.</summary>
     static void End()
     {
-        s_refusingRow = false;
         s_over.Value = OverNothing;
         s_armed = null;
         Publish();
@@ -234,8 +233,7 @@ public static partial class DropAnywhere
         if (!state.Active || !(state.Offers(DropKinds.Files) || state.Offers(DropKinds.Uri) || state.Offers(DropKinds.Text))) return null;
         if (Current is not { } plan) return null;
         if (!plan.Usable) return new DragChipSpec(Title: plan.Refusal ?? "", Glyph: Icons.Cancel);
-        // Over a playlist that refuses local files the caption carries the reason; the glyph says no.
-        string glyph = s_refusingRow ? Icons.Cancel : plan.Kind switch
+        string glyph = plan.Kind switch
         {
             DropPayloadKind.Folders => Icons.Folder,
             DropPayloadKind.Links => Icons.Link,
@@ -313,91 +311,43 @@ public static partial class DropAnywhere
         Forget();
     }
 
-    /// <summary>A sidebar playlist row's OS arm, folded onto its resource target: Spotify track links add to the playlist now. Local
-    /// files are refused there with the D12 sentence ("Adding local files to a Spotify playlist comes later", board 24 ③): the row
-    /// takes the hover so the window's catch-all cannot swallow the refusal, sets the no-drop effect (the OS cursor refuses, nothing
-    /// lights), puts the reason in the chip with the not-allowed glyph, and a drop there only says why. Rows that are not editable
-    /// playlists stay transparent to OS drags.</summary>
+    /// <summary>A sidebar playlist row's OS arm, folded onto its resource target (#240 D12): Spotify track links and local files are added
+    /// to the playlist, the files each as its own <c>spotify:local:</c> item (<see cref="DepositToPlaylist"/>: a file the index holds is
+    /// found, a new one joins "Added files" first), the same rows the row menu's "Add to playlist" writes. The chip says "Add to {name}".
+    /// Rows that are not editable playlists stay transparent to OS drags.</summary>
     public static DropTargetSpec WithOsArm(DropTargetSpec inner, string? playlistUri, string? playlistName, Action<string[]> addLinks)
     {
         if (string.IsNullOrEmpty(playlistUri)) return inner;
-        string caption = Drag.AddTo(playlistName ?? "");
+        string name = playlistName ?? "";
+        string caption = Drag.AddTo(name);
         string[] kinds = [.. inner.AcceptKinds, .. OsKinds];
         static bool Os(DragSession s) => s.Kind is DropKinds.Files or DropKinds.Uri or DropKinds.Text;
-        static bool Takes(DropPlan p) => p.Kind == DropPayloadKind.Links && p.AllTracks;
+        static bool Takes(DropPlan p) => p.IsLocal || p.Kind == DropPayloadKind.Links && p.AllTracks;
         void Hover(DragSession s)
         {
-            var plan = PlanOf(s);
-            if (Takes(plan)) { s.Caption = caption; return; }
-            s_refusingRow = true;
-            s.Caption = s_localLater ??= Loc.Get(Strings.Drop.LocalToSpotifyLater);
-            s.Effect = DropEffect.None;
+            if (Takes(PlanOf(s))) s.Caption = caption;
         }
         return inner with
         {
             AcceptKinds = kinds,
             OnEnter = s => { if (Os(s)) Hover(s); else inner.OnEnter?.Invoke(s); },
             OnOver = s => { if (Os(s)) Hover(s); else inner.OnOver?.Invoke(s); },
-            OnLeave = s => { if (Os(s)) s_refusingRow = false; else inner.OnLeave?.Invoke(s); },
+            OnLeave = s => { if (!Os(s)) inner.OnLeave?.Invoke(s); },
             OnDrop = s =>
             {
                 if (!Os(s)) { inner.OnDrop?.Invoke(s); return; }
                 var plan = PlanOf(s);
                 End();
-                if (Takes(plan)) addLinks(plan.Entities);
-                else Notify.Say(s_localLater ??= Loc.Get(Strings.Drop.LocalToSpotifyLater), InfoBarSeverity.Informational);
+                if (plan.Kind == DropPayloadKind.Links) addLinks(plan.Entities);
+                else DepositToPlaylist(plan, playlistUri, name);
                 Forget();
             },
-            CanAccept = s => Os(s) ? PlanOf(s) is { IsLocal: true } or { Kind: DropPayloadKind.Links, AllTracks: true } : inner.CanAccept?.Invoke(s) ?? true,
+            CanAccept = s => Os(s) ? Takes(PlanOf(s)) : inner.CanAccept?.Invoke(s) ?? true,
             RefusalCaption = s => Os(s) ? null : inner.RefusalCaption?.Invoke(s),
-            Transparent = s => Os(s) ? PlanOf(s) is not ({ IsLocal: true } or { Kind: DropPayloadKind.Links, AllTracks: true })
-                                     : inner.Transparent?.Invoke(s) ?? false,
+            Transparent = s => Os(s) ? !Takes(PlanOf(s)) : inner.Transparent?.Invoke(s) ?? false,
             SpotlightWhen = s => Os(s) ? Takes(PlanOf(s)) : inner.SpotlightWhen?.Invoke(s) ?? true,
         };
     }
-
-    /// <summary>The chip over a playlist row that refuses local files (board 24 ③): the not-allowed glyph and the whole reason, which wraps to a
-    /// second line rather than clip. The framework's standard chip keeps its caption to one ellipsized line under a 280 DIP card, which cut the
-    /// D12 sentence in half and repeated it as the title. Null when no row refuses: the standard chip draws.</summary>
-    public static Element? RefusalChip(in DragState state)
-    {
-        if (!s_refusingRow || !state.Active || state.Caption is not { Length: > 0 } reason) return null;
-        return new BoxEl
-        {
-            Key = DragChip.ChipRootKey, HitTestVisible = false,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, Gap = RefusalChipLook.Gap, AlignItems = FlexAlign.Center, MaxWidth = RefusalChipLook.MaxWidth,
-                    Padding = RefusalChipLook.Padding, Fill = Tok.FillSolidTertiary, BorderColor = Tok.StrokeSurfaceDefault, BorderWidth = 1f,
-                    Corners = Radii.OverlayAll, Shadow = Elevation.Flyout, HitTestVisible = false,
-                    Children =
-                    [
-                        new TextEl(DragChip.NotAllowedGlyph) { Size = RefusalChipLook.Glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.SystemFillCritical, Shrink = 0f },
-                        new TextEl(reason)
-                        {
-                            Size = RefusalChipLook.Text, LineHeight = RefusalChipLook.Line, Weight = RefusalChipLook.Weight, Color = Tok.TextPrimary,
-                            Wrap = TextWrap.WrapWholeWords, MaxLines = 2, Trim = TextTrim.WordEllipsis, Shrink = 1f, MinWidth = 0f,
-                        },
-                    ],
-                },
-            ],
-        };
-    }
-
-    /// <summary>The refusal chip's numbers: the framework chip's card (padding, glyph, caption type) with room for the D12 sentence on one line.</summary>
-    static class RefusalChipLook
-    {
-        public const float MaxWidth = 380f, Gap = 10f, Glyph = 14f, Text = 12f, Line = 16f;
-        public const ushort Weight = 600;
-        public static readonly Edges4 Padding = new(12f, 8f, 14f, 8f);
-    }
-
-    /// <summary>The pointer is over a playlist row that refuses the live local-files drag (the chip says why).</summary>
-    static bool s_refusingRow;
-
-    static string? s_localLater;
 
     /// <summary>Dropped track links as the in-app payload a playlist deposit takes (the tracks resolve to their rows).</summary>
     public static DragPayload LinkPayload(string[] uris)
