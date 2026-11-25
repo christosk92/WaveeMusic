@@ -595,6 +595,10 @@ public static partial class Diagnostics
                 // (and what the rules mean): an empty box, a whole opacity, so a replay reads the page the live lint judged.
                 RectF presented = scene.PresentedAbsoluteRect(node);
                 RectF rect = new(presented.X, presented.Y, MathF.Max(0f, presented.W), MathF.Max(0f, presented.H));
+                // A sticky cut (`.StickyClip`: a page slot scrolled under a pinned header) is a line across the node above which neither it nor its
+                // subtree takes a hit (InputDispatcher.ClipRectAdmits), as the item band is for a list's rows.
+                if (!paint.ClipRect.IsInfinite && paint.ClipRect.X <= -NodePaint.StickyClipSpan && !NodePaint.IsCollapseCut(in paint.ClipRect))
+                    hitTop = MathF.Max(hitTop, presented.Y + paint.ClipRect.Y);
                 float opacity = Math.Clamp(above * paint.Opacity, 0f, 1f);
                 bool inert = inertAbove || (flags & NodeFlags.Disabled) != 0;
                 int self = parent;

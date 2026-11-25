@@ -444,7 +444,8 @@ public static partial class Diagnostics
             public bool Sticky { get; init; }
 
             /// <summary>The window y above which it takes no hits: a recyclable item of a virtual list whose pinned prefix (a sticky toolbar) covers the top
-            /// of the viewport (the engine's item band, <c>InputDispatcher.Hit</c> skips such items above it). Negative infinity: none.</summary>
+            /// of the viewport (the engine's item band, <c>InputDispatcher.Hit</c> skips such items above it), or a node under a sticky cut (`.StickyClip`).
+            /// Negative infinity: none.</summary>
             public float HitTop { get; init; } = float.NegativeInfinity;
 
             /// <summary>Its paint: a fill, a border, an image, a gradient (what makes a box ink, and a busy ground).</summary>
