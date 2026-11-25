@@ -33,7 +33,17 @@ public static partial class Entities
             row.Flags = (uint)PlaylistFlags.YourDj;
             row.FlagsMask = (uint)PlaylistFlags.YourDj;
             row.LexiconUrl = Text(s, DjLexiconUrl);
+            row.DjAttributes = Text(s, DjAttributesJson);
         }
+
+        /// <summary>The list's format attributes as the rootlist states them (plan-dj §1.1), every value invented: what a DJ play names as
+        /// its context metadata (PutState f21, the controller's envelope).</summary>
+        public const string DjAttributesJson =
+            "{\"lexicon_set_type\":\"your_dj\",\"lexicon_context_url\":\"" + DjLexiconUrl + "\",\"automix.mode\":\"radio\","
+            + "\"add_context_load_reason\":\"true\",\"home.card.transcript_id\":\"fa4e0000-0000-0000-0000-00000000ca7d\","
+            + "\"home.card.transcript_text\":\"Your DJ is ready when you are.\",\"home.card.jellyfish_top_color\":\"#FF3FD8A0\","
+            + "\"home.card.jellyfish_mid_color\":\"#FF3FC8D0\",\"home.card.jellyfish_bottom_color\":\"#FF3F90D8\","
+            + "\"home.card.text_color\":\"#FFFFFFFF\"}";
 
         /// <summary>The DJ list has no rows of its own (the service lists none): its membership is known and empty.</summary>
         static void LandDj()

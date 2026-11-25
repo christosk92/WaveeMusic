@@ -81,6 +81,9 @@ public static partial class Shell
     static SessionDeckDto? DeckDto(in Playback.RestorePoint point)
     {
         if (point.IsEmpty || !point.Track.IsPlayable) return null;
+        // A DJ deck keeps the lexicon url it plays from: at the next launch the list's attributes are not read yet (AI DJ, D4).
+        if (point.ContextUrl is null && Entities.Current is not null && Playback.Dj.UrlFor(point.Context) is { Length: > 0 } djUrl)
+            return DeckDto(point with { ContextUrl = djUrl });
         ReadOnlySpan<int> packed = Entities.Current is null ? default : Queue.PackedRefs;
         ReadOnlySpan<QueueEdge> rows = Entities.Current is null ? default : Queue.Rows;
         int n = Math.Min(packed.Length, rows.Length);
@@ -147,6 +150,7 @@ public static partial class Shell
                 DurationMs = Math.Max(0, point.DurationMs),
                 Shuffle = point.Shuffle,
                 Repeat = (int)point.Repeat,
+                ContextUrl = string.IsNullOrEmpty(point.ContextUrl) ? null : point.ContextUrl,
             };
             int n = Math.Min(ids.Length, rows.Length);
             if (n == 0) return dto;
@@ -212,7 +216,8 @@ public static partial class Shell
             RepeatMode repeat = dto.Repeat is >= (int)RepeatMode.Off and <= (int)RepeatMode.Track ? (RepeatMode)dto.Repeat : RepeatMode.Off;
             int cursor = Math.Max(-1, dto.CursorIndex);
             Playback.RestoreRow[]? rows = RowsOf(dto.Rows, ref cursor);
-            return new Playback.RestorePoint(track, context, cursor, position, duration, dto.Shuffle, repeat, rows);
+            return new Playback.RestorePoint(track, context, cursor, position, duration, dto.Shuffle, repeat, rows,
+                string.IsNullOrEmpty(dto.ContextUrl) ? null : dto.ContextUrl);
         }
 
         /// <summary>The persisted rows → identities and edges, in order, capped at <see cref="MaxRows"/>. A row whose
@@ -257,6 +262,7 @@ public static partial class Shell
                 && string.Equals(current.Context, next.Context, StringComparison.Ordinal)
                 && current.CursorIndex == next.CursorIndex && current.PositionMs == next.PositionMs
                 && current.DurationMs == next.DurationMs && current.Shuffle == next.Shuffle && current.Repeat == next.Repeat
+                && string.Equals(current.ContextUrl, next.ContextUrl, StringComparison.Ordinal)
                 && SameRows(current.Rows, next.Rows);
         }
 

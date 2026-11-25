@@ -1846,6 +1846,12 @@ public static partial class Spotify
         /// <summary>AI DJ: <c>x-dynamic-device-context</c>, the value <c>Spotify.Api.DeviceContext</c> holds (plan-dj §1.2: every lexicon
         /// session GET carries it).</summary>
         DeviceContext = 1 << 25,
+        /// <summary>AI DJ: <c>Time-Zone</c>, the local zone as an IANA id (<c>Spotify.Api.LocalTimeZone</c>), as the official client sends it on
+        /// the lexicon session routes (dj-protocol §2.1).</summary>
+        TimeZone = 1 << 26,
+        /// <summary>AI DJ: <c>X-Client-Id</c>, the keymaster client id this session authenticated with (<c>Identity.ClientId</c>), as the
+        /// official client sends it on the lexicon session routes (dj-protocol §2.1).</summary>
+        ClientId = 1 << 27,
     }
 
     /// <summary>Which request. One per FAMILY, not one per caller: <c>Spotify.Api.cs</c>'s function per request picks

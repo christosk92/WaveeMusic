@@ -112,8 +112,7 @@ public static partial class Playback
             {
                 byte[]? body = fake(path);
                 if (body is null || body.Length == 0) { Log.Warn("dj", what + " refused (fake: no answer)"); return false; }
-                page = Spotify.Decode.ContextResolve(body, buffer, djPage);
-                return true;
+                return Decode(body, buffer, djPage, what, out page);
             }
             var args = new Spotify.RequestArgs
             {
@@ -121,12 +120,12 @@ public static partial class Playback
                 Host = Spotify.ApiHost.Spclient,
                 Verb = Spotify.Verb.Get,
                 Headers = Spotify.HeaderSet.Bearer | Spotify.HeaderSet.ClientToken | Spotify.HeaderSet.Identity
-                          | Spotify.HeaderSet.AcceptLanguage | Spotify.HeaderSet.AcceptJson | Spotify.HeaderSet.DeviceContext,
+                          | Spotify.HeaderSet.AcceptLanguage | Spotify.HeaderSet.AcceptJson | Spotify.HeaderSet.DeviceContext
+                          | Spotify.HeaderSet.TimeZone | Spotify.HeaderSet.ClientId,   // the official client's pair on these routes (§1.2)
             };
             Spotify.Api.Result result = Spotify.Api.Send(Spotify.RequestKind.Custom, args, CancellationToken.None);
             if (!result.Ok || result.Length == 0) { Log.Warn("dj", what + " refused (" + result.Status + ")"); return false; }
-            page = Spotify.Decode.ContextResolve(result.Bytes, buffer, djPage);
-            return true;
+            return Decode(result.Bytes, buffer, djPage, what, out page);
         }
 
         // ── the session record (UI thread) ──────────────────────────────────────────────────────────────────────────
@@ -209,6 +208,9 @@ public static partial class Playback
             public readonly List<Page> Pages = new();
             /// <summary>The next page's url, as the last page named it ("" when none).</summary>
             public string PendingUrl = "";
+            /// <summary>How this DJ play began (a start, a transfer into Wavee, the launch restore): the narration phase reads it (a
+            /// welcome opens a start; whether a transfer or a resume gets one is not captured).</summary>
+            public DjStart Start;
             /// <summary>How many times a page fetch found the session past its expiry and resolved it again.</summary>
             public int Renewals;
             /// <summary>The highest page ordinal loaded (0 before the first page).</summary>
@@ -234,16 +236,17 @@ public static partial class Playback
 
         /// <summary>A lexicon context starts (<see cref="StartContext"/>, after the queue was replaced): the record of the resolve, the
         /// start's pending url. The book keeps the rows the new queue holds.</summary>
-        internal static void Begin(EntityId context, Resolve resolve, string pendingUrl)
+        internal static void Begin(EntityId context, Resolve resolve, string pendingUrl, DjStart start = DjStart.Play)
         {
-            var s = new Session { Context = context, ContextUrl = resolve.ContextUrl, Reason = resolve.Reason, Facts = resolve.Facts, PendingUrl = pendingUrl };
+            var s = new Session { Context = context, ContextUrl = resolve.ContextUrl, Reason = resolve.Reason, Facts = resolve.Facts, PendingUrl = pendingUrl,
+                Start = start };
             s.Pages.AddRange(resolve.Pages);
             s_session = s;
             Retain(Queue.Rows);
             int rows = 0;
             foreach (Page p in resolve.Pages) rows += p.Rows;
             Log.Info("dj", "lexicon session started: dj=" + (resolve.Facts.IsDj ? 1 : 0) + " pages=" + resolve.Pages.Count + " rows=" + rows
-                + " booked=" + s_book.Count + " more=" + (pendingUrl.Length > 0 ? 1 : 0));
+                + " booked=" + s_book.Count + " more=" + (pendingUrl.Length > 0 ? 1 : 0) + " start=" + start);
         }
 
         /// <summary>A start of another context ends the session (<paramref name="context"/> is the new deck's) and empties the book.</summary>
@@ -292,11 +295,20 @@ public static partial class Playback
         /// <summary>What a DJ row's page said about it (plan-dj §1.3).</summary>
         public sealed class Row
         {
+            /// <summary>The page the row came from: Wavee's own count of the pages fetched for the session the play started (1 = its
+            /// first real page; the session answer is page 0). A renewal past <c>lexicon_expiration_time</c> goes on counting
+            /// (<see cref="RequestDjPage"/>: the last page + 1), so the Connect index this numbers (plan-dj §1.9 f6) never goes back
+            /// while one DJ play lasts; a new DJ start numbers from 1 again.</summary>
             public int Page;
+            /// <summary>The row's slot in its page's <c>tracks</c> (0-based): the index's <c>track</c>.</summary>
+            public int Track;
             public string Segment = "", DecisionId = "", Attribution = "", Subtitle = "", TalkMode = "", ImageSmall = "", ImageLarge = "";
             /// <summary>Where "Let DJ pick" lands: the segment's first track.</summary>
             public bool JumpTarget;
             public Narration? Intro, Jump, Outro;
+            /// <summary>Every DJ key the page stated for the row, in its order (the narration slots' too): what a DJ player publishes on
+            /// the row's <c>ProvidedTrack</c> (plan-dj §1.9; the protocol's advice is to echo them all).</summary>
+            public KeyValuePair<string, string>[] Keys = [];
         }
 
         static readonly Dictionary<ulong, Row> s_book = new();
@@ -312,11 +324,15 @@ public static partial class Playback
         internal static void Note(ulong itemId, ClusterBuffer buffer, in ClusterTrack track)
         {
             if (itemId == 0 || track.DjPage <= 0) return;
-            var row = new Row { Page = track.DjPage };
-            foreach (ref readonly Spotify.Decode.ClusterMeta m in buffer.Meta(track.DjStart, track.DjCount))
+            var row = new Row { Page = track.DjPage, Track = track.DjSlot };
+            ReadOnlySpan<Spotify.Decode.ClusterMeta> meta = buffer.Meta(track.DjStart, track.DjCount);
+            var keys = new KeyValuePair<string, string>[meta.Length];
+            int k = 0;
+            foreach (ref readonly Spotify.Decode.ClusterMeta m in meta)
             {
                 string key = Encoding.UTF8.GetString(buffer.Utf8(m.Key));
                 string value = Encoding.UTF8.GetString(buffer.Utf8(m.Value));
+                keys[k++] = new(key, value);
                 switch (key)
                 {
                     case "segment": row.Segment = value; break;
@@ -345,6 +361,7 @@ public static partial class Playback
                         break;
                 }
             }
+            row.Keys = keys;
             s_book[itemId] = row;
         }
 
@@ -386,18 +403,10 @@ public static partial class Playback
             try
             {
                 using Bodies.LendScope lent = Bodies.Lend();   // decoded into the cluster buffer, then dropped (Platform/Bodies.cs)
-                if (Dj.Fetch(path, buffer, 0, "dj session", out Spotify.Decode.ContextPage session))
+                resolve = FetchSession(path, url, reason, buffer, out TextRef metadata, out pageUrl);
+                if (resolve is not null)
                 {
-                    resolve = new Dj.Resolve { ContextUrl = url, Reason = reason, Facts = Dj.SessionFacts.Of(in session, buffer) };
-                    load.ResolvedMetadata = session.Metadata;
-                    string next = Encoding.UTF8.GetString(buffer.Utf8(session.NextPageUrl));
-                    for (int ordinal = 1; ordinal <= Dj.StartPages && next.Length > 0; ordinal++)
-                    {
-                        if (!Dj.Fetch(RemotePlan.PageRoute(next), buffer, ordinal, "dj page " + ordinal, out Spotify.Decode.ContextPage page)) break;
-                        resolve.Pages.Add(Dj.Page.Of(ordinal, next, in page, buffer));
-                        next = Encoding.UTF8.GetString(buffer.Utf8(page.NextPageUrl));
-                    }
-                    pageUrl = next;
+                    load.ResolvedMetadata = metadata;
                     count = buffer.TrackCount - start;
                 }
             }
@@ -408,6 +417,26 @@ public static partial class Playback
         Log.Warn("dj", "lexicon resolve refused: the api queue is full");
         ClusterBuffer.Return(buffer);
         ReleaseHold(seq);
+    }
+
+    /// <summary>The session answer at <paramref name="path"/> and its first <see cref="Dj.StartPages"/> pages, decoded into
+    /// <paramref name="buffer"/>: what a start (<see cref="ResolveLexicon"/>) and a launch restore (<see cref="ResolveDjSeed"/>) fetch.
+    /// Null when the session answer is refused. Api thread, inside a <see cref="Bodies.Lend"/> scope.</summary>
+    static Dj.Resolve? FetchSession(string path, string url, string reason, ClusterBuffer buffer, out TextRef metadata, out string next)
+    {
+        metadata = default;
+        next = "";
+        if (!Dj.Fetch(path, buffer, 0, "dj session", out Spotify.Decode.ContextPage session)) return null;
+        var resolve = new Dj.Resolve { ContextUrl = url, Reason = reason, Facts = Dj.SessionFacts.Of(in session, buffer) };
+        metadata = session.Metadata;
+        next = Encoding.UTF8.GetString(buffer.Utf8(session.NextPageUrl));
+        for (int ordinal = 1; ordinal <= Dj.StartPages && next.Length > 0; ordinal++)
+        {
+            if (!Dj.Fetch(RemotePlan.PageRoute(next), buffer, ordinal, "dj page " + ordinal, out Spotify.Decode.ContextPage page)) break;
+            resolve.Pages.Add(Dj.Page.Of(ordinal, next, in page, buffer));
+            next = Encoding.UTF8.GetString(buffer.Utf8(page.NextPageUrl));
+        }
+        return resolve;
     }
 
     /// <summary>The DJ refill (<see cref="RequestPage"/> for a lexicon context): the pending page url, or — past the session's

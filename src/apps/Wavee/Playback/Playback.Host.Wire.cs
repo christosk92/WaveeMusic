@@ -130,8 +130,10 @@ public static partial class Playback
         // Our own Local Files list (#240 E4): its size rides the PUT's context metadata (playlist_number_of_tracks).
         int localFiles = Spotify.Egress.IsLocalFiles(s_state.Context) ? Entities.Current.Edges.PlaylistTracks.Targets(Playlist.LocalFiles.Slot).Length : 0;
         s_wireQuality = QualityNow();
-        return new WireExtras(WindowNow(), RevisionNow(), in s_wireIds, privateSession, output, sender, s_state.ContentRate, s_wireOrigin,
-            OutputDeviceKind(), ContextIsAudiobook(), likedPlaylist, likedOwner, Mix.WireNow(in s_state), localFiles, s_wireQuality);
+        WireWindow window = WindowNow();
+        return new WireExtras(window, RevisionNow(), in s_wireIds, privateSession, output, sender, s_state.ContentRate, s_wireOrigin,
+            OutputDeviceKind(), ContextIsAudiobook(), likedPlaylist, likedOwner, Mix.WireNow(in s_state), localFiles, s_wireQuality,
+            Dj.WireNow(s_state.Context, window.Current.ItemId));   // AI DJ: null unless the deck plays a lexicon session
     }
 
     // ── the quality the PUT states (Spotify.Decode.Quality.cs) ────────────────────────────────────────────────────────
@@ -262,10 +264,10 @@ public static partial class Playback
         try
         {
             int n = 0;
-            for (int k = first; k < first + prevCount; k++) scratch[n++] = RowOf(Queue.RefAt(k), in rows[k]);
-            for (int k = cursor + 1; laid && k < end; k++) scratch[n++] = RowOf(Queue.RefAt(k), in rows[k]);
+            for (int k = first; k < first + prevCount; k++) scratch[n++] = DjKeysOn(RowOf(Queue.RefAt(k), in rows[k]));
+            for (int k = cursor + 1; laid && k < end; k++) scratch[n++] = DjKeysOn(RowOf(Queue.RefAt(k), in rows[k]));
             QueueEdge deck = laid ? rows[cursor] : new QueueEdge(0, (byte)QueueProvider.Context, (byte)QueueBucket.NowPlaying);
-            WireRow current = RowOf(s_state.Current, in deck, s_state.CurrentId);
+            WireRow current = DjKeysOn(RowOf(s_state.Current, in deck, s_state.CurrentId));
             int contextIndex = 0;
             for (int k = 0; laid && k < cursor; k++) if (rows[k].Provider == (byte)QueueProvider.Context) contextIndex++;
             s_window = new WireWindow(in current, scratch.AsSpan(0, prevCount), scratch.AsSpan(prevCount, nextCount),
@@ -375,6 +377,11 @@ public static partial class Playback
     }
 
     static string? Interned(StringId id) => id.IsEmpty ? null : Entities.Strings.Resolve(id);
+
+    /// <summary>A context row of the playing lexicon session carries the keys its page stated (plan-dj §1.9): the DJ book's, by item id.
+    /// Every other row comes back as it was (a lookup that misses: the book holds only DJ rows).</summary>
+    static WireRow DjKeysOn(WireRow row)
+        => row.Provider == QueueProvider.Context && Dj.RowOf(row.ItemId) is { } dj ? row.WithDj(dj.Keys) : row;
 
     /// <summary>A Wavee local file's names and its <c>spotify:local:</c> name, as the official client names a file (#240 E1, E4): its artist
     /// line and album from its tags (<see cref="Playlist.LocalNamesOf"/>), its title, its length truncated to seconds. Null when it has no

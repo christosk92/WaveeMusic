@@ -104,10 +104,12 @@ public static partial class Playback
     /// up), when the document carried it; <c>null</c> for a point the reducer's state produced (<see cref="Of"/>) or a
     /// document written before rows were persisted — the HOST attaches rows, and <see cref="CursorIndex"/> indexes
     /// THEM when they are present. The array compares by reference, so a persisted point is compared through the
-    /// document's shape (<c>Shell.SessionDeck.Same</c>), never through record equality.</para></summary>
+    /// document's shape (<c>Shell.SessionDeck.Same</c>), never through record equality.</para>
+    /// <para><paramref name="ContextUrl"/> is the lexicon url a DJ deck plays from (plan-dj D4; null for every other context): the
+    /// restore resolves the session from it before the list's own attributes are read again.</para></summary>
     public readonly record struct RestorePoint(
         EntityId Track, EntityId Context, int CursorIndex, int PositionMs, int DurationMs, bool Shuffle, RepeatMode Repeat,
-        RestoreRow[]? Rows = null)
+        RestoreRow[]? Rows = null, string? ContextUrl = null)
     {
         public bool IsEmpty => Track.IsEmpty;
         /// <summary>The document carried the queue's rows, not just the deck.</summary>

@@ -605,11 +605,19 @@ public static partial class Diagnostics
             new(Verb.Dj, "dj", "AI DJ: the DJ list's attributes; the lexicon session playing it (uri, url, expiry, dj/infinite, the three restrictions, pages fetched with their segments, the next page's url, the lookahead) and the DJ book per queue row (page, segment, jump target, narration slots, subtitle, decision id), the context's toggle locks and the user's held shuffle/repeat, beside the deck and queue; `narration` (D2): the planned narration rows (slot, the track each belongs to, the clip key, the clip's state and length), the prefetch log, the deck's timeline (item, start, end, length), the caption and what is current; do=answers decodes the --fake lexicon service's session and pages; do=play starts the list as a click does; do=expire ends the session's validity; do=run plays on in real time (16 ms frames) for ms= of the frame clock, or until=change the deck moves; do=transfer asks a transfer to the first other Connect device", "dj do=play")
             {
                 Positional = ["do"],
-                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|answers|play|expire|run|transfer"),
+                Args = Join([Arg("do", ArgType.Enum, "what to do; run = play on in real time; transfer without file= = a transfer to the first other "
+                                 + "Connect device (refused during a narration); the Connect half (D4): envelope = the play body a start of uri= sends another "
+                                 + "device, cluster = fold the ClusterUpdates of file= (base64 per line) as a dealer push and read the mirror, transfer file= = a "
+                                 + "transfer of the DJ in uri= into Wavee from file= (a transfer command body), restore = the launch restore of a DJ "
+                                 + "deck on track=, bodies = the lexicon decode of the fake session as identity, gzip and zstd bodies", "status",
+                                 "status|answers|play|expire|run|" + InspectSession.DjConnectVerbs),
                              Arg("uri", ArgType.String, "the DJ list (default: the fake one)"),
                              Arg("pages", ArgType.Int, "do=answers: how many pages to decode after the session (default 3)"),
-                             Arg("ms", ArgType.Int, "do=run: how much of the frame clock to play (default 1000, at most 600000)"),
-                             Arg("until", ArgType.Enum, "do=run: stop early when the deck moves", "ms", "ms|change")], s_settleArgs),
+                             Arg("ms", ArgType.Int, "do=run: how much of the frame clock to play (default 1000, at most 600000); do=restore: the deck's position (default 30000)"),
+                             Arg("until", ArgType.Enum, "do=run: stop early when the deck moves", "ms", "ms|change"),
+                             Arg("file", ArgType.String, "do=cluster / do=transfer: the file to feed"),
+                             Arg("track", ArgType.String, "do=restore: the deck's track uri"),
+                             Arg("try", ArgType.Bool, "do=cluster: then ask for shuffle, repeat and play-here, and read back that nothing changed")], s_settleArgs),
             },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {

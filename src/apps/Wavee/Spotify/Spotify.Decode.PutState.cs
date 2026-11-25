@@ -20,6 +20,8 @@
 //                   │                             license · audio_output_device_info(24)
 //                   │           ─ player_state(2): timestamp — and, while we hold a track: context uri/url ·
 //                   │             context_restrictions {} · play_origin · index · track (+ metadata) · playback_id ·
+//                   │             (AI DJ, `Playback.DjWire`: the lexicon url, the session's restrictions, (page, track),
+//                   │             the rows' DJ keys, the DJ context metadata and page_metadata(22))
 //                   │             speed (0 while paused) · position · duration · is_playing (true while paused) ·
 //                   │             is_paused · is_buffering · options (+ modes) · restrictions · suppressions {} ·
 //                   │             prev_tracks ≤ 50 · next_tracks ≤ 50 · context_metadata · session_id · queue_revision ·
@@ -295,6 +297,11 @@ public static partial class Spotify
                     + origin.Referrer.Length + origin.Device.Length + origin.CommandId.Length) + 256;
                 foreach (var entry in origin.Metadata) n += 3 * (entry.Key.Length + entry.Value.Length) + 32;
             }
+            if (snap.Wire.Dj is { } dj)
+            {
+                n += 3 * (dj.ContextUrl.Length + 2 * (dj.NoRepeatContext.Length + dj.NoRepeatTrack.Length + dj.NoShuffle.Length)) + 1024;
+                foreach (var entry in dj.PageMetadata) n += 3 * (entry.Key.Length + entry.Value.Length) + 32;
+            }
             if (snap.Wire.Window is not { } window) return n;
             n += RowCapacity(in window.Current);
             foreach (ref readonly Playback.WireRow row in window.Prev) n += RowCapacity(in row);
@@ -302,9 +309,13 @@ public static partial class Spotify
             return n;
 
             static int RowCapacity(in Playback.WireRow row)
-                => 2 * UriBytes + 2048
-                   + 3 * (row.Title.Length + row.ArtistName.Length + row.AlbumTitle.Length + row.UidText.Length)
-                   + 4 * (14 + 3 * row.Image.Length);
+            {
+                int n = 2 * UriBytes + 2048
+                        + 3 * (row.Title.Length + row.ArtistName.Length + row.AlbumTitle.Length + row.UidText.Length)
+                        + 4 * (14 + 3 * row.Image.Length);
+                foreach (ref readonly KeyValuePair<string, string> entry in row.DjKeys) n += 3 * (entry.Key.Length + entry.Value.Length) + 32;
+                return n;
+            }
         }
 
         static void DeviceInfo(ref ProtoWriter w, in Playback.Snapshot snap)
@@ -348,9 +359,12 @@ public static partial class Spotify
             bool video = snap.Kind == Playback.PlayableKind.Video;
             bool offer = snap.VideoGid.Length > 0;
             int contextIndex = window?.ContextIndex ?? 0;
+            // AI DJ (plan-dj §1.9): the deck plays a lexicon session; null for every other context, whose state is unchanged.
+            Playback.DjWire? dj = context.IsEmpty ? null : snap.Wire.Dj;
 
             w.Utf8(2, context);                                // context_uri
-            if (!context.IsEmpty && snap.Wire.Mix is { Lens: true })
+            if (dj is { ContextUrl.Length: > 0 }) w.Str(3, dj.ContextUrl);   // the lexicon url, without `reason` (dj-protocol §4)
+            else if (!context.IsEmpty && snap.Wire.Mix is { Lens: true })
             {
                 // #48: a mixed playlist plays through its lens, and its context url says so (capture report §3.3).
                 Span<byte> url = stackalloc byte[context.Length + 48];
@@ -361,7 +375,13 @@ public static partial class Spotify
                 w.Utf8(3, url[..n]);
             }
             else if (!context.IsEmpty) w.Concat(3, "context://"u8, context);
-            w.Empty(4);                                        // context_restrictions {}
+            if (dj is not null)
+            {
+                int contextRestrictions = w.Open(4);           // context_restrictions: the session's own (8, 9, 10 dj-disallow)
+                DjToggleRestrictions(ref w, dj);
+                w.Close(contextRestrictions);
+            }
+            else w.Empty(4);                                   // context_restrictions {}
             int origin = w.Open(5);                            // play_origin
             ReadOnlySpan<byte> feature = liked ? "your_library"u8 : FeatureOf(context, snap.Wire.Audiobook);
             if (localFiles) { w.Utf8(1, "local_files"u8); w.Utf8(5, "your_library"u8); }
@@ -372,7 +392,18 @@ public static partial class Spotify
             }
             else { w.Utf8(1, feature); w.Utf8(5, ReferrerOf(feature)); }
             w.Close(origin);
-            if (contextIndex >= 0)
+            if (dj is not null)
+            {
+                // (page, track), page 1 the first real page; none for a narration, nor for a deck row no page of the session holds.
+                if (!dj.Narrating && dj.Page > 0)
+                {
+                    int index = w.Open(6);
+                    w.U(1, (ulong)dj.Page);
+                    w.U(2, (ulong)dj.Track);
+                    w.Close(index);
+                }
+            }
+            else if (contextIndex >= 0)
             {
                 int index = w.Open(6);
                 w.U(2, (ulong)contextIndex);
@@ -405,6 +436,14 @@ public static partial class Spotify
                 if (contextIndex <= 0 && (window is null || window.Prev.IsEmpty)) w.Utf8(6, "no_prev_track"u8);
             }
             else if (playing) w.Utf8(2, "not_paused"u8);
+            if (dj is not null)
+            {
+                // The session's toggle restrictions beside the transport's (dj-protocol §4: 8, 9, 10 dj-disallow), and THE NARRATION SEAM:
+                // while a narration is current and its target has not started, no seek (3), no repeat-track (9), no transfer (13).
+                if (dj.Narrating) w.Utf8(3, "narration"u8);
+                DjToggleRestrictions(ref w, dj);
+                if (dj.Narrating) { w.Utf8(9, "narration"u8); w.Utf8(13, "narration"u8); }
+            }
             if (localFiles) w.Utf8(13, "local_list"u8);        // disallow_transferring_playback_reasons: a controller offers no transfer (E4)
             if (snap.Track.Kind != EntityKind.Episode) w.Utf8(25, "not_supported_by_content_type"u8);   // setting playback speed
             if (snap.Track.Kind != EntityKind.Episode && (liked || context.IndexOf(":playlist:"u8) < 0))   // Enhance is a playlist feature
@@ -448,11 +487,15 @@ public static partial class Spotify
             }
             if (snap.Wire.Origin is { } carriedOrigin)
                 foreach (var entry in carriedOrigin.Metadata)
-                    if (!Queue.OwnsContextMetadataKey(entry.Key)) w.Entry(21, entry.Key, entry.Value);   // ours wins, below
+                    if (!Queue.OwnsContextMetadataKey(entry.Key) && (dj is null || !DjOwnsKey(entry.Key)))
+                        w.Entry(21, entry.Key, entry.Value);   // ours wins, below
             if (liked && !Carries(snap.Wire.Origin, "format_list_type")) LikedMetadata(ref w, snap.Wire.LikedOwner);
             if (localFiles) LocalFilesMetadata(ref w, snap.Wire.LocalFilesTracks, scratch);
             w.Entry(21, "player.arch"u8, "2"u8);               // context_metadata
+            if (dj is not null) DjContextMetadata(ref w);
             if (snap.Wire.Mix is { Lens: true } mix) MixContextMetadata(ref w, mix.ListFlags);
+            if (dj is not null)
+                foreach (var entry in dj.PageMetadata) w.Entry(22, entry.Key, entry.Value);   // page_metadata: the deck row's page
             if (ids.SessionId != UInt128.Zero) { Base62.Encode(ids.SessionId, scratch); w.Utf8(23, scratch[..Base62.GidChars]); }            // session_id
             if (snap.Wire.QueueRevision != 0 && Utf8Formatter.TryFormat(snap.Wire.QueueRevision, scratch, out int digits))
                 w.Utf8(24, scratch[..digits]);                 // queue_revision, as its digits
@@ -508,6 +551,45 @@ public static partial class Spotify
                 w.Entry(21, "reporting.uri"u8, uri[..n]);
             }
             w.Entry(21, "switch_liked_songs_url_dynamically", "false");
+        }
+
+        /// <summary>AI DJ: the player's own context metadata beside the session's and the list's (dj-protocol §4 f21; <c>player.arch</c> is
+        /// written for every context). <c>image_url</c> and <c>player_filter_info</c> are stated empty, as the official DJ player states
+        /// them.</summary>
+        static void DjContextMetadata(ref ProtoWriter w)
+        {
+            w.Entry(21, "mixer_enabled"u8, "true"u8);
+            w.Entry(21, "enhanced_context"u8, "false"u8);
+            w.Entry(21, "context_owner"u8, "spotify"u8);
+            w.Entry(21, "image_url"u8, default);
+            w.Entry(21, "player_filter_info"u8, default);
+            w.Entry(21, "playlist_number_of_tracks"u8, "0"u8);
+            w.Entry(21, "playlist_number_of_episodes"u8, "0"u8);
+        }
+
+        /// <summary>The context metadata keys <see cref="DjContextMetadata"/> writes: a carried key of the same name is not written
+        /// twice (ours wins).</summary>
+        static bool DjOwnsKey(string key) => key is "mixer_enabled" or "enhanced_context" or "context_owner" or "image_url"
+            or "player_filter_info" or "playlist_number_of_tracks" or "playlist_number_of_episodes";
+
+        /// <summary>The session's toggle restrictions as a <c>Restrictions</c> message's 8 / 9 / 10 (repeat context, repeat track, shuffle),
+        /// each its reason; nothing for an allowed one.</summary>
+        static void DjToggleRestrictions(ref ProtoWriter w, Playback.DjWire dj)
+        {
+            w.Str(8, dj.NoRepeatContext);
+            w.Str(9, dj.NoRepeatTrack);
+            w.Str(10, dj.NoShuffle);
+        }
+
+        /// <summary>A DJ row's own keys as its page stated them (plan-dj §1.9: decision id, attribution, station title and subtitle, the
+        /// images, the segment, the narration slots…) and <c>hidden_in_queue</c>, as the official DJ player marks its context rows. A value
+        /// that is binary decoded as text is left out (<see cref="Queue.ContextMetadataValueSound"/>). Nothing for any other row.</summary>
+        static void DjRowKeys(ref ProtoWriter w, in Playback.WireRow row)
+        {
+            if (!row.IsDj) return;
+            foreach (ref readonly KeyValuePair<string, string> entry in row.DjKeys)
+                if (Queue.ContextMetadataValueSound(entry.Value)) w.Entry(3, entry.Key, entry.Value);
+            w.Entry(3, "hidden_in_queue"u8, "true"u8);
         }
 
         /// <summary>Does a carried play origin's context metadata name <paramref name="key"/>?</summary>
@@ -571,6 +653,8 @@ public static partial class Spotify
             w.Utf8(1, uri[..uriLength]);
             w.Str(2, snap.Uid);
             Head(ref w, in row, provider, context, video, snap.Wire.Window);
+            DjRowKeys(ref w, in row);
+            if (snap.Wire.Dj is { Narrating: true }) w.Entry(3, "suppress_progress"u8, "true"u8);   // THE NARRATION SEAM (DjWire)
             // The video offer: the current row carries its 32-hex video gid whether we host audio or video (0.2.9).
             if (snap.VideoGid.Length > 0) w.Entry(3, "associated_video_id", snap.VideoGid);
             w.Entry(3, "track_player"u8, video ? "video"u8 : "audio"u8);
@@ -597,6 +681,7 @@ public static partial class Spotify
             if (row.UidText.Length > 0) w.Str(2, row.UidText);
             else if (row.ItemId != 0) w.Utf8(2, scratch[..Hex16(row.ItemId, scratch)]);
             Head(ref w, in row, row.Provider, context, isVideo: false, window);
+            DjRowKeys(ref w, in row);
             w.Entry(3, "track_player"u8, "audio"u8);
             if (mixIn is not null) foreach (var e in mixIn.In) w.Entry(3, e.Key, e.Value);
             Tail(ref w, row.Provider, isVideo: false, viewIndex, in ids, scratch);

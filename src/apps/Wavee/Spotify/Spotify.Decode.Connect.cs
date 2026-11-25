@@ -77,6 +77,13 @@ public static partial class Spotify
             /// its metadata carried (<c>narration.*</c>, <c>dj.*</c>, <c>segment</c>, …) as a <see cref="ClusterBuffer.Meta"/> range. Set
             /// only by a lexicon decode (<see cref="ContextResolve"/> with a page), so an ordinary row keeps none of them.</summary>
             public int DjPage, DjStart, DjCount;
+            /// <summary>AI DJ: the row's slot in its lexicon page's <c>tracks</c> (0-based, counted as the page lists them, so a row the
+            /// decode drops never moves the next one): the <c>track</c> of the Connect index a DJ player publishes (plan-dj §1.9).</summary>
+            public int DjSlot;
+            /// <summary>AI DJ: the row is a narration item (<c>metadata["is_narration"] == "true"</c>, dj-protocol §2.4), and its
+            /// <c>media.manifest</c> (base64 of the TTS fulfil request, the SSML at 1.1.4.2) when it carries one.</summary>
+            public bool Narration;
+            public TextRef Manifest;
             /// <summary>The whole <c>ProvidedTrack</c> as the owner sent it — set for a cluster's <c>prev_tracks</c> /
             /// <c>next_tracks</c> rows only: what a forwarded <c>set_queue</c> echoes back whole, its metadata map, provider,
             /// removed/blocked lists and album/artist uris (remote-play plan 5.2, moreptions.saz 794). Empty elsewhere.</summary>
@@ -186,6 +193,11 @@ public static partial class Spotify
             public ClusterTrack Track;
             public bool IsPlaying, IsPaused, IsBuffering;
             public bool NoPrev, NoNext, NoSeek;
+            /// <summary>AI DJ (plan-dj §2.7): the owner's toggle restrictions, each its first reason (empty = allowed) — the player
+            /// restrictions' 8 / 9 / 10, else the context restrictions' — and whether it refuses a transfer (13: the DJ's
+            /// <c>narration</c> while it talks).</summary>
+            public TextRef NoRepeatContextReason, NoRepeatTrackReason, NoShuffleReason;
+            public bool NoTransfer;
             /// <summary>The ACTIVE device's volume cannot be set by a controller (<see cref="ClusterDevice.VolumeFixed"/>); false
             /// when nobody is active.</summary>
             public bool ActiveVolumeFixed;
@@ -382,6 +394,7 @@ public static partial class Spotify
             // The two lists are each a contiguous run in the buffer, but the wire's order between them is the
             // serializer's business (prev_tracks is field 19, next_tracks is 20), so each records its OWN start.
             int next = 0, nextStart = -1, prev = 0, prevStart = -1, metaStart = -1;
+            TextRef contextRepeatContext = default, contextRepeatTrack = default, contextShuffle = default;
 
             while (r.Next())
             {
@@ -389,6 +402,21 @@ public static partial class Spotify
                 {
                     case 1: delta.TimestampMs = (long)r.Varint(); break;
                     case 2: delta.ContextUri = into.AddText(r.Bytes()); break;
+                    case 4:                                        // context_restrictions: the toggles, when the player's own do not say
+                        {
+                            var x = r.Message();
+                            while (x.Next())
+                            {
+                                switch (x.Field)
+                                {
+                                    case 8: KeepFirst(ref contextRepeatContext, x.Bytes(), into); break;
+                                    case 9: KeepFirst(ref contextRepeatTrack, x.Bytes(), into); break;
+                                    case 10: KeepFirst(ref contextShuffle, x.Bytes(), into); break;
+                                    default: x.Skip(); break;
+                                }
+                            }
+                            break;
+                        }
                     case 5:                                        // PlayOrigin
                         {
                             var o = r.Message();
@@ -450,6 +478,12 @@ public static partial class Spotify
                                     case 3: delta.NoSeek |= !x.Bytes().IsEmpty; break;
                                     case 6: delta.NoPrev |= !x.Bytes().IsEmpty; break;
                                     case 7: delta.NoNext |= !x.Bytes().IsEmpty; break;
+                                    // AI DJ: the toggles (8 repeat context, 9 repeat track, 10 shuffle) by their first reason, and a
+                                    // refused transfer (13), as the DJ player states them (dj-protocol §4)
+                                    case 8: KeepFirst(ref delta.NoRepeatContextReason, x.Bytes(), into); break;
+                                    case 9: KeepFirst(ref delta.NoRepeatTrackReason, x.Bytes(), into); break;
+                                    case 10: KeepFirst(ref delta.NoShuffleReason, x.Bytes(), into); break;
+                                    case 13: delta.NoTransfer |= !x.Bytes().IsEmpty; break;
                                     case 29:                       // disallow_signals: map<string, Reasons{ repeated string reasons = 1 }>
                                         {
                                             x.Message().Fields(1, 2, out var signal, out var reasons);
@@ -506,6 +540,17 @@ public static partial class Spotify
             delta.PrevStart = prevStart < 0 ? 0 : prevStart;
             delta.PrevCount = prev;
             delta.MetaStart = metaStart < 0 ? 0 : metaStart;
+            // AI DJ: the player's own toggle restrictions win; a player state that states none falls back on its context's.
+            if (delta.NoRepeatContextReason.IsEmpty) delta.NoRepeatContextReason = contextRepeatContext;
+            if (delta.NoRepeatTrackReason.IsEmpty) delta.NoRepeatTrackReason = contextRepeatTrack;
+            if (delta.NoShuffleReason.IsEmpty) delta.NoShuffleReason = contextShuffle;
+        }
+
+        /// <summary>A repeated reason: the first non-empty one is kept, the rest only count as "restricted" already. Allocates arena
+        /// text once per list.</summary>
+        static void KeepFirst(ref TextRef first, ReadOnlySpan<byte> reason, ClusterBuffer into)
+        {
+            if (first.IsEmpty && !reason.IsEmpty) first = into.AddText(reason);
         }
 
         /// <summary>A video signal's wire name → its <c>Playback.VideoSignals</c> bit (0 for any other signal).</summary>

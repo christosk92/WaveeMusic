@@ -22,7 +22,7 @@
 // THE PLANNER (`PlanNarration`, once per drain, before the queue follow; a no-op while neither the deck nor the queue moved). Only
 // the NEAREST boundary carries items: from the deck's segment (a narration's is its track's), the outro right after the segment's
 // last track and the next segment's INTRO right before its first track (the jump clip is only for "Let DJ pick"). A start puts the
-// welcome on the deck before the first track (`StartContext` → `NarrationAtStart`), and the planner then lays the first intro
+// welcome on the deck before the first track (`StartContext` → `AtStart`, by `Session.Start`: Play only), and the planner then lays the first intro
 // between them. A narration the deck has passed is REMOVED, never history; a clip that failed is dropped from the plan. The deck's
 // row never moves: rows before it shift only when a passed narration leaves, and the cursor follows (`Input.Recursor`).
 //
@@ -241,14 +241,17 @@ public static partial class Playback
 
         // ── the start (StartContext) ──────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>A lexicon session starts on its first track (<paramref name="first"/>, its row item <paramref name="firstItem"/>): the
-        /// session's narrations start over, the welcome is made and asked for at once with the first segment's intro (§1.4), and the welcome
-        /// is answered for the caller to put on the deck before the first track (null: the session states no welcome).</summary>
-        internal static Spoken? AtStart(EntityId context, Resolve resolve, ulong firstItem, EntityId first, long now)
+        /// <summary>A lexicon session starts (<see cref="Session.Start"/> = <paramref name="how"/>): the session's narrations start over. Only a
+        /// <see cref="DjStart.Play"/> on the session's first track (<paramref name="firstItem"/>, its track <paramref name="first"/>; 0: the play
+        /// starts elsewhere) opens with the welcome (§1.5: every start begins with it): it is made and asked for at once with the first
+        /// segment's intro (§1.4) and answered for the caller to put on the deck before the first track. A transfer into Wavee and the launch
+        /// restore carry on mid-session: no welcome (null), the planner lays the nearest boundary from the deck.</summary>
+        internal static Spoken? AtStart(EntityId context, Resolve resolve, DjStart how, ulong firstItem, EntityId first, long now)
         {
             ForgetNarration();
             s_narrContext = context;
             if (!s_settledHooked) { s_settledHooked = true; Spotify.DjTts.Settled += OnSettled; }
+            if (!WelcomeOpens(how) || firstItem == 0) return null;
             var welcomeKeys = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (KeyValuePair<string, string> k in resolve.Facts.Metadata)
                 if (k.Key.StartsWith("narration.welcome.", StringComparison.Ordinal)) welcomeKeys[k.Key["narration.welcome.".Length..]] = k.Value;
@@ -258,6 +261,10 @@ public static partial class Playback
             if (firstRow?.Intro is { } intro && For(Slot.Intro, firstItem, first, intro.Keys, firstRow) is { } firstIntro) Ask(firstIntro, "resolve", now);
             return welcome;
         }
+
+        /// <summary>Does a DJ play that began as <paramref name="how"/> open with the welcome? A start does (3 of 3 captured starts); a transfer
+        /// and a resume are not captured: Wavee carries on without one, so the listener does not hear "welcome" twice in one session.</summary>
+        public static bool WelcomeOpens(DjStart how) => how == DjStart.Play;
 
         // ── the plan (once per drain) ─────────────────────────────────────────────────────────────────────────────
 

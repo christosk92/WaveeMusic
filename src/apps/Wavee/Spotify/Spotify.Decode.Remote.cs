@@ -385,6 +385,9 @@ public static partial class Spotify
             else if (Is(key, "queued_by")) row.QueuedBy = into.AddText(value);
             else if (Is(key, "associated_video_id")) row.AssociatedVideoId = into.AddText(value);
             else if (Is(key, "track_player") || Is(key, "media.type")) row.IsVideo |= value.SequenceEqual("video"u8);
+            // AI DJ: a narration item (dj-protocol §2.4) and the TTS request it names, whose SSML is the caption a controller shows
+            else if (Is(key, "is_narration")) row.Narration = value.SequenceEqual("true"u8);
+            else if (Is(key, "media.manifest")) row.Manifest = into.AddText(value);
         }
 
         // ── context-resolve / autoplay ───────────────────────────────────────────────────────────────────────────────
@@ -499,7 +502,10 @@ public static partial class Spotify
             ReadOnlySpan<byte> k = r.ValueSpan;
             return k.StartsWith("narration."u8) || k.StartsWith("dj."u8) || k.SequenceEqual("segment"u8) || k.SequenceEqual("decision_id"u8)
                 || k.SequenceEqual("custom_reporting_attribution"u8) || k.SequenceEqual("station_subtitle"u8)
-                || k.SequenceEqual("automix.talk_mode"u8) || k.SequenceEqual("album_image_small"u8) || k.SequenceEqual("album_image_large"u8);
+                || k.SequenceEqual("automix.talk_mode"u8) || k.SequenceEqual("album_image_small"u8) || k.SequenceEqual("album_image_large"u8)
+                // plan-dj D4: the rest of a DJ row's own keys, which a DJ player publishes on the row as the page stated them (§1.9)
+                || k.SequenceEqual("station_title"u8) || k.SequenceEqual("station_uri"u8) || k.SequenceEqual("source.components"u8)
+                || k.SequenceEqual("agentic_product_type"u8);
         }
 
         /// <summary>A JSON <c>tracks</c> array (the reader on its property) → rows in the buffer. A lexicon page's rows
@@ -508,12 +514,13 @@ public static partial class Spotify
         static void JsonTracks(ref Utf8JsonReader r, ClusterBuffer into, int djPage = 0)
         {
             if (!EnterArray(ref r)) return;
-            for (int list = r.CurrentDepth; Element(ref r, list);)
+            int slot = 0;
+            for (int list = r.CurrentDepth; Element(ref r, list); slot++)
             {
                 ref var row = ref into.AddTrack();
                 TextRef large = default, plain = default;
                 long duration = 0;
-                if (djPage > 0) { row.DjPage = djPage; row.DjStart = into.MetaCount; }
+                if (djPage > 0) { row.DjPage = djPage; row.DjStart = into.MetaCount; row.DjSlot = slot; }
                 for (int t = r.CurrentDepth; Next(ref r, t);)
                 {
                     if (r.ValueTextEquals("uri"u8)) { r.Read(); row.Uri = Text(ref r, into); }

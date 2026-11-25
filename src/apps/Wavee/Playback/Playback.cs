@@ -910,6 +910,11 @@ public static partial class Playback
     /// <param name="ManifestId">The row's music-video manifest id as the owner offers it (<c>associated_video_id</c>), interned.</param>
     /// <param name="VolumeFixed">The ACTIVE device does not let a controller set its volume (its capabilities,
     /// <see cref="Spotify.Decode.ClusterDevice.VolumeFixed"/>).</param>
+    /// <param name="Locks">AI DJ: the toggles the owner says may not be changed (its restrictions 8 / 9 / 10, a DJ's <c>dj-disallow</c>),
+    /// and <paramref name="LockReason"/> why, in the reason words <see cref="ContextLocks.ReasonOf"/> reads for a local DJ.</param>
+    /// <param name="LockReason">See <paramref name="Locks"/>.</param>
+    /// <param name="NoTransfer">The owner refuses a transfer (restriction 13: a DJ while it talks, <c>narration</c>).</param>
+    /// <param name="Narrating">The owner's current item is a DJ narration (<c>is_narration</c>).</param>
     public readonly record struct RemoteState(
         bool HasTrack,
         EntityId Track,
@@ -930,7 +935,11 @@ public static partial class Playback
         VideoSignals Offered = VideoSignals.None,
         VideoSignals Disallowed = VideoSignals.None,
         StringId ManifestId = default,
-        bool VolumeFixed = false);
+        bool VolumeFixed = false,
+        ToggleLock Locks = ToggleLock.None,
+        LockReason LockReason = LockReason.None,
+        bool NoTransfer = false,
+        bool Narrating = false);
 
     /// <summary>THE playback state. One value, written on the UI thread only (C1), copied freely, and the single
     /// source every playback surface binds through the host's signals.
@@ -1035,6 +1044,11 @@ public static partial class Playback
         /// <summary>Restrictions as the cluster stated them. The bar greys its buttons off
         /// <see cref="CanSkipNext"/> / <see cref="CanSkipPrev"/> / <see cref="CanSeek"/>, never off these directly.</summary>
         public bool NoNext, NoPrev, NoSeek;
+        /// <summary>AI DJ, the foreign owner's side (<see cref="MirrorRemote"/>): the toggles its restrictions forbid and why, a refused
+        /// transfer, and a narration on its deck. They restrict only while it owns playback, as the bits above do.</summary>
+        public ToggleLock MirrorLocks;
+        public LockReason MirrorLockReason;
+        public bool NoTransfer, MirrorNarrating;
         /// <summary>The stream's format badge ("OGG 320", "FLAC 44.1/16"), published by the audio host. CLEARED the
         /// moment a remote device owns playback — we cannot know a phone's format, and 0.2.9 left ours on screen
         /// (ch 21 G8).</summary>
@@ -1187,8 +1201,15 @@ public static partial class Playback
         public readonly bool RepeatLocked(RepeatMode mode) => Own.Kind != Owner.Foreign
             && (mode == RepeatMode.Context ? (Locks.Bits & ToggleLock.RepeatContext) != 0
                 : mode == RepeatMode.Track && (Locks.Bits & ToggleLock.RepeatTrack) != 0);
-        /// <summary>The locks a surface draws: the context's own while the deck is ours, none while another device owns playback.</summary>
-        public readonly ToggleLock LiveLocks => Own.Kind == Owner.Foreign ? ToggleLock.None : Locks.Bits;
+        /// <summary>The locks a surface draws: the context's own while the deck is ours, the owner's (its DJ's) while another device owns playback.</summary>
+        public readonly ToggleLock LiveLocks => Own.Kind == Owner.Foreign ? MirrorLocks : Locks.Bits;
+        /// <summary>Why <see cref="LiveLocks"/> lock: the owner's reason while another device owns playback, the context's otherwise.</summary>
+        public readonly LockReason LiveLockReason => Own.Kind == Owner.Foreign ? MirrorLockReason : Locks.Reason;
+        /// <summary>The foreign owner refuses a transfer away from it (a DJ while it talks): the picker's "play here" and "play there"
+        /// are refused rather than sent.</summary>
+        public readonly bool TransferRestricted => NoTransfer && Own.Kind == Owner.Foreign;
+        /// <summary>The foreign owner's deck is a DJ narration (the caption's text is the host's, <c>Playback.Dj.RemoteNarration</c>).</summary>
+        public readonly bool RemoteNarrating => MirrorNarrating && Own.Kind == Owner.Foreign;
         /// <summary>Does the CONTEXT allow Next / Previous, error or not? The player bar reads these for its own fold:
         /// a failed load parks the deck row with <see cref="Error"/> set and <see cref="CanTransport"/> false, and the
         /// one way out that does not re-play the dead row is to skip past it (<c>Advance</c> heals the error through
@@ -1579,6 +1600,9 @@ public static partial class Playback
         /// <summary>A seek, a repeat-track or a transfer while an AI DJ narration is the current item (<see cref="State.Narrating"/>; the
         /// official player's restriction reason <c>narration</c>, plan-dj §1.8).</summary>
         Narration,
+        /// <summary>A transfer (to another device, or pulling playback here) the foreign owner refuses (<see cref="State.TransferRestricted"/>:
+        /// a DJ while it talks, restriction 13 <c>narration</c>).</summary>
+        TransferRestricted,
     }
 
     /// <summary>Fixed effect SLOTS — one per effect KIND, never a list. The last write inside a drain wins and the
@@ -2379,7 +2403,13 @@ public static partial class Playback
     static void DoShuffle(ref State s, in Input i, ref Effects fx)
     {
         bool on = (i.IntArg & 1) != 0;
-        if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.SetShufflingContext, ref fx, 0, on); return; }
+        if (!s.RoutesLocal)
+        {
+            // A foreign DJ forbids the toggle (its dj-disallow): nothing is sent that it would refuse.
+            if (s.Own.Kind == Owner.Foreign && (s.MirrorLocks & ToggleLock.Shuffle) != 0) { fx.Refused = Refusal.ContextLocked; return; }
+            Forward(ref s, RemoteCmd.SetShufflingContext, ref fx, 0, on);
+            return;
+        }
         // The context forbids the toggle (the DJ): a click or a controller's set_shuffling_context changes nothing. The host's own
         // statement of the order it built (ShuffleOrderedBit) is a fact, not a toggle.
         if (s.ShuffleLocked && (i.IntArg & Input.ShuffleOrderedBit) == 0) { if (s.Shuffle != on) fx.Refused = Refusal.ContextLocked; return; }
@@ -2400,6 +2430,10 @@ public static partial class Playback
             // verb does not name. One verb left it stuck (Track then Off sent only set_repeating_context false: the owner
             // kept repeating the track). So the COMPLETE mode is forwarded, both flags (docs/plans/wavee-playback-arbitration-
             // rules.md "Shuffle / Repeat"): RemoteArg = 1 + the mode, which the host spells as the two verbs (#215).
+            // A foreign DJ forbids turning either repeat on (its dj-disallow): nothing is sent that it would refuse.
+            if (s.Own.Kind == Owner.Foreign && mode != RepeatMode.Off
+                && (s.MirrorLocks & (mode == RepeatMode.Track ? ToggleLock.RepeatTrack : ToggleLock.RepeatContext)) != 0)
+            { fx.Refused = Refusal.ContextLocked; return; }
             Forward(ref s, RemoteCmd.SetRepeatingContext, ref fx, 1 + (long)mode, mode != RepeatMode.Off);
             return;
         }
@@ -2771,6 +2805,15 @@ public static partial class Playback
         s.NoNext = r.NoNext;
         s.NoPrev = r.NoPrev;
         s.NoSeek = r.NoSeek;
+        // AI DJ: the owner's toggle locks (shuffle and repeat show disabled with the reason a local DJ gives), a transfer it refuses
+        // and its narration (plan-dj §2.7)
+        if (s.MirrorLocks != r.Locks || s.NoTransfer != r.NoTransfer || s.MirrorNarrating != r.Narrating)
+            Log.Info("playback", "owner restrictions: locks=" + r.Locks + " reason=" + r.LockReason + " noTransfer=" + (r.NoTransfer ? 1 : 0)
+                + " narrating=" + (r.Narrating ? 1 : 0));
+        s.MirrorLocks = r.Locks;
+        s.MirrorLockReason = r.LockReason;
+        s.NoTransfer = r.NoTransfer;
+        s.MirrorNarrating = r.Narrating;
         s.StreamFormat = StringId.Empty;
         // The slider follows the OWNER; our own volume (the sink's, the PUT body's) is untouched.
         if (r.Volume >= 0) s.MirrorVolume = Math.Clamp(r.Volume / (float)MaxWireVolume, 0f, 1f);
@@ -2953,6 +2996,7 @@ public static partial class Playback
         if (target == 0) { fx.Refused = Refusal.NoTransferTarget; return; }
         if (target == s.Us) { fx.Refused = Refusal.SelfTransfer; return; }
         if (s.Narrating) { fx.Refused = Refusal.Narration; return; }   // plan-dj §1.8: "DJ segment will end soon"
+        if (s.TransferRestricted) { fx.Refused = Refusal.TransferRestricted; return; }   // a foreign DJ talking (13 narration)
         Owner transferOwnerBefore = s.Own.Kind;
         s.PosMs = s.Position(i.NowMs);                   // freeze the extrapolation: a refused transfer parks the deck HERE
         s.PosQpc = i.NowMs;
@@ -3010,6 +3054,7 @@ public static partial class Playback
     static void DoTakeOver(ref State s, in Input i, ref Effects fx)
     {
         if (s.Own.Kind == Owner.Us || !s.HasCurrent) return;    // already here, or nothing to bring
+        if (s.TransferRestricted) { fx.Refused = Refusal.TransferRestricted; return; }   // a foreign DJ talking: "DJ segment will end soon"
         bool paused = s.Own.Kind == Owner.Foreign && s.Phase == Phase.Paused;
         int fromMs = s.Position(i.NowMs);                       // the mirror extrapolated to now; s.Context is the owner's already
 
