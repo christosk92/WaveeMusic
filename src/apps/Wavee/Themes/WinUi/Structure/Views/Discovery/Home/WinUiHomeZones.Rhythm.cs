@@ -79,13 +79,17 @@ internal static partial class WinUiHomeZones
     static Element LeadCard(HomeCard c, bool beside)
     {
         var cc = c;
-        string line = HomeCards.PlainText(c.Subtitle);
+        // The DJ (AI DJ) leads as its own card states it: its colour field for art with what the DJ says on it, the list's own line below.
+        bool dj = RhythmCards.DrawsDj(in c);
+        string line = HomeCards.PlainText(dj ? c.PlaylistDescription ?? c.Subtitle : c.Subtitle);
         var art = new BoxEl
         {
             ZStack = true, MinWidth = 0f, MinHeight = beside ? WinUiHomeRules.LeadArtMin : 0f, Grow = beside ? 1f : 0f,
             AspectRatio = beside ? float.NaN : WinUiHomeRules.LeadArtAspect, ClipToBounds = true,
             Cursor = CursorId.Hand, OnClick = () => HomeCardNav.Open(in cc),
-            Children = [Controls.CoverFill(c.HeaderImageUrl ?? c.ImageUrl, 0f, WinUiHomeRules.LeadArtDecodePx)],
+            Fill = dj ? RhythmCards.DjBack(c.DjColors) : ColorF.Transparent,
+            Gradient = dj ? RhythmCards.DjWash(c.DjColors, GradientShape.Radial, WinUiHomeRules.DjWashAngle) : null,
+            Children = dj ? [DjWords(in c)] : [Controls.CoverFill(c.HeaderImageUrl ?? c.ImageUrl, 0f, WinUiHomeRules.LeadArtDecodePx)],
         };
         var copy = new BoxEl
         {
@@ -123,6 +127,18 @@ internal static partial class WinUiHomeZones
     }
 
     static float LeadInsetTop => SurfaceGeometry.ShelfPlatePad;
+
+    /// <summary>What the DJ says on its card (<c>home.card.dj.transcript_text</c>), in WinUI's pick-quote voice and the card's own text colour, at
+    /// the foot of its colour field.</summary>
+    static Element DjWords(in HomeCard c) => new BoxEl
+    {
+        Direction = 1, Justify = FlexJustify.End, MinWidth = 0f, HitTestPassThrough = true,
+        Padding = Edges4.All(WinUiHomeRules.DjWordsPad),
+        Children = [R.Type.PickQuote(HomeCards.PlainText(c.Subtitle)) with
+        {
+            Color = RhythmCards.DjInk(c.DjColors), MaxLines = WinUiHomeRules.DjWordsLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        }],
+    };
 
     static float LeadGridExtent(Zone zone, WinUiHomeLayout layout, float width)
     {

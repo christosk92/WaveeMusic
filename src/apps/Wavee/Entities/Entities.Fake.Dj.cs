@@ -33,6 +33,10 @@ public static partial class Entities
             row.Flags = (uint)PlaylistFlags.YourDj;
             row.FlagsMask = (uint)PlaylistFlags.YourDj;
             row.LexiconUrl = Text(s, DjLexiconUrl);
+            // The card's words and colours (home.card.*), as the rootlist and the Home feed carry them (the bundled Home capture's DJ card is
+            // this list too: home.json names spotify:playlist:pldj, so its card plays the fake session).
+            row.DjTranscript = Text(s, "Hey, it's your DJ. Got a run of your favourites ready to go.");
+            row.DjColors = new DjCardColors(Background: 0xFF1B3A6Bu, Top: 0xFF3FD8A0u, Mid: 0xCB3FC8D0u, Bottom: 0x7F3F90D8u, Text: 0xFFFFFFFFu);
         }
 
         /// <summary>The DJ list has no rows of its own (the service lists none): its membership is known and empty.</summary>

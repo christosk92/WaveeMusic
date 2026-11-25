@@ -77,13 +77,25 @@ internal static partial class ZuneHomeZones
     static Element Lead(HomeCard c, bool beside, ZuneHomeLayout lay)
     {
         var cc = c;
-        string line = HomeCards.PlainText(c.Subtitle);
+        // The DJ (AI DJ) leads as its own card states it: its colour as one flat block with what the DJ says on it, the list's own line below.
+        bool dj = RhythmCards.DrawsDj(in c);
+        string line = HomeCards.PlainText(dj ? c.PlaylistDescription ?? c.Subtitle : c.Subtitle);
         var art = new BoxEl
         {
             ZStack = true, MinWidth = 0f, MinHeight = beside ? H.LeadArtMin : 0f, Grow = beside ? 1f : 0f,
             AspectRatio = beside ? float.NaN : H.LeadArtAspect, ClipToBounds = true,
             Cursor = CursorId.Hand, OnClick = () => HomeCardNav.Open(in cc),
-            Children = [Controls.CoverFill(c.HeaderImageUrl ?? c.ImageUrl, 0f, H.LeadArtDecodePx)],
+            Fill = dj ? RhythmCards.DjBack(c.DjColors) : ColorF.Transparent,
+            Children = dj
+                ? [new BoxEl
+                {
+                    Direction = 1, Justify = FlexJustify.End, MinWidth = 0f, HitTestPassThrough = true, Padding = Edges4.All(H.DjWordsPad),
+                    Children = [R.Type.PickQuote(HomeCards.PlainText(c.Subtitle)) with
+                    {
+                        Color = RhythmCards.DjInk(c.DjColors), MaxLines = H.DjWordsLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    }],
+                }]
+                : [Controls.CoverFill(c.HeaderImageUrl ?? c.ImageUrl, 0f, H.LeadArtDecodePx)],
         };
         var name = new BoxEl
         {
