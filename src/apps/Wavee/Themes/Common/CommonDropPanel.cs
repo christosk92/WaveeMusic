@@ -2,7 +2,7 @@
 //
 // Board frames 22-23 (WinUI; Classic uses the WinUI layout, so both register this one view; Zune draws its own band). Over the window's
 // empty space during an OS drag the shell shows a card centred on the content with two to four large zones that fit what is dragged
-// (songs: Play now · Play next · Add to queue; folders: Play · Add as a music folder · Add to queue; a playlist file: Play as a queue;
+// (songs: Play now · Play next · Add to queue · Add to library; folders: Play · Add as a music folder · Add to queue; a playlist file: Play as a queue;
 // Spotify links: Open · Play), each a glyph plate, the verb and its one-line consequence. The zone under the pointer lights: an accent
 // stroke and tint and an accent plate. The core decides the zones and runs a drop (`DropAnywhere`); this draws them.
 //

@@ -11,6 +11,7 @@
 //
 // Role: SHELL (UI thread; the hot reads are lock-guarded probes)
 
+using FluentGpu.Localization;
 using FluentGpu.Signals;
 
 namespace Wavee;
@@ -93,23 +94,58 @@ public static partial class Video
 
         public static LinkedVideoDecision DecideRecord(LinkedVideoRecord rec) => Decide(rec.Uri);
 
+        /// <summary>Can this row take a linked video version? A Spotify track only: a local file's row is its own file (its video plays as
+        /// itself, #240 local video), so the row's .mp4 drop and the Video ▸ verbs are not offered there. The one gate the drop target, the
+        /// menu and <see cref="Link"/> share.</summary>
+        public static bool CanLink(string? uri) => uri is { Length: > 0 } && EntityId.TryParse(uri, out EntityId id) && id.Provider == EntityProvider.Spotify;
+
+        /// <summary><see cref="CanLink(string)"/> over a row's uri, allocation-free: a drop target's <c>CanAccept</c> asks it per drag frame.</summary>
+        public static bool CanLink(EntityUri uri) => uri.IsValid && uri.Provider == EntityProvider.Spotify;
+
         /// <summary>Attach a video file to a track: the file joins the library and is linked to the track as its video version (a previous video
         /// version is unlinked: it stays in the library). Null when the file is refused. UI thread (one header read).</summary>
-        public static LinkedVideoChange? Attach(string uri, string path, string sourceKey, long nowUnix) => Link(uri, path, allowMissing: false);
+        public static LinkedVideoChange? Attach(string uri, string path, string sourceKey, long nowUnix) => Link(uri, path, allowMissing: false, out _);
 
-        static LinkedVideoChange? Link(string uri, string path, bool allowMissing)
+        /// <summary>The same attach; <paramref name="refused"/> says why a null came back, so the toast names what went wrong
+        /// (<see cref="RefusalText"/>), never "couldn't be found" for a file that is there.</summary>
+        public static LinkedVideoChange? Attach(string uri, string path, string sourceKey, long nowUnix, out AttachRejection refused)
+            => Link(uri, path, allowMissing: false, out refused);
+
+        /// <summary>The toast of a refused attach.</summary>
+        public static string RefusalText(AttachRejection refused) => Loc.Get(refused switch
+        {
+            AttachRejection.NotMp4 => Strings.LinkedVideo.RejectedNotMp4,
+            AttachRejection.NotFound => Strings.LinkedVideo.RejectedNotFound,
+            AttachRejection.NotLinkable => Strings.LinkedVideo.RejectedNotLinkable,
+            _ => Strings.LinkedVideo.RejectedNotAdded,
+        });
+
+        static LinkedVideoChange? Link(string uri, string path, bool allowMissing, out AttachRejection refused)
         {
             // A Spotify track's video version: a local row is its own file (its video plays as itself, #240 local video).
-            if (uri is not { Length: > 0 } || !EntityId.TryParse(uri, out EntityId id) || id.Provider != EntityProvider.Spotify) return null;
-            if (!allowMissing && LinkedVideoUx.Validate(path, FileExists) != AttachRejection.None) return null;
+            refused = AttachRejection.NotLinkable;
+            if (!CanLink(uri) || !EntityId.TryParse(uri, out EntityId id)) return null;
+            refused = allowMissing ? AttachRejection.None : LinkedVideoUx.Validate(path, FileExists);
+            if (refused != AttachRejection.None) return null;
+            refused = AttachRejection.NotAdded;
             bool read = LocalTags.TryRead(path, out Spotify.Audio.Format format, out LocalTagSet tags, out string why);
             if (!read && allowMissing && !File.Exists(path))
                 tags = new LocalTagSet(LocalKind.Video, "", [], "", "", 0, 0, 0, 0, false, 0, LocalCover.None, 0, 0, true, 0, 0, 0);
             Track file = LocalLibrary.AddFile(path, format, in tags, read, why, allowMissing);
-            if (!file.IsValid || !LocalLibrary.TryLocalIdOf(file.Uri.Text, out long localId)) return null;
+            if (!file.IsValid || !LocalLibrary.TryLocalIdOf(file.Uri.Text, out long localId))
+            {
+                // The file name only (paths hold the account name).
+                Log.Warn(State.LogCategory, "linked video not added to the library: " + Path.GetFileName(path) + (why.Length > 0 ? " (" + why + ")" : ""));
+                return null;
+            }
             long before = LocalLink.VideoFileOf(uri);
             if (before != 0 && before != localId) LocalLink.Unlink(before);
-            if (!LocalLink.LinkVersion(localId, Entities.Track(id))) return null;
+            if (!LocalLink.LinkVersion(localId, Entities.Track(id)))
+            {
+                Log.Warn(State.LogCategory, "linked video refused by the link store: " + Path.GetFileName(path));
+                return null;
+            }
+            refused = AttachRejection.None;
             lock (Gate) { Quarantine.RemoveWhere(k => k.StartsWith(uri + '\u001f', StringComparison.Ordinal)); WarnedMissing.Remove(uri); }
             return before != 0 ? LinkedVideoChange.Replace : LinkedVideoChange.Attach;
         }
@@ -153,7 +189,7 @@ public static partial class Video
             {
                 string[] parts = line.Split('\t', 4);
                 if (parts.Length != 4 || parts[0].Length == 0 || parts[3].Length == 0) continue;
-                if (Link(parts[0], parts[3], allowMissing: true) is not null) moved++; else failed++;
+                if (Link(parts[0], parts[3], allowMissing: true, out _) is not null) moved++; else failed++;
             }
             Platform.Settings.Set(s_legacy, "");
             Log.Info(State.LogCategory, "local video attachments moved to links: " + moved + (failed > 0 ? ", unreadable: " + failed : ""));

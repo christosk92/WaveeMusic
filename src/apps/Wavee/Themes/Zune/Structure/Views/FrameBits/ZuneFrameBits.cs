@@ -41,7 +41,7 @@ internal static class ZuneFrameBits
         var hot = props.Hot;
         var centre = props.CentreOffset;
         var zones = new Element[looks.Length];
-        for (int i = 0; i < looks.Length; i++) zones[i] = DropZone(looks[i], i, hot, zoneTarget(i));
+        for (int i = 0; i < looks.Length; i++) zones[i] = DropZone(looks[i], i, hot, zoneTarget(i), looks.Length);
         var band = new BoxEl
         {
             Key = ZuneFrameRules.DropBandKey, Direction = 0, Wrap = true, Gap = ZuneFrameRules.DropZoneGap, Padding = ZuneFrameRules.DropBandPadding,
@@ -64,14 +64,16 @@ internal static class ZuneFrameBits
         });
     }
 
-    /// <summary>One zone: the verb in pivot type (accent while lit), its consequence, and the lit bar along its foot.</summary>
-    static Element DropZone(DropZoneLook look, int index, IReadSignal<int>? hot, DropTargetSpec target)
+    /// <summary>One zone: the verb in pivot type (accent while lit), its consequence, and the lit bar along its foot. At most its share of the
+    /// widest band, so the zones keep one width when one wraps onto a row of its own.</summary>
+    static Element DropZone(DropZoneLook look, int index, IReadSignal<int>? hot, DropTargetSpec target, int count)
     {
         Func<bool> lit = hot is null ? static () => false : () => hot.Value == index;
         var detail = look.Detail;
         return new BoxEl
         {
             Key = ZuneFrameRules.DropZoneKey(index), Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = ZuneFrameRules.DropZoneMinW,
+            MaxWidth = ZuneFrameRules.DropZoneMaxW(count),
             Padding = ZuneFrameRules.DropZonePadding, DropTarget = target,
             Children =
             [
