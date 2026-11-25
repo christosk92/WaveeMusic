@@ -400,6 +400,14 @@ public static partial class Spotify
             public TextRef Url;
             public int TrackStart, TrackCount;
             public bool Infinite;
+            /// <summary>AI DJ (plan-dj §1.3): the metadata says <c>lexicon_set_type=your_dj</c> (the session answer; a page does not).</summary>
+            public bool Dj;
+            /// <summary><c>lexicon_expiration_time</c> in UNIX seconds (0 = none stated): a page fetch after it re-resolves the session.</summary>
+            public int ExpiresAt;
+            /// <summary>The root <c>restrictions</c>: the FIRST reason of each disallow list (empty = allowed), e.g. <c>dj-disallow</c>.</summary>
+            public TextRef NoShuffle, NoRepeatContext, NoRepeatTrack;
+            /// <summary>A page's own metadata picks: <c>lastComponentId</c> (the segment) and <c>correlation-id</c>.</summary>
+            public TextRef Segment, CorrelationId;
         }
 
         /// <summary><c>/context-resolve/v1/&lt;uri&gt;</c> (and the <c>autoplay</c> / <c>autopodcast</c> answer) → a
@@ -408,7 +416,9 @@ public static partial class Spotify
         /// <c>next_page_url</c> wins; <c>metadata["sorting.criteria"]</c> is kept. A track's missing <c>provider</c> stays
         /// empty — the consumer reads that as <c>"context"</c> (or <c>"autoplay"</c> for an autoplay answer) rather than
         /// this fold writing the same word into the arena per row.</summary>
-        public static ContextPage ContextResolve(ReadOnlySpan<byte> json, ClusterBuffer into)
+        /// <para><paramref name="djPage"/> &gt; 0 decodes a LEXICON page (AI DJ, plan-dj §2.1.3): each row keeps its DJ keys
+        /// (<see cref="ClusterTrack.DjStart"/>) and the page ordinal; 0, every other answer, keeps none of them.</para>
+        public static ContextPage ContextResolve(ReadOnlySpan<byte> json, ClusterBuffer into, int djPage = 0)
         {
             var page = default(ContextPage);
             page.TrackStart = into.TrackCount;
@@ -419,7 +429,7 @@ public static partial class Spotify
                 if (r.ValueTextEquals("uri"u8)) { r.Read(); page.Uri = Text(ref r, into); }
                 else if (r.ValueTextEquals("url"u8)) { r.Read(); page.Url = Text(ref r, into); }
                 else if (r.ValueTextEquals("next_page_url"u8)) { r.Read(); if (page.NextPageUrl.IsEmpty) page.NextPageUrl = Text(ref r, into); }
-                else if (r.ValueTextEquals("tracks"u8)) JsonTracks(ref r, into);
+                else if (r.ValueTextEquals("tracks"u8)) JsonTracks(ref r, into, djPage);
                 else if (r.ValueTextEquals("metadata"u8))
                 {
                     page.Metadata = MetadataJson(ref r, into);
@@ -428,15 +438,33 @@ public static partial class Spotify
                         for (int m = metadata.CurrentDepth; Next(ref metadata, m);)
                         {
                             if (metadata.ValueTextEquals("sorting.criteria"u8)) { metadata.Read(); page.SortingCriteria = Text(ref metadata, into); }
+                            else if (metadata.ValueTextEquals("lexicon_set_type"u8)) { metadata.Read(); page.Dj = Says(ref metadata, "your_dj"); }
+                            else if (metadata.ValueTextEquals("lexicon_expiration_time"u8))
+                            {
+                                metadata.Read();
+                                if (metadata.TokenType == JsonTokenType.String && !metadata.HasValueSequence) page.ExpiresAt = InstantSeconds(metadata.ValueSpan);
+                            }
+                            else if (metadata.ValueTextEquals("lastComponentId"u8)) { metadata.Read(); page.Segment = Text(ref metadata, into); }
+                            else if (metadata.ValueTextEquals("correlation-id"u8)) { metadata.Read(); page.CorrelationId = Text(ref metadata, into); }
                             else SkipValue(ref metadata);
                         }
+                }
+                else if (r.ValueTextEquals("restrictions"u8))
+                {
+                    for (int k = Fields(ref r); Next(ref r, k);)
+                    {
+                        if (r.ValueTextEquals("disallow_toggling_shuffle_reasons"u8)) page.NoShuffle = FirstReason(ref r, into);
+                        else if (r.ValueTextEquals("disallow_toggling_repeat_context_reasons"u8)) page.NoRepeatContext = FirstReason(ref r, into);
+                        else if (r.ValueTextEquals("disallow_toggling_repeat_track_reasons"u8)) page.NoRepeatTrack = FirstReason(ref r, into);
+                        else SkipValue(ref r);
+                    }
                 }
                 else if (r.ValueTextEquals("pages"u8) && EnterArray(ref r))
                 {
                     for (int pages = r.CurrentDepth; Element(ref r, pages);)
                         for (int p = r.CurrentDepth; Next(ref r, p);)
                         {
-                            if (r.ValueTextEquals("tracks"u8)) JsonTracks(ref r, into);
+                            if (r.ValueTextEquals("tracks"u8)) JsonTracks(ref r, into, djPage);
                             else if (r.ValueTextEquals("next_page_url"u8)) { r.Read(); if (page.NextPageUrl.IsEmpty) page.NextPageUrl = Text(ref r, into); }
                             else SkipValue(ref r);
                         }
@@ -445,12 +473,39 @@ public static partial class Spotify
             }
             page.TrackCount = into.TrackCount - page.TrackStart;
             var uri = into.Utf8(page.Uri);
-            page.Infinite = uri.IndexOf(":station:"u8) >= 0 || uri.IndexOf(":radio:"u8) >= 0 || uri.IndexOf(":autoplay"u8) >= 0;
+            // A DJ session is endless (its pages never run out): nothing pages it eagerly and autoplay never takes it over (plan-dj §2.1.3).
+            page.Infinite = page.Dj || uri.IndexOf(":station:"u8) >= 0 || uri.IndexOf(":radio:"u8) >= 0 || uri.IndexOf(":autoplay"u8) >= 0;
             return page;
         }
 
-        /// <summary>A JSON <c>tracks</c> array (the reader on its property) → rows in the buffer.</summary>
-        static void JsonTracks(ref Utf8JsonReader r, ClusterBuffer into)
+        /// <summary>A restriction's reason list (the reader on its property) → its first reason, or empty for an empty list.</summary>
+        static TextRef FirstReason(ref Utf8JsonReader r, ClusterBuffer into)
+        {
+            TextRef first = default;
+            if (!EnterArray(ref r)) return first;
+            int list = r.CurrentDepth;
+            while (r.Read() && !(r.TokenType == JsonTokenType.EndArray && r.CurrentDepth == list))
+            {
+                if (r.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray) r.Skip();
+                else if (first.IsEmpty && r.TokenType == JsonTokenType.String) first = Text(ref r, into);
+            }
+            return first;
+        }
+
+        /// <summary>Is the property the reader is on one of the DJ keys a lexicon row keeps (plan-dj §2.1.3)?</summary>
+        static bool DjKey(ref Utf8JsonReader r)
+        {
+            if (r.HasValueSequence || r.ValueIsEscaped) return false;
+            ReadOnlySpan<byte> k = r.ValueSpan;
+            return k.StartsWith("narration."u8) || k.StartsWith("dj."u8) || k.SequenceEqual("segment"u8) || k.SequenceEqual("decision_id"u8)
+                || k.SequenceEqual("custom_reporting_attribution"u8) || k.SequenceEqual("station_subtitle"u8)
+                || k.SequenceEqual("automix.talk_mode"u8) || k.SequenceEqual("album_image_small"u8) || k.SequenceEqual("album_image_large"u8);
+        }
+
+        /// <summary>A JSON <c>tracks</c> array (the reader on its property) → rows in the buffer. A lexicon page's rows
+        /// (<paramref name="djPage"/> &gt; 0) also keep their DJ keys as <see cref="ClusterBuffer.Meta"/> entries (SSML and all: only
+        /// DJ rows pay for them).</summary>
+        static void JsonTracks(ref Utf8JsonReader r, ClusterBuffer into, int djPage = 0)
         {
             if (!EnterArray(ref r)) return;
             for (int list = r.CurrentDepth; Element(ref r, list);)
@@ -458,6 +513,7 @@ public static partial class Spotify
                 ref var row = ref into.AddTrack();
                 TextRef large = default, plain = default;
                 long duration = 0;
+                if (djPage > 0) { row.DjPage = djPage; row.DjStart = into.MetaCount; }
                 for (int t = r.CurrentDepth; Next(ref r, t);)
                 {
                     if (r.ValueTextEquals("uri"u8)) { r.Read(); row.Uri = Text(ref r, into); }
@@ -468,7 +524,18 @@ public static partial class Spotify
                         // The same picks TrackMeta makes off a protobuf map, matched on the property name in place.
                         for (int m = Fields(ref r); Next(ref r, m);)
                         {
-                            if (r.ValueTextEquals("title"u8)) { r.Read(); row.Title = Text(ref r, into); }
+                            if (djPage > 0 && DjKey(ref r))
+                            {
+                                bool decision = r.ValueTextEquals("decision_id"u8);
+                                TextRef key = into.AddText(r.ValueSpan);
+                                r.Read();
+                                TextRef value = Text(ref r, into);
+                                ref var entry = ref into.AddMeta();
+                                entry.Key = key;
+                                entry.Value = value;
+                                if (decision) row.DecisionId = value;
+                            }
+                            else if (r.ValueTextEquals("title"u8)) { r.Read(); row.Title = Text(ref r, into); }
                             else if (r.ValueTextEquals("artist_name"u8)) { r.Read(); row.ArtistName = Text(ref r, into); }
                             else if (r.ValueTextEquals("album_title"u8)) { r.Read(); row.AlbumTitle = Text(ref r, into); }
                             else if (r.ValueTextEquals("artist_uri"u8)) { r.Read(); if (row.ArtistUri.IsEmpty) row.ArtistUri = Text(ref r, into); }
@@ -487,6 +554,7 @@ public static partial class Spotify
                 if (row.Uri.IsEmpty) { into.TrackCount--; continue; }
                 if (row.Image.IsEmpty) row.Image = large.IsEmpty ? plain : large;
                 row.DurationMs = duration;
+                if (djPage > 0) row.DjCount = into.MetaCount - row.DjStart;
             }
         }
 

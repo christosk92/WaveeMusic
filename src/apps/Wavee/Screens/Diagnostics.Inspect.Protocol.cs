@@ -602,10 +602,10 @@ public static partial class Diagnostics
                         Arg("curves", ArgType.Int, "print the Connect metadata curves for this preset id (1 Fade, 3 Rise)"),
                         Arg("window", ArgType.Int, "the window those curves are for, ms (8 units under 8 s, else 16)")],
             },
-            new(Verb.Dj, "dj", "AI DJ: the DJ list's attributes and the lexicon session playing it (uri, url, pages fetched, the next page's url) beside the deck and queue; do=answers decodes the --fake lexicon service's session and pages; do=play starts the list as a click does", "dj do=play")
+            new(Verb.Dj, "dj", "AI DJ: the DJ list's attributes; the lexicon session playing it (uri, url, expiry, dj/infinite, the three restrictions, pages fetched with their segments, the next page's url, the lookahead) and the DJ book per queue row (page, segment, jump target, narration slots, subtitle, decision id) beside the deck and queue; do=answers decodes the --fake lexicon service's session and pages; do=play starts the list as a click does; do=expire ends the session's validity", "dj do=play")
             {
                 Positional = ["do"],
-                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|answers|play"),
+                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|answers|play|expire"),
                              Arg("uri", ArgType.String, "the DJ list (default: the fake one)"),
                              Arg("pages", ArgType.Int, "do=answers: how many pages to decode after the session (default 3)")], s_settleArgs),
             },

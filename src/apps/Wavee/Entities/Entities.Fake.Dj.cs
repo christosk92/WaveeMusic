@@ -4,7 +4,7 @@
 // answers (plan-dj §1.2–§1.3): a list whose format attributes carry `lexicon_set_type=your_dj` and a `lexicon_context_url`; a session
 // answer (root uri, url, the context metadata, one empty page naming the first real page, the three `dj-disallow` restrictions);
 // and pages of 5-track segments whose `next_page_url` names the next page, endlessly. Every id, segment, decision id, request id
-// and spoken line here is INVENTED; the tracks are the demo catalogue's own. `Playback.UseFakeLexicon` (App.cs, --fake) serves
+// and spoken line here is INVENTED; the tracks are the demo catalogue's own. `Playback.Dj.UseFake` (App.cs, --fake) serves
 // them as the response BODY of the lexicon GET, so the real resolver, the real decoder and the real paging run against them.
 // Route: pl:spotify:playlist:pldj.
 
@@ -43,7 +43,7 @@ public static partial class Entities
         }
     }
 
-    // ── the lexicon session provider's answers (served by Playback.UseFakeLexicon) ────────────────────────────────────
+    // ── the lexicon session provider's answers (served by Playback.Dj.UseFake) ────────────────────────────────────
 
     const string LexiconSessionPath = "/lexicon-session-provider/context-resolve/v2/session";
     const string DjPagePath = LexiconSessionPath + "/00000000000000000000000000000000";
@@ -54,9 +54,14 @@ public static partial class Entities
     /// <summary>How many lexicon answers the fake has served (the inspector's evidence that a fetch happened).</summary>
     public static int FakeLexiconServed { get; private set; }
 
+    /// <summary>The highest page served so far: a session answered again (a renewal past its expiry, a second start) begins after it,
+    /// so its rows carry new uids, segments and decision ids as a fresh session's do.</summary>
+    static int s_djHighestPage;
+
     /// <summary>The fake service's answer to a GET of <paramref name="path"/> (the spclient path the resolver sends, query included),
     /// or null for a path the fake does not serve. The session for the fake DJ list, and its page <c>n</c> (1-based, read back off the
-    /// request id the previous answer wrote) for any n: the session is endless.</summary>
+    /// request id the previous answer wrote) for any n: the session is endless. A session answer names the page after the highest
+    /// one served, so every page of every session is distinct.</summary>
     internal static byte[]? FakeLexicon(string path)
     {
         if (!path.StartsWith(LexiconSessionPath, StringComparison.Ordinal)) return null;
@@ -85,9 +90,9 @@ public static partial class Entities
     static string SegmentId(int page) => "FAKE-Segment-" + (DjSegmentBase + page).ToString(CultureInfo.InvariantCulture);
 
     /// <summary>The url of page <paramref name="page"/>: the first names no previous segment, the rest the one before.</summary>
-    static string DjPageUrl(int page)
+    static string DjPageUrl(int page, bool first = false)
         => "hm:/" + DjPagePath + "?contextUri=" + LibrarySeed.DjUri
-           + (page <= 1 ? "&opmPlayed=false" : "&previousSegmentId=" + SegmentId(page - 1))
+           + (first ? "&opmPlayed=false" : "&previousSegmentId=" + SegmentId(page - 1))
            + "&requestId=" + RequestId(page);
 
     static string Hex(int value, int width) => value.ToString("x" + width.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
@@ -129,7 +134,7 @@ public static partial class Entities
             w.WriteEndObject();
             w.WriteStartArray("pages");
             w.WriteStartObject();
-            w.WriteString("next_page_url", DjPageUrl(1));
+            w.WriteString("next_page_url", DjPageUrl(s_djHighestPage + 1, first: true));
             w.WriteStartArray("tracks");
             w.WriteEndArray();
             w.WriteEndObject();
@@ -153,6 +158,7 @@ public static partial class Entities
     static byte[] DjPage(int page)
     {
         page = Math.Max(1, page);
+        s_djHighestPage = Math.Max(s_djHighestPage, page);
         string segment = SegmentId(page);
         string decision = "ssp~fa4e" + Hex(page, 32);
         string subtitle = s_djSubtitles[Wrap(page - 1, s_djSubtitles.Length)];

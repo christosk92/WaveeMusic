@@ -788,6 +788,7 @@ public static partial class Playback
         ulong itemId = distinct ? DistinctItemId(buffer.Utf8(track.Uid), kept, rows.AsSpan(0, n)) : s_uids.ItemIdOf(buffer.Utf8(track.Uid));
         if (provider == QueueProvider.Queue && itemId != 0)      // an owner's queued row keeps its own queued_by (possibly none)
             s_uids.NoteQueuedBy(itemId, System.Text.Encoding.UTF8.GetString(buffer.Utf8(track.QueuedBy)));
+        if (track.DjPage > 0) Dj.Note(itemId, buffer, in track); // a lexicon row's DJ keys, booked under its item id
         rows[n] = new QueueEdge(itemId, (byte)provider, (byte)bucket);
         n++;
     }
@@ -949,6 +950,7 @@ public static partial class Playback
         long now = FrameNowMs();
         string path = context.Equals(s_pageContext) ? RemotePlan.PageRoute(s_pageUrl) : "";
         if (path.Length == 0 || Entities.Current is null) { Post(Input.Paged(context, 0, morePages: false, now)); return; }
+        if (Dj.Of(context) is { } session) { RequestDjPage(context, session); return; }   // a lexicon session pages through its own fetch
         long seq = s_contextSeq;
         bool queued = Spotify.Api.Run(() =>
         {

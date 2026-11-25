@@ -1993,7 +1993,7 @@ public static partial class Playback
     /// (Spotify's "Autoplay", default on; librespot-java <c>player.autoplayEnabled</c> default true, go-librespot
     /// <c>disable_autoplay</c> default false). #215.</summary>
     public static bool AutoplayAllowed(in State s)
-        => s.Repeat == RepeatMode.Off && Platform.Settings.Get(Platform.Keys.AutoplayEnabled);
+        => s.Repeat == RepeatMode.Off && Platform.Settings.Get(Platform.Keys.AutoplayEnabled) && !Dj.RefusesAutoplay(s.Context);
 
     /// <summary>How far into a row Previous still means "previous" rather than "start this one again".</summary>
     public const int RestartWindowMs = 3_000;
