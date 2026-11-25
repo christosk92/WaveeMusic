@@ -677,6 +677,8 @@ public static partial class Entities
                 t.Flags[slot] = (t.Flags[slot] & ~(uint)TrackFlags.VideoMask) | videoBits;
                 t.Applied(slot, (uint)TrackFields.Video, auth, ref t.ExtrasAuthority);
             }
+            // A linked video version's picture outlives the catalogue's answer above (#240 version cards: Shell/Video.LinkedVideos.cs).
+            if (Video.LinkedVideoMirror.TryFrame(t.Id[slot], out string linkedFrame)) t.SetText(ref t.VideoImage, slot, Entities.Strings.Intern(linkedFrame));
             if ((extras & (uint)TrackFields.Tags) != 0
                 && t.Accepts(slot, (uint)TrackFields.Tags, auth, in t.ExtrasAuthority))
             {

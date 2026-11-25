@@ -160,6 +160,10 @@ public static partial class LocalLink
             case "D" when f.Length >= 3 && long.TryParse(f[2], NumberStyles.None, CultureInfo.InvariantCulture, out long file):
                 s_defaults[f[1]] = file;
                 return true;
+            case "T" when f.Length >= 3 && long.TryParse(f[1], NumberStyles.None, CultureInfo.InvariantCulture, out long video)
+                         && long.TryParse(f[2], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long choice) && choice != 0:
+                s_thumbs[video] = choice;   // "Use as thumbnail" (LocalLink.Attach.cs)
+                return true;
         }
         return false;
     }
@@ -171,5 +175,7 @@ public static partial class LocalLink
               .Append(clean(r.Artist)).Append('\t').Append(clean(r.Album)).Append('\n');
         foreach (var (uri, file) in s_defaults)
             sb.Append('D').Append('\t').Append(clean(uri)).Append('\t').Append(file.ToString(CultureInfo.InvariantCulture)).Append('\n');
+        foreach (var (video, choice) in s_thumbs)
+            sb.Append('T').Append('\t').Append(video.ToString(CultureInfo.InvariantCulture)).Append('\t').Append(choice.ToString(CultureInfo.InvariantCulture)).Append('\n');
     }
 }

@@ -89,7 +89,7 @@ internal static class ClassicTrackDrawer
         for (int i = 0; i < entries.Count; i++)
         {
             var e = entries[i];
-            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks, e.Label);
+            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks, e.Label, e.Picture, e.Wide);
             body[2 + i] = ConnectedRow(e.RowKey, row, isLast: i == entries.Count - 1);
         }
         if (a.Link is { } link) body = [.. body, LinkSection(link)];
@@ -329,9 +329,12 @@ internal static class ClassicTrackDrawer
         ],
     };
 
-    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks, string? label = null)
+    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks, string? label = null,
+                              string? picture = null, bool wide = false)
     {
         Track parent = a.Track;
+        // #240 version cards: the card's menu (right-click, Shift+F10, the menu key, its "⋯"), F2, and an inline title for a version of mine.
+        TrackDrawerCardWiring? wire = a.VersionCard?.Invoke(version, parent, kind);
         var meta = new List<Element>(6) { Caption(label ?? KindLabel(kind)).Tertiary() };
         if (version.Knows(TrackFields.Audio) && version.Tempo > 0)
         {
@@ -353,40 +356,66 @@ internal static class ClassicTrackDrawer
 
         return new BoxEl
         {
+            Focusable = wire is not null, OnContextRequested = wire?.Context, OnKeyDown = wire?.Keys,
             Key = "ver:" + rowKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Grow = 1f,
             Height = DrawerRules.RowH, Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Corners = CornerRadius4.All(Radii.Control),
             Fill = kind == DrawerRules.SelfRow ? Tok.FillSubtleSecondary : ColorF.Transparent,   // rows, not cards: only self is plated
             Children =
             [
-                Thumb(version, parent, kind, isNow, a.PlayVersion),
+                Thumb(version, parent, kind, isNow, a.PlayVersion, picture, wide),
                 new BoxEl
                 {
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ClassicTrackDrawerLayout.TextGap,
                     Children =
                     [
                         // 13.5 / 540 is 0.2.9's own version-title cut (TrackVersionsPanel.cs:311-316), ported as pixels.
-                        R.Type.DenseTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
+                        TitleOf(wire, version, R.Type.DenseTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
                         {
                             Weight = 540, Color = isNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
                             MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                        },
+                        }),
                         new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = meta.ToArray() },
                     ],
                 },
                 peaks is null ? new BoxEl() : Waveform.Create(new WaveformModel(peaks, DrawerRules.WaveBars), key: "waveform"),
+                MoreButton(wire),
                 a.FormatButton(version, parent, kind),
             ],
         }.Interactive(Interaction.Subtle);
     }
 
+
+    /// <summary>The version's title, through the card's wiring: an inline rename for a version of mine, the title as it is otherwise.</summary>
+    static Element TitleOf(TrackDrawerCardWiring? wire, Track version, TextEl look)
+        => wire is null ? look : wire.Title(look, version.Knows(TrackFields.Title) ? version.Title : "");
+
+    /// <summary>The card's "⋯" (#240 version cards), shown on the card's hover (a non-interactive wrapper rides it): a context-invoker, so it opens
+    /// the card's own menu, the one right-click and Shift+F10 open.</summary>
+    static Element MoreButton(TrackDrawerCardWiring? wire) => wire is null ? new BoxEl() : new BoxEl
+    {
+        Shrink = 0f, Opacity = 0f, HoverOpacity = 1f,
+        Children =
+        [
+            ToolTip.Wrap(new BoxEl
+            {
+                Key = "ver-more", Width = ClassicTrackDrawerLayout.MoreBox, Height = ClassicTrackDrawerLayout.MoreBox, Shrink = 0f, Corners = CornerRadius4.All(Radii.Control),
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand, ClickRequestsContext = true,
+                Children = [Icon(Icons.More, ClassicTrackDrawerLayout.MoreGlyph, Tok.TextSecondary)],
+            }, wire.MoreLabel),
+        ],
+    };
     // 16:9 with a play badge for the video, the bare square otherwise — and the now-playing overlay on the version that IS
     // the deck's item (ch 01 W14, item 73).
-    static Element Thumb(Track version, Track parent, byte kind, bool isNow, Action<Track, Track, byte> playVersion)
+    // A video of mine (#240 version cards) wears its own frame in the music video's 16:9 thumbnail (the same slot height as the square, so the
+    // card keeps its height and the row's text column only starts further right), with the music video's play badge: one idiom for a video
+    // version in this list, whichever it is. While its frame is being made the slot is reserved (the no-art tile), so nothing moves when it lands.
+    static Element Thumb(Track version, Track parent, byte kind, bool isNow, Action<Track, Track, byte> playVersion, string? picture = null, bool wide = false)
     {
-        bool video = kind == DrawerRules.VideoKind;
+        bool video = kind == DrawerRules.VideoKind || wide;
         float w = video ? DrawerRules.VideoThumbW : DrawerRules.AudioThumb;
         float h = video ? DrawerRules.VideoThumbH : DrawerRules.AudioThumb;
-        string? url = Controls.ArtUrl(video && !parent.VideoImageId.IsEmpty ? parent.VideoImageId : version.ImageId);
+        string? url = wide ? picture : Controls.ArtUrl(video && !parent.VideoImageId.IsEmpty ? parent.VideoImageId : version.ImageId);
         Element art = Controls.Artwork(url, w, h, Radii.Control);
         if (!isNow && !video) return art;
         Element layer = isNow

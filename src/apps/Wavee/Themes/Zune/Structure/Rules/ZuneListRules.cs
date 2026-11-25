@@ -352,6 +352,8 @@ public static class ZuneListRules
 
     /// <summary>The versions head's air below, the version title's gap to its meta and the pending bars' gap.</summary>
     public const float DrawerHeadBottom = 6f, DrawerTextGap = 2f, DrawerPendingGap = 6f;
+    /// <summary>A version card's "⋯" (#240 version cards): its box and glyph.</summary>
+    public const float DrawerMoreBox = 28f, DrawerMoreGlyph = 14f;
     /// <summary>The drawer's Spotify section: the line's link glyph and the verb's height (a file in the music folders).</summary>
     public const float DrawerLinkGlyph = 14f, DrawerVerbH = 32f;
 

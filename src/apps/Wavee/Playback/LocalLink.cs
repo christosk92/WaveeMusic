@@ -440,7 +440,7 @@ public static partial class LocalLink
     //   G  key  decision  chosen-uri  spotify-wins(1|0)  rejected-uri rejected-uri …
     //   L  local-id  group-key  track-uri  title  artists  album  album-uri  duration-ms  isrc  disc  number  cover  year  album-artist
     //   A  group-key  album-uri  title  artist  year  cover
-    //   R, D  a rename and a song's default version (LocalLink.Versions.cs)
+    //   R, D, T  a rename, a song's default version and a video's picture choice (LocalLink.Versions.cs, LocalLink.Attach.cs)
     // An unknown line is skipped, so a later version can add records an older one ignores.
 
     static void Read(string[] lines)

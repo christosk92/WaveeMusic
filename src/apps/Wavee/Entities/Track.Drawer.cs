@@ -164,12 +164,18 @@ public readonly partial struct Track
                 string? label = kind == DrawerRules.FileKind && LocalLibrary.TryLocalIdOf(version.Uri.Text, out long fileId) ? LocalLinkWords.FileLabel(fileId) : null;
                 // Phase 2: the version that plays when the song is played says so ("Your file · MP3 320 · Plays by default").
                 if (!reserved && LocalLinkWords.PlaysByDefault(t, kind, version) is { } plays) label = (label ?? KindWord(kind)) + " · " + plays;
-                drawn[i] = new TrackDrawerEntry(kind, version, rowKey, isNow, reserved, i == 0 ? peaks : null, label);
+                // #240 version cards: a video of mine wears its own picture (a frame from it, or the one the user chose), not the album cover.
+                long file = !reserved && LocalLibrary.TryLocalIdOf(version.Uri.Text, out long fid) ? fid : 0;
+                bool wide = file != 0 && LocalLink.WearsFrame(file);
+                drawn[i] = new TrackDrawerEntry(kind, version, rowKey, isNow, reserved, i == 0 ? peaks : null, label, wide ? LocalLink.FrameUrlOf(file) : null, wide);
             }
+            // #240 version cards: each card's menu, keys and title (Track.Drawer.VersionCard.cs); plain cards with no overlay host.
+            var overlay = DrawerOverlay;
             return style.Body(new TrackDrawerBodyArgs
             {
                 Track = t, Facts = facts, Arriving = arriving, Entries = drawn,
                 FormatButton = _formatButton, PlayVersion = PlayVersion, Link = LinkSection(t),
+                VersionCard = overlay is null || Controls.IsNullOverlay(overlay) ? null : (version, parent, kind) => CardWiring(version, parent, kind, overlay),
             });
         }
 

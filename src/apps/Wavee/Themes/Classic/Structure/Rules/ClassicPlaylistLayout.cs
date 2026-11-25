@@ -38,16 +38,7 @@ public static class ClassicPlaylistLayout
     /// <summary>The chip's gap (the buttons' too), padding, radius, icon box and glyph.</summary>
     public const float ChipGap = 6f, ChipPadL = 8f, ChipPadR = 10f, ChipPadY = 3f, ChipRadius = 12f, ChipIcon = 16f, ChipGlyph = 12f;
 
-    /// <summary>The buttons: 32 tall, r16, pad 10 / 0 / 12 / 0, glyph and label.</summary>
-    public const float EditButtonH = 32f, EditButtonPadL = 10f, EditButtonPadR = 12f, EditButtonRadius = 16f, EditButtonGlyph = 13f, EditButtonText = 12f;
-
-    /// <summary>Save is accent-tinted: rest, hover, pressed.</summary>
-    public const float EditAccentRest = 0.16f, EditAccentHover = 0.26f, EditAccentPressed = 0.12f;
-
     // ── the inline editors (W14, W15) ──
-
-    /// <summary>The status row's gap under the editor while a status shows.</summary>
-    public const float StatusRowGap = 4f;
 
     /// <summary>The description's size and its line cap in the read arm.</summary>
     public const float DescriptionSize = 12f;
@@ -55,16 +46,6 @@ public static class ClassicPlaylistLayout
     /// <inheritdoc cref="DescriptionSize"/>
     public const int DescriptionLines = 6;
 
-    /// <summary>The read arm's pencil: the glyph (the description's, the title's floor and the title's share of its size) and the box (the title's, the
-    /// description's width and height).</summary>
-    public const float PencilGlyphDescription = 13f, PencilGlyphMin = 14f, PencilGlyphScale = 0.4f, PencilBox = 20f,
-        PencilBoxDescriptionW = 16f, PencilBoxDescriptionH = 18f;
-
-    /// <summary>The read arm bleeds past its text by this much (margin and padding cancel): the hover plate's room.</summary>
-    public const float ReadBleedX = 8f, ReadBleedY = 4f;
-
-    /// <summary>The edit field: the description's height, the title's floor and what it adds to the title's size.</summary>
-    public const float DescriptionFieldH = 72f, TitleFieldMinH = 40f, TitleFieldExtra = 12f;
 
     // ── the owner row (W25, W29) ──
 

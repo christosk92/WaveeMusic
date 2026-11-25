@@ -34,6 +34,8 @@ internal static class ClassicTrackDrawerLayout
 
     /// <summary>The music-video thumbnail's play badge (a 22 disc over a dark scrim) and its inks.</summary>
     public const float PlayBadge = 22f;
+    /// <summary>A version card's "⋯" (#240 version cards): its box and glyph, the row "⋯"'s.</summary>
+    public const float MoreBox = 28f, MoreGlyph = 14f;
 
     /// <summary>The scrim over a video thumbnail.</summary>
     public static readonly ColorF VideoScrim = new(0f, 0f, 0f, 0.28f);
