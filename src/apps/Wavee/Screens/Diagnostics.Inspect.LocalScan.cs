@@ -155,23 +155,37 @@ public static partial class Diagnostics
             });
         }
 
-        /// <summary>`localindex prefix=<relative path start>`: the app's index as it is now (#240 folder management checks: a rename keeps every
-        /// LocalId, a recycled folder's files turn Missing, a hidden folder's leave). Read-only.</summary>
+        /// <summary>`localindex prefix=<relative path start> [rename=<LocalId> title=<name>]`: the app's index as it is now (#240 folder management
+        /// checks: a rename keeps every LocalId, a recycled folder's files turn Missing, a hidden folder's leave; LocalId safety: `next`, the id
+        /// mark kept outside the bin, and each file's Wavee rename). `rename=` renames a file in Wavee first, as the drawer's Rename does.</summary>
         string LocalIndexVerb(int id, string name, Inspect.Args a)
         {
             string prefix = a.Str("prefix");
             var index = LocalLibrary.Index;
+            if (a.Has("rename"))
+            {
+                long target = a.Int("rename", 0);
+                if (!index.TryGet(target, out _)) return Inspect.Reply.Fail(id, name, "localindex rename=<LocalId> wants an indexed file, not " + target);
+                LocalLink.Rename(target, new LocalRename(a.Str("title"), "", ""));
+                RunFrames(5);
+            }
+            if (a.Bool("compact", false)) index.Compact();
+            // `mark=`: the id high-water mark as a previous run left it (an inspector's settings live in memory), before a `value=startup`.
+            if (a.Has("mark")) Platform.Settings.Set(Platform.Keys.MusicIdMark, (long)a.Int("mark", 0));   // write the bin now (the app compacts when the scanner has been idle 30 s)
             return Inspect.Reply.Ok(id, name, w =>
             {
                 w.WriteNumber("entries", index.Count);
                 w.WriteNumber("missing", index.MissingCount);
+                w.WriteNumber("next", index.NextId);
+                w.WriteNumber("idMark", Platform.Settings.Get(Platform.Keys.MusicIdMark));
                 w.WriteStartArray("roots");
                 foreach (var r in index.Roots()) w.WriteStringValue(r.RootId + " | " + r.Path);
                 w.WriteEndArray();
                 w.WriteStartArray("files");
                 foreach (var e in index.Snapshot())
                     if (e.RelativePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                        w.WriteStringValue(e.LocalId + " | " + e.RootId + " | " + e.RelativePath + " | " + e.State + (e.Why.Length > 0 ? " | " + e.Why : ""));
+                        w.WriteStringValue(e.LocalId + " | " + e.RootId + " | " + e.RelativePath + " | " + e.State + (e.Why.Length > 0 ? " | " + e.Why : "")
+                                           + (LocalLink.RenameOf(e.LocalId) is { } rn ? " | rename=" + rn.Title : ""));
                 w.WriteEndArray();
                 w.WriteStartArray("folders");
                 foreach (var f in index.Folders())

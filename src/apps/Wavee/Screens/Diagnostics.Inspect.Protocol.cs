@@ -805,7 +805,11 @@ public static partial class Diagnostics
             new(Verb.LocalIndex, "localindex", "List the app's local index (#240): every entry's LocalId, music folder id, relative path and state, every folder record and the hidden set, filtered by a relative path prefix; read-only", "localindex prefix=Artist")
             {
                 Positional = ["prefix"],
-                Args = [Arg("prefix", ArgType.String, "the start of the relative paths to list (\"\" lists all)")],
+                Args = [Arg("prefix", ArgType.String, "the start of the relative paths to list (\"\" lists all)"),
+                        Arg("rename", ArgType.Int, "first rename this LocalId in Wavee (LocalLink.Rename, as the drawer does)"),
+                        Arg("title", ArgType.String, "with rename: the new title"),
+                        Arg("compact", ArgType.Bool, "write the index's bin now (compact the log into it)", "false"),
+                        Arg("mark", ArgType.Int, "set the LocalId high-water mark kept outside the bin, as a previous run left it (before state kind=music-folders value=startup)")],
             },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];

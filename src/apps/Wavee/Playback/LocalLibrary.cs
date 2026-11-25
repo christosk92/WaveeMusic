@@ -110,18 +110,27 @@ public static partial class LocalLibrary
         WatchBatterySaver();
         new Thread(static () =>
         {
+            // LocalId safety: the index never hands out an id it gave before, whatever its bin says (the mark kept outside it, and every id
+            // the kept decisions name); the mark follows each commit.
+            string? cacheDir = s_binPath is { } path ? Path.GetDirectoryName(path) : null;
+            s_index.IdFloor = Math.Max(Platform.Settings.Get(Platform.Keys.MusicIdMark), LocalLink.HighestIdIn(cacheDir) + 1);
+            s_index.HighWaterMoved = KeepIdMark;
             int loaded = s_binPath is { } bin ? s_index.Load(bin) : 0;
+            KeepIdMark(s_index.NextId);
             CheckAdded();   // the "Added files" are not walked: each is looked at once (LocalLibrary.Added.cs)
             Volatile.Write(ref s_loaded, 1);
             Log.Info("local", "local.index.load entries=" + loaded + " folders=" + Folders.Count + " log=" + s_index.LogBytes);
             foreach (string folder in Folders) StartFolder(folder, startup: true);
             NoteProgress();
             // "Your files and Spotify": the kept decisions load once the index is in (matching, when on, folds the index).
-            string? cacheDir = s_binPath is { } path ? Path.GetDirectoryName(path) : null;
             Playback.ToUi(() => LocalLink.Use(cacheDir));
         })
         { IsBackground = true, Name = "Wavee.LocalLibrary.Load", Priority = ThreadPriority.BelowNormal }.Start();
     }
+
+    /// <summary>Keep the index's id high-water mark outside its bin (a setting: written on the UI thread, only ever raised).</summary>
+    static void KeepIdMark(long next)
+        => Playback.ToUi(() => { if (next > Platform.Settings.Get(Platform.Keys.MusicIdMark)) Platform.Settings.Set(Platform.Keys.MusicIdMark, next); });
 
     static void StartFolder(string folder, bool startup)
     {
@@ -347,7 +356,14 @@ public static partial class LocalLibrary
     {
         // At most four posts a second; the post bumps the signal on the UI thread.
         if (Interlocked.Exchange(ref s_postPending, 1) != 0) return;
-        s_post ??= new Timer(static _ => Playback.ToUi(static () => { Volatile.Write(ref s_postPending, 0); Epoch.Value++; MaybeRestate(); PairPending(); }), null, Timeout.Infinite, Timeout.Infinite);
+        s_post ??= new Timer(static _ => Playback.ToUi(static () =>
+        {
+            Volatile.Write(ref s_postPending, 0);
+            Epoch.Value++;
+            MaybeRestate();
+            PairPending();
+            if (!s_scan.Busy) LocalLink.CheckIdentities();   // the kept decisions follow their files (and find a file the index gave a new id)
+        }), null, Timeout.Infinite, Timeout.Infinite);
         s_post.Change(250, Timeout.Infinite);
         if (!s_scan.Busy) s_idle?.Change(30_000, Timeout.Infinite);   // idle: compact the log in 30 s unless a scan starts
     }
