@@ -1522,5 +1522,29 @@
     "insideMusicFolder": "{name} staat al in een muziekmap",
     "holdsMusicFolder": "{name} bevat een muziekmap: verwijder die eerst",
     "notAFolder": "{name} is geen map die Wavee kan openen"
+  },
+  "mix": {
+    "smartReorder": "Slim herschikken",
+    "reorderAsking": "Spotify vraagt naar de volgorde voor vloeiende overgangen…",
+    "reorderProposal": "De volgorde van Spotify voor vloeiende overgangen: {moved} van {count} nummers verschuiven.",
+    "reorderSame": "Deze playlist staat al in de volgorde van Spotify voor vloeiende overgangen.",
+    "reorderNoOrder": "Spotify heeft nu geen volgorde voor vloeiende overgangen voor deze playlist.",
+    "reorderOffline": "Je bent offline. Slim herschikken heeft een verbinding nodig.",
+    "reorderFailed": "De volgorde van Spotify kon niet worden opgehaald. Probeer het opnieuw.",
+    "reorderApply": "Herschikken",
+    "reorderCancel": "Annuleren",
+    "reorderWas": "was {n}",
+    "reordered": "{count, plural, one {# nummer herschikt} other {# nummers herschikt}}",
+    "reorderUndo": "Ongedaan maken",
+    "reorderUndone": "De vorige volgorde is terug.",
+    "reorderWriteFailed": "Deze playlist kon niet worden herschikt. Probeer het opnieuw.",
+    "reorderChanged": "De playlist is intussen veranderd. Open Slim herschikken opnieuw.",
+    "cantEdit": "Je kunt de overgangen in deze playlist niet bewerken",
+    "duplicate": "Mix dupliceren",
+    "duplicateFailed": "Deze mix kon niet worden gedupliceerd. Probeer het opnieuw.",
+    "duplicateOffline": "Je bent offline. Dupliceer de mix zodra je weer online bent.",
+    "upsellTitle": "Speel en maak gemixte playlists met Premium",
+    "upsellBody": "Luister naar gemixte playlists met overgangen of mix je eigen playlists, alleen met Premium.",
+    "upsellCta": "Ontdek Premium"
   }
 }

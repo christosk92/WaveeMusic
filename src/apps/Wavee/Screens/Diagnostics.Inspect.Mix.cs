@@ -55,6 +55,7 @@ public static partial class Diagnostics
             if (a.Has("autocheck")) return MixAutoCheck(id, name, a.Str("autocheck"));   // Diagnostics.Inspect.Mix.Auto.cs
             string show = a.Str("show", "dump");
             if (show is "writes" or "fake" or "requests" or "migrate" or "coldstart") return MixWritesVerb(id, name, show, a);   // M2: Diagnostics.Inspect.MixWrites.cs
+            if (show is "reorder" or "duplicate") return MixRestVerb(id, name, show, a);   // M8: Diagnostics.Inspect.MixRest.cs
             if (show == "semantics") return MixSemantics(id, name);
             if (show == "render") return MixRenderCheck(id, name, a.Str("uri", Entities.LibrarySeed.MixUri));
             if (show == "speed") return MixSpeedVerb(id, name, a);

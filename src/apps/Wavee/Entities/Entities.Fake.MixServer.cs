@@ -12,6 +12,16 @@
 //   set-transition, no payload  the from-item's recipe and uri are dropped (Reset to Auto), the etag moves
 //   mix-opt-out / -remove-      the opt-out bit (how a real server reads it back is open, §3.3: the reply shows nothing)
 //
+// M8 adds the three calls Smart reorder and Duplicate Mix make (Spotify.Api.MixLists.cs), recorded the same way:
+//
+//   GET through `harmonize`     the list read back in a made-up "smooth" order: the first row stays, then each next row is the one
+//                               nearest in tempo (then key) to the last; rows that cannot mix keep their places at the end. f22 names
+//                               the harmonize lens. Nothing moves on the server.
+//   POST /changes               keyed MOV ops applied to the rows at the list's head (409 at another), the revision counter + 1 and
+//                               the mix lens etag moved, as a MOVE does (§3.4); every recipe stays on its from-item.
+//   POST mix-list-lens duplicate the list copied (rows, item ids, stored recipes, the overrides on top) under a new made-up id
+//                               (plmixcopy1, 2, ...), not mixed until the client turns it on; the answer is {"playlist_uri"}.
+//
 // A request at a revision the list is not at is refused with 409 (the live helper then reads the head and sends once more).
 // The inspector can take the server offline (no session: nothing is sent) or make it fail (503): `mix fake=offline|fail|ok`.
 // Every value here is made up: the revision is counter 7 over a `beef` hash, etags count up from 0000beef, transition uris
@@ -23,6 +33,8 @@
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
+using Pl = Wavee.Protocol.Playlist;
 
 namespace Wavee;
 
@@ -45,6 +57,9 @@ public static partial class Entities
             public bool NotMixable;
             public string? Reason;
             public byte[]? Template;
+            /// <summary>The track's tempo (x10) and Camelot slot when the server took the row: the made-up smooth order's inputs.</summary>
+            public ushort Tempo;
+            public byte Camelot;
         }
 
         sealed class ListState
@@ -64,7 +79,7 @@ public static partial class Entities
         static readonly object s_gate = new();
         static readonly Dictionary<string, ListState> s_lists = new(StringComparer.Ordinal);
         static readonly List<Request> s_log = new();
-        static int s_saves;
+        static int s_saves, s_copies;
         static volatile Mode s_mode;
 
         public static Mode Now { get => s_mode; set => s_mode = value; }
@@ -77,6 +92,9 @@ public static partial class Entities
             if (!Platform.Args.Fake) return;
             Spotify.Library.Net.PlaylistSignals = Signals;
             Spotify.Library.Net.Playlist = Read;
+            Spotify.Library.Net.PlaylistHarmonized = Harmonized;
+            Spotify.Library.Net.PlaylistChanges = Changes;
+            Spotify.Library.Net.MixDuplicate = Duplicate;
         }
 
         /// <summary>UI THREAD. The server takes <paramref name="p"/>'s rows, recipes and templates as its own, once per list: the
@@ -104,8 +122,10 @@ public static partial class Entities
                 ulong item = MixRecipe.Hex64(Strings.Resolve(e.ItemId));
                 bool local = e.Kind == PlaylistItemKind.Track && new Track(targets[i]).IsLocal;
                 var template = signals is null ? default : signals.TransitionTemplate(item);
+                var track = e.Kind == PlaylistItemKind.Track ? new Track(targets[i]) : default;
                 rows.Add(new Row
                 {
+                    Tempo = track.IsValid ? track.Tempo : (ushort)0, Camelot = track.IsValid ? track.Camelot : (byte)0,
                     Uri = uri, ItemId = item, AddedAt = e.AddedAt,
                     AddedBy = e.AddedBy > Table.None && e.AddedBy < Current.Users.Count ? new User(e.AddedBy).Uri.Text : null,
                     NotMixable = (e.Flags & PlaylistItemFlags.NotMixable) != 0 || local || e.Kind != PlaylistItemKind.Track,
@@ -211,6 +231,165 @@ public static partial class Entities
             }
         }
 
+        /// <summary>The list through the harmonize lens: the rows in the made-up smooth order, nothing moved on the server.</summary>
+        static Spotify.Api.Result Harmonized(string id)
+        {
+            var route = Spotify.Api.HarmonizedRoute(id);
+            lock (s_gate)
+            {
+                int status = 200;
+                byte[] reply = [];
+                if (s_mode == Mode.Fail) status = 503;
+                else if (!s_lists.TryGetValue(id, out var l) || l.Stub) status = 404;
+                else reply = Reply(l, harmonize: true);
+                s_log.Add(new Request("GET", route.Path, null, Spotify.Api.ApplyLensesValue(route.Headers), route.SyncReason,
+                    (route.Headers & Spotify.HeaderSet.MixLens) != 0, [], status, reply.Length));
+                return new Spotify.Api.Result(status, reply);
+            }
+        }
+
+        /// <summary>The made-up smooth order (file header): the first row, then greedily the nearest tempo (then Camelot slot) to the last
+        /// row placed; rows that cannot mix keep their relative places at the end. UNDER THE LOCK.</summary>
+        static List<Row> SmoothOrder(List<Row> rows)
+        {
+            var order = new List<Row>(rows.Count);
+            var left = new List<Row>(rows.Count);
+            foreach (var row in rows) if (!row.NotMixable) left.Add(row);
+            if (left.Count > 0) { order.Add(left[0]); left.RemoveAt(0); }
+            while (left.Count > 0)
+            {
+                var last = order[^1];
+                int best = 0;
+                for (int i = 1; i < left.Count; i++)
+                    if (Distance(last, left[i]) < Distance(last, left[best])) best = i;
+                order.Add(left[best]);
+                left.RemoveAt(best);
+            }
+            foreach (var row in rows) if (row.NotMixable) order.Add(row);
+            return order;
+
+            static int Distance(Row a, Row b)
+                => Math.Abs(a.Tempo - b.Tempo) * 16
+                   + (a.Camelot == 0 || b.Camelot == 0 ? 8 : Math.Min(Math.Abs(a.Camelot - b.Camelot), 24 - Math.Abs(a.Camelot - b.Camelot)));
+        }
+
+        /// <summary>POST /changes: keyed moves at the list's head (file header).</summary>
+        static Spotify.Api.Result Changes(string id, byte[] body)
+        {
+            Span<char> path = stackalloc char[256];
+            var request = Spotify.Build(Spotify.RequestKind.PlaylistChanges, new Spotify.RequestArgs { Id = id, Body = body }, path);
+            string pathText = new(request.Path), syncReason = new(request.SyncReason);
+            string? contentType = Spotify.Api.ContentTypeValue(request.Headers, Spotify.RequestKind.PlaylistChanges);
+            string? lenses = Spotify.Api.ApplyLensesValue(request.Headers);
+            lock (s_gate)
+            {
+                int status;
+                if (s_mode == Mode.Fail) status = 503;
+                else if (!s_lists.TryGetValue(id, out var l) || l.Stub) status = 404;
+                else status = ApplyChanges(l, body);
+                s_log.Add(new Request("POST", pathText, contentType, lenses, syncReason, false, body, status, 0));
+                return new Spotify.Api.Result(status, []);
+            }
+        }
+
+        /// <summary>The keyed MOV ops of one /changes body against the list. The status. UNDER THE LOCK.</summary>
+        static int ApplyChanges(ListState l, byte[] body)
+        {
+            Pl.ListChanges changes;
+            try { changes = Pl.ListChanges.Parser.ParseFrom(body); }
+            catch (Google.Protobuf.InvalidProtocolBufferException) { return 400; }
+            if (!changes.BaseRevision.Span.SequenceEqual(l.Revision)) return 409;
+            var rows = new List<Row>(l.Rows);
+            foreach (var delta in changes.Deltas)
+                foreach (var op in delta.Ops)
+                {
+                    if (op.Kind != Pl.Op.Types.Kind.Mov || op.Mov is not { } mov || mov.Items.Count == 0) return 400;
+                    var moving = new List<Row>(mov.Items.Count);
+                    foreach (var item in mov.Items)
+                    {
+                        int at = IndexOf(rows, item);
+                        if (at < 0) return 409;
+                        moving.Add(rows[at]);
+                        rows.RemoveAt(at);
+                    }
+                    int to;
+                    if (mov.AddFirst) to = 0;
+                    else if (mov.AddLast) to = rows.Count;
+                    else if (mov.AddAfterItem is { } anchor) { int a = IndexOf(rows, anchor); if (a < 0) return 409; to = a + 1; }
+                    else return 400;
+                    rows.InsertRange(to, moving);
+                }
+            l.Rows.Clear();
+            l.Rows.AddRange(rows);
+            BinaryPrimitives.WriteUInt32BigEndian(l.Revision, BinaryPrimitives.ReadUInt32BigEndian(l.Revision) + 1);
+            l.EtagSerial++;
+            return 200;
+
+            static int IndexOf(List<Row> rows, Pl.Item item)
+            {
+                if (item.Attributes is not { } attributes || attributes.ItemId.Length != 8) return -1;
+                ulong want = BinaryPrimitives.ReadUInt64BigEndian(attributes.ItemId.Span);
+                for (int i = 0; i < rows.Count; i++) if (rows[i].ItemId == want) return i;
+                return -1;
+            }
+        }
+
+        /// <summary>POST mix-list-lens duplicate: the list copied under a new made-up id (file header).</summary>
+        static Spotify.Api.Result Duplicate(byte[] body)
+        {
+            var route = Spotify.Api.MixDuplicateRoute;
+            lock (s_gate)
+            {
+                int status = 200;
+                byte[] reply = [];
+                if (s_mode == Mode.Fail) status = 503;
+                else if (!TryParseDuplicate(body, out string sourceId, out var overrides)) status = 400;
+                else if (!s_lists.TryGetValue(sourceId, out var from) || from.Stub) status = 404;
+                else
+                {
+                    string copyId = "plmixcopy" + (++s_copies).ToString(CultureInfo.InvariantCulture);
+                    var copy = new ListState
+                    {
+                        Title = from.Title, Description = from.Description, Revision = RevisionOf(copyId), Mixed = false, MixState = from.MixState,
+                        Rows = from.Rows.ConvertAll(r => new Row
+                        {
+                            Uri = r.Uri, ItemId = r.ItemId, AddedAt = r.AddedAt, AddedBy = r.AddedBy, NotMixable = r.NotMixable,
+                            Reason = r.Reason, Template = r.Template, Tempo = r.Tempo, Camelot = r.Camelot,
+                        }),
+                    };
+                    foreach (var (item, recipe) in from.Recipes) copy.Recipes[item] = (recipe.Base64, CopyUri(item));
+                    foreach (var (item, recipe) in overrides) if (recipe.Length > 0) copy.Recipes[item] = (recipe, CopyUri(item));
+                    s_lists[copyId] = copy;
+                    reply = Encoding.UTF8.GetBytes("{\"playlist_uri\":\"spotify:playlist:" + copyId + "\"}");
+                }
+                s_log.Add(new Request("POST", route.Path, Spotify.Api.ContentTypeValue(route.Headers, route.Kind), null, route.SyncReason, false,
+                    body, status, reply.Length));
+                return new Spotify.Api.Result(status, reply);
+            }
+
+            static string CopyUri(ulong item) => "spotify:transition:fakeCopy" + item.ToString("x16", CultureInfo.InvariantCulture) + ":1700000000000";
+        }
+
+        static bool TryParseDuplicate(byte[] body, out string sourceId, out List<(ulong Item, string Recipe)> overrides)
+        {
+            sourceId = "";
+            overrides = new List<(ulong, string)>();
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                string source = doc.RootElement.GetProperty("playlist_uri").GetString() ?? "";
+                sourceId = new string(EntityUri.IdOf(source.AsSpan()));
+                if (doc.RootElement.TryGetProperty("transition_overrides", out var list))
+                    foreach (var o in list.EnumerateArray())
+                    {
+                        byte[] id8 = Convert.FromBase64String(o.GetProperty("item_id").GetString() ?? "");
+                        if (id8.Length == 8) overrides.Add((BinaryPrimitives.ReadUInt64BigEndian(id8), o.GetProperty("transition").GetString() ?? ""));
+                    }
+                return sourceId.Length > 0;
+            }
+            catch (Exception ex) when (ex is JsonException or FormatException or KeyNotFoundException or InvalidOperationException) { return false; }
+        }
+
         /// <summary>The signal against the list's state. False with the status for a refusal.</summary>
         static bool Apply(ListState l, ReadOnlySpan<byte> body, out int status)
         {
@@ -262,7 +441,7 @@ public static partial class Entities
 
         /// <summary>The list as the server reads it back (protocol §2): through the mix lens when the list is mixed (the `auto` lens
         /// applies it by itself), else plain. UNDER THE LOCK.</summary>
-        static byte[] Reply(ListState l)
+        static byte[] Reply(ListState l, bool harmonize = false)
         {
             if (l.Stub)
             {
@@ -296,7 +475,7 @@ public static partial class Entities
             w.Close(attributes);
             int contents = w.Open(5);
             Span<byte> id8 = stackalloc byte[8];
-            foreach (var row in l.Rows)
+            foreach (var row in harmonize ? SmoothOrder(l.Rows) : l.Rows)
             {
                 int item = w.Open(3);
                 w.StrAlways(1, row.Uri);
@@ -334,16 +513,18 @@ public static partial class Entities
             w.Close(prompt);
             if (l.Mixed) w.Utf8Always(5, l.MixState);
             w.Close(contents);
-            Lenses(ref w, l);
+            Lenses(ref w, l, harmonize);
             return buffer.AsSpan(0, w.Length).ToArray();
         }
 
-        /// <summary>f22, the applied lenses in the holder form: `auto` always, `mix` with its etag while the list is mixed.</summary>
-        static void Lenses(ref Spotify.Decode.ProtoWriter w, ListState l)
+        /// <summary>f22, the applied lenses in the holder form: `auto` always, `mix` with its etag while the list is mixed, and `harmonize`
+        /// (a made-up etag) on a read that asked for it.</summary>
+        static void Lenses(ref Spotify.Decode.ProtoWriter w, ListState l, bool harmonize = false)
         {
             int holder = w.Open(22);
             Lens(ref w, "auto", "auto");
             if (l.Mixed) Lens(ref w, "mix", l.Etag);
+            if (harmonize) Lens(ref w, "harmonize", "0000cafe");
             w.Close(holder);
 
             static void Lens(ref Spotify.Decode.ProtoWriter w, string name, string etag)

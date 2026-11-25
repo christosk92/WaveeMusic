@@ -27,3 +27,11 @@ controlling Wavee now sees every upcoming transition of a mixed playlist, sees t
 it starts (with its speed when beatmatched), and sees the song's end at the transition. A mixed playlist started from
 another device starts on the song you picked and plays mixed. Controlling another device that plays a mixed playlist, the
 queue and the player bar show its next transition.
+
+**Smart reorder, Duplicate Mix and Premium.** On a mixed playlist you own or collaborate on, the Mix menu's Smart reorder
+asks Spotify for its order for smooth transitions and shows it in place under the list bar: every song with its tempo and
+key and the place it comes from. Reorder moves the songs in one edit, so every device sees the new order, and Undo puts
+the old order back. On a mixed playlist you can't edit, the Mix menu says so and offers Duplicate Mix: Spotify copies the
+playlist with its transitions, the copy lands at the top of your library with Mix on, and it opens. Mixed playlists say
+"Mixed" in your library and in the sidebar's two-line rows. An account without Premium sees what Mix needs instead of a
+Mix action it can't use.

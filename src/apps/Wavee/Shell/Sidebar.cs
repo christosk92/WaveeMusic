@@ -771,6 +771,10 @@ public readonly record struct SidebarLibraryEntry(
     /// the projection from <c>Playlist.EpisodeCount</c>; false for every other kind.</summary>
     public bool HasEpisodes { get; init; }
 
+    /// <summary>#48 Mix M8: a playlist Spotify has mixed (and this account does not listen without Mix), the cover badge's rule: its
+    /// subtitle says "Mixed" (the official library's "Mixed playlist"). Stamped by the projection; false for every other kind.</summary>
+    public bool Mixed { get; init; }
+
     /// <summary>A PLAYLIST row that is the account's Your Episodes (<see cref="Playlist.IsYourEpisodes"/>): its count is
     /// episodes, not songs.</summary>
     public bool Episodes { get; init; }
@@ -1739,6 +1743,9 @@ public static class SidebarProjection
     // The member TRACK slots (not playlists) a cover-less row's mosaic still needs the album/image of — see
     // `ShouldWarmMosaicTracks`. Flushed as one span-form `Entities.Ensure` on the Tracks table at Prefetch.
     static readonly List<int> s_ensureMosaicTrackSlots = new(64);
+    // #48 Mix M8: the visible playlists whose mix state (kind 225, the official client's rootlist decoration) is not known yet, for the
+    // "Mixed" word in their subtitle. One batched ask at Prefetch; the store answers a relaunch without a request.
+    static readonly List<int> s_ensureMixSlots = new(32);
 
     /// <summary>How many leading member tracks a cover-less playlist's mosaic is warmed and repainted over. The
     /// membership answer (`PlaylistRevision`) lands bare uri-only track slots — no album, no image — so the tiles
@@ -1816,6 +1823,7 @@ public static class SidebarProjection
         s_ensureShowIdentitySlots.Clear();
         s_ensureTracksSlots.Clear();
         s_ensureMosaicTrackSlots.Clear();
+        s_ensureMixSlots.Clear();
         if ((wantPlaylists || wantFolders) && u.RootlistState != EdgeState.Unknown)
             WalkRootlist(into, in u, wantPlaylists, wantFolders, includeFolderChildren, isFolderExpanded,
                          rec, seen, lastPlayed, ref flavorMask, ensureIdentity);
@@ -1835,6 +1843,9 @@ public static class SidebarProjection
         if (s_ensureMosaicTrackSlots.Count > 0)
             Entities.Ensure(Entities.Current.Tracks, CollectionsMarshal.AsSpan(s_ensureMosaicTrackSlots),
                 (uint)MosaicTrackFields, FetchPriority.Prefetch);
+        if (s_ensureMixSlots.Count > 0)
+            Entities.Ensure(Entities.Current.Playlists, CollectionsMarshal.AsSpan(s_ensureMixSlots),
+                (uint)PlaylistFields.MixState, FetchPriority.Prefetch);
 
         if ((kinds & SidebarEntryKindMask.Album) != 0)
         {
@@ -2038,6 +2049,7 @@ public static class SidebarProjection
                     // E3: collected, never asked here — `Build` issues ONE span-form `Entities.Ensure` after the
                     // whole walk (see `s_ensureIdentitySlots`'s doc).
                     if (ShouldEnsureIdentity(ensureIdentity, identityKnown)) s_ensureIdentitySlots.Add(p.Slot);
+                    if (ensureIdentity && p.Uri.Provider == EntityProvider.Spotify && !p.Knows(PlaylistFields.MixState)) s_ensureMixSlots.Add(p.Slot);
 
                     string uri = p.Uri.Text;
                     string id = SidebarPinId.PlaylistPrefix + uri;
@@ -2090,6 +2102,7 @@ public static class SidebarProjection
                         CountKnown = countKnown,
                         HasEpisodes = p.EpisodeCount > 0,
                         Episodes = p.IsYourEpisodes,
+                        Mixed = p.MixOn && !MixOptOut.Is(p),
                     });
                     break;
                 }

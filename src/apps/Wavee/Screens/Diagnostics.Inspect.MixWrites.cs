@@ -508,6 +508,12 @@ public static partial class Diagnostics
                     default: Entities.FakeMixServer.Now = Entities.FakeMixServer.Mode.Ok; break;
                 }
             }
+            if (a.Has("tier"))
+            {
+                // M8: the account read as Free (the Premium upsell where Mix would be) or Premium again.
+                Spotify.MixLists.FakeFree = a.Str("tier") == "free";
+                Entities.Current.Playlists.Bump(p.Slot);
+            }
             if (a.Has("owner"))
             {
                 var table = Entities.Current.Playlists;
@@ -524,6 +530,9 @@ public static partial class Diagnostics
                 w.WriteBoolean("owner", p.IsOwner);
                 w.WriteBoolean("canWrite", Spotify.Mixes.CanWrite(p));
                 w.WriteBoolean("canToggle", Spotify.Mixes.CanToggle(p));
+                w.WriteBoolean("premium", Spotify.MixLists.Premium);
+                w.WriteBoolean("canReorder", Spotify.MixLists.CanReorder(p));
+                w.WriteBoolean("canDuplicate", Spotify.MixLists.CanDuplicate(p));
                 w.WriteBoolean("known", state.Known);
                 w.WriteBoolean("mixed", state.Mixed);
                 w.WriteBoolean("optOut", state.OptOut);
@@ -552,7 +561,12 @@ public static partial class Diagnostics
                 w.WriteEndObject();
                 w.WriteNumber("status", r.Status);
                 w.WriteNumber("replyBytes", r.ReplyBytes);
-                if (r.Body.Length > 0)
+                if (r.Body.Length > 0 && r.ContentType == "application/json")
+                {
+                    w.WriteNumber("bodyBytes", r.Body.Length);
+                    w.WriteString("json", System.Text.Encoding.UTF8.GetString(r.Body));
+                }
+                else if (r.Body.Length > 0)
                 {
                     w.WriteNumber("bodyBytes", r.Body.Length);
                     w.WriteString("fields", ProtoFields(r.Body, 0));

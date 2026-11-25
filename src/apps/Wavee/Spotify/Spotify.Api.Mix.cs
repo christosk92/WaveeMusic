@@ -208,8 +208,9 @@ public static partial class Spotify
             return Api.ApplyLensesValue(request.Headers) + " " + new string(request.SyncReason);
         }
 
-        /// <summary>Who may write a playlist's Mix: its owner, or a collaborator who may edit its rows (UX direction S1, S15).</summary>
-        public static bool CanWrite(Playlist p) => p.IsValid && (p.IsOwner || p.Editable);
+        /// <summary>Who may write a playlist's Mix: its owner, or a collaborator who may edit its rows (UX direction S1, S15), on a
+        /// Premium account (M8: a Free account is offered the upsell instead, MixLists.Premium).</summary>
+        public static bool CanWrite(Playlist p) => p.IsValid && (p.IsOwner || p.Editable) && MixLists.Premium;
 
         /// <summary>May Mix be switched for everyone: <see cref="CanWrite"/>, and — once a lens read has carried the list's signal
         /// templates — the server offered the `mix-state` signal (its contents.5 entry is the "can toggle" answer, plan §2.1.3).</summary>
@@ -314,7 +315,7 @@ public static partial class Spotify
 
         /// <summary>A session that can send: the account's scope and an online session; under <c>--fake</c> the recording server,
         /// unless the inspector took it offline.</summary>
-        static bool Online(out Scope scope)
+        internal static bool Online(out Scope scope)
         {
             if (Platform.Args.Fake)
             {

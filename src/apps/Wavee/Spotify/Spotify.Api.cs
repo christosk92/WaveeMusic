@@ -632,7 +632,8 @@ public static partial class Spotify
         /// <summary>The <c>spotify-apply-lenses</c> value a header set stamps (#48: <c>mix,auto</c> for a mixed list, else
         /// <c>auto</c>), or null. PURE: <see cref="Stamp"/> and the inspector's request dump read the same answer.</summary>
         internal static string? ApplyLensesValue(HeaderSet headers)
-            => (headers & HeaderSet.MixLens) != 0 ? "mix,auto" : (headers & HeaderSet.ApplyLenses) != 0 ? "auto" : null;
+            => (headers & HeaderSet.HarmonizeLens) != 0 ? (headers & HeaderSet.MixLens) != 0 ? "harmonize,mix,auto" : "harmonize,auto"
+             : (headers & HeaderSet.MixLens) != 0 ? "mix,auto" : (headers & HeaderSet.ApplyLenses) != 0 ? "auto" : null;
 
         /// <summary>The body's <c>Content-Type</c> a header set stamps, or null (PURE; the inspector's request dump).</summary>
         internal static string? ContentTypeValue(HeaderSet headers, RequestKind kind)

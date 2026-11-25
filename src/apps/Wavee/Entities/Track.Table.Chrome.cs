@@ -124,6 +124,8 @@ public readonly partial struct Track
             ExitDynamics: TransitionDynamics.Tween(SearchCollapseMs, Easing.FluentAccelerate));
 
         internal static PopupOptions MenuPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false };
+        /// <summary>#48 M8: the Premium upsell is a content flyout (the FlyoutPresenter chrome), not a menu.</summary>
+        static PopupOptions UpsellPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = false };
 
         // ══ 1. THE CHROME STACK ══════════════════════════════════════════════════════════════════════════════════════
 
@@ -804,14 +806,19 @@ public readonly partial struct Track
                 var anchor = UseRef<NodeHandle>(default);
                 var handle = UseRef<OverlayHandle?>(null);
                 bool on = h.P.MixLit?.Invoke() ?? false;
-                void Toggle() => h._latest.Profile.MixToggle?.Invoke();
-                void Menu() => ToggleOverlay(overlay, anchor, handle,
-                    () => MenuFlyout.Create(h._latest.Profile.MixMenu?.Invoke() ?? [], () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
+                // #48 M8: a Free account's Mix button (toggle and chevron) opens the Premium upsell, never the menu or a write.
+                void Toggle() { if (MixMenu.Upsell) Menu(); else h._latest.Profile.MixToggle?.Invoke(); }
+                void Menu()
+                {
+                    if (MixMenu.Upsell) ToggleOverlay(overlay, anchor, handle, () => MixUpsell.Card(() => handle.Value?.Close()), UpsellPopup);
+                    else ToggleOverlay(overlay, anchor, handle,
+                        () => MenuFlyout.Create(h._latest.Profile.MixMenu?.Invoke() ?? [], () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
+                }
                 var kids = new List<Element>(2)
                 {
                     ToolTip.Wrap(h.Kit.MixCommand(Loc.Get(Strings.Mix.Label), Loc.Get(Strings.Mix.LabelOn), on, Toggle), Loc.Get(Strings.Mix.Label)),
                 };
-                if (h.P.MixMenu is not null) kids.Add(ToolTip.Wrap(h.Kit.MixMenuButton(Menu, n => anchor.Value = n), Loc.Get(Strings.Mix.Menu)));
+                if (h.P.MixMenu is not null) kids.Add(ToolTip.Wrap(h.Kit.MixMenuButton(Menu, n => anchor.Value = n) with { Key = "cmd:mix:menu" }, Loc.Get(Strings.Mix.Menu)));
                 return new BoxEl { Key = "cmd:mix:split", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray() };
             }
         }

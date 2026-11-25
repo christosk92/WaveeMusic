@@ -160,6 +160,10 @@ public static partial class Spotify
             /// (Entities.Fake.MixServer.cs).</summary>
             public Func<string, SignalRoute, byte[], Api.Result> PlaylistSignals =
                 static (id, route, body) => Api.PlaylistSignals(id, route, body, CancellationToken.None);
+            /// <summary>#48 Mix M8, Smart reorder: the list read through the <c>harmonize</c> lens (Spotify.MixLists); never folded.</summary>
+            public Func<string, Api.Result> PlaylistHarmonized = static id => Api.PlaylistHarmonized(id, CancellationToken.None);
+            /// <summary>#48 Mix M8, Duplicate Mix: the mix-list-lens <c>duplicate</c> POST (JSON body in, <c>{"playlist_uri"}</c> out).</summary>
+            public Func<byte[], Api.Result> MixDuplicate = static body => Api.MixDuplicate(body, CancellationToken.None);
             /// <summary>One user follow / unfollow (<c>Library.FollowUser</c>): the bare, unescaped username and the direction.</summary>
             public Func<string, bool, Api.Result> FollowUsers =
                 static (bareId, follow) => Api.ProfileQueries.Follow(bareId, follow, CancellationToken.None);
