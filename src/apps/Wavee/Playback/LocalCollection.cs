@@ -552,8 +552,9 @@ public static class LocalCollection
         return disc && dir.Contains('\\') ? DirOf(dir) : dir;
     }
 
-    /// <summary>A path's last part ("Music" of "C:\Users\me\Music"); a drive root ("D:\") keeps itself; "?" for none.</summary>
-    static string LeafOf(string path)
+    /// <summary>A path's last part ("Music" of "C:\Users\me\Music", "music" of a share root "\\nas\music"); a drive root ("D:\") keeps
+    /// itself; "?" for none. The folder name the page's tiles and the drop's toasts show.</summary>
+    internal static string LeafOf(string path)
     {
         if (path.Length == 0) return "?";
         string trimmed = path.TrimEnd('\\', '/');
