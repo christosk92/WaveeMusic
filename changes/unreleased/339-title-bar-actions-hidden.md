@@ -1,6 +1,6 @@
 ---
 kind: fixed
-issues: [ISSUE_CHROME]
+issues: [339]
 by: 0dm
 contract: none
 contract-note: ""
