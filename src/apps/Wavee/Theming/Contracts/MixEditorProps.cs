@@ -144,4 +144,16 @@ public sealed record MixEditorProps
     public required string RetryLabel { get; init; }
     public required string PrevLabel { get; init; }
     public required string NextLabel { get; init; }
+
+    /// <summary>Save's prompt on a mixed playlist the user can't edit (the official client's): shown inline over the actions after Save while the
+    /// edit is unsaved, "" when not. <see cref="Duplicate"/> copies the playlist with this edit in it (Duplicate Mix, M8) and opens the copy;
+    /// <see cref="SaveHere"/> keeps the edit on this PC as Save did before. Save itself rests while the prompt asks (one home per verb).</summary>
+    public string PromptTitle { get; init; } = "";
+    public string PromptBody { get; init; } = "";
+    public string DuplicateLabel { get; init; } = "";
+    /// <summary>Duplicate can go out now (online, none running).</summary>
+    public bool CanDuplicate { get; init; }
+    public Action? Duplicate { get; init; }
+    public string SaveHereLabel { get; init; } = "";
+    public Action? SaveHere { get; init; }
 }

@@ -1,7 +1,8 @@
 // ── Themes/Common/CommonMixMenu.cs — the Mix editor's choice menus, shared by every theme (#48 M6) ──────────────────────────────────────
 //
 // A button that names what is chosen and opens the choices as a radio menu: a Customize ingredient's styles, the thirteen presets under
-// "More". The theme picks the button's appearance; the menu is the stock MenuFlyout (each theme restyles it through its own keys).
+// "More". The theme picks the button's appearance and where its chevron sits (WinUI: trailing at the right edge, as its ComboBox and
+// DropDownButton draw it; elsewhere a leading glyph); the menu is the stock MenuFlyout (each theme restyles it through its own keys).
 
 using System.Collections.Immutable;
 using FluentGpu.Controls;
@@ -17,6 +18,9 @@ public sealed record MixMenuProps(string Label, ImmutableArray<MixChoice> Choice
 {
     /// <summary>The button's least height (a theme's touch target); 0 = the control's own.</summary>
     public float Height { get; init; }
+    /// <summary>The chevron trails the label at the button's right edge (WinUI's DropDownButton: a 12-DIP box 8 DIP after the label, the small
+    /// chevron in the secondary foreground) instead of leading it as a glyph.</summary>
+    public bool TrailingChevron { get; init; }
 }
 
 public static class MixChoiceMenu
@@ -40,11 +44,38 @@ internal sealed class MixMenuHost : Component
         _overlay = UseContext(Overlay.Service);
         _toggle ??= Toggle;
         _capture ??= h => _anchor = h;
-        return Button.Create(_p.Label, _toggle, _p.Appearance, _p.Size, glyph: Icons.ChevronDown, isEnabled: _p.Enabled) with
+        if (!_p.TrailingChevron)
+            return Button.Create(_p.Label, _toggle, _p.Appearance, _p.Size, glyph: Icons.ChevronDown, isEnabled: _p.Enabled) with
+            {
+                OnRealized = _capture, MinWidth = 0f, Shrink = 1f, MinHeight = _p.Height,
+            };
+        var button = Button.Create(_p.Label, _toggle, _p.Appearance, _p.Size, isEnabled: _p.Enabled);
+        var label = (TextEl)button.Children[0];
+        // The chevron keeps the label's ramp on an accent button (its foreground is the accent's), the secondary one otherwise.
+        bool accent = _p.Appearance == ButtonAppearance.Accent;
+        var chevron = new BoxEl
+        {
+            Width = TrailingBox, Height = TrailingBox, Shrink = 0f, Margin = new Edges4(Spacing.S, 0f, 0f, 0f),
+            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Children =
+            [
+                new TextEl(Icons.ChevronDownSmall)
+                {
+                    Size = TrailingGlyph, FontFamily = Tok.Definition.Fonts.Icon,
+                    Color = accent ? label.Color : Tok.TextSecondary, HoverColor = accent ? label.HoverColor : Tok.TextTertiary,
+                    PressedColor = accent ? label.PressedColor : Tok.TextTertiary, DisabledColor = Tok.TextDisabled,
+                },
+            ],
+        };
+        return button with
         {
             OnRealized = _capture, MinWidth = 0f, Shrink = 1f, MinHeight = _p.Height,
+            Children = [label with { Grow = 1f, Shrink = 1f }, chevron],
         };
     }
+
+    // WinUI's DropDownButton chevron: the AnimatedIcon's 12 × 12 box over its FontIcon fallback at 8.
+    const float TrailingBox = 12f, TrailingGlyph = 8f;
 
     void Toggle()
     {

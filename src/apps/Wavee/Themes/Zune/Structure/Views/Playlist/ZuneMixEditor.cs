@@ -11,6 +11,8 @@
 //   customize ⌄                                                    (a second band while open:)
 //     volume     smooth crossfade ⌄
 //     eq         center bass swap ⌄       ...       beatmatching
+//   you can't edit the transitions in this playlist                    (Save's prompt, a list the user can't edit)
+//   duplicate the mix to keep this transition: …          save on this pc  DUPLICATE MIX
 //   undo  redo  hear it   <save line>                         retry  reset to auto  cancel  SAVE
 //
 // Display type is never shrunk (owner rule): the preset row scrolls instead of squeezing its words.
@@ -211,8 +213,8 @@ internal static class ZuneMixEditor
         if (p.ShowRetry) trail.Add(Word("mix:ed:retry", p.RetryLabel, p.Retry, target));
         if (p.ResetLabel.Length > 0) trail.Add(Word("mix:ed:reset", p.ResetLabel, p.CanReset ? p.Reset : null, target));
         trail.Add(Word("mix:ed:cancel", p.CancelLabel, p.Saving ? null : p.Cancel, target));
-        if (p.SaveLabel.Length > 0) trail.Add(Word("mix:ed:save", p.SaveLabel, p.Dirty && !p.Saving ? p.Save : null, target, primary: true));
-        return new BoxEl
+        if (p.SaveLabel.Length > 0) trail.Add(Word("mix:ed:save", p.SaveLabel, p.Dirty && !p.Saving && p.PromptTitle.Length == 0 ? p.Save : null, target, primary: true));
+        var row = new BoxEl
         {
             Key = "mix:ed:actions", Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = E.RowGap, MinWidth = 0f,
             Children =
@@ -226,6 +228,42 @@ internal static class ZuneMixEditor
                 new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = trail.ToArray() },
             ],
         };
+        return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Prompt(p, target), row] };
+    }
+
+    /// <summary>Save's prompt on a list the user can't edit, in Zune's voice: no plate, the notice in the title voice and its line in the meta
+    /// voice, then "save on this pc" and "duplicate mix" (the accent) as command words. Its host eases open and shut, so the commands slide.</summary>
+    static Element Prompt(MixEditorProps p, float target)
+    {
+        Element[] kids = p.PromptTitle.Length == 0 ? [] :
+        [
+            new BoxEl
+            {
+                Key = "mix:ed:prompt", Direction = 1, Gap = E.RowGap, MinWidth = 0f, Margin = new Edges4(0f, 0f, 0f, E.Gap),
+                Children =
+                [
+                    R.Type.DenseTitle(p.PromptTitle) with { Case = R.Case.For(LabelKind.Label), Wrap = TextWrap.Wrap, MinWidth = 0f },
+                    new BoxEl
+                    {
+                        Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = E.RowGap, MinWidth = 0f,
+                        Children =
+                        [
+                            R.Type.DenseMeta(p.PromptBody) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = E.LabelColumn },
+                            new BoxEl
+                            {
+                                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                                Children =
+                                [
+                                    Word("mix:ed:save-here", p.SaveHereLabel, p.Saving ? null : p.SaveHere, target),
+                                    Word("mix:ed:duplicate", p.DuplicateLabel, p.CanDuplicate ? p.Duplicate : null, target, primary: true),
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+        ];
+        return new BoxEl { Key = "mix:ed:prompt:host", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = E.Reveal, Children = kids };
     }
 
     /// <summary>A Zune command word: lowercase in the command voice, the accent when primary or lit, a quiet wash on hover; receded and inert without a verb.</summary>

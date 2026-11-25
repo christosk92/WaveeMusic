@@ -5617,7 +5617,10 @@
       "save": "Save",
       "cancel": "Cancel",
       "previous": "Previous transition",
-      "next": "Next transition"
+      "next": "Next transition",
+      "saveHere": "Save on this PC",
+      "duplicateBody": "Duplicate the mix to keep this transition: the copy is yours, with your edit in it.",
+      "duplicating": "Duplicating the mix…"
     },
     "sentence": {
       "fade": "A smooth crossfade; the bass hands over at the middle.",

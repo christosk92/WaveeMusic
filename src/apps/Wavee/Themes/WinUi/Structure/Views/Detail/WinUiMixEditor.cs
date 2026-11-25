@@ -10,6 +10,8 @@
 //   Mix out 3:44.0   In 0:08.2                                           Overlap  [−]  4.1 s · 8 beats  [+]
 //   ⌄ Customize                                                                                  (the expander's header)
 //     Volume [Smooth crossfade ⌄]  EQ [Center bass swap ⌄]  Filter [None ⌄]  Effects [None ⌄]  Looping [None ⌄]   [Beatmatching]
+//   ┌ You can't edit the transitions in this playlist                   [Save on this PC] [Duplicate Mix] ┐   (Save's prompt, a list
+//   └ Duplicate the mix to keep this transition: …                                                          ┘    the user can't edit)
 //   [↶][↷] [▶ Hear it]   <save line>                                     [Retry]  Reset to auto  [Cancel] [Save]
 //
 // At Compact every control takes the 40 touch target and the rows wrap.
@@ -90,7 +92,7 @@ internal static class WinUiMixEditor
             chips.Add(Controls.Chip(c.Label, c.On, true, () => pick(id), parts) with { Key = "mix:ed:preset:" + id.ToString(System.Globalization.CultureInfo.InvariantCulture) });
         }
         chips.Add(MixChoiceMenu.Create("mix:ed:more", new MixMenuProps(p.MoreLabel, p.MorePresets, p.PickPreset,
-            p.MoreOn ? ButtonAppearance.Accent : ButtonAppearance.Standard) { Height = target }));
+            p.MoreOn ? ButtonAppearance.Accent : ButtonAppearance.Standard) { Height = target, TrailingChevron = true }));
         return ScrollView(new BoxEl { Direction = 0, Gap = E.ChipGap, AlignItems = FlexAlign.Center, Children = chips.ToArray() }, horizontal: true) with
         {
             Key = "mix:ed:presets", MinWidth = 0f,
@@ -154,7 +156,7 @@ internal static class WinUiMixEditor
                 Children =
                 [
                     Caption(ing.Label) with { Color = ing.Overridden ? Tok.AccentTextPrimary : Tok.TextSecondary, MaxLines = 1 },
-                    MixChoiceMenu.Create(ing.Key + ":menu", new MixMenuProps(ing.Value, ing.Choices, ing.Pick, ButtonAppearance.Standard) { Height = target }),
+                    MixChoiceMenu.Create(ing.Key + ":menu", new MixMenuProps(ing.Value, ing.Choices, ing.Pick, ButtonAppearance.Standard) { Height = target, TrailingChevron = true }),
                 ],
             });
         }
@@ -202,13 +204,13 @@ internal static class WinUiMixEditor
             trail.Add(HyperlinkButton.Create(p.ResetLabel, p.Reset, isEnabled: p.CanReset) with { Key = "mix:ed:reset", MinHeight = target });
         trail.Add(Button.Create(p.CancelLabel, p.Cancel, ButtonAppearance.Standard, isEnabled: !p.Saving) with { Key = "mix:ed:cancel", MinHeight = target });
         if (p.SaveLabel.Length > 0)
-            trail.Add(Button.Create(p.SaveLabel, p.Save, ButtonAppearance.Accent, isEnabled: p.Dirty && !p.Saving) with { Key = "mix:ed:save", MinHeight = target });
+            trail.Add(Button.Create(p.SaveLabel, p.Save, ButtonAppearance.Accent, isEnabled: p.Dirty && !p.Saving && p.PromptTitle.Length == 0) with { Key = "mix:ed:save", MinHeight = target });
         var line = Caption(p.SaveLine) with
         {
             Key = "mix:ed:saved", Color = Tok.TextSecondary, MaxLines = compact ? 2 : 1, Wrap = compact ? TextWrap.Wrap : TextWrap.NoWrap,
             Trim = TextTrim.CharacterEllipsis, Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f,
         };
-        return new BoxEl
+        var row = new BoxEl
         {
             Key = "mix:ed:actions", Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = E.RowGap, MinWidth = 0f,
             Children =
@@ -218,5 +220,45 @@ internal static class WinUiMixEditor
                 new BoxEl { Direction = 0, Gap = E.RowGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = trail.ToArray() },
             ],
         };
+        return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Prompt(p, target), row] };
     }
+
+    /// <summary>Save's prompt on a list the user can't edit, as WinUI's informational InfoBar inline in the card (its plate, title, message and
+    /// action buttons): Save on this PC, Duplicate Mix the primary. Its host eases open and shut, so the actions below slide.</summary>
+    static Element Prompt(MixEditorProps p, float target)
+    {
+        Element[] kids = p.PromptTitle.Length == 0 ? [] :
+        [
+            new BoxEl
+            {
+                Key = "mix:ed:prompt", Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = E.RowGap, MinWidth = 0f,
+                Padding = Edges4.All(E.Pad), Margin = new Edges4(0f, 0f, 0f, E.Gap),
+                Corners = Radii.ControlAll, Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = 1f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 1, Gap = E.LineGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = E.PickerMin,
+                        Children =
+                        [
+                            BodyStrong(p.PromptTitle) with { Wrap = TextWrap.Wrap },
+                            Body(p.PromptBody) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
+                        ],
+                    },
+                    new BoxEl
+                    {
+                        Direction = 0, Gap = E.RowGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+                        Children =
+                        [
+                            Button.Create(p.SaveHereLabel, p.SaveHere ?? Nothing, ButtonAppearance.Standard, isEnabled: !p.Saving) with { Key = "mix:ed:save-here", MinHeight = target },
+                            Button.Create(p.DuplicateLabel, p.Duplicate ?? Nothing, ButtonAppearance.Accent, isEnabled: p.CanDuplicate) with { Key = "mix:ed:duplicate", MinHeight = target },
+                        ],
+                    },
+                ],
+            },
+        ];
+        return new BoxEl { Key = "mix:ed:prompt:host", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = E.Reveal, Children = kids };
+    }
+
+    static readonly Action Nothing = static () => { };
 }

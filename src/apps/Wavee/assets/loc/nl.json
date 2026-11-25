@@ -1551,7 +1551,10 @@
       "save": "Opslaan",
       "cancel": "Annuleren",
       "previous": "Vorige overgang",
-      "next": "Volgende overgang"
+      "next": "Volgende overgang",
+      "saveHere": "Opslaan op deze pc",
+      "duplicateBody": "Dupliceer de mix om deze overgang te bewaren: de kopie is van jou, met je wijziging erin.",
+      "duplicating": "Mix dupliceren…"
     },
     "sentence": {
       "fade": "Een vloeiende crossfade; de bas wisselt halverwege.",

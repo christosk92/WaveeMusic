@@ -174,8 +174,8 @@ internal static class ClassicMixEditor
             trail.Add(Button.Create(p.ResetLabel, p.Reset, ButtonAppearance.Subtle, isEnabled: p.CanReset) with { Key = "mix:ed:reset", MinHeight = target });
         trail.Add(Button.Create(p.CancelLabel, p.Cancel, ButtonAppearance.Standard, isEnabled: !p.Saving) with { Key = "mix:ed:cancel", MinHeight = target });
         if (p.SaveLabel.Length > 0)
-            trail.Add(Button.Create(p.SaveLabel, p.Save, ButtonAppearance.Accent, isEnabled: p.Dirty && !p.Saving) with { Key = "mix:ed:save", MinHeight = target });
-        return new BoxEl
+            trail.Add(Button.Create(p.SaveLabel, p.Save, ButtonAppearance.Accent, isEnabled: p.Dirty && !p.Saving && p.PromptTitle.Length == 0) with { Key = "mix:ed:save", MinHeight = target });
+        var row = new BoxEl
         {
             Key = "mix:ed:actions", Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = E.RowGap, MinWidth = 0f,
             Children =
@@ -189,5 +189,45 @@ internal static class ClassicMixEditor
                 new BoxEl { Direction = 0, Gap = E.RowGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = trail.ToArray() },
             ],
         };
+        return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Prompt(p, target), row] };
     }
+
+    /// <summary>Save's prompt on a list the user can't edit: the notice on the plate's card layer, Save on this PC and Duplicate Mix (the accent)
+    /// at its end. Its host eases open and shut, so the actions below slide.</summary>
+    static Element Prompt(MixEditorProps p, float target)
+    {
+        Element[] kids = p.PromptTitle.Length == 0 ? [] :
+        [
+            new BoxEl
+            {
+                Key = "mix:ed:prompt", Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = E.RowGap, MinWidth = 0f,
+                Padding = Edges4.All(E.Pad), Margin = new Edges4(0f, 0f, 0f, E.Gap),
+                Corners = Radii.ControlAll, Fill = Tok.FillCardDefault, BorderColor = Tok.StrokeCardDefault, BorderWidth = E.Stroke,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = E.PickerMin,
+                        Children =
+                        [
+                            BodyStrong(p.PromptTitle) with { Wrap = TextWrap.Wrap },
+                            Caption(p.PromptBody) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
+                        ],
+                    },
+                    new BoxEl
+                    {
+                        Direction = 0, Gap = E.RowGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+                        Children =
+                        [
+                            Button.Create(p.SaveHereLabel, p.SaveHere ?? Nothing, ButtonAppearance.Standard, isEnabled: !p.Saving) with { Key = "mix:ed:save-here", MinHeight = target },
+                            Button.Create(p.DuplicateLabel, p.Duplicate ?? Nothing, ButtonAppearance.Accent, isEnabled: p.CanDuplicate) with { Key = "mix:ed:duplicate", MinHeight = target },
+                        ],
+                    },
+                ],
+            },
+        ];
+        return new BoxEl { Key = "mix:ed:prompt:host", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = E.Reveal, Children = kids };
+    }
+
+    static readonly Action Nothing = static () => { };
 }

@@ -12,10 +12,12 @@
 //                change the overlap, a curve's handle to bend it; every point snaps to the beat (the bar phase kept when beatmatched)
 //   length       in beats of the outgoing song, or in bars when beatmatched (recipe 1.8)
 //   Customize    Volume, EQ, Filter, Effects, Looping (always offered: owner 2026-11-25) and Beatmatching
-//   actions      Undo · Redo · Hear it (the MixHearIt seam) · Reset to auto · Cancel · Save; M2's save line and Retry
+//   actions      Undo · Redo · Hear it (the MixHearIt seam, Playback.MixPreview) · Reset to auto · Cancel · Save; M2's save line and Retry
 //
 // Save keeps M2's rule: to Spotify when the user may write the list, else on this PC; offline or refused it stays as a pending local edit
-// with Retry. Cancel restores what the pair played and closes; ‹ › move to the neighbouring pair while nothing is unsaved.
+// with Retry. On a mixed list the user can't edit (M8's Duplicate Mix is offered) Save first asks, inline as the official client does:
+// Duplicate Mix (the copy carries this edit as an override and opens) or Save on this PC. Cancel restores what the pair played and closes;
+// ‹ › move to the neighbouring pair while nothing is unsaved.
 
 using System.Collections.Immutable;
 using FluentGpu.Dsl;
@@ -44,7 +46,10 @@ internal sealed class MixEditorHost(int playlistSlot, int index, int pairs, Acti
     (int Slot, uint Version, float[] Levels) _levelsA = (-1, 0, []), _levelsB = (-1, 0, []);
     (MixEdit.Pair Pair, MixDraft Draft, MixTimelineModel Model)? _timeline;
 
-    Action? _prev, _next, _undoVerb, _redoVerb, _cancel, _save, _reset, _retry, _toggleCustomize, _clearCustom, _preview, _less, _more;
+    Action? _prev, _next, _undoVerb, _redoVerb, _cancel, _save, _reset, _retry, _toggleCustomize, _clearCustom, _preview, _less, _more, _saveHere, _duplicate;
+    FluentGpu.Signals.Signal<bool>? _prompt, _duplicating;
+    /// <summary>Save asks first (the list is mixed and the user can't edit it: Duplicate Mix is offered). The latest render's answer.</summary>
+    bool _asks;
     Action<int>? _pickPreset;
     Action<bool>? _setBeatmatch;
     Action<long>? _commitOut, _commitIn, _commitOverlap;
@@ -70,9 +75,13 @@ internal sealed class MixEditorHost(int playlistSlot, int index, int pairs, Acti
         var edited = UseSignal<MixDraft?>(null);
         var customize = UseSignal(false);
         var history = UseSignal(0);
+        var prompt = UseSignal(false);
+        var duplicating = UseSignal(false);
         _edited = edited;
         _history = history;
         _customize = customize;
+        _prompt = prompt;
+        _duplicating = duplicating;
         _ = history.Value;
         _ = MixSaves.Changed.Value;
         _ = MixHearIt.Changed.Value;
@@ -160,9 +169,14 @@ internal sealed class MixEditorHost(int playlistSlot, int index, int pairs, Acti
         }
 
         var save = MixSaves.StateOf(pair.PlaylistUri, pair.ItemA);
-        bool saving = save == MixSaveState.Saving;
+        bool copying = duplicating.Value;
+        bool saving = save == MixSaveState.Saving || copying;
+        // Save's prompt (M8 + M6): a mixed list the user can't edit offers Duplicate Mix with this edit in it. An Auto draft saves no recipe (Reset).
+        _asks = !pair.Writes && d.Mode != MixDraftMode.Auto && Spotify.MixLists.CanDuplicate(new Playlist(_playlist));
+        bool asking = _asks && prompt.Value && dirty;
         bool unsaved = pair.LocalPending && !saving;
-        string saveLine = saving ? Loc.Get(Strings.Mix.SavingSpotify)
+        string saveLine = copying ? Loc.Get(Strings.Mix.Editor.Duplicating)
+                        : saving ? Loc.Get(Strings.Mix.SavingSpotify)
                         : unsaved ? Loc.Get(save == MixSaveState.Offline ? Strings.Mix.NotSavedOffline : Strings.Mix.NotSaved)
                         : pair.Local && !pair.LocalPending && pair.LocalKind != MixOverrideKind.Auto ? Loc.Get(Strings.Mix.SavedThisPc)
                         : "";
@@ -193,6 +207,9 @@ internal sealed class MixEditorHost(int playlistSlot, int index, int pairs, Acti
             UndoLabel = Loc.Get(Strings.Mix.Editor.Undo), RedoLabel = Loc.Get(Strings.Mix.Editor.Redo), ResetLabel = Loc.Get(Strings.Mix.ResetToAuto),
             CancelLabel = Loc.Get(Strings.Mix.Editor.Cancel), SaveLabel = Loc.Get(Strings.Mix.Editor.Save), RetryLabel = Loc.Get(Strings.Mix.Retry),
             PrevLabel = Loc.Get(Strings.Mix.Editor.Previous), NextLabel = Loc.Get(Strings.Mix.Editor.Next),
+            PromptTitle = asking ? Loc.Get(Strings.Mix.CantEdit) : "", PromptBody = asking ? Loc.Get(Strings.Mix.Editor.DuplicateBody) : "",
+            DuplicateLabel = Loc.Get(Strings.Mix.Duplicate), CanDuplicate = asking && !copying && Spotify.MixLists.Online, Duplicate = _duplicate,
+            SaveHereLabel = Loc.Get(Strings.Mix.Editor.SaveHere), SaveHere = _saveHere,
         };
         return Slots.View(ViewKeys.MixEditor, props);
 
@@ -350,16 +367,25 @@ internal sealed class MixEditorHost(int playlistSlot, int index, int pairs, Acti
         };
         _save = () =>
         {
+            // A list the user can't edit asks first: the prompt's Duplicate Mix or Save on this PC (Save rests while it asks).
+            if (_asks && _current != _baseline) { _prompt!.Value = true; return; }
+            SaveNow();
+        };
+        _saveHere = SaveNow;
+        _duplicate = () =>
+        {
+            // Duplicate Mix with this edit as the copy's transition for the pair (the official editor's override: the from-item and the recipe,
+            // base64, as Save would send it). Landed: the copy opens (this page goes); else the toast says why and the prompt stays.
             var pair = _pair;
-            var from = _baseline;
-            var to = _current;
-            if (to == from) { MixHearIt.StopIfPlaying(); _close(); return; }
-            // A save to Spotify keeps the editor open until the reply lands ("Saving to Spotify…"), then closes it; a refusal or no
-            // connection leaves it open on the "not saved" line with Retry, the edit already playing here. A save on this PC closes at once.
-            MixEdit.Save(in pair, _playlist, in from, in to, state =>
+            var d = _current;
+            if (_duplicating!.Peek() || !MixEdit.Build(in pair, _playlist, in _baseline, in d, out var recipe, out byte[] raw)) return;
+            string encoded = Convert.ToBase64String(MixRecipe.EncodeToArray(in recipe, raw));
+            MixHearIt.StopIfPlaying();
+            _duplicating.Value = true;
+            Spotify.MixLists.Duplicate(new Playlist(_playlist), [new Spotify.MixLists.Override(pair.ItemA, encoded)], outcome =>
             {
-                Forget();
-                if (state == MixSaveState.None) { MixHearIt.StopIfPlaying(); _close(); }
+                _duplicating.Value = false;
+                if (outcome == Spotify.MixLists.Outcome.Landed) Forget();
             });
         };
         _reset = () =>
@@ -457,11 +483,29 @@ internal sealed class MixEditorHost(int playlistSlot, int index, int pairs, Acti
         _history!.Value = _history.Peek() + 1;
     }
 
+    /// <summary>Save as M2 does: to Spotify when the pair writes, else on this PC.</summary>
+    void SaveNow()
+    {
+        var pair = _pair;
+        var from = _baseline;
+        var to = _current;
+        _prompt!.Value = false;
+        if (to == from) { MixHearIt.StopIfPlaying(); _close(); return; }
+        // A save to Spotify keeps the editor open until the reply lands ("Saving to Spotify…"), then closes it; a refusal or no
+        // connection leaves it open on the "not saved" line with Retry, the edit already playing here. A save on this PC closes at once.
+        MixEdit.Save(in pair, _playlist, in from, in to, state =>
+        {
+            Forget();
+            if (state == MixSaveState.None) { MixHearIt.StopIfPlaying(); _close(); }
+        });
+    }
+
     /// <summary>The draft is spent (saved, reset or cancelled): the pair's own state shows again.</summary>
     void Forget()
     {
         _undo.Clear();
         _redo.Clear();
+        _prompt!.Value = false;
         _edited!.Value = null;
         _history!.Value = _history.Peek() + 1;
     }
