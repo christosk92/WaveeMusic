@@ -444,6 +444,19 @@ public readonly partial struct Track
     /// <inheritdoc cref="TableLive"/>
     public static readonly Context<TableLive?> TableLiveSlot = new(null);
 
+    /// <summary>What a strip in the list bar's slot (Tune, Mix's Transitions and Smart reorder) may ask of the table (#48): name the part to show when
+    /// the slot opens (<see cref="Focus"/>, set when that part realizes; else the slot's top shows), and <see cref="Reveal"/> a part later (Mix's
+    /// editor moving to a pair). Either glides only when the part's top is out of sight. UI thread.</summary>
+    public sealed class BarSlot
+    {
+        public NodeHandle Focus;
+        internal Action<NodeHandle>? Reveal;
+        public void Show(NodeHandle node) => Reveal?.Invoke(node);
+    }
+
+    /// <inheritdoc cref="BarSlot"/>
+    public static readonly Context<BarSlot?> SlotContext = new(null);
+
     /// <summary>Embed.Comp(args, () => new TableHost()) — TableArgs/TableProfile gate on data, delegates late-bound.</summary>
     public static Element Table(TableArgs args) => Embed.Comp(args, static () => new TableHost());
 
@@ -632,6 +645,8 @@ public readonly partial struct Track
         int _rampFirst = Design.RevealRamp.Chunk;
         /// <summary>The list column's measured height (<see cref="OnColumnBounds"/>): the cold reveal's first band and the skeleton's row count.</summary>
         float _lastH;
+        /// <summary>The list column's height, 4-DIP gated: the two-column arm's slot cap reads it (<see cref="TuneSlotCap"/>).</summary>
+        readonly Signal<float> _colH = new(0f);
         /// <summary>When the last COLD reveal released (the skeleton gave way to rows), and how many rows its band covers: a row slot that first
         /// mounts real inside <see cref="RevealWindowMs"/> of it, within the band, takes the band's staggered crossfade
         /// (<see cref="Design.RevealRamp.RowEnter"/>); a row realized later (a scroll) mounts as it always did, with no entrance.</summary>
@@ -937,6 +952,7 @@ public readonly partial struct Track
             if (r.W <= 0f) return;
             _lastW = r.W;
             _lastH = r.H;
+            if (MathF.Abs(_colH.Peek() - r.H) > 4f) _colH.Value = r.H;
             if (MathF.Abs(_colW.Peek() - r.W) > 4f) _colW.Value = r.W;
             if (r.W != _tableW.Peek()) _tableW.Value = r.W;
             if (VerticalArm)
@@ -2046,7 +2062,18 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
-            return InsetList(Chrome(in shape, chips, lens)).Sticky(StickLine(), TableScope, engaged: _compactInteractive);
+            Element chrome = InsetList(Chrome(in shape, chips, lens, tuneInline: false)).Sticky(StickLine(), TableScope, engaged: _compactInteractive);
+            if (P.TuneStrip is null || EmptyLeadHides) return chrome;
+            // #48: the slot under the list bar (Tune, Mix's Transitions, its editor, Smart reorder) is PAGE CONTENT here: it scrolls with the rows and
+            // passes under the pinned header cut and feathered at the rows' own line, so a strip taller than the window (the editor) is reached by
+            // scrolling and no row ever draws over it. Only the header pins.
+            Element slot = new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, HitTestPassThrough = true,
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
+                Children = [InsetList(TuneSlot(RowMetrics.PadXFor(shape.Set.Tier)))],
+            }.StickyClip(_itemBandSig?.Value ?? 0f);
+            return new BoxEl { Direction = 1, MinWidth = 0f, HitTestPassThrough = true, Children = [slot, chrome] };
         }
 
         internal Element EmptyItem()

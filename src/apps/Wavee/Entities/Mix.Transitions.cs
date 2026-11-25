@@ -56,6 +56,10 @@ internal sealed class MixTransitionsPanel(Playlist playlist, Signal<int> selecte
     readonly Action _close = close;
     Func<RowScope, Element>? _row;
     Action<int>? _select;
+    Track.BarSlot? _slot;
+    NodeHandle _editorNode;
+    Action<NodeHandle>? _editorRealized;
+    bool _first = true;
 
     /// <summary>How many rows the panel shows before it scrolls.</summary>
     const int VisibleRows = 6;
@@ -74,13 +78,22 @@ internal sealed class MixTransitionsPanel(Playlist playlist, Signal<int> selecte
         _select ??= i => _selected.Value = _selected.Peek() == i ? -1 : i;
         _row ??= scope => Embed.Comp(() => new MixTransitionRow(_p, scope, _selected, _select));
         int open = _selected.Value;
+        // The editor shows when it opens (the list bar's slot glides it in when its top is out of sight, the page scrolled past it): opened with the
+        // panel, it is the part the slot shows; opened on another pair later, it asks for itself.
+        _slot = UseContext(Track.SlotContext);
+        _editorRealized ??= n => { _editorNode = n; if (_first && _slot is { } s) s.Focus = n; };
+        UseEffect(() =>
+        {
+            if (!_first && _selected.Peek() >= 0) _slot?.Show(_editorNode);
+            _first = false;
+        }, FluentGpu.Hooks.DepKey.From(open));
         // The editor is THE disclosure motion (Design.Reveal.Drawer): it mounts to open and unmounts to close, its layout lands once and the
         // presented height springs, so the rows below ride it instead of taking one long first step. The host stays while the editor moves
         // between pairs (the editor is keyed by its pair, so a new pair starts a fresh draft and the host only resizes).
         Element? editor = open >= 0 && open < count
             ? new BoxEl
             {
-                Key = "mix:editor:host", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = Design.Reveal.Drawer,
+                Key = "mix:editor:host", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = Design.Reveal.Drawer, OnRealized = _editorRealized,
                 Children =
                 [
                     Embed.Comp(() => new MixEditorHost(_p.Slot, open, count, i => { if (i >= 0 && i < count) _selected.Value = i; }, () => _selected.Value = -1))
