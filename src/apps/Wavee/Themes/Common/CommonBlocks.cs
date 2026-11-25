@@ -39,7 +39,8 @@ public static class CommonBlocks
         ViewTemplate<HistoryPageProps>? history = null, string historyTemplateId = "common.history",
         ViewTemplate<ExplainerProps>? explainer = null, string explainerTemplateId = "common.hint.explainer",
         ViewTemplate<HintProps>? hint = null, string hintTemplateId = "common.hint",
-        ViewTemplate<LocalFilesEmptyProps>? localFilesEmpty = null, string localFilesEmptyTemplateId = "common.local-files.empty")
+        ViewTemplate<LocalFilesEmptyProps>? localFilesEmpty = null, string localFilesEmptyTemplateId = "common.local-files.empty",
+        ViewTemplate<LocalFindProps>? localFilesFind = null, string localFilesFindTemplateId = "common.local-files.find")
     {
         views.Add(ViewKeys.HistoryPage, history ?? CommonHistory.Template, historyTemplateId);
         views.Add(ViewKeys.ShellFps, CommonFps.Template, "common.fps");
@@ -59,6 +60,7 @@ public static class CommonBlocks
         views.Add(ViewKeys.LocalFilesScan, CommonLocalFiles.Scan, "common.local-files.scan");
         views.Add(ViewKeys.LocalFilesPill, CommonLocalFiles.Pill, "common.local-files.pill");
         views.Add(ViewKeys.LocalFilesReview, CommonLocalFiles.Review, "common.local-files.review");
+        views.Add(ViewKeys.LocalFilesFind, localFilesFind ?? CommonLocalFiles.Find, localFilesFindTemplateId);   // "Find music on this PC"; Zune passes its own
         // "Your files and Spotify" (#240 phase 1): the opt-in dialog's body, one picture in every theme's dialog. The offer and the review are each
         // structure's own (WinUI and Classic: CommonLocalLink; Zune: ZuneLocalLink).
         views.Add(ViewKeys.LocalLinkOptIn, CommonLocalLink.OptIn, "common.local-link.opt-in");

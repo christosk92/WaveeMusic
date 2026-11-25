@@ -33,8 +33,16 @@
 // checksummed, so a one-file change writes a few hundred bytes instead of the whole index. The log carries the bin's
 // generation: a log left behind by a compaction that crashed between its two steps is ignored. Compacted into the bin when it
 // passes 2 MB and when the scanner goes idle. A LOAD builds a whole new store off the lock and swaps it in; a COMPACTION copies
-// the records under the lock and writes them off it. A file this build cannot read is ignored (the next scan rebuilds the
-// index); the index is a cache, outside the entity store (which is reaped on every schema change).
+// the records under the lock and writes them off it. The index is a cache, outside the entity store (which is reaped on every
+// schema change).
+//
+// FORMAT CHANGES (#240, LocalId safety). A bump never throws the index away: every reader takes the version it read
+// (`ReadEntry(…, version)`) and defaults a field an older version lacks there (`version >= 3 ? str() : ""`). A bin or log from
+// `OldestReadable` up to `FormatVersion` loads whole and is compacted into the current version at once; only an older one, or a
+// corrupt one, starts empty. Even then no LocalId is handed out twice: the load starts `NextId` at `IdFloor` at the least, which
+// LocalLibrary takes from the high-water mark it keeps outside the bin (a setting `HighWaterMoved` moves) and from the highest id
+// `locallinks.tsv` names (its renames, links and Play-by-default are keyed by LocalId). To bump: raise `FormatVersion`, write the
+// new field, read it behind `version >= N` with a default, and leave `OldestReadable` where it is.
 //
 // MATCH LOG. Every `Match` writes one always-on `local.match` line: the tier that answered (or none), the candidate count, and
 // the matched FILE NAME only, never its folder (paths hold the account name).
@@ -83,7 +91,8 @@ public sealed class LocalIndex
     public const int AddedRoot = -1;
     const long CompactLogBytes = 2L * 1024 * 1024;
     const uint BinMagic = 0x494C_5657 /*"WVLI"*/, LogMagic = 0x4C4C_5657 /*"WVLL"*/;
-    const int FormatVersion = 3;   // 2: the stream format (rate, bits, channels) and the first-seen time; 3: the ISRC. An older file is rebuilt by a scan
+    const int FormatVersion = 3;   // 2: the stream format (rate, bits, channels) and the first-seen time; 3: the ISRC
+    const int OldestReadable = 2;  // a file of this version up to FormatVersion is read whole (what it lacks defaulted), then compacted
     const byte RecBatch = 1, RecRoot = 2, RecRootRemoved = 3, RecPurge = 4;
     const byte FlagPlayable = 1, FlagEstimated = 2, FlagHasAudio = 4;
 
@@ -505,6 +514,26 @@ public sealed class LocalIndex
     /// <summary>A fresh LocalId: never handed out before, never reused (D13).</summary>
     public long NewId() { lock (_gate) return _s.NextId++; }
 
+    /// <summary>The lowest id the next <see cref="Load"/> hands out, whatever the bin says (a corrupt, refused or lost bin would
+    /// start at 1): the high-water mark kept outside the bin. Set before <see cref="Load"/>.</summary>
+    public long IdFloor { get; set; } = 1;
+
+    /// <summary>The id high-water mark moved past what was last reported (after a commit, off the index's locks): the caller keeps
+    /// it outside the bin, so a lost bin never hands an id out twice. Any thread.</summary>
+    public Action<long>? HighWaterMoved { get; set; }
+
+    long _markReported;
+
+    /// <summary>The next id the index would hand out.</summary>
+    public long NextId { get { lock (_gate) return _s.NextId; } }
+
+    void ReportHighWater(long nextId)
+    {
+        long was = Volatile.Read(ref _markReported);
+        if (nextId <= was || Interlocked.CompareExchange(ref _markReported, nextId, was) != was) return;
+        HighWaterMoved?.Invoke(nextId);
+    }
+
     // ── matching (§3.4) ──────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The §3.4 walk for a <c>spotify:local:</c> row's decoded parts: tier 1 the exact map (first, last and joined
@@ -564,14 +593,15 @@ public sealed class LocalIndex
     public void Apply(LocalScanBatch batch)
     {
         if (batch.IsEmpty) return;
+        long nextId;
         lock (_fileGate)
         {
             lock (_gate) ApplyTo(_s, batch);
             Interlocked.Increment(ref _version);
-            long nextId;
             lock (_gate) nextId = _s.NextId;
             AppendLocked(RecBatch, w => WriteBatch(w, batch, nextId));
         }
+        ReportHighWater(nextId);
         CompactIfLarge();
     }
 
@@ -859,37 +889,57 @@ public sealed class LocalIndex
     // ── the files ────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Read the bin and replay the log into a NEW store built off the lock, swap it in, then keep the log open for
-    /// appends. Background thread; never throws. A file this build cannot read is ignored (and replaced by the next
-    /// compaction). Returns the audio entries loaded.</summary>
+    /// appends. Background thread; never throws. A file of an older readable version is read whole and compacted into this
+    /// version at once; one this build cannot read is ignored (and replaced by the next compaction). The ids start at
+    /// <see cref="IdFloor"/> at the least. Returns the audio entries loaded.</summary>
     public int Load(string binPath)
     {
         string logPath = Path.ChangeExtension(binPath, ".log");
+        bool upgrade;
         lock (_fileGate)   // a commit waits for the load; readers keep reading the old store until the swap
         {
             _binPath = binPath;
             _logPath = logPath;
             var store = new Store();
             ulong generation = 0;
+            int version = 0;
             try
             {
                 if (File.Exists(binPath))
                 {
                     using var stream = new FileStream(binPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
                     using var r = new BinaryReader(stream, Encoding.UTF8);
-                    if (!ReadBin(store, r, out generation)) { store = new Store(); generation = 0; }
+                    if (!ReadBin(store, r, out generation, out version))
+                    {
+                        Log.Warn("local", "local.index.load bin refused version=" + version + " readable=" + OldestReadable + "-" + FormatVersion + "; rebuilding");
+                        store = new Store();
+                        generation = 0;
+                        version = 0;
+                    }
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or EndOfStreamException or InvalidDataException or ArgumentException or FormatException or IndexOutOfRangeException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or EndOfStreamException or InvalidDataException or ArgumentException
+                                           or FormatException or IndexOutOfRangeException or OverflowException or OutOfMemoryException)
             {
                 Log.Warn("local", "local.index.load bin unreadable; rebuilding (" + ex.GetType().Name + ")");
                 store = new Store();
                 generation = 0;
+                version = 0;
             }
             _generation = generation;
-            OpenLogLocked(store, replay: true);
+            int logVersion = OpenLogLocked(store, replay: true);
+            // Never below the mark kept outside the bin: a bin that was lost, refused or behind hands out no id twice.
+            long fromBin = store.NextId;
+            if (IdFloor > store.NextId) store.NextId = IdFloor;
+            Volatile.Write(ref _markReported, store.NextId);
             lock (_gate) _s = store;
+            upgrade = version is > 0 and < FormatVersion || logVersion is > 0 and < FormatVersion;
+            Log.Info("local", "local.index.ids next=" + store.NextId + " bin=" + fromBin + " floor=" + IdFloor + " version=" + version
+                + (logVersion > 0 ? " logVersion=" + logVersion : "") + (upgrade ? " upgrade=1" : ""));
         }
         Interlocked.Increment(ref _version);
+        // An older version read whole: written back in this one now, so the log only ever appends records of one version.
+        if (upgrade && Compact()) Log.Info("local", "local.index.upgraded to=" + FormatVersion);
         return Count;
     }
 
@@ -952,14 +1002,18 @@ public sealed class LocalIndex
         lock (_fileGate) { _log?.Dispose(); _log = null; _binPath = _logPath = null; }
     }
 
-    void OpenLogLocked(Store? replayInto, bool replay)
+    /// <summary>Open the log for appends, replaying it into <paramref name="replayInto"/> first when asked; returns the version of the
+    /// log replayed (0: none).</summary>
+    int OpenLogLocked(Store? replayInto, bool replay)
     {
-        if (_logPath is not { } logPath) return;
+        if (_logPath is not { } logPath) return 0;
+        int version = 0;
+        long good = -1;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
             var log = new FileStream(logPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1 << 12);
-            long good = replay && replayInto is not null ? ReplayLog(replayInto, log) : -1;
+            good = replay && replayInto is not null ? ReplayLog(replayInto, log, out version) : -1;
             if (good < 0)
             {
                 // No usable log (none, another generation, or a fresh start after a compaction): a header for this generation.
@@ -976,16 +1030,20 @@ public sealed class LocalIndex
             Log.Warn("local", "local.index.log unavailable (changes stay in memory until the next compaction)", ex);
             _log = null;
         }
+        return good >= 0 ? version : 0;
     }
 
     /// <summary>Replay every whole record of a log of this generation into <paramref name="store"/>; returns the offset after
     /// the last good record, or -1 when the log is not one this index can replay.</summary>
-    long ReplayLog(Store store, FileStream log)
+    long ReplayLog(Store store, FileStream log, out int version)
     {
+        version = 0;
         if (log.Length < 16) return -1;
         log.Seek(0, SeekOrigin.Begin);
         using var r = new BinaryReader(log, Encoding.UTF8, leaveOpen: true);
-        if (r.ReadUInt32() != LogMagic || r.ReadInt32() != FormatVersion || r.ReadUInt64() != _generation) return -1;
+        if (r.ReadUInt32() != LogMagic) return -1;
+        version = r.ReadInt32();
+        if (version < OldestReadable || version > FormatVersion || r.ReadUInt64() != _generation) return -1;
         long good = log.Position;
         int records = 0;
         while (log.Length - log.Position >= 9)
@@ -998,9 +1056,9 @@ public sealed class LocalIndex
             try
             {
                 using var br = new BinaryReader(new MemoryStream(body), Encoding.UTF8);
-                ReplayRecord(store, br);
+                ReplayRecord(store, br, version);
             }
-            catch (Exception ex) when (ex is EndOfStreamException or InvalidDataException or ArgumentException or FormatException)
+            catch (Exception ex) when (ex is EndOfStreamException or InvalidDataException or ArgumentException or FormatException or OverflowException)
             {
                 break;
             }
@@ -1011,12 +1069,12 @@ public sealed class LocalIndex
         return good;
     }
 
-    static void ReplayRecord(Store s, BinaryReader r)
+    static void ReplayRecord(Store s, BinaryReader r, int version)
     {
         byte type = r.ReadByte();
         switch (type)
         {
-            case RecBatch: ApplyTo(s, ReadBatch(s, r)); break;
+            case RecBatch: ApplyTo(s, ReadBatch(s, r, version)); break;
             case RecRoot: { LocalRoot root = ReadRoot(r); s.Roots[root.RootId] = root; break; }
             case RecRootRemoved: RemoveRootFrom(s, r.ReadInt32()); break;
             case RecPurge: { int n = r.ReadInt32(); for (int i = 0; i < n; i++) Remove(s, r.ReadInt64()); break; }
@@ -1076,10 +1134,13 @@ public sealed class LocalIndex
         w.Write(BinMagic);   // a trailer: a truncated bin is refused whole
     }
 
-    static bool ReadBin(Store s, BinaryReader r, out ulong generation)
+    static bool ReadBin(Store s, BinaryReader r, out ulong generation, out int version)
     {
         generation = 0;
-        if (r.ReadUInt32() != BinMagic || r.ReadInt32() != FormatVersion) return false;
+        version = 0;
+        if (r.ReadUInt32() != BinMagic) return false;
+        version = r.ReadInt32();
+        if (version < OldestReadable || version > FormatVersion) return false;
         generation = r.ReadUInt64();
         long nextId = r.ReadInt64();
         int roots = r.ReadInt32();
@@ -1101,7 +1162,7 @@ public sealed class LocalIndex
         s.Exact.EnsureCapacity(entries + entries / 8);
         s.Loose.EnsureCapacity(entries + entries / 8);
         s.Names.EnsureCapacity(entries);
-        for (int i = 0; i < entries; i++) Insert(s, ReadEntry(r, next));
+        for (int i = 0; i < entries; i++) Insert(s, ReadEntry(r, next, version));
         if (r.ReadUInt32() != BinMagic) return false;
         s.NextId = Math.Max(s.NextId, nextId);
         return true;
@@ -1129,14 +1190,14 @@ public sealed class LocalIndex
         foreach (long id in batch.Removes) w.Write(id);
     }
 
-    static LocalScanBatch ReadBatch(Store s, BinaryReader r)
+    static LocalScanBatch ReadBatch(Store s, BinaryReader r, int version)
     {
         var batch = new LocalScanBatch(r.ReadInt32(), r.ReadString()) { RemoveFolder = r.ReadBoolean() };
         s.NextId = Math.Max(s.NextId, r.ReadInt64());
         Func<string> inline = r.ReadString;
         if (r.ReadBoolean()) batch.Folder = ReadFolder(r, inline);
         int upserts = r.ReadInt32();
-        for (int i = 0; i < upserts; i++) batch.Upserts.Add(ReadEntry(r, inline));
+        for (int i = 0; i < upserts; i++) batch.Upserts.Add(ReadEntry(r, inline, version));
         int removes = r.ReadInt32();
         for (int i = 0; i < removes; i++) batch.Removes.Add(r.ReadInt64());
         return batch;
@@ -1185,7 +1246,8 @@ public sealed class LocalIndex
         Str(w, e.MatchTitle, index); w.Write((byte)e.State); w.Write(e.LastSeenTicks); w.Write(e.FirstSeenTicks); w.Write(e.Playable); Str(w, e.Why, index);
     }
 
-    static LocalEntry ReadEntry(BinaryReader r, Func<string> str)
+    /// <summary>One entry as <paramref name="version"/> wrote it: a field that version lacks is defaulted (FORMAT CHANGES above).</summary>
+    static LocalEntry ReadEntry(BinaryReader r, Func<string> str, int version)
     {
         long localId = r.ReadInt64();
         int rootId = r.ReadInt32();
@@ -1207,7 +1269,7 @@ public sealed class LocalIndex
         int vw = r.ReadInt32(), vh = r.ReadInt32();
         bool hasAudio = r.ReadBoolean();
         int sampleRate = r.ReadInt32(), bits = r.ReadByte(), channels = r.ReadByte();
-        string isrc = str();
+        string isrc = version >= 3 ? str() : "";   // 3: the ISRC
         var tags = new LocalTagSet(kind, title, artists, album, albumArtist, track, disc, year, duration, estimated, bitrate, cover, vw, vh, hasAudio,
             sampleRate, bits, channels, isrc);
         string matchTitle = str();

@@ -200,6 +200,12 @@ public static partial class Platform
         public static readonly SettingKey<bool> MusicReadCloud = new("local.readCloud", false);
         /// <summary>Settings › Storage › Music on this PC › "Keep missing songs for" (#240 S3): 30, 60 or 90 days.</summary>
         public static readonly SettingKey<int> MusicMissingDays = new("local.missingDays", 60);
+        /// <summary>The local index's LocalId high-water mark (#240, LocalId safety): kept outside <c>localindex.bin</c>, so an index that
+        /// starts over (a corrupt or unreadable bin) never hands an id out twice. Read and written ONLY through <see cref="LocalLibrary"/>.</summary>
+        public static readonly SettingKey<long> MusicIdMark = new("local.idMark", 0L);
+        /// <summary>The decoder set the local index's unplayable entries were last read with (#240): below <see cref="LocalLibrary.DecoderSet"/>,
+        /// they are read once more at start. Read and written ONLY through <see cref="LocalLibrary"/>.</summary>
+        public static readonly SettingKey<int> MusicDecoderSet = new("local.decoderSet", 0);
 
         // ── podcasts ──
         /// <summary>The podcast show page's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most

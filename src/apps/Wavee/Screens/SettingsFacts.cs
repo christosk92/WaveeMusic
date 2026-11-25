@@ -126,7 +126,8 @@ public sealed class LiveSettingsFacts : ISettingsFacts
     public bool PagesFly => ShellPolicy.Now.PageMotion is { } motion && (motion.Connected is not null || motion.GrowInto is not null);
 
     public int MusicFolderCount => LocalLibrary.Folders.Count;
-    public bool DefaultMusicFolderOffered => LocalLibrary.DefaultMusicFolder is not null;
+    // With no music folder the group's "Find music on this PC" card offers the Music folder (LocalFiles.Find.cs): one home for the verb.
+    public bool DefaultMusicFolderOffered => LocalLibrary.Folders.Count > 0 && LocalLibrary.DefaultMusicFolder is not null;
 }
 
 /// <summary>What the settings page hands its verbs from the component context (the overlay host, the input hooks, the UI

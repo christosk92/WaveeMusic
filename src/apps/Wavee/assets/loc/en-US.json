@@ -2232,7 +2232,6 @@
       "addDefault": "Add my Music folder",
       "rescan": "Rescan now",
       "pickTitle": "Choose a music folder",
-      "empty": "No music folders yet. Add one and Wavee plays what’s in it.",
       "songs": "{count, plural, one {{n} song} other {{n} songs}}",
       "kept": "{count, plural, one {{n} song kept} other {{n} songs kept}}",
       "unplayable": "{n} can’t be played",
@@ -3599,7 +3598,7 @@
     "playFile": "Play file…",
     "pickTitle": "Choose a file to play",
     "filter": "Audio and video",
-    "rejected": "That file can’t be played. Wavee plays .mp3, .flac, .ogg, .m4a, .aac and .mp4 files.",
+    "rejected": "That file can’t be played. Wavee plays .mp3, .flac, .ogg, .m4a, .aac, .wav, .aiff and .mp4 files.",
     "notReady": "Local playback isn’t ready yet.",
     "playlistTitle": "Local files",
     "playlistDescription": "Music imported from this computer."
@@ -5766,6 +5765,22 @@
       "chipPausedSaver": "Paused · battery saver",
       "settings": "Settings"
     },
+    "find": {
+      "$comment": "#240 (0dm): the 'Find music on this PC' card on an empty Local Files / On this PC page and in Settings' empty Music folders group. Wavee counts (never reads) the audio files in the user's Music and Downloads folders and offers them with a tick each; nothing is added until 'Add selected'. {n} is a formatted number; {songs} and {videos} are the counts' own phrases.",
+      "title": "Find music on this PC",
+      "line": "Wavee counted the songs in your usual folders. Nothing is added until you choose.",
+      "music": "Music",
+      "downloads": "Downloads",
+      "counting": "Counting…",
+      "songs": "{count, plural, one {{n} song} other {{n} songs}}",
+      "songsMore": "{n}+ songs",
+      "inCloud": "{songs} ({n} in OneDrive)",
+      "videos": "{count, plural, one {{n} video} other {{n} videos}}",
+      "withVideos": "{songs} · {videos}",
+      "none": "No songs here",
+      "add": "Add selected",
+      "choose": "Choose another folder…"
+    },
     "list": {
       "$comment": "#240 UX S4-S6: the Local Files list (the playlist page's local arm): the empty state, the first-scan line, the 'what changed' pill and row tags, the reason a file cannot be played (`cantPlay`, on the row's second line; {why} is the index's own phrase, 'a WAV file'), a local row's menu verbs and their toasts ({title} a song title), and the unavailable bar's local reasons. {path} and {folder} are paths as typed; {n}, {done}, {total} are formatted numbers; {date} a short date ('12 Nov').",
       "emptyTitle": "Your music on this PC",
@@ -5971,7 +5986,6 @@
     "cantPlayType": "Wavee can’t play {ext} files yet",
     "nothingUsable": "Nothing here Wavee can play",
     "onlySpotifyLinks": "Wavee opens Spotify links",
-    "localToSpotifyLater": "Adding local files to a Spotify playlist comes later",
     "playAndKeep": "Play now · kept in Local Files",
     "queueOnThisPc": "Another device is playing: files on this PC can’t join its queue",
     "addingSongs": "Adding songs…",

@@ -101,11 +101,12 @@ internal static partial class ZuneSettings
                 },
             };
             var list = new List<Element>(folders.Count + 1);
+            // No folder yet: "find music on this pc" (#240, 0dm; LocalFiles.Find.cs); "add a folder" stays among the command words.
             if (folders.Count == 0)
                 list.Add(Drawer("zs:music:empty", new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, MinHeight = Z.MusicRowH, MinWidth = 0f,
-                    Children = [ZuneText.Prose(Loc.Get(Strings.Settings.Music.Empty)) with { Grow = 1f }],
+                    Direction = 1, MinHeight = Z.MusicRowH, MinWidth = 0f,
+                    Children = [LocalFilesList.FindCard(choose: false)],
                 }));
             foreach (string folder in folders)
             {

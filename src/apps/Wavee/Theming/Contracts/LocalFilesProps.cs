@@ -12,7 +12,14 @@
 //   LocalFiles.Review   the body of the missing songs' dialog (S6): one row per missing file (title · artist, the last-known path, "Not found since
 //                       12 Nov · removed on 11 Jan", Locate…), the note on what Locate does, the keep-days footer.
 //
-// Additive (contract 2.x minor): four new keys, their props here.
+//   LocalFiles.Find     "Find music on this PC" (#240, 0dm): the user's Music and Downloads folders with their counts and a tick each (Music ticked,
+//                       Downloads not), "Add selected" and "Choose another folder…". The empty state carries it as its `Find` element in place of
+//                       its buttons; Settings' empty Music folders group shows it too (without "Choose another folder…": its header has "Add a folder…").
+//
+// Additive (contract 2.x minor): five keys, their props here.
+
+using FluentGpu.Dsl;
+using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
 
@@ -39,6 +46,10 @@ public sealed record LocalFilesEmptyProps
 
     /// <summary>"Choose a folder…".</summary>
     public required string ChooseLabel { get; init; }
+
+    /// <summary>The "Find music on this PC" card (<see cref="ViewKeys.LocalFilesFind"/>, already resolved), drawn where the buttons and the caption
+    /// stand when set; null keeps the buttons (a library whose folders hold no song yet).</summary>
+    public Element? Find { get; init; }
 
     /// <summary>Opens the folder picker and adds the pick.</summary>
     public required Action Choose { get; init; }
@@ -121,4 +132,58 @@ public sealed record LocalFilesReviewProps
 
     /// <summary>"Nothing is missing any more." (the list once every file is back).</summary>
     public required string Empty { get; init; }
+}
+
+/// <summary>The props of <see cref="ViewKeys.LocalFilesFind"/>: "Find music on this PC".</summary>
+public sealed record LocalFindProps
+{
+    /// <summary>"Find music on this PC".</summary>
+    public required string Title { get; init; }
+
+    /// <summary>"Wavee counted the songs in your usual folders. Nothing is added until you choose."</summary>
+    public required string Line { get; init; }
+
+    /// <summary>One row per folder looked at (Music, Downloads; none for a folder that does not exist).</summary>
+    public required IReadOnlyList<LocalFindRow> Rows { get; init; }
+
+    /// <summary>"Add selected": adds the ticked folders that hold songs.</summary>
+    public required string AddLabel { get; init; }
+
+    public required Action Add { get; init; }
+
+    /// <summary>A ticked folder holds songs (or is still being counted): "Add selected" is enabled.</summary>
+    public bool CanAdd { get; init; }
+
+    /// <summary>"Choose another folder…", or "" where the surface offers that verb elsewhere (Settings' header): no button then.</summary>
+    public string ChooseLabel { get; init; } = "";
+
+    public Action? Choose { get; init; }
+
+    /// <summary>Drawn on its own plate (the empty page); false inside a surface that is already a card (Settings' Music folders group).</summary>
+    public bool Framed { get; init; } = true;
+}
+
+/// <summary>One folder of the "Find music on this PC" card.</summary>
+public sealed record LocalFindRow
+{
+    /// <summary>"music", "downloads": the row's key part.</summary>
+    public required string Key { get; init; }
+
+    /// <summary>"Music", "Downloads".</summary>
+    public required string Name { get; init; }
+
+    /// <summary>The folder's path (its tooltip, and the line under its name).</summary>
+    public required string Path { get; init; }
+
+    /// <summary>"1,204 songs (238 in OneDrive)", "37 songs · 12 videos", "Counting…" while the count runs, "No songs here".</summary>
+    public required string Count { get; init; }
+
+    /// <summary>The tick (the core's; the checkbox writes it).</summary>
+    public required Signal<bool> Ticked { get; init; }
+
+    /// <summary>The folder holds no song: the row is greyed and cannot be ticked.</summary>
+    public bool Empty { get; init; }
+
+    /// <summary>The count is still running ("Counting…" holds the count's line).</summary>
+    public bool Counting { get; init; }
 }

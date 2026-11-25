@@ -100,7 +100,7 @@ public static partial class LocalMatch
     static long DurationDistance(int entryMs, int uriSeconds)
         => uriSeconds <= 0 ? 0 : entryMs <= 0 ? int.MaxValue : Math.Abs(entryMs / 1000 - uriSeconds);
 
-    static bool IsLossless(Spotify.Audio.Format format) => format is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24;
+    static bool IsLossless(Spotify.Audio.Format format) => format is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 or Spotify.Audio.Format.Pcm;
 
     // ── the fold ─────────────────────────────────────────────────────────────────────────────────────────────────────
 

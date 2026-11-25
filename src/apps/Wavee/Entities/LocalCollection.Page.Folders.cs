@@ -274,7 +274,7 @@ public static partial class LocalCollectionPage
                 bytes += e.Size;
                 ms += e.Tags.DurationMs;
                 if (e.State == LocalState.Missing) { missing++; continue; }
-                string f = LocalCollection.FormatName(e.Format);
+                string f = LocalCollection.FormatName(e.Format, e.RelativePath);
                 formats[f] = formats.GetValueOrDefault(f) + 1;
             }
             var fmt = new List<KeyValuePair<string, int>>(formats);

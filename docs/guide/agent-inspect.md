@@ -615,7 +615,15 @@ the host as the dealer glue does (no dealer, no ack). `play uri=<row> context=sp
 double-tap on the row does. `state kind=music-folders value=folder path=<dir>` runs the real scanner over a real folder into the
 in-memory index (#240's real-file matching; the app's index file is never touched). `value=startup path=<dir>` instead runs the app's own start-up (`LocalLibrary.Use`) with that folder over
 the scratch profile's `Wavee\Cache\localindex.bin` (copy an older build's index there first to replay its rebuild): the load, the
-start-up scan and the restate run on their threads and land over the next frames; `state kind=rescope` after it is the login's scope switch. Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
+start-up scan and the restate run on their threads and land over the next frames; `state kind=rescope` after it is the login's scope switch. `state kind=local-peek value=counting|landed|empty|capped|none`
+(after `music-folders value=none`) stages what "Find music on this PC" counted (#240, 0dm; no disk; the real peek, which counts this PC's Music and
+Downloads folders by extension, runs when the card mounts on a mount with no music folder and logs `local.peek <folder> songs= cloud= videos= entries=
+capped= ms=`); `trace=90 prefix=local-` on `landed` proves the card keeps still. `localindex prefix=<path start>`
+lists the index (each file's LocalId, folder id, path, state and Wavee rename; `next`; `idMark`, the id high-water mark kept
+outside the bin); `rename=<LocalId> title=<t>` renames a file first, `compact=true` writes the bin now, and `mark=<n>` sets the
+high-water mark a previous run would have left (an inspector's settings live in memory), before a `value=startup`. The #240 LocalId
+safety checks corrupt or downgrade a scratch profile's bin between two such runs (`--profile`), then read `status log="local.index"`
+(`local.index.ids next= bin= floor= version=`) and `status log="local.link.identity"` (`kept dropped backfilled rebound orphans`). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
 end of a context behaves as it does online; `setting id=autoplay value=false` turns it off. A sequence of `transport do=end` (or
 `do=next`) replies is the sequence of tracks played:
 
@@ -961,6 +969,21 @@ it really opens on the video host headless (`status log="first.frame"`).
 ```text
 drop path=C:/music/song.flac
 drop path=C:/music/song.mp3 import=false
+```
+
+### `decode {path, out?, rate?, seekMs?, ms?}`
+
+Runs a local file through the decoder playback opens it with (its content's format through `Playback.Audio.CreateDecoderFor`: WAV and
+AIFF PCM since #240, FLAC, MP3, Ogg) into raw float32 little-endian stereo frames at `out=` (none: the count only), at the mix rate
+`rate=` (0, the default, is the file's own rate: no resampling, so the output can be compared with `ffmpeg -f f32le` sample by
+sample). `seekMs=` seeks with the decoder's own seek first; `ms=` stops early. The reply: `format`, `decoder`, `opened`, `why` (a
+refusal: "a WAV file with ADPCM audio"), `tagDurationMs`, `estimated`, `sourceRate`, `sourceChannels`, `exactFrames` and `tailKnown`
+(the gapless info a join plans on), `seekedTo`, `frames`, `peak`, and for PCM `label` ("WAV 24/96"), `gain`, `layoutFrames` and
+`sample`. No mount, no device. (`play` of a local row under `--fake` opens no source: this is the decoder check headless.)
+
+```text
+decode path=C:/music/a.wav out=C:/scratch/a.f32
+decode path=C:/music/a.aiff out=C:/scratch/a.seek.f32 seekMs=1234
 ```
 
 ### `hint {do, id?, blob?}` and `recent {clear?}`

@@ -103,8 +103,8 @@ public static partial class LocalTags
         return stem.Length > 0 ? new string(stem) : new string(name);
     }
 
-    /// <summary>Extensions the scan considers: .mp3 .flac .ogg .oga .m4a .mp4 .m4v .aac .wav .opus .mkv .webm, and (contract
-    /// revision 2) .wma .aif .aiff, which are read but have no decoder in 0.4.</summary>
+    /// <summary>Extensions the scan considers: .mp3 .flac .ogg .oga .m4a .mp4 .m4v .aac .wav .aif .aiff .aifc .opus .mkv .webm, and .wma,
+    /// which is read but has no decoder.</summary>
     public static bool IsScanExtension(ReadOnlySpan<char> fileName)
     {
         ReadOnlySpan<char> ext = Path.GetExtension(fileName);
@@ -115,7 +115,7 @@ public static partial class LocalTags
             || ext.Equals(".wav", StringComparison.OrdinalIgnoreCase) || ext.Equals(".opus", StringComparison.OrdinalIgnoreCase)
             || ext.Equals(".mkv", StringComparison.OrdinalIgnoreCase) || ext.Equals(".webm", StringComparison.OrdinalIgnoreCase)
             || ext.Equals(".wma", StringComparison.OrdinalIgnoreCase) || ext.Equals(".aif", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".aiff", StringComparison.OrdinalIgnoreCase);
+            || ext.Equals(".aiff", StringComparison.OrdinalIgnoreCase) || ext.Equals(".aifc", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Files whose ID3 text used a Windows-1252 byte in 0x80-0x9F (encoding 0, decoded as Windows-1252 rather than
@@ -147,18 +147,27 @@ public static partial class LocalTags
 
         // Containers that never start with an ID3 tag.
         if (Playback.Audio.Mp4.LooksLikeMp4(head)) { b.Sniffed = true; return ReadMp4(io, b, out format, out why); }
-        if (head.Length >= 12 && (head[..4].SequenceEqual("RIFF"u8) || head[..4].SequenceEqual("RF64"u8)) && head[8..12].SequenceEqual("WAVE"u8))
+        if (Playback.Audio.Pcm.IsWave(head) || Playback.Audio.Pcm.IsAiff(head))
         {
             b.Sniffed = true;
-            ReadWav(io, b);
-            why = "a WAV file";
-            return true;
-        }
-        if (head.Length >= 12 && head[..4].SequenceEqual("FORM"u8) && (head[8..12].SequenceEqual("AIFF"u8) || head[8..12].SequenceEqual("AIFC"u8)))
-        {
-            b.Sniffed = true;
-            ReadAiff(io, b);
-            why = "an AIFF file";
+            // The decoder's own layout walk (Playback.Audio.Pcm): the stream and the exact length first, then the tags; an encoding with no
+            // decoder (ADPCM, µ-law, A-law, MP3 in WAV) keeps format Unknown with the walk's why.
+            Playback.Audio.PcmLayout layout = Playback.Audio.Pcm.Parse((at, dst) =>
+            {
+                if (dst.Length > WindowBytes || !io.TryGet(at, dst.Length, out ReadOnlySpan<byte> s)) return false;
+                s.CopyTo(dst);
+                return true;
+            }, io.Length);
+            if (layout.Ok)
+            {
+                format = Spotify.Audio.Format.Pcm;
+                b.SetStream(layout.SampleRate, layout.Bits, layout.Channels);
+                b.SetLength(layout.DurationMs);
+                b.BitrateKbps = (int)Math.Min((long)layout.SampleRate * layout.BlockAlign * 8 / 1000, 100_000);
+            }
+            else why = layout.Why;
+            if (Playback.Audio.Pcm.IsWave(head)) ReadWav(io, b);
+            else ReadAiff(io, b);
             return true;
         }
         if (head.Length >= 30 && head[..16].SequenceEqual(AsfHeaderGuid))
