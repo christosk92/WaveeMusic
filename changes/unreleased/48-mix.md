@@ -14,6 +14,9 @@ ingredient Spotify can put in a transition sounds: the bass, mid and treble EQ (
 sweeps, the noise sweep, the echo, delay and reverb (which ring out after the outgoing song has faded) and the beat loops.
 A beatmatched pair plays the incoming song at Spotify's saved speed, then eases it back to normal speed in small steps
 after the transition, and the speed is shown to your other devices as it changes. Shuffled pairs get Auto too. A local
-file, a song you queued, an episode or a video still gets your normal Crossfade or gapless join. Not yet: Spotify's own
-beatmatched Auto (Auto treats every pair as unmatched). The curves are Spotify's, the sound is Wavee's own mixer, so a
-transition sounds close to, not identical with, the official app.
+file, a song you queued, an episode or a video still gets your normal Crossfade or gapless join. Auto now beatmatches
+exactly the pairs Spotify beatmatches: a 2 to 16 bar overlap on the downbeats, the incoming song at the speed that lines
+its beats up with the outgoing one, and the preset Spotify would pick. Which window Spotify chooses also depends on where
+both songs have vocals and on more of Spotify's cue points than Wavee reads yet, so a beatmatched Auto can sit a few bars
+from Spotify's own. The curves are Spotify's, the sound is Wavee's own mixer, so a transition sounds close to, not
+identical with, the official app.
