@@ -2217,8 +2217,9 @@ public readonly partial struct Track
 
         // ══ 5. PLAYBACK ══════════════════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>The ONE activation funnel (the # transport, double-click, Enter): a not-yet-out row is refused here, so
-        /// every path agrees with the dimmed row that withholds its play button (ch 04 §0.8).
+        /// <summary>The ONE activation funnel (the # transport, double-click, Enter): a withheld row (not out yet, or ruled unplayable:
+        /// region-locked, Premium only) is refused through <see cref="Track.Invoke"/> with its reason in a toast (<see cref="Track.RefuseWithheld"/>), so every path
+        /// agrees with the dimmed row that withholds its play button (ch 04 §0.8).
         /// <para>B2 (plan §3.2): dispatches on the row's kind first — an episode row plays through
         /// <see cref="Episode.Invoke"/> (the disc's toggle-current-else-start semantics), never <see cref="Track.Invoke"/>,
         /// which reads an invalid <see cref="Track"/> for that row.</para></summary>
@@ -2233,7 +2234,7 @@ public readonly partial struct Track
                 return;
             }
             var t = DisplayTrack(display);
-            if (!t.IsValid || t.NotYetOut(Store.ToUnix(Entities.Now))) return;
+            if (!t.IsValid) return;
             Track.Invoke(t, () => StartVisible(display));
         }
 

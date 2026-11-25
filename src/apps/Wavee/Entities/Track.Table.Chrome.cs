@@ -1066,7 +1066,8 @@ public readonly partial struct Track
                 if (!FilterModel.HiddenByPlayable(notYetOut, unplayable)) continue;
                 // An indexed local file says its own reason (missing, a format, its drive away): one index probe per such row, per publication.
                 var cause = unplayable && t.IsLocal ? LocalFilesList.CauseOf(t) : LocalFilesList.Cause.None;
-                tally = cause != LocalFilesList.Cause.None ? tally.WithLocal(cause) : tally.With(notYetOut, unplayable, t.IsLocalItem);
+                tally = cause != LocalFilesList.Cause.None ? tally.WithLocal(cause) : tally.With(notYetOut, unplayable, t.IsLocalItem,
+                        unplayable ? t.UnplayableReason() : UnavailableWhy.None);
             }
             _tally = tally;
             _tallySeeded = true; _tallyVersion = version; _tallyPublication = publication;
@@ -1081,12 +1082,15 @@ public readonly partial struct Track
             // say their own reasons: every one missing is the missing songs' sentence (#240 S6), else "can’t be played here: one is missing, …".
             if (LocalFilesList.BarWords(in tally) is { } local) return local.Explained;
             int localKinds = (tally.Missing > 0 ? 1 : 0) + (tally.Format > 0 ? 1 : 0) + (tally.Offline > 0 ? 1 : 0);
-            int kinds = (tally.NotAvailable > 0 ? 1 : 0) + (tally.NotYetOut > 0 ? 1 : 0) + (tally.LocalFiles > 0 ? 1 : 0) + localKinds;
+            int kinds = (tally.NotAvailable > 0 ? 1 : 0) + (tally.NotYetOut > 0 ? 1 : 0) + (tally.LocalFiles > 0 ? 1 : 0) + (tally.Premium > 0 ? 1 : 0)
+                + (tally.Gone > 0 ? 1 : 0) + localKinds;
             string reasons;
             if (localKinds > 0)
             {
-                var parts = new List<string>(4);
+                var parts = new List<string>(6);
                 if (tally.NotAvailable > 0) parts.Add(Strings.Detail.Filter.Unavailable.Region(count: tally.NotAvailable));
+                if (tally.Premium > 0) parts.Add(Strings.Detail.Filter.Unavailable.Premium(count: tally.Premium));
+                if (tally.Gone > 0) parts.Add(Strings.Detail.Filter.Unavailable.Gone(count: tally.Gone));
                 if (tally.NotYetOut > 0) parts.Add(Strings.Detail.Filter.Unavailable.Upcoming(count: tally.NotYetOut));
                 if (tally.LocalFiles > 0) parts.Add(Strings.Detail.Filter.Unavailable.Local(count: tally.LocalFiles));
                 parts.Add(LocalFilesList.Reasons(in tally));
@@ -1094,12 +1098,16 @@ public readonly partial struct Track
             }
             else if (kinds <= 1)
                 reasons = tally.NotAvailable > 0 ? Strings.Detail.Filter.Unavailable.AllRegion(count: tally.NotAvailable)
+                        : tally.Premium > 0 ? Strings.Detail.Filter.Unavailable.AllPremium(count: tally.Premium)
+                        : tally.Gone > 0 ? Strings.Detail.Filter.Unavailable.AllGone(count: tally.Gone)
                         : tally.LocalFiles > 0 ? Strings.Detail.Filter.Unavailable.AllLocal(count: tally.LocalFiles)
                         : Strings.Detail.Filter.Unavailable.AllUpcoming(count: tally.NotYetOut);
             else
             {
-                var parts = new List<string>(3);
+                var parts = new List<string>(5);
                 if (tally.NotAvailable > 0) parts.Add(Strings.Detail.Filter.Unavailable.Region(count: tally.NotAvailable));
+                if (tally.Premium > 0) parts.Add(Strings.Detail.Filter.Unavailable.Premium(count: tally.Premium));
+                if (tally.Gone > 0) parts.Add(Strings.Detail.Filter.Unavailable.Gone(count: tally.Gone));
                 if (tally.NotYetOut > 0) parts.Add(Strings.Detail.Filter.Unavailable.Upcoming(count: tally.NotYetOut));
                 if (tally.LocalFiles > 0) parts.Add(Strings.Detail.Filter.Unavailable.Local(count: tally.LocalFiles));
                 reasons = string.Join(", ", parts);

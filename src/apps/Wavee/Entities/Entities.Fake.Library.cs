@@ -105,7 +105,7 @@ public static partial class Entities
 
         public const string SpotifyUserUri = "spotify:user:spotify";
         public const string LocalUserUri = "spotify:user:local";
-        public const int ExtraCount = 6;             // plx0-plx5
+        public const int ExtraCount = 7;             // plx0-plx6
         public const int LocalCount = 14;            // ch 31 §3.1 "local tracks"
         public const int RecommendationCount = 24;   // X0
         public const int ChartNewEntries = 7;        // P4
@@ -121,7 +121,8 @@ public static partial class Entities
         public static string LocalTrackUri(int i) => "wavee:local:track:" + Wrap(i, LocalCount).ToString(CultureInfo.InvariantCulture);
         static string EpisodeRowUri(int k) => "spotify:episode:plxep" + Wrap(k, 3).ToString(CultureInfo.InvariantCulture);
 
-        static readonly string[] s_extraTitles = ["My Playlist #7", "Cafe Mosaic", "Deleted Mix", "Private Share", "My Playlist #8", "Mixed Bag"];
+        static readonly string[] s_extraTitles = ["My Playlist #7", "Cafe Mosaic", "Deleted Mix", "Private Share", "My Playlist #8", "Mixed Bag",
+                                                  "Region Check"];
 
         /// <summary>0.2.9 <c>FakeData.LocalSeed</c> (:344-351): the titles, and (#240 P1a) the tags a file would carry. Rows 4 and 8
         /// are untagged (no artist, no album: the shape of a file named after its title); row 10 credits two artists.</summary>
@@ -189,6 +190,7 @@ public static partial class Entities
                 StageUsers(s);
                 StageCorePlaylists(s, now0);
                 StageExtras(s);
+                StageAvailability(s, now0);
                 StageLocal(s);
                 StageMix(s);
                 StageTrackKnowns(s);
@@ -285,12 +287,80 @@ public static partial class Entities
             p6.Format = (byte)PlaylistFormat.InspiredByMix;
         }
 
-        static int ExtraRows(int k) => k switch { 0 => 0, 1 => 12, 2 => 10, 3 => 8, 4 => 0, _ => 20 + LocalItemCount };
+        static int ExtraRows(int k) => k switch { 0 => 0, 1 => 12, 2 => 10, 3 => 8, 4 => 0, 6 => AvailabilityRows.Length, _ => 20 + LocalItemCount };
 
         /// <summary>X5's trailing <c>spotify:local:</c> items (<see cref="LocalItemUris"/>).</summary>
         const int LocalItemCount = 3;
 
-        /// <summary>X0-X5: the arms no base playlist reaches — reachable by route (<c>pl:spotify:playlist:plxN</c>), not in
+        // ── X6: the availability verdicts (track-availability-region) ─────────────────────────────────────────────────
+
+        /// <summary>What one X6 row is: a plain pool track that plays, or a row of its own carrying one verdict.</summary>
+        enum Verdict : byte { Plays, Relinked, Region, Premium, NotYetOut, Withdrawn }
+
+        /// <summary>X6 "Region Check", modelled on a real 13-row list in one market (rows 2, 3, 9, 11 and 13 region-locked with no
+        /// alternative, four rows relinked to an alternative that plays), then the three verdicts that list lacked: Premium only, not
+        /// out yet, withdrawn with no reason. Row 12 repeats row 1's id.</summary>
+        static readonly Verdict[] AvailabilityRows =
+        [
+            Verdict.Relinked, Verdict.Region, Verdict.Region, Verdict.Plays, Verdict.Plays, Verdict.Relinked, Verdict.Relinked,
+            Verdict.Plays, Verdict.Region, Verdict.Plays, Verdict.Region, Verdict.Relinked, Verdict.Region,
+            Verdict.Premium, Verdict.NotYetOut, Verdict.Withdrawn,
+        ];
+
+        /// <summary>The pool track whose face X6 row <paramref name="k"/> wears (row 12 is row 1 again).</summary>
+        static int AvailabilityPool(int k) => 140 + (k == 12 ? 1 : k);
+
+        /// <summary>X6 row <paramref name="k"/>'s id: the pool track itself when it simply plays, else a row of its own.</summary>
+        static string AvailabilityUri(int k)
+            => AvailabilityRows[k] == Verdict.Plays ? TrackUri(AvailabilityPool(k))
+             : "spotify:track:avr" + AvailabilityPool(k).ToString(CultureInfo.InvariantCulture);
+
+        /// <summary>X6's own rows, each wearing its pool track's face (title, credit, cover, album, length) with a TRACK_V4-shaped
+        /// verdict (Spotify.Decode.TrackV4): every row ruled with a release instant two years back (the bit that heals once the
+        /// instant passes), the relinked ones pointing at their canonical, the withheld ones adding their reason bit, the
+        /// not-yet-out one dated 400 days ahead, the withdrawn one with no instant at all (an envelope's terminal answer).</summary>
+        static void StageAvailability(Staging s, long now0)
+        {
+            const long Day = 86_400;
+            for (int k = 0; k < AvailabilityRows.Length; k++)
+            {
+                Verdict v = AvailabilityRows[k];
+                if (v == Verdict.Plays || k == 12) continue;
+                int i = AvailabilityPool(k);
+                uint groups = (uint)(TrackFields.Row | TrackFields.Year);
+                if (v == Verdict.Relinked) groups |= (uint)TrackFields.Canonical;
+                var id = new StagedId(Text(s, AvailabilityUri(k)));
+                ref var row = ref s.Tracks.RowFor(id, Authority.Seed, groups);
+                row.Title = Text(s, s_titles[Wrap(i, s_titles.Length)]);
+                row.ArtistLine = Text(s, s_artistNames[Wrap(i, s_artistNames.Length)]);
+                row.Image = Text(s, Cover(i));
+                row.AlbumUri = Text(s, AlbumUri(i % AlbumCount));
+                row.DurationMs = 138_000 + (i * 37 % 150) * 1000;
+                row.Year = (ushort)(2008 + i % 17);
+                if (v == Verdict.Relinked)
+                {
+                    row.CanonicalUri = Text(s, TrackUri(i));
+                    row.PlayCount = (uint)(50_000 + i * 977 % 2_000_000);
+                }
+                row.AvailableAt = v switch
+                {
+                    Verdict.NotYetOut => (int)(now0 + 400 * Day),
+                    Verdict.Withdrawn => 0,
+                    _ => (int)(now0 - 730 * Day),
+                };
+                row.Flags = (uint)TrackFlags.Unavailable | v switch
+                {
+                    Verdict.Region => (uint)TrackFlags.RegionLocked,
+                    Verdict.Premium => (uint)TrackFlags.PremiumOnly,
+                    _ => 0u,
+                };
+                var credits = s.Run(Relation.TrackArtists);
+                credits.Add(new StagedId(Text(s, ArtistUri(Wrap(i, s_artistNames.Length)))));
+                credits.End(in id);
+            }
+        }
+
+        /// <summary>X0-X6: the arms no base playlist reaches — reachable by route (<c>pl:spotify:playlist:plxN</c>), not in
         /// the sidebar tree (the base rootlist's seven items are a pinned count).</summary>
         static void StageExtras(Staging s)
         {
@@ -323,6 +393,11 @@ public static partial class Entities
                         row.Image = Text(s, Cover(5));
                         row.OwnerUri = Text(s, UserUri(1));
                         row.Caps = 0;
+                        break;
+                    case 6:   // X6 — owned: every availability verdict a catalog row can carry (StageAvailability)
+                        row.Image = Text(s, Cover(8));
+                        row.OwnerUri = Text(s, UserUri(0));
+                        row.Caps = OwnerCaps;
                         break;
                     default:  // X5 — owned, mixed tracks and episodes
                         row.Image = Text(s, Cover(6));
@@ -488,6 +563,18 @@ public static partial class Entities
             int me = Current.MeSlot;
             Span<int> targets = stackalloc int[24];
             Span<PlaylistTrackEdge> edges = stackalloc PlaylistTrackEdge[24];
+
+            // X6 — the availability verdicts, in AvailabilityRows' order (row 12 repeats row 1, as a real list may).
+            var x6 = new global::Wavee.Playlist(SlotOf(EntityKind.Playlist, ExtraUri(6)));
+            if (x6.IsValid)
+            {
+                for (int k = 0; k < AvailabilityRows.Length; k++)
+                {
+                    targets[k] = SlotOf(EntityKind.Track, AvailabilityUri(k));
+                    edges[k] = new PlaylistTrackEdge(ItemIdFor(106, k), (int)(now0 - k * 11 * Hour), me, 0, 0, 0, 0);
+                }
+                Land(x6, targets[..AvailabilityRows.Length], edges[..AvailabilityRows.Length]);
+            }
 
             // X0 — Complete-EMPTY and 24 recommendations from the pool.
             var x0 = new global::Wavee.Playlist(SlotOf(EntityKind.Playlist, ExtraUri(0)));

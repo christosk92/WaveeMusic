@@ -170,7 +170,7 @@ public static class LocalFilesList
     internal static string Reasons(in Track.UnavailableTally tally)
     {
         int kinds = (tally.Missing > 0 ? 1 : 0) + (tally.Format > 0 ? 1 : 0) + (tally.Offline > 0 ? 1 : 0);
-        bool alone = kinds == 1 && tally.NotAvailable + tally.NotYetOut + tally.LocalFiles == 0;
+        bool alone = kinds == 1 && tally.NotAvailable + tally.NotYetOut + tally.LocalFiles + tally.Premium + tally.Gone == 0;
         if (alone && tally.Format > 0) return Strings.LocalFiles.List.AllFormat(tally.Format);
         if (alone && tally.Offline > 0) return Strings.LocalFiles.List.AllOffline(tally.Offline);
         var parts = new List<string>(3);

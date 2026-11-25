@@ -14,6 +14,10 @@
         "explained": "{count, plural, one {# nummer hier kan niet worden afgespeeld} other {# nummers hier kunnen niet worden afgespeeld}}: {reasons}.",
         "region": "{count, plural, one {eentje is niet beschikbaar in jouw land} other {# zijn niet beschikbaar in jouw land}}",
         "upcoming": "{count, plural, one {eentje is nog niet uit} other {# zijn nog niet uit}}",
+        "premium": "{count, plural, one {eentje vraagt Premium} other {# vragen Premium}}",
+        "allPremium": "{count, plural, one {het vraagt Premium} other {ze vragen Premium}}",
+        "gone": "{count, plural, one {eentje is niet beschikbaar} other {# zijn niet beschikbaar}}",
+        "allGone": "{count, plural, one {het is niet beschikbaar} other {ze zijn niet beschikbaar}}",
         "allRegion": "{count, plural, one {het is niet beschikbaar in jouw land} other {ze zijn niet beschikbaar in jouw land}}",
         "allUpcoming": "{count, plural, one {het is nog niet uit} other {ze zijn nog niet uit}}",
         "hide": "{count, plural, one {Verberg het} other {Verberg ze}}"
@@ -26,6 +30,10 @@
     "trackFacts": {
       "unavailableShort": "Niet beschikbaar",
       "unavailableReason": "Dit nummer kan niet worden afgespeeld",
+      "region": "Niet beschikbaar in jouw land",
+      "regionReason": "Dit nummer is niet beschikbaar in jouw land",
+      "premium": "Alleen Premium",
+      "premiumReason": "Voor dit nummer heb je Spotify Premium nodig",
       "localReason": "Een lokaal bestand: niet gevonden in je muziekmappen"
     },
     "artist": "ARTIEST",
