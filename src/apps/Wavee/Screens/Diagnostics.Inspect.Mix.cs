@@ -22,26 +22,23 @@ public static partial class Diagnostics
         {
             if (a.Has("curves"))
             {
-                // The Connect metadata curves Wavee writes for a preset and window: compared with the capture's accepted strings.
-                byte preset = (byte)a.Int("curves", 1);
-                uint window = (uint)a.Int("window", 2890);
-                int units = MixCurves.UnitsFor(window);
-                Span<CurveSegment> seg = stackalloc CurveSegment[4];
-                var entries = new List<(string Key, string Json)>();
-                byte[] buf = new byte[2048];
-                foreach (bool incoming in new[] { false, true })
-                    foreach (var (lane, laneKey) in new[] { (MixLane.Volume, "curves"), (MixLane.LowEq, "eq_low_gain_curves"), (MixLane.FilterCutoff, "filter_cutoff_curves"), (MixLane.FilterResonance, "filter_resonance_curves") })
-                    {
-                        int n = MixCurves.Segments(preset, lane, incoming, units, seg);
-                        if (n == 0) continue;
-                        int len = MixCurves.WriteJson(seg[..n], buf);
-                        entries.Add(("audio.fade_" + (incoming ? "in_" : "out_") + laneKey, System.Text.Encoding.UTF8.GetString(buf, 0, len)));
-                    }
+                // The Connect track metadata Wavee publishes for a preset (with `volume= eq= filter= fx=` overrides) at `bars=`, over a
+                // `window=` (A) and `inWindow=` (B): Playback.Mix.FadeMeta, the publisher's own call.
+                int preset = a.Int("curves", 1), bars = a.Int("bars", 0);
+                uint window = (uint)a.Int("window", 2890), inWindow = (uint)a.Int("inWindow", (int)window);
+                var o = new MixStyleOverrides(
+                    a.Has("volume") ? (MixVolumeStyle)a.Int("volume", 0) : null, a.Has("eq") ? (MixEqStyle)a.Int("eq", 0) : null,
+                    a.Has("filter") ? (MixFilterStyle)a.Int("filter", 0) : null, a.Has("fx") ? (MixFxStyle)a.Int("fx", 0) : null);
+                var plan = MixTiming.Of(MixSource.Saved, preset, in o, bars, 0, window, 0, inWindow);
+                var outMeta = new List<KeyValuePair<string, string>>();
+                var inMeta = new List<KeyValuePair<string, string>>();
+                Playback.Mix.FadeMeta(in plan, outMeta, inMeta);
                 return Inspect.Reply.Ok(id, name, w =>
                 {
-                    w.WriteNumber("units", units);
+                    w.WriteNumber("bars", bars);
+                    w.WriteNumber("unitBars", MixStyles.UnitBars(bars));
                     w.WriteStartArray("curves");
-                    foreach (var (k, j) in entries) { w.WriteStartObject(); w.WriteString("key", k); w.WriteString("value", j); w.WriteEndObject(); }
+                    foreach (var (k, j) in outMeta.Concat(inMeta)) { w.WriteStartObject(); w.WriteString("key", k); w.WriteString("value", j); w.WriteEndObject(); }
                     w.WriteEndArray();
                 });
             }
@@ -55,6 +52,7 @@ public static partial class Diagnostics
             }
             string show = a.Str("show", "dump");
             if (show == "semantics") return MixSemantics(id, name);
+            if (show == "render") return MixRenderCheck(id, name, a.Str("uri", Entities.LibrarySeed.MixUri));
             if (show == "cancel") return MixCancel(id, name, Math.Clamp(a.Float("at", 0.4f), 0.05f, 0.95f));
             if (a.Has("recipe") && show != "roundtrip")
             {
@@ -151,11 +149,18 @@ public static partial class Diagnostics
                     else
                     {
                         w.WriteNumber("preset", t.Preset);
+                        w.WriteString("chip", MixSeams.ChipText(in t));
+                        w.WriteString("styles", StylesText(t.Styles));
+                        w.WriteNumber("bars", t.Bars);
                         w.WriteNumber("outStartMs", t.OutStartMs);
                         w.WriteNumber("outDurMs", t.OutDurationMs);
                         w.WriteNumber("inStartMs", t.InStartMs);
                         w.WriteNumber("inDurMs", t.InDurationMs);
                         w.WriteNumber("audibleEndMs", t.AudibleEndMs);
+                        w.WriteString("rendered", Playback.MixRender.Lanes(in t, rendered: true));
+                        w.WriteString("skipped", Playback.MixRender.Lanes(in t, rendered: false));
+                        if (t.SpeedB != 1f) w.WriteNumber("speedB", t.SpeedB);
+                        if (t.Notes != MixPlanNotes.None) w.WriteString("notes", t.Notes.ToString());
                     }
                     w.WriteEndObject();
                 }
@@ -241,29 +246,29 @@ public static partial class Diagnostics
             }
             var lanes = new List<(string Preset, uint Window, string Side, int Shelf, int Sweep, float MinDb, float MaxDb, double BuildMs)>();
             const int rate = 48_000, points = FluentGpu.Media.GainEnvelope.TablePoints;
-            Span<CurveSegment> seg = stackalloc CurveSegment[4];
-            foreach (byte preset in new[] { (byte)MixPreset.Fade, (byte)MixPreset.Rise })
-                foreach (uint window in new uint[] { 3_000, 12_000 })
+            var eq = new float[points];
+            foreach (var (preset, bars, window) in new[] { (MixPresetId.Fade, 0, 3_000u), (MixPresetId.Rise, 0, 3_000u), (MixPresetId.Wave, 4, 7_400u),
+                                                          (MixPresetId.LowPassFilterFadeInOut, 2, 3_900u), (MixPresetId.Wave, 32, 30_000u) })
+            {
+                var t = MixTiming.Of(MixSource.Saved, (int)preset, default, bars, 0, window, 0, window);
+                int frames = (int)(window * (long)rate / 1000);
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                Playback.MixRender.Build(in t, rate, 0, frames, frames, out _, out _, out var outAuto, out var inAuto);
+                double buildMs = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+                foreach (bool incoming in new[] { false, true })
                 {
-                    var t = new MixTiming(MixSource.Saved, MixWhyNot.None, preset, 0, window, 0, window);
-                    int frames = (int)(window * (long)rate / 1000);
-                    long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-                    Playback.MixRender.Build(in t, rate, 0, frames, frames, out _, out _, out var outAuto, out var inAuto);
-                    double buildMs = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
-                    foreach (bool incoming in new[] { false, true })
-                    {
-                        float min = 0f, max = 0f;
-                        int n = MixCurves.Segments(preset, MixLane.LowEq, incoming, MixCurves.UnitsFor(window), seg);
-                        for (int i = 0; i < points && n > 0; i++)
+                    float min = 0f, max = 0f;
+                    if (Playback.MixRender.SampleLane(in t, MixCurveLane.EqLow, incoming, eq))
+                        foreach (float raw in eq)
                         {
-                            float db = MixCurves.EqGainDb(MixCurves.Evaluate(seg[..n], i / (float)(points - 1)));
+                            float db = MixCurves.EqGainDb(raw);
                             min = Math.Min(min, db);
                             max = Math.Max(max, db);
                         }
-                        var auto = incoming ? inAuto : outAuto;
-                        lanes.Add((((MixPreset)preset).ToString(), window, incoming ? "in" : "out", auto?.ShelfSteps ?? 0, auto?.SweepSteps ?? 0, min, max, buildMs));
-                    }
+                    var auto = incoming ? inAuto : outAuto;
+                    lanes.Add((preset + " bars=" + bars, window, incoming ? "in" : "out", auto?.ShelfSteps ?? 0, auto?.SweepSteps ?? 0, min, max, buildMs));
                 }
+            }
             return Inspect.Reply.Ok(id, name, w =>
             {
                 w.WriteNumber("eqKillDb", MixCurves.EqKillDb);
@@ -308,7 +313,7 @@ public static partial class Diagnostics
             const uint windowMs = 3_000;
             int frames = (int)(windowMs * (long)rate / 1000);
             long start = rate / 10;                                              // the overlap starts 100 ms into the pull
-            var plan = new MixTiming(MixSource.Saved, MixWhyNot.None, (byte)MixPreset.Fade, 0, windowMs, 0, windowMs);
+            var plan = MixTiming.Of(MixSource.Saved, (int)MixPresetId.Fade, default, 0, 0, windowMs, 0, windowMs);
             Playback.MixRender.Build(in plan, rate, start, frames, frames, out var outTable, out var inTable, out _, out _);
             long decide = start + (long)(at * frames);
             decide -= decide % pull;                                              // the cancel is decided between two blocks
@@ -381,6 +386,117 @@ public static partial class Diagnostics
                 }
                 return peaks;
             }
+        }
+
+        /// <summary>A resolved style set as <c>volume=CrossShape(6) eq=BassSwap(4) filter=None(0) fx=None(0) looping=None(0)</c>.</summary>
+        static string StylesText(in MixStyleSet s)
+            => "volume=" + s.Volume + "(" + (int)s.Volume + ") eq=" + s.Eq + "(" + (int)s.Eq + ") filter=" + s.Filter + "(" + (int)s.Filter
+             + ") fx=" + s.Fx + "(" + (int)s.Fx + ") looping=" + s.Looping + "(" + (int)s.Looping + ")";
+
+        /// <summary>`mix show=render`: the tables MixRender builds for the engine against what `mixstyles` prints for the same styles and
+        /// bars. Per planned pair of the playlist and for every preset 1..22 at bars 0, 1, 2, 4, 8, 16, 32: each lane the engine renders
+        /// (volume from Build's own gain tables, EQ low, cutoff and resonance from MixRender.SampleLane, the call Build makes), sampled
+        /// at the engine's 1025 points, against the `mixstyles` curve JSON for that lane evaluated in double precision. Prints the max
+        /// deviation, and any lane one side has and the other lacks.</summary>
+        string MixRenderCheck(int id, string name, string uri)
+        {
+            const int rate = 48_000;
+            var pairs = new List<string>();
+            var exceptions = new List<string>();
+            double pairMax = 0, presetMax = 0;
+            int pairLanes = 0, presetLanes = 0;
+            var eid = EntityId.Parse(uri.AsSpan());
+            if (eid.Kind == EntityKind.Playlist && Entities.Current.Playlists.TryGetSlot(eid, out int slot))
+            {
+                int count = Entities.Current.Edges.PlaylistTracks.Targets(slot).Length;
+                for (int i = 0; i + 1 < count; i++)
+                {
+                    var t = Playback.Mix.PlanListPair(slot, i, i + 1);
+                    if (!t.Mix) { pairs.Add(i + "→" + (i + 1) + " " + t.WhyNot); continue; }
+                    double dev = Compare(in t, i + "→" + (i + 1), ref pairLanes);
+                    pairMax = Math.Max(pairMax, dev);
+                    pairs.Add(i + "→" + (i + 1) + " " + t.Source + " preset=" + t.Preset + " bars=" + t.Bars + " out=" + t.OutDurationMs + "ms in=" + t.InDurationMs
+                        + "ms rendered=[" + Playback.MixRender.Lanes(in t, true) + "] maxDev=" + Num(dev)
+                        + " (mixstyles preset=" + t.Preset + " bars=" + t.Bars + " volume=" + (int)t.Styles.Volume + " eq=" + (int)t.Styles.Eq
+                        + " filter=" + (int)t.Styles.Filter + " fx=" + (int)t.Styles.Fx + ")");
+                }
+            }
+            foreach (int preset in Enumerable.Range(1, 22))
+                foreach (int bars in new[] { 0, 1, 2, 4, 8, 16, 32 })
+                {
+                    var t = MixTiming.Of(MixSource.Saved, preset, default, bars, 0, 8_000, 0, 5_000);
+                    presetMax = Math.Max(presetMax, Compare(in t, "preset " + preset + " bars=" + bars, ref presetLanes));
+                }
+            return Inspect.Reply.Ok(id, name, w =>
+            {
+                w.WriteString("pairs", pairLanes + " lanes over the playlist's planned pairs, max deviation " + Num(pairMax));
+                w.WriteString("presets", presetLanes + " lanes over presets 1-22 x bars 0,1,2,4,8,16,32, max deviation " + Num(presetMax));
+                w.WriteStartArray("pairRows");
+                foreach (var p in pairs) w.WriteStringValue(p);
+                w.WriteEndArray();
+                w.WriteStartArray("exceptions");
+                foreach (var e in exceptions) w.WriteStringValue(e);
+                w.WriteEndArray();
+            });
+
+            double Compare(in MixTiming t, string label, ref int lanes)
+            {
+                int outFrames = (int)(t.OutDurationMs * (long)rate / 1000), inFrames = (int)(t.InDurationMs * (long)rate / 1000);
+                Playback.MixRender.Build(in t, rate, 0, outFrames, inFrames, out var outTable, out var inTable, out _, out _);
+                var reference = StyleCurves(t.Styles, t.Bars);
+                var table = new float[MixStyles.TableSize];
+                double max = 0;
+                foreach (MixCurveLane lane in Enum.GetValues<MixCurveLane>())
+                {
+                    if (!Playback.MixRender.Renders(lane)) continue;
+                    foreach (bool incoming in new[] { false, true })
+                    {
+                        string side = incoming ? "in" : "out";
+                        bool mine = lane == MixCurveLane.Volume
+                            ? CopyVolume(in t, incoming ? inTable : outTable, incoming, table)
+                            : Playback.MixRender.SampleLane(in t, lane, incoming, table);
+                        int at = reference.FindIndex(c => c.Lane == lane.ToString() && c.Side == side);
+                        if (at < 0)
+                        {
+                            if (mine) exceptions.Add(label + " " + lane + "." + side + ": rendered, but mixstyles prints no curve");
+                            continue;
+                        }
+                        if (!mine) { exceptions.Add(label + " " + lane + "." + side + ": mixstyles prints a curve the render skips"); continue; }
+                        var curve = ParseConnectCurve(reference[at].Json);
+                        lanes++;
+                        for (int i = 0; i < table.Length; i++)
+                            max = Math.Max(max, Math.Abs(table[i] - EvalReference(curve, i / (double)(table.Length - 1))));
+                    }
+                }
+                return max;
+            }
+
+            // Build's gain table when the style moves the volume (a None volume leaves Build's flat unity: no mixstyles curve either).
+            static bool CopyVolume(in MixTiming t, float[] built, bool incoming, float[] into)
+            {
+                if (!Playback.MixRender.SampleLane(in t, MixCurveLane.Volume, incoming, into)) return false;
+                built.AsSpan().CopyTo(into);
+                return true;
+            }
+
+            static string Num(double v) => v.ToString("0.###E+0", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>A curve in the Connect metadata spelling (<see cref="MixCurves.WriteJson"/>) as the reference evaluator's segments.</summary>
+        static List<RefSegment> ParseConnectCurve(string json)
+        {
+            var list = new List<RefSegment>();
+            using var doc = JsonDocument.Parse(json);
+            foreach (var c in doc.RootElement.EnumerateArray())
+            {
+                var pts = c.GetProperty("fade_curve");
+                int n = pts.GetArrayLength(), i = 0;
+                var xs = new double[n];
+                var ys = new double[n];
+                foreach (var p in pts.EnumerateArray()) { xs[i] = NumOf(p, "x"); ys[i] = NumOf(p, "y"); i++; }
+                list.Add(new RefSegment(NumOf(c, "start_point"), NumOf(c, "end_point"), xs, ys));
+            }
+            return list;
         }
 
         /// <summary>A signal template <c>{1 name, 2 {1 lens, 2 uri, 3 item id}}</c> as one line: <c>set-transition {mix, uri,

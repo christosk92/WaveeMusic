@@ -64,19 +64,37 @@ public static class MixSeams
         return new Seam(edited ? (byte)2 : (byte)1, always ? ChipText(in t) : "");
     }
 
-    /// <summary>"Auto", "Fade · 4 s", "Rise · 2.9 s", or "Edited in Spotify" for a preset Wavee does not know.</summary>
+    /// <summary>"Auto", or the saved preset by Spotify's name and the overlap: "Fade · 4 s", "Wave · 7.4 s", "Mix · 3 s" for a
+    /// preset Spotify does not offer by name.</summary>
     public static string ChipText(in MixTiming t)
     {
         if (!t.Mix) return Loc.Get(Strings.Mix.NoMix);
         if (t.Source == MixSource.Auto) return Loc.Get(Strings.Mix.Auto);
-        string seconds = (t.OutDurationMs / 1000.0).ToString(t.OutDurationMs % 1000 < 50 ? "0" : "0.#", CultureInfo.InvariantCulture);
-        return t.Preset switch
-        {
-            (byte)MixPreset.Fade => Strings.Mix.FadeChip(seconds),
-            (byte)MixPreset.Rise => Strings.Mix.RiseChip(seconds),
-            _ => Loc.Get(Strings.Mix.EditedInSpotify),
-        };
+        return StyleText(in t);
     }
+
+    /// <summary>"Fade · 4 s": the plan's preset by Spotify's name (<see cref="PresetName"/>) and its overlap.</summary>
+    public static string StyleText(in MixTiming t)
+    {
+        string seconds = (t.OutDurationMs / 1000.0).ToString(t.OutDurationMs % 1000 < 50 ? "0" : "0.#", CultureInfo.InvariantCulture);
+        return Strings.Mix.PresetChip(PresetName(t.Preset), seconds);
+    }
+
+    /// <summary>Spotify's UI name of a preset id (recipe 2.1) for the nine it offers (Fade, Blend, Rise, Melt, Slam, Wave, Dissolve,
+    /// Surge, Afterglow); "Mix" for an internal id or one the table does not know.</summary>
+    public static string PresetName(int presetId) => Loc.Get((MixPresetId)presetId switch
+    {
+        MixPresetId.Fade => Strings.Mix.Preset.Fade,
+        MixPresetId.Blend => Strings.Mix.Preset.Blend,
+        MixPresetId.Rise => Strings.Mix.Preset.Rise,
+        MixPresetId.Melt => Strings.Mix.Preset.Melt,
+        MixPresetId.Slam => Strings.Mix.Preset.Slam,
+        MixPresetId.Wave => Strings.Mix.Preset.Wave,
+        MixPresetId.Dissolve => Strings.Mix.Preset.Dissolve,
+        MixPresetId.Surge => Strings.Mix.Preset.Surge,
+        MixPresetId.Afterglow => Strings.Mix.Preset.Afterglow,
+        _ => Strings.Mix.Preset.Mix,
+    });
 
     /// <summary>The strip's height inside the row: one caption line and a little air, so the handle and the chip sit inside the row's
     /// bounds (the row clips; a strip shorter than the caption line cut the handle's descenders).</summary>

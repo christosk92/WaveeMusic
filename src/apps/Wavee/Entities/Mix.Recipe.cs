@@ -8,7 +8,7 @@
 //   Overlap { 1/2 trackA/BRowId (16 hex), 3 startAMs, 4 startBMs, 5 durationMs, 6/7 speedA/B float, 8 durationBars (always
 //             written), 9 isBeatmatched, 10/11 trackA/BUri, 12/13 trackA/BPlayableUri, 14/15 playable beats hash (kind 217's
 //             analysis id), 16/17 bpmA/B float, 18/19 itemSpeedA/B double }
-//   Preset { 1 id (MixPreset), 2 type (MixPresetType), 3/4/5/12/15/16 volume/eq/filterFx/fx/jogwheel/looping style override
+//   Preset { 1 id (MixPresetId), 2 type (MixPresetType), 3/4/5/12/15/16 volume/eq/filterFx/fx/jogwheel/looping style override
 //            {1 id}, 6-11, 13, 14, 17 curve and block overrides }
 //
 // LOSSLESS BY PATCHING. The struct models the scalar fields and the six style-override ids; the curve and block overrides
@@ -61,7 +61,7 @@ public struct MixRecipe
     public double ItemSpeedA, ItemSpeedB;
 
     // ── 2 Preset ───────────────────────────────────────────────────────────────────────────────────────────────────────
-    /// <summary>2.1: the preset id (<see cref="MixPreset"/>); 0 (absent) = no transition.</summary>
+    /// <summary>2.1: the preset id (<see cref="MixPresetId"/>); 0 (absent) = no transition.</summary>
     public byte Preset;
     /// <summary>2.2: the preset's type.</summary>
     public MixPresetType PresetType;
@@ -84,7 +84,17 @@ public struct MixRecipe
 
     /// <summary>The official "no transition": no preset id (the enum's None). It also carries a 1 ms overlap and no out-point
     /// (A plays to its end, B from its start); the preset id alone decides, a recipe with no preset is never played as a fade.</summary>
-    public readonly bool IsNoTransition => Preset == (byte)MixPreset.None;
+    public readonly bool IsNoTransition => Preset == (byte)MixPresetId.None;
+
+    /// <summary>The six style overrides as the style table takes them (<see cref="MixStyles.Resolve"/>): an absent field is null
+    /// (the preset's own style holds), an override to id 0 is that ingredient's None.</summary>
+    public readonly MixStyleOverrides StyleOverrides() => new(
+        VolumeStyle is { } v ? (MixVolumeStyle)(sbyte)v : null,
+        EqStyle is { } e ? (MixEqStyle)(sbyte)e : null,
+        FilterFxStyle is { } f ? (MixFilterStyle)(sbyte)f : null,
+        FxStyle is { } x ? (MixFxStyle)(sbyte)x : null,
+        JogwheelStyle,
+        LoopingStyle is { } l ? (MixLoopingStyle)(sbyte)l : null);
 
     /// <summary>Decode the raw protobuf (already un-base64'd). False when it carries no timing at all.</summary>
     public static bool TryDecode(ReadOnlySpan<byte> proto, out MixRecipe recipe)

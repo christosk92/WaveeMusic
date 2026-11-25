@@ -139,9 +139,7 @@ internal sealed class MixTransitionRow(Playlist playlist, RowScope scope, Signal
             ulong a = MixRecipe.Hex64(Entities.Strings.Resolve(payload[i].ItemId)), b = MixRecipe.Hex64(Entities.Strings.Resolve(payload[i + 1].ItemId));
             string state = MixOverrides.TryGet(_p.Id.Text, a, b, out _) ? Loc.Get(Strings.Mix.StateThisPc)
                          : t.Source == MixSource.Saved ? Loc.Get(Strings.Mix.StateEdited) : Loc.Get(Strings.Mix.Auto);
-            string style = (t.Preset == (byte)MixPreset.Rise ? "Rise" : "Fade") + " · "
-                         + (t.OutDurationMs / 1000.0).ToString("0.#", CultureInfo.InvariantCulture) + " s";
-            if (t.Preset is not ((byte)MixPreset.Fade or (byte)MixPreset.Rise)) style = Loc.Get(Strings.Mix.EditedInSpotify);
+            string style = MixSeams.StyleText(in t);
             // The picture's overlap share: the window against a 16 s scale (the longest a transition may be).
             return new Face(from, to, style, state, Math.Clamp(t.OutDurationMs / 16_000f, 0.05f, 1f), false);
         }).Value;

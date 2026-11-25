@@ -262,7 +262,7 @@ public static partial class Playback
             EntityId incoming;
             lock (s_gate) incoming = s_joinId;
             Timeline.SetTransition(incoming, startFrame, startFrame + outFrames, Timeline.Master.Outgoing);
-            Log.Info("audio", $"[mix] scheduled source={plan.Source} preset={plan.Preset} out={plan.OutStartMs} outDur={plan.OutDurationMs} "
+            Log.Info("audio", $"[mix] scheduled source={plan.Source} preset={plan.Preset} bars={plan.Bars} out={plan.OutStartMs} outDur={plan.OutDurationMs} "
                 + $"in={plan.InStartMs} inDur={plan.InDurationMs} start={startFrame} lead={startFrame - sess.SampleClock} "
                 + $"auto={(outAuto is null ? "-" : "out")}{(inAuto is null ? "" : "+in")}");
             return true;
@@ -339,25 +339,66 @@ public static partial class Playback
         }
     }
 
-    /// <summary>MixTiming → the engine's inputs: two gain tables and two automations, sampled from the preset's curves
-    /// (MixCurves) and mapped to dB, Hz and Q by the official client's value map (MixCurves.EqGainDb / Sweep). Pump thread, once
-    /// per join (allocates its tables).</summary>
+    /// <summary>MixTiming → the engine's inputs: two gain tables and two automations, sampled from the plan's styles (the style
+    /// table, <see cref="MixStyles"/>, at the plan's bars) and mapped to dB, Hz and Q by the official client's value map
+    /// (MixCurves.EqGainDb / Sweep). A's tables span its window (outFrames), B's its own (inFrames), from the same start frame.
+    /// The pinned engine renders four lanes (<see cref="Renders"/>); the others are resolved in the plan and listed by
+    /// <see cref="Lanes"/> until M4's lanes land. Pump thread, once per join (allocates its tables).</summary>
     public static class MixRender
     {
         public static void Build(in MixTiming t, int sampleRate, long startFrame, int outFrames, int inFrames,
             out float[] outTable, out float[] inTable, out VoiceAutomation? outAuto, out VoiceAutomation? inAuto)
         {
             int n = GainEnvelope.TablePoints;
-            byte preset = t.Preset == (byte)MixPreset.Rise ? (byte)MixPreset.Rise : (byte)MixPreset.Fade;   // unknown ids play as Fade
-            Span<CurveSegment> seg = stackalloc CurveSegment[4];
-            int outUnits = MixCurves.UnitsFor(t.OutDurationMs), inUnits = MixCurves.UnitsFor(t.OutDurationMs);
             outTable = new float[n];
             inTable = new float[n];
-            MixCurves.Sample(seg[..MixCurves.Segments(preset, MixLane.Volume, false, outUnits, seg)], outTable);
-            MixCurves.Sample(seg[..MixCurves.Segments(preset, MixLane.Volume, true, inUnits, seg)], inTable);
-            outAuto = Automation(preset, false, outUnits, sampleRate, startFrame, outFrames, seg);
-            inAuto = Automation(preset, true, inUnits, sampleRate, startFrame, inFrames, seg);
+            // A volume style of None (only an override can say so) leaves both decks at full level: A ends at its window's end.
+            if (!SampleLane(in t, MixCurveLane.Volume, false, outTable)) outTable.AsSpan().Fill(1f);
+            if (!SampleLane(in t, MixCurveLane.Volume, true, inTable)) inTable.AsSpan().Fill(1f);
+            outAuto = Automation(in t, false, sampleRate, startFrame, outFrames);
+            inAuto = Automation(in t, true, sampleRate, startFrame, inFrames);
         }
+
+        /// <summary>One lane's raw curve (0..1, the style table's units) sampled evenly over its side's window into
+        /// <paramref name="table"/>: what <see cref="Build"/> feeds the engine before the value map. False when the plan's styles
+        /// leave the lane alone (the table is untouched).</summary>
+        public static bool SampleLane(in MixTiming t, MixCurveLane lane, bool incoming, Span<float> table)
+            => MixStyles.Sample(t.Styles, lane, incoming, t.Bars, table);
+
+        /// <summary>The lanes the pinned engine renders: the gain envelope (volume), the low shelf (EQ low) and the sweep (filter
+        /// cutoff and resonance). EQ mid and high (E5), noise colour (E6), the effects' dry/wet (E7) and looping (E8) wait for M4.</summary>
+        public static bool Renders(MixCurveLane lane)
+            => lane is MixCurveLane.Volume or MixCurveLane.EqLow or MixCurveLane.FilterCutoff or MixCurveLane.FilterResonance;
+
+        /// <summary>The lanes the plan's styles move, as <c>volume.out eqLow.in …</c>: the ones the engine renders
+        /// (<paramref name="rendered"/>) or the ones it skips (and <c>looping</c> when the looping style writes blocks). "" when
+        /// none. Diagnostics and the once-per-plan log; allocates.</summary>
+        public static string Lanes(in MixTiming t, bool rendered)
+        {
+            if (!t.Mix) return "";
+            var sb = new System.Text.StringBuilder();
+            Span<CurveSegment> seg = stackalloc CurveSegment[MixStyles.MaxSegments];
+            foreach (MixCurveLane lane in Enum.GetValues<MixCurveLane>())
+            {
+                if (Renders(lane) != rendered) continue;
+                foreach (bool incoming in (ReadOnlySpan<bool>)[false, true])
+                {
+                    if (MixStyles.Segments(t.Styles, lane, incoming, t.Bars, seg) == 0) continue;
+                    if (sb.Length > 0) sb.Append(' ');
+                    sb.Append(LaneName(lane)).Append(incoming ? ".in" : ".out");
+                }
+            }
+            if (!rendered && t.Styles.Looping is not (MixLoopingStyle.None or MixLoopingStyle.Unknown))
+                sb.Append(sb.Length > 0 ? " " : "").Append("looping(").Append(t.Styles.Looping).Append(')');
+            return sb.ToString();
+        }
+
+        static string LaneName(MixCurveLane lane) => lane switch
+        {
+            MixCurveLane.Volume => "volume", MixCurveLane.EqLow => "eqLow", MixCurveLane.EqMid => "eqMid", MixCurveLane.EqHigh => "eqHigh",
+            MixCurveLane.FilterCutoff => "cutoff", MixCurveLane.FilterResonance => "resonance", MixCurveLane.NoiseColor => "noise",
+            MixCurveLane.EchoDryWet => "echo", MixCurveLane.ReverbDryWet => "reverb", _ => "delay",
+        };
 
         /// <summary>The shelf lane is sampled this many times denser than a gain table (see <see cref="Automation"/>).</summary>
         public const int ShelfDensity = 4;
@@ -388,34 +429,28 @@ public static partial class Playback
             return false;
         }
 
-        static VoiceAutomation? Automation(byte preset, bool incoming, int units, int rate, long start, int frames, Span<CurveSegment> seg)
+        static VoiceAutomation? Automation(in MixTiming t, bool incoming, int rate, long start, int frames)
         {
             int n = GainEnvelope.TablePoints;
-            int eq = MixCurves.Segments(preset, MixLane.LowEq, incoming, units, seg);
-            float[]? shelf = null;
-            if (eq > 0)
-            {
-                // The client's EQ map: −48 dB (kill) up to +6 dB. The lane places its steps (at most VoiceAutomation.MaxSteps) by
-                // equal dB change, but only ON the points it is given, and the bass swap is 1/32 or 1/64 of the window: at the gain
-                // table's 1,025 points that is 32 or 16 points for a 48 dB swing (3 dB a step). Four times as many points give
-                // the placer 64-128 inside the swap.
-                shelf = new float[(n - 1) * ShelfDensity + 1];
-                MixCurves.Sample(seg[..eq], shelf);
+            // The client's EQ map: −48 dB (kill) up to +6 dB. The lane places its steps (at most VoiceAutomation.MaxSteps) by equal dB
+            // change, but only ON the points it is given, and a bass swap is 1/(16 × bars) of the window (1/32 at 2 bars, 1/512 at 32):
+            // at the gain table's 1,025 points that is 32 points or fewer for a 48 dB swing. Four times as many points give the placer
+            // four times the resolution inside the swap.
+            float[]? shelf = new float[(n - 1) * ShelfDensity + 1];
+            if (SampleLane(in t, MixCurveLane.EqLow, incoming, shelf))
                 for (int i = 0; i < shelf.Length; i++) shelf[i] = MixCurves.EqGainDb(shelf[i]);
-            }
-            Span<CurveSegment> res = stackalloc CurveSegment[4];
-            int rc = MixCurves.Segments(preset, MixLane.FilterResonance, incoming, units, res);
-            int cut = MixCurves.Segments(preset, MixLane.FilterCutoff, incoming, units, seg);
+            else shelf = null;
             SweepPoint[]? sweep = null;
-            if (cut > 0)
+            var cutoff = new float[n];
+            if (SampleLane(in t, MixCurveLane.FilterCutoff, incoming, cutoff))
             {
+                // Resonance has no value map in the client's table; a style that moves the cutoff holds it flat at 0.5.
+                var resonance = new float[n];
+                if (!SampleLane(in t, MixCurveLane.FilterResonance, incoming, resonance)) resonance.AsSpan().Fill(0.5f);
                 sweep = new SweepPoint[n];
                 for (int i = 0; i < n; i++)
                 {
-                    float x = i / (float)(n - 1);
-                    float y = MixCurves.Evaluate(seg[..cut], x);
-                    float r = rc > 0 ? MixCurves.Evaluate(res[..rc], x) : 0.5f;
-                    var (mode, hz, q) = MixCurves.Sweep(y, r);
+                    var (mode, hz, q) = MixCurves.Sweep(cutoff[i], resonance[i]);
                     sweep[i] = new SweepPoint(mode, hz, q);
                 }
             }

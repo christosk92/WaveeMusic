@@ -2,9 +2,9 @@
 //
 // One mixed playlist for --fake and the inspector, shaped like a captured mixed list (report §3.1, §3.3): owned by
 // the account, the mix lens applied, ten mixable rows whose last pair runs into a LOCAL file (not-mixable, reason
-// entity-kind), three stored recipes (a Rise, a beatmatched Fade carrying fields this build does not know, a "no
-// transition"), synthetic kind-217 grids from each track's seeded tempo and kind-28 cue points. Every value is made up
-// here. Route: pl:spotify:playlist:plmix.
+// entity-kind), seven stored recipes (Rise, a beatmatched Slam with an EQ override carrying fields this build does not know,
+// preset 19 at 2 bars, Wave at 4 bars, a "no transition", a Fade and a Dissolve), synthetic kind-217 grids from each
+// track's seeded tempo and kind-28 cue points. Every value is made up here. Route: pl:spotify:playlist:plmix.
 
 using System.Globalization;
 
@@ -72,26 +72,33 @@ public static partial class Entities
 
             for (int k = 0; k < n; k++) SeedAnalysis(targets[k], k);
 
-            // Three edited pairs, every byte made up here (no captured recipe):
+            // Seven edited pairs, every byte made up here (no captured recipe); 3 → 4 and 8 → 9 stay Auto, 9 → 10 runs into the
+            // local file:
             //   0 → 1  Rise (preset 3), as Wavee writes a recipe of its own: a 3000 ms window ending 1 ms before row 0's file does.
-            //   1 → 2  a beatmatched Fade over 2 bars with an EQ override, written field by field as another client would: a
-            //          curve override and a field this build does not know at every level, which a decode → encode must keep.
+            //   1 → 2  Slam (11), beatmatched over 2 bars with an EQ override to style 15, written field by field as another client
+            //          would: a curve override and a field this build does not know at every level, which a decode → encode must keep.
+            //   2 → 3  preset 19 (internal), beatmatched over 2 bars.
+            //   4 → 5  Wave (17), beatmatched over 4 bars.
             //   5 → 6  "no transition": no preset id, a 1 ms overlap, no out-point (A plays to its end, B from its start).
+            //   6 → 7  Fade (1), not beatmatched, a 4.2 s overlap.
+            //   7 → 8  Dissolve (20), not beatmatched: an echo the engine cannot render yet.
             var stored = new Dictionary<ulong, MixTransition>();
-            var a = new global::Wavee.Track(targets[0]);
-            var rise = PairRecipe(0, targets);
-            rise.OutStartMs = (uint)Math.Max(0, a.DurationMs - 3_001);
-            rise.OverlapMs = 3_000;
-            rise.Preset = (byte)MixPreset.Rise;
-            rise.PresetType = MixPresetType.Fade;
-            rise.IsOverlapOverride = rise.IsPresetIdOverride = true;
+            var rise = Unmatched(0, targets, MixPresetId.Rise, 1, 3_000);
             Store(stored, in rise, MixRecipe.EncodeToArray(in rise, default), 0);
             Store(stored, BeatmatchedRaw(targets), 1);
+            var preset19 = Matched(2, targets, MixPresetId.LowPassFilterFadeInOut, 2);
+            Store(stored, in preset19, MixRecipe.EncodeToArray(in preset19, default), 2);
+            var wave = Matched(4, targets, MixPresetId.Wave, 4);
+            Store(stored, in wave, MixRecipe.EncodeToArray(in wave, default), 4);
             var none = PairRecipe(5, targets);
             none.OverlapMs = 1;
             none.PresetType = MixPresetType.Fade;
             none.IsPresetIdOverride = true;
             Store(stored, in none, MixRecipe.EncodeToArray(in none, default), 5);
+            var fade = Unmatched(6, targets, MixPresetId.Fade, 1_300, 4_200);
+            Store(stored, in fade, MixRecipe.EncodeToArray(in fade, default), 6);
+            var dissolve = Unmatched(7, targets, MixPresetId.Dissolve, 2_400, 6_000);
+            Store(stored, in dissolve, MixRecipe.EncodeToArray(in dissolve, default), 7);
             MixData.Replace(p.Slot, stored);
 
             // The signal templates a lens read carries: attribute 14 on every mixable row, the list's mix-state entry, and the
@@ -135,7 +142,7 @@ public static partial class Entities
             string[] uris = [TrackUri(s_mixPool[0]), TrackUri(s_mixPool[1]), LocalTrackUri(0)];
             var recipe = new MixRecipe
             {
-                FromItemId = ids[0], ToItemId = ids[1], OutStartMs = 200_000, OverlapMs = 3_000, Preset = (byte)MixPreset.Rise,
+                FromItemId = ids[0], ToItemId = ids[1], OutStartMs = 200_000, OverlapMs = 3_000, Preset = (byte)MixPresetId.Rise,
                 PresetType = MixPresetType.Fade, TrackA = uris[0], TrackB = uris[1], PlayableA = uris[0], PlayableB = uris[1],
                 SpeedA = 1f, SpeedB = 1f, ItemSpeedA = 1.0, ItemSpeedB = 1.0, IsOverlapOverride = true, IsPresetIdOverride = true,
             };
@@ -245,9 +252,45 @@ public static partial class Entities
 
         static ulong FakeItemId(int k) => MixRecipe.Hex64(Entities.Strings.Resolve(ItemIdFor(200, k)));
 
-        /// <summary>Row 1 → row 2 as a foreign client would store a beatmatched Fade (type 3) over 2 bars: B stretched to A's tempo,
-        /// an EQ override to style 15, a volume-out curve override, and an unknown field in the top message, the Overlap, the Preset
-        /// and the EQ override. Written by hand, so nothing of Wavee's encoder shapes it.</summary>
+        /// <summary>Row k → k + 1 saved as a non-beatmatched <paramref name="preset"/> (type FADE, bars 0): an overlap of
+        /// <paramref name="overlapMs"/> that ends <paramref name="endGapMs"/> before row k's end, B from its start.</summary>
+        static MixRecipe Unmatched(int k, ReadOnlySpan<int> targets, MixPresetId preset, int endGapMs, uint overlapMs)
+        {
+            var r = PairRecipe(k, targets);
+            var a = new global::Wavee.Track(targets[k]);
+            r.OutStartMs = (uint)Math.Max(0, a.DurationMs - endGapMs - overlapMs);
+            r.OverlapMs = overlapMs;
+            r.Preset = (byte)preset;
+            r.PresetType = MixPresetType.Fade;
+            r.IsOverlapOverride = r.IsPresetIdOverride = true;
+            return r;
+        }
+
+        /// <summary>Row k → k + 1 saved as a beatmatched <paramref name="preset"/> over <paramref name="bars"/> bars (type
+        /// BEATMATCHED_FADE): the overlap is that many bars of A's seeded tempo, from a bar 20 s before A's end into B's third bar,
+        /// B stretched to A's tempo (both recipe tempos then name A's, as a matched pair records them).</summary>
+        static MixRecipe Matched(int k, ReadOnlySpan<int> targets, MixPresetId preset, int bars)
+        {
+            var r = PairRecipe(k, targets);
+            var a = new global::Wavee.Track(targets[k]);
+            float bpm = r.BpmA > 0 ? r.BpmA : 120f;
+            double periodA = 60_000.0 / bpm, periodB = 60_000.0 / (r.BpmB > 0 ? r.BpmB : bpm);
+            r.OverlapMs = (uint)Math.Round(bars * 4 * periodA);
+            r.OutStartMs = (uint)(180 + Math.Floor((a.DurationMs - 20_000 - 180) / (4 * periodA)) * 4 * periodA);
+            r.InStartMs = (uint)(180 + 8 * periodB);
+            r.SpeedB = r.BpmB > 0 ? bpm / r.BpmB : 1f;
+            r.BpmB = bpm;
+            r.DurationBars = bars;
+            r.IsBeatmatched = true;
+            r.Preset = (byte)preset;
+            r.PresetType = MixPresetType.BeatmatchedFade;
+            r.IsOverlapOverride = r.IsPresetIdOverride = true;
+            return r;
+        }
+
+        /// <summary>Row 1 → row 2 as a foreign client would store a beatmatched Slam (preset 11, type 3) over 2 bars: B stretched to
+        /// A's tempo, an EQ override to style 15, a volume-out curve override, and an unknown field in the top message, the Overlap,
+        /// the Preset and the EQ override. Written by hand, so nothing of Wavee's encoder shapes it.</summary>
         static byte[] BeatmatchedRaw(ReadOnlySpan<int> targets)
         {
             var id = PairRecipe(1, targets);
@@ -275,7 +318,7 @@ public static partial class Entities
             w.UAlways(25, 7);                                   // unknown to this build
             w.Close(overlapMsg);
             int preset = w.Open(2);
-            w.UAlways(1, (ulong)MixPreset.Fade);
+            w.UAlways(1, (ulong)MixPresetId.Slam);
             w.UAlways(2, (ulong)MixPresetType.BeatmatchedFade);
             int eq = w.Open(4);
             w.UAlways(1, 15);                                   // BassFadeOut

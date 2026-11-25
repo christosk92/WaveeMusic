@@ -110,8 +110,14 @@ public static partial class Playback
             CurrentNext = key.Next;
             Changed.Value = Changed.Peek() + 1;
             if (timing.Mix)
-                Log.Info("audio", $"[mix] plan source={timing.Source} preset={timing.Preset} out={timing.OutStartMs} outDur={timing.OutDurationMs} "
-                    + $"in={timing.InStartMs} inDur={timing.InDurationMs}");
+            {
+                Log.Info("audio", $"[mix] plan source={timing.Source} preset={timing.Preset} bars={timing.Bars} out={timing.OutStartMs} outDur={timing.OutDurationMs} "
+                    + $"in={timing.InStartMs} inDur={timing.InDurationMs} styles={timing.Styles.Volume}/{timing.Styles.Eq}/{timing.Styles.Filter}/{timing.Styles.Fx}"
+                    + (timing.Notes != MixPlanNotes.None ? " notes=" + timing.Notes : ""));
+                // Once per planned join: what the styles move that the pinned engine cannot render yet (M4's lanes).
+                string skipped = MixRender.Lanes(in timing, rendered: false);
+                if (skipped.Length > 0) Log.Info("audio", "[mix] lanes not rendered: " + skipped);
+            }
             else if (timing.WhyNot is not (MixWhyNot.None or MixWhyNot.NotMixed))
                 Log.Info("audio", "[mix] base hand-off why=" + timing.WhyNot);
             Audio.SetMix(s.CurrentId, key.Next, next, in timing);
@@ -181,30 +187,39 @@ public static partial class Playback
             var t = Current;
             var outMeta = new List<KeyValuePair<string, string>>(8);
             var inMeta = new List<KeyValuePair<string, string>>(8);
-            if (t.Mix)
-            {
-                string Num(long v) => v.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                outMeta.Add(new("audio.fade_out_start_time", Num(t.OutStartMs)));
-                outMeta.Add(new("audio.fade_out_duration", Num(t.OutDurationMs)));
-                inMeta.Add(new("audio.fade_in_start_time", Num(t.InStartMs)));
-                inMeta.Add(new("audio.fade_in_duration", Num(t.InDurationMs)));
-                inMeta.Add(new("audio.fade_overlap", Num(t.OutDurationMs)));
-                byte preset = t.Preset == (byte)MixPreset.Rise ? (byte)MixPreset.Rise : (byte)MixPreset.Fade;
-                int units = MixCurves.UnitsFor(t.OutDurationMs);
-                Span<CurveSegment> seg = stackalloc CurveSegment[4];
-                byte[] buf = new byte[1024];
-                foreach (var (lane, laneKey) in new[] { (MixLane.Volume, "curves"), (MixLane.LowEq, "eq_low_gain_curves"),
-                                                        (MixLane.FilterCutoff, "filter_cutoff_curves"), (MixLane.FilterResonance, "filter_resonance_curves") })
-                {
-                    int n = MixCurves.Segments(preset, lane, false, units, seg);
-                    if (n > 0) outMeta.Add(new("audio.fade_out_" + laneKey, System.Text.Encoding.UTF8.GetString(buf, 0, MixCurves.WriteJson(seg[..n], buf))));
-                    n = MixCurves.Segments(preset, lane, true, units, seg);
-                    if (n > 0) inMeta.Add(new("audio.fade_in_" + laneKey, System.Text.Encoding.UTF8.GetString(buf, 0, MixCurves.WriteJson(seg[..n], buf))));
-                }
-                outMeta.Add(new("automix.fade_out_cuepoint.position", Num(t.AudibleEndMs)));
-                outMeta.Add(new("automix.mode", "auto"));
-            }
+            FadeMeta(in t, outMeta, inMeta);
             return s_wire = new MixWire(true, p.MixFlags, CurrentNext, outMeta.ToArray(), inMeta.ToArray());
+        }
+
+        /// <summary>The lanes the official player was seen publishing (protocol §6.3), the ones the publisher writes.</summary>
+        static readonly MixCurveLane[] s_wireLanes = [MixCurveLane.Volume, MixCurveLane.EqLow, MixCurveLane.FilterCutoff, MixCurveLane.FilterResonance];
+
+        /// <summary>A plan's Connect track metadata (protocol §6.3): the playing track's fade-out keys into <paramref name="outMeta"/>,
+        /// the next track's fade-in keys into <paramref name="inMeta"/>, each lane's curve as the style table spells it at the plan's
+        /// bars (<see cref="MixCurves.WriteJson"/>). Nothing for a refused plan (a "none" seam carries no fade key). The publisher
+        /// and the inspector's <c>mix curves</c> call it alike.</summary>
+        public static void FadeMeta(in MixTiming t, List<KeyValuePair<string, string>> outMeta, List<KeyValuePair<string, string>> inMeta)
+        {
+            if (!t.Mix) return;
+            static string Num(long v) => v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            outMeta.Add(new("audio.fade_out_start_time", Num(t.OutStartMs)));
+            outMeta.Add(new("audio.fade_out_duration", Num(t.OutDurationMs)));
+            inMeta.Add(new("audio.fade_in_start_time", Num(t.InStartMs)));
+            inMeta.Add(new("audio.fade_in_duration", Num(t.InDurationMs)));
+            inMeta.Add(new("audio.fade_overlap", Num(t.OutDurationMs)));
+            Span<CurveSegment> seg = stackalloc CurveSegment[MixStyles.MaxSegments];
+            byte[] buf = new byte[160 * MixStyles.MaxSegments];
+            foreach (var lane in s_wireLanes)
+            {
+                string? key = MixStyles.ConnectKey(lane);
+                if (key is null) continue;
+                int n = MixStyles.Segments(t.Styles, lane, false, t.Bars, seg);
+                if (n > 0) outMeta.Add(new("audio.fade_out_" + key, System.Text.Encoding.UTF8.GetString(buf, 0, MixCurves.WriteJson(seg[..n], buf))));
+                n = MixStyles.Segments(t.Styles, lane, true, t.Bars, seg);
+                if (n > 0) inMeta.Add(new("audio.fade_in_" + key, System.Text.Encoding.UTF8.GetString(buf, 0, MixCurves.WriteJson(seg[..n], buf))));
+            }
+            outMeta.Add(new("automix.fade_out_cuepoint.position", Num(t.AudibleEndMs)));
+            outMeta.Add(new("automix.mode", "auto"));
         }
 
         static void EnsureAnalysis(EntityRef row)
@@ -392,8 +407,8 @@ public static partial class Playback
             // 6. B's curves run over the same beat count in B's grid.
             long inDur = gridB && beats > 0 ? (long)(beats * PeriodNear(beatsB, inStart) + 0.5f) : overlap;
             if (inStart + inDur > durB) { inStart = 0; inDur = Math.Min(inDur, durB); }
-            return new MixTiming(MixSource.Auto, MixWhyNot.None, (byte)MixPreset.Fade,
-                (uint)outStart, (uint)overlap, (uint)inStart, (uint)Math.Max(1, inDur));
+            return MixTiming.Of(MixSource.Auto, (int)MixPresetId.Fade, default, 0,
+                (uint)outStart, (uint)overlap, (uint)inStart, (uint)Math.Max(1, inDur), 1f, a.TempoX10 / 10f);
         }
 
         static MixTiming Saved(in MixRecipe r, long durA, long durB, ReadOnlySpan<uint> beatsA, ReadOnlySpan<uint> beatsB, bool gridA, bool gridB)
@@ -411,7 +426,8 @@ public static partial class Playback
                 if (MathF.Abs(beats - n) <= 0.5f) inDur = (long)(n * PeriodNear(beatsB, inStart) + 0.5f);
             }
             if (inStart + inDur > durB) inDur = Math.Max(1, durB - inStart);
-            return new MixTiming(MixSource.Saved, MixWhyNot.None, r.Preset, (uint)outStart, (uint)overlap, (uint)inStart, (uint)inDur);
+            return MixTiming.Of(MixSource.Saved, r.Preset, r.StyleOverrides(), r.DurationBars, (uint)outStart, (uint)overlap, (uint)inStart, (uint)inDur,
+                r.SpeedB > 0 ? r.SpeedB : 1f, r.BpmA);
         }
 
         /// <summary>The mean beat period over up to 8 beats around <paramref name="ms"/>.</summary>

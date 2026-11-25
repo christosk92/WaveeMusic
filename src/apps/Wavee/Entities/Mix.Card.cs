@@ -83,8 +83,8 @@ public static class MixEdit
         if (!t.Mix) return -1;
         return t.Preset switch
         {
-            (byte)MixPreset.Rise => (int)MixStyle.Lift,
-            (byte)MixPreset.Fade => t.OutDurationMs <= QuickMaxMs ? (int)MixStyle.Quick : (int)MixStyle.Smooth,
+            (byte)MixPresetId.Rise => (int)MixStyle.Lift,
+            (byte)MixPresetId.Fade => t.OutDurationMs <= QuickMaxMs ? (int)MixStyle.Quick : (int)MixStyle.Smooth,
             _ => -1,
         };
     }
@@ -198,7 +198,7 @@ public static class MixEdit
         recipe.OutStartMs = (uint)Math.Max(0, end - overlap);
         recipe.InStartMs = basis.InStartMs;
         recipe.OverlapMs = overlap;
-        recipe.Preset = style == (int)MixStyle.Lift ? (byte)MixPreset.Rise : (byte)MixPreset.Fade;
+        recipe.Preset = style == (int)MixStyle.Lift ? (byte)MixPresetId.Rise : (byte)MixPresetId.Fade;
         recipe.IsOverlapOverride = recipe.IsPresetIdOverride = true;   // both picked by hand
         MixOverrides.Set(pair.PlaylistUri, pair.ItemA, pair.ItemB, MixOverrideKind.Recipe, in recipe, raw);
         Repaint(playlistSlot);

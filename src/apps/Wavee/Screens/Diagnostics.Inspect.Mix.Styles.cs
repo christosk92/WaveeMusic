@@ -35,19 +35,7 @@ public static partial class Diagnostics
                 null,
                 a.Has("looping") ? (MixLoopingStyle)a.Int("looping", 0) : null);
             var set = MixStyles.Resolve(preset, in o);
-            var curves = new List<(string Key, string Lane, string Side, int Segments, string Json)>();
-            Span<CurveSegment> seg = stackalloc CurveSegment[MixStyles.MaxSegments];
-            byte[] buf = new byte[160 * MixStyles.MaxSegments];
-            foreach (bool incoming in new[] { false, true })
-                foreach (MixCurveLane lane in Enum.GetValues<MixCurveLane>())
-                {
-                    int n = MixStyles.Segments(in set, lane, incoming, bars, seg);
-                    if (n == 0) continue;
-                    int len = MixCurves.WriteJson(seg[..n], buf);
-                    string? suffix = MixStyles.ConnectKey(lane);
-                    string side = incoming ? "in" : "out";
-                    curves.Add((suffix is null ? "" : "audio.fade_" + side + "_" + suffix, lane.ToString(), side, n, System.Text.Encoding.UTF8.GetString(buf, 0, len)));
-                }
+            var curves = StyleCurves(in set, bars);
             Span<MixLoopBlock> blocks = stackalloc MixLoopBlock[MixStyles.MaxLoopBlocks];
             int nb = MixStyles.LoopBlocks(set.Looping, blocks);
             var loop = blocks[..nb].ToArray();
@@ -103,6 +91,26 @@ public static partial class Diagnostics
             });
 
             static void Style(Utf8JsonWriter w, string key, string text, int value) => w.WriteString(key, text + " (" + value.ToString(CultureInfo.InvariantCulture) + ")");
+        }
+
+        /// <summary>What `mixstyles` prints for a resolved style set at <paramref name="bars"/>: every lane's curve on both sides, in the
+        /// Connect metadata spelling (its key when the lane has one, "" otherwise). `mix show=render` compares the engine's tables with it.</summary>
+        static List<(string Key, string Lane, string Side, int Segments, string Json)> StyleCurves(in MixStyleSet set, int bars)
+        {
+            var curves = new List<(string Key, string Lane, string Side, int Segments, string Json)>();
+            Span<CurveSegment> seg = stackalloc CurveSegment[MixStyles.MaxSegments];
+            byte[] buf = new byte[160 * MixStyles.MaxSegments];
+            foreach (bool incoming in new[] { false, true })
+                foreach (MixCurveLane lane in Enum.GetValues<MixCurveLane>())
+                {
+                    int n = MixStyles.Segments(in set, lane, incoming, bars, seg);
+                    if (n == 0) continue;
+                    int len = MixCurves.WriteJson(seg[..n], buf);
+                    string? suffix = MixStyles.ConnectKey(lane);
+                    string side = incoming ? "in" : "out";
+                    curves.Add((suffix is null ? "" : "audio.fade_" + side + "_" + suffix, lane.ToString(), side, n, System.Text.Encoding.UTF8.GetString(buf, 0, len)));
+                }
+            return curves;
         }
 
         // ── check: the generators against the client's tables ─────────────────────────────────────────────────────────

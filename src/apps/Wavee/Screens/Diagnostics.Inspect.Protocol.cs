@@ -597,14 +597,21 @@ public static partial class Diagnostics
             new(Verb.Mix, "mix", "#48 Mix: one playlist's Mix data (list and XM flags, lens etag, the mix-state signal template, each row's mixable bits, set-transition template, not-mixable reason, beat grid, cue points and stored recipe), a raw recipe decoded, or (show=roundtrip) every stored recipe decoded and encoded again, byte-compared, unchanged and with one field changed", "mix roundtrip uri=spotify:playlist:plmix")
             {
                 Positional = ["show", "uri"],
-                Args = [Arg("show", ArgType.Enum, "what to print: the playlist's Mix data, the recipe round trip, the curve value map (EQ dB, cutoff Hz) and the automation steps it yields, (decode, --fake) a made-up lens read of spotify:playlist:plmixwire run through the real playlist decoder and commit, then its Mix data, or (cancel) a Fade join cancelled inside its overlap, each voice pulled alone through the engine's mixer, the gain per ms now and as it was", "dump", "dump|roundtrip|semantics|decode|cancel"),
+                Args = [Arg("show", ArgType.Enum, "what to print: the playlist's Mix data, the recipe round trip, the curve value map (EQ dB, cutoff Hz) and the automation steps it yields, (decode, --fake) a made-up lens read of spotify:playlist:plmixwire run through the real playlist decoder and commit, then its Mix data, or (cancel) a Fade join cancelled inside its overlap, each voice pulled alone through the engine's mixer, the gain per ms now and as it was, or (render) the tables MixRender builds for the engine against the mixstyles curves of the same styles and bars (every planned pair of the playlist, every preset 1-22 at bars 0-32), max deviation", "dump", "dump|roundtrip|semantics|decode|cancel|render"),
                         Arg("uri", ArgType.String, "the playlist (default: the fake mixed playlist)"),
                         Arg("recipe", ArgType.String, "decode this base64 TransitionRecipe instead (with show=roundtrip: round-trip it too)"),
                         Arg("at", ArgType.Float, "show=cancel: where in the overlap the cancel lands (0..1)", "0.4"),
                         Arg("change", ArgType.Enum, "show=roundtrip: the one field changed in the second encode (overlap +1 ms, durationBars +1, the EQ override set to 15 or 7)", "overlap", "overlap|bars|eq"),
                         Arg("mixstate", ArgType.String, "print the mix-state (turn Mix on) body for this revision (hex)"),
-                        Arg("curves", ArgType.Int, "print the Connect metadata curves for this preset id (1 Fade, 3 Rise)"),
-                        Arg("window", ArgType.Int, "the window those curves are for, ms (8 units under 8 s, else 16)")],
+                        Arg("curves", ArgType.Int, "print the Connect track metadata the publisher writes for this preset id (Playback.Mix.FadeMeta), at bars= with volume= eq= filter= fx= overrides"),
+                        Arg("bars", ArgType.Int, "curves=: the transition's length in bars (0 = not beatmatched: the 2-bar layout)", "0"),
+                        Arg("window", ArgType.Int, "curves=: A's window, ms (audio.fade_out_duration)", "2890"),
+                        Arg("inWindow", ArgType.Int, "curves=: B's window, ms (audio.fade_in_duration; default the window)"),
+                        Arg("volume", ArgType.Int, "curves=: a volume style override (recipe 2.3)"),
+                        Arg("eq", ArgType.Int, "curves=: an EQ style override (recipe 2.4)"),
+                        Arg("filter", ArgType.Int, "curves=: a filter style override (recipe 2.5)"),
+                        Arg("fx", ArgType.Int, "curves=: an effect style override (recipe 2.12)"),
+                        Arg("autocheck", ArgType.Path, "Spotify's Auto against the official client's own answers: a folder outside the repo holding auto-pairs*.json (the client's Auto per adjacent pair) and *inputs*.json (kind 28 cue candidates and kind 10 durations per track uri); each pair's inputs run through the real planner (MixPlanner.Plan), the matches counted, every miss listed")],
             },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {

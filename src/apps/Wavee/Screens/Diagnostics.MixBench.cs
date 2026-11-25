@@ -3,7 +3,7 @@
 // on-box way to hear, and record with a loopback capture, one boundary: a #48 Mix join, the user's Crossfade, a gapless
 // join, or a seek. Built on the --stress-audio host's composition (one writer thread, the marshallers, overlay settings).
 //
-//   Wavee.exe --mix-bench --file A.flac --file2 B.flac --scenario mix --from 150000 --seconds 30 --preset 3
+//   Wavee.exe --mix-bench --file A.flac --file2 B.flac --scenario mix --from 150000 --seconds 30 --preset 3 [--bars 4]
 //             [--out <ms> --overlap <ms> --in <ms> --in-dur <ms>] [--crossfade-ms 12000] [--seek-at <ms> --seek-to <ms>]
 //             [--profile <dir>]
 //
@@ -32,7 +32,7 @@ public static partial class Diagnostics
         static Track s_a, s_b;
 
         public readonly record struct Options(string A, string B, string Scenario, int FromMs, int Seconds, int CrossfadeMs,
-            byte Preset, int OutMs, int OverlapMs, int InMs, int InDurMs, int SeekAtMs, int SeekToMs);
+            byte Preset, int Bars, int OutMs, int OverlapMs, int InMs, int InDurMs, int SeekAtMs, int SeekToMs);
 
         public static bool TryRun(string[] args, out int code)
         {
@@ -49,7 +49,7 @@ public static partial class Diagnostics
         static bool TryParse(string[] args, out Options o, out string why)
         {
             string a = "", b = "", scenario = "mix";
-            int from = 0, seconds = 30, cf = 12_000, outMs = -1, overlap = 4_000, inMs = 0, inDur = -1, seekAt = -1, seekTo = -1;
+            int from = 0, seconds = 30, cf = 12_000, bars = 0, outMs = -1, overlap = 4_000, inMs = 0, inDur = -1, seekAt = -1, seekTo = -1;
             byte preset = 1;
             why = "";
             for (int i = 0; i < args.Length; i++)
@@ -66,6 +66,7 @@ public static partial class Diagnostics
                     case "--seconds" when n: seconds = x; i++; break;
                     case "--crossfade-ms" when n: cf = x; i++; break;
                     case "--preset" when n: preset = (byte)x; i++; break;
+                    case "--bars" when n: bars = x; i++; break;
                     case "--out" when n: outMs = x; i++; break;
                     case "--overlap" when n: overlap = x; i++; break;
                     case "--in" when n: inMs = x; i++; break;
@@ -74,7 +75,7 @@ public static partial class Diagnostics
                     case "--seek-to" when n: seekTo = x; i++; break;
                 }
             }
-            o = new Options(a, b, scenario, from, seconds, cf, preset, outMs, overlap, inMs, inDur < 0 ? overlap : inDur, seekAt, seekTo);
+            o = new Options(a, b, scenario, from, seconds, cf, preset, bars, outMs, overlap, inMs, inDur < 0 ? overlap : inDur, seekAt, seekTo);
             if (!File.Exists(a) || !File.Exists(b)) { why = "--file and --file2 must name existing files"; return false; }
             if (scenario is not ("mix" or "crossfade" or "gapless" or "seek")) { why = "--scenario mix|crossfade|gapless|seek"; return false; }
             return true;
@@ -146,10 +147,11 @@ public static partial class Diagnostics
         {
             long durA = s_a.DurationMs;
             uint outMs = (uint)(s_o.OutMs >= 0 ? s_o.OutMs : Math.Max(0, durA - s_o.OverlapMs - 1));
-            var t = new MixTiming(MixSource.Saved, MixWhyNot.None, s_o.Preset, outMs, (uint)s_o.OverlapMs, (uint)s_o.InMs, (uint)s_o.InDurMs);
+            var t = MixTiming.Of(MixSource.Saved, s_o.Preset, default, s_o.Bars, outMs, (uint)s_o.OverlapMs, (uint)s_o.InMs, (uint)s_o.InDurMs);
             Playback.Mix.Bench(t);
-            Console.Out.WriteLine("{\"kind\":\"mix\",\"preset\":" + t.Preset + ",\"out\":" + t.OutStartMs + ",\"outDur\":" + t.OutDurationMs
-                + ",\"in\":" + t.InStartMs + ",\"inDur\":" + t.InDurationMs + "}");
+            Console.Out.WriteLine("{\"kind\":\"mix\",\"preset\":" + t.Preset + ",\"bars\":" + t.Bars + ",\"out\":" + t.OutStartMs + ",\"outDur\":" + t.OutDurationMs
+                + ",\"in\":" + t.InStartMs + ",\"inDur\":" + t.InDurationMs + ",\"rendered\":\"" + Playback.MixRender.Lanes(in t, true)
+                + "\",\"skipped\":\"" + Playback.MixRender.Lanes(in t, false) + "\"}");
         }
 
         static void Print(long now, string what)

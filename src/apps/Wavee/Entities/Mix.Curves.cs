@@ -1,20 +1,39 @@
-// ── Entities/Mix.Curves.cs — CORE (#48 Mix, plan §3.4) ────────────────────────────────────────────────────────────────
+// ── Entities/Mix.Curves.cs — CORE (#48 Mix, plan §3.4; full-support plan §2.3) ─────────────────────────────────────────
 //
-// One join's timing (MixTiming, the single value every layer reads) and the preset curves as data (MixCurves). A
-// preset is a table of Bézier segments per lane and side, exactly as the Connect metadata spells it (capture report
-// §4.3): start/end are 0..1 of the window, a 2-point segment is a line, a 4-point one a cubic Bézier P0..P3 with x 0..1
-// inside the segment. The engine never sees a curve: the pump samples these into tables (MixRender) off the render
-// thread. Pure and allocation-free except WriteJson's caller buffer.
+// One join's plan (MixTiming, the single value every layer reads: its timing, the styles it plays and the bars they are
+// laid out for) and the curve primitives: a curve is a list of Bézier segments per lane and side, exactly as the Connect
+// metadata spells it (capture report §4.3): start/end are 0..1 of the window, a 2-point segment is a line, a 4-point one
+// a cubic Bézier P0..P3 with x 0..1 inside the segment. The curves themselves come from the style table (Mix.Styles.cs).
+// The engine never sees a curve: the pump samples them into tables (MixRender) off the render thread. Pure and
+// allocation-free except WriteJson's caller buffer.
 
 using System.Globalization;
 
 namespace Wavee;
 
-/// <summary>The wire's preset id (recipe 2.1). Only the captured ids; an id Wavee does not know renders as Fade.</summary>
-public enum MixPreset : byte { None = 0, Fade = 1, Rise = 3 }
-
 /// <summary>Where a join's timing came from.</summary>
 public enum MixSource : byte { None, Auto, Saved }
+
+/// <summary>What the planner chose beyond the recipe or the rule, for the logs and diagnostics.</summary>
+[Flags]
+public enum MixPlanNotes : byte
+{
+    None = 0,
+    /// <summary>A's last end candidate (kind 28 field 4) is missing (not analysed yet, a 502): the overlap is the rule's
+    /// answer for a candidate 10 ms before A's end, 2510 ms.</summary>
+    OutFallback = 1 << 0,
+    /// <summary>B's first start candidate (kind 28 field 3) is missing: B's fade-in is the rule's answer for a candidate at
+    /// 10 ms, 2510 ms.</summary>
+    InFallback = 1 << 1,
+    /// <summary>A saved beatmatched recipe plays unstretched: B at speed 1 (the engine has no per-voice rate yet, M4).</summary>
+    BeatmatchNotApplied = 1 << 2,
+    /// <summary>A window was cut to the longest transition the client allows (35 s).</summary>
+    Capped = 1 << 3,
+    /// <summary>B's window was cut at B's end.</summary>
+    InClipped = 1 << 4,
+    /// <summary>The recipe carries curve overrides (Preset 2.6 to 2.14): the table's curves play (the editor phase renders them).</summary>
+    CurveOverridesNotApplied = 1 << 5,
+}
 
 /// <summary>Why a pair gets the base hand-off instead of a mix (logged, and shown by diagnostics). <see cref="NoTransition"/>: the
 /// pair's Spotify recipe is "no transition" (no preset id): A plays to its end and B from its start.</summary>
@@ -24,19 +43,34 @@ public enum MixWhyNot : byte
     UserQueued, NoTransition,
 }
 
-/// <summary>One join, in milliseconds: the recipe's timing when the pair was edited, else Wavee's Auto. The Transitions
-/// view's row, the prepare's start offset, the Connect metadata, the seek bar's end and the pump all read this value.</summary>
+/// <summary>One join's plan: the recipe's timing when the pair was edited, else Spotify's Auto, and the styles it plays. The
+/// Transitions view's row, the prepare's start offset, the Connect metadata, the seek bar's end and the pump all read this
+/// value. A's and B's curves start at the same instant and run over their own lengths (<see cref="OutDurationMs"/>,
+/// <see cref="InDurationMs"/>). Every lane the styles move is resolved here, including the ones the engine cannot render yet
+/// (EQ mid and high, noise, the effects, looping: <see cref="Playback.MixRender"/> says which).</summary>
 public readonly record struct MixTiming(
-    MixSource Source, MixWhyNot WhyNot, byte Preset,
+    MixSource Source, MixWhyNot WhyNot,
+    byte Preset,          // recipe 2.1 as saved (1 for Auto); an id the table does not know plays as Fade (Styles says what plays)
     uint OutStartMs,      // A: where the transition starts (audio.fade_out_start_time)
     uint OutDurationMs,   // A's curves run over this (audio.fade_out_duration = audio.fade_overlap)
     uint InStartMs,       // B: the source position it enters at (audio.fade_in_start_time)
-    uint InDurationMs)    // B's curves run over this (audio.fade_in_duration); may differ from OutDurationMs
+    uint InDurationMs,    // B's curves run over this (audio.fade_in_duration); may differ from OutDurationMs
+    MixStyleSet Styles,   // the preset's styles with the recipe's overrides in place (MixStyles.Resolve)
+    byte Bars,            // recipe 1.8 durationBars, the curves' layout (0 = not beatmatched: the 2-bar layout, MixStyles.UnitBars)
+    float SpeedB,         // recipe 1.7, B's beatmatch speed as saved; the engine plays B at 1.0 until per-voice rate lands (M4)
+    float BpmA,           // A's tempo (recipe 1.16, else kind 222): the effects' echo and delay time (MixStyles.FxBeats)
+    MixPlanNotes Notes)
 {
     public bool Mix => Source != MixSource.None;
     /// <summary>A's audible end: where the outgoing track is over and the player flips (decision D14 (b)).</summary>
     public uint AudibleEndMs => OutStartMs + OutDurationMs;
-    public static MixTiming Refused(MixWhyNot why) => new(MixSource.None, why, 0, 0, 0, 0, 0);
+    public static MixTiming Refused(MixWhyNot why) => new(MixSource.None, why, 0, 0, 0, 0, 0, default, 0, 1f, 0f, MixPlanNotes.None);
+
+    /// <summary>A plan for preset <paramref name="presetId"/> with <paramref name="overrides"/> resolved through the style table.</summary>
+    public static MixTiming Of(MixSource source, int presetId, in MixStyleOverrides overrides, int bars, uint outStartMs, uint outDurationMs,
+        uint inStartMs, uint inDurationMs, float speedB = 1f, float bpmA = 0f, MixPlanNotes notes = MixPlanNotes.None)
+        => new(source, MixWhyNot.None, (byte)Math.Clamp(presetId, 0, 255), outStartMs, outDurationMs, inStartMs, inDurationMs,
+               MixStyles.Resolve(presetId, in overrides), (byte)Math.Clamp(bars, 0, 255), speedB, bpmA, notes);
 }
 
 /// <summary>One segment of a fade curve (report §4.3).</summary>
@@ -51,63 +85,10 @@ public readonly record struct CurveSegment(float Start, float End, bool Cubic,
     public static CurveSegment S(float start, float end, float y0, float y1) => new(start, end, true, 0, y0, .5f, y0, .5f, y1, 1, y1);
 }
 
-/// <summary>Which automated quantity a curve drives.</summary>
-public enum MixLane : byte { Volume, LowEq, FilterCutoff, FilterResonance }
-
-/// <summary>The preset → curve tables (plan §3.4, curve ids C1-C16 from the report).</summary>
+/// <summary>The curve primitives: evaluate, sample into an engine table, spell as the Connect metadata, and the official client's
+/// value map. The curves come from the style table (<see cref="MixStyles"/>).</summary>
 public static class MixCurves
 {
-    /// <summary>The window's unit count: 8 under 8 s, else 16 — the rule that fits the paired values (0.998 / 0.999,
-    /// 0.46875 / 0.484) of the capture (plan O10).</summary>
-    public static int UnitsFor(uint windowMs) => windowMs < 8_000 ? 8 : 16;
-
-    /// <summary>The preset's curve for one lane and side, for a window of <paramref name="units"/>. Writes at most 4
-    /// segments; returns the count (0 = the lane is unused: its metadata key is omitted and the engine lane is off).</summary>
-    public static int Segments(byte preset, MixLane lane, bool incoming, int units, Span<CurveSegment> into)
-    {
-        float swap = units >= 16 ? 1f / 64 : 1f / 32;       // the bass swap's length
-        float snap = units >= 16 ? 1f / 1024 : 1f / 512;    // the overlap's fast volume S
-        bool rise = preset == (byte)MixPreset.Rise;
-        switch (lane)
-        {
-            case MixLane.Volume when !rise:                  // C1 / C3: one smooth cubic over the window
-                into[0] = incoming ? new CurveSegment(0, 1, true, 0, 0, .4f, 0, .4f, 1, 1, 1)
-                                   : new CurveSegment(0, 1, true, 0, 1, .6f, 1, .6f, 0, 1, 0);
-                return 1;
-            case MixLane.Volume:                             // C5 / C8 (C10 / C12): full overlap, a fast S at the edge
-                if (incoming) { into[0] = CurveSegment.S(0, snap, 0, 1); into[1] = CurveSegment.Flat(snap, 1, 1); }
-                else { into[0] = CurveSegment.Flat(0, 1 - snap, 1); into[1] = CurveSegment.S(1 - snap, 1, 1, 0); }
-                return 2;
-            case MixLane.LowEq when !rise:                   // C2 / C4 (C11 / C13): the bass hands over at the middle
-                if (incoming)
-                {
-                    into[0] = CurveSegment.Flat(0, .5f - swap, 0);
-                    into[1] = CurveSegment.S(.5f - swap, .5f, 0, .5f);
-                    into[2] = CurveSegment.Flat(.5f, 1, .5f);
-                }
-                else
-                {
-                    into[0] = CurveSegment.Flat(0, .5f - swap, .5f);
-                    into[1] = CurveSegment.S(.5f - swap, .5f, .5f, 0);
-                    into[2] = CurveSegment.Flat(.5f, 1, 0);
-                }
-                return 3;
-            case MixLane.LowEq:                              // C14 / C16: the bass swaps at the end
-                if (incoming) { into[0] = CurveSegment.Flat(0, 1 - swap, 0); into[1] = CurveSegment.S(1 - swap, 1, 0, .5f); }
-                else { into[0] = CurveSegment.Flat(0, 1 - swap, .5f); into[1] = CurveSegment.S(1 - swap, 1, .5f, 0); }
-                return 2;
-            case MixLane.FilterCutoff when rise:             // C15 out (high-pass sweep) / C9 in (low-pass opening)
-                if (incoming) { into[0] = CurveSegment.Ramp(0, .5f, 0, .5f); into[1] = CurveSegment.Flat(.5f, 1, .5f); }
-                else { into[0] = CurveSegment.Flat(0, .5f, .5f); into[1] = CurveSegment.Ramp(.5f, 1, .5f, 1); }
-                return 2;
-            case MixLane.FilterResonance when rise:          // C7: flat default
-                into[0] = CurveSegment.Flat(0, 1, .5f);
-                return 1;
-            default:
-                return 0;
-        }
-    }
-
     /// <summary>y at window position <paramref name="x"/> (0..1). A cubic segment is solved for t by bisection on x (the
     /// curves' x is monotone). Before the first segment the first value holds, after the last the last. Pure.</summary>
     public static float Evaluate(ReadOnlySpan<CurveSegment> curve, float x)
