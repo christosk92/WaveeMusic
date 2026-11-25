@@ -372,12 +372,12 @@ public static partial class Shell
                 return new MenuFlyoutItem(Loc.Get(Strings.Player.Next), Icons.Next, facts.NextEnabled, static () => PlayerVerbs.Default.Next());
             case OverflowCommand.Shuffle:
                 return MenuFlyoutItem.Toggle(Loc.Get(Strings.Player.Shuffle), Playback.Shuffle.Peek(), static () => PlayerVerbs.Default.ToggleShuffle(),
-                    Icons.Shuffle, facts.CanTransport);
+                    Icons.Shuffle, facts.CanTransport && PlayerVerbs.ShuffleLock(track: false) is null);
             case OverflowCommand.Repeat:
             {
                 var repeat = Playback.Repeat.Peek();
                 return MenuFlyoutItem.Toggle(Loc.Get(Strings.Player.Repeat), repeat != RepeatMode.Off, static () => PlayerVerbs.Default.CycleRepeat(),
-                    PlayerBarRules.RepeatGlyph(repeat), facts.CanTransport);
+                    PlayerBarRules.RepeatGlyph(repeat), facts.CanTransport && PlayerVerbs.RepeatLock(track: false) is null);
             }
             case OverflowCommand.Lyrics:
                 return MenuFlyoutItem.Toggle(Loc.Get(Playback.CurrentId.Peek().Kind == EntityKind.Episode ? "podcast.reader.transcript" : Strings.Player.Lyrics), railOpen && mode == RailMode.Lyrics,

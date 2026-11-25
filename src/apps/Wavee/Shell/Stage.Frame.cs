@@ -107,7 +107,8 @@ public static partial class Stage
         // a formatted key: the generated method formats; Loc.Get would render "[…]" (V-D15). No source ⇒ no label (never "Playing from search" for nothing).
         string playingFrom = hasSource ? Strings.Stage.PlayingFrom(Queue.ContextKindLabel(contextId)) : "";
         return new StageTransportFacts(playing, primary, tf.CanTransport, tf.PrevEnabled, tf.NextEnabled, Playback.Shuffle.Value,
-            repeat != RepeatMode.Off, repeat == RepeatMode.Track, saved, like, playingFrom, source ?? "");
+            repeat != RepeatMode.Off, repeat == RepeatMode.Track, saved, like, playingFrom, source ?? "")
+        { ShuffleLock = PlayerVerbs.ShuffleLock(), RepeatLock = PlayerVerbs.RepeatLock() };
     }
 
     static readonly Func<StageNextFacts> s_nextFacts = NextFacts;

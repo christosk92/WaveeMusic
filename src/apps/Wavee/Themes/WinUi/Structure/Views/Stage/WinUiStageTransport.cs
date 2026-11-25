@@ -127,11 +127,11 @@ internal static class WinUiStageTransport
         Direction = 0, AlignItems = FlexAlign.Center, Gap = t.ClusterGap, Shrink = 0f,
         Children =
         [
-            ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill, box, t.Glyph), Loc.Get(Strings.Player.Shuffle)),
+            ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport && f.ShuffleLock is null, f.Shuffle, set.Fill, box, t.Glyph), f.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle)),
             ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, box, t.Glyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous)),
             Play(f.Playing, f.PrimaryEnabled, t.Disc, t.PlayGlyph, set, verbs),
             ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, box, t.Glyph, f.NextEnabled), Loc.Get(Strings.Player.Next)),
-            ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill, box, t.Glyph), Loc.Get(Strings.Player.Repeat)),
+            ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport && f.RepeatLock is null, f.RepeatOn, set.Fill, box, t.Glyph), f.RepeatLock ?? Loc.Get(Strings.Player.Repeat)),
         ],
     };
 
@@ -158,11 +158,11 @@ internal static class WinUiStageTransport
                     Height = t.StackRowH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Padding = new Edges4(G.StackGap, 0f, G.StackGap, 0f),
                     Children =
                     [
-                        ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill, t.ButtonBox, t.Glyph), Loc.Get(Strings.Player.Shuffle)),
+                        ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport && f.ShuffleLock is null, f.Shuffle, set.Fill, t.ButtonBox, t.Glyph), f.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle)),
                         ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, t.ButtonBox, t.Glyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous)),
                         Play(f.Playing, f.PrimaryEnabled, t.Disc, t.PlayGlyph, set, verbs),
                         ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, t.ButtonBox, t.Glyph, f.NextEnabled), Loc.Get(Strings.Player.Next)),
-                        ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill, t.ButtonBox, t.Glyph), Loc.Get(Strings.Player.Repeat)),
+                        ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport && f.RepeatLock is null, f.RepeatOn, set.Fill, t.ButtonBox, t.Glyph), f.RepeatLock ?? Loc.Get(Strings.Player.Repeat)),
                     ],
                 },
                 new BoxEl

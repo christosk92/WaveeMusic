@@ -159,10 +159,15 @@ public static partial class Spotify
         /// server's own track count) and the header text of its nested <c>ListAttributes</c> (field 2) — name,
         /// description, cover. Revision/timestamp are not read here: a rootlist decoration is a SUMMARY, and
         /// <c>PlaylistRevision</c>'s full read is what owns those.</summary>
-        readonly struct RootlistMeta(StagedId owner, TextRef name, TextRef description, TextRef image, int length)
+        readonly struct RootlistMeta(StagedId owner, TextRef name, TextRef description, TextRef image, int length,
+            bool formatAttributes = false, bool dj = false, TextRef lexicon = default)
         {
             public readonly StagedId Owner = owner;
             public readonly TextRef Name = name, Description = description, Image = image;
+            /// <summary>The decoration carried format attributes (field 12), so it speaks for the DJ pair: <see cref="Dj"/> is
+            /// <c>lexicon_set_type=your_dj</c>, <see cref="Lexicon"/> the <c>lexicon_context_url</c> (plan-dj §1.1).</summary>
+            public readonly bool FormatAttributes = formatAttributes, Dj = dj;
+            public readonly TextRef Lexicon = lexicon;
             /// <summary>MetaItem.length (field 3). -1 when the wire did not carry the field at all (S2) — a real
             /// answer is never negative, so "unanswered" and "the server said zero" stay distinguishable, which
             /// matters because 0 is a legitimate track count for a genuinely empty playlist.</summary>
@@ -172,8 +177,9 @@ public static partial class Spotify
         static RootlistMeta ReadRootlistMeta(ProtoReader item, Staging s)
         {
             StagedId owner = default;
-            TextRef name = default, description = default, rawPicture = default, sizedPicture = default;
+            TextRef name = default, description = default, rawPicture = default, sizedPicture = default, lexicon = default;
             int length = -1, pictureRank = -1;
+            bool formatAttributes = false, dj = false;
             while (item.Next())
             {
                 if (item.Field == 3 && item.Wire == 0) length = item.Int32();
@@ -201,13 +207,21 @@ public static partial class Spotify
                                 : target.SequenceEqual("small"u8) ? 2 : target.SequenceEqual("xsmall"u8) ? 1 : 0;
                             if (!url.IsEmpty && rank >= pictureRank) { sizedPicture = s.AddText(url); pictureRank = rank; }
                         }
+                        else if (attributes.Field == 12 && attributes.Wire == 2)
+                        {
+                            formatAttributes = true;
+                            attributes.Message().Fields(1, 2, out var key, out var value);
+                            if (Is(key, "lexicon_set_type")) dj = Is(value, "your_dj");
+                            else if (Is(key, "lexicon_context_url") && !value.IsEmpty) lexicon = s.AddText(value);
+                        }
                         else attributes.Skip();
                     }
                 }
                 else item.Skip();
             }
             // The pre-sized url first, the raw picture file id as fallback (0.2.9 `CoverOf`, same order).
-            return new RootlistMeta(owner, name, description, sizedPicture.IsEmpty ? rawPicture : sizedPicture, length);
+            return new RootlistMeta(owner, name, description, sizedPicture.IsEmpty ? rawPicture : sizedPicture, length,
+                formatAttributes, dj, lexicon);
         }
 
         /// <summary>Stage a Thin <see cref="PlaylistFields.Identity"/> header for every rootlist row <c>meta_items</c>
@@ -263,6 +277,10 @@ public static partial class Spotify
                 row.Description = meta.Description;
                 row.Image = meta.Image;
                 row.TrackCount = meta.Length;
+                if (!meta.FormatAttributes) return;
+                row.FlagsMask |= (uint)PlaylistFlags.YourDj;
+                if (meta.Dj) row.Flags |= (uint)PlaylistFlags.YourDj;
+                row.LexiconUrl = meta.Lexicon;
             }
         }
 

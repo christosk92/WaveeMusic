@@ -479,10 +479,12 @@ internal static partial class ClassicPlayerBar
             {
                 case RightSlot.Shuffle:
                     return Slot("shuffle", w, box, lit,
-                        BarButton(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport, v.Shuffle, box, glyph), ClassicPlayerBarLayout.FlankMotion);
+                        ToolTip.Wrap(BarButton(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport && v.ShuffleLock is null, v.Shuffle, box, glyph),
+                            (Prop<string?>)v.ShuffleLock), ClassicPlayerBarLayout.FlankMotion);
                 case RightSlot.Repeat:
                     return Slot("repeat", w, box, lit,
-                        BarButton(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport, v.RepeatOn, box, glyph), ClassicPlayerBarLayout.FlankMotion);
+                        ToolTip.Wrap(BarButton(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport && v.RepeatLock is null, v.RepeatOn, box, glyph),
+                            (Prop<string?>)v.RepeatLock), ClassicPlayerBarLayout.FlankMotion);
                 case RightSlot.Volume:
                 {
                     bool popup = v.VolumePopup;

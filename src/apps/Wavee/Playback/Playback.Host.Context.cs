@@ -122,6 +122,11 @@ public static partial class Playback
         Span<byte> text = stackalloc byte[512];
         load.ContextUri = buffer.AddText(text[..context.Format(text)]);
         if (!startAt.IsEmpty) load.SkipToUri = buffer.AddText(text[..startAt.Format(text)]);
+        // A list served by a lexicon session (the DJ: its lexicon_context_url attribute) plays from that url, as the official client
+        // builds {uri, url} for it (plan-dj §2.1.1, §3a); ResolveContext branches on it.
+        if (context.Kind == EntityKind.Playlist && Entities.Current.Playlists.TryGetSlot(context, out int list)
+            && new Playlist(list).LexiconUrlId is { IsEmpty: false } lexicon)
+            load.ContextUrl = buffer.AddText(System.Text.Encoding.UTF8.GetBytes(Entities.Strings.Resolve(lexicon)));
         ResolveContext(++s_contextSeq, context.Text, load, buffer, ClaimCause.UserPlay);
     }
 
@@ -168,7 +173,7 @@ public static partial class Playback
             rows[k] = new EntityRef(EntityKind.Track, slots[k]);
             if (start < 0 && !startAt.IsEmpty && rows[k].Id.Equals(startAt)) start = k;
         }
-        if (start < 0) start = s_state.Shuffle && startAt.IsEmpty ? Random.Shared.Next(rows.Length) : 0;
+        if (start < 0) start = UserShuffle && startAt.IsEmpty ? Random.Shared.Next(rows.Length) : 0;
         PlayRows(rows, start, list, fromMs);
     }
 
@@ -337,7 +342,7 @@ public static partial class Playback
             s_orderRefs = null;
             s_orderRows = null;
             FillQueueIds(playlist, packed.AsSpan(0, n), rows.AsSpan(0, n));
-            if (s_state.Shuffle) Reorder(packed.AsSpan(0, n), rows.AsSpan(0, n), deck, shuffle: true);
+            if (UserShuffle) Reorder(packed.AsSpan(0, n), rows.AsSpan(0, n), deck, shuffle: true);
             Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n), contextStart: deck + 1);   // the old context stays history, outside the radio's wrap
             s_uids.Retain(Queue.Rows);
             Entities.Publish();                            // the rail answers the click in its own frame (PlayRows' rule)
@@ -401,7 +406,7 @@ public static partial class Playback
             s_orderRefs = null;
             s_orderRows = null;
             FillQueueIds(context, packed.AsSpan(0, n), laid.AsSpan(0, n));
-            if (s_state.Shuffle) deck = RelayContext(packed.AsSpan(0, n), laid.AsSpan(0, n), deck, contextStart: 0, shuffle: true);
+            if (UserShuffle) deck = RelayContext(packed.AsSpan(0, n), laid.AsSpan(0, n), deck, contextStart: 0, shuffle: true);
             Queue.Replace(packed.AsSpan(0, n), laid.AsSpan(0, n));
             Entities.Publish();
             EntityRef row = rows[start];
@@ -412,6 +417,7 @@ public static partial class Playback
                 ClaimCause.UserPlay, paused: false, explicitPosition: fromMs >= 0, here: here));
             s_pageUrl = "";                                // the caller's rows ARE the context: nothing to page (G-242)
             if (!sameContext) ForgetAutoplayPage();
+            Dj.Leave(context);
             Post(Input.ContextPages(context, morePages: false, now));
         }
         finally
@@ -464,6 +470,13 @@ public static partial class Playback
     /// exactly once, whichever way it ends.</summary>
     static void ResolveContext(long seq, string uri, RemoteLoad load, ClusterBuffer buffer, ClaimCause cause)
     {
+        // A lexicon session url (the DJ, plan-dj §2.1.2) is resolved through the lexicon session provider, never as the bare uri: a
+        // local DJ start and a controller's DJ play alike (a controller's DJ play was acked and ignored before this).
+        if (!load.ContextUrl.IsEmpty && Dj.IsLexicon(buffer.Utf8(load.ContextUrl)))
+        {
+            ResolveLexicon(seq, System.Text.Encoding.UTF8.GetString(buffer.Utf8(load.ContextUrl)), load, buffer, cause);
+            return;
+        }
         bool queued = Spotify.Api.Run(() =>
         {
             int start = buffer.TrackCount, count = 0;
@@ -497,12 +510,14 @@ public static partial class Playback
     static int s_resolvedStart, s_resolvedCount;
     static ClaimCause s_resolvedCause;
     static string s_resolvedPageUrl = "";
+    static Dj.Resolve? s_resolvedDj;
 
     /// <summary>UI thread: a resolve answered. Its start is folded at the TOP of the next drain (<see cref="StartResolved"/>),
     /// never from this callback — a Connect verb held back behind an inbound load (`Playback.Host.Remote.cs`) must land
     /// after the load's Play, and inputs posted from here would reach the reducer after the mailbox. One slot: the newer
     /// load wins, and the buffer it displaces goes back.</summary>
-    static void Resolved(long seq, in RemoteLoad load, ClusterBuffer buffer, int start, int count, ClaimCause cause, string pageUrl)
+    static void Resolved(long seq, in RemoteLoad load, ClusterBuffer buffer, int start, int count, ClaimCause cause, string pageUrl,
+        Dj.Resolve? dj = null)
     {
         if (s_resolvedBuffer is { } waiting)
         {
@@ -516,6 +531,7 @@ public static partial class Playback
         s_resolvedCount = count;
         s_resolvedCause = cause;
         s_resolvedPageUrl = pageUrl;
+        s_resolvedDj = dj;
         RequestDrain();
     }
 
@@ -531,7 +547,9 @@ public static partial class Playback
         ReleaseHold(seq);
         string pageUrl = s_resolvedPageUrl;
         s_resolvedPageUrl = "";
-        try { StartContext(seq, in load, buffer, s_resolvedStart, s_resolvedCount, s_resolvedCause, now, pageUrl); }
+        Dj.Resolve? dj = s_resolvedDj;
+        s_resolvedDj = null;
+        try { StartContext(seq, in load, buffer, s_resolvedStart, s_resolvedCount, s_resolvedCause, now, pageUrl, dj); }
         finally { ClusterBuffer.Return(buffer); }
     }
 
@@ -539,7 +557,7 @@ public static partial class Playback
     /// context load superseded this one, or another device took playback meanwhile. <paramref name="pageUrl"/> is the
     /// context's next page, kept for its run-out (G-242).</summary>
     static void StartContext(long seq, in RemoteLoad load, ClusterBuffer buffer, int contextStart, int contextCount,
-        ClaimCause cause, long now, string pageUrl = "")
+        ClaimCause cause, long now, string pageUrl = "", Dj.Resolve? dj = null)
     {
         if (seq != s_contextSeq || Entities.Current is null) return;
         if (s_state.Owner == Owner.Foreign) return;
@@ -600,7 +618,10 @@ public static partial class Playback
                 AddRow(buffer, in context[k], QueueBucket.NextUp, refs, rows, ref n);
             if (sameContext) AddKeptAutoplay(refs, rows, ref n, cap);
 
-            bool shuffle = load.Shuffle >= 0 ? load.Shuffle == 1 : s_state.Shuffle;
+            // The context's own restrictions (the DJ: shuffle and repeat disallowed, plan-dj §2.5) win over the user's shuffle and a
+            // controller's override; another context plays in the user's own shuffle, held while a locked one played.
+            ToggleLock locks = dj is null ? ToggleLock.None : LocksOf(dj.Facts);
+            bool shuffle = (locks & ToggleLock.Shuffle) == 0 && (load.Shuffle >= 0 ? load.Shuffle == 1 : UserShuffle);
             int[] packed = ArrayPool<int>.Shared.Rent(n);
             try
             {
@@ -616,8 +637,9 @@ public static partial class Playback
 
             EntityRef row = Queue.RefAt(at);
             long from = RemotePlan.StartPositionMs(in load, UnixNowMs());
+            Apply(Input.ContextLocks(contextId, locks, dj is null ? LockReason.None : ReasonOf(dj.Facts), now));
             Apply(Input.ShuffleOrdered(shuffle));
-            if (load.Repeat >= 0) Apply(Input.Repeat((RepeatMode)load.Repeat));
+            if (load.Repeat >= 0 && !s_state.RepeatLocked((RepeatMode)load.Repeat)) Apply(Input.Repeat((RepeatMode)load.Repeat));
             s_wireOffered = load.SessionId;               // a controller's play names the session the owner publishes (WireStarted)
             // A controller's "song videos" play asks for the row's music video: it opens on the video host (all.saz 1831). So does
             // a play whose skip_to names the row's VIDEO rendition (SkipNamesVideo): a controller watching the context sends it.
@@ -636,6 +658,8 @@ public static partial class Playback
             s_pageContext = contextId;
             s_pageUrl = pageUrl;
             if (!sameContext) ForgetAutoplayPage();
+            if (dj is not null) Dj.Begin(contextId, dj, pageUrl);   // before ContextPages: its refill reads the session
+            else Dj.Leave(contextId);
             Apply(Input.ContextPages(contextId, pageUrl.Length > 0, now));   // after the Play: it names the new context
             Log.Info("playback", "context load rows=" + n + " start=" + at + " shuffle=" + (shuffle ? 1 : 0)
                 + " cause=" + cause + " pages=" + (pageUrl.Length > 0 ? "more" : "one"));
@@ -646,6 +670,20 @@ public static partial class Playback
             ArrayPool<QueueEdge>.Shared.Return(rows);
         }
     }
+
+    /// <summary>The user's own shuffle: the deck's, or the one held while a context that forbids shuffle plays (the DJ). A new context
+    /// is laid out in it (<see cref="ContextLocks"/>).</summary>
+    static bool UserShuffle => s_state.Locks.Holding ? s_state.Locks.HeldShuffle : s_state.Shuffle;
+
+    /// <summary>The toggles a lexicon session's restrictions forbid (plan-dj §1.3).</summary>
+    static ToggleLock LocksOf(Dj.SessionFacts f)
+        => (f.NoShuffle.Length > 0 ? ToggleLock.Shuffle : ToggleLock.None)
+           | (f.NoRepeatContext.Length > 0 ? ToggleLock.RepeatContext : ToggleLock.None)
+           | (f.NoRepeatTrack.Length > 0 ? ToggleLock.RepeatTrack : ToggleLock.None);
+
+    /// <summary>Why they are forbidden: the first reason stated (<c>dj-disallow</c> for the DJ).</summary>
+    static LockReason ReasonOf(Dj.SessionFacts f)
+        => global::Wavee.Playback.ContextLocks.ReasonOf(f.NoShuffle.Length > 0 ? f.NoShuffle : f.NoRepeatContext.Length > 0 ? f.NoRepeatContext : f.NoRepeatTrack);
 
     /// <summary>Does a controller's <c>skip_to</c> uri name the matched row's MUSIC VIDEO rather than the row itself? A controller that
     /// watches a context (the web player in video mode, capture-20261107: <c>skip_to {uid row 0, uri 1EiJ…}</c> for "Today's Top
@@ -768,6 +806,7 @@ public static partial class Playback
         ulong itemId = distinct ? DistinctItemId(buffer.Utf8(track.Uid), kept, rows.AsSpan(0, n)) : s_uids.ItemIdOf(buffer.Utf8(track.Uid));
         if (provider == QueueProvider.Queue && itemId != 0)      // an owner's queued row keeps its own queued_by (possibly none)
             s_uids.NoteQueuedBy(itemId, System.Text.Encoding.UTF8.GetString(buffer.Utf8(track.QueuedBy)));
+        if (track.DjPage > 0) Dj.Note(itemId, buffer, in track); // a lexicon row's DJ keys, booked under its item id
         rows[n] = new QueueEdge(itemId, (byte)provider, (byte)bucket);
         n++;
     }
@@ -929,6 +968,7 @@ public static partial class Playback
         long now = FrameNowMs();
         string path = context.Equals(s_pageContext) ? RemotePlan.PageRoute(s_pageUrl) : "";
         if (path.Length == 0 || Entities.Current is null) { Post(Input.Paged(context, 0, morePages: false, now)); return; }
+        if (Dj.Of(context) is { } session) { RequestDjPage(context, session); return; }   // a lexicon session pages through its own fetch
         long seq = s_contextSeq;
         bool queued = Spotify.Api.Run(() =>
         {

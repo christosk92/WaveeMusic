@@ -1843,6 +1843,9 @@ public static partial class Spotify
         /// <summary>#48 Mix: <c>spotify-apply-lenses: mix,auto</c> (instead of <see cref="ApplyLenses"/>'s <c>auto</c>) and
         /// <c>spotify-list-player-enabled: true</c>, as the official client sends on a mixed list (capture report §3.6).</summary>
         MixLens = 1 << 24,
+        /// <summary>AI DJ: <c>x-dynamic-device-context</c>, the value <c>Spotify.Api.DeviceContext</c> holds (plan-dj §1.2: every lexicon
+        /// session GET carries it).</summary>
+        DeviceContext = 1 << 25,
     }
 
     /// <summary>Which request. One per FAMILY, not one per caller: <c>Spotify.Api.cs</c>'s function per request picks

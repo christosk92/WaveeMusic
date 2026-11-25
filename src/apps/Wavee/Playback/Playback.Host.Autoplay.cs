@@ -59,6 +59,8 @@ public static partial class Playback
         Span<byte> text = stackalloc byte[256];
         int length = context.Format(text);
         if (!RemotePlan.AutoplayContinues(text[..length])) { Post(Input.Autoplayed(context, 0, nowMs: now)); return; }
+        // A lexicon session that is endless or says autoplay_candidate=false / end_of_context_action=stop (the DJ) is never continued.
+        if (Dj.RefusesAutoplay(context)) { Post(Input.Autoplayed(context, 0, nowMs: now)); return; }
         if (s_fakeAutoplay is { } fake) { AnswerFakeAutoplay(context, fake(context, FakeAutoplayRows), now); return; }
         if (!Spotify.Current.IsOnline)
         {
@@ -265,6 +267,7 @@ public static partial class Playback
                 if (target == 0) continue;
                 packed[n] = target;
                 rows[n] = new QueueEdge(s_uids.ItemIdOf(buffer.Utf8(tracks[k].Uid)), (byte)provider, (byte)QueueBucket.NextUp);
+                if (tracks[k].DjPage > 0) Dj.Note(rows[n].ItemId, buffer, in tracks[k]);   // a lexicon page's row: its DJ keys
                 if (provider == QueueProvider.Autoplay && !tracks[k].DecisionId.IsEmpty)
                     s_autoplay.Note(rows[n].ItemId, System.Text.Encoding.UTF8.GetString(buffer.Utf8(tracks[k].DecisionId)));
                 n++;

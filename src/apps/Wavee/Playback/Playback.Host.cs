@@ -178,6 +178,18 @@ public static partial class Playback
     public static readonly Signal<bool> VolumeFixed = new(false) { DebugName = "playback.volumeFixed" };
     public static readonly Signal<bool> Shuffle = new(false);
     public static readonly Signal<RepeatMode> Repeat = new(RepeatMode.Off);
+    /// <summary>The toggles the playing context forbids here and why (<see cref="State.LiveLocks"/>; the DJ forbids shuffle and repeat,
+    /// plan-dj §2.5): every shuffle and repeat button reads it and draws disabled, its tooltip saying why.</summary>
+    public static readonly Signal<LockFacts> LockedToggles = new(default) { DebugName = "playback.lockedToggles" };
+
+    /// <summary>What <see cref="LockedToggles"/> states.</summary>
+    public readonly record struct LockFacts(ToggleLock Bits, LockReason Reason)
+    {
+        /// <summary>Shuffle may not be toggled.</summary>
+        public bool Shuffle => (Bits & ToggleLock.Shuffle) != 0;
+        /// <summary>Repeat may not be turned on (either repeat is forbidden: the button cycles through both).</summary>
+        public bool Repeat => (Bits & (ToggleLock.RepeatContext | ToggleLock.RepeatTrack)) != 0;
+    }
     /// <summary>The FOLDED enablement — restrictions, phase, error and (while live) the DVR window, decided once.</summary>
     public static readonly Signal<bool> CanSeek = new(false);
     public static readonly Signal<bool> CanSkipNext = new(false);
@@ -1338,6 +1350,7 @@ public static partial class Playback
         ScrubPositionMs.Value = s_state.Scrub.Current != ScrubModel.State.Idle ? s_state.ScrubPosMs : -1;
         Shuffle.Value = s_state.Shuffle;
         Repeat.Value = s_state.Repeat;
+        LockedToggles.Value = new LockFacts(s_state.LiveLocks, s_state.LiveLocks == ToggleLock.None ? LockReason.None : s_state.Locks.Reason);
         CanSeek.Value = s_state.CanSeek;
         CanSkipNext.Value = s_state.CanSkipNext;
         CanSkipPrev.Value = s_state.CanSkipPrev;

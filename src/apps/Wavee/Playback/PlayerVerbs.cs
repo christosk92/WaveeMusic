@@ -16,6 +16,7 @@
 
 using FluentGpu.Controls;
 using FluentGpu.Foundation;
+using FluentGpu.Localization;
 
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
@@ -131,6 +132,26 @@ public sealed class PlayerVerbs : IPlayerVerbs
                 Playback.Buffering.Value, Playback.Recovery.Value, Playback.PrevAllowedByContext.Value, Playback.NextAllowedByContext.Value)
             : Shell.SkipRule.Facts(!Playback.CurrentId.Peek().IsEmpty, Playback.Error.Peek(), Playback.PhaseSignal.Peek(),
                 Playback.Buffering.Peek(), Playback.Recovery.Peek(), Playback.PrevAllowedByContext.Peek(), Playback.NextAllowedByContext.Peek());
+
+    /// <summary>The tooltip a shuffle button wears while the playing context forbids it (the DJ: "Not available with DJ"), or null
+    /// while it may be pressed. Every surface's shuffle button reads it (and draws disabled when it is set); <paramref name="track"/>
+    /// false peeks.</summary>
+    public static string? ShuffleLock(bool track = true)
+    {
+        Playback.LockFacts f = track ? Playback.LockedToggles.Value : Playback.LockedToggles.Peek();
+        return f.Shuffle ? LockText(f.Reason) : null;
+    }
+
+    /// <summary>The repeat button's twin of <see cref="ShuffleLock"/>.</summary>
+    public static string? RepeatLock(bool track = true)
+    {
+        Playback.LockFacts f = track ? Playback.LockedToggles.Value : Playback.LockedToggles.Peek();
+        return f.Repeat ? LockText(f.Reason) : null;
+    }
+
+    /// <summary>Why a context forbids a toggle, in words: the restriction's reason (<c>dj-disallow</c>), else the general sentence.</summary>
+    static string LockText(Playback.LockReason reason)
+        => Loc.Get(reason == Playback.LockReason.Dj ? Strings.Player.NotWithDj : Strings.Player.NotAvailableHere);
 
     public void TogglePlay(string cause) => Playback.TogglePlay(cause);
 

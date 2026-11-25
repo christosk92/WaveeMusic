@@ -73,6 +73,10 @@ public static partial class Spotify
             /// <summary>The owner plays the row as VIDEO (<c>track_player</c> / <c>media.type</c> = "video").</summary>
             public bool IsVideo;
             public long DurationMs;
+            /// <summary>AI DJ: the lexicon page this row came from (1 = the session's first real page; 0 = not a DJ row) and the DJ keys
+            /// its metadata carried (<c>narration.*</c>, <c>dj.*</c>, <c>segment</c>, …) as a <see cref="ClusterBuffer.Meta"/> range. Set
+            /// only by a lexicon decode (<see cref="ContextResolve"/> with a page), so an ordinary row keeps none of them.</summary>
+            public int DjPage, DjStart, DjCount;
             /// <summary>The whole <c>ProvidedTrack</c> as the owner sent it — set for a cluster's <c>prev_tracks</c> /
             /// <c>next_tracks</c> rows only: what a forwarded <c>set_queue</c> echoes back whole, its metadata map, provider,
             /// removed/blocked lists and album/artist uris (remote-play plan 5.2, moreptions.saz 794). Empty elsewhere.</summary>

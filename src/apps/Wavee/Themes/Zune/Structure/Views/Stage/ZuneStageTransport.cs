@@ -418,9 +418,11 @@ internal static class ZuneStageTransport
             ? Embed.Comp(new ZuneStageNext.Props(next, form, size.SourceSize, size.SourceLine) { Open = open }, static () => new ZuneStageNext())
             : new BoxEl { HitTestVisible = false };
 
-        public Element Shuffle() => ToolTip.Wrap(Latch(Icons.Shuffle, props.Verbs.ToggleShuffle, facts.CanTransport, facts.Shuffle), Loc.Get(Strings.Player.Shuffle));
+        public Element Shuffle() => ToolTip.Wrap(Latch(Icons.Shuffle, props.Verbs.ToggleShuffle, facts.CanTransport && facts.ShuffleLock is null, facts.Shuffle),
+            facts.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle));
 
-        public Element Repeat() => ToolTip.Wrap(Latch(facts.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, props.Verbs.CycleRepeat, facts.CanTransport, facts.RepeatOn), Loc.Get(Strings.Player.Repeat));
+        public Element Repeat() => ToolTip.Wrap(Latch(facts.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, props.Verbs.CycleRepeat, facts.CanTransport && facts.RepeatLock is null, facts.RepeatOn),
+            facts.RepeatLock ?? Loc.Get(Strings.Player.Repeat));
 
         public Element Previous() => ToolTip.Wrap(Glyph(Icons.Previous, props.Verbs.Previous, facts.PrevEnabled, Ink.Ink), Loc.Get(Strings.Player.Previous));
 

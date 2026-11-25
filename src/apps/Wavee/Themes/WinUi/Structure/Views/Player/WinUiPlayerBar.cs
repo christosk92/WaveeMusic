@@ -192,8 +192,8 @@ internal static partial class WinUiPlayerBar
         {
             if (!mini && !v.Episode && (v.Slots & RightSlot.Shuffle) != 0)
                 transport.Add(Lit(PL.ShuffleKey, (v.Lit & RightSlot.Shuffle) != 0, ToolTip.Wrap(
-                    Button(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport, v.Shuffle, PL.TransportW, PL.TransportH, PL.Glyph),
-                    Loc.Get(Strings.Player.Shuffle))));
+                    Button(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport && v.ShuffleLock is null, v.Shuffle, PL.TransportW, PL.TransportH, PL.Glyph),
+                    v.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle))));
             if (!mini && v.ShowPrevNext)
                 transport.Add(Item(PL.PrevKey, ToolTip.Wrap(
                     Button(Icons.Previous, () => verbs.Previous(), v.PrevEnabled, false, PL.TransportW, PL.TransportH, PL.Glyph), Loc.Get(Strings.Player.Previous))));
@@ -206,8 +206,8 @@ internal static partial class WinUiPlayerBar
                     Loc.Get(Strings.Player.Next))));
             if (!mini && !v.Episode && (v.Slots & RightSlot.Repeat) != 0)
                 transport.Add(Lit(PL.RepeatKey, (v.Lit & RightSlot.Repeat) != 0, ToolTip.Wrap(
-                    Button(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport, v.RepeatOn, PL.TransportW, PL.TransportH, PL.Glyph),
-                    Loc.Get(Strings.Player.Repeat))));
+                    Button(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport && v.RepeatLock is null, v.RepeatOn, PL.TransportW, PL.TransportH, PL.Glyph),
+                    v.RepeatLock ?? Loc.Get(Strings.Player.Repeat))));
         }
         var centreKids = new List<Element>(2)
         {

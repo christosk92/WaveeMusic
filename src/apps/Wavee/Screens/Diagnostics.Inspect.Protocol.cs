@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Timecode, Drop, LocalScan, LocalIndex, Decode, DjTts, Quit,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Dj, Timecode, Drop, LocalScan, LocalIndex, Decode, DjTts, Quit,
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -602,6 +602,13 @@ public static partial class Diagnostics
                         Arg("curves", ArgType.Int, "print the Connect metadata curves for this preset id (1 Fade, 3 Rise)"),
                         Arg("window", ArgType.Int, "the window those curves are for, ms (8 units under 8 s, else 16)")],
             },
+            new(Verb.Dj, "dj", "AI DJ: the DJ list's attributes; the lexicon session playing it (uri, url, expiry, dj/infinite, the three restrictions, pages fetched with their segments, the next page's url, the lookahead) and the DJ book per queue row (page, segment, jump target, narration slots, subtitle, decision id), the context's toggle locks and the user's held shuffle/repeat, beside the deck and queue; do=answers decodes the --fake lexicon service's session and pages; do=play starts the list as a click does; do=expire ends the session's validity", "dj do=play")
+            {
+                Positional = ["do"],
+                Args = Join([Arg("do", ArgType.Enum, "what to do", "status", "status|answers|play|expire"),
+                             Arg("uri", ArgType.String, "the DJ list (default: the fake one)"),
+                             Arg("pages", ArgType.Int, "do=answers: how many pages to decode after the session (default 3)")], s_settleArgs),
+            },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {
                 Positional = ["id", "value"],
@@ -863,7 +870,7 @@ public static partial class Diagnostics
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "transport" => Verb.Transport, "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
-            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "mix" => Verb.Mix, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
+            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "mix" => Verb.Mix, "dj" => Verb.Dj, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
             "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge, "timecode" => Verb.Timecode, "drop" => Verb.Drop, "localscan" => Verb.LocalScan, "localindex" => Verb.LocalIndex, "decode" => Verb.Decode,
             "djtts" => Verb.DjTts,

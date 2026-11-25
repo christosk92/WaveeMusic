@@ -348,6 +348,8 @@ public static partial class Shell
                 Shuffle = shuffle,
                 RepeatOn = repeat != RepeatMode.Off,
                 RepeatGlyph = PlayerBarRules.RepeatGlyph(repeat),
+                ShuffleLock = PlayerVerbs.ShuffleLock(),
+                RepeatLock = PlayerVerbs.RepeatLock(),
                 OwnsTransport = ownsTransport,
                 SeekStepEnabled = seekStepEnabled,
                 TopEdgeSweeps = sweeps,

@@ -161,12 +161,16 @@ public static partial class Spotify
 
             ReadOnlySpan<byte> format = new ProtoReader(attributes).Bytes(11);
             bool daylist = Is(format, "daylist"), chart = Is(format, "chart");
+            // DJ (plan-dj §1.1): a list read with attributes speaks for the lexicon pair, so a list that stopped being one clears it.
+            row.FlagsMask |= (uint)PlaylistFlags.YourDj;
             for (var a = new ProtoReader(attributes); a.Next();)
             {
                 if (a.Field != 12 || a.Wire != 2) { a.Skip(); continue; }
                 a.Message().Fields(1, 2, out var key, out var value);
                 if (key.IsEmpty || value.IsEmpty) continue;
-                if (daylist && Is(key, "expires")) row.DaylistExpiresAt = InstantSeconds(value);
+                if (Is(key, "lexicon_set_type")) { if (Is(value, "your_dj")) row.Flags |= (uint)PlaylistFlags.YourDj; }
+                else if (Is(key, "lexicon_context_url")) row.LexiconUrl = s.AddText(value);
+                else if (daylist && Is(key, "expires")) row.DaylistExpiresAt = InstantSeconds(value);
                 else if (daylist && Is(key, "created")) row.DaylistCreatedAt = InstantSeconds(value);
                 // The edition's words (the Home card's tags and "Based on" line), as the feed's daylist card carries them.
                 else if (daylist && Is(key, "localized_terms")) row.DaylistTerms = s.AddText(value);
