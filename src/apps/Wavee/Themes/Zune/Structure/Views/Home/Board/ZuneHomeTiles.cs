@@ -207,11 +207,13 @@ internal static class ZuneHomeTiles
 
     // ══ the tile chrome ══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A tile around <paramref name="face"/>: the plate (none on a band), the tilt, the hold, the customize state.</summary>
+    /// <summary>A tile around <paramref name="face"/>: the plate (none on a band), the tilt, the hold, the customize state. A loading tile's placeholder
+    /// derives the face itself (the chrome is a stack the face's size; the deriver cannot run the chrome's render and drew it as one 10-high bar).</summary>
     static Element Tile(HomeTileFrame f, Element face, bool plate = true)
         // The content's own menu (the release spotlight's album) carries the tile's way into customize: one menu on a right-click on it, and on
         // the Menu key (a candidate's preview outside the grid has no tile to customize).
-        => Embed.Comp(new ChromeProps(f, f.Cell is not null ? HomeTileMenus.Host(f, s_rows, face) : face, plate), static () => new TileChrome());
+        => Embed.Comp(new ChromeProps(f, f.Cell is not null ? HomeTileMenus.Host(f, s_rows, face) : face, plate), static () => new TileChrome())
+            with { SkeletonProxy = () => face };
 
     /// <summary>Zune's tile rows under a content's menu: the way into customize with this tile selected (Zune edits its board there, never in a
     /// menu); none while customizing. With customize switched off (HomeCustomize), a tile that has options offers "options": it picks the tile and
@@ -806,7 +808,13 @@ internal static class ZuneHomeTiles
     public static Element Daylist(HomeDaylistTileProps p, in ViewContext ctx)
     {
         var f = p.Frame;
-        if (f.Form == HomeTileForm.Full) return Tile(f, p.Card, plate: false);
+        if (f.Form == HomeTileForm.Full)
+        {
+            // The strip's host carries the strip's own cold-load shape (ZuneHomeDaylist.Skeleton) as its skeleton proxy, as the page's daylist does:
+            // the deriver cannot run the host's render, and a pending tile shimmered as one 10-high bar, then grew to the strip when it landed.
+            var lay = ZuneHomeTiers.Of(ctx.Tier());
+            return Tile(f, p.Card.Is(out ComponentEl host) ? host with { SkeletonProxy = () => ZuneHomeDaylist.Skeleton(lay) } : p.Card, plate: false);
+        }
         var card = p.Zone.Items.Count > 0 ? p.Zone.Items[0] : default;
         string title = card.Title ?? "";
         Action open = p.Play ?? (() => { if (!card.IsBlank) HomeCardNav.Open(in card); });

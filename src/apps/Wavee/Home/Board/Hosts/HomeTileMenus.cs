@@ -61,9 +61,11 @@ public static class HomeTileMenus
     static readonly Dictionary<string, HomeTileMenuSlot> s_live = new(StringComparer.Ordinal);
 
     /// <summary><paramref name="content"/> as the content of <paramref name="frame"/>'s tile, whose Home rows are <paramref name="rows"/>: the content's ⋯
-    /// opens one menu with them.</summary>
+    /// opens one menu with them. The host only provides the slot, so a loading tile's placeholder derives <paramref name="content"/> itself (the
+    /// proxy): the skeleton deriver cannot run a component's render and derives a bare one to a single 160×10 bar, which left every pending tile
+    /// on a cold Home 10 high, to grow to its loaded height when its answer landed and push the board under it down.</summary>
     public static Element Host(HomeTileFrame frame, Func<HomeTileFrame, IReadOnlyList<MenuFlyoutItem>> rows, Element content)
-        => Embed.Comp(new HostProps(frame, rows, content), static () => new SlotHost());
+        => Embed.Comp(new HostProps(frame, rows, content), static () => new SlotHost()) with { SkeletonProxy = () => content };
 
     /// <summary>Open the merged menu of the tile <paramref name="id"/> at its content's ⋯ (the board's Menu key / Shift+F10). False: no content of that
     /// tile carries one.</summary>
