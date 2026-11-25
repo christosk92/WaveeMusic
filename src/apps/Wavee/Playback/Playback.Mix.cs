@@ -24,7 +24,7 @@ public static partial class Playback
     /// <summary>What the planner reads of one track: a value built from the track row and its cue edge.</summary>
     public readonly record struct PairFacts(long DurationMs, ushort TempoX10, byte Camelot, TrackCues Cues, bool Mixable, bool IsLocal);
 
-    public static class Mix
+    public static partial class Mix
     {
         public enum KeyRelation : byte { Unknown, Same, Adjacent, Relative, EnergyUp, Clash }
         public enum TempoRelation : byte { Unknown, Matched, HalfTime, DoubleTime, Apart }
@@ -68,6 +68,24 @@ public static partial class Playback
 
         static FollowKey s_key;
         static MixTiming? s_bench;
+        /// <summary>#48 M5: the pair a preview plays (Playback.MixPreview.cs) and the timing it plays, whatever the planner would say.</summary>
+        static (EntityId A, EntityId B, MixTiming Timing)? s_forced;
+
+        /// <summary>#48 M5: the preview's pair <paramref name="a"/> → <paramref name="b"/> plays <paramref name="timing"/> (an edit not saved
+        /// yet, a Connect preview's recipe); the next follow re-plans. UI thread.</summary>
+        internal static void Force(EntityId a, EntityId b, in MixTiming timing)
+        {
+            s_forced = (a, b, timing);
+            s_key = default;
+        }
+
+        /// <summary>#48 M5: the preview is over; the planner decides again from the next follow. UI thread.</summary>
+        internal static void Unforce()
+        {
+            if (s_forced is null) return;
+            s_forced = null;
+            s_key = default;
+        }
 
         /// <summary>`--mix-bench` only (Diagnostics.MixBench.cs): every pair plays this timing, whatever the planner would say.</summary>
         internal static void Bench(MixTiming timing) => s_bench = timing;
@@ -77,6 +95,8 @@ public static partial class Playback
         /// either track changed. Cheap when nothing did (one key compare).</summary>
         internal static void Follow(in State s)
         {
+            MixPreview.Follow(in s);                       // #48 M5: the preview's timeline and its restore (Playback.MixPreview.cs)
+            EnsureListMix(in s);                           // #48 M7: a list played from elsewhere reads its own mix state
             EntityRef cur = s.Current, next = default;
             QueueProvider provider = QueueProvider.Context;
             if (s.HasCurrent && !s.Cursor.IsNone) Queue.TryPeek(in s.Cursor, out next, out provider);
@@ -92,7 +112,9 @@ public static partial class Playback
             if (key == s_key) return;
             s_key = key;
 
-            var timing = s_bench is { } bench && !next.IsNone ? bench : PlanPair(in s, cur, next, provider, pl);
+            var timing = s_bench is { } bench && !next.IsNone ? bench
+                : s_forced is { } forced && forced.A == key.Cur && forced.B == key.Next ? forced.Timing
+                : PlanPair(in s, cur, next, provider, pl);
             if (timing.Mix && s_ensured != (key.Cur, key.Next))
             {
                 // The analysis the planner reads, for the playing and the next row (plan §3.3: "for the playing track and
@@ -136,6 +158,7 @@ public static partial class Playback
         public static string QueueLine()
         {
             _ = Changed.Value;
+            if (RemoteLine() is { } remote) return remote;   // #48 M7: a controller shows the owner's published transition
             var t = Current;
             return t.Mix && !CurrentNext.IsEmpty ? Strings.Mix.QueueLine(MixSeams.ChipText(in t)) : "";
         }
@@ -155,6 +178,7 @@ public static partial class Playback
         public static string? LabelWhilePlanned()
         {
             _ = Changed.Value;
+            if (RemoteLabel() is { } remote) return remote;  // #48 M7: the owner's next track, as it published the transition
             var t = Current;
             if (!t.Mix || CurrentNext.IsEmpty) return null;
             if (s_mixingFor != CurrentNext || s_mixingText is null)
@@ -171,28 +195,9 @@ public static partial class Playback
         public static string? LabelAt(long positionMs)
         {
             var text = LabelWhilePlanned();
+            if (text is not null && s_remote.Active) return positionMs >= s_remote.OutStartMs && positionMs < s_remote.OutStartMs + s_remote.OutDurationMs ? text : null;
             var t = Current;
             return text is not null && positionMs >= t.OutStartMs && positionMs < t.AudibleEndMs ? text : null;
-        }
-
-        static MixWire? s_wire;
-        static (int Version, EntityId Context, uint Flags, bool Without) s_wireKey;
-
-        /// <summary>The PUT's Mix half for the deck's context (plan §3.7), rebuilt only when the plan, the context or its flags change.</summary>
-        internal static MixWire? WireNow(in State s)
-        {
-            if (s.Context.Kind != EntityKind.Playlist || !Entities.Current.Playlists.TryGetSlot(s.Context, out int slot)) return null;
-            var p = new global::Wavee.Playlist(slot);
-            bool without = MixOptOut.Is(p);
-            var key = (Changed.Peek(), s.Context, (uint)p.MixFlags, without);
-            if (key == s_wireKey) return s_wire;
-            s_wireKey = key;
-            if (!p.MixOn || without) return s_wire = null;
-            var t = Current;
-            var outMeta = new List<KeyValuePair<string, string>>(8);
-            var inMeta = new List<KeyValuePair<string, string>>(8);
-            FadeMeta(in t, outMeta, inMeta);
-            return s_wire = new MixWire(true, p.MixFlags, CurrentNext, outMeta.ToArray(), inMeta.ToArray());
         }
 
         /// <summary>A plan's Connect track metadata (protocol §6.3): the playing track's fade-out keys into <paramref name="outMeta"/>,
@@ -201,7 +206,8 @@ public static partial class Playback
         /// looping keys are open), as the style table spells it at the plan's bars (<see cref="MixCurves.WriteJson"/>), whether
         /// the engine renders the lane yet or not. <c>audio.fade_in_duration</c> is B's own length. Nothing for a refused plan (a
         /// "none" seam carries no fade key). The publisher and the inspector's <c>mix curves</c> call it alike.</summary>
-        public static void FadeMeta(in MixTiming t, List<KeyValuePair<string, string>> outMeta, List<KeyValuePair<string, string>> inMeta)
+        public static void FadeMeta(in MixTiming t, List<KeyValuePair<string, string>> outMeta, List<KeyValuePair<string, string>> inMeta,
+            bool upcoming = false)
         {
             if (!t.Mix) return;
             static string Num(long v) => v.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -221,7 +227,8 @@ public static partial class Playback
                 n = t.Segments(lane, true, seg);
                 if (n > 0) inMeta.Add(new("audio.fade_in_" + key, System.Text.Encoding.UTF8.GetString(buf, 0, MixCurves.WriteJson(seg[..n], buf))));
             }
-            outMeta.Add(new("automix.fade_out_cuepoint.position", Num(t.AudibleEndMs)));
+            // The mix-out's end on the playing row; 0 on an upcoming row (protocol §6.3).
+            outMeta.Add(new("automix.fade_out_cuepoint.position", upcoming ? "0" : Num(t.AudibleEndMs)));
             outMeta.Add(new("automix.mode", "auto"));
         }
 
@@ -289,7 +296,7 @@ public static partial class Playback
             return MixPlanner.Plan(in fa, edges.TrackBeats.Payload(cur.Slot), in fb, edges.TrackBeats.Payload(next.Slot), hasRecipe, in recipe);
         }
 
-        static PairFacts Facts(global::Wavee.Track t, Edges edges)
+        internal static PairFacts Facts(global::Wavee.Track t, Edges edges)
         {
             var cues = edges.TrackCues.Payload(t.Slot);
             return new PairFacts(t.DurationMs, t.Tempo, t.Camelot, cues.Length > 0 ? cues[0] : default, true, t.IsLocal);

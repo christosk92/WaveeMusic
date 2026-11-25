@@ -156,6 +156,22 @@ public static partial class Diagnostics
                         if (file.Length == 0 || !File.Exists(file)) return Inspect.Reply.Fail(id, name, "inbound wants file=<a play/transfer command body (JSON)>");
                         byte[] body = File.ReadAllBytes(file);
                         Spotify.Decode.RemoteCommand command = Spotify.Decode.ConnectCommand(body);
+                        // #48 M5: an editor's Mix preview signal, and the pause / resume it wraps them in, as the dealer glue routes them
+                        // (Spotify.Connect.RouteCommand → Playback.MixPreview; the verb then folds as a mailbox item does).
+                        if (command.Kind == Spotify.Decode.RemoteCmd.Signal)
+                        {
+                            var signal = Spotify.Decode.MixPreviewCommand(body, out var preview, out bool resume);
+                            if (signal == Spotify.Decode.MixPreviewSignal.Preview && preview is not null) Playback.MixPreview.Receive(preview);
+                            else if (signal == Spotify.Decode.MixPreviewSignal.Stop) Playback.MixPreview.ReceiveStop(resume);
+                            else return Inspect.Reply.Fail(id, name, "inbound: a signal that is not a Mix preview");
+                            break;
+                        }
+                        if (command.Kind is Spotify.Decode.RemoteCmd.Pause or Spotify.Decode.RemoteCmd.Resume)
+                        {
+                            Playback.MixPreview.OnRemoteCommand(command.Kind);
+                            Playback.Post(Playback.Input.Controller(in command, Playback.FrameNowMs()));
+                            break;
+                        }
                         if (command.Kind is not (Spotify.Decode.RemoteCmd.Play or Spotify.Decode.RemoteCmd.Transfer))
                             return Inspect.Reply.Fail(id, name, "inbound: the body is not a play or transfer command (" + command.Kind + ")");
                         Spotify.Decode.ClusterBuffer buffer = Spotify.Decode.ClusterBuffer.Rent();

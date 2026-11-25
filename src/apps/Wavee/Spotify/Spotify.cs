@@ -1843,6 +1843,9 @@ public static partial class Spotify
         /// <summary>#48 Mix: <c>spotify-apply-lenses: mix,auto</c> (instead of <see cref="ApplyLenses"/>'s <c>auto</c>) and
         /// <c>spotify-list-player-enabled: true</c>, as the official client sends on a mixed list (capture report §3.6).</summary>
         MixLens = 1 << 24,
+        /// <summary>#48 Mix M8: the <c>harmonize</c> lens ahead of the others (Smart reorder: Spotify's own order for smooth transitions,
+        /// the lens the official client requests with its Auto mix toggle). Which place the name takes in the header is open.</summary>
+        HarmonizeLens = 1 << 25,
     }
 
     /// <summary>Which request. One per FAMILY, not one per caller: <c>Spotify.Api.cs</c>'s function per request picks

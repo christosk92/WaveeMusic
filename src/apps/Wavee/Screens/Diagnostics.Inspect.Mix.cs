@@ -55,9 +55,12 @@ public static partial class Diagnostics
             if (a.Has("autocheck")) return MixAutoCheck(id, name, a.Str("autocheck"));   // Diagnostics.Inspect.Mix.Auto.cs
             string show = a.Str("show", "dump");
             if (show is "writes" or "fake" or "requests" or "migrate" or "coldstart") return MixWritesVerb(id, name, show, a);   // M2: Diagnostics.Inspect.MixWrites.cs
+            if (show is "reorder" or "duplicate") return MixRestVerb(id, name, show, a);   // M8: Diagnostics.Inspect.MixRest.cs
             if (show == "semantics") return MixSemantics(id, name);
             if (show == "render") return MixRenderCheck(id, name, a.Str("uri", Entities.LibrarySeed.MixUri));
-            if (show == "speed") return MixSpeedVerb(id, name, a);   // #48 M4: a beatmatched join's glide, published (Diagnostics.Inspect.MixSpeed.cs)
+            if (show == "speed") return MixSpeedVerb(id, name, a);
+            if (show == "preview") return MixPreviewVerb(id, name, a);   // #48 M5: Hear it (Diagnostics.Inspect.MixPreview.cs)
+            if (show == "remote") return MixRemoteVerb(id, name);         // #48 M7: a controller reads the owner's fades   // #48 M4: a beatmatched join's glide, published (Diagnostics.Inspect.MixSpeed.cs)
             if (show == "cancel") return MixCancel(id, name, Math.Clamp(a.Float("at", 0.4f), 0.05f, 0.95f));
             if (a.Has("recipe") && show != "roundtrip")
             {

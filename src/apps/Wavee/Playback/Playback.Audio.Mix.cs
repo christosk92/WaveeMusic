@@ -126,6 +126,13 @@ public static partial class Playback
         /// <summary>Diagnostics (the `mix` verb): the fade the base hand-off would use now, as the tick selects it.</summary>
         public static int HandOffFadeMsNow => MixBaseFadeMs(EffectiveFadeMs);
 
+        /// <summary>#48 M7: the pump refused the planned join for <paramref name="active"/> (too late, a cross-kind slot): the base hand-off
+        /// runs, so the PUT publishes no mix-out for it (Mix.OnWire). Any thread.</summary>
+        public static bool MixRefusedFor(EntityId active)
+        {
+            lock (s_gate) return s_mixRefused && s_mixActive == active;
+        }
+
         /// <summary>Under s_gate: a mix is planned for the deck's row and not refused.</summary>
         static bool MixArmedLocked => s_mixPlan.Mix && !s_mixRefused && s_mixActive == s_id && !s_id.IsEmpty;
 
@@ -318,7 +325,12 @@ public static partial class Playback
             bool sounding;
             lock (s_gate) sounding = s_joinPending && s_joinMix && sess.SampleClock >= s_mixStartFrameValue;
             int now = sounding ? 1 : 0;
-            if (Interlocked.Exchange(ref s_mixSounding, now) != now && sounding) Log.Info("audio", "[mix] overlap sounding");
+            if (Interlocked.Exchange(ref s_mixSounding, now) != now && sounding)
+            {
+                Log.Info("audio", "[mix] overlap sounding");
+                // #48 M7: the official player makes B current the moment it starts playing; the PUT says so now (Mix.OnWire), not at A's end.
+                ToUi(static () => RepublishDeviceState());
+            }
         }
 
         /// <summary>Under s_gate, from <see cref="AbandonPendingJoin"/>: undo a mix join's A side. True when the join was a mix.

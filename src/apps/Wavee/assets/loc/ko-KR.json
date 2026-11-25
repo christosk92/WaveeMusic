@@ -1634,6 +1634,28 @@
       "eightBeat": "8박 루프",
       "sixteenBeat": "16박 루프",
       "halvingEnd": "절반씩 줄어드는 루프"
-    }
+    },
+    "smartReorder": "스마트 재정렬",
+    "reorderAsking": "부드러운 전환을 위한 순서를 Spotify에 요청하는 중…",
+    "reorderProposal": "부드러운 전환을 위한 Spotify의 순서: {count}곡 중 {moved}곡의 위치가 바뀝니다.",
+    "reorderSame": "이 플레이리스트는 이미 부드러운 전환을 위한 Spotify의 순서입니다.",
+    "reorderNoOrder": "지금은 이 플레이리스트에 대한 Spotify의 부드러운 전환 순서가 없습니다.",
+    "reorderOffline": "오프라인 상태입니다. 스마트 재정렬에는 연결이 필요합니다.",
+    "reorderFailed": "Spotify의 순서를 가져오지 못했습니다. 다시 시도하세요.",
+    "reorderApply": "재정렬",
+    "reorderCancel": "취소",
+    "reorderWas": "이전 {n}",
+    "reordered": "{count, plural, other {#곡 재정렬됨}}",
+    "reorderUndo": "실행 취소",
+    "reorderUndone": "이전 순서로 돌아갔습니다.",
+    "reorderWriteFailed": "이 플레이리스트를 재정렬하지 못했습니다. 다시 시도하세요.",
+    "reorderChanged": "그동안 플레이리스트가 바뀌었습니다. 스마트 재정렬을 다시 여세요.",
+    "cantEdit": "이 플레이리스트의 전환은 편집할 수 없습니다",
+    "duplicate": "믹스 복제",
+    "duplicateFailed": "이 믹스를 복제하지 못했습니다. 다시 시도하세요.",
+    "duplicateOffline": "오프라인 상태입니다. 다시 온라인이 되면 믹스를 복제하세요.",
+    "upsellTitle": "Premium으로 믹스 플레이리스트를 재생하고 만드세요",
+    "upsellBody": "전환이 있는 믹스 플레이리스트를 듣거나 나만의 믹스를 만드세요. Premium 전용입니다.",
+    "upsellCta": "Premium 알아보기"
   }
 }

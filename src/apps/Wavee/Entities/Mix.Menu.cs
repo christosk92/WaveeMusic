@@ -7,8 +7,9 @@
 // planner honours both (Playback.Mix.cs), and the Transitions view and the seams draw the pair as a break. Checked while the
 // pair plays without a transition.
 //
-// The Mix menu (Items): the transitions view, listen without Mix, "Turn off Mix for everyone" (M2: the mix-state write) and
-// the view options.
+// The Mix menu (Items): the transitions view, listen without Mix, "Turn off Mix for everyone" (M2: the mix-state write), Smart
+// reorder (M8, owners and collaborators: Mix.Reorder.cs), Duplicate Mix (M8, a mixed list the user may not edit) and the view
+// options. A Free account is never offered any of it: its Mix button opens the Premium upsell (Mix.Reorder.cs, MixUpsell).
 
 using FluentGpu.Controls;
 using FluentGpu.Localization;
@@ -67,18 +68,22 @@ public static class MixMenu
             : Strings.Mix.MixedLineEdited(edited, pairs);
     }
 
-    /// <summary>The list bar offers the Mix toggle: the playlist is mixed, or the user may mix it (owner, collaborator) and Spotify says it may be.</summary>
+    /// <summary>The list bar offers the Mix toggle: the playlist is mixed, or it is the user's own (owner, collaborator) and Spotify says
+    /// it may be mixed. On a Free account the same button opens the Premium upsell (the official client's "create mixed playlists").</summary>
     public static bool Offered(Playlist p)
-        => p.IsValid && (p.MixOn || (Spotify.Mixes.CanWrite(p) && (p.MixFlags & PlaylistMixFlags.XmMixable) != 0));
+        => p.IsValid && (p.MixOn || ((p.IsOwner || p.Editable) && (p.MixFlags & PlaylistMixFlags.XmMixable) != 0));
 
-    /// <summary>The toggle is lit: Mix is on and this account listens with it.</summary>
-    public static bool Lit(Playlist p) => p.IsValid && p.MixOn && !MixOptOut.Is(p);
+    /// <summary>The toggle is lit: Mix is on and this account listens with it (a Free account does not: transitions are Premium).</summary>
+    public static bool Lit(Playlist p) => p.IsValid && p.MixOn && !MixOptOut.Is(p) && Spotify.MixLists.Premium;
+
+    /// <summary>The Mix button opens the Premium upsell instead of a menu or a write.</summary>
+    public static bool Upsell => !Spotify.MixLists.Premium;
 
     /// <summary>The toggle (decision D3): a mixed playlist flips "listen without Mix"; an unmixed one the user may mix (owner or
     /// collaborator) turns Mix on at Spotify.</summary>
     public static void Toggle(Playlist p)
     {
-        if (!p.IsValid) return;
+        if (!p.IsValid || Upsell) return;
         if (p.MixOn) { ListenWithout(p, !MixOptOut.Is(p)); return; }
         if (Spotify.Mixes.CanWrite(p)) TurnOn(p);
     }
@@ -123,11 +128,12 @@ public static class MixMenu
         });
 
     /// <summary>The list bar's Mix menu (UX direction rev 2): the transitions view, listen without Mix, turn Mix off for everyone
-    /// (owner and collaborators only: <see cref="Spotify.Mixes.CanWrite"/>; live when the server offers the mix-state signal), the
-    /// transitions view option (on hover · always) and "Mix when shuffling".</summary>
-    public static IReadOnlyList<FluentGpu.Controls.MenuFlyoutItem> Items(Playlist p, Action toggleTransitions, bool transitionsOpen)
+    /// (owner and collaborators only: <see cref="Spotify.Mixes.CanWrite"/>; live when the server offers the mix-state signal), Smart
+    /// reorder (the same people; it needs a connection), Duplicate Mix under the official notice (a mixed list the user may not edit),
+    /// the transitions view option (on hover · always) and "Mix when shuffling".</summary>
+    public static IReadOnlyList<FluentGpu.Controls.MenuFlyoutItem> Items(Playlist p, Action toggleTransitions, bool transitionsOpen, Action openReorder)
     {
-        var items = new List<FluentGpu.Controls.MenuFlyoutItem>(8);
+        var items = new List<FluentGpu.Controls.MenuFlyoutItem>(12);
         if (p.MixOn) items.Add(FluentGpu.Controls.MenuFlyoutItem.Toggle(Loc.Get(Strings.Mix.Transitions), transitionsOpen, toggleTransitions));
         if (p.MixOn)
         {
@@ -137,6 +143,14 @@ public static class MixMenu
             if (Spotify.Mixes.CanWrite(p))
                 items.Add(new FluentGpu.Controls.MenuFlyoutItem(Loc.Get(Strings.Mix.TurnOffForEveryone), default, Spotify.Mixes.CanToggle(p),
                     () => TurnOffForEveryone(p)));
+            if (Spotify.MixLists.CanReorder(p))
+                items.Add(new FluentGpu.Controls.MenuFlyoutItem(Loc.Get(Strings.Mix.SmartReorder), default, Spotify.MixLists.Online, openReorder));
+            if (Spotify.MixLists.CanDuplicate(p))
+            {
+                items.Add(FluentGpu.Controls.MenuFlyoutItem.Header(Loc.Get(Strings.Mix.CantEdit)));
+                items.Add(new FluentGpu.Controls.MenuFlyoutItem(Loc.Get(Strings.Mix.Duplicate), default, Spotify.MixLists.Online,
+                    () => Spotify.MixLists.Duplicate(p, null)));
+            }
         }
         items.Add(FluentGpu.Controls.MenuFlyoutItem.Header(Loc.Get(Strings.Mix.ShowTransitions)));
         bool always = MixPrefs.ShowAlways;

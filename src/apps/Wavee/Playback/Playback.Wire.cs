@@ -186,11 +186,24 @@ public static partial class Playback
     public sealed record WireOrigin(string Feature, string Version, string View, string ExternalReferrer,
         string Referrer, string Device, string CommandId, KeyValuePair<string, string>[] Metadata);
 
-    /// <summary>#48 Mix on the PUT (plan §3.7): the context is a mixed playlist read through its lens (the context url gains
-    /// <c>?spotify-apply-lenses=mix</c> and the context metadata the list's Mix attributes), and the playing pair's fade metadata
-    /// (<see cref="Out"/> on the playing row, <see cref="In"/> on <see cref="Incoming"/>'s row), built once per timing.</summary>
+    /// <summary>#48 Mix on the PUT (plan §3.7; full-support §2.4.4): the context is a mixed playlist read through its lens (the context
+    /// url gains <c>?spotify-apply-lenses=mix</c> and the context metadata the list's Mix attributes); the playing row carries the seam it
+    /// came in by (<see cref="CurrentIn"/>) and the one it leaves by (<see cref="Out"/>, the pump's own plan), and EVERY upcoming row
+    /// carries both of its seams (<see cref="Rows"/>, protocol §6.3: 9 of 9 decorated), built once per plan and queue.</summary>
     public sealed record MixWire(bool Lens, PlaylistMixFlags ListFlags, EntityId Incoming,
-        KeyValuePair<string, string>[] Out, KeyValuePair<string, string>[] In);
+        KeyValuePair<string, string>[] Out, KeyValuePair<string, string>[] CurrentIn, MixRowWire[] Rows)
+    {
+        /// <summary>The upcoming row's fade keys, by its queue item id (its id when it has none); null when it carries none.</summary>
+        public MixRowWire? RowOf(ulong itemId, EntityId id)
+        {
+            foreach (var r in Rows)
+                if (itemId != 0 ? r.ItemId == itemId : r.Id == id) return r;
+            return null;
+        }
+    }
+
+    /// <summary>One upcoming row's two seams on the PUT: the fade-in keys of the seam into it, the fade-out keys of the seam out of it.</summary>
+    public sealed record MixRowWire(ulong ItemId, EntityId Id, KeyValuePair<string, string>[] In, KeyValuePair<string, string>[] Out);
 
     public readonly struct WireExtras
     {
