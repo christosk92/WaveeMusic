@@ -129,6 +129,7 @@ public static partial class Diagnostics
                     w.WriteNumber("rows", p.Rows);
                     w.WriteString("segment", p.Segment);
                     w.WriteString("correlation", p.Correlation);
+                    w.WriteNumber("metadataKeys", p.Metadata.Count);
                     w.WriteString("url", p.Url);
                     w.WriteEndObject();
                 }

@@ -132,8 +132,36 @@ public static partial class Playback
         // ── the session record (UI thread) ──────────────────────────────────────────────────────────────────────────
 
         /// <summary>One fetched page: its ordinal (1 = the first real page; the session answer is page 0), the url it was GOT
-        /// from, how many rows it brought, and its own metadata's segment (<c>lastComponentId</c>) and correlation id.</summary>
-        public sealed record Page(int Ordinal, string Url, int Rows, string Segment, string Correlation);
+        /// from, how many rows it brought, its own metadata's segment (<c>lastComponentId</c>) and correlation id, and that metadata
+        /// whole (the colours among it: what Connect publishes as the page metadata while the page plays, plan-dj §1.8).</summary>
+        public sealed record Page(int Ordinal, string Url, int Rows, string Segment, string Correlation, IReadOnlyDictionary<string, string> Metadata)
+        {
+            /// <summary>Page <paramref name="ordinal"/> as <paramref name="page"/> decoded it into <paramref name="buffer"/>. Api thread.</summary>
+            public static Page Of(int ordinal, string url, in Spotify.Decode.ContextPage page, ClusterBuffer buffer)
+                => new(ordinal, url, page.TrackCount, Encoding.UTF8.GetString(buffer.Utf8(page.Segment)),
+                    Encoding.UTF8.GetString(buffer.Utf8(page.CorrelationId)), MetadataOf(buffer.Utf8(page.Metadata)));
+        }
+
+        /// <summary>A metadata object's string entries (a non-string value is skipped). Api thread; only lexicon answers pay for it.</summary>
+        static Dictionary<string, string> MetadataOf(ReadOnlySpan<byte> json)
+        {
+            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (json.IsEmpty) return map;
+            try
+            {
+                var r = new Utf8JsonReader(json);
+                if (!r.Read() || r.TokenType != JsonTokenType.StartObject) return map;
+                while (r.Read() && r.TokenType == JsonTokenType.PropertyName)
+                {
+                    string key = r.GetString() ?? "";
+                    r.Read();
+                    if (r.TokenType == JsonTokenType.String) map[key] = r.GetString() ?? "";
+                    else r.Skip();
+                }
+            }
+            catch (JsonException) { /* what was read stands */ }
+            return map;
+        }
 
         /// <summary>What the session answer states, built on the api thread: its uri and url, the DJ marker, the expiry, the context's
         /// restrictions (each the first reason, "" = allowed) and the context metadata (the welcome narration's keys among them).</summary>
@@ -148,7 +176,7 @@ public static partial class Playback
             /// <summary>Read the session answer <paramref name="page"/> decoded into <paramref name="buffer"/>. Api thread.</summary>
             public static SessionFacts Of(in Spotify.Decode.ContextPage page, ClusterBuffer buffer)
             {
-                var f = new SessionFacts
+                return new SessionFacts
                 {
                     Uri = Encoding.UTF8.GetString(buffer.Utf8(page.Uri)),
                     Url = Encoding.UTF8.GetString(buffer.Utf8(page.Url)),
@@ -158,23 +186,8 @@ public static partial class Playback
                     NoShuffle = Encoding.UTF8.GetString(buffer.Utf8(page.NoShuffle)),
                     NoRepeatContext = Encoding.UTF8.GetString(buffer.Utf8(page.NoRepeatContext)),
                     NoRepeatTrack = Encoding.UTF8.GetString(buffer.Utf8(page.NoRepeatTrack)),
+                    Metadata = MetadataOf(buffer.Utf8(page.Metadata)),
                 };
-                ReadOnlySpan<byte> json = buffer.Utf8(page.Metadata);
-                if (json.IsEmpty) return f;
-                try
-                {
-                    var r = new Utf8JsonReader(json);
-                    if (!r.Read() || r.TokenType != JsonTokenType.StartObject) return f;
-                    while (r.Read() && r.TokenType == JsonTokenType.PropertyName)
-                    {
-                        string key = r.GetString() ?? "";
-                        r.Read();
-                        if (r.TokenType == JsonTokenType.String) f.Metadata[key] = r.GetString() ?? "";
-                        else r.Skip();
-                    }
-                }
-                catch (JsonException) { /* what was read stands */ }
-                return f;
             }
         }
 
@@ -381,8 +394,7 @@ public static partial class Playback
                     for (int ordinal = 1; ordinal <= Dj.StartPages && next.Length > 0; ordinal++)
                     {
                         if (!Dj.Fetch(RemotePlan.PageRoute(next), buffer, ordinal, "dj page " + ordinal, out Spotify.Decode.ContextPage page)) break;
-                        resolve.Pages.Add(new Dj.Page(ordinal, next, page.TrackCount, Encoding.UTF8.GetString(buffer.Utf8(page.Segment)),
-                            Encoding.UTF8.GetString(buffer.Utf8(page.CorrelationId))));
+                        resolve.Pages.Add(Dj.Page.Of(ordinal, next, in page, buffer));
                         next = Encoding.UTF8.GetString(buffer.Utf8(page.NextPageUrl));
                     }
                     pageUrl = next;
@@ -434,7 +446,7 @@ public static partial class Playback
                 {
                     count = buffer.TrackCount - start;
                     next = Encoding.UTF8.GetString(buffer.Utf8(p.NextPageUrl));
-                    page = new Dj.Page(ordinal, url, count, Encoding.UTF8.GetString(buffer.Utf8(p.Segment)), Encoding.UTF8.GetString(buffer.Utf8(p.CorrelationId)));
+                    page = Dj.Page.Of(ordinal, url, in p, buffer);
                 }
             }
             catch (Exception ex) { Log.Warn("dj", "page " + ordinal + " failed", ex); }
