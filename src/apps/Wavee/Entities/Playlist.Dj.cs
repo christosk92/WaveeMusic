@@ -96,7 +96,9 @@ public static class DjPage
             };
             return new BoxEl
             {
-                Key = "dj-page:hdr", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
+                // Inset by the row's own padding (SurfaceGeometry.RowPad), so the heading starts where the rows' art does.
+                Key = "dj-page:hdr", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
+                Padding = new Edges4(SurfaceGeometry.RowPad, 0f, SurfaceGeometry.RowPad, Spacing.S),
                 Children = mark.Length > 0 ? [title, Ui.Caption(mark) with { Color = Tok.AccentTextPrimary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Shrink = 0f }] : [title],
             };
         }
