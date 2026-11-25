@@ -404,6 +404,10 @@ About 0.5 s after B's fade-in ends, the speed moves towards 1.0 in steps of **0.
 step is published (0.901696 → 0.906696 → … → 1; 1.09994 → 1.09494 → … → 1). A difference under 0.005 goes in one step
 (1.00008 → 1). A plays at 1.0 in every sample (`speedA` = 1): only B is stretched.
 
+Wavee (M4) publishes B's `playback_speed` when B becomes its deck row, at A's end (D14 b), not when the overlap starts
+as the official client does; the glide steps after that are published as above. The beatmatched `fade_in_duration` is
+rounded to the ms, so B's mixer window can differ from A's by a few frames.
+
 ### 6.3 Track metadata
 
 On the current track and on **every** upcoming `next_tracks` entry (9 of 9 decorated):

@@ -152,6 +152,10 @@ Block  { 1 type (1 LOOP, 2 SPINBACK, 3 VINYL_STOP); 2 beats float; 3 start float
 
 Which looping styles use the SPINBACK and VINYL_STOP block types is **open**.
 
+Also **open**: whether a block loops the beats *starting at* its `start` fraction or the beats *before* it. Wavee (M4)
+starts each block on A's beat nearest its window fraction and skips a block whose loop is longer than its span; under
+that reading SixteenBeat does nothing in a 4-bar window. Settle it by ear against the official client.
+
 ### 3.3 The curve-editing model [client]
 
 This is what Customize edits and what the curve overrides (§4.1, fields 2.6 to 2.14) store.
@@ -192,7 +196,10 @@ Effect dry/wet:
   `t = (raw − rawStart) / (rawEnd − rawStart)`; ease `t` (`powerIn`: `t^exponent`; `powerOut`: `1 − (1 − t)^exponent`;
   otherwise `t`); then `signedGeometric`: `out = outputStart × (outputEnd / outputStart)^t`, or `linear`:
   `out = outputStart + t × (outputEnd − outputStart)`.
-- `outputMode`: 1 = low-pass, 2 = high-pass.
+- `outputMode`: 1 = low-pass, 2 = high-pass. The kind 5 (noise colour) segments have `outputMode` 0, so the client's
+  entry does not say which filter colours the noise. Wavee reads it like the cutoff lane: low-pass below 0.5, high-pass
+  above; 0.495–0.505 is off. The client defines no noise level either; Wavee uses −20 dBFS RMS of the white noise
+  before the colour filter (M4). Both are to be checked by ear.
 
 ### 4.3 The result, lane by lane
 
