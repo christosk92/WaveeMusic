@@ -96,6 +96,10 @@ public static partial class Diagnostics
         /// <summary>What `mixstyles` prints for a resolved style set at <paramref name="bars"/>: every lane's curve on both sides, in the
         /// Connect metadata spelling (its key when the lane has one, "" otherwise). `mix show=render` compares the engine's tables with it.</summary>
         static List<(string Key, string Lane, string Side, int Segments, string Json)> StyleCurves(in MixStyleSet set, int bars)
+            => StyleCurves(new MixTiming(MixSource.Saved, MixWhyNot.None, 0, 0, 0, 0, 0, set, (byte)Math.Clamp(bars, 0, 255), 1f, 0f, MixPlanNotes.None));
+
+        /// <summary>A join's curves as it plays them (<see cref="MixTiming.Segments"/>: a recipe's hand-drawn curve in place of its style's).</summary>
+        static List<(string Key, string Lane, string Side, int Segments, string Json)> StyleCurves(in MixTiming t)
         {
             var curves = new List<(string Key, string Lane, string Side, int Segments, string Json)>();
             Span<CurveSegment> seg = stackalloc CurveSegment[MixStyles.MaxSegments];
@@ -103,7 +107,7 @@ public static partial class Diagnostics
             foreach (bool incoming in new[] { false, true })
                 foreach (MixCurveLane lane in Enum.GetValues<MixCurveLane>())
                 {
-                    int n = MixStyles.Segments(in set, lane, incoming, bars, seg);
+                    int n = t.Segments(lane, incoming, seg);
                     if (n == 0) continue;
                     int len = MixCurves.WriteJson(seg[..n], buf);
                     string? suffix = MixStyles.ConnectKey(lane);

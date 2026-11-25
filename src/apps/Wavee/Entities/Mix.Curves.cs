@@ -30,8 +30,7 @@ public enum MixPlanNotes : byte
     Capped = 1 << 3,
     /// <summary>B's window was cut at B's end.</summary>
     InClipped = 1 << 4,
-    /// <summary>The recipe carries curve overrides (Preset 2.6 to 2.14): the table's curves play (the editor phase renders them).</summary>
-    CurveOverridesNotApplied = 1 << 5,
+    // 1 << 5 was CurveOverridesNotApplied (a recipe's curve overrides, 2.6 to 2.14, played the table's curves until M6 played them).
 }
 
 /// <summary>Why a pair gets the base hand-off instead of a mix (logged, and shown by diagnostics). <see cref="NoTransition"/>: the
@@ -61,7 +60,8 @@ public readonly record struct MixTiming(
     float SpeedB,         // recipe 1.7, B's beatmatch speed (1 for a pair that is not beatmatched): B plays at it from its first frame and
                           // glides back to 1 after its fade-in (protocol §6.2; MixRender.RatePlan)
     float BpmA,           // A's tempo (recipe 1.16, else kind 222): the effects' echo and delay time (MixStyles.FxBeats)
-    MixPlanNotes Notes)
+    MixPlanNotes Notes,
+    MixCurveOverrides? Curves = null)   // the recipe's hand-drawn curves (2.6 to 2.14): each one plays in place of its style's lane
 {
     public bool Mix => Source != MixSource.None;
     /// <summary>A's audible end: where the outgoing track is over and the player flips (decision D14 (b)).</summary>
@@ -70,9 +70,39 @@ public readonly record struct MixTiming(
 
     /// <summary>A plan for preset <paramref name="presetId"/> with <paramref name="overrides"/> resolved through the style table.</summary>
     public static MixTiming Of(MixSource source, int presetId, in MixStyleOverrides overrides, int bars, uint outStartMs, uint outDurationMs,
-        uint inStartMs, uint inDurationMs, float speedB = 1f, float bpmA = 0f, MixPlanNotes notes = MixPlanNotes.None)
+        uint inStartMs, uint inDurationMs, float speedB = 1f, float bpmA = 0f, MixPlanNotes notes = MixPlanNotes.None,
+        MixCurveOverrides? curves = null)
         => new(source, MixWhyNot.None, (byte)Math.Clamp(presetId, 0, 255), outStartMs, outDurationMs, inStartMs, inDurationMs,
-               MixStyles.Resolve(presetId, in overrides), (byte)Math.Clamp(bars, 0, 255), speedB, bpmA, notes);
+               MixStyles.Resolve(presetId, in overrides), (byte)Math.Clamp(bars, 0, 255), speedB, bpmA, notes,
+               curves is { IsEmpty: false } ? curves : null);
+
+    /// <summary>One lane's curve on one side as this join plays it: the recipe's hand-drawn curve when it overrides the lane, else
+    /// the style table's (<see cref="MixStyles.Segments"/> at <see cref="Bars"/>). Writes at most <c>into.Length</c> segments;
+    /// returns the count (0 = nothing moves the lane). Every reader of a join's curves calls this: the engine's tables, the
+    /// Connect metadata, the editor's drawing.</summary>
+    public int Segments(MixCurveLane lane, bool incoming, Span<CurveSegment> into)
+    {
+        if (Curves?.Get(lane, incoming) is { } c)
+        {
+            int n = Math.Min(c.Segments.Length, into.Length);
+            c.Segments.AsSpan(0, n).CopyTo(into);
+            return n;
+        }
+        return MixStyles.Segments(Styles, lane, incoming, Bars, into);
+    }
+
+    /// <summary>One lane sampled evenly over its side's window into <paramref name="table"/> (<see cref="Segments"/>, then the
+    /// override's value clamp). False when nothing moves the lane (the table is untouched).</summary>
+    public bool Sample(MixCurveLane lane, bool incoming, Span<float> table)
+    {
+        Span<CurveSegment> seg = stackalloc CurveSegment[MixStyles.MaxSegments];
+        int n = Segments(lane, incoming, seg);
+        if (n == 0) return false;
+        MixCurves.Sample(seg[..n], table);
+        if (Curves?.Get(lane, incoming) is { Clamps: true } c)
+            for (int i = 0; i < table.Length; i++) table[i] = c.Clamp(table[i]);
+        return true;
+    }
 }
 
 /// <summary>One segment of a fade curve (report §4.3).</summary>

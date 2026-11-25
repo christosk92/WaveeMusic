@@ -32,7 +32,7 @@ public enum MixBeatmatchPreference : byte { Auto = 0, Off = 1, On = 2 }
 /// <summary>Spotify's <c>TransitionRecipe</c>, field names from the official client's codec. Plain values; the track uris and
 /// analysis ids are strings because the recipe is read rarely (a list read) and written rarely (a save), never per frame. A
 /// field the raw lacks reads as proto3's default (0, false, null).</summary>
-public struct MixRecipe
+public partial struct MixRecipe
 {
     // ── 1 Overlap ──────────────────────────────────────────────────────────────────────────────────────────────────────
     /// <summary>1.1 / 1.2 <c>trackA/BRowId</c>: the from and to item ids (16 hex chars on the wire); absent in a save's baseline.</summary>
@@ -68,9 +68,13 @@ public struct MixRecipe
     /// <summary>2.3 / 2.4 / 2.5 / 2.12 / 2.15 / 2.16: a style override <c>{1 id}</c> per ingredient (volume, EQ, filter/FX,
     /// effects, jog wheel, looping); null = the preset's own style. An override to style 0 ("None") is present with id 0.</summary>
     public int? VolumeStyle, EqStyle, FilterFxStyle, FxStyle, JogwheelStyle, LoopingStyle;
-    /// <summary>READ-ONLY: which curve and block overrides (Preset fields 6-11, 13, 14, 17; bit n = field n) the raw holds. They
-    /// travel in the raw bytes untouched; the encoder never reads this.</summary>
+    /// <summary>READ-ONLY: which curve and block overrides (Preset fields 6-11, 13, 14, 17; bit n = field n) the raw holds. The
+    /// encoder never reads this.</summary>
     public uint CurveOverrides;
+    /// <summary>The curve overrides (Preset fields 6-11, 13, 14) decoded (Mix.Recipe.Curves.cs): what the planner plays in place of the
+    /// styles' curves on those lanes, and what the editor edits. A field whose value the model leaves as decoded is copied byte for
+    /// byte; an edited one is written from the model. The loop blocks (2.17) stay in the raw only. Null = none.</summary>
+    public MixCurveOverrides? Curves;
 
     // ── top level ──────────────────────────────────────────────────────────────────────────────────────────────────────
     /// <summary>3 <c>isOverlapOverride</c>: the timing was set by hand (absent on "no transition").</summary>
@@ -171,12 +175,9 @@ public struct MixRecipe
     {
         for (var p = new Spotify.Decode.ProtoReader(proto); p.Next();)
         {
-            if (!Modeled(Level.Preset, p.Field, p.Wire))
-            {
-                if (p.Field is >= 6 and <= 17 && p.Wire == 2) r.CurveOverrides |= 1u << p.Field;   // a curve/block override: raw only
-                p.Skip();
-                continue;
-            }
+            if (p.Field is >= 6 and <= 17 && p.Field != 12 && p.Wire == 2) r.CurveOverrides |= 1u << p.Field;
+            if (!Modeled(Level.Preset, p.Field, p.Wire)) { p.Skip(); continue; }   // the loop blocks (2.17) and unknown fields: raw only
+            if (MixCurveOverrides.IsCurveField(p.Field)) { r.Curves = MixCurveOverrides.Decode(p.Field, p.Bytes(), r.Curves); continue; }
             switch (p.Field)
             {
                 case 1: r.Preset = (byte)p.Varint(); break;
@@ -205,7 +206,7 @@ public struct MixRecipe
 
     static readonly byte[] s_topFields = [1, 2, 3, 4, 5];
     static readonly byte[] s_overlapFields = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
-    static readonly byte[] s_presetFields = [1, 2, 3, 4, 5, 12, 15, 16];
+    static readonly byte[] s_presetFields = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
     static readonly byte[] s_styleFields = [1];
     /// <summary>The Preset fields of the six style overrides, in <see cref="StyleIndex"/> order.</summary>
     static readonly byte[] s_styleOverrideFields = [3, 4, 5, 12, 15, 16];
@@ -231,7 +232,7 @@ public struct MixRecipe
             18 or 19 => wire == 1,
             _ => false,
         },
-        Level.Preset => field switch { 1 or 2 => wire == 0, 3 or 4 or 5 or 12 or 15 or 16 => wire == 2, _ => false },
+        Level.Preset => field switch { 1 or 2 => wire == 0, >= 3 and <= 16 => wire == 2, _ => false },
         _ => field == 1 && wire == 0,
     };
 
@@ -310,6 +311,7 @@ public struct MixRecipe
                 {
                     1 => a.Preset == b.Preset,
                     2 => a.PresetType == b.PresetType,
+                    _ when MixCurveOverrides.IsCurveField(field) => MixCurveOverrides.SameField(a.Curves, b.Curves, field),
                     _ => StyleAt(in a, StyleIndex(field)) == StyleAt(in b, StyleIndex(field)),
                 };
             default:
@@ -340,7 +342,7 @@ public struct MixRecipe
                 {
                     1 => true,                                   // 1.8 is always written: the Overlap message never is empty
                     2 => r.Preset != 0 || r.PresetType != 0 || r.VolumeStyle.HasValue || r.EqStyle.HasValue || r.FilterFxStyle.HasValue
-                         || r.FxStyle.HasValue || r.JogwheelStyle.HasValue || r.LoopingStyle.HasValue,
+                         || r.FxStyle.HasValue || r.JogwheelStyle.HasValue || r.LoopingStyle.HasValue || r.Curves is { IsEmpty: false },
                     3 => r.IsOverlapOverride,
                     4 => r.IsPresetIdOverride,
                     _ => r.BeatmatchPreference != 0,
@@ -373,6 +375,7 @@ public struct MixRecipe
                 {
                     1 => r.Preset != 0,
                     2 => r.PresetType != 0,
+                    _ when MixCurveOverrides.IsCurveField(field) => r.Curves?.HasField(field) == true,
                     _ => StyleAt(in r, StyleIndex(field)).HasValue,
                 };
             default:
@@ -416,6 +419,8 @@ public struct MixRecipe
                     default: w.F64(19, r.ItemSpeedB); return;
                 }
             case Level.Preset:
+                // A curve override field is one message written whole from the model (only an edited one gets here).
+                if (MixCurveOverrides.IsCurveField(field)) { r.Curves?.WriteField(ref w, field); return; }
                 w.UAlways(field, field == 1 ? r.Preset : (ulong)r.PresetType);
                 return;
             default:
@@ -478,7 +483,7 @@ public struct MixRecipe
         int text = 0;
         foreach (var s in (ReadOnlySpan<string?>)[r.TrackA, r.TrackB, r.PlayableA, r.PlayableB, r.BeatsIdA, r.BeatsIdB])
             if (s is not null) text += Encoding.UTF8.GetMaxByteCount(s.Length) + 8;
-        return raw.Length + text + 512;
+        return raw.Length + text + 512 + (r.Curves?.MaxBytes() ?? 0);
     }
 
     /// <summary>One level of the patch: copy, rewrite or drop each raw field in place, and insert the model's missing fields in
@@ -590,7 +595,7 @@ public struct MixRecipe
     public readonly override string ToString()
         => $"from={FromItemId:x16} to={ToItemId:x16} out={OutStartMs} in={InStartMs} overlap={OverlapMs} speed={SpeedA:0.######}/{SpeedB:0.######} "
          + $"bars={DurationBars} beatmatched={(IsBeatmatched ? 1 : 0)} bpm={BpmA:0.###}/{BpmB:0.###} itemSpeed={ItemSpeedA:0.###}/{ItemSpeedB:0.###} "
-         + $"preset={Preset} type={PresetType} styles={Styles()} curves=0x{CurveOverrides:x} overlapOverride={(IsOverlapOverride ? 1 : 0)} "
+         + $"preset={Preset} type={PresetType} styles={Styles()} curves=0x{CurveOverrides:x} curveLanes={Curves?.ToString() ?? "-"} overlapOverride={(IsOverlapOverride ? 1 : 0)} "
          + $"presetOverride={(IsPresetIdOverride ? 1 : 0)} beatmatch={BeatmatchPreference} beats={BeatsIdA ?? "-"}/{BeatsIdB ?? "-"} "
          + $"a={TrackA ?? "-"} b={TrackB ?? "-"} playA={PlayableA ?? "-"} playB={PlayableB ?? "-"}";
 

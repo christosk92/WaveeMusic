@@ -566,7 +566,7 @@ public static partial class Playback
         /// <paramref name="table"/>: what <see cref="Build"/> feeds the engine before the value map. False when the plan's styles
         /// leave the lane alone (the table is untouched).</summary>
         public static bool SampleLane(in MixTiming t, MixCurveLane lane, bool incoming, Span<float> table)
-            => MixStyles.Sample(t.Styles, lane, incoming, t.Bars, table);
+            => t.Sample(lane, incoming, table);
 
         /// <summary>The lanes the plan's styles move, as <c>volume.out eqLow.in … looping(TwoBeat)</c>: the ones the engine renders
         /// (<paramref name="rendered"/>: every curve lane, a known looping style, B's speed as <c>speed</c>) or the ones it skips (a
@@ -582,7 +582,7 @@ public static partial class Playback
                 foreach (MixCurveLane lane in Enum.GetValues<MixCurveLane>())
                     foreach (bool incoming in (ReadOnlySpan<bool>)[false, true])
                     {
-                        if (MixStyles.Segments(t.Styles, lane, incoming, t.Bars, seg) == 0) continue;
+                        if (t.Segments(lane, incoming, seg) == 0) continue;
                         if (sb.Length > 0) sb.Append(' ');
                         sb.Append(LaneName(lane)).Append(incoming ? ".in" : ".out");
                     }

@@ -174,6 +174,7 @@ public static partial class Diagnostics
                         w.WriteNumber("audibleEndMs", t.AudibleEndMs);
                         w.WriteString("rendered", Playback.MixRender.Lanes(in t, rendered: true));
                         w.WriteString("skipped", Playback.MixRender.Lanes(in t, rendered: false));
+                        if (t.Curves is not null) w.WriteString("curveOverrides", t.Curves.ToString());
                         if (t.SpeedB != 1f) w.WriteNumber("speedB", t.SpeedB);
                         if (t.Notes != MixPlanNotes.None) w.WriteString("notes", t.Notes.ToString());
                     }
@@ -465,7 +466,7 @@ public static partial class Diagnostics
             {
                 int outFrames = (int)(t.OutDurationMs * (long)rate / 1000), inFrames = (int)(t.InDurationMs * (long)rate / 1000);
                 Playback.MixRender.Build(in t, rate, 0, outFrames, inFrames, out var outTable, out var inTable, out _, out _);
-                var reference = StyleCurves(t.Styles, t.Bars);
+                var reference = StyleCurves(in t);
                 var table = new float[MixStyles.TableSize];
                 double max = 0;
                 foreach (MixCurveLane lane in Enum.GetValues<MixCurveLane>())

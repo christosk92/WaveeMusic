@@ -216,9 +216,9 @@ public static partial class Playback
             {
                 string? key = MixStyles.ConnectKey(lane);
                 if (key is null) continue;
-                int n = MixStyles.Segments(t.Styles, lane, false, t.Bars, seg);
+                int n = t.Segments(lane, false, seg);
                 if (n > 0) outMeta.Add(new("audio.fade_out_" + key, System.Text.Encoding.UTF8.GetString(buf, 0, MixCurves.WriteJson(seg[..n], buf))));
-                n = MixStyles.Segments(t.Styles, lane, true, t.Bars, seg);
+                n = t.Segments(lane, true, seg);
                 if (n > 0) inMeta.Add(new("audio.fade_in_" + key, System.Text.Encoding.UTF8.GetString(buf, 0, MixCurves.WriteJson(seg[..n], buf))));
             }
             outMeta.Add(new("automix.fade_out_cuepoint.position", Num(t.AudibleEndMs)));
@@ -412,7 +412,7 @@ public static partial class Playback
         /// first frame. A pair that is not beatmatched plays B at 1, whatever 1.7 holds.</summary>
         static MixTiming Saved(in MixRecipe r, in PairFacts a, in PairFacts b)
         {
-            var notes = r.CurveOverrides != 0 ? MixPlanNotes.CurveOverridesNotApplied : MixPlanNotes.None;
+            var notes = MixPlanNotes.None;
             long durA = a.DurationMs, durB = b.DurationMs;
             long overlap = Math.Max(1L, r.OverlapMs);
             if (overlap > MixStyles.MaxTransitionMs) { overlap = MixStyles.MaxTransitionMs; notes |= MixPlanNotes.Capped; }
@@ -425,7 +425,7 @@ public static partial class Playback
             else inDur = InLength(in b, ref notes);
             if (inStart + inDur > durB) { inDur = Math.Max(1, durB - inStart); notes |= MixPlanNotes.InClipped; }
             return MixTiming.Of(MixSource.Saved, r.Preset, r.StyleOverrides(), r.DurationBars, (uint)outStart, (uint)overlap, (uint)inStart, (uint)inDur,
-                speedB, r.BpmA > 0 ? r.BpmA : a.TempoX10 / 10f, notes);
+                speedB, r.BpmA > 0 ? r.BpmA : a.TempoX10 / 10f, notes, r.Curves);
         }
 
         /// <summary>B's fade-in length when not beatmatched: its first start candidate + <see cref="CueReachMs"/>, else
