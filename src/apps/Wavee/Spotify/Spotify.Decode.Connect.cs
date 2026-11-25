@@ -44,6 +44,11 @@ public static partial class Spotify
             /// <summary>Its capabilities say <c>supports_set_options_command</c> (field 25): shuffle and repeat may go to it as one
             /// <c>set_options</c> (the remote-play plan's step 3.2 reads it).</summary>
             public bool SupportsSetOptions;
+            /// <summary><c>audio_output_device_info</c> (field 24): where the device itself plays — its <c>device_name</c> (2, the
+            /// owner's own headphones' name) and <c>audio_output_device_type</c> (1: 1 built-in speaker, 2 line out, 3 bluetooth,
+            /// 4 airplay, …). Empty / 0 when it stated none.</summary>
+            public TextRef OutputName;
+            public byte OutputType;
         }
 
         /// <summary>Is a device's volume out of a controller's reach, by its capabilities? <c>disable_volume</c> (field 13 in the
@@ -180,6 +185,9 @@ public static partial class Spotify
             /// <summary>The ACTIVE device's volume cannot be set by a controller (<see cref="ClusterDevice.VolumeFixed"/>); false
             /// when nobody is active.</summary>
             public bool ActiveVolumeFixed;
+            /// <summary>The owner's <c>player_state.playback_quality</c> (field 32, <see cref="ReadQuality"/>): what the ACTIVE device
+            /// says it plays ("hifi", hi-fi on). Not <c>Present</c> when the cluster carried none.</summary>
+            public PlaybackQuality Quality;
             /// <summary>The video switches the owner OFFERS (<c>signals</c>, field 33) and lists in <c>disallow_signals</c> with a
             /// reason (restrictions field 29), as <c>Playback.VideoSignals</c> bits: 1 = switch-to-video, 2 = switch-to-audio.</summary>
             public byte VideoOffered, VideoDisallowed;
@@ -297,8 +305,8 @@ public static partial class Spotify
             {
                 if (info.IsEmpty && key.IsEmpty) return;
                 var d = new ProtoReader(info);
-                ReadOnlySpan<byte> id = default, name = default;
-                int volume = 0, type = 0, volumeSteps = 0;
+                ReadOnlySpan<byte> id = default, name = default, outputName = default;
+                int volume = 0, type = 0, volumeSteps = 0, outputType = 0;
                 bool hasCapabilities = false, disableVolume = false, setOptions = false;
                 while (d.Next())
                 {
@@ -325,6 +333,17 @@ public static partial class Spotify
                             }
                         case 7: type = d.Int32(); break;
                         case 10: id = d.Bytes(); break;
+                        case 24:                                   // audio_output_device_info: where the device plays
+                            {
+                                var o = d.Message();
+                                while (o.Next())
+                                {
+                                    if (o.Field == 1 && o.Wire == 0) outputType = o.Int32();
+                                    else if (o.Field == 2 && o.Wire == 2) outputName = o.Bytes();
+                                    else o.Skip();
+                                }
+                                break;
+                            }
                         default: d.Skip(); break;
                     }
                 }
@@ -337,6 +356,8 @@ public static partial class Spotify
                 row.Kind = us ? DeviceKind.ThisDevice : KindOf(type);
                 row.VolumeFixed = VolumeFixedBy(hasCapabilities, disableVolume, volumeSteps);
                 row.SupportsSetOptions = setOptions;
+                row.OutputName = into.AddText(outputName);
+                row.OutputType = (byte)Math.Clamp(outputType, 0, 255);
             }
 
             // `devices.proto`'s DeviceType ordinals, folded to the five shapes the picker draws (`ClusterMapper`).
@@ -470,6 +491,7 @@ public static partial class Spotify
                         }
                     case 23: delta.SessionId = into.AddText(r.Bytes()); break;
                     case 24: delta.QueueRevision = into.AddText(r.Bytes()); break;
+                    case 32: delta.Quality = ReadQuality(r.Bytes()); break;      // playback_quality (Spotify.Decode.Quality.cs)
                     case 33: delta.VideoOffered |= SignalBit(r.Bytes()); break;   // signals: what the owner offers a controller
                     default: r.Skip(); break;
                 }

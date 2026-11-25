@@ -2964,7 +2964,7 @@
     "spotifyConnect": "Spotify Connect",
     "soundSettings": "Sound settings",
     "devicePicker": {
-      "$comment": "The device picker, where Wavee plays (2026-11-19 redesign, handoff/device-picker-2026-11-19/boards): the Playing on card, This PC (Match Windows, then the outputs named by their device), Other devices (Spotify Connect) and the footer. Connection words are the second line of a row; joined is how two parts of a line meet.",
+      "$comment": "The device picker, where Wavee plays (2026-11-19 redesign, handoff/device-picker-2026-11-19/boards): the Playing on card, This PC (Match Windows, then the outputs named by their device), Other devices (Spotify Connect) and the footer. Connection words are the second line of a row; joined is how two parts of a line meet. While another device plays, qualityFrom* name the quality it says it plays (Lossless, Very high, ... from Settings' quality labels; qualityLow is Spotify's lowest level, which Wavee's own setting does not offer), and the card's second line names where it plays (its headphones or speaker, as that device names them).",
       "playingOn": "Playing on",
       "lookForDevices": "Look for devices",
       "thisPc": "This PC",
@@ -2992,6 +2992,11 @@
       "qualitySetBySpeaker": "Quality is set by the speaker",
       "qualitySetByPhone": "Quality is set by the phone",
       "qualitySetByDevice": "Quality is set by that device",
+      "qualityFromTv": "{quality} · set by the TV",
+      "qualityFromSpeaker": "{quality} · set by the speaker",
+      "qualityFromPhone": "{quality} · set by the phone",
+      "qualityFromDevice": "{quality} · set by that device",
+      "qualityLow": "Low",
       "qualityBelow": "{quality} · {asked} unavailable",
       "volume": "Volume"
     },

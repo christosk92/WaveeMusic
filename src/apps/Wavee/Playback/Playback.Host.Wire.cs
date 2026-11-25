@@ -129,9 +129,44 @@ public static partial class Playback
         string likedPlaylist = LikedOnWire(out string likedOwner);
         // Our own Local Files list (#240 E4): its size rides the PUT's context metadata (playlist_number_of_tracks).
         int localFiles = Spotify.Egress.IsLocalFiles(s_state.Context) ? Entities.Current.Edges.PlaylistTracks.Targets(Playlist.LocalFiles.Slot).Length : 0;
+        s_wireQuality = QualityNow();
         return new WireExtras(WindowNow(), RevisionNow(), in s_wireIds, privateSession, output, sender, s_state.ContentRate, s_wireOrigin,
-            OutputDeviceKind(), ContextIsAudiobook(), likedPlaylist, likedOwner, Mix.WireNow(in s_state), localFiles);
+            OutputDeviceKind(), ContextIsAudiobook(), likedPlaylist, likedOwner, Mix.WireNow(in s_state), localFiles, s_wireQuality);
     }
+
+    // ── the quality the PUT states (Spotify.Decode.Quality.cs) ────────────────────────────────────────────────────────
+
+    /// <summary>The <c>playback_quality</c> the last captured PUT stated, so a quality move republishes once and only when it moved.</summary>
+    static Spotify.Decode.PlaybackQuality s_wireQuality;
+
+    /// <summary>The format the pump last opened, as an int for the pump thread's exchange (-1 = none yet).</summary>
+    static int s_openedFormat = -1;
+
+    /// <summary>What Wavee plays, for the PUT: the pump's open for the deck row (unstated while another row's open is still the
+    /// pump's), against the rung the open asks for (a pinned format, else the preferred quality: the setting, the metered cap, a build
+    /// that cannot open lossless). UI thread, inside the capture.</summary>
+    static Spotify.Decode.PlaybackQuality QualityNow()
+    {
+        Audio.Opened opened = Audio.PlayingOpened;
+        bool deck = !s_state.CurrentId.IsEmpty && Audio.PlayingId.Equals(s_state.CurrentId);
+        return Spotify.Decode.Outgoing(deck ? opened.Format : Spotify.Audio.Format.Unknown, deck ? opened.BitrateKbps : 0,
+            s_state.CurrentId.IsEmpty ? Spotify.Audio.PreferredQuality() : QualityFor(s_state.CurrentId));
+    }
+
+    /// <summary>The pump opened a file (any thread): when its format differs from the last open's, the UI thread re-states the PUT's
+    /// quality — a lossless open, the Ogg 320 demotion after a refused key, a quality setting that applies from this track — while this
+    /// device plays and the stated quality moved. Allocation-free on the pump thread.</summary>
+    internal static void NoteOpenedFormat(Spotify.Audio.Format format)
+    {
+        if (Interlocked.Exchange(ref s_openedFormat, (int)format) != (int)format) ToUi(s_qualityMoved);
+    }
+
+    static readonly Action s_qualityMoved = static () =>
+    {
+        if (s_state.Own.Kind != Owner.Us || !s_state.HasCurrent || Spotify.Current.ConnectionId.IsEmpty) return;
+        if (QualityNow() == s_wireQuality) return;
+        Announce(PublishReason.PlayerStateChanged);
+    };
 
     /// <summary>Our own Liked Songs playback as the PUT names it (remote-play plan 5.4): the account's Liked Songs PLAYLIST and
     /// the username its liked-songs metadata names, when the deck's context is a Liked collection spelling and both are known;

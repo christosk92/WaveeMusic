@@ -152,7 +152,10 @@ enum BitrateLevel {
     normal = 2;
     high = 3;
     veryhigh = 4;
-    normalized = 5;
+    // 5 and 6 are media.proto's HIFI / HIFI_24: the owner's iPhone states bitrate_level 5 (6 for a 24-bit file) with hifi_status on
+    // while it plays lossless (capture 2026-11-25; the web player's JSON spells them "hifi", "hifi_24"). Was `normalized = 5`.
+    hifi = 5;
+    hifi24 = 6;
 }
 
 enum BitrateStrategy {

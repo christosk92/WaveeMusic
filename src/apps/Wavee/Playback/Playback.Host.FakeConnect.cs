@@ -16,8 +16,10 @@ namespace Wavee;
 public static partial class Playback
 {
     /// <summary>One fake Spotify Connect device: its id, name, kind and volume (0..65535, the wire scale), and whether a controller
-    /// is kept from setting that volume (<see cref="Devices.Row.VolumeFixed"/>: true stands in for an iPhone's <c>disable_volume</c>).</summary>
-    public readonly record struct FakeConnectDevice(string Id, string Name, Spotify.Decode.DeviceKind Kind, int Volume, bool VolumeFixed = false);
+    /// is kept from setting that volume (<see cref="Devices.Row.VolumeFixed"/>: true stands in for an iPhone's <c>disable_volume</c>); what it
+    /// says it plays while it owns playback (<see cref="Devices.Row.Quality"/>) and where it plays (its output's name and type).</summary>
+    public readonly record struct FakeConnectDevice(string Id, string Name, Spotify.Decode.DeviceKind Kind, int Volume, bool VolumeFixed = false,
+        Spotify.Decode.PlaybackQuality Quality = default, string? OutputName = null, byte OutputType = 0);
 
     static FakeConnectDevice[]? s_fakeConnect;
     static ulong s_fakePushTarget;
