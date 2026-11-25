@@ -4,7 +4,9 @@
 // or a raw recipe decoded (`mix recipe=<base64>`), to compare with the capture's recipe decoder on the same bytes;
 // `mix roundtrip` proves the recipe codec lossless (plan §2.1.1): decode → encode is byte-equal, a change moves one field;
 // `mix semantics` prints the curve value map; `mix decode` runs a made-up lens read through the real decoder; `mix cancel`
-// pulls a cancelled join's two voices through the engine's mixer offline (no device): the 30 ms ramps against the old cut.
+// pulls a cancelled join's two voices through the engine's mixer offline (no device): the 30 ms ramps against the old cut;
+// `mix render` compares the engine's tables with the mixstyles curves; `mix autocheck=<dir>` runs Spotify's Auto answers
+// through the planner (Diagnostics.Inspect.Mix.Auto.cs).
 //
 // Role: SHELL (UI thread; reads the entity tables and MixData)
 
@@ -50,6 +52,7 @@ public static partial class Diagnostics
                 var body = Spotify.Api.MixStateOnBody(rev);
                 return Inspect.Reply.Ok(id, name, w => { w.WriteString("body", Convert.ToHexString(body).ToLowerInvariant()); w.WriteNumber("bytes", body.Length); });
             }
+            if (a.Has("autocheck")) return MixAutoCheck(id, name, a.Str("autocheck"));   // Diagnostics.Inspect.Mix.Auto.cs
             string show = a.Str("show", "dump");
             if (show == "semantics") return MixSemantics(id, name);
             if (show == "render") return MixRenderCheck(id, name, a.Str("uri", Entities.LibrarySeed.MixUri));

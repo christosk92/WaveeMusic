@@ -2,7 +2,7 @@
 //
 // THE PLANNER and its host follow. On the UI thread, after every drain, the host looks at the playing pair (the row on
 // the deck and the row the queue would play next). When the context is a playlist Spotify has mixed, it computes ONE
-// MixTiming for that pair (a saved recipe, or Wavee's Auto) and hands it to the pump (Audio.SetMix), which prepares B at
+// MixTiming for that pair (a saved recipe, or Spotify's Auto) and hands it to the pump (Audio.SetMix), which prepares B at
 // the in-point, opens the endgame against the mix-out and schedules the join at an exact mixer frame
 // (Playback.Audio.Mix.cs). Any pair that cannot mix gets MixTiming.Refused(why): the base hand-off (the user's Crossfade
 // or gapless) runs unchanged, and the why is logged once per pair.
@@ -96,12 +96,12 @@ public static partial class Playback
             if (timing.Mix && s_ensured != (key.Cur, key.Next))
             {
                 // The analysis the planner reads, for the playing and the next row (plan §3.3: "for the playing track and
-                // the next two rows"; the third rides the next re-plan).
+                // the next two rows"; the third rides the next re-plan). Until kind 28 lands, Auto plans the rule's fallback
+                // (MixPlanner.FallbackWindowMs) and re-plans when it does (the key holds the cue versions).
                 s_ensured = (key.Cur, key.Next);
                 EnsureAnalysis(cur);
                 EnsureAnalysis(next);
             }
-            else if (!timing.Mix && timing.WhyNot is MixWhyNot.NoData && pl > 0) { EnsureAnalysis(cur); EnsureAnalysis(next); }
 
             bool contextMixed = pl > 0 && !key.ListenWithout && new global::Wavee.Playlist(pl).MixOn;
             if (timing == Current && key.Next == CurrentNext && contextMixed == ContextMixed) return;
@@ -117,6 +117,9 @@ public static partial class Playback
                 // Once per planned join: what the styles move that the pinned engine cannot render yet (M4's lanes).
                 string skipped = MixRender.Lanes(in timing, rendered: false);
                 if (skipped.Length > 0) Log.Info("audio", "[mix] lanes not rendered: " + skipped);
+                if ((timing.Notes & MixPlanNotes.BeatmatchNotApplied) != 0)
+                    Log.Info("audio", "[mix] beatmatch not applied (speedB=" + timing.SpeedB.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)
+                        + "): B plays at speed 1 over the overlap");
             }
             else if (timing.WhyNot is not (MixWhyNot.None or MixWhyNot.NotMixed))
                 Log.Info("audio", "[mix] base hand-off why=" + timing.WhyNot);
@@ -331,106 +334,110 @@ public static partial class Playback
         }
     }
 
-    /// <summary>Wavee's planner (plan §3.5, decision D15). Pure: values in, one timing out.</summary>
+    /// <summary>The planner (full-support plan §2.3.2): a saved recipe as saved, otherwise Spotify's own Auto. Pure: values in, one
+    /// plan out.
+    /// <para>Auto for a pair Spotify does not beatmatch (reference §7.1; 156 of 156 reference pairs with A's kind 10 duration,
+    /// `mix autocheck`): A's overlap runs from 2500 ms before A's last end candidate (kind 28 field 4, the largest ms) to 2500 ms
+    /// after it, or to A's end when that comes first; B enters at 0 and fades in to 2500 ms after its first start candidate
+    /// (kind 28 field 3, the smallest ms), its own length; Fade (preset 1), bars 0, speeds 1. Which pairs Spotify beatmatches,
+    /// and how, is not fitted yet, and the engine cannot stretch one voice (M4): <see cref="AutoBeatmatched"/> is where that fit
+    /// plugs in, and until then every Auto pair takes the rule above.</para></summary>
     public static class MixPlanner
     {
-        public const uint MinOverlapMs = 2_500, MaxOverlapMs = 16_000, DefaultOverlapMs = 2_510;
-        public const uint MinTrackMs = 30_000, OutRegionMs = 60_000, ShortTargetMs = 2_500;
-        const int MinGridBeats = 16;
+        /// <summary>The rule's reach around a cue candidate: A's overlap spans this before and after A's last end candidate, B's
+        /// fade-in runs this far past B's first start candidate.</summary>
+        public const uint CueReachMs = 2_500;
+        /// <summary>A missing candidate (kind 28 not analysed yet, a 502, or an answer without that list) stands as one 10 ms from
+        /// its edge, the rule's commonest short answer (43 of the 156 reference pairs end on one): A's overlap is then the last
+        /// 2510 ms of A, B's fade-in 2510 ms. The pair re-plans when the analysis lands (the follow key holds the cue versions).</summary>
+        public const uint FallbackWindowMs = 2_510;
+        public const uint MinTrackMs = 30_000;
+        /// <summary>The local card's longest overlap and its Quick length (Mix.Card.cs, until the editor phase replaces the card).</summary>
+        public const uint MaxOverlapMs = 16_000, ShortTargetMs = 2_500;
 
-        /// <summary>The timing of the join from A to B. A saved recipe wins; otherwise Wavee's Auto. Spans are the
-        /// tracks' kind-217 grids in <see cref="BeatGrid"/> packing (may be empty).</summary>
+        /// <summary>The plan of the join from A to B. A saved recipe wins; otherwise Spotify's Auto. Spans are the tracks' kind-217
+        /// grids in <see cref="BeatGrid"/> packing (may be empty), for <see cref="AutoBeatmatched"/>.</summary>
         public static MixTiming Plan(in PairFacts a, ReadOnlySpan<uint> beatsA, in PairFacts b, ReadOnlySpan<uint> beatsB,
             bool hasRecipe, in MixRecipe recipe)
         {
             if (a.IsLocal || b.IsLocal) return MixTiming.Refused(MixWhyNot.LocalFile);
             // Spotify's "no transition" (no preset id, a 1 ms overlap, no out-point): no join at all, never a 1 ms Fade at 0 ms.
             if (hasRecipe && recipe.IsNoTransition) return MixTiming.Refused(MixWhyNot.NoTransition);
-            long durA = a.DurationMs, durB = b.DurationMs;
-            if (durA < MinTrackMs || durB <= 0) return MixTiming.Refused(MixWhyNot.TooShort);
-            bool gridA = beatsA.Length >= MinGridBeats, gridB = beatsB.Length >= MinGridBeats;
-
-            if (hasRecipe) return Saved(in recipe, durA, durB, beatsA, beatsB, gridA, gridB);
-
-            bool cueA = a.Cues.EndCueMs > 0;
-            if (!gridA && !cueA) return MixTiming.Refused(MixWhyNot.NoData);
-
-            // 2. The out region: A's end cue inside its last minute, else its end.
-            long outRegion = cueA && a.Cues.EndCueMs < durA && durA - a.Cues.EndCueMs <= OutRegionMs ? a.Cues.EndCueMs : durA;
-
-            // 3-4. The overlap in whole beats of A, and the out start on a downbeat with the window inside the file.
-            long overlap, outStart;
-            float periodA = 0f;
-            int beats = 0;
-            if (gridA)
-            {
-                periodA = PeriodNear(beatsA, outRegion);
-                beats = 8;
-                if (beats * periodA > MaxOverlapMs) beats = 4;
-                else if (beats * periodA < MinOverlapMs) beats = 16;
-                overlap = Math.Min((long)MaxOverlapMs, (long)(beats * periodA + 0.5f));
-                outStart = DownbeatAtOrBefore(beatsA, NearestDownbeat(beatsA, outRegion - overlap), durA - overlap);
-                if (outStart < 0) outStart = Math.Max(0, Math.Min(outRegion, durA) - overlap);
-            }
-            else
-            {
-                overlap = DefaultOverlapMs;
-                outStart = Math.Max(0, Math.Min(outRegion, durA) - overlap);
-            }
-
-            // 5. The in-point: B's start cue on B's nearest downbeat; 0 inside B's first bar or without a grid.
-            long inStart = 0;
-            float periodB = gridB ? PeriodNear(beatsB, 0) : 0f;
-            if (gridB && b.Cues.StartCueMs > 0)
-            {
-                int db = NearestDownbeatIndex(beatsB, b.Cues.StartCueMs);
-                if (db >= 0)
-                {
-                    long at = BeatGrid.StartMs(beatsB[db]);
-                    int first = FirstDownbeatIndex(beatsB);
-                    long firstBarEnd = first >= 0 ? BeatGrid.StartMs(beatsB[first]) + (long)(4 * PeriodNear(beatsB, BeatGrid.StartMs(beatsB[first]))) : 0;
-                    inStart = at < firstBarEnd ? 0 : at;
-                }
-            }
-
-            // 7. The style: Fade; a short Fade on the beat when the tempos are far apart (the capture's 117 → 77 BPM pair got
-            // a 2.9 s window from the official client too). The mix-out END stays; the start moves.
-            if (Mix.Tempo(a.TempoX10, b.TempoX10) == Mix.TempoRelation.Apart)
-            {
-                int shortBeats = gridA ? Math.Max(2, (int)Math.Round(ShortTargetMs / periodA)) : 0;
-                long shortOverlap = gridA ? (long)(shortBeats * periodA + 0.5f) : DefaultOverlapMs;
-                outStart += overlap - shortOverlap;
-                overlap = shortOverlap;
-                beats = shortBeats;
-            }
-
-            // 6. B's curves run over the same beat count in B's grid.
-            long inDur = gridB && beats > 0 ? (long)(beats * PeriodNear(beatsB, inStart) + 0.5f) : overlap;
-            if (inStart + inDur > durB) { inStart = 0; inDur = Math.Min(inDur, durB); }
-            return MixTiming.Of(MixSource.Auto, (int)MixPresetId.Fade, default, 0,
-                (uint)outStart, (uint)overlap, (uint)inStart, (uint)Math.Max(1, inDur), 1f, a.TempoX10 / 10f);
+            if (a.DurationMs < MinTrackMs || b.DurationMs <= 0) return MixTiming.Refused(MixWhyNot.TooShort);
+            if (hasRecipe) return Saved(in recipe, in a, in b);
+            return AutoBeatmatched(in a, beatsA, in b, beatsB, out var matched) ? matched : Auto(in a, in b);
         }
 
-        static MixTiming Saved(in MixRecipe r, long durA, long durB, ReadOnlySpan<uint> beatsA, ReadOnlySpan<uint> beatsB, bool gridA, bool gridB)
+        /// <summary>THE SEAM for Spotify's beatmatched Auto (reference §7.2: which pairs it matches, 2 or 4 bars, the preset by
+        /// score, B's speed). Not fitted yet, and the engine has no per-voice rate (M4), so it says no and the pair takes
+        /// <see cref="Auto"/>. When the fit lands it returns true with a plan of <c>durationBars</c> 2 or 4, its preset and
+        /// <see cref="MixTiming.SpeedB"/>.</summary>
+        public static bool AutoBeatmatched(in PairFacts a, ReadOnlySpan<uint> beatsA, in PairFacts b, ReadOnlySpan<uint> beatsB, out MixTiming timing)
         {
-            long overlap = Math.Clamp((long)r.OverlapMs, 1, MaxOverlapMs);
-            long outStart = Math.Min(r.OutStartMs, Math.Max(0, durA - overlap));
-            long inStart = r.InStartMs < durB ? r.InStartMs : 0;
-            long inDur = overlap;
-            if (gridA && gridB)
-            {
-                // B runs over the same 4, 8 or 16 beats when the saved overlap IS that many of A's beats; otherwise (the capture's one
-                // saved pair: 2890 ms at 117 BPM, 5.6 beats) B's curves run over the overlap itself, as the official client published.
-                float beats = overlap / Math.Max(1f, PeriodNear(beatsA, outStart + overlap / 2));
-                int n = beats < 6f ? 4 : beats < 12f ? 8 : 16;
-                if (MathF.Abs(beats - n) <= 0.5f) inDur = (long)(n * PeriodNear(beatsB, inStart) + 0.5f);
-            }
-            if (inStart + inDur > durB) inDur = Math.Max(1, durB - inStart);
-            return MixTiming.Of(MixSource.Saved, r.Preset, r.StyleOverrides(), r.DurationBars, (uint)outStart, (uint)overlap, (uint)inStart, (uint)inDur,
-                r.SpeedB > 0 ? r.SpeedB : 1f, r.BpmA);
+            timing = default;
+            return false;
         }
 
-        /// <summary>The mean beat period over up to 8 beats around <paramref name="ms"/>.</summary>
+        /// <summary>Spotify's Auto for a pair it does not beatmatch (see the class summary). Every value is the rule's; a missing
+        /// candidate takes <see cref="FallbackWindowMs"/> and says so in <see cref="MixTiming.Notes"/>.</summary>
+        public static MixTiming Auto(in PairFacts a, in PairFacts b)
+        {
+            var notes = MixPlanNotes.None;
+            long durA = a.DurationMs;
+            long outStart = -1, outEnd = -1;
+            if (a.Cues.HasLastEndCandidate)
+            {
+                long cue = a.Cues.LastEndCandidateMs;
+                outStart = cue - CueReachMs;
+                outEnd = Math.Min(cue + CueReachMs, durA);
+            }
+            // No candidate, or one the catalogue length cannot hold (the analysed audio can run longer than kind 10 says).
+            if (outStart < 0 || outEnd - outStart < 1)
+            {
+                outEnd = durA;
+                outStart = durA - FallbackWindowMs;
+                notes |= MixPlanNotes.OutFallback;
+            }
+            long inDur = InLength(in b, ref notes);
+            if (inDur > b.DurationMs) { inDur = Math.Max(1, b.DurationMs); notes |= MixPlanNotes.InClipped; }
+            return MixTiming.Of(MixSource.Auto, (int)MixPresetId.Fade, default, 0, (uint)outStart, (uint)(outEnd - outStart), 0, (uint)inDur,
+                1f, a.TempoX10 / 10f, notes);
+        }
+
+        /// <summary>A saved recipe: A over its own <c>startAMs</c> and <c>durationMs</c> (at most 35 s, inside A), B from
+        /// <c>startBMs</c>, the preset with its style overrides at its <c>durationBars</c>. B's window: not beatmatched, the rule's
+        /// (B's first start candidate + 2500; the official player published exactly that for its saved unmatched seams, protocol
+        /// §6.3); beatmatched, the overlap, B unstretched until the engine has a per-voice rate (B's media time would then be
+        /// <c>durationMs × speedB</c>; <see cref="MixPlanNotes.BeatmatchNotApplied"/>).</summary>
+        static MixTiming Saved(in MixRecipe r, in PairFacts a, in PairFacts b)
+        {
+            var notes = r.CurveOverrides != 0 ? MixPlanNotes.CurveOverridesNotApplied : MixPlanNotes.None;
+            long durA = a.DurationMs, durB = b.DurationMs;
+            long overlap = Math.Max(1L, r.OverlapMs);
+            if (overlap > MixStyles.MaxTransitionMs) { overlap = MixStyles.MaxTransitionMs; notes |= MixPlanNotes.Capped; }
+            overlap = Math.Min(overlap, durA);
+            long outStart = Math.Min(r.OutStartMs, durA - overlap);
+            long inStart = r.InStartMs < durB ? r.InStartMs : 0;
+            long inDur;
+            if (r.IsBeatmatched) { inDur = overlap; notes |= MixPlanNotes.BeatmatchNotApplied; }
+            else inDur = InLength(in b, ref notes);
+            if (inStart + inDur > durB) { inDur = Math.Max(1, durB - inStart); notes |= MixPlanNotes.InClipped; }
+            return MixTiming.Of(MixSource.Saved, r.Preset, r.StyleOverrides(), r.DurationBars, (uint)outStart, (uint)overlap, (uint)inStart, (uint)inDur,
+                r.SpeedB > 0 ? r.SpeedB : 1f, r.BpmA > 0 ? r.BpmA : a.TempoX10 / 10f, notes);
+        }
+
+        /// <summary>B's fade-in length when not beatmatched: its first start candidate + <see cref="CueReachMs"/>, else
+        /// <see cref="FallbackWindowMs"/>; at most 35 s.</summary>
+        static long InLength(in PairFacts b, ref MixPlanNotes notes)
+        {
+            long len;
+            if (b.Cues.HasFirstStartCandidate) len = (long)b.Cues.FirstStartCandidateMs + CueReachMs;
+            else { len = FallbackWindowMs; notes |= MixPlanNotes.InFallback; }
+            if (len > MixStyles.MaxTransitionMs) { len = MixStyles.MaxTransitionMs; notes |= MixPlanNotes.Capped; }
+            return len;
+        }
+
+        /// <summary>The mean beat period over up to 8 beats around <paramref name="ms"/> (the local card's beat readout).</summary>
         public static float PeriodNear(ReadOnlySpan<uint> beats, long ms)
         {
             if (beats.Length < 2) return 500f;
@@ -449,44 +456,6 @@ public static partial class Playback
                 if (BeatGrid.StartMs(beats[mid]) <= ms) { at = mid; lo = mid + 1; } else hi = mid - 1;
             }
             return at;
-        }
-
-        static int NearestDownbeatIndex(ReadOnlySpan<uint> beats, long ms)
-        {
-            int best = -1;
-            long bestDist = long.MaxValue;
-            for (int i = 0; i < beats.Length; i++)
-            {
-                if (!BeatGrid.IsDownbeat(beats[i])) continue;
-                long d = Math.Abs(BeatGrid.StartMs(beats[i]) - ms);
-                if (d < bestDist) { bestDist = d; best = i; } else if (BeatGrid.StartMs(beats[i]) > ms) break;
-            }
-            return best;
-        }
-
-        static long NearestDownbeat(ReadOnlySpan<uint> beats, long ms)
-        {
-            int i = NearestDownbeatIndex(beats, ms);
-            return i < 0 ? -1 : BeatGrid.StartMs(beats[i]);
-        }
-
-        /// <summary>The downbeat at <paramref name="ms"/>, moved back a bar at a time until it is at most <paramref name="limit"/>.</summary>
-        static long DownbeatAtOrBefore(ReadOnlySpan<uint> beats, long ms, long limit)
-        {
-            if (ms < 0) return -1;
-            for (int i = beats.Length - 1; i >= 0; i--)
-            {
-                long t = BeatGrid.StartMs(beats[i]);
-                if (t > ms || t > limit || !BeatGrid.IsDownbeat(beats[i])) continue;
-                return t;
-            }
-            return -1;
-        }
-
-        static int FirstDownbeatIndex(ReadOnlySpan<uint> beats)
-        {
-            for (int i = 0; i < beats.Length; i++) if (BeatGrid.IsDownbeat(beats[i])) return i;
-            return -1;
         }
     }
 }

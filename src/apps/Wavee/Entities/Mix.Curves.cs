@@ -39,7 +39,7 @@ public enum MixPlanNotes : byte
 /// pair's Spotify recipe is "no transition" (no preset id): A plays to its end and B from its start.</summary>
 public enum MixWhyNot : byte
 {
-    None, NotMixed, ListenWithoutMix, NotInMixedList, PairOptOut, NotMixable, LocalFile, CrossKind, NoData, TooShort, Late,
+    None, NotMixed, ListenWithoutMix, NotInMixedList, PairOptOut, NotMixable, LocalFile, CrossKind, TooShort, Late,
     UserQueued, NoTransition,
 }
 
