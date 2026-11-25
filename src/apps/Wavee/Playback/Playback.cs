@@ -1387,13 +1387,18 @@ public static partial class Playback
         /// context post. <c>LongArg</c> packs the cause (low byte) and <see cref="PausedBit"/>; a plain
         /// <see cref="Play"/> is <see cref="ClaimCause.UserPlay"/>, playing.</summary>
         public static Input PlayFrom(EntityRef row, EntityId id, EntityId context, QueueCursor cursor, PlayableKind kind,
-            int fromMs, long nowMs, ClaimCause cause, bool paused, bool explicitPosition = false)
-            => new(InputKind.Play, row, id, context, cursor, fromMs, (long)cause | (paused ? PausedBit : 0L) | (explicitPosition ? ExplicitPositionBit : 0L),
+            int fromMs, long nowMs, ClaimCause cause, bool paused, bool explicitPosition = false, bool here = false)
+            => new(InputKind.Play, row, id, context, cursor, fromMs,
+                (long)cause | (paused ? PausedBit : 0L) | (explicitPosition ? ExplicitPositionBit : 0L) | (here ? HereBit : 0L),
                 nowMs: nowMs, playKind: kind);
 
         /// <summary>The bit of a Play's <c>LongArg</c> that asks for a paused start.</summary>
         public const long PausedBit = 1L << 8;
         public const long ExplicitPositionBit = 1L << 9;
+        /// <summary>The bit of a Play's <c>LongArg</c> that says the row plays only on THIS device (a file on this PC, #240): the play
+        /// claims playback here even while another device owns it, as the official client plays a local file on the computer that
+        /// has it. Without it such a play went to the owner, which cannot open the file, and nothing played.</summary>
+        public const long HereBit = 1L << 10;
 
         /// <summary>The bit of a SetShuffle's <c>IntArg</c> that says the queue is ALREADY in the asked order (a load that
         /// built it shuffled), so no reorder effect follows.</summary>
@@ -1830,11 +1835,14 @@ public static partial class Playback
         var cause = (ClaimCause)(byte)(i.LongArg & 0xFF);
         bool paused = (i.LongArg & Input.PausedBit) != 0;
         bool inbound = cause >= ClaimCause.InboundPlay;
+        bool here = !inbound && (i.LongArg & Input.HereBit) != 0;
 
         // Forwarding: while another device owns playback, a local Play is a PLAY COMMAND to that device, not a load
         // here. This is the routing rule, and it reads the ownership verdict — never a raw cluster id. An INBOUND load
-        // that raced a takeover is simply stale: it is nobody's command to forward.
-        if (!s.RoutesLocal)
+        // that raced a takeover is simply stale: it is nobody's command to forward. A file on this PC (HereBit) is the
+        // exception: no other device can open it, so the play claims playback here (the owner stops once the server
+        // adopts the claim, as after a takeover).
+        if (!s.RoutesLocal && !here)
         {
             // Not a bare `play` (a RESUME on the owner): the desktop `play` envelope naming the context and the row, so
             // the phone starts what was clicked here (0.2.9 parity; user report 2026-09-16 "it does not start playing").

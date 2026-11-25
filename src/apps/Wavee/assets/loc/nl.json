@@ -1501,6 +1501,7 @@
     "playing": "{songs} spelen",
     "playingSkipped": "{songs} spelen · {skipped} overgeslagen",
     "noneFound": "Geen nummers gevonden die Wavee kan afspelen",
+    "kept": "{songs} bewaard in Lokale bestanden",
     "undo": "Ongedaan maken",
     "musicFolderAdded": "{name} is nu een muziekmap",
     "musicFoldersAdded": "{count, plural, one {# muziekmap toegevoegd} other {# muziekmappen toegevoegd}}",

@@ -5972,6 +5972,7 @@
     "playing": "Playing {songs}",
     "playingSkipped": "Playing {songs} · {skipped} skipped",
     "noneFound": "No songs Wavee can play were found",
+    "kept": "{songs} kept in Local Files",
     "undo": "Undo",
     "musicFolderAdded": "{name} is now a music folder",
     "musicFoldersAdded": "{count, plural, one {# music folder added} other {# music folders added}}",

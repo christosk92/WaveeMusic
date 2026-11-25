@@ -375,14 +375,14 @@ public static partial class LocalCollectionPage
     {
         var local = Playlist.LocalFiles;
         if (!local.IsValid) return;
-        if (local.TrackSlots.Length == 0)
+        if (local.TrackSlots.Length == 0 || shuffle)
         {
-            // The list has not been restated from the index yet: play the files themselves.
+            // The list has not been restated from the index yet, or Shuffle: play the files themselves (Shuffle in a random order,
+            // as every other shuffled verb here does; a posted shuffle toggle lands after the rows are laid out, too late to order them).
             PlayFiles(LocalCollection.FilesWhere(static _ => true), shuffle);
             return;
         }
-        Playback.SetShuffle(shuffle);
-        Playback.PlayContext(local.Id);
+        Playback.PlayContext(local.Id);   // the Local Files list from its own rows (Playback.PlayLocalList), shuffled when shuffle is on
     }
 
     /// <summary>The most files one verb stages and queues at once (a decade or a big folder plays a random sample of this many).</summary>
@@ -394,7 +394,8 @@ public static partial class LocalCollectionPage
         if (shuffle) Random.Shared.Shuffle(CollectionsMarshal.AsSpan(ids));
         var rows = StagedRows(ids);
         if (rows.Count == 0) return;
-        Playback.SetShuffle(false);
+        // The order is already the one asked for: shuffle goes off, only when it is on (a toggle while another device owns playback goes to it).
+        if (Playback.Snap().Shuffle) Playback.SetShuffle(false);
         Playback.PlayRows(CollectionsMarshal.AsSpan(rows), 0, Playlist.LocalFiles.Id);
     }
 }
