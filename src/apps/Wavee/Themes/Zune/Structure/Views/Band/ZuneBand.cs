@@ -616,7 +616,7 @@ internal sealed class ZuneBand : Component
             Key = ZuneBandRules.Row2Key, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row2H, Shrink = 0f, MinWidth = 0f, ZStack = true,
             // The row is whole or gone: it fades and slides out before the band's height eases away and fades in after it settles, so the clip
             // never cuts it half way (the artist fidelity lane); inside, the page-synced swap layers cross-fade the views and actions.
-            Enter = Design.Reduced ? default : ZuneBandRules.Row2Enter, Exit = Design.Reduced ? default : ZuneBandRules.Row2Exit,
+            Enter = Design.Reduced ? null : ZuneBandRules.Row2Enter, Exit = Design.Reduced ? null : ZuneBandRules.Row2Exit,
             Children =
             [
                 new BoxEl
