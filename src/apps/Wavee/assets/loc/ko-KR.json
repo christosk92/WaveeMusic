@@ -1498,6 +1498,7 @@
     "playing": "{songs} 재생 중",
     "playingSkipped": "{songs} 재생 중 · {skipped}개 건너뜀",
     "noneFound": "Wavee가 재생할 수 있는 곡을 찾지 못했습니다",
+    "kept": "{songs}을(를) 로컬 파일에 보관했습니다",
     "undo": "실행 취소",
     "musicFolderAdded": "{name}이(가) 음악 폴더가 되었습니다",
     "musicFoldersAdded": "{count, plural, other {음악 폴더 #개 추가됨}}",
