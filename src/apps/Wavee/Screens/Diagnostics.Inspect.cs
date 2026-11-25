@@ -427,6 +427,8 @@ public static partial class Diagnostics
                     return PodcastPagesVerb(id, name, a);
                 case Inspect.Verb.Mix:
                     return MixVerb(id, name, a);
+                case Inspect.Verb.Dj:
+                    return DjVerb(id, name, a);   // the list and the session need no mount; do=play settles on a mounted one
                 case Inspect.Verb.Setting:
                     return Setting(id, name, a);   // the store needs no mount; a mounted one settles after the write
                 case Inspect.Verb.Settings:
