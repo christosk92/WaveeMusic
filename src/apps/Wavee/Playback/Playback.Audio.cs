@@ -1110,8 +1110,9 @@ public static partial class Playback
             // A real load that will play hands the outgoing stream over (DisposeSessionAsync): its next open adopts it. A fake one
             // renders into its own silent session, and a paused one (a paused restore or reload) would only stop the adopted stream
             // again, so both stop the outgoing stream as before.
-            // An AI DJ narration clip (SourceRoute.Tts) is real bytes even under --fake: the fake TTS service served them, so they decode.
-            bool fake = id.Provider == EntityProvider.Fake || (Platform.Args.Fake && id.Provider != EntityProvider.Tts);
+            // An AI DJ narration clip (SourceRoute.Tts) is real bytes even under --fake: the fake TTS service served them, so they decode; so
+            // is a DJ fixture track (Playback.Audio.FakeTracks.cs), so its talk-over and radio joins run headless.
+            bool fake = id.Provider == EntityProvider.Fake || (Platform.Args.Fake && !FakeHasBytes(id));
             bool play;
             lock (s_gate) play = s_playIntent;
             await DisposeSessionAsync(forLoad: true, handOver: !fake && play).ConfigureAwait(false);
@@ -1263,7 +1264,9 @@ public static partial class Playback
                 s_activeStartMs = 0;
                 s_activeDurMs = opened.DurationMs;
                 s_crossfadeInFlight = false;
+                s_retireAtFrame = 0;
                 s_joinPending = false;
+                DropMixJoinLocked();
                 s_activeJoinFrame = 0;
                 s_clockStale = false;                       // the new session owns the clock from here
                 if (pcm is not null)
@@ -1478,7 +1481,9 @@ public static partial class Playback
                 s_prepId = default;
                 s_recovering = false;
                 s_joinPending = false;
+                DropMixJoinLocked();
                 s_crossfadeInFlight = false;
+                s_retireAtFrame = 0;
                 s_prepOverlap = false;
                 s_activePrimaryId = 0;
                 s_activeJoinFrame = 0;
@@ -3258,7 +3263,7 @@ public static partial class Playback
                 lock (s_gate) { session = s_session; backend = s_backend; activeKind = s_activeKind; silent = s_silent; activeExact = s_opened.DurationExact; }
                 if (session is null || backend is null || silent || token.IsCancellationRequested) return;   // nothing to hand off from
                 // Under --fake only a narration clip has bytes (a clip playing before a demo track): the track loads silently at the boundary.
-                if (id.Provider == EntityProvider.Fake || (Platform.Args.Fake && id.Provider != EntityProvider.Tts)) return;
+                if (id.Provider == EntityProvider.Fake || (Platform.Args.Fake && !FakeHasBytes(id))) return;
 
                 // `prepared`: the next ring is sized for the hand-off out of the shared read-ahead budget (Vorbis plan §5.3).
                 bytes = Open(id, token, out Opened opened, out Fault fault, prepared: true);
@@ -3450,11 +3455,13 @@ public static partial class Playback
                 s_activeDurMs = s_joinDurMs;
                 s_id = s_joinId;
                 s_activeKind = s_joinKind;
-                // #48 Mix: a mix join announces when A is over, with B already InStart + OutDuration in (0 for gapless and a fade).
-                joinedAtMs = AnnouncedMixLocked();
+                // #48 Mix: a mix join announces when A is over, with B already InStart + OutDuration in (0 for gapless and a fade);
+                // an AI DJ join that announces when B starts, with B at its InStart (−1: not a mix).
+                long mixAtMs = AnnouncedMixLocked(sess.SampleClock);
+                joinedAtMs = Math.Max(0, mixAtMs);
                 // The playhead (raw − s_activeStartMs) starts where B already is: InStart + OutDuration, plus how late this
                 // tick runs past the join frame. A gapless join keeps its start at the announce, as before.
-                if (joinedAtMs > 0)
+                if (mixAtMs >= 0)
                     s_activeStartMs = rawPos - joinedAtMs - Math.Max(0, (sess.SampleClock - s_joinFrame) * 1000 / Math.Max(1, sess.Format.SampleRate));
                 s_activeJoinFrame = s_joinFrame + GaplessJoinClock.MsToFrames(Math.Max(0, s_joinDurMs - joinedAtMs), sess.Format.SampleRate);
                 s_anchorClock = s_joinFrame;
@@ -3997,8 +4004,9 @@ public static partial class Playback
                 : silent || p is null ? sess.PlayedFrames * 1000L / Math.Max(1, sess.Format.SampleRate)
                 : (long)p.Position.Peek().TotalMilliseconds;
             long pos = ActivePositionMs();
-            // No crossfade into or out of an AI DJ narration clip, whatever the setting: its hand-offs are gapless (plan-dj D2; the
-            // talk-over that overlaps a clip and its track is D3's, through the Mix join).
+            // No crossfade into or out of an AI DJ narration clip, whatever the setting: a boundary the talk-over joins (plan-dj D3, the Mix
+            // join: MixEndgame and TickMix own it) overlaps by its own curves; one it cannot (a voice into a voice, a clip whose length came
+            // too late) is gapless.
             int fadeMs = NarrationBoundary() ? 0 : EffectiveFadeMs;
 
             DrainXruns(sess, pos, state);
@@ -4074,8 +4082,9 @@ public static partial class Playback
                 if (state == PlaybackState.Ended) AbandonPendingJoin(sess, "ended-before-join");
                 else if (sess.SampleClock >= s_joinFrame) { AnnounceGaplessJoin(sess, rawPos); pos = ActivePositionMs(); }
             }
-            else if (s_crossfadeInFlight && rawPos - s_activeStartMs >= fadeMs)
+            else if (s_crossfadeInFlight && rawPos - s_activeStartMs >= fadeMs && sess.SampleClock >= s_retireAtFrame)
             {
+                // (An AI DJ join announced when B started: A plays on under B to its window's end, so its bytes close only then.)
                 IMediaByteSource? retiring;
                 lock (s_gate) { s_crossfadeInFlight = false; retiring = s_retiringBytes; s_retiringBytes = null; }
                 if (retiring is not null) { try { retiring.Close(); } catch { } }
@@ -4559,6 +4568,7 @@ public static partial class Playback
         {
             opened = default;
             fault = Fault.None;
+            if (Platform.Args.Fake && id.Provider == EntityProvider.Spotify && FakeTrackSource(id, out opened) is { } fakeTrack) return fakeTrack;
             switch (RouteOf(id))
             {
                 case SourceRoute.Spotify:

@@ -224,21 +224,6 @@ public static partial class Playback
     public sealed record MixWire(bool Lens, PlaylistMixFlags ListFlags, EntityId Incoming,
         KeyValuePair<string, string>[] Out, KeyValuePair<string, string>[] In);
 
-    /// <summary>AI DJ on the PUT (plan-dj §1.9): the deck plays a lexicon session, so the player state names it as the official DJ player
-    /// does. Built on the UI thread (<c>Dj.WireNow</c>), immutable after.
-    /// <list type="bullet">
-    /// <item><see cref="ContextUrl"/>: f3, the lexicon url without <c>reason</c>.</item>
-    /// <item><see cref="NoRepeatContext"/> / <see cref="NoRepeatTrack"/> / <see cref="NoShuffle"/>: the session's own restriction reasons
-    /// ("" = allowed), written as f4 context_restrictions 8 / 9 / 10 and again beside the transport's in f17.</item>
-    /// <item><see cref="Page"/> / <see cref="Track"/>: f6 index of the deck row (page 1 = the first real page); 0 = the deck row is no
-    /// page's (a transferred or restored track), and no index is written.</item>
-    /// <item><see cref="PageMetadata"/>: f22, the deck row's page metadata whole.</item>
-    /// <item><see cref="Narrating"/>: a narration is the deck row (<c>State.Narrating</c>; D3's talk-over narrows it to "and its target track
-    /// has not started"): the encoder then writes no index, adds 3 / 9 / 13 = <c>narration</c> to f17 and <c>suppress_progress=true</c> on
-    /// the current item. The item itself (its <c>spotify:media:…</c> uri, provider, keys and manifest) is the window row's
-    /// <see cref="WireRow.Narration"/>; f11 (the clip's length, unset while it streams) comes from the snapshot as for any row; the
-    /// talk-over's fade keys will ride <see cref="MixWire"/> (its Out on the narration, its In on the target), as Mix's already do.</item>
-    /// </list></summary>
     /// <summary>An AI DJ narration item as the official player publishes it (dj-protocol §2.4): its uri (<c>spotify:media:</c> + the track
     /// it belongs to, all zeros for the welcome), its uid (<c>list_intro_item</c> for the welcome, else 32 hex minted once per clip), its
     /// provider (<c>narration/&lt;slot&gt;</c>) and its metadata in order (the display keys, <c>is_narration</c>, <c>hidden_in_queue</c>,
@@ -246,8 +231,26 @@ public static partial class Playback
     /// clip on the UI thread (<c>Dj.WireOf</c>), immutable after.</summary>
     public sealed record NarrationWire(string MediaUri, string Uid, string Provider, KeyValuePair<string, string>[] Keys);
 
+    /// <summary>AI DJ on the PUT (plan-dj §1.9): the deck plays a lexicon session, so the player state names it as the official DJ player
+    /// does. Built on the UI thread (<c>Dj.WireNow</c>), immutable after.
+    /// <list type="bullet">
+    /// <item><see cref="ContextUrl"/>: f3, the lexicon url without <c>reason</c>.</item>
+    /// <item><see cref="NoRepeatContext"/> / <see cref="NoRepeatTrack"/> / <see cref="NoShuffle"/>: the session's own restriction reasons
+    /// ("" = allowed), written as f4 context_restrictions 8 / 9 / 10 and again beside the transport's in f17.</item>
+    /// <item><see cref="Page"/> / <see cref="Track"/>: f6 index of the deck row (page 1 = the first real page); 0 = the deck row is no
+    /// page's (a transferred or restored track, a narration), and no index is written.</item>
+    /// <item><see cref="PageMetadata"/>: f22, the deck row's page metadata whole.</item>
+    /// <item><see cref="Narrating"/>: a narration is the deck row AND the track it talks over has not started under it
+    /// (<c>State.Narrating</c>): the encoder then adds 3 / 9 / 13 = <c>narration</c> to f17. Once the target sounds under the voice they
+    /// lift with the voice still current (dj-protocol §1.3). The item itself (its <c>spotify:media:…</c> uri, provider, keys, manifest and
+    /// <c>suppress_progress</c>) is the window row's <see cref="WireRow.Narration"/>; the talk-over's fade keys ride <see cref="MixWire"/>
+    /// (its Out on the current item, its In on the row it joins), as Mix's do.</item>
+    /// <item><see cref="FadeOutStartMs"/>: a DJ track on the deck whose fade-out is planned (radio, or ducked under its outro): f11 is its
+    /// <c>fade_out_start_time</c>, as the official DJ player states it (dj-protocol §7: the position counts on past it while it fades); 0 =
+    /// f11 is the deck's duration (a narration's length, a track with no plan).</item>
+    /// </list></summary>
     public sealed record DjWire(string ContextUrl, string NoRepeatContext, string NoRepeatTrack, string NoShuffle,
-        int Page, int Track, KeyValuePair<string, string>[] PageMetadata, bool Narrating = false);
+        int Page, int Track, KeyValuePair<string, string>[] PageMetadata, bool Narrating = false, int FadeOutStartMs = 0);
 
     public readonly struct WireExtras
     {

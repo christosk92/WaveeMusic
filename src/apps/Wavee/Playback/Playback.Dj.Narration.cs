@@ -41,9 +41,13 @@ namespace Wavee;
 
 public static partial class Playback
 {
-    /// <summary>An AI DJ narration is the current item (<see cref="State.Narrating"/>): the surfaces suppress its progress (no seek handle,
-    /// no times) and refuse what the reducer refuses. Published once per drain.</summary>
+    /// <summary>The DJ talks (<see cref="State.Narrating"/>: a narration is current and the track it talks over has not started under it):
+    /// the surfaces refuse what the reducer refuses then (a transfer: "DJ segment will end soon"). Published once per drain.</summary>
     public static readonly Signal<bool> Narrating = new(false) { DebugName = "playback.narrating" };
+
+    /// <summary>A narration clip is the current item (<see cref="State.ClipCurrent"/>), its target started under it or not: the surfaces
+    /// suppress its progress (no seek handle, no times; <c>suppress_progress</c>). Published once per drain.</summary>
+    public static readonly Signal<bool> ClipCurrent = new(false) { DebugName = "playback.clipCurrent" };
 
     /// <summary>The reducer's tail for Next / Previous during a narration (<see cref="Dj.NarrationSkipTarget"/>): the deck lands on the
     /// row at <paramref name="at"/> from its start, as any advance lands.</summary>
@@ -208,14 +212,21 @@ public static partial class Playback
         }
 
         /// <summary>Where Next and Previous land while the narration at <paramref name="cursor"/> is current (§1.8, inferred from
-        /// <c>skipping_*_past_track=resume</c>): Next on the first playable track row after it (a clip that plays alone: talk-over, D3, will
-        /// skip its target too); Previous on the track it belongs to, from its start. −1: the plain walk. Reads the live tables.</summary>
-        public static int NarrationSkipTarget(ReadOnlySpan<QueueEdge> rows, int cursor, bool forward)
+        /// <c>skipping_*_past_track=resume</c>): Next on the first playable track row after it, or, once that track started under the voice
+        /// (<paramref name="targetStarted"/>, the talk-over), on the row after that track: one skip ends both (dj-protocol §3); Previous on the
+        /// track it belongs to, from its start. −1: the plain walk. Reads the live tables.</summary>
+        public static int NarrationSkipTarget(ReadOnlySpan<QueueEdge> rows, int cursor, bool forward, bool targetStarted = false)
         {
             if ((uint)cursor >= (uint)rows.Length || NarrationOf(rows[cursor].ItemId) is not { } sp) return -1;
             if (!forward) return Queue.IndexOfItem(rows, sp.BelongsTo);
             for (int i = Queue.NextIndex(rows, cursor); i >= 0; i = Queue.NextIndex(rows, i))
-                if (rows[i].Provider != (byte)QueueProvider.Narration && RowPlayable(Queue.RefAt(i))) return i;
+            {
+                if (rows[i].Provider == (byte)QueueProvider.Narration || !RowPlayable(Queue.RefAt(i))) continue;
+                if (!targetStarted) return i;
+                for (int k = Queue.NextIndex(rows, i); k >= 0; k = Queue.NextIndex(rows, k))
+                    if (RowPlayable(Queue.RefAt(k))) return k;
+                return -1;
+            }
             return -1;
         }
 
@@ -589,7 +600,8 @@ public static partial class Playback
 
     /// <summary>"Let DJ pick" (<see cref="DjJump(string)"/>, after <see cref="Queue.SkipTo"/> laid the queue): the target's jump clip
     /// (<see cref="Dj.JumpClip"/>) goes right before the target, so the reducer lands on it (<see cref="DoDjJump"/>) and the target follows it
-    /// (§1.8: the jump plays the next <c>narration/jump</c>, then its target; the talk-over into the target is D3's). The boundary's other
+    /// (§1.8: the jump plays the next <c>narration/jump</c>, then its target, which starts under the voice and becomes current as soon as
+    /// it starts: Playback.Dj.TalkOver.cs). The boundary's other
     /// narration rows are left to the planner, which drops every narration that is not the deck or wanted from the new deck. UI thread.</summary>
     static void LayJumpClip(int target)
     {

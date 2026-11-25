@@ -49,12 +49,60 @@ public static partial class Entities
             + "\"home.card.jellyfish_mid_color\":\"#FF3FC8D0\",\"home.card.jellyfish_bottom_color\":\"#FF3F90D8\","
             + "\"home.card.text_color\":\"#FFFFFFFF\"}";
 
-        /// <summary>The DJ list has no rows of its own (the service lists none): its membership is known and empty.</summary>
+        /// <summary>The DJ list has no rows of its own (the service lists none): its membership is known and empty. The tracks its pages
+        /// serve get their kind 28 here (<see cref="SeedDjCues"/>).</summary>
         static void LandDj()
         {
             var p = new global::Wavee.Playlist(SlotOf(EntityKind.Playlist, DjUri));
             if (p.IsValid) Land(p, [], []);
+            SeedDjCues();
         }
+
+        /// <summary>Kind 28 for the tracks the first <see cref="DjCuePages"/> fake pages serve (a track that already has cues, a Mix
+        /// fixture's, keeps them), invented to cover every talk-over and radio rule (plan-dj §1.6, §1.7) with the capture's cue values:
+        /// <list type="bullet">
+        /// <item>page 1's first track: a human cue at 8932 ms (the 24.5 s intro: the track starts 17.2 s into the voice, 7332 ms overlap);</item>
+        /// <item>page 2's: an ml cue at 13 250 ms, confidence 0.88 (its 4.9 s jump clip: the ml rule, the track 1.5 s into the voice);</item>
+        /// <item>page 3's and every odd page after: a human cue at 11 815 ms (a short intro fits before it: the track starts at once, later
+        /// in its file); the other even pages an ml cue at 3870 ms;</item>
+        /// <item>slot 2: ml 5570 ms at 0.90 (radio: pre-rolled to its cue); slot 3: ml 9000 ms at 0.21 (not confident: from 0 in A's last
+        /// 350 ms); slot 4: a human cue at 260 ms (its own position is the overlap); slot 5: ml 8370 ms at 0.88;</item>
+        /// <item>every end cue (700 + 300 × slot) ms before the end, the tempo 90 + 10 × slot BPM (radio fades of 8 beats: 4.8 to 3.4 s).</item>
+        /// </list></summary>
+        static void SeedDjCues()
+        {
+            var edges = Current.Edges;
+            for (int page = 1; page <= DjCuePages; page++)
+                for (int slot = 1; slot <= 5; slot++)
+                {
+                    int track = SlotOf(EntityKind.Track, TrackUri(DjPoolOffset + (page - 1) * 5 + (slot - 1)));
+                    if (track <= 0 || edges.TrackCues.Payload(track).Length > 0) continue;   // a Mix fixture keeps its own (and stays silent)
+                    long dur = new global::Wavee.Track(track).DurationMs;
+                    if (dur < 30_000) continue;
+                    (uint start, bool ml, double confidence) = slot switch
+                    {
+                        1 => page switch
+                        {
+                            1 => (8932u, false, 1.0),
+                            2 => (13_250u, true, 0.88),
+                            _ => page % 2 == 1 ? (11_815u, false, 1.0) : (3870u, true, 0.88),
+                        },
+                        2 => (5570u, true, 0.90),
+                        3 => (9000u, true, 0.21),
+                        4 => (260u, false, 1.0),
+                        _ => (8370u, true, 0.88),
+                    };
+                    uint end = (uint)(dur - (700 + 300 * slot));
+                    var cue = new[] { new TrackCues(start, end, (ushort)((90 + 10 * slot) * 10), TrackCues.FactsOf(ml, endMl: true, confidence)) };
+                    edges.TrackCues.Replace(track, new int[1], cue, EdgeState.Complete, 1);
+                    // ... and it plays as silent MP3 bytes of its length, so the pump can join into it (Playback.Audio.FakeTracks.cs).
+                    Playback.Audio.FakeAudible(Current.Tracks.Id[track], (int)dur);
+                }
+        }
+
+        /// <summary>Six pages: tracks 134 to 163 of the 166, so the pool never wraps onto the catalogue's head (whose tracks the other
+        /// fixtures play silent).</summary>
+        const int DjCuePages = 6;
     }
 
     // ── the lexicon session provider's answers (served by Playback.Dj.UseFake) ────────────────────────────────────

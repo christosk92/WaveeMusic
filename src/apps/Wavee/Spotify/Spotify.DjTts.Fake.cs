@@ -39,7 +39,7 @@ public static partial class Spotify
             public const int FrameBytes = 1044;
             public const int SamplesPerFrame = 1152;
             public const int SampleRate = 44_100;
-            static ReadOnlySpan<byte> FrameHeader => [0xFF, 0xFB, 0xE0, 0xC4];
+            internal static ReadOnlySpan<byte> FrameHeader => [0xFF, 0xFB, 0xE0, 0xC4];
 
             /// <summary>How a fixture's clip is served.</summary>
             public enum Delivery : byte

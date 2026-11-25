@@ -1359,10 +1359,12 @@ public static partial class Playback
         Buffering.Value = s_state.Buffering;
         Error.Value = s_state.Error;
         Recovery.Value = s_state.Recovery;
-        // An AI DJ narration's progress is suppressed (plan-dj §1.8, `suppress_progress`): the surfaces show no times and no fill.
+        // An AI DJ narration's progress is suppressed while its clip is current (plan-dj §1.8, `suppress_progress`): the surfaces show no
+        // times and no fill. `Narrating` is the narrower "the DJ talks" (its talk-over's track has not started yet).
         Narrating.Value = s_state.Narrating;
-        PositionMs.Value = s_state.Narrating ? 0 : s_state.Position(now);
-        DurationMs.Value = s_state.Narrating ? 0 : s_state.DurationMs;
+        ClipCurrent.Value = s_state.ClipCurrent;
+        PositionMs.Value = s_state.ClipCurrent ? 0 : s_state.Position(now);
+        DurationMs.Value = s_state.ClipCurrent ? 0 : s_state.DurationMs;
         Volume.Value = s_state.SliderVolume;
         Muted.Value = s_state.Own.Kind == Owner.Foreign ? s_state.SliderVolume <= MuteFloor : s_state.SinkMuted || s_state.Volume <= MuteFloor;
         HeardVolume.Value = Muted.Peek() ? 0f : s_state.SliderVolume;

@@ -9,6 +9,8 @@
 //   dj do=jump            "Let DJ pick" as the button presses it (Playback.DjJump): the cursor before and after, the rows it skipped
 //                         (now behind the cursor: history), the lexicon answers it caused, and the reducer's refusal when there was none
 //   dj do=starve on=true  --fake: the lexicon service answers no more pages (on=false: it answers again), so a jump finds no later segment
+//   dj do=seams samples=250  the talk-over and radio plan of every seam from the deck on (`seams`, D3/D3b), each side's gain sampled
+//                         every `samples` ms over its window, and the joins the pump scheduled (`joins`)
 //
 // The session readout carries what its answer stated (dj, infinite, the expiry, the three restrictions, the welcome narration's
 // presence), each page's segment and correlation id, the lookahead (pages loaded after the playing one) and the DJ book: per queue
@@ -98,6 +100,16 @@ public static partial class Diagnostics
                             WriteDjSession(w);
                         });
                     }
+                case "seams":
+                    {
+                        int every = Math.Clamp(a.Int("samples", 250), 10, 5000), count = Math.Clamp(a.Int("n", 12), 1, 40);
+                        return Inspect.Reply.Ok(id, name, w =>
+                        {
+                            w.WriteString("do", verb);
+                            WriteSeams(w, count, every);
+                            WriteJoins(w);
+                        });
+                    }
                 case "starve":
                     {
                         Entities.FakeLexiconStarved = a.Str("on", "true") != "false";
@@ -153,7 +165,7 @@ public static partial class Diagnostics
                     }
                 default:
                     return DjConnectVerb(id, name, verb, uri, a)   // the Connect half: Diagnostics.Inspect.DjConnect.cs
-                        ?? Inspect.Reply.Fail(id, name, "dj wants do=status|answers|play|jump|starve|expire|run|" + DjConnectVerbs + ", not '" + verb + "'");
+                        ?? Inspect.Reply.Fail(id, name, "dj wants do=status|answers|play|jump|seams|starve|expire|run|" + DjConnectVerbs + ", not '" + verb + "'");
             }
         }
 
@@ -306,6 +318,8 @@ public static partial class Diagnostics
             w.WriteNumber("positionMs", st.Position(now));
             w.WriteNumber("durationMs", st.DurationMs);
             w.WriteBoolean("narrating", st.Narrating);
+            w.WriteBoolean("clipCurrent", st.ClipCurrent);
+            w.WriteBoolean("targetUnder", st.TargetUnder);
             w.WriteBoolean("canSeek", st.CanSeek);
             w.WriteNumber("publishedPositionMs", Playback.PositionMs.Peek());
             w.WriteNumber("publishedDurationMs", Playback.DurationMs.Peek());
@@ -365,6 +379,8 @@ public static partial class Diagnostics
             w.WriteStartArray("playLog");
             for (int i = Math.Max(0, log.Count - 8); i < log.Count; i++) w.WriteStringValue(log[i].Track.Text);
             w.WriteEndArray();
+            WriteSeams(w, 6, 0);
+            WriteJoins(w);
             w.WriteStartArray("timeline");
             foreach (Playback.Dj.TimelineEntry e in Playback.Dj.Timeline)
             {
@@ -377,6 +393,130 @@ public static partial class Diagnostics
             }
             w.WriteEndArray();
             w.WriteEndObject();
+        }
+
+        /// <summary>The plan of every seam from the deck on (D3, D3b; <see cref="Playback.Dj.Seam"/>, the call Mix.Follow makes): A and B, the
+        /// kind, the timing, and its events on A's clock (ms from A's start): the window (a duck's start, a radio fade's start), B's start and
+        /// its position in its own file, the duck's landing, the voice's end, where B becomes current. <paramref name="every"/> &gt; 0 samples
+        /// each side's gain over its window.</summary>
+        static void WriteSeams(Utf8JsonWriter w, int count, int every)
+        {
+            Playback.State st = Playback.Snap();
+            ReadOnlySpan<QueueEdge> rows = global::Wavee.Queue.Rows;
+            w.WriteStartArray("seams");
+            for (int i = Math.Max(0, st.Cursor.Index), n = 0; i >= 0 && i < rows.Length && n < count; i = global::Wavee.Queue.NextIndex(rows, i), n++)
+            {
+                int next = global::Wavee.Queue.NextIndex(rows, i);
+                if (next < 0) break;
+                Playback.Dj.SeamFacts f = Playback.Dj.Seam(st.Context, rows, i);
+                MixTiming t = f.Timing;
+                w.WriteStartObject();
+                w.WriteString("a", Playback.Dj.Label(rows[i].ItemId, global::Wavee.Queue.RefAt(i)));
+                w.WriteString("b", Playback.Dj.Label(rows[next].ItemId, global::Wavee.Queue.RefAt(next)));
+                w.WriteString("kind", f.Kind.ToString());
+                w.WriteNumber("aMs", f.AMs);
+                w.WriteNumber("bMs", f.BMs);
+                if (f.VoiceA is null && f.CuesA.EndCueMs > 0) w.WriteNumber("aEndCue", f.CuesA.EndCueMs);
+                if (f.VoiceB is null && f.CuesB.StartCueMs > 0)
+                {
+                    w.WriteNumber("bStartCue", f.CuesB.StartCueMs);
+                    w.WriteString("bCueOrigin", !f.CuesB.OriginKnown ? "?" : f.CuesB.StartIsHuman ? "human" : "ml");
+                    w.WriteNumber("bCueConfidence", f.CuesB.StartConfidence);
+                }
+                if (!t.Mix) { w.WriteString("refused", t.WhyNot.ToString()); w.WriteEndObject(); continue; }
+                w.WriteString("shape", t.Shape.ToString());
+                w.WriteNumber("outStart", t.OutStartMs);
+                w.WriteNumber("outDuration", t.OutDurationMs);
+                w.WriteNumber("inStart", t.InStartMs);
+                w.WriteNumber("inDuration", t.InDurationMs);
+                w.WriteNumber("inDelay", t.InDelayMs);
+                w.WriteNumber("overlap", t.AudibleEndMs - t.InAtMs);
+                w.WriteString("announceAt", t.AnnounceAt.ToString());
+                w.WriteStartObject("events");
+                if (f.Kind == Playback.Dj.SeamKind.Outro)
+                {
+                    w.WriteNumber("duckStart", t.OutStartMs);
+                    w.WriteNumber("duckLands", t.InAtMs);
+                    w.WriteNumber("voiceStarts", t.InAtMs);
+                    w.WriteNumber("trackEnds", t.AudibleEndMs);
+                    if (f.BMs > 0) w.WriteNumber("voiceEnds", t.InAtMs + f.BMs);
+                }
+                else if (f.Kind == Playback.Dj.SeamKind.TalkOver)
+                {
+                    w.WriteNumber("trackStarts", t.InAtMs);
+                    w.WriteNumber("trackStartsAtPosition", t.InStartMs);
+                    w.WriteNumber("voiceEnds", t.AudibleEndMs);
+                    w.WriteNumber("windowEnds", t.InAtMs + t.InDurationMs);
+                }
+                else
+                {
+                    w.WriteNumber("fadeOutStarts", t.OutStartMs);
+                    w.WriteNumber("bStarts", t.InAtMs);
+                    w.WriteNumber("bStartsAtPosition", t.InStartMs);
+                    w.WriteNumber("bFadeInEnds", t.InAtMs + t.InDurationMs);
+                    w.WriteNumber("bPositionAtFadeInEnd", t.InStartMs + t.InDurationMs);
+                    w.WriteNumber("aFadeEnds", t.AudibleEndMs);
+                }
+                w.WriteNumber("bCurrentAt", t.AnnounceMs);
+                w.WriteNumber("bPositionWhenCurrent", t.InStartMs + (t.AnnounceMs - t.InAtMs));
+                w.WriteEndObject();
+                w.WriteString("outCurve", Playback.DjCurves.Json(in t, incoming: false));
+                w.WriteString("inCurve", Playback.DjCurves.Json(in t, incoming: true));
+                if (every > 0)
+                {
+                    w.WriteString("outGain", Samples(in t, false, t.OutDurationMs, every));
+                    w.WriteString("inGain", Samples(in t, true, t.InDurationMs, every));
+                }
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+
+            static string Samples(in MixTiming t, bool incoming, uint window, int every)
+            {
+                var sb = new System.Text.StringBuilder();
+                for (long ms = 0; ; ms += every)
+                {
+                    long at = Math.Min(ms, window);
+                    if (sb.Length > 0) sb.Append(' ');
+                    sb.Append(at.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+                      .Append(Playback.DjCurves.GainAt(in t, incoming, at).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
+                    if (at >= window) break;
+                }
+                return sb.ToString();
+            }
+        }
+
+        /// <summary>The AI DJ joins the pump scheduled (<see cref="Playback.Audio.DjJoins"/>): the plan, and A's position on its own clock at
+        /// the window's start, B's start, the announce and the window's end as the mixer frames put them; whether B was heard and the join
+        /// announced.</summary>
+        static void WriteJoins(Utf8JsonWriter w)
+        {
+            w.WriteStartArray("joins");
+            foreach (Playback.Audio.DjJoin j in Playback.Audio.DjJoins())
+            {
+                w.WriteStartObject();
+                w.WriteString("a", Short(j.A));
+                w.WriteString("b", Short(j.B));
+                w.WriteString("source", j.Plan.Source.ToString());
+                w.WriteString("shape", j.Plan.Shape.ToString());
+                w.WriteString("announceAt", j.Plan.AnnounceAt.ToString());
+                w.WriteNumber("planOutStart", j.Plan.OutStartMs);
+                w.WriteNumber("planInAt", j.Plan.InAtMs);
+                w.WriteNumber("planAnnounce", j.Plan.AnnounceMs);
+                w.WriteNumber("planOutEnd", j.Plan.AudibleEndMs);
+                w.WriteNumber("aPosAtWindow", j.APosAtWindow);
+                w.WriteNumber("aPosAtBStart", j.APosAtIn);
+                w.WriteNumber("aPosAtAnnounce", j.APosAtAnnounce);
+                w.WriteNumber("aPosAtOutEnd", j.APosAtOutEnd);
+                w.WriteNumber("framesWindowToB", j.InFrame - j.StartFrame);
+                w.WriteNumber("rate", j.Rate);
+                w.WriteBoolean("heard", j.SoundingClock >= 0);
+                w.WriteBoolean("announced", j.AnnouncedClock >= 0);
+                w.WriteBoolean("cancelled", j.Cancelled);
+                w.WriteBoolean("lateShifted", j.LateShifted);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
         }
 
         static void WriteSpoken(Utf8JsonWriter w, Playback.Dj.Spoken sp, ReadOnlySpan<QueueEdge> rows)

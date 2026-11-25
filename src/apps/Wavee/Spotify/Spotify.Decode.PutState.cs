@@ -415,7 +415,8 @@ public static partial class Spotify
             Hex(ref w, 8, ids.PlaybackId, scratch);            // playback_id
             if (snap.IsPlaying && !snap.IsPaused && !snap.IsBuffering) w.F64(9, snap.Wire.PlaybackRate);                 // playback_speed — 0 (unwritten) while paused
             w.U(10, (ulong)Math.Max(0, snap.PositionAsOfMs));
-            w.U(11, (ulong)Math.Max(0, snap.DurationMs));
+            // f11: the deck's length; a DJ track whose fade-out is planned states its fade_out_start_time (dj-protocol §7).
+            w.U(11, (ulong)Math.Max(0, dj is { FadeOutStartMs: > 0 } ? dj.FadeOutStartMs : snap.DurationMs));
             w.B(12, playing);
             w.B(13, snap.IsPaused);
             w.B(14, snap.IsBuffering);
@@ -477,8 +478,15 @@ public static partial class Spotify
                 bool mixInDone = false;   // the autoplay tail numbers itself from 0, as the official tail does
                 foreach (ref readonly Playback.WireRow row in window.Next)
                 {
-                    // An AI DJ narration item sits between the tracks as the official player lays it (dj-protocol §4 f20), unnumbered.
-                    if (row.Narration is { } spoken) { NarrationItem(ref w, 20, spoken, in ids, scratch); continue; }
+                    // An AI DJ narration item sits between the tracks as the official player lays it (dj-protocol §4 f20), unnumbered; the one a
+                    // talk-over joins into carries its fade-in half.
+                    if (row.Narration is { } spoken)
+                    {
+                        Playback.MixWire? voiceIn = dj is not null && snap.Wire.Mix is { In.Length: > 0 } vm && !mixInDone && row.Id == vm.Incoming ? vm : null;
+                        if (voiceIn is not null) mixInDone = true;
+                        NarrationItem(ref w, 20, spoken, in ids, scratch, voiceIn?.In);
+                        continue;
+                    }
                     bool autoplay = row.Provider == QueueProvider.Autoplay;
                     bool numbered = autoplay || (contextIndex >= 0 && row.Provider != QueueProvider.Queue);   // context and autoplay rows number their run
                     // #48: the first upcoming row that is the planned incoming track carries the fade-in half.
@@ -651,7 +659,12 @@ public static partial class Spotify
             scoped Span<byte> scratch)
         {
             Playback.WireRow row = snap.Wire.Window is { } window ? window.Current : default;
-            if (row.Narration is { } spoken) { NarrationItem(ref w, 7, spoken, in snap.Wire.Ids, scratch); return; }   // AI DJ: the clip on the deck
+            // AI DJ: the clip on the deck, with its talk-over's fade-out half (a flat curve: the voice is never faded).
+            if (row.Narration is { } spoken)
+            {
+                NarrationItem(ref w, 7, spoken, in snap.Wire.Ids, scratch, snap.Wire.Dj is not null ? snap.Wire.Mix?.Out : null);
+                return;
+            }
             QueueProvider provider = snap.Wire.Window is null ? QueueProvider.Context : row.Provider;
             bool video = snap.Kind == Playback.PlayableKind.Video;
             int track = w.Open(7);
@@ -681,12 +694,14 @@ public static partial class Spotify
         /// <summary>An AI DJ narration item (<see cref="Playback.NarrationWire"/>, dj-protocol §2.4), current (f7) or upcoming (f20): its
         /// <c>spotify:media:</c> uri, its uid, its keys, the PUT's interaction and page-instance ids, its <c>narration/&lt;slot&gt;</c>
         /// provider. No index, no view index.</summary>
-        static void NarrationItem(ref ProtoWriter w, int field, Playback.NarrationWire spoken, in Playback.WireIds ids, scoped Span<byte> scratch)
+        static void NarrationItem(ref ProtoWriter w, int field, Playback.NarrationWire spoken, in Playback.WireIds ids, scoped Span<byte> scratch,
+            KeyValuePair<string, string>[]? fade = null)
         {
             int m = w.Open(field);
             w.Str(1, spoken.MediaUri);
             w.Str(2, spoken.Uid);
             foreach (KeyValuePair<string, string> entry in spoken.Keys) w.Entry(3, entry.Key, entry.Value);
+            if (fade is not null) foreach (KeyValuePair<string, string> entry in fade) w.Entry(3, entry.Key, entry.Value);   // the talk-over's half
             Tail(ref w, QueueProvider.Narration, isVideo: false, -1, in ids, scratch);
             w.Str(6, spoken.Provider);
             w.Close(m);

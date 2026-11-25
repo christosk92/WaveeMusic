@@ -124,7 +124,7 @@ public static partial class Playback
             if (!s.HasCurrent || !s.CurrentId.IsPlayable || !Ownership.ShowsLocalNowPlaying(in s.Own, hasLocalSession: true)) return default;
             bool shuffle = s.Locks.Holding ? s.Locks.HeldShuffle : s.Shuffle;   // the user's own modes
             RepeatMode repeat = s.Locks.Holding ? s.Locks.HeldRepeat : s.Repeat;
-            if (!s.Narrating) return new(s.CurrentId, s.Context, s.Cursor.Index, s.Position(nowMs), s.DurationMs, shuffle, repeat);
+            if (!s.ClipCurrent) return new(s.CurrentId, s.Context, s.Cursor.Index, s.Position(nowMs), s.DurationMs, shuffle, repeat);
             int track = Dj.NarrationSkipTarget(Queue.Rows, s.Cursor.Index, forward: false);
             EntityRef row = track >= 0 ? Queue.RefAt(track) : default;
             if (row.IsNone || !row.Id.IsPlayable || Dj.IsNarrationId(row.Id)) return default;
@@ -1386,6 +1386,7 @@ public static partial class Playback
         s.CurrentId = id;
         s.Kind = kind;
         s.Cursor = cursor;
+        s.TargetUnder = false;                            // AI DJ: a talk-over's target under the voice is that voice's fact
         s.Phase = paused ? Phase.Paused : Phase.Loading;
         s.Buffering = false;
         s.Error = Fault.None;

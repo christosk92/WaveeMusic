@@ -77,8 +77,30 @@ public static class PlaylistItemFlags
 }
 
 /// <summary>Kind 28: the chosen start and end cue, ms; 0 = none. The candidate lists are not kept. 12 bytes, unmanaged:
-/// the payload of <see cref="Edges.TrackCues"/> (the <see cref="WaveSample"/> payload-only precedent).</summary>
-public readonly record struct TrackCues(uint StartCueMs, uint EndCueMs, ushort TempoX10, ushort Reserved = 0);
+/// the payload of <see cref="Edges.TrackCues"/> (the <see cref="WaveSample"/> payload-only precedent).
+/// <para><see cref="Facts"/> (AI DJ, plan-dj §1.6 and §1.7): what each cue's field 3 (origin: absent = human, 1 = ml) and the start cue's
+/// field 4 (confidence) said. Bit 0 the start cue is ml, bit 1 the end cue is ml, bit 7 the decoder stated them (a payload written
+/// before it did reads as unknown), bits 8 to 15 the start cue's confidence in percent + 1 (0 = not stated).</para></summary>
+public readonly record struct TrackCues(uint StartCueMs, uint EndCueMs, ushort TempoX10, ushort Facts = 0)
+{
+    const ushort StartMlBit = 1, EndMlBit = 2, KnownBit = 0x80;
+
+    /// <summary>The origins were decoded (<see cref="StartIsHuman"/> and <see cref="StartConfidence"/> mean something).</summary>
+    public bool OriginKnown => (Facts & KnownBit) != 0;
+    /// <summary>The start cue was placed by a person (kind 28 field 1.3 absent); false when unknown.</summary>
+    public bool StartIsHuman => OriginKnown && StartCueMs > 0 && (Facts & StartMlBit) == 0;
+    /// <summary>The end cue was placed by a person; false when unknown.</summary>
+    public bool EndIsHuman => OriginKnown && EndCueMs > 0 && (Facts & EndMlBit) == 0;
+    /// <summary>The start cue's confidence, 0..1; −1 when not stated.</summary>
+    public float StartConfidence => (Facts >> 8) == 0 ? -1f : ((Facts >> 8) - 1) / 100f;
+
+    /// <summary>The <see cref="Facts"/> of decoded cues. PURE.</summary>
+    public static ushort FactsOf(bool startMl, bool endMl, double startConfidence)
+    {
+        int pct = double.IsFinite(startConfidence) && startConfidence >= 0 ? (int)Math.Round(Math.Clamp(startConfidence, 0, 1) * 100) + 1 : 0;
+        return (ushort)(KnownBit | (startMl ? StartMlBit : 0) | (endMl ? EndMlBit : 0) | (pct << 8));
+    }
+}
 
 /// <summary>One stored (edited) transition: the decoded recipe, its raw bytes for a verbatim carry on a later write,
 /// and the server-minted <c>spotify:transition:…</c> uri.</summary>

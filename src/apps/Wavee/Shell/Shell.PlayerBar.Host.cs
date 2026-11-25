@@ -356,7 +356,7 @@ public static partial class Shell
                 OwnsTransport = ownsTransport,
                 SeekStepEnabled = seekStepEnabled,
                 TopEdgeSweeps = sweeps,
-                ProgressSuppressed = Playback.Narrating.Value,
+                ProgressSuppressed = Playback.ClipCurrent.Value,
                 ShowTitleBlock = L.ShowTitleBlock,
                 ShowLikeSlot = L.ShowLikeSlot,
                 ShowArtistLine = PlayerBarRules.ShowsArtistLine(facts.State, L.ShowSubtitle),

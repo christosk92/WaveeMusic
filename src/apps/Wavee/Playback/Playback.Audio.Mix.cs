@@ -13,6 +13,13 @@
 //   refuse    a cross-kind slot or a tick that came too late: the base hand-off runs, the duration goes back to the file's
 //
 // With no mix planned every existing path is unchanged: the hooks in Playback.Audio.cs test MixArmed first.
+//
+// The AI DJ's joins (plan-dj D3, D3b; Playback.Dj.TalkOver.cs) ride the same machinery with three additions: B may start after A's
+// window starts (`InDelayMs`: an outro once the duck has landed, a radio B in A's last 350 ms), B may become current as soon as it starts
+// (`AnnounceAt == InStart`: a jump clip's target, an outro, a radio B) while A plays on under it to its own window's end (its voice is an
+// Out envelope, retired when the window ends; its bytes are closed only then), and a talk-over whose B started under the voice tells the
+// reducer so (`AudioSignal.TargetStarted`: the narration restrictions lift while the voice is still current). A talk-over that comes
+// too late for its frame starts B as early as it still can instead of falling back to the butt-join.
 
 using FluentGpu.Media;
 
@@ -39,12 +46,43 @@ public static partial class Playback
         static bool s_joinMix;
         static AudioTransitionGate? s_mixGate;
         static long s_mixOutVoice, s_joinStartMs;
+        /// <summary>The scheduled join's timing (its shape, its announce, its delay).</summary>
+        static MixTiming s_joinPlan;
+        /// <summary>A join announced when B starts: the mixer frame A's window ends on (its voice and bytes live until then); 0 otherwise.</summary>
+        static long s_joinOutEndFrame;
+        /// <summary>The announced join's A outlives it until this mixer frame: the retiring bytes close only then (0: at once).</summary>
+        static long s_retireAtFrame;
+        /// <summary>The talk-over's TargetStarted was posted for the scheduled join.</summary>
+        static bool s_targetStartedPosted;
 
-        static long s_mMixSaved, s_mMixAuto, s_mMixRefused, s_mMixCancelled;
+        static long s_mMixSaved, s_mMixAuto, s_mMixRefused, s_mMixCancelled, s_mMixDj;
         public static long MixSavedCount => Interlocked.Read(ref s_mMixSaved);
         public static long MixAutoCount => Interlocked.Read(ref s_mMixAuto);
         public static long MixRefusedCount => Interlocked.Read(ref s_mMixRefused);
         public static long MixCancelledCount => Interlocked.Read(ref s_mMixCancelled);
+        /// <summary>AI DJ joins scheduled (talk-overs and radio).</summary>
+        public static long MixDjCount => Interlocked.Read(ref s_mMixDj);
+
+        /// <summary>One AI DJ join as the pump scheduled and ran it (the inspector's evidence, plan-dj §2.10): the plan, and A's position on its
+        /// own clock where A's window starts, where B starts, where the join is announced and where A's window ends, from the mixer frames.</summary>
+        public sealed class DjJoin
+        {
+            public EntityId A, B;
+            public MixTiming Plan;
+            public long StartFrame, InFrame, AnnounceFrame, OutEndFrame;
+            public int Rate;
+            /// <summary>A's playhead (ms) at the frames above, from the anchor the schedule used.</summary>
+            public long APosAtWindow, APosAtIn, APosAtAnnounce, APosAtOutEnd;
+            /// <summary>The mixer clock when the pump saw B sounding and when it announced (−1: not yet).</summary>
+            public long SoundingClock = -1, AnnouncedClock = -1;
+            public bool Cancelled, LateShifted;
+        }
+
+        static readonly List<DjJoin> s_djJoins = new();
+        static DjJoin? s_djJoin;
+
+        /// <summary>The last AI DJ joins (oldest first), a copy. Any thread.</summary>
+        public static DjJoin[] DjJoins() { lock (s_gate) return s_djJoins.ToArray(); }
 
         /// <summary>The live mix window, for the player bar (UI thread reads; written by the pump): the mixer frame the
         /// overlap started at, 0 when none is sounding.</summary>
@@ -106,7 +144,9 @@ public static partial class Playback
             lock (s_gate)
             {
                 if (!MixArmedLocked) return;
-                boundaryMs = s_mixPlan.OutStartMs;
+                // At least 1 ms: an AI DJ voice that fits before its track's cue starts the track with the voice (out = 0), and a boundary
+                // of 0 reads as "no length" (the endgame would never ask for B; it asks at once instead, and the join comes as early as it can).
+                boundaryMs = Math.Max(1, s_mixPlan.OutStartMs);
                 fadeMs = 0;
             }
         }
@@ -129,9 +169,25 @@ public static partial class Playback
             if (!s_prepOverlap) { RefuseMix(MixWhyNot.CrossKind); return false; }
             if (s_clockStale) return true;                         // wait for a clock this track owns
             long lead = startFrame - clock;
-            if (lead < GaplessJoinClock.MsToFrames(MixMinLeadMs, rate)) { RefuseMix(MixWhyNot.Late); return false; }
+            long minLead = GaplessJoinClock.MsToFrames(MixMinLeadMs, rate);
+            bool lateShifted = false;
+            if (lead < minLead && plan.Source == MixSource.TalkOver && plan.InDelayMs == 0)
+            {
+                // A voice over its target came too late for its frame (a jump clip whose target opened late): B starts as early as it still
+                // can, the voice's window shortened by as much, so the voice still ends where it ends and B still joins under it.
+                long shiftMs = (minLead - lead) * 1000 / Math.Max(1, rate) + 1;
+                if (plan.OutDurationMs > shiftMs + MixMinLeadMs)
+                {
+                    plan = plan with { OutStartMs = (uint)(plan.OutStartMs + shiftMs), OutDurationMs = (uint)(plan.OutDurationMs - shiftMs) };
+                    startFrame += GaplessJoinClock.MsToFrames(shiftMs, rate);
+                    lead = startFrame - clock;
+                    lateShifted = true;
+                    Log.Info("audio", $"[mix] talk-over late by {shiftMs} ms: the track starts {shiftMs} ms later under the voice");
+                }
+            }
+            if (lead < minLead) { RefuseMix(MixWhyNot.Late); return false; }
             if (lead > GaplessJoinClock.MsToFrames(MixCommitLeadMs, rate)) return true;
-            if (!ScheduleMix(sess, item, in plan, startFrame)) RefuseMix(MixWhyNot.Late);
+            if (!ScheduleMix(sess, item, in plan, startFrame, lateShifted)) RefuseMix(MixWhyNot.Late);
             return true;
         }
 
@@ -156,13 +212,14 @@ public static partial class Playback
 
         /// <summary>Arm the join at <paramref name="startFrame"/>: B's voice with its curve envelope and automation, A's
         /// envelope and automation, one gate. The app's identity does not change until A is over.</summary>
-        static bool ScheduleMix(PcmAudioSession sess, IPreparedItem item, in MixTiming plan, long startFrame)
+        static bool ScheduleMix(PcmAudioSession sess, IPreparedItem item, in MixTiming plan, long startFrame, bool lateShifted = false)
         {
             if (!GaplessJoinClock.PrimedSlotMatches(item.MixRate, sess.Format.SampleRate)) return false;
             int rate = sess.Format.SampleRate;
             int outFrames = (int)GaplessJoinClock.MsToFrames(plan.OutDurationMs, rate);
             int inFrames = (int)GaplessJoinClock.MsToFrames(plan.InDurationMs, rate);
-            if (outFrames <= 0 || inFrames <= 0) return false;
+            long inDelayFrames = GaplessJoinClock.MsToFrames(plan.InDelayMs, rate);
+            if (outFrames <= 0 || inFrames <= 0 || inDelayFrames >= outFrames) return false;
             // Where the mix meets the crossfade fix (GaplessJoinClock.ScheduleFade): when A's length is decoded truth, the
             // mix-out never runs past A's last sample. A plan whose out-end lies beyond it (a catalogue length longer than
             // the file) is shortened to end on that frame, as a late fade is; a start at or past it is too late.
@@ -172,7 +229,7 @@ public static partial class Playback
             {
                 long activeEnd;
                 lock (s_gate) activeEnd = JoinFrameExact(s_anchorClock, s_anchorPlayheadMs, exactFrames, rate);
-                if (startFrame >= activeEnd) return false;
+                if (startFrame + inDelayFrames >= activeEnd) return false;
                 if (startFrame + outFrames > activeEnd)
                 {
                     Log.Info("audio", $"[mix] out shortened to A's exact end: {outFrames} -> {activeEnd - startFrame} frames");
@@ -185,10 +242,12 @@ public static partial class Playback
             var gate = new AudioTransitionGate(startFrame);
             long id = ++s_nextVoiceId;
             float rg = sess.ReplayGainScalarFor(item.Loudness);
+            long inFrame = startFrame + inDelayFrames;                 // B's first frame (an AI DJ outro, a blind radio B: later than A's window)
+            bool announceAtIn = plan.AnnounceAt == MixAnnounceAt.InStart;
             lock (s_gate)
             {
-                if (!sess.TryAddCrossfadeVoice(item.AudioVoice!, GainEnvelope.FromCurve(FadeKind.In, startFrame, inFrames, inTable).WithTransition(gate),
-                        startFrame, rg, sess.BuildVoiceChain(), id))
+                if (!sess.TryAddCrossfadeVoice(item.AudioVoice!, GainEnvelope.FromCurve(FadeKind.In, inFrame, inFrames, inTable).WithTransition(gate),
+                        inFrame, rg, sess.BuildVoiceChain(), id))
                     return false;
                 bool inArmed = inAuto is null || sess.SetVoiceAutomation(id, inAuto);
                 sess.SetVoiceEnvelope(s_activePrimaryId, GainEnvelope.FromCurve(FadeKind.Out, startFrame, outFrames, outTable).WithTransition(gate));
@@ -197,7 +256,10 @@ public static partial class Playback
                 NoteBakedFactor(id, s_prepDecoder, in s_prepOpened);
                 s_joinExact = true;
                 s_joinPending = true;
-                s_joinFrame = startFrame + outFrames;              // the announce: A is over (D14 (b))
+                s_joinFrame = announceAtIn ? inFrame : startFrame + outFrames;   // the announce: A is over (D14 (b)), or B started (AI DJ)
+                s_joinOutEndFrame = announceAtIn ? startFrame + outFrames : 0;
+                s_joinPlan = plan;
+                s_targetStartedPosted = false;
                 s_joinVoiceId = id;
                 s_joinVoice = item.AudioVoice;
                 s_joinTotalFrames = item.TotalFrames;
@@ -206,7 +268,7 @@ public static partial class Playback
                 s_joinBytes = s_prepBytes;
                 s_joinDecoder = s_prepDecoder;
                 s_joinOpened = s_prepOpened;
-                s_joinStartMs = s_prepStartMs + outMs;
+                s_joinStartMs = announceAtIn ? s_prepStartMs : s_prepStartMs + outMs;
                 s_joinMix = true;
                 // The base hand-off's join state (#284 / local files): the joining kind, and no plain fade (the mix
                 // carries its own curves; AnnounceGaplessJoin publishes no fade transition, AbandonPendingJoin restores
@@ -217,7 +279,20 @@ public static partial class Playback
                 s_joinOutgoingVoiceId = s_activePrimaryId;
                 s_mixGate = gate;
                 s_mixOutVoice = s_activePrimaryId;
-                s_mixStartFrameValue = startFrame;
+                s_mixStartFrameValue = inFrame;
+                if (!plan.IsPlaylistMix)
+                {
+                    long anchorPlayhead = s_anchorPlayheadMs, anchorClock = s_anchorClock;
+                    long PosAt(long frame) => anchorPlayhead + (frame - anchorClock) * 1000 / Math.Max(1, rate);
+                    s_djJoin = new DjJoin
+                    {
+                        A = s_id, B = s_joinId, Plan = plan, StartFrame = startFrame, InFrame = inFrame, AnnounceFrame = s_joinFrame,
+                        OutEndFrame = startFrame + outFrames, Rate = rate, APosAtWindow = PosAt(startFrame), APosAtIn = PosAt(inFrame),
+                        APosAtAnnounce = PosAt(s_joinFrame), APosAtOutEnd = PosAt(startFrame + outFrames), LateShifted = lateShifted,
+                    };
+                    if (s_djJoins.Count >= 32) s_djJoins.RemoveAt(0);
+                    s_djJoins.Add(s_djJoin);
+                }
                 s_prepItem = null;
                 s_prepBytes = null;
                 s_prepDecoder = null;
@@ -226,7 +301,9 @@ public static partial class Playback
                 s_prepOverlap = false;
                 s_prepStartMs = 0;
             }
-            if (plan.Source == MixSource.Saved) Interlocked.Increment(ref s_mMixSaved); else Interlocked.Increment(ref s_mMixAuto);
+            if (plan.Source == MixSource.Saved) Interlocked.Increment(ref s_mMixSaved);
+            else if (plan.IsPlaylistMix) Interlocked.Increment(ref s_mMixAuto);
+            else Interlocked.Increment(ref s_mMixDj);
             // #154's timeline tap (plan §3.9, decision D14 (b)): the overlap is audible between these two mixer frames and the timecode keeps
             // naming the OUTGOING track until it is over; the announce publishes the incoming identity, which drops the transition.
             EntityId incoming;
@@ -234,7 +311,8 @@ public static partial class Playback
             Timeline.SetTransition(incoming, startFrame, startFrame + outFrames, Timeline.Master.Outgoing);
             Log.Info("audio", $"[mix] scheduled source={plan.Source} preset={plan.Preset} out={plan.OutStartMs} outDur={plan.OutDurationMs} "
                 + $"in={plan.InStartMs} inDur={plan.InDurationMs} start={startFrame} lead={startFrame - sess.SampleClock} "
-                + $"auto={(outAuto is null ? "-" : "out")}{(inAuto is null ? "" : "+in")}");
+                + $"auto={(outAuto is null ? "-" : "out")}{(inAuto is null ? "" : "+in")}"
+                + (plan.IsPlaylistMix ? "" : $" shape={plan.Shape} inFrame={inFrame} announce={plan.AnnounceAt}@{(announceAtIn ? inFrame : startFrame + outFrames)}"));
             return true;
         }
 
@@ -244,10 +322,27 @@ public static partial class Playback
         /// bar's "Mixing into …").</summary>
         static void TickMixSounding(PcmAudioSession sess)
         {
-            bool sounding;
-            lock (s_gate) sounding = s_joinPending && s_joinMix && sess.SampleClock >= s_mixStartFrameValue;
+            bool sounding, targetStarted = false;
+            uint epoch;
+            lock (s_gate)
+            {
+                sounding = s_joinPending && s_joinMix && sess.SampleClock >= s_mixStartFrameValue;
+                epoch = s_loadEpoch;
+                if (sounding && s_djJoin is { SoundingClock: < 0 } join) join.SoundingClock = sess.SampleClock;
+                // AI DJ: an intro's (a welcome's) target started under the voice, which stays the current item to its end (plan-dj §1.6).
+                if (sounding && !s_targetStartedPosted && s_joinPlan.Source == MixSource.TalkOver && s_joinPlan.AnnounceAt == MixAnnounceAt.OutEnd)
+                {
+                    s_targetStartedPosted = true;
+                    targetStarted = true;
+                }
+            }
             int now = sounding ? 1 : 0;
             if (Interlocked.Exchange(ref s_mixSounding, now) != now && sounding) Log.Info("audio", "[mix] overlap sounding");
+            if (targetStarted)
+            {
+                Log.Info("audio", "[mix] talk-over: the target started under the voice");
+                PostSignal(AudioSignal.TargetStarted, epoch, 0);
+            }
         }
 
         /// <summary>Under s_gate, from <see cref="AbandonPendingJoin"/>: undo a mix join's A side. True when the join was a mix.</summary>
@@ -266,20 +361,42 @@ public static partial class Playback
             s_joinMix = false;
             s_mixGate = null;
             s_joinStartMs = 0;
+            s_joinOutEndFrame = 0;
+            s_joinPlan = default;
+            if (s_djJoin is { } join) { join.Cancelled = true; s_djJoin = null; }
             Volatile.Write(ref s_mixSounding, 0);
             Interlocked.Increment(ref s_mMixCancelled);
             Log.Info("audio", "[mix] cancelled " + (beforeStart ? "before the overlap" : "inside the overlap"));
             return true;
         }
 
-        /// <summary>Under s_gate, from the announce: the mix join went live. The anchor B starts at.</summary>
-        static long AnnouncedMixLocked()
+        /// <summary>Under s_gate, from a load or a session teardown: a mix join still pending dies with the voices it joined (no gate to
+        /// cancel, nothing to put back: the session goes), so its state must not reach the next join's announce.</summary>
+        static void DropMixJoinLocked()
         {
-            if (!s_joinMix) return 0;
-            long at = s_joinStartMs;
+            if (s_djJoin is { } join) { join.Cancelled = true; s_djJoin = null; }
             s_joinMix = false;
             s_mixGate = null;
             s_joinStartMs = 0;
+            s_joinOutEndFrame = 0;
+            s_joinPlan = default;
+            Volatile.Write(ref s_mixSounding, 0);
+        }
+
+        /// <summary>Under s_gate, from the announce: the mix join went live. The anchor B starts at; −1 when the join was not a mix.
+        /// A join announced when B starts keeps A's bytes until A's window ends (<see cref="s_retireAtFrame"/>).</summary>
+        static long AnnouncedMixLocked(long clock)
+        {
+            s_retireAtFrame = 0;
+            if (!s_joinMix) return -1;
+            long at = s_joinStartMs;
+            s_retireAtFrame = s_joinOutEndFrame;
+            if (s_djJoin is { } join) { join.AnnouncedClock = clock; s_djJoin = null; }
+            s_joinMix = false;
+            s_mixGate = null;
+            s_joinStartMs = 0;
+            s_joinOutEndFrame = 0;
+            s_joinPlan = default;
             s_mixPlan = default;
             s_mixDurationPosted = 0;
             Volatile.Write(ref s_mixSounding, 0);
@@ -295,6 +412,18 @@ public static partial class Playback
             out float[] outTable, out float[] inTable, out VoiceAutomation? outAuto, out VoiceAutomation? inAuto)
         {
             int n = GainEnvelope.TablePoints;
+            if (!t.IsPlaylistMix)
+            {
+                // The AI DJ's joins: volume only (the duck, the outro, the radio pair: Playback.Dj.TalkOver.cs), no EQ or filter.
+                Span<CurveSegment> dj = stackalloc CurveSegment[3];
+                outTable = new float[n];
+                inTable = new float[n];
+                MixCurves.Sample(dj[..DjCurves.Segments(in t, incoming: false, dj)], outTable);
+                MixCurves.Sample(dj[..DjCurves.Segments(in t, incoming: true, dj)], inTable);
+                outAuto = null;
+                inAuto = null;
+                return;
+            }
             byte preset = t.Preset == (byte)MixPreset.Rise ? (byte)MixPreset.Rise : (byte)MixPreset.Fade;   // unknown ids play as Fade
             Span<CurveSegment> seg = stackalloc CurveSegment[4];
             int outUnits = MixCurves.UnitsFor(t.OutDurationMs), inUnits = MixCurves.UnitsFor(t.OutDurationMs);

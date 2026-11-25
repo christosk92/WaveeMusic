@@ -165,6 +165,9 @@ public static partial class Playback
         DeviceReload,
         /// <summary>The video host found no source for the row (the manifest resolve answered nothing): demote to audio.</summary>
         VideoUnavailable,
+        /// <summary>AI DJ talk-over (plan-dj §1.6): the track an intro or a welcome talks over started under it. The voice stays the current
+        /// item to its end; the narration restrictions lift now (<see cref="State.TargetUnder"/>).</summary>
+        TargetStarted,
     }
 
     /// <summary>Why the current playable is not playing. <see cref="Fault.None"/> is the ONLY value that lets the
@@ -1049,6 +1052,9 @@ public static partial class Playback
         public ToggleLock MirrorLocks;
         public LockReason MirrorLockReason;
         public bool NoTransfer, MirrorNarrating;
+        /// <summary>AI DJ: the track the current narration talks over has started under it (<see cref="AudioSignal.TargetStarted"/>; an
+        /// intro or a welcome stays current to its end). Cleared whenever another row goes on the deck.</summary>
+        public bool TargetUnder;
         /// <summary>The stream's format badge ("OGG 320", "FLAC 44.1/16"), published by the audio host. CLEARED the
         /// moment a remote device owns playback — we cannot know a phone's format, and 0.2.9 left ours on screen
         /// (ch 21 G8).</summary>
@@ -1172,12 +1178,16 @@ public static partial class Playback
         public readonly bool RoutesLocal => Ownership.RoutesLocal(in Own);
         /// <summary>Is the transport armed at all? Ch 20 §7's <c>canTransport</c>.</summary>
         public readonly bool CanTransport => HasCurrent && Error == Fault.None;
-        /// <summary>An AI DJ narration clip is the current item (its playable identity is a <c>wavee:tts:</c> clip, plan-dj §2.2): no seek,
-        /// no repeat-track, no transfer (the official restriction reason <c>narration</c>), and the surfaces suppress its progress.</summary>
-        public readonly bool Narrating => CurrentId.Provider == EntityProvider.Tts;
+        /// <summary>An AI DJ narration clip is the current item (its playable identity is a <c>wavee:tts:</c> clip, plan-dj §2.2): no seek
+        /// (a seek would land in the voice), Next and Previous land past it, and the surfaces suppress its progress (<c>suppress_progress</c>).</summary>
+        public readonly bool ClipCurrent => CurrentId.Provider == EntityProvider.Tts;
+        /// <summary>The DJ talks: a narration clip is current AND the track it talks over has not started under it (plan-dj §1.6, §1.9): no
+        /// repeat-track, no transfer (the official restriction reason <c>narration</c>, f17 3 / 9 / 13). Once the target sounds under the
+        /// voice the official player lifts them while the voice is still current.</summary>
+        public readonly bool Narrating => ClipCurrent && !TargetUnder;
         /// <summary>May the seek bar be dragged? While LIVE this is exactly <see cref="LiveWindow.HasWindow"/> — a
-        /// seekable span under 30 s is not a window, and the rail becomes the breathing line. Never while a narration is current.</summary>
-        public readonly bool CanSeek => CanTransport && !SeekRestricted && !Narrating && Phase != Phase.Loading
+        /// seekable span under 30 s is not a window, and the rail becomes the breathing line. Never while a narration clip is current.</summary>
+        public readonly bool CanSeek => CanTransport && !SeekRestricted && !ClipCurrent && Phase != Phase.Loading
             && (Live.IsLive ? Live.HasWindow : DurationMs > 0);
         /// <summary>May Next fire? The FOLDED answer; the raw restriction bits are not the UI's business.</summary>
         public readonly bool CanSkipNext => CanTransport && !NextRestricted;
@@ -2012,9 +2022,10 @@ public static partial class Playback
             if (forward && jumpTo < 0) why = PlayReason.TrackDone;
         }
         bool natural = why == PlayReason.TrackDone;
-        // An AI DJ narration current: Next goes to the track after it, Previous restarts the track it belongs to (plan-dj §1.8,
-        // `skipping_*_past_track=resume`). A natural end is the plain walk (the next row, a clip or a track).
-        if (!natural && jumpTo < 0 && s.Narrating && Dj.NarrationSkipTarget(Queue.Rows, s.Cursor.Index, forward) is var spoken and >= 0)
+        // An AI DJ narration current: Next goes to the track after it, or past it once it started under the voice (one skip ends both,
+        // plan-dj §1.8); Previous restarts the track it belongs to (`skipping_*_past_track=resume`). A natural end is the plain walk.
+        if (!natural && jumpTo < 0 && s.ClipCurrent
+            && Dj.NarrationSkipTarget(Queue.Rows, s.Cursor.Index, forward, s.TargetUnder) is var spoken and >= 0)
         {
             LandPastNarration(ref s, in i, ref fx, spoken, why);
             return;
@@ -2252,7 +2263,7 @@ public static partial class Playback
     static void DoSeek(ref State s, in Input i, ref Effects fx)
     {
         if (!s.HasCurrent) return;
-        if (s.Narrating) { fx.Refused = Refusal.Narration; LogRestricted("seek", "narration", in s); return; }   // plan-dj §1.8
+        if (s.ClipCurrent) { fx.Refused = Refusal.Narration; LogRestricted("seek", "narration", in s); return; }   // plan-dj §1.8: not in a voice
         if (s.SeekRestricted && !s.Parked && s.Error == Fault.None) { LogRestricted("seek", "noSeek", in s); return; }
         if (!s.RoutesLocal)
         {
@@ -2296,7 +2307,7 @@ public static partial class Playback
         s.ScrubPosMs = i.IntArg;
         s.ScrubEpoch = s.LoadEpoch;
         bool audible = e.Begin && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && s.Phase == Phase.Playing
-                       && !s.Parked && s.Error == Fault.None && !s.SeekRestricted && !s.Narrating;
+                       && !s.Parked && s.Error == Fault.None && !s.SeekRestricted && !s.ClipCurrent;
         // ASSIGNED on every press, true or false: `ScrubModel.Up` leaves `Audible` set (the release arm reads it after Up) and `Down` does not
         // reset it, so a stale true would leak from the last gesture into this one. `fx.ScrubBegin` follows the same verdict, so a later
         // non-audible press in one drain also withdraws an earlier audible one's begin.
@@ -2607,6 +2618,16 @@ public static partial class Playback
 
             case AudioSignal.VideoUnavailable:
                 if (s.Kind == PlayableKind.Video && s.RoutesLocal) DoVideoFault(ref s, in i, ref fx, retry: false, Fault.Unavailable);
+                break;
+
+            case AudioSignal.TargetStarted:
+                // The talk-over's track sounds under the voice: the narration restrictions lift and the PUT says so (plan-dj §1.6:
+                // one PutState moves the target out of next_tracks, the narration still current).
+                if (!s.ClipCurrent || s.TargetUnder) break;
+                s.TargetUnder = true;
+                Bump(ref s);
+                Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+                fx.Snapshot = true;
                 break;
         }
     }

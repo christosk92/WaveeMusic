@@ -74,13 +74,16 @@ public static partial class Spotify
         }
 
         /// <summary>Kind 28 → one <see cref="TrackCues"/> on <see cref="Edges.TrackCues"/>: the chosen start cue (f1) and
-        /// end cue (f2), and the tempo the start cue states. The candidate lists are not kept.</summary>
+        /// end cue (f2), the tempo the start cue states, each cue's origin (f3: absent = human, 1 = ml) and the start cue's
+        /// confidence (f4), which the AI DJ's talk-over and radio automix read (plan-dj §1.6, §1.7). The candidate lists are not kept.</summary>
         public static void Cuepoints(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
         {
             var track = Identity(s, entityUri);
             if (track.IsEmpty) return;
             uint start = 0, end = 0;
             float bpm = 0f;
+            bool startMl = false, endMl = false;
+            double startConfidence = -1;
             for (var r = new ProtoReader(proto); r.Next();)
             {
                 if ((r.Field == 1 || r.Field == 2) && r.Wire == 2)
@@ -88,14 +91,18 @@ public static partial class Spotify
                     bool isStart = r.Field == 1;
                     uint ms = 0;
                     float cueBpm = 0f;
+                    bool ml = false;
+                    double confidence = -1;
                     for (var c = r.Message(); c.Next();)
                     {
                         if (c.Field == 1 && c.Wire == 0) ms = (uint)Math.Min(c.Varint(), uint.MaxValue);
                         else if (c.Field == 2 && c.Wire == 5) cueBpm = BitConverter.UInt32BitsToSingle(c.Fixed32());
+                        else if (c.Field == 3 && c.Wire == 0) ml = c.Varint() == 1;
+                        else if (c.Field == 4 && c.Wire == 1) confidence = c.Double();
                         else c.Skip();
                     }
-                    if (isStart) { start = ms; if (cueBpm > 0) bpm = cueBpm; }
-                    else { end = ms; if (bpm <= 0 && cueBpm > 0) bpm = cueBpm; }
+                    if (isStart) { start = ms; startMl = ml; startConfidence = confidence; if (cueBpm > 0) bpm = cueBpm; }
+                    else { end = ms; endMl = ml; if (bpm <= 0 && cueBpm > 0) bpm = cueBpm; }
                 }
                 else r.Skip();
             }
@@ -105,7 +112,8 @@ public static partial class Spotify
             run.Start = s.Traits.Count;
             run.Length = 0;
             if (start == 0 && end == 0) return;                      // answered, but no cue: the empty run says so
-            var cue = new TrackCues(start, end, bpm is > 0 and < 6553 ? (ushort)(bpm * 10 + 0.5f) : (ushort)0);
+            var cue = new TrackCues(start, end, bpm is > 0 and < 6553 ? (ushort)(bpm * 10 + 0.5f) : (ushort)0,
+                TrackCues.FactsOf(startMl, endMl, startConfidence));
             run.Bytes = s.AddText(System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<TrackCues>(in cue)));
         }
 

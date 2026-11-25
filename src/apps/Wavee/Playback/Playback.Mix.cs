@@ -64,7 +64,7 @@ public static partial class Playback
         public static readonly Signal<int> Changed = new(0);
 
         readonly record struct FollowKey(EntityId Cur, EntityId Next, EntityId Context, int MixVersion, int Overrides,
-            uint BeatsA, uint BeatsB, uint CuesA, uint CuesB, uint ListVersion, bool ListenWithout);
+            uint BeatsA, uint BeatsB, uint CuesA, uint CuesB, uint ListVersion, bool ListenWithout, long DjSeam);
 
         static FollowKey s_key;
         static MixTiming? s_bench;
@@ -88,12 +88,19 @@ public static partial class Playback
                 cur.Kind == EntityKind.Track ? edges.TrackCues.Version(cur.Slot) : 0,
                 next.Kind == EntityKind.Track ? edges.TrackCues.Version(next.Slot) : 0,
                 pl > 0 ? edges.PlaylistTracks.Version(pl) : 0,
-                pl > 0 && MixListenWithout.Is(new global::Wavee.Playlist(pl)));
+                pl > 0 && MixListenWithout.Is(new global::Wavee.Playlist(pl)),
+                s.Cursor.IsNone ? 0 : Dj.SeamVersion(s.Context, Queue.Rows, s.Cursor.Index));
             if (key == s_key) return;
             s_key = key;
 
-            var timing = s_bench is { } bench && !next.IsNone ? bench : PlanPair(in s, cur, next, provider, pl);
-            if (timing.Mix && s_ensured != (key.Cur, key.Next))
+            // AI DJ (plan-dj D3, D3b): while a lexicon session plays, its seams are the talk-over and the radio automix
+            // (Playback.Dj.TalkOver.cs), never the playlist planner's.
+            bool dj = Dj.Of(s.Context) is not null;
+            s_djSeam = dj && s.HasCurrent && !s.Cursor.IsNone && s.Kind == PlayableKind.Audio ? Dj.Seam(s.Context, Queue.Rows, s.Cursor.Index) : default;
+            var timing = s_bench is { } bench && !next.IsNone ? bench
+                : dj ? (s_djSeam.Timing.Mix || s_djSeam.Timing.WhyNot != MixWhyNot.None ? s_djSeam.Timing : MixTiming.Refused(MixWhyNot.NotMixed))
+                : PlanPair(in s, cur, next, provider, pl);
+            if (timing.IsPlaylistMix && s_ensured != (key.Cur, key.Next))
             {
                 // The analysis the planner reads, for the playing and the next row (plan §3.3: "for the playing track and
                 // the next two rows"; the third rides the next re-plan).
@@ -101,7 +108,7 @@ public static partial class Playback
                 EnsureAnalysis(cur);
                 EnsureAnalysis(next);
             }
-            else if (!timing.Mix && timing.WhyNot is MixWhyNot.NoData && pl > 0) { EnsureAnalysis(cur); EnsureAnalysis(next); }
+            else if (!dj && !timing.Mix && timing.WhyNot is MixWhyNot.NoData && pl > 0) { EnsureAnalysis(cur); EnsureAnalysis(next); }
 
             bool contextMixed = pl > 0 && !key.ListenWithout && new global::Wavee.Playlist(pl).MixOn;
             if (timing == Current && key.Next == CurrentNext && contextMixed == ContextMixed) return;
@@ -111,11 +118,17 @@ public static partial class Playback
             Changed.Value = Changed.Peek() + 1;
             if (timing.Mix)
                 Log.Info("audio", $"[mix] plan source={timing.Source} preset={timing.Preset} out={timing.OutStartMs} outDur={timing.OutDurationMs} "
-                    + $"in={timing.InStartMs} inDur={timing.InDurationMs}");
+                    + $"in={timing.InStartMs} inDur={timing.InDurationMs}"
+                    + (timing.IsPlaylistMix ? "" : $" shape={timing.Shape} delay={timing.InDelayMs} announce={timing.AnnounceAt}"));
             else if (timing.WhyNot is not (MixWhyNot.None or MixWhyNot.NotMixed))
                 Log.Info("audio", "[mix] base hand-off why=" + timing.WhyNot);
             Audio.SetMix(s.CurrentId, key.Next, next, in timing);
         }
+
+        static Dj.SeamFacts s_djSeam;
+
+        /// <summary>The playing pair's DJ seam (<see cref="Dj.Seam"/>; default outside a lexicon session): what the PUT's fade keys name.</summary>
+        internal static Dj.SeamFacts DjSeam => s_djSeam;
 
         /// <summary>The deck plays from a playlist whose Mix is on (and not listened to without it on this PC): the queue's Crossfade row
         /// then says Mix covers this playlist (its own pairs; a queued song, a local file still get Crossfade).</summary>
@@ -127,7 +140,7 @@ public static partial class Playback
         {
             _ = Changed.Value;
             var t = Current;
-            return t.Mix && !CurrentNext.IsEmpty ? Strings.Mix.QueueLine(MixSeams.ChipText(in t)) : "";
+            return t.IsPlaylistMix && !CurrentNext.IsEmpty ? Strings.Mix.QueueLine(MixSeams.ChipText(in t)) : "";
         }
 
         /// <summary>The Crossfade row's note, "Mix is on for this playlist", while <see cref="ContextMixed"/>; "" otherwise.</summary>
@@ -146,7 +159,7 @@ public static partial class Playback
         {
             _ = Changed.Value;
             var t = Current;
-            if (!t.Mix || CurrentNext.IsEmpty) return null;
+            if (!t.IsPlaylistMix || CurrentNext.IsEmpty) return null;
             if (s_mixingFor != CurrentNext || s_mixingText is null)
             {
                 var row = Entities.Ref(CurrentNext);
@@ -171,6 +184,14 @@ public static partial class Playback
         /// <summary>The PUT's Mix half for the deck's context (plan §3.7), rebuilt only when the plan, the context or its flags change.</summary>
         internal static MixWire? WireNow(in State s)
         {
+            if (Dj.Of(s.Context) is not null)
+            {
+                // AI DJ: the seam's fade keys (Dj.WireOf), rebuilt when the plan moved.
+                var djKey = (Changed.Peek(), s.Context, 0u, false);
+                if (djKey == s_wireKey) return s_wire;
+                s_wireKey = djKey;
+                return s_wire = Dj.WireOf(in s_djSeam);
+            }
             if (s.Context.Kind != EntityKind.Playlist || !Entities.Current.Playlists.TryGetSlot(s.Context, out int slot)) return null;
             var p = new global::Wavee.Playlist(slot);
             bool without = MixListenWithout.Is(p);
@@ -489,7 +510,7 @@ internal sealed class MixRailSegment : FluentGpu.Hooks.Component
             _ = Playback.Mix.Changed.Value;
             long duration = Playback.DurationMs.Value;
             var t = Playback.Mix.Current;
-            if (!t.Mix || duration <= 0 || t.OutStartMs >= duration) return -1f;
+            if (!t.IsPlaylistMix || duration <= 0 || t.OutStartMs >= duration) return -1f;
             return Math.Clamp(t.OutStartMs / (float)duration, 0f, 1f);
         }).Value;
         // The rail's tip host (chapters, a seek preview, a lyric line) rides the same slot: stacked over the segment, unchanged.

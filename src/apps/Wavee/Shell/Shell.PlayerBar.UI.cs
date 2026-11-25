@@ -934,7 +934,7 @@ public static partial class Shell
             // hidden label wakes nothing at 1 Hz; the reveal (read first, so it stays subscribed) re-runs the bind.
             if (_reveal is { } reveal && !reveal.Value) return _shown;
             // An AI DJ narration's progress is suppressed (plan-dj §1.8): no digits while it is current; the slot keeps its width.
-            if (Playback.Narrating.Value) return _shown = "";
+            if (Playback.ClipCurrent.Value) return _shown = "";
             long position = Playback.PositionMs.Value;
             long duration = DurationNow();
             bool isLive = Playback.Live.Value.IsLive;

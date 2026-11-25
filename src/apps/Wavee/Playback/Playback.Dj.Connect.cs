@@ -39,15 +39,18 @@ public static partial class Playback
         static ulong s_wireItem;
         static int s_wirePages = -1, s_wireRenewals = -1;
         static bool s_wireNarrating;
+        static int s_wireFadeOut;
 
         /// <summary>The DJ half of the PUT for a deck on <paramref name="context"/> whose row is <paramref name="deckItemId"/>, or null when
         /// no lexicon session plays it. Rebuilt only when the session, the deck row or the pages moved, so a pause or a seek reuses the
-        /// one built. <paramref name="narrating"/>: a narration is the deck row (<c>State.Narrating</c>). UI thread (the capture).</summary>
-        internal static DjWire? WireNow(EntityId context, ulong deckItemId, bool narrating)
+        /// one built. <paramref name="narrating"/>: the DJ talks (<c>State.Narrating</c>: a narration is the deck row and the track it talks
+        /// over has not started under it). <paramref name="fadeOutStartMs"/>: the deck track's planned fade-out start (f11), 0 for none.
+        /// UI thread (the capture).</summary>
+        internal static DjWire? WireNow(EntityId context, ulong deckItemId, bool narrating, int fadeOutStartMs = 0)
         {
             if (Of(context) is not { } s) return null;
             if (s_wire is { } kept && ReferenceEquals(s, s_wireSession) && deckItemId == s_wireItem && s.Pages.Count == s_wirePages
-                && s.Renewals == s_wireRenewals && narrating == s_wireNarrating)
+                && s.Renewals == s_wireRenewals && narrating == s_wireNarrating && fadeOutStartMs == s_wireFadeOut)
                 return kept;
             Row? row = RowOf(deckItemId);
             int page = row?.Page ?? 0, track = row?.Track ?? 0;
@@ -55,12 +58,12 @@ public static partial class Playback
             if (page > 0)
                 foreach (Page p in s.Pages)
                     if (p.Ordinal == page) { metadata = SoundEntries(p.Metadata); break; }
-            // The narration restrictions (f17 3 / 9 / 13, no index, suppress_progress) while a clip is the deck. The official player lifts them
-            // once the clip's target starts under it (§1.6, the talk-over): until D3 the target never starts under a clip, so the deck being a
-            // narration IS "a narration current and its target not started". D3 narrows this to that.
+            // THE NARRATION SEAM: the narration restrictions (f17 3 / 9 / 13) while a clip is the deck AND its talk-over's track has not
+            // started under it (State.Narrating, narrowed by D3); the official player lifts them once it has, the voice still current (§1.6).
             s_wire = new DjWire(WireUrl(s.ContextUrl), s.Facts.NoRepeatContext, s.Facts.NoRepeatTrack, s.Facts.NoShuffle, page, track, metadata,
-                Narrating: narrating);
+                Narrating: narrating, FadeOutStartMs: RowOf(deckItemId) is null ? 0 : fadeOutStartMs);
             s_wireNarrating = narrating;
+            s_wireFadeOut = fadeOutStartMs;
             s_wireSession = s;
             s_wireItem = deckItemId;
             s_wirePages = s.Pages.Count;
