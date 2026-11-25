@@ -446,7 +446,7 @@ public readonly partial struct Track
 
     /// <summary>What a strip in the list bar's slot (Tune, Mix's Transitions and Smart reorder) may ask of the table (#48): name the part to show when
     /// the slot opens (<see cref="Focus"/>, set when that part realizes; else the slot's top shows), and <see cref="Reveal"/> a part later (Mix's
-    /// editor moving to a pair). Either glides only when the part's top is out of sight. UI thread.</summary>
+    /// editor moving to a pair). Either glides only when the page has scrolled past the part's top. UI thread.</summary>
     public sealed class BarSlot
     {
         public NodeHandle Focus;

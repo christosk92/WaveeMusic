@@ -1140,8 +1140,9 @@ public readonly partial struct Track
             return MathF.Max(3f * shape.RowH, _colH.Value - rest);
         }
 
-        /// <summary>Show <paramref name="node"/> (a part of the slot's strip) when its top is out of sight: above the hero list's pin line (the page
-        /// scrolled past it), or low in or below the viewport. A glide that lands its top on that line; nothing when it already shows. The hero arm's slot
+        /// <summary>Show <paramref name="node"/> (a part of the slot's strip) when the page has scrolled past it: its top above the hero list's pin line
+        /// (the slot opened from a seam further down). A glide that lands its top on that line; nothing otherwise (below the fold the user scrolls on,
+        /// and a glide toward a place the growing slot has not made yet would land at once). The hero arm's slot
         /// scrolls with the page; the two-column arm's scrolls in its own viewport (the nearest scroller either way).</summary>
         internal void RevealInSlot(NodeHandle node)
         {
@@ -1154,8 +1155,7 @@ public readonly partial struct Track
             double top = sc.WindowOrigin + scene.AbsoluteLayoutRect(node).Y - scene.AbsoluteLayoutRect(sc.ContentNode).Y;
             double band = VerticalArm ? Reactive.Untrack<float>(StickLine) : 0f;
             double offset = handle.Offset.Peek();
-            // In sight: under the band and in the upper two thirds of the viewport (a top at the window's foot shows nothing of the part).
-            if (top >= offset + band && top < offset + handle.Viewport * 2.0 / 3.0) return;
+            if (top >= offset + band) return;
             scene.BringIntoView(vp, node, 0f, ScrollMove.Glide, band);
         }
 
@@ -1164,8 +1164,8 @@ public readonly partial struct Track
         /// with the bar's air over it and the header's under it. Its own component: the strip's reads (open, applying, the mix's tuning) re-render this slot,
         /// never the chrome.
         /// <para>#48: a strip can be far taller than the bar (Mix's transition editor). The hero list's slot scrolls with the page under the pinned header
-        /// (ChromeItem), the two-column arm's pins with its bar up to <see cref="TuneSlotCap"/> and scrolls inside. Opening while its place is out of
-        /// sight glides it in (<see cref="RevealInSlot"/>: the part a strip names in <see cref="BarSlot"/>, else the slot's top).</para></summary>
+        /// (ChromeItem), the two-column arm's pins with its bar up to <see cref="TuneSlotCap"/> and scrolls inside. Opening while the page is scrolled
+        /// past its place glides it in (<see cref="RevealInSlot"/>: the part a strip names in <see cref="BarSlot"/>, else the slot's top).</para></summary>
         sealed class TableTuneSlot : Component
         {
             readonly BarSlot _slot = new();
