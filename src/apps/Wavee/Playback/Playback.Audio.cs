@@ -1166,6 +1166,7 @@ public static partial class Playback
             }
 
             lock (s_gate) { s_opened = opened; s_activeDurMs = opened.DurationMs; }
+            NoteOpenedFormat(opened.Format);              // the PUT states what plays (Spotify.Decode.Quality.cs)
             await OpenSessionAsync(bytes, opened, row, epoch, fromMs, seekGen, chain, token, autoResume: true).ConfigureAwait(false);
         }
 
@@ -1250,6 +1251,7 @@ public static partial class Playback
                 s_session = pcm;
                 s_silent = false;
                 s_opened = opened;
+                NoteOpenedFormat(opened.Format);
                 s_activeStartMs = 0;
                 s_activeDurMs = opened.DurationMs;
                 s_crossfadeInFlight = false;
@@ -3424,6 +3426,7 @@ public static partial class Playback
                 s_bytes = s_joinBytes;
                 s_activeDecoder = s_joinDecoder;
                 s_opened = s_joinOpened;
+                NoteOpenedFormat(s_joinOpened.Format);   // the joined row's quality, for the PUT
                 s_joinBytes = null;
                 s_joinDecoder = null;
                 s_activeStartMs = rawPos;
@@ -5281,6 +5284,7 @@ public static partial class Playback
                 _ => Spotify.Audio.Format.Unknown,
             };
             lock (s_gate) s_opened = s_opened with { Format = format, Label = label };
+            NoteOpenedFormat(format);
         }
 
         // ── 19. ICY: the radio framing ───────────────────────────────────────────────────────────────────────────────

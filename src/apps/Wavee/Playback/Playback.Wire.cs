@@ -233,10 +233,16 @@ public static partial class Playback
         /// <c>playlist_number_of_tracks</c> as the official client states it; 0 for any other context.</summary>
         public readonly int LocalFilesTracks;
 
+        /// <summary><c>player_state.playback_quality</c> for a stream: what the pump opened for the deck row and the rung it asked for
+        /// (<see cref="Spotify.Decode.Outgoing"/>). Not <c>Present</c> when nothing was captured; the encoder then states no level.</summary>
+        public readonly Spotify.Decode.PlaybackQuality Quality;
+
         public WireExtras(WireWindow? window, ulong queueRevision, in WireIds ids, bool privateSession, string? outputDevice,
             string? commandSender, float playbackRate = 1f, WireOrigin? origin = null, byte outputType = 0, bool audiobook = false,
-            string? likedPlaylist = null, string? likedOwner = null, MixWire? mix = null, int localFilesTracks = 0)
+            string? likedPlaylist = null, string? likedOwner = null, MixWire? mix = null, int localFilesTracks = 0,
+            Spotify.Decode.PlaybackQuality quality = default)
         {
+            Quality = quality;
             Mix = mix;
             LocalFilesTracks = localFilesTracks;
             Window = window; QueueRevision = queueRevision; Ids = ids; PrivateSession = privateSession;

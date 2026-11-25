@@ -142,6 +142,7 @@ public static partial class Diagnostics
                             w.WriteString("do", verb);
                             w.WriteNumber("bytes", n);
                             w.WriteBoolean("audiobook", snap.Wire.Audiobook);
+                            WriteQuality(w, "quality", PutQuality(body.AsSpan(0, Math.Max(0, n))));   // read back off the encoded bytes
                             w.WriteString("putState", b64);
                             WriteTransport(w);
                         });
@@ -160,6 +161,59 @@ public static partial class Diagnostics
                         Spotify.Decode.ClusterBuffer buffer = Spotify.Decode.ClusterBuffer.Rent();
                         Spotify.Decode.RemoteLoad load = Spotify.Decode.ConnectLoad(body, buffer);
                         Playback.RemoteLoadArrived(in command, in load, buffer, Spotify.Current.Epoch);
+                        break;
+                    }
+                case "cluster":
+                    {
+                        // CAPTURED connect-state cluster pushes (one base64 `ClusterUpdate` per line, as the dealer's `payloads[0]`, gunzipped
+                        // or not) through the real decoder (Spotify.Decode.ClusterUpdate): per frame, what the ACTIVE device says it plays
+                        // (playback_quality), where it plays (audio_output_device_info) and the words the device picker's footer and card
+                        // would show for it (Shell.DevicePicker.RemoteQuality). Nothing is folded: the deck and the roster stay as they are.
+                        // No device id is written, only the active device's kind and position in the roster.
+                        string file = a.Str("file");
+                        if (file.Length == 0 || !File.Exists(file)) return Inspect.Reply.Fail(id, name, "cluster wants file=<base64 ClusterUpdate per line>");
+                        string[] lines = File.ReadAllLines(file);
+                        return Settled(id, name, a, w =>
+                        {
+                            w.WriteString("do", verb);
+                            w.WriteStartArray("decoded");
+                            foreach (string line in lines)
+                            {
+                                if (line.Trim().Length == 0 || line.StartsWith('#')) continue;
+                                byte[] raw = Convert.FromBase64String(line.Trim());
+                                if (raw.Length > 1 && raw[0] == 0x1f && raw[1] == 0x8b)
+                                {
+                                    using var gz = new System.IO.Compression.GZipStream(new MemoryStream(raw), System.IO.Compression.CompressionMode.Decompress);
+                                    using var plain = new MemoryStream();
+                                    gz.CopyTo(plain);
+                                    raw = plain.ToArray();
+                                }
+                                Spotify.Decode.ClusterBuffer buffer = Spotify.Decode.ClusterBuffer.Rent();
+                                try { WriteClusterFrame(w, buffer, Spotify.Decode.ClusterUpdate(raw, default, buffer)); }
+                                finally { Spotify.Decode.ClusterBuffer.Return(buffer); }
+                            }
+                            w.WriteEndArray();
+                        });
+                    }
+                case "remotequality":
+                    {
+                        // `--fake`'s active Connect device states another playback_quality (after a transfer to the demo phone): value=hifi |
+                        // hifi24 | veryhigh | high | normal | none — the Lossless badge and the picker's words follow, as a real push re-stating it.
+                        var q = value switch
+                        {
+                            "hifi" or "lossless" => new Spotify.Decode.PlaybackQuality(Spotify.Decode.BitrateLevel.Hifi, Spotify.Decode.BitrateStrategy.BestMatching,
+                                Spotify.Decode.BitrateLevel.Hifi, true, Spotify.Decode.HiFiStatus.On, Spotify.Decode.BitrateLevel.Hifi, 1),
+                            "hifi24" => new Spotify.Decode.PlaybackQuality(Spotify.Decode.BitrateLevel.Hifi24, Spotify.Decode.BitrateStrategy.BestMatching,
+                                Spotify.Decode.BitrateLevel.Hifi, true, Spotify.Decode.HiFiStatus.On, Spotify.Decode.BitrateLevel.Hifi24, 1),
+                            "veryhigh" => new Spotify.Decode.PlaybackQuality(Spotify.Decode.BitrateLevel.VeryHigh, Spotify.Decode.BitrateStrategy.BestMatching,
+                                Spotify.Decode.BitrateLevel.VeryHigh, true, Spotify.Decode.HiFiStatus.Off, Spotify.Decode.BitrateLevel.Hifi, 1),
+                            "high" => new Spotify.Decode.PlaybackQuality(Spotify.Decode.BitrateLevel.High, Spotify.Decode.BitrateStrategy.BestMatching,
+                                Spotify.Decode.BitrateLevel.High, true, Spotify.Decode.HiFiStatus.Off, 0, 1),
+                            "normal" => new Spotify.Decode.PlaybackQuality(Spotify.Decode.BitrateLevel.Normal, Spotify.Decode.BitrateStrategy.BestMatching,
+                                Spotify.Decode.BitrateLevel.Normal, true, Spotify.Decode.HiFiStatus.Off, 0, 1),
+                            _ => default(Spotify.Decode.PlaybackQuality) with { Present = false },
+                        };
+                        if (!Playback.Devices.RestateActiveQualityForInspect(q)) return Inspect.Reply.Fail(id, name, "remotequality: no Connect device is active (mount connect=nearby, then transfer)");
                         break;
                     }
                 case "telemetry":
@@ -184,7 +238,7 @@ public static partial class Diagnostics
                         });
                     }
                 default:
-                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|pause|resume|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate|telemetry|inbound|metadata, not '" + verb + "'");
+                    return Inspect.Reply.Fail(id, name, "transport wants do=status|next|prev|end|pause|resume|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate|cluster|remotequality|telemetry|inbound|metadata, not '" + verb + "'");
             }
             // traced (`trace=N`): the trace's first frames are the change's own (the frame the queue and the deck land in), so nothing runs before it
             bool traced = a.Has("trace");
@@ -232,6 +286,82 @@ public static partial class Diagnostics
                 foreach (JsonElement item in e.EnumerateArray())
                     foreach (string inner in PlayabilityUris(item)) yield return inner;
             }
+        }
+
+        /// <summary>One decoded cluster (`transport do=cluster`): the active device's quality, its output and the picker's words for it.</summary>
+        static void WriteClusterFrame(Utf8JsonWriter w, Spotify.Decode.ClusterBuffer buffer, Spotify.Decode.ClusterDelta d)
+        {
+            ReadOnlySpan<Spotify.Decode.ClusterDevice> devices = buffer.Devices(d.DeviceStart, d.DeviceCount);
+            ReadOnlySpan<byte> active = buffer.Utf8(d.ActiveDeviceId);
+            int slot = -1;
+            for (int i = 0; i < devices.Length; i++) if (!active.IsEmpty && buffer.Utf8(devices[i].Id).SequenceEqual(active)) { slot = i; break; }
+            w.WriteStartObject();
+            w.WriteNumber("reason", d.UpdateReason);
+            w.WriteNumber("activeSlot", slot);
+            WriteQuality(w, "quality", d.Quality);
+            if (slot >= 0)
+            {
+                ref readonly Spotify.Decode.ClusterDevice dev = ref devices[slot];
+                w.WriteString("activeKind", dev.Kind.ToString());
+                w.WriteNumber("outputType", dev.OutputType);
+                var row = new Playback.Devices.Row
+                {
+                    Kind = dev.Kind, Name = System.Text.Encoding.UTF8.GetString(buffer.Utf8(dev.Name)), Quality = d.Quality, OutputType = dev.OutputType,
+                    OutputName = dev.OutputName.IsEmpty ? null : System.Text.Encoding.UTF8.GetString(buffer.Utf8(dev.OutputName)),
+                };
+                w.WriteString("footer", Shell.DevicePicker.RemoteQuality(in row));
+                w.WriteBoolean("cardNamesOutput", Shell.DevicePicker.RemoteOutput(in row) is not null);
+                if (Shell.DevicePicker.RemoteLossless(in row) is { } badge) w.WriteString("badge", badge);   // the bar's Lossless badge, its tooltip
+                else w.WriteNull("badge");
+            }
+            w.WriteEndObject();
+        }
+
+        /// <summary>A <c>playback_quality</c> as the JSON view spells it (lower-case enum names), or null when absent.</summary>
+        static void WriteQuality(Utf8JsonWriter w, string key, Spotify.Decode.PlaybackQuality q)
+        {
+            if (!q.Present) { w.WriteNull(key); return; }
+            w.WriteStartObject(key);
+            if (q.Level != 0) w.WriteString("bitrate_level", Spotify.Decode.LevelName(q.Level));
+            if (q.Strategy != 0) w.WriteString("strategy", q.Strategy switch
+            {
+                Spotify.Decode.BitrateStrategy.BestMatching => "best_matching",
+                Spotify.Decode.BitrateStrategy.BackendAdvised => "backend_advised",
+                Spotify.Decode.BitrateStrategy.OfflinedFile => "offlined_file",
+                Spotify.Decode.BitrateStrategy.CachedFile => "cached_file",
+                Spotify.Decode.BitrateStrategy.LocalFile => "local_file",
+                _ => ((int)q.Strategy).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            });
+            if (q.Target != 0) w.WriteString("target_bitrate_level", Spotify.Decode.LevelName(q.Target));
+            if (q.TargetAvailable) w.WriteBoolean("target_bitrate_available", true);
+            if (q.Hifi != 0) w.WriteString("hifi_status", q.Hifi switch
+            {
+                Spotify.Decode.HiFiStatus.On => "on",
+                Spotify.Decode.HiFiStatus.Off => "off",
+                _ => ((int)q.Hifi).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            });
+            if (q.Highest != 0) w.WriteString("highest_available_quality", Spotify.Decode.LevelName(q.Highest));
+            if (q.FileOrigin != 0) w.WriteString("file_origin", q.FileOrigin switch
+            {
+                1 => "internal",
+                3 => "local",
+                _ => q.FileOrigin.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            });
+            w.WriteEndObject();
+        }
+
+        /// <summary>A PutStateRequest's <c>device.player_state.playback_quality</c>, read back off the encoded bytes (not Present when absent).</summary>
+        static Spotify.Decode.PlaybackQuality PutQuality(ReadOnlySpan<byte> put)
+        {
+            ReadOnlySpan<byte> device = new Spotify.Decode.ProtoReader(put).Bytes(2);
+            ReadOnlySpan<byte> player = new Spotify.Decode.ProtoReader(device).Bytes(2);
+            var r = new Spotify.Decode.ProtoReader(player);
+            while (r.Next())
+            {
+                if (r.Field == 32 && r.Wire == 2) return Spotify.Decode.ReadQuality(r.Bytes());
+                r.Skip();
+            }
+            return default(Spotify.Decode.PlaybackQuality) with { Present = false };
         }
 
         /// <summary>The deck, the modes and the queue, as the reducer and the queue panel see them.</summary>

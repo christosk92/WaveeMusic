@@ -23,7 +23,7 @@
 //                   │             speed (0 while paused) · position · duration · is_playing (true while paused) ·
 //                   │             is_paused · is_buffering · options (+ modes) · restrictions · suppressions {} ·
 //                   │             prev_tracks ≤ 50 · next_tracks ≤ 50 · context_metadata · session_id · queue_revision ·
-//                   │             playback_quality · signals · session_command_id · #38
+//                   │             playback_quality (what the pump opened, Spotify.Decode.Quality.cs) · signals · session_command_id · #38
 //                   │           ─ private_device_info(3)
 //                   ─ member_type · is_active · reason · message_id · last_command_sent_by_device_id(7) ·
 //                     last_command_message_id(8) · started_playing_at · has_been_playing_for_ms · client_side_timestamp
@@ -328,7 +328,7 @@ public static partial class Spotify
             int output = w.Open(24);                           // audio_output_device_info, 24/24 captures
             w.UAlways(1, snap.Wire.OutputType);                // actual endpoint type
             w.StrAlways(2, snap.Wire.OutputDevice);            // the OS endpoint's name, "" when unknown (explicit)
-            w.UAlways(5, 3);                                   // unnamed, always 3
+            w.UAlways(5, 3);                                   // category: the web player's JSON names 3 AUDIO_OUTPUT_CATEGORY_SPEAKER (2 = HEADPHONES)
             w.Close(output);
             w.Close(info);
         }
@@ -456,13 +456,15 @@ public static partial class Spotify
             if (ids.SessionId != UInt128.Zero) { Base62.Encode(ids.SessionId, scratch); w.Utf8(23, scratch[..Base62.GidChars]); }            // session_id
             if (snap.Wire.QueueRevision != 0 && Utf8Formatter.TryFormat(snap.Wire.QueueRevision, scratch, out int digits))
                 w.Utf8(24, scratch[..digits]);                 // queue_revision, as its digits
-            int quality = w.Open(32);                          // playback_quality
-            // A local file (#240 E5, capture report 3.4): strategy local_file, target veryhigh, hifi off, file_origin local (3); no bitrate
-            // level, no target_bitrate_available. Streams keep high · cached_file · high · available · hifi off.
+            // playback_quality (Spotify.Decode.Quality.cs): a local file as the official client states one (#240 E5); a stream as what the
+            // pump opened, so a phone reads "Lossless" while a FLAC plays (it read "High": every stream used to say high · off).
             Span<byte> deckUri = stackalloc byte[UriBytes];
-            if (Egress.PlaysLocalFile(snap.Track, deckUri[..Egress.TrackUri(in snap, deckUri)])) { w.U(2, 5); w.U(3, 4); w.U(5, 1); w.U(7, 3); }
-            else { w.U(1, 3); w.U(2, 4); w.U(3, 3); w.B(4, true); w.U(5, 1); }
-            w.Close(quality);
+            if (Egress.PlaysLocalFile(snap.Track, deckUri[..Egress.TrackUri(in snap, deckUri)])) WriteQuality(ref w, in LocalFileQuality);
+            else
+            {
+                PlaybackQuality stream = snap.Wire.Quality.Present ? snap.Wire.Quality : Outgoing(Audio.Format.Unknown, 0, Audio.Quality.VeryHigh320);
+                WriteQuality(ref w, in stream);
+            }
             if (offer) w.Utf8(33, video ? "switch-to-audio"u8 : "switch-to-video"u8);   // the offer goes FIRST (7/7 captures)
             w.Utf8(33, "interact"u8);
             w.Utf8(33, "automix-preview"u8);

@@ -101,10 +101,13 @@ public static partial class Shell
                 // Read first, every time: the badge changes with every open, so this keeps the bind subscribed to the opened format too.
                 var fmt = Playback.StreamFormat.Value;
                 if (!Prefs.PlayerBar.ShowLosslessBadge()) return null;
-                if (fmt.IsEmpty || Theming.InspectSwitches.RemoteDevice is not null) return null;
+                if (Theming.InspectSwitches.RemoteDevice is not null) return null;
                 _ = Playback.Devices.Changed.Value;
-                bool remote = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows) >= 0;
-                if (!Stage.Transport.ShowsQualityBadge(true, remote)) return null;
+                var rows = Playback.Devices.Rows;
+                int remoteSlot = DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
+                // Another device plays: the badge is what IT says it plays (its playback_quality: hifi or hifi24, hi-fi on), never our open.
+                if (remoteSlot >= 0) return DevicePicker.RemoteLossless(in rows[remoteSlot]);
+                if (fmt.IsEmpty || !Stage.Transport.ShowsQualityBadge(true, false)) return null;
                 return Playback.Audio.PlayingOpened.Format is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 or Spotify.Audio.Format.Pcm
                     ? Entities.Strings.Resolve(fmt)
                     : null;

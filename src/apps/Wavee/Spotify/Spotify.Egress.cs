@@ -197,7 +197,8 @@ public static partial class Spotify
                 contextOk && window is not null ? s.Wire.Origin : null, s.Wire.OutputType, contextOk && s.Wire.Audiobook,
                 contextOk ? s.Wire.LikedPlaylist : null, contextOk ? s.Wire.LikedOwner : null,
                 contextOk ? s.Wire.Mix : null,   // #48: numbers and curves only, about an admitted context
-                contextOk ? s.Wire.LocalFilesTracks : 0);
+                contextOk ? s.Wire.LocalFilesTracks : 0,
+                s.Wire.Quality);   // levels and enums only: what the pump opened
             if (!trackOk && !local)
                 return new Playback.Snapshot(in s.Device, s.IsActive, s.Reason, s.MessageId, s.Volume, s.ClientTimestampMs,
                     s.StartedPlayingAtMs, s.HasBeenPlayingForMs, false, default, default, "", 0, s.TimestampMs, 0,
