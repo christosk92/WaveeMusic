@@ -967,6 +967,7 @@
     "missingToast": "De video die aan dit nummer is gekoppeld ontbreekt — het origineel wordt afgespeeld.",
     "unplayableToast": "De gekoppelde video kan niet worden afgespeeld — het origineel wordt afgespeeld.",
     "dropHint": "Zet een .mp4 neer om die aan dit nummer te koppelen",
+    "dropOnRow": "Koppelen als video van dit nummer",
     "customLabel": "BEKIJK DE EIGEN VIDEO",
     "settingsHeader": "Gekoppelde video’s",
     "settingsSub": "Geldt op deze computer, voor elk account. Bestanden worden gekoppeld, niet gekopieerd — een koppeling verwijderen wist het bestand nooit.",

@@ -5,12 +5,15 @@
 // Role: CORE (targets and signals; the panel's picture is the theme's `Shell.FileDrop` view)
 // Spec: handoff/request-plans/240-local-playlist-files-implementation.md §3.15; 240-local-files-ux.md S12.
 //
-// The window keeps ONE catch-all target over everything (`Window`, on the frame's ground). It and the panel's own targets
-// show the drop panel while the pointer is over them: two to four large zones that fit what is dragged (`DropPlan.Verbs`).
-// Precise targets sit above it and win by the engine's nearest-target rule: the queue (its drop line, `Reorderable`'s
-// `alsoAccepts`), the player bar (Play now), a sidebar playlist (links now; local files refused with the D12 sentence). Over
-// one of those the panel fades out. A payload nothing can use is refused by the catch-all with the plan's reason, so the chip
-// says why and nothing dims.
+// The window keeps ONE catch-all target over everything (`Window`, on the frame's ground), and Local files keeps a second ground
+// over its page (`LocalFilesPage`: the same, but a folder becomes a music folder). The drop panel shows for a usable plan from
+// the drag's first step into the window until it leaves, drops or is cancelled: two to four large zones that fit what is dragged
+// (`DropPlan.Verbs`). Precise targets sit above the grounds and win by the engine's nearest-target rule: the queue (its drop line,
+// `Reorderable`'s `alsoAccepts`), the player bar (Play now), a sidebar playlist or Local Files row, a Spotify row taking a linked
+// video. They keep the panel up (`KeepsPanel`): over one of them no zone is lit, the target shows its own cue and the chip says
+// what it does, and the panel is still there when the pointer moves on. Moving between two targets is a Leave and an Enter in
+// one input event, so the panel never blinks. A payload nothing can use is refused by the catch-all with the plan's reason, so the
+// chip says why and nothing dims.
 //
 // Allocation: the plan is built on the first ask of a drag (cold); OnOver, CanAccept and the captions read cached fields only.
 
@@ -33,19 +36,20 @@ public static partial class DropAnywhere
 
     // ── the panel's state ─────────────────────────────────────────────────────────────────────────────────────────────
 
-    const int OverNothing = 0, OverWindow = 1, OverPanel = 2, OverZone = 3;
+    const int OverNothing = 0, OverWindow = 1, OverPanel = 2, OverPrecise = 3, OverZone = 4;
 
-    /// <summary>Which of the panel's surfaces the pointer is over: nothing, the window's ground, the panel card, or zone i
-    /// (<see cref="OverZone"/> + i). Written on Enter/Leave edges only.</summary>
+    /// <summary>Which surface of the drag the pointer is over: nothing (outside the window), a ground (the window's or the Local files
+    /// page's), the panel card, a precise target (<see cref="KeepsPanel"/>), or zone i (<see cref="OverZone"/> + i). Written on
+    /// Enter/Leave edges only.</summary>
     static readonly Signal<int> s_over = new(OverNothing);
 
     static readonly Signal<bool> s_shown = new(false);
     static readonly Signal<int> s_hot = new(-1);
     static readonly Signal<DropZoneLook[]> s_zones = new([]);
     static DropPlan? s_armed;
-    static string? s_defaultCaption;
+    static string? s_defaultCaption, s_libraryCaption;
 
-    /// <summary>The panel shows while the pointer is over the ground, the card or a zone, for a plan it can use.</summary>
+    /// <summary>The panel shows while the drag is over the window (a ground, the card, a zone or a precise target), for a plan it can use.</summary>
     public static IReadSignal<bool> Shown => s_shown;
 
     /// <summary>The zone under the pointer (-1: none).</summary>
@@ -88,6 +92,7 @@ public static partial class DropAnywhere
         Shell.RefreshContentRegion();   // the panel centres on the content as it is now
         s_zones.Value = LooksOf(plan);
         s_defaultCaption = plan.Verbs.Length > 0 ? TitleOf(plan.Verbs[0]) : null;
+        s_libraryCaption = plan.Verbs.Length > 0 ? TitleOf(LibraryVerbOf(plan)) : null;
     }
 
     /// <summary>The drag is over (dropped, cancelled, or it left the window): hide the panel.</summary>
@@ -98,7 +103,7 @@ public static partial class DropAnywhere
         Publish();
     }
 
-    // ── the window's catch-all ────────────────────────────────────────────────────────────────────────────────────────
+    // ── the grounds: the window's catch-all and the Local files page ──────────────────────────────────────────────────
 
     /// <summary>The frame ground's target: shows the panel; a drop that misses every zone does the plan's first verb (Play now,
     /// Play, Play as a queue, Open), which is what a drop anywhere did before the panel.</summary>
@@ -111,6 +116,55 @@ public static partial class DropAnywhere
         CanAccept = static s => PlanOf(s).Usable,
         RefusalCaption = static s => PlanOf(s).Refusal,
     };
+
+    /// <summary>The Local files page ("On this PC", §3.15): a ground like <see cref="Window"/>, so the panel stays up over the page's
+    /// lists, head and empty space and its zones stay reachable. A drop that misses every zone does the plan's first verb, as anywhere,
+    /// except that a folder Music on this PC can take becomes a music folder (the library's own verb, the page's drop before the
+    /// panel). Every drop of a song keeps it in Local files. A payload nothing can use passes through to the window's refusal.</summary>
+    public static readonly DropTargetSpec LocalFilesPage = new(OsKinds,
+        OnEnter: static s => { Arm(PlanOf(s)); Over(OverWindow); s.Caption = s_libraryCaption; },
+        OnOver: static s => s.Caption = s_libraryCaption,
+        OnLeave: static _ => Leave(OverWindow),
+        OnDrop: static s =>
+        {
+            var plan = PlanOf(s);
+            End();
+            if (plan.Verbs.Length > 0) Run(plan, LibraryVerbOf(plan));
+            Forget();
+        })
+    {
+        Transparent = static s => !PlanOf(s).Usable,
+    };
+
+    /// <summary>The Local files page's default: "Add as a music folder" when the plan offers it, else the plan's first verb.</summary>
+    static DropVerb LibraryVerbOf(DropPlan plan) => Array.IndexOf(plan.Verbs, DropVerb.AddMusicFolder) >= 0 ? DropVerb.AddMusicFolder : plan.Verbs[0];
+
+    /// <summary>A precise target that keeps the drop panel up: for an OS drag its Enter and Leave mark the panel's "over a precise
+    /// target" surface (no zone lit; the panel stays, so moving on to a zone, a gap or a row never hides and re-shows it), and its drop
+    /// ends the drag's panel as the grounds' do. An in-app drag passes through untouched.</summary>
+    public static DropTargetSpec KeepsPanel(DropTargetSpec inner) => inner with
+    {
+        OnEnter = s =>
+        {
+            if (IsOs(s)) { Arm(PlanOf(s)); Over(OverPrecise); }
+            inner.OnEnter?.Invoke(s);
+        },
+        OnLeave = s =>
+        {
+            inner.OnLeave?.Invoke(s);
+            if (IsOs(s)) Leave(OverPrecise);
+        },
+        OnDrop = s =>
+        {
+            bool os = IsOs(s);
+            inner.OnDrop?.Invoke(s);
+            if (!os) return;
+            End();
+            Forget();
+        },
+    };
+
+    static bool IsOs(DragSession s) => s.Kind is DropKinds.Files or DropKinds.Uri or DropKinds.Text;
 
     /// <summary>The panel card itself, between and around the zones: the same as the catch-all, and the spotlight's cut-out
     /// (the scrim dims the app, never the panel) while the panel shows.</summary>
@@ -249,7 +303,7 @@ public static partial class DropAnywhere
     // ── the precise targets' OS arms ──────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The player bar: files and links play now (board 22 ②); folders and a playlist file are not its to take.</summary>
-    public static readonly DropTargetSpec PlayerBar = new(OsKinds,
+    public static readonly DropTargetSpec PlayerBar = KeepsPanel(new(OsKinds,
         OnEnter: static s => s.Caption = s_playNowCaption ??= Loc.Get(Strings.Drop.PlayNow),
         OnOver: static s => s.Caption = s_playNowCaption,
         OnDrop: static s =>
@@ -262,14 +316,14 @@ public static partial class DropAnywhere
     {
         CanAccept = static s => PlanOf(s).PlayerBarTakes,
         VisualPolicy = DropTargetVisualPolicy.Spotlight,
-    };
+    });
 
     static string? s_playNowCaption;
 
-    /// <summary>Local Files (its sidebar row and the "On this PC" page, §3.15): dropped songs play and stay in Local Files for the session
-    /// (D4); a folder becomes a music folder (the library's own verb; Play stays on the panel, the queue and the player bar); a playlist file
-    /// plays as a queue. Lit while a local payload is dragged; transparent to links (they are the panel's).</summary>
-    public static readonly DropTargetSpec LocalFiles = new(OsKinds,
+    /// <summary>Local Files' sidebar row (§3.15): dropped songs play and stay in Local Files for the session (D4); a folder becomes a music
+    /// folder (the library's own verb; Play stays on the panel, the queue and the player bar); a playlist file plays as a queue. Lit while a
+    /// local payload is dragged; transparent to links (they are the panel's). The page itself is a ground (<see cref="LocalFilesPage"/>).</summary>
+    public static readonly DropTargetSpec LocalFiles = KeepsPanel(new(OsKinds,
         OnEnter: static s => s.Caption = LocalFilesCaption(PlanOf(s)),
         OnOver: static s => s.Caption = LocalFilesCaption(PlanOf(s)),
         OnDrop: static s =>
@@ -288,7 +342,7 @@ public static partial class DropAnywhere
         CanAccept = static s => PlanOf(s).IsLocal,
         Transparent = static s => !PlanOf(s).IsLocal,
         VisualPolicy = DropTargetVisualPolicy.Spotlight,
-    };
+    });
 
     static string? s_keepCaption, s_folderCaption, s_queueCaption;
 
@@ -325,32 +379,31 @@ public static partial class DropAnywhere
         string name = playlistName ?? "";
         string caption = Drag.AddTo(name);
         string[] kinds = [.. inner.AcceptKinds, .. OsKinds];
-        static bool Os(DragSession s) => s.Kind is DropKinds.Files or DropKinds.Uri or DropKinds.Text;
         static bool Takes(DropPlan p) => p.IsLocal || p.Kind == DropPayloadKind.Links && p.AllTracks;
         void Hover(DragSession s)
         {
             if (Takes(PlanOf(s))) s.Caption = caption;
         }
-        return inner with
+        return KeepsPanel(inner with
         {
             AcceptKinds = kinds,
-            OnEnter = s => { if (Os(s)) Hover(s); else inner.OnEnter?.Invoke(s); },
-            OnOver = s => { if (Os(s)) Hover(s); else inner.OnOver?.Invoke(s); },
-            OnLeave = s => { if (!Os(s)) inner.OnLeave?.Invoke(s); },
+            OnEnter = s => { if (IsOs(s)) Hover(s); else inner.OnEnter?.Invoke(s); },
+            OnOver = s => { if (IsOs(s)) Hover(s); else inner.OnOver?.Invoke(s); },
+            OnLeave = s => { if (!IsOs(s)) inner.OnLeave?.Invoke(s); },
             OnDrop = s =>
             {
-                if (!Os(s)) { inner.OnDrop?.Invoke(s); return; }
+                if (!IsOs(s)) { inner.OnDrop?.Invoke(s); return; }
                 var plan = PlanOf(s);
                 End();
                 if (plan.Kind == DropPayloadKind.Links) addLinks(plan.Entities);
                 else DepositToPlaylist(plan, playlistUri, name);
                 Forget();
             },
-            CanAccept = s => Os(s) ? Takes(PlanOf(s)) : inner.CanAccept?.Invoke(s) ?? true,
-            RefusalCaption = s => Os(s) ? null : inner.RefusalCaption?.Invoke(s),
-            Transparent = s => Os(s) ? !Takes(PlanOf(s)) : inner.Transparent?.Invoke(s) ?? false,
-            SpotlightWhen = s => Os(s) ? Takes(PlanOf(s)) : inner.SpotlightWhen?.Invoke(s) ?? true,
-        };
+            CanAccept = s => IsOs(s) ? Takes(PlanOf(s)) : inner.CanAccept?.Invoke(s) ?? true,
+            RefusalCaption = s => IsOs(s) ? null : inner.RefusalCaption?.Invoke(s),
+            Transparent = s => IsOs(s) ? !Takes(PlanOf(s)) : inner.Transparent?.Invoke(s) ?? false,
+            SpotlightWhen = s => IsOs(s) ? Takes(PlanOf(s)) : inner.SpotlightWhen?.Invoke(s) ?? true,
+        });
     }
 
     /// <summary>Dropped track links as the in-app payload a playlist deposit takes (the tracks resolve to their rows).</summary>

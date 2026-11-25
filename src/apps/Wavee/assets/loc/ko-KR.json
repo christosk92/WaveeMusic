@@ -964,6 +964,7 @@
     "missingToast": "이 곡에 체부된 비디오가 없어 원본을 재생합니다.",
     "unplayableToast": "체부된 비디오를 재생할 수 없어 원본을 재생합니다.",
     "dropHint": ".mp4를 놓으면 이 곡에 체부됩니다",
+    "dropOnRow": "이 곡의 동영상으로 연결",
     "customLabel": "사용자 비디오 보기",
     "settingsHeader": "체부된 비디오",
     "settingsSub": "이 컴퓨터의 모든 계정에 적용됩니다. 파일은 복사되지 않고 연결되며, 체부를 제거해도 파일은 삭제되지 않습니다.",

@@ -2753,10 +2753,13 @@ public readonly partial struct Track
         /// Video.LinkedVideos.Attach). The target only ACCEPTS a drop carrying an .mp4, so any other file falls through to the shell's
         /// play-this-file target instead of being swallowed (ch 04 §6). Only a row that can take a linked video accepts it (a Spotify track,
         /// <see cref="Video.LinkedVideos.CanLink(EntityUri)"/>): a local file's row (Local files, On this PC) lets the .mp4 fall through to the
-        /// page's and the shell's targets, which add it to the library and play it as itself.</summary>
-        DropTargetSpec VideoDrop(IReadSignal<int> index, int start) => new(
+        /// page's and the shell's targets, which add it to the library and play it as itself. The drop panel stays up over the row
+        /// (<see cref="DropAnywhere.KeepsPanel"/>): the row lights and leaves the scrim, the chip says "Link as this track's video", and the
+        /// panel's zones are still there when the pointer moves on.</summary>
+        DropTargetSpec VideoDrop(IReadSignal<int> index, int start) => DropAnywhere.KeepsPanel(new(
             [DropKinds.Files],
-            OnEnter: _ => _videoDropRow.Value = index.Peek(),
+            OnEnter: s => { _videoDropRow.Value = index.Peek(); s.Caption = s_linkCaption ??= Loc.Get(Strings.LinkedVideo.DropOnRow); },
+            OnOver: s => s.Caption = s_linkCaption,
             OnLeave: _ => { if (_videoDropRow.Peek() == index.Peek()) _videoDropRow.Value = -1; },
             OnDrop: session =>
             {
@@ -2777,7 +2780,12 @@ public readonly partial struct Track
         {
             CanAccept = session => session.Payload is FileDropData f && Video.LinkedVideoUx.FirstMp4(f.Paths) is not null
                                    && Video.LinkedVideos.CanLink(DisplayTrack(index.Peek() - start).Uri),
-        };
+            // The row under the pointer is cut out of the panel's scrim, so its cue reads as the target it is.
+            VisualPolicy = DropTargetVisualPolicy.Spotlight,
+            SpotlightWhen = _ => _videoDropRow.Peek() == index.Peek(),
+        });
+
+        static string? s_linkCaption;
 
         // ══ 8. THE ROW SKIN, THE DRAWER, THE PRESENTATION ═══════════════════════════════════════════════════════════
 
