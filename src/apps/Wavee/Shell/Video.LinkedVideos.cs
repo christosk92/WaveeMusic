@@ -11,6 +11,7 @@
 //
 // Role: SHELL (UI thread; the hot reads are lock-guarded probes)
 
+using FluentGpu.Localization;
 using FluentGpu.Signals;
 
 namespace Wavee;
@@ -93,23 +94,58 @@ public static partial class Video
 
         public static LinkedVideoDecision DecideRecord(LinkedVideoRecord rec) => Decide(rec.Uri);
 
+        /// <summary>Can this row take a linked video version? A Spotify track only: a local file's row is its own file (its video plays as
+        /// itself, #240 local video), so the row's .mp4 drop and the Video ▸ verbs are not offered there. The one gate the drop target, the
+        /// menu and <see cref="Link"/> share.</summary>
+        public static bool CanLink(string? uri) => uri is { Length: > 0 } && EntityId.TryParse(uri, out EntityId id) && id.Provider == EntityProvider.Spotify;
+
+        /// <summary><see cref="CanLink(string)"/> over a row's uri, allocation-free: a drop target's <c>CanAccept</c> asks it per drag frame.</summary>
+        public static bool CanLink(EntityUri uri) => uri.IsValid && uri.Provider == EntityProvider.Spotify;
+
         /// <summary>Attach a video file to a track: the file joins the library and is linked to the track as its video version (a previous video
         /// version is unlinked: it stays in the library). Null when the file is refused. UI thread (one header read).</summary>
-        public static LinkedVideoChange? Attach(string uri, string path, string sourceKey, long nowUnix) => Link(uri, path, allowMissing: false);
+        public static LinkedVideoChange? Attach(string uri, string path, string sourceKey, long nowUnix) => Link(uri, path, allowMissing: false, out _);
 
-        static LinkedVideoChange? Link(string uri, string path, bool allowMissing)
+        /// <summary>The same attach; <paramref name="refused"/> says why a null came back, so the toast names what went wrong
+        /// (<see cref="RefusalText"/>), never "couldn't be found" for a file that is there.</summary>
+        public static LinkedVideoChange? Attach(string uri, string path, string sourceKey, long nowUnix, out AttachRejection refused)
+            => Link(uri, path, allowMissing: false, out refused);
+
+        /// <summary>The toast of a refused attach.</summary>
+        public static string RefusalText(AttachRejection refused) => Loc.Get(refused switch
+        {
+            AttachRejection.NotMp4 => Strings.LinkedVideo.RejectedNotMp4,
+            AttachRejection.NotFound => Strings.LinkedVideo.RejectedNotFound,
+            AttachRejection.NotLinkable => Strings.LinkedVideo.RejectedNotLinkable,
+            _ => Strings.LinkedVideo.RejectedNotAdded,
+        });
+
+        static LinkedVideoChange? Link(string uri, string path, bool allowMissing, out AttachRejection refused)
         {
             // A Spotify track's video version: a local row is its own file (its video plays as itself, #240 local video).
-            if (uri is not { Length: > 0 } || !EntityId.TryParse(uri, out EntityId id) || id.Provider != EntityProvider.Spotify) return null;
-            if (!allowMissing && LinkedVideoUx.Validate(path, FileExists) != AttachRejection.None) return null;
+            refused = AttachRejection.NotLinkable;
+            if (!CanLink(uri) || !EntityId.TryParse(uri, out EntityId id)) return null;
+            refused = allowMissing ? AttachRejection.None : LinkedVideoUx.Validate(path, FileExists);
+            if (refused != AttachRejection.None) return null;
+            refused = AttachRejection.NotAdded;
             bool read = LocalTags.TryRead(path, out Spotify.Audio.Format format, out LocalTagSet tags, out string why);
             if (!read && allowMissing && !File.Exists(path))
                 tags = new LocalTagSet(LocalKind.Video, "", [], "", "", 0, 0, 0, 0, false, 0, LocalCover.None, 0, 0, true, 0, 0, 0);
             Track file = LocalLibrary.AddFile(path, format, in tags, read, why, allowMissing);
-            if (!file.IsValid || !LocalLibrary.TryLocalIdOf(file.Uri.Text, out long localId)) return null;
+            if (!file.IsValid || !LocalLibrary.TryLocalIdOf(file.Uri.Text, out long localId))
+            {
+                // The file name only (paths hold the account name).
+                Log.Warn(State.LogCategory, "linked video not added to the library: " + Path.GetFileName(path) + (why.Length > 0 ? " (" + why + ")" : ""));
+                return null;
+            }
             long before = LocalLink.VideoFileOf(uri);
             if (before != 0 && before != localId) LocalLink.Unlink(before);
-            if (!LocalLink.LinkVersion(localId, Entities.Track(id))) return null;
+            if (!LocalLink.LinkVersion(localId, Entities.Track(id)))
+            {
+                Log.Warn(State.LogCategory, "linked video refused by the link store: " + Path.GetFileName(path));
+                return null;
+            }
+            refused = AttachRejection.None;
             lock (Gate) { Quarantine.RemoveWhere(k => k.StartsWith(uri + '\u001f', StringComparison.Ordinal)); WarnedMissing.Remove(uri); }
             return before != 0 ? LinkedVideoChange.Replace : LinkedVideoChange.Attach;
         }
@@ -153,7 +189,7 @@ public static partial class Video
             {
                 string[] parts = line.Split('\t', 4);
                 if (parts.Length != 4 || parts[0].Length == 0 || parts[3].Length == 0) continue;
-                if (Link(parts[0], parts[3], allowMissing: true) is not null) moved++; else failed++;
+                if (Link(parts[0], parts[3], allowMissing: true, out _) is not null) moved++; else failed++;
             }
             Platform.Settings.Set(s_legacy, "");
             Log.Info(State.LogCategory, "local video attachments moved to links: " + moved + (failed > 0 ? ", unreadable: " + failed : ""));
@@ -171,7 +207,21 @@ public static partial class Video
     public static class LinkedVideoMirror
     {
         static readonly Dictionary<EntityId, string> Index = new();
+        static readonly Dictionary<EntityId, string> Frames = new();   // the frame a track's video version wears (#240 version cards)
         static readonly Lock Gate = new();
+
+        /// <summary>The frame a track's linked video version wears (its <c>VideoImage</c>: the album's video card, the queue's still, the stage's
+        /// poster), or none (the album cover was chosen). The commit's question after the Video arm, which a catalogue answer would overwrite.</summary>
+        public static bool TryFrame(EntityId id, out string frame)
+        {
+            frame = "";
+            lock (Gate)
+            {
+                if (Frames.Count == 0 || !Frames.TryGetValue(id, out string? found)) return false;
+                frame = found;
+                return true;
+            }
+        }
 
         /// <summary>Does the row's track have a linked video version, and where (the commit's question for every staged row)?</summary>
         public static bool TryPath(EntityId id, out string path)
@@ -188,31 +238,40 @@ public static partial class Video
         }
 
         /// <summary>The links moved (LocalLink.FeedVideos): track uri → its video file, before and now. Writes the rows that changed. UI thread.</summary>
-        public static void Apply(IReadOnlyDictionary<string, string> before, IReadOnlyDictionary<string, string> now)
+        public static void Apply(IReadOnlyDictionary<string, LinkedVideoFeed> before, IReadOnlyDictionary<string, LinkedVideoFeed> now)
         {
-            var changed = new List<(EntityId Id, string? Path)>();
+            var changed = new List<(EntityId Id, LinkedVideoFeed? Feed)>();
             lock (Gate)
             {
                 foreach (var (uri, _) in before)
-                    if (!now.ContainsKey(uri) && EntityId.TryParse(uri, out EntityId gone)) { Index.Remove(gone); changed.Add((gone, null)); }
-                foreach (var (uri, path) in now)
-                    if ((!before.TryGetValue(uri, out string? was) || was != path) && EntityId.TryParse(uri, out EntityId id)) { Index[id] = path; changed.Add((id, path)); }
+                    if (!now.ContainsKey(uri) && EntityId.TryParse(uri, out EntityId gone)) { Index.Remove(gone); Frames.Remove(gone); changed.Add((gone, null)); }
+                foreach (var (uri, feed) in now)
+                    if ((!before.TryGetValue(uri, out LinkedVideoFeed? was) || was != feed) && EntityId.TryParse(uri, out EntityId id))
+                    {
+                        Index[id] = feed.Path;
+                        if (feed.Frame is { } f) Frames[id] = f; else Frames.Remove(id);
+                        changed.Add((id, feed));
+                    }
             }
             if (changed.Count == 0 || Entities.Current is not { } scope) return;
             var t = scope.Tracks;
             bool any = false;
-            foreach (var (id, path) in changed)
+            foreach (var (id, feed) in changed)
             {
                 if (!t.TryGetSlot(id, out int slot) || slot <= Table.None) continue;
-                if (path is not null)
+                if (feed is not null)
                 {
                     t.Flags[slot] |= (uint)TrackFlags.LinkedVideo;
-                    t.SetText(ref t.LocalVideo, slot, Entities.Strings.Intern(path));
+                    t.SetText(ref t.LocalVideo, slot, Entities.Strings.Intern(feed.Path));
+                    // The video's picture (the album's video card, the queue's still, the stage's poster): its frame, or none for the cover.
+                    if (feed.Frame is { } frame) t.SetText(ref t.VideoImage, slot, Entities.Strings.Intern(frame));
+                    else if ((t.Flags[slot] & (uint)TrackFlags.HasVideo) == 0) t.ClearText(ref t.VideoImage, slot);
                 }
                 else
                 {
                     t.Flags[slot] &= ~(uint)TrackFlags.LinkedVideo;
                     t.ClearText(ref t.LocalVideo, slot);
+                    if ((t.Flags[slot] & (uint)TrackFlags.HasVideo) == 0) t.ClearText(ref t.VideoImage, slot);
                 }
                 t.Bump(slot);   // not the Video group's Known bit: this is the user's link, not a catalogue answer
                 any = true;

@@ -19,7 +19,8 @@
 // DECISIONS (sticky). Per group (an album key, or "song:<LocalId>" for a song with no album tag): Accepted (with the candidate it accepted and
 // the file → track map), "Not this" (the rejected candidate never comes back), "Not on Spotify" (never matched again), and whose info wins
 // (Spotify's, the default once accepted, or the files'). They are kept in `Cache\locallinks.tsv` beside the local index, written whole after
-// every decision; a file's link is keyed by its LocalId, which survives moves and renames. Nothing is ever written to a music file.
+// every decision; a file's link is keyed by its LocalId, which survives moves and renames, and carries that file's identity, so it never
+// lands on another file (LocalLink.Identity.cs). Nothing is ever written to a music file.
 //
 // WHAT AN ACCEPTED MATCH SHOWS (show-only, US3). With Spotify's info winning: the file's row in the Songs table (title, artists, album, the
 // cover), the album's card on the page (name, artist, year, cover), and the file's drawer, whose "Versions and formats" offers the Spotify
@@ -111,6 +112,8 @@ public static partial class LocalLink
         s_path = Path.Combine(cacheDir, "locallinks.tsv");
         try { if (File.Exists(s_path)) Read(File.ReadAllLines(s_path, Encoding.UTF8)); }
         catch (Exception ex) { Log.Warn("local.link", "local.link.load failed", ex); }
+        CheckIdentities(load: true);   // a decision whose LocalId now names another file is dropped (LocalLink.Identity.cs)
+        if (!LocalLibrary.Scanner.Busy) CheckIdentities();   // a scan that already ended: a decision whose file got a new id moves to it now
         Publish();
         Video.LinkedVideos.MigrateLegacy();   // once: the old attached videos become linked video versions (Shell/Video.LinkedVideos.cs)
         if (s_enabled.Peek()) StartMatching();
@@ -440,7 +443,8 @@ public static partial class LocalLink
     //   G  key  decision  chosen-uri  spotify-wins(1|0)  rejected-uri rejected-uri …
     //   L  local-id  group-key  track-uri  title  artists  album  album-uri  duration-ms  isrc  disc  number  cover  year  album-artist
     //   A  group-key  album-uri  title  artist  year  cover
-    //   R, D  a rename and a song's default version (LocalLink.Versions.cs)
+    //   R, D, T  a rename, a song's default version and a video's picture choice (LocalLink.Versions.cs, LocalLink.Attach.cs)
+//   I  the identity of a file the records above name by LocalId (LocalLink.Identity.cs)
     // An unknown line is skipped, so a later version can add records an older one ignores.
 
     static void Read(string[] lines)
@@ -448,7 +452,7 @@ public static partial class LocalLink
         foreach (string line in lines)
         {
             string[] f = line.Split('\t');
-            if (ReadVersions(f)) continue;
+            if (ReadVersions(f) || ReadIdentity(f)) continue;
             switch (f[0])
             {
                 case "G" when f.Length >= 5 && byte.TryParse(f[2], out byte decision) && decision <= (byte)LinkDecision.NotOnSpotify:
@@ -496,6 +500,7 @@ public static partial class LocalLink
             sb.Append('A').Append('\t').Append(Clean(key)).Append('\t').Append(Clean(a.Uri)).Append('\t').Append(Clean(a.Title)).Append('\t').Append(Clean(a.Artist)).Append('\t')
               .Append(a.Year.ToString(CultureInfo.InvariantCulture)).Append('\t').Append(Clean(a.Cover ?? "")).Append('\n');
         WriteVersions(sb, Clean);
+        WriteIdentities(sb, Clean);
         string text = sb.ToString();
         int generation = Interlocked.Increment(ref s_saving);
         ThreadPool.UnsafeQueueUserWorkItem(_ =>

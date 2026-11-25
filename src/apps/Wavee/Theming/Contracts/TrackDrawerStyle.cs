@@ -55,7 +55,11 @@ internal sealed record TrackDrawerLink(string Head, string Line, bool Linked, st
 /// answers) or an alternate audio.</summary>
 /// <param name="Label">The core's own label for the entry's meta line in place of its kind's ("Your file · MP3 320", a linked file on its Spotify
 /// song); null: the kind's.</param>
-internal readonly record struct TrackDrawerEntry(byte Kind, Track Version, string RowKey, bool IsNow, bool Reserved, float[]? Peaks, string? Label = null);
+/// <param name="Picture">The version's own picture where it is not its row's art (#240 version cards: a video of mine wears a frame from it); null:
+/// the row's art.</param>
+/// <param name="Wide">The picture is a video's (16:9, the music-video row's thumbnail); its slot is reserved while the frame is still being made.</param>
+internal readonly record struct TrackDrawerEntry(byte Kind, Track Version, string RowKey, bool IsNow, bool Reserved, float[]? Peaks, string? Label = null,
+    string? Picture = null, bool Wide = false);
 
 /// <summary>What one render of the core drawer host decided.</summary>
 internal sealed class TrackDrawerBodyArgs
@@ -81,7 +85,21 @@ internal sealed class TrackDrawerBodyArgs
 
     /// <summary>A file in the music folders: its Spotify section (drawn after the versions, keyed <c>drawer-link</c>); null for any other track.</summary>
     public TrackDrawerLink? Link { get; init; }
+
+    /// <summary>The wiring of one version card (#240 version cards): the card's menu, its keys and its title. Null: plain cards (a host with no
+    /// overlay). A template puts <see cref="TrackDrawerCardWiring.Context"/> on the card (right-click, Shift+F10, the menu key), a "⋯" that
+    /// requests the same context (<c>ClickRequestsContext</c>), <see cref="TrackDrawerCardWiring.Keys"/> on the focusable card, and draws its title
+    /// through <see cref="TrackDrawerCardWiring.Title"/>.</summary>
+    public Func<Track, Track, byte, TrackDrawerCardWiring>? VersionCard { get; init; }
 }
+
+/// <summary>One version card's verbs (see <see cref="TrackDrawerBodyArgs.VersionCard"/>).</summary>
+/// <param name="Context">The card's menu, the version's own: Play, Play next, Play after, Play by default, and the verbs of its kind.</param>
+/// <param name="Keys">F2 renames a version of mine in place.</param>
+/// <param name="Title">The title as the template styled it (and its text) → the element to draw: an inline rename for a version of mine (a pencil
+/// on hover, a click edits in place), the title itself otherwise.</param>
+/// <param name="MoreLabel">The "⋯" button's name (its tooltip and its accessible name).</param>
+internal sealed record TrackDrawerCardWiring(Action<ContextRequestEventArgs> Context, Action<KeyEventArgs> Keys, Func<TextEl, string, Element> Title, string MoreLabel);
 
 /// <summary>What the format split button's component hands the template: the two verbs and the anchor capture.</summary>
 internal sealed class TrackDrawerFormatArgs

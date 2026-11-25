@@ -178,8 +178,12 @@ public static partial class Stage
         var kids = new List<StageChipFact>(4);
         var fmt = Playback.StreamFormat.Value;
         _ = Playback.Devices.Changed.Value;                   // the roster is part of the remote verdict
-        bool remote = Shell.DevicePicker.IsRemote(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows);
+        var rows = Playback.Devices.Rows;
+        int remoteSlot = Shell.DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
+        bool remote = remoteSlot >= 0;
         if (Transport.ShowsQualityBadge(!fmt.IsEmpty, remote)) kids.Add(new StageChipFact(Icons.Equalizer, Entities.Strings.Resolve(fmt)));
+        // Another device plays lossless: the chip names what IT says it plays (its playback_quality), as the bar's Lossless badge does.
+        else if (remote && Shell.DevicePicker.RemoteLossless(in rows[remoteSlot]) is { } theirs) kids.Add(new StageChipFact(Icons.Equalizer, theirs));
         if (hasTimed) kids.Add(new StageChipFact(Icons.Document, Loc.Get(Strings.Stage.SyncedLyrics)));
         if (mode != Mode.Visualizer && track.IsValid && track.Knows(TrackFields.Audio) && track.Tempo > 0)
             kids.Add(new StageChipFact(null, Strings.Stage.Bpm(((track.Tempo + 5) / 10).ToString(System.Globalization.CultureInfo.InvariantCulture))));   // a formatted key: the generated method already formats (V-D15)

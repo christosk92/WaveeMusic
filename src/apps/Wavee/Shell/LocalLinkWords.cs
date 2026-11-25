@@ -115,7 +115,7 @@ public static class LocalLinkWords
             return e.Tags.VideoWidth > 0 && e.Tags.VideoHeight > 0
                 ? W.YourVideoAs(e.Tags.VideoWidth.ToString(System.Globalization.CultureInfo.CurrentCulture) + "×" + e.Tags.VideoHeight.ToString(System.Globalization.CultureInfo.CurrentCulture))
                 : Loc.Get(W.YourVideo);
-        return LocalCollection.QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample) is { Length: > 0 } q ? W.YourFileAs(q) : Loc.Get(W.YourFile);
+        return LocalCollection.QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample, e.RelativePath) is { Length: > 0 } q ? W.YourFileAs(q) : Loc.Get(W.YourFile);
     }
 
     /// <summary>The file drawer's Spotify line: "Linked to Savin' Me · Nickelback" and, when the review still holds the group, the evidence; else

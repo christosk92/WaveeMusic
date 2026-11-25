@@ -447,6 +447,8 @@ public static partial class Diagnostics
                     return LocalScanVerb(id, name, a);   // a private index; needs no mount
                 case Inspect.Verb.LocalIndex:
                     return LocalIndexVerb(id, name, a);   // reads the app's index; needs no mount
+                case Inspect.Verb.Decode:
+                    return DecodeVerb(id, name, a);   // a file through its decoder; needs no mount
                 case Inspect.Verb.Nudge:
                     return Nudge(id, name, a);   // fixtures need no mount; fire, tick, refresh and expectCard say so when unmounted
                 case Inspect.Verb.Timecode:
@@ -687,6 +689,7 @@ public static partial class Diagnostics
                         if (kind == "hdcp") return HdcpState(id, name, a);
                         // The local library's music folders seeded in memory (#240 §5; Diagnostics.Inspect.LocalScan.cs).
                         if (kind == "music-folders") return MusicFoldersState(id, name, a);
+                        if (kind == "local-peek") return LocalPeekState(id, name, a);
                         // "Your files and Spotify" (#240 phase 1): the index, the fake catalogue's albums as files, and the matcher run over them.
                         if (kind == "spotify-match") return SpotifyMatchState(id, name, a);
                         if (kind == "linked-video") return LinkedVideoState(id, name, a);

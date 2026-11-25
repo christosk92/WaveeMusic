@@ -235,7 +235,8 @@ public readonly partial struct Track
     }
 
     /// <summary>A withheld row's SHORT reason, which leads its credit line: an unplayable local file's (<see cref="LocalFilesList.Note"/>: "Can't play:
-    /// a WAV file", "Missing"), "Unavailable" for a ruled-unavailable track, the release date for a pending one; "" for a playable row.</summary>
+    /// a WAV file", "Missing"), a ruled-unavailable track's named reason ("Not available in your country", "Premium only", else "Unavailable"),
+    /// the release date for a pending one; "" for a playable row.</summary>
     internal static string WithheldNote(Track t, long now)
     {
         if (!t.IsValid) return "";
@@ -243,15 +244,15 @@ public readonly partial struct Track
         if (t.IsLocalItem) return "";
         return RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
         {
-            RowCellRules.DurationKind.Unavailable => Loc.Get(Strings.Detail.TrackFacts.UnavailableShort),
+            RowCellRules.DurationKind.Unavailable => Loc.Get(WithheldShortKey(t.UnplayableReason())),
             RowCellRules.DurationKind.ReleaseDate => Format.ReleaseDateLabel(t.AvailableAt, now),
             _ => "",
         };
     }
 
-    /// <summary>A withheld row's LONG reason, the tooltip over its duration lane (tuned Classic L4): "This song isn't
-    /// available to play" (a terminal verdict names no cause the client could state honestly) or "Releases {date}".
-    /// Null for a playable row.</summary>
+    /// <summary>A withheld row's LONG reason, the tooltip over its duration lane (tuned Classic L4) and the toast a play attempt
+    /// raises: "This song isn’t available in your country" / "This song needs Spotify Premium" when the catalog named the
+    /// cause, "This song isn't available to play" when it did not, or "Releases {date}". Null for a playable row.</summary>
     internal static string? WithheldReason(Track t, long now)
         // A playlist's local file the music folders do not have (#240 D5); a matched one plays and states nothing here.
         => t.IsLocalItem ? (t.Unplayable() ? Loc.Get(Strings.Detail.TrackFacts.LocalReason) : null)
@@ -259,7 +260,7 @@ public readonly partial struct Track
          : t.IsLocal && LocalFilesList.LongReason(t) is { } local ? local
          : RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
         {
-            RowCellRules.DurationKind.Unavailable => Loc.Get(Strings.Detail.TrackFacts.UnavailableReason),
+            RowCellRules.DurationKind.Unavailable => Loc.Get(WithheldLongKey(t.UnplayableReason())),
             RowCellRules.DurationKind.ReleaseDate => Strings.Detail.ReleasesOn(Format.ReleaseDateLabel(t.AvailableAt, now)),
             _ => null,
         };

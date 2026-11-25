@@ -153,7 +153,7 @@ internal static class WinUiHomeDaylist
             default:
             {
                 float head = MathF.Max(dl.Cover, caption + WinUiHomeRules.CopyGapSmall + dl.TitleLines * title + WinUiHomeRules.CopyGapSmall + caption);
-                float footer = 1f + WinUiHomeRules.FooterPad + MathF.Max(dl.Ring, body + caption);
+                float footer = 1f + WinUiHomeRules.FooterPad + MathF.Max(dl.Ring, body + WinUiHomeDaylistClock.SecondLineH);
                 inner = head + Spacing.M + body + caption + Spacing.M + actions + Spacing.M + footer;
                 break;
             }

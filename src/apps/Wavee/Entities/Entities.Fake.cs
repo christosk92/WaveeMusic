@@ -234,6 +234,23 @@ public static partial class Entities
         finally { Staging.Return(s); }
     }
 
+    /// <summary>The inspector's <c>transport do=metadata</c>: a CAPTURED catalog answer (the official client's, or Wavee's own) committed
+    /// through the real decoder, exactly as the wire's answer would land: an extended-metadata response body
+    /// (<see cref="Spotify.Decode.ExtendedMetadata"/>), or a Pathfinder JSON answer (<see cref="Spotify.Decode.Export"/>, e.g. a
+    /// <c>fetchPlaylist</c>). The fake catalog then holds the payload's tracks with their real verdicts.</summary>
+    internal static void CommitMetadata(ReadOnlySpan<byte> response)
+    {
+        if (Current is null) return;
+        var s = Staging.Rent();
+        try
+        {
+            if (response.Length > 0 && response[0] == (byte)'{') Spotify.Decode.Export(response, s);
+            else Spotify.Decode.ExtendedMetadata(response, s);
+            Commit(s);
+        }
+        finally { Staging.Return(s); }
+    }
+
     /// <summary>The catalogue classifies <paramref name="show"/> as an AUDIOBOOK, as the show's own list header does
     /// (<c>is_audiobook=true</c>, <see cref="StagedShow.HeaderFacts"/>): the bit is ORed on and nothing else the show knows moves. The
     /// fake library holds no book; the inspector's <c>transport do=audiobook</c> stages one for the Connect state's book branch.</summary>
@@ -289,12 +306,16 @@ public static partial class Entities
 
     /// <summary>The demo's Spotify Connect devices (<c>Playback.UseFakeConnect</c>, the inspector's <c>mount connect=nearby</c>): a TV, a speaker
     /// and a phone on the same network, each at its own volume (0..65535, the wire scale). The phone keeps its volume to itself, as a
-    /// real iPhone does (capability 13, <c>disable_volume</c>): while it plays, every volume rail is disabled.</summary>
+    /// real iPhone does (capability 13, <c>disable_volume</c>): while it plays, every volume rail is disabled. It plays lossless to its
+    /// headphones, as the owner's iPhone stated it on 2026-11-25 (hifi, best_matching, target hifi, hi-fi on; Bluetooth "AirPods Max").</summary>
     internal static Playback.FakeConnectDevice[] FakeConnect() =>
     [
         new("fake:connect:tv", "Living room TV", Spotify.Decode.DeviceKind.Tv, 26214),
         new("fake:connect:speaker", "Kitchen speaker", Spotify.Decode.DeviceKind.Speaker, 39321),
-        new("fake:connect:phone", "Alex’s iPhone", Spotify.Decode.DeviceKind.Phone, 45875, VolumeFixed: true),
+        new("fake:connect:phone", "Alex’s iPhone", Spotify.Decode.DeviceKind.Phone, 45875, VolumeFixed: true,
+            Quality: new(Spotify.Decode.BitrateLevel.Hifi, Spotify.Decode.BitrateStrategy.BestMatching, Spotify.Decode.BitrateLevel.Hifi, true,
+                Spotify.Decode.HiFiStatus.On, Spotify.Decode.BitrateLevel.Hifi, 1),
+            OutputName: "AirPods Max", OutputType: 3),
     ];
 
     static string AlbumUri(int i) => "spotify:album:al" + Wrap(i, AlbumCount);

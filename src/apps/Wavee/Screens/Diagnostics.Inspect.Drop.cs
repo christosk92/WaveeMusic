@@ -87,7 +87,8 @@ public static partial class Diagnostics
                 w.WriteString("looseArtist", LocalMatch.Loose(tags.FirstArtist));
                 w.WriteEndObject();
                 Span<byte> uri = stackalloc byte[Spotify.Egress.MaxLocalUriBytes];
-                int n = Spotify.Egress.LocalTrackUri(tags.FirstArtist, tags.Album, LocalTags.TitleOrFileName(in tags, full), tags.DurationMs, uri);
+                // The name a playlist add writes (LocalLibrary.LocalUriOfFile): every artist value joined with ", ", never only the first.
+                int n = Spotify.Egress.LocalTrackUri(Playlist.LocalArtistLine(in tags), tags.Album, LocalTags.TitleOrFileName(in tags, full), tags.DurationMs, uri);
                 w.WriteString("spotifyUri", n > 0 ? System.Text.Encoding.UTF8.GetString(uri[..n]) : "");
                 if (!import) return;
                 w.WriteStartObject("row");
@@ -134,8 +135,16 @@ public static partial class Diagnostics
             // A drop of files hands the list again, as the OLE target does: the last enter's list when none is given.
             if (step == "drop" && paths is null && uris is null && text.Length == 0) paths = _osPaths;
             if (step == "enter") _osPaths = paths;
+            if (step == "drop") DropAnywhere.LastPlaylistDeposit = null;
             if (!DropAnywhere.Play(step, at, paths, uris, text, out string effect))
                 return Inspect.Reply.Fail(id, name, "the host wired no external-drop seam");
+            // A drop's files are read on a worker, then land (a playlist row deposits them): wait (wall clock, 5 s at most) for that.
+            if (step == "drop")
+                for (long until = Environment.TickCount64 + 5000; DropAnywhere.Expanding && Environment.TickCount64 < until;)
+                {
+                    RunFrames(1);
+                    Thread.Sleep(10);
+                }
             var plan = DropAnywhere.Current;
             void Body(Utf8JsonWriter w)
             {
@@ -153,6 +162,16 @@ public static partial class Diagnostics
                     w.WriteNumber("songs", plan.Songs.Peek());
                     w.WriteString("chip", plan.Chip);
                     if (plan.Refusal is { } why) w.WriteString("refusal", why);
+                }
+                // Local files dropped on a playlist row (#240 D12): what the playlist deposit was handed, each row as the item it is added as.
+                if (step == "drop" && !DropAnywhere.Expanding && DropAnywhere.LastPlaylistDeposit is { } deposit)
+                {
+                    w.WriteStartObject("playlistDeposit");
+                    w.WriteString("playlist", deposit.PlaylistUri);
+                    w.WriteStartArray("items");
+                    foreach (Track t in deposit.Tracks) w.WriteStringValue(Playlist.PlaylistItemUriOf(t) ?? "");
+                    w.WriteEndArray();
+                    w.WriteEndObject();
                 }
                 w.WriteBoolean("panelShown", DropAnywhere.Shown.Peek());
                 w.WriteNumber("hotZone", DropAnywhere.Hot.Peek());

@@ -147,8 +147,10 @@ internal static partial class CommonLocalCollectionParts
             bool any = _shown.Value.Length > 0 || page.Filter().Value.Trim().Length > 0;
             bool split = list && any && !LibraryLadders.IsSingleColumn(tier.Value);
             string arm = split ? K.SplitKey : K.WholeKey;
-            // The arm swap cross-fades (the declared swap); the first arm arrives with the page and its body's own entrance.
-            var enter = _armSeen && arm != _arm ? K.SplitSwap : default;
+            // The arm swap cross-fades (the declared swap); the first arm arrives with the page and its body's own entrance, so it has none. Null,
+            // never `default`: a default EnterExit is a real terminal (scale 0, opacity 0) that the engine plays, and the arm zoomed out of the
+            // body's centre on every pivot switch.
+            EnterExit? enter = _armSeen && arm != _arm ? K.SplitSwap : null;
             _armSeen = true;
             _arm = arm;
             Element body = split ? SplitArm(sp, page) : WholeArm(sp, page);

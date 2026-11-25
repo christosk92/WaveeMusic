@@ -1427,6 +1427,7 @@ public readonly partial struct Playlist
         if (n > 0) Entities.Commit(staging);
         Staging.Return(staging);
         if (n > 0) Entities.Publish();
+        LocalLink.RefreshVideoPictures();   // a linked video's still landed: its Spotify song's video picture (#240 version cards)
     }
 
     /// <summary>"Remove from Local Files" on a dropped file's row: its membership leaves the list (the file stays on disk). Returns where it was (for

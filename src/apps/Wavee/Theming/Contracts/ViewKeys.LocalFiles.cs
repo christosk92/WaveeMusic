@@ -20,4 +20,8 @@ public static partial class ViewKeys
 
     /// <summary>The missing songs' review: the body of its dialog (S6). Props: <see cref="LocalFilesReviewProps"/>.</summary>
     public static readonly ViewKey<LocalFilesReviewProps> LocalFilesReview = new("LocalFiles.Review");
+
+    /// <summary>"Find music on this PC" (#240, 0dm): the Music and Downloads folders with their counts, in the empty Local Files / On this PC state and
+    /// Settings' empty Music folders group. Props: <see cref="LocalFindProps"/>.</summary>
+    public static readonly ViewKey<LocalFindProps> LocalFilesFind = new("LocalFiles.Find");
 }

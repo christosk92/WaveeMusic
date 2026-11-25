@@ -100,10 +100,30 @@ public readonly partial struct Track
         return t.Slot > 0 && !playing.IsEmpty && playing == t.Id;
     }
 
-    /// <summary>Single-click semantics shared by every surface's play affordance: the now-playing row toggles pause /
-    /// resume, any other row runs <paramref name="startDifferent"/>. A peek — this is a click, not a render.</summary>
-    public static void Invoke(Track t, Action startDifferent)
+    /// <summary>A play attempt on a row the catalog WITHHOLDS (not out yet, or ruled unplayable: region-locked, Premium only,
+    /// withdrawn) is refused, and says why in a toast ("This song isn’t available in your country", "Releases 12 Dec")
+    /// rather than failing silently or parking the bar on a fault. True when it refused. A local file and a playlist's
+    /// local item keep their own path (their reasons are a folder's, and a missing one still opens its locate flow).</summary>
+    public static bool RefuseWithheld(Track t)
     {
+        if (!WithheldTrack(t)) return false;
+        if (WithheldReason(t, NowUnix) is { Length: > 0 } why)
+            Notify.Say(why, InfoBarSeverity.Informational, dedupeKey: "track.withheld:" + t.Uri.Text);
+        return true;
+    }
+
+    /// <summary>Does the catalog withhold this CATALOG row (not out yet, or ruled unplayable)? A local file and a playlist's local
+    /// item answer false: their reasons are a folder's (<see cref="RefuseWithheld"/>).</summary>
+    public static bool WithheldTrack(Track t)
+        => t.IsValid && !t.IsLocal && !t.IsLocalItem && (t.NotYetOut(NowUnix) || t.Unplayable());
+
+    /// <summary>Single-click semantics shared by every surface's play affordance: the now-playing row toggles pause /
+    /// resume, any other row runs <paramref name="startDifferent"/>. A peek — this is a click, not a render. A row the catalog
+    /// withholds is refused first, with its reason (<see cref="RefuseWithheld"/>), on every surface that plays through here;
+    /// <paramref name="refuseWithheld"/> false is the one exception, a music-video form played through its parent song.</summary>
+    public static void Invoke(Track t, Action startDifferent, bool refuseWithheld = true)
+    {
+        if (refuseWithheld && RefuseWithheld(t)) return;
         var playing = Playback.CurrentId.Peek();
         bool deckRow = t.Slot > 0 && !playing.IsEmpty && playing == t.Id;
         // The deck row under a FAULT is a dead row: the reducer's Resume returns while `Error != None`, so a toggle

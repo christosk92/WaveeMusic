@@ -2217,8 +2217,9 @@ public readonly partial struct Track
 
         // ══ 5. PLAYBACK ══════════════════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>The ONE activation funnel (the # transport, double-click, Enter): a not-yet-out row is refused here, so
-        /// every path agrees with the dimmed row that withholds its play button (ch 04 §0.8).
+        /// <summary>The ONE activation funnel (the # transport, double-click, Enter): a withheld row (not out yet, or ruled unplayable:
+        /// region-locked, Premium only) is refused through <see cref="Track.Invoke"/> with its reason in a toast (<see cref="Track.RefuseWithheld"/>), so every path
+        /// agrees with the dimmed row that withholds its play button (ch 04 §0.8).
         /// <para>B2 (plan §3.2): dispatches on the row's kind first — an episode row plays through
         /// <see cref="Episode.Invoke"/> (the disc's toggle-current-else-start semantics), never <see cref="Track.Invoke"/>,
         /// which reads an invalid <see cref="Track"/> for that row.</para></summary>
@@ -2233,7 +2234,7 @@ public readonly partial struct Track
                 return;
             }
             var t = DisplayTrack(display);
-            if (!t.IsValid || t.NotYetOut(Store.ToUnix(Entities.Now))) return;
+            if (!t.IsValid) return;
             Track.Invoke(t, () => StartVisible(display));
         }
 
@@ -2750,10 +2751,15 @@ public readonly partial struct Track
 
         /// <summary>An OS file drag over a row links the .mp4 to the row's track as its video version (the file joins the library:
         /// Video.LinkedVideos.Attach). The target only ACCEPTS a drop carrying an .mp4, so any other file falls through to the shell's
-        /// play-this-file target instead of being swallowed (ch 04 §6).</summary>
-        DropTargetSpec VideoDrop(IReadSignal<int> index, int start) => new(
+        /// play-this-file target instead of being swallowed (ch 04 §6). Only a row that can take a linked video accepts it (a Spotify track,
+        /// <see cref="Video.LinkedVideos.CanLink(EntityUri)"/>): a local file's row (Local files, On this PC) lets the .mp4 fall through to the
+        /// page's and the shell's targets, which add it to the library and play it as itself. The drop panel stays up over the row
+        /// (<see cref="DropAnywhere.KeepsPanel"/>): the row lights and leaves the scrim, the chip says "Link as this track's video", and the
+        /// panel's zones are still there when the pointer moves on.</summary>
+        DropTargetSpec VideoDrop(IReadSignal<int> index, int start) => DropAnywhere.KeepsPanel(new(
             [DropKinds.Files],
-            OnEnter: _ => _videoDropRow.Value = index.Peek(),
+            OnEnter: s => { _videoDropRow.Value = index.Peek(); s.Caption = s_linkCaption ??= Loc.Get(Strings.LinkedVideo.DropOnRow); },
+            OnOver: s => s.Caption = s_linkCaption,
             OnLeave: _ => { if (_videoDropRow.Peek() == index.Peek()) _videoDropRow.Value = -1; },
             OnDrop: session =>
             {
@@ -2761,13 +2767,25 @@ public readonly partial struct Track
                 if (session.Payload is not FileDropData files || Video.LinkedVideoUx.FirstMp4(files.Paths) is not { } mp4) return;
                 var t = DisplayTrack(index.Peek() - start);
                 if (!t.IsValid) return;
-                var result = Video.LinkedVideos.Attach(t.Uri.Text, mp4, mp4, Store.ToUnix(Entities.Now));
-                Notify.Say(Loc.Get(result is null ? Strings.LinkedVideo.RejectedNotFound : Strings.LinkedVideo.Attached),
+                string uri = t.Uri.Text;
+                var result = Video.LinkedVideos.Attach(uri, mp4, mp4, Store.ToUnix(Entities.Now), out var refused);
+                // The file name only (paths hold the account name).
+                Log.Event(result is null ? WaveeLogLevel.Warning : WaveeLogLevel.Info, "ui",
+                    result is null ? "linkedvideo.drop.rejected" : "linkedvideo.drop.attach",
+                    result is null ? "the dropped video was refused" : "linked a dropped video",
+                    fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("file", Path.GetFileName(mp4)), WaveeLogField.Of("reason", refused.ToString())]);
+                Notify.Say(result is null ? Video.LinkedVideos.RefusalText(refused) : Loc.Get(Strings.LinkedVideo.Attached),
                     result is null ? InfoBarSeverity.Error : InfoBarSeverity.Success);
             })
         {
-            CanAccept = static session => session.Payload is FileDropData f && Video.LinkedVideoUx.FirstMp4(f.Paths) is not null,
-        };
+            CanAccept = session => session.Payload is FileDropData f && Video.LinkedVideoUx.FirstMp4(f.Paths) is not null
+                                   && Video.LinkedVideos.CanLink(DisplayTrack(index.Peek() - start).Uri),
+            // The row under the pointer is cut out of the panel's scrim, so its cue reads as the target it is.
+            VisualPolicy = DropTargetVisualPolicy.Spotlight,
+            SpotlightWhen = _ => _videoDropRow.Peek() == index.Peek(),
+        });
+
+        static string? s_linkCaption;
 
         // ══ 8. THE ROW SKIN, THE DRAWER, THE PRESENTATION ═══════════════════════════════════════════════════════════
 

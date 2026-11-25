@@ -41,7 +41,8 @@ public readonly partial struct Track
     /// is both the gate and the accessor: for a selection the whole submenu is absent.</para></summary>
     public static bool OffersVideoVerb(Video.MenuItems verb, string? playableUri)
     {
-        if (playableUri is not { Length: > 0 }) return false;
+        // A local file's row is its own file: it takes no linked video (its video plays as itself), so no Video ▸ verb is offered there.
+        if (playableUri is not { Length: > 0 } || !Video.LinkedVideos.CanLink(playableUri)) return false;
         var which = Video.LinkedVideoUx.MenuFor(true, playableUri, Video.LinkedVideos.Present,
                                              Video.LinkedVideos.Has(playableUri), Video.LinkedVideos.Decide(playableUri).Tier);
         return (which & verb) != 0;
@@ -152,12 +153,13 @@ public readonly partial struct Track
                 return;
             }
 
-            if (Video.LinkedVideos.Attach(uri, picked, SourceKeyFor(picked), NowUnix) is not { } kind)
+            if (Video.LinkedVideos.Attach(uri, picked, SourceKeyFor(picked), NowUnix, out var refused) is not { } kind)
             {
-                // The linked videos refused what validation had just accepted — the file went away between the two probes. 0.2.10
-                // surfaced this as a thrown message (ch 19 item 31); the 0.3 linked-video list returns null instead of throwing, so the
-                // honest sentence is the same "couldn't be found" the validator would have said.
-                Notify.Say(Loc.Get(Strings.LinkedVideo.RejectedNotFound), InfoBarSeverity.Error);  // ch 19 item 31
+                // The linked videos refused what validation had just accepted: the file went away between the two probes ("couldn't be
+                // found"), or the library or the link store did not take it. The toast says which (ch 19 item 31).
+                Notify.Say(Video.LinkedVideos.RefusalText(refused), InfoBarSeverity.Error);
+                Log.Event(WaveeLogLevel.Warning, VideoLogCategory, "linkedvideo.attach.rejected", "the picked file was refused",
+                    fields: [WaveeLogField.Of("path", picked), WaveeLogField.Of("reason", refused.ToString())]);
                 return;
             }
 
@@ -186,9 +188,9 @@ public readonly partial struct Track
             // themselves still leaves the undo's goal — nothing attached — true.
             Video.LinkedVideos.Remove(uri);
         }
-        else if (Video.LinkedVideos.Attach(uri, previousPath, previousSourceKey, NowUnix) is null)
+        else if (Video.LinkedVideos.Attach(uri, previousPath, previousSourceKey, NowUnix, out var refused) is null)
         {
-            Notify.Say(Loc.Get(Strings.LinkedVideo.RejectedNotFound), InfoBarSeverity.Error);  // ch 19 item 33
+            Notify.Say(Video.LinkedVideos.RefusalText(refused), InfoBarSeverity.Error);  // ch 19 item 33
             return;
         }
         Notify.Say(Loc.Get(Strings.LinkedVideo.Restored), InfoBarSeverity.Informational);      // ch 19 item 34

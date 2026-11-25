@@ -948,6 +948,10 @@ public static partial class Video
         NotMp4,
         /// <summary>The path does not point at an existing file.</summary>
         NotFound,
+        /// <summary>The row is not a Spotify track: a local file's row is its own file and plays its own video, it takes no linked one.</summary>
+        NotLinkable,
+        /// <summary>The file is there, but the library did not take it or the link store refused the link.</summary>
+        NotAdded,
     }
 
     /// <summary>Which rows the <c>Video ▸</c> submenu builds for a playable, decided at open time from the curation
@@ -1029,7 +1033,7 @@ public static partial class Video
         /// mp4 is playable because a dropped/picked video attaches as its own override and plays with its embedded
         /// audio).</summary>
         public static (string Name, string Spec) PlayableFilter(string label)
-            => (label, "*.mp3;*.ogg;*.flac;*.m4a;*.aac;*" + Extension + ";*.m4v;*.mkv;*.webm");   // the local video containers too (#240: they play as videos)
+            => (label, "*.mp3;*.ogg;*.flac;*.m4a;*.aac;*.wav;*.aif;*.aiff;*.aifc;*" + Extension + ";*.m4v;*.mkv;*.webm");   // the local video containers too (#240: they play as videos)
 
         /// <summary>Extension test (case-insensitive, culture-invariant — a path is not prose).</summary>
         public static bool IsMp4(string? path)

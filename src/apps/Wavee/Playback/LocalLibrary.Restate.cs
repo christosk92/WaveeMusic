@@ -313,6 +313,8 @@ public static partial class LocalLibrary
             row.DurationMs = Math.Max(0, f.DurationMs);
             row.Flags = (uint)(TrackFlags.Local | (f.Unavailable ? TrackFlags.Unavailable : 0));
             Playlist.StateLocalVideo(ref row, in tags);   // a video file: the film glyph, the video host, its size (#240 local video)
+            // Its picture as a video (the stage's poster while it opens, the queue's still): the frame it wears (#240 version cards).
+            if (tags.Kind == LocalKind.Video && LocalLink.FrameUrlOf(f.LocalId) is { } frame) row.VideoImage = staging.AddText(Encoding.UTF8.GetBytes(frame));
             Playlist.NoteLocalNames(uri, f.Artists, f.Album);
             s_staged[f.LocalId] = f;
         }

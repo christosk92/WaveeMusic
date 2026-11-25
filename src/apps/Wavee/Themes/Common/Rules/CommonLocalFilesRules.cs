@@ -38,6 +38,21 @@ internal static class CommonLocalFilesRules
     /// <summary>The drop zone's glyph.</summary>
     public const float DropGlyph = 24f;
 
+    // ── "Find music on this PC" (#240, 0dm; no board: the WinUI settings card's plate, the empty column's width) ──
+
+    public const string FindKey = "local-find:card", FindTitleKey = "local-find:title", FindRowsKey = "local-find:rows", FindRowKey = "local-find:row:",
+        FindCountKey = "local-find:count:", FindAddKey = "local-find:add", FindChooseKey = "local-find:choose";
+
+    /// <summary>The title's weight (the settings card's title), the plate's border.</summary>
+    public const ushort FindTitleWeight = 600;
+    public const float FindBorder = 1f;
+
+    /// <summary>The title to the line, the line to the rows, between rows, between a row's lines, the rows to the buttons.</summary>
+    public const float FindLineGap = 4f, FindRowsGap = 12f, FindRowGap = 8f, FindSubGap = 2f, FindButtonsGap = 16f;
+
+    /// <summary>Where a row's count and path start: under the checkbox's label (its 20 box and 8 gap).</summary>
+    public const float FindPathInset = 28f;
+
     // ── the scan line (board 7: 560 wide under the facts, the time left 16 after the words, the bar 6 under them) ──
 
     /// <summary>The widest the line and its bar run, the gap before the time left (and above it, where it wraps under the line: one gap both ways,

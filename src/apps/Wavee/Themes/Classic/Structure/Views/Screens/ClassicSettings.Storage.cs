@@ -204,16 +204,13 @@ internal static partial class ClassicSettings
         /// stand on it. Compact's rows keep the mark too, closer.</summary>
         static float MusicTextInset(bool touch) => Spacing.L + ClassicSettingsRules.MusicMarkCell + (touch ? Spacing.M : Spacing.L);
 
-        /// <summary>No folder yet: the sentence in one row's height.</summary>
+        /// <summary>No folder yet: "Find music on this PC" (#240, 0dm; LocalFiles.Find.cs), unframed on the rows' text inset; the header keeps
+        /// "Add a folder…" (the card offers no second one).</summary>
         static Element EmptyRow() => new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = ClassicSettingsRules.MusicRowHeight,
-            Padding = new Edges4(MusicTextInset(s_layout.Touch), Spacing.S, Spacing.L, Spacing.S),
-            Children =
-            [
-                new TextEl(Loc.Get(Strings.Settings.Music.Empty))
-                    { Size = ClassicSettingsRules.MusicTextSize, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap },
-            ],
+            Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = ClassicSettingsRules.MusicRowHeight,
+            Padding = new Edges4(MusicTextInset(s_layout.Touch), Spacing.L, Spacing.L, Spacing.L),
+            Children = [LocalFilesList.FindCard(choose: false)],
         };
 
         /// <summary>One folder: its state mark, the path, its line ("4,812 songs · 12 can't be played", or the state in the caution ink), "⋯" (Show in

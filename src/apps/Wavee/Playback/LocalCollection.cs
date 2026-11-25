@@ -60,10 +60,12 @@ public static class LocalCollection
 
     // ── labels (format names, never localised) ───────────────────────────────────────────────────────────────────────
 
-    /// <summary>"Hi-Res 24/96", "FLAC", "MP3 320", "AAC 256", "Ogg 160", or "" when unknown. <paramref name="rate"/> and <paramref name="bits"/>
-    /// are the stream's (0 = unknown); they only lift a lossless format to hi-res.</summary>
-    public static string QualityOf(Spotify.Audio.Format format, int kbps, int rate = 0, int bits = 0) => format switch
+    /// <summary>"Hi-Res 24/96", "FLAC", "WAV 24/96", "MP3 320", "AAC 256", "Ogg 160", or "" when unknown. <paramref name="rate"/> and
+    /// <paramref name="bits"/> are the stream's (0 = unknown); they lift FLAC to hi-res and give PCM its depth and rate. <paramref name="path"/>
+    /// tells an AIFF file's PCM from a WAV file's.</summary>
+    public static string QualityOf(Spotify.Audio.Format format, int kbps, int rate = 0, int bits = 0, string path = "") => format switch
     {
+        Spotify.Audio.Format.Pcm => PcmName(path) + (bits > 0 && rate > 0 ? " " + bits.ToString(CultureInfo.InvariantCulture) + "/" + Khz(rate) : ""),
         Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 when IsHiRes(rate, bits) => "Hi-Res " + Math.Max(bits, 16).ToString(CultureInfo.InvariantCulture) + (rate > 0 ? "/" + Khz(rate) : ""),
         Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => "FLAC",
         Spotify.Audio.Format.Mp3 => kbps > 0 ? "MP3 " + Round(kbps) : "MP3",
@@ -83,11 +85,20 @@ public static class LocalCollection
 
     static string Round(int kbps) => (kbps >= 310 ? 320 : kbps >= 250 ? 256 : kbps >= 180 ? 192 : kbps >= 150 ? 160 : kbps >= 120 ? 128 : kbps).ToString(CultureInfo.InvariantCulture);
 
-    static bool IsLossless(Spotify.Audio.Format f) => f is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24;
+    static bool IsLossless(Spotify.Audio.Format f) => f is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 or Spotify.Audio.Format.Pcm;
 
-    /// <summary>A format's short name ("FLAC", "MP3", "AAC", "Ogg", "Other"), never localised.</summary>
-    public static string FormatName(Spotify.Audio.Format f) => f switch
+    /// <summary>PCM's container by the file's extension: "AIFF" for .aif, .aiff and .aifc, else "WAV".</summary>
+    static string PcmName(string path)
     {
+        string ext = Path.GetExtension(path);
+        return ext.Equals(".aif", StringComparison.OrdinalIgnoreCase) || ext.Equals(".aiff", StringComparison.OrdinalIgnoreCase)
+               || ext.Equals(".aifc", StringComparison.OrdinalIgnoreCase) ? "AIFF" : "WAV";
+    }
+
+    /// <summary>A format's short name ("FLAC", "WAV", "AIFF", "MP3", "AAC", "Ogg", "Other"), never localised.</summary>
+    public static string FormatName(Spotify.Audio.Format f, string path = "") => f switch
+    {
+        Spotify.Audio.Format.Pcm => PcmName(path),
         Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => "FLAC",
         Spotify.Audio.Format.Mp3 => "MP3",
         Spotify.Audio.Format.Aac => "AAC",
@@ -388,7 +399,7 @@ public static class LocalCollection
             int year = FactsOf(e).Year;
             if (shownLinks.TryGetValue(e.LocalId, out LinkTrack? link))
                 (title, artist, cover) = (link.Title, link.Artists, link.Cover ?? cover);
-            songCards.Add(new LocalSongCard(e.LocalId, title, artist, cover, QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample),
+            songCards.Add(new LocalSongCard(e.LocalId, title, artist, cover, QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample, e.RelativePath),
                 IsLossless(e.Format), year, added, when, when == LocalAddedWhen.Today));
         }
         songCards.Sort(static (x, y) => y.AddedTicks != x.AddedTicks ? y.AddedTicks.CompareTo(x.AddedTicks) : string.Compare(x.Title, y.Title, StringComparison.OrdinalIgnoreCase));
@@ -465,7 +476,7 @@ public static class LocalCollection
             var files = new List<LocalSongItem>(n.Files.Count);
             int num = 0;
             foreach (var e in n.Files)
-                files.Add(new LocalSongItem(e.LocalId, ++num, e.MatchTitle, e.Tags.Album, Path.GetFileName(e.RelativePath), QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample), e.Tags.DurationMs,
+                files.Add(new LocalSongItem(e.LocalId, ++num, e.MatchTitle, e.Tags.Album, Path.GetFileName(e.RelativePath), QualityOf(e.Format, e.Tags.BitrateKbps, e.Tags.SampleRate, e.Tags.BitsPerSample, e.RelativePath), e.Tags.DurationMs,
                     e.Playable && e.State == LocalState.Present));
             var mosaic = new List<string>(4);
             CollectCovers(n, nodes, coverOf, mosaic);
@@ -552,8 +563,9 @@ public static class LocalCollection
         return disc && dir.Contains('\\') ? DirOf(dir) : dir;
     }
 
-    /// <summary>A path's last part ("Music" of "C:\Users\me\Music"); a drive root ("D:\") keeps itself; "?" for none.</summary>
-    static string LeafOf(string path)
+    /// <summary>A path's last part ("Music" of "C:\Users\me\Music", "music" of a share root "\\nas\music"); a drive root ("D:\") keeps
+    /// itself; "?" for none. The folder name the page's tiles and the drop's toasts show.</summary>
+    internal static string LeafOf(string path)
     {
         if (path.Length == 0) return "?";
         string trimmed = path.TrimEnd('\\', '/');

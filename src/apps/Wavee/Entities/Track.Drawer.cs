@@ -164,12 +164,18 @@ public readonly partial struct Track
                 string? label = kind == DrawerRules.FileKind && LocalLibrary.TryLocalIdOf(version.Uri.Text, out long fileId) ? LocalLinkWords.FileLabel(fileId) : null;
                 // Phase 2: the version that plays when the song is played says so ("Your file · MP3 320 · Plays by default").
                 if (!reserved && LocalLinkWords.PlaysByDefault(t, kind, version) is { } plays) label = (label ?? KindWord(kind)) + " · " + plays;
-                drawn[i] = new TrackDrawerEntry(kind, version, rowKey, isNow, reserved, i == 0 ? peaks : null, label);
+                // #240 version cards: a video of mine wears its own picture (a frame from it, or the one the user chose), not the album cover.
+                long file = !reserved && LocalLibrary.TryLocalIdOf(version.Uri.Text, out long fid) ? fid : 0;
+                bool wide = file != 0 && LocalLink.WearsFrame(file);
+                drawn[i] = new TrackDrawerEntry(kind, version, rowKey, isNow, reserved, i == 0 ? peaks : null, label, wide ? LocalLink.FrameUrlOf(file) : null, wide);
             }
+            // #240 version cards: each card's menu, keys and title (Track.Drawer.VersionCard.cs); plain cards with no overlay host.
+            var overlay = DrawerOverlay;
             return style.Body(new TrackDrawerBodyArgs
             {
                 Track = t, Facts = facts, Arriving = arriving, Entries = drawn,
                 FormatButton = _formatButton, PlayVersion = PlayVersion, Link = LinkSection(t),
+                VersionCard = overlay is null || Controls.IsNullOverlay(overlay) ? null : (version, parent, kind) => CardWiring(version, parent, kind, overlay),
             });
         }
 
@@ -266,11 +272,12 @@ public readonly partial struct Track
     internal static void OpenEntity(EntityUri uri, string name) => Shell.GoTo(Shell.For(uri, name));
 
     // Play the FORM the user clicked: a music video plays through the PARENT song (kind 99 keys the video on the song —
-    // DetailTracks.cs:3329-3342); an alternate recording plays itself. The deck's own item toggles.
+    // DetailTracks.cs:3329-3342); an alternate recording plays itself. The deck's own item toggles. An AUDIO form the catalog
+    // withholds (region-locked, Premium only, not out yet) says why instead (Track.RefuseWithheld); the video is its own verdict.
     static void PlayVersion(Track version, Track parent, byte kind)
     {
         var target = kind == DrawerRules.VideoKind ? parent : version;
-        if (target.IsValid) Invoke(target, () => Playback.PlayContext(target.Id));
+        if (target.IsValid) Invoke(target, () => Playback.PlayContext(target.Id), refuseWithheld: kind != DrawerRules.VideoKind);
     }
 
     // ── the format split button: [30 × 28 play | 20 × 28 caret] keyed "fmt:" + uri ──

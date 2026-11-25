@@ -607,7 +607,7 @@ and `upNext` (the queue panel's rows in display order, `<section>:<id>`, section
 `end` (the track ran out with nothing prepared, the natural-end path), `seek ms=`, `shuffle value=on|off`, `repeat value=off|all|one`,
 `pause`, `resume`, `add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue), `dead uri=` (the catalog rules that track
 unavailable, so the walk steps past it) or `duration ms=` (the decoder reports the playing row's real length: the same row's duration
-changes, as a music video's length replacing the song's does; the seek rail's rescale, `status log="seek.rescale"`). `do=putstate` returns the connect-state PUT body the deck would send (base64) and `do=telemetry` the playing row's
+changes, as a music video's length replacing the song's does; the seek rail's rescale, `status log="seek.rescale"`). `do=putstate` returns the connect-state PUT body the deck would send (base64, with its `quality`: the `playback_quality` read back off the bytes) and `do=cluster file=<b64 lines>` decodes captured cluster pushes (one base64 `ClusterUpdate` per line) with the real decoder, `decoded`: per frame the active device's `quality`, `activeKind`, `outputType`, the picker's `footer` words and the bar's Lossless `badge` (nothing folded, no device id written); `do=remotequality value=hifi|hifi24|veryhigh|high|normal|none` makes `--fake`'s active Connect device (after a transfer to the demo phone under `mount connect=nearby`) state that `playback_quality`, as a push re-stating it would; and `do=telemetry` the playing row's
 RawCoreStream and closing segment as its registration would report them (base64, with `contentUri`, `localContentUri`); nothing
 is sent (`--fake` sends no telemetry). A playlist's matched `spotify:local:` row adds `deckFile` (the file's name, never its
 folder). `do=inbound file=<json>` decodes a controller's Connect `play`/`transfer` command body with the app's own decoders and hands it to
@@ -615,7 +615,15 @@ the host as the dealer glue does (no dealer, no ack). `play uri=<row> context=sp
 double-tap on the row does. `state kind=music-folders value=folder path=<dir>` runs the real scanner over a real folder into the
 in-memory index (#240's real-file matching; the app's index file is never touched). `value=startup path=<dir>` instead runs the app's own start-up (`LocalLibrary.Use`) with that folder over
 the scratch profile's `Wavee\Cache\localindex.bin` (copy an older build's index there first to replay its rebuild): the load, the
-start-up scan and the restate run on their threads and land over the next frames; `state kind=rescope` after it is the login's scope switch. Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
+start-up scan and the restate run on their threads and land over the next frames; `state kind=rescope` after it is the login's scope switch. `state kind=local-peek value=counting|landed|empty|capped|none`
+(after `music-folders value=none`) stages what "Find music on this PC" counted (#240, 0dm; no disk; the real peek, which counts this PC's Music and
+Downloads folders by extension, runs when the card mounts on a mount with no music folder and logs `local.peek <folder> songs= cloud= videos= entries=
+capped= ms=`); `trace=90 prefix=local-` on `landed` proves the card keeps still. `localindex prefix=<path start>`
+lists the index (each file's LocalId, folder id, path, state and Wavee rename; `next`; `idMark`, the id high-water mark kept
+outside the bin); `rename=<LocalId> title=<t>` renames a file first, `compact=true` writes the bin now, and `mark=<n>` sets the
+high-water mark a previous run would have left (an inspector's settings live in memory), before a `value=startup`. The #240 LocalId
+safety checks corrupt or downgrade a scratch profile's bin between two such runs (`--profile`), then read `status log="local.index"`
+(`local.index.ids next= bin= floor= version=`) and `status log="local.link.identity"` (`kept dropped backfilled rebound orphans`). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
 end of a context behaves as it does online; `setting id=autoplay value=false` turns it off. A sequence of `transport do=end` (or
 `do=next`) replies is the sequence of tracks played:
 
@@ -961,6 +969,21 @@ it really opens on the video host headless (`status log="first.frame"`).
 ```text
 drop path=C:/music/song.flac
 drop path=C:/music/song.mp3 import=false
+```
+
+### `decode {path, out?, rate?, seekMs?, ms?}`
+
+Runs a local file through the decoder playback opens it with (its content's format through `Playback.Audio.CreateDecoderFor`: WAV and
+AIFF PCM since #240, FLAC, MP3, Ogg) into raw float32 little-endian stereo frames at `out=` (none: the count only), at the mix rate
+`rate=` (0, the default, is the file's own rate: no resampling, so the output can be compared with `ffmpeg -f f32le` sample by
+sample). `seekMs=` seeks with the decoder's own seek first; `ms=` stops early. The reply: `format`, `decoder`, `opened`, `why` (a
+refusal: "a WAV file with ADPCM audio"), `tagDurationMs`, `estimated`, `sourceRate`, `sourceChannels`, `exactFrames` and `tailKnown`
+(the gapless info a join plans on), `seekedTo`, `frames`, `peak`, and for PCM `label` ("WAV 24/96"), `gain`, `layoutFrames` and
+`sample`. No mount, no device. (`play` of a local row under `--fake` opens no source: this is the decoder check headless.)
+
+```text
+decode path=C:/music/a.wav out=C:/scratch/a.f32
+decode path=C:/music/a.aiff out=C:/scratch/a.seek.f32 seekMs=1234
 ```
 
 ### `hint {do, id?, blob?}` and `recent {clear?}`

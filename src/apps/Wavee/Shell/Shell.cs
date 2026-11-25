@@ -1459,7 +1459,7 @@ public static partial class Shell
     static string ObservedQualityWords(Playback.Audio.Opened observed)
     {
         var f = observed.Format;
-        if (f is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24)
+        if (f is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 or Spotify.Audio.Format.Pcm)   // a local WAV or AIFF is lossless too
             return Strings.Player.QualityFormat(Loc.Get(Strings.Settings.Playback.QualityLossless), observed.Label);
         string? rung = f switch
         {

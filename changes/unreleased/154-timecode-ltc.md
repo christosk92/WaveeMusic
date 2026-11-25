@@ -1,6 +1,6 @@
 ---
 kind: added
-issues: [154]
+issues: []
 contract: none
 contract-note: ""
 ---

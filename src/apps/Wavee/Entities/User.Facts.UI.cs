@@ -729,8 +729,9 @@ public readonly partial struct User
         DetailFactsStyle? _style;
 
         // Per-slot state for the five name rows (W3-A3): written by Render, read by the MOUNT-STABLE row factories
-        // ToolTip.WrapStable invokes inside each tooltip's own render — so a row's tooltip re-renders only when its tip
-        // text moved (name or count) or the live filter flipped (read in the factory), never because this card did.
+        // ArtistRowHost invokes inside its own render — so a row re-renders only when its name or count moved or the live
+        // filter flipped (read in the factory), never because this card did. The rows carry no tooltip: the name and the
+        // count are already the row's words (the faces above keep theirs).
         readonly Artist[] _rowArtist = new Artist[FactTopArtistCount];
         readonly string[] _rowName = new string[FactTopArtistCount];
         readonly string[] _rowCount = new string[FactTopArtistCount];
@@ -769,7 +770,7 @@ public readonly partial struct User
             return new ArtistsStamp(epoch, fold);
         }
 
-        /// <summary>The name row of slot <paramref name="i"/>, built INSIDE its tooltip's render: the live filter is read
+        /// <summary>The name row of slot <paramref name="i"/>, built INSIDE its <see cref="ArtistRowHost"/>'s render: the live filter is read
         /// here, so a lens flip relights the row with no re-push from the card.</summary>
         Element RowFor(int i)
         {
@@ -826,7 +827,7 @@ public readonly partial struct User
                     _rowArtist[i] = artist;
                     _rowName[i] = name;
                     _rowCount[i] = FormatCache.Int(count);
-                    rows.Add(ToolTip.WrapStable(_rowFactory[i], tip, grow: 1f, showDelayMs: FactTipDelayMs) with { Key = s_rowKeys[i] });
+                    rows.Add(Embed.Comp(new ArtistRowSlot(_rowFactory[i], name, _rowCount[i]), s_rowHost) with { Key = s_rowKeys[i] });
                 }
                 if (i < faces.Length)
                 {
@@ -861,6 +862,30 @@ public readonly partial struct User
                         new BoxEl { Direction = 1, Gap = st.ArtistRowGap(), MinWidth = 0f, Children = rows.ToArray() },
                     ],
                 });
+        }
+
+        static readonly Func<ArtistRowHost> s_rowHost = static () => new ArtistRowHost();
+
+        /// <summary>A name row's props: the slot's mount-stable factory (compared by identity) and the words it draws, so a
+        /// row re-renders when its name or count moved and otherwise only on the filter read inside the factory.</summary>
+        sealed record ArtistRowSlot(Func<Element> Row, string Name, string Count)
+        {
+            public bool Equals(ArtistRowSlot? other)
+                => other is not null && ReferenceEquals(Row, other.Row) && Name == other.Name && Count == other.Count;
+
+            public override int GetHashCode() => HashCode.Combine(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Row), Name, Count);
+        }
+
+        /// <summary>Renders one name row from its factory, in the same box the tooltip wrapper gave it (a cross-axis-transparent
+        /// row whose target fills it), so the rows lay out exactly as before without a tooltip.</summary>
+        sealed class ArtistRowHost : Component
+        {
+            public override Element Render()
+            {
+                var row = UseProps<ArtistRowSlot>().Row();
+                if (row.Is(out BoxEl b) && !b.Width.IsBound && float.IsNaN(b.Width.Value)) row = b with { Grow = 1f };
+                return new BoxEl { AlignSelf = FlexAlign.Auto, Grow = 1f, Children = [row] };
+            }
         }
 
         static void ToggleArtist(LensCell lens, Artist artist)
