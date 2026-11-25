@@ -604,16 +604,23 @@ public static partial class Spotify
             /// `next_track` decodes as <see cref="SkipNext"/>.</summary>
             NextTrack,
             /// <summary>BOTH WAYS: the `signal` endpoint — a controller asking the owner to switch the row it plays between its audio
-            /// and its music video (<see cref="RemoteCommand.Signal"/>; itsover.saz 772/793). Never refused: an unknown
+            /// and its music video (<see cref="RemoteCommand.Signal"/>; itsover.saz 772/793), or an AI DJ player for "Let DJ pick"
+            /// (<c>jump</c>, plan-dj §1.8). Never refused: an unknown
             /// <c>signal_id</c> is acked and dropped, because a refusal caches the sender out of the endpoint for good.</summary>
             Signal,
         }
 
-        /// <summary>The <c>signal_id</c> of a <see cref="RemoteCmd.Signal"/>: the two video switches, or one we do not act on.</summary>
-        public enum VideoSignal : byte { None, ToVideo, ToAudio }
+        /// <summary>The <c>signal_id</c> of a <see cref="RemoteCmd.Signal"/>: the two video switches, the AI DJ's <c>jump</c> ("Let DJ pick",
+        /// which a DJ player advertises in PlayerState f33), or one we do not act on.</summary>
+        public enum PlayerSignal : byte { None, ToVideo, ToAudio, Jump }
 
-        /// <summary>The wire spelling of a video signal. PURE.</summary>
-        public static string SignalId(VideoSignal signal) => signal == VideoSignal.ToAudio ? "switch-to-audio" : "switch-to-video";
+        /// <summary>The wire spelling of a signal. PURE.</summary>
+        public static string SignalId(PlayerSignal signal) => signal switch
+        {
+            PlayerSignal.ToAudio => "switch-to-audio",
+            PlayerSignal.Jump => "jump",
+            _ => "switch-to-video",
+        };
 
         /// <summary>One decoded remote command — a pure value, no strings (ported from `ConnectCommand.TryParse`).
         ///
@@ -634,7 +641,7 @@ public static partial class Spotify
         public readonly record struct RemoteCommand(
             RemoteCmd Kind, bool Ok, uint MessageId, long SeekToMs, bool BoolArg,
             EntityId Track, ulong SenderHash, ulong SessionHash, ulong DedupeKey,
-            ulong TrackUidItemId = 0, ulong TrackUidHash = 0, VideoSignal Signal = VideoSignal.None);
+            ulong TrackUidItemId = 0, ulong TrackUidHash = 0, PlayerSignal Signal = PlayerSignal.None);
 
         /// <summary>The dealer REQUEST body → a <see cref="RemoteCommand"/>. `Utf8JsonReader` over the raw bytes:
         /// no `JsonDocument`, no DOM, nothing allocated on a path that runs per controller keypress.</summary>
@@ -647,7 +654,7 @@ public static partial class Spotify
             long seek = 0;
             bool boolArg = false, ok = false;
             var track = default(EntityId);
-            var signal = VideoSignal.None;
+            var signal = PlayerSignal.None;
 
             while (r.Read())
             {
@@ -665,7 +672,7 @@ public static partial class Spotify
 
             static bool Command(ref System.Text.Json.Utf8JsonReader r, ref RemoteCmd kind, ref long seek,
                                 ref bool boolArg, ref ulong session, ref EntityId track, ref ulong uidItem, ref ulong uidHash,
-                                ref VideoSignal signal)
+                                ref PlayerSignal signal)
             {
                 if (r.TokenType != System.Text.Json.JsonTokenType.StartObject) { r.Skip(); return false; }
                 int depth = r.CurrentDepth;
@@ -676,10 +683,11 @@ public static partial class Spotify
                     else if (r.ValueTextEquals("signal_id"u8))
                     {
                         r.Read();
-                        signal = r.TokenType != System.Text.Json.JsonTokenType.String ? VideoSignal.None
-                            : r.ValueTextEquals("switch-to-video"u8) ? VideoSignal.ToVideo
-                            : r.ValueTextEquals("switch-to-audio"u8) ? VideoSignal.ToAudio
-                            : VideoSignal.None;
+                        signal = r.TokenType != System.Text.Json.JsonTokenType.String ? PlayerSignal.None
+                            : r.ValueTextEquals("switch-to-video"u8) ? PlayerSignal.ToVideo
+                            : r.ValueTextEquals("switch-to-audio"u8) ? PlayerSignal.ToAudio
+                            : r.ValueTextEquals("jump"u8) ? PlayerSignal.Jump
+                            : PlayerSignal.None;
                     }
                     else if (r.ValueTextEquals("position"u8) || r.ValueTextEquals("value"u8))
                     {

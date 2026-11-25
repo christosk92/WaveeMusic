@@ -57,8 +57,8 @@ public static partial class Spotify
             _ => CommandRoute.Mailbox,
         };
 
-        /// <summary>DEALER THREAD, after the ack.</summary>
-        static void RouteCommand(in Decode.RemoteCommand command, ReadOnlySpan<byte> payload, uint epoch)
+        /// <summary>DEALER THREAD, after the ack (and the inspector's `dj do=signal`, which routes a made-up body as the glue does).</summary>
+        internal static void RouteCommand(in Decode.RemoteCommand command, ReadOnlySpan<byte> payload, uint epoch)
         {
             switch (RouteOf(command.Kind))
             {

@@ -227,13 +227,18 @@ public static partial class Playback
         /// <summary>What the surfaces draw of the DJ playing here (plan-dj §2.8): <see cref="Active"/> while a lexicon session is the deck's
         /// context on this device; the "Let DJ pick" label the session states (<c>dj.interactivity.localized_jump_button</c>, "" = none), the
         /// product's name (<c>context_description</c>, "DJ"), the playing row's segment label (<c>station_subtitle</c>), whether a later segment
-        /// is loaded to jump to, and the button's colours (<c>narration.jump.{background,border,icon}.color</c>, ARGB, 0 = not stated).</summary>
-        public readonly record struct Facts(bool Active, string Pick, string Name, string Segment, bool CanJump, uint PickFill, uint PickBorder, uint PickInk);
+        /// is loaded to jump to, and the button's colours (<c>narration.jump.{background,border,icon}.color</c>, ARGB, 0 = not stated).
+        /// <see cref="Remote"/>: another device plays the DJ (its cluster's locks say <c>dj-disallow</c>); this device only controls it, so
+        /// "Let DJ pick" is the <c>jump</c> signal to it, and nothing of the session (labels, segments, rows) is known here.</summary>
+        public readonly record struct Facts(bool Active, string Pick, string Name, string Segment, bool CanJump, uint PickFill, uint PickBorder, uint PickInk,
+            bool Remote = false);
 
         /// <summary>The DJ facts of the deck <paramref name="s"/> (<see cref="Playback.DjNow"/>, published once per drain). Allocation-free.</summary>
         internal static Facts FactsOf(in State s)
         {
-            if (s_session is not { } x || !x.Context.Equals(s.Context) || s.Own.Kind == Owner.Foreign || !s.HasCurrent) return default;
+            if (s.Own.Kind == Owner.Foreign)
+                return s.HasCurrent && s.LiveLockReason == LockReason.Dj ? new Facts(true, "", "", "", true, 0, 0, 0, Remote: true) : default;
+            if (s_session is not { } x || !x.Context.Equals(s.Context) || !s.HasCurrent) return default;
             ReadOnlySpan<QueueEdge> rows = Queue.Rows;
             int cursor = s.Cursor.Index;
             // A narration on the deck shows its segment's DJ line (SegmentRowOf: the track the clip belongs to).

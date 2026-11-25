@@ -518,6 +518,7 @@ public static partial class Spotify
             w.Utf8(33, "automix-preview"u8);
             w.Utf8(33, "speed-preview"u8);
             w.Utf8(33, "stop-speed-preview"u8);
+            if (dj is not null) w.Utf8(33, "jump"u8);          // AI DJ: "Let DJ pick" from a controller (plan-dj §1.9; `prompt` is not advertised)
             if (snap.Wire.Origin is { CommandId.Length: > 0 } commandOrigin) w.Str(35, commandOrigin.CommandId);
             else Hex(ref w, 35, ids.SessionCommandId, scratch);     // session_command_id
             int unknown = w.Open(38);                          // unnamed #38 = {1: ""}

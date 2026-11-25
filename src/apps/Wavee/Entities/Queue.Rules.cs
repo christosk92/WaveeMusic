@@ -174,7 +174,11 @@ public static class QueueOrder
 
     /// <summary>Put the buckets back around <paramref name="cursor"/>: history before it, NowPlaying on it, then the user's
     /// rows (provider Queue) and then everything else, each in its own order. The cursor's index never moves. True when
-    /// anything changed; an out-of-range cursor changes nothing.</summary>
+    /// anything changed; an out-of-range cursor changes nothing.
+    /// <para>AI DJ: a narration on the cursor (provider Narration) keeps the context row right after it there: the clip leads into that
+    /// track (a jump clip into the segment "Let DJ pick" landed on), so the user's rows wait behind the track, as behind any deck. The
+    /// track takes the user queue's bucket while it waits there (the reading order stays history, now playing, user queue, next up, and
+    /// the panel lists it first, where it plays); it is the deck's own row again once the clip ends.</para></summary>
     public static bool Follow(Span<int> targets, Span<QueueEdge> rows, int cursor)
     {
         if ((uint)cursor >= (uint)rows.Length) return false;
@@ -182,8 +186,11 @@ public static class QueueOrder
         for (int i = 0; i < cursor; i++) changed |= SetBucket(ref rows[i], QueueBucket.History);
         changed |= SetBucket(ref rows[cursor], QueueBucket.NowPlaying);
 
+        int from = cursor + 1;
+        if (rows[cursor].Provider == (byte)QueueProvider.Narration && from < rows.Length && rows[from].Provider == (byte)QueueProvider.Context)
+            changed |= SetBucket(ref rows[from++], QueueBucket.UserQueue);
         int firstOther = -1;
-        for (int i = cursor + 1; i < rows.Length; i++)
+        for (int i = from; i < rows.Length; i++)
         {
             if (!IsUser(rows[i]))
             {

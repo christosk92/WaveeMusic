@@ -36,7 +36,7 @@ using System.Globalization;
 using FluentGpu.Foundation;
 
 using RemoteCmd = Wavee.Spotify.Decode.RemoteCmd;
-using VideoSignal = Wavee.Spotify.Decode.VideoSignal;
+using PlayerSignal = Wavee.Spotify.Decode.PlayerSignal;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
 namespace Wavee;
@@ -1152,6 +1152,12 @@ public static partial class Playback
     /// that clip; <see cref="Effects.DjJump"/> still names the target. The talk-over into it is D3's.</para></summary>
     static void DoDjJump(ref State s, in Input i, ref Effects fx)
     {
+        // Another device plays a DJ (its cluster's locks say dj-disallow): "Let DJ pick" is the Connect signal `jump` to it (plan-dj §1.8).
+        if (s.Own.Kind == Owner.Foreign && s.HasCurrent && s.LiveLockReason == LockReason.Dj)
+        {
+            Forward(ref s, RemoteCmd.Signal, ref fx, (long)PlayerSignal.Jump, false);
+            return;
+        }
         if (!s.RoutesLocal || !s.HasCurrent || Dj.Of(s.Context) is null) { fx.Refused = Refusal.NoJumpTarget; return; }
         int target = Dj.NextJumpTarget(Queue.Rows, s.Cursor.Index);
         if (target < 0)
@@ -1488,7 +1494,7 @@ public static partial class Playback
         {
             if (s.Own.Kind != Owner.Foreign || !explicitSwitch || wanted == (s.Kind == PlayableKind.Video)) return;
             if (wanted && !s.Video.HasVideo) { fx.Refused = Refusal.NoVideo; return; }
-            Forward(ref s, RemoteCmd.Signal, ref fx, (long)(wanted ? VideoSignal.ToVideo : VideoSignal.ToAudio), false);
+            Forward(ref s, RemoteCmd.Signal, ref fx, (long)(wanted ? PlayerSignal.ToVideo : PlayerSignal.ToAudio), false);
             return;
         }
         // On video already and still wanted: nothing to re-decide (a row whose association flag has not landed would read audio).

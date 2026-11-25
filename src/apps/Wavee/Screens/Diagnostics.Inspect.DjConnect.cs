@@ -14,6 +14,10 @@
 //   dj do=bodies            the --fake session answer and its first page sent through the lexicon decode (Playback.Dj.Decode) as an
 //                           identity body, a gzip body, a zstd frame with its content size, a streamed zstd frame without one, and a
 //                           broken zstd frame: what each decodes to (or that it is refused)
+//   dj do=signal            a controller's "Let DJ pick" arriving: a made-up `signal` request (`signal_id: jump`, from an invented
+//                           phone) decoded and routed as the dealer glue routes it (no ack); waits for the jump, then the cursor,
+//                           the rows and the `dj` readout. Beside it, `outbound`: the `signal` body this device sends as the controller
+//                           of another device's DJ (fixed ids and clock)
 //
 // Role: SHELL (UI thread)
 
@@ -26,7 +30,7 @@ public static partial class Diagnostics
     public sealed partial class InspectSession
     {
         /// <summary>The Connect sub-verbs' names, as the verb table lists them.</summary>
-        internal const string DjConnectVerbs = "envelope|cluster|transfer|restore|bodies";
+        internal const string DjConnectVerbs = "envelope|cluster|transfer|restore|bodies|signal";
 
         /// <summary>The Connect sub-verbs of `dj`; null when <paramref name="verb"/> is not one of them.</summary>
         string? DjConnectVerb(int id, string name, string verb, string uri, Inspect.Args a)
@@ -133,6 +137,39 @@ public static partial class Diagnostics
                                 foreach ((string sent, byte[] body) in Encodings(plain))
                                     WriteBodyDecode(w, answer, sent, body, djPage);
                             w.WriteEndArray();
+                        });
+                    }
+                case "signal":
+                    {
+                        if (_shell is null) return Inspect.Reply.Fail(id, name, "dj do=signal needs a mount");
+                        // The request as the dealer delivers it; every id is invented (no capture, no device of the account).
+                        const string request = "{\"message_id\":91,\"sent_by_device_id\":\"fa4ed00d00000000000000000000phone\","
+                            + "\"message_ident\":\"hm://connect-state/v1/player/command\",\"command\":{\"endpoint\":\"signal\",\"signal_id\":\"jump\","
+                            + "\"logging_params\":{\"command_id\":\"00000000000000000000000000000091\"}}}";
+                        byte[] body = System.Text.Encoding.UTF8.GetBytes(request);
+                        Spotify.Decode.RemoteCommand command = Spotify.Decode.ConnectCommand(body);
+                        if (command.Kind != Spotify.Decode.RemoteCmd.Signal) return Inspect.Reply.Fail(id, name, "dj do=signal: the body decoded as " + command.Kind);
+                        Playback.State before = Playback.Snap();
+                        int jumps = Playback.Dj.Jumps;
+                        Spotify.Connect.RouteCommand(in command, body, Spotify.Current.Epoch);
+                        long until = Environment.TickCount64 + PlayLoadBudgetMs;
+                        while (Playback.Dj.Jumps == jumps && Environment.TickCount64 < until) { RunFrames(1); Thread.Sleep(2); }
+                        AwaitPlaybackLoad(PlayLoadBudgetMs);
+                        RunFrames(4);
+                        Playback.State after = Playback.Snap();
+                        var outbound = new System.Buffers.ArrayBufferWriter<byte>(512);
+                        Spotify.Connect.SignalBody(outbound, Spotify.Decode.PlayerSignal.Jump, "inspect-device", "00000000000000000000000000000001",
+                            "00000000000000000000000000000002", 1_700_000_000_000);
+                        return Settled(id, name, a, w =>
+                        {
+                            w.WriteString("do", verb);
+                            w.WriteString("signal", Spotify.Decode.SignalId(command.Signal));
+                            w.WriteBoolean("jumped", Playback.Dj.Jumps > jumps);
+                            w.WriteNumber("cursorBefore", before.Cursor.Index);
+                            w.WriteNumber("cursorAfter", after.Cursor.Index);
+                            w.WritePropertyName("outbound");
+                            using (JsonDocument doc = JsonDocument.Parse(outbound.WrittenMemory)) doc.RootElement.WriteTo(w);
+                            WriteDjSession(w);
                         });
                     }
                 default:

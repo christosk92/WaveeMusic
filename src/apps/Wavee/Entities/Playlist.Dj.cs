@@ -39,7 +39,7 @@ public static class DjPage
         {
             var p = UseProps<Props>();
             Playback.Dj.Facts dj = Playback.DjNow.Value;
-            bool playing = dj.Active && Playback.ContextUri.Value.Equals(p.List);
+            bool playing = dj.Active && !dj.Remote && Playback.ContextUri.Value.Equals(p.List);   // a DJ another device plays: its rows are not here
             _ = Entities.Current.Edges.Queue.Changed.Value;   // the rows the DJ queued and the cursor moving through them
             _ = Playback.Current.Value;
             return new BoxEl

@@ -49,7 +49,7 @@ using FluentGpu.Foundation;
 
 using RemoteCmd = Wavee.Spotify.Decode.RemoteCmd;
 using RemoteCommand = Wavee.Spotify.Decode.RemoteCommand;
-using VideoSignal = Wavee.Spotify.Decode.VideoSignal;
+using PlayerSignal = Wavee.Spotify.Decode.PlayerSignal;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 using ClusterOrigin = Wavee.Spotify.Decode.ClusterOrigin;
 
@@ -1720,6 +1720,8 @@ public static partial class Playback
         /// host's seam for the jump narration (plan-dj §2.6: D3 plays <c>narration.jump</c> with its talk-over here); today a log line.</summary>
         public bool DjJump;
         public ulong DjJumpTarget;
+        /// <summary>A controller sent "Let DJ pick" (the <c>jump</c> signal): the host runs <see cref="Playback.DjJump(string)"/>.</summary>
+        public bool DjJumpAsked;
 
         // ── video (G-142) ──
         /// <summary>The reducer decided the video mode for the shell's surface: on (a controller's switch-to-video, a play that
@@ -1816,7 +1818,7 @@ public static partial class Playback
         public readonly bool Any => Load || Start || Stop || PauseHost || ResumeHost || Seek || Volume || PersistVolume
             || ScrubBegin || ScrubMove || ScrubEnd || ScrubCancel
             || PrepareNext || PublishState || SendRemote || Transfer || Fetch || Smtc || SmtcTimeline || Snapshot
-            || Prefetch || Prefetch2 || CancelPrepared || Adopt || QueueAdd || Reorder || Autoplay || Page || AutoplayPage || DjJump
+            || Prefetch || Prefetch2 || CancelPrepared || Adopt || QueueAdd || Reorder || Autoplay || Page || AutoplayPage || DjJump || DjJumpAsked
             || VideoIntent || SkippedUnavailable || TakeoverSeed || ClaimRejected || TransferFailed || Mute || Refused != Refusal.None;
     }
 
@@ -2929,8 +2931,11 @@ public static partial class Playback
             // above still answers it); an unknown signal id was acked by the glue and is dropped here.
             case RemoteCmd.Signal:
                 {
-                    if (c.Signal == VideoSignal.None) break;
-                    bool on = c.Signal == VideoSignal.ToVideo;
+                    // AI DJ (plan-dj §1.8): a controller's "Let DJ pick". The host runs the jump as the button does (it lays the queue
+                    // first, Playback.DjJump), so the reducer only asks for it; a DJ that is not ours, or no DJ, refuses there.
+                    if (c.Signal == PlayerSignal.Jump) { fx.DjJumpAsked = true; break; }
+                    if (c.Signal == PlayerSignal.None) break;
+                    bool on = c.Signal == PlayerSignal.ToVideo;
                     if (on && !s.Video.HasVideo) { fx.Refused = Refusal.NoVideo; break; }
                     VideoMode(ref s, ref fx, on);
                     PlayableKind kind = GatedKind(in s, s.Current, KindOfRow(s.Current, on));

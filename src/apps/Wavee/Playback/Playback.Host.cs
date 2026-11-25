@@ -944,6 +944,7 @@ public static partial class Playback
         if (s_fx.AutoplayPage) RequestAutoplayPage(s_fx.AutoplayPageContext);
         if (s_fx.Page) RequestPage(s_fx.PageContext);
         if (s_fx.DjJump) Dj.Jumped(s_fx.DjJumpTarget);
+        if (s_fx.DjJumpAsked) DjJump("connect.signal");   // a controller's "Let DJ pick": the same press as the button's (posts its input)
         if (s_fx.VideoIntent) OnVideoIntent?.Invoke(s_fx.VideoIntentOn, s_fx.VideoIntentWhy);
         if (s_fx.SkippedUnavailable)
         {
@@ -1252,11 +1253,12 @@ public static partial class Playback
         }
         if (s_fx.RemoteCmd == RemoteCmd.Signal)
         {
-            // The owner's audio ⇄ video switch (itsover.saz 772): RemoteArg carries the VideoSignal.
-            var signal = (Spotify.Decode.VideoSignal)s_fx.RemoteArg;
-            Log.Info("playback", "video signal forwarded to the owner: " + Spotify.Decode.SignalId(signal));
-            RunForward(RemoteVerb.Video, device, () => Answered(RemoteVerb.Video, device,
-                Spotify.Connect.Signal(target, signal, CancellationToken.None)));
+            // The owner's audio ⇄ video switch (itsover.saz 772), or "Let DJ pick" on its DJ (plan-dj §1.8): RemoteArg carries the
+            // PlayerSignal. A failed jump reads as a skip that did not go through.
+            var signal = (Spotify.Decode.PlayerSignal)s_fx.RemoteArg;
+            RemoteVerb signalVerb = signal == Spotify.Decode.PlayerSignal.Jump ? RemoteVerb.Skip : RemoteVerb.Video;
+            Log.Info("playback", "signal forwarded to the owner: " + Spotify.Decode.SignalId(signal));
+            RunForward(signalVerb, device, () => Answered(signalVerb, device, Spotify.Connect.Signal(target, signal, CancellationToken.None)));
             return;
         }
         // Shuffle and repeat (remote-play plan 3.2): ONE `set_options` to an owner that advertises capability 25 (all.saz 2044,
