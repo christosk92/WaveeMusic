@@ -53,6 +53,7 @@ public static partial class Diagnostics
             code = 0;
             if (Array.IndexOf(args, "--stress-audio") >= 0) { code = StressAudio(args); return true; }
             if (MixBenchHost.TryRun(args, out code)) return true;     // #48: one boundary through the real pump (Diagnostics.MixBench.cs)   // the load-test runner (§ --stress-audio, below)
+            if (MixRateBench.TryRun(args, out code)) return true;     // #48 M4: E4 voice rate + glide, E8 beat loop, offline (Diagnostics.MixBench.Rate.cs)
             if (Array.IndexOf(args, "--headless") < 0) return false;
             AttachParentConsole();
             if (!HeadlessOptions.TryParse(args, out HeadlessOptions options, out string usage))
