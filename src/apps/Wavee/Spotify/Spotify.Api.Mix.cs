@@ -1,10 +1,24 @@
-// ── Spotify/Spotify.Api.Mix.cs — #48 Mix, the write side that is captured (plan §3.2) ─────────────────────────────────
+// ── Spotify/Spotify.Api.Mix.cs — #48 Mix, everything Wavee writes to Spotify for Mix (full-support plan §2.1.4, M2) ─────────
 //
-// ONE write: turning Mix ON for a playlist the user owns. The capture (report §3.1, sessions #057 / #526) is a POST to
-// /playlist/v2/playlist/{id}/signals with signal `mix-state`, the server's own args {1:"mix"}, the payload {1:1}, the lens
-// header `mix,auto` and sync-reason CBAQAQ== ({1:16,2:1}); the reply is the whole list with the mix lens applied, folded as
-// a list read (the Tune path). Turning Mix OFF on Spotify is not captured (O1): it is the local "listen without Mix"
-// (MixListenWithout), which sends nothing. Saving a transition (`set-transition`) is phase 7's.
+// Every Mix write is ONE signal POSTed to /playlist/v2/playlist/{id}/signals (protocol §3), body protobuf under the playlist
+// gateway's form-urlencoded content type:
+//
+//   {1 <24-byte revision>, 2 signal {1 identifier, 2 args, 3 payload?}}
+//
+// The signal's fields 1 and 2 are the TEMPLATE a lens read handed over (MixSignals: the list's contents.5 `mix-state` entry,
+// an item's attribute 14 `set-transition`), copied byte for byte; field 3 is the write's payload, absent where the write has
+// none (Mix off, Reset to Auto, the opt-outs). A write whose template no read carries (Mix on while Mix is off: the off read
+// has no mix-state entry) builds {1 identifier, 2 {1 "mix"}}, which is what every captured template holds.
+//
+//   write             signal               payload                          route (lens header, sync-reason)
+//   Mix off           mix-state            none                             auto,     CA8QAQ== [wire]
+//   Mix on            mix-state            {1: 1}                           mix,auto, CBAQAQ== [wire]
+//
+// Which route each write takes is ONE table (Mixes.RouteOf). Signals neither move the revision nor cause a push (protocol
+// §3.4): the reply is the whole list read through the requested lenses, folded as a list read (the Tune path), and it is
+// the only way this PC learns the new mix lens etag. The revision a write sends is the one the list is held at; with none
+// held (or when the server refuses the held one) the list's head is read first. --fake answers through a recording server
+// (Entities.Fake.MixServer.cs) in Library.Net.PlaylistSignals' place.
 
 namespace Wavee;
 
@@ -12,87 +26,134 @@ public static partial class Spotify
 {
     public static partial class Api
     {
-        /// <summary>The general ApplyPlaylistSignals body (report §3.2, "AvailableSignal shape"): f1 the 24-byte revision, f2 one
-        /// signal { f1 identifier, f2 the server-supplied args (bytes of the args message, copied), f3 the signal-specific payload }.
-        /// PURE. Returns the byte count written into <paramref name="into"/>.</summary>
-        public static int SignalsBody(ReadOnlySpan<byte> revision, string identifier, ReadOnlySpan<byte> args, ReadOnlySpan<byte> payload, Span<byte> into)
+        /// <summary>The ApplyPlaylistSignals body: f1 the revision, f2 ONE signal = <paramref name="template"/>'s bytes verbatim (its
+        /// f1 identifier and f2 args, as the server handed them over) and, when <paramref name="hasPayload"/>, f3 the payload message.
+        /// PURE.</summary>
+        public static byte[] SignalBody(ReadOnlySpan<byte> revision, ReadOnlySpan<byte> template, ReadOnlySpan<byte> payload, bool hasPayload)
         {
-            var w = new Decode.ProtoWriter(into);
+            var buffer = new byte[revision.Length + template.Length + payload.Length + 32];
+            var w = new Decode.ProtoWriter(buffer);
             w.Utf8Always(1, revision);
             int signal = w.Open(2);
-            w.Str(1, identifier);
-            w.Utf8Always(2, args);
-            w.Utf8Always(3, payload);
+            w.Raw(template);
+            if (hasPayload) w.Utf8Always(3, payload);
             w.Close(signal);
-            return w.Length;
+            return buffer.AsSpan(0, w.Length).ToArray();
         }
 
-        /// <summary>The `mix-state` body that turns Mix on: args {1:"mix"}, payload {1:1} (report §3.1). PURE.</summary>
+        /// <summary>A signal template no read handed over: <c>{1 identifier, 2 {1 lens}}</c> (every captured Mix template has this
+        /// shape; protocol §2, §3.3). PURE.</summary>
+        public static byte[] SignalTemplate(string identifier, string lens = "mix")
+        {
+            var buffer = new byte[identifier.Length + lens.Length + 16];
+            var w = new Decode.ProtoWriter(buffer);
+            w.StrAlways(1, identifier);
+            int args = w.Open(2);
+            w.StrAlways(1, lens);
+            w.Close(args);
+            return buffer.AsSpan(0, w.Length).ToArray();
+        }
+
+        /// <summary>The `mix-state` payload that turns Mix on: <c>{1: 1}</c> (the client's <c>{1 playlistMixed}</c>); off sends
+        /// none.</summary>
+        public static ReadOnlySpan<byte> MixOnPayload => [0x08, 0x01];
+
+        /// <summary>The `mix-state` body that turns Mix on, with the built template (protocol §3.1, 50 bytes). PURE.</summary>
         public static byte[] MixStateOnBody(ReadOnlySpan<byte> revision)
-        {
-            Span<byte> args = stackalloc byte[8];
-            var a = new Decode.ProtoWriter(args);
-            a.Utf8(1, "mix"u8);
-            Span<byte> payload = stackalloc byte[4];
-            var p = new Decode.ProtoWriter(payload);
-            p.U(1, 1);
-            Span<byte> body = stackalloc byte[revision.Length + 64];
-            int n = SignalsBody(revision, "mix-state", args[..a.Length], payload[..p.Length], body);
-            return body[..n].ToArray();
-        }
-
-        public static Result PlaylistMixState(string playlistId, byte[] body, CancellationToken ct)
-        {
-            var args = new RequestArgs { Id = playlistId, Body = body, Flag = true };   // Flag: the mix-state route (CBAQAQ==, mix,auto)
-            return Unwrapped(Send(RequestKind.PlaylistSignals, args, ct));
-        }
+            => SignalBody(revision, SignalTemplate("mix-state"), MixOnPayload, hasPayload: true);
     }
 
     public static class Mixes
     {
-        /// <summary>Turn Mix on for <paramref name="p"/> (the user's own playlist): read its head, POST `mix-state`, fold the reply as
-        /// the list (it carries the lens, the list attributes and every item's set-transition). <paramref name="settled"/> hears whether
-        /// it landed. <c>--fake</c> marks the seed's row mixed locally: there is no account to write with.</summary>
-        public static void TurnOn(Playlist p, Action<bool>? settled)
+        /// <summary>The writes this file sends (protocol §3).</summary>
+        public enum Write : byte { Off, On }
+
+        /// <summary>How a write settled. <see cref="Offline"/>: nothing was sent (no session that can send).</summary>
+        public enum Outcome : byte { Landed, Failed, Offline, Refused }
+
+        /// <summary>The signal identifier a write sends.</summary>
+        public static string SignalOf(Write w) => "mix-state";
+
+        /// <summary>THE ROUTE TABLE: the lens header and the sync-reason each write travels with (protocol §1.1, §3.1). One
+        /// place, so a route the owner's live check corrects is one line.</summary>
+        public static SignalRoute RouteOf(Write w) => w switch
         {
-            if (!p.IsValid || !p.IsOwner) { settled?.Invoke(false); return; }
-            if (Platform.Args.Fake)
+            Write.On => SignalRoute.MixOn,          // mix,auto + CBAQAQ== [wire]
+            _ => SignalRoute.Edit,                  // Mix off: auto + CA8QAQ== [wire]
+        };
+
+        /// <summary>"auto CA8QAQ==" — a route as its two header values, for the log lines and the inspector.</summary>
+        public static string RouteText(SignalRoute route)
+        {
+            Span<char> path = stackalloc char[96];
+            var request = Build(RequestKind.PlaylistSignals, new RequestArgs { Id = "x", Number = (long)route }, path);
+            return Api.ApplyLensesValue(request.Headers) + " " + new string(request.SyncReason);
+        }
+
+        /// <summary>Who may write a playlist's Mix: its owner, or a collaborator who may edit its rows (UX direction S1, S15).</summary>
+        public static bool CanWrite(Playlist p) => p.IsValid && (p.IsOwner || p.Editable);
+
+        /// <summary>May Mix be switched for everyone: <see cref="CanWrite"/>, and — once a lens read has carried the list's signal
+        /// templates — the server offered the `mix-state` signal (its contents.5 entry is the "can toggle" answer, plan §2.1.3).</summary>
+        public static bool CanToggle(Playlist p)
+            => CanWrite(p) && (MixData.Signals(p.Slot) is not { } signals || signals.MixState is not null || !p.MixOn);
+
+        /// <summary>Turn Mix on for <paramref name="p"/>: `mix-state` with the payload <c>{1: 1}</c>; the reply (the list through the
+        /// mix lens: its attributes, every item's set-transition template and the stored recipes, which Mix off kept) is folded.</summary>
+        public static void TurnOn(Playlist p, Action<Outcome>? settled)
+        {
+            if (!CanWrite(p)) { settled?.Invoke(Outcome.Refused); return; }
+            string lensId = Entities.MixPlaylistId(p.Slot);
+            if (lensId.Length > 0) MixData.SetLens(lensId, true);
+            byte[] template = MixData.Signals(p.Slot)?.MixState ?? Api.SignalTemplate("mix-state");
+            int slot = p.Slot;
+            Send(p, Write.On, revision => Api.SignalBody(revision, template, Api.MixOnPayload, hasPayload: true), fold: true, "", outcome =>
             {
-                Entities.FakeMixOn(p);
-                settled?.Invoke(true);
-                return;
-            }
-            if (!PlaylistEdits.CanWrite(out var scope, out _)) { settled?.Invoke(false); return; }
-            string id = Entities.MixPlaylistId(p.Slot), uri = p.Uri.Text;
-            if (id.Length == 0) { settled?.Invoke(false); return; }
-            MixData.SetLens(id, true);
-            if (!Library.Net.Run(() =>
+                // The XM answers would say "mixed" now too (225 mix state, 170 auto lens): set them as Mix off clears them.
+                if (outcome == Outcome.Landed)
+                    SetFlags(slot, Entities.Current.Playlists.MixFlags[slot] | (uint)(PlaylistMixFlags.XmMixState | PlaylistMixFlags.XmAutoLens));
+                else if (lensId.Length > 0) MixData.SetLens(lensId, false);
+                settled?.Invoke(outcome);
+            });
+        }
+
+        /// <summary>Turn Mix off for everyone: `mix-state` with NO payload (protocol §3.1). Optimistic: the list reads unmixed at
+        /// once and the reply (the list without the mix lens) is folded; a failure puts the flags back. Spotify keeps the recipes
+        /// (on again brings them back byte for byte), and so does this PC (MixData is not cleared).</summary>
+        public static void TurnOff(Playlist p, Action<Outcome>? settled)
+        {
+            if (!CanToggle(p) || !p.MixOn) { settled?.Invoke(Outcome.Refused); return; }
+            var table = Entities.Current.Playlists;
+            int slot = p.Slot;
+            uint before = table.MixFlags[slot];
+            // The XM answers (225 mix state, 170 auto lens) said "mixed" too: they go with the list's own bits, or On() would hold.
+            const uint Mixed = (uint)(PlaylistMixFlags.ListMix | PlaylistMixFlags.LensApplied | PlaylistMixFlags.XmMixState | PlaylistMixFlags.XmAutoLens);
+            SetFlags(slot, before & ~Mixed);
+            string lensId = Entities.MixPlaylistId(slot);
+            if (lensId.Length > 0) MixData.SetLens(lensId, false);
+            byte[] template = MixData.Signals(slot)?.MixState ?? Api.SignalTemplate("mix-state");
+            Send(p, Write.Off, revision => Api.SignalBody(revision, template, default, hasPayload: false), fold: true, "", outcome =>
+            {
+                if (outcome == Outcome.Landed)
                 {
-                    Span<byte> head = stackalloc byte[Encode.MaxRevisionBytes];
-                    Api.Result read = Api.Playlist(id, CancellationToken.None);
-                    int length = read.Ok ? Encode.ResultingRevision(read.Bytes, head) : 0;
-                    Api.Result r = length == 0 ? read : Api.PlaylistMixState(id, Api.MixStateOnBody(head[..length]), CancellationToken.None);
-                    Staging? staging = null;
-                    if (length > 0 && r.Ok && r.Body.Length > 0)
-                    {
-                        staging = Staging.Rent();
-                        staging.Epoch = scope.Epoch;
-                        Api.PlaylistAnswer(r.Bytes, uri, staging);
-                    }
-                    Log.Info("mix", "mix-state on " + (staging is not null ? "landed" : "failed status=" + r.Status));
-                    Post(() =>
-                    {
-                        bool ok = staging is not null;
-                        if (ok && ReferenceEquals(scope, Entities.Current)) { Entities.Commit(staging!); Entities.Publish(); }
-                        if (staging is not null) Staging.Return(staging);
-                        if (!ok) MixData.SetLens(id, false);
-                        settled?.Invoke(ok);
-                    });
-                }))
-            {
-                MixData.SetLens(id, false);
-                settled?.Invoke(false);
-            }
+                    // The reply speaks for the list half only: the stale XM "mixed" bits stay off until the kinds are read again.
+                    SetFlags(slot, table.MixFlags[slot] & ~(uint)(PlaylistMixFlags.XmMixState | PlaylistMixFlags.XmAutoLens));
+                }
+                else
+                {
+                    SetFlags(slot, before);
+                    if (lensId.Length > 0) MixData.SetLens(lensId, PlaylistMixRules.On((PlaylistMixFlags)before) && !MixListenWithout.Is(p));
+                }
+                settled?.Invoke(outcome);
+            });
+        }
+
+        static void SetFlags(int slot, uint flags)
+        {
+            var table = Entities.Current.Playlists;
+            if (slot <= Table.None || slot >= table.Count || table.MixFlags[slot] == flags) return;
+            table.MixFlags[slot] = flags;
+            table.Bump(slot);
         }
 
         /// <summary>The local "listen without Mix" (decision D3): this PC plays and reads the playlist without the lens; nothing is
@@ -107,6 +168,110 @@ public static partial class Spotify
                 Entities.RefreshEdge(FetchEdge.PlaylistTracks, p.Slot);
             }
             Entities.Current.Playlists.Bump(p.Slot);
+        }
+
+        // ── the one send ─────────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>A session that can send: the account's scope and an online session; under <c>--fake</c> the recording server,
+        /// unless the inspector took it offline.</summary>
+        static bool Online(out Scope scope)
+        {
+            if (Platform.Args.Fake)
+            {
+                scope = Entities.Current;
+                return !Entities.FakeMixServer.Offline;
+            }
+            return PlaylistEdits.CanWrite(out scope, out _);
+        }
+
+        /// <summary>The playlist id in the path: the bare base62 id (a fake text id is its uri's last part).</summary>
+        static string WireId(Playlist p) => new(EntityUri.IdOf(p.Uri.Text.AsSpan()));
+
+        /// <summary>The 24-byte head the list is held at, or null (none held, or not well formed). UI thread.</summary>
+        static byte[]? HeldRevision(Playlist p)
+        {
+            string text = Entities.Strings.Resolve(Entities.Current.Playlists.Revision[p.Slot]);
+            if (!ListWrite.IsWellFormedRevision(text)) return null;
+            Span<byte> head = stackalloc byte[Encode.MaxRevisionBytes];
+            int n = Encode.RevisionBytes(text, head);
+            return n > 0 ? head[..n].ToArray() : null;
+        }
+
+        static byte[]? HeadOf(ReadOnlySpan<byte> selectedListContent)
+        {
+            Span<byte> head = stackalloc byte[Encode.MaxRevisionBytes];
+            int n = Encode.ResultingRevision(selectedListContent, head);
+            return n > 0 ? head[..n].ToArray() : null;
+        }
+
+        /// <summary>A refusal that a stale held revision may explain (a conflict or a bad request): read the head and send once more.
+        /// Never for auth, a missing list or a rate limit.</summary>
+        static bool MayBeStale(int status) => status is >= 400 and < 500 and not (401 or 403 or 404 or 429);
+
+        /// <summary>THE send every Mix write shares. UI thread in and out: <paramref name="body"/> builds the request from the revision
+        /// (called on the api thread; it must not read a table), the reply is folded as a list read when <paramref name="fold"/>, and
+        /// <paramref name="settled"/> hears how it ended. One <c>mix</c> log line per write names the signal, its route, the status
+        /// and <paramref name="detail"/>.</summary>
+        static void Send(Playlist p, Write kind, Func<byte[], byte[]> body, bool fold, string detail, Action<Outcome> settled)
+        {
+            string signal = SignalOf(kind);
+            if (!p.IsValid) { settled(Outcome.Refused); return; }
+            if (!Online(out var scope))
+            {
+                Log.Info("mix", signal + " not sent: offline" + (detail.Length > 0 ? " " + detail : ""));
+                settled(Outcome.Offline);
+                return;
+            }
+            string id = WireId(p), uri = p.Uri.Text;
+            if (id.Length == 0) { settled(Outcome.Refused); return; }
+            if (Platform.Args.Fake) Entities.FakeMixServer.Adopt(p);
+            byte[]? held = HeldRevision(p);
+            var net = Library.Net;
+            SignalRoute route = RouteOf(kind);
+            string routeText = RouteText(route);
+            if (!net.Run(() =>
+                {
+                    byte[]? revision = held;
+                    Api.Result r = Api.Result.Transport;
+                    if (revision is null)
+                    {
+                        Api.Result read = net.Playlist(id);
+                        revision = read.Ok ? HeadOf(read.Bytes) : null;
+                        if (revision is null) r = read.Ok ? Api.Result.Transport : read;
+                    }
+                    if (revision is not null)
+                    {
+                        r = net.PlaylistSignals(id, route, body(revision));
+                        if (held is not null && MayBeStale(r.Status))
+                        {
+                            Api.Result read = net.Playlist(id);
+                            byte[]? fresh = read.Ok ? HeadOf(read.Bytes) : null;
+                            if (fresh is not null && !fresh.AsSpan().SequenceEqual(revision))
+                            {
+                                Log.Info("mix", signal + " refused at the held head (status " + r.Status + "); sending once more at the server's");
+                                r = net.PlaylistSignals(id, route, body(fresh));
+                            }
+                        }
+                    }
+                    Staging? staging = null;
+                    if (fold && r.Ok && r.Length > 0)
+                    {
+                        staging = Staging.Rent();
+                        staging.Epoch = scope.Epoch;
+                        Api.PlaylistAnswer(r.Bytes, uri, staging);
+                    }
+                    int status = r.Status, length = r.Length;
+                    bool ok = r.Ok;
+                    Log.Info("mix", signal + (detail.Length > 0 ? " " + detail : "") + " route=" + routeText + " status=" + status
+                                    + " reply=" + length + "B" + (ok ? fold ? " folded" : "" : " failed"));
+                    Post(() =>
+                    {
+                        if (staging is not null && ReferenceEquals(scope, Entities.Current)) { Entities.Commit(staging); Entities.Publish(); }
+                        if (staging is not null) Staging.Return(staging);
+                        settled(ok ? Outcome.Landed : Outcome.Failed);
+                    });
+                }))
+                settled(Outcome.Failed);
         }
     }
 }

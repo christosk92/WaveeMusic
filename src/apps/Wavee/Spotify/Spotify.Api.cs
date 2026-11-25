@@ -588,12 +588,8 @@ public static partial class Spotify
             if ((headers & HeaderSet.ConnectionId) != 0 && ConnectionId() is { Length: > 0 } connectionId)
                 h.TryAddWithoutValidation("X-Spotify-Connection-Id", connectionId);
             if ((headers & HeaderSet.NoStore) != 0) h.TryAddWithoutValidation("Cache-Control", "no-store");
-            if ((headers & HeaderSet.MixLens) != 0)
-            {
-                h.TryAddWithoutValidation("spotify-apply-lenses", "mix,auto");
-                h.TryAddWithoutValidation("spotify-list-player-enabled", "true");
-            }
-            else if ((headers & HeaderSet.ApplyLenses) != 0) h.TryAddWithoutValidation("spotify-apply-lenses", "auto");
+            if (ApplyLensesValue(headers) is { } lenses) h.TryAddWithoutValidation("spotify-apply-lenses", lenses);
+            if ((headers & HeaderSet.MixLens) != 0) h.TryAddWithoutValidation("spotify-list-player-enabled", "true");
             if ((headers & HeaderSet.AppliedLenses) != 0) h.TryAddWithoutValidation("spotify-applied-lenses", "auto: YXV0bw==");
             if ((headers & HeaderSet.AcceptListItems) != 0)
                 h.TryAddWithoutValidation("x-accept-list-items", "audio-track, audio-episode, video-episode, audiobook");
@@ -632,6 +628,17 @@ public static partial class Spotify
             }
             message.Content = content;
         }
+
+        /// <summary>The <c>spotify-apply-lenses</c> value a header set stamps (#48: <c>mix,auto</c> for a mixed list, else
+        /// <c>auto</c>), or null. PURE: <see cref="Stamp"/> and the inspector's request dump read the same answer.</summary>
+        internal static string? ApplyLensesValue(HeaderSet headers)
+            => (headers & HeaderSet.MixLens) != 0 ? "mix,auto" : (headers & HeaderSet.ApplyLenses) != 0 ? "auto" : null;
+
+        /// <summary>The body's <c>Content-Type</c> a header set stamps, or null (PURE; the inspector's request dump).</summary>
+        internal static string? ContentTypeValue(HeaderSet headers, RequestKind kind)
+            => (headers & HeaderSet.ContentForm) != 0 ? "application/x-www-form-urlencoded"
+             : (headers & HeaderSet.ContentProtobuf) != 0 ? ContentTypeFor(kind)
+             : (headers & HeaderSet.ContentJson) != 0 ? "application/json" : null;
 
         // The media types that are NOT `application/protobuf`, expressed as a switch over the kind rather than as two
         // more header bits: the collection-v2 service answers only to its own vendor type, and the playlist-signals

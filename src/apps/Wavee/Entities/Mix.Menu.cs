@@ -6,6 +6,7 @@
 // per-pair opt-out (decision D16), so the record lives on this PC only and says so ("Saved on this PC only" in the label's
 // tooltip line of the Transitions view). Checked while the pair is opted out; running it again removes the record.
 
+using FluentGpu.Controls;
 using FluentGpu.Localization;
 
 namespace Wavee;
@@ -62,24 +63,55 @@ public static class MixMenu
             : Strings.Mix.MixedLineEdited(edited, pairs);
     }
 
-    /// <summary>The list bar offers the Mix toggle: the playlist is mixed, or it is the user's own and Spotify says it may be mixed.</summary>
+    /// <summary>The list bar offers the Mix toggle: the playlist is mixed, or the user may mix it (owner, collaborator) and Spotify says it may be.</summary>
     public static bool Offered(Playlist p)
-        => p.IsValid && (p.MixOn || (p.IsOwner && (p.MixFlags & PlaylistMixFlags.XmMixable) != 0));
+        => p.IsValid && (p.MixOn || (Spotify.Mixes.CanWrite(p) && (p.MixFlags & PlaylistMixFlags.XmMixable) != 0));
 
     /// <summary>The toggle is lit: Mix is on and this PC plays it mixed.</summary>
     public static bool Lit(Playlist p) => p.IsValid && p.MixOn && !MixListenWithout.Is(p);
 
-    /// <summary>The toggle (decision D3): a mixed playlist flips this PC's "listen without Mix"; an unmixed one of the user's own turns
-    /// Mix on at Spotify (the one captured write). Turning Mix off at Spotify is not captured (O1).</summary>
+    /// <summary>The toggle (decision D3): a mixed playlist flips "listen without Mix"; an unmixed one the user may mix (owner or
+    /// collaborator) turns Mix on at Spotify.</summary>
     public static void Toggle(Playlist p)
     {
         if (!p.IsValid) return;
         if (p.MixOn) { Spotify.Mixes.SetListenWithoutMix(p, without: !MixListenWithout.Is(p)); return; }
-        if (p.IsOwner) Spotify.Mixes.TurnOn(p, null);
+        if (Spotify.Mixes.CanWrite(p)) TurnOn(p);
     }
 
-    /// <summary>The list bar's Mix menu (UX direction rev 2): listen without Mix on this PC, turn Mix off for everyone (not captured:
-    /// shown disabled, O1), the transitions view option (on hover · always) and "Mix when shuffling".</summary>
+    /// <summary>Mix on at Spotify; only a failure says anything (the button lights when the reply lands).</summary>
+    static void TurnOn(Playlist p)
+        => Spotify.Mixes.TurnOn(p, outcome =>
+        {
+            if (outcome == Spotify.Mixes.Outcome.Landed) return;
+            Notify.Say(Loc.Get(outcome == Spotify.Mixes.Outcome.Offline ? Strings.Mix.OnOffline : Strings.Mix.OnFailed),
+                InfoBarSeverity.Warning, dedupeKey: "mix.state");
+        });
+
+    /// <summary>"Turn off Mix for everyone" (owner, collaborators): the write goes at once — the list reads unmixed while it is out —
+    /// and the confirmation is the toast after it, with "Turn on again" as its undo (the owner's rule: inline over dialogs; nothing is
+    /// lost either way, Spotify keeps every transition through off and on). A refusal puts Mix back on and says so.</summary>
+    public static void TurnOffForEveryone(Playlist p)
+        => Spotify.Mixes.TurnOff(p, outcome =>
+        {
+            switch (outcome)
+            {
+                case Spotify.Mixes.Outcome.Landed:
+                    Notify.Say(Loc.Get(Strings.Mix.OffForEveryone), InfoBarSeverity.Success, actionLabel: Loc.Get(Strings.Mix.TurnOnAgain),
+                        onAction: () => TurnOn(p), dedupeKey: "mix.state");
+                    break;
+                case Spotify.Mixes.Outcome.Offline:
+                    Notify.Say(Loc.Get(Strings.Mix.OffOffline), InfoBarSeverity.Warning, dedupeKey: "mix.state");
+                    break;
+                case Spotify.Mixes.Outcome.Failed:
+                    Notify.Say(Loc.Get(Strings.Mix.OffFailed), InfoBarSeverity.Warning, dedupeKey: "mix.state");
+                    break;
+            }
+        });
+
+    /// <summary>The list bar's Mix menu (UX direction rev 2): the transitions view, listen without Mix, turn Mix off for everyone
+    /// (owner and collaborators only: <see cref="Spotify.Mixes.CanWrite"/>; live when the server offers the mix-state signal), the
+    /// transitions view option (on hover · always) and "Mix when shuffling".</summary>
     public static IReadOnlyList<FluentGpu.Controls.MenuFlyoutItem> Items(Playlist p, Action toggleTransitions, bool transitionsOpen)
     {
         var items = new List<FluentGpu.Controls.MenuFlyoutItem>(8);
@@ -89,7 +121,9 @@ public static class MixMenu
             bool without = MixListenWithout.Is(p);
             items.Add(FluentGpu.Controls.MenuFlyoutItem.Toggle(Loc.Get(Strings.Mix.ListenWithout), without,
                 () => Spotify.Mixes.SetListenWithoutMix(p, !without)));
-            items.Add(new FluentGpu.Controls.MenuFlyoutItem(Loc.Get(Strings.Mix.TurnOffForEveryone), default, false));
+            if (Spotify.Mixes.CanWrite(p))
+                items.Add(new FluentGpu.Controls.MenuFlyoutItem(Loc.Get(Strings.Mix.TurnOffForEveryone), default, Spotify.Mixes.CanToggle(p),
+                    () => TurnOffForEveryone(p)));
         }
         items.Add(FluentGpu.Controls.MenuFlyoutItem.Header(Loc.Get(Strings.Mix.ShowTransitions)));
         bool always = MixPrefs.ShowAlways;

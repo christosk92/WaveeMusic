@@ -583,8 +583,13 @@ public static partial class Spotify
         }
 
         public static Result PlaylistSignals(string playlistId, byte[] body, CancellationToken ct)
+            => PlaylistSignals(playlistId, SignalRoute.Edit, body, ct);
+
+        /// <summary>One <c>/signals</c> POST on a <see cref="SignalRoute"/> (#48 Mix: the lens header and sync-reason the write
+        /// travels with).</summary>
+        public static Result PlaylistSignals(string playlistId, SignalRoute route, byte[] body, CancellationToken ct)
         {
-            var args = new RequestArgs { Id = playlistId, Body = body };
+            var args = new RequestArgs { Id = playlistId, Body = body, Number = (long)route };
             return Unwrapped(Send(RequestKind.PlaylistSignals, args, ct));
         }
 

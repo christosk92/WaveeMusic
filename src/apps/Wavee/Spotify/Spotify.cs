@@ -1867,6 +1867,20 @@ public static partial class Spotify
         Custom,
     }
 
+    /// <summary>#48 Mix: how a <see cref="RequestKind.PlaylistSignals"/> POST travels (<see cref="RequestArgs.Number"/>): the
+    /// <c>spotify-apply-lenses</c> header and the <c>spotify-playlist-sync-reason</c> (protocol §1.1, §3). Which write takes
+    /// which route is <c>Spotify.Mixes.RouteOf</c>'s table, the one place to change it.</summary>
+    public enum SignalRoute : byte
+    {
+        /// <summary><c>auto</c>, <c>CA8QAQ==</c> {1:15,2:1}: every signal outside Mix, and Mix off [wire].</summary>
+        Edit = 0,
+        /// <summary><c>mix,auto</c> (+ <c>spotify-list-player-enabled</c>), <c>CBAQAQ==</c> {1:16,2:1}: Mix on [wire].</summary>
+        MixOn = 1,
+        /// <summary><c>mix,auto</c> (+ <c>spotify-list-player-enabled</c>), <c>CA8QAQ==</c>: a transition save, sent after Mix on in
+        /// the captured page session [wire].</summary>
+        MixLens = 2,
+    }
+
     /// <summary>What a request needs beyond the session. A <c>ref struct</c> with writable fields, so a caller builds
     /// it with an object initializer and nothing is copied.</summary>
     public ref struct RequestArgs
@@ -2026,10 +2040,13 @@ public static partial class Spotify
                 w.Append("/playlist/v2/playlist/");
                 w.AppendEscaped(args.Id);
                 w.Append("/signals");
-                // #48 Mix: the `mix-state` signal (args.Flag) carries the mix lens and its own sync-reason {1:16,2:1} (capture report §3.1);
-                // every other signal keeps the captured {1:15,2:1}.
+                // #48 Mix: args.Number is the SignalRoute (protocol §1.1, §3): the lens header and the sync-reason a signal travels
+                // with. Edit (0, every signal before Mix, the Tune strip) = `auto` + {1:15,2:1}; MixOn = `mix,auto` + {1:16,2:1};
+                // MixLens = `mix,auto` + {1:15,2:1}.
+                var route = (SignalRoute)args.Number;
                 return new Request(Verb.Post, ApiHost.Spclient, w.Written,
-                    Mutation | HeaderSet.AcceptProtobuf | (args.Flag ? HeaderSet.MixLens : HeaderSet.None), args.Body, args.Flag ? "CBAQAQ==" : "CA8QAQ==");
+                    Mutation | HeaderSet.AcceptProtobuf | (route == SignalRoute.Edit ? HeaderSet.None : HeaderSet.MixLens), args.Body,
+                    route == SignalRoute.MixOn ? "CBAQAQ==" : "CA8QAQ==");
 
             case RequestKind.RootlistRead:
                 w.Append("/playlist/v2/user/");

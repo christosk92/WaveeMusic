@@ -155,6 +155,11 @@ public static partial class Spotify
             public Func<string, byte[], Api.Result> PlaylistChanges =
                 static (id, body) => Api.PlaylistChanges(id, body, CancellationToken.None);
             public Func<string, Api.Result> Playlist = static id => Api.Playlist(id, CancellationToken.None);
+            /// <summary>#48 Mix: one <c>/signals</c> POST (Spotify.Mixes) — the playlist id, the route it travels (lens header and
+            /// sync-reason) and the body; the answer unwrapped. <c>--fake</c> puts its recording server here
+            /// (Entities.Fake.MixServer.cs).</summary>
+            public Func<string, SignalRoute, byte[], Api.Result> PlaylistSignals =
+                static (id, route, body) => Api.PlaylistSignals(id, route, body, CancellationToken.None);
             /// <summary>One user follow / unfollow (<c>Library.FollowUser</c>): the bare, unescaped username and the direction.</summary>
             public Func<string, bool, Api.Result> FollowUsers =
                 static (bareId, follow) => Api.ProfileQueries.Follow(bareId, follow, CancellationToken.None);
